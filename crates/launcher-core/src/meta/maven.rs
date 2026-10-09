@@ -18,6 +18,16 @@ impl MavenCoord {
         if !(3..=4).contains(&parts.len()) || parts.iter().any(|p| p.is_empty()) {
             return None;
         }
+        // Coordinates come from remote metadata and decide where files are stored, so no
+        // component may smuggle in a path separator or a `.`/`..` segment.
+        let safe = |s: &str| !s.contains(['/', '\\', '\0']) && s != "." && s != "..";
+        if !parts.iter().all(|p| safe(p))
+            || !safe(&extension)
+            || extension.is_empty()
+            || parts[0].split('.').any(|seg| seg.is_empty())
+        {
+            return None;
+        }
         Some(Self {
             group: parts[0].to_string(),
             artifact: parts[1].to_string(),
@@ -79,5 +89,16 @@ mod tests {
         assert!(MavenCoord::parse("just-a-name").is_none());
         assert!(MavenCoord::parse("a::1").is_none());
         assert!(MavenCoord::parse("a:b:c:d:e").is_none());
+        for evil in [
+            "a:b:../../../x",
+            "a:b:1@../../x",
+            "a:b:1@",
+            "a/b:c:1",
+            "a:b\\c:1",
+            "a..b:c:1",
+            "a:b:1:..",
+        ] {
+            assert!(MavenCoord::parse(evil).is_none(), "{evil} must be rejected");
+        }
     }
 }
