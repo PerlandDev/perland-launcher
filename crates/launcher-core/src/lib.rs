@@ -1,4 +1,5 @@
 //! Perland Launcher core: everything except the UI.
+pub mod download;
 pub mod error;
 pub mod events;
 pub mod paths;
