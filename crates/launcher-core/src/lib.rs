@@ -2,6 +2,8 @@
 pub mod download;
 pub mod error;
 pub mod events;
+pub mod fsutil;
+pub mod meta;
 pub mod paths;
 pub mod platform;
 

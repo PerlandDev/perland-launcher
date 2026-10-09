@@ -1,0 +1,115 @@
+use std::path::PathBuf;
+
+use reqwest::header::{ETAG, IF_NONE_MATCH};
+use serde::de::DeserializeOwned;
+
+use crate::{
+    download::hash::sha1_hex,
+    error::{LauncherError, Result},
+    fsutil::write_atomic,
+};
+
+/// Fetches upstream metadata and keeps the last good copy on disk, so the launcher works offline.
+#[derive(Clone)]
+pub struct MetaClient {
+    http: reqwest::Client,
+    dir: PathBuf,
+}
+
+impl MetaClient {
+    pub fn new(http: reqwest::Client, dir: impl Into<PathBuf>) -> Self {
+        Self {
+            http,
+            dir: dir.into(),
+        }
+    }
+
+    fn body_path(&self, url: &str) -> PathBuf {
+        self.dir.join(format!("{}.body", sha1_hex(url.as_bytes())))
+    }
+
+    fn etag_path(&self, url: &str) -> PathBuf {
+        self.dir.join(format!("{}.etag", sha1_hex(url.as_bytes())))
+    }
+
+    pub async fn get_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        let body_path = self.body_path(url);
+        let cached = tokio::fs::read(&body_path).await.ok();
+        let mut request = self.http.get(url);
+        if cached.is_some() {
+            if let Ok(etag) = tokio::fs::read_to_string(self.etag_path(url)).await {
+                request = request.header(IF_NONE_MATCH, etag.trim());
+            }
+        }
+        match request.send().await {
+            Ok(resp) if resp.status() == reqwest::StatusCode::NOT_MODIFIED => {
+                cached.ok_or_else(|| {
+                    LauncherError::network(format!(
+                        "{url} said nothing changed, but there's no saved copy"
+                    ))
+                })
+            }
+            Ok(resp) if resp.status().is_success() => {
+                let etag = resp
+                    .headers()
+                    .get(ETAG)
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_owned);
+                let bytes = resp.bytes().await.map_err(|e| {
+                    LauncherError::network(format!("Downloading {url} was interrupted"))
+                        .with_detail(e)
+                })?;
+                write_atomic(&body_path, &bytes).await?;
+                match etag {
+                    Some(tag) => write_atomic(&self.etag_path(url), tag.as_bytes()).await?,
+                    None => {
+                        let _ = tokio::fs::remove_file(self.etag_path(url)).await;
+                    }
+                }
+                Ok(bytes.to_vec())
+            }
+            Ok(resp) => match cached {
+                Some(c) => Ok(c),
+                None => Err(
+                    LauncherError::network(format!("{url} answered {}", resp.status()))
+                        .with_fix("Try again in a few minutes"),
+                ),
+            },
+            Err(e) => match cached {
+                Some(c) => Ok(c),
+                None => Err(LauncherError::network(
+                    "You seem to be offline, and this hasn't been downloaded before",
+                )
+                .with_fix("Connect to the internet and try again")
+                .with_detail(e)),
+            },
+        }
+    }
+
+    pub async fn get_json<T: DeserializeOwned>(&self, url: &str) -> Result<T> {
+        let bytes = self.get_bytes(url).await?;
+        parse_json(url, &bytes)
+    }
+
+    /// For content-addressed URLs (Mojang packages): a cached copy with the right sha1 is used without any network access.
+    pub async fn get_verified_json<T: DeserializeOwned>(&self, url: &str, sha1: &str) -> Result<T> {
+        if let Ok(cached) = tokio::fs::read(self.body_path(url)).await {
+            if sha1_hex(&cached).eq_ignore_ascii_case(sha1) {
+                return parse_json(url, &cached);
+            }
+        }
+        let bytes = self.get_bytes(url).await?;
+        if !sha1_hex(&bytes).eq_ignore_ascii_case(sha1) {
+            return Err(LauncherError::integrity(format!(
+                "Data from {url} didn't match its checksum"
+            ))
+            .with_fix("Try again in a minute"));
+        }
+        parse_json(url, &bytes)
+    }
+}
+
+pub fn parse_json<T: DeserializeOwned>(url: &str, bytes: &[u8]) -> Result<T> {
+    serde_json::from_slice(bytes)
+        .map_err(|e| LauncherError::loader(format!("Unexpected data from {url}")).with_detail(e))
+}
