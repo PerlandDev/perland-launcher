@@ -1,0 +1,472 @@
+pub mod natives;
+
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
+
+use crate::{
+    download::{DownloadRequest, Downloader, Hashes},
+    error::{LauncherError, Result},
+    events::EventSink,
+    fsutil::{safe_join, write_atomic},
+    meta::{
+        loaders::{self, LoaderKind},
+        maven::MavenCoord,
+        merge::merge,
+        mojang::{
+            AssetIndex, Library, VersionJson, VersionManifest, RESOURCES_URL, VERSION_MANIFEST_URL,
+        },
+        parse_json,
+        rules::{library_applies, RuleContext},
+        MetaClient,
+    },
+    paths::LauncherDirs,
+    platform::{Arch, Platform},
+};
+
+const MOJANG_LIBRARIES: &str = "https://libraries.minecraft.net/";
+
+/// The version to launch: `json` is vanilla, or vanilla merged with a loader profile.
+#[derive(Debug, Clone)]
+pub struct ResolvedVersion {
+    pub vanilla_id: String,
+    pub json: VersionJson,
+}
+
+#[derive(Debug, Clone)]
+pub struct NativeJar {
+    pub jar: PathBuf,
+    pub exclude: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+pub struct LibraryPlan {
+    pub downloads: Vec<DownloadRequest>,
+    pub natives: Vec<NativeJar>,
+}
+
+/// Join a path taken from remote metadata onto `base`, refusing anything that could escape it.
+fn join_remote(base: &Path, rel: &str) -> Result<PathBuf> {
+    safe_join(base, rel).ok_or_else(|| {
+        LauncherError::integrity("Minecraft's file list contains an unsafe path").with_detail(rel)
+    })
+}
+
+/// Where a library's main jar comes from and goes to. `Ok(None)` for natives-only libraries.
+pub fn library_artifact(lib: &Library, dirs: &LauncherDirs) -> Result<Option<DownloadRequest>> {
+    let libraries = dirs.libraries();
+    if let Some(downloads) = &lib.downloads {
+        let Some(art) = downloads.artifact.as_ref() else {
+            return Ok(None);
+        };
+        let rel = match &art.path {
+            Some(path) => path.clone(),
+            None => maven_path(&lib.name)?,
+        };
+        return Ok(Some(DownloadRequest::new(
+            art.url.clone(),
+            join_remote(&libraries, &rel)?,
+            Hashes::sha1(&art.sha1),
+            Some(art.size),
+        )));
+    }
+    let rel = maven_path(&lib.name)?;
+    let base = lib.url.as_deref().unwrap_or(MOJANG_LIBRARIES);
+    let hashes = Hashes {
+        sha1: lib.sha1.clone(),
+        sha256: lib.sha256.clone(),
+        sha512: lib.sha512.clone(),
+        murmur2: None,
+    };
+    Ok(Some(DownloadRequest::new(
+        format!("{}/{}", base.trim_end_matches('/'), rel),
+        join_remote(&libraries, &rel)?,
+        hashes,
+        lib.size,
+    )))
+}
+
+fn maven_path(name: &str) -> Result<String> {
+    MavenCoord::parse(name).map(|c| c.path()).ok_or_else(|| {
+        LauncherError::integrity("Minecraft's file list contains an unsafe path")
+            .with_detail(format!("library {name}"))
+    })
+}
+
+fn native_classifier(lib: &Library, platform: Platform) -> Option<String> {
+    let key = lib.natives.as_ref()?.get(platform.mojang_os_name())?;
+    Some(key.replace(
+        "${arch}",
+        if platform.arch == Arch::X86 {
+            "32"
+        } else {
+            "64"
+        },
+    ))
+}
+
+pub fn plan_libraries(
+    version: &VersionJson,
+    dirs: &LauncherDirs,
+    ctx: &RuleContext,
+) -> Result<LibraryPlan> {
+    let mut plan = LibraryPlan::default();
+    for lib in version.libraries.iter().filter(|l| library_applies(l, ctx)) {
+        if let Some(d) = library_artifact(lib, dirs)? {
+            plan.downloads.push(d);
+        }
+        let Some(classifier) = native_classifier(lib, ctx.platform) else {
+            continue;
+        };
+        let Some(art) = lib
+            .downloads
+            .as_ref()
+            .and_then(|d| d.classifiers.as_ref())
+            .and_then(|c| c.get(&classifier))
+        else {
+            continue;
+        };
+        let rel = match &art.path {
+            Some(path) => Some(path.clone()),
+            None => MavenCoord::parse(&format!("{}:{classifier}", lib.name)).map(|c| c.path()),
+        };
+        if let Some(rel) = rel {
+            let jar = join_remote(&dirs.libraries(), &rel)?;
+            plan.downloads.push(DownloadRequest::new(
+                art.url.clone(),
+                jar.clone(),
+                Hashes::sha1(&art.sha1),
+                Some(art.size),
+            ));
+            plan.natives.push(NativeJar {
+                jar,
+                exclude: lib
+                    .extract
+                    .as_ref()
+                    .map(|e| e.exclude.clone())
+                    .unwrap_or_default(),
+            });
+        }
+    }
+    Ok(plan)
+}
+
+pub fn classpath(
+    resolved: &ResolvedVersion,
+    dirs: &LauncherDirs,
+    ctx: &RuleContext,
+) -> Result<Vec<PathBuf>> {
+    let mut seen = HashSet::new();
+    let mut cp = Vec::new();
+    for lib in resolved
+        .json
+        .libraries
+        .iter()
+        .filter(|l| library_applies(l, ctx))
+    {
+        if let Some(d) = library_artifact(lib, dirs)? {
+            if seen.insert(d.dest.clone()) {
+                cp.push(d.dest);
+            }
+        }
+    }
+    cp.push(dirs.client_jar(&resolved.vanilla_id));
+    Ok(cp)
+}
+
+pub fn plan_client(resolved: &ResolvedVersion, dirs: &LauncherDirs) -> Result<DownloadRequest> {
+    let client = resolved
+        .json
+        .downloads
+        .as_ref()
+        .map(|d| &d.client)
+        .ok_or_else(|| {
+            LauncherError::loader(format!(
+                "Minecraft {} has no client download",
+                resolved.vanilla_id
+            ))
+        })?;
+    Ok(DownloadRequest::new(
+        client.url.clone(),
+        dirs.client_jar(&resolved.vanilla_id),
+        Hashes::sha1(&client.sha1),
+        Some(client.size),
+    ))
+}
+
+/// Unique objects with well-formed hashes (exactly 40 lowercase hex characters); anything else is skipped.
+pub fn plan_assets(index: &AssetIndex, dirs: &LauncherDirs) -> Vec<DownloadRequest> {
+    let mut seen = HashSet::new();
+    index
+        .objects
+        .values()
+        .filter(|o| {
+            o.hash.len() == 40
+                && o.hash
+                    .bytes()
+                    .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+        })
+        .filter(|o| seen.insert(o.hash.clone()))
+        .map(|o| {
+            let prefix = &o.hash[..2];
+            DownloadRequest::new(
+                format!("{RESOURCES_URL}/{prefix}/{}", o.hash),
+                dirs.assets().join("objects").join(prefix).join(&o.hash),
+                Hashes::sha1(&o.hash),
+                Some(o.size),
+            )
+        })
+        .collect()
+}
+
+pub fn plan_logging(version: &VersionJson, dirs: &LauncherDirs) -> Result<Option<DownloadRequest>> {
+    let Some(file) = version
+        .logging
+        .as_ref()
+        .and_then(|l| l.client.as_ref())
+        .map(|c| &c.file)
+    else {
+        return Ok(None);
+    };
+    let dest = join_remote(&dirs.assets().join("log_configs"), &file.id)?;
+    Ok(Some(DownloadRequest::new(
+        file.url.clone(),
+        dest,
+        Hashes::sha1(&file.sha1),
+        Some(file.size),
+    )))
+}
+
+pub struct Installer {
+    pub dirs: LauncherDirs,
+    pub meta: MetaClient,
+    pub downloader: Downloader,
+    pub platform: Platform,
+}
+
+impl Installer {
+    /// Look up the vanilla version (and loader profile) and merge them. Works offline once cached.
+    pub async fn resolve(
+        &self,
+        mc: &str,
+        loader: Option<(LoaderKind, &str)>,
+    ) -> Result<ResolvedVersion> {
+        let manifest: VersionManifest = self.meta.get_json(VERSION_MANIFEST_URL).await?;
+        let entry = manifest.find(mc).ok_or_else(|| {
+            LauncherError::loader(format!("Minecraft {mc} doesn't exist"))
+                .with_fix("Check the version number")
+        })?;
+        let vanilla: VersionJson = self.meta.get_verified_json(&entry.url, &entry.sha1).await?;
+        let json = match loader {
+            Some((kind, version)) => merge(
+                vanilla.clone(),
+                loaders::fetch_profile(&self.meta, kind, mc, version).await?,
+            ),
+            None => vanilla.clone(),
+        };
+        Ok(ResolvedVersion {
+            vanilla_id: vanilla.id,
+            json,
+        })
+    }
+
+    /// Download everything the version needs, extract natives, and save the merged JSON for offline launches.
+    pub async fn install(&self, resolved: &ResolvedVersion, sink: &EventSink) -> Result<()> {
+        let ctx = RuleContext::new(self.platform);
+        let json = &resolved.json;
+        let index_ref = json
+            .asset_index
+            .as_ref()
+            .ok_or_else(|| LauncherError::loader(format!("{} has no asset index", json.id)))?;
+        let index_path = join_remote(
+            &self.dirs.assets().join("indexes"),
+            &format!("{}.json", index_ref.id),
+        )?;
+        self.downloader
+            .fetch(&DownloadRequest::new(
+                index_ref.url.clone(),
+                index_path.clone(),
+                Hashes::sha1(&index_ref.sha1),
+                Some(index_ref.size),
+            ))
+            .await?;
+        let index: AssetIndex = parse_json(&index_ref.url, &tokio::fs::read(&index_path).await?)?;
+
+        let libraries = plan_libraries(json, &self.dirs, &ctx)?;
+        let mut downloads = vec![plan_client(resolved, &self.dirs)?];
+        downloads.extend(libraries.downloads);
+        downloads.extend(plan_assets(&index, &self.dirs));
+        downloads.extend(plan_logging(json, &self.dirs)?);
+        self.downloader
+            .fetch_all(
+                downloads,
+                &format!("Installing Minecraft {}", resolved.vanilla_id),
+                sink,
+            )
+            .await?;
+
+        natives::extract_all(&libraries.natives, &self.dirs.natives_dir(&json.id))?;
+        let bytes = serde_json::to_vec_pretty(json)
+            .map_err(|e| LauncherError::disk("Couldn't save the version file").with_detail(e))?;
+        write_atomic(&self.dirs.version_json(&json.id), &bytes).await?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        meta::{merge::merge, mojang::AssetIndex},
+        test_support::{fixture, version, WINDOWS_X64},
+    };
+
+    fn dirs() -> LauncherDirs {
+        LauncherDirs::new("/pl")
+    }
+
+    #[test]
+    fn modern_libraries_have_no_extraction() {
+        let plan = plan_libraries(
+            &version("1.20.1.json"),
+            &dirs(),
+            &RuleContext::new(WINDOWS_X64),
+        )
+        .unwrap();
+        assert_eq!(plan.downloads.len(), 50);
+        assert!(plan.natives.is_empty());
+        let names: Vec<String> = plan
+            .downloads
+            .iter()
+            .map(|d| d.dest.to_string_lossy().replace('\\', "/"))
+            .collect();
+        assert!(names
+            .iter()
+            .any(|n| n.ends_with("org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1-natives-windows.jar")));
+        assert!(!names.iter().any(|n| n.ends_with("natives-windows-x86.jar")));
+    }
+
+    #[test]
+    fn legacy_natives_are_downloaded_and_extracted() {
+        let plan = plan_libraries(
+            &version("1.12.2.json"),
+            &dirs(),
+            &RuleContext::new(WINDOWS_X64),
+        )
+        .unwrap();
+        assert_eq!(plan.downloads.len(), 36);
+        assert_eq!(plan.natives.len(), 3);
+        let jar = plan.natives[0].jar.to_string_lossy().replace('\\', "/");
+        assert!(jar.contains("-natives-windows"), "{jar}");
+    }
+
+    #[test]
+    fn fabric_library_resolves_through_maven_url() {
+        let lib = &version("fabric-1.20.1-0.16.14.json").libraries[0];
+        let d = library_artifact(lib, &dirs()).unwrap().unwrap();
+        assert_eq!(
+            d.urls[0],
+            "https://maven.fabricmc.net/org/ow2/asm/asm/9.8/asm-9.8.jar"
+        );
+        assert_eq!(
+            d.hashes.sha1.as_deref(),
+            Some("dc19ecb3f7889b7860697215cae99c0f9b6f6b4b")
+        );
+        assert_eq!(d.size, Some(126113));
+        assert_eq!(
+            d.dest,
+            dirs().libraries().join("org/ow2/asm/asm/9.8/asm-9.8.jar")
+        );
+    }
+
+    #[test]
+    fn client_jar_uses_vanilla_id() {
+        let resolved = ResolvedVersion {
+            vanilla_id: "1.20.1".into(),
+            json: merge(
+                version("1.20.1.json"),
+                version("fabric-1.20.1-0.16.14.json"),
+            ),
+        };
+        let client = plan_client(&resolved, &dirs()).unwrap();
+        assert_eq!(client.dest, dirs().client_jar("1.20.1"));
+        assert_eq!(
+            client.hashes.sha1.as_deref(),
+            Some("0c3ec587af28e5a785c0b4a7b8a30f9a8f78f838")
+        );
+        let cp = classpath(&resolved, &dirs(), &RuleContext::new(WINDOWS_X64)).unwrap();
+        assert!(cp[0]
+            .to_string_lossy()
+            .replace('\\', "/")
+            .ends_with("asm-9.8.jar"));
+        assert_eq!(cp.last().unwrap(), &dirs().client_jar("1.20.1"));
+        assert_eq!(cp.len(), 8 + 50 + 1);
+    }
+
+    #[test]
+    fn plan_assets_dedupes_hashes() {
+        let index: AssetIndex = serde_json::from_str(&fixture("asset-index-5.json")).unwrap();
+        let plan = plan_assets(&index, &dirs());
+        assert_eq!(plan.len(), 3575);
+        let icon = plan
+            .iter()
+            .find(|d| d.hashes.sha1.as_deref() == Some("b62ca8ec10d07e6bf5ac8dae0c8c1d2e6a1e3356"))
+            .unwrap();
+        assert_eq!(
+            icon.urls[0],
+            "https://resources.download.minecraft.net/b6/b62ca8ec10d07e6bf5ac8dae0c8c1d2e6a1e3356"
+        );
+        assert_eq!(
+            icon.dest,
+            dirs()
+                .assets()
+                .join("objects/b6/b62ca8ec10d07e6bf5ac8dae0c8c1d2e6a1e3356")
+        );
+    }
+
+    #[test]
+    fn logging_config_goes_to_log_configs() {
+        let d = plan_logging(&version("1.20.1.json"), &dirs())
+            .unwrap()
+            .unwrap();
+        assert_eq!(d.dest, dirs().log_config("client-1.12.xml"));
+    }
+
+    #[test]
+    fn traversing_library_path_is_an_integrity_error() {
+        let mut v = version("1.20.1.json");
+        let ctx = RuleContext::new(WINDOWS_X64);
+        let lib = v
+            .libraries
+            .iter_mut()
+            .find(|l| library_applies(l, &ctx))
+            .unwrap();
+        lib.downloads
+            .as_mut()
+            .unwrap()
+            .artifact
+            .as_mut()
+            .unwrap()
+            .path = Some("../../evil.jar".into());
+        let err = plan_libraries(&v, &dirs(), &RuleContext::new(WINDOWS_X64)).unwrap_err();
+        assert_eq!(err.category, crate::ErrorCategory::Integrity);
+    }
+
+    #[test]
+    fn non_hex_asset_hashes_are_not_planned() {
+        let evil = format!("{:.<40}", "../");
+        assert_eq!(evil.len(), 40);
+        let json = format!(
+            r#"{{"objects":{{"a":{{"hash":"{evil}","size":1}},"b":{{"hash":"{}","size":1}},"c":{{"hash":"{}","size":1}}}}}}"#,
+            "B62CA8EC10D07E6BF5AC8DAE0C8C1D2E6A1E3356", "b62ca8ec10d07e6bf5ac8dae0c8c1d2e6a1e3356"
+        );
+        let index: AssetIndex = serde_json::from_str(&json).unwrap();
+        let plan = plan_assets(&index, &dirs());
+        assert_eq!(plan.len(), 1);
+        assert_eq!(
+            plan[0].hashes.sha1.as_deref(),
+            Some("b62ca8ec10d07e6bf5ac8dae0c8c1d2e6a1e3356")
+        );
+    }
+}
