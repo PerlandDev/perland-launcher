@@ -1,3 +1,5 @@
+pub mod mojang;
+
 use std::path::PathBuf;
 
 use reqwest::header::{ETAG, IF_NONE_MATCH};
