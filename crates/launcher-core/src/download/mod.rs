@@ -1,8 +1,9 @@
 pub mod hash;
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -55,6 +56,8 @@ pub struct Downloader {
     retries: u32,
     backoff: Duration,
     existing: ExistingCheck,
+    /// One lock per destination, shared by every clone, so two overlapping fetches never share a `.part`.
+    locks: Arc<Mutex<HashMap<PathBuf, Arc<tokio::sync::Mutex<()>>>>>,
 }
 
 enum Attempt {
@@ -71,6 +74,7 @@ impl Downloader {
             retries: 3,
             backoff: Duration::from_millis(500),
             existing: ExistingCheck::Size,
+            locks: Arc::default(),
         }
     }
 
@@ -102,15 +106,17 @@ impl Downloader {
                 if req.hashes.is_empty() {
                     return true;
                 }
-                match tokio::fs::read(&req.dest).await {
-                    Ok(data) => req.hashes.verify(&data),
-                    Err(_) => false,
-                }
+                matches!(verify_on_disk(&req.hashes, &req.dest).await, Ok(true))
             }
         }
     }
 
     pub async fn fetch(&self, req: &DownloadRequest) -> Result<()> {
+        let dest_lock = {
+            let mut locks = self.locks.lock().unwrap_or_else(|e| e.into_inner());
+            locks.entry(req.dest.clone()).or_default().clone()
+        };
+        let _guard = dest_lock.lock_owned().await;
         if self.already_valid(req).await {
             return Ok(());
         }
@@ -145,8 +151,12 @@ impl Downloader {
             if !downloaded {
                 return Err(last_err);
             }
-            let data = tokio::fs::read(&part).await?;
-            if req.hashes.verify(&data) {
+            let verified = verify_on_disk(&req.hashes, &part).await.map_err(|e| {
+                LauncherError::disk("Couldn't check a downloaded file")
+                    .with_fix("Check free disk space and that the launcher folder isn't read-only")
+                    .with_detail(e)
+            })?;
+            if verified {
                 tokio::fs::rename(&part, &req.dest).await?;
                 return Ok(());
             }
@@ -259,6 +269,14 @@ impl Downloader {
         }
         Ok(())
     }
+}
+
+/// Hash a file on the blocking pool so big files neither sit in memory nor stall other downloads.
+async fn verify_on_disk(hashes: &Hashes, path: &Path) -> std::io::Result<bool> {
+    let (hashes, path) = (hashes.clone(), path.to_path_buf());
+    tokio::task::spawn_blocking(move || hashes.verify_file(&path))
+        .await
+        .map_err(std::io::Error::other)?
 }
 
 fn part_path(dest: &Path) -> PathBuf {

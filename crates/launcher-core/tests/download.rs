@@ -240,3 +240,33 @@ async fn fetch_all_dedupes_destinations() {
         }
     );
 }
+
+#[tokio::test]
+async fn overlapping_fetches_of_one_dest_download_once() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/slow.txt"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("hello")
+                .set_delay(Duration::from_millis(200)),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("hello.txt");
+    let req = DownloadRequest::new(
+        format!("{}/slow.txt", server.uri()),
+        dest.clone(),
+        Hashes::sha1(HELLO_SHA1),
+        Some(5),
+    );
+    let first = downloader();
+    let second = first.clone();
+    let (a, b) = tokio::join!(first.fetch(&req), second.fetch(&req));
+    a.unwrap();
+    b.unwrap();
+    assert_eq!(std::fs::read_to_string(&dest).unwrap(), "hello");
+    assert!(!part_of(&dest).exists());
+}
