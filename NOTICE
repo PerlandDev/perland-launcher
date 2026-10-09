@@ -1,0 +1,11 @@
+Perland Launcher
+Copyright (C) 2026 PerlandDev contributors
+Licensed under the GNU General Public License, version 3 only (GPL-3.0-only).
+
+Third-party code ported into this repository is listed below with its origin.
+Files ported from Modrinth's app-lib (https://github.com/modrinth/code, packages/app-lib,
+GPL-3.0-only) keep an attribution header naming the original file.
+
+(no ported files yet)
+
+"Minecraft" is a trademark of Mojang Synergies AB. This project is not affiliated with Mojang or Microsoft.
