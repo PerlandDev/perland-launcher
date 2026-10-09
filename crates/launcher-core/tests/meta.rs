@@ -89,11 +89,30 @@ async fn verified_cache_hit_needs_no_network() {
         meta.get_verified_json::<A>(&url, &sha).await.unwrap(),
         A { a: 1 }
     );
-    drop(server);
+    // The server stays up: the second call must be answered by the sha1-verified cache alone.
     assert_eq!(
         meta.get_verified_json::<A>(&url, &sha).await.unwrap(),
         A { a: 1 }
     );
+    assert_eq!(server.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn invalid_200_does_not_overwrite_good_cache() {
+    let server = MockServer::start().await;
+    serve_with_etag(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/m.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("<html>captive portal</html>"))
+        .mount(&server)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let meta = MetaClient::new(http(), dir.path());
+    let url = format!("{}/m.json", server.uri());
+    assert_eq!(meta.get_json::<A>(&url).await.unwrap(), A { a: 1 });
+    assert_eq!(meta.get_json::<A>(&url).await.unwrap(), A { a: 1 });
+    drop(server);
+    assert_eq!(meta.get_json::<A>(&url).await.unwrap(), A { a: 1 });
 }
 
 #[tokio::test]

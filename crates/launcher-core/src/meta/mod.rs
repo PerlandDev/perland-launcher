@@ -10,6 +10,9 @@ use crate::{
 };
 
 /// Fetches upstream metadata and keeps the last good copy on disk, so the launcher works offline.
+///
+/// A fresh response only replaces the cached copy after it passes validation (it parses, or its
+/// checksum matches), so a captive-portal page or truncated body can never clobber a good copy.
 #[derive(Clone)]
 pub struct MetaClient {
     http: reqwest::Client,
@@ -33,6 +36,13 @@ impl MetaClient {
     }
 
     pub async fn get_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        self.fetch(url, |_| Ok(())).await
+    }
+
+    /// Fetch `url` (revalidating with the cached ETag) and return the body. A fresh body is only
+    /// written to the cache when `validate` accepts it. If it is rejected, the cache is left alone
+    /// and a cached copy that passes the same validation is returned instead, else the validation error.
+    async fn fetch(&self, url: &str, validate: impl Fn(&[u8]) -> Result<()>) -> Result<Vec<u8>> {
         let body_path = self.body_path(url);
         let cached = tokio::fs::read(&body_path).await.ok();
         let mut request = self.http.get(url);
@@ -59,6 +69,12 @@ impl MetaClient {
                     LauncherError::network(format!("Downloading {url} was interrupted"))
                         .with_detail(e)
                 })?;
+                if let Err(invalid) = validate(&bytes) {
+                    return match cached {
+                        Some(c) if validate(&c).is_ok() => Ok(c),
+                        _ => Err(invalid),
+                    };
+                }
                 write_atomic(&body_path, &bytes).await?;
                 match etag {
                     Some(tag) => write_atomic(&self.etag_path(url), tag.as_bytes()).await?,
@@ -87,7 +103,9 @@ impl MetaClient {
     }
 
     pub async fn get_json<T: DeserializeOwned>(&self, url: &str) -> Result<T> {
-        let bytes = self.get_bytes(url).await?;
+        let bytes = self
+            .fetch(url, |b| parse_json::<T>(url, b).map(|_| ()))
+            .await?;
         parse_json(url, &bytes)
     }
 
@@ -98,13 +116,19 @@ impl MetaClient {
                 return parse_json(url, &cached);
             }
         }
-        let bytes = self.get_bytes(url).await?;
-        if !sha1_hex(&bytes).eq_ignore_ascii_case(sha1) {
-            return Err(LauncherError::integrity(format!(
-                "Data from {url} didn't match its checksum"
-            ))
-            .with_fix("Try again in a minute"));
-        }
+        let verify = |b: &[u8]| {
+            if sha1_hex(b).eq_ignore_ascii_case(sha1) {
+                Ok(())
+            } else {
+                Err(
+                    LauncherError::integrity(format!("Data from {url} didn't match its checksum"))
+                        .with_fix("Try again in a minute"),
+                )
+            }
+        };
+        let bytes = self.fetch(url, verify).await?;
+        // A cached fallback (offline / server error) bypasses fetch's validation of fresh bodies.
+        verify(&bytes)?;
         parse_json(url, &bytes)
     }
 }
