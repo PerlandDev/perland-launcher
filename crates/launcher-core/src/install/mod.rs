@@ -53,6 +53,18 @@ fn join_remote(base: &Path, rel: &str) -> Result<PathBuf> {
     })
 }
 
+/// A version id becomes a folder name under the data root, so it must be a single plain path segment.
+pub(crate) fn check_version_id(id: &str) -> Result<()> {
+    let unsafe_id = id.is_empty() || id == "." || id == ".." || id.contains(['/', '\\', '\0', ':']);
+    if unsafe_id {
+        return Err(LauncherError::integrity(
+            "Minecraft's version data contains an unsafe version name",
+        )
+        .with_detail(id));
+    }
+    Ok(())
+}
+
 /// Where a library's main jar comes from and goes to. `Ok(None)` for natives-only libraries.
 pub fn library_artifact(lib: &Library, dirs: &LauncherDirs) -> Result<Option<DownloadRequest>> {
     let libraries = dirs.libraries();
@@ -258,6 +270,13 @@ impl Installer {
                 .with_fix("Check the version number")
         })?;
         let vanilla: VersionJson = self.meta.get_verified_json(&entry.url, &entry.sha1).await?;
+        if vanilla.id != mc {
+            return Err(LauncherError::integrity(
+                "Mojang returned a different version than requested",
+            )
+            .with_detail(format!("requested {mc}, got {}", vanilla.id)));
+        }
+        check_version_id(&vanilla.id)?;
         let json = match loader {
             Some((kind, version)) => merge(
                 vanilla.clone(),
@@ -265,6 +284,7 @@ impl Installer {
             ),
             None => vanilla.clone(),
         };
+        check_version_id(&json.id)?;
         Ok(ResolvedVersion {
             vanilla_id: vanilla.id,
             json,
@@ -275,6 +295,8 @@ impl Installer {
     pub async fn install(&self, resolved: &ResolvedVersion, sink: &EventSink) -> Result<()> {
         let ctx = RuleContext::new(self.platform);
         let json = &resolved.json;
+        check_version_id(&resolved.vanilla_id)?;
+        check_version_id(&json.id)?;
         let index_ref = json
             .asset_index
             .as_ref()
@@ -431,6 +453,19 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(d.dest, dirs().log_config("client-1.12.xml"));
+    }
+
+    #[test]
+    fn version_ids_must_be_a_single_plain_segment() {
+        for ok in ["1.20.1", "26.4-snapshot-3", "fabric-loader-0.16.14-1.20.1"] {
+            assert!(check_version_id(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "", ".", "..", "../x", "a/b", "a\\b", "/tmp/x", "C:\\x", "a:b", "a\0b",
+        ] {
+            let err = check_version_id(bad).unwrap_err();
+            assert_eq!(err.category, crate::ErrorCategory::Integrity, "{bad:?}");
+        }
     }
 
     #[test]
