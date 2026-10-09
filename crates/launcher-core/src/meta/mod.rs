@@ -1,4 +1,6 @@
+pub mod loaders;
 pub mod maven;
+pub mod merge;
 pub mod mojang;
 pub mod rules;
 
