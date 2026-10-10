@@ -11,6 +11,62 @@ use crate::{
     meta::loaders::LoaderKind,
 };
 
+pub const MAX_NAME_CHARS: usize = 64;
+/// Longest slug made from a name, before any `-N` suffix for duplicates.
+pub const MAX_SLUG_LEN: usize = 48;
+/// Longest valid id: a capped slug plus room for a `-N` suffix.
+pub const MAX_ID_LEN: usize = 64;
+pub const MIN_MEMORY_MB: u32 = 512;
+pub const MAX_MEMORY_MB: u32 = 65_536;
+
+/// The trimmed name, if it is 1–64 characters.
+pub fn validate_name(name: &str) -> Result<String> {
+    let trimmed = name.trim();
+    let chars = trimmed.chars().count();
+    if (1..=MAX_NAME_CHARS).contains(&chars) {
+        Ok(trimmed.to_string())
+    } else {
+        Err(LauncherError::disk(
+            ErrorCode::NameInvalid,
+            "Instance names must be 1–64 characters",
+        )
+        .with_param("max", MAX_NAME_CHARS))
+    }
+}
+
+pub fn validate_memory(memory_mb: u32) -> Result<()> {
+    if (MIN_MEMORY_MB..=MAX_MEMORY_MB).contains(&memory_mb) {
+        Ok(())
+    } else {
+        Err(LauncherError::java(
+            ErrorCode::MemoryOutOfRange,
+            format!("Memory must be between {MIN_MEMORY_MB} and {MAX_MEMORY_MB} MB"),
+        )
+        .with_param("min", MIN_MEMORY_MB)
+        .with_param("max", MAX_MEMORY_MB))
+    }
+}
+
+pub fn validate_java(java: &JavaSettings) -> Result<()> {
+    validate_memory(java.memory_mb)?;
+    if let Some(path) = &java.path {
+        crate::play::custom_java(path)?;
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DamagedInstance {
+    pub id: String,
+    pub error: LauncherError,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct InstanceListing {
+    pub instances: Vec<Instance>,
+    pub damaged: Vec<DamagedInstance>,
+}
+
 /// Where an instance's content comes from. Plan 1 creates only `None`; packs arrive in Plan 3.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -119,7 +175,8 @@ impl InstanceStore {
     }
 
     pub async fn create(&self, name: &str, game: GameSpec) -> Result<Instance> {
-        let base = slugify(name);
+        let name = validate_name(name)?;
+        let base = slugify(&name);
         let mut id = base.clone();
         let mut n = 2;
         while tokio::fs::try_exists(self.instance_dir(&id)).await? {
@@ -128,7 +185,7 @@ impl InstanceStore {
         }
         let instance = Instance {
             id,
-            name: name.trim().to_string(),
+            name,
             source: SourceRef::None,
             game,
             update_policy: UpdatePolicy::Ask,
@@ -191,12 +248,69 @@ impl InstanceStore {
         out.sort_by_key(|i| i.name.to_lowercase());
         Ok(out)
     }
+
+    /// Every instance, plus the folders whose `instance.json` couldn't be read.
+    pub async fn list_all(&self) -> Result<InstanceListing> {
+        let mut listing = InstanceListing::default();
+        let mut entries = match tokio::fs::read_dir(&self.dir).await {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(listing),
+            Err(e) => return Err(e.into()),
+        };
+        while let Some(entry) = entries.next_entry().await? {
+            let id = entry.file_name().to_string_lossy().into_owned();
+            // Folders the launcher could never have created are not ours to report.
+            if !is_valid_instance_id(&id) || !is_instance_dir(&entry.path()) {
+                continue;
+            }
+            match self.load(&id).await {
+                Ok(instance) => listing.instances.push(instance),
+                Err(error) => listing.damaged.push(DamagedInstance { id, error }),
+            }
+        }
+        listing.instances.sort_by_key(|i| i.name.to_lowercase());
+        listing.damaged.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(listing)
+    }
+
+    /// Save changes to an existing instance after validating them.
+    pub async fn update(&self, instance: &Instance) -> Result<Instance> {
+        check_id(&instance.id)?;
+        let mut instance = instance.clone();
+        instance.name = validate_name(&instance.name)?;
+        validate_java(&instance.java)?;
+        self.load(&instance.id).await?;
+        self.save(&instance).await?;
+        Ok(instance)
+    }
+
+    /// Change the display name only; the id and folder stay the same.
+    pub async fn rename(&self, id: &str, name: &str) -> Result<Instance> {
+        let mut instance = self.load(id).await?;
+        instance.name = validate_name(name)?;
+        self.save(&instance).await?;
+        Ok(instance)
+    }
+
+    pub async fn delete(&self, id: &str) -> Result<()> {
+        check_id(id)?;
+        let dir = self.instance_dir(id);
+        if !tokio::fs::try_exists(&dir).await? {
+            return Err(LauncherError::disk(
+                ErrorCode::InstanceNotFound,
+                format!("Instance \"{id}\" wasn't found"),
+            )
+            .with_param("id", id));
+        }
+        tokio::fs::remove_dir_all(&dir).await?;
+        Ok(())
+    }
 }
 
-/// True for exactly the ids `create` can produce: non-empty slugs that `slugify` leaves unchanged.
-/// Rejects path separators, `.`/`..`, absolute paths and Windows device names.
+/// True for exactly the ids `create` can produce: a slug (capped at `MAX_SLUG_LEN`) plus an
+/// optional `-N` suffix. Rejects path separators, `.`/`..`, absolute paths and Windows device names.
 pub fn is_valid_instance_id(id: &str) -> bool {
-    !id.is_empty() && slugify(id) == id
+    !id.is_empty() && id.len() <= MAX_ID_LEN && finish_slug(slug_core(id), None) == id
 }
 
 fn check_id(id: &str) -> Result<()> {
@@ -219,8 +333,13 @@ const WINDOWS_RESERVED: [&str; 22] = [
     "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
 ];
 
-/// A folder-safe id: lowercase ASCII letters/digits joined by single dashes; never empty, never a Windows device name.
+/// A folder-safe id: lowercase ASCII letters/digits joined by single dashes, at most
+/// `MAX_SLUG_LEN` long; never empty, never a Windows device name.
 pub fn slugify(name: &str) -> String {
+    finish_slug(slug_core(name), Some(MAX_SLUG_LEN))
+}
+
+fn slug_core(name: &str) -> String {
     let mut slug = String::new();
     let mut last_dash = false;
     for c in name.trim().chars() {
@@ -231,6 +350,13 @@ pub fn slugify(name: &str) -> String {
             slug.push('-');
             last_dash = true;
         }
+    }
+    slug
+}
+
+fn finish_slug(mut slug: String, cap: Option<usize>) -> String {
+    if let Some(cap) = cap {
+        slug.truncate(cap); // ASCII only, so any index is a char boundary
     }
     while slug.ends_with('-') {
         slug.pop();
@@ -385,6 +511,101 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&s).unwrap(),
             r#"{"kind":"modrinth","projectId":"abc","versionId":"def"}"#
+        );
+    }
+
+    use crate::ErrorCode;
+
+    #[tokio::test]
+    async fn long_names_cap_slug_and_suffix_stays_valid() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        let name = "A".repeat(60);
+        let first = store.create(&name, vanilla("1.21.1")).await.unwrap();
+        assert_eq!(first.id.len(), MAX_SLUG_LEN);
+        let second = store.create(&name, vanilla("1.21.1")).await.unwrap();
+        assert_eq!(second.id, format!("{}-2", first.id));
+        assert!(is_valid_instance_id(&second.id), "{}", second.id);
+        assert_eq!(store.load(&second.id).await.unwrap().name, name);
+    }
+
+    #[tokio::test]
+    async fn names_are_validated() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        for bad in ["", "   ", &"x".repeat(65)] {
+            let err = store.create(bad, vanilla("1.21.1")).await.unwrap_err();
+            assert_eq!(err.code, ErrorCode::NameInvalid, "{bad:?}");
+        }
+        assert_eq!(validate_name("  ñandú  ").unwrap(), "ñandú");
+    }
+
+    #[test]
+    fn memory_bounds() {
+        assert!(validate_memory(MIN_MEMORY_MB).is_ok());
+        assert!(validate_memory(MAX_MEMORY_MB).is_ok());
+        assert_eq!(
+            validate_memory(256).unwrap_err().code,
+            ErrorCode::MemoryOutOfRange
+        );
+        assert_eq!(
+            validate_memory(MAX_MEMORY_MB + 1).unwrap_err().code,
+            ErrorCode::MemoryOutOfRange
+        );
+    }
+
+    #[tokio::test]
+    async fn list_all_reports_damaged_instances() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        store.create("Good", vanilla("1.21.1")).await.unwrap();
+        let bad = store.create("Bad", vanilla("1.21.1")).await.unwrap();
+        std::fs::write(store.instance_dir(&bad.id).join("instance.json"), "{oops").unwrap();
+        std::fs::create_dir_all(tmp.path().join("Not An Id")).unwrap();
+        std::fs::write(tmp.path().join("Not An Id/instance.json"), "{}").unwrap();
+        let listing = store.list_all().await.unwrap();
+        assert_eq!(listing.instances.len(), 1);
+        assert_eq!(listing.instances[0].name, "Good");
+        assert_eq!(listing.damaged.len(), 1);
+        assert_eq!(listing.damaged[0].id, "bad");
+        assert_eq!(listing.damaged[0].error.code, ErrorCode::InstanceDamaged);
+    }
+
+    #[tokio::test]
+    async fn update_rename_and_delete() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        let mut instance = store.create("Pack", vanilla("1.21.1")).await.unwrap();
+        instance.java.memory_mb = 6144;
+        instance.game.minecraft = "1.20.1".into();
+        let saved = store.update(&instance).await.unwrap();
+        assert_eq!(store.load("pack").await.unwrap(), saved);
+
+        instance.java.memory_mb = 100;
+        assert_eq!(
+            store.update(&instance).await.unwrap_err().code,
+            ErrorCode::MemoryOutOfRange
+        );
+        instance.java.memory_mb = 4096;
+        instance.java.path = Some(tmp.path().join("missing-java"));
+        assert_eq!(
+            store.update(&instance).await.unwrap_err().code,
+            ErrorCode::JavaPathMissing
+        );
+
+        let renamed = store.rename("pack", "  New name ").await.unwrap();
+        assert_eq!(renamed.name, "New name");
+        assert_eq!(renamed.id, "pack", "rename keeps the id and folder");
+
+        store.delete("pack").await.unwrap();
+        assert!(!store.instance_dir("pack").exists());
+        assert_eq!(
+            store.delete("pack").await.unwrap_err().code,
+            ErrorCode::InstanceNotFound
+        );
+        assert_eq!(
+            store.delete("../x").await.unwrap_err().code,
+            ErrorCode::InstanceIdInvalid
         );
     }
 }
