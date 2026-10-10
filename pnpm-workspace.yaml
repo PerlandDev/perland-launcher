@@ -1,0 +1,6 @@
+packages:
+  - ui
+minimumReleaseAgeExclude:
+  - '@tanstack/react-virtual@3.14.14'
+  - '@tanstack/virtual-core@3.18.0'
+  - i18next@26.4.3
