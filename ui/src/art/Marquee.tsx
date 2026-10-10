@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { CELL, COLS, layerPath, marqueeScene } from './marquee';
+import { CELL, COLS, layerPath, marqueeScene } from './marqueeScene';
 
 const W = COLS * CELL; // 480
 const H = 270;

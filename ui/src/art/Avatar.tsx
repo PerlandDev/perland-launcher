@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { avatarCells } from './avatar';
+import { avatarCells } from './avatarCells';
 
 export function Avatar({ uuid, size = 32 }: { uuid: string; size?: number }) {
   const cells = useMemo(() => avatarCells(uuid), [uuid]);

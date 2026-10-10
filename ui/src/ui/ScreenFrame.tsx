@@ -1,0 +1,38 @@
+import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Button } from './Button';
+import { ChevronDown } from './Icon';
+
+/** The frame every non-home screen uses: a title row with optional back and actions, then content. */
+export function ScreenFrame({
+  title,
+  subtitle,
+  onBack,
+  actions,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onBack?: () => void;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="flex h-full flex-col">
+      <header className="flex flex-wrap items-end justify-between gap-6 px-10 pt-9 pb-6">
+        <div className="flex min-w-0 items-center gap-4">
+          {onBack && (
+            <Button variant="ghost" size="icon" aria-label={t('common.back')} onClick={onBack} icon={<ChevronDown className="rotate-90" />} />
+          )}
+          <div className="min-w-0">
+            <h1 className="truncate font-display text-[2rem] leading-none">{title}</h1>
+            {subtitle && <p className="mt-2 text-ink-dim">{subtitle}</p>}
+          </div>
+        </div>
+        {actions && <div className="flex flex-wrap gap-3">{actions}</div>}
+      </header>
+      <div className="min-h-0 flex-1 overflow-auto px-10 pb-10">{children}</div>
+    </section>
+  );
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { avatarCells } from './avatar';
-import { marqueeScene } from './marquee';
+import { avatarCells } from './avatarCells';
+import { marqueeScene } from './marqueeScene';
 import { plotCells } from './plot';
 import { hash, mix, rng } from './random';
 

@@ -83,6 +83,12 @@ export function createRunStore() {
       for (const [id, lines] of Object.entries(tails)) setLog(id, lines);
       notify();
     },
+    reset() {
+      runs = new Map();
+      logs = new Map();
+      activeIds = [];
+      notify();
+    },
     dismissExit(id: string) {
       setRun(id, (run) => ({ ...run, lastExit: null }));
       notify();
