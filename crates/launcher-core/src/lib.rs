@@ -9,6 +9,7 @@ pub mod install;
 pub mod instances;
 pub mod java;
 pub mod launch;
+pub mod locks;
 pub mod meta;
 pub mod mods;
 pub mod paths;
