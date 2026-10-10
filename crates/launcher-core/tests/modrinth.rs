@@ -197,6 +197,49 @@ async fn check_offers_only_as_stable_updates_on_the_same_minecraft() {
 }
 
 #[tokio::test]
+async fn a_rate_limit_is_not_a_missing_pack() {
+    let server = MockServer::start().await;
+    let tmp = tempfile::tempdir().unwrap();
+    Mock::given(method("GET"))
+        .and(path("/v2/project/sky"))
+        .respond_with(ResponseTemplate::new(429))
+        .mount(&server)
+        .await;
+    let src = sources(&server, tmp.path());
+    let err = modrinth::open(&src, "sky", None).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::HostTrouble);
+    assert_ne!(err.code, ErrorCode::PackNotFound);
+}
+
+#[tokio::test]
+async fn check_ignores_versions_for_another_minecraft() {
+    let server = MockServer::start().await;
+    let tmp = tempfile::tempdir().unwrap();
+    sky(&server, tmp.path()).await;
+    let mut newer = version(
+        &server,
+        "R2",
+        "release",
+        "2024-03-01T00:00:00Z",
+        &sha1_hex(b"x"),
+        1,
+    );
+    newer["game_versions"] = json!(["1.21"]);
+    Mock::given(method("GET"))
+        .and(path("/v2/project/P1/version"))
+        .and(query_param("game_versions", "[\"1.20.1\"]"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([newer])))
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    let src = sources(&server, tmp.path());
+    assert_eq!(
+        modrinth::check(&src, "P1", "R1", "1.20.1").await,
+        UpdateCheck::UpToDate
+    );
+}
+
+#[tokio::test]
 async fn sources_facade_routes_by_kind() {
     let server = MockServer::start().await;
     let tmp = tempfile::tempdir().unwrap();

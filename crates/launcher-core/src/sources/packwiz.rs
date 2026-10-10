@@ -6,9 +6,9 @@ use futures_util::{StreamExt, TryStreamExt};
 use serde::{de::DeserializeOwned, Deserialize};
 
 use super::{
-    check_pack_url, curseforge, encode_path, game_from, invalid, sidecar::parse_sidecar,
-    unsafe_path, unsupported, DesiredState, FileMode, FileSource, ManualDownload, OptionalFile,
-    PackAbout, PackFile, Side, SourceConfig, Sources, UpdateCheck,
+    check_pack_url, curseforge, encode_path, game_from, invalid, pack_not_found,
+    sidecar::parse_sidecar, unsafe_path, unsupported, DesiredState, FileMode, FileSource,
+    ManualDownload, OptionalFile, PackAbout, PackFile, Side, SourceConfig, Sources, UpdateCheck,
 };
 use crate::{
     download::{hash::sha256_hex, host_of, Hashes},
@@ -267,16 +267,6 @@ pub fn plain_file(
 
 /// How many metafiles are fetched at once.
 const METAFILE_CONCURRENCY: usize = 8;
-
-fn pack_not_found(e: LauncherError) -> LauncherError {
-    if e.code == ErrorCode::MetaNotFound {
-        LauncherError::pack(ErrorCode::PackNotFound, "That pack wasn't found")
-            .with_fix("Check the link and try again")
-            .with_detail(e.message)
-    } else {
-        e
-    }
-}
 
 /// The pack as it is now. Every byte goes through `MetaClient`: `pack.toml` is revalidated with
 /// its ETag, and `index.toml` and the metafiles are checked against their hashes, so unchanged

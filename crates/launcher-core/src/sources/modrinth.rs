@@ -3,11 +3,11 @@
 use serde::Deserialize;
 
 use super::{
-    check_pack_url, invalid, mrpack, unsupported, valid_modrinth_id, DesiredState, PackAbout,
-    PackArt, Sources, UpdateCheck,
+    check_pack_url, invalid, mrpack, pack_not_found, unsupported, valid_modrinth_id, DesiredState,
+    PackAbout, PackArt, Sources, UpdateCheck,
 };
 use crate::{
-    download::{host_of, Hashes},
+    download::{host_of, redact_url, Hashes},
     error::{ErrorCode, LauncherError, Result},
     instances::SourceRef,
 };
@@ -79,23 +79,14 @@ fn checked_id(id: &str) -> Result<&str> {
     }
 }
 
-fn not_found(e: LauncherError) -> LauncherError {
-    if e.code == ErrorCode::MetaNotFound {
-        LauncherError::pack(ErrorCode::PackNotFound, "That pack wasn't found")
-            .with_fix("Check the link and try again")
-    } else {
-        e
-    }
-}
-
 pub async fn project(src: &Sources, id: &str) -> Result<Project> {
     let url = api(src, &format!("project/{}", checked_id(id)?));
-    src.meta.get_json(&url).await.map_err(not_found)
+    src.meta.get_json(&url).await.map_err(pack_not_found)
 }
 
 pub async fn version(src: &Sources, id: &str) -> Result<Version> {
     let url = api(src, &format!("version/{}", checked_id(id)?));
-    src.meta.get_json(&url).await.map_err(not_found)
+    src.meta.get_json(&url).await.map_err(pack_not_found)
 }
 
 /// A project's versions, optionally only those for one Minecraft version. Always fresh.
@@ -114,6 +105,7 @@ pub async fn versions(
             .append_pair("game_versions", &format!("[\"{mc}\"]"));
     }
     let host = host_of(url.as_str());
+    let shown = redact_url(url.as_str());
     let response = src.http.get(url).send().await.map_err(|e| {
         LauncherError::network(ErrorCode::HostUnreachable, format!("Couldn't reach {host}"))
             .with_param("host", &host)
@@ -122,10 +114,11 @@ pub async fn versions(
     })?;
     let status = response.status();
     if status == reqwest::StatusCode::NOT_FOUND {
-        return Err(not_found(LauncherError::loader(
-            ErrorCode::MetaNotFound,
-            "not found",
-        )));
+        return Err(pack_not_found(
+            LauncherError::loader(ErrorCode::MetaNotFound, "not found")
+                .with_param("status", status.as_u16())
+                .with_detail(shown),
+        ));
     }
     if !status.is_success() {
         return Err(LauncherError::network(
@@ -284,10 +277,12 @@ pub async fn check(
         Ok(v) => v,
         Err(e) => return failed(e),
     };
-    let list = match versions(src, project_id, Some(minecraft)).await {
+    let mut list = match versions(src, project_id, Some(minecraft)).await {
         Ok(list) => list,
         Err(e) => return failed(e),
     };
+    // The query filters too, but updates must never move to another Minecraft version.
+    list.retain(|v| v.game_versions.iter().any(|g| g == minecraft));
     match pick_update(&list, &installed.version_type) {
         Some(v) if v.id != installed.id && v.date_published > installed.date_published => {
             UpdateCheck::Available {

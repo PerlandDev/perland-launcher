@@ -12,7 +12,7 @@ use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    download::{cache::ObjectCache, Downloader, Hashes},
+    download::{cache::ObjectCache, host_of, Downloader, Hashes},
     error::{ErrorCode, LauncherError, Result},
     fsutil::path_key,
     instances::{LoaderSpec, SourceRef, UpdatePolicy},
@@ -251,6 +251,31 @@ pub struct Sources {
     pub downloader: Downloader,
     pub cache: ObjectCache,
     pub config: SourceConfig,
+}
+
+/// `MetaClient` raises `MetaNotFound` for any 4xx. Only 404 and 410 mean the pack is gone; a rate
+/// limit or a refusal is the host having trouble, and must not say the pack doesn't exist.
+pub(crate) fn pack_not_found(e: LauncherError) -> LauncherError {
+    if e.code != ErrorCode::MetaNotFound {
+        return e;
+    }
+    let status = e.params.get("status").cloned().unwrap_or_default();
+    if status == "404" || status == "410" {
+        let mut out = LauncherError::pack(ErrorCode::PackNotFound, "That pack wasn't found")
+            .with_fix("Check the link and try again");
+        out.detail = e.detail.or(Some(e.message));
+        return out;
+    }
+    let host = e.detail.as_deref().map(host_of).unwrap_or_default();
+    let mut out = LauncherError::network(
+        ErrorCode::HostTrouble,
+        format!("{host} is having trouble ({status})"),
+    )
+    .with_param("host", &host)
+    .with_param("status", &status)
+    .with_fix("Try again in a few minutes");
+    out.detail = e.detail;
+    out
 }
 
 pub(crate) fn no_pack() -> LauncherError {
