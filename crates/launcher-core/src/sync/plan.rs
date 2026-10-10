@@ -129,7 +129,9 @@ pub fn plan(
                 FileMode::Preserve => match lock(&file.path) {
                     // Sync kept the player's file in place before: it is still theirs.
                     Some(entry) if entry.sha1.is_empty() => plan.keep.push(keep("", *size)),
-                    _ => plan.keep.push(keep(sha1, *size)),
+                    // The launcher never wrote it: it is the player's.
+                    None => plan.keep.push(keep("", *size)),
+                    Some(_) => plan.keep.push(keep(sha1, *size)),
                 },
                 FileMode::ReplaceUnlessModified => match lock(&file.path) {
                     Some(entry) if !entry.sha1.is_empty() && entry.sha1 == *sha1 => {
@@ -319,7 +321,7 @@ mod tests {
             p.keep,
             vec![Kept {
                 file: cfg.clone(),
-                sha1: "player".into(),
+                sha1: String::new(),
                 size: 1
             }]
         );
@@ -418,6 +420,25 @@ mod tests {
         let p = plan(&[], Some(&lock), &disk(&[("mods/mine.jar", diff("m1"))]));
         assert!(p.trash.is_empty());
         assert!(changes(&[], Some(&lock), "2.0").removed.is_empty());
+    }
+
+    #[test]
+    fn preserve_without_a_lockfile_entry_is_the_players_file() {
+        let cfg = pf("config/x.toml", FileMode::Preserve, "11");
+        let other = managed(&[("mods/other.jar", entry("Other", "o1", "o1"))]);
+        let p = plan(
+            &[&cfg],
+            Some(&other),
+            &disk(&[("config/x.toml", diff("player"))]),
+        );
+        assert_eq!(
+            p.keep,
+            vec![Kept {
+                file: cfg,
+                sha1: String::new(),
+                size: 1
+            }]
+        );
     }
 
     #[test]
