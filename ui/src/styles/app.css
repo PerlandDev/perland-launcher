@@ -156,7 +156,7 @@
     height: 1.25rem;
     flex: none;
   }
-  .btn:hover {
+  .btn:hover:not(:disabled) {
     --face: color-mix(in oklab, var(--color-raised), white 7%);
   }
   .btn:active:not(:disabled),
@@ -176,21 +176,21 @@
     --face-ink: var(--color-ground);
     --base: var(--color-dirt);
   }
-  .btn-primary:hover {
+  .btn-primary:hover:not(:disabled) {
     --face: var(--color-amber-hi);
   }
   .btn-danger {
     --face: var(--color-coral);
     --face-ink: var(--color-ground);
   }
-  .btn-danger:hover {
+  .btn-danger:hover:not(:disabled) {
     --face: color-mix(in oklab, var(--color-coral), white 12%);
   }
   .btn-ghost {
     --face: transparent;
     box-shadow: none;
   }
-  .btn-ghost:hover {
+  .btn-ghost:hover:not(:disabled) {
     --face: var(--color-raised);
   }
   .btn-ghost:active:not(:disabled) {
@@ -206,6 +206,10 @@
     min-height: 2.25rem;
     min-width: 2.25rem;
     padding: 0;
+  }
+  .btn-icon.btn-lg {
+    min-height: 3rem;
+    min-width: 3rem;
   }
 
   /* The one lit button. */
@@ -387,7 +391,10 @@
   .menu [role='menuitem']:hover,
   .menu [role='menuitem']:focus-visible {
     background: var(--color-panel);
-    outline: none;
+  }
+  .menu [role='menuitem']:focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: -2px;
   }
   .menu [role='menuitem'][data-danger] {
     color: var(--color-coral);

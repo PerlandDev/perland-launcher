@@ -35,6 +35,8 @@ export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
     if (event.key === 'Escape') {
       event.preventDefault();
       close();
+    } else if (event.key === 'Tab') {
+      close();
     } else if (event.key === 'ArrowDown') {
       event.preventDefault();
       entries[(index + 1) % entries.length]?.focus();
@@ -65,7 +67,7 @@ export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
               role="menuitem"
               data-danger={item.danger ? '' : undefined}
               onClick={() => {
-                setOpen(false);
+                close();
                 item.onSelect();
               }}
             >

@@ -114,4 +114,21 @@ describe('Menu', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
     expect(onSelect).toHaveBeenCalledOnce();
   });
+
+  it('returns focus to the trigger after an item is chosen', async () => {
+    render(<Menu label="More options" items={[{ label: 'Rename', onSelect: vi.fn() }]} />);
+    const trigger = screen.getByRole('button', { name: 'More options' });
+    await userEvent.click(trigger);
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('closes when focus tabs out of the menu', async () => {
+    render(<Menu label="More options" items={[{ label: 'Rename', onSelect: vi.fn() }]} />);
+    await userEvent.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    await userEvent.tab();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
 });
