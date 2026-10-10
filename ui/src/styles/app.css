@@ -1,1 +1,400 @@
 @import 'tailwindcss';
+@import '@fontsource/bungee/400.css';
+@import '@fontsource-variable/atkinson-hyperlegible-next';
+@import '@fontsource/atkinson-hyperlegible-mono/400.css';
+
+/* Arcade Cabinet: warm laminate black; the four land-plot hues each own one job;
+   raised controls sit on a dirt-brown step; corners are pixel-notched. */
+@theme {
+  --color-ground: #16121a;
+  --color-panel: #201a26;
+  --color-raised: #2b2333;
+  --color-line: #3d3346;
+  --color-ink: #f6f1e7;
+  --color-ink-dim: #bfb3c4;
+  --color-amber: #ffc233; /* act: Play, primary */
+  --color-amber-hi: #ffd76e;
+  --color-lime: #c9cc2a; /* running, OK, progress fill */
+  --color-coral: #ff5a5f; /* stop, fault */
+  --color-blue: #2186cb; /* info */
+  --color-blue-ink: #5cb3f0; /* info text on ground */
+  --color-dirt: #7a4a2a; /* the step under raised controls */
+  --color-dirt-deep: #4e2e19;
+
+  --font-display: 'Bungee', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Atkinson Hyperlegible Mono', ui-monospace, monospace;
+
+  --radius-step: 4px;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--color-ground);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    overflow: hidden;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  ::selection {
+    background: var(--color-amber);
+    color: var(--color-ground);
+  }
+  input,
+  textarea {
+    user-select: text;
+    caret-color: var(--color-amber);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+  }
+  a {
+    color: var(--color-blue-ink);
+    text-underline-offset: 3px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .stepped {
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+  }
+  .selectable {
+    user-select: text;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .panel {
+    background: var(--color-panel);
+    border-radius: 6px;
+    corner-shape: notch;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 650;
+    color: var(--color-ink-dim);
+    background: var(--color-raised);
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+  }
+
+  /* Raised controls sit on a dirt step; pressing drops the face onto it in two 90 ms steps. */
+  .btn {
+    --step: 4px;
+    --face: var(--color-raised);
+    --face-ink: var(--color-ink);
+    --base: var(--color-dirt-deep);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.5rem;
+    padding: 0 1rem;
+    font-weight: 650;
+    font-size: 0.9375rem;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--face-ink);
+    background: var(--face);
+    border: 0;
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow: 0 var(--step) 0 var(--base);
+    cursor: pointer;
+    transition:
+      translate 180ms steps(2, end),
+      box-shadow 180ms steps(2, end),
+      background-color 120ms linear;
+  }
+  .btn svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex: none;
+  }
+  .btn:hover {
+    --face: color-mix(in oklab, var(--color-raised), white 7%);
+  }
+  .btn:active:not(:disabled),
+  .btn[data-pressed='true'] {
+    translate: 0 var(--step);
+    box-shadow: 0 0 0 var(--base);
+  }
+  .btn:disabled {
+    --face: var(--color-panel);
+    --face-ink: var(--color-ink-dim);
+    translate: 0 var(--step);
+    box-shadow: inset 0 0 0 1px var(--color-line);
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    --face: var(--color-amber);
+    --face-ink: var(--color-ground);
+    --base: var(--color-dirt);
+  }
+  .btn-primary:hover {
+    --face: var(--color-amber-hi);
+  }
+  .btn-danger {
+    --face: var(--color-coral);
+    --face-ink: var(--color-ground);
+  }
+  .btn-danger:hover {
+    --face: color-mix(in oklab, var(--color-coral), white 12%);
+  }
+  .btn-ghost {
+    --face: transparent;
+    box-shadow: none;
+  }
+  .btn-ghost:hover {
+    --face: var(--color-raised);
+  }
+  .btn-ghost:active:not(:disabled) {
+    translate: 0 0;
+  }
+  .btn-lg {
+    --step: 6px;
+    min-height: 3rem;
+    padding: 0 1.5rem;
+    font-size: 1rem;
+  }
+  .btn-icon {
+    min-height: 2.25rem;
+    min-width: 2.25rem;
+    padding: 0;
+  }
+
+  /* The one lit button. */
+  .play {
+    --step: 8px;
+    --lit: var(--color-amber-hi);
+    display: grid;
+    align-content: center;
+    gap: 0.5rem;
+    width: 17.5rem;
+    min-height: 5.5rem;
+    padding: 0.75rem 1.5rem;
+    color: var(--color-ground);
+    background: var(--color-amber);
+    border: 0;
+    border-radius: 6px;
+    corner-shape: notch;
+    box-shadow:
+      0 var(--step) 0 var(--color-dirt),
+      inset 0 3px 0 var(--lit);
+    font-family: var(--font-display);
+    font-size: 2rem;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    text-align: center;
+    cursor: pointer;
+    transition:
+      translate 180ms steps(2, end),
+      box-shadow 180ms steps(2, end);
+  }
+  .play[data-state='idle']:not(:disabled) {
+    animation: play-lit 2.4s steps(3, end) infinite alternate;
+  }
+  .play:active:not(:disabled) {
+    translate: 0 var(--step);
+    box-shadow:
+      0 0 0 var(--color-dirt),
+      inset 0 3px 0 var(--lit);
+  }
+  .play[data-state='running'] {
+    --lit: #ff9a9d;
+    background: var(--color-coral);
+    box-shadow:
+      0 var(--step) 0 var(--color-dirt-deep),
+      inset 0 3px 0 var(--lit);
+  }
+  .play[data-state='queued'],
+  .play[data-state='preparing'] {
+    color: var(--color-ink);
+    background: var(--color-panel);
+    box-shadow:
+      0 var(--step) 0 var(--color-dirt-deep),
+      inset 0 0 0 2px var(--color-line);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    font-weight: 650;
+    letter-spacing: 0;
+    text-align: left;
+  }
+  .play:disabled {
+    color: var(--color-ink-dim);
+    background: var(--color-panel);
+    box-shadow: inset 0 0 0 2px var(--color-line);
+    translate: 0 var(--step);
+    cursor: not-allowed;
+    animation: none;
+  }
+  @keyframes play-lit {
+    to {
+      --lit: #fff2c4;
+    }
+  }
+
+  .meter {
+    display: grid;
+    grid-template-columns: repeat(20, 1fr);
+    gap: 3px;
+    height: 0.75rem;
+  }
+  .meter > span {
+    background: var(--color-line);
+  }
+  .meter > span[data-on] {
+    background: var(--color-lime);
+  }
+
+  .field-input {
+    width: 100%;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.75rem;
+    color: var(--color-ink);
+    background: var(--color-ground);
+    border: 0;
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+    font: inherit;
+  }
+  .field-input::placeholder {
+    color: var(--color-ink-dim);
+  }
+  .field-input[aria-invalid='true'] {
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 2px var(--color-coral);
+  }
+
+  .toggle {
+    position: relative;
+    display: inline-flex;
+    width: 3rem;
+    height: 1.75rem;
+    padding: 3px;
+    background: var(--color-ground);
+    border: 0;
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow: inset 0 0 0 1px var(--color-line);
+    cursor: pointer;
+  }
+  .toggle > span {
+    width: 1.375rem;
+    height: 100%;
+    background: var(--color-ink-dim);
+    border-radius: 2px;
+    transition: translate 180ms steps(2, end);
+  }
+  .toggle[aria-checked='true'] > span {
+    translate: 1.125rem 0;
+    background: var(--color-lime);
+  }
+
+  .dialog {
+    width: min(30rem, calc(100vw - 4rem));
+    padding: 1.5rem;
+    color: var(--color-ink);
+    background: var(--color-panel);
+    border: 0;
+    border-radius: 6px;
+    corner-shape: notch;
+    box-shadow:
+      0 8px 0 var(--color-dirt-deep),
+      0 24px 48px rgb(0 0 0 / 0.5);
+  }
+  .dialog::backdrop {
+    background: rgb(10 8 12 / 0.72);
+  }
+
+  .menu {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 0.5rem);
+    z-index: 30;
+    min-width: 13rem;
+    padding: 0.375rem;
+    background: var(--color-raised);
+    border-radius: 6px;
+    corner-shape: notch;
+    box-shadow:
+      0 6px 0 var(--color-dirt-deep),
+      0 18px 36px rgb(0 0 0 / 0.45);
+  }
+  .menu [role='menuitem'] {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 0.75rem;
+    color: var(--color-ink);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-step);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .menu [role='menuitem']:hover,
+  .menu [role='menuitem']:focus-visible {
+    background: var(--color-panel);
+    outline: none;
+  }
+  .menu [role='menuitem'][data-danger] {
+    color: var(--color-coral);
+  }
+  .menu svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex: none;
+  }
+}
