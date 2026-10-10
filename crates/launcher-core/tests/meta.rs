@@ -197,3 +197,20 @@ async fn server_error_without_cache_is_network_error() {
     assert_eq!(err.category, ErrorCategory::Network);
     assert_eq!(err.fix.as_deref(), Some("Try again in a few minutes"));
 }
+
+#[tokio::test]
+async fn meta_errors_never_show_the_query_string() {
+    let server = MockServer::start().await; // nothing mounted: every path answers 404
+    let dir = tempfile::tempdir().unwrap();
+    let meta = MetaClient::new(reqwest::Client::new(), dir.path());
+    let err = meta
+        .get_bytes(&format!("{}/pack.toml?token=SECRET123", server.uri()))
+        .await
+        .unwrap_err();
+    let all = format!(
+        "{} {:?} {:?} {:?}",
+        err.message, err.fix, err.detail, err.params
+    );
+    assert!(!all.contains("SECRET123"), "{all}");
+    assert!(err.message.contains("404"), "{}", err.message);
+}

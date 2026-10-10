@@ -308,3 +308,45 @@ async fn malformed_url_moves_on_to_the_next_url() {
         .unwrap();
     assert_eq!(std::fs::read_to_string(&dest).unwrap(), "hello");
 }
+
+#[tokio::test]
+async fn rejected_download_names_only_the_host() {
+    let server = MockServer::start().await;
+    serve(&server, "/private.jar", 403, "no", 1).await;
+    let dir = tempfile::tempdir().unwrap();
+    let url = format!("{}/private.jar?token=SECRET123#frag", server.uri());
+    let req = DownloadRequest::new(
+        url,
+        dir.path().join("p.jar"),
+        Hashes::sha1(HELLO_SHA1),
+        Some(5),
+    );
+    let err = downloader().fetch(&req).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::DownloadRejected);
+    let all = format!(
+        "{} {:?} {:?} {:?}",
+        err.message, err.fix, err.detail, err.params
+    );
+    assert!(!all.contains("SECRET123"), "{all}");
+    assert!(err.message.contains("127.0.0.1"), "{}", err.message);
+    assert_eq!(err.params["status"], "403");
+}
+
+#[tokio::test]
+async fn unreachable_host_never_shows_user_info() {
+    let dir = tempfile::tempdir().unwrap();
+    let req = DownloadRequest::new(
+        "http://player:hunter2@127.0.0.1:1/x.jar",
+        dir.path().join("x.jar"),
+        Hashes::sha1(HELLO_SHA1),
+        Some(5),
+    );
+    let err = downloader().fetch(&req).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::HostUnreachable);
+    let all = format!(
+        "{} {:?} {:?} {:?}",
+        err.message, err.fix, err.detail, err.params
+    );
+    assert!(!all.contains("hunter2"), "{all}");
+    assert_eq!(err.params["host"], "127.0.0.1");
+}
