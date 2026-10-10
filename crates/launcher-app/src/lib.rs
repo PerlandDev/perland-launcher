@@ -5,6 +5,7 @@ pub mod dto;
 pub mod events;
 pub mod logs;
 pub mod runner;
+mod runs;
 #[cfg(test)]
 pub(crate) mod testing;
 

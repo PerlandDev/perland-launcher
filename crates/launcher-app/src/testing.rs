@@ -1,5 +1,3 @@
-#![allow(dead_code)] // test-only fakes, used by the state-machine tests from Task 14
-
 //! Fakes for the app tests: a runner whose preparing and exits the test controls, and a host
 //! that records everything it was told.
 use std::{

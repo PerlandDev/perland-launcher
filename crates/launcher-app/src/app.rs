@@ -39,7 +39,6 @@ pub struct AppConfig {
 }
 
 /// One instance's current run. Absent from `runs` means idle.
-#[allow(dead_code)] // read by the play/stop state machine in Task 14
 pub(crate) struct Run {
     pub(crate) phase: RunStateKind,
     /// Set while queued or preparing: aborting the task cancels the run.
@@ -48,7 +47,6 @@ pub(crate) struct Run {
     pub(crate) killer: Option<Arc<dyn Kill>>,
 }
 
-#[allow(dead_code)] // runner, install_slot and logs are read by Task 14
 pub struct AppCore<R: Runner, H: Host> {
     pub(crate) config: AppConfig,
     pub(crate) instances: InstanceStore,
@@ -258,23 +256,26 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         mods::list(&dir).await
     }
 
+    /// The instance folder, or `InstanceNotFound`. Works for damaged instances too.
+    async fn existing_instance_dir(&self, id: &str) -> Result<PathBuf> {
+        valid_id(id)?;
+        let dir = self.instances.instance_dir(id);
+        if !tokio::fs::try_exists(&dir).await? {
+            return Err(LauncherError::disk(
+                ErrorCode::InstanceNotFound,
+                format!("Instance \"{id}\" wasn't found"),
+            )
+            .with_param("id", id));
+        }
+        Ok(dir)
+    }
+
     /// A folder to open in the file manager. Works for damaged instances too.
     pub async fn folder(&self, target: OpenTarget) -> Result<PathBuf> {
         let path = match target {
-            OpenTarget::Instance { id } => {
-                valid_id(&id)?;
-                let dir = self.instances.instance_dir(&id);
-                if !tokio::fs::try_exists(&dir).await? {
-                    return Err(LauncherError::disk(
-                        ErrorCode::InstanceNotFound,
-                        format!("Instance \"{id}\" wasn't found"),
-                    )
-                    .with_param("id", &id));
-                }
-                return Ok(dir);
-            }
+            OpenTarget::Instance { id } => return self.existing_instance_dir(&id).await,
             OpenTarget::Mods { id } => {
-                valid_id(&id)?;
+                self.existing_instance_dir(&id).await?;
                 self.instances.game_dir(&id).join("mods")
             }
             OpenTarget::Data => self.config.dirs.root().to_path_buf(),
@@ -413,6 +414,19 @@ pub(crate) mod tests {
                 .code,
             ErrorCode::InstanceIdInvalid
         );
+    }
+
+    #[tokio::test]
+    async fn mods_folder_of_a_missing_instance_is_not_created() {
+        let (core, _, _, tmp) = core(BuildKind::Dev);
+        assert_eq!(
+            core.folder(OpenTarget::Mods { id: "ghost".into() })
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InstanceNotFound
+        );
+        assert!(!tmp.path().join("instances").join("ghost").exists());
     }
 
     #[tokio::test]
