@@ -80,9 +80,9 @@ export default function App() {
   const language = settings.data?.language ?? null;
   useEffect(() => applyLanguage(language), [language]);
 
-  // A retry puts the query back to pending, so remember the failure to keep the error screen up meanwhile.
+  // A retry puts the query back to pending, so remember a failure to load (never one with data cached) to keep the error screen up meanwhile.
   const [failure, setFailure] = useState<unknown>(null);
-  if (settings.isError && failure !== settings.error) setFailure(settings.error);
+  if (settings.isError && settings.data === undefined && failure !== settings.error) setFailure(settings.error);
   if (settings.data !== undefined && failure !== null) setFailure(null);
 
   if (settings.isPending && failure === null) return <div className="h-full bg-ground" aria-busy="true" />;

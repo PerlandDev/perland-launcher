@@ -1,8 +1,9 @@
 import { emit } from '@tauri-apps/api/event';
 import { act, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CLOSE_REQUESTED } from './ipc/events';
 import { createMockBackend } from './ipc/mock';
+import { qk } from './state/queries';
 import { renderApp, sent } from './test/backend';
 import { renderWithProviders } from './test/render';
 import App from './App';
@@ -71,6 +72,27 @@ describe('App', () => {
     expect(screen.getByRole('banner')).toBeInTheDocument(); // the title bar
     await act(async () => release());
     expect(await screen.findByRole('navigation', { name: 'Instances' })).toBeInTheDocument();
+  });
+
+  it('keeps the shell up when a background refetch of the settings fails', async () => {
+    const backend = createMockBackend();
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let failing = false;
+    const { qc } = renderWithProviders(<App />, {
+      ipc: (cmd, args) =>
+        cmd === 'settings_get' && failing
+          ? Promise.reject({ category: 'game', code: 'internal', message: 'x', fix: null, detail: null, params: {} })
+          : backend.handle(cmd, args),
+    });
+    expect(await screen.findByRole('navigation', { name: 'Instances' })).toBeInTheDocument();
+    failing = true;
+    await act(async () => {
+      await qc.refetchQueries({ queryKey: qk.settings });
+    });
+    expect(qc.getQueryState(qk.settings)?.status).toBe('error');
+    expect(screen.getByRole('navigation', { name: 'Instances' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(errors).not.toHaveBeenCalled();
   });
 
   it('applies the language stored in the settings on load', async () => {
