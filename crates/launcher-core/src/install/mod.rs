@@ -128,6 +128,7 @@ pub fn library_artifact(lib: &Library, dirs: &LauncherDirs) -> Result<Option<Dow
         sha1: lib.sha1.clone(),
         sha256: lib.sha256.clone(),
         sha512: lib.sha512.clone(),
+        md5: None,
         murmur2: None,
     };
     Ok(Some(DownloadRequest::new(
