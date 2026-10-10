@@ -1,6 +1,4 @@
 //! The file-system half of a sync: what is on disk, free space, the trash, and moving files.
-// Task 15 (the apply driver) is the first caller; until then only the tests use these.
-#![allow(dead_code)]
 use std::{
     collections::{BTreeMap, HashSet},
     path::{Path, PathBuf},
