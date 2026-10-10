@@ -196,6 +196,13 @@ pub fn missing_files(cmd: &LaunchCommand) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Decode one raw output line lossily (invalid bytes become U+FFFD) and strip the trailing `\n` / `\r\n`.
+fn decode_line(bytes: &[u8]) -> String {
+    let bytes = bytes.strip_suffix(b"\n").unwrap_or(bytes);
+    let bytes = bytes.strip_suffix(b"\r").unwrap_or(bytes);
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
 /// Start the game, stream every output line (redacted) to the sink and the log file, and wait for it to exit.
 pub async fn run(
     cmd: &LaunchCommand,
@@ -207,6 +214,8 @@ pub async fn run(
     if let Some(parent) = log_file.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
+    // Create the log file before spawning: if this fails, no game process exists yet to be orphaned.
+    let mut log = Some(tokio::fs::File::create(log_file).await?);
     let mut command = tokio::process::Command::new(&cmd.program);
     command
         .args(&cmd.args)
@@ -228,23 +237,41 @@ pub async fn run(
     for reader in readers {
         let tx = tx.clone();
         tokio::spawn(async move {
-            let mut lines = BufReader::new(reader).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if tx.send(line).is_err() {
-                    break;
+            // Read raw bytes: the game may write in a non-UTF-8 charset, which must not end capture.
+            let mut reader = BufReader::new(reader);
+            let mut buf = Vec::new();
+            loop {
+                buf.clear();
+                match reader.read_until(b'\n', &mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {
+                        if tx.send(decode_line(&buf)).is_err() {
+                            break;
+                        }
+                    }
                 }
             }
         });
     }
     drop(tx);
-    let mut log = tokio::fs::File::create(log_file).await?;
     while let Some(line) = rx.recv().await {
         let clean = redactor.redact(&line);
-        log.write_all(clean.as_bytes()).await?;
-        log.write_all(b"\n").await?;
+        // A log write failure is non-fatal: stop writing the file, keep streaming to the sink.
+        if let Some(file) = log.as_mut() {
+            let wrote = match file.write_all(clean.as_bytes()).await {
+                Ok(()) => file.write_all(b"\n").await,
+                Err(e) => Err(e),
+            };
+            if wrote.is_err() {
+                log = None;
+            }
+        }
         sink(Event::Log { line: clean });
     }
-    log.flush().await?;
+    if let Some(file) = log.as_mut() {
+        let _ = file.flush().await;
+    }
+    // Always reached once the child has been spawned, so the game is never left unowned.
     let status = child.wait().await?;
     Ok(GameExit {
         code: status.code(),
@@ -369,6 +396,16 @@ mod tests {
             arg_after(&cmd.args, "--version"),
             "fabric-loader-0.16.14-1.20.1"
         );
+    }
+
+    #[test]
+    fn decode_line_is_lossy_and_strips_line_endings() {
+        let out = decode_line(b"caf\xe9 ok\r\n");
+        assert!(out.contains("caf") && out.ends_with(" ok"), "{out:?}");
+        assert!(!out.contains('\r') && !out.contains('\n'), "{out:?}");
+        assert_eq!(decode_line(b"plain\n"), "plain");
+        assert_eq!(decode_line(b"no newline"), "no newline");
+        assert_eq!(decode_line(b"\r\n"), "");
     }
 
     #[test]
