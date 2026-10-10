@@ -63,6 +63,7 @@ export function CrashCard({ instance, exit, lines }: { instance: Instance; exit:
           <Button
             variant="primary"
             icon={<MemoryStick />}
+            disabled={update.isPending}
             onClick={() =>
               update.mutate(
                 { ...instance, java: { ...instance.java, memoryMb: raised } },

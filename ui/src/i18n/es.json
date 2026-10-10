@@ -73,6 +73,7 @@
     "close": "Ocultar actividad",
     "empty": "No pasa nada por ahora. Presiona Jugar y lo que muestre el juego aparece aquí.",
     "log": "Registro del juego",
+    "instances": "Instancias con actividad",
     "logEmpty": "El juego todavía no ha mostrado nada.",
     "crashTitle": "{{name}} se cerró de forma inesperada",
     "crashCode": "Código de salida {{code}}",

@@ -4,6 +4,7 @@ import { openActivity } from '../../state/activity';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { ActivityDrawer } from './ActivityDrawer';
+import { LogView } from './LogView';
 
 describe('ActivityDrawer', () => {
   // jsdom has no layout, so the virtualized log would measure a 0 x 0 viewport and render no rows.
@@ -61,5 +62,19 @@ describe('ActivityDrawer', () => {
     });
     expect(await screen.findByText("Creative Flat couldn't start")).toBeInTheDocument();
     expect(screen.getByText("You seem to be offline, and this hasn't been downloaded before.")).toBeInTheDocument();
+  });
+});
+
+describe('LogView', () => {
+  it('virtualizes: 200 lines in a 320px viewport render far fewer rows', () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800);
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(320);
+    const lines = Array.from({ length: 200 }, (_, i) => `line ${i}`);
+    renderApp(<LogView lines={lines} />);
+    const log = screen.getByRole('log', { name: 'Game log' });
+    const rows = log.firstElementChild?.children.length ?? 0;
+    expect(rows).toBeGreaterThan(0);
+    expect(rows).toBeLessThan(100);
+    expect(log).toHaveAttribute('tabindex', '0');
   });
 });

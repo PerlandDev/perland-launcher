@@ -31,6 +31,8 @@ export function LogView({ lines }: { lines: string[] }) {
         ref={scroller}
         role="log"
         aria-label={t('activity.log')}
+        aria-live="off"
+        tabIndex={0}
         className="selectable h-full overflow-auto bg-ground py-2 font-mono text-[13px] leading-5"
         onScroll={(event) => {
           const el = event.currentTarget;

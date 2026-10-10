@@ -73,6 +73,7 @@
     "close": "Hide activity",
     "empty": "Nothing is happening right now. Press Play and the game's output shows up here.",
     "log": "Game log",
+    "instances": "Instances with activity",
     "logEmpty": "The game hasn't printed anything yet.",
     "crashTitle": "{{name}} closed unexpectedly",
     "crashCode": "Exit code {{code}}",

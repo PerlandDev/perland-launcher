@@ -64,14 +64,13 @@ export function ActivityDrawer() {
       {activity.open && (
         <div className="flex min-h-0 flex-1 flex-col">
           {tabs.length > 1 && (
-            <div role="tablist" className="flex gap-1 px-5">
+            <div role="group" aria-label={t('activity.instances')} className="flex gap-1 px-5">
               {tabs.map((i) => (
                 <button
                   key={i.id}
-                  role="tab"
                   type="button"
-                  aria-selected={i.id === focusId}
-                  className="rounded-t px-3 py-1.5 text-sm aria-selected:bg-ground"
+                  aria-pressed={i.id === focusId}
+                  className="rounded-t px-3 py-1.5 text-sm aria-pressed:bg-ground"
                   onClick={() => openActivity(i.id)}
                 >
                   {i.name}
