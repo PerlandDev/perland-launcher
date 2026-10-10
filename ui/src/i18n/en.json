@@ -120,6 +120,7 @@
     "javaTest": "Test",
     "javaOk": "Java {{major}} works",
     "javaFiles": "Java program",
+    "loaderFixed": "This instance uses {{loader}}. Changing its version isn't available in the launcher yet.",
     "applyNote": "Changes apply the next time you press Play."
   },
   "damaged": {

@@ -120,6 +120,7 @@
     "javaTest": "Probar",
     "javaOk": "Java {{major}} funciona",
     "javaFiles": "Programa de Java",
+    "loaderFixed": "Esta instancia usa {{loader}}. Por ahora el launcher no permite cambiar su versión.",
     "applyNote": "Los cambios se aplican la próxima vez que presiones Jugar."
   },
   "damaged": {

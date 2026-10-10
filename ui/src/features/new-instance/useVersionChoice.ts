@@ -17,8 +17,10 @@ export function useVersionChoice(initial?: GameSpec) {
 
   const all = versions.data ?? [];
   const list = all.filter((v) => v.kind === 'release' || (snapshots && v.kind === 'snapshot') || v.id === minecraft);
-  const newestRelease = list.find((v) => v.kind === 'release')?.id ?? list[0]?.id ?? minecraft;
-  const mc = minecraft && (list.some((v) => v.id === minecraft) || !versions.data) ? minecraft : newestRelease;
+  const newestRelease = list.find((v) => v.kind === 'release')?.id ?? list[0]?.id ?? null;
+  // A version the instance already has is kept even if the catalog no longer lists it (the form
+  // adds it as an extra option); only an unset choice falls back to the newest release.
+  const mc = minecraft ?? newestRelease;
 
   const loaders = useLoaderVersions(loader === 'none' ? null : loader, mc);
   const loaderList = loaders.data ?? [];
