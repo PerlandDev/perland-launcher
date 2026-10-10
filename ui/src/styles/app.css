@@ -344,6 +344,29 @@
     background: var(--color-lime);
   }
 
+  .seg {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.5rem;
+    padding: 0 1.125rem;
+    font-weight: 650;
+    background: var(--color-raised);
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow: 0 4px 0 var(--color-dirt-deep);
+    cursor: pointer;
+    transition: translate 180ms steps(2, end), box-shadow 180ms steps(2, end);
+  }
+  .seg[data-checked] {
+    color: var(--color-ground);
+    background: var(--color-amber);
+    box-shadow: 0 4px 0 var(--color-dirt);
+  }
+  .seg:has(input:focus-visible) {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+  }
+
   .dialog {
     width: min(30rem, calc(100vw - 4rem));
     padding: 1.5rem;
