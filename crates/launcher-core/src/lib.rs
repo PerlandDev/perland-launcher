@@ -15,4 +15,4 @@ pub mod platform;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-pub use error::{ErrorCategory, LauncherError, Result};
+pub use error::{ErrorCategory, ErrorCode, LauncherError, Result};

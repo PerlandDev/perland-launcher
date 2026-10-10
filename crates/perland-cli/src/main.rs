@@ -13,7 +13,7 @@ use launcher_core::{
     meta::{loaders::LoaderKind, MetaClient},
     paths::LauncherDirs,
     platform::Platform,
-    LauncherError,
+    ErrorCode, LauncherError,
 };
 
 #[derive(Parser)]
@@ -84,7 +84,8 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
         .root
         .or_else(LauncherDirs::default_root)
         .ok_or_else(|| {
-            LauncherError::disk("Couldn't find a data folder").with_fix("Pass --root <folder>")
+            LauncherError::disk(ErrorCode::DiskIo, "Couldn't find a data folder")
+                .with_fix("Pass --root <folder>")
         })?;
     let dirs = LauncherDirs::new(root);
     let store = InstanceStore::new(dirs.instances());
@@ -107,6 +108,7 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
                 (None, None) => None,
                 _ => {
                     return Err(LauncherError::loader(
+                        ErrorCode::VersionInvalid,
                         "Pass both --loader and --loader-version",
                     ))
                 }
@@ -147,11 +149,12 @@ async fn launch_instance(
 ) -> Result<(), LauncherError> {
     let instance = store.load(id).await?;
     let account = accounts.active().await?.ok_or_else(|| {
-        LauncherError::auth("No account selected")
+        LauncherError::auth(ErrorCode::NoAccount, "No account selected")
             .with_fix("Run `perland-cli offline <name>` first")
     })?;
     if account.provider != Provider::Offline {
         return Err(LauncherError::auth(
+            ErrorCode::MicrosoftUnavailable,
             "Microsoft accounts arrive in a later build",
         ));
     }
@@ -226,10 +229,10 @@ async fn launch_instance(
         for path in &missing {
             eprintln!("missing: {}", path.display());
         }
-        return Err(LauncherError::loader(format!(
-            "{} required files are missing",
-            missing.len()
-        )));
+        return Err(LauncherError::loader(
+            ErrorCode::GameFilesMissing,
+            format!("{} required files are missing", missing.len()),
+        ));
     }
 
     let exit = launch::run(

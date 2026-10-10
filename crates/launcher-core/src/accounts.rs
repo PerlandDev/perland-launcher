@@ -4,7 +4,7 @@ use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::{LauncherError, Result},
+    error::{ErrorCode, LauncherError, Result},
     fsutil::write_atomic,
 };
 
@@ -81,6 +81,7 @@ pub fn validate_offline_name(name: &str) -> Result<()> {
         Ok(())
     } else {
         Err(LauncherError::auth(
+            ErrorCode::OfflineNameInvalid,
             "Offline names must be 3–16 letters, numbers or underscores",
         ))
     }
@@ -138,23 +139,28 @@ impl AccountStore {
 
     pub async fn load(&self) -> Result<AccountsFile> {
         match tokio::fs::read(&self.path).await {
-            Ok(bytes) => serde_json::from_slice(&bytes)
-                .map_err(|e| LauncherError::disk("The accounts file is damaged").with_detail(e)),
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| {
+                LauncherError::disk(ErrorCode::AccountsDamaged, "The accounts file is damaged")
+                    .with_detail(e)
+            }),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(AccountsFile::default()),
             Err(e) => Err(e.into()),
         }
     }
 
     pub async fn save(&self, file: &AccountsFile) -> Result<()> {
-        let bytes = serde_json::to_vec_pretty(file)
-            .map_err(|e| LauncherError::disk("Couldn't save accounts").with_detail(e))?;
+        let bytes = serde_json::to_vec_pretty(file).map_err(|e| {
+            LauncherError::disk(ErrorCode::DiskWriteFailed, "Couldn't save accounts")
+                .with_param("item", "accounts")
+                .with_detail(e)
+        })?;
         write_atomic(&self.path, &bytes).await
     }
 
     pub async fn add_offline(&self, name: &str, build: BuildKind) -> Result<Account> {
         let mut file = self.load().await?;
         if !offline_allowed(build, file.licensed_signin_seen) {
-            return Err(LauncherError::auth("Offline accounts unlock after you sign in once with a Microsoft account that owns Minecraft")
+            return Err(LauncherError::auth(ErrorCode::OfflineLocked, "Offline accounts unlock after you sign in once with a Microsoft account that owns Minecraft")
                 .with_fix("Add a Microsoft account first"));
         }
         let account = offline_account(name)?;

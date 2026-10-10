@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     download::{DownloadRequest, Downloader, Hashes},
-    error::{ErrorCategory, LauncherError, Result},
+    error::{ErrorCategory, ErrorCode, LauncherError, Result},
     events::EventSink,
     fsutil::{safe_join, write_atomic},
     meta::{
@@ -49,7 +49,11 @@ pub struct LibraryPlan {
 /// Join a path taken from remote metadata onto `base`, refusing anything that could escape it.
 fn join_remote(base: &Path, rel: &str) -> Result<PathBuf> {
     safe_join(base, rel).ok_or_else(|| {
-        LauncherError::integrity("Minecraft's file list contains an unsafe path").with_detail(rel)
+        LauncherError::integrity(
+            ErrorCode::UnsafeGameData,
+            "Minecraft's file list contains an unsafe path",
+        )
+        .with_detail(rel)
     })
 }
 
@@ -58,6 +62,7 @@ pub(crate) fn check_version_id(id: &str) -> Result<()> {
     let unsafe_id = id.is_empty() || id == "." || id == ".." || id.contains(['/', '\\', '\0', ':']);
     if unsafe_id {
         return Err(LauncherError::integrity(
+            ErrorCode::UnsafeGameData,
             "Minecraft's version data contains an unsafe version name",
         )
         .with_detail(id));
@@ -117,9 +122,12 @@ pub async fn fill_missing_sha1(meta: &MetaClient, reqs: &mut [DownloadRequest]) 
 
 async fn published_sha1(meta: &MetaClient, url: &str) -> Result<String> {
     let unverifiable = || {
-        LauncherError::integrity("Couldn't verify a library download")
-            .with_fix("Try again later")
-            .with_detail(url)
+        LauncherError::integrity(
+            ErrorCode::LibraryUnverifiable,
+            "Couldn't verify a library download",
+        )
+        .with_fix("Try again later")
+        .with_detail(url)
     };
     let body = match meta.get_bytes(&format!("{url}.sha1")).await {
         Ok(body) => body,
@@ -136,8 +144,11 @@ async fn published_sha1(meta: &MetaClient, url: &str) -> Result<String> {
 
 fn maven_path(name: &str) -> Result<String> {
     MavenCoord::parse(name).map(|c| c.path()).ok_or_else(|| {
-        LauncherError::integrity("Minecraft's file list contains an unsafe path")
-            .with_detail(format!("library {name}"))
+        LauncherError::integrity(
+            ErrorCode::UnsafeGameData,
+            "Minecraft's file list contains an unsafe path",
+        )
+        .with_detail(format!("library {name}"))
     })
 }
 
@@ -229,10 +240,11 @@ pub fn plan_client(resolved: &ResolvedVersion, dirs: &LauncherDirs) -> Result<Do
         .as_ref()
         .map(|d| &d.client)
         .ok_or_else(|| {
-            LauncherError::loader(format!(
-                "Minecraft {} has no client download",
-                resolved.vanilla_id
-            ))
+            LauncherError::loader(
+                ErrorCode::NoClientDownload,
+                format!("Minecraft {} has no client download", resolved.vanilla_id),
+            )
+            .with_param("version", &resolved.vanilla_id)
         })?;
     Ok(DownloadRequest::new(
         client.url.clone(),
@@ -301,12 +313,17 @@ impl Installer {
     ) -> Result<ResolvedVersion> {
         let manifest: VersionManifest = self.meta.get_json(VERSION_MANIFEST_URL).await?;
         let entry = manifest.find(mc).ok_or_else(|| {
-            LauncherError::loader(format!("Minecraft {mc} doesn't exist"))
-                .with_fix("Check the version number")
+            LauncherError::loader(
+                ErrorCode::MinecraftVersionNotFound,
+                format!("Minecraft {mc} doesn't exist"),
+            )
+            .with_param("version", mc)
+            .with_fix("Check the version number")
         })?;
         let vanilla: VersionJson = self.meta.get_verified_json(&entry.url, &entry.sha1).await?;
         if vanilla.id != mc {
             return Err(LauncherError::integrity(
+                ErrorCode::MojangMismatch,
                 "Mojang returned a different version than requested",
             )
             .with_detail(format!("requested {mc}, got {}", vanilla.id)));
@@ -332,10 +349,13 @@ impl Installer {
         let json = &resolved.json;
         check_version_id(&resolved.vanilla_id)?;
         check_version_id(&json.id)?;
-        let index_ref = json
-            .asset_index
-            .as_ref()
-            .ok_or_else(|| LauncherError::loader(format!("{} has no asset index", json.id)))?;
+        let index_ref = json.asset_index.as_ref().ok_or_else(|| {
+            LauncherError::loader(
+                ErrorCode::NoAssetIndex,
+                format!("{} has no asset index", json.id),
+            )
+            .with_param("version", &json.id)
+        })?;
         let index_path = join_remote(
             &self.dirs.assets().join("indexes"),
             &format!("{}.json", index_ref.id),
@@ -369,10 +389,17 @@ impl Installer {
         tokio::task::spawn_blocking(move || natives::extract_all(&native_jars, &natives_dir))
             .await
             .map_err(|e| {
-                LauncherError::disk("Couldn't extract native libraries").with_detail(e)
+                LauncherError::disk(
+                    ErrorCode::NativesExtractFailed,
+                    "Couldn't extract native libraries",
+                )
+                .with_detail(e)
             })??;
-        let bytes = serde_json::to_vec_pretty(json)
-            .map_err(|e| LauncherError::disk("Couldn't save the version file").with_detail(e))?;
+        let bytes = serde_json::to_vec_pretty(json).map_err(|e| {
+            LauncherError::disk(ErrorCode::DiskWriteFailed, "Couldn't save the version file")
+                .with_param("item", "version")
+                .with_detail(e)
+        })?;
         write_atomic(&self.dirs.version_json(&json.id), &bytes).await?;
         Ok(())
     }

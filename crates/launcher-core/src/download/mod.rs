@@ -13,7 +13,7 @@ use tokio::io::AsyncWriteExt;
 pub use hash::Hashes;
 
 use crate::{
-    error::{LauncherError, Result},
+    error::{ErrorCode, LauncherError, Result},
     events::{Event, EventSink},
 };
 
@@ -124,7 +124,10 @@ impl Downloader {
             tokio::fs::create_dir_all(parent).await?;
         }
         let part = part_path(&req.dest);
-        let mut last_err = LauncherError::network("No download address was given for this file");
+        let mut last_err = LauncherError::network(
+            ErrorCode::DownloadNoUrl,
+            "No download address was given for this file",
+        );
         for _round in 0..2 {
             let mut downloaded = false;
             'urls: for url in &req.urls {
@@ -152,7 +155,7 @@ impl Downloader {
                 return Err(last_err);
             }
             let verified = verify_on_disk(&req.hashes, &part).await.map_err(|e| {
-                LauncherError::disk("Couldn't check a downloaded file")
+                LauncherError::disk(ErrorCode::DiskIo, "Couldn't check a downloaded file")
                     .with_fix("Check free disk space and that the launcher folder isn't read-only")
                     .with_detail(e)
             })?;
@@ -161,10 +164,11 @@ impl Downloader {
                 return Ok(());
             }
             let _ = tokio::fs::remove_file(&part).await;
-            last_err = LauncherError::integrity(format!(
-                "{} was damaged while downloading",
-                file_name(&req.dest)
-            ))
+            last_err = LauncherError::integrity(
+                ErrorCode::DownloadCorrupt,
+                format!("{} was damaged while downloading", file_name(&req.dest)),
+            )
+            .with_param("file", file_name(&req.dest))
             .with_fix("Try again. If it keeps happening, the file on the server may be broken.");
         }
         Err(last_err)
@@ -181,9 +185,13 @@ impl Downloader {
         }
         let response = request.send().await.map_err(|e| {
             Attempt::Retry(
-                LauncherError::network(format!("Couldn't reach {}", host_of(url)))
-                    .with_fix("Check your internet connection")
-                    .with_detail(e),
+                LauncherError::network(
+                    ErrorCode::HostUnreachable,
+                    format!("Couldn't reach {}", host_of(url)),
+                )
+                .with_param("host", host_of(url))
+                .with_fix("Check your internet connection")
+                .with_detail(e),
             )
         })?;
         let status = response.status().as_u16();
@@ -193,19 +201,29 @@ impl Downloader {
             416 => {
                 let _ = tokio::fs::remove_file(part).await;
                 return Err(Attempt::Retry(LauncherError::network(
+                    ErrorCode::DownloadRestarted,
                     "The download had to restart",
                 )));
             }
             429 | 500..=599 => {
-                return Err(Attempt::Retry(LauncherError::network(format!(
-                    "{} is having trouble ({status})",
-                    host_of(url)
-                ))))
+                return Err(Attempt::Retry(
+                    LauncherError::network(
+                        ErrorCode::HostTrouble,
+                        format!("{} is having trouble ({status})", host_of(url)),
+                    )
+                    .with_param("host", host_of(url))
+                    .with_param("status", status),
+                ))
             }
             _ => {
-                return Err(Attempt::NextUrl(LauncherError::network(format!(
-                    "{url} answered {status}"
-                ))))
+                return Err(Attempt::NextUrl(
+                    LauncherError::network(
+                        ErrorCode::DownloadRejected,
+                        format!("{url} answered {status}"),
+                    )
+                    .with_param("host", host_of(url))
+                    .with_param("status", status),
+                ))
             }
         };
         let mut file = tokio::fs::OpenOptions::new()
@@ -220,8 +238,11 @@ impl Downloader {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(|e| {
                 Attempt::Retry(
-                    LauncherError::network("The connection dropped during a download")
-                        .with_detail(e),
+                    LauncherError::network(
+                        ErrorCode::ConnectionDropped,
+                        "The connection dropped during a download",
+                    )
+                    .with_detail(e),
                 )
             })?;
             file.write_all(&chunk)

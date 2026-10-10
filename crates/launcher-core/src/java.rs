@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::{
     download::{DownloadRequest, Downloader, Hashes},
-    error::{LauncherError, Result},
+    error::{ErrorCode, LauncherError, Result},
     events::EventSink,
     fsutil::{safe_join, write_atomic},
     meta::{
@@ -92,9 +92,11 @@ pub fn select_runtime<'a>(
         .and_then(|components| components.get(component))
         .and_then(|entries| entries.first())
         .ok_or_else(|| {
-            LauncherError::java(format!(
-                "There's no official Java ({component}) for this computer"
-            ))
+            LauncherError::java(
+                ErrorCode::JavaUnavailable,
+                format!("There's no official Java ({component}) for this computer"),
+            )
+            .with_param("component", component)
             .with_fix("Choose a Java installation in the instance settings")
         })
 }
@@ -107,8 +109,11 @@ pub fn plan_runtime(manifest: &RuntimeManifest, dest: &Path) -> Result<RuntimePl
     };
     for (rel, file) in &manifest.files {
         let path = safe_join(dest, rel).ok_or_else(|| {
-            LauncherError::integrity("The Java download list contains an unsafe path")
-                .with_detail(rel)
+            LauncherError::integrity(
+                ErrorCode::UnsafeGameData,
+                "The Java download list contains an unsafe path",
+            )
+            .with_detail(rel)
         })?;
         match file {
             RuntimeFile::File {

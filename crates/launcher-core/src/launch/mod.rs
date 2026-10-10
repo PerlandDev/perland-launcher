@@ -12,7 +12,7 @@ pub use redact::Redactor;
 
 use crate::{
     accounts::Session,
-    error::{LauncherError, Result},
+    error::{ErrorCode, LauncherError, Result},
     events::{Event, EventSink},
     install::{classpath, ResolvedVersion},
     meta::rules::{resolve_args, RuleContext},
@@ -173,10 +173,11 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
         ),
         (_, Some(legacy)) => args.extend(legacy.split_whitespace().map(|t| substitute(t, &vars))),
         _ => {
-            return Err(LauncherError::loader(format!(
-                "{} has no game arguments",
-                json.id
-            )))
+            return Err(LauncherError::loader(
+                ErrorCode::NoGameArguments,
+                format!("{} has no game arguments", json.id),
+            )
+            .with_param("version", &json.id))
         }
     }
     Ok(LaunchCommand {
@@ -228,7 +229,7 @@ pub async fn run(
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     let mut child = command.spawn().map_err(|e| {
-        LauncherError::java("Java couldn't be started")
+        LauncherError::java(ErrorCode::JavaStartFailed, "Java couldn't be started")
             .with_fix("Reinstall Java from the instance settings")
             .with_detail(e)
     })?;

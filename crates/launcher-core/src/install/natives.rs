@@ -4,7 +4,7 @@ use std::{
 };
 
 use super::NativeJar;
-use crate::error::{LauncherError, Result};
+use crate::error::{ErrorCode, LauncherError, Result};
 
 /// Records which jars a natives folder was built from.
 const MARKER: &str = ".perland-natives";
@@ -36,11 +36,12 @@ pub fn extract_all(jars: &[NativeJar], dest: &Path) -> Result<()> {
     if dest.exists() {
         if let Err(e) = fs::remove_dir_all(dest) {
             let _ = fs::remove_dir_all(&tmp);
-            return Err(
-                LauncherError::game("Another copy of this Minecraft version is running")
-                    .with_fix("Close it and try again")
-                    .with_detail(e),
-            );
+            return Err(LauncherError::game(
+                ErrorCode::VersionInUse,
+                "Another copy of this Minecraft version is running",
+            )
+            .with_fix("Close it and try again")
+            .with_detail(e));
         }
     }
     fs::rename(&tmp, dest)?;
@@ -74,9 +75,18 @@ fn build(jars: &[NativeJar], dir: &Path, marker: &str) -> Result<()> {
 
 fn extract_one(jar: &Path, exclude: &[String], dest: &Path) -> Result<()> {
     let bad = |e: zip::result::ZipError| {
-        LauncherError::integrity(format!("{} isn't a valid archive", jar.display()))
-            .with_fix("Repair the instance to download it again")
-            .with_detail(e)
+        LauncherError::integrity(
+            ErrorCode::ArchiveInvalid,
+            format!("{} isn't a valid archive", jar.display()),
+        )
+        .with_param(
+            "file",
+            jar.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+        )
+        .with_fix("Repair the instance to download it again")
+        .with_detail(e)
     };
     let mut archive = zip::ZipArchive::new(fs::File::open(jar)?).map_err(bad)?;
     for i in 0..archive.len() {

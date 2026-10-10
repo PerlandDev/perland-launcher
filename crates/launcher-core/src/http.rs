@@ -1,7 +1,7 @@
 //! The one HTTP client setup every launcher request goes through.
 use std::time::Duration;
 
-use crate::error::{LauncherError, Result};
+use crate::error::{ErrorCode, LauncherError, Result};
 
 /// The descriptive `User-Agent` sent with every request.
 pub fn user_agent(launcher_version: &str) -> String {
@@ -16,7 +16,13 @@ pub fn client(launcher_version: &str) -> Result<reqwest::Client> {
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(30))
         .build()
-        .map_err(|e| LauncherError::network("Couldn't start the HTTP client").with_detail(e))
+        .map_err(|e| {
+            LauncherError::network(
+                ErrorCode::HttpClientFailed,
+                "Couldn't start the HTTP client",
+            )
+            .with_detail(e)
+        })
 }
 
 #[cfg(test)]

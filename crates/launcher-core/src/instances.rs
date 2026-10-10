@@ -6,7 +6,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::{LauncherError, Result},
+    error::{ErrorCode, LauncherError, Result},
     fsutil::write_atomic,
     meta::loaders::LoaderKind,
 };
@@ -143,8 +143,11 @@ impl InstanceStore {
 
     pub async fn save(&self, instance: &Instance) -> Result<()> {
         check_id(&instance.id)?;
-        let bytes = serde_json::to_vec_pretty(instance)
-            .map_err(|e| LauncherError::disk("Couldn't save the instance").with_detail(e))?;
+        let bytes = serde_json::to_vec_pretty(instance).map_err(|e| {
+            LauncherError::disk(ErrorCode::DiskWriteFailed, "Couldn't save the instance")
+                .with_param("item", "instance")
+                .with_detail(e)
+        })?;
         write_atomic(&self.json_path(&instance.id), &bytes).await
     }
 
@@ -152,12 +155,21 @@ impl InstanceStore {
         check_id(id)?;
         let path = self.json_path(id);
         let bytes = tokio::fs::read(&path).await.map_err(|e| {
-            LauncherError::disk(format!("Instance \"{id}\" wasn't found")).with_detail(e)
+            LauncherError::disk(
+                ErrorCode::InstanceNotFound,
+                format!("Instance \"{id}\" wasn't found"),
+            )
+            .with_param("id", id)
+            .with_detail(e)
         })?;
         serde_json::from_slice(&bytes).map_err(|e| {
-            LauncherError::disk(format!("The settings file of \"{id}\" is damaged"))
-                .with_fix("Restore instance.json from a backup or recreate the instance")
-                .with_detail(e)
+            LauncherError::disk(
+                ErrorCode::InstanceDamaged,
+                format!("The settings file of \"{id}\" is damaged"),
+            )
+            .with_param("id", id)
+            .with_fix("Restore instance.json from a backup or recreate the instance")
+            .with_detail(e)
         })
     }
 
@@ -191,7 +203,10 @@ fn check_id(id: &str) -> Result<()> {
     if is_valid_instance_id(id) {
         Ok(())
     } else {
-        Err(LauncherError::disk("That instance id isn't valid").with_detail(id))
+        Err(
+            LauncherError::disk(ErrorCode::InstanceIdInvalid, "That instance id isn't valid")
+                .with_detail(id),
+        )
     }
 }
 

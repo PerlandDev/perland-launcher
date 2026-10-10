@@ -11,7 +11,7 @@ use serde::de::DeserializeOwned;
 
 use crate::{
     download::hash::sha1_hex,
-    error::{LauncherError, Result},
+    error::{ErrorCode, LauncherError, Result},
     fsutil::write_atomic,
 };
 
@@ -60,9 +60,10 @@ impl MetaClient {
         match request.send().await {
             Ok(resp) if resp.status() == reqwest::StatusCode::NOT_MODIFIED => {
                 cached.ok_or_else(|| {
-                    LauncherError::network(format!(
-                        "{url} said nothing changed, but there's no saved copy"
-                    ))
+                    LauncherError::network(
+                        ErrorCode::MetaCacheMissing,
+                        format!("{url} said nothing changed, but there's no saved copy"),
+                    )
                 })
             }
             Ok(resp) if resp.status().is_success() => {
@@ -72,8 +73,11 @@ impl MetaClient {
                     .and_then(|v| v.to_str().ok())
                     .map(str::to_owned);
                 let bytes = resp.bytes().await.map_err(|e| {
-                    LauncherError::network(format!("Downloading {url} was interrupted"))
-                        .with_detail(e)
+                    LauncherError::network(
+                        ErrorCode::ConnectionDropped,
+                        format!("Downloading {url} was interrupted"),
+                    )
+                    .with_detail(e)
                 })?;
                 if let Err(invalid) = validate(&bytes) {
                     return match cached {
@@ -100,15 +104,21 @@ impl MetaClient {
                     let status = resp.status();
                     let message = format!("{url} answered {status}");
                     Err(if status.is_client_error() {
-                        LauncherError::loader(message).with_fix("Check that this version exists")
+                        LauncherError::loader(ErrorCode::MetaNotFound, message)
+                            .with_param("status", status.as_u16())
+                            .with_fix("Check that this version exists")
                     } else {
-                        LauncherError::network(message).with_fix("Try again in a few minutes")
+                        LauncherError::network(ErrorCode::HostTrouble, message)
+                            .with_param("host", host_of(url))
+                            .with_param("status", status.as_u16())
+                            .with_fix("Try again in a few minutes")
                     })
                 }
             },
             Err(e) => match cached {
                 Some(c) => Ok(c),
                 None => Err(LauncherError::network(
+                    ErrorCode::Offline,
                     "You seem to be offline, and this hasn't been downloaded before",
                 )
                 .with_fix("Connect to the internet and try again")
@@ -135,10 +145,11 @@ impl MetaClient {
             if sha1_hex(b).eq_ignore_ascii_case(sha1) {
                 Ok(())
             } else {
-                Err(
-                    LauncherError::integrity(format!("Data from {url} didn't match its checksum"))
-                        .with_fix("Try again in a minute"),
+                Err(LauncherError::integrity(
+                    ErrorCode::MetaChecksum,
+                    format!("Data from {url} didn't match its checksum"),
                 )
+                .with_fix("Try again in a minute"))
             }
         };
         let bytes = self.fetch(url, verify).await?;
@@ -149,6 +160,18 @@ impl MetaClient {
 }
 
 pub fn parse_json<T: DeserializeOwned>(url: &str, bytes: &[u8]) -> Result<T> {
-    serde_json::from_slice(bytes)
-        .map_err(|e| LauncherError::loader(format!("Unexpected data from {url}")).with_detail(e))
+    serde_json::from_slice(bytes).map_err(|e| {
+        LauncherError::loader(
+            ErrorCode::MetaUnexpected,
+            format!("Unexpected data from {url}"),
+        )
+        .with_detail(e)
+    })
+}
+
+fn host_of(url: &str) -> &str {
+    url.split("://")
+        .nth(1)
+        .and_then(|rest| rest.split('/').next())
+        .unwrap_or(url)
 }
