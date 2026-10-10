@@ -7,6 +7,7 @@ pub mod fsutil;
 pub mod install;
 pub mod instances;
 pub mod java;
+pub mod launch;
 pub mod meta;
 pub mod paths;
 pub mod platform;
