@@ -2,6 +2,7 @@
 //! pack is; this module decides (`plan`), touches the disk (`apply`), and records (`lockfile`).
 pub(crate) mod apply;
 pub mod lockfile;
+pub mod manual;
 pub mod plan;
 
 use std::{
@@ -141,6 +142,16 @@ impl Syncer {
         };
         let root = installer.dirs.root().to_path_buf();
         Self::new(installer, sources, root)
+    }
+
+    /// Copy every blocked file found in `dir` into the object cache (the player's copy stays
+    /// where it is). Returns how many were found; the next sync uses them.
+    pub async fn import_manual(&self, dir: &Path, files: &[ManualFile]) -> Result<usize> {
+        let found = manual::scan(dir, files).await?;
+        for (file, path) in &found {
+            self.sources.cache.insert_file(path, &file.hashes).await?;
+        }
+        Ok(found.len())
     }
 
     /// Make instance `id` match `desired`. Fails with `instance_locked` while anyone else holds

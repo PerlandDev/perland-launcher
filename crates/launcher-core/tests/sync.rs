@@ -324,3 +324,48 @@ async fn a_rename_during_a_loader_change_survives() {
     assert_eq!(saved.name, "Renamed", "the sync must not revert the rename");
     assert_eq!(saved.game.loader.unwrap().version, "47.4.30");
 }
+
+#[tokio::test]
+async fn blocked_curseforge_files_wait_for_a_manual_download() {
+    let env = Env::new().await;
+    let url = PackBuilder::new(&env.server, "Tiny", "1.0.0")
+        .url_mod("appleskin", "appleskin.jar", b"apple v1", "both", None)
+        .cf_mod("cozy", "cozy.jar", 1234567, 42, b"cozy", true)
+        .mount(&env.server)
+        .await;
+    let (instance, desired) = env.instance(&url).await;
+    let files = match env.sync(&instance.id, &desired).await.unwrap() {
+        SyncOutcome::NeedsManual(files) => files,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(files.len(), 1);
+    assert_eq!(
+        (files[0].path.as_str(), files[0].file_name.as_str()),
+        ("mods/cozy.jar", "cozy.jar")
+    );
+    assert_eq!(files[0].page_url, "https://www.curseforge.com/projects/42");
+    assert!(
+        !env.game_file(&instance.id, "mods/appleskin.jar").exists(),
+        "nothing applied"
+    );
+    assert!(Managed::load(&env.store.perland_dir(&instance.id))
+        .await
+        .is_none());
+
+    let downloads = env._tmp.path().join("Downloads");
+    std::fs::create_dir_all(&downloads).unwrap();
+    std::fs::write(downloads.join("cozy (1).jar"), b"cozy").unwrap();
+    assert_eq!(
+        env.syncer.import_manual(&downloads, &files).await.unwrap(),
+        1
+    );
+    done(env.sync(&instance.id, &desired).await.unwrap());
+    assert_eq!(
+        std::fs::read(env.game_file(&instance.id, "mods/cozy.jar")).unwrap(),
+        b"cozy"
+    );
+    assert!(
+        downloads.join("cozy (1).jar").exists(),
+        "the player's download is left alone"
+    );
+}

@@ -19,6 +19,7 @@ zip.workspace = true
 toml.workspace = true
 percent-encoding.workspace = true
 fs4.workspace = true
+dirs.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
