@@ -372,7 +372,7 @@ pub fn candidate_paths(platform: Platform, env: &dyn Fn(&str) -> Option<OsString
     }
     let mut seen = HashSet::new();
     out.into_iter()
-        .filter(|p| p.is_file() && seen.insert(p.clone()))
+        .filter(|p| p.is_absolute() && p.is_file() && seen.insert(p.clone()))
         .collect()
 }
 
@@ -597,6 +597,25 @@ mod tests {
             .filter(|p| p.starts_with(tmp.path()))
             .collect();
         assert_eq!(found, vec![java]);
+    }
+
+    #[test]
+    fn relative_path_entries_are_ignored() {
+        // A java reachable through a relative PATH entry (resolved against the current
+        // directory) must not be returned: every path handed to Java is absolute.
+        let cwd = std::env::current_dir().unwrap();
+        let tmp = tempfile::tempdir_in(&cwd).unwrap();
+        touch(tmp.path(), "bin/java");
+        let absolute = touch(tmp.path(), "abs/java");
+        let relative = tmp.path().strip_prefix(&cwd).unwrap().join("bin");
+        let path_var =
+            std::env::join_paths([PathBuf::from("."), relative, tmp.path().join("abs")]).unwrap();
+        let env = |key: &str| (key == "PATH").then(|| path_var.clone());
+        let found: Vec<PathBuf> = candidate_paths(crate::test_support::LINUX_X64, &env)
+            .into_iter()
+            .filter(|p| p.is_relative() || p.starts_with(tmp.path()))
+            .collect();
+        assert_eq!(found, vec![absolute]);
     }
 
     #[test]
