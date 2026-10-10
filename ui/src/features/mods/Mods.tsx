@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -15,16 +16,21 @@ import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Toggle } from '../../ui/Toggle';
 
 const displayName = (fileName: string) => fileName.replace(/\.disabled$/, '').replace(/\.jar$/i, '');
+const isJar = (path: string) => /\.jar$/i.test(path);
+const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
-/** Lets one run of an action be in flight at a time; the ref closes the gap before React re-renders. */
+type Notice = { kind: 'busy' } | { kind: 'skipped'; names: string[] };
+
+/** Lets one run of an action be in flight at a time; the ref closes the gap before React re-renders. Returns whether it started. */
 function useSingleFlight() {
   const busy = useRef(false);
   return useCallback((start: (done: () => void) => void) => {
-    if (busy.current) return;
+    if (busy.current) return false;
     busy.current = true;
     start(() => {
       busy.current = false;
     });
+    return true;
   }, []);
 }
 
@@ -33,6 +39,8 @@ export function Mods({ id }: { id: string }) {
   const listing = useInstances();
   const instance = listing.data?.instances.find((i) => i.id === id);
   const mods = useMods(id);
+  const queryClient = useQueryClient();
+  const refetchMods = mods.refetch;
   const { toggle, add, remove } = useModMutations(id, { inline: true });
   const [removing, setRemoving] = useState<LocalMod | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -41,6 +49,8 @@ export function Mods({ id }: { id: string }) {
   // Failures from the file dialog, drag and drop, opening the folder, toggling and adding.
   const [failure, setFailure] = useState<{ error: unknown } | null>(null);
   const fail = useCallback((error: unknown) => setFailure({ error }), []);
+  // What happened to the files the player just gave us, when it is not an error.
+  const [notice, setNotice] = useState<Notice | null>(null);
   const addOnce = useSingleFlight();
   const toggleOnce = useSingleFlight();
   const removeOnce = useSingleFlight();
@@ -49,10 +59,24 @@ export function Mods({ id }: { id: string }) {
   const submit = useCallback(
     (paths: string[]) => {
       if (paths.length === 0) return;
-      addOnce((done) => {
+      const jars = paths.filter(isJar);
+      const skipped: Notice | null = jars.length < paths.length ? { kind: 'skipped', names: paths.filter((p) => !isJar(p)).map(baseName) } : null;
+      if (jars.length === 0) {
+        setNotice(skipped);
+        return;
+      }
+      const started = addOnce((done) => {
         setFailure(null);
-        addMods(paths, { onError: fail, onSettled: done });
+        setNotice(skipped);
+        addMods(jars, {
+          onError: fail,
+          onSettled: () => {
+            setNotice((current) => (current?.kind === 'busy' ? null : current));
+            done();
+          },
+        });
       });
+      if (!started) setNotice({ kind: 'busy' });
     },
     [addOnce, addMods, fail],
   );
@@ -84,9 +108,19 @@ export function Mods({ id }: { id: string }) {
     };
   }, [submit, fail]);
 
+  // Players add files through Open folder and come back: show what is there now.
+  useEffect(() => {
+    const onFocus = () => {
+      if (queryClient.isMutating() === 0) void refetchMods();
+    };
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [queryClient, refetchMods]);
+
   const pick = async () => {
     setPicking(true);
     setFailure(null);
+    setNotice(null);
     try {
       const chosen = await open({ multiple: true, title: t('mods.pickTitle'), filters: [{ name: t('mods.jarFiles'), extensions: ['jar'] }] });
       if (Array.isArray(chosen)) submit(chosen);
@@ -114,6 +148,10 @@ export function Mods({ id }: { id: string }) {
     removeOnce((done) => remove.mutate(mod.fileName, { onSuccess: closeRemove, onSettled: done }));
 
   const list = mods.data ?? [];
+  // A name normally keys its row, so a toggle (which renames the file) keeps focus. A .jar and its
+  // .jar.disabled twin share a name, so those fall back to the file name.
+  const nameCount = new Map<string, number>();
+  for (const mod of list) nameCount.set(displayName(mod.fileName), (nameCount.get(displayName(mod.fileName)) ?? 0) + 1);
   return (
     <ScreenFrame
       title={t('mods.title')}
@@ -139,6 +177,11 @@ export function Mods({ id }: { id: string }) {
         )}
         {dragging && <p className="font-semibold text-amber">{t('mods.dropHere')}</p>}
         {failure && <ErrorCard error={failure.error} />}
+        {notice && (
+          <p role="status" className="panel p-4 text-ink-dim">
+            {notice.kind === 'busy' ? t('mods.busy') : t('mods.skipped', { names: notice.names.join(', ') })}
+          </p>
+        )}
         {mods.isPending && <p className="text-ink-dim">{t('common.loading')}</p>}
         {mods.isError && (
           <ErrorCard
@@ -155,8 +198,7 @@ export function Mods({ id }: { id: string }) {
           {list.map((mod) => {
             const name = displayName(mod.fileName);
             return (
-              // Keyed by name, not file: toggling renames the file, and the row must keep keyboard focus.
-              <li key={name} className="panel flex items-center gap-4 px-4 py-3">
+              <li key={(nameCount.get(name) ?? 0) > 1 ? mod.fileName : name} className="panel flex items-center gap-4 px-4 py-3">
                 <Package className="h-6 w-6 flex-none text-ink-dim" aria-hidden />
                 <div className="min-w-0 flex-1">
                   <p className={`truncate font-semibold ${mod.enabled ? '' : 'text-ink-dim'}`}>{name}</p>

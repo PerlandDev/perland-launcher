@@ -107,13 +107,18 @@ export function useAccountMutations(opts: Opts = {}) {
 export function useModMutations(id: string, opts: Opts = {}) {
   const qc = useQueryClient();
   const onSuccess = (list: Awaited<ReturnType<typeof commands.modsList>>) => qc.setQueryData(qk.mods(id), list);
+  // A failed change may still have touched the folder (a partial add), so the list is asked for again.
+  const failed = (error: unknown) => {
+    void qc.invalidateQueries({ queryKey: qk.mods(id) });
+    onError(opts)(error);
+  };
   return {
     toggle: useMutation({
       mutationFn: ({ file, enabled }: { file: string; enabled: boolean }) => commands.modSetEnabled(id, file, enabled),
       onSuccess,
-      onError: onError(opts),
+      onError: failed,
     }),
-    add: useMutation({ mutationFn: (paths: string[]) => commands.modsAdd(id, paths), onSuccess, onError: onError(opts) }),
-    remove: useMutation({ mutationFn: (file: string) => commands.modRemove(id, file), onSuccess, onError: onError(opts) }),
+    add: useMutation({ mutationFn: (paths: string[]) => commands.modsAdd(id, paths), onSuccess, onError: failed }),
+    remove: useMutation({ mutationFn: (file: string) => commands.modRemove(id, file), onSuccess, onError: failed }),
   };
 }

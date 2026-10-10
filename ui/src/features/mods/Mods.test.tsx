@@ -77,9 +77,9 @@ it('sends one toggle for a double click and shows a failed toggle', async () => 
   const zoomify = await screen.findByRole('switch', { name: 'Use zoomify-2.11.2' });
   await user.dblClick(zoomify);
   expect(sent(calls, 'mod_set_enabled')).toHaveLength(1);
-  expect(zoomify).toBeDisabled();
+  expect(zoomify).toHaveAttribute('aria-disabled', 'true');
   await act(async () => toggle.release());
-  await waitFor(() => expect(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' })).not.toHaveAttribute('aria-disabled'));
 
   toggle.mode = 'fail';
   await user.click(screen.getByRole('switch', { name: 'Use sodium-fabric-0.5.8+mc1.20.1' }));
@@ -139,7 +139,7 @@ it('adds dropped files and shows the drop target while dragging', async () => {
   expect(await screen.findByText('a')).toBeInTheDocument();
 });
 
-it('ignores a drop with no files and a drop while an add is already running', async () => {
+it('ignores a drop with no files, and tells the player when a drop arrives while an add is running', async () => {
   const { calls, backend } = renderApp(<Mods id="asalith-fields" />);
   const add = intercept(backend, 'mods_add');
   add.mode = 'hold';
@@ -149,6 +149,7 @@ it('ignores a drop with no files and a drop while an add is already running', as
   await dropEvent({ type: 'drop', paths: ['C:/a.jar'], position: { x: 1, y: 1 } });
   await dropEvent({ type: 'drop', paths: ['C:/b.jar'], position: { x: 1, y: 1 } });
   expect(sent(calls, 'mods_add')).toEqual([{ id: 'asalith-fields', paths: ['C:/a.jar'] }]);
+  expect(screen.getByRole('status')).toHaveTextContent('Still adding the last files. Drop these again in a moment.');
   await act(async () => add.release());
 });
 
@@ -246,4 +247,88 @@ it('offers Try again when the list fails to load', async () => {
   await user.click(screen.getByRole('button', { name: 'Try again' }));
   expect(await screen.findByText(sodium)).toBeInTheDocument();
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('keeps a toggled switch focused while it is busy', async () => {
+  const { user, backend } = renderApp(<Mods id="asalith-fields" />);
+  intercept(backend, 'mod_set_enabled').mode = 'hold';
+  const zoomify = await screen.findByRole('switch', { name: 'Use zoomify-2.11.2' });
+  zoomify.focus();
+  await user.keyboard('{Enter}');
+  expect(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' })).toHaveFocus();
+  expect(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' })).toHaveAttribute('aria-disabled', 'true');
+});
+
+it('sends only the .jar files of a mixed drop and names the skipped ones', async () => {
+  const { calls } = renderApp(<Mods id="asalith-fields" />);
+  await screen.findByText(sodium);
+  await dropEvent({ type: 'drop', paths: ['C:/mods/a.jar', 'C:/mods/notes.txt', 'D:\\mods\\B.JAR', 'C:/mods/readme'], position: { x: 1, y: 1 } });
+  await waitFor(() => expect(sent(calls, 'mods_add')).toEqual([{ id: 'asalith-fields', paths: ['C:/mods/a.jar', 'D:\\mods\\B.JAR'] }]));
+  expect(screen.getByRole('status')).toHaveTextContent('Skipped (not a .jar): notes.txt, readme');
+});
+
+it('does not call the backend when nothing dropped is a .jar', async () => {
+  const { calls } = renderApp(<Mods id="asalith-fields" />);
+  await screen.findByText(sodium);
+  await dropEvent({ type: 'drop', paths: ['C:/mods/notes.txt'], position: { x: 1, y: 1 } });
+  expect(screen.getByRole('status')).toHaveTextContent('Skipped (not a .jar): notes.txt');
+  expect(sent(calls, 'mods_add')).toEqual([]);
+  // The next real add clears the note.
+  await dropEvent({ type: 'drop', paths: ['C:/mods/a.jar'], position: { x: 1, y: 1 } });
+  await waitFor(() => expect(sent(calls, 'mods_add')).toHaveLength(1));
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+});
+
+it.each(['toggle', 'add', 'remove'] as const)('asks for the list again after a failed %s so it never goes stale', async (action) => {
+  const { user, calls, backend } = renderApp(<Mods id="asalith-fields" />);
+  await screen.findByText(sodium);
+  const command = { toggle: 'mod_set_enabled', add: 'mods_add', remove: 'mod_remove' }[action];
+  intercept(backend, command).mode = 'fail';
+  const before = sent(calls, 'mods_list').length;
+  if (action === 'toggle') await user.click(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' }));
+  if (action === 'add') await user.click(screen.getByRole('button', { name: 'Add mods' }));
+  if (action === 'remove') {
+    await user.click(screen.getByRole('button', { name: `Remove ${sodium}` }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  }
+  await waitFor(() => expect(sent(calls, 'mods_list').length).toBe(before + 1));
+});
+
+it('shows a file that was added even though the add reported a failure', async () => {
+  const { user, backend } = renderApp(<Mods id="asalith-fields" />);
+  await screen.findByText(sodium);
+  const handle = backend.handle;
+  vi.spyOn(backend, 'handle').mockImplementation(async (cmd, args) => {
+    if (cmd !== 'mods_add') return handle(cmd, args);
+    await handle(cmd, args); // the first file was copied, then the second failed
+    throw failure;
+  });
+  await user.click(screen.getByRole('button', { name: 'Add mods' }));
+  expect(await screen.findByText('lithium-fabric-0.11.2')).toBeInTheDocument();
+  expect(screen.getByRole('alert')).toBeInTheDocument();
+});
+
+it('shows both rows when a mod exists as a .jar and a .jar.disabled twin', async () => {
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { qc, backend } = renderApp(<Mods id="asalith-fields" />);
+  await screen.findByText(sodium);
+  backend.state.mods.get('asalith-fields')!.push({ fileName: 'sodium-fabric-0.5.8+mc1.20.1.jar.disabled', enabled: false, size: 1000 });
+  await act(async () => qc.invalidateQueries({ queryKey: ['mods', 'asalith-fields'] }));
+  await waitFor(() => expect(screen.getAllByText(sodium)).toHaveLength(2));
+  expect(screen.getAllByRole('switch', { name: `Use ${sodium}` })).toHaveLength(2);
+  expect(error).not.toHaveBeenCalled();
+});
+
+it('refreshes the list when the window regains focus, and stops after the screen goes away', async () => {
+  const { calls, unmount } = renderApp(<Mods id="asalith-fields" />);
+  await screen.findByText(sodium);
+  const before = sent(calls, 'mods_list').length;
+  await act(async () => {
+    window.dispatchEvent(new Event('focus'));
+  });
+  await waitFor(() => expect(sent(calls, 'mods_list').length).toBe(before + 1));
+  unmount();
+  window.dispatchEvent(new Event('focus'));
+  await act(async () => {});
+  expect(sent(calls, 'mods_list').length).toBe(before + 1);
 });

@@ -343,7 +343,7 @@
     translate: 1.125rem 0;
     background: var(--color-lime);
   }
-  .toggle:disabled {
+  .toggle[aria-disabled='true'] {
     cursor: not-allowed;
     opacity: 0.5;
   }

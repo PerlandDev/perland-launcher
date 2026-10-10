@@ -1,3 +1,7 @@
+/**
+ * `disabled` is aria-disabled, not the attribute: Chromium blurs a focused button the moment it
+ * becomes natively disabled, which would throw a keyboard player out of the list mid-toggle.
+ */
 export function Toggle({
   checked,
   onChange,
@@ -10,7 +14,17 @@ export function Toggle({
   disabled?: boolean;
 }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} className="toggle" onClick={() => onChange(!checked)}>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      aria-disabled={disabled || undefined}
+      className="toggle"
+      onClick={() => {
+        if (!disabled) onChange(!checked);
+      }}
+    >
       <span />
     </button>
   );

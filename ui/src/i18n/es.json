@@ -143,6 +143,8 @@
     "removeTitle": "¿Quitar {{name}}?",
     "removeBody": "Se borra el archivo de la carpeta de mods de esta instancia.",
     "removeConfirm": "Quitar",
+    "busy": "Todavía se están agregando los archivos anteriores. Suéltalos de nuevo en un momento.",
+    "skipped": "Omitidos (no son .jar): {{names}}",
     "pickTitle": "Elegir mods",
     "jarFiles": "Archivos de mods"
   },

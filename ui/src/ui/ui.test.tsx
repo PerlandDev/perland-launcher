@@ -60,6 +60,19 @@ describe('Toggle', () => {
     await userEvent.click(screen.getByRole('switch', { name: 'Minimize while playing' }));
     expect(onChange).toHaveBeenCalledWith(true);
   });
+
+  it('when disabled stays focusable but ignores clicks and keys', async () => {
+    const onChange = vi.fn();
+    render(<Toggle checked={false} disabled onChange={onChange} label="Busy" />);
+    const toggle = screen.getByRole('switch', { name: 'Busy' });
+    expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    expect(toggle).toBeEnabled();
+    toggle.focus();
+    await userEvent.keyboard('{Enter} ');
+    await userEvent.click(toggle);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(toggle).toHaveFocus();
+  });
 });
 
 describe('Dialog', () => {

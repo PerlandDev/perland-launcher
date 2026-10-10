@@ -143,6 +143,8 @@
     "removeTitle": "Remove {{name}}?",
     "removeBody": "The file is deleted from this instance's mods folder.",
     "removeConfirm": "Remove",
+    "busy": "Still adding the last files. Drop these again in a moment.",
+    "skipped": "Skipped (not a .jar): {{names}}",
     "pickTitle": "Choose mods",
     "jarFiles": "Mod files"
   },
