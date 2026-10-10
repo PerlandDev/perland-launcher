@@ -1,0 +1,77 @@
+import { act, screen, within } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { routeSnapshot } from '../../state/route';
+import { runStore } from '../../state/runStore';
+import { renderApp, sent } from '../../test/backend';
+import { Home } from './Home';
+
+describe('Home', () => {
+  it('shows the selected instance with its versions and plays it', async () => {
+    const { user, calls } = renderApp(<Home id="asalith-fields" />);
+    expect(await screen.findByRole('heading', { name: 'Asalith Fields' })).toBeInTheDocument();
+    expect(screen.getByText('Minecraft 1.20.1 · Fabric 0.16.14')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Play' }));
+    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields' }]);
+  });
+
+  it('shows progress while preparing and stops while running', async () => {
+    const { user, calls } = renderApp(<Home id="asalith-fields" />);
+    await screen.findByRole('heading', { name: 'Asalith Fields' });
+    act(() => {
+      runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'preparing', exit: null });
+      runStore.apply({
+        type: 'progress',
+        instance: 'asalith-fields',
+        task: { key: 'install_minecraft', params: { version: '1.20.1' } },
+        done: 3,
+        total: 6,
+        bytes: 0,
+      });
+    });
+    expect(screen.getByRole('button', { name: 'Cancel: Installing Minecraft 1.20.1' })).toBeInTheDocument();
+    act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null }));
+    await user.click(screen.getByRole('button', { name: 'Stop' }));
+    expect(sent(calls, 'stop')).toEqual([{ id: 'asalith-fields' }]);
+  });
+
+  it('shows the empty state for a fresh install', async () => {
+    renderApp(<Home id="creative-flat" />, { firstRun: true });
+    expect(await screen.findByRole('heading', { name: 'No instances yet' })).toBeInTheDocument();
+  });
+
+  it('disables Play without an account and links to Accounts', async () => {
+    const { backend, user } = renderApp(<Home id="creative-flat" />);
+    backend.state.accounts.active = null;
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
+    await user.click(await screen.findByRole('button', { name: 'Add an account to play' }));
+    expect(routeSnapshot()).toEqual({ name: 'accounts' });
+  });
+
+  it('offers to create the first instance when there are none', async () => {
+    const { user } = renderApp(<Home id={null} />, { firstRun: true });
+    await user.click(await screen.findByRole('button', { name: 'Create an instance' }));
+    expect(routeSnapshot()).toEqual({ name: 'newInstance' });
+  });
+
+  it('explains a damaged instance and can delete it', async () => {
+    const { user, calls } = renderApp(<Home id="old-pack" />);
+    expect(await screen.findByText('The settings file of “old-pack” is damaged.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete “old-pack”?' });
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+    expect(sent(calls, 'instance_delete')).toEqual([{ id: 'old-pack' }]);
+  });
+
+  it('renames from the menu', async () => {
+    const { user, calls } = renderApp(<Home id="creative-flat" />);
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    const input = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(input);
+    await user.type(input, 'Flat World');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(sent(calls, 'instance_rename')).toEqual([{ id: 'creative-flat', name: 'Flat World' }]);
+  });
+});
