@@ -1,5 +1,5 @@
 import { emit } from '@tauri-apps/api/event';
-import { act, screen } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { CLOSE_REQUESTED } from './ipc/events';
 import { createMockBackend } from './ipc/mock';
@@ -45,5 +45,42 @@ describe('App', () => {
     failing = false;
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('navigation', { name: 'Instances' })).toBeInTheDocument();
+  });
+
+  it('keeps the error screen up, busy, while a retry of the settings is in flight', async () => {
+    const backend = createMockBackend();
+    let attempts = 0;
+    let release: () => void = () => {};
+    const { user } = renderWithProviders(<App />, {
+      ipc: (cmd, args) => {
+        if (cmd !== 'settings_get') return backend.handle(cmd, args);
+        attempts += 1;
+        if (attempts === 1) {
+          return Promise.reject({ category: 'game', code: 'internal', message: 'x', fix: null, detail: null, params: {} });
+        }
+        return new Promise((resolve) => {
+          release = () => resolve(backend.handle(cmd, args));
+        });
+      },
+    });
+    await screen.findByRole('alert');
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(attempts).toBe(2));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Loading…' })).toBeDisabled();
+    expect(screen.getByRole('banner')).toBeInTheDocument(); // the title bar
+    await act(async () => release());
+    expect(await screen.findByRole('navigation', { name: 'Instances' })).toBeInTheDocument();
+  });
+
+  it('applies the language stored in the settings on load', async () => {
+    const backend = createMockBackend();
+    renderWithProviders(<App />, {
+      ipc: async (cmd, args) => {
+        const result = await backend.handle(cmd, args);
+        return cmd === 'settings_get' ? { ...(result as object), language: 'es' } : result;
+      },
+    });
+    expect(await screen.findByRole('navigation', { name: 'Instancias' })).toBeInTheDocument();
   });
 });

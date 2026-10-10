@@ -49,3 +49,20 @@ it('keeps the games it could read when some log tails fail, and reports once', a
   expect(store.log('a')).toEqual([]);
   expect(toastsSnapshot()).toHaveLength(1);
 });
+
+it('does not undo a live event that arrives while the log tails are being fetched', async () => {
+  const store = createRunStore();
+  mockIPC((cmd) => {
+    if (cmd === 'run_states') return [{ instance: 'pack', state: 'running' }];
+    if (cmd === 'log_tail') {
+      // The game exits and prints a last line while the tail is still on its way.
+      store.apply({ type: 'log', instance: 'pack', lines: ['bye'] });
+      store.apply({ type: 'run_state', instance: 'pack', state: 'idle', exit: null });
+      return ['old'];
+    }
+    return null;
+  });
+  await hydrateRuns(store);
+  expect(store.run('pack').state).toBe('idle');
+  expect(store.log('pack')).toEqual(['bye']);
+});

@@ -24,6 +24,8 @@ export function createRunStore() {
   let runs = new Map<string, RunView>();
   let logs = new Map<string, string[]>();
   let activeIds: string[] = [];
+  // Instances whose run state arrived as a live event; a later reload snapshot is older than that.
+  const heardLive = new Set<string>();
   const listeners = new Set<() => void>();
 
   const notify = () => listeners.forEach((listener) => listener());
@@ -65,6 +67,7 @@ export function createRunStore() {
           break;
         case 'run_state': {
           const { instance: id, state, exit } = event;
+          heardLive.add(id);
           if (state === 'queued') setLog(id, NO_LINES);
           setRun(id, (run) => ({
             state,
@@ -74,19 +77,25 @@ export function createRunStore() {
           break;
         }
         case 'warning':
-          return; // shown as toasts, see main.tsx
+          return; // shown as toasts, see handleEvent
       }
       notify();
     },
     hydrate(snapshots: RunSnapshot[], tails: Record<string, string[]>) {
-      for (const snapshot of snapshots) setRun(snapshot.instance, (run) => ({ ...run, state: snapshot.state }));
-      for (const [id, lines] of Object.entries(tails)) setLog(id, lines);
+      // Snapshots and tails are read after live events started arriving, so anything already heard live is newer.
+      for (const snapshot of snapshots) {
+        if (!heardLive.has(snapshot.instance)) setRun(snapshot.instance, (run) => ({ ...run, state: snapshot.state }));
+      }
+      for (const [id, lines] of Object.entries(tails)) {
+        if (!logs.has(id)) setLog(id, lines);
+      }
       notify();
     },
     reset() {
       runs = new Map();
       logs = new Map();
       activeIds = [];
+      heardLive.clear();
       notify();
     },
     dismissExit(id: string) {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Accounts } from './features/accounts/Accounts';
 import { ActivityDrawer } from './features/activity/ActivityDrawer';
@@ -53,7 +53,7 @@ function Shell() {
 }
 
 /** The first-run gate depends on the settings, so without them the only safe thing to show is a way to try again. */
-function SettingsFailed({ error, retry }: { error: unknown; retry: () => Promise<unknown> }) {
+function SettingsFailed({ error, retry, busy }: { error: unknown; retry: () => Promise<unknown>; busy: boolean }) {
   const { t } = useTranslation();
   const retryOnce = useSingleFlight();
   return (
@@ -63,7 +63,11 @@ function SettingsFailed({ error, retry }: { error: unknown; retry: () => Promise
         <div className="w-full max-w-xl">
           <ErrorCard
             error={error}
-            actions={<Button onClick={() => retryOnce((done) => void retry().finally(done))}>{t('common.retry')}</Button>}
+            actions={
+              <Button disabled={busy} onClick={() => retryOnce((done) => void retry().finally(done))}>
+                {busy ? t('common.loading') : t('common.retry')}
+              </Button>
+            }
           />
         </div>
       </main>
@@ -76,11 +80,16 @@ export default function App() {
   const language = settings.data?.language ?? null;
   useEffect(() => applyLanguage(language), [language]);
 
-  if (settings.isPending) return <div className="h-full bg-ground" aria-busy="true" />;
+  // A retry puts the query back to pending, so remember the failure to keep the error screen up meanwhile.
+  const [failure, setFailure] = useState<unknown>(null);
+  if (settings.isError && failure !== settings.error) setFailure(settings.error);
+  if (settings.data !== undefined && failure !== null) setFailure(null);
+
+  if (settings.isPending && failure === null) return <div className="h-full bg-ground" aria-busy="true" />;
   return (
     <>
       {settings.data === undefined ? (
-        <SettingsFailed error={settings.error} retry={settings.refetch} />
+        <SettingsFailed error={failure} retry={settings.refetch} busy={settings.isFetching} />
       ) : !settings.data.firstRunDone ? (
         <FirstRun />
       ) : (

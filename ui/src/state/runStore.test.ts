@@ -55,4 +55,28 @@ describe('runStore', () => {
     expect(store.run('pack').state).toBe('running');
     expect(store.log('pack')).toEqual(['a', 'b']);
   });
+
+  it('does not let a late snapshot overwrite a state the store already heard live', () => {
+    const store = createRunStore();
+    store.apply({ type: 'run_state', instance: 'pack', state: 'idle', exit: null });
+    store.hydrate([{ instance: 'pack', state: 'running' }, { instance: 'other', state: 'running' }], {});
+    expect(store.run('pack').state).toBe('idle');
+    expect(store.run('other').state).toBe('running');
+  });
+
+  it('keeps live log lines when an older tail arrives afterwards', () => {
+    const store = createRunStore();
+    store.apply({ type: 'log', instance: 'pack', lines: ['live 1', 'live 2'] });
+    store.hydrate([], { pack: ['old', 'live 1'], other: ['x'] });
+    expect(store.log('pack')).toEqual(['live 1', 'live 2']);
+    expect(store.log('other')).toEqual(['x']);
+  });
+
+  it('forgets what it heard live on reset', () => {
+    const store = createRunStore();
+    store.apply({ type: 'run_state', instance: 'pack', state: 'idle', exit: null });
+    store.reset();
+    store.hydrate([{ instance: 'pack', state: 'running' }], {});
+    expect(store.run('pack').state).toBe('running');
+  });
 });

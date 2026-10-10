@@ -15,6 +15,8 @@ export async function hydrateRuns(store: RunStore = runStore): Promise<void> {
     pushError(error);
     return;
   }
+  // States first, so the window for a game to change under us is only the log reads.
+  store.hydrate(snapshots, {});
   const results = await Promise.allSettled(
     snapshots.map(async (s) => [s.instance, await commands.logTail(s.instance)] as const),
   );
@@ -24,6 +26,6 @@ export async function hydrateRuns(store: RunStore = runStore): Promise<void> {
     if (result.status === 'fulfilled') tails[result.value[0]] = result.value[1];
     else failures.push(result.reason);
   }
-  store.hydrate(snapshots, tails);
+  store.hydrate([], tails);
   if (failures.length > 0) pushError(failures[0]);
 }
