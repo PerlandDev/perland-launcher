@@ -364,7 +364,13 @@ impl Installer {
             )
             .await?;
 
-        natives::extract_all(&libraries.natives, &self.dirs.natives_dir(&json.id))?;
+        let natives_dir = self.dirs.natives_dir(&json.id);
+        let native_jars = libraries.natives;
+        tokio::task::spawn_blocking(move || natives::extract_all(&native_jars, &natives_dir))
+            .await
+            .map_err(|e| {
+                LauncherError::disk("Couldn't extract native libraries").with_detail(e)
+            })??;
         let bytes = serde_json::to_vec_pretty(json)
             .map_err(|e| LauncherError::disk("Couldn't save the version file").with_detail(e))?;
         write_atomic(&self.dirs.version_json(&json.id), &bytes).await?;
