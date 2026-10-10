@@ -13,6 +13,12 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
+### Desktop app
+
+    pnpm install
+    pnpm --filter ui dev:mock      # UI in a browser with a mocked backend
+    pnpm tauri dev                 # the real app (PowerShell: $env:PERLAND_LAUNCHER_ROOT="$PWD\target\pl-dev")
+
 ## License
 
 GPL-3.0-only. See `LICENSE` and `NOTICE`.
