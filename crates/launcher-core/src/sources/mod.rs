@@ -207,16 +207,9 @@ impl PackInput {
 /// the network.
 pub fn check_pack_url(raw: &str) -> Result<reqwest::Url> {
     let url = reqwest::Url::parse(raw.trim()).map_err(|_| link_invalid())?;
-    let host = url.host_str().unwrap_or("");
-    let loopback = host == "localhost"
-        || host
-            .trim_start_matches('[')
-            .trim_end_matches(']')
-            .parse::<std::net::IpAddr>()
-            .is_ok_and(|ip| ip.is_loopback());
     match url.scheme() {
         "https" => Ok(url),
-        "http" if loopback => Ok(url),
+        "http" if crate::http::is_loopback(&url) => Ok(url),
         _ => Err(link_invalid()),
     }
 }
