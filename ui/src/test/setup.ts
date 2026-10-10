@@ -2,6 +2,9 @@ import '@testing-library/jest-dom/vitest';
 import { clearMocks } from '@tauri-apps/api/mocks';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
+import i18n from '../i18n';
+
+void i18n.changeLanguage('en');
 
 // jsdom may lack <dialog> methods; the app relies on showModal/close.
 if (typeof HTMLDialogElement !== 'undefined' && !HTMLDialogElement.prototype.showModal) {
