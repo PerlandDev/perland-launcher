@@ -17,6 +17,7 @@ pub mod platform;
 pub mod play;
 pub mod settings;
 pub mod sources;
+pub mod sync;
 #[cfg(test)]
 pub(crate) mod test_support;
 
