@@ -124,7 +124,9 @@ impl DesiredState {
     pub fn check_paths(&self) -> Result<()> {
         let mut seen = std::collections::HashSet::new();
         for f in &self.files {
-            if !seen.insert(path_key(&f.path)) {
+            if crate::fsutil::normalize_rel(&f.path).as_deref() != Some(f.path.as_str())
+                || !seen.insert(path_key(&f.path))
+            {
                 return Err(unsafe_path(&f.path));
             }
         }
@@ -548,6 +550,13 @@ mod tests {
         desired(vec![file("mods/a.jar"), file("mods/b.jar")])
             .check_paths()
             .unwrap();
+        for bad in ["mods/../x.jar", r"mods\a.jar"] {
+            assert_eq!(
+                desired(vec![file(bad)]).check_paths().unwrap_err().code,
+                ErrorCode::PackUnsafePath,
+                "{bad}"
+            );
+        }
         let clash = desired(vec![file("mods/a.jar"), file("MODS/A.jar")]);
         assert_eq!(
             clash.check_paths().unwrap_err().code,

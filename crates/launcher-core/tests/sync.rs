@@ -26,6 +26,11 @@ use wiremock::MockServer;
 struct FakeGame {
     installs: Mutex<Vec<GameSpec>>,
     fail: AtomicBool,
+    /// A file whose existence is recorded at install time (it must not exist yet).
+    watch: Mutex<Option<PathBuf>>,
+    seen: Mutex<Vec<bool>>,
+    /// (store dir, instance id, new name): renamed mid-install, like a player in the UI.
+    rename: Mutex<Option<(PathBuf, String, String)>>,
 }
 
 impl GameInstall for FakeGame {
@@ -36,6 +41,14 @@ impl GameInstall for FakeGame {
     ) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             self.installs.lock().unwrap().push(game.clone());
+            let watched = self.watch.lock().unwrap().clone();
+            if let Some(path) = watched {
+                self.seen.lock().unwrap().push(path.exists());
+            }
+            let rename = self.rename.lock().unwrap().clone();
+            if let Some((dir, id, name)) = rename {
+                InstanceStore::new(dir).rename(&id, &name).await.unwrap();
+            }
             if self.fail.load(Ordering::SeqCst) {
                 Err(LauncherError::loader(
                     ErrorCode::LoaderVersionNotFound,
@@ -226,8 +239,14 @@ async fn a_new_loader_is_installed_before_any_file_moves() {
         .mount(&env.server)
         .await;
     let v2 = env.syncer.sources.resolve(&instance.source).await.unwrap();
+    *env.game.watch.lock().unwrap() = Some(env.game_file(&instance.id, "mods/jei.jar"));
     let report = done(env.sync(&instance.id, &v2).await.unwrap());
     assert!(report.game_changed);
+    assert_eq!(
+        *env.game.seen.lock().unwrap(),
+        vec![false],
+        "the game is installed before any pack file is moved into place"
+    );
     let wanted = GameSpec {
         minecraft: "1.20.1".into(),
         loader: Some(LoaderSpec {
@@ -277,4 +296,31 @@ async fn failed_game_install_leaves_the_instance_untouched() {
         managed.stamp, desired.stamp,
         "the old lockfile still describes the instance"
     );
+}
+
+#[tokio::test]
+async fn a_rename_during_a_loader_change_survives() {
+    let env = Env::new().await;
+    let url = v1(&env.server).mount(&env.server).await;
+    let (instance, desired) = env.instance(&url).await;
+    done(env.sync(&instance.id, &desired).await.unwrap());
+
+    env.server.reset().await;
+    v1(&env.server)
+        .with_version("1.1.0")
+        .with_loader("forge", "47.4.30")
+        .mount(&env.server)
+        .await;
+    let v2 = env.syncer.sources.resolve(&instance.source).await.unwrap();
+    *env.game.rename.lock().unwrap() = Some((
+        env._tmp.path().join("instances"),
+        instance.id.clone(),
+        "Renamed".into(),
+    ));
+    let report = done(env.sync(&instance.id, &v2).await.unwrap());
+    assert!(report.game_changed);
+
+    let saved = env.store.load(&instance.id).await.unwrap();
+    assert_eq!(saved.name, "Renamed", "the sync must not revert the rename");
+    assert_eq!(saved.game.loader.unwrap().version, "47.4.30");
 }

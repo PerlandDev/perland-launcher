@@ -9,7 +9,10 @@ use std::{
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::SystemTime,
 };
 
@@ -162,7 +165,7 @@ impl Syncer {
         desired: &DesiredState,
         sink: &EventSink,
     ) -> Result<SyncOutcome> {
-        let mut instance = store.load(id).await?;
+        let instance = store.load(id).await?;
         let game_dir = store.game_dir(id);
         let perland = store.perland_dir(id);
         let now = SystemTime::now();
@@ -194,6 +197,10 @@ impl Syncer {
         let disk = apply::survey(&game_dir, &wanted, managed.as_ref()).await?;
         let plan = plan::plan(&wanted, managed.as_ref(), &disk);
 
+        // A leftover from an earlier attempt must not count against free space.
+        let staging = perland.join("staging");
+        let _ = tokio::fs::remove_dir_all(&staging).await;
+
         // Staged copies of everything written, plus downloads that aren't cached yet.
         let mut needed = 0u64;
         for p in &plan.write {
@@ -210,12 +217,15 @@ impl Syncer {
         }
         apply::ensure_space(needed, apply::free_space(&self.root))?;
 
-        let staging = perland.join("staging");
-        let _ = tokio::fs::remove_dir_all(&staging).await;
         tokio::fs::create_dir_all(&staging).await?;
-        let archive = match &desired.archive {
-            Some(h) => Some(self.sources.cache.get(h).await.ok_or_else(archive_gone)?),
-            None => None,
+        // Only a sync that extracts from the .mrpack needs it; `stage_one` reports it gone.
+        let needs_archive = plan
+            .write
+            .iter()
+            .any(|p| matches!(p.file.source, FileSource::Archive { .. }));
+        let archive = match (&desired.archive, needs_archive) {
+            (Some(h), true) => Some(self.sources.cache.get(h).await.ok_or_else(archive_gone)?),
+            _ => None,
         };
         let staged = match self
             .stage_all(
@@ -247,8 +257,10 @@ impl Syncer {
         }
 
         if game_changed {
-            instance.game = new_game;
-            store.save(&instance).await?;
+            // Reload: a rename or settings change made meanwhile must not be reverted.
+            let mut fresh = store.load(id).await?;
+            fresh.game = new_game;
+            store.save(&fresh).await?;
         }
 
         let mut files = BTreeMap::new();
@@ -314,22 +326,35 @@ impl Syncer {
             total,
             bytes,
         });
-        let mut results = futures_util::stream::iter(
-            writes
-                .iter()
-                .map(|p| self.stage_one(&p.file, archive, staging)),
-        )
+        // After a failure no new file is started, but the ones in flight are awaited: nothing
+        // may still be writing into staging once this returns and the lock is released.
+        let failed = AtomicBool::new(false);
+        let failed = &failed;
+        let mut results = futures_util::stream::iter(writes.iter().map(|p| async move {
+            if failed.load(Ordering::SeqCst) {
+                return None;
+            }
+            let result = self.stage_one(&p.file, archive, staging).await;
+            if matches!(result, Err(StageError::Failed(_))) {
+                failed.store(true, Ordering::SeqCst);
+            }
+            Some(result)
+        }))
         .buffer_unordered(STAGE_CONCURRENCY);
         let mut staged = BTreeMap::new();
         let mut blocked = Vec::new();
+        let mut first_error = None;
         while let Some(result) = results.next().await {
+            let Some(result) = result else { continue };
             match result {
                 Ok((path, file)) => {
                     bytes += file.size;
                     staged.insert(path, file);
                 }
                 Err(StageError::Blocked(m)) => blocked.push(*m),
-                Err(StageError::Failed(e)) => return Err(e),
+                Err(StageError::Failed(e)) => {
+                    first_error.get_or_insert(e);
+                }
             }
             done += 1;
             sink(Event::Progress {
@@ -338,6 +363,9 @@ impl Syncer {
                 total,
                 bytes,
             });
+        }
+        if let Some(e) = first_error {
+            return Err(e);
         }
         if blocked.is_empty() {
             Ok(Ok(staged))
