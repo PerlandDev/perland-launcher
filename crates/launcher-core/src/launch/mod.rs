@@ -189,9 +189,11 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
 
 /// Files the command needs that aren't on disk. Empty means the launch can proceed.
 pub fn missing_files(cmd: &LaunchCommand) -> Vec<PathBuf> {
+    // Classpath entries are resolved by Java against its working directory, `cmd.cwd`.
+    let classpath_missing = cmd.classpath.iter().filter(|p| !cmd.cwd.join(p).is_file());
     std::iter::once(&cmd.program)
-        .chain(cmd.classpath.iter())
         .filter(|p| !p.is_file())
+        .chain(classpath_missing)
         .cloned()
         .collect()
 }
@@ -423,6 +425,23 @@ mod tests {
         std::fs::write(&program, "").unwrap();
         std::fs::write(&jar, "").unwrap();
         assert!(missing_files(&cmd).is_empty());
+    }
+
+    #[test]
+    fn dry_run_resolves_relative_entries_from_the_game_dir() {
+        // Java resolves relative classpath entries against its working directory (the game dir),
+        // not the launcher's; the dry run must judge them the same way.
+        let tmp = tempfile::tempdir().unwrap();
+        let program = tmp.path().join("java");
+        std::fs::write(&program, "").unwrap();
+        std::fs::write(tmp.path().join("lib.jar"), "").unwrap();
+        let cmd = LaunchCommand {
+            program,
+            args: vec![],
+            cwd: tmp.path().into(),
+            classpath: vec![PathBuf::from("lib.jar"), PathBuf::from("absent.jar")],
+        };
+        assert_eq!(missing_files(&cmd), vec![PathBuf::from("absent.jar")]);
     }
 
     #[tokio::test]

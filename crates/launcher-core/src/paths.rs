@@ -7,8 +7,12 @@ pub struct LauncherDirs {
 }
 
 impl LauncherDirs {
+    /// A relative `root` is made absolute against the current directory: the game runs with its
+    /// instance folder as working directory, so every path handed to Java must be absolute.
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        let root = root.into();
+        let root = std::path::absolute(&root).unwrap_or(root);
+        Self { root }
     }
 
     /// `%APPDATA%\PerlandLauncher` on Windows; `$XDG_DATA_HOME/PerlandLauncher` or `~/.local/share/PerlandLauncher` elsewhere.
@@ -71,19 +75,33 @@ mod tests {
     #[test]
     fn layout_is_under_root() {
         let d = LauncherDirs::new("/data/PerlandLauncher");
+        let root = d.root().to_path_buf();
         assert_eq!(
             d.client_jar("1.20.1"),
-            PathBuf::from("/data/PerlandLauncher/versions/1.20.1/1.20.1.jar")
+            root.join("versions/1.20.1/1.20.1.jar")
         );
-        assert_eq!(d.version_json("fabric-loader-0.16.14-1.20.1"), PathBuf::from("/data/PerlandLauncher/versions/fabric-loader-0.16.14-1.20.1/fabric-loader-0.16.14-1.20.1.json"));
+        assert_eq!(
+            d.version_json("fabric-loader-0.16.14-1.20.1"),
+            root.join("versions/fabric-loader-0.16.14-1.20.1/fabric-loader-0.16.14-1.20.1.json")
+        );
         assert_eq!(
             d.natives_dir("1.12.2"),
-            PathBuf::from("/data/PerlandLauncher/versions/1.12.2/natives")
+            root.join("versions/1.12.2/natives")
         );
         assert_eq!(
             d.log_config("client-1.12.xml"),
-            PathBuf::from("/data/PerlandLauncher/assets/log_configs/client-1.12.xml")
+            root.join("assets/log_configs/client-1.12.xml")
         );
         assert!(d.instances().starts_with(d.root()));
+    }
+
+    #[test]
+    fn relative_root_becomes_absolute() {
+        // The game runs with its instance folder as the working directory, so every path the
+        // launcher hands to Java must be absolute; a relative `--root` broke Fabric launches.
+        let d = LauncherDirs::new("target/pl-smoke");
+        assert!(d.root().is_absolute(), "{}", d.root().display());
+        assert!(d.root().ends_with("target/pl-smoke"));
+        assert!(d.libraries().is_absolute());
     }
 }
