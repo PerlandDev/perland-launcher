@@ -12,6 +12,7 @@ use crate::{
     events::{EventSink, TaskId},
     fsutil::{safe_join, write_atomic},
     meta::{
+        forge::{InstallProfile, OFFICIAL_REPOS},
         loaders::{self, LoaderKind},
         maven::MavenCoord,
         merge::merge,
@@ -28,11 +29,36 @@ use crate::{
 
 const MOJANG_LIBRARIES: &str = "https://libraries.minecraft.net/";
 
+/// What a Forge or NeoForge version adds on top of its merged JSON: the installer and its profile.
+#[derive(Debug, Clone)]
+pub struct ForgeInstall {
+    pub kind: LoaderKind,
+    pub loader_version: String,
+    /// The installer jar, kept in the libraries folder (its maven path).
+    pub installer: PathBuf,
+    pub installer_sha1: String,
+    pub profile: InstallProfile,
+}
+
 /// The version to launch: `json` is vanilla, or vanilla merged with a loader profile.
 #[derive(Debug, Clone)]
 pub struct ResolvedVersion {
     pub vanilla_id: String,
     pub json: VersionJson,
+    /// Forge and NeoForge: the installer steps `install` also runs. `None` for vanilla, Fabric, Quilt.
+    pub forge: Option<ForgeInstall>,
+}
+
+impl ResolvedVersion {
+    /// The game jar on the classpath. Forge and NeoForge tell their launcher to ignore
+    /// `${version_name}.jar`, so their copy is named after the merged id, the way the official
+    /// launcher lays it out; everyone else uses the vanilla jar where it was downloaded.
+    pub fn client_jar(&self, dirs: &LauncherDirs) -> PathBuf {
+        match self.forge {
+            Some(_) => dirs.client_jar(&self.json.id),
+            None => dirs.client_jar(&self.vanilla_id),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -55,7 +81,7 @@ pub fn is_local(req: &DownloadRequest) -> bool {
 }
 
 /// Join a path taken from remote metadata onto `base`, refusing anything that could escape it.
-fn join_remote(base: &Path, rel: &str) -> Result<PathBuf> {
+pub(crate) fn join_remote(base: &Path, rel: &str) -> Result<PathBuf> {
     safe_join(base, rel).ok_or_else(|| {
         LauncherError::integrity(
             ErrorCode::UnsafeGameData,
@@ -128,7 +154,7 @@ pub async fn fill_missing_sha1(meta: &MetaClient, reqs: &mut [DownloadRequest]) 
     Ok(())
 }
 
-async fn published_sha1(meta: &MetaClient, url: &str) -> Result<String> {
+pub(crate) async fn published_sha1(meta: &MetaClient, url: &str) -> Result<String> {
     let unverifiable = || {
         LauncherError::integrity(
             ErrorCode::LibraryUnverifiable,
@@ -241,7 +267,7 @@ pub fn classpath(
             }
         }
     }
-    cp.push(dirs.client_jar(&resolved.vanilla_id));
+    cp.push(resolved.client_jar(dirs));
     Ok(cp)
 }
 
@@ -341,17 +367,37 @@ impl Installer {
             .with_detail(format!("requested {mc}, got {}", vanilla.id)));
         }
         check_version_id(&vanilla.id)?;
-        let json = match loader {
-            Some((kind, version)) => merge(
-                vanilla.clone(),
-                loaders::fetch_profile(&self.meta, kind, mc, version).await?,
+        let (json, forge) = match loader {
+            Some((kind @ (LoaderKind::Forge | LoaderKind::NeoForge), version)) => {
+                let (installer, sha1) = forge::fetch_installer(
+                    &self.meta,
+                    &self.downloader,
+                    &self.dirs,
+                    kind,
+                    mc,
+                    version,
+                    OFFICIAL_REPOS,
+                )
+                .await?;
+                let (json, install) =
+                    forge::resolve_forge(vanilla.clone(), kind, mc, version, installer, sha1)
+                        .await?;
+                (json, Some(install))
+            }
+            Some((kind, version)) => (
+                merge(
+                    vanilla.clone(),
+                    loaders::fetch_profile(&self.meta, kind, mc, version).await?,
+                ),
+                None,
             ),
-            None => vanilla.clone(),
+            None => (vanilla.clone(), None),
         };
         check_version_id(&json.id)?;
         Ok(ResolvedVersion {
             vanilla_id: vanilla.id,
             json,
+            forge,
         })
     }
 
@@ -395,6 +441,9 @@ impl Installer {
                 sink,
             )
             .await?;
+        if let Some(install) = &resolved.forge {
+            forge::install(self, resolved, install, &libraries.local, sink).await?;
+        }
 
         let natives_dir = self.dirs.natives_dir(&json.id);
         let native_jars = libraries.natives;
@@ -507,6 +556,7 @@ mod tests {
                 version("1.20.1.json"),
                 version("fabric-1.20.1-0.16.14.json"),
             ),
+            forge: None,
         };
         let client = plan_client(&resolved, &dirs()).unwrap();
         assert_eq!(client.dest, dirs().client_jar("1.20.1"));
@@ -609,6 +659,7 @@ mod tests {
         let resolved = ResolvedVersion {
             vanilla_id: "1.12.2".into(),
             json,
+            forge: None,
         };
         let cp = classpath(&resolved, &dirs(), &ctx).unwrap();
         assert!(cp.contains(&plan.local[0].dest));
@@ -629,5 +680,26 @@ mod tests {
             plan[0].hashes.sha1.as_deref(),
             Some("b62ca8ec10d07e6bf5ac8dae0c8c1d2e6a1e3356")
         );
+    }
+
+    #[test]
+    fn forge_classpath_names_the_game_jar_after_the_forge_version() {
+        let resolved = crate::test_support::forge_resolved();
+        let cp = classpath(&resolved, &dirs(), &RuleContext::new(WINDOWS_X64)).unwrap();
+        assert_eq!(
+            cp.last().unwrap(),
+            &dirs().client_jar("1.20.1-forge-47.4.22")
+        );
+        assert_eq!(cp.len(), 29 + 50 + 1);
+        assert_eq!(
+            resolved.client_jar(&dirs()),
+            dirs().client_jar("1.20.1-forge-47.4.22")
+        );
+        let vanilla = ResolvedVersion {
+            vanilla_id: "1.20.1".into(),
+            json: version("1.20.1.json"),
+            forge: None,
+        };
+        assert_eq!(vanilla.client_jar(&dirs()), dirs().client_jar("1.20.1"));
     }
 }

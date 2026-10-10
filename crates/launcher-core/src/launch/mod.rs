@@ -546,6 +546,7 @@ mod tests {
         let resolved = ResolvedVersion {
             vanilla_id: "1.20.1".into(),
             json: version("1.20.1.json"),
+            forge: None,
         };
         let cmd = build(&resolved, WINDOWS_X64);
         let a = &cmd.args;
@@ -588,6 +589,7 @@ mod tests {
         let resolved = ResolvedVersion {
             vanilla_id: "1.12.2".into(),
             json: version("1.12.2.json"),
+            forge: None,
         };
         let cmd = build(&resolved, LINUX_X64);
         assert!(cmd
@@ -607,6 +609,7 @@ mod tests {
                 version("1.20.1.json"),
                 version("fabric-1.20.1-0.16.14.json"),
             ),
+            forge: None,
         };
         let cmd = build(&resolved, WINDOWS_X64);
         assert!(cmd

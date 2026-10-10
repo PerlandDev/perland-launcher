@@ -162,6 +162,7 @@ mod tests {
             resolved: ResolvedVersion {
                 vanilla_id: "1.20.1".into(),
                 json: version("1.20.1.json"),
+                forge: None,
             },
             java,
         };

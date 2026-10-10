@@ -39,3 +39,24 @@ pub fn write_zip<B: AsRef<[u8]>>(path: &Path, entries: &[(&str, B)]) {
     }
     w.finish().unwrap();
 }
+
+/// Vanilla 1.20.1 merged with Forge 47.4.22, as `Installer::resolve` returns it.
+pub fn forge_resolved() -> crate::install::ResolvedVersion {
+    crate::install::ResolvedVersion {
+        vanilla_id: "1.20.1".into(),
+        json: crate::meta::merge::merge(
+            version("1.20.1.json"),
+            version("forge-1.20.1-47.4.22-version.json"),
+        ),
+        forge: Some(crate::install::ForgeInstall {
+            kind: crate::meta::loaders::LoaderKind::Forge,
+            loader_version: "47.4.22".into(),
+            installer: "/pl/installer.jar".into(),
+            installer_sha1: "afef69499ecb9c712e738d38aa679bd9ed1f3468".into(),
+            profile: crate::meta::forge::parse_profile(
+                fixture("forge-1.20.1-47.4.22-install_profile.json").as_bytes(),
+            )
+            .unwrap(),
+        }),
+    }
+}

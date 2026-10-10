@@ -9,17 +9,30 @@ use std::{
     time::Duration,
 };
 
+use super::{
+    fill_missing_sha1, is_local, join_remote, library_artifact, published_sha1, ForgeInstall,
+    Installer, ResolvedVersion,
+};
 use crate::{
-    download::Hashes,
+    download::{DownloadRequest, Downloader, Hashes},
     error::{ErrorCode, LauncherError, Result},
-    fsutil::safe_join,
+    events::{Event, EventSink, TaskId},
+    fsutil::{safe_join, write_atomic},
+    java,
     meta::{
         forge::{
-            invalid, parse_data_value, read_entry, replace_tokens, unsafe_value, DataValue,
-            InstallProfile, Processor,
+            installer_coord, installer_url_at, invalid, parse_data_value, read_entry,
+            read_installer, replace_tokens, unsafe_value, DataValue, InstallProfile, MavenRepos,
+            Processor,
         },
+        loaders::{self, LoaderKind},
         maven::MavenCoord,
+        merge::merge,
+        mojang::VersionJson,
+        rules::{library_applies, RuleContext},
+        MetaClient,
     },
+    paths::LauncherDirs,
 };
 
 /// One processor may take minutes on a slow disk; past this it's stuck.
@@ -305,6 +318,301 @@ pub async fn run_processor(
         ));
     }
     verify_outputs(call).await
+}
+
+/// Marks a finished loader install; holds the installer's sha1.
+const MARKER: &str = ".perland-loader";
+/// Bundled jars and data files inside an installer stay well under this.
+const MAX_BUNDLED_BYTES: u64 = 256 * 1024 * 1024;
+
+/// Download the installer jar into the libraries folder, verified against the sha1 maven
+/// publishes next to it. Both go through caches, so this works offline after the first time.
+pub async fn fetch_installer(
+    meta: &MetaClient,
+    downloader: &Downloader,
+    dirs: &LauncherDirs,
+    kind: LoaderKind,
+    mc: &str,
+    loader: &str,
+    repos: MavenRepos<'_>,
+) -> Result<(PathBuf, String)> {
+    loaders::check_versions(mc, loader)?;
+    let (Some(coord), Some(url)) = (
+        installer_coord(kind, mc, loader),
+        installer_url_at(kind, mc, loader, repos),
+    ) else {
+        return Err(LauncherError::loader(
+            ErrorCode::LoaderUnsupported,
+            format!("{kind:?} has no installer"),
+        )
+        .with_param("loader", format!("{kind:?}")));
+    };
+    let dest = join_remote(&dirs.libraries(), &coord.path())?;
+    let sha1 = published_sha1(meta, &url)
+        .await
+        .map_err(|e| loaders::map_profile_error(kind, mc, loader, e))?;
+    downloader
+        .fetch(&DownloadRequest::new(
+            url,
+            dest.clone(),
+            Hashes::sha1(&sha1),
+            None,
+        ))
+        .await?;
+    Ok((dest, sha1))
+}
+
+/// Read the installer and merge its version JSON onto vanilla.
+pub async fn resolve_forge(
+    vanilla: VersionJson,
+    kind: LoaderKind,
+    mc: &str,
+    loader: &str,
+    installer: PathBuf,
+    installer_sha1: String,
+) -> Result<(VersionJson, ForgeInstall)> {
+    let jar = installer.clone();
+    let contents = tokio::task::spawn_blocking(move || read_installer(&jar))
+        .await
+        .map_err(invalid)??;
+    let for_mc = contents
+        .version
+        .inherits_from
+        .clone()
+        .unwrap_or_else(|| contents.profile.minecraft.clone());
+    if for_mc != mc {
+        return Err(LauncherError::loader(
+            ErrorCode::LoaderVersionNotFound,
+            format!("{kind:?} {loader} is for Minecraft {for_mc}, not {mc}"),
+        )
+        .with_param("loader", format!("{kind:?}"))
+        .with_param("loader_version", loader)
+        .with_param("version", mc)
+        .with_fix("Pick a loader version from the list"));
+    }
+    Ok((
+        merge(vanilla, contents.version),
+        ForgeInstall {
+            kind,
+            loader_version: loader.to_string(),
+            installer,
+            installer_sha1,
+            profile: contents.profile,
+        },
+    ))
+}
+
+/// A previous install with this exact installer finished, and every file it touched is still there.
+async fn install_current(
+    marker: &Path,
+    installer_sha1: &str,
+    calls: &[ProcessorCall],
+    local: &[DownloadRequest],
+) -> bool {
+    let finished = tokio::fs::read_to_string(marker)
+        .await
+        .is_ok_and(|s| s.trim() == installer_sha1);
+    finished
+        && calls
+            .iter()
+            .flat_map(|c| &c.files)
+            .chain(local.iter().map(|d| &d.dest))
+            .all(|p| p.is_file())
+}
+
+/// Older installers bundle jars under `maven/<path>`: copy each wanted one out, verified. Jars
+/// the installer doesn't bundle are left for the processors to build. Blocking.
+fn extract_bundled(installer: &Path, libraries: &Path, wanted: &[DownloadRequest]) -> Result<()> {
+    if wanted.is_empty() {
+        return Ok(());
+    }
+    let mut archive = zip::ZipArchive::new(std::fs::File::open(installer)?).map_err(invalid)?;
+    for req in wanted {
+        if req.dest.is_file() && req.hashes.verify_file(&req.dest).unwrap_or(false) {
+            continue;
+        }
+        let Ok(rel) = req.dest.strip_prefix(libraries) else {
+            continue;
+        };
+        let rel: Vec<String> = rel
+            .components()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned())
+            .collect();
+        let entry = format!("maven/{}", rel.join("/"));
+        if archive.index_for_name(&entry).is_none() {
+            continue;
+        }
+        let bytes = read_entry(&mut archive, &entry, MAX_BUNDLED_BYTES)?;
+        if !req.hashes.verify(&bytes) {
+            return Err(invalid(format!("{entry} doesn't match its checksum")));
+        }
+        if let Some(parent) = req.dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let tmp = req.dest.with_extension("jar.tmp");
+        std::fs::write(&tmp, &bytes)?;
+        std::fs::rename(&tmp, &req.dest)?;
+    }
+    Ok(())
+}
+
+/// Extract the installer files the data values name (e.g. `data/client.lzma`). Blocking.
+fn extract_files(installer: &Path, files: &[(String, PathBuf)]) -> Result<()> {
+    let mut archive = zip::ZipArchive::new(std::fs::File::open(installer)?).map_err(invalid)?;
+    for (entry, dest) in files {
+        let bytes = read_entry(&mut archive, entry, MAX_BUNDLED_BYTES)?;
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(dest, bytes)?;
+    }
+    Ok(())
+}
+
+/// Copy the vanilla jar to `dest` unless a same-size copy is already there.
+async fn copy_client_jar(vanilla: &Path, dest: &Path) -> Result<()> {
+    if vanilla == dest {
+        return Ok(());
+    }
+    let want = tokio::fs::metadata(vanilla).await?.len();
+    if tokio::fs::metadata(dest)
+        .await
+        .is_ok_and(|m| m.len() == want)
+    {
+        return Ok(());
+    }
+    if let Some(parent) = dest.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    let mut tmp = dest.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    tokio::fs::copy(vanilla, &tmp).await?;
+    tokio::fs::rename(&tmp, dest).await?;
+    Ok(())
+}
+
+/// Every locally provided library must exist (and match its sha1, when one is published).
+async fn check_local(local: &[DownloadRequest]) -> Result<()> {
+    for req in local {
+        let (path, hashes) = (req.dest.clone(), req.hashes.clone());
+        let ok = tokio::task::spawn_blocking(move || {
+            path.is_file() && hashes.verify_file(&path).unwrap_or(false)
+        })
+        .await
+        .unwrap_or(false);
+        if !ok {
+            return Err(step_failed(
+                "",
+                format!("{} wasn't built", req.dest.display()),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The loader half of `Installer::install`: profile libraries, bundled jars, processors (unless a
+/// matching install already finished), then the game jar under the loader's version name.
+pub(crate) async fn install(
+    inst: &Installer,
+    resolved: &ResolvedVersion,
+    forge: &ForgeInstall,
+    version_local: &[DownloadRequest],
+    sink: &EventSink,
+) -> Result<()> {
+    let dirs = &inst.dirs;
+    let libraries = dirs.libraries();
+    let task = TaskId::new("install_loader")
+        .with("loader", format!("{:?}", forge.kind))
+        .with("version", &forge.loader_version);
+    let ctx = RuleContext::new(inst.platform);
+    let mut local = version_local.to_vec();
+    let mut downloads = Vec::new();
+    for lib in forge
+        .profile
+        .libraries
+        .iter()
+        .filter(|l| library_applies(l, &ctx))
+    {
+        if let Some(d) = library_artifact(lib, dirs)? {
+            if is_local(&d) {
+                local.push(d);
+            } else {
+                downloads.push(d);
+            }
+        }
+    }
+    let (installer, libs, wanted) = (forge.installer.clone(), libraries.clone(), local.clone());
+    tokio::task::spawn_blocking(move || extract_bundled(&installer, &libs, &wanted))
+        .await
+        .map_err(invalid)??;
+    fill_missing_sha1(&inst.meta, &mut downloads).await?;
+    inst.downloader.fetch_all(downloads, &task, sink).await?;
+
+    let version_dir = dirs.version_dir(&resolved.json.id);
+    let extract_dir = version_dir.join(".installer");
+    let vanilla_jar = dirs.client_jar(&resolved.vanilla_id);
+    let data = resolve_data(
+        &forge.profile,
+        &DataContext {
+            libraries: &libraries,
+            installer: &forge.installer,
+            extract_dir: &extract_dir,
+            minecraft_jar: &vanilla_jar,
+            minecraft: &resolved.vanilla_id,
+            root: dirs.root(),
+        },
+    )?;
+    let calls = plan_processors(&forge.profile, &data, &libraries)?;
+    let marker = version_dir.join(MARKER);
+    if !install_current(&marker, &forge.installer_sha1, &calls, &local).await {
+        let java = java::console_java(
+            &java::ensure_java(
+                &inst.meta,
+                &inst.downloader,
+                &dirs.java(),
+                inst.platform,
+                &resolved.json,
+                sink,
+            )
+            .await?,
+        );
+        tokio::fs::create_dir_all(&extract_dir).await?;
+        let (installer, extract) = (forge.installer.clone(), data.extract.clone());
+        tokio::task::spawn_blocking(move || extract_files(&installer, &extract))
+            .await
+            .map_err(invalid)??;
+        let total = calls.len() as u64;
+        for (i, call) in calls.iter().enumerate() {
+            sink(Event::Progress {
+                task: task.clone(),
+                done: i as u64,
+                total,
+                bytes: 0,
+            });
+            if !outputs_current(call).await {
+                run_processor(
+                    &java,
+                    call,
+                    inst.platform.classpath_separator(),
+                    &extract_dir,
+                    PROCESSOR_TIMEOUT,
+                )
+                .await?;
+            }
+        }
+        sink(Event::Progress {
+            task: task.clone(),
+            done: total,
+            total,
+            bytes: 0,
+        });
+        let _ = tokio::fs::remove_dir_all(&extract_dir).await;
+        check_local(&local).await?;
+    }
+    copy_client_jar(&vanilla_jar, &resolved.client_jar(dirs)).await?;
+    write_atomic(&marker, forge.installer_sha1.as_bytes()).await?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -602,5 +910,101 @@ mod tests {
         assert_eq!(err.code, ErrorCode::LoaderProcessorFailed);
         assert_eq!(err.params["step"], "gone.jar");
         assert!(err.detail.is_some());
+    }
+
+    #[tokio::test]
+    async fn current_install_skips_processors() {
+        let tmp = tempfile::tempdir().unwrap();
+        let marker = tmp.path().join(".perland-loader");
+        let made = tmp.path().join("forge-client.jar");
+        let call = ProcessorCall {
+            classpath: vec![],
+            args: vec![],
+            outputs: vec![],
+            files: vec![made.clone()],
+        };
+        let local = vec![crate::download::DownloadRequest::new(
+            "",
+            tmp.path().join("bundled.jar"),
+            Hashes::default(),
+            None,
+        )];
+        let calls = std::slice::from_ref(&call);
+        assert!(
+            !install_current(&marker, "abc", calls, &local).await,
+            "no marker yet"
+        );
+        std::fs::write(&marker, "abc").unwrap();
+        assert!(
+            !install_current(&marker, "abc", calls, &local).await,
+            "files missing"
+        );
+        std::fs::write(&made, "x").unwrap();
+        std::fs::write(&local[0].dest, "x").unwrap();
+        assert!(install_current(&marker, "abc", calls, &local).await);
+        assert!(
+            !install_current(&marker, "def", calls, &local).await,
+            "another installer"
+        );
+        std::fs::remove_file(&made).unwrap();
+        assert!(
+            !install_current(&marker, "abc", calls, &local).await,
+            "a file was deleted"
+        );
+    }
+
+    #[tokio::test]
+    async fn bundled_jars_are_extracted_and_verified() {
+        let tmp = tempfile::tempdir().unwrap();
+        let jar = tmp.path().join("installer.jar");
+        let rel = "net/minecraftforge/forge/1.12.2-x/forge-1.12.2-x.jar";
+        let entry = format!("maven/{rel}");
+        write_zip(&jar, &[(entry.as_str(), b"hello")]);
+        let libs = tmp.path().join("libraries");
+        let good = crate::download::DownloadRequest::new(
+            "",
+            libs.join(rel),
+            Hashes::sha1(HELLO_SHA1),
+            None,
+        );
+        let absent = crate::download::DownloadRequest::new(
+            "",
+            libs.join("a/b/c.jar"),
+            Hashes::default(),
+            None,
+        );
+        extract_bundled(&jar, &libs, &[good.clone(), absent.clone()]).unwrap();
+        assert_eq!(std::fs::read(&good.dest).unwrap(), b"hello");
+        assert!(!absent.dest.exists(), "not bundled: a processor builds it");
+        std::fs::remove_file(&good.dest).unwrap();
+        let bad = crate::download::DownloadRequest::new(
+            "",
+            libs.join(rel),
+            Hashes::sha1("0".repeat(40)),
+            None,
+        );
+        assert_eq!(
+            extract_bundled(&jar, &libs, &[bad]).unwrap_err().code,
+            ErrorCode::LoaderInstallerInvalid
+        );
+    }
+
+    #[tokio::test]
+    async fn client_jar_copy_is_made_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let vanilla = tmp.path().join("versions/1.20.1/1.20.1.jar");
+        let forge = tmp
+            .path()
+            .join("versions/1.20.1-forge-47.4.22/1.20.1-forge-47.4.22.jar");
+        std::fs::create_dir_all(vanilla.parent().unwrap()).unwrap();
+        std::fs::write(&vanilla, "game").unwrap();
+        copy_client_jar(&vanilla, &forge).await.unwrap();
+        assert_eq!(std::fs::read(&forge).unwrap(), b"game");
+        std::fs::write(&forge, "xxxx").unwrap(); // same size: left alone
+        copy_client_jar(&vanilla, &forge).await.unwrap();
+        assert_eq!(std::fs::read(&forge).unwrap(), b"xxxx");
+        std::fs::write(&forge, "x").unwrap(); // different size: replaced
+        copy_client_jar(&vanilla, &forge).await.unwrap();
+        assert_eq!(std::fs::read(&forge).unwrap(), b"game");
     }
 }
