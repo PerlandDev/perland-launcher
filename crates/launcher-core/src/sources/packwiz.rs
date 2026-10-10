@@ -2,16 +2,19 @@
 //! packwiz's published format. Everything here is pure; fetching is in `resolve` (Task 9).
 use std::collections::BTreeMap;
 
+use futures_util::{StreamExt, TryStreamExt};
 use serde::{de::DeserializeOwned, Deserialize};
 
 use super::{
-    check_pack_url, curseforge, encode_path, invalid, unsafe_path, unsupported, FileMode,
-    FileSource, ManualDownload, OptionalFile, PackFile, Side, SourceConfig,
+    check_pack_url, curseforge, encode_path, game_from, invalid, sidecar::parse_sidecar,
+    unsafe_path, unsupported, DesiredState, FileMode, FileSource, ManualDownload, OptionalFile,
+    PackAbout, PackFile, Side, SourceConfig, Sources, UpdateCheck,
 };
 use crate::{
-    download::Hashes,
-    error::Result,
+    download::{hash::sha256_hex, host_of, Hashes},
+    error::{ErrorCode, LauncherError, Result},
     fsutil::{normalize_rel, safe_component},
+    instances::SourceRef,
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -260,6 +263,153 @@ pub fn plain_file(
         },
         manual: None,
     })
+}
+
+/// How many metafiles are fetched at once.
+const METAFILE_CONCURRENCY: usize = 8;
+
+fn pack_not_found(e: LauncherError) -> LauncherError {
+    if e.code == ErrorCode::MetaNotFound {
+        LauncherError::pack(ErrorCode::PackNotFound, "That pack wasn't found")
+            .with_fix("Check the link and try again")
+            .with_detail(e.message)
+    } else {
+        e
+    }
+}
+
+/// The pack as it is now. Every byte goes through `MetaClient`: `pack.toml` is revalidated with
+/// its ETag, and `index.toml` and the metafiles are checked against their hashes, so unchanged
+/// metafiles are never downloaded again and an offline resolve works from the cache.
+pub async fn resolve(src: &Sources, pack_url: &str) -> Result<DesiredState> {
+    let url = check_pack_url(pack_url)?;
+    let pack_bytes = src
+        .meta
+        .get_bytes_validated(url.as_str(), |b| parse_pack(b).map(|_| ()))
+        .await
+        .map_err(pack_not_found)?;
+    let pack = parse_pack(&pack_bytes)?;
+
+    let index_file =
+        normalize_rel(&pack.index.file).ok_or_else(|| unsafe_path(&pack.index.file))?;
+    let index_url = url
+        .join(&encode_path(&index_file))
+        .map_err(|e| invalid("pack.toml", e))?;
+    let index_hashes = entry_hashes(&pack.index.hash_format, &pack.index.hash, "pack.toml")?;
+    let index_bytes = src
+        .meta
+        .get_verified_bytes(index_url.as_str(), &index_hashes)
+        .await?;
+    let index = parse_index(&index_bytes)?;
+
+    let mut files: Vec<PackFile> = futures_util::stream::iter(
+        index
+            .files
+            .iter()
+            .map(|entry| index_entry(src, &index_url, entry, &index.hash_format)),
+    )
+    .buffered(METAFILE_CONCURRENCY)
+    .try_collect()
+    .await?;
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+
+    let (minecraft, loader) = game_from(&pack.versions)?;
+    let name = match pack.name.trim() {
+        "" => "Pack".to_string(),
+        n => n.chars().take(64).collect(),
+    };
+    let desired = DesiredState {
+        name,
+        pack_version: pack.version.unwrap_or_default(),
+        minecraft,
+        loader,
+        files,
+        stamp: sha256_hex(&pack_bytes),
+        about: fetch_sidecar(src, &url).await,
+        archive: None,
+    };
+    desired.check_paths()?;
+    Ok(desired)
+}
+
+async fn index_entry(
+    src: &Sources,
+    index_url: &reqwest::Url,
+    entry: &IndexEntry,
+    default_format: &str,
+) -> Result<PackFile> {
+    if !entry.metafile {
+        return plain_file(index_url, entry, default_format);
+    }
+    let file = normalize_rel(&entry.file).ok_or_else(|| unsafe_path(&entry.file))?;
+    let format = entry.hash_format.as_deref().unwrap_or(default_format);
+    let hashes = entry_hashes(format, &entry.hash, &file)?;
+    let url = index_url
+        .join(&encode_path(&file))
+        .map_err(|e| invalid(&file, e))?;
+    let bytes = src.meta.get_verified_bytes(url.as_str(), &hashes).await?;
+    let meta = parse_meta(&bytes, &file)?;
+    meta_file(&src.config, &file, &meta, entry.preserve)
+}
+
+/// `launcher.toml` next to `pack.toml`; anything other than a readable file means "none".
+async fn fetch_sidecar(src: &Sources, pack_url: &reqwest::Url) -> PackAbout {
+    let Ok(url) = pack_url.join("launcher.toml") else {
+        return PackAbout::default();
+    };
+    match src.meta.get_bytes(url.as_str()).await {
+        Ok(bytes) => std::str::from_utf8(&bytes)
+            .map(|text| parse_sidecar(text, pack_url.as_str()))
+            .unwrap_or_default(),
+        Err(_) => PackAbout::default(),
+    }
+}
+
+/// The cheap check (spec §3.1): fetch `pack.toml` fresh and compare its sha256. Never fails:
+/// problems come back as `Unavailable` so the player can still play what they have.
+pub async fn check(src: &Sources, pack_url: &str, installed_stamp: &str) -> UpdateCheck {
+    let unavailable = |detail: String| {
+        UpdateCheck::Unavailable(
+            LauncherError::network(ErrorCode::UpdateCheckFailed, "Couldn't check for updates")
+                .with_fix("You can still play the version you have")
+                .with_detail(detail),
+        )
+    };
+    let url = match check_pack_url(pack_url) {
+        Ok(url) => url,
+        Err(e) => return UpdateCheck::Unavailable(e),
+    };
+    let response = match src.http.get(url.as_str()).send().await {
+        Ok(r) => r,
+        Err(e) => return unavailable(e.without_url().to_string()),
+    };
+    if !response.status().is_success() {
+        return unavailable(format!(
+            "{} answered {}",
+            host_of(url.as_str()),
+            response.status()
+        ));
+    }
+    let bytes = match response.bytes().await {
+        Ok(b) => b,
+        Err(e) => return unavailable(e.without_url().to_string()),
+    };
+    let pack = match parse_pack(&bytes) {
+        Ok(p) => p,
+        Err(e) => return UpdateCheck::Unavailable(e),
+    };
+    let stamp = sha256_hex(&bytes);
+    if stamp == installed_stamp {
+        UpdateCheck::UpToDate
+    } else {
+        UpdateCheck::Available {
+            source: SourceRef::Packwiz {
+                url: pack_url.to_string(),
+            },
+            stamp,
+            version: pack.version.unwrap_or_default(),
+        }
+    }
 }
 
 #[cfg(test)]

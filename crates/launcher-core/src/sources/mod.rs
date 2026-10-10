@@ -10,11 +10,11 @@ use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    download::Hashes,
+    download::{cache::ObjectCache, Downloader, Hashes},
     error::{ErrorCode, LauncherError, Result},
     fsutil::path_key,
     instances::{LoaderSpec, SourceRef, UpdatePolicy},
-    meta::loaders::LoaderKind,
+    meta::{loaders::LoaderKind, MetaClient},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -239,6 +239,16 @@ impl Default for SourceConfig {
             curseforge_site: "https://www.curseforge.com".into(),
         }
     }
+}
+
+/// Everything a source needs to fetch a pack.
+#[derive(Clone)]
+pub struct Sources {
+    pub http: reqwest::Client,
+    pub meta: MetaClient,
+    pub downloader: Downloader,
+    pub cache: ObjectCache,
+    pub config: SourceConfig,
 }
 
 /// Minecraft and the loader from a pack's version table (packwiz `[versions]`, `.mrpack`
