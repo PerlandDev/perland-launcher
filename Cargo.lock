@@ -775,6 +775,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "launcher-app"
+version = "0.1.0"
+dependencies = [
+ "futures-util",
+ "launcher-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "launcher-core"
 version = "0.1.0"
 dependencies = [
