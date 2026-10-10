@@ -97,14 +97,19 @@ impl InstanceStore {
         Self { dir: dir.into() }
     }
 
+    /// The accessors below (`instance_dir`, `game_dir`, `perland_dir`) join `id` onto the store
+    /// directory as-is: they expect an id already validated via `create`, `load` or `list`
+    /// (or `is_valid_instance_id`).
     pub fn instance_dir(&self, id: &str) -> PathBuf {
         self.dir.join(id)
     }
 
+    /// See `instance_dir`: expects an already validated id.
     pub fn game_dir(&self, id: &str) -> PathBuf {
         self.instance_dir(id).join("minecraft")
     }
 
+    /// See `instance_dir`: expects an already validated id.
     pub fn perland_dir(&self, id: &str) -> PathBuf {
         self.instance_dir(id).join(".perland")
     }
@@ -137,12 +142,14 @@ impl InstanceStore {
     }
 
     pub async fn save(&self, instance: &Instance) -> Result<()> {
+        check_id(&instance.id)?;
         let bytes = serde_json::to_vec_pretty(instance)
             .map_err(|e| LauncherError::disk("Couldn't save the instance").with_detail(e))?;
         write_atomic(&self.json_path(&instance.id), &bytes).await
     }
 
     pub async fn load(&self, id: &str) -> Result<Instance> {
+        check_id(id)?;
         let path = self.json_path(id);
         let bytes = tokio::fs::read(&path).await.map_err(|e| {
             LauncherError::disk(format!("Instance \"{id}\" wasn't found")).with_detail(e)
@@ -171,6 +178,20 @@ impl InstanceStore {
         }
         out.sort_by_key(|i| i.name.to_lowercase());
         Ok(out)
+    }
+}
+
+/// True for exactly the ids `create` can produce: non-empty slugs that `slugify` leaves unchanged.
+/// Rejects path separators, `.`/`..`, absolute paths and Windows device names.
+pub fn is_valid_instance_id(id: &str) -> bool {
+    !id.is_empty() && slugify(id) == id
+}
+
+fn check_id(id: &str) -> Result<()> {
+    if is_valid_instance_id(id) {
+        Ok(())
+    } else {
+        Err(LauncherError::disk("That instance id isn't valid").with_detail(id))
     }
 }
 
@@ -297,6 +318,47 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.category, ErrorCategory::Disk);
+    }
+
+    #[test]
+    fn instance_id_validation() {
+        for ok in ["pack-2", "con-instance", "instance"] {
+            assert!(is_valid_instance_id(ok), "{ok}");
+        }
+        for bad in [
+            "CON", "Pack", "a--b", "a-", "", ".", "..", "../x", "a/b", "C:\\x", "/abs",
+        ] {
+            assert!(!is_valid_instance_id(bad), "{bad}");
+        }
+    }
+
+    #[tokio::test]
+    async fn load_rejects_unsafe_ids() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path().join("instances"));
+        for bad in ["../x", "a/b", "", ".", "C:\\x", "/abs"] {
+            let err = store.load(bad).await.unwrap_err();
+            assert_eq!(err.category, ErrorCategory::Disk, "{bad}");
+        }
+    }
+
+    #[tokio::test]
+    async fn save_rejects_unsafe_id_and_writes_nothing_outside() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store_dir = tmp.path().join("instances");
+        std::fs::create_dir_all(&store_dir).unwrap();
+        let store = InstanceStore::new(&store_dir);
+        let mut instance = store.create("Pack", vanilla("1.21.1")).await.unwrap();
+        instance.id = "../evil".into();
+        let err = store.save(&instance).await.unwrap_err();
+        assert_eq!(err.category, ErrorCategory::Disk);
+        assert!(!tmp.path().join("evil").exists());
+        let entries: Vec<_> = std::fs::read_dir(tmp.path()).unwrap().collect();
+        assert_eq!(
+            entries.len(),
+            1,
+            "only the store dir may exist in the parent"
+        );
     }
 
     #[test]
