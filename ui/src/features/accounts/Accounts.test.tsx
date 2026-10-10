@@ -58,6 +58,8 @@ it('does not say the name is wrong until the player has typed it and tried to ad
 
   await user.click(screen.getByRole('button', { name: 'Add offline account' }));
   const message = screen.getByText(rule);
+  // Focus lands on the field, so its description is read and the player can fix it.
+  expect(input).toHaveFocus();
   expect(input).toHaveAttribute('aria-invalid', 'true');
   expect(input.getAttribute('aria-describedby')).toBe(message.id);
 
@@ -150,7 +152,7 @@ it('does not promise an offline account can be added again when offline accounts
   await user.click(await screen.findByRole('button', { name: 'Remove Alex_Builds' }));
   const dialog = screen.getByRole('dialog');
   expect(dialog).not.toHaveTextContent('add it again any time');
-  expect(dialog).toHaveTextContent('after you sign in with a Microsoft account');
+  expect(dialog).toHaveTextContent('add offline accounts again after you sign in with Microsoft, which is coming soon');
 });
 
 it('keeps the dialog open and shows why a remove failed inside it', async () => {
@@ -181,4 +183,100 @@ it('offers Try again when the list fails to load', async () => {
   await user.click(screen.getByRole('button', { name: 'Try again' }));
   expect(await screen.findByText('Steve')).toBeInTheDocument();
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('says nothing about adding it back while it is still unknown whether offline accounts are allowed', async () => {
+  const { user, backend, qc } = renderApp(<Accounts />);
+  await screen.findByText('Steve');
+  const info = intercept(backend, 'app_info');
+  info.mode = 'hold';
+  act(() => {
+    void qc.resetQueries({ queryKey: ['appInfo'] }); // parked, so the answer never arrives
+  });
+  await user.click(screen.getByRole('button', { name: 'Remove Alex_Builds' }));
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveTextContent('Your worlds stay where they are.');
+  expect(dialog).not.toHaveTextContent(/add it again|Microsoft/);
+});
+
+it('moves focus to the next account after a remove, to the previous one at the end, and to the add field when none are left', async () => {
+  const { user } = renderApp(<Accounts />);
+  const confirm = async (name: string) => {
+    await user.click(await screen.findByRole('button', { name: `Remove ${name}` }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  };
+  await confirm('Steve');
+  expect(screen.getByRole('button', { name: 'Remove Alex_Builds' })).toHaveFocus();
+  await confirm('Alex_Builds');
+  expect(screen.getByRole('textbox', { name: 'Player name' })).toHaveFocus();
+});
+
+it('moves focus to the previous account when the last one is removed', async () => {
+  const { user } = renderApp(<Accounts />);
+  await user.click(await screen.findByRole('button', { name: 'Remove Alex_Builds' }));
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Remove Steve' })).toHaveFocus());
+});
+
+it('moves focus to the add section when no accounts are left and offline accounts are locked', async () => {
+  const { user } = renderApp(<Accounts />, { release: true });
+  await user.click(await screen.findByRole('button', { name: 'Remove Alex_Builds' }));
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  await user.click(await screen.findByRole('button', { name: 'Remove Steve' }));
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Add offline account' })).toHaveFocus());
+});
+
+it('announces the new active account after an add and after removing the active one', async () => {
+  const { user } = renderApp(<Accounts />);
+  const input = await screen.findByRole('textbox', { name: 'Player name' });
+  await user.type(input, 'Notch');
+  await user.click(screen.getByRole('button', { name: 'Add offline account' }));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Notch is now in use.'));
+
+  // Removing an account that is not in use changes nothing about who is.
+  await user.click(screen.getByRole('button', { name: 'Remove Steve' }));
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(screen.getByRole('status')).toHaveTextContent('Notch is now in use.');
+
+  // Removing the one in use hands over to the first one left.
+  await user.click(screen.getByRole('button', { name: 'Remove Notch' }));
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Alex_Builds is now in use.'));
+});
+
+it('clears the announcement when removing the last account leaves nobody in use', async () => {
+  const { user } = renderApp(<Accounts />);
+  const alex = (await screen.findByText('Alex_Builds')).closest('li')!;
+  await user.click(within(alex).getByRole('button', { name: 'Use' }));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Alex_Builds is now in use.'));
+  await user.click(screen.getByRole('button', { name: 'Remove Steve' }));
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  await user.click(await screen.findByRole('button', { name: 'Remove Alex_Builds' }));
+  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(screen.getByRole('status')).toBeEmptyDOMElement();
+});
+
+it('names who will be used instead when the account in use is being removed', async () => {
+  const { user } = renderApp(<Accounts />);
+  // Steve is in use; Alex_Builds is the first one left.
+  await user.click(await screen.findByRole('button', { name: 'Remove Steve' }));
+  let dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveTextContent('Alex_Builds will be used instead.');
+  await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+  // The only one left: nobody to hand over to.
+  await user.click(screen.getByRole('button', { name: 'Remove Alex_Builds' }));
+  dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveTextContent('No accounts will be left. Play needs an account.');
+});
+
+it('does not name a replacement when the account being removed is not in use', async () => {
+  const { user } = renderApp(<Accounts />);
+  await user.click(await screen.findByRole('button', { name: 'Remove Alex_Builds' }));
+  expect(screen.getByRole('dialog')).not.toHaveTextContent(/will be used instead|No accounts will be left/);
 });

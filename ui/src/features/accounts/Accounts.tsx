@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '../../art/Avatar';
-import type { Account } from '../../ipc/schema';
+import type { Account, AccountsFile } from '../../ipc/schema';
 import { useAccountMutations, useAccounts, useAppInfo } from '../../state/queries';
 import { Button } from '../../ui/Button';
 import { ComingSoon } from '../../ui/ComingSoon';
@@ -26,23 +26,42 @@ export function Accounts() {
   const [removing, setRemoving] = useState<Account | null>(null);
   // Who the player just switched to, for screen readers: the Use button they pressed is gone by then.
   const [switched, setSwitched] = useState<string | null>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
+  const addHeading = useRef<HTMLHeadingElement>(null);
+  const accountList = useRef<HTMLUListElement>(null);
+  // The account whose Remove button should take focus once the row that was removed is gone.
+  const focusAfterRemove = useRef<{ uuid: string | null } | null>(null);
   const switchOnce = useSingleFlight();
   const addOnce = useSingleFlight();
   const removeOnce = useSingleFlight();
 
+  // Once the dialog is gone and the list is redrawn without the removed row, focus its stand-in.
+  useEffect(() => {
+    const target = focusAfterRemove.current;
+    if (!target || removing) return;
+    const row = target.uuid && accountList.current?.querySelector<HTMLElement>(`[data-remove-for="${target.uuid}"]`);
+    (row || nameInput.current || addHeading.current)?.focus();
+    focusAfterRemove.current = null;
+  }, [removing, accounts.data]);
+
   const showInvalid = checked && !OFFLINE_NAME.test(name);
+
+  const announceActive = (file: AccountsFile) =>
+    setSwitched(file.accounts.find((a) => a.uuid === file.active)?.username ?? null);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!OFFLINE_NAME.test(name)) {
       setChecked(true);
+      nameInput.current?.focus();
       return;
     }
     addOnce((done) =>
       add.mutate(name, {
-        onSuccess: () => {
+        onSuccess: (file) => {
           setName('');
           setChecked(false);
+          announceActive(file);
         },
         onSettled: done,
       }),
@@ -56,11 +75,26 @@ export function Accounts() {
     remove.reset();
     setRemoving(null);
   };
-  const confirmRemove = (account: Account) =>
-    removeOnce((done) => remove.mutate(account.uuid, { onSuccess: closeRemove, onSettled: done }));
-
   const list = accounts.data?.accounts ?? [];
+  const confirmRemove = (account: Account) =>
+    removeOnce((done) =>
+      remove.mutate(account.uuid, {
+        onSuccess: (file) => {
+          // The row is about to go: focus moves to the one that takes its place, or the one before it at the end.
+          const at = list.findIndex((a) => a.uuid === account.uuid);
+          const left = file.accounts;
+          focusAfterRemove.current = { uuid: left[Math.min(at, left.length - 1)]?.uuid ?? null };
+          if (account.uuid === accounts.data?.active) announceActive(file);
+          closeRemove();
+        },
+        onSettled: done,
+      }),
+    );
   const offlineLocked = appInfo.data?.offlineAllowed === false;
+  const removeBody = !appInfo.data ? t('accounts.removeBodyPending') : offlineLocked ? t('accounts.removeBodyLocked') : t('accounts.removeBody');
+  // Mirrors the core: removing the account in use promotes the first one left.
+  const successor = removing && removing.uuid === accounts.data?.active ? list.find((a) => a.uuid !== removing.uuid) : undefined;
+  const losesActive = removing !== null && removing.uuid === accounts.data?.active;
   return (
     <ScreenFrame title={t('accounts.title')}>
       <div className="grid max-w-2xl gap-10">
@@ -80,7 +114,7 @@ export function Accounts() {
             />
           )}
           {accounts.isSuccess && list.length === 0 && <p className="text-ink-dim">{t('accounts.empty')}</p>}
-          <ul className="grid gap-2">
+          <ul ref={accountList} className="grid gap-2">
             {list.map((account) => {
               const inUse = account.uuid === accounts.data?.active;
               return (
@@ -103,6 +137,7 @@ export function Accounts() {
                     size="icon"
                     aria-label={t('accounts.removeLabel', { name: account.username })}
                     icon={<Trash />}
+                    data-remove-for={account.uuid}
                     onClick={() => setRemoving(account)}
                   />
                 </li>
@@ -112,7 +147,7 @@ export function Accounts() {
         </div>
 
         <section className="grid gap-4" aria-labelledby="add-heading">
-          <h2 id="add-heading" className="text-lg font-bold">
+          <h2 id="add-heading" ref={addHeading} tabIndex={-1} className="text-lg font-bold outline-none">
             {t('accounts.addOffline')}
           </h2>
           {offlineLocked ? (
@@ -127,6 +162,7 @@ export function Accounts() {
                     error={showInvalid ? t('errors.offline_name_invalid.message') : null}
                   >
                     <input
+                      ref={nameInput}
                       className="field-input"
                       value={name}
                       maxLength={16}
@@ -160,7 +196,10 @@ export function Accounts() {
             </>
           }
         >
-          {offlineLocked ? t('accounts.removeBodyLocked') : t('accounts.removeBody')}
+          {removeBody}
+          {losesActive && (
+            <p className="mt-2">{successor ? t('accounts.removeNext', { name: successor.username }) : t('accounts.removeNone')}</p>
+          )}
           {remove.isError && (
             <div className="mt-4">
               <ErrorCard error={remove.error} />
