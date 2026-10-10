@@ -74,9 +74,12 @@ jobs:
       - run: cargo install cargo-fuzz --locked
       - name: Fuzz each pack parser for 3 minutes
         run: |
+          # Run every target even if one finds a crash, then fail at the end.
+          rc=0
           for target in packwiz_pack packwiz_index packwiz_meta mrpack_index sidecar pack_paths; do
-            cargo fuzz run "$target" -- -max_total_time=180 -rss_limit_mb=2048 -max_len=65536 -timeout=10
+            cargo fuzz run "$target" -- -max_total_time=180 -rss_limit_mb=2048 -max_len=65536 -timeout=10 || rc=1
           done
+          exit $rc
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

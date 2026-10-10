@@ -7,7 +7,7 @@ fuzz_target!(|data: &[u8]| {
         if let Some(n) = normalize_rel(text) {
             assert_eq!(normalize_rel(&n).as_deref(), Some(n.as_str()), "canonical form is stable");
             assert!(n.split('/').all(safe_component));
-            assert!(!n.contains('\') && !n.contains(':'));
+            assert!(!n.contains('\\') && !n.contains(':'));
         }
     }
 });
