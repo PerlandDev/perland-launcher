@@ -81,10 +81,14 @@ impl MetaClient {
                         _ => Err(invalid),
                     };
                 }
-                write_atomic(&body_path, &bytes).await?;
+                // Caching is best-effort: a body that arrived and validated is returned even if
+                // it can't be saved. The ETag is only kept alongside a body that was saved.
+                let saved = write_atomic(&body_path, &bytes).await.is_ok();
                 match etag {
-                    Some(tag) => write_atomic(&self.etag_path(url), tag.as_bytes()).await?,
-                    None => {
+                    Some(tag) if saved => {
+                        let _ = write_atomic(&self.etag_path(url), tag.as_bytes()).await;
+                    }
+                    _ => {
                         let _ = tokio::fs::remove_file(self.etag_path(url)).await;
                     }
                 }

@@ -149,6 +149,19 @@ async fn bad_json_is_loader_error() {
 }
 
 #[tokio::test]
+async fn unwritable_cache_does_not_fail_a_good_fetch() {
+    let server = MockServer::start().await;
+    serve_with_etag(&server).await;
+    let dir = tempfile::tempdir().unwrap();
+    // The cache "folder" is a regular file, so every cache write fails.
+    let not_a_dir = dir.path().join("meta");
+    std::fs::write(&not_a_dir, "x").unwrap();
+    let meta = MetaClient::new(http(), &not_a_dir);
+    let url = format!("{}/m.json", server.uri());
+    assert_eq!(meta.get_json::<A>(&url).await.unwrap(), A { a: 1 });
+}
+
+#[tokio::test]
 async fn client_error_without_cache_is_loader_error() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
