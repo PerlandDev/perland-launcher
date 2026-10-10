@@ -1,3 +1,4 @@
+pub mod forge;
 pub mod natives;
 
 use std::{
