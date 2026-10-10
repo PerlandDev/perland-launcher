@@ -3,5 +3,9 @@
 pub mod dto;
 pub mod events;
 pub mod logs;
+pub mod runner;
+#[cfg(test)]
+pub(crate) mod testing;
 
 pub use events::{AppEvent, ExitInfo, Host, RunStateKind};
+pub use runner::{CoreRunner, Kill, Runner, RunningGame};
