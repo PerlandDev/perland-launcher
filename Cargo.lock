@@ -2166,6 +2166,7 @@ dependencies = [
  "futures-util",
  "hex",
  "md-5",
+ "percent-encoding",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -2174,6 +2175,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "toml 1.1.8+spec-1.1.0",
  "wiremock",
  "zip",
 ]

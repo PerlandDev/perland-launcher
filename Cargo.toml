@@ -23,3 +23,5 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 clap = { version = "4", features = ["derive"] }
 tempfile = "3"
 wiremock = "0.6"
+toml = "1"
+percent-encoding = "2"
