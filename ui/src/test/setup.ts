@@ -3,6 +3,7 @@ import { clearMocks } from '@tauri-apps/api/mocks';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import i18n from '../i18n';
+import { stopMockRuns } from '../ipc/mock';
 import { resetActivity } from '../state/activity';
 import { resetRoute } from '../state/route';
 import { runStore } from '../state/runStore';
@@ -34,6 +35,7 @@ if (!Element.prototype.scrollTo) {
 
 afterEach(async () => {
   cleanup();
+  stopMockRuns();
   clearMocks();
   runStore.reset();
   resetRoute();
