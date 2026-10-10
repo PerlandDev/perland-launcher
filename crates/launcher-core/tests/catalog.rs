@@ -341,3 +341,77 @@ async fn rate_limit_is_an_error_not_empty() {
     assert_eq!(err.code, ErrorCode::MetaNotFound);
     assert_eq!(err.params.get("status").map(String::as_str), Some("429"));
 }
+
+#[tokio::test]
+async fn captive_portal_page_does_not_replace_cached_forge_metadata() {
+    let server = MockServer::start().await;
+    let at = "/net/minecraftforge/forge/maven-metadata.xml";
+    serve(&server, at, 200, FORGE_XML).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = server.uri();
+    let first = forge_versions_at(&meta(tmp.path()), LoaderKind::Forge, "1.20.1", repos(&uri))
+        .await
+        .unwrap();
+
+    server.reset().await;
+    serve(&server, at, 200, "<html>login</html>").await;
+    let again = forge_versions_at(&meta(tmp.path()), LoaderKind::Forge, "1.20.1", repos(&uri))
+        .await
+        .unwrap();
+    assert_eq!(versions(&again), versions(&first));
+}
+
+#[tokio::test]
+async fn non_metadata_page_without_cache_is_an_error_not_empty() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "/net/minecraftforge/forge/maven-metadata.xml",
+        200,
+        "<html>login</html>",
+    )
+    .await;
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = server.uri();
+    let err = forge_versions_at(&meta(tmp.path()), LoaderKind::Forge, "1.20.1", repos(&uri))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::MetaUnexpected);
+}
+
+#[tokio::test]
+async fn forge_before_1_12_2_is_not_offered() {
+    // No mock is mounted: a request would 404 and fail the call.
+    let server = MockServer::start().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = server.uri();
+    let list = forge_versions_at(&meta(tmp.path()), LoaderKind::Forge, "1.8.9", repos(&uri))
+        .await
+        .unwrap();
+    assert!(list.is_empty());
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn forge_for_1_12_2_starts_at_the_first_supported_installer() {
+    let server = MockServer::start().await;
+    serve(
+        &server,
+        "/net/minecraftforge/forge/maven-metadata.xml",
+        200,
+        r#"<metadata><versioning><versions>
+<version>1.12.2-14.23.5.2847</version><version>1.12.2-14.23.5.2851</version>
+<version>1.12.2-14.23.5.2860</version>
+</versions></versioning></metadata>"#,
+    )
+    .await;
+    let tmp = tempfile::tempdir().unwrap();
+    let uri = server.uri();
+    let list = forge_versions_at(&meta(tmp.path()), LoaderKind::Forge, "1.12.2", repos(&uri))
+        .await
+        .unwrap();
+    assert_eq!(
+        versions(&list),
+        vec![("14.23.5.2860", true), ("14.23.5.2851", true)]
+    );
+}

@@ -151,23 +151,28 @@ pub async fn forge_versions_at(
     }
     let forge = repos.forge.trim_end_matches('/');
     let neo = repos.neoforge.trim_end_matches('/');
-    // (metadata URL, version prefix, whether the prefix is part of the loader version)
-    let (url, prefix, keep_prefix) = match kind {
+    // (metadata URL, version prefix, whether the prefix is part of the loader version,
+    //  oldest loader version the launcher can install)
+    let (url, prefix, keep_prefix, oldest) = match kind {
+        LoaderKind::Forge if forge_predates_installers(mc) => return Ok(Vec::new()),
         LoaderKind::Forge => (
             format!("{forge}/net/minecraftforge/forge/maven-metadata.xml"),
             format!("{mc}-"),
             false,
+            (mc == "1.12.2").then_some(FORGE_OLDEST_1_12_2),
         ),
         LoaderKind::NeoForge if mc == "1.20.1" => (
             format!("{neo}/net/neoforged/forge/maven-metadata.xml"),
             "1.20.1-".to_string(),
             false,
+            None,
         ),
         LoaderKind::NeoForge => match neoforge_prefix(mc) {
             Some(prefix) => (
                 format!("{neo}/net/neoforged/neoforge/maven-metadata.xml"),
                 prefix,
                 true,
+                None,
             ),
             None => return Ok(Vec::new()),
         },
@@ -179,7 +184,20 @@ pub async fn forge_versions_at(
             .with_param("loader", format!("{kind:?}")))
         }
     };
-    let bytes = meta.get_bytes(&url).await?;
+    // A body that isn't maven metadata (a captive-portal page) must not replace the cached copy.
+    let is_metadata = |body: &[u8]| {
+        if String::from_utf8_lossy(body).contains("<metadata") {
+            Ok(())
+        } else {
+            Err(LauncherError::loader(
+                ErrorCode::MetaUnexpected,
+                format!("Unexpected data from {url}"),
+            ))
+        }
+    };
+    let bytes = meta.get_bytes_validated(&url, is_metadata).await?;
+    // A cached fallback (offline / server error) bypasses the check on fresh bodies.
+    is_metadata(&bytes)?;
     let mut out: Vec<LoaderVersion> = maven_versions(&String::from_utf8_lossy(&bytes))
         .into_iter()
         .filter(|v| v.starts_with(&prefix))
@@ -191,6 +209,7 @@ pub async fn forge_versions_at(
             }
         })
         .filter(|v| valid_component(v))
+        .filter(|v| oldest.is_none_or(|oldest| compare_versions(v, oldest) != Ordering::Less))
         .map(|version| LoaderVersion {
             stable: kind == LoaderKind::Forge || !version.contains('-'),
             version,
@@ -199,6 +218,30 @@ pub async fn forge_versions_at(
     out.sort_by(|a, b| compare_versions(&b.version, &a.version));
     out.dedup_by(|a, b| a.version == b.version);
     Ok(out)
+}
+
+/// The first Forge for 1.12.2 whose installer has the format the launcher runs.
+const FORGE_OLDEST_1_12_2: &str = "14.23.5.2851";
+
+/// Forge installers the launcher can run exist only from Minecraft 1.12.2 on. True for a plain
+/// `1.<minor>[.<patch>]` id before 1.12.2; anything else (year-style, snapshots) is left alone.
+fn forge_predates_installers(mc: &str) -> bool {
+    let Some(rest) = mc.strip_prefix("1.") else {
+        return false;
+    };
+    let numbers: Option<Vec<u64>> = rest
+        .split('.')
+        .map(|p| {
+            (!p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+                .then(|| p.parse().ok())
+                .flatten()
+        })
+        .collect();
+    match numbers.as_deref() {
+        Some(&[minor]) => (minor, 0) < (12, 2),
+        Some(&[minor, patch]) => (minor, patch) < (12, 2),
+        _ => false,
+    }
 }
 
 /// NeoForge numbers releases after Minecraft: `21.1.x` is 1.21.1, `21.0.x` is 1.21, and
@@ -291,6 +334,18 @@ mod tests {
             Ordering::Greater
         );
         assert_eq!(compare_versions("1.0", "1.0.0"), Ordering::Equal);
+    }
+
+    #[test]
+    fn forge_cutoff_only_filters_plain_old_versions() {
+        for old in ["1.8.9", "1.12", "1.12.1", "1.7.10", "1.0"] {
+            assert!(forge_predates_installers(old), "{old}");
+        }
+        for kept in [
+            "1.12.2", "1.13", "1.20.1", "26.3", "1.8-pre1", "1.+8", "1.", "b1.7.3",
+        ] {
+            assert!(!forge_predates_installers(kept), "{kept}");
+        }
     }
 
     #[test]

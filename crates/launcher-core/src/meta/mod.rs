@@ -47,6 +47,17 @@ impl MetaClient {
         self.fetch(url, |_| Ok(())).await
     }
 
+    /// Like [`Self::get_bytes`], but a fresh body only replaces the cached copy when `validate`
+    /// accepts it; otherwise a cached copy that validates is returned, else `validate`'s error.
+    /// When the server can't be reached the cached copy is returned as is.
+    pub(crate) async fn get_bytes_validated(
+        &self,
+        url: &str,
+        validate: impl Fn(&[u8]) -> Result<()>,
+    ) -> Result<Vec<u8>> {
+        self.fetch(url, validate).await
+    }
+
     /// Fetch `url` (revalidating with the cached ETag) and return the body. A fresh body is only
     /// written to the cache when `validate` accepts it. If it is rejected, the cache is left alone
     /// and a cached copy that passes the same validation is returned instead, else the validation error.

@@ -163,17 +163,25 @@ pub(crate) async fn published_sha1(meta: &MetaClient, url: &str) -> Result<Strin
         .with_fix("Try again later")
         .with_detail(url)
     };
-    let body = match meta.get_bytes(&format!("{url}.sha1")).await {
+    let parse = |body: &[u8]| {
+        std::str::from_utf8(body)
+            .ok()
+            .and_then(|text| text.split_whitespace().next())
+            .filter(|t| t.len() == 40 && t.bytes().all(|b| b.is_ascii_hexdigit()))
+            .map(str::to_ascii_lowercase)
+    };
+    // Only a body that holds a sha1 may replace the cached copy, so a captive-portal page
+    // can't break later (offline) launches.
+    let validate = |body: &[u8]| parse(body).map(|_| ()).ok_or_else(unverifiable);
+    let body = match meta
+        .get_bytes_validated(&format!("{url}.sha1"), validate)
+        .await
+    {
         Ok(body) => body,
         Err(e) if e.category == ErrorCategory::Network => return Err(e),
         Err(_) => return Err(unverifiable()),
     };
-    let token = std::str::from_utf8(&body)
-        .ok()
-        .and_then(|text| text.split_whitespace().next())
-        .filter(|t| t.len() == 40 && t.bytes().all(|b| b.is_ascii_hexdigit()))
-        .ok_or_else(unverifiable)?;
-    Ok(token.to_ascii_lowercase())
+    parse(&body).ok_or_else(unverifiable)
 }
 
 fn maven_path(name: &str) -> Result<String> {

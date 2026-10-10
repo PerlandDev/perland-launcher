@@ -163,7 +163,7 @@ pub fn parse_profile(bytes: &[u8]) -> Result<InstallProfile> {
             ErrorCode::LoaderTooOld,
             "This loader version is too old for the launcher",
         )
-        .with_fix("Pick a newer loader version")
+        .with_fix("Pick a newer Minecraft version, or another loader")
         .with_detail("legacy installer format (versionInfo)"));
     }
     serde_json::from_value(value).map_err(|e| invalid(format!("install_profile.json: {e}")))
