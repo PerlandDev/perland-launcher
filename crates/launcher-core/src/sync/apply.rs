@@ -9,6 +9,7 @@ use super::{lockfile::Managed, plan::OnDisk};
 use crate::{
     download::{hash::sha1_file, Hashes},
     error::{ErrorCode, LauncherError, Result},
+    fsutil::path_key,
     sources::{FileMode, PackFile},
 };
 
@@ -54,7 +55,20 @@ pub(crate) fn quick_check(game_dir: &Path, managed: &Managed) -> bool {
     )
 }
 
-/// Hash what's on disk at every path the pack wants or the lockfile names.
+fn path_is_folder(path: &str) -> LauncherError {
+    let shown: String = path.chars().take(120).collect();
+    LauncherError::pack(
+        ErrorCode::PackPathIsFolder,
+        format!("The pack wants to put a file where you have a folder ({shown})"),
+    )
+    .with_param("path", shown)
+    .with_fix("Move or rename that folder, then try again")
+}
+
+/// Hash what's on disk at every path the pack wants or the lockfile names. A lockfile path that
+/// differs from a wanted one only in letter case is left out: on a case-insensitive file system
+/// it is the same file. A folder where the pack wants a file stops the sync before anything
+/// moves; a folder at a path only the lockfile names is the player's, so it is left out too.
 pub(crate) async fn survey(
     game_dir: &Path,
     wanted: &[&PackFile],
@@ -64,10 +78,10 @@ pub(crate) async fn survey(
         .iter()
         .map(|f| (f.path.clone(), Some(f.hashes.clone())))
         .collect();
-    let mut seen: HashSet<String> = jobs.iter().map(|(p, _)| p.clone()).collect();
+    let mut seen: HashSet<String> = jobs.iter().map(|(p, _)| path_key(p)).collect();
     if let Some(m) = managed {
         for path in m.files.keys() {
-            if seen.insert(path.clone()) {
+            if seen.insert(path_key(path)) {
                 jobs.push((path.clone(), None));
             }
         }
@@ -78,10 +92,11 @@ pub(crate) async fn survey(
         for (path, hashes) in jobs {
             let full = game_dir.join(&path);
             let state = match std::fs::metadata(&full) {
-                Err(_) => OnDisk::Missing,
-                Ok(meta) if !meta.is_file() => OnDisk::Different {
-                    sha1: String::new(),
-                    size: 0,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => OnDisk::Missing,
+                Err(e) => return Err(e.into()),
+                Ok(meta) if !meta.is_file() => match hashes {
+                    Some(_) => return Err(path_is_folder(&path)),
+                    None => continue,
                 },
                 Ok(meta) => {
                     let sha1 = sha1_file(&full)?;
@@ -145,6 +160,22 @@ pub(crate) async fn move_to_trash(game_dir: &Path, trash_dir: &Path, rel: &str) 
     }
     tokio::fs::rename(&from, &to).await?;
     Ok(())
+}
+
+/// Is `game_dir/alias` a file of its own, apart from `game_dir/wanted`? Not when it is gone,
+/// and not when both names lead to one file (a case-insensitive file system).
+pub(crate) fn is_separate(game_dir: &Path, alias: &str, wanted: &str) -> bool {
+    let alias = game_dir.join(alias);
+    if !alias.is_file() {
+        return false;
+    }
+    match (
+        std::fs::canonicalize(&alias),
+        std::fs::canonicalize(game_dir.join(wanted)),
+    ) {
+        (Ok(a), Ok(w)) => a != w,
+        _ => false,
+    }
 }
 
 /// Move a staged file into place (same volume: the instance folder).
@@ -280,6 +311,69 @@ mod tests {
             matches!(found["mods/old.jar"], OnDisk::Different { .. }),
             "present"
         );
+    }
+
+    #[tokio::test]
+    async fn survey_sees_a_case_only_rename_once() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("mods")).unwrap();
+        std::fs::write(dir.path().join("mods/foo.jar"), "foo").unwrap();
+        let renamed = pf("mods/Foo.jar", Hashes::sha1(sha1_hex(b"foo")));
+        let lock = managed(&[("mods/foo.jar", FileMode::Replace, 3)]);
+        let found = survey(dir.path(), &[&renamed], Some(&lock)).await.unwrap();
+        assert!(
+            !found.contains_key("mods/foo.jar"),
+            "the old spelling is the wanted file: {found:?}"
+        );
+    }
+
+    #[test]
+    fn a_case_alias_is_separate_only_as_a_file_of_its_own() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("mods/folder.jar")).unwrap();
+        std::fs::write(dir.path().join("mods/foo.jar"), "old").unwrap();
+        std::fs::write(dir.path().join("mods/bar.jar"), "bar").unwrap();
+        assert!(is_separate(dir.path(), "mods/bar.jar", "mods/foo.jar"));
+        assert!(!is_separate(dir.path(), "mods/foo.jar", "mods/foo.jar"));
+        assert!(!is_separate(dir.path(), "mods/gone.jar", "mods/foo.jar"));
+        assert!(
+            !is_separate(dir.path(), "mods/folder.jar", "mods/foo.jar"),
+            "folders are never moved"
+        );
+        std::fs::write(dir.path().join("mods/Foo.jar"), "new").unwrap();
+        // Case-insensitive (Windows): one file under two names. Case-sensitive: two files.
+        let one_file = std::fs::read(dir.path().join("mods/foo.jar")).unwrap() == b"new";
+        assert_eq!(
+            is_separate(dir.path(), "mods/foo.jar", "mods/Foo.jar"),
+            !one_file
+        );
+        #[cfg(windows)]
+        assert!(one_file);
+    }
+
+    #[tokio::test]
+    async fn a_folder_where_the_pack_wants_a_file_stops_the_survey() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("saves/world.dat")).unwrap();
+        std::fs::write(dir.path().join("saves/world.dat/level.dat"), "mine").unwrap();
+        let wanted = pf("saves/world.dat", Hashes::sha1(sha1_hex(b"pack")));
+        let err = survey(dir.path(), &[&wanted], None).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::PackPathIsFolder);
+        assert_eq!(err.params["path"], "saves/world.dat");
+
+        // A managed file the pack dropped that is now a folder: the player's, never trashed.
+        let lock = managed(&[("saves/world.dat", FileMode::Replace, 3)]);
+        let found = survey(dir.path(), &[], Some(&lock)).await.unwrap();
+        assert_eq!(found.get("saves/world.dat"), None);
+    }
+
+    #[tokio::test]
+    async fn only_not_found_counts_as_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        // A path the OS refuses outright (an interior NUL) fails `metadata` with another error.
+        let odd = pf("mods/a\0b.jar", Hashes::sha1(sha1_hex(b"x")));
+        let err = survey(dir.path(), &[&odd], None).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::DiskIo);
     }
 
     #[test]

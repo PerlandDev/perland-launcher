@@ -279,6 +279,7 @@
     "instance_locked": { "message": "Otra ventana de Perland Launcher está usando esta instancia.", "fix": "Cierra la otra ventana o espera a que termine." },
     "manual_downloads_needed": { "message": "Hay {{count}} archivos que tienes que descargar a mano.", "fix": "Descárgalos de CurseForge e inténtalo de nuevo." },
     "update_check_failed": { "message": "No se pudieron buscar actualizaciones.", "fix": "Igual puedes jugar la versión que tienes." },
+    "pack_path_is_folder": { "message": "El pack quiere poner un archivo donde tienes una carpeta ({{path}}).", "fix": "Mueve esa carpeta o cámbiale el nombre, y vuelve a intentarlo." },
     "internal": { "message": "Ocurrió algo inesperado.", "fix": "Reinicia el launcher. Si sigue pasando, copia los detalles para soporte." }
   }
 }

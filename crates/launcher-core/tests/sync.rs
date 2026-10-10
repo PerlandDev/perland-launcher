@@ -503,7 +503,11 @@ async fn pinned_instances_stay_on_their_version() {
 #[tokio::test]
 async fn offline_ensure_uses_the_installed_snapshot_with_a_warning() {
     let env = Env::new().await;
-    let url = v1(&env.server).mount(&env.server).await;
+    let url = v1(&env.server)
+        .sidecar("[art]\nicon = \"icon.png\"\n")
+        .host("/pack/icon.png", PNG)
+        .mount(&env.server)
+        .await;
     let (instance, _) = env
         .syncer
         .add_pack(&env.store, &PackInput::Packwiz { url })
@@ -526,6 +530,11 @@ async fn offline_ensure_uses_the_installed_snapshot_with_a_warning() {
     assert!(
         env.game_file(&instance.id, "mods/zoom.jar").exists(),
         "repaired from the cache"
+    );
+    assert_eq!(
+        hits(&env.server, "/pack/icon.png").await,
+        0,
+        "an offline repair doesn't wait on the art"
     );
 
     // A pack that was never synced can't be played offline: a clear error, nothing half-made.
@@ -835,6 +844,15 @@ async fn mrpack_override_edits_survive_an_update() {
         .unwrap();
     let report = done(env.sync(&instance.id, &desired2).await.unwrap());
     assert_eq!(report.kept_modified, vec!["config/c.toml"]);
+    assert!(
+        !report.changes.updated.contains(&"c.toml".to_string()),
+        "kept, so not updated: {:?}",
+        report.changes
+    );
+    assert!(
+        !report.changes.updated.is_empty(),
+        "options.txt was updated"
+    );
     assert_eq!(
         std::fs::read(env.game_file(&instance.id, "config/c.toml")).unwrap(),
         b"mine"
@@ -843,4 +861,194 @@ async fn mrpack_override_edits_survive_an_update() {
         std::fs::read(env.game_file(&instance.id, "options.txt")).unwrap(),
         b"fov:2"
     );
+}
+
+/// A packwiz instance made by `add_pack` and synced once.
+async fn synced(env: &Env, pack: PackBuilder) -> Instance {
+    let url = pack.mount(&env.server).await;
+    let (instance, _) = env
+        .syncer
+        .add_pack(&env.store, &PackInput::Packwiz { url })
+        .await
+        .unwrap();
+    done(
+        env.syncer
+            .ensure(&env.store, &instance.id, &env.sink())
+            .await
+            .unwrap()
+            .outcome,
+    );
+    instance
+}
+
+async fn ensure(env: &Env, id: &str) -> Result<launcher_core::sync::Ensured> {
+    env.syncer.ensure(&env.store, id, &env.sink()).await
+}
+
+#[tokio::test]
+async fn a_case_only_rename_keeps_exactly_one_copy_of_the_mod() {
+    let env = Env::new().await;
+    let instance = synced(
+        &env,
+        PackBuilder::new(&env.server, "Tiny", "1.0.0")
+            .url_mod("foo", "foo.jar", b"foo", "both", None),
+    )
+    .await;
+
+    env.server.reset().await;
+    PackBuilder::new(&env.server, "Tiny", "1.1.0")
+        .url_mod("foo", "Foo.jar", b"foo", "both", None)
+        .mount(&env.server)
+        .await;
+    done(ensure(&env, &instance.id).await.unwrap().outcome);
+
+    assert_eq!(
+        std::fs::read(env.game_file(&instance.id, "mods/Foo.jar")).unwrap(),
+        b"foo"
+    );
+    let copies: Vec<String> = std::fs::read_dir(env.game_file(&instance.id, "mods"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|n| n.eq_ignore_ascii_case("foo.jar"))
+        .collect();
+    assert_eq!(copies.len(), 1, "{copies:?}");
+    let managed = Managed::load(&env.store.perland_dir(&instance.id))
+        .await
+        .unwrap();
+    assert_eq!(
+        managed.files.keys().collect::<Vec<_>>(),
+        vec!["mods/Foo.jar"]
+    );
+    assert!(done(ensure(&env, &instance.id).await.unwrap().outcome).up_to_date);
+}
+
+#[tokio::test]
+async fn a_folder_where_the_pack_wants_a_file_stops_the_sync() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1(&env.server)).await;
+    let folder = env.game_file(&instance.id, "mods/jei.jar");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("notes.txt"), b"mine").unwrap();
+
+    env.server.reset().await;
+    v1(&env.server)
+        .with_version("1.1.0")
+        .url_mod("alpha", "alpha.jar", b"alpha", "both", None)
+        .url_mod("jei", "jei.jar", b"jei", "both", None)
+        .mount(&env.server)
+        .await;
+    let err = ensure(&env, &instance.id).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::PackPathIsFolder);
+    assert_eq!(err.params["path"], "mods/jei.jar");
+    assert_eq!(std::fs::read(folder.join("notes.txt")).unwrap(), b"mine");
+    assert!(
+        !env.game_file(&instance.id, "mods/alpha.jar").exists(),
+        "nothing applied"
+    );
+    let managed = Managed::load(&env.store.perland_dir(&instance.id))
+        .await
+        .unwrap();
+    assert_eq!(managed.pack_version, "1.0.0");
+}
+
+#[tokio::test]
+async fn an_interrupted_swap_converges_to_the_new_version_offline() {
+    let env = Env::new().await;
+    let instance = synced(
+        &env,
+        PackBuilder::new(&env.server, "Tiny", "1.0.0").url_mod(
+            "create",
+            "create-0.5.1.jar",
+            b"create 0.5.1",
+            "both",
+            None,
+        ),
+    )
+    .await;
+
+    env.server.reset().await;
+    PackBuilder::new(&env.server, "Tiny", "1.1.0")
+        .url_mod("create", "create-0.5.2.jar", b"create 0.5.2", "both", None)
+        .mount(&env.server)
+        .await;
+    // The swap stops after the new jar is placed: a file where the trash folder goes makes
+    // moving the old jar out fail.
+    let trash = env.store.perland_dir(&instance.id).join("trash");
+    let _ = std::fs::remove_dir_all(&trash);
+    std::fs::write(&trash, b"in the way").unwrap();
+    ensure(&env, &instance.id).await.unwrap_err();
+    assert!(env
+        .game_file(&instance.id, "mods/create-0.5.2.jar")
+        .exists());
+    assert!(
+        env.game_file(&instance.id, "mods/create-0.5.1.jar")
+            .exists(),
+        "stopped midway"
+    );
+
+    std::fs::remove_file(&trash).unwrap();
+    env.server.reset().await; // offline from now on
+    let ensured = ensure(&env, &instance.id).await.unwrap();
+    assert_eq!(ensured.warning.unwrap().code, ErrorCode::UpdateCheckFailed);
+    done(ensured.outcome);
+    assert!(env
+        .game_file(&instance.id, "mods/create-0.5.2.jar")
+        .exists());
+    assert!(
+        !env.game_file(&instance.id, "mods/create-0.5.1.jar")
+            .exists(),
+        "no duplicate mod left behind"
+    );
+    assert!(trashed(&env, &instance.id, "mods/create-0.5.1.jar").is_some());
+    let managed = Managed::load(&env.store.perland_dir(&instance.id))
+        .await
+        .unwrap();
+    assert_eq!(managed.pack_version, "1.1.0");
+}
+
+#[tokio::test]
+async fn ensure_and_sync_check_the_id_before_touching_the_disk() {
+    let env = Env::new().await;
+    let url = v1(&env.server).mount(&env.server).await;
+    let (instance, desired) = env.instance(&url).await;
+    for bad in ["../x", r"..\x"] {
+        let err = ensure(&env, bad).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::InstanceIdInvalid, "{bad}");
+        let err = env.sync(bad, &desired).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::InstanceIdInvalid, "{bad}");
+    }
+    let err = ensure(&env, "ghost").await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::InstanceNotFound);
+    let err = env.sync("ghost", &desired).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::InstanceNotFound);
+    assert!(!env._tmp.path().join("x").exists(), "nothing made outside");
+    let folders: Vec<String> = std::fs::read_dir(env._tmp.path().join("instances"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(folders, vec![instance.id]);
+}
+
+#[tokio::test]
+async fn an_update_that_fails_to_resolve_plays_the_installed_version() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1(&env.server)).await;
+
+    env.server.reset().await;
+    v1(&env.server)
+        .with_version("1.1.0")
+        .url_mod("jei", "jei.jar", b"jei", "both", None)
+        .corrupt_index()
+        .mount(&env.server)
+        .await;
+    let ensured = ensure(&env, &instance.id).await.unwrap();
+    let warning = ensured.warning.unwrap();
+    assert_eq!(warning.code, ErrorCode::UpdateCheckFailed);
+    assert_eq!(
+        warning.fix.as_deref(),
+        Some("You can still play the version you have")
+    );
+    assert!(warning.detail.is_some());
+    assert!(done(ensured.outcome).up_to_date);
+    assert!(!env.game_file(&instance.id, "mods/jei.jar").exists());
 }

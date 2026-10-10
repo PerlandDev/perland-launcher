@@ -64,5 +64,6 @@
   "instance_locked",
   "manual_downloads_needed",
   "update_check_failed",
+  "pack_path_is_folder",
   "internal"
 ]

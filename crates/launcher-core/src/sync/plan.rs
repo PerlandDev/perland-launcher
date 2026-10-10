@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use serde::Serialize;
 
 use crate::{
+    fsutil::path_key,
     sources::{DesiredState, FileMode, PackFile},
     sync::lockfile::Managed,
 };
@@ -47,6 +48,10 @@ pub struct Plan {
     pub trash: Vec<String>,
     /// `.mrpack` override files the player changed, kept instead of updated.
     pub kept_modified: Vec<String>,
+    /// Managed files the pack now spells with other letter case (`foo.jar` -> `Foo.jar`). On a
+    /// case-insensitive file system that is the wanted file itself, so they are never in
+    /// `trash`; sync moves one out only when it is a separate file (see `apply::is_separate`).
+    pub case_aliases: Vec<String>,
 }
 
 /// What an update does, in names a player recognizes.
@@ -100,8 +105,8 @@ pub fn wanted<'a>(
 }
 
 /// Invariants: a disk key that is absent means `Missing`; only lockfile paths with a non-empty
-/// sha1 (files sync wrote) are ever trashed; files that are neither wanted nor in the lockfile
-/// are never planned.
+/// sha1 (files sync wrote) are ever trashed, and never one that differs from a wanted path only
+/// in letter case; files that are neither wanted nor in the lockfile are never planned.
 pub fn plan(
     wanted: &[&PackFile],
     managed: Option<&Managed>,
@@ -156,13 +161,17 @@ pub fn plan(
     }
     if let Some(m) = managed {
         let wanted_paths: HashSet<&str> = wanted.iter().map(|f| f.path.as_str()).collect();
+        let wanted_keys: HashSet<String> = wanted.iter().map(|f| path_key(&f.path)).collect();
         for (path, entry) in &m.files {
             // An empty sha1 marks the player's file that sync kept in place: never trashed.
-            if entry.sha1.is_empty() {
+            if entry.sha1.is_empty() || wanted_paths.contains(path.as_str()) {
                 continue;
             }
-            let present = !matches!(disk.get(path), None | Some(OnDisk::Missing));
-            if present && !wanted_paths.contains(path.as_str()) {
+            if wanted_keys.contains(&path_key(path)) {
+                plan.case_aliases.push(path.clone());
+                continue;
+            }
+            if !matches!(disk.get(path), None | Some(OnDisk::Missing)) {
                 plan.trash.push(path.clone());
             }
         }
@@ -173,11 +182,22 @@ pub fn plan(
 /// The changelog for syncing to `wanted`. A mod whose jar was renamed (same name, new path)
 /// counts as updated, not as removed plus added.
 pub fn changes(wanted: &[&PackFile], managed: Option<&Managed>, to_version: &str) -> Changes {
+    changes_except(wanted, managed, to_version, &[])
+}
+
+/// `changes`, leaving out the wanted files at `kept`: override files sync kept as the player
+/// edited them (`Plan::kept_modified`), which an update doesn't change.
+pub fn changes_except(
+    wanted: &[&PackFile],
+    managed: Option<&Managed>,
+    to_version: &str,
+    kept: &[String],
+) -> Changes {
     let mut added = BTreeSet::new();
     let mut updated = BTreeSet::new();
     let mut removed = BTreeSet::new();
     let wanted_paths: HashSet<&str> = wanted.iter().map(|f| f.path.as_str()).collect();
-    for f in wanted {
+    for f in wanted.iter().filter(|f| !kept.contains(&f.path)) {
         match managed.and_then(|m| m.files.get(&f.path)) {
             None => {
                 added.insert(f.name.clone());
@@ -584,6 +604,59 @@ mod tests {
             (first.from_version, first.added),
             (None, vec!["Fresh".to_string()])
         );
+    }
+
+    #[test]
+    fn a_case_only_rename_never_trashes_the_file() {
+        // On a case-insensitive file system both spellings name the one file on disk.
+        let lock = managed(&[("mods/foo.jar", entry("Foo", "f1", "f1"))]);
+        let renamed = pf("mods/Foo.jar", FileMode::Replace, "f1");
+        let p = plan(
+            &[&renamed],
+            Some(&lock),
+            &disk(&[("mods/foo.jar", diff("f1")), ("mods/Foo.jar", same("f1"))]),
+        );
+        assert!(p.trash.is_empty(), "{:?}", p.trash);
+        assert_eq!(p.case_aliases, vec!["mods/foo.jar".to_string()]);
+
+        // New content too: only the replaced file goes to the trash, once.
+        let updated = pf("mods/Foo.jar", FileMode::Replace, "f2");
+        let p = plan(
+            &[&updated],
+            Some(&lock),
+            &disk(&[("mods/foo.jar", diff("f1")), ("mods/Foo.jar", diff("f1"))]),
+        );
+        assert!(p.trash.is_empty(), "{:?}", p.trash);
+        assert_eq!(
+            p.write,
+            vec![Planned {
+                file: updated,
+                replaces: true
+            }]
+        );
+
+        // The player's file under the old spelling is never touched.
+        let theirs = managed(&[("mods/foo.jar", entry("Foo", "", "f1"))]);
+        let p = plan(&[&renamed], Some(&theirs), &disk(&[]));
+        assert!(p.trash.is_empty() && p.case_aliases.is_empty());
+    }
+
+    #[test]
+    fn kept_override_edits_are_not_reported_as_updated() {
+        let cfg = pf("config/c.toml", FileMode::ReplaceUnlessModified, "new");
+        let other = pf("config/d.toml", FileMode::ReplaceUnlessModified, "new");
+        let lock = managed(&[
+            ("config/c.toml", entry("c.toml", "written", "old")),
+            ("config/d.toml", entry("d.toml", "written", "old")),
+        ]);
+        let c = changes_except(
+            &[&cfg, &other],
+            Some(&lock),
+            "2.0",
+            &["config/c.toml".to_string()],
+        );
+        assert_eq!(c.updated, vec!["d.toml"]);
+        assert!(c.added.is_empty() && c.removed.is_empty(), "{c:?}");
     }
 
     #[test]

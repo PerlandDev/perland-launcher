@@ -24,6 +24,7 @@ use crate::{
     download::{cache::ObjectCache, hash::sha1_file, Hashes},
     error::{ErrorCode, LauncherError, Result},
     events::{Event, EventSink, TaskId},
+    fsutil::path_key,
     install::Installer,
     instances::{GameSpec, Instance, InstanceStore, SourceRef, UpdatePolicy},
     locks::InstanceLock,
@@ -119,6 +120,13 @@ impl From<LauncherError> for StageError {
 fn archive_gone() -> LauncherError {
     LauncherError::pack(ErrorCode::PackNotFound, "The pack's archive is gone")
         .with_fix("Import the pack again")
+}
+
+/// Resolving an update failed: the installed version plays, so this is only a warning.
+fn update_check_failed(e: LauncherError) -> LauncherError {
+    LauncherError::network(ErrorCode::UpdateCheckFailed, "Couldn't check for updates")
+        .with_fix("You can still play the version you have")
+        .with_detail(e.message)
 }
 
 fn join_error(e: tokio::task::JoinError) -> LauncherError {
@@ -234,8 +242,9 @@ impl Syncer {
         id: &str,
         sink: &EventSink,
     ) -> Result<Ensured> {
-        let lock = InstanceLock::try_acquire(&store.perland_dir(id))?;
+        // Loading validates `id` before the lock creates anything under it.
         let instance = store.load(id).await?;
+        let lock = InstanceLock::try_acquire(&store.perland_dir(id))?;
         if instance.source == SourceRef::None {
             return Err(no_pack());
         }
@@ -257,7 +266,7 @@ impl Syncer {
                             update
                         }
                         Err(e) => {
-                            warning = Some(e);
+                            warning = Some(update_check_failed(e));
                             installed
                         }
                     }
@@ -273,7 +282,8 @@ impl Syncer {
                 fresh.source = source;
                 store.save(&fresh).await?;
             }
-            if !report.up_to_date {
+            // Offline, the art would only make Play wait on network timeouts.
+            if !report.up_to_date && warning.is_none() {
                 art::fetch(
                     &self.sources.http,
                     &desired.about.art,
@@ -294,6 +304,8 @@ impl Syncer {
         desired: &DesiredState,
         sink: &EventSink,
     ) -> Result<SyncOutcome> {
+        // Loading validates `id` before the lock creates anything under it.
+        store.load(id).await?;
         let lock = InstanceLock::try_acquire(&store.perland_dir(id))?;
         self.sync_locked(&lock, store, id, desired, sink).await
     }
@@ -335,9 +347,14 @@ impl Syncer {
             }
         }
 
-        let changes = plan::changes(&wanted, managed.as_ref(), &desired.pack_version);
         let disk = apply::survey(&game_dir, &wanted, managed.as_ref()).await?;
         let plan = plan::plan(&wanted, managed.as_ref(), &disk);
+        let changes = plan::changes_except(
+            &wanted,
+            managed.as_ref(),
+            &desired.pack_version,
+            &plan.kept_modified,
+        );
 
         // A leftover from an earlier attempt must not count against free space.
         let staging = perland.join("staging");
@@ -387,6 +404,10 @@ impl Syncer {
             self.game.install_game(&new_game, sink).await?;
         }
 
+        // Every byte of the new version is in the cache now. Recording it before the swap means a
+        // swap that stops halfway resumes toward it, even offline, instead of toward the old
+        // version (whose leftovers would sit next to the new files as "additions").
+        save_pack(&perland, desired).await?;
         let trash_dir = apply::trash_folder(&perland, now);
         for p in &plan.write {
             if p.replaces {
@@ -396,6 +417,15 @@ impl Syncer {
         }
         for path in &plan.trash {
             apply::move_to_trash(&game_dir, &trash_dir, path).await?;
+        }
+        for alias in &plan.case_aliases {
+            let key = path_key(alias);
+            let Some(file) = wanted.iter().find(|f| path_key(&f.path) == key) else {
+                continue;
+            };
+            if apply::is_separate(&game_dir, alias, &file.path) {
+                apply::move_to_trash(&game_dir, &trash_dir, alias).await?;
+            }
         }
 
         if game_changed {
@@ -431,7 +461,6 @@ impl Syncer {
                 },
             );
         }
-        save_pack(&perland, desired).await?;
         Managed {
             version: Managed::VERSION,
             stamp: desired.stamp.clone(),
