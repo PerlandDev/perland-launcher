@@ -1,0 +1,47 @@
+name: Tester build
+# Builds the Windows launcher from every push to main and attaches it to the run as an artifact,
+# for friends testing before Microsoft sign-in (Plan 4) exists. It is a dev-mode build:
+# release-optimized, but with debug assertions on, so BuildKind::current() is Dev and offline
+# accounts are allowed. That is why it is an artifact (GitHub sign-in, 30-day expiry) and never
+# a Release: public downloads must wait for the licensed sign-in gate.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tester-build
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the dev-mode launcher
+        env:
+          CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS: "true"
+        run: pnpm tauri build
+      - name: Name the build after its commit
+        shell: bash
+        run: |
+          mkdir -p tester
+          cp target/release/perland-launcher.exe "tester/PerlandLauncher-tester-${GITHUB_SHA::7}.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PerlandLauncher-tester-${{ github.sha }}
+          path: tester/*.exe
+          retention-days: 30
+          if-no-files-found: error
