@@ -162,3 +162,58 @@ async fn being_offline_is_reported_not_hidden() {
     .unwrap_err();
     assert_eq!(err.code, ErrorCode::Offline);
 }
+
+#[tokio::test]
+async fn quilt_404_for_unknown_game_version_has_no_loaders() {
+    let server = MockServer::start().await;
+    serve(&server, "/quilt/versions/loader/9.9.9", 404, "[]").await;
+    let tmp = tempfile::tempdir().unwrap();
+    let base = server.uri();
+    let list = loader_versions_at(
+        &meta(tmp.path()),
+        LoaderKind::Quilt,
+        "9.9.9",
+        &format!("{base}/fabric"),
+        &format!("{base}/quilt"),
+    )
+    .await
+    .unwrap();
+    assert!(list.is_empty());
+}
+
+#[tokio::test]
+async fn malformed_loader_list_is_an_error_not_empty() {
+    let server = MockServer::start().await;
+    serve(&server, "/fabric/versions/loader/1.20.1", 200, "{}").await;
+    let tmp = tempfile::tempdir().unwrap();
+    let base = server.uri();
+    let err = loader_versions_at(
+        &meta(tmp.path()),
+        LoaderKind::Fabric,
+        "1.20.1",
+        &format!("{base}/fabric"),
+        &format!("{base}/quilt"),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.code, ErrorCode::MetaUnexpected);
+}
+
+#[tokio::test]
+async fn rate_limit_is_an_error_not_empty() {
+    let server = MockServer::start().await;
+    serve(&server, "/fabric/versions/loader/1.20.1", 429, "slow down").await;
+    let tmp = tempfile::tempdir().unwrap();
+    let base = server.uri();
+    let err = loader_versions_at(
+        &meta(tmp.path()),
+        LoaderKind::Fabric,
+        "1.20.1",
+        &format!("{base}/fabric"),
+        &format!("{base}/quilt"),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.code, ErrorCode::MetaNotFound);
+    assert_eq!(err.params.get("status").map(String::as_str), Some("429"));
+}

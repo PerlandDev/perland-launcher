@@ -8,7 +8,7 @@ use super::{
     mojang::VERSION_MANIFEST_URL,
     MetaClient,
 };
-use crate::error::{ErrorCategory, ErrorCode, LauncherError, Result};
+use crate::error::{ErrorCode, LauncherError, Result};
 
 pub const FABRIC_META: &str = "https://meta.fabricmc.net/v2";
 pub const QUILT_META: &str = "https://meta.quiltmc.org/v3";
@@ -123,7 +123,7 @@ pub async fn loader_versions_at(
     let entries: Vec<LoaderEntry> = match meta.get_json(&url).await {
         Ok(entries) => entries,
         // The loader answered "no such game version": that's an empty list, not a failure.
-        Err(e) if e.category == ErrorCategory::Loader => return Ok(Vec::new()),
+        Err(e) if is_unknown_game_version(&e) => return Ok(Vec::new()),
         Err(e) => return Err(e),
     };
     let mut out: Vec<LoaderVersion> = entries
@@ -136,6 +136,16 @@ pub async fn loader_versions_at(
     out.sort_by(|a, b| compare_versions(&b.version, &a.version));
     out.dedup_by(|a, b| a.version == b.version);
     Ok(out)
+}
+
+/// Fabric answers 400 and Quilt answers 404 for a game version they don't know. Any other
+/// failure (rate limit, forbidden, a malformed body, offline) is a real error, not an empty list.
+fn is_unknown_game_version(e: &LauncherError) -> bool {
+    e.code == ErrorCode::MetaNotFound
+        && matches!(
+            e.params.get("status").map(String::as_str),
+            Some("400" | "404")
+        )
 }
 
 /// Compare dotted versions numerically; a release sorts above its own pre-releases
