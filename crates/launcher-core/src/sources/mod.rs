@@ -1,6 +1,7 @@
 //! Where packs come from. Every source (packwiz, `.mrpack`, Modrinth) reduces to a
 //! [`DesiredState`]; `sync` never knows which one it was (core spec §2.1).
 pub mod curseforge;
+pub mod packwiz;
 pub mod sidecar;
 
 use std::{collections::BTreeMap, fmt::Display, path::PathBuf};
@@ -312,8 +313,6 @@ const SEGMENT: &AsciiSet = &CONTROLS
     .add(b'}');
 
 /// A canonical relative path, percent-encoded segment by segment for `Url::join`.
-// First used by the packwiz source (a later task of this plan).
-#[allow(dead_code)]
 pub(crate) fn encode_path(rel: &str) -> String {
     rel.split('/')
         .map(|s| utf8_percent_encode(s, SEGMENT).to_string())
