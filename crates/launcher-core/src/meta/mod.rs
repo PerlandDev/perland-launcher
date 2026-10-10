@@ -12,7 +12,7 @@ use reqwest::header::{ETAG, IF_NONE_MATCH};
 use serde::de::DeserializeOwned;
 
 use crate::{
-    download::{hash::sha1_hex, host_of, redact_url},
+    download::{hash::sha1_hex, host_of, redact_url, Hashes},
     error::{ErrorCode, LauncherError, Result},
     fsutil::write_atomic,
 };
@@ -155,13 +155,20 @@ impl MetaClient {
 
     /// For content-addressed URLs (Mojang packages): a cached copy with the right sha1 is used without any network access.
     pub async fn get_verified_json<T: DeserializeOwned>(&self, url: &str, sha1: &str) -> Result<T> {
+        let bytes = self.get_verified_bytes(url, &Hashes::sha1(sha1)).await?;
+        parse_json(url, &bytes)
+    }
+
+    /// Bytes that must match `hashes` (never empty): a matching cached copy is used without any
+    /// network access; otherwise the URL is fetched and only matching bytes are cached or returned.
+    pub(crate) async fn get_verified_bytes(&self, url: &str, hashes: &Hashes) -> Result<Vec<u8>> {
         if let Ok(cached) = tokio::fs::read(self.body_path(url)).await {
-            if sha1_hex(&cached).eq_ignore_ascii_case(sha1) {
-                return parse_json(url, &cached);
+            if hashes.verify(&cached) {
+                return Ok(cached);
             }
         }
         let verify = |b: &[u8]| {
-            if sha1_hex(b).eq_ignore_ascii_case(sha1) {
+            if hashes.verify(b) {
                 Ok(())
             } else {
                 Err(LauncherError::integrity(
@@ -173,9 +180,9 @@ impl MetaClient {
             }
         };
         let bytes = self.fetch(url, verify).await?;
-        // A cached fallback (offline / server error) bypasses fetch's validation of fresh bodies.
+        // A cached fallback (offline or server error) bypasses fetch's validation of fresh bodies.
         verify(&bytes)?;
-        parse_json(url, &bytes)
+        Ok(bytes)
     }
 }
 
