@@ -4,6 +4,7 @@ pub mod error;
 pub mod events;
 pub mod fsutil;
 pub mod install;
+pub mod instances;
 pub mod java;
 pub mod meta;
 pub mod paths;
