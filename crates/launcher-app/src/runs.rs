@@ -270,14 +270,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         drop(sink);
         // Let the last log lines reach the UI before the idle state does.
         let _ = tokio::time::timeout(Duration::from_secs(2), batcher).await;
-        let removed = self
-            .runs
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .remove(id)
-            .is_some();
-        // A cancelled run was already removed and reported by `stop`.
-        if removed {
+        let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
+        // A cancelled run was already removed and reported by `stop`. The final state goes out
+        // under the lock, like `stop` does, so a Play arriving now can't report `queued` first.
+        if runs.remove(id).is_some() {
             self.emit_state(id, RunStateKind::Idle, Some(info));
         }
     }
@@ -501,6 +497,73 @@ mod tests {
         runner.finish("alpha", exit(Some(0)));
         host.wait_for("alpha", Idle).await;
         core.instance_rename("alpha", "New").await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_finished_runs_idle_is_reported_before_the_next_runs_queued() {
+        let (core, runner, host, _t) = ready(false).await;
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        *host.idle_delay.lock().unwrap() = Some(Duration::from_millis(300));
+        runner.finish("alpha", exit(Some(0)));
+        // The moment the run is gone (or, once fixed, once its idle is out), Play again.
+        while core.has_active_runs() {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        core.play("alpha").await.unwrap();
+        assert_eq!(
+            host.states("alpha"),
+            vec![Queued, Preparing, Running, Idle, Queued]
+        );
+        core.stop("alpha").unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_running_instances_mods_can_be_added_but_not_toggled_or_removed() {
+        let (core, runner, host, tmp) = ready(true).await;
+        let jar = |name: &str| {
+            let path = tmp.path().join(name);
+            std::fs::write(&path, b"jar").unwrap();
+            path
+        };
+        core.mods_add("alpha", vec![jar("sodium.jar")])
+            .await
+            .unwrap();
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        assert_eq!(
+            core.mod_set_enabled("alpha", "sodium.jar", false)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InstanceBusy
+        );
+        assert_eq!(
+            core.mod_remove("alpha", "sodium.jar")
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InstanceBusy
+        );
+        // A new jar doesn't touch loaded files; it applies on the next Play.
+        let list = core
+            .mods_add("alpha", vec![jar("lithium.jar")])
+            .await
+            .unwrap();
+        assert_eq!(list.len(), 2);
+        assert!(list.iter().all(|m| m.enabled));
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+        let list = core
+            .mod_set_enabled("alpha", "sodium.jar", false)
+            .await
+            .unwrap();
+        assert!(list.iter().any(|m| !m.enabled));
+        core.mod_remove("alpha", "sodium.jar.disabled")
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

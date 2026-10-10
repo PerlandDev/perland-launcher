@@ -10,7 +10,10 @@ use std::{
 
 use launcher_core::{
     accounts::{AccountStore, AccountsFile, BuildKind},
-    instances::{is_valid_instance_id, GameSpec, Instance, InstanceListing, InstanceStore},
+    instances::{
+        is_valid_instance_id, GameSpec, Instance, InstanceListing, InstanceStore, MAX_MEMORY_MB,
+        MIN_MEMORY_MB,
+    },
     java,
     meta::{
         catalog::{self, LoaderVersion, McVersion},
@@ -53,6 +56,7 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) accounts: tokio::sync::Mutex<AccountStore>,
     settings: tokio::sync::Mutex<SettingsStore>,
     settings_warned: AtomicBool,
+    accounts_warned: AtomicBool,
     meta: MetaClient,
     pub(crate) runner: Arc<R>,
     pub(crate) host: Arc<H>,
@@ -89,6 +93,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             accounts: tokio::sync::Mutex::new(AccountStore::new(root.join("accounts.json"))),
             settings: tokio::sync::Mutex::new(SettingsStore::new(root.join("settings.json"))),
             settings_warned: AtomicBool::new(false),
+            accounts_warned: AtomicBool::new(false),
             meta,
             runner,
             host,
@@ -106,14 +111,29 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .contains_key(id)
     }
 
+    /// A damaged accounts file doesn't fail this: Settings needs it to offer "Open data folder",
+    /// which is the fix. Offline then stays locked in release builds, and the damage is reported
+    /// once as a warning (without the file's contents).
     pub async fn app_info(&self) -> Result<AppInfo> {
-        let accounts = self.accounts.lock().await.list().await?;
+        let licensed_signin_seen = match self.accounts.lock().await.list().await {
+            Ok(accounts) => accounts.licensed_signin_seen,
+            Err(mut error) => {
+                error.detail = None;
+                if !self.accounts_warned.swap(true, Ordering::SeqCst) {
+                    self.host.emit(AppEvent::Warning {
+                        instance: None,
+                        error,
+                    });
+                }
+                false
+            }
+        };
         Ok(AppInfo {
             version: self.config.launcher_version.clone(),
             build: self.config.build.into(),
             offline_allowed: launcher_core::accounts::offline_allowed(
                 self.config.build,
-                accounts.licensed_signin_seen,
+                licensed_signin_seen,
             ),
             system_memory_mb: self.config.system_memory_mb,
             data_dir: self.config.dirs.root().display().to_string(),
@@ -153,7 +173,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 .with_param("loader", format!("{:?}", loader.kind)));
             }
         }
-        let memory = self.settings_get().await.default_memory_mb;
+        // A hand-edited settings file can hold any number; clamp so create + update can't
+        // half-succeed and leave an instance behind.
+        let memory = self
+            .settings_get()
+            .await
+            .default_memory_mb
+            .clamp(MIN_MEMORY_MB, MAX_MEMORY_MB);
         let mut instance = self
             .instances
             .create(
@@ -237,6 +263,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         file: &str,
         enabled: bool,
     ) -> Result<Vec<LocalMod>> {
+        // The game holds its jars open; renaming one fails (or silently misses) while it runs.
+        if self.is_busy(id) {
+            return Err(busy(id));
+        }
         let dir = self.game_dir(id).await?;
         mods::set_enabled(&dir, file, enabled).await?;
         mods::list(&dir).await
@@ -251,6 +281,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     pub async fn mod_remove(&self, id: &str, file: &str) -> Result<Vec<LocalMod>> {
+        if self.is_busy(id) {
+            return Err(busy(id));
+        }
         let dir = self.game_dir(id).await?;
         mods::remove(&dir, file).await?;
         mods::list(&dir).await
@@ -376,6 +409,41 @@ pub(crate) mod tests {
             ErrorCode::LoaderUnsupported
         );
         assert_eq!(core.instances_list().await.unwrap().instances.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn app_info_survives_a_damaged_accounts_file() {
+        let (core, _, host, tmp) = core(BuildKind::Release);
+        std::fs::write(tmp.path().join("accounts.json"), "{nope").unwrap();
+        let info = core.app_info().await.unwrap();
+        assert!(!info.offline_allowed);
+        assert_eq!(info.system_memory_mb, 16384);
+        core.app_info().await.unwrap();
+        assert_eq!(host.warnings(), vec![ErrorCode::AccountsDamaged]);
+        // The warning never carries the file's contents.
+        let events = host.events.lock().unwrap();
+        assert!(events.iter().all(|e| match e {
+            AppEvent::Warning { error, .. } => error.detail.is_none(),
+            _ => true,
+        }));
+    }
+
+    #[tokio::test]
+    async fn create_clamps_an_out_of_range_default_memory() {
+        let (core, _, _, tmp) = core(BuildKind::Dev);
+        for (raw, expected) in [(100_000, MAX_MEMORY_MB), (64, MIN_MEMORY_MB)] {
+            std::fs::write(
+                tmp.path().join("settings.json"),
+                format!("{{\"defaultMemoryMb\": {raw}}}"),
+            )
+            .unwrap();
+            let created = core
+                .instance_create(vanilla(&format!("Pack {raw}")))
+                .await
+                .unwrap();
+            assert_eq!(created.java.memory_mb, expected);
+        }
+        assert_eq!(core.instances_list().await.unwrap().instances.len(), 2);
     }
 
     #[tokio::test]

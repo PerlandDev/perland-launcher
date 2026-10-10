@@ -37,6 +37,9 @@ pub(crate) struct RecordingHost {
     pub events: Mutex<Vec<AppEvent>>,
     pub minimized: AtomicUsize,
     pub restored: AtomicUsize,
+    /// One-shot: the next final `idle` is held back this long before it is recorded, to widen
+    /// the window between a run leaving the map and its final state being reported.
+    pub idle_delay: Mutex<Option<Duration>>,
 }
 
 impl RecordingHost {
@@ -124,6 +127,19 @@ impl RecordingHost {
 
 impl Host for RecordingHost {
     fn emit(&self, event: AppEvent) {
+        if matches!(
+            event,
+            AppEvent::RunState {
+                state: RunStateKind::Idle,
+                exit: Some(_),
+                ..
+            }
+        ) {
+            let delay = self.idle_delay.lock().unwrap().take();
+            if let Some(delay) = delay {
+                std::thread::sleep(delay);
+            }
+        }
         self.events.lock().unwrap().push(event);
     }
     fn minimize(&self) {
