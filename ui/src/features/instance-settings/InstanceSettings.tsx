@@ -1,5 +1,5 @@
 import { open } from '@tauri-apps/plugin-dialog';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import type { Instance, LoaderKind } from '../../ipc/schema';
@@ -26,24 +26,59 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
   const [memoryMb, setMemoryMb] = useState(instance.java.memoryMb);
   const [javaMode, setJavaMode] = useState<'auto' | 'custom'>(instance.java.path ? 'custom' : 'auto');
   const [javaPath, setJavaPath] = useState<string | null>(instance.java.path);
-  const [javaResult, setJavaResult] = useState<{ ok: number } | { error: unknown } | null>(null);
+  // A result belongs to the path it was produced for and only shows while that path is still chosen.
+  const [javaResult, setJavaResult] = useState<({ path: string | null } & ({ ok: number } | { error: unknown })) | null>(null);
+  const [testing, setTesting] = useState(false);
+  const inFlight = useRef(false);
   const update = useUpdateInstance({ inline: true });
 
+  // Any edit after a save (or a failed save) makes "Saved" or the old error stale.
+  const touched = () => {
+    if (update.isSuccess || update.isError) update.reset();
+  };
+  const edit =
+    <T,>(set: (value: T) => void) =>
+    (value: T) => {
+      touched();
+      set(value);
+    };
+  const versions: typeof choice = {
+    ...choice,
+    setMinecraft: edit(choice.setMinecraft),
+    setLoader: edit(choice.setLoader),
+    setLoaderVersion: edit(choice.setLoaderVersion),
+  };
+
   const pickJava = async () => {
-    const chosen = await open({ multiple: false, directory: false, title: t('instanceSettings.javaFiles') });
-    if (typeof chosen === 'string') {
-      setJavaPath(chosen);
-      setJavaResult(null);
+    try {
+      const chosen = await open({ multiple: false, directory: false, title: t('instanceSettings.javaFiles') });
+      if (typeof chosen === 'string') {
+        touched();
+        setJavaPath(chosen);
+        setJavaResult(null);
+      }
+    } catch (error: unknown) {
+      setJavaResult({ path: javaPath, error });
     }
   };
   const testJava = () => {
-    if (!javaPath) return;
-    commands.javaTest(javaPath).then(
-      (r) => setJavaResult({ ok: r.major }),
-      (error: unknown) => setJavaResult({ error }),
-    );
+    if (!javaPath || inFlight.current) return;
+    const path = javaPath;
+    inFlight.current = true;
+    setTesting(true);
+    void commands
+      .javaTest(path)
+      .then(
+        (r) => setJavaResult({ path, ok: r.major }),
+        (error: unknown) => setJavaResult({ path, error }),
+      )
+      .finally(() => {
+        inFlight.current = false;
+        setTesting(false);
+      });
   };
-  const ready = fixedLoader !== null || choice.resolved.ready;
+  const shownResult = javaResult && javaResult.path === javaPath ? javaResult : null;
+  const ready = (fixedLoader !== null || choice.resolved.ready) && (javaMode === 'auto' || javaPath !== null);
   const save = () =>
     update.mutate({
       ...instance,
@@ -55,18 +90,18 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
   return (
     <div className="grid max-w-2xl gap-10">
       <Field label={t('home.nameLabel')}>
-        <input className="field-input" value={name} maxLength={64} onChange={(e) => setName(e.target.value)} />
+        <input className="field-input" value={name} maxLength={64} onChange={(e) => edit(setName)(e.target.value)} />
       </Field>
       <section className="grid gap-4" aria-labelledby="game-heading">
         <h2 id="game-heading" className="text-lg font-bold">{t('instanceSettings.game')}</h2>
-        {fixedLoader ? <p className="text-ink-dim">{t('instanceSettings.loaderFixed', { loader: loaderName(fixedLoader) })}</p> : <VersionFields choice={choice} />}
+        {fixedLoader ? <p className="text-ink-dim">{t('instanceSettings.loaderFixed', { loader: loaderName(fixedLoader) })}</p> : <VersionFields choice={versions} />}
       </section>
-      <MemorySlider label={t('instanceSettings.memory')} valueMb={memoryMb} onChange={setMemoryMb} systemMb={systemMb} />
+      <MemorySlider label={t('instanceSettings.memory')} valueMb={memoryMb} onChange={edit(setMemoryMb)} systemMb={systemMb} />
       <fieldset className="grid gap-3">
         <legend className="mb-1.5 text-lg font-bold">{t('instanceSettings.java')}</legend>
         {(['auto', 'custom'] as const).map((mode) => (
           <label key={mode} className="flex items-center gap-3">
-            <input type="radio" name="java" checked={javaMode === mode} onChange={() => setJavaMode(mode)} className="accent-[var(--color-amber)]" />
+            <input type="radio" name="java" checked={javaMode === mode} onChange={() => edit(setJavaMode)(mode)} className="accent-[var(--color-amber)]" />
             {mode === 'auto' ? t('instanceSettings.javaAuto') : t('instanceSettings.javaCustom')}
           </label>
         ))}
@@ -75,21 +110,23 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
             <p className="selectable truncate font-mono text-sm text-ink-dim">{javaPath ?? t('instanceSettings.javaNone')}</p>
             <div className="flex gap-3">
               <Button onClick={() => void pickJava()}>{t('instanceSettings.javaPick')}</Button>
-              <Button disabled={!javaPath} onClick={testJava}>{t('instanceSettings.javaTest')}</Button>
+              <Button disabled={!javaPath || testing} onClick={testJava}>
+                {testing ? t('instanceSettings.javaTesting') : t('instanceSettings.javaTest')}
+              </Button>
             </div>
-            {javaResult && 'ok' in javaResult && (
-              <p className="flex items-center gap-2 text-lime">
+            {shownResult && 'ok' in shownResult && (
+              <p role="status" className="flex items-center gap-2 text-lime">
                 <Check className="h-5 w-5" aria-hidden />
-                {t('instanceSettings.javaOk', { major: javaResult.ok })}
+                {t('instanceSettings.javaOk', { major: shownResult.ok })}
               </p>
             )}
-            {javaResult && 'error' in javaResult && <ErrorCard error={javaResult.error} />}
+            {shownResult && 'error' in shownResult && <ErrorCard error={shownResult.error} />}
           </div>
         )}
       </fieldset>
       {update.isError && <ErrorCard error={update.error} />}
       <div className="flex items-center justify-end gap-4">
-        <p className="text-sm text-ink-dim">{update.isSuccess ? t('common.saved') : t('instanceSettings.applyNote')}</p>
+        <p role="status" className="text-sm text-ink-dim">{update.isSuccess ? t('common.saved') : t('instanceSettings.applyNote')}</p>
         <Button variant="primary" size="lg" disabled={!ready || update.isPending} onClick={save}>
           {update.isPending ? t('common.saving') : t('common.save')}
         </Button>

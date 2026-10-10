@@ -111,6 +111,8 @@
     "memory": "Memoria",
     "memoryValue": "{{gb}} GB",
     "memoryHint": "Esta computadora tiene {{total}} GB.",
+    "memoryHintUnknown": "No pudimos leer la memoria de esta computadora. Elige una cantidad que sepas que le sobra.",
+    "javaTesting": "Probando…",
     "memoryHigh": "Es más de la mitad de la memoria de esta computadora. Otras apps podrían ir más lentas.",
     "java": "Java",
     "javaAuto": "Automático (recomendado)",

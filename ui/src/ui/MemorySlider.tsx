@@ -15,15 +15,20 @@ export function MemorySlider({
 }) {
   const { t, i18n } = useTranslation();
   const id = useId();
-  const max = Math.max(1024, Math.min(65536, Math.floor(systemMb / 512) * 512));
-  const high = valueMb > systemMb / 2;
+  const hintId = `${id}-hint`;
+  // The backend reports 0 when it can't read the computer's memory: then there is no honest limit or warning.
+  const known = systemMb > 0;
+  // Never below the current value, so an existing setting keeps its thumb consistent with its label.
+  const max = Math.max(1024, known ? Math.min(65536, Math.floor(systemMb / 512) * 512) : 65536, valueMb);
+  const high = known && valueMb > systemMb / 2;
+  const shown = t('instanceSettings.memoryValue', { gb: formatGb(valueMb, i18n.language) });
   return (
     <div className="grid gap-2">
       <div className="flex items-baseline justify-between">
         <label htmlFor={id} className="text-sm font-semibold">
           {label}
         </label>
-        <span className="tabular font-display text-xl">{t('instanceSettings.memoryValue', { gb: formatGb(valueMb, i18n.language) })}</span>
+        <span className="tabular font-display text-xl">{shown}</span>
       </div>
       <input
         id={id}
@@ -31,12 +36,18 @@ export function MemorySlider({
         min={512}
         max={max}
         step={512}
-        value={Math.min(valueMb, max)}
+        value={valueMb}
+        aria-valuetext={shown}
+        aria-describedby={hintId}
         onChange={(e) => onChange(Number(e.target.value))}
         className="accent-[var(--color-amber)]"
       />
-      <p className={high ? 'text-sm text-coral' : 'text-sm text-ink-dim'}>
-        {high ? t('instanceSettings.memoryHigh') : t('instanceSettings.memoryHint', { total: formatGb(systemMb, i18n.language) })}
+      <p id={hintId} className={high ? 'text-sm text-coral' : 'text-sm text-ink-dim'}>
+        {high
+          ? t('instanceSettings.memoryHigh')
+          : known
+            ? t('instanceSettings.memoryHint', { total: formatGb(systemMb, i18n.language) })
+            : t('instanceSettings.memoryHintUnknown')}
       </p>
     </div>
   );
