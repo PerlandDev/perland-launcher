@@ -236,13 +236,14 @@ async fn launch_instance(
         ));
     }
 
-    let exit = launch::run(
+    let game = launch::spawn(
         &cmd,
-        &redactor,
-        &sink,
+        redactor,
+        sink.clone(),
         &dirs.logs().join(format!("{}-latest.log", instance.id)),
     )
     .await?;
+    let exit = game.wait().await?;
     eprintln!("game exited with {:?}", exit.code);
     Ok(())
 }
