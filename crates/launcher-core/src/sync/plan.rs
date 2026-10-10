@@ -99,6 +99,9 @@ pub fn wanted<'a>(
         .collect()
 }
 
+/// Invariants: a disk key that is absent means `Missing`; only lockfile paths with a non-empty
+/// sha1 (files sync wrote) are ever trashed; files that are neither wanted nor in the lockfile
+/// are never planned.
 pub fn plan(
     wanted: &[&PackFile],
     managed: Option<&Managed>,
@@ -123,7 +126,11 @@ pub fn plan(
                     file: file.clone(),
                     replaces: true,
                 }),
-                FileMode::Preserve => plan.keep.push(keep(sha1, *size)),
+                FileMode::Preserve => match lock(&file.path) {
+                    // Sync kept the player's file in place before: it is still theirs.
+                    Some(entry) if entry.sha1.is_empty() => plan.keep.push(keep("", *size)),
+                    _ => plan.keep.push(keep(sha1, *size)),
+                },
                 FileMode::ReplaceUnlessModified => match lock(&file.path) {
                     Some(entry) if !entry.sha1.is_empty() && entry.sha1 == *sha1 => {
                         plan.write.push(Planned {
@@ -147,7 +154,11 @@ pub fn plan(
     }
     if let Some(m) = managed {
         let wanted_paths: HashSet<&str> = wanted.iter().map(|f| f.path.as_str()).collect();
-        for path in m.files.keys() {
+        for (path, entry) in &m.files {
+            // An empty sha1 marks the player's file that sync kept in place: never trashed.
+            if entry.sha1.is_empty() {
+                continue;
+            }
             let present = !matches!(disk.get(path), None | Some(OnDisk::Missing));
             if present && !wanted_paths.contains(path.as_str()) {
                 plan.trash.push(path.clone());
@@ -177,7 +188,8 @@ pub fn changes(wanted: &[&PackFile], managed: Option<&Managed>, to_version: &str
     }
     if let Some(m) = managed {
         for (path, entry) in &m.files {
-            if !wanted_paths.contains(path.as_str()) {
+            // The player's files (empty sha1) leave the lockfile quietly; they are not removals.
+            if !entry.sha1.is_empty() && !wanted_paths.contains(path.as_str()) {
                 removed.insert(entry.name.clone());
             }
         }
@@ -398,6 +410,67 @@ mod tests {
         );
         assert_eq!(p.keep[0].sha1, "");
         assert!(p.kept_modified.is_empty());
+    }
+
+    #[test]
+    fn players_files_in_the_lockfile_are_never_trashed_or_reported_removed() {
+        let lock = managed(&[("mods/mine.jar", entry("mine.jar", "", "m1"))]);
+        let p = plan(&[], Some(&lock), &disk(&[("mods/mine.jar", diff("m1"))]));
+        assert!(p.trash.is_empty());
+        assert!(changes(&[], Some(&lock), "2.0").removed.is_empty());
+    }
+
+    #[test]
+    fn preserve_keeps_the_players_empty_sha1_marker() {
+        let cfg = pf("config/x.toml", FileMode::Preserve, "11");
+        let lock = managed(&[("config/x.toml", entry("x.toml", "", "11"))]);
+        let p = plan(
+            &[&cfg],
+            Some(&lock),
+            &disk(&[("config/x.toml", diff("player"))]),
+        );
+        assert_eq!(
+            p.keep,
+            vec![Kept {
+                file: cfg.clone(),
+                sha1: String::new(),
+                size: 1
+            }]
+        );
+        let lock = managed(&[("config/x.toml", entry("x.toml", "written", "11"))]);
+        let p = plan(
+            &[&cfg],
+            Some(&lock),
+            &disk(&[("config/x.toml", diff("edited"))]),
+        );
+        assert_eq!(
+            p.keep,
+            vec![Kept {
+                file: cfg,
+                sha1: "edited".into(),
+                size: 1
+            }]
+        );
+    }
+
+    #[test]
+    fn an_optional_file_turned_off_is_trashed() {
+        let opt = PackFile {
+            optional: Some(OptionalFile {
+                default: true,
+                description: None,
+            }),
+            ..pf("mods/opt.jar", FileMode::Replace, "o1")
+        };
+        let d = state(vec![opt]);
+        let choices = BTreeMap::from([("mods/opt.jar".to_string(), false)]);
+        let lock = managed(&[("mods/opt.jar", entry("Opt", "o1", "o1"))]);
+        let p = plan(
+            &wanted(&d, &choices),
+            Some(&lock),
+            &disk(&[("mods/opt.jar", diff("o1"))]),
+        );
+        assert_eq!(p.trash, vec!["mods/opt.jar".to_string()]);
     }
 
     fn state(files: Vec<PackFile>) -> DesiredState {
