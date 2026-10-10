@@ -24,7 +24,10 @@ use crate::{
     error::{ErrorCode, LauncherError, Result},
     events::{Event, EventSink},
     install::{classpath, ResolvedVersion},
-    meta::rules::{resolve_args, RuleContext},
+    meta::{
+        mojang::LEGACY_JVM_ARGS,
+        rules::{resolve_args, RuleContext},
+    },
     paths::LauncherDirs,
     platform::Platform,
 };
@@ -227,15 +230,7 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
                 .iter()
                 .map(|t| substitute(t, &vars)),
         ),
-        _ => args.extend(
-            [
-                "-Djava.library.path=${natives_directory}",
-                "-cp",
-                "${classpath}",
-            ]
-            .iter()
-            .map(|t| substitute(t, &vars)),
-        ),
+        _ => args.extend(LEGACY_JVM_ARGS.iter().map(|t| substitute(t, &vars))),
     }
     if let Some(client) = json.logging.as_ref().and_then(|l| l.client.as_ref()) {
         let path_var = HashMap::from([("path", path_str(&spec.dirs.log_config(&client.file.id)))]);

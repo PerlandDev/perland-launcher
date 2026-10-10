@@ -44,6 +44,13 @@ pub struct NativeJar {
 pub struct LibraryPlan {
     pub downloads: Vec<DownloadRequest>,
     pub natives: Vec<NativeJar>,
+    /// Libraries with no download address: the loader installer builds or bundles them.
+    pub local: Vec<DownloadRequest>,
+}
+
+/// A library with no download address: a loader installer provides it, so it is never fetched.
+pub fn is_local(req: &DownloadRequest) -> bool {
+    req.urls.iter().all(|u| u.trim().is_empty())
 }
 
 /// Join a path taken from remote metadata onto `base`, refusing anything that could escape it.
@@ -172,7 +179,11 @@ pub fn plan_libraries(
     let mut plan = LibraryPlan::default();
     for lib in version.libraries.iter().filter(|l| library_applies(l, ctx)) {
         if let Some(d) = library_artifact(lib, dirs)? {
-            plan.downloads.push(d);
+            if is_local(&d) {
+                plan.local.push(d);
+            } else {
+                plan.downloads.push(d);
+            }
         }
         let Some(classifier) = native_classifier(lib, ctx.platform) else {
             continue;
@@ -571,6 +582,35 @@ mod tests {
             .path = Some("../../evil.jar".into());
         let err = plan_libraries(&v, &dirs(), &RuleContext::new(WINDOWS_X64)).unwrap_err();
         assert_eq!(err.category, crate::ErrorCategory::Integrity);
+    }
+
+    #[test]
+    fn libraries_without_a_url_are_local_not_downloaded() {
+        let json = merge(
+            version("1.12.2.json"),
+            version("forge-1.12.2-14.23.5.2860-version.json"),
+        );
+        let ctx = RuleContext::new(WINDOWS_X64);
+        let plan = plan_libraries(&json, &dirs(), &ctx).unwrap();
+        assert_eq!(plan.local.len(), 1);
+        let local = plan.local[0].dest.to_string_lossy().replace('\\', "/");
+        assert!(
+            local.ends_with(
+                "net/minecraftforge/forge/1.12.2-14.23.5.2860/forge-1.12.2-14.23.5.2860.jar"
+            ),
+            "{local}"
+        );
+        assert!(plan
+            .downloads
+            .iter()
+            .all(|d| d.urls.iter().all(|u| !u.is_empty())));
+        // The jar the installer provides is still on the classpath.
+        let resolved = ResolvedVersion {
+            vanilla_id: "1.12.2".into(),
+            json,
+        };
+        let cp = classpath(&resolved, &dirs(), &ctx).unwrap();
+        assert!(cp.contains(&plan.local[0].dest));
     }
 
     #[test]
