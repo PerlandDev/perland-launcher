@@ -6,7 +6,7 @@ use crate::{
     error::{ErrorCode, LauncherError, Result},
     events::EventSink,
     install::{Installer, ResolvedVersion},
-    instances::Instance,
+    instances::{Instance, InstanceStore},
     java,
     launch::{self, GameProcess, LaunchCommand, LaunchSpec, Redactor},
     paths::LauncherDirs,
@@ -106,16 +106,40 @@ pub fn check_files(cmd: &LaunchCommand) -> Result<()> {
     .with_detail(list))
 }
 
-/// Build the command, check its files, and start the game with a redacted log.
+/// Build the command, check its files, and start the game with a redacted log. A command line
+/// too long for the OS puts its JVM arguments in `<instance>/.perland/jvm-args.txt`.
 pub async fn start(spec: &StartSpec<'_>, sink: EventSink) -> Result<GameProcess> {
-    let cmd = command(spec)?;
+    let mut cmd = command(spec)?;
     check_files(&cmd)?;
+    if launch::command_line_len(&cmd) > launch::ARGFILE_THRESHOLD
+        && launch::wants_argfile(&cmd, java_major(spec).await)
+    {
+        let path = InstanceStore::new(spec.dirs.instances())
+            .perland_dir(&spec.instance.id)
+            .join("jvm-args.txt");
+        cmd = launch::with_argfile(
+            &cmd,
+            &spec.prepared.resolved.json.main_class,
+            &path,
+            &spec.session.access_token,
+        )
+        .await?;
+    }
     let redactor = Redactor::for_current_user().with_secret(spec.session.access_token.clone());
     let log = spec
         .dirs
         .logs()
         .join(format!("{}-latest.log", spec.instance.id));
     launch::spawn(&cmd, redactor, sink, &log).await
+}
+
+/// The Java major version: what the version asks for when the launcher picks Java (Mojang's
+/// runtime or an exact-match install), else what the chosen Java reports.
+async fn java_major(spec: &StartSpec<'_>) -> Option<u32> {
+    match &spec.instance.java.path {
+        None => Some(java::required_major(&spec.prepared.resolved.json)),
+        Some(path) => java::probe(path).await.ok(),
+    }
 }
 
 #[cfg(test)]
@@ -184,5 +208,42 @@ mod tests {
         assert_eq!(err.code, ErrorCode::GameFilesMissing);
         let count: usize = err.params["count"].parse().unwrap();
         assert!(count > 10, "{count}");
+    }
+
+    #[tokio::test]
+    async fn automatic_java_major_comes_from_the_version() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = LauncherDirs::new(tmp.path());
+        let store = InstanceStore::new(dirs.instances());
+        let instance = store
+            .create(
+                "Smoke",
+                GameSpec {
+                    minecraft: "1.20.1".into(),
+                    loader: None,
+                },
+            )
+            .await
+            .unwrap();
+        let prepared = Prepared {
+            resolved: ResolvedVersion {
+                vanilla_id: "1.20.1".into(),
+                json: version("1.20.1.json"),
+                forge: None,
+            },
+            java: tmp.path().join("java.exe"),
+        };
+        let session = offline_account("Steve").unwrap().offline_session();
+        let game_dir = store.game_dir(&instance.id);
+        let spec = StartSpec {
+            dirs: &dirs,
+            game_dir: &game_dir,
+            instance: &instance,
+            prepared: &prepared,
+            session: &session,
+            platform: Platform::current(),
+            launcher_version: "0.1.0",
+        };
+        assert_eq!(java_major(&spec).await, Some(17));
     }
 }
