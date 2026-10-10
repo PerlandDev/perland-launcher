@@ -13,6 +13,7 @@ use tokio::{
     io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
     process::Child,
     sync::{mpsc, oneshot, watch},
+    task::JoinHandle,
 };
 
 pub use crash::CrashHint;
@@ -65,6 +66,13 @@ impl std::fmt::Debug for LaunchCommand {
 pub const MAX_LINE_BYTES: usize = 8 * 1024;
 /// How many of the last output lines a finished game reports.
 pub const TAIL_LINES: usize = 200;
+
+/// Marks a line that was cut at `MAX_LINE_BYTES`.
+const TRUNCATED_MARKER: &str = " …[truncated]";
+/// Output lines waiting for the sink, across both streams.
+const LINE_QUEUE: usize = 1024;
+/// How long to wait for output to drain once the game has exited.
+const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameExit {
@@ -283,7 +291,7 @@ fn decode_line(bytes: &[u8], truncated: bool) -> String {
         Err(_) => bytes.len(),
     };
     let mut line = String::from_utf8_lossy(&bytes[..keep]).into_owned();
-    line.push_str(" …[truncated]");
+    line.push_str(TRUNCATED_MARKER);
     line
 }
 
@@ -320,7 +328,7 @@ async fn read_capped_line<R: AsyncBufRead + Unpin>(
     }
 }
 
-async fn read_lines(reader: Box<dyn AsyncRead + Unpin + Send>, tx: mpsc::UnboundedSender<String>) {
+async fn read_lines(reader: Box<dyn AsyncRead + Unpin + Send>, tx: mpsc::Sender<String>) {
     // Read raw bytes: the game may write in a non-UTF-8 charset, which must not end capture.
     let mut reader = BufReader::new(reader);
     let mut buf = Vec::new();
@@ -328,7 +336,7 @@ async fn read_lines(reader: Box<dyn AsyncRead + Unpin + Send>, tx: mpsc::Unbound
         buf.clear();
         match read_capped_line(&mut reader, &mut buf, MAX_LINE_BYTES).await {
             Ok((true, truncated)) => {
-                if tx.send(decode_line(&buf, truncated)).is_err() {
+                if tx.send(decode_line(&buf, truncated)).await.is_err() {
                     break;
                 }
             }
@@ -341,7 +349,7 @@ type LogWriter = Box<dyn AsyncWrite + Send + Unpin>;
 
 /// Redact each line, append it to the log (until writing fails once), keep the tail, and stream it.
 async fn pump_lines(
-    mut rx: mpsc::UnboundedReceiver<String>,
+    mut rx: mpsc::Receiver<String>,
     redactor: Redactor,
     sink: EventSink,
     mut log: LogWriter,
@@ -349,7 +357,11 @@ async fn pump_lines(
 ) {
     let mut log_ok = true;
     while let Some(line) = rx.recv().await {
-        let clean = redactor.redact(&line);
+        let clean = match line.strip_suffix(TRUNCATED_MARKER) {
+            // The cut may have gone through a secret, which would leave only its first part.
+            Some(body) => format!("{}{TRUNCATED_MARKER}", redactor.redact_cut(body)),
+            None => redactor.redact(&line),
+        };
         if log_ok {
             let wrote = match log.write_all(clean.as_bytes()).await {
                 Ok(()) => log.write_all(b"\n").await,
@@ -400,6 +412,20 @@ async fn wait_for_exit(
     }
 }
 
+/// Let the output drain after the game exits. A grandchild holding the pipes open must not hang
+/// the exit, and must not leave tasks running that keep logging after it: on timeout the pump and
+/// the readers are stopped, not just abandoned.
+async fn drain_output(mut pump: JoinHandle<()>, readers: Vec<JoinHandle<()>>, limit: Duration) {
+    if tokio::time::timeout(limit, &mut pump).await.is_err() {
+        pump.abort();
+        let _ = pump.await;
+    }
+    for reader in readers {
+        reader.abort();
+        let _ = reader.await;
+    }
+}
+
 /// Start the game. Output lines are redacted, written to `log_file`, kept as a tail and streamed
 /// to `sink`. The returned handle can kill the game and wait for its exit.
 pub async fn spawn(
@@ -442,11 +468,13 @@ fn spawn_with_log(
     let pid = child.id();
     let stdout = child.stdout.take().expect("stdout is piped");
     let stderr = child.stderr.take().expect("stderr is piped");
-    let (line_tx, line_rx) = mpsc::unbounded_channel::<String>();
-    let readers: [Box<dyn AsyncRead + Unpin + Send>; 2] = [Box::new(stdout), Box::new(stderr)];
-    for reader in readers {
-        tokio::spawn(read_lines(reader, line_tx.clone()));
-    }
+    // Bounded: when the sink can't keep up the readers wait, and the pipe backs up to the game.
+    let (line_tx, line_rx) = mpsc::channel::<String>(LINE_QUEUE);
+    let streams: [Box<dyn AsyncRead + Unpin + Send>; 2] = [Box::new(stdout), Box::new(stderr)];
+    let readers: Vec<JoinHandle<()>> = streams
+        .into_iter()
+        .map(|stream| tokio::spawn(read_lines(stream, line_tx.clone())))
+        .collect();
     drop(line_tx);
     let tail = Arc::new(Mutex::new(Tail::default()));
     let pump = tokio::spawn(pump_lines(line_rx, redactor, sink, log, tail.clone()));
@@ -454,8 +482,7 @@ fn spawn_with_log(
     let (done_tx, done_rx) = oneshot::channel();
     tokio::spawn(async move {
         let result = wait_for_exit(child, kill_rx).await;
-        // Let the output drain; a grandchild holding the pipes open must not hang the exit.
-        let _ = tokio::time::timeout(Duration::from_secs(5), pump).await;
+        drain_output(pump, readers, DRAIN_TIMEOUT).await;
         let tail = tail.lock().unwrap_or_else(|e| e.into_inner()).lines();
         let exit = result.map(|(code, killed)| {
             let crash = if !killed && code != Some(0) {
@@ -648,6 +675,70 @@ mod tests {
     fn truncated_lines_end_on_a_whole_character() {
         // "ab" then the first byte of a two-byte "ñ": the cut must drop the half character.
         assert_eq!(decode_line(b"ab\xc3", true), "ab …[truncated]");
+    }
+
+    #[tokio::test]
+    async fn a_secret_straddling_the_line_cap_does_not_leak() {
+        let secret = "tok-0123456789abcdef";
+        let mut line = vec![b'x'; MAX_LINE_BYTES - 7];
+        line.extend_from_slice(secret.as_bytes()); // the cap cuts after "tok-012"
+        line.push(b'\n');
+        let (tx, rx) = mpsc::channel(4);
+        read_lines(Box::new(std::io::Cursor::new(line)), tx).await;
+        let (sink, seen) = collect();
+        let tail = Arc::new(Mutex::new(Tail::default()));
+        pump_lines(
+            rx,
+            Redactor::new().with_secret(secret),
+            sink,
+            Box::new(tokio::io::sink()),
+            tail,
+        )
+        .await;
+        let shown = logs(&seen).remove(0);
+        assert!(!shown.contains("tok-"), "{shown:?}");
+        assert!(shown.ends_with("<redacted> …[truncated]"), "{shown:?}");
+    }
+
+    #[tokio::test]
+    async fn output_backs_up_instead_of_growing_without_bound() {
+        let lines: Vec<u8> = (0..10)
+            .flat_map(|i| format!("line {i}\n").into_bytes())
+            .collect();
+        let (tx, mut rx) = mpsc::channel(2);
+        let reader = tokio::spawn(read_lines(Box::new(std::io::Cursor::new(lines)), tx));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!reader.is_finished(), "the reader must wait for room");
+        let mut got = Vec::new();
+        while let Some(line) = rx.recv().await {
+            got.push(line);
+        }
+        reader.await.unwrap();
+        assert_eq!(got.len(), 10);
+        assert_eq!(got[9], "line 9");
+    }
+
+    #[tokio::test]
+    async fn drain_stops_tasks_that_outlive_the_timeout() {
+        struct Flag(Arc<std::sync::atomic::AtomicBool>);
+        impl Drop for Flag {
+            fn drop(&mut self) {
+                self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+        let stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stuck = |flag: Flag| {
+            tokio::spawn(async move {
+                let _flag = flag;
+                std::future::pending::<()>().await;
+            })
+        };
+        let pump = stuck(Flag(stopped.clone()));
+        let other = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let readers = vec![stuck(Flag(other.clone()))];
+        drain_output(pump, readers, Duration::from_millis(50)).await;
+        assert!(stopped.load(std::sync::atomic::Ordering::SeqCst), "pump");
+        assert!(other.load(std::sync::atomic::Ordering::SeqCst), "reader");
     }
 
     #[tokio::test]
