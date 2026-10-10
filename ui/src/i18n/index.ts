@@ -16,4 +16,10 @@ void i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 
+/** Use the player's choice, or the computer's language when they haven't picked one. */
+export function applyLanguage(lang: Lang | null) {
+  const target = lang ?? detectLang(typeof navigator === 'undefined' ? undefined : navigator.language);
+  if (i18n.language !== target) void i18n.changeLanguage(target);
+}
+
 export default i18n;
