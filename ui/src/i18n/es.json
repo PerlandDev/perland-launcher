@@ -65,7 +65,8 @@
   },
   "progress": {
     "install_minecraft": "Instalando Minecraft {{version}}",
-    "download_java": "Descargando Java {{version}}"
+    "download_java": "Descargando Java {{version}}",
+    "install_loader": "Preparando {{loader}} {{version}}"
   },
   "activity": {
     "title": "Actividad",
@@ -252,6 +253,10 @@
     "version_invalid": { "message": "“{{value}}” no es una versión válida.", "fix": "Elige una versión de la lista." },
     "loader_unsupported": { "message": "{{loader}} todavía no es compatible.", "fix": "Por ahora usa Fabric o Quilt." },
     "loader_version_not_found": { "message": "{{loader}} {{loader_version}} no está disponible para Minecraft {{version}}.", "fix": "Elige una versión del loader de la lista." },
+    "loader_installer_invalid": { "message": "No se pudo leer el instalador del loader.", "fix": "Inténtalo de nuevo. Si sigue pasando, elige otra versión del loader." },
+    "loader_too_old": { "message": "Esta versión del loader es demasiado antigua para el launcher.", "fix": "Elige una versión más nueva del loader." },
+    "loader_processor_failed": { "message": "No se pudo preparar el loader.", "fix": "Inténtalo de nuevo. Si sigue pasando, copia los detalles y pide ayuda." },
+    "loader_output_corrupt": { "message": "Un archivo que generó el loader salió dañado.", "fix": "Inténtalo de nuevo." },
     "meta_cache_missing": { "message": "Falta una lista de descargas guardada.", "fix": "Conéctate a internet y vuelve a intentarlo." },
     "meta_not_found": { "message": "No se encontró una lista de versiones en el servidor.", "fix": "Revisa que esta versión exista." },
     "meta_checksum": { "message": "Una lista de versiones descargada estaba dañada.", "fix": "Inténtalo en un minuto." },

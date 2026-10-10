@@ -27,3 +27,15 @@ pub fn fixture(name: &str) -> String {
 pub fn version(name: &str) -> VersionJson {
     serde_json::from_str(&fixture(name)).unwrap()
 }
+
+/// Write a zip with the given entries. Generic over the body so `b"..."` literals work as-is
+/// (an unsized coercion doesn't happen inside a tuple).
+pub fn write_zip<B: AsRef<[u8]>>(path: &Path, entries: &[(&str, B)]) {
+    let mut w = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+    for (name, body) in entries {
+        w.start_file(*name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        std::io::Write::write_all(&mut w, body.as_ref()).unwrap();
+    }
+    w.finish().unwrap();
+}

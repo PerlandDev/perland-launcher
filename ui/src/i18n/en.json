@@ -65,7 +65,8 @@
   },
   "progress": {
     "install_minecraft": "Installing Minecraft {{version}}",
-    "download_java": "Downloading Java {{version}}"
+    "download_java": "Downloading Java {{version}}",
+    "install_loader": "Setting up {{loader}} {{version}}"
   },
   "activity": {
     "title": "Activity",
@@ -252,6 +253,10 @@
     "version_invalid": { "message": "“{{value}}” isn't a valid version.", "fix": "Pick a version from the list." },
     "loader_unsupported": { "message": "{{loader}} isn't supported yet.", "fix": "Use Fabric or Quilt for now." },
     "loader_version_not_found": { "message": "{{loader}} {{loader_version}} isn't available for Minecraft {{version}}.", "fix": "Pick a loader version from the list." },
+    "loader_installer_invalid": { "message": "The mod loader's installer couldn't be read.", "fix": "Try again. If it keeps happening, pick another loader version." },
+    "loader_too_old": { "message": "This loader version is too old for the launcher.", "fix": "Pick a newer loader version." },
+    "loader_processor_failed": { "message": "Setting up the mod loader failed.", "fix": "Try again. If it keeps happening, copy the details and ask for help." },
+    "loader_output_corrupt": { "message": "A file the mod loader built came out damaged.", "fix": "Try again." },
     "meta_cache_missing": { "message": "A saved download list is missing.", "fix": "Connect to the internet and try again." },
     "meta_not_found": { "message": "A version list wasn't found on the server.", "fix": "Check that this version exists." },
     "meta_checksum": { "message": "A downloaded version list was damaged.", "fix": "Try again in a minute." },

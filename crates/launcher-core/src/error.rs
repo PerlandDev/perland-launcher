@@ -53,7 +53,8 @@ error_codes! {
     NoGameArguments, GameFilesMissing,
     // loaders and metadata
     VersionInvalid, LoaderUnsupported, LoaderVersionNotFound, MetaCacheMissing, MetaNotFound,
-    MetaChecksum, MetaUnexpected,
+    MetaChecksum, MetaUnexpected, LoaderInstallerInvalid, LoaderTooOld, LoaderProcessorFailed,
+    LoaderOutputCorrupt,
     // settings and logs
     SettingsDamaged, LogWriteStopped,
     // mods
