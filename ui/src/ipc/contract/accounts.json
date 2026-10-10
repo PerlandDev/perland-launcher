@@ -1,0 +1,16 @@
+{
+  "accounts": [
+    {
+      "provider": "offline",
+      "username": "Steve",
+      "uuid": "5627dd98-e6be-3c21-b8a8-e92344183641"
+    },
+    {
+      "provider": "offline",
+      "username": "Alex_Builds",
+      "uuid": "e3dd11bd-c1cf-37d8-9de0-abcb98d0376b"
+    }
+  ],
+  "active": "5627dd98-e6be-3c21-b8a8-e92344183641",
+  "licensedSigninSeen": false
+}

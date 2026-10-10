@@ -1,0 +1,16 @@
+[package]
+name = "launcher-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+launcher-core = { path = "../launcher-core" }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+futures-util.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["test-util"] }

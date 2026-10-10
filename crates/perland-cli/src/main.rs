@@ -8,12 +8,12 @@ use launcher_core::{
     events::{Event, EventSink},
     install::Installer,
     instances::{GameSpec, InstanceStore, LoaderSpec},
-    java,
-    launch::{self, LaunchSpec, Redactor},
+    launch::Redactor,
     meta::{loaders::LoaderKind, MetaClient},
     paths::LauncherDirs,
     platform::Platform,
-    LauncherError,
+    play::{self, StartSpec},
+    ErrorCode, LauncherError,
 };
 
 #[derive(Parser)]
@@ -84,7 +84,8 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
         .root
         .or_else(LauncherDirs::default_root)
         .ok_or_else(|| {
-            LauncherError::disk("Couldn't find a data folder").with_fix("Pass --root <folder>")
+            LauncherError::disk(ErrorCode::DiskIo, "Couldn't find a data folder")
+                .with_fix("Pass --root <folder>")
         })?;
     let dirs = LauncherDirs::new(root);
     let store = InstanceStore::new(dirs.instances());
@@ -107,6 +108,7 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
                 (None, None) => None,
                 _ => {
                     return Err(LauncherError::loader(
+                        ErrorCode::VersionInvalid,
                         "Pass both --loader and --loader-version",
                     ))
                 }
@@ -147,11 +149,12 @@ async fn launch_instance(
 ) -> Result<(), LauncherError> {
     let instance = store.load(id).await?;
     let account = accounts.active().await?.ok_or_else(|| {
-        LauncherError::auth("No account selected")
+        LauncherError::auth(ErrorCode::NoAccount, "No account selected")
             .with_fix("Run `perland-cli offline <name>` first")
     })?;
     if account.provider != Provider::Offline {
         return Err(LauncherError::auth(
+            ErrorCode::MicrosoftUnavailable,
             "Microsoft accounts arrive in a later build",
         ));
     }
@@ -167,78 +170,42 @@ async fn launch_instance(
     let sink: EventSink = Arc::new(|event| match event {
         Event::Progress {
             task, done, total, ..
-        } => eprint!("\r{task}: {done}/{total}    "),
+        } => eprint!("\r{}: {done}/{total}    ", task.key),
         Event::Log { line } => println!("{line}"),
+        Event::Warning(e) => eprintln!("\nwarning: {}", e.message),
         Event::StateChanged { .. } => {}
     });
 
-    let loader = instance
-        .game
-        .loader
-        .as_ref()
-        .map(|l| (l.kind, l.version.as_str()));
-    let resolved = installer.resolve(&instance.game.minecraft, loader).await?;
-    installer.install(&resolved, &sink).await?;
+    let prepared = play::prepare(&installer, &instance, &sink).await?;
     eprintln!();
-    let java_path = match &instance.java.path {
-        Some(path) => path.clone(),
-        None => {
-            let component = java::component_for(&resolved.json);
-            java::ensure_runtime(
-                &installer.meta,
-                &installer.downloader,
-                &dirs.java(),
-                platform,
-                &component,
-                &sink,
-            )
-            .await?
-        }
-    };
-    eprintln!();
-
     let game_dir = store.game_dir(&instance.id);
-    let cmd = launch::build_command(&LaunchSpec {
+    let spec = StartSpec {
         dirs,
-        resolved: &resolved,
         game_dir: &game_dir,
-        java: &java_path,
+        instance: &instance,
+        prepared: &prepared,
         session: &session,
-        memory_mb: instance.java.memory_mb,
         platform,
         launcher_version: env!("CARGO_PKG_VERSION"),
-    })?;
-    let redactor = Redactor::for_current_user().with_secret(session.access_token.clone());
+    };
 
     if dry_run {
+        let cmd = play::command(&spec)?;
+        let redactor = Redactor::for_current_user().with_secret(session.access_token.clone());
         println!(
             "{}",
             redactor.redact(&format!("{} {}", cmd.program.display(), cmd.args.join(" ")))
         );
-        let missing = launch::missing_files(&cmd);
-        if missing.is_empty() {
-            eprintln!(
-                "dry run OK: java and {} classpath entries present",
-                cmd.classpath.len()
-            );
-            return Ok(());
-        }
-        for path in &missing {
-            eprintln!("missing: {}", path.display());
-        }
-        return Err(LauncherError::loader(format!(
-            "{} required files are missing",
-            missing.len()
-        )));
+        play::check_files(&cmd)?;
+        eprintln!(
+            "dry run OK: java and {} classpath entries present",
+            cmd.classpath.len()
+        );
+        return Ok(());
     }
 
-    let exit = launch::run(
-        &cmd,
-        &redactor,
-        &sink,
-        &dirs.logs().join(format!("{}-latest.log", instance.id)),
-    )
-    .await?;
+    let game = play::start(&spec, sink).await?;
+    let exit = game.wait().await?;
     eprintln!("game exited with {:?}", exit.code);
     Ok(())
 }

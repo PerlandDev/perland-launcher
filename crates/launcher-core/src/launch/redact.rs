@@ -54,6 +54,30 @@ impl Redactor {
         }
         out
     }
+
+    /// Like `redact`, for text that was cut off mid-line: a secret the cut went through can't be
+    /// matched whole, so a trailing fragment (4 characters or more) of any secret is masked too.
+    pub fn redact_cut(&self, input: &str) -> String {
+        let mut out = self.redact(input);
+        let fragment_len = self
+            .secrets
+            .iter()
+            .flat_map(|secret| {
+                secret
+                    .char_indices()
+                    .map(|(i, _)| i)
+                    .filter(|&i| i >= 4)
+                    .map(|i| &secret[..i])
+            })
+            .filter(|prefix| out.ends_with(prefix))
+            .map(str::len)
+            .max();
+        if let Some(len) = fragment_len {
+            out.truncate(out.len() - len);
+            out.push_str("<redacted>");
+        }
+        out
+    }
 }
 
 #[cfg(test)]
@@ -67,6 +91,23 @@ mod tests {
             .with_home("C:\\Users\\mmxtu");
         let out = r.redact("token=eyJhbGciOiJ.secret.token dir=C:\\Users\\mmxtu\\AppData");
         assert_eq!(out, "token=<redacted> dir=~\\AppData");
+    }
+
+    #[test]
+    fn a_secret_cut_in_half_is_masked() {
+        let r = Redactor::new().with_secret("eyJhbGciOiJ.secret.token");
+        // The line was cut after "eyJhbGciOiJ.sec": `redact` alone can't see a full secret.
+        let cut = "--accessToken eyJhbGciOiJ.sec";
+        assert_eq!(r.redact(cut), cut);
+        assert_eq!(r.redact_cut(cut), "--accessToken <redacted>");
+        // Whole secrets earlier in the line are still replaced.
+        assert_eq!(
+            r.redact_cut("a eyJhbGciOiJ.secret.token b eyJh"),
+            "a <redacted> b <redacted>"
+        );
+        // Fragments under 4 characters are left alone; so is an unrelated ending.
+        assert_eq!(r.redact_cut("ends in eyJ"), "ends in eyJ");
+        assert_eq!(r.redact_cut("plain text"), "plain text");
     }
 
     #[test]

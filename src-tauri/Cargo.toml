@@ -1,0 +1,26 @@
+[package]
+name = "perland-launcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Perland Launcher desktop app"
+
+# No test harness: test executables that link Tauri can fail to start on Windows. All logic and
+# its tests live in crates/launcher-app.
+[[bin]]
+name = "perland-launcher"
+path = "src/main.rs"
+test = false
+
+[build-dependencies]
+tauri-build = { version = "2.7.1", features = [] }
+
+[dependencies]
+launcher-core = { path = "../crates/launcher-core" }
+launcher-app = { path = "../crates/launcher-app" }
+tauri = { version = "2.12.2", features = [] }
+tauri-plugin-dialog = "2.8.1"
+tauri-plugin-opener = "2.7.0"
+tauri-plugin-single-instance = "2.5.2"
+tauri-plugin-window-state = "2.5.0"
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }

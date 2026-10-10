@@ -1,0 +1,14 @@
+[
+  {
+    "version": "0.19.5",
+    "stable": true
+  },
+  {
+    "version": "0.19.4",
+    "stable": true
+  },
+  {
+    "version": "0.20.0-beta.1",
+    "stable": false
+  }
+]

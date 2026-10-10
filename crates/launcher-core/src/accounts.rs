@@ -4,7 +4,7 @@ use md5::{Digest, Md5};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::{LauncherError, Result},
+    error::{ErrorCode, LauncherError, Result},
     fsutil::write_atomic,
 };
 
@@ -81,6 +81,7 @@ pub fn validate_offline_name(name: &str) -> Result<()> {
         Ok(())
     } else {
         Err(LauncherError::auth(
+            ErrorCode::OfflineNameInvalid,
             "Offline names must be 3–16 letters, numbers or underscores",
         ))
     }
@@ -138,23 +139,28 @@ impl AccountStore {
 
     pub async fn load(&self) -> Result<AccountsFile> {
         match tokio::fs::read(&self.path).await {
-            Ok(bytes) => serde_json::from_slice(&bytes)
-                .map_err(|e| LauncherError::disk("The accounts file is damaged").with_detail(e)),
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| {
+                LauncherError::disk(ErrorCode::AccountsDamaged, "The accounts file is damaged")
+                    .with_detail(e)
+            }),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(AccountsFile::default()),
             Err(e) => Err(e.into()),
         }
     }
 
     pub async fn save(&self, file: &AccountsFile) -> Result<()> {
-        let bytes = serde_json::to_vec_pretty(file)
-            .map_err(|e| LauncherError::disk("Couldn't save accounts").with_detail(e))?;
+        let bytes = serde_json::to_vec_pretty(file).map_err(|e| {
+            LauncherError::disk(ErrorCode::DiskWriteFailed, "Couldn't save accounts")
+                .with_param("item", "accounts")
+                .with_detail(e)
+        })?;
         write_atomic(&self.path, &bytes).await
     }
 
     pub async fn add_offline(&self, name: &str, build: BuildKind) -> Result<Account> {
         let mut file = self.load().await?;
         if !offline_allowed(build, file.licensed_signin_seen) {
-            return Err(LauncherError::auth("Offline accounts unlock after you sign in once with a Microsoft account that owns Minecraft")
+            return Err(LauncherError::auth(ErrorCode::OfflineLocked, "Offline accounts unlock after you sign in once with a Microsoft account that owns Minecraft")
                 .with_fix("Add a Microsoft account first"));
         }
         let account = offline_account(name)?;
@@ -170,6 +176,34 @@ impl AccountStore {
         Ok(file
             .active
             .and_then(|uuid| file.accounts.into_iter().find(|a| a.uuid == uuid)))
+    }
+
+    pub async fn list(&self) -> Result<AccountsFile> {
+        self.load().await
+    }
+
+    pub async fn set_active(&self, uuid: &str) -> Result<AccountsFile> {
+        let mut file = self.load().await?;
+        if !file.accounts.iter().any(|a| a.uuid == uuid) {
+            return Err(LauncherError::auth(
+                ErrorCode::NoAccount,
+                "That account isn't on this computer anymore",
+            ));
+        }
+        file.active = Some(uuid.to_string());
+        self.save(&file).await?;
+        Ok(file)
+    }
+
+    /// Forget an account. If it was active, the first remaining account becomes active.
+    pub async fn remove(&self, uuid: &str) -> Result<AccountsFile> {
+        let mut file = self.load().await?;
+        file.accounts.retain(|a| a.uuid != uuid);
+        if file.active.as_deref() == Some(uuid) {
+            file.active = file.accounts.first().map(|a| a.uuid.clone());
+        }
+        self.save(&file).await?;
+        Ok(file)
     }
 }
 #[cfg(test)]
@@ -250,5 +284,33 @@ mod tests {
             "re-adding does not duplicate"
         );
         assert_eq!(store.active().await.unwrap(), Some(a));
+    }
+
+    #[tokio::test]
+    async fn switch_and_remove_accounts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = AccountStore::new(tmp.path().join("accounts.json"));
+        let steve = store.add_offline("Steve", BuildKind::Dev).await.unwrap();
+        let alex = store.add_offline("Alex", BuildKind::Dev).await.unwrap();
+        assert_eq!(
+            store.list().await.unwrap().active.as_deref(),
+            Some(alex.uuid.as_str())
+        );
+
+        let file = store.set_active(&steve.uuid).await.unwrap();
+        assert_eq!(file.active.as_deref(), Some(steve.uuid.as_str()));
+        assert_eq!(
+            store.set_active("not-a-uuid").await.unwrap_err().code,
+            crate::ErrorCode::NoAccount
+        );
+
+        // Removing the active account makes the first remaining one active.
+        let file = store.remove(&steve.uuid).await.unwrap();
+        assert_eq!(file.accounts, vec![alex.clone()]);
+        assert_eq!(file.active.as_deref(), Some(alex.uuid.as_str()));
+
+        let file = store.remove(&alex.uuid).await.unwrap();
+        assert!(file.accounts.is_empty());
+        assert_eq!(file.active, None);
     }
 }

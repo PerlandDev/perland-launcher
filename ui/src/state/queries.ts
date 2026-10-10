@@ -1,0 +1,129 @@
+import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { commands } from '../ipc/commands';
+import type { Instance, LoaderKind, NewInstance, Settings } from '../ipc/schema';
+import { pushError } from './toasts';
+
+export function createQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, refetchOnWindowFocus: false, staleTime: 30_000 },
+      mutations: { retry: false },
+    },
+  });
+}
+
+export const queryClient = createQueryClient();
+
+export const qk = {
+  appInfo: ['appInfo'] as const,
+  settings: ['settings'] as const,
+  instances: ['instances'] as const,
+  accounts: ['accounts'] as const,
+  mcVersions: ['catalog', 'minecraft'] as const,
+  loaders: (kind: LoaderKind, mc: string) => ['catalog', 'loaders', kind, mc] as const,
+  mods: (id: string) => ['mods', id] as const,
+};
+
+const TEN_MINUTES = 10 * 60_000;
+
+export const useAppInfo = () => useQuery({ queryKey: qk.appInfo, queryFn: commands.appInfo, staleTime: Infinity });
+export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: commands.settingsGet });
+export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: commands.instancesList });
+export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
+export const useMcVersions = (enabled = true) =>
+  useQuery({ queryKey: qk.mcVersions, queryFn: commands.catalogMinecraft, staleTime: TEN_MINUTES, enabled });
+export const useLoaderVersions = (kind: LoaderKind | null, mc: string | null) =>
+  useQuery({
+    queryKey: qk.loaders(kind ?? 'fabric', mc ?? ''),
+    queryFn: () => commands.catalogLoaders(kind as LoaderKind, mc as string),
+    enabled: kind !== null && !!mc,
+    staleTime: TEN_MINUTES,
+  });
+export const useMods = (id: string) => useQuery({ queryKey: qk.mods(id), queryFn: () => commands.modsList(id) });
+
+interface Opts {
+  /** The caller shows the error itself (forms); otherwise it becomes a toast. */
+  inline?: boolean;
+}
+const onError = (opts: Opts) => (error: unknown) => {
+  if (!opts.inline) pushError(error);
+};
+
+export function useSaveSettings(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (settings: Settings) => commands.settingsSet(settings),
+    onSuccess: (saved) => qc.setQueryData(qk.settings, saved),
+    onError: onError(opts),
+  });
+}
+
+export function useCreateInstance(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (request: NewInstance) => commands.instanceCreate(request),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onError: onError(opts),
+  });
+}
+
+export function useUpdateInstance(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (instance: Instance) => commands.instanceUpdate(instance),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onError: onError(opts),
+  });
+}
+
+export function useRenameInstance(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) => commands.instanceRename(id, name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onError: onError(opts),
+  });
+}
+
+export function useDeleteInstance(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => commands.instanceDelete(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onError: onError(opts),
+  });
+}
+
+export function useAccountMutations(opts: Opts = {}) {
+  const qc = useQueryClient();
+  const onSuccess = (file: Awaited<ReturnType<typeof commands.accountsList>>) => qc.setQueryData(qk.accounts, file);
+  // A failed change may have been made against a stale list, so the list is asked for again.
+  const failed = (error: unknown) => {
+    void qc.invalidateQueries({ queryKey: qk.accounts });
+    onError(opts)(error);
+  };
+  return {
+    addOffline: useMutation({ mutationFn: commands.accountAddOffline, onSuccess, onError: failed }),
+    setActive: useMutation({ mutationFn: commands.accountSetActive, onSuccess, onError: failed }),
+    remove: useMutation({ mutationFn: commands.accountRemove, onSuccess, onError: failed }),
+  };
+}
+
+export function useModMutations(id: string, opts: Opts = {}) {
+  const qc = useQueryClient();
+  const onSuccess = (list: Awaited<ReturnType<typeof commands.modsList>>) => qc.setQueryData(qk.mods(id), list);
+  // A failed change may still have touched the folder (a partial add), so the list is asked for again.
+  const failed = (error: unknown) => {
+    void qc.invalidateQueries({ queryKey: qk.mods(id) });
+    onError(opts)(error);
+  };
+  return {
+    toggle: useMutation({
+      mutationFn: ({ file, enabled }: { file: string; enabled: boolean }) => commands.modSetEnabled(id, file, enabled),
+      onSuccess,
+      onError: failed,
+    }),
+    add: useMutation({ mutationFn: (paths: string[]) => commands.modsAdd(id, paths), onSuccess, onError: failed }),
+    remove: useMutation({ mutationFn: (file: string) => commands.modRemove(id, file), onSuccess, onError: failed }),
+  };
+}

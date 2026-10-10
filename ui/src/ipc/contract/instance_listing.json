@@ -1,0 +1,56 @@
+{
+  "instances": [
+    {
+      "id": "asalith-fields",
+      "name": "Asalith Fields",
+      "source": {
+        "kind": "none"
+      },
+      "game": {
+        "minecraft": "1.20.1",
+        "loader": {
+          "kind": "fabric",
+          "version": "0.16.14"
+        }
+      },
+      "updatePolicy": "ask",
+      "optionalChoices": {},
+      "java": {
+        "path": null,
+        "memoryMb": 4096
+      }
+    },
+    {
+      "id": "creative-flat",
+      "name": "Creative Flat",
+      "source": {
+        "kind": "none"
+      },
+      "game": {
+        "minecraft": "26.3",
+        "loader": null
+      },
+      "updatePolicy": "ask",
+      "optionalChoices": {},
+      "java": {
+        "path": "C:/Java/bin/java.exe",
+        "memoryMb": 6144
+      }
+    }
+  ],
+  "damaged": [
+    {
+      "id": "old-pack",
+      "error": {
+        "category": "disk",
+        "code": "instance_damaged",
+        "message": "The settings file of \"old-pack\" is damaged",
+        "fix": "Restore instance.json from a backup or recreate the instance",
+        "detail": "expected value at line 1 column 1",
+        "params": {
+          "id": "old-pack"
+        }
+      }
+    }
+  ]
+}

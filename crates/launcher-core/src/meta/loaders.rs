@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{mojang::VersionJson, MetaClient};
-use crate::error::{ErrorCategory, LauncherError, Result};
+use crate::error::{ErrorCategory, ErrorCode, LauncherError, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -14,7 +14,7 @@ pub enum LoaderKind {
 
 /// A version string that is safe to place in a URL path segment: non-empty, only ASCII
 /// alphanumerics or `.` `_` `+` `-`, and not a dot segment.
-fn valid_component(s: &str) -> bool {
+pub(crate) fn valid_component(s: &str) -> bool {
     !s.is_empty()
         && s != "."
         && s != ".."
@@ -47,17 +47,21 @@ pub async fn fetch_profile(
 ) -> Result<VersionJson> {
     for value in [mc, loader] {
         if !valid_component(value) {
-            return Err(
-                LauncherError::loader(format!("\"{value}\" isn't a valid version"))
-                    .with_fix("Pick a version from the list instead of typing one in"),
-            );
+            return Err(LauncherError::loader(
+                ErrorCode::VersionInvalid,
+                format!("\"{value}\" isn't a valid version"),
+            )
+            .with_param("value", value)
+            .with_fix("Pick a version from the list instead of typing one in"));
         }
     }
     let Some(url) = profile_url(kind, mc, loader) else {
-        return Err(
-            LauncherError::loader(format!("{kind:?} isn't supported yet"))
-                .with_fix("Use Fabric or Quilt for now; Forge and NeoForge are coming"),
-        );
+        return Err(LauncherError::loader(
+            ErrorCode::LoaderUnsupported,
+            format!("{kind:?} isn't supported yet"),
+        )
+        .with_param("loader", format!("{kind:?}"))
+        .with_fix("Use Fabric or Quilt for now; Forge and NeoForge are coming"));
     };
     meta.get_json(&url)
         .await
@@ -70,9 +74,15 @@ fn map_profile_error(kind: LoaderKind, mc: &str, loader: &str, e: LauncherError)
     if e.category == ErrorCategory::Network {
         return e;
     }
-    LauncherError::loader(format!("Couldn't get {kind:?} {loader} for Minecraft {mc}"))
-        .with_fix("Check that this loader version exists for this Minecraft version")
-        .with_detail(e.message)
+    LauncherError::loader(
+        ErrorCode::LoaderVersionNotFound,
+        format!("Couldn't get {kind:?} {loader} for Minecraft {mc}"),
+    )
+    .with_param("loader", format!("{kind:?}"))
+    .with_param("loader_version", loader)
+    .with_param("version", mc)
+    .with_fix("Check that this loader version exists for this Minecraft version")
+    .with_detail(e.message)
 }
 
 #[cfg(test)]
@@ -133,7 +143,7 @@ mod tests {
 
     #[test]
     fn network_errors_pass_through_profile_mapping() {
-        let offline = LauncherError::network("You seem to be offline")
+        let offline = LauncherError::network(ErrorCode::Offline, "You seem to be offline")
             .with_fix("Connect to the internet and try again")
             .with_detail("connection refused");
         let mapped = map_profile_error(LoaderKind::Fabric, "1.20.1", "0.16.14", offline.clone());
@@ -142,8 +152,11 @@ mod tests {
 
     #[test]
     fn other_errors_blame_the_loader_version() {
-        let missing = LauncherError::loader("https://x/profile/json answered 404 Not Found")
-            .with_fix("Check that this version exists");
+        let missing = LauncherError::loader(
+            ErrorCode::MetaNotFound,
+            "https://x/profile/json answered 404 Not Found",
+        )
+        .with_fix("Check that this version exists");
         let mapped = map_profile_error(LoaderKind::Quilt, "1.20.1", "9.9.9", missing);
         assert_eq!(mapped.category, ErrorCategory::Loader);
         assert_eq!(

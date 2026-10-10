@@ -10,9 +10,12 @@ pub mod instances;
 pub mod java;
 pub mod launch;
 pub mod meta;
+pub mod mods;
 pub mod paths;
 pub mod platform;
+pub mod play;
+pub mod settings;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-pub use error::{ErrorCategory, LauncherError, Result};
+pub use error::{ErrorCategory, ErrorCode, LauncherError, Result};

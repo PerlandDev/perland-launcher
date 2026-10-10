@@ -1,18 +1,27 @@
+pub mod crash;
 pub mod redact;
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
     process::Stdio,
+    sync::{Arc, Mutex},
+    time::Duration,
 };
 
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
+use tokio::{
+    io::{AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader},
+    process::Child,
+    sync::{mpsc, oneshot, watch},
+    task::JoinHandle,
+};
 
+pub use crash::CrashHint;
 pub use redact::Redactor;
 
 use crate::{
     accounts::Session,
-    error::{LauncherError, Result},
+    error::{ErrorCode, LauncherError, Result},
     events::{Event, EventSink},
     install::{classpath, ResolvedVersion},
     meta::rules::{resolve_args, RuleContext},
@@ -53,9 +62,77 @@ impl std::fmt::Debug for LaunchCommand {
     }
 }
 
+/// Longest output line kept; the rest of a longer line is dropped.
+pub const MAX_LINE_BYTES: usize = 8 * 1024;
+/// How many of the last output lines a finished game reports.
+pub const TAIL_LINES: usize = 200;
+
+/// Marks a line that was cut at `MAX_LINE_BYTES`.
+const TRUNCATED_MARKER: &str = " …[truncated]";
+/// Output lines waiting for the sink, across both streams.
+const LINE_QUEUE: usize = 1024;
+/// How long to wait for output to drain once the game has exited.
+const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameExit {
     pub code: Option<i32>,
+    /// True when the launcher stopped the game on request.
+    pub killed: bool,
+    /// The last `TAIL_LINES` redacted output lines.
+    pub tail: Vec<String>,
+    /// A likely cause, only for exits nobody asked for that weren't clean.
+    pub crash: Option<CrashHint>,
+}
+
+/// Asks a running game to stop. Cheap to clone; calling `kill` twice is harmless.
+#[derive(Clone)]
+pub struct GameKiller(Arc<watch::Sender<bool>>);
+
+impl GameKiller {
+    pub fn kill(&self) {
+        // Err only means the game already finished and nobody is listening.
+        let _ = self.0.send(true);
+    }
+}
+
+/// A started game. Dropping this without waiting never kills the game.
+pub struct GameProcess {
+    pid: Option<u32>,
+    killer: GameKiller,
+    done: oneshot::Receiver<Result<GameExit>>,
+}
+
+impl GameProcess {
+    pub fn pid(&self) -> Option<u32> {
+        self.pid
+    }
+    pub fn killer(&self) -> GameKiller {
+        self.killer.clone()
+    }
+    pub async fn wait(self) -> Result<GameExit> {
+        self.done.await.unwrap_or_else(|_| {
+            Err(LauncherError::game(
+                ErrorCode::Internal,
+                "Lost track of the game process",
+            ))
+        })
+    }
+}
+
+#[derive(Default)]
+struct Tail(VecDeque<String>);
+
+impl Tail {
+    fn push(&mut self, line: String) {
+        if self.0.len() == TAIL_LINES {
+            self.0.pop_front();
+        }
+        self.0.push_back(line);
+    }
+    fn lines(&self) -> Vec<String> {
+        self.0.iter().cloned().collect()
+    }
 }
 
 /// Replace `${name}` with values from `vars`; unknown names are left as written.
@@ -173,10 +250,11 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
         ),
         (_, Some(legacy)) => args.extend(legacy.split_whitespace().map(|t| substitute(t, &vars))),
         _ => {
-            return Err(LauncherError::loader(format!(
-                "{} has no game arguments",
-                json.id
-            )))
+            return Err(LauncherError::loader(
+                ErrorCode::NoGameArguments,
+                format!("{} has no game arguments", json.id),
+            )
+            .with_param("version", &json.id))
         }
     }
     Ok(LaunchCommand {
@@ -199,25 +277,180 @@ pub fn missing_files(cmd: &LaunchCommand) -> Vec<PathBuf> {
 }
 
 /// Decode one raw output line lossily (invalid bytes become U+FFFD) and strip the trailing `\n` / `\r\n`.
-fn decode_line(bytes: &[u8]) -> String {
+/// A truncated line is cut back to its last whole character and marked.
+fn decode_line(bytes: &[u8], truncated: bool) -> String {
     let bytes = bytes.strip_suffix(b"\n").unwrap_or(bytes);
     let bytes = bytes.strip_suffix(b"\r").unwrap_or(bytes);
-    String::from_utf8_lossy(bytes).into_owned()
+    if !truncated {
+        return String::from_utf8_lossy(bytes).into_owned();
+    }
+    let keep = match std::str::from_utf8(bytes) {
+        Ok(_) => bytes.len(),
+        // An incomplete sequence at the very end is the half character the cap cut through.
+        Err(e) if e.error_len().is_none() => e.valid_up_to(),
+        Err(_) => bytes.len(),
+    };
+    let mut line = String::from_utf8_lossy(&bytes[..keep]).into_owned();
+    line.push_str(TRUNCATED_MARKER);
+    line
 }
 
-/// Start the game, stream every output line (redacted) to the sink and the log file, and wait for it to exit.
-pub async fn run(
+/// Read one line into `buf`, keeping at most `max` bytes of it. The rest of an over-long line is
+/// consumed and dropped so a runaway line can't grow memory. Returns `(got_a_line, truncated)`;
+/// `got_a_line` is false at end of stream.
+async fn read_capped_line<R: AsyncBufRead + Unpin>(
+    reader: &mut R,
+    buf: &mut Vec<u8>,
+    max: usize,
+) -> std::io::Result<(bool, bool)> {
+    let mut got = false;
+    let mut truncated = false;
+    loop {
+        let available = reader.fill_buf().await?;
+        if available.is_empty() {
+            return Ok((got, truncated));
+        }
+        got = true;
+        let (chunk, found_newline) = match available.iter().position(|&b| b == b'\n') {
+            Some(i) => (&available[..=i], true),
+            None => (available, false),
+        };
+        let room = max.saturating_sub(buf.len());
+        if chunk.len() > room {
+            truncated = true;
+        }
+        buf.extend_from_slice(&chunk[..chunk.len().min(room)]);
+        let used = chunk.len();
+        reader.consume(used);
+        if found_newline {
+            return Ok((true, truncated));
+        }
+    }
+}
+
+async fn read_lines(reader: Box<dyn AsyncRead + Unpin + Send>, tx: mpsc::Sender<String>) {
+    // Read raw bytes: the game may write in a non-UTF-8 charset, which must not end capture.
+    let mut reader = BufReader::new(reader);
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        match read_capped_line(&mut reader, &mut buf, MAX_LINE_BYTES).await {
+            Ok((true, truncated)) => {
+                if tx.send(decode_line(&buf, truncated)).await.is_err() {
+                    break;
+                }
+            }
+            Ok((false, _)) | Err(_) => break,
+        }
+    }
+}
+
+type LogWriter = Box<dyn AsyncWrite + Send + Unpin>;
+
+/// Redact each line, append it to the log (until writing fails once), keep the tail, and stream it.
+async fn pump_lines(
+    mut rx: mpsc::Receiver<String>,
+    redactor: Redactor,
+    sink: EventSink,
+    mut log: LogWriter,
+    tail: Arc<Mutex<Tail>>,
+) {
+    let mut log_ok = true;
+    while let Some(line) = rx.recv().await {
+        let clean = match line.strip_suffix(TRUNCATED_MARKER) {
+            // The cut may have gone through a secret, which would leave only its first part.
+            Some(body) => format!("{}{TRUNCATED_MARKER}", redactor.redact_cut(body)),
+            None => redactor.redact(&line),
+        };
+        if log_ok {
+            let wrote = match log.write_all(clean.as_bytes()).await {
+                Ok(()) => log.write_all(b"\n").await,
+                Err(e) => Err(e),
+            };
+            if let Err(e) = wrote {
+                log_ok = false;
+                sink(Event::Warning(
+                    LauncherError::disk(
+                        ErrorCode::LogWriteStopped,
+                        "The game log stopped being saved to disk",
+                    )
+                    .with_fix("Check free disk space. The game keeps running.")
+                    .with_detail(e),
+                ));
+            }
+        }
+        tail.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(clean.clone());
+        sink(Event::Log { line: clean });
+    }
+    if log_ok {
+        let _ = log.flush().await;
+    }
+}
+
+/// Wait for the child, killing it when asked. Returns `(exit code, killed)`.
+async fn wait_for_exit(
+    mut child: Child,
+    mut kill_rx: watch::Receiver<bool>,
+) -> Result<(Option<i32>, bool)> {
+    let mut killed = false;
+    let mut listening = true;
+    loop {
+        tokio::select! {
+            status = child.wait() => return Ok((status?.code(), killed)),
+            changed = kill_rx.changed(), if listening && !killed => match changed {
+                Ok(()) if *kill_rx.borrow_and_update() => {
+                    killed = true;
+                    let _ = child.start_kill();
+                }
+                Ok(()) => {}
+                // Every handle was dropped: keep waiting, never kill.
+                Err(_) => listening = false,
+            },
+        }
+    }
+}
+
+/// Let the output drain after the game exits. A grandchild holding the pipes open must not hang
+/// the exit, and must not leave tasks running that keep logging after it: on timeout the pump and
+/// the readers are stopped, not just abandoned.
+async fn drain_output(mut pump: JoinHandle<()>, readers: Vec<JoinHandle<()>>, limit: Duration) {
+    if tokio::time::timeout(limit, &mut pump).await.is_err() {
+        pump.abort();
+        let _ = pump.await;
+    }
+    for reader in readers {
+        reader.abort();
+        let _ = reader.await;
+    }
+}
+
+/// Start the game. Output lines are redacted, written to `log_file`, kept as a tail and streamed
+/// to `sink`. The returned handle can kill the game and wait for its exit.
+pub async fn spawn(
     cmd: &LaunchCommand,
-    redactor: &Redactor,
-    sink: &EventSink,
+    redactor: Redactor,
+    sink: EventSink,
     log_file: &Path,
-) -> Result<GameExit> {
+) -> Result<GameProcess> {
     tokio::fs::create_dir_all(&cmd.cwd).await?;
     if let Some(parent) = log_file.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
     // Create the log file before spawning: if this fails, no game process exists yet to be orphaned.
-    let mut log = Some(tokio::fs::File::create(log_file).await?);
+    let log = tokio::fs::File::create(log_file).await?;
+    spawn_with_log(cmd, redactor, sink, Box::new(log))
+}
+
+/// Everything after the process starts runs without an `.await` until its tasks own it, so a
+/// caller cancelled at its next `.await` can never drop a started game that nobody waits for.
+fn spawn_with_log(
+    cmd: &LaunchCommand,
+    redactor: Redactor,
+    sink: EventSink,
+    log: LogWriter,
+) -> Result<GameProcess> {
     let mut command = tokio::process::Command::new(&cmd.program);
     command
         .args(&cmd.args)
@@ -228,55 +461,48 @@ pub async fn run(
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     let mut child = command.spawn().map_err(|e| {
-        LauncherError::java("Java couldn't be started")
+        LauncherError::java(ErrorCode::JavaStartFailed, "Java couldn't be started")
             .with_fix("Reinstall Java from the instance settings")
             .with_detail(e)
     })?;
+    let pid = child.id();
     let stdout = child.stdout.take().expect("stdout is piped");
     let stderr = child.stderr.take().expect("stderr is piped");
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    let readers: [Box<dyn AsyncRead + Unpin + Send>; 2] = [Box::new(stdout), Box::new(stderr)];
-    for reader in readers {
-        let tx = tx.clone();
-        tokio::spawn(async move {
-            // Read raw bytes: the game may write in a non-UTF-8 charset, which must not end capture.
-            let mut reader = BufReader::new(reader);
-            let mut buf = Vec::new();
-            loop {
-                buf.clear();
-                match reader.read_until(b'\n', &mut buf).await {
-                    Ok(0) | Err(_) => break,
-                    Ok(_) => {
-                        if tx.send(decode_line(&buf)).is_err() {
-                            break;
-                        }
-                    }
-                }
+    // Bounded: when the sink can't keep up the readers wait, and the pipe backs up to the game.
+    let (line_tx, line_rx) = mpsc::channel::<String>(LINE_QUEUE);
+    let streams: [Box<dyn AsyncRead + Unpin + Send>; 2] = [Box::new(stdout), Box::new(stderr)];
+    let readers: Vec<JoinHandle<()>> = streams
+        .into_iter()
+        .map(|stream| tokio::spawn(read_lines(stream, line_tx.clone())))
+        .collect();
+    drop(line_tx);
+    let tail = Arc::new(Mutex::new(Tail::default()));
+    let pump = tokio::spawn(pump_lines(line_rx, redactor, sink, log, tail.clone()));
+    let (kill_tx, kill_rx) = watch::channel(false);
+    let (done_tx, done_rx) = oneshot::channel();
+    tokio::spawn(async move {
+        let result = wait_for_exit(child, kill_rx).await;
+        drain_output(pump, readers, DRAIN_TIMEOUT).await;
+        let tail = tail.lock().unwrap_or_else(|e| e.into_inner()).lines();
+        let exit = result.map(|(code, killed)| {
+            let crash = if !killed && code != Some(0) {
+                crash::diagnose(&tail)
+            } else {
+                None
+            };
+            GameExit {
+                code,
+                killed,
+                tail,
+                crash,
             }
         });
-    }
-    drop(tx);
-    while let Some(line) = rx.recv().await {
-        let clean = redactor.redact(&line);
-        // A log write failure is non-fatal: stop writing the file, keep streaming to the sink.
-        if let Some(file) = log.as_mut() {
-            let wrote = match file.write_all(clean.as_bytes()).await {
-                Ok(()) => file.write_all(b"\n").await,
-                Err(e) => Err(e),
-            };
-            if wrote.is_err() {
-                log = None;
-            }
-        }
-        sink(Event::Log { line: clean });
-    }
-    if let Some(file) = log.as_mut() {
-        let _ = file.flush().await;
-    }
-    // Always reached once the child has been spawned, so the game is never left unowned.
-    let status = child.wait().await?;
-    Ok(GameExit {
-        code: status.code(),
+        let _ = done_tx.send(exit);
+    });
+    Ok(GameProcess {
+        pid,
+        killer: GameKiller(Arc::new(kill_tx)),
+        done: done_rx,
     })
 }
 
@@ -400,14 +626,255 @@ mod tests {
         );
     }
 
+    use std::sync::{Arc, Mutex};
+    use tokio::io::AsyncWrite;
+
+    fn collect() -> (EventSink, Arc<Mutex<Vec<Event>>>) {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let s2 = seen.clone();
+        (Arc::new(move |e| s2.lock().unwrap().push(e)), seen)
+    }
+
+    fn logs(seen: &Arc<Mutex<Vec<Event>>>) -> Vec<String> {
+        seen.lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e {
+                Event::Log { line } => Some(line.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Prints "alpha" then "bravo" on every OS. On Windows the `&` must sit inside an argument
+    /// without spaces: an argument with spaces gets quoted, and cmd won't split a quoted `&`.
+    fn two_lines(cwd: &Path) -> LaunchCommand {
+        let (program, args): (&str, &[&str]) = if cfg!(windows) {
+            ("cmd", &["/C", "echo", "alpha&echo", "bravo"])
+        } else {
+            ("sh", &["-c", "echo alpha; echo bravo"])
+        };
+        LaunchCommand {
+            program: program.into(),
+            args: args.iter().map(|a| a.to_string()).collect(),
+            cwd: cwd.to_path_buf(),
+            classpath: vec![],
+        }
+    }
+
     #[test]
     fn decode_line_is_lossy_and_strips_line_endings() {
-        let out = decode_line(b"caf\xe9 ok\r\n");
+        let out = decode_line(b"caf\xe9 ok\r\n", false);
         assert!(out.contains("caf") && out.ends_with(" ok"), "{out:?}");
         assert!(!out.contains('\r') && !out.contains('\n'), "{out:?}");
-        assert_eq!(decode_line(b"plain\n"), "plain");
-        assert_eq!(decode_line(b"no newline"), "no newline");
-        assert_eq!(decode_line(b"\r\n"), "");
+        assert_eq!(decode_line(b"plain\n", false), "plain");
+        assert_eq!(decode_line(b"\r\n", false), "");
+    }
+
+    #[test]
+    fn truncated_lines_end_on_a_whole_character() {
+        // "ab" then the first byte of a two-byte "ñ": the cut must drop the half character.
+        assert_eq!(decode_line(b"ab\xc3", true), "ab …[truncated]");
+    }
+
+    #[tokio::test]
+    async fn a_secret_straddling_the_line_cap_does_not_leak() {
+        let secret = "tok-0123456789abcdef";
+        let mut line = vec![b'x'; MAX_LINE_BYTES - 7];
+        line.extend_from_slice(secret.as_bytes()); // the cap cuts after "tok-012"
+        line.push(b'\n');
+        let (tx, rx) = mpsc::channel(4);
+        read_lines(Box::new(std::io::Cursor::new(line)), tx).await;
+        let (sink, seen) = collect();
+        let tail = Arc::new(Mutex::new(Tail::default()));
+        pump_lines(
+            rx,
+            Redactor::new().with_secret(secret),
+            sink,
+            Box::new(tokio::io::sink()),
+            tail,
+        )
+        .await;
+        let shown = logs(&seen).remove(0);
+        assert!(!shown.contains("tok-"), "{shown:?}");
+        assert!(shown.ends_with("<redacted> …[truncated]"), "{shown:?}");
+    }
+
+    #[tokio::test]
+    async fn output_backs_up_instead_of_growing_without_bound() {
+        let lines: Vec<u8> = (0..10)
+            .flat_map(|i| format!("line {i}\n").into_bytes())
+            .collect();
+        let (tx, mut rx) = mpsc::channel(2);
+        let reader = tokio::spawn(read_lines(Box::new(std::io::Cursor::new(lines)), tx));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!reader.is_finished(), "the reader must wait for room");
+        let mut got = Vec::new();
+        while let Some(line) = rx.recv().await {
+            got.push(line);
+        }
+        reader.await.unwrap();
+        assert_eq!(got.len(), 10);
+        assert_eq!(got[9], "line 9");
+    }
+
+    #[tokio::test]
+    async fn drain_stops_tasks_that_outlive_the_timeout() {
+        struct Flag(Arc<std::sync::atomic::AtomicBool>);
+        impl Drop for Flag {
+            fn drop(&mut self) {
+                self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+        let stopped = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stuck = |flag: Flag| {
+            tokio::spawn(async move {
+                let _flag = flag;
+                std::future::pending::<()>().await;
+            })
+        };
+        let pump = stuck(Flag(stopped.clone()));
+        let other = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let readers = vec![stuck(Flag(other.clone()))];
+        drain_output(pump, readers, Duration::from_millis(50)).await;
+        assert!(stopped.load(std::sync::atomic::Ordering::SeqCst), "pump");
+        assert!(other.load(std::sync::atomic::Ordering::SeqCst), "reader");
+    }
+
+    #[tokio::test]
+    async fn capped_line_drops_the_overflow() {
+        let mut input = vec![b'a'; MAX_LINE_BYTES * 3];
+        input.extend_from_slice(b"\nnext\n");
+        let mut reader = tokio::io::BufReader::new(&input[..]);
+        let mut buf = Vec::new();
+        let (got, truncated) = read_capped_line(&mut reader, &mut buf, MAX_LINE_BYTES)
+            .await
+            .unwrap();
+        assert!(got && truncated);
+        assert_eq!(buf.len(), MAX_LINE_BYTES);
+        buf.clear();
+        let (got, truncated) = read_capped_line(&mut reader, &mut buf, MAX_LINE_BYTES)
+            .await
+            .unwrap();
+        assert!(got && !truncated);
+        assert_eq!(buf, b"next\n");
+        buf.clear();
+        let (got, _) = read_capped_line(&mut reader, &mut buf, MAX_LINE_BYTES)
+            .await
+            .unwrap();
+        assert!(!got, "end of stream");
+    }
+
+    #[test]
+    fn tail_keeps_the_last_lines() {
+        let mut tail = Tail::default();
+        for i in 0..(TAIL_LINES + 5) {
+            tail.push(i.to_string());
+        }
+        let lines = tail.lines();
+        assert_eq!(lines.len(), TAIL_LINES);
+        assert_eq!(lines[0], "5");
+    }
+
+    #[tokio::test]
+    async fn spawn_streams_redacted_output_and_writes_the_log() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sink, seen) = collect();
+        let log = tmp.path().join("logs/latest.log");
+        let redactor = Redactor::new().with_secret("bravo");
+        let game = spawn(&two_lines(tmp.path()), redactor, sink, &log)
+            .await
+            .unwrap();
+        let exit = game.wait().await.unwrap();
+        assert_eq!(exit.code, Some(0));
+        assert!(!exit.killed);
+        assert_eq!(exit.crash, None);
+        assert_eq!(logs(&seen), vec!["alpha", "<redacted>"]);
+        assert_eq!(exit.tail, vec!["alpha", "<redacted>"]);
+        let written = std::fs::read_to_string(&log).unwrap();
+        assert!(
+            written.contains("alpha") && !written.contains("bravo"),
+            "{written}"
+        );
+    }
+
+    #[tokio::test]
+    async fn kill_stops_a_running_process() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (program, args) = if cfg!(windows) {
+            ("ping", vec!["-n", "30", "127.0.0.1"])
+        } else {
+            ("sleep", vec!["30"])
+        };
+        let cmd = LaunchCommand {
+            program: program.into(),
+            args: args.into_iter().map(String::from).collect(),
+            cwd: tmp.path().into(),
+            classpath: vec![],
+        };
+        let (sink, _) = collect();
+        let game = spawn(&cmd, Redactor::new(), sink, &tmp.path().join("l.log"))
+            .await
+            .unwrap();
+        assert!(game.pid().is_some());
+        let killer = game.killer();
+        killer.kill();
+        killer.kill(); // idempotent
+        let exit = tokio::time::timeout(std::time::Duration::from_secs(15), game.wait())
+            .await
+            .expect("the killed process must exit")
+            .unwrap();
+        assert!(exit.killed);
+        assert_ne!(exit.code, Some(0));
+        assert_eq!(exit.crash, None, "a requested stop is never a crash");
+    }
+
+    struct FailingWriter;
+    impl AsyncWrite for FailingWriter {
+        fn poll_write(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+            _: &[u8],
+        ) -> std::task::Poll<std::io::Result<usize>> {
+            std::task::Poll::Ready(Err(std::io::Error::other("disk full")))
+        }
+        fn poll_flush(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+        fn poll_shutdown(
+            self: std::pin::Pin<&mut Self>,
+            _: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::io::Result<()>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+    }
+
+    #[tokio::test]
+    async fn log_write_failure_warns_once_and_keeps_streaming() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (sink, seen) = collect();
+        let game = spawn_with_log(
+            &two_lines(tmp.path()),
+            Redactor::new(),
+            sink,
+            Box::new(FailingWriter),
+        )
+        .unwrap();
+        game.wait().await.unwrap();
+        let warnings: Vec<ErrorCode> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e {
+                Event::Warning(err) => Some(err.code),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(warnings, vec![ErrorCode::LogWriteStopped]);
+        assert_eq!(logs(&seen), vec!["alpha", "bravo"]);
     }
 
     #[test]
@@ -442,41 +909,5 @@ mod tests {
             classpath: vec![PathBuf::from("lib.jar"), PathBuf::from("absent.jar")],
         };
         assert_eq!(missing_files(&cmd), vec![PathBuf::from("absent.jar")]);
-    }
-
-    #[tokio::test]
-    async fn run_streams_redacted_output() {
-        // Uses the java already on PATH (present on CI runners and dev machines); skipped if absent.
-        if std::process::Command::new("java")
-            .arg("-version")
-            .output()
-            .is_err()
-        {
-            return;
-        }
-        let tmp = tempfile::tempdir().unwrap();
-        let lines = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let l2 = lines.clone();
-        let sink: EventSink = std::sync::Arc::new(move |e| {
-            if let Event::Log { line } = e {
-                l2.lock().unwrap().push(line);
-            }
-        });
-        let cmd = LaunchCommand {
-            program: "java".into(),
-            args: vec!["-version".into()],
-            cwd: tmp.path().join("game"),
-            classpath: vec![],
-        };
-        let redactor = Redactor::new().with_secret("version");
-        let log = tmp.path().join("logs/latest.log");
-        let exit = run(&cmd, &redactor, &sink, &log).await.unwrap();
-        assert_eq!(exit.code, Some(0));
-        let all = lines.lock().unwrap().join("\n");
-        assert!(all.contains("<redacted>"), "{all}");
-        assert!(!all.contains("version"), "{all}");
-        assert!(std::fs::read_to_string(&log)
-            .unwrap()
-            .contains("<redacted>"));
     }
 }

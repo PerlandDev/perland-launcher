@@ -1,0 +1,10 @@
+{
+  "category": "loader",
+  "code": "minecraft_version_not_found",
+  "message": "Minecraft 9.9 doesn't exist",
+  "fix": "Check the version number",
+  "detail": "manifest has no 9.9",
+  "params": {
+    "version": "9.9"
+  }
+}

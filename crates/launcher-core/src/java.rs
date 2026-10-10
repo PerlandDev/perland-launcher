@@ -2,14 +2,16 @@
 use std::{
     collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
+    process::Stdio,
+    time::Duration,
 };
 
 use serde::Deserialize;
 
 use crate::{
     download::{DownloadRequest, Downloader, Hashes},
-    error::{LauncherError, Result},
-    events::EventSink,
+    error::{ErrorCode, LauncherError, Result},
+    events::{EventSink, TaskId},
     fsutil::{safe_join, write_atomic},
     meta::{
         mojang::{Artifact, VersionJson},
@@ -92,9 +94,11 @@ pub fn select_runtime<'a>(
         .and_then(|components| components.get(component))
         .and_then(|entries| entries.first())
         .ok_or_else(|| {
-            LauncherError::java(format!(
-                "There's no official Java ({component}) for this computer"
-            ))
+            LauncherError::java(
+                ErrorCode::JavaUnavailable,
+                format!("There's no official Java ({component}) for this computer"),
+            )
+            .with_param("component", component)
             .with_fix("Choose a Java installation in the instance settings")
         })
 }
@@ -107,8 +111,11 @@ pub fn plan_runtime(manifest: &RuntimeManifest, dest: &Path) -> Result<RuntimePl
     };
     for (rel, file) in &manifest.files {
         let path = safe_join(dest, rel).ok_or_else(|| {
-            LauncherError::integrity("The Java download list contains an unsafe path")
-                .with_detail(rel)
+            LauncherError::integrity(
+                ErrorCode::UnsafeGameData,
+                "The Java download list contains an unsafe path",
+            )
+            .with_detail(rel)
         })?;
         match file {
             RuntimeFile::File {
@@ -168,7 +175,7 @@ pub async fn ensure_runtime(
     downloader
         .fetch_all(
             plan.downloads,
-            &format!("Downloading Java {}", entry.version.name),
+            &TaskId::new("download_java").with("version", &entry.version.name),
             sink,
         )
         .await?;
@@ -210,6 +217,37 @@ pub fn parse_java_version(output: &str) -> Option<u32> {
     } else {
         Some(first)
     }
+}
+
+/// Run `<path> -version` and return its major version. Backs the "Test" button for a custom Java.
+pub async fn probe(path: &Path) -> Result<u32> {
+    let failed = || {
+        LauncherError::java(
+            ErrorCode::JavaTestFailed,
+            "That doesn't look like a working Java",
+        )
+        .with_fix("Pick the java executable inside a Java installation's bin folder")
+        .with_detail(path.display())
+    };
+    let mut command = tokio::process::Command::new(path);
+    command
+        .arg("-version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    let output = tokio::time::timeout(Duration::from_secs(10), command.output())
+        .await
+        .map_err(|_| failed())?
+        .map_err(|_| failed())?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stdout)
+    );
+    parse_java_version(&text).ok_or_else(failed)
 }
 
 #[cfg(test)]
@@ -302,5 +340,26 @@ mod tests {
             Some(25)
         );
         assert_eq!(parse_java_version("not java"), None);
+    }
+
+    #[tokio::test]
+    async fn probe_rejects_a_missing_java() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = probe(&tmp.path().join("nope")).await.unwrap_err();
+        assert_eq!(err.code, crate::ErrorCode::JavaTestFailed);
+    }
+
+    #[tokio::test]
+    async fn probe_reads_the_java_on_path() {
+        // Skipped where no java is installed.
+        if std::process::Command::new("java")
+            .arg("-version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        let major = probe(std::path::Path::new("java")).await.unwrap();
+        assert!(major >= 8, "{major}");
     }
 }

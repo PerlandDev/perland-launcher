@@ -1,0 +1,27 @@
+[
+  {
+    "id": "26.4-snapshot-3",
+    "kind": "snapshot",
+    "releaseTime": "2026-10-01T09:00:00+00:00"
+  },
+  {
+    "id": "26.3",
+    "kind": "release",
+    "releaseTime": "2026-09-15T09:00:00+00:00"
+  },
+  {
+    "id": "1.21.1",
+    "kind": "release",
+    "releaseTime": "2024-08-08T12:00:00+00:00"
+  },
+  {
+    "id": "1.20.1",
+    "kind": "release",
+    "releaseTime": "2023-06-12T13:25:51+00:00"
+  },
+  {
+    "id": "b1.7.3",
+    "kind": "old_beta",
+    "releaseTime": "2011-07-07T22:00:00+00:00"
+  }
+]

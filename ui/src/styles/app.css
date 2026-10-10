@@ -1,0 +1,643 @@
+@import 'tailwindcss';
+@import '@fontsource/bungee/400.css';
+@import '@fontsource-variable/atkinson-hyperlegible-next';
+@import '@fontsource/atkinson-hyperlegible-mono/400.css';
+
+/* Arcade Cabinet: warm laminate black; the four land-plot hues each own one job;
+   raised controls sit on a dirt-brown step; corners are pixel-notched. */
+@theme {
+  --color-ground: #181410; /* warm laminate black */
+  --color-panel: #221c17;
+  --color-raised: #2e261f;
+  --color-line: #463a2f;
+  --color-ink: #f6f1e7;
+  --color-ink-dim: #c5b9a8;
+  --color-amber: #ffc233; /* act: Play, primary */
+  --color-amber-hi: #ffd76e;
+  --color-lime: #c9cc2a; /* running, OK */
+  --color-coral: #ff5a5f; /* stop, fault */
+  --color-blue: #2186cb; /* info, progress */
+  --color-blue-ink: #5cb3f0; /* info text on ground */
+  --color-dirt: #7a4a2a; /* the step under raised controls */
+  --color-dirt-deep: #4e2e19;
+
+  --font-display: 'Bungee', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Atkinson Hyperlegible Mono', ui-monospace, monospace;
+
+  --radius-step: 4px;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--color-ground);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    overflow: hidden;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  ::selection {
+    background: var(--color-amber);
+    color: var(--color-ground);
+  }
+  input,
+  textarea {
+    user-select: text;
+    caret-color: var(--color-amber);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+  }
+  a {
+    color: var(--color-blue-ink);
+    text-underline-offset: 3px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .stepped {
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+  }
+  .selectable {
+    user-select: text;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .panel {
+    background: var(--color-panel);
+    border-radius: 6px;
+    corner-shape: notch;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 650;
+    color: var(--color-ink-dim);
+    background: var(--color-raised);
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+  }
+
+  /* Raised controls sit on a dirt step; pressing drops the face onto it in two 90 ms steps. */
+  .btn {
+    --step: 4px;
+    --face: var(--color-raised);
+    --face-ink: var(--color-ink);
+    --base: var(--color-dirt-deep);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.5rem;
+    padding: 0 1rem;
+    font-weight: 650;
+    font-size: 0.9375rem;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--face-ink);
+    background: var(--face);
+    border: 0;
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow: 0 var(--step) 0 var(--base);
+    cursor: pointer;
+    transition:
+      translate 180ms steps(2, end),
+      box-shadow 180ms steps(2, end),
+      background-color 120ms linear;
+  }
+  .btn svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex: none;
+  }
+  .btn:hover:not(:disabled) {
+    --face: color-mix(in oklab, var(--color-raised), white 7%);
+  }
+  .btn:active:not(:disabled),
+  .btn[data-pressed='true'] {
+    translate: 0 var(--step);
+    box-shadow: 0 0 0 var(--base);
+  }
+  /* Pending: the button stays pressed down on its step while its action runs. */
+  .btn[aria-disabled='true'] {
+    translate: 0 var(--step);
+    box-shadow: 0 0 0 var(--base);
+    cursor: progress;
+  }
+  .btn:disabled {
+    --face: var(--color-panel);
+    --face-ink: var(--color-ink-dim);
+    translate: 0 var(--step);
+    box-shadow: inset 0 0 0 1px var(--color-line);
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    --face: var(--color-amber);
+    --face-ink: var(--color-ground);
+    --base: var(--color-dirt);
+  }
+  .btn-primary:hover:not(:disabled) {
+    --face: var(--color-amber-hi);
+  }
+  .btn-danger {
+    --face: var(--color-coral);
+    --face-ink: var(--color-ground);
+  }
+  .btn-danger:hover:not(:disabled) {
+    --face: color-mix(in oklab, var(--color-coral), white 12%);
+  }
+  .btn-ghost {
+    --face: transparent;
+    box-shadow: none;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    --face: var(--color-raised);
+  }
+  .btn-ghost:active:not(:disabled) {
+    translate: 0 0;
+  }
+  /* A ghost has no step to press into, so unavailable reads as locked: dimmed, not pushed down. */
+  .btn-ghost[aria-disabled='true'],
+  .btn-ghost[aria-disabled='true']:hover {
+    --face: transparent;
+    translate: 0 0;
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .btn-lg {
+    --step: 6px;
+    min-height: 3rem;
+    padding: 0 1.5rem;
+    font-size: 1rem;
+  }
+  .btn-icon {
+    min-height: 2.25rem;
+    min-width: 2.25rem;
+    padding: 0;
+  }
+  .btn-icon.btn-lg {
+    min-height: 3rem;
+    min-width: 3rem;
+  }
+
+  /* Marquee lettering: a signage shade, two hard layers deep, keeps the name readable over any art. */
+  .marquee-name {
+    text-shadow:
+      0 0.045em 0 var(--color-dirt),
+      0 0.09em 0 var(--color-ground);
+  }
+  /* The version line sits on a laminate plate so the art never decides its contrast. */
+  .marquee-plate {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-step);
+    background: color-mix(in oklab, var(--color-ground), transparent 12%);
+    color: var(--color-ink);
+  }
+  /* The one lit button. */
+  .play {
+    --step: 8px;
+    --lit: var(--color-amber-hi);
+    display: grid;
+    align-content: center;
+    gap: 0.5rem;
+    width: 17.5rem;
+    min-height: 5.5rem;
+    padding: 0.75rem 1.5rem;
+    color: var(--color-ground);
+    background: var(--color-amber);
+    border: 0;
+    border-radius: 6px;
+    corner-shape: notch;
+    box-shadow:
+      0 var(--step) 0 var(--color-dirt),
+      inset 0 3px 0 var(--lit);
+    font-family: var(--font-display);
+    font-size: 2rem;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    text-align: center;
+    cursor: pointer;
+    transition:
+      translate 180ms steps(2, end),
+      box-shadow 180ms steps(2, end);
+  }
+  .play[data-state='idle']:not(:disabled) {
+    animation: play-lit 2.4s steps(3, end) infinite alternate;
+  }
+  .play:active:not(:disabled) {
+    translate: 0 var(--step);
+    box-shadow:
+      0 0 0 var(--color-dirt),
+      inset 0 3px 0 var(--lit);
+  }
+  .play[data-state='running'] {
+    --lit: #ff9a9d;
+    background: var(--color-coral);
+    box-shadow:
+      0 var(--step) 0 var(--color-dirt-deep),
+      inset 0 3px 0 var(--lit);
+  }
+  /* Once pressed, Play stays down on its step: the step is spent and the meter is set into the face. */
+  .play[data-state='queued'],
+  .play[data-state='preparing'] {
+    translate: 0 var(--step);
+    box-shadow:
+      0 0 0 var(--color-dirt),
+      inset 0 3px 0 rgb(0 0 0 / 0.16);
+    animation: none;
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    font-weight: 650;
+    letter-spacing: 0;
+    text-align: left;
+  }
+  .play:disabled {
+    color: var(--color-ink-dim);
+    background: var(--color-panel);
+    box-shadow: inset 0 0 0 2px var(--color-line);
+    translate: 0 var(--step);
+    cursor: not-allowed;
+    animation: none;
+  }
+  .play-sub {
+    color: var(--color-dirt-deep);
+  }
+  .play .meter {
+    padding: 3px;
+    background: var(--color-ground);
+    border-radius: 2px;
+  }
+  @keyframes play-lit {
+    to {
+      --lit: #fff2c4;
+    }
+  }
+
+  .meter {
+    display: grid;
+    grid-template-columns: repeat(20, 1fr);
+    gap: 3px;
+    height: 0.75rem;
+  }
+  .meter > span {
+    background: var(--color-line);
+  }
+  .meter > span[data-on] {
+    background: var(--color-blue);
+  }
+
+  .field-input {
+    width: 100%;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.75rem;
+    color: var(--color-ink);
+    background: var(--color-ground);
+    border: 0;
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+    font: inherit;
+  }
+  select.field-input {
+    appearance: none;
+    padding-right: 2.5rem;
+    color-scheme: dark;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23c5b9a8' stroke-width='2.5' stroke-linecap='square'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.875rem center;
+    cursor: pointer;
+  }
+  select.field-input option {
+    color: var(--color-ink);
+    background: var(--color-panel);
+  }
+  .field-input::placeholder {
+    color: var(--color-ink-dim);
+  }
+  .field-input[aria-invalid='true'] {
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 2px var(--color-coral);
+  }
+
+  .toggle {
+    position: relative;
+    display: inline-flex;
+    width: 3rem;
+    height: 1.75rem;
+    padding: 3px;
+    background: var(--color-ground);
+    border: 0;
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow: inset 0 0 0 1px var(--color-line);
+    cursor: pointer;
+  }
+  .toggle > span {
+    width: 1.375rem;
+    height: 100%;
+    background: var(--color-ink-dim);
+    border-radius: 2px;
+    transition: translate 180ms steps(2, end);
+  }
+  .toggle[aria-checked='true'] > span {
+    translate: 1.125rem 0;
+    background: var(--color-lime);
+  }
+  .toggle[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .seg {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.5rem;
+    padding: 0 1.125rem;
+    font-weight: 650;
+    background: var(--color-raised);
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow: 0 4px 0 var(--color-dirt-deep);
+    cursor: pointer;
+    transition: translate 180ms steps(2, end), box-shadow 180ms steps(2, end);
+  }
+  /* A chosen option is pressed down into its slot with a lime lamp; amber stays reserved for acting. */
+  .seg[data-checked] {
+    gap: 0.5rem;
+    translate: 0 4px;
+    background: var(--color-ground);
+    box-shadow:
+      0 0 0 var(--color-dirt-deep),
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  .seg[data-checked]::before {
+    content: '';
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--color-lime);
+  }
+  .seg:has(input:focus-visible) {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+  }
+
+  .range {
+    --fill: 0%;
+    width: 100%;
+    height: 1.75rem;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  .range::-webkit-slider-runnable-track {
+    height: 0.625rem;
+    border-radius: 2px;
+    background: linear-gradient(to right, var(--color-blue) var(--fill), var(--color-ground) var(--fill));
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  .range::-webkit-slider-thumb {
+    width: 1.125rem;
+    height: 1.5rem;
+    margin-top: -0.5rem;
+    appearance: none;
+    background: var(--color-ink);
+    border-radius: 3px;
+    corner-shape: notch;
+    box-shadow: 0 3px 0 var(--color-dirt-deep);
+  }
+  .range::-moz-range-track {
+    height: 0.625rem;
+    background: var(--color-ground);
+    box-shadow: inset 0 0 0 1px var(--color-line);
+  }
+  .range::-moz-range-progress {
+    height: 0.625rem;
+    background: var(--color-blue);
+  }
+  .range::-moz-range-thumb {
+    width: 1.125rem;
+    height: 1.5rem;
+    background: var(--color-ink);
+    border: 0;
+    border-radius: 3px;
+    box-shadow: 0 3px 0 var(--color-dirt-deep);
+  }
+  .range:focus-visible {
+    outline: none;
+  }
+  .range:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+  }
+
+  .dialog {
+    width: min(30rem, calc(100vw - 4rem));
+    padding: 1.5rem;
+    color: var(--color-ink);
+    background: var(--color-panel);
+    border: 0;
+    border-radius: 6px;
+    corner-shape: notch;
+    box-shadow: 0 8px 0 var(--color-dirt-deep);
+  }
+  .dialog::backdrop {
+    background: rgb(12 9 6 / 0.78);
+  }
+
+  .menu {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 0.5rem);
+    z-index: 30;
+    min-width: 13rem;
+    padding: 0.375rem;
+    background: var(--color-raised);
+    border-radius: 6px;
+    corner-shape: notch;
+    box-shadow:
+      0 6px 0 var(--color-dirt-deep),
+      0 0 0 1px var(--color-line);
+  }
+  .menu [role='menuitem'] {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 0.75rem;
+    color: var(--color-ink);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-step);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .menu [role='menuitem']:hover,
+  .menu [role='menuitem']:focus-visible {
+    background: var(--color-panel);
+  }
+  .menu [role='menuitem']:focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: -2px;
+  }
+  .menu [role='menuitem'][data-danger] {
+    color: var(--color-coral);
+  }
+  .menu svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    flex: none;
+  }
+  /* The marquee panel: a T-molding frames its top and left where it meets the title bar and rail,
+     and while a game runs the lamp snaps down. */
+  .marquee {
+    overflow: hidden;
+  }
+  .marquee > svg {
+    transition: filter 180ms steps(2, end);
+  }
+  .marquee[data-dimmed] > svg {
+    filter: brightness(0.5) saturate(0.75);
+  }
+  .marquee::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow:
+      inset 4px 4px 0 0 var(--color-ground),
+      inset 6px 6px 0 0 var(--color-dirt-deep);
+  }
+  .marquee-layer {
+    animation: marquee-drift linear infinite;
+  }
+  @keyframes marquee-drift {
+    to {
+      transform: translateX(-480px);
+    }
+  }
+  .tb-btn {
+    display: grid;
+    place-items: center;
+    height: 2.25rem;
+    min-width: 2.75rem;
+    padding: 0 0.75rem;
+    gap: 0.5rem;
+    color: var(--color-ink-dim);
+    background: transparent;
+    border: 0;
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+  .tb-btn svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+  .tb-btn:hover {
+    color: var(--color-ink);
+    background: var(--color-raised);
+  }
+  .tb-close:hover {
+    color: var(--color-ground);
+    background: var(--color-coral);
+  }
+  .rail-item {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 3.5rem;
+    height: 3.5rem;
+    background: var(--color-panel);
+    border: 0;
+    border-radius: 6px;
+    corner-shape: notch;
+    cursor: pointer;
+  }
+  .rail-item:hover {
+    background: var(--color-raised);
+  }
+  .rail-item[data-selected] {
+    background: var(--color-raised);
+    box-shadow: 0 4px 0 var(--color-dirt-deep);
+  }
+  /* The lit coin-slot light beside the selected cabinet. */
+  .rail-item[data-selected]::before {
+    content: '';
+    position: absolute;
+    left: -0.625rem;
+    top: 30%;
+    width: 4px;
+    height: 40%;
+    background: var(--color-amber);
+  }
+  .rail-led {
+    position: absolute;
+    right: 0.375rem;
+    bottom: 0.375rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--color-lime);
+  }
+  .rail-warn {
+    position: absolute;
+    right: 0.125rem;
+    bottom: 0.125rem;
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--color-coral);
+  }
+}

@@ -1,0 +1,46 @@
+import { invoke } from '@tauri-apps/api/core';
+import type {
+  AccountsFile,
+  AppInfo,
+  Instance,
+  InstanceListing,
+  JavaTest,
+  LoaderKind,
+  LoaderVersion,
+  LocalMod,
+  McVersion,
+  NewInstance,
+  OpenTarget,
+  RunSnapshot,
+  Settings,
+} from './schema';
+
+/** The only place the UI calls into Rust. A failed call rejects with a `LauncherError` object. */
+export const commands = {
+  appInfo: () => invoke<AppInfo>('app_info'),
+  settingsGet: () => invoke<Settings>('settings_get'),
+  settingsSet: (settings: Settings) => invoke<Settings>('settings_set', { settings }),
+  instancesList: () => invoke<InstanceListing>('instances_list'),
+  instanceCreate: (request: NewInstance) => invoke<Instance>('instance_create', { request }),
+  instanceUpdate: (instance: Instance) => invoke<Instance>('instance_update', { instance }),
+  instanceRename: (id: string, name: string) => invoke<Instance>('instance_rename', { id, name }),
+  instanceDelete: (id: string) => invoke<null>('instance_delete', { id }),
+  catalogMinecraft: () => invoke<McVersion[]>('catalog_minecraft'),
+  catalogLoaders: (kind: LoaderKind, mc: string) => invoke<LoaderVersion[]>('catalog_loaders', { kind, mc }),
+  accountsList: () => invoke<AccountsFile>('accounts_list'),
+  accountAddOffline: (name: string) => invoke<AccountsFile>('account_add_offline', { name }),
+  accountSetActive: (uuid: string) => invoke<AccountsFile>('account_set_active', { uuid }),
+  accountRemove: (uuid: string) => invoke<AccountsFile>('account_remove', { uuid }),
+  play: (id: string) => invoke<null>('play', { id }),
+  stop: (id: string) => invoke<null>('stop', { id }),
+  runStates: () => invoke<RunSnapshot[]>('run_states'),
+  logTail: (id: string) => invoke<string[]>('log_tail', { id }),
+  modsList: (id: string) => invoke<LocalMod[]>('mods_list', { id }),
+  modSetEnabled: (id: string, file: string, enabled: boolean) =>
+    invoke<LocalMod[]>('mod_set_enabled', { id, file, enabled }),
+  modsAdd: (id: string, paths: string[]) => invoke<LocalMod[]>('mods_add', { id, paths }),
+  modRemove: (id: string, file: string) => invoke<LocalMod[]>('mod_remove', { id, file }),
+  openFolder: (target: OpenTarget) => invoke<null>('open_folder', { target }),
+  javaTest: (path: string) => invoke<JavaTest>('java_test', { path }),
+  quit: (stopGames: boolean) => invoke<null>('quit', { stopGames }),
+};
