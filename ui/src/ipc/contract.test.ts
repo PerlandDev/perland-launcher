@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ZodType } from 'zod';
 import accounts from './contract/accounts.json';
 import appInfo from './contract/app_info.json';
@@ -47,8 +47,10 @@ describe('Rust contract fixtures', () => {
   });
 
   it('decodes every event and rejects junk', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     for (const e of events) expect(decodeEvent(e)).not.toBeNull();
     expect(decodeEvent({ type: 'nope' })).toBeNull();
     expect(decodeEvent({ type: 'log', instance: 'x' })).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 });
