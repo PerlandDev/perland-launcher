@@ -8,5 +8,4 @@ publish = false
 [dependencies]
 launcher-core = { path = "../launcher-core" }
 tokio.workspace = true
-reqwest.workspace = true
 clap.workspace = true

@@ -1,5 +1,5 @@
 //! Developer harness for launcher-core: create instances, add offline accounts, install and launch.
-use std::{path::PathBuf, process::ExitCode, sync::Arc, time::Duration};
+use std::{path::PathBuf, process::ExitCode, sync::Arc};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use launcher_core::{
@@ -156,15 +156,7 @@ async fn launch_instance(
         ));
     }
     let session = account.offline_session();
-    let http = reqwest::Client::builder()
-        .user_agent(concat!(
-            "PerlandLauncher/",
-            env!("CARGO_PKG_VERSION"),
-            " (+https://github.com/PerlandDev/perland-launcher)"
-        ))
-        .connect_timeout(Duration::from_secs(15))
-        .build()
-        .map_err(|e| LauncherError::network("Couldn't start the HTTP client").with_detail(e))?;
+    let http = launcher_core::http::client(env!("CARGO_PKG_VERSION"))?;
     let platform = Platform::current();
     let installer = Installer {
         dirs: dirs.clone(),
