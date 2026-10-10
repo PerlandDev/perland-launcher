@@ -29,32 +29,61 @@ pub async fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
-/// Join a remote-supplied relative path onto `base` without letting it escape.
-///
-/// Returns `None` for empty paths, NUL bytes, absolute or rooted paths (`/x`, `\x`), Windows drive
-/// or prefix paths (`C:x`) and any `..` component, splitting on both `/` and `\` so the result
-/// is the same on every platform.
+/// Windows device names. A file whose stem is one of these (`nul.txt`, `CON .jar`) opens the
+/// device instead of a file, so such names are never accepted from remote data.
+const DEVICE_NAMES: [&str; 30] = [
+    "con", "prn", "aux", "nul", "conin$", "conout$", "com1", "com2", "com3", "com4", "com5",
+    "com6", "com7", "com8", "com9", "com¹", "com²", "com³", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
+    "lpt6", "lpt7", "lpt8", "lpt9", "lpt¹", "lpt²", "lpt³",
+];
+
+/// Longest relative path accepted from remote data, in bytes.
+const MAX_REL_LEN: usize = 1024;
+
+/// One path segment that is safe on every platform: not empty, `.` or `..`; no `:` (drive
+/// letters, NTFS alternate streams), no `<>"|?*` or control characters; no trailing dot or
+/// space (Windows strips them, so two names would alias); and not a Windows device name.
+pub fn safe_component(part: &str) -> bool {
+    if part.is_empty() || part == "." || part == ".." || part.ends_with(['.', ' ']) {
+        return false;
+    }
+    if part.chars().any(|c| {
+        c.is_control() || matches!(c, ':' | '<' | '>' | '"' | '|' | '?' | '*' | '/' | '\\')
+    }) {
+        return false;
+    }
+    let stem = part
+        .split('.')
+        .next()
+        .unwrap_or(part)
+        .trim_end()
+        .to_lowercase();
+    !DEVICE_NAMES.contains(&stem.as_str())
+}
+
+/// A remote-supplied relative path in canonical form (segments joined with `/`), or `None`
+/// when any segment is unsafe (see [`safe_component`]). Splits on both `/` and `\`, so the
+/// answer is the same on every platform. Leading, trailing and doubled separators are refused.
+pub fn normalize_rel(rel: &str) -> Option<String> {
+    if rel.is_empty() || rel.len() > MAX_REL_LEN {
+        return None;
+    }
+    let parts: Vec<&str> = rel.split(['/', '\\']).collect();
+    if !parts.iter().all(|p| safe_component(p)) {
+        return None;
+    }
+    Some(parts.join("/"))
+}
+
+/// The key two relative paths collide under on a case-insensitive file system.
+pub fn path_key(rel: &str) -> String {
+    rel.to_lowercase()
+}
+
+/// Join a remote-supplied relative path onto `base` without letting it escape or alias:
+/// `base` joined with [`normalize_rel`]'s canonical form, or `None` when it is unsafe.
 pub fn safe_join(base: &Path, rel: &str) -> Option<PathBuf> {
-    if rel.is_empty() || rel.contains('\0') || rel.starts_with(['/', '\\']) {
-        return None;
-    }
-    let bytes = rel.as_bytes();
-    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
-        return None;
-    }
-    if rel.split(['/', '\\']).any(|part| part == "..") {
-        return None;
-    }
-    let path = Path::new(rel);
-    if path.is_absolute()
-        || path.has_root()
-        || path
-            .components()
-            .any(|c| matches!(c, std::path::Component::Prefix(_)))
-    {
-        return None;
-    }
-    Some(base.join(rel))
+    normalize_rel(rel).map(|n| base.join(n))
 }
 
 #[cfg(test)]
@@ -84,16 +113,6 @@ mod tests {
     }
 
     #[test]
-    fn safe_join_accepts_relative_paths() {
-        let base = Path::new("/base");
-        assert_eq!(
-            safe_join(base, "bin/javaw.exe"),
-            Some(base.join("bin/javaw.exe"))
-        );
-        assert_eq!(safe_join(base, "a/./b"), Some(base.join("a/./b")));
-    }
-
-    #[test]
     fn safe_join_rejects_escaping_paths() {
         let base = Path::new("/base");
         for bad in [
@@ -109,5 +128,90 @@ mod tests {
         ] {
             assert_eq!(safe_join(base, bad), None, "{bad:?} must be rejected");
         }
+    }
+
+    #[test]
+    fn safe_join_accepts_relative_paths() {
+        let base = Path::new("/base");
+        assert_eq!(
+            safe_join(base, "bin/javaw.exe"),
+            Some(base.join("bin/javaw.exe"))
+        );
+        assert_eq!(safe_join(base, "a\\b.txt"), Some(base.join("a/b.txt")));
+    }
+
+    #[test]
+    fn normalize_rel_canonicalizes() {
+        assert_eq!(normalize_rel("mods/a.jar").as_deref(), Some("mods/a.jar"));
+        assert_eq!(
+            normalize_rel("config\\x.toml").as_deref(),
+            Some("config/x.toml")
+        );
+        assert_eq!(normalize_rel("a b/c+d.jar").as_deref(), Some("a b/c+d.jar"));
+        // Device names only match the whole stem.
+        for ok in [
+            "console.jar",
+            "nullify.cfg",
+            "com10.txt",
+            "auxiliary/x",
+            "CONFIG/x",
+        ] {
+            assert!(normalize_rel(ok).is_some(), "{ok:?}");
+        }
+    }
+
+    #[test]
+    fn normalize_rel_rejects_unsafe_parts() {
+        for bad in [
+            "",
+            ".",
+            "..",
+            "./a",
+            "a/.",
+            "a/./b",
+            "a//b",
+            "a/",
+            "/a",
+            "\\a",
+            "../x",
+            "a/../../x",
+            "C:/x",
+            "C:x",
+            "a\0b",
+            "a\u{1}b",
+            "mods/a.jar:evil",
+            "a.jar:Zone.Identifier",
+            "CON",
+            "con.txt",
+            "mods/NUL.jar",
+            "Com1.log",
+            "lpt9",
+            "conin$",
+            "CONOUT$.x",
+            "a/aux .txt",
+            "com¹",
+            "trail.",
+            "trail ",
+            "mods/x./y",
+            "a<b",
+            "a>b",
+            "a|b",
+            "a?b",
+            "a*b",
+            "a\"b",
+        ] {
+            assert_eq!(normalize_rel(bad), None, "{bad:?} must be rejected");
+            assert_eq!(safe_join(Path::new("/base"), bad), None, "{bad:?}");
+        }
+        assert!(
+            normalize_rel(&"a/".repeat(600)).is_none(),
+            "overlong paths are refused"
+        );
+    }
+
+    #[test]
+    fn path_key_folds_case() {
+        assert_eq!(path_key("Mods/A.jar"), path_key("mods/a.JAR"));
+        assert_ne!(path_key("mods/a.jar"), path_key("mods/b.jar"));
     }
 }
