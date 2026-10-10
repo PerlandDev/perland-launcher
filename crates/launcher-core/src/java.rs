@@ -2,6 +2,8 @@
 use std::{
     collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
+    process::Stdio,
+    time::Duration,
 };
 
 use serde::Deserialize;
@@ -217,6 +219,37 @@ pub fn parse_java_version(output: &str) -> Option<u32> {
     }
 }
 
+/// Run `<path> -version` and return its major version. Backs the "Test" button for a custom Java.
+pub async fn probe(path: &Path) -> Result<u32> {
+    let failed = || {
+        LauncherError::java(
+            ErrorCode::JavaTestFailed,
+            "That doesn't look like a working Java",
+        )
+        .with_fix("Pick the java executable inside a Java installation's bin folder")
+        .with_detail(path.display())
+    };
+    let mut command = tokio::process::Command::new(path);
+    command
+        .arg("-version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    let output = tokio::time::timeout(Duration::from_secs(10), command.output())
+        .await
+        .map_err(|_| failed())?
+        .map_err(|_| failed())?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stdout)
+    );
+    parse_java_version(&text).ok_or_else(failed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -307,5 +340,26 @@ mod tests {
             Some(25)
         );
         assert_eq!(parse_java_version("not java"), None);
+    }
+
+    #[tokio::test]
+    async fn probe_rejects_a_missing_java() {
+        let tmp = tempfile::tempdir().unwrap();
+        let err = probe(&tmp.path().join("nope")).await.unwrap_err();
+        assert_eq!(err.code, crate::ErrorCode::JavaTestFailed);
+    }
+
+    #[tokio::test]
+    async fn probe_reads_the_java_on_path() {
+        // Skipped where no java is installed.
+        if std::process::Command::new("java")
+            .arg("-version")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        let major = probe(std::path::Path::new("java")).await.unwrap();
+        assert!(major >= 8, "{major}");
     }
 }
