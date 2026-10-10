@@ -13,6 +13,7 @@ pub mod meta;
 pub mod paths;
 pub mod platform;
 pub mod play;
+pub mod settings;
 #[cfg(test)]
 pub(crate) mod test_support;
 
