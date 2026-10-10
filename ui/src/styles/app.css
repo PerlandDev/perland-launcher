@@ -397,4 +397,12 @@
     height: 1.125rem;
     flex: none;
   }
+  .marquee-layer {
+    animation: marquee-drift linear infinite;
+  }
+  @keyframes marquee-drift {
+    to {
+      transform: translateX(-480px);
+    }
+  }
 }
