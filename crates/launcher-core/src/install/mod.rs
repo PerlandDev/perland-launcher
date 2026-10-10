@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     download::{DownloadRequest, Downloader, Hashes},
-    error::{LauncherError, Result},
+    error::{ErrorCategory, LauncherError, Result},
     events::EventSink,
     fsutil::{safe_join, write_atomic},
     meta::{
@@ -97,6 +97,41 @@ pub fn library_artifact(lib: &Library, dirs: &LauncherDirs) -> Result<Option<Dow
         hashes,
         lib.size,
     )))
+}
+
+/// Some loader profiles (Quilt v3, older Fabric) publish libraries without hashes. Give each such
+/// request the sha1 from the Maven `<url>.sha1` file next to it, so every jar is still verified.
+/// The lookups go through the metadata cache, so they also work offline after the first install.
+pub async fn fill_missing_sha1(meta: &MetaClient, reqs: &mut [DownloadRequest]) -> Result<()> {
+    let lookups = reqs
+        .iter_mut()
+        .filter(|r| r.hashes.is_empty())
+        .map(|req| async move {
+            let url = req.urls.first().cloned().unwrap_or_default();
+            req.hashes.sha1 = Some(published_sha1(meta, &url).await?);
+            Ok::<_, LauncherError>(())
+        });
+    futures_util::future::try_join_all(lookups).await?;
+    Ok(())
+}
+
+async fn published_sha1(meta: &MetaClient, url: &str) -> Result<String> {
+    let unverifiable = || {
+        LauncherError::integrity("Couldn't verify a library download")
+            .with_fix("Try again later")
+            .with_detail(url)
+    };
+    let body = match meta.get_bytes(&format!("{url}.sha1")).await {
+        Ok(body) => body,
+        Err(e) if e.category == ErrorCategory::Network => return Err(e),
+        Err(_) => return Err(unverifiable()),
+    };
+    let token = std::str::from_utf8(&body)
+        .ok()
+        .and_then(|text| text.split_whitespace().next())
+        .filter(|t| t.len() == 40 && t.bytes().all(|b| b.is_ascii_hexdigit()))
+        .ok_or_else(unverifiable)?;
+    Ok(token.to_ascii_lowercase())
 }
 
 fn maven_path(name: &str) -> Result<String> {
@@ -315,7 +350,8 @@ impl Installer {
             .await?;
         let index: AssetIndex = parse_json(&index_ref.url, &tokio::fs::read(&index_path).await?)?;
 
-        let libraries = plan_libraries(json, &self.dirs, &ctx)?;
+        let mut libraries = plan_libraries(json, &self.dirs, &ctx)?;
+        fill_missing_sha1(&self.meta, &mut libraries.downloads).await?;
         let mut downloads = vec![plan_client(resolved, &self.dirs)?];
         downloads.extend(libraries.downloads);
         downloads.extend(plan_assets(&index, &self.dirs));
@@ -381,6 +417,22 @@ mod tests {
         assert_eq!(plan.natives.len(), 3);
         let jar = plan.natives[0].jar.to_string_lossy().replace('\\', "/");
         assert!(jar.contains("-natives-windows"), "{jar}");
+    }
+
+    /// Quilt v3 (and older Fabric) profiles list libraries as just `name` + `url`, with no hashes,
+    /// which is why `fill_missing_sha1` looks up the Maven `.sha1` before downloading.
+    #[test]
+    fn quilt_style_library_has_no_published_hash() {
+        let profile = r#"{"libraries":[{"name":"org.quiltmc:quilt-loader:0.29.1","url":"https://maven.quiltmc.org/repository/release/"}]}"#;
+        let libs: serde_json::Value = serde_json::from_str(profile).unwrap();
+        let lib: Library = serde_json::from_value(libs["libraries"][0].clone()).unwrap();
+        let d = library_artifact(&lib, &dirs()).unwrap().unwrap();
+        assert_eq!(
+            d.urls[0],
+            "https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-loader/0.29.1/quilt-loader-0.29.1.jar"
+        );
+        assert!(d.hashes.is_empty());
+        assert_eq!(d.size, None);
     }
 
     #[test]
