@@ -177,6 +177,34 @@ impl AccountStore {
             .active
             .and_then(|uuid| file.accounts.into_iter().find(|a| a.uuid == uuid)))
     }
+
+    pub async fn list(&self) -> Result<AccountsFile> {
+        self.load().await
+    }
+
+    pub async fn set_active(&self, uuid: &str) -> Result<AccountsFile> {
+        let mut file = self.load().await?;
+        if !file.accounts.iter().any(|a| a.uuid == uuid) {
+            return Err(LauncherError::auth(
+                ErrorCode::NoAccount,
+                "That account isn't on this computer anymore",
+            ));
+        }
+        file.active = Some(uuid.to_string());
+        self.save(&file).await?;
+        Ok(file)
+    }
+
+    /// Forget an account. If it was active, the first remaining account becomes active.
+    pub async fn remove(&self, uuid: &str) -> Result<AccountsFile> {
+        let mut file = self.load().await?;
+        file.accounts.retain(|a| a.uuid != uuid);
+        if file.active.as_deref() == Some(uuid) {
+            file.active = file.accounts.first().map(|a| a.uuid.clone());
+        }
+        self.save(&file).await?;
+        Ok(file)
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -256,5 +284,33 @@ mod tests {
             "re-adding does not duplicate"
         );
         assert_eq!(store.active().await.unwrap(), Some(a));
+    }
+
+    #[tokio::test]
+    async fn switch_and_remove_accounts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = AccountStore::new(tmp.path().join("accounts.json"));
+        let steve = store.add_offline("Steve", BuildKind::Dev).await.unwrap();
+        let alex = store.add_offline("Alex", BuildKind::Dev).await.unwrap();
+        assert_eq!(
+            store.list().await.unwrap().active.as_deref(),
+            Some(alex.uuid.as_str())
+        );
+
+        let file = store.set_active(&steve.uuid).await.unwrap();
+        assert_eq!(file.active.as_deref(), Some(steve.uuid.as_str()));
+        assert_eq!(
+            store.set_active("not-a-uuid").await.unwrap_err().code,
+            crate::ErrorCode::NoAccount
+        );
+
+        // Removing the active account makes the first remaining one active.
+        let file = store.remove(&steve.uuid).await.unwrap();
+        assert_eq!(file.accounts, vec![alex.clone()]);
+        assert_eq!(file.active.as_deref(), Some(alex.uuid.as_str()));
+
+        let file = store.remove(&alex.uuid).await.unwrap();
+        assert!(file.accounts.is_empty());
+        assert_eq!(file.active, None);
     }
 }
