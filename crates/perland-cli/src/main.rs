@@ -192,10 +192,13 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
         } => {
             let syncer = syncer(&dirs)?;
             let (instance, desired) = syncer.add_pack(&store, &PackInput::parse(&input)?).await?;
+            // If the sync fails, the player can still find the half-synced instance.
+            eprintln!("created instance {}", instance.id);
             let outcome = syncer
                 .sync(&store, &instance.id, &desired, &progress_sink())
                 .await?;
-            if report(&outcome).is_some() {
+            // stdout carries only the id (scripts capture it), so the changelog goes to stderr.
+            if report(&outcome, true).is_some() {
                 eprintln!("then run: perland-cli sync --instance {}", instance.id);
             }
             println!("{}", instance.id);
@@ -340,14 +343,22 @@ fn progress_sink() -> EventSink {
     })
 }
 
-/// Print what a sync did. Returns the files still to download by hand, if any.
-fn report(outcome: &SyncOutcome) -> Option<&[ManualFile]> {
+/// Print what a sync did: to stdout, or to stderr when stdout is reserved for something else.
+/// Returns the files still to download by hand, if any.
+fn report(outcome: &SyncOutcome, to_stderr: bool) -> Option<&[ManualFile]> {
     eprintln!();
+    let say = |line: String| {
+        if to_stderr {
+            eprintln!("{line}");
+        } else {
+            println!("{line}");
+        }
+    };
     match outcome {
-        SyncOutcome::Done(r) if r.up_to_date => println!("up to date"),
+        SyncOutcome::Done(r) if r.up_to_date => say("up to date".to_string()),
         SyncOutcome::Done(r) => {
             let c = &r.changes;
-            println!(
+            say(format!(
                 "{} → {}: +{} added · {} updated · {} removed{}",
                 c.from_version.as_deref().unwrap_or("new"),
                 c.to_version,
@@ -359,9 +370,9 @@ fn report(outcome: &SyncOutcome) -> Option<&[ManualFile]> {
                 } else {
                     ""
                 }
-            );
+            ));
             for path in &r.kept_modified {
-                println!("kept your version of {path}");
+                say(format!("kept your version of {path}"));
             }
         }
         SyncOutcome::NeedsManual(files) => {
@@ -387,14 +398,15 @@ async fn sync_instance(
     if let Some(w) = &ensured.warning {
         eprintln!("warning: {}", w.message);
     }
-    let Some(files) = report(&ensured.outcome).map(<[ManualFile]>::to_vec) else {
+    let Some(mut files) = report(&ensured.outcome, false).map(<[ManualFile]>::to_vec) else {
         return Ok(());
     };
     if let Some(dir) = manual_dir.or_else(launcher_core::sync::manual::downloads_dir) {
         if syncer.import_manual(&dir, &files).await? > 0 {
             let again = syncer.ensure(store, id, &sink).await?;
-            if report(&again.outcome).is_none() {
-                return Ok(());
+            match report(&again.outcome, false) {
+                None => return Ok(()),
+                Some(remaining) => files = remaining.to_vec(),
             }
         }
     }
