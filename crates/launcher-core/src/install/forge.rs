@@ -420,6 +420,16 @@ async fn install_current(
             .all(|p| p.is_file())
 }
 
+/// Drop the marker before the processors run again, so an interrupted run (a crash, or Stop)
+/// isn't later taken for a finished one. A marker that can't be removed is an error: leaving it
+/// would let a later launch skip the processors over half-written outputs.
+async fn begin_rerun(marker: &Path) -> Result<()> {
+    match tokio::fs::remove_file(marker).await {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+        _ => Ok(()),
+    }
+}
+
 /// Older installers bundle jars under `maven/<path>`: copy each wanted one out, verified. Jars
 /// the installer doesn't bundle are left for the processors to build. Blocking.
 fn extract_bundled(installer: &Path, libraries: &Path, wanted: &[DownloadRequest]) -> Result<()> {
@@ -566,6 +576,7 @@ pub(crate) async fn install(
     let calls = plan_processors(&forge.profile, &data, &libraries)?;
     let marker = version_dir.join(MARKER);
     if !install_current(&marker, &forge.installer_sha1, &calls, &local).await {
+        begin_rerun(&marker).await?;
         let java = java::console_java(
             &java::ensure_java(
                 &inst.meta,
@@ -987,6 +998,19 @@ mod tests {
             extract_bundled(&jar, &libs, &[bad]).unwrap_err().code,
             ErrorCode::LoaderInstallerInvalid
         );
+    }
+
+    #[tokio::test]
+    async fn a_rerun_removes_the_marker_before_the_processors_run() {
+        let tmp = tempfile::tempdir().unwrap();
+        let marker = tmp.path().join(".perland-loader");
+        std::fs::write(&marker, "abc").unwrap();
+        begin_rerun(&marker).await.unwrap();
+        assert!(
+            !marker.exists(),
+            "an interrupted rerun must not look finished"
+        );
+        begin_rerun(&marker).await.unwrap(); // no marker yet is fine
     }
 
     #[tokio::test]
