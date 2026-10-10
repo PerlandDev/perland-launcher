@@ -54,12 +54,26 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Java installations
+    Java {
+        #[command(subcommand)]
+        cmd: JavaCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum JavaCmd {
+    /// List the Java installations found on this computer
+    List,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
 enum CliLoader {
     Fabric,
     Quilt,
+    Forge,
+    #[value(name = "neoforge")]
+    NeoForge,
 }
 
 #[tokio::main]
@@ -102,6 +116,8 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
                     kind: match kind {
                         CliLoader::Fabric => LoaderKind::Fabric,
                         CliLoader::Quilt => LoaderKind::Quilt,
+                        CliLoader::Forge => LoaderKind::Forge,
+                        CliLoader::NeoForge => LoaderKind::NeoForge,
                     },
                     version,
                 }),
@@ -135,6 +151,11 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
         }
         Cmd::Launch { instance, dry_run } => {
             launch_instance(&dirs, &store, &accounts, &instance, dry_run).await?
+        }
+        Cmd::Java { cmd: JavaCmd::List } => {
+            for java in launcher_core::java::detect_installed(Platform::current()).await {
+                println!("{}\t{}", java.major, java.path.display());
+            }
         }
     }
     Ok(())
@@ -197,6 +218,15 @@ async fn launch_instance(
             redactor.redact(&format!("{} {}", cmd.program.display(), cmd.args.join(" ")))
         );
         play::check_files(&cmd)?;
+        let len = launcher_core::launch::command_line_len(&cmd);
+        eprintln!(
+            "command line: {len} characters{}",
+            if len > launcher_core::launch::ARGFILE_THRESHOLD {
+                " (a real launch puts the JVM arguments in an argfile)"
+            } else {
+                ""
+            }
+        );
         eprintln!(
             "dry run OK: java and {} classpath entries present",
             cmd.classpath.len()
