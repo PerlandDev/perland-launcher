@@ -8,7 +8,7 @@ use std::{
 use crate::{
     download::{DownloadRequest, Downloader, Hashes},
     error::{ErrorCategory, ErrorCode, LauncherError, Result},
-    events::EventSink,
+    events::{EventSink, TaskId},
     fsutil::{safe_join, write_atomic},
     meta::{
         loaders::{self, LoaderKind},
@@ -379,7 +379,7 @@ impl Installer {
         self.downloader
             .fetch_all(
                 downloads,
-                &format!("Installing Minecraft {}", resolved.vanilla_id),
+                &TaskId::new("install_minecraft").with("version", &resolved.vanilla_id),
                 sink,
             )
             .await?;

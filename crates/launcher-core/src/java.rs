@@ -9,7 +9,7 @@ use serde::Deserialize;
 use crate::{
     download::{DownloadRequest, Downloader, Hashes},
     error::{ErrorCode, LauncherError, Result},
-    events::EventSink,
+    events::{EventSink, TaskId},
     fsutil::{safe_join, write_atomic},
     meta::{
         mojang::{Artifact, VersionJson},
@@ -173,7 +173,7 @@ pub async fn ensure_runtime(
     downloader
         .fetch_all(
             plan.downloads,
-            &format!("Downloading Java {}", entry.version.name),
+            &TaskId::new("download_java").with("version", &entry.version.name),
             sink,
         )
         .await?;

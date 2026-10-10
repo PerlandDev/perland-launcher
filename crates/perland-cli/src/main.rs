@@ -170,8 +170,9 @@ async fn launch_instance(
     let sink: EventSink = Arc::new(|event| match event {
         Event::Progress {
             task, done, total, ..
-        } => eprint!("\r{task}: {done}/{total}    "),
+        } => eprint!("\r{}: {done}/{total}    ", task.key),
         Event::Log { line } => println!("{line}"),
+        Event::Warning(e) => eprintln!("\nwarning: {}", e.message),
         Event::StateChanged { .. } => {}
     });
 

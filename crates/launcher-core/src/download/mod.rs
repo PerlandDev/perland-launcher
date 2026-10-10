@@ -14,7 +14,7 @@ pub use hash::Hashes;
 
 use crate::{
     error::{ErrorCode, LauncherError, Result},
-    events::{Event, EventSink},
+    events::{Event, EventSink, TaskId},
 };
 
 /// One file to put on disk, with every URL it can come from.
@@ -257,7 +257,7 @@ impl Downloader {
     pub async fn fetch_all(
         &self,
         reqs: Vec<DownloadRequest>,
-        task: &str,
+        task: &TaskId,
         sink: &EventSink,
     ) -> Result<()> {
         let mut seen = HashSet::new();
@@ -268,7 +268,7 @@ impl Downloader {
         let total = reqs.len() as u64;
         let (mut done, mut bytes) = (0u64, 0u64);
         sink(Event::Progress {
-            task: task.to_string(),
+            task: task.clone(),
             done,
             total,
             bytes,
@@ -282,7 +282,7 @@ impl Downloader {
             bytes += result?;
             done += 1;
             sink(Event::Progress {
-                task: task.to_string(),
+                task: task.clone(),
                 done,
                 total,
                 bytes,

@@ -6,7 +6,7 @@ use std::{
 
 use launcher_core::{
     download::{DownloadRequest, Downloader, ExistingCheck, Hashes},
-    events::{Event, EventSink},
+    events::{Event, EventSink, TaskId},
     ErrorCategory,
 };
 use wiremock::{
@@ -227,13 +227,16 @@ async fn fetch_all_dedupes_destinations() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let e2 = events.clone();
     let sink: EventSink = Arc::new(move |e| e2.lock().unwrap().push(e));
-    downloader().fetch_all(reqs, "Test", &sink).await.unwrap();
+    downloader()
+        .fetch_all(reqs, &TaskId::new("test"), &sink)
+        .await
+        .unwrap();
     assert!(a.exists() && b.exists());
     let last = events.lock().unwrap().last().cloned().unwrap();
     assert_eq!(
         last,
         Event::Progress {
-            task: "Test".into(),
+            task: TaskId::new("test"),
             done: 2,
             total: 2,
             bytes: 10
