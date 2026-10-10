@@ -1,6 +1,7 @@
 import { Webview } from '@tauri-apps/api/webview';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
+import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { Mods } from './Mods';
 
@@ -331,4 +332,30 @@ it('refreshes the list when the window regains focus, and stops after the screen
   window.dispatchEvent(new Event('focus'));
   await act(async () => {});
   expect(sent(calls, 'mods_list').length).toBe(before + 1);
+});
+
+it('locks toggles and removal while the game runs, but still lets players add mods', async () => {
+  const { user, calls } = renderApp(<Mods id="asalith-fields" />);
+  const zoomify = await screen.findByRole('switch', { name: 'Use zoomify-2.11.2' });
+  expect(screen.queryByText(/Stop the game to turn mods on or off/)).not.toBeInTheDocument();
+
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null }));
+  expect(screen.getByText(/Stop the game to turn mods on or off or remove them/)).toBeInTheDocument();
+  expect(zoomify).toHaveAttribute('aria-disabled', 'true');
+  const remove = screen.getByRole('button', { name: 'Remove sodium-fabric-0.5.8+mc1.20.1' });
+  expect(remove).toHaveAttribute('aria-disabled', 'true');
+
+  await user.click(zoomify);
+  await user.click(remove);
+  expect(sent(calls, 'mod_set_enabled')).toEqual([]);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: 'Add mods' }));
+  expect(sent(calls, 'mods_add')).toHaveLength(1);
+
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'idle', exit: null }));
+  expect(screen.queryByText(/Stop the game to turn mods on or off/)).not.toBeInTheDocument();
+  expect(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' })).not.toHaveAttribute('aria-disabled');
+  await user.click(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' }));
+  expect(sent(calls, 'mod_set_enabled')).toHaveLength(1);
 });

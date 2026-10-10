@@ -138,6 +138,7 @@
     "dropHere": "Suelta archivos .jar para agregarlos",
     "empty": "Todavía no hay mods. Agrega archivos .jar o suéltalos en cualquier parte de esta pantalla.",
     "vanillaNote": "Los mods necesitan Fabric o Quilt. Puedes cambiar el loader de esta instancia en su configuración.",
+    "running": "Detén el juego para activar, desactivar o quitar mods. Los mods nuevos que agregues se aplican la próxima vez que presiones Jugar.",
     "toggle": "Usar {{name}}",
     "remove": "Quitar {{name}}",
     "removeTitle": "¿Quitar {{name}}?",

@@ -138,6 +138,7 @@
     "dropHere": "Drop .jar files to add them",
     "empty": "No mods yet. Add .jar files, or drop them anywhere on this screen.",
     "vanillaNote": "Mods need Fabric or Quilt. You can switch this instance's loader in its settings.",
+    "running": "Stop the game to turn mods on or off or remove them. New mods you add apply the next time you press Play.",
     "toggle": "Use {{name}}",
     "remove": "Remove {{name}}",
     "removeTitle": "Remove {{name}}?",

@@ -1,5 +1,5 @@
 import { act, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
@@ -12,6 +12,20 @@ describe('Home', () => {
     expect(screen.getByText('Minecraft 1.20.1 · Fabric 0.16.14')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Play' }));
     expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields' }]);
+  });
+
+  it('sends one play for a double click', async () => {
+    const { user, calls, backend } = renderApp(<Home id="asalith-fields" />);
+    const handle = backend.handle;
+    let release = () => {};
+    vi.spyOn(backend, 'handle').mockImplementation((cmd, args) => {
+      if (cmd !== 'play') return handle(cmd, args);
+      return new Promise((resolve) => (release = () => resolve(handle(cmd, args))));
+    });
+    await user.dblClick(await screen.findByRole('button', { name: 'Play' }));
+    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields' }]);
+    await act(async () => release());
+    expect(sent(calls, 'play')).toHaveLength(1);
   });
 
   it('shows progress while preparing and stops while running', async () => {

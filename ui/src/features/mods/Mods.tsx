@@ -7,6 +7,7 @@ import { commands } from '../../ipc/commands';
 import type { LocalMod } from '../../ipc/schema';
 import { useInstances, useModMutations, useMods } from '../../state/queries';
 import { navigate } from '../../state/route';
+import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
@@ -27,6 +28,8 @@ export function Mods({ id }: { id: string }) {
   const listing = useInstances();
   const instance = listing.data?.instances.find((i) => i.id === id);
   const mods = useMods(id);
+  // The game holds its jars open, so toggling or removing waits for it to stop. Adding is fine.
+  const running = useRun(id).state !== 'idle';
   const queryClient = useQueryClient();
   const refetchMods = mods.refetch;
   const { toggle, add, remove } = useModMutations(id, { inline: true });
@@ -163,6 +166,12 @@ export function Mods({ id }: { id: string }) {
             {t('mods.vanillaNote')}
           </p>
         )}
+        {running && (
+          <p className="panel flex items-start gap-3 p-4 text-ink-dim">
+            <InfoBox className="mt-0.5 h-5 w-5 flex-none text-blue-ink" aria-hidden />
+            {t('mods.running')}
+          </p>
+        )}
         {dragging && <p className="font-semibold text-amber">{t('mods.dropHere')}</p>}
         {failure && <ErrorCard error={failure.error} />}
         {notice && (
@@ -194,7 +203,7 @@ export function Mods({ id }: { id: string }) {
                 </div>
                 <Toggle
                   checked={mod.enabled}
-                  disabled={toggle.isPending}
+                  disabled={toggle.isPending || running}
                   label={t('mods.toggle', { name })}
                   onChange={(on) =>
                     toggleOnce((done) => {
@@ -203,7 +212,16 @@ export function Mods({ id }: { id: string }) {
                     })
                   }
                 />
-                <Button variant="ghost" size="icon" aria-label={t('mods.remove', { name })} icon={<Trash />} onClick={() => setRemoving(mod)} />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('mods.remove', { name })}
+                  aria-disabled={running || undefined}
+                  icon={<Trash />}
+                  onClick={() => {
+                    if (!running) setRemoving(mod);
+                  }}
+                />
               </li>
             );
           })}

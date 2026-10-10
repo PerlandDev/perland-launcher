@@ -9,6 +9,7 @@ import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { Package } from '../../ui/Icon';
 import { PlayButton } from '../../ui/PlayButton';
+import { useSingleFlight } from '../../ui/useSingleFlight';
 import { DamagedView } from './DamagedView';
 import { EmptyState } from './EmptyState';
 import { InstanceMenu } from './InstanceMenu';
@@ -20,6 +21,8 @@ function InstanceView({ instance }: { instance: Instance }) {
   const run = useRun(instance.id);
   const accounts = useAccounts();
   const hasAccount = Boolean(accounts.data?.active);
+  // The second click of a double click lands before the `queued` event; hold it until Play settles.
+  const playOnce = useSingleFlight();
   return (
     <section className="relative h-full overflow-hidden" aria-labelledby="instance-name">
       <Marquee seed={instance.id} attract={run.state === 'idle'} dimmed={run.state !== 'idle'} className="absolute inset-0" />
@@ -41,7 +44,7 @@ function InstanceView({ instance }: { instance: Instance }) {
               progress={run.progress}
               disabled={!hasAccount}
               disabledReason={t('play.noAccount')}
-              onPlay={() => void commands.play(instance.id).catch(pushError)}
+              onPlay={() => playOnce((done) => void commands.play(instance.id).catch(pushError).finally(done))}
               onStop={() => void commands.stop(instance.id).catch(pushError)}
             />
             {!hasAccount && accounts.isSuccess && (

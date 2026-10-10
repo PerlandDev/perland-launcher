@@ -199,3 +199,14 @@ it('shows one error card, not two, when the version list fails while picking a v
   expect(screen.getAllByRole('alert')).toHaveLength(1);
   expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
 });
+
+it('shows the chosen language pressed, not lit', async () => {
+  const { user } = renderApp(<FirstRun />, { firstRun: true });
+  await user.click(await screen.findByRole('button', { name: "Let's go" }));
+  const english = screen.getByRole('button', { name: 'English' });
+  const spanish = screen.getByRole('button', { name: 'Español' });
+  expect(english).toHaveAttribute('data-pressed', 'true');
+  expect(spanish).toHaveAttribute('data-pressed', 'false');
+  expect(english).not.toHaveClass('btn-primary');
+  expect(spanish).not.toHaveClass('btn-primary');
+});

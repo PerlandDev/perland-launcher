@@ -125,10 +125,10 @@ export function FirstRun() {
                   {t('firstRun.languageTitle')}
                 </h1>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Button size="lg" variant={lang === 'en' ? 'primary' : 'secondary'} aria-pressed={lang === 'en'} onClick={() => chooseLang('en')}>
+                  <Button size="lg" data-pressed={lang === 'en'} aria-pressed={lang === 'en'} onClick={() => chooseLang('en')}>
                     English
                   </Button>
-                  <Button size="lg" variant={lang === 'es' ? 'primary' : 'secondary'} aria-pressed={lang === 'es'} onClick={() => chooseLang('es')}>
+                  <Button size="lg" data-pressed={lang === 'es'} aria-pressed={lang === 'es'} onClick={() => chooseLang('es')}>
                     Español
                   </Button>
                 </div>
