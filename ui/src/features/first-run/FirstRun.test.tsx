@@ -161,3 +161,41 @@ it('sends one create for a double click on the finish button and keeps its focus
   await act(async () => create.release());
   await waitFor(() => expect(routeSnapshot()).toMatchObject({ name: 'home' }));
 });
+
+it('says which language is selected', async () => {
+  const { user } = renderApp(<FirstRun />, { firstRun: true });
+  await user.click(await screen.findByRole('button', { name: "Let's go" }));
+  expect(screen.getByRole('button', { name: 'English' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: 'Español' })).toHaveAttribute('aria-pressed', 'false');
+});
+
+it('offers Try again on the instance step when the version list fails, without picking a version', async () => {
+  const { user, backend, qc } = renderApp(<FirstRun />, { firstRun: true, release: true });
+  const versions = intercept(backend, 'catalog_minecraft');
+  versions.mode = 'fail';
+  await act(async () => qc.resetQueries({ queryKey: ['catalog', 'minecraft'] }));
+  await user.click(await screen.findByRole('button', { name: "Let's go" }));
+  await user.click(screen.getByRole('button', { name: 'English' }));
+  await user.click(await screen.findByRole('button', { name: 'Skip for now' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(diskIo);
+  expect(screen.getAllByRole('alert')).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Start playing' })).toBeDisabled();
+
+  versions.mode = 'pass';
+  await user.click(screen.getByRole('button', { name: 'Try again' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Start playing' })).toBeEnabled());
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('shows one error card, not two, when the version list fails while picking a version', async () => {
+  const { user, backend, qc } = renderApp(<FirstRun />, { firstRun: true, release: true });
+  await user.click(await screen.findByRole('button', { name: "Let's go" }));
+  await user.click(screen.getByRole('button', { name: 'English' }));
+  await user.click(await screen.findByRole('button', { name: 'Skip for now' }));
+  await user.click(await screen.findByRole('button', { name: 'Pick a version' }));
+  intercept(backend, 'catalog_minecraft').mode = 'fail';
+  await act(async () => qc.resetQueries({ queryKey: ['catalog', 'minecraft'] }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(diskIo);
+  expect(screen.getAllByRole('alert')).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'Try again' })).toHaveLength(1);
+});

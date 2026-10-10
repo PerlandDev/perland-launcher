@@ -125,10 +125,10 @@ export function FirstRun() {
                   {t('firstRun.languageTitle')}
                 </h1>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Button size="lg" variant={lang === 'en' ? 'primary' : 'secondary'} onClick={() => chooseLang('en')}>
+                  <Button size="lg" variant={lang === 'en' ? 'primary' : 'secondary'} aria-pressed={lang === 'en'} onClick={() => chooseLang('en')}>
                     English
                   </Button>
-                  <Button size="lg" variant={lang === 'es' ? 'primary' : 'secondary'} onClick={() => chooseLang('es')}>
+                  <Button size="lg" variant={lang === 'es' ? 'primary' : 'secondary'} aria-pressed={lang === 'es'} onClick={() => chooseLang('es')}>
                     Español
                   </Button>
                 </div>
@@ -206,6 +206,16 @@ export function FirstRun() {
                       {t('firstRun.chooseVersion')}
                     </button>
                   </div>
+                )}
+                {choice.versions.isError && !created && !picking && (
+                  <ErrorCard
+                    error={choice.versions.error}
+                    actions={
+                      <Button disabled={choice.versions.isFetching} onClick={() => void choice.versions.refetch()}>
+                        {t('common.retry')}
+                      </Button>
+                    }
+                  />
                 )}
                 {settings.isError && (
                   <ErrorCard
