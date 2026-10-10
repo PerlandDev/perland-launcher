@@ -1,6 +1,7 @@
 //! Where packs come from. Every source (packwiz, `.mrpack`, Modrinth) reduces to a
 //! [`DesiredState`]; `sync` never knows which one it was (core spec §2.1).
 pub mod curseforge;
+pub mod modrinth;
 pub mod mrpack;
 pub mod packwiz;
 pub mod sidecar;
@@ -250,6 +251,52 @@ pub struct Sources {
     pub downloader: Downloader,
     pub cache: ObjectCache,
     pub config: SourceConfig,
+}
+
+pub(crate) fn no_pack() -> LauncherError {
+    LauncherError::pack(ErrorCode::NoPack, "This instance doesn't come from a pack")
+}
+
+impl Sources {
+    /// Turn what the player handed over into a source and the pack it currently describes.
+    pub async fn open(&self, input: &PackInput) -> Result<(SourceRef, DesiredState)> {
+        match input {
+            PackInput::Packwiz { url } => Ok((
+                SourceRef::Packwiz { url: url.clone() },
+                packwiz::resolve(self, url).await?,
+            )),
+            PackInput::MrpackFile { path } => mrpack::import_file(self, path).await,
+            PackInput::Modrinth { project, version } => {
+                modrinth::open(self, project, version.as_deref()).await
+            }
+        }
+    }
+
+    /// Exactly what `source` names (for Modrinth, that version).
+    pub async fn resolve(&self, source: &SourceRef) -> Result<DesiredState> {
+        match source {
+            SourceRef::None => Err(no_pack()),
+            SourceRef::Packwiz { url } => packwiz::resolve(self, url).await,
+            SourceRef::Mrpack { sha1, .. } => mrpack::resolve_cached(self, sha1).await,
+            SourceRef::Modrinth {
+                project_id,
+                version_id,
+            } => modrinth::resolve(self, project_id, version_id).await,
+        }
+    }
+
+    /// The cheap update check against what is installed (`installed.stamp` is the installed
+    /// Modrinth version id), never against `source`, which may already name a newer version
+    /// whose sync didn't finish. A local `.mrpack` never updates; importing a newer file does.
+    pub async fn check(&self, source: &SourceRef, installed: &DesiredState) -> UpdateCheck {
+        match source {
+            SourceRef::None | SourceRef::Mrpack { .. } => UpdateCheck::UpToDate,
+            SourceRef::Packwiz { url } => packwiz::check(self, url, &installed.stamp).await,
+            SourceRef::Modrinth { project_id, .. } => {
+                modrinth::check(self, project_id, &installed.stamp, &installed.minecraft).await
+            }
+        }
+    }
 }
 
 /// Minecraft and the loader from a pack's version table (packwiz `[versions]`, `.mrpack`
