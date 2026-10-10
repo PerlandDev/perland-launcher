@@ -98,12 +98,12 @@
     "loaderVersion": "Loader version",
     "stable": "{{version}} (stable)",
     "beta": "{{version}} (beta)",
-    "noLoaderForVersion": "{{loader}} isn't available for this Minecraft version yet.",
+    "noLoaderForVersion": "{{loader}} isn't available for this Minecraft version yet. Pick another Minecraft version, or choose None.",
     "packLink": "Paste a pack link",
     "mrpack": "Import a .mrpack file",
     "create": "Create instance",
     "creating": "Creating…",
-    "versionsFailed": "Couldn't load the version list."
+    "namePlaceholderFallback": "My instance"
   },
   "instanceSettings": {
     "title": "Instance settings",

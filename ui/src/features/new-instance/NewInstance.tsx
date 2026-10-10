@@ -16,7 +16,8 @@ export function NewInstance() {
   const choice = useVersionChoice();
   const [name, setName] = useState('');
   const create = useCreateInstance({ inline: true });
-  const fallbackName = t('newInstance.namePlaceholder', { version: choice.resolved.minecraft ?? '' });
+  const { minecraft: resolvedVersion } = choice.resolved;
+  const fallbackName = resolvedVersion ? t('newInstance.namePlaceholder', { version: resolvedVersion }) : t('newInstance.namePlaceholderFallback');
 
   const submit = (event: FormEvent) => {
     event.preventDefault();

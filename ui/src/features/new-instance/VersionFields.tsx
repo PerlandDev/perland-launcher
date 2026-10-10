@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Select } from '../../ui/Select';
 import { Toggle } from '../../ui/Toggle';
@@ -10,6 +11,7 @@ const LOADER_KEY = { none: 'newInstance.loaderNone', fabric: 'newInstance.loader
 
 export function VersionFields({ choice, withLoader = true }: { choice: VersionChoice; withLoader?: boolean }) {
   const { t } = useTranslation();
+  const retry = (onClick: () => void) => <Button onClick={onClick}>{t('common.retry')}</Button>;
   const options = choice.list.map((v) => ({ value: v.id, label: v.id }));
   if (choice.mc && !options.some((o) => o.value === choice.mc)) options.unshift({ value: choice.mc, label: choice.mc });
   return (
@@ -22,7 +24,7 @@ export function VersionFields({ choice, withLoader = true }: { choice: VersionCh
             {t('newInstance.showSnapshots')}
           </span>
         </div>
-        {choice.versions.isError && <ErrorCard error={choice.versions.error} />}
+        {choice.versions.isError && <ErrorCard error={choice.versions.error} actions={retry(() => void choice.versions.refetch())} />}
       </div>
       {withLoader && (
         <fieldset className="grid gap-3">
@@ -55,7 +57,7 @@ export function VersionFields({ choice, withLoader = true }: { choice: VersionCh
                 ]}
               />
             ))}
-          {choice.loaders.isError && <ErrorCard error={choice.loaders.error} />}
+          {choice.loaders.isError && <ErrorCard error={choice.loaders.error} actions={retry(() => void choice.loaders.refetch())} />}
         </fieldset>
       )}
     </div>

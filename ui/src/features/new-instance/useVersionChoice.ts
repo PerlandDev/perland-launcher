@@ -10,14 +10,15 @@ export function useVersionChoice(initial?: GameSpec) {
   const versions = useMcVersions();
   const [snapshots, setSnapshots] = useState(false);
   const [minecraft, setMinecraft] = useState<string | null>(initial?.minecraft ?? null);
-  const [loader, setLoader] = useState<LoaderChoice>(
-    initial?.loader?.kind === 'fabric' || initial?.loader?.kind === 'quilt' ? initial.loader.kind : 'none',
-  );
-  const [loaderVersion, setLoaderVersion] = useState<string | null>(initial?.loader?.version ?? null);
+  // Forge and NeoForge are not offered yet: an instance that has one starts as "None" with no stale version.
+  const initialKind = initial?.loader?.kind === 'fabric' || initial?.loader?.kind === 'quilt' ? initial.loader.kind : null;
+  const [loader, setLoader] = useState<LoaderChoice>(initialKind ?? 'none');
+  const [loaderVersion, setLoaderVersion] = useState<string | null>(initialKind ? (initial?.loader?.version ?? null) : null);
 
   const all = versions.data ?? [];
   const list = all.filter((v) => v.kind === 'release' || (snapshots && v.kind === 'snapshot') || v.id === minecraft);
-  const mc = minecraft && (list.some((v) => v.id === minecraft) || !versions.data) ? minecraft : (list[0]?.id ?? minecraft);
+  const newestRelease = list.find((v) => v.kind === 'release')?.id ?? list[0]?.id ?? minecraft;
+  const mc = minecraft && (list.some((v) => v.id === minecraft) || !versions.data) ? minecraft : newestRelease;
 
   const loaders = useLoaderVersions(loader === 'none' ? null : loader, mc);
   const loaderList = loaders.data ?? [];

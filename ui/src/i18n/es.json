@@ -98,12 +98,12 @@
     "loaderVersion": "Versión del loader",
     "stable": "{{version}} (estable)",
     "beta": "{{version}} (beta)",
-    "noLoaderForVersion": "{{loader}} todavía no está disponible para esta versión de Minecraft.",
+    "noLoaderForVersion": "{{loader}} todavía no está disponible para esta versión de Minecraft. Elige otra versión de Minecraft o selecciona Ninguno.",
     "packLink": "Pegar un enlace de pack",
     "mrpack": "Importar un archivo .mrpack",
     "create": "Crear instancia",
     "creating": "Creando…",
-    "versionsFailed": "No se pudo cargar la lista de versiones."
+    "namePlaceholderFallback": "Mi instancia"
   },
   "instanceSettings": {
     "title": "Configuración de la instancia",
