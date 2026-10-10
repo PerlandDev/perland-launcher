@@ -2,10 +2,16 @@
 //! [`Hashes::cache_key`]. A file is downloaded once for every instance that uses it, and a sync
 //! interrupted halfway resumes from here. Objects are copied out, never linked, so a player's
 //! edit in one instance can't reach the cache or another instance.
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use super::{DownloadRequest, Downloader, ExistingCheck, Hashes};
 use crate::error::{ErrorCode, LauncherError, Result};
+
+/// Makes each insert's temp name unique, so concurrent inserts of one object never share a file.
+static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone)]
 pub struct ObjectCache {
@@ -83,11 +89,15 @@ impl ObjectCache {
             )
             .with_param("file", name));
         }
+        if let Some(valid) = self.get(hashes).await {
+            return Ok(valid);
+        }
         if let Some(parent) = dest.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
+        let n = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
         let mut tmp = dest.as_os_str().to_owned();
-        tmp.push(format!(".{}.tmp", std::process::id()));
+        tmp.push(format!(".{}.{n}.tmp", std::process::id()));
         let tmp = PathBuf::from(tmp);
         let copied = match tokio::fs::copy(src, &tmp).await {
             Ok(_) => tokio::fs::rename(&tmp, &dest).await,

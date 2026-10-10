@@ -99,3 +99,19 @@ fn files_without_a_usable_hash_have_no_place() {
     assert_eq!(cache.path_for(&Hashes::default()), None);
     assert_eq!(cache.path_for(&Hashes::sha1("../../x")), None);
 }
+
+#[tokio::test]
+async fn concurrent_inserts_of_one_object_all_succeed() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = ObjectCache::new(dir.path().join("objects"));
+    let src = dir.path().join("download.jar");
+    std::fs::write(&src, "hello").unwrap();
+    let hashes = Hashes::sha1(sha1_hex(b"hello"));
+    let results =
+        futures_util::future::join_all((0..8).map(|_| cache.insert_file(&src, &hashes))).await;
+    for r in results {
+        r.unwrap();
+    }
+    let stored = cache.get(&hashes).await.expect("object verifies");
+    assert_eq!(std::fs::read_to_string(stored).unwrap(), "hello");
+}
