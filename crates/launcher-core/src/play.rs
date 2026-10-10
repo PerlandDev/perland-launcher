@@ -36,12 +36,12 @@ pub async fn prepare(
     let java = match &instance.java.path {
         Some(path) => custom_java(path)?,
         None => {
-            java::ensure_runtime(
+            java::ensure_java(
                 &installer.meta,
                 &installer.downloader,
                 &installer.dirs.java(),
                 installer.platform,
-                &java::component_for(&resolved.json),
+                &resolved.json,
                 sink,
             )
             .await?

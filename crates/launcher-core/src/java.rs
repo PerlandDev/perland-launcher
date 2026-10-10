@@ -1,11 +1,13 @@
 //! Mojang's official Java runtimes: the same builds the vanilla launcher uses.
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
+    ffi::OsString,
     path::{Path, PathBuf},
     process::Stdio,
     time::Duration,
 };
 
+use futures_util::StreamExt;
 use serde::Deserialize;
 
 use crate::{
@@ -14,6 +16,7 @@ use crate::{
     events::{EventSink, TaskId},
     fsutil::{safe_join, write_atomic},
     meta::{
+        loaders::valid_component,
         mojang::{Artifact, VersionJson},
         MetaClient,
     },
@@ -156,6 +159,14 @@ pub async fn ensure_runtime(
     component: &str,
     sink: &EventSink,
 ) -> Result<PathBuf> {
+    // `component` comes from the version JSON and becomes a folder name.
+    if !valid_component(component) {
+        return Err(LauncherError::integrity(
+            ErrorCode::UnsafeGameData,
+            "Minecraft's version data names an unsafe Java runtime",
+        )
+        .with_detail(component));
+    }
     let index: RuntimeIndex = meta.get_json(RUNTIME_INDEX_URL).await?;
     let entry = select_runtime(&index, platform, component)?;
     let dir = java_root.join(component);
@@ -250,10 +261,166 @@ pub async fn probe(path: &Path) -> Result<u32> {
     parse_java_version(&text).ok_or_else(failed)
 }
 
+/// The Java major version a version asks for; versions without `javaVersion` predate Java 9.
+pub fn required_major(version: &VersionJson) -> u32 {
+    version.java_version.as_ref().map_or(8, |j| j.major_version)
+}
+
+/// Mojang's runtime for `version`, or, when Mojang has none for this computer, an installed
+/// Java of exactly the major version the game asks for.
+pub async fn ensure_java(
+    meta: &MetaClient,
+    downloader: &Downloader,
+    java_root: &Path,
+    platform: Platform,
+    version: &VersionJson,
+    sink: &EventSink,
+) -> Result<PathBuf> {
+    match ensure_runtime(
+        meta,
+        downloader,
+        java_root,
+        platform,
+        &component_for(version),
+        sink,
+    )
+    .await
+    {
+        Err(e) if e.code == ErrorCode::JavaUnavailable => {
+            let installs = detect_installed(platform).await;
+            installed_fallback(e, &installs, required_major(version))
+        }
+        other => other,
+    }
+}
+
+/// The installed Java with exactly `major`, else the original error. Only an exact match:
+/// older Forge breaks on newer Java, and older Java can't run newer Minecraft.
+pub fn installed_fallback(
+    err: LauncherError,
+    installs: &[JavaInstall],
+    major: u32,
+) -> Result<PathBuf> {
+    installs
+        .iter()
+        .find(|j| j.major == major)
+        .map(|j| j.path.clone())
+        .ok_or(err)
+}
+
+/// A Java found on this computer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaInstall {
+    pub path: PathBuf,
+    pub major: u32,
+}
+
+/// Folders under Program Files that hold one folder per installed Java.
+const WINDOWS_VENDORS: &[&str] = &[
+    "Java",
+    "Eclipse Adoptium",
+    "Microsoft",
+    "Zulu",
+    "BellSoft",
+    "Amazon Corretto",
+    "Semeru",
+    "Eclipse Foundation",
+];
+
+/// Java executables that exist on this computer: `JAVA_HOME`, then `PATH`, then the usual
+/// install folders. Nothing is run here; each path appears once.
+pub fn candidate_paths(platform: Platform, env: &dyn Fn(&str) -> Option<OsString>) -> Vec<PathBuf> {
+    let exe = match platform.os {
+        Os::Windows => "javaw.exe",
+        _ => "java",
+    };
+    let mut out = Vec::new();
+    if let Some(home) = env("JAVA_HOME") {
+        out.push(PathBuf::from(home).join("bin").join(exe));
+    }
+    if let Some(path) = env("PATH") {
+        out.extend(std::env::split_paths(&path).map(|dir| dir.join(exe)));
+    }
+    let mut roots: Vec<PathBuf> = Vec::new();
+    match platform.os {
+        Os::Windows => {
+            for key in ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"] {
+                if let Some(pf) = env(key) {
+                    roots.extend(WINDOWS_VENDORS.iter().map(|v| PathBuf::from(&pf).join(v)));
+                }
+            }
+            if let Some(profile) = env("USERPROFILE") {
+                roots.push(PathBuf::from(profile).join(".jdks"));
+            }
+        }
+        _ => {
+            roots.extend(["/usr/lib/jvm", "/usr/lib64/jvm", "/opt/java"].map(PathBuf::from));
+            if let Some(home) = env("HOME") {
+                let home = PathBuf::from(home);
+                roots.push(home.join(".jdks"));
+                roots.push(home.join(".sdkman/candidates/java"));
+            }
+        }
+    }
+    for root in roots {
+        let Ok(entries) = std::fs::read_dir(&root) else {
+            continue;
+        };
+        let mut homes: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+        homes.sort();
+        out.extend(homes.into_iter().map(|h| h.join("bin").join(exe)));
+    }
+    let mut seen = HashSet::new();
+    out.into_iter()
+        .filter(|p| p.is_file() && seen.insert(p.clone()))
+        .collect()
+}
+
+/// Every working Java on this computer, newest major version first. Each candidate is run once
+/// (`-version`), at most four at a time.
+pub async fn detect_installed(platform: Platform) -> Vec<JavaInstall> {
+    let candidates = tokio::task::spawn_blocking(move || {
+        candidate_paths(platform, &|key| std::env::var_os(key))
+    })
+    .await
+    .unwrap_or_default();
+    let mut found: Vec<JavaInstall> = futures_util::stream::iter(candidates)
+        .map(|path| async move {
+            probe(&path)
+                .await
+                .ok()
+                .map(|major| JavaInstall { path, major })
+        })
+        .buffered(4)
+        .filter_map(|j| async move { j })
+        .collect()
+        .await;
+    found.sort_by_key(|j| std::cmp::Reverse(j.major));
+    found
+}
+
+/// Mojang's runtime starts the game with `javaw.exe` (no console). Installer tools run better
+/// with the `java.exe` next to it, whose output is captured the normal way.
+pub fn console_java(java: &Path) -> PathBuf {
+    let is_javaw = java
+        .file_name()
+        .is_some_and(|n| n.eq_ignore_ascii_case("javaw.exe"));
+    if is_javaw {
+        let sibling = java.with_file_name("java.exe");
+        if sibling.is_file() {
+            return sibling;
+        }
+    }
+    java.to_path_buf()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
+        download::Downloader,
+        error::LauncherError,
+        meta::MetaClient,
         test_support::{fixture, version, WINDOWS_X64},
         ErrorCategory,
     };
@@ -361,5 +528,116 @@ mod tests {
         }
         let major = probe(std::path::Path::new("java")).await.unwrap();
         assert!(major >= 8, "{major}");
+    }
+
+    #[tokio::test]
+    async fn unsafe_runtime_component_is_refused_before_any_download() {
+        let tmp = tempfile::tempdir().unwrap();
+        let meta = MetaClient::new(reqwest::Client::new(), tmp.path().join("meta"));
+        let downloader = Downloader::new(reqwest::Client::new());
+        for bad in ["../evil", "a/b", "", "..", "C:x"] {
+            let err = ensure_runtime(
+                &meta,
+                &downloader,
+                tmp.path(),
+                WINDOWS_X64,
+                bad,
+                &crate::events::noop_sink(),
+            )
+            .await
+            .unwrap_err();
+            assert_eq!(err.code, crate::ErrorCode::UnsafeGameData, "{bad:?}");
+        }
+    }
+
+    fn touch(root: &Path, rel: &str) -> PathBuf {
+        let p = root.join(rel);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(&p, "").unwrap();
+        p
+    }
+
+    #[test]
+    fn finds_java_in_java_home_path_and_vendor_folders() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let adoptium = touch(
+            root,
+            "pf/Eclipse Adoptium/jdk-17.0.9.9-hotspot/bin/javaw.exe",
+        );
+        let home = touch(root, "home-java/bin/javaw.exe");
+        let on_path = touch(root, "tools/bin/javaw.exe");
+        touch(root, "pf/Eclipse Adoptium/not-a-jdk/readme.txt");
+        let path_var =
+            std::env::join_paths([root.join("tools/bin"), root.join("missing")]).unwrap();
+        let env = |key: &str| match key {
+            "ProgramFiles" => Some(root.join("pf").into_os_string()),
+            "JAVA_HOME" => Some(root.join("home-java").into_os_string()),
+            "PATH" => Some(path_var.clone()),
+            _ => None,
+        };
+        assert_eq!(
+            candidate_paths(WINDOWS_X64, &env),
+            vec![home, on_path, adoptium]
+        );
+    }
+
+    #[test]
+    fn the_same_java_is_listed_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let java = touch(tmp.path(), "jdk/bin/java");
+        let path_var = std::env::join_paths([tmp.path().join("jdk/bin")]).unwrap();
+        let env = |key: &str| match key {
+            "JAVA_HOME" => Some(tmp.path().join("jdk").into_os_string()),
+            "PATH" => Some(path_var.clone()),
+            _ => None,
+        };
+        let found: Vec<PathBuf> = candidate_paths(crate::test_support::LINUX_X64, &env)
+            .into_iter()
+            .filter(|p| p.starts_with(tmp.path()))
+            .collect();
+        assert_eq!(found, vec![java]);
+    }
+
+    #[test]
+    fn installed_java_is_used_only_for_the_exact_major_version() {
+        let installs = vec![
+            JavaInstall {
+                path: "/j21/bin/java".into(),
+                major: 21,
+            },
+            JavaInstall {
+                path: "/j17/bin/java".into(),
+                major: 17,
+            },
+        ];
+        let unavailable = || LauncherError::java(ErrorCode::JavaUnavailable, "none");
+        assert_eq!(
+            installed_fallback(unavailable(), &installs, 17).unwrap(),
+            PathBuf::from("/j17/bin/java")
+        );
+        assert_eq!(
+            installed_fallback(unavailable(), &installs, 8)
+                .unwrap_err()
+                .code,
+            ErrorCode::JavaUnavailable
+        );
+    }
+
+    #[test]
+    fn required_major_comes_from_the_version() {
+        assert_eq!(required_major(&version("1.20.1.json")), 17);
+        assert_eq!(required_major(&version("1.12.2.json")), 8);
+    }
+
+    #[test]
+    fn console_java_prefers_java_exe_next_to_javaw() {
+        let tmp = tempfile::tempdir().unwrap();
+        let javaw = touch(tmp.path(), "bin/javaw.exe");
+        assert_eq!(console_java(&javaw), javaw, "no java.exe yet");
+        let java = touch(tmp.path(), "bin/java.exe");
+        assert_eq!(console_java(&javaw), java);
+        let linux = tmp.path().join("bin/java");
+        assert_eq!(console_java(&linux), linux);
     }
 }
