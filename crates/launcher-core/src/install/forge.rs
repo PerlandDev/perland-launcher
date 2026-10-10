@@ -4,7 +4,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Display,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
     process::Stdio,
     time::Duration,
 };
@@ -143,11 +143,7 @@ fn plan_one(p: &Processor, data: &ProcessorData, libraries: &Path) -> Result<Pro
     }
     let mut outputs = Vec::with_capacity(p.outputs.len());
     for (key, sha) in &p.outputs {
-        let path = PathBuf::from(replace_tokens(key, &data.values)?);
-        // Outputs are checked and, when damaged, deleted: they must be library files.
-        if !path.starts_with(libraries) {
-            return Err(unsafe_value(key));
-        }
+        let path = output_path(key, data, libraries)?;
         let sha1 = replace_tokens(sha, &data.values)?.to_ascii_lowercase();
         if sha1.len() != 40 || !sha1.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err(invalid(format!("bad output checksum {sha}")));
@@ -160,6 +156,24 @@ fn plan_one(p: &Processor, data: &ProcessorData, libraries: &Path) -> Result<Pro
         outputs,
         files,
     })
+}
+
+/// Where an output key points. Outputs are checked and, when damaged, deleted, so the path must be a
+/// plain file path inside the libraries folder: `..` and the like are refused after token substitution.
+fn output_path(key: &str, data: &ProcessorData, libraries: &Path) -> Result<PathBuf> {
+    if let Some(name) = key.strip_prefix('[').and_then(|k| k.strip_suffix(']')) {
+        return coord_path(libraries, name);
+    }
+    let path = PathBuf::from(replace_tokens(key, &data.values)?);
+    let inside = path.strip_prefix(libraries).is_ok_and(|rest| {
+        rest.components().next().is_some()
+            && rest.components().all(|c| matches!(c, Component::Normal(_)))
+    });
+    if inside {
+        Ok(path)
+    } else {
+        Err(unsafe_value(key))
+    }
 }
 
 /// `Main-Class` from a jar's manifest. Blocking.
@@ -255,7 +269,8 @@ pub async fn run_processor(
     let jar = call.classpath[0].clone();
     let main = tokio::task::spawn_blocking(move || main_class(&jar))
         .await
-        .map_err(|e| step_failed(&step, e))??;
+        .map_err(|e| step_failed(&step, e))?
+        .map_err(|e| step_failed(&step, e.detail.as_deref().unwrap_or(&e.message)))?;
     let mut command = tokio::process::Command::new(java);
     command
         .args(java_args(call, &main, separator))
@@ -436,6 +451,41 @@ mod tests {
             plan_processors(&profile, &data, &p.libs).unwrap_err().code,
             ErrorCode::UnsafeGameData
         );
+        // `..` after token substitution must not slip past a prefix check.
+        let mut with_lib = ProcessorData::default();
+        with_lib
+            .values
+            .insert("LIBRARY_DIR".into(), path_string(&p.libs));
+        for key in [
+            "{LIBRARY_DIR}/../evil",
+            "{LIBRARY_DIR}/a/../../evil",
+            "{LIBRARY_DIR}",
+        ] {
+            profile.processors[0].outputs = [(key.to_string(), format!("'{HELLO_SHA1}'"))].into();
+            assert_eq!(
+                plan_processors(&profile, &with_lib, &p.libs)
+                    .unwrap_err()
+                    .code,
+                ErrorCode::UnsafeGameData,
+                "{key}"
+            );
+        }
+        // A bracketed coordinate is an allowed output key; one that escapes is not.
+        profile.processors[0].outputs =
+            [("[a.b:c:1:extra@jar]".to_string(), format!("'{HELLO_SHA1}'"))].into();
+        let calls = plan_processors(&profile, &with_lib, &p.libs).unwrap();
+        assert_eq!(
+            calls[0].outputs,
+            vec![(p.libs.join("a/b/c/1/c-1-extra.jar"), HELLO_SHA1.to_string())]
+        );
+        profile.processors[0].outputs =
+            [("[a:b:../../evil]".to_string(), format!("'{HELLO_SHA1}'"))].into();
+        assert_eq!(
+            plan_processors(&profile, &with_lib, &p.libs)
+                .unwrap_err()
+                .code,
+            ErrorCode::UnsafeGameData
+        );
     }
 
     #[test]
@@ -529,5 +579,28 @@ mod tests {
         assert_eq!(err.code, ErrorCode::LoaderProcessorFailed);
         assert_eq!(err.params["step"], "tool.jar");
         assert!(err.detail.unwrap().contains("perland.Nope"));
+    }
+
+    #[tokio::test]
+    async fn a_missing_processor_jar_is_a_step_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        let call = ProcessorCall {
+            classpath: vec![tmp.path().join("gone.jar")],
+            args: vec![],
+            outputs: vec![],
+            files: vec![],
+        };
+        let err = run_processor(
+            Path::new("java"),
+            &call,
+            ";",
+            tmp.path(),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::LoaderProcessorFailed);
+        assert_eq!(err.params["step"], "gone.jar");
+        assert!(err.detail.is_some());
     }
 }
