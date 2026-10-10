@@ -147,3 +147,40 @@ async fn bad_json_is_loader_error() {
         .unwrap_err();
     assert_eq!(err.category, ErrorCategory::Loader);
 }
+
+#[tokio::test]
+async fn client_error_without_cache_is_loader_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/missing.json"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let meta = MetaClient::new(http(), dir.path());
+    let err = meta
+        .get_bytes(&format!("{}/missing.json", server.uri()))
+        .await
+        .unwrap_err();
+    assert_eq!(err.category, ErrorCategory::Loader);
+    assert!(err.message.contains("404"), "{}", err.message);
+    assert_eq!(err.fix.as_deref(), Some("Check that this version exists"));
+}
+
+#[tokio::test]
+async fn server_error_without_cache_is_network_error() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/down.json"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let meta = MetaClient::new(http(), dir.path());
+    let err = meta
+        .get_bytes(&format!("{}/down.json", server.uri()))
+        .await
+        .unwrap_err();
+    assert_eq!(err.category, ErrorCategory::Network);
+    assert_eq!(err.fix.as_deref(), Some("Try again in a few minutes"));
+}

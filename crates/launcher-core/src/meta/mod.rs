@@ -92,10 +92,15 @@ impl MetaClient {
             }
             Ok(resp) => match cached {
                 Some(c) => Ok(c),
-                None => Err(
-                    LauncherError::network(format!("{url} answered {}", resp.status()))
-                        .with_fix("Try again in a few minutes"),
-                ),
+                None => {
+                    let status = resp.status();
+                    let message = format!("{url} answered {status}");
+                    Err(if status.is_client_error() {
+                        LauncherError::loader(message).with_fix("Check that this version exists")
+                    } else {
+                        LauncherError::network(message).with_fix("Try again in a few minutes")
+                    })
+                }
             },
             Err(e) => match cached {
                 Some(c) => Ok(c),

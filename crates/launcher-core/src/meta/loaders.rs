@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{mojang::VersionJson, MetaClient};
-use crate::error::{LauncherError, Result};
+use crate::error::{ErrorCategory, LauncherError, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -59,11 +59,20 @@ pub async fn fetch_profile(
                 .with_fix("Use Fabric or Quilt for now; Forge and NeoForge are coming"),
         );
     };
-    meta.get_json(&url).await.map_err(|e| {
-        LauncherError::loader(format!("Couldn't get {kind:?} {loader} for Minecraft {mc}"))
-            .with_fix("Check that this loader version exists for this Minecraft version")
-            .with_detail(e.message)
-    })
+    meta.get_json(&url)
+        .await
+        .map_err(|e| map_profile_error(kind, mc, loader, e))
+}
+
+/// Being offline is not the loader version's fault, so network errors pass through unchanged;
+/// anything else (a 4xx, or a profile that doesn't parse) points at the chosen versions.
+fn map_profile_error(kind: LoaderKind, mc: &str, loader: &str, e: LauncherError) -> LauncherError {
+    if e.category == ErrorCategory::Network {
+        return e;
+    }
+    LauncherError::loader(format!("Couldn't get {kind:?} {loader} for Minecraft {mc}"))
+        .with_fix("Check that this loader version exists for this Minecraft version")
+        .with_detail(e.message)
 }
 
 #[cfg(test)]
@@ -120,6 +129,35 @@ mod tests {
             .await
             .unwrap_err();
         assert!(unsupported.message.contains("isn't supported yet"));
+    }
+
+    #[test]
+    fn network_errors_pass_through_profile_mapping() {
+        let offline = LauncherError::network("You seem to be offline")
+            .with_fix("Connect to the internet and try again")
+            .with_detail("connection refused");
+        let mapped = map_profile_error(LoaderKind::Fabric, "1.20.1", "0.16.14", offline.clone());
+        assert_eq!(mapped, offline);
+    }
+
+    #[test]
+    fn other_errors_blame_the_loader_version() {
+        let missing = LauncherError::loader("https://x/profile/json answered 404 Not Found")
+            .with_fix("Check that this version exists");
+        let mapped = map_profile_error(LoaderKind::Quilt, "1.20.1", "9.9.9", missing);
+        assert_eq!(mapped.category, ErrorCategory::Loader);
+        assert_eq!(
+            mapped.message,
+            "Couldn't get Quilt 9.9.9 for Minecraft 1.20.1"
+        );
+        assert_eq!(
+            mapped.fix.as_deref(),
+            Some("Check that this loader version exists for this Minecraft version")
+        );
+        assert_eq!(
+            mapped.detail.as_deref(),
+            Some("https://x/profile/json answered 404 Not Found")
+        );
     }
 
     #[test]
