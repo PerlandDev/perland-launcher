@@ -512,10 +512,9 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
         core.play("alpha").await.unwrap();
-        assert_eq!(
-            host.states("alpha"),
-            vec![Queued, Preparing, Running, Idle, Queued]
-        );
+        // Only the prefix is pinned: the second run's drive task may already have emitted Preparing.
+        let states = host.states("alpha");
+        assert_eq!(&states[..5], &[Queued, Preparing, Running, Idle, Queued]);
         core.stop("alpha").unwrap();
     }
 

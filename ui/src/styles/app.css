@@ -202,6 +202,14 @@
   .btn-ghost:active:not(:disabled) {
     translate: 0 0;
   }
+  /* A ghost has no step to press into, so unavailable reads as locked: dimmed, not pushed down. */
+  .btn-ghost[aria-disabled='true'],
+  .btn-ghost[aria-disabled='true']:hover {
+    --face: transparent;
+    translate: 0 0;
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
   .btn-lg {
     --step: 6px;
     min-height: 3rem;
