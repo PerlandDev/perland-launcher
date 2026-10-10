@@ -35,6 +35,8 @@ jobs:
         shell: bash
         run: |
           ROOT="$RUNNER_TEMP/perland"
-          for ID in $(cargo run -q -p perland-cli -- --root "$ROOT" list | cut -f1); do
+          IDS=$(cargo run -q -p perland-cli -- --root "$ROOT" list | cut -f1)
+          test -n "$IDS"
+          for ID in $IDS; do
             time cargo run -q -p perland-cli -- --root "$ROOT" launch --instance "$ID" --dry-run
           done
