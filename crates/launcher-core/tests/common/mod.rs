@@ -162,6 +162,12 @@ impl PackBuilder {
         self
     }
 
+    /// Any extra file at `at` (an absolute path on the server, like `/pack/icon.png`).
+    pub fn host(mut self, at: &str, body: &[u8]) -> Self {
+        self.hosted.push((at.into(), body.to_vec()));
+        self
+    }
+
     pub fn sidecar(mut self, toml: &str) -> Self {
         self.hosted
             .push(("/pack/launcher.toml".into(), toml.as_bytes().to_vec()));

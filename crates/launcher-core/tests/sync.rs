@@ -12,10 +12,10 @@ use common::{hits, sources, PackBuilder};
 use launcher_core::{
     error::{LauncherError, Result},
     events::{Event, EventSink},
-    instances::{GameSpec, Instance, InstanceStore, LoaderSpec},
+    instances::{GameSpec, Instance, InstanceStore, LoaderSpec, SourceRef, UpdatePolicy},
     locks::InstanceLock,
     meta::loaders::LoaderKind,
-    sources::{DesiredState, PackInput},
+    sources::{DesiredState, PackInput, UpdateCheck},
     sync::{lockfile::Managed, BoxFuture, GameInstall, SyncOutcome, SyncReport, Syncer},
     ErrorCode,
 };
@@ -367,5 +367,190 @@ async fn blocked_curseforge_files_wait_for_a_manual_download() {
     assert!(
         downloads.join("cozy (1).jar").exists(),
         "the player's download is left alone"
+    );
+}
+
+const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
+
+#[tokio::test]
+async fn add_pack_names_the_instance_after_the_pack_and_takes_its_policy() {
+    let env = Env::new().await;
+    let url = v1(&env.server)
+        .sidecar("[art]\nicon = \"icon.png\"\n[sync]\npolicy = \"auto\"\n")
+        .host("/pack/icon.png", PNG)
+        .mount(&env.server)
+        .await;
+    let (instance, desired) = env
+        .syncer
+        .add_pack(&env.store, &PackInput::Packwiz { url: url.clone() })
+        .await
+        .unwrap();
+    assert_eq!(instance.name, "Tiny");
+    assert_eq!(instance.source, SourceRef::Packwiz { url });
+    assert_eq!(instance.update_policy, UpdatePolicy::Auto);
+    assert_eq!(instance.game.loader.clone().unwrap().version, "47.4.22");
+    assert_eq!(env.store.load(&instance.id).await.unwrap(), instance);
+    let art = env.store.perland_dir(&instance.id).join("art/icon.png");
+    assert_eq!(std::fs::read(art).unwrap(), PNG);
+    assert!(
+        !env.game_file(&instance.id, "mods/appleskin.jar").exists(),
+        "files come with the first sync"
+    );
+    done(env.sync(&instance.id, &desired).await.unwrap());
+    assert!(env.game_file(&instance.id, "mods/appleskin.jar").exists());
+}
+
+#[tokio::test]
+async fn ensure_takes_updates_and_preview_names_them() {
+    let env = Env::new().await;
+    let url = v1(&env.server).mount(&env.server).await;
+    let (instance, _) = env
+        .syncer
+        .add_pack(&env.store, &PackInput::Packwiz { url })
+        .await
+        .unwrap();
+    assert_eq!(instance.update_policy, UpdatePolicy::Ask, "no sidecar: ask");
+    let first = env
+        .syncer
+        .ensure(&env.store, &instance.id, &env.sink())
+        .await
+        .unwrap();
+    assert!(first.warning.is_none());
+    assert!(!done(first.outcome).up_to_date);
+    assert_eq!(
+        env.syncer.check(&env.store, &instance).await,
+        UpdateCheck::UpToDate
+    );
+
+    env.server.reset().await;
+    PackBuilder::new(&env.server, "Tiny", "1.1.0")
+        .url_mod("appleskin", "appleskin.jar", b"apple v1", "both", None)
+        .url_mod("jei", "jei.jar", b"jei", "both", None)
+        .file("config/a.toml", b"a = 1", true)
+        .mount(&env.server)
+        .await;
+    let UpdateCheck::Available {
+        source, version, ..
+    } = env.syncer.check(&env.store, &instance).await
+    else {
+        panic!("expected an update");
+    };
+    assert_eq!(version, "1.1.0");
+    let v2 = env.syncer.sources.resolve(&source).await.unwrap();
+    let preview = env.syncer.preview(&env.store, &instance, &v2).await;
+    assert_eq!(
+        (preview.added.clone(), preview.removed.clone()),
+        (vec!["jei".to_string()], vec!["zoom".to_string()])
+    );
+    assert_eq!(preview.from_version.as_deref(), Some("1.0.0"));
+
+    let report = done(
+        env.syncer
+            .ensure(&env.store, &instance.id, &env.sink())
+            .await
+            .unwrap()
+            .outcome,
+    );
+    assert_eq!(report.changes, preview);
+    assert!(env.game_file(&instance.id, "mods/jei.jar").exists());
+    assert!(!env.game_file(&instance.id, "mods/zoom.jar").exists());
+}
+
+#[tokio::test]
+async fn pinned_instances_stay_on_their_version() {
+    let env = Env::new().await;
+    let url = v1(&env.server).mount(&env.server).await;
+    let (mut instance, _) = env
+        .syncer
+        .add_pack(&env.store, &PackInput::Packwiz { url })
+        .await
+        .unwrap();
+    env.syncer
+        .ensure(&env.store, &instance.id, &env.sink())
+        .await
+        .unwrap();
+    instance.update_policy = UpdatePolicy::Pinned;
+    env.store.save(&instance).await.unwrap();
+
+    env.server.reset().await;
+    v1(&env.server)
+        .with_version("9.9.9")
+        .url_mod("jei", "jei.jar", b"jei", "both", None)
+        .mount(&env.server)
+        .await;
+    let ensured = env
+        .syncer
+        .ensure(&env.store, &instance.id, &env.sink())
+        .await
+        .unwrap();
+    assert!(done(ensured.outcome).up_to_date);
+    assert!(!env.game_file(&instance.id, "mods/jei.jar").exists());
+    assert_eq!(
+        hits(&env.server, "/pack/pack.toml").await,
+        0,
+        "pinned never checks"
+    );
+}
+
+#[tokio::test]
+async fn offline_ensure_uses_the_installed_snapshot_with_a_warning() {
+    let env = Env::new().await;
+    let url = v1(&env.server).mount(&env.server).await;
+    let (instance, _) = env
+        .syncer
+        .add_pack(&env.store, &PackInput::Packwiz { url })
+        .await
+        .unwrap();
+    env.syncer
+        .ensure(&env.store, &instance.id, &env.sink())
+        .await
+        .unwrap();
+    std::fs::remove_file(env.game_file(&instance.id, "mods/zoom.jar")).unwrap();
+
+    env.server.reset().await; // the pack host is gone: everything answers 404
+    let ensured = env
+        .syncer
+        .ensure(&env.store, &instance.id, &env.sink())
+        .await
+        .unwrap();
+    assert_eq!(ensured.warning.unwrap().code, ErrorCode::UpdateCheckFailed);
+    done(ensured.outcome);
+    assert!(
+        env.game_file(&instance.id, "mods/zoom.jar").exists(),
+        "repaired from the cache"
+    );
+
+    // A pack that was never synced can't be played offline: a clear error, nothing half-made.
+    let mut never = env
+        .store
+        .create("Never", instance.game.clone())
+        .await
+        .unwrap();
+    never.source = SourceRef::Packwiz {
+        url: format!("{}/other/pack.toml", env.server.uri()),
+    };
+    env.store.save(&never).await.unwrap();
+    let err = env
+        .syncer
+        .ensure(&env.store, &never.id, &env.sink())
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::PackNotFound);
+    assert!(Managed::load(&env.store.perland_dir(&never.id))
+        .await
+        .is_none());
+
+    let vanilla = env
+        .store
+        .create("Vanilla", instance.game.clone())
+        .await
+        .unwrap();
+    assert_eq!(
+        env.syncer
+            .ensure(&env.store, &vanilla.id, &env.sink())
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::NoPack
     );
 }

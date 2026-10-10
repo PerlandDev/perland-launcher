@@ -25,11 +25,14 @@ use crate::{
     error::{ErrorCode, LauncherError, Result},
     events::{Event, EventSink, TaskId},
     install::Installer,
-    instances::{GameSpec, InstanceStore},
+    instances::{GameSpec, Instance, InstanceStore, SourceRef, UpdatePolicy},
     locks::InstanceLock,
-    sources::{mrpack, DesiredState, FileSource, PackFile, SourceConfig, Sources},
+    sources::{
+        art, mrpack, no_pack, DesiredState, FileSource, PackFile, PackInput, SourceConfig, Sources,
+        UpdateCheck,
+    },
 };
-use lockfile::{save_pack, Managed, ManagedFile};
+use lockfile::{load_pack, save_pack, Managed, ManagedFile};
 use plan::{Changes, Planned};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -84,6 +87,14 @@ pub enum SyncOutcome {
     Done(SyncReport),
     /// Nothing was applied: these files must be downloaded by hand first (see `import_manual`).
     NeedsManual(Vec<ManualFile>),
+}
+
+/// What `ensure` did, and whether the update check failed along the way.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ensured {
+    pub outcome: SyncOutcome,
+    /// The update check (or resolving the update) failed, so the installed version was used.
+    pub warning: Option<LauncherError>,
 }
 
 /// How many pack files are fetched or copied at once.
@@ -152,6 +163,126 @@ impl Syncer {
             self.sources.cache.insert_file(path, &file.hashes).await?;
         }
         Ok(found.len())
+    }
+
+    /// A new instance for a pack, named after it, with its game version and its preferred update
+    /// policy (else "ask"). Its files arrive with the first sync of the returned pack.
+    pub async fn add_pack(
+        &self,
+        store: &InstanceStore,
+        input: &PackInput,
+    ) -> Result<(Instance, DesiredState)> {
+        let (source, desired) = self.sources.open(input).await?;
+        let name = if desired.name.trim().is_empty() {
+            "Pack"
+        } else {
+            desired.name.as_str()
+        };
+        let mut instance = store
+            .create(
+                name,
+                GameSpec {
+                    minecraft: desired.minecraft.clone(),
+                    loader: desired.loader.clone(),
+                },
+            )
+            .await?;
+        instance.source = source;
+        instance.update_policy = desired.about.policy.unwrap_or(UpdatePolicy::Ask);
+        store.save(&instance).await?;
+        art::fetch(
+            &self.sources.http,
+            &desired.about.art,
+            &store.perland_dir(&instance.id).join("art"),
+        )
+        .await;
+        Ok((instance, desired))
+    }
+
+    /// The pack version installed in `id` (`pack.json`), if it was ever synced.
+    pub async fn installed(&self, store: &InstanceStore, id: &str) -> Option<DesiredState> {
+        load_pack(&store.perland_dir(id)).await
+    }
+
+    /// Is there an update? `UpToDate` for an instance that was never synced: its first sync
+    /// installs the newest version anyway.
+    pub async fn check(&self, store: &InstanceStore, instance: &Instance) -> UpdateCheck {
+        match self.installed(store, &instance.id).await {
+            Some(installed) => self.sources.check(&instance.source, &installed).await,
+            None => UpdateCheck::UpToDate,
+        }
+    }
+
+    /// What syncing to `desired` would change: for the app's "Update ready" dialog.
+    pub async fn preview(
+        &self,
+        store: &InstanceStore,
+        instance: &Instance,
+        desired: &DesiredState,
+    ) -> Changes {
+        let managed = Managed::load(&store.perland_dir(&instance.id)).await;
+        let wanted = plan::wanted(desired, &instance.optional_choices);
+        plan::changes(&wanted, managed.as_ref(), &desired.pack_version)
+    }
+
+    /// Bring a pack instance up to date before playing, following its update policy (core spec
+    /// §3.1). Pinned stays on the installed version. Auto and ask take updates (the app asks
+    /// first, with `check` and `preview`). A failed check plays what's installed, with a warning.
+    pub async fn ensure(
+        &self,
+        store: &InstanceStore,
+        id: &str,
+        sink: &EventSink,
+    ) -> Result<Ensured> {
+        let lock = InstanceLock::try_acquire(&store.perland_dir(id))?;
+        let instance = store.load(id).await?;
+        if instance.source == SourceRef::None {
+            return Err(no_pack());
+        }
+        let mut warning = None;
+        let mut new_source = None;
+        let desired = match self.installed(store, id).await {
+            None => self.sources.resolve(&instance.source).await?,
+            Some(installed) if instance.update_policy == UpdatePolicy::Pinned => installed,
+            Some(installed) => match self.sources.check(&instance.source, &installed).await {
+                UpdateCheck::UpToDate => installed,
+                UpdateCheck::Unavailable(e) => {
+                    warning = Some(e);
+                    installed
+                }
+                UpdateCheck::Available { source, .. } => {
+                    match self.sources.resolve(&source).await {
+                        Ok(update) => {
+                            new_source = (source != instance.source).then_some(source);
+                            update
+                        }
+                        Err(e) => {
+                            warning = Some(e);
+                            installed
+                        }
+                    }
+                }
+            },
+        };
+        let outcome = self.sync_locked(&lock, store, id, &desired, sink).await?;
+        if let SyncOutcome::Done(report) = &outcome {
+            if let Some(source) = new_source {
+                // Only now: a source that names a version whose sync never finished would hide
+                // the update from the next check.
+                let mut fresh = store.load(id).await?;
+                fresh.source = source;
+                store.save(&fresh).await?;
+            }
+            if !report.up_to_date {
+                art::fetch(
+                    &self.sources.http,
+                    &desired.about.art,
+                    &store.perland_dir(id).join("art"),
+                )
+                .await;
+            }
+        }
+        Ok(Ensured { outcome, warning })
     }
 
     /// Make instance `id` match `desired`. Fails with `instance_locked` while anyone else holds

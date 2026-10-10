@@ -1,5 +1,6 @@
 //! Where packs come from. Every source (packwiz, `.mrpack`, Modrinth) reduces to a
 //! [`DesiredState`]; `sync` never knows which one it was (core spec §2.1).
+pub mod art;
 pub mod curseforge;
 pub mod modrinth;
 pub mod mrpack;
