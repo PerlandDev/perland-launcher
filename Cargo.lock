@@ -2787,6 +2787,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "launcher-core",
+ "reqwest 0.12.28",
  "tokio",
 ]
 

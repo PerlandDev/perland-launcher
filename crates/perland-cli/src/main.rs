@@ -7,12 +7,18 @@ use launcher_core::{
     download::Downloader,
     events::{Event, EventSink},
     install::Installer,
-    instances::{GameSpec, InstanceStore, LoaderSpec},
+    instances::{GameSpec, InstanceStore, LoaderSpec, SourceRef},
     launch::Redactor,
+    locks::InstanceLock,
     meta::{loaders::LoaderKind, MetaClient},
     paths::LauncherDirs,
     platform::Platform,
     play::{self, StartSpec},
+    sources::{PackInput, UpdateCheck},
+    sync::{
+        lockfile::{additions, Managed},
+        ManualFile, SyncOutcome, Syncer,
+    },
     ErrorCode, LauncherError,
 };
 
@@ -53,11 +59,43 @@ enum Cmd {
         /// Build the command and check every file exists, without starting the game
         #[arg(long)]
         dry_run: bool,
+        /// Don't update the pack first
+        #[arg(long)]
+        no_sync: bool,
+    },
+    /// Packs: add one as a new instance, check for updates, list the player's own mods
+    Pack {
+        #[command(subcommand)]
+        cmd: PackCmd,
+    },
+    /// Bring a pack instance up to date (downloads only what changed)
+    Sync {
+        #[arg(long)]
+        instance: String,
+        /// Where to look for files that must be downloaded by hand (default: your Downloads folder)
+        #[arg(long)]
+        manual_dir: Option<PathBuf>,
     },
     /// Java installations
     Java {
         #[command(subcommand)]
         cmd: JavaCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum PackCmd {
+    /// Create an instance from a pack link, a .mrpack file, or modrinth:<slug>[@version]; prints its id
+    Add { input: String },
+    /// Say whether an update is available
+    Check {
+        #[arg(long)]
+        instance: String,
+    },
+    /// List the jars in mods/ that the pack doesn't manage
+    Additions {
+        #[arg(long)]
+        instance: String,
     },
 }
 
@@ -149,9 +187,50 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
             let account = accounts.add_offline(&name, BuildKind::current()).await?;
             println!("{} {}", account.username, account.uuid);
         }
-        Cmd::Launch { instance, dry_run } => {
-            launch_instance(&dirs, &store, &accounts, &instance, dry_run).await?
+        Cmd::Pack {
+            cmd: PackCmd::Add { input },
+        } => {
+            let syncer = syncer(&dirs)?;
+            let (instance, desired) = syncer.add_pack(&store, &PackInput::parse(&input)?).await?;
+            let outcome = syncer
+                .sync(&store, &instance.id, &desired, &progress_sink())
+                .await?;
+            if report(&outcome).is_some() {
+                eprintln!("then run: perland-cli sync --instance {}", instance.id);
+            }
+            println!("{}", instance.id);
         }
+        Cmd::Pack {
+            cmd: PackCmd::Check { instance },
+        } => {
+            let instance = store.load(&instance).await?;
+            match syncer(&dirs)?.check(&store, &instance).await {
+                UpdateCheck::UpToDate => println!("up to date"),
+                UpdateCheck::Available { version, .. } => println!("update available: {version}"),
+                UpdateCheck::Unavailable(e) => println!("couldn't check: {}", e.message),
+            }
+        }
+        Cmd::Pack {
+            cmd: PackCmd::Additions { instance },
+        } => {
+            store.load(&instance).await?;
+            let managed = Managed::load(&store.perland_dir(&instance)).await;
+            for name in additions(&store.game_dir(&instance), managed.as_ref()).await? {
+                println!("{name}");
+            }
+        }
+        Cmd::Sync {
+            instance,
+            manual_dir,
+        } => {
+            store.load(&instance).await?;
+            sync_instance(&syncer(&dirs)?, &store, &instance, manual_dir).await?
+        }
+        Cmd::Launch {
+            instance,
+            dry_run,
+            no_sync,
+        } => launch_instance(&dirs, &store, &accounts, &instance, dry_run, no_sync).await?,
         Cmd::Java { cmd: JavaCmd::List } => {
             for java in launcher_core::java::detect_installed(Platform::current()).await {
                 println!("{}\t{}", java.major, java.path.display());
@@ -167,8 +246,8 @@ async fn launch_instance(
     accounts: &AccountStore,
     id: &str,
     dry_run: bool,
+    no_sync: bool,
 ) -> Result<(), LauncherError> {
-    let instance = store.load(id).await?;
     let account = accounts.active().await?.ok_or_else(|| {
         LauncherError::auth(ErrorCode::NoAccount, "No account selected")
             .with_fix("Run `perland-cli offline <name>` first")
@@ -180,22 +259,16 @@ async fn launch_instance(
         ));
     }
     let session = account.offline_session();
-    let http = launcher_core::http::client(env!("CARGO_PKG_VERSION"))?;
-    let platform = Platform::current();
-    let installer = Installer {
-        dirs: dirs.clone(),
-        meta: MetaClient::new(http.clone(), dirs.meta()),
-        downloader: Downloader::new(http),
-        platform,
-    };
-    let sink: EventSink = Arc::new(|event| match event {
-        Event::Progress {
-            task, done, total, ..
-        } => eprint!("\r{}: {done}/{total}    ", task.key),
-        Event::Log { line } => println!("{line}"),
-        Event::Warning(e) => eprintln!("\nwarning: {}", e.message),
-        Event::StateChanged { .. } => {}
-    });
+    let mut instance = store.load(id).await?;
+    if instance.source != SourceRef::None && !no_sync {
+        sync_instance(&syncer(dirs)?, store, id, None).await?;
+        instance = store.load(id).await?; // a pack update can change the game version
+    }
+    // Held until the game exits: a sync from the app or another CLI must wait for it.
+    let _lock = InstanceLock::try_acquire(&store.perland_dir(id))?;
+    let (installer, _) = installer(dirs)?;
+    let platform = installer.platform;
+    let sink = progress_sink();
 
     let prepared = play::prepare(&installer, &instance, &sink).await?;
     eprintln!();
@@ -238,4 +311,97 @@ async fn launch_instance(
     let exit = game.wait().await?;
     eprintln!("game exited with {:?}", exit.code);
     Ok(())
+}
+
+fn installer(dirs: &LauncherDirs) -> Result<(Arc<Installer>, reqwest::Client), LauncherError> {
+    let http = launcher_core::http::client(env!("CARGO_PKG_VERSION"))?;
+    let installer = Installer {
+        dirs: dirs.clone(),
+        meta: MetaClient::new(http.clone(), dirs.meta()),
+        downloader: Downloader::new(http.clone()),
+        platform: Platform::current(),
+    };
+    Ok((Arc::new(installer), http))
+}
+
+fn syncer(dirs: &LauncherDirs) -> Result<Syncer, LauncherError> {
+    let (installer, http) = installer(dirs)?;
+    Ok(Syncer::for_installer(installer, http))
+}
+
+fn progress_sink() -> EventSink {
+    Arc::new(|event| match event {
+        Event::Progress {
+            task, done, total, ..
+        } => eprint!("\r{}: {done}/{total}    ", task.key),
+        Event::Log { line } => println!("{line}"),
+        Event::Warning(e) => eprintln!("\nwarning: {}", e.message),
+        Event::StateChanged { .. } => {}
+    })
+}
+
+/// Print what a sync did. Returns the files still to download by hand, if any.
+fn report(outcome: &SyncOutcome) -> Option<&[ManualFile]> {
+    eprintln!();
+    match outcome {
+        SyncOutcome::Done(r) if r.up_to_date => println!("up to date"),
+        SyncOutcome::Done(r) => {
+            let c = &r.changes;
+            println!(
+                "{} → {}: +{} added · {} updated · {} removed{}",
+                c.from_version.as_deref().unwrap_or("new"),
+                c.to_version,
+                c.added.len(),
+                c.updated.len(),
+                c.removed.len(),
+                if r.game_changed {
+                    " (new game version)"
+                } else {
+                    ""
+                }
+            );
+            for path in &r.kept_modified {
+                println!("kept your version of {path}");
+            }
+        }
+        SyncOutcome::NeedsManual(files) => {
+            eprintln!("{} files must be downloaded by hand:", files.len());
+            for f in files {
+                eprintln!("  {}: download {} from {}", f.name, f.file_name, f.page_url);
+            }
+            return Some(files);
+        }
+    }
+    None
+}
+
+/// Sync `id` by its policy, picking up hand-downloaded files from `manual_dir` once.
+async fn sync_instance(
+    syncer: &Syncer,
+    store: &InstanceStore,
+    id: &str,
+    manual_dir: Option<PathBuf>,
+) -> Result<(), LauncherError> {
+    let sink = progress_sink();
+    let ensured = syncer.ensure(store, id, &sink).await?;
+    if let Some(w) = &ensured.warning {
+        eprintln!("warning: {}", w.message);
+    }
+    let Some(files) = report(&ensured.outcome).map(<[ManualFile]>::to_vec) else {
+        return Ok(());
+    };
+    if let Some(dir) = manual_dir.or_else(launcher_core::sync::manual::downloads_dir) {
+        if syncer.import_manual(&dir, &files).await? > 0 {
+            let again = syncer.ensure(store, id, &sink).await?;
+            if report(&again.outcome).is_none() {
+                return Ok(());
+            }
+        }
+    }
+    Err(LauncherError::pack(
+        ErrorCode::ManualDownloadsNeeded,
+        format!("{} files have to be downloaded by hand", files.len()),
+    )
+    .with_param("count", files.len())
+    .with_fix("Download them from CurseForge, then run sync again"))
 }

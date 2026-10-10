@@ -9,3 +9,4 @@ publish = false
 launcher-core = { path = "../launcher-core" }
 tokio.workspace = true
 clap.workspace = true
+reqwest.workspace = true
