@@ -1,6 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 120" shape-rendering="crispEdges" role="img" aria-label="Perland">
-  <!-- Perland land-plot mark. Vector redraw of the legacy PerlandDev raster logo
-       (E:\PerlandDev-site\public\logo.png), measured on a 140x120 grid, 2026-10-10. -->
+  <!-- Perland land-plot mark. Vector redraw of the legacy PerlandDev raster logo, measured on a 140x120 grid, 2026-10-10. -->
   <g fill="#C9CC2A">
     <rect x="41" y="16" width="16" height="13"/>
     <rect x="22" y="29" width="35" height="14"/>
