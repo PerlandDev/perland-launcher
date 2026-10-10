@@ -1,0 +1,17 @@
+[
+  {
+    "fileName": "fabric-api-0.92.2+1.20.1.jar",
+    "enabled": true,
+    "size": 2310144
+  },
+  {
+    "fileName": "sodium-fabric-0.5.8+mc1.20.1.jar",
+    "enabled": true,
+    "size": 1048576
+  },
+  {
+    "fileName": "zoomify-2.11.2.jar.disabled",
+    "enabled": false,
+    "size": 524288
+  }
+]

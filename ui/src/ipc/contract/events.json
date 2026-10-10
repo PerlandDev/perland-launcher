@@ -1,0 +1,99 @@
+[
+  {
+    "type": "progress",
+    "instance": "asalith-fields",
+    "task": {
+      "key": "install_minecraft",
+      "params": {
+        "version": "1.20.1"
+      }
+    },
+    "done": 1204,
+    "total": 3575,
+    "bytes": 312000000
+  },
+  {
+    "type": "progress",
+    "instance": null,
+    "task": {
+      "key": "download_java",
+      "params": {
+        "version": "17.0.15"
+      }
+    },
+    "done": 0,
+    "total": 1,
+    "bytes": 0
+  },
+  {
+    "type": "log",
+    "instance": "asalith-fields",
+    "lines": [
+      "[12:00:01] [Render thread/INFO]: Setting user: Steve",
+      "[12:00:02] [Render thread/INFO]: Backend library: LWJGL version 3.3.1"
+    ]
+  },
+  {
+    "type": "run_state",
+    "instance": "asalith-fields",
+    "state": "queued",
+    "exit": null
+  },
+  {
+    "type": "run_state",
+    "instance": "asalith-fields",
+    "state": "idle",
+    "exit": {
+      "code": 1,
+      "killed": false,
+      "cancelled": false,
+      "crash": "out_of_memory",
+      "error": null
+    }
+  },
+  {
+    "type": "run_state",
+    "instance": "creative-flat",
+    "state": "idle",
+    "exit": {
+      "code": null,
+      "killed": false,
+      "cancelled": false,
+      "crash": null,
+      "error": {
+        "category": "loader",
+        "code": "minecraft_version_not_found",
+        "message": "Minecraft 9.9 doesn't exist",
+        "fix": "Check the version number",
+        "detail": "manifest has no 9.9",
+        "params": {
+          "version": "9.9"
+        }
+      }
+    }
+  },
+  {
+    "type": "run_state",
+    "instance": "creative-flat",
+    "state": "idle",
+    "exit": {
+      "code": null,
+      "killed": false,
+      "cancelled": true,
+      "crash": null,
+      "error": null
+    }
+  },
+  {
+    "type": "warning",
+    "instance": "asalith-fields",
+    "error": {
+      "category": "disk",
+      "code": "log_write_stopped",
+      "message": "The game log stopped being saved to disk",
+      "fix": "Check free disk space. The game keeps running.",
+      "detail": null,
+      "params": {}
+    }
+  }
+]

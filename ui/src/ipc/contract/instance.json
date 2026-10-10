@@ -1,0 +1,20 @@
+{
+  "id": "asalith-fields",
+  "name": "Asalith Fields",
+  "source": {
+    "kind": "none"
+  },
+  "game": {
+    "minecraft": "1.20.1",
+    "loader": {
+      "kind": "fabric",
+      "version": "0.16.14"
+    }
+  },
+  "updatePolicy": "ask",
+  "optionalChoices": {},
+  "java": {
+    "path": null,
+    "memoryMb": 4096
+  }
+}
