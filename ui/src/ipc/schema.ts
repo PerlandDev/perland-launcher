@@ -18,7 +18,7 @@ export const gameSpec = z.strictObject({ minecraft: z.string(), loader: loaderSp
 export const sourceRef = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('none') }),
   z.strictObject({ kind: z.literal('packwiz'), url: z.string() }),
-  z.strictObject({ kind: z.literal('mrpack'), location: z.string() }),
+  z.strictObject({ kind: z.literal('mrpack'), name: z.string(), sha1: z.string() }),
   z.strictObject({ kind: z.literal('modrinth'), projectId: z.string(), versionId: z.string() }),
 ]);
 export const javaSettings = z.strictObject({ path: z.string().nullable(), memoryMb: z.number().int() });

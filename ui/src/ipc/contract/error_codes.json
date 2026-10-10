@@ -54,5 +54,15 @@
   "mod_exists",
   "mod_not_found",
   "mod_name_invalid",
+  "pack_invalid",
+  "pack_unsupported",
+  "pack_unsafe_path",
+  "pack_not_found",
+  "pack_link_invalid",
+  "no_pack",
+  "not_enough_space",
+  "instance_locked",
+  "manual_downloads_needed",
+  "update_check_failed",
   "internal"
 ]

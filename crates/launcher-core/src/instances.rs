@@ -67,7 +67,8 @@ pub struct InstanceListing {
     pub damaged: Vec<DamagedInstance>,
 }
 
-/// Where an instance's content comes from. Plan 1 creates only `None`; packs arrive in Plan 3.
+/// Where an instance's content comes from. `Mrpack` is an imported file, kept in the object
+/// cache under its sha1; `name` is only for display.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum SourceRef {
@@ -76,7 +77,8 @@ pub enum SourceRef {
         url: String,
     },
     Mrpack {
-        location: String,
+        name: String,
+        sha1: String,
     },
     #[serde(rename_all = "camelCase")]
     Modrinth {
@@ -511,6 +513,18 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&s).unwrap(),
             r#"{"kind":"modrinth","projectId":"abc","versionId":"def"}"#
+        );
+    }
+
+    #[test]
+    fn mrpack_source_names_the_cached_archive() {
+        let s = SourceRef::Mrpack {
+            name: "Pack-1.0.mrpack".into(),
+            sha1: "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d".into(),
+        };
+        assert_eq!(
+            serde_json::to_string(&s).unwrap(),
+            r#"{"kind":"mrpack","name":"Pack-1.0.mrpack","sha1":"aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"}"#
         );
     }
 

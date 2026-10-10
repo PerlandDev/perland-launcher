@@ -23,7 +23,7 @@ pub(crate) fn valid_component(s: &str) -> bool {
 }
 
 /// Where to get a loader's launch profile (a version JSON that inherits from vanilla).
-/// `None` if either version string is unsafe for a URL path, or the loader isn't supported yet.
+/// `None` if either version string is unsafe for a URL path, or the loader isn't supported.
 pub fn profile_url(kind: LoaderKind, mc: &str, loader: &str) -> Option<String> {
     if !valid_component(mc) || !valid_component(loader) {
         return None;
@@ -64,7 +64,7 @@ pub async fn fetch_profile(
     let Some(url) = profile_url(kind, mc, loader) else {
         return Err(LauncherError::loader(
             ErrorCode::LoaderUnsupported,
-            format!("{kind:?} isn't supported yet"),
+            format!("{kind:?} isn't supported"),
         )
         .with_param("loader", format!("{kind:?}"))
         .with_fix("Use Fabric or Quilt for now; Forge and NeoForge are coming"));
@@ -149,7 +149,7 @@ mod tests {
         let unsupported = fetch_profile(&meta, LoaderKind::Forge, "1.20.1", "47.4.22")
             .await
             .unwrap_err();
-        assert!(unsupported.message.contains("isn't supported yet"));
+        assert!(unsupported.message.contains("isn't supported"));
     }
 
     #[test]
