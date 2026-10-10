@@ -4,6 +4,9 @@ on:
     - cron: "0 4 * * *"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   real-install:
     strategy:
@@ -11,6 +14,7 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -31,6 +35,19 @@ jobs:
           cargo run -q -p perland-cli -- --root "$ROOT" launch --instance "$ID" --dry-run
           test -f "$ROOT/libraries/net/minecraftforge/forge/1.20.1-47.4.22/forge-1.20.1-47.4.22-client.jar"
           test -f "$ROOT/versions/1.20.1-forge-47.4.22/1.20.1-forge-47.4.22.jar"
+      - name: Sync Asalith Fields (packwiz + Forge 1.20.1), then launch dry-run
+        shell: bash
+        run: |
+          ROOT="$RUNNER_TEMP/perland"
+          ID=$(cargo run -q -p perland-cli -- --root "$ROOT" pack add https://perlanddev.github.io/asalith-modpack/pack.toml)
+          test -n "$ID"
+          cargo run -q -p perland-cli -- --root "$ROOT" launch --instance "$ID" --dry-run
+          JARS=$(ls "$ROOT/instances/$ID/minecraft/mods/"*.jar | wc -l)
+          echo "client jars installed: $JARS"
+          test "$JARS" -ge 50
+          test -f "$ROOT/instances/$ID/.perland/managed.json"
+          test -z "$(cargo run -q -p perland-cli -- --root "$ROOT" pack additions --instance "$ID")"
+          cargo run -q -p perland-cli -- --root "$ROOT" sync --instance "$ID" | grep -qx "up to date"
       - name: Second run is offline-capable and skips downloads
         shell: bash
         run: |
@@ -40,3 +57,28 @@ jobs:
           for ID in $IDS; do
             time cargo run -q -p perland-cli -- --root "$ROOT" launch --instance "$ID" --dry-run
           done
+
+  fuzz:
+    # Fuzzing never runs on a developer PC (CLAUDE.md). libFuzzer needs nightly Rust on Linux.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # The repo's rust-toolchain.toml pins stable; cargo-fuzz needs nightly.
+      RUSTUP_TOOLCHAIN: nightly
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - run: cargo install cargo-fuzz --locked
+      - name: Fuzz each pack parser for 3 minutes
+        run: |
+          for target in packwiz_pack packwiz_index packwiz_meta mrpack_index sidecar pack_paths; do
+            cargo fuzz run "$target" -- -max_total_time=180 -rss_limit_mb=2048 -max_len=65536 -timeout=10
+          done
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-crashes
+          path: fuzz/artifacts

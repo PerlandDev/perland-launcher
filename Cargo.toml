@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/launcher-core", "crates/launcher-app", "crates/perland-cli", "src-tauri"]
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"

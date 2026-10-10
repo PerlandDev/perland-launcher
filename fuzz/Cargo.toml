@@ -1,0 +1,59 @@
+[package]
+name = "launcher-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+license = "GPL-3.0-only"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+launcher-core = { path = "../crates/launcher-core" }
+
+# Its own workspace: `cargo test --workspace` never builds it (it needs nightly and libFuzzer).
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "packwiz_pack"
+path = "fuzz_targets/packwiz_pack.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "packwiz_index"
+path = "fuzz_targets/packwiz_index.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "packwiz_meta"
+path = "fuzz_targets/packwiz_meta.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mrpack_index"
+path = "fuzz_targets/mrpack_index.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sidecar"
+path = "fuzz_targets/sidecar.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pack_paths"
+path = "fuzz_targets/pack_paths.rs"
+test = false
+doc = false
+bench = false
