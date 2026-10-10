@@ -24,13 +24,26 @@ pub struct Account {
 }
 
 /// What the game needs to start. Never log `access_token`.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Session {
     pub username: String,
     pub uuid: String,
     pub access_token: String,
     pub user_type: String,
     pub xuid: Option<String>,
+}
+
+// Manual `Debug` so formatting a `Session` (or anything holding one) can never print the token.
+impl std::fmt::Debug for Session {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Session")
+            .field("username", &self.username)
+            .field("uuid", &self.uuid)
+            .field("access_token", &"<redacted>")
+            .field("user_type", &self.user_type)
+            .field("xuid", &self.xuid)
+            .finish()
+    }
 }
 
 impl Account {
@@ -195,6 +208,21 @@ mod tests {
         assert_eq!(s.uuid, "5627dd98e6be3c21b8a8e92344183641");
         assert_eq!(s.access_token, "0");
         assert_eq!(s.user_type, "legacy");
+    }
+
+    #[test]
+    fn session_debug_redacts_access_token() {
+        let session = Session {
+            username: "Steve".to_string(),
+            uuid: "5627dd98e6be3c21b8a8e92344183641".to_string(),
+            access_token: "secret-token-123".to_string(),
+            user_type: "msa".to_string(),
+            xuid: None,
+        };
+        let shown = format!("{session:?}");
+        assert!(shown.contains("<redacted>"));
+        assert!(shown.contains("Steve"));
+        assert!(!shown.contains("secret-token-123"));
     }
 
     #[test]
