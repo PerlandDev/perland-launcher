@@ -124,13 +124,15 @@ impl Downloader {
             tokio::fs::create_dir_all(parent).await?;
         }
         let part = part_path(&req.dest);
+        // Libraries a loader installer builds itself have an empty URL: there is nothing to fetch.
+        let urls: Vec<&String> = req.urls.iter().filter(|u| !u.trim().is_empty()).collect();
         let mut last_err = LauncherError::network(
             ErrorCode::DownloadNoUrl,
             "No download address was given for this file",
         );
         for _round in 0..2 {
             let mut downloaded = false;
-            'urls: for url in &req.urls {
+            'urls: for url in &urls {
                 for attempt in 0..=self.retries {
                     match self.download_to_part(url, &part).await {
                         Ok(()) => {
@@ -184,6 +186,16 @@ impl Downloader {
             request = request.header(reqwest::header::RANGE, format!("bytes={existing}-"));
         }
         let response = request.send().await.map_err(|e| {
+            if e.is_builder() {
+                // A malformed address won't get better by retrying it.
+                return Attempt::NextUrl(
+                    LauncherError::network(
+                        ErrorCode::DownloadNoUrl,
+                        "This file's download address isn't valid",
+                    )
+                    .with_detail(e),
+                );
+            }
             Attempt::Retry(
                 LauncherError::network(
                     ErrorCode::HostUnreachable,
