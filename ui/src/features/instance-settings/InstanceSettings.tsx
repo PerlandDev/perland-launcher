@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
-import type { Instance, LoaderKind } from '../../ipc/schema';
+import type { Instance } from '../../ipc/schema';
 import { useAppInfo, useInstances, useUpdateInstance } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
@@ -11,17 +11,12 @@ import { Field } from '../../ui/Field';
 import { Check } from '../../ui/Icon';
 import { MemorySlider } from '../../ui/MemorySlider';
 import { ScreenFrame } from '../../ui/ScreenFrame';
-import { loaderName } from '../home/labels';
 import { useVersionChoice } from '../new-instance/useVersionChoice';
 import { VersionFields } from '../new-instance/VersionFields';
-
-/** The picker cannot install or choose these yet, so an instance that has one keeps its game as it is. */
-const FIXED_LOADERS: LoaderKind[] = ['forge', 'neoforge'];
 
 function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) {
   const { t } = useTranslation();
   const choice = useVersionChoice(instance.game);
-  const fixedLoader = instance.game.loader && FIXED_LOADERS.includes(instance.game.loader.kind) ? instance.game.loader.kind : null;
   const [name, setName] = useState(instance.name);
   const [memoryMb, setMemoryMb] = useState(instance.java.memoryMb);
   const [javaMode, setJavaMode] = useState<'auto' | 'custom'>(instance.java.path ? 'custom' : 'auto');
@@ -78,12 +73,12 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
       });
   };
   const shownResult = javaResult && javaResult.path === javaPath ? javaResult : null;
-  const ready = (fixedLoader !== null || choice.resolved.ready) && (javaMode === 'auto' || javaPath !== null);
+  const ready = choice.resolved.ready && (javaMode === 'auto' || javaPath !== null);
   const save = () =>
     update.mutate({
       ...instance,
       name,
-      game: fixedLoader ? instance.game : { minecraft: choice.resolved.minecraft ?? instance.game.minecraft, loader: choice.resolved.loader },
+      game: { minecraft: choice.resolved.minecraft ?? instance.game.minecraft, loader: choice.resolved.loader },
       java: { memoryMb, path: javaMode === 'custom' ? javaPath : null },
     });
 
@@ -94,7 +89,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
       </Field>
       <section className="grid gap-4" aria-labelledby="game-heading">
         <h2 id="game-heading" className="text-lg font-bold">{t('instanceSettings.game')}</h2>
-        {fixedLoader ? <p className="text-ink-dim">{t('instanceSettings.loaderFixed', { loader: loaderName(fixedLoader) })}</p> : <VersionFields choice={versions} />}
+        <VersionFields choice={versions} />
       </section>
       <MemorySlider label={t('instanceSettings.memory')} valueMb={memoryMb} onChange={edit(setMemoryMb)} systemMb={systemMb} />
       <fieldset className="grid gap-3">

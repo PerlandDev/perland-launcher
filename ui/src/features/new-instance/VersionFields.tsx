@@ -6,8 +6,14 @@ import { Toggle } from '../../ui/Toggle';
 import { loaderName } from '../home/labels';
 import type { LoaderChoice, VersionChoice } from './useVersionChoice';
 
-const LOADERS: LoaderChoice[] = ['none', 'fabric', 'quilt'];
-const LOADER_KEY = { none: 'newInstance.loaderNone', fabric: 'newInstance.loaderFabric', quilt: 'newInstance.loaderQuilt' } as const;
+const LOADERS: LoaderChoice[] = ['none', 'fabric', 'quilt', 'forge', 'neoforge'];
+const LOADER_KEY = {
+  none: 'newInstance.loaderNone',
+  fabric: 'newInstance.loaderFabric',
+  quilt: 'newInstance.loaderQuilt',
+  forge: 'newInstance.loaderForge',
+  neoforge: 'newInstance.loaderNeoForge',
+} as const;
 
 export function VersionFields({ choice, withLoader = true }: { choice: VersionChoice; withLoader?: boolean }) {
   const { t } = useTranslation();
