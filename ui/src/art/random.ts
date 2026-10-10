@@ -23,7 +23,7 @@ export function rng(seed: number): () => number {
 /** The mark's four plot colours, in mark order: lime, amber, coral, blue. */
 export const PLOT_HUES = ['#c9cc2a', '#ffc233', '#ff5a5f', '#2186cb'] as const;
 export const DIRT = '#7a4a2a';
-export const GROUND = '#16121a';
+export const GROUND = '#181410';
 
 export function mix(a: string, b: string, t: number): string {
   const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));

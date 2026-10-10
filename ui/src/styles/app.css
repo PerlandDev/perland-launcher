@@ -6,17 +6,17 @@
 /* Arcade Cabinet: warm laminate black; the four land-plot hues each own one job;
    raised controls sit on a dirt-brown step; corners are pixel-notched. */
 @theme {
-  --color-ground: #16121a;
-  --color-panel: #201a26;
-  --color-raised: #2b2333;
-  --color-line: #3d3346;
+  --color-ground: #181410; /* warm laminate black */
+  --color-panel: #221c17;
+  --color-raised: #2e261f;
+  --color-line: #463a2f;
   --color-ink: #f6f1e7;
-  --color-ink-dim: #bfb3c4;
+  --color-ink-dim: #c5b9a8;
   --color-amber: #ffc233; /* act: Play, primary */
   --color-amber-hi: #ffd76e;
-  --color-lime: #c9cc2a; /* running, OK, progress fill */
+  --color-lime: #c9cc2a; /* running, OK */
   --color-coral: #ff5a5f; /* stop, fault */
-  --color-blue: #2186cb; /* info */
+  --color-blue: #2186cb; /* info, progress */
   --color-blue-ink: #5cb3f0; /* info text on ground */
   --color-dirt: #7a4a2a; /* the step under raised controls */
   --color-dirt-deep: #4e2e19;
@@ -164,6 +164,12 @@
     translate: 0 var(--step);
     box-shadow: 0 0 0 var(--base);
   }
+  /* Pending: the button stays pressed down on its step while its action runs. */
+  .btn[aria-disabled='true'] {
+    translate: 0 var(--step);
+    box-shadow: 0 0 0 var(--base);
+    cursor: progress;
+  }
   .btn:disabled {
     --face: var(--color-panel);
     --face-ink: var(--color-ink-dim);
@@ -212,6 +218,20 @@
     min-width: 3rem;
   }
 
+  /* Marquee lettering: a signage shade, two hard layers deep, keeps the name readable over any art. */
+  .marquee-name {
+    text-shadow:
+      0 0.045em 0 var(--color-dirt),
+      0 0.09em 0 var(--color-ground);
+  }
+  /* The version line sits on a laminate plate so the art never decides its contrast. */
+  .marquee-plate {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-step);
+    background: color-mix(in oklab, var(--color-ground), transparent 12%);
+    color: var(--color-ink);
+  }
   /* The one lit button. */
   .play {
     --step: 8px;
@@ -256,13 +276,14 @@
       0 var(--step) 0 var(--color-dirt-deep),
       inset 0 3px 0 var(--lit);
   }
+  /* Once pressed, Play stays down on its step: the step is spent and the meter is set into the face. */
   .play[data-state='queued'],
   .play[data-state='preparing'] {
-    color: var(--color-ink);
-    background: var(--color-panel);
+    translate: 0 var(--step);
     box-shadow:
-      0 var(--step) 0 var(--color-dirt-deep),
-      inset 0 0 0 2px var(--color-line);
+      0 0 0 var(--color-dirt),
+      inset 0 3px 0 rgb(0 0 0 / 0.16);
+    animation: none;
     font-family: var(--font-sans);
     font-size: 0.9375rem;
     font-weight: 650;
@@ -276,6 +297,14 @@
     translate: 0 var(--step);
     cursor: not-allowed;
     animation: none;
+  }
+  .play-sub {
+    color: var(--color-dirt-deep);
+  }
+  .play .meter {
+    padding: 3px;
+    background: var(--color-ground);
+    border-radius: 2px;
   }
   @keyframes play-lit {
     to {
@@ -293,7 +322,7 @@
     background: var(--color-line);
   }
   .meter > span[data-on] {
-    background: var(--color-lime);
+    background: var(--color-blue);
   }
 
   .field-input {
@@ -309,6 +338,19 @@
       inset 0 2px 0 rgb(0 0 0 / 0.45),
       inset 0 0 0 1px var(--color-line);
     font: inherit;
+  }
+  select.field-input {
+    appearance: none;
+    padding-right: 2.5rem;
+    color-scheme: dark;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23c5b9a8' stroke-width='2.5' stroke-linecap='square'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.875rem center;
+    cursor: pointer;
+  }
+  select.field-input option {
+    color: var(--color-ink);
+    background: var(--color-panel);
   }
   .field-input::placeholder {
     color: var(--color-ink-dim);
@@ -361,12 +403,74 @@
     cursor: pointer;
     transition: translate 180ms steps(2, end), box-shadow 180ms steps(2, end);
   }
+  /* A chosen option is pressed down into its slot with a lime lamp; amber stays reserved for acting. */
   .seg[data-checked] {
-    color: var(--color-ground);
-    background: var(--color-amber);
-    box-shadow: 0 4px 0 var(--color-dirt);
+    gap: 0.5rem;
+    translate: 0 4px;
+    background: var(--color-ground);
+    box-shadow:
+      0 0 0 var(--color-dirt-deep),
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  .seg[data-checked]::before {
+    content: '';
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--color-lime);
   }
   .seg:has(input:focus-visible) {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+  }
+
+  .range {
+    --fill: 0%;
+    width: 100%;
+    height: 1.75rem;
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+  .range::-webkit-slider-runnable-track {
+    height: 0.625rem;
+    border-radius: 2px;
+    background: linear-gradient(to right, var(--color-blue) var(--fill), var(--color-ground) var(--fill));
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  .range::-webkit-slider-thumb {
+    width: 1.125rem;
+    height: 1.5rem;
+    margin-top: -0.5rem;
+    appearance: none;
+    background: var(--color-ink);
+    border-radius: 3px;
+    corner-shape: notch;
+    box-shadow: 0 3px 0 var(--color-dirt-deep);
+  }
+  .range::-moz-range-track {
+    height: 0.625rem;
+    background: var(--color-ground);
+    box-shadow: inset 0 0 0 1px var(--color-line);
+  }
+  .range::-moz-range-progress {
+    height: 0.625rem;
+    background: var(--color-blue);
+  }
+  .range::-moz-range-thumb {
+    width: 1.125rem;
+    height: 1.5rem;
+    background: var(--color-ink);
+    border: 0;
+    border-radius: 3px;
+    box-shadow: 0 3px 0 var(--color-dirt-deep);
+  }
+  .range:focus-visible {
+    outline: none;
+  }
+  .range:focus-visible::-webkit-slider-thumb {
     outline: 2px solid var(--color-amber);
     outline-offset: 3px;
   }
@@ -379,12 +483,10 @@
     border: 0;
     border-radius: 6px;
     corner-shape: notch;
-    box-shadow:
-      0 8px 0 var(--color-dirt-deep),
-      0 24px 48px rgb(0 0 0 / 0.5);
+    box-shadow: 0 8px 0 var(--color-dirt-deep);
   }
   .dialog::backdrop {
-    background: rgb(10 8 12 / 0.72);
+    background: rgb(12 9 6 / 0.78);
   }
 
   .menu {
@@ -399,7 +501,7 @@
     corner-shape: notch;
     box-shadow:
       0 6px 0 var(--color-dirt-deep),
-      0 18px 36px rgb(0 0 0 / 0.45);
+      0 0 0 1px var(--color-line);
   }
   .menu [role='menuitem'] {
     display: flex;
@@ -430,6 +532,26 @@
     width: 1.125rem;
     height: 1.125rem;
     flex: none;
+  }
+  /* The marquee panel: a T-molding frames its top and left where it meets the title bar and rail,
+     and while a game runs the lamp snaps down. */
+  .marquee {
+    overflow: hidden;
+  }
+  .marquee > svg {
+    transition: filter 180ms steps(2, end);
+  }
+  .marquee[data-dimmed] > svg {
+    filter: brightness(0.5) saturate(0.75);
+  }
+  .marquee::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    box-shadow:
+      inset 4px 4px 0 0 var(--color-ground),
+      inset 6px 6px 0 0 var(--color-dirt-deep);
   }
   .marquee-layer {
     animation: marquee-drift linear infinite;
@@ -471,14 +593,14 @@
     place-items: center;
     width: 3.5rem;
     height: 3.5rem;
-    background: transparent;
+    background: var(--color-panel);
     border: 0;
     border-radius: 6px;
     corner-shape: notch;
     cursor: pointer;
   }
   .rail-item:hover {
-    background: var(--color-panel);
+    background: var(--color-raised);
   }
   .rail-item[data-selected] {
     background: var(--color-raised);

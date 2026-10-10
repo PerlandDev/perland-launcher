@@ -60,8 +60,8 @@ export function CrashCard({ instance, exit, lines }: { instance: Instance; exit:
       </div>
       <div className="flex flex-wrap gap-3">
         {oom && raised && (
+          // Raised, not lit: Play stays the one lit control, and pressing it again is the next step.
           <Button
-            variant="primary"
             icon={<MemoryStick />}
             disabled={update.isPending}
             onClick={() =>

@@ -28,11 +28,11 @@ export function PlayButton({ state, progress, disabled, disabledReason, onPlay, 
       <button type="button" className="play" data-state={state} onClick={onStop} aria-label={t('play.cancelLabel', { label })}>
         <span className="flex items-baseline justify-between gap-3">
           <span className="truncate">{label}</span>
-          <span className="text-ink-dim">{t('play.cancel')}</span>
+          <span className="play-sub">{t('play.cancel')}</span>
         </span>
         <Meter value={fraction} label={label} decorative />
         {progress && progress.total > 0 && (
-          <span className="tabular text-sm font-normal text-ink-dim">
+          <span className="play-sub tabular text-sm font-normal">
             {t('play.files', { done: formatCount(progress.done, lang), total: formatCount(progress.total, lang) })}
             {progress.bytes > 0 && ` · ${formatBytes(progress.bytes, lang)}`}
           </span>

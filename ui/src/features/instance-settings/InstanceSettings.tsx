@@ -99,14 +99,16 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
       <MemorySlider label={t('instanceSettings.memory')} valueMb={memoryMb} onChange={edit(setMemoryMb)} systemMb={systemMb} />
       <fieldset className="grid gap-3">
         <legend className="mb-1.5 text-lg font-bold">{t('instanceSettings.java')}</legend>
-        {(['auto', 'custom'] as const).map((mode) => (
-          <label key={mode} className="flex items-center gap-3">
-            <input type="radio" name="java" checked={javaMode === mode} onChange={() => edit(setJavaMode)(mode)} className="accent-[var(--color-amber)]" />
-            {mode === 'auto' ? t('instanceSettings.javaAuto') : t('instanceSettings.javaCustom')}
-          </label>
-        ))}
+        <div className="flex flex-wrap gap-2">
+          {(['auto', 'custom'] as const).map((mode) => (
+            <label key={mode} className="seg" data-checked={javaMode === mode ? '' : undefined}>
+              <input type="radio" name="java" className="sr-only" checked={javaMode === mode} onChange={() => edit(setJavaMode)(mode)} />
+              {mode === 'auto' ? t('instanceSettings.javaAuto') : t('instanceSettings.javaCustom')}
+            </label>
+          ))}
+        </div>
         {javaMode === 'custom' && (
-          <div className="grid gap-3 pl-7">
+          <div className="grid gap-3">
             <p className="selectable truncate font-mono text-sm text-ink-dim">{javaPath ?? t('instanceSettings.javaNone')}</p>
             <div className="flex gap-3">
               <Button onClick={() => void pickJava()}>{t('instanceSettings.javaPick')}</Button>
@@ -125,7 +127,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
         )}
       </fieldset>
       {update.isError && <ErrorCard error={update.error} />}
-      <div className="flex items-center justify-end gap-4">
+      <div className="sticky bottom-0 flex items-center justify-end gap-4 bg-ground py-4 shadow-[0_-1px_0_var(--color-line)]">
         <p role="status" className="text-sm text-ink-dim">{update.isSuccess ? t('common.saved') : t('instanceSettings.applyNote')}</p>
         <Button variant="primary" size="lg" disabled={!ready || update.isPending} onClick={save}>
           {update.isPending ? t('common.saving') : t('common.save')}

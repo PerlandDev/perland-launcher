@@ -12,6 +12,7 @@ import { Rail } from './features/rail/Rail';
 import { Settings } from './features/settings/Settings';
 import { TitleBar } from './features/titlebar/TitleBar';
 import { applyLanguage } from './i18n';
+import { useActivity } from './state/activity';
 import { useSettings } from './state/queries';
 import { useRoute, type Route } from './state/route';
 import { Button } from './ui/Button';
@@ -38,12 +39,14 @@ function Screen({ route }: { route: Route }) {
 
 function Shell() {
   const route = useRoute();
+  const activity = useActivity();
   return (
     <div className="grid h-full grid-rows-[2.25rem_1fr]">
       <TitleBar />
       <div className="grid min-h-0 grid-cols-[4.5rem_1fr]">
         <Rail />
-        <main className="relative min-h-0 overflow-hidden pb-9">
+        {/* The open drawer is 18rem tall (ActivityDrawer); padding by the same keeps the screen above it. */}
+        <main className={`relative min-h-0 overflow-hidden ${activity.open ? 'pb-[18rem]' : 'pb-9'}`}>
           <Screen route={route} />
           <ActivityDrawer />
         </main>
@@ -58,7 +61,7 @@ function SettingsFailed({ error, retry, busy }: { error: unknown; retry: () => P
   const retryOnce = useSingleFlight();
   return (
     <div className="grid h-full grid-rows-[2.25rem_1fr]">
-      <TitleBar />
+      <TitleBar minimal />
       <main className="grid place-items-center p-10">
         <div className="w-full max-w-xl">
           <ErrorCard

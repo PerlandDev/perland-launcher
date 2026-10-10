@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { type CSSProperties, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatGb } from './format';
 
@@ -40,9 +40,10 @@ export function MemorySlider({
         aria-valuetext={shown}
         aria-describedby={hintId}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="accent-[var(--color-amber)]"
+        className="range"
+        style={{ '--fill': `${((Math.min(valueMb, max) - 512) / Math.max(1, max - 512)) * 100}%` } as CSSProperties}
       />
-      <p id={hintId} className={high ? 'text-sm text-coral' : 'text-sm text-ink-dim'}>
+      <p id={hintId} className={high ? 'text-sm text-blue-ink' : 'text-sm text-ink-dim'}>
         {high
           ? t('instanceSettings.memoryHigh')
           : known

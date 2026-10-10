@@ -17,6 +17,14 @@ it('drives the window and shows the active account', async () => {
   expect(routeSnapshot()).toEqual({ name: 'accounts' });
 });
 
+it('keeps only the window controls when minimal', async () => {
+  renderApp(<TitleBar minimal />, { firstRun: true });
+  expect(await screen.findByRole('button', { name: 'Close' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Minimize' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Add account' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument();
+});
+
 it('asks for an account when there is none', async () => {
   renderApp(<TitleBar />, { firstRun: true });
   expect(await screen.findByRole('button', { name: 'Add account' })).toBeInTheDocument();

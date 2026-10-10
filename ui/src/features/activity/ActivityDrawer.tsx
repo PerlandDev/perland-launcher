@@ -38,7 +38,8 @@ function InstanceActivity({ instance }: { instance: Instance }) {
   );
 }
 
-/** A drawer along the bottom: what's downloading, what the game prints, and why it stopped. */
+/** A drawer along the bottom: what's downloading, what the game prints, and why it stopped.
+ *  Open, it is 18rem tall and the Shell pads `main` by the same amount, so Play stays in view. */
 export function ActivityDrawer() {
   const { t } = useTranslation();
   const activity = useActivity();
@@ -50,7 +51,7 @@ export function ActivityDrawer() {
   const tabs = instances.filter((i) => active.includes(i.id) || i.id === focusId);
 
   return (
-    <div className={`absolute inset-x-0 bottom-0 z-20 flex flex-col bg-panel ${activity.open ? 'h-[46%]' : ''}`}>
+    <div className={`absolute inset-x-0 bottom-0 z-20 flex flex-col bg-panel ${activity.open ? 'h-[18rem]' : ''}`}>
       <button
         type="button"
         className="flex h-9 flex-none items-center gap-3 px-5 text-sm font-semibold text-ink-dim hover:text-ink"

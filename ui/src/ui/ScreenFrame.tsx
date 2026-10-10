@@ -20,7 +20,8 @@ export function ScreenFrame({
   const { t } = useTranslation();
   return (
     <section className="flex h-full flex-col">
-      <header className="flex flex-wrap items-end justify-between gap-6 px-10 pt-9 pb-6">
+      {/* The header spans the same 48rem column as the content (plus its padding), so actions line up with it. */}
+      <header className="flex max-w-[53rem] flex-wrap items-end justify-between gap-6 px-10 pt-9 pb-6">
         <div className="flex min-w-0 items-center gap-4">
           {onBack && (
             <Button variant="ghost" size="icon" aria-label={t('common.back')} onClick={onBack} icon={<ChevronDown className="rotate-90" />} />
@@ -32,7 +33,10 @@ export function ScreenFrame({
         </div>
         {actions && <div className="flex flex-wrap gap-3">{actions}</div>}
       </header>
-      <div className="min-h-0 flex-1 overflow-auto px-10 pb-10">{children}</div>
+      {/* Bottom padding lives inside the scroller's content, so a sticky action row meets the scroller's edge. */}
+      <div className="min-h-0 flex-1 overflow-auto px-10">
+        <div className="pb-10">{children}</div>
+      </div>
     </section>
   );
 }

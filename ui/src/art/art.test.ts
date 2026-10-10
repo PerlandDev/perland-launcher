@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { avatarCells } from './avatarCells';
-import { marqueeScene } from './marqueeScene';
+import { COLS, marqueeScene } from './marqueeScene';
 import { plotCells } from './plot';
 import { hash, mix, rng } from './random';
 
@@ -29,13 +29,54 @@ describe('marquee', () => {
     const scene = marqueeScene('asalith-fields');
     expect(scene.layers.length).toBeGreaterThanOrEqual(4);
     for (const layer of scene.layers) {
-      expect(layer.heights).toHaveLength(40);
-      expect(layer.heights[0]).toBe(layer.heights[39]);
+      expect(layer.heights).toHaveLength(COLS);
+      expect(layer.heights[0]).toBe(layer.heights[COLS - 1]);
       for (const h of layer.heights) {
         expect(h).toBeGreaterThanOrEqual(1);
-        expect(h).toBeLessThanOrEqual(20);
+        expect(h).toBeLessThanOrEqual(24);
       }
     }
+  });
+
+  it('is lit from behind, never a navy sky', () => {
+    for (const seed of ['asalith-fields', 'creative-flat', 'old-pack', 'perland']) {
+      const scene = marqueeScene(seed);
+      // The sky is warm black: red at or above green, green at or above blue.
+      const [r = 0, g = 0, b = 0] = [1, 3, 5].map((i) => parseInt(scene.sky.slice(i, i + 2), 16));
+      expect(r).toBeGreaterThanOrEqual(g);
+      expect(g).toBeGreaterThanOrEqual(b);
+      // The light source sits in the upper right, clear of the name (lower left) and centred cards.
+      expect(scene.sun.x / COLS).toBeGreaterThanOrEqual(0.78);
+      expect(scene.sun.x / COLS).toBeLessThanOrEqual(0.88);
+      expect(scene.glow).toMatch(/^#[0-9a-f]{6}$/);
+    }
+  });
+
+  it('never cuts a one-column drip deeper than a single cell into a hill', () => {
+    for (const seed of ['asalith-fields', 'creative-flat', 'old-pack', 'perland', 'a', 'b', 'c']) {
+      for (const { heights } of marqueeScene(seed).layers) {
+        for (let i = 0; i < heights.length; i++) {
+          const left = heights[(i - 1 + heights.length) % heights.length]!;
+          const right = heights[(i + 1) % heights.length]!;
+          expect(Math.min(left, right) - heights[i]!).toBeLessThanOrEqual(1);
+        }
+      }
+    }
+  });
+
+  it('steps the hills from a backlit far band to a dark near floor', () => {
+    const lum = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).reduce((a, b) => a + b, 0) / 3;
+    const bodies = marqueeScene('asalith-fields').layers.map((l) => lum(l.body));
+    for (let i = 1; i < bodies.length; i++) expect(bodies[i - 1]! - bodies[i]!).toBeGreaterThanOrEqual(14);
+  });
+
+  it('keeps the nearest band dark and tall enough for the name to sit on', () => {
+    const near = marqueeScene('asalith-fields').layers.at(-1)!;
+    expect(Math.min(...near.heights)).toBeGreaterThanOrEqual(9);
+    expect(Math.max(...near.heights)).toBeLessThanOrEqual(13);
+    const lum = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).reduce((a, b) => a + b, 0) / 3;
+    expect(lum(near.body)).toBeLessThan(40);
+    expect(lum(near.rim)).toBeLessThan(110);
   });
 });
 

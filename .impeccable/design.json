@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-10T00:00:00Z",
+  "title": "Design System: Perland Launcher",
+  "extensions": {
+    "colorMeta": {
+      "ground": { "role": "neutral", "displayName": "Laminate Black", "canonical": "#181410", "tonalRamp": ["#0f0c09", "#110e0b", "#14100d", "#16120f", "#181410", "#524e48", "#8c8780", "#c5c1b8"] },
+      "panel": { "role": "neutral", "displayName": "Cabinet Panel", "canonical": "#221c17", "tonalRamp": ["#120e0a", "#16120e", "#1a1511", "#1f1914", "#221c17", "#59544d", "#918b84", "#c8c3ba"] },
+      "raised": { "role": "neutral", "displayName": "Raised Face", "canonical": "#2e261f", "tonalRamp": ["#15100c", "#1b1611", "#221c16", "#29221b", "#2e261f", "#625b53", "#979088", "#cbc5bc"] },
+      "line": { "role": "neutral", "displayName": "Seam Line", "canonical": "#463a2f", "tonalRamp": ["#1b1510", "#261f18", "#322921", "#3d3329", "#463a2f", "#746a5f", "#a39a90", "#d1cac0"] },
+      "ink": { "role": "neutral", "displayName": "Warm Ink", "canonical": "#f6f1e7", "tonalRamp": ["#47433e", "#75716b", "#a4a098", "#d3cec5", "#f6f1e7", "#f8f3e9", "#fbf6ec", "#fdf8ee"] },
+      "ink-dim": { "role": "neutral", "displayName": "Dim Ink", "canonical": "#c5b9a8", "tonalRamp": ["#3a352f", "#5f584f", "#847b6f", "#a99f90", "#c5b9a8", "#d4c9ba", "#e2dacc", "#f1eade"] },
+      "amber": { "role": "primary", "displayName": "Coin-Op Amber", "canonical": "#ffc233", "tonalRamp": ["#493711", "#795c1a", "#aa8123", "#dba62c", "#ffc233", "#ffd062", "#ffde92", "#ffecc1"] },
+      "amber-hi": { "role": "primary", "displayName": "Lamp Amber", "canonical": "#ffd76e", "tonalRamp": ["#493d20", "#796635", "#aa8f4a", "#dbb85e", "#ffd76e", "#ffe08f", "#ffe9af", "#fff1d0"] },
+      "lime": { "role": "secondary", "displayName": "Run-Lamp Lime", "canonical": "#c9cc2a", "tonalRamp": ["#3b3a0f", "#616116", "#87881d", "#adaf25", "#c9cc2a", "#d7d85c", "#e4e38d", "#f2efbf"] },
+      "coral": { "role": "secondary", "displayName": "Fault Coral", "canonical": "#ff5a5f", "tonalRamp": ["#491d1c", "#792d2e", "#aa3e40", "#db4e52", "#ff5a5f", "#ff8283", "#ffaaa8", "#ffd2cc"] },
+      "blue": { "role": "tertiary", "displayName": "Signal Blue", "canonical": "#2186cb", "tonalRamp": ["#112837", "#15415f", "#1a5a86", "#1e73ad", "#2186cb", "#59a3d4", "#90c0de", "#c8dde7"] },
+      "blue-ink": { "role": "tertiary", "displayName": "Readout Blue", "canonical": "#5cb3f0", "tonalRamp": ["#203441", "#30556f", "#40789e", "#509acd", "#5cb3f0", "#85c5f0", "#aed7f0", "#d6e8f0"] },
+      "dirt": { "role": "neutral", "displayName": "Dirt", "canonical": "#7a4a2a", "tonalRamp": ["#28190f", "#3d2616", "#54331d", "#6a4025", "#7a4a2a", "#9b765c", "#bda28d", "#decebf"] },
+      "dirt-deep": { "role": "neutral", "displayName": "Deep Dirt", "canonical": "#4e2e19", "tonalRamp": ["#1d120b", "#2a1a0f", "#372112", "#442816", "#4e2e19", "#7a614f", "#a79485", "#d3c7ba"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The instance name on the marquee, with the two-layer hard shade." },
+      "headline": { "displayName": "Headline", "purpose": "Screen titles in the screen frame and first-run step titles." },
+      "play": { "displayName": "Play", "purpose": "The word on Play, Stop and Stopping." },
+      "title": { "displayName": "Title", "purpose": "Small signage: the About heading, the tabular memory readout." },
+      "body": { "displayName": "Body", "purpose": "All running text; Atkinson Hyperlegible Next for young and non-native readers." },
+      "label": { "displayName": "Label", "purpose": "Field labels, the drawer handle, the title-bar account name." },
+      "control": { "displayName": "Control", "purpose": "Button and segment labels." },
+      "mono": { "displayName": "Mono", "purpose": "The game log, error detail, Java and data-folder paths." }
+    },
+    "shadows": [
+      { "name": "step", "value": "0 4px 0 var(--color-dirt-deep)", "purpose": "Hard step under secondary buttons, segments and the selected rail cabinet; amber buttons use --color-dirt." },
+      { "name": "step-lg", "value": "0 6px 0 var(--color-dirt-deep)", "purpose": "Large buttons, menus, toasts." },
+      { "name": "play", "value": "0 8px 0 var(--color-dirt), inset 0 3px 0 var(--color-amber-hi)", "purpose": "Play only: the deep step plus its lit top edge." },
+      { "name": "card-step", "value": "0 8px 0 var(--color-dirt-deep)", "purpose": "Dialogs and the first-run card." },
+      { "name": "recess", "value": "inset 0 2px 0 rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--color-line)", "purpose": "Inputs, selects, slider track, a checked segment." },
+      { "name": "t-molding", "value": "inset 4px 4px 0 0 var(--color-ground), inset 6px 6px 0 0 var(--color-dirt-deep)", "purpose": "The marquee bezel where it meets the title bar and rail." },
+      { "name": "hairline-top", "value": "0 -1px 0 var(--color-line)", "purpose": "Above sticky action rows." },
+      { "name": "marquee-shade", "value": "text-shadow: 0 0.045em 0 var(--color-dirt), 0 0.09em 0 var(--color-ground)", "purpose": "Two-layer hard shade on signage over art." }
+    ],
+    "motion": [
+      { "name": "press", "value": "translate 180ms steps(2, end), box-shadow 180ms steps(2, end)", "purpose": "Press travel onto the step in two 90 ms frames; also the toggle knob and segments." },
+      { "name": "face-hover", "value": "background-color 120ms linear", "purpose": "Button face colour change on hover." },
+      { "name": "play-lit", "value": "2.4s steps(3, end) infinite alternate", "purpose": "Play's lit edge breathing toward #fff2c4 while idle." },
+      { "name": "marquee-dim", "value": "filter 180ms steps(2, end) to brightness(0.5) saturate(0.75)", "purpose": "The marquee snaps down while a game is preparing or running." },
+      { "name": "attract-drift", "value": "translateX(-480px) linear infinite; 180s / 140s / 100s / 60s far to near", "purpose": "Attract-mode parallax at rest; paused when not idle and neutralised under prefers-reduced-motion." },
+      { "name": "reduced-motion", "value": "animation/transition-duration 0.01ms", "purpose": "Global prefers-reduced-motion override." }
+    ],
+    "breakpoints": [
+      { "name": "min-window", "value": "960px x 600px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Play",
+      "kind": "button",
+      "refersTo": "play",
+      "description": "The one lit button: amber on a deep dirt step with a lit top edge; presses the full 8px step in two frames.",
+      "html": "<button class=\"ds-play\">PLAY</button>",
+      "css": ".ds-play { width: 17.5rem; min-height: 5.5rem; padding: 0.75rem 1.5rem; color: var(--color-ground, #181410); background: var(--color-amber, #ffc233); border: 0; border-radius: 6px; corner-shape: notch; box-shadow: 0 8px 0 var(--color-dirt, #7a4a2a), inset 0 3px 0 var(--color-amber-hi, #ffd76e); font-family: Bungee, ui-sans-serif, sans-serif; font-size: 2rem; line-height: 1; letter-spacing: 0.02em; cursor: pointer; transition: translate 180ms steps(2, end), box-shadow 180ms steps(2, end); } .ds-play:hover { box-shadow: 0 8px 0 var(--color-dirt, #7a4a2a), inset 0 3px 0 #fff2c4; } .ds-play:active { translate: 0 8px; box-shadow: 0 0 0 var(--color-dirt, #7a4a2a), inset 0 3px 0 var(--color-amber-hi, #ffd76e); } .ds-play:focus-visible { outline: 2px solid var(--color-amber, #ffc233); outline-offset: 3px; }"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single act on a screen: amber face on a dirt step.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Create instance</button>",
+      "css": ".ds-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.5rem; padding: 0 1rem; font-family: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, sans-serif; font-weight: 650; font-size: 0.9375rem; line-height: 1; border: 0; border-radius: 4px; corner-shape: notch; cursor: pointer; transition: translate 180ms steps(2, end), box-shadow 180ms steps(2, end), background-color 120ms linear; } .ds-btn-primary { color: var(--color-ground, #181410); background: var(--color-amber, #ffc233); box-shadow: 0 4px 0 var(--color-dirt, #7a4a2a); } .ds-btn-primary:hover { background: var(--color-amber-hi, #ffd76e); } .ds-btn-primary:active { translate: 0 4px; box-shadow: 0 0 0 var(--color-dirt, #7a4a2a); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-amber, #ffc233); outline-offset: 3px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "The default raised control: raised face on a deep dirt step.",
+      "html": "<button class=\"ds-btn2\">Open folder</button>",
+      "css": ".ds-btn2 { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.5rem; padding: 0 1rem; font-family: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, sans-serif; font-weight: 650; font-size: 0.9375rem; line-height: 1; color: var(--color-ink, #f6f1e7); background: var(--color-raised, #2e261f); border: 0; border-radius: 4px; corner-shape: notch; box-shadow: 0 4px 0 var(--color-dirt-deep, #4e2e19); cursor: pointer; transition: translate 180ms steps(2, end), box-shadow 180ms steps(2, end), background-color 120ms linear; } .ds-btn2:hover { background: color-mix(in oklab, var(--color-raised, #2e261f), white 7%); } .ds-btn2:active, .ds-btn2[aria-disabled='true'] { translate: 0 4px; box-shadow: 0 0 0 var(--color-dirt-deep, #4e2e19); } .ds-btn2[aria-disabled='true'] { cursor: progress; } .ds-btn2:focus-visible { outline: 2px solid var(--color-amber, #ffc233); outline-offset: 3px; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Destructive confirmation: coral face on a deep dirt step.",
+      "html": "<button class=\"ds-btn-danger\">Delete instance</button>",
+      "css": ".ds-btn-danger { display: inline-flex; align-items: center; min-height: 2.5rem; padding: 0 1rem; font-family: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, sans-serif; font-weight: 650; font-size: 0.9375rem; line-height: 1; color: var(--color-ground, #181410); background: var(--color-coral, #ff5a5f); border: 0; border-radius: 4px; corner-shape: notch; box-shadow: 0 4px 0 var(--color-dirt-deep, #4e2e19); cursor: pointer; transition: translate 180ms steps(2, end), box-shadow 180ms steps(2, end); } .ds-btn-danger:hover { background: color-mix(in oklab, var(--color-coral, #ff5a5f), white 12%); } .ds-btn-danger:active { translate: 0 4px; box-shadow: 0 0 0 var(--color-dirt-deep, #4e2e19); } .ds-btn-danger:focus-visible { outline: 2px solid var(--color-amber, #ffc233); outline-offset: 3px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Recessed input sunk into the laminate; coral ring when invalid.",
+      "html": "<label class=\"ds-field\"><span>Player name</span><input class=\"ds-input\" placeholder=\"Steve\" /></label>",
+      "css": ".ds-field { display: grid; gap: 0.375rem; font-family: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, sans-serif; color: var(--color-ink, #f6f1e7); } .ds-field > span { font-size: 0.875rem; font-weight: 600; } .ds-input { min-height: 2.5rem; padding: 0.5rem 0.75rem; color: var(--color-ink, #f6f1e7); background: var(--color-ground, #181410); border: 0; border-radius: 4px; corner-shape: notch; box-shadow: inset 0 2px 0 rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--color-line, #463a2f); font: inherit; caret-color: var(--color-amber, #ffc233); } .ds-input::placeholder { color: var(--color-ink-dim, #c5b9a8); } .ds-input:focus-visible { outline: 2px solid var(--color-amber, #ffc233); outline-offset: 3px; } .ds-input[aria-invalid='true'] { box-shadow: inset 0 2px 0 rgb(0 0 0 / 0.45), inset 0 0 0 2px var(--color-coral, #ff5a5f); }"
+    },
+    {
+      "name": "Segment",
+      "kind": "chip",
+      "refersTo": "segment",
+      "description": "Single-choice option: raised on its step; the chosen one is pressed into its slot with a lime lamp.",
+      "html": "<div class=\"ds-segs\"><span class=\"ds-seg\">Vanilla</span><span class=\"ds-seg\" data-checked>Fabric</span><span class=\"ds-seg\">Quilt</span></div>",
+      "css": ".ds-segs { display: flex; gap: 0.75rem; } .ds-seg { display: inline-flex; align-items: center; min-height: 2.5rem; padding: 0 1.125rem; font-family: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, sans-serif; font-weight: 650; color: var(--color-ink, #f6f1e7); background: var(--color-raised, #2e261f); border-radius: 4px; corner-shape: notch; box-shadow: 0 4px 0 var(--color-dirt-deep, #4e2e19); cursor: pointer; transition: translate 180ms steps(2, end), box-shadow 180ms steps(2, end); } .ds-seg:hover { background: color-mix(in oklab, var(--color-raised, #2e261f), white 7%); } .ds-seg[data-checked] { gap: 0.5rem; translate: 0 4px; background: var(--color-ground, #181410); box-shadow: 0 0 0 var(--color-dirt-deep, #4e2e19), inset 0 2px 0 rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--color-line, #463a2f); } .ds-seg[data-checked]::before { content: ''; width: 0.5rem; height: 0.5rem; background: var(--color-lime, #c9cc2a); } .ds-seg:focus-visible { outline: 2px solid var(--color-amber, #ffc233); outline-offset: 3px; }"
+    },
+    {
+      "name": "Segmented Meter",
+      "kind": "custom",
+      "refersTo": "meter",
+      "description": "Twenty blue blocks in a recessed channel; fills block by block.",
+      "html": "<div class=\"ds-meter-wrap\"><div class=\"ds-meter\"><span data-on></span><span data-on></span><span data-on></span><span data-on></span><span data-on></span><span data-on></span><span data-on></span><span data-on></span><span data-on></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div>",
+      "css": ".ds-meter-wrap { width: 16rem; padding: 3px; background: var(--color-ground, #181410); border-radius: 2px; } .ds-meter { display: grid; grid-template-columns: repeat(20, 1fr); gap: 3px; height: 0.75rem; } .ds-meter > span { background: var(--color-line, #463a2f); } .ds-meter > span[data-on] { background: var(--color-blue, #2186cb); }"
+    },
+    {
+      "name": "Rail Cabinet",
+      "kind": "nav",
+      "refersTo": "rail-item",
+      "description": "An instance in the 72 px rail; the selected one stands on its step with the amber coin-slot light, a lime LED when running.",
+      "html": "<nav class=\"ds-rail\"><button class=\"ds-rail-item\" data-selected><svg viewBox=\"0 0 8 8\" width=\"40\" height=\"40\" shape-rendering=\"crispEdges\"><rect x=\"0\" y=\"4\" width=\"8\" height=\"1\" fill=\"#2186cb\"/><rect x=\"0\" y=\"5\" width=\"8\" height=\"2\" fill=\"#7a4a2a\"/><rect x=\"5\" y=\"3\" width=\"3\" height=\"1\" fill=\"#2186cb\"/></svg><span class=\"ds-rail-led\"></span></button><button class=\"ds-rail-item\"><svg viewBox=\"0 0 8 8\" width=\"40\" height=\"40\" shape-rendering=\"crispEdges\"><rect x=\"0\" y=\"5\" width=\"8\" height=\"1\" fill=\"#c9cc2a\"/><rect x=\"0\" y=\"6\" width=\"8\" height=\"1\" fill=\"#7a4a2a\"/><rect x=\"4\" y=\"4\" width=\"4\" height=\"1\" fill=\"#ffc233\"/></svg></button></nav>",
+      "css": ".ds-rail { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; width: 4.5rem; padding: 1rem 0; background: var(--color-ground, #181410); } .ds-rail-item { position: relative; display: grid; place-items: center; width: 3.5rem; height: 3.5rem; background: var(--color-panel, #221c17); border: 0; border-radius: 6px; corner-shape: notch; cursor: pointer; } .ds-rail-item:hover { background: var(--color-raised, #2e261f); } .ds-rail-item[data-selected] { background: var(--color-raised, #2e261f); box-shadow: 0 4px 0 var(--color-dirt-deep, #4e2e19); } .ds-rail-item[data-selected]::before { content: ''; position: absolute; left: -0.625rem; top: 30%; width: 4px; height: 40%; background: var(--color-amber, #ffc233); } .ds-rail-item:focus-visible { outline: 2px solid var(--color-amber, #ffc233); outline-offset: 3px; } .ds-rail-led { position: absolute; right: 0.375rem; bottom: 0.375rem; width: 0.5rem; height: 0.5rem; background: var(--color-lime, #c9cc2a); }"
+    },
+    {
+      "name": "Error Card",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "A failure in the player's language: coral warning diamond, message, fix, actions.",
+      "html": "<div class=\"ds-card\"><svg class=\"ds-card-icon\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"square\"><path d=\"M12 2 22 12 12 22 2 12Z\"/><path d=\"M12 8v5M12 16v1\"/></svg><div><p class=\"ds-card-msg\">Minecraft ran out of memory.</p><p class=\"ds-card-fix\">Give it more memory in the instance settings and try again.</p></div></div>",
+      "css": ".ds-card { display: flex; gap: 0.75rem; align-items: flex-start; max-width: 30rem; padding: 1.25rem; color: var(--color-ink, #f6f1e7); background: var(--color-panel, #221c17); border-radius: 6px; corner-shape: notch; font-family: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, sans-serif; font-size: 15px; line-height: 1.5; } .ds-card-icon { flex: none; margin-top: 0.125rem; color: var(--color-coral, #ff5a5f); } .ds-card-msg { margin: 0; font-weight: 600; } .ds-card-fix { margin: 0.25rem 0 0; color: var(--color-ink-dim, #c5b9a8); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Arcade Cabinet",
+    "overview": "Every instance is an arcade cabinet. Its seeded landscape is a backlit marquee, the rail down the left is a row of cabinets with a coin-slot light beside the one you're standing at, and Play is the one lit button you press. The room is warm laminate black, never navy. Controls are physical: they stand on a brown dirt step taken from the PerlandDev land-plot mark, and pressing one drops its face onto that step in two snapped frames. Nothing glows, blurs or eases. Depth is hard offset layers, corners are pixel-notched, and state changes snap.\n\nThe density is low and the hierarchy is blunt, because the job is \"open, press Play, be in the game\" for young, often Spanish-speaking players. Home is almost all marquee art: the instance name is huge at lower left, and Play sits lower right with Mods and the overflow menu as quieter raised controls beside it. Every other screen is a plain 48rem column on the ground under a Bungee title, with sticky action rows. The four plot hues are strictly functional: each owns one meaning, and at rest only Play is lit.\n\nThe system rejects the launcher category default of a navy gradient, rounded cards and a glowing blue button. It also stays clear of the PerlandDev Panel's cyan chamfered \"Director HUD\" look.",
+    "keyCharacteristics": [
+      "Warm laminate-black ground (`ground`, `panel`, `raised`, `line`) with warm off-white ink.",
+      "Four plot hues with one job each: amber acts, lime means running or OK, coral means stop or fault, blue means info or progress.",
+      "Raised controls stand on a dirt step: hard offset under-layers, never a blurred shadow.",
+      "Pixel-notched corners (`corner-shape: notch`) on every control and panel.",
+      "Bungee signage display with a two-layer hard shade. Atkinson Hyperlegible Next for body text, Atkinson Hyperlegible Mono for logs and paths.",
+      "Motion snaps in `steps()`: 180 ms press travel in two steps, a snapped marquee dim, and a slow attract-mode parallax that stops under reduced motion."
+    ],
+    "rules": [
+      { "name": "The One Lit Button Rule", "body": "At rest, Play is the only lit thing on screen. Amber means \"press this to act\". Never use it as a decorative accent, a heading colour or a selected-state fill.", "section": "colors" },
+      { "name": "The Lime Lamp Rule", "body": "A chosen option shows a small square lime lamp and sits pressed into its slot. Selection never borrows amber, because amber is reserved for acting.", "section": "colors" },
+      { "name": "The Hue Has One Job Rule", "body": "Lime is running or OK, coral is stop or fault, blue is info or progress. A status never relies on hue alone, so pair it with a label, an icon or a shape (the LED, the warning diamond, the meter blocks).", "section": "colors" },
+      { "name": "The Hard Shade Rule", "body": "Signage over art carries a two-layer hard shade, never a blur: `dirt` offset 0.045em, then `ground` offset 0.09em. The version line under the name sits on a translucent laminate plate, so the art never decides its contrast.", "section": "typography" },
+      { "name": "The Signage Names, Atkinson Speaks Rule", "body": "Bungee appears only on names and titles (the instance, the screen, the welcome, Play, a big readout). Sentences, labels, buttons and errors are always Atkinson.", "section": "typography" },
+      { "name": "The Tabular Rule", "body": "Every live number (files, MB, memory, counts) uses tabular figures so readouts don't jitter while they count.", "section": "typography" },
+      { "name": "The Dirt Step Rule", "body": "Everything that can be pressed stands on a hard dirt step: `dirt` under amber, `dirt-deep` under everything else. Pressing travels the full step height and removes it. No blur, ever.", "section": "elevation" },
+      { "name": "The Spent Step Rule", "body": "A control whose action is running stays pressed down. Play while queued or preparing, a button with `aria-disabled=\"true\"` while pending, and a disabled control all sit on their spent step with no under-layer.", "section": "elevation" }
+    ],
+    "dos": [
+      "**Do** keep Play the only lit control at rest. Amber is for acting: Play, the single primary action on a screen, focus, the caret and the coin-slot light.",
+      "**Do** mark a chosen option with the pressed segment and its 8px lime lamp.",
+      "**Do** stand every pressable control on a hard dirt step (`0 4px 0`, `6px` large, `8px` for Play and cards), and press it the full step height in `steps(2, end)` over 180 ms.",
+      "**Do** keep a pending control pressed with `aria-disabled=\"true\"` so it keeps focus. Reserve `disabled` for unavailable controls.",
+      "**Do** notch every corner with `corner-shape: notch` (4px controls, 6px panels).",
+      "**Do** recess inputs, toggles, the slider track and the meter channel into `ground` with the 2px dark top edge and 1px `line` ring.",
+      "**Do** shade signage over art with the two-layer hard shade (`dirt` 0.045em, `ground` 0.09em), and seat small text on a laminate plate.",
+      "**Do** fill progress block by block in blue with tabular counts in real MB.",
+      "**Do** pad `main` by the drawer's open height so Play is never covered, and keep primary form actions in a sticky row.",
+      "**Do** let attract-mode parallax stop under reduced motion. State changes snap."
+    ],
+    "donts": [
+      "**Don't** use blurred box-shadows, glows or soft elevation. Depth is hard offset layers only.",
+      "**Don't** fill a selection, a heading or decoration with amber. A lit amber selection makes two lit buttons.",
+      "**Don't** use a navy gradient, rounded cards or a glowing blue button, which are the launcher category default this system replaces.",
+      "**Don't** ease state changes or animate progress smoothly. Use `steps()` or snap.",
+      "**Don't** set sentences, labels or errors in Bungee. Don't set the log or paths in anything but Atkinson Hyperlegible Mono.",
+      "**Don't** use any hue as the only carrier of status. Pair it with a label, an icon or a shape.",
+      "**Don't** reuse the PerlandDev Panel's cyan chamfered mark or HUD language, Modrinth branding or Mojang artwork. Marquees, plot icons and avatars are generated."
+    ]
+  }
+}

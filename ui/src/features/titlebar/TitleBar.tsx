@@ -7,8 +7,9 @@ import { useAccounts } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Close, Gear, Minus, Square, WindowFrame } from '../../ui/Icon';
 
-/** The custom title bar: drag anywhere that isn't a button. */
-export function TitleBar() {
+/** The custom title bar: drag anywhere that isn't a button. `minimal` keeps only the window
+ *  controls, for screens (first run, settings failed) where account and settings can't be reached. */
+export function TitleBar({ minimal = false }: { minimal?: boolean }) {
   const { t } = useTranslation();
   const accounts = useAccounts();
   const active = accounts.data?.accounts.find((a) => a.uuid === accounts.data?.active) ?? null;
@@ -43,20 +44,24 @@ export function TitleBar() {
         </span>
       </div>
       <div className="flex items-center">
-        <button type="button" className="tb-btn flex" onClick={() => navigate({ name: 'accounts' })}>
-          {active ? (
-            <>
-              <Avatar uuid={active.uuid} size={20} />
-              <span className="font-semibold text-ink">{active.username}</span>
-            </>
-          ) : (
-            t('titlebar.noAccount')
-          )}
-        </button>
-        <button type="button" className="tb-btn" aria-label={t('titlebar.settings')} onClick={() => navigate({ name: 'settings' })}>
-          <Gear aria-hidden />
-        </button>
-        <span className="mx-1 h-4 w-px bg-line" aria-hidden />
+        {!minimal && (
+          <>
+            <button type="button" className="tb-btn flex" onClick={() => navigate({ name: 'accounts' })}>
+              {active ? (
+                <>
+                  <Avatar uuid={active.uuid} size={20} />
+                  <span className="font-semibold text-ink">{active.username}</span>
+                </>
+              ) : (
+                t('titlebar.noAccount')
+              )}
+            </button>
+            <button type="button" className="tb-btn" aria-label={t('titlebar.settings')} onClick={() => navigate({ name: 'settings' })}>
+              <Gear aria-hidden />
+            </button>
+            <span className="mx-1 h-4 w-px bg-line" aria-hidden />
+          </>
+        )}
         <button type="button" className="tb-btn" aria-label={t('titlebar.minimize')} onClick={() => void win.minimize()}>
           <Minus aria-hidden />
         </button>

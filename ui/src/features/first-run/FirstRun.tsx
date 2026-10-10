@@ -25,7 +25,7 @@ function Steps({ current }: { current: number }) {
     <div className="flex items-center gap-2">
       <span className="sr-only">{t('firstRun.step', { n: current + 1, total: STEPS })}</span>
       {Array.from({ length: STEPS }, (_, i) => (
-        <span key={i} aria-hidden className={`h-2 w-6 ${i <= current ? 'bg-amber' : 'bg-line'}`} />
+        <span key={i} aria-hidden className={`h-2 w-6 ${i <= current ? 'bg-blue' : 'bg-line'}`} />
       ))}
     </div>
   );
@@ -104,9 +104,9 @@ export function FirstRun() {
 
   return (
     <div className="grid h-full grid-rows-[2.25rem_1fr]">
-      <TitleBar />
+      <TitleBar minimal />
       <main className="relative min-h-0 overflow-hidden">
-        <Marquee seed="perland" attract className="absolute inset-0 h-full w-full" />
+        <Marquee seed="perland" attract className="absolute inset-0" />
         <div className="relative grid h-full place-items-center p-10">
           <div className="panel grid w-full max-w-lg gap-6 p-8 shadow-[0_8px_0_var(--color-dirt-deep)]">
             {step === 0 && (

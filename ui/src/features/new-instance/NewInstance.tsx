@@ -41,7 +41,7 @@ export function NewInstance() {
           <ComingSoon label={t('newInstance.mrpack')} icon={<Package className="h-5 w-5" />} />
         </div>
         {create.isError && <ErrorCard error={create.error} />}
-        <div className="flex justify-end gap-3">
+        <div className="sticky bottom-0 flex justify-end gap-3 bg-ground py-4 shadow-[0_-1px_0_var(--color-line)]">
           <Button onClick={() => navigate({ name: 'home', id: null })}>{t('common.cancel')}</Button>
           <Button type="submit" variant="primary" size="lg" disabled={!choice.resolved.ready || create.isPending}>
             {create.isPending ? t('newInstance.creating') : t('newInstance.create')}
