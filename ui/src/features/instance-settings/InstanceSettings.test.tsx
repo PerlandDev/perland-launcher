@@ -26,13 +26,12 @@ it('keeps the current loader and its version, even when the list no longer offer
   expect(await screen.findByRole('combobox', { name: 'Loader version' })).toHaveValue('0.16.14');
 });
 
-it('saves a Forge instance with its game unchanged and explains that the version cannot change yet', async () => {
+it('shows a Forge instance on Forge and saves its game unchanged', async () => {
   const forge = { minecraft: '1.20.1', loader: { kind: 'forge', version: '47.2.0' } } as const;
   const { user, calls, backend } = renderApp(<InstanceSettings id="asalith-fields" />);
   backend.state.listing.instances[0]!.game = structuredClone(forge);
-  expect(await screen.findByText(/This instance uses Forge\. Changing its version isn't available in the launcher yet\./)).toBeInTheDocument();
-  expect(screen.queryByRole('combobox', { name: 'Minecraft version' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('radio', { name: 'Fabric' })).not.toBeInTheDocument();
+  expect(await screen.findByRole('radio', { name: 'Forge' })).toBeChecked();
+  expect(await screen.findByRole('combobox', { name: 'Loader version' })).toHaveValue('47.2.0');
   await user.click(await screen.findByRole('button', { name: 'Save' }));
   const saved = sent(calls, 'instance_update')[0] as { instance: { game: unknown } };
   expect(saved.instance.game).toEqual(forge);

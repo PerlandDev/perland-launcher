@@ -7,7 +7,7 @@ use std::{
 use launcher_core::{
     download::{DownloadRequest, Downloader, ExistingCheck, Hashes},
     events::{Event, EventSink, TaskId},
-    ErrorCategory,
+    ErrorCategory, ErrorCode,
 };
 use wiremock::{
     matchers::{header, method, path},
@@ -272,4 +272,39 @@ async fn overlapping_fetches_of_one_dest_download_once() {
     b.unwrap();
     assert_eq!(std::fs::read_to_string(&dest).unwrap(), "hello");
     assert!(!part_of(&dest).exists());
+}
+
+#[tokio::test]
+async fn empty_url_fails_fast_without_retrying() {
+    let dir = tempfile::tempdir().unwrap();
+    let req = DownloadRequest::new(
+        "",
+        dir.path().join("forge-client.jar"),
+        Hashes::sha1(HELLO_SHA1),
+        Some(5),
+    );
+    // A 30 s backoff would blow the 5 s budget on the first retry.
+    let slow = Downloader::new(reqwest::Client::new()).with_backoff(Duration::from_secs(30));
+    let err = tokio::time::timeout(Duration::from_secs(5), slow.fetch(&req))
+        .await
+        .expect("an empty address must not be retried")
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::DownloadNoUrl);
+}
+
+#[tokio::test]
+async fn malformed_url_moves_on_to_the_next_url() {
+    let server = MockServer::start().await;
+    serve(&server, "/hello.txt", 200, "hello", 1).await;
+    let dir = tempfile::tempdir().unwrap();
+    let dest = dir.path().join("hello.txt");
+    let mut req =
+        DownloadRequest::new("not a url", dest.clone(), Hashes::sha1(HELLO_SHA1), Some(5));
+    req.urls.push(format!("{}/hello.txt", server.uri()));
+    let slow = Downloader::new(reqwest::Client::new()).with_backoff(Duration::from_secs(30));
+    tokio::time::timeout(Duration::from_secs(5), slow.fetch(&req))
+        .await
+        .expect("a malformed address must not be retried")
+        .unwrap();
+    assert_eq!(std::fs::read_to_string(&dest).unwrap(), "hello");
 }

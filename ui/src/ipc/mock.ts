@@ -204,6 +204,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       } else if (run.state === 'running') {
         setState(state, id, 'stopping');
         setTimeout(() => {
+          if (state.runs.get(id) !== run) return;
           state.runs.delete(id);
           event({ type: 'run_state', instance: id, state: 'idle', exit: { code: null, killed: true, cancelled: false, crash: null, error: null } });
         }, 400);
@@ -257,8 +258,21 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
   }
 }
 
+/** Every backend created so far, so tests can stop their scripted runs at teardown. */
+const backends = new Set<MockState>();
+
+/** Stop every scripted run. A run left going outlives its test and emits after the IPC mocks are gone. */
+export function stopMockRuns() {
+  for (const state of backends) {
+    for (const run of state.runs.values()) run.cancelled = true;
+    state.runs.clear();
+  }
+  backends.clear();
+}
+
 export function createMockBackend(options: MockOptions = {}) {
   const state = seed(options);
+  backends.add(state);
   return {
     state,
     // Real IPC hands back fresh objects; a shared reference would make TanStack Query see "no change".

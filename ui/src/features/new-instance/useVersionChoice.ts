@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import type { GameSpec, LoaderSpec } from '../../ipc/schema';
+import type { GameSpec, LoaderKind, LoaderSpec } from '../../ipc/schema';
 import { useLoaderVersions, useMcVersions } from '../../state/queries';
 
-export type LoaderChoice = 'none' | 'fabric' | 'quilt';
+export type LoaderChoice = 'none' | LoaderKind;
 
 /** Version and loader state for a form. Unset choices resolve to the newest release and the
  *  newest stable loader, derived on render (no effects), so defaults follow the lists as they load. */
@@ -10,8 +10,7 @@ export function useVersionChoice(initial?: GameSpec) {
   const versions = useMcVersions();
   const [snapshots, setSnapshots] = useState(false);
   const [minecraft, setMinecraft] = useState<string | null>(initial?.minecraft ?? null);
-  // Forge and NeoForge are not offered yet: an instance that has one starts as "None" with no stale version.
-  const initialKind = initial?.loader?.kind === 'fabric' || initial?.loader?.kind === 'quilt' ? initial.loader.kind : null;
+  const initialKind = initial?.loader?.kind ?? null;
   const [loader, setLoader] = useState<LoaderChoice>(initialKind ?? 'none');
   const [loaderVersion, setLoaderVersion] = useState<string | null>(initialKind ? (initial?.loader?.version ?? null) : null);
 

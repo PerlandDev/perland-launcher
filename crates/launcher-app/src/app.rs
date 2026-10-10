@@ -164,15 +164,6 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     pub async fn instance_create(&self, request: NewInstance) -> Result<Instance> {
-        if let Some(loader) = &request.loader {
-            if matches!(loader.kind, LoaderKind::Forge | LoaderKind::NeoForge) {
-                return Err(LauncherError::loader(
-                    ErrorCode::LoaderUnsupported,
-                    format!("{:?} isn't supported yet", loader.kind),
-                )
-                .with_param("loader", format!("{:?}", loader.kind)));
-            }
-        }
         // A hand-edited settings file can hold any number; clamp so create + update can't
         // half-succeed and leave an instance behind.
         let memory = self
@@ -387,7 +378,7 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn create_uses_the_default_memory_and_refuses_forge() {
+    async fn create_uses_the_default_memory_and_accepts_forge() {
         let (core, _, _, _t) = core(BuildKind::Dev);
         core.settings_set(Settings {
             default_memory_mb: 6144,
@@ -404,11 +395,9 @@ pub(crate) mod tests {
             }),
             ..vanilla("Forge")
         };
-        assert_eq!(
-            core.instance_create(forge).await.unwrap_err().code,
-            ErrorCode::LoaderUnsupported
-        );
-        assert_eq!(core.instances_list().await.unwrap().instances.len(), 1);
+        let created_forge = core.instance_create(forge).await.unwrap();
+        assert_eq!(created_forge.game.loader.unwrap().kind, LoaderKind::Forge);
+        assert_eq!(core.instances_list().await.unwrap().instances.len(), 2);
     }
 
     #[tokio::test]

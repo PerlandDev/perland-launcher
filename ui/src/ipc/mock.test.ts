@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { createMockBackend } from './mock';
+import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
+import { describe, expect, it, vi } from 'vitest';
+import { createMockBackend, stopMockRuns } from './mock';
 import type { AccountsFile, InstanceListing, Settings } from './schema';
 
 describe('mock backend', () => {
@@ -56,5 +57,29 @@ describe('mock backend', () => {
   it('rejects offline accounts in a release-like build', async () => {
     const { handle } = createMockBackend({ release: true });
     await expect(handle('account_add_offline', { name: 'Steve' })).rejects.toMatchObject({ code: 'offline_locked' });
+  });
+});
+
+describe('scripted runs', () => {
+  it('stop for good when a test tears the backend down', async () => {
+    vi.useFakeTimers();
+    try {
+      const emitted: unknown[] = [];
+      mockIPC((cmd, args) => {
+        if (cmd === 'plugin:event|emit') emitted.push(args);
+        return null;
+      });
+      const { handle } = createMockBackend();
+      await handle('play', { id: 'asalith-fields' });
+      await vi.advanceTimersByTimeAsync(5_000); // queued → preparing → running
+      expect(emitted.length).toBeGreaterThan(0);
+      stopMockRuns();
+      emitted.length = 0;
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(emitted).toEqual([]);
+    } finally {
+      clearMocks();
+      vi.useRealTimers();
+    }
   });
 });

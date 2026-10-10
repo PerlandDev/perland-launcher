@@ -13,14 +13,16 @@ function Probe({ initial }: { initial: GameSpec }) {
   );
 }
 
-it('drops the version of a loader the picker cannot offer instead of carrying it over', async () => {
+it('keeps a Forge instance on Forge with its version', async () => {
   renderApp(<Probe initial={{ minecraft: '1.20.1', loader: { kind: 'forge', version: '47.2.0' } }} />);
-  expect(JSON.parse((await screen.findByTestId('probe')).textContent ?? '')).toEqual({
-    minecraft: '1.20.1',
-    loader: 'none',
-    chosenLoader: null,
-    resolved: null,
-  });
+  await waitFor(() =>
+    expect(JSON.parse(screen.getByTestId('probe').textContent ?? '')).toEqual({
+      minecraft: '1.20.1',
+      loader: 'forge',
+      chosenLoader: '47.2.0',
+      resolved: { kind: 'forge', version: '47.2.0' },
+    }),
+  );
 });
 
 function LoadedProbe({ initial }: { initial: GameSpec }) {

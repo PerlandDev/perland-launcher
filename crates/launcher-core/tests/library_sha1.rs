@@ -105,3 +105,20 @@ async fn published_sha1_needs_no_lookup() {
     assert_eq!(reqs[0].hashes.sha1.as_deref(), Some(SHA_A));
     assert!(server.received_requests().await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn captive_portal_page_does_not_replace_a_cached_sha1() {
+    let server = MockServer::start().await;
+    serve(&server, "/a.jar.sha1", 200, SHA_A).await;
+    let dir = tempfile::tempdir().unwrap();
+    let cache = dir.path().join("meta");
+    let url = format!("{}/a.jar", server.uri());
+    let mut first = vec![unhashed(url.clone(), dir.path())];
+    fill_missing_sha1(&meta(&cache), &mut first).await.unwrap();
+
+    server.reset().await;
+    serve(&server, "/a.jar.sha1", 200, "<html>login</html>").await;
+    let mut again = vec![unhashed(url, dir.path())];
+    fill_missing_sha1(&meta(&cache), &mut again).await.unwrap();
+    assert_eq!(again[0].hashes.sha1.as_deref(), Some(SHA_A));
+}

@@ -23,8 +23,12 @@ use crate::{
     accounts::Session,
     error::{ErrorCode, LauncherError, Result},
     events::{Event, EventSink},
+    fsutil::write_atomic,
     install::{classpath, ResolvedVersion},
-    meta::rules::{resolve_args, RuleContext},
+    meta::{
+        mojang::LEGACY_JVM_ARGS,
+        rules::{resolve_args, RuleContext},
+    },
     paths::LauncherDirs,
     platform::Platform,
 };
@@ -227,15 +231,7 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
                 .iter()
                 .map(|t| substitute(t, &vars)),
         ),
-        _ => args.extend(
-            [
-                "-Djava.library.path=${natives_directory}",
-                "-cp",
-                "${classpath}",
-            ]
-            .iter()
-            .map(|t| substitute(t, &vars)),
-        ),
+        _ => args.extend(LEGACY_JVM_ARGS.iter().map(|t| substitute(t, &vars))),
     }
     if let Some(client) = json.logging.as_ref().and_then(|l| l.client.as_ref()) {
         let path_var = HashMap::from([("path", path_str(&spec.dirs.log_config(&client.file.id)))]);
@@ -274,6 +270,65 @@ pub fn missing_files(cmd: &LaunchCommand) -> Vec<PathBuf> {
         .chain(classpath_missing)
         .cloned()
         .collect()
+}
+
+/// Longest command line started directly. Windows refuses anything over 32,767 characters; past
+/// this, the JVM arguments move into a Java argument file.
+pub const ARGFILE_THRESHOLD: usize = 30_000;
+
+/// About how long the OS command line is: the program and every argument, quoted and spaced.
+pub fn command_line_len(cmd: &LaunchCommand) -> usize {
+    cmd.program.as_os_str().len() + 2 + cmd.args.iter().map(|a| a.len() + 3).sum::<usize>()
+}
+
+/// Java reads `@argfile`s from version 9 on; an unknown version gets the plain command line.
+pub fn wants_argfile(cmd: &LaunchCommand, java_major: Option<u32>) -> bool {
+    command_line_len(cmd) > ARGFILE_THRESHOLD && java_major.is_some_and(|m| m >= 9)
+}
+
+/// A Java `@argfile` body: one argument per line, each in double quotes, with `\` and `"`
+/// escaped (inside quotes Java treats `\` as an escape; outside them `#` starts a comment).
+pub fn argfile_text(args: &[String]) -> String {
+    let mut out = String::new();
+    for arg in args {
+        out.push('"');
+        for c in arg.chars() {
+            match c {
+                '\\' => out.push_str("\\\\"),
+                '"' => out.push_str("\\\""),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                _ => out.push(c),
+            }
+        }
+        out.push_str("\"\n");
+    }
+    out
+}
+
+/// Move the JVM arguments (everything before `main_class`) into the argfile at `path`. The game
+/// arguments, which carry the access token, stay on the command line. If any JVM argument holds
+/// `secret`, nothing is written and the command comes back unchanged.
+pub async fn with_argfile(
+    cmd: &LaunchCommand,
+    main_class: &str,
+    path: &Path,
+    secret: &str,
+) -> Result<LaunchCommand> {
+    let Some(split) = cmd.args.iter().position(|a| a == main_class) else {
+        return Ok(cmd.clone());
+    };
+    let jvm = &cmd.args[..split];
+    if secret.len() >= 4 && jvm.iter().any(|a| a.contains(secret)) {
+        return Ok(cmd.clone());
+    }
+    write_atomic(path, argfile_text(jvm).as_bytes()).await?;
+    let mut args = vec![format!("@{}", path.display())];
+    args.extend_from_slice(&cmd.args[split..]);
+    Ok(LaunchCommand {
+        args,
+        ..cmd.clone()
+    })
 }
 
 /// Decode one raw output line lossily (invalid bytes become U+FFFD) and strip the trailing `\n` / `\r\n`.
@@ -551,6 +606,7 @@ mod tests {
         let resolved = ResolvedVersion {
             vanilla_id: "1.20.1".into(),
             json: version("1.20.1.json"),
+            forge: None,
         };
         let cmd = build(&resolved, WINDOWS_X64);
         let a = &cmd.args;
@@ -593,6 +649,7 @@ mod tests {
         let resolved = ResolvedVersion {
             vanilla_id: "1.12.2".into(),
             json: version("1.12.2.json"),
+            forge: None,
         };
         let cmd = build(&resolved, LINUX_X64);
         assert!(cmd
@@ -612,6 +669,7 @@ mod tests {
                 version("1.20.1.json"),
                 version("fabric-1.20.1-0.16.14.json"),
             ),
+            forge: None,
         };
         let cmd = build(&resolved, WINDOWS_X64);
         assert!(cmd
@@ -909,5 +967,150 @@ mod tests {
             classpath: vec![PathBuf::from("lib.jar"), PathBuf::from("absent.jar")],
         };
         assert_eq!(missing_files(&cmd), vec![PathBuf::from("absent.jar")]);
+    }
+
+    #[test]
+    fn forge_ignore_list_names_the_jar_on_the_classpath() {
+        let cmd = build(&crate::test_support::forge_resolved(), WINDOWS_X64);
+        let jar = cmd
+            .classpath
+            .last()
+            .unwrap()
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let ignore = cmd
+            .args
+            .iter()
+            .find(|a| a.starts_with("-DignoreList="))
+            .unwrap();
+        assert!(
+            ignore.ends_with(&format!(",{jar}")),
+            "{ignore} must name {jar}"
+        );
+        assert_eq!(arg_after(&cmd.args, "--launchTarget"), "forgeclient");
+        assert_eq!(arg_after(&cmd.args, "--username"), "Steve");
+        assert!(!cmd.args.iter().any(|x| x.contains("${")), "{:?}", cmd.args);
+    }
+
+    fn long_command() -> LaunchCommand {
+        LaunchCommand {
+            program: "/j/bin/java".into(),
+            args: vec![
+                "-Xmx1M".into(),
+                "-cp".into(),
+                "x".repeat(ARGFILE_THRESHOLD),
+                "net.minecraft.client.main.Main".into(),
+                "--accessToken".into(),
+                "tok-0123456789".into(),
+            ],
+            cwd: "/pl/instances/x/minecraft".into(),
+            classpath: vec![],
+        }
+    }
+
+    #[test]
+    fn argfile_only_for_long_lines_on_java_9_and_newer() {
+        let long = long_command();
+        assert!(command_line_len(&long) > ARGFILE_THRESHOLD);
+        assert!(wants_argfile(&long, Some(17)));
+        assert!(!wants_argfile(&long, Some(8)));
+        assert!(!wants_argfile(&long, None));
+        let mut short = long;
+        short.args[2] = "a.jar".into();
+        assert!(!wants_argfile(&short, Some(17)));
+    }
+
+    #[test]
+    fn argfile_text_quotes_every_argument() {
+        let text = argfile_text(&[
+            r#"C:\Program Files\x y#z"q"#.to_string(),
+            "plain".to_string(),
+        ]);
+        assert_eq!(text, "\"C:\\\\Program Files\\\\x y#z\\\"q\"\n\"plain\"\n");
+    }
+
+    #[tokio::test]
+    async fn argfile_keeps_game_arguments_on_the_command_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join(".perland/jvm-args.txt");
+        let cmd = long_command();
+        let out = with_argfile(
+            &cmd,
+            "net.minecraft.client.main.Main",
+            &file,
+            "tok-0123456789",
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            out.args,
+            vec![
+                format!("@{}", file.display()),
+                "net.minecraft.client.main.Main".to_string(),
+                "--accessToken".to_string(),
+                "tok-0123456789".to_string(),
+            ]
+        );
+        let written = std::fs::read_to_string(&file).unwrap();
+        assert!(written.starts_with("\"-Xmx1M\"\n\"-cp\"\n"));
+        assert!(
+            !written.contains("tok-"),
+            "the token never touches the disk"
+        );
+        assert_eq!(out.cwd, cmd.cwd);
+    }
+
+    #[tokio::test]
+    async fn argfile_is_skipped_when_a_jvm_argument_holds_the_secret() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("jvm-args.txt");
+        let mut cmd = long_command();
+        cmd.args[0] = "-Dleak=tok-0123456789".into();
+        let out = with_argfile(
+            &cmd,
+            "net.minecraft.client.main.Main",
+            &file,
+            "tok-0123456789",
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.args, cmd.args);
+        assert!(!file.exists());
+    }
+
+    #[test]
+    fn java_reads_the_argfile_back() {
+        // Skipped where no java is installed, or where it is older than Java 9 (no `@argfile`).
+        let Ok(probe) = std::process::Command::new("java").arg("-version").output() else {
+            return;
+        };
+        let version_text = String::from_utf8_lossy(&probe.stderr);
+        if !crate::java::parse_java_version(&version_text).is_some_and(|m| m >= 9) {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("args.txt");
+        let tricky = r#"C:\Program Files\x y#z"q"#;
+        std::fs::write(
+            &file,
+            argfile_text(&[
+                format!("-Dperland.tricky={tricky}"),
+                "-Dperland.plain=ok".into(),
+            ]),
+        )
+        .unwrap();
+        let out = std::process::Command::new("java")
+            .arg(format!("@{}", file.display()))
+            .args(["-XshowSettings:properties", "-version"])
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            text.contains(&format!("perland.tricky = {tricky}")),
+            "{text}"
+        );
+        assert!(text.contains("perland.plain = ok"), "{text}");
     }
 }

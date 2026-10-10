@@ -54,7 +54,7 @@ it('lists, toggles, adds and removes mods', async () => {
 
 it('tells vanilla players they need a loader', async () => {
   renderApp(<Mods id="creative-flat" />);
-  expect(await screen.findByText(/Mods need Fabric or Quilt/)).toBeInTheDocument();
+  expect(await screen.findByText(/Mods need a mod loader/)).toBeInTheDocument();
 });
 
 it('says so when there are no mods yet', async () => {

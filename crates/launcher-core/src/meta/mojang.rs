@@ -6,6 +6,13 @@ pub const VERSION_MANIFEST_URL: &str =
     "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
 pub const RESOURCES_URL: &str = "https://resources.download.minecraft.net";
 
+/// The JVM arguments every pre-1.13 version implies: its JSON only has `minecraftArguments`.
+pub const LEGACY_JVM_ARGS: [&str; 3] = [
+    "-Djava.library.path=${natives_directory}",
+    "-cp",
+    "${classpath}",
+];
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct VersionManifest {
     pub latest: Latest,

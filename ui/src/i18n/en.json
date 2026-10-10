@@ -65,7 +65,8 @@
   },
   "progress": {
     "install_minecraft": "Installing Minecraft {{version}}",
-    "download_java": "Downloading Java {{version}}"
+    "download_java": "Downloading Java {{version}}",
+    "install_loader": "Setting up {{loader}} {{version}}"
   },
   "activity": {
     "title": "Activity",
@@ -95,6 +96,8 @@
     "loaderNone": "None",
     "loaderFabric": "Fabric",
     "loaderQuilt": "Quilt",
+    "loaderForge": "Forge",
+    "loaderNeoForge": "NeoForge",
     "loaderVersion": "Loader version",
     "stable": "{{version}} (stable)",
     "beta": "{{version}} (beta)",
@@ -122,7 +125,6 @@
     "javaTest": "Test",
     "javaOk": "Java {{major}} works",
     "javaFiles": "Java program",
-    "loaderFixed": "This instance uses {{loader}}. Changing its version isn't available in the launcher yet.",
     "applyNote": "Changes apply the next time you press Play."
   },
   "damaged": {
@@ -137,7 +139,7 @@
     "add": "Add mods",
     "dropHere": "Drop .jar files to add them",
     "empty": "No mods yet. Add .jar files, or drop them anywhere on this screen.",
-    "vanillaNote": "Mods need Fabric or Quilt. You can switch this instance's loader in its settings.",
+    "vanillaNote": "Mods need a mod loader: Fabric, Quilt, Forge or NeoForge. You can switch this instance's loader in its settings.",
     "running": "Stop the game to turn mods on or off or remove them. New mods you add apply the next time you press Play.",
     "toggle": "Use {{name}}",
     "remove": "Remove {{name}}",
@@ -250,8 +252,12 @@
     "no_game_arguments": { "message": "{{version}} doesn't say how to start the game.", "fix": "Pick a different version." },
     "game_files_missing": { "message": "{{count}} game files are missing.", "fix": "Press Play again to repair the instance." },
     "version_invalid": { "message": "“{{value}}” isn't a valid version.", "fix": "Pick a version from the list." },
-    "loader_unsupported": { "message": "{{loader}} isn't supported yet.", "fix": "Use Fabric or Quilt for now." },
+    "loader_unsupported": { "message": "{{loader}} isn't supported yet.", "fix": "Pick another loader." },
     "loader_version_not_found": { "message": "{{loader}} {{loader_version}} isn't available for Minecraft {{version}}.", "fix": "Pick a loader version from the list." },
+    "loader_installer_invalid": { "message": "The mod loader's installer couldn't be read.", "fix": "Try again. If it keeps happening, pick another loader version." },
+    "loader_too_old": { "message": "This loader version is too old for the launcher.", "fix": "Pick a newer Minecraft version, or another loader." },
+    "loader_processor_failed": { "message": "Setting up the mod loader failed.", "fix": "Try again. If it keeps happening, copy the details and ask for help." },
+    "loader_output_corrupt": { "message": "A file the mod loader built came out damaged.", "fix": "Try again." },
     "meta_cache_missing": { "message": "A saved download list is missing.", "fix": "Connect to the internet and try again." },
     "meta_not_found": { "message": "A version list wasn't found on the server.", "fix": "Check that this version exists." },
     "meta_checksum": { "message": "A downloaded version list was damaged.", "fix": "Try again in a minute." },

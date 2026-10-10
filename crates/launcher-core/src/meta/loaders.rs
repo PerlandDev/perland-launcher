@@ -39,12 +39,8 @@ pub fn profile_url(kind: LoaderKind, mc: &str, loader: &str) -> Option<String> {
     }
 }
 
-pub async fn fetch_profile(
-    meta: &MetaClient,
-    kind: LoaderKind,
-    mc: &str,
-    loader: &str,
-) -> Result<VersionJson> {
+/// Both version strings must be safe to put in a URL path.
+pub(crate) fn check_versions(mc: &str, loader: &str) -> Result<()> {
     for value in [mc, loader] {
         if !valid_component(value) {
             return Err(LauncherError::loader(
@@ -55,6 +51,16 @@ pub async fn fetch_profile(
             .with_fix("Pick a version from the list instead of typing one in"));
         }
     }
+    Ok(())
+}
+
+pub async fn fetch_profile(
+    meta: &MetaClient,
+    kind: LoaderKind,
+    mc: &str,
+    loader: &str,
+) -> Result<VersionJson> {
+    check_versions(mc, loader)?;
     let Some(url) = profile_url(kind, mc, loader) else {
         return Err(LauncherError::loader(
             ErrorCode::LoaderUnsupported,
@@ -70,7 +76,12 @@ pub async fn fetch_profile(
 
 /// Being offline is not the loader version's fault, so network errors pass through unchanged;
 /// anything else (a 4xx, or a profile that doesn't parse) points at the chosen versions.
-fn map_profile_error(kind: LoaderKind, mc: &str, loader: &str, e: LauncherError) -> LauncherError {
+pub(crate) fn map_profile_error(
+    kind: LoaderKind,
+    mc: &str,
+    loader: &str,
+    e: LauncherError,
+) -> LauncherError {
     if e.category == ErrorCategory::Network {
         return e;
     }

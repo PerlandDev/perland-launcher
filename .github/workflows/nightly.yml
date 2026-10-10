@@ -23,9 +23,20 @@ jobs:
           cargo run -q -p perland-cli -- --root "$ROOT" offline CiBot
           ID=$(cargo run -q -p perland-cli -- --root "$ROOT" create --name "CI Fabric" --mc 1.20.1 --loader fabric --loader-version 0.16.14)
           cargo run -q -p perland-cli -- --root "$ROOT" launch --instance "$ID" --dry-run
+      - name: Install Forge 1.20.1-47.4.22 (installer processors), then launch dry-run
+        shell: bash
+        run: |
+          ROOT="$RUNNER_TEMP/perland"
+          ID=$(cargo run -q -p perland-cli -- --root "$ROOT" create --name "CI Forge" --mc 1.20.1 --loader forge --loader-version 47.4.22)
+          cargo run -q -p perland-cli -- --root "$ROOT" launch --instance "$ID" --dry-run
+          test -f "$ROOT/libraries/net/minecraftforge/forge/1.20.1-47.4.22/forge-1.20.1-47.4.22-client.jar"
+          test -f "$ROOT/versions/1.20.1-forge-47.4.22/1.20.1-forge-47.4.22.jar"
       - name: Second run is offline-capable and skips downloads
         shell: bash
         run: |
           ROOT="$RUNNER_TEMP/perland"
-          ID=$(cargo run -q -p perland-cli -- --root "$ROOT" list | cut -f1 | head -n1)
-          time cargo run -q -p perland-cli -- --root "$ROOT" launch --instance "$ID" --dry-run
+          IDS=$(cargo run -q -p perland-cli -- --root "$ROOT" list | cut -f1)
+          test -n "$IDS"
+          for ID in $IDS; do
+            time cargo run -q -p perland-cli -- --root "$ROOT" launch --instance "$ID" --dry-run
+          done

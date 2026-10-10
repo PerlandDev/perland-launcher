@@ -22,6 +22,18 @@ it('creates a Fabric instance with the newest release and stable loader by defau
   await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'minecraft-26-3' }));
 });
 
+it('offers Forge and NeoForge and creates a Forge instance', async () => {
+  const { user, calls } = renderApp(<NewInstance />);
+  await screen.findByRole('option', { name: '26.3' });
+  expect(screen.getByRole('radio', { name: 'NeoForge' })).toBeInTheDocument();
+  await user.click(screen.getByRole('radio', { name: 'Forge' }));
+  expect(await screen.findByRole('combobox', { name: 'Loader version' })).toHaveValue('0.19.5');
+  await user.click(screen.getByRole('button', { name: 'Create instance' }));
+  expect(sent(calls, 'instance_create')).toEqual([
+    { request: { name: 'Minecraft 26.3', minecraft: '26.3', loader: { kind: 'forge', version: '0.19.5' } } },
+  ]);
+});
+
 it('shows snapshots on request and keeps pack imports as coming soon', async () => {
   const { user } = renderApp(<NewInstance />);
   await screen.findByRole('option', { name: '26.3' });
