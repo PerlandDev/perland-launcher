@@ -182,7 +182,8 @@ pub fn changes(wanted: &[&PackFile], managed: Option<&Managed>, to_version: &str
             None => {
                 added.insert(f.name.clone());
             }
-            Some(entry) if entry.declared != f.hashes => {
+            // A preserved file is only written when absent, so a new version never updates it.
+            Some(entry) if entry.declared != f.hashes && f.mode != FileMode::Preserve => {
                 updated.insert(f.name.clone());
             }
             Some(_) => {}
@@ -583,5 +584,14 @@ mod tests {
             (first.from_version, first.added),
             (None, vec!["Fresh".to_string()])
         );
+    }
+
+    #[test]
+    fn a_preserved_file_is_never_reported_as_updated() {
+        // Preserve files are only written when absent, so a new pack version never changes them.
+        let cfg = pf("config/a.toml", FileMode::Preserve, "c2");
+        let lock = managed(&[("config/a.toml", entry("a.toml", "c1", "c1"))]);
+        let c = changes(&[&cfg], Some(&lock), "2.0");
+        assert!(c.is_empty(), "{c:?}");
     }
 }

@@ -6,9 +6,10 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
+    time::Duration,
 };
 
-use common::{hits, sources, PackBuilder};
+use common::{hits, sources, write_zip, PackBuilder};
 use launcher_core::{
     error::{LauncherError, Result},
     events::{Event, EventSink},
@@ -16,10 +17,17 @@ use launcher_core::{
     locks::InstanceLock,
     meta::loaders::LoaderKind,
     sources::{DesiredState, PackInput, UpdateCheck},
-    sync::{lockfile::Managed, BoxFuture, GameInstall, SyncOutcome, SyncReport, Syncer},
+    sync::{
+        lockfile::{additions, Managed},
+        BoxFuture, GameInstall, SyncOutcome, SyncReport, Syncer,
+    },
     ErrorCode,
 };
-use wiremock::MockServer;
+use serde_json::json;
+use wiremock::{
+    matchers::{method, path},
+    Mock, MockServer, ResponseTemplate,
+};
 
 /// Records installs instead of installing; `fail` makes them fail.
 #[derive(Default)]
@@ -552,5 +560,287 @@ async fn offline_ensure_uses_the_installed_snapshot_with_a_warning() {
             .unwrap_err()
             .code,
         ErrorCode::NoPack
+    );
+}
+
+fn trashed(env: &Env, id: &str, rel: &str) -> Option<PathBuf> {
+    let trash = env.store.perland_dir(id).join("trash");
+    std::fs::read_dir(trash)
+        .ok()?
+        .flatten()
+        .map(|d| d.path().join(rel))
+        .find(|p| p.exists())
+}
+
+#[tokio::test]
+async fn update_keeps_additions_and_preserved_configs() {
+    let env = Env::new().await;
+    let url = v1(&env.server)
+        .url_mod("gone", "gone.jar", b"gone", "both", None)
+        .mount(&env.server)
+        .await;
+    let (instance, _) = env
+        .syncer
+        .add_pack(&env.store, &PackInput::Packwiz { url })
+        .await
+        .unwrap();
+    env.syncer
+        .ensure(&env.store, &instance.id, &env.sink())
+        .await
+        .unwrap();
+    std::fs::write(env.game_file(&instance.id, "mods/mine.jar"), b"my own mod").unwrap();
+    std::fs::write(
+        env.game_file(&instance.id, "config/a.toml"),
+        b"a = 42 # mine",
+    )
+    .unwrap();
+
+    env.server.reset().await;
+    PackBuilder::new(&env.server, "Tiny", "2.0.0")
+        .url_mod("appleskin", "appleskin.jar", b"apple v2", "both", None)
+        .url_mod("zoom", "zoom.jar", b"zoom", "client", None)
+        .url_mod("jei", "jei.jar", b"jei", "both", None)
+        .file("config/a.toml", b"a = 2", true)
+        .mount(&env.server)
+        .await;
+    let report = done(
+        env.syncer
+            .ensure(&env.store, &instance.id, &env.sink())
+            .await
+            .unwrap()
+            .outcome,
+    );
+
+    assert_eq!(report.changes.added, vec!["jei"]);
+    assert_eq!(report.changes.updated, vec!["appleskin"]);
+    assert_eq!(report.changes.removed, vec!["gone"]);
+    assert_eq!(
+        std::fs::read(env.game_file(&instance.id, "mods/appleskin.jar")).unwrap(),
+        b"apple v2"
+    );
+    assert_eq!(
+        std::fs::read(env.game_file(&instance.id, "mods/mine.jar")).unwrap(),
+        b"my own mod"
+    );
+    assert_eq!(
+        std::fs::read(env.game_file(&instance.id, "config/a.toml")).unwrap(),
+        b"a = 42 # mine"
+    );
+    assert!(!env.game_file(&instance.id, "mods/gone.jar").exists());
+    assert!(
+        trashed(&env, &instance.id, "mods/gone.jar").is_some(),
+        "removed files go to the trash"
+    );
+    let managed = Managed::load(&env.store.perland_dir(&instance.id)).await;
+    assert_eq!(
+        additions(&env.store.game_dir(&instance.id), managed.as_ref())
+            .await
+            .unwrap(),
+        vec!["mine.jar"]
+    );
+}
+
+#[tokio::test]
+async fn a_player_file_where_the_pack_now_puts_one_goes_to_the_trash() {
+    let env = Env::new().await;
+    let url = v1(&env.server).mount(&env.server).await;
+    let (instance, _) = env
+        .syncer
+        .add_pack(&env.store, &PackInput::Packwiz { url })
+        .await
+        .unwrap();
+    env.syncer
+        .ensure(&env.store, &instance.id, &env.sink())
+        .await
+        .unwrap();
+    std::fs::write(env.game_file(&instance.id, "mods/jei.jar"), b"player's jei").unwrap();
+
+    env.server.reset().await;
+    v1(&env.server)
+        .with_version("1.1.0")
+        .url_mod("jei", "jei.jar", b"pack jei", "both", None)
+        .mount(&env.server)
+        .await;
+    env.syncer
+        .ensure(&env.store, &instance.id, &env.sink())
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read(env.game_file(&instance.id, "mods/jei.jar")).unwrap(),
+        b"pack jei"
+    );
+    let kept = trashed(&env, &instance.id, "mods/jei.jar").expect("kept in the trash");
+    assert_eq!(std::fs::read(kept).unwrap(), b"player's jei");
+}
+
+#[tokio::test]
+async fn optional_toggles_apply_from_the_snapshot() {
+    let env = Env::new().await;
+    let url = v1(&env.server).mount(&env.server).await;
+    let (mut instance, _) = env
+        .syncer
+        .add_pack(&env.store, &PackInput::Packwiz { url })
+        .await
+        .unwrap();
+    instance.update_policy = UpdatePolicy::Pinned; // no update checks: only the snapshot
+    env.store.save(&instance).await.unwrap();
+    env.syncer
+        .ensure(&env.store, &instance.id, &env.sink())
+        .await
+        .unwrap();
+    assert!(!env.game_file(&instance.id, "mods/shaders.jar").exists());
+    let pack_reads = hits(&env.server, "/pack/pack.toml").await;
+
+    instance
+        .optional_choices
+        .insert("mods/shaders.jar".into(), true);
+    env.store.save(&instance).await.unwrap();
+    let report = done(
+        env.syncer
+            .ensure(&env.store, &instance.id, &env.sink())
+            .await
+            .unwrap()
+            .outcome,
+    );
+    assert!(!report.up_to_date);
+    assert!(env.game_file(&instance.id, "mods/shaders.jar").exists());
+
+    instance
+        .optional_choices
+        .insert("mods/shaders.jar".into(), false);
+    env.store.save(&instance).await.unwrap();
+    env.syncer
+        .ensure(&env.store, &instance.id, &env.sink())
+        .await
+        .unwrap();
+    assert!(!env.game_file(&instance.id, "mods/shaders.jar").exists());
+    assert!(trashed(&env, &instance.id, "mods/shaders.jar").is_some());
+    assert_eq!(
+        hits(&env.server, "/pack/pack.toml").await,
+        pack_reads,
+        "toggles apply from the installed snapshot, without reading the pack"
+    );
+}
+
+#[tokio::test]
+async fn interrupted_sync_keeps_the_old_state_and_resumes_from_the_cache() {
+    let env = Env::new().await;
+    let url = v1(&env.server).mount(&env.server).await;
+    let (instance, desired) = env
+        .syncer
+        .add_pack(&env.store, &PackInput::Packwiz { url })
+        .await
+        .unwrap();
+    env.syncer
+        .ensure(&env.store, &instance.id, &env.sink())
+        .await
+        .unwrap();
+
+    env.server.reset().await;
+    v1(&env.server)
+        .with_version("1.1.0")
+        .url_mod("alpha", "alpha.jar", b"alpha", "both", None)
+        .url_mod("beta", "beta.jar", b"beta", "both", None)
+        .mount(&env.server)
+        .await;
+    // beta.jar fails (slowly, so alpha finishes first) for the whole first attempt.
+    Mock::given(method("GET"))
+        .and(path("/files/beta.jar"))
+        .respond_with(ResponseTemplate::new(500).set_delay(Duration::from_millis(100)))
+        .with_priority(1)
+        .up_to_n_times(4)
+        .mount(&env.server)
+        .await;
+    let err = env
+        .syncer
+        .ensure(&env.store, &instance.id, &env.sink())
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::HostTrouble);
+    let managed = Managed::load(&env.store.perland_dir(&instance.id))
+        .await
+        .unwrap();
+    assert_eq!(
+        managed.stamp, desired.stamp,
+        "the old lockfile still describes the instance"
+    );
+    assert!(
+        !env.game_file(&instance.id, "mods/alpha.jar").exists(),
+        "nothing was swapped in"
+    );
+    assert!(env.game_file(&instance.id, "mods/zoom.jar").exists());
+
+    done(
+        env.syncer
+            .ensure(&env.store, &instance.id, &env.sink())
+            .await
+            .unwrap()
+            .outcome,
+    );
+    assert!(env.game_file(&instance.id, "mods/alpha.jar").exists());
+    assert!(env.game_file(&instance.id, "mods/beta.jar").exists());
+    assert_eq!(
+        hits(&env.server, "/files/alpha.jar").await,
+        1,
+        "alpha came from the cache the second time"
+    );
+}
+
+fn mrpack(env: &Env, name: &str, overrides: &[(&str, &[u8])]) -> PathBuf {
+    let index = serde_json::to_vec(&json!({
+        "formatVersion": 1, "game": "minecraft", "versionId": name, "name": "Sky",
+        "files": [], "dependencies": { "minecraft": "1.20.1" }
+    }))
+    .unwrap();
+    let file = env._tmp.path().join(format!("{name}.mrpack"));
+    let mut entries: Vec<(&str, &[u8])> = vec![("modrinth.index.json", &index[..])];
+    entries.extend_from_slice(overrides);
+    write_zip(&file, &entries);
+    file
+}
+
+#[tokio::test]
+async fn mrpack_override_edits_survive_an_update() {
+    let env = Env::new().await;
+    let first = mrpack(
+        &env,
+        "1.0",
+        &[
+            ("overrides/config/c.toml", &b"v1"[..]),
+            ("overrides/options.txt", &b"fov:1"[..]),
+        ],
+    );
+    let (instance, desired) = env
+        .syncer
+        .add_pack(&env.store, &PackInput::MrpackFile { path: first })
+        .await
+        .unwrap();
+    assert_eq!(instance.game.loader, None);
+    done(env.sync(&instance.id, &desired).await.unwrap());
+    std::fs::write(env.game_file(&instance.id, "config/c.toml"), b"mine").unwrap();
+
+    let second = mrpack(
+        &env,
+        "2.0",
+        &[
+            ("overrides/config/c.toml", &b"v2"[..]),
+            ("overrides/options.txt", &b"fov:2"[..]),
+        ],
+    );
+    let (_, desired2) = env
+        .syncer
+        .sources
+        .open(&PackInput::MrpackFile { path: second })
+        .await
+        .unwrap();
+    let report = done(env.sync(&instance.id, &desired2).await.unwrap());
+    assert_eq!(report.kept_modified, vec!["config/c.toml"]);
+    assert_eq!(
+        std::fs::read(env.game_file(&instance.id, "config/c.toml")).unwrap(),
+        b"mine"
+    );
+    assert_eq!(
+        std::fs::read(env.game_file(&instance.id, "options.txt")).unwrap(),
+        b"fov:2"
     );
 }
