@@ -26,6 +26,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Queue a run. Everything after this arrives as events.
     pub async fn play(self: &Arc<Self>, id: &str) -> Result<()> {
         let instance = self.instances.load(id).await?;
+        if instance.id != id {
+            return Err(LauncherError::disk(
+                ErrorCode::InstanceDamaged,
+                format!("The settings file of \"{id}\" is damaged"),
+            )
+            .with_param("id", id)
+            .with_fix("Delete the instance and create it again")
+            .with_detail(format!("instance.json says id \"{}\"", instance.id)));
+        }
         let account = self.accounts.lock().await.active().await?.ok_or_else(|| {
             LauncherError::auth(ErrorCode::NoAccount, "Add an account before playing")
                 .with_fix("Open Accounts and add one")
@@ -51,7 +60,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         // Emitted under the lock, before the task exists, so `queued` always comes first.
         self.emit_state(id, RunStateKind::Queued, None);
         let core = Arc::clone(self);
-        let task = tokio::spawn(async move { core.drive(instance, session, minimize).await });
+        let run_id = id.to_string();
+        let task =
+            tokio::spawn(async move { core.drive(run_id, instance, session, minimize).await });
         runs.insert(
             id.to_string(),
             Run {
@@ -193,8 +204,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         })
     }
 
-    async fn drive(self: Arc<Self>, instance: Instance, session: Session, minimize: bool) {
-        let id = instance.id.clone();
+    async fn drive(
+        self: Arc<Self>,
+        id: String,
+        instance: Instance,
+        session: Session,
+        minimize: bool,
+    ) {
         let (log_tx, batcher) = spawn_batcher(id.clone(), self.host.clone(), self.logs.clone());
         let sink = self.run_sink(&id, log_tx);
         let Ok(permit) = self.install_slot.clone().acquire_owned().await else {
@@ -532,6 +548,23 @@ mod tests {
             "first and last of 101 updates"
         );
         core.stop("alpha").unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_copied_instance_with_the_wrong_id_cannot_play() {
+        let (core, _runner, _host, _t) = ready(true).await;
+        let mut copied = core.instances.load("beta").await.unwrap();
+        copied.id = "alpha".into();
+        std::fs::write(
+            core.instances.instance_dir("beta").join("instance.json"),
+            serde_json::to_vec_pretty(&copied).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            core.play("beta").await.unwrap_err().code,
+            ErrorCode::InstanceDamaged
+        );
+        assert!(!core.has_active_runs());
     }
 
     #[tokio::test]
