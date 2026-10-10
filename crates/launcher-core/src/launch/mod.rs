@@ -1082,12 +1082,12 @@ mod tests {
 
     #[test]
     fn java_reads_the_argfile_back() {
-        // Skipped where no java is installed.
-        if std::process::Command::new("java")
-            .arg("-version")
-            .output()
-            .is_err()
-        {
+        // Skipped where no java is installed, or where it is older than Java 9 (no `@argfile`).
+        let Ok(probe) = std::process::Command::new("java").arg("-version").output() else {
+            return;
+        };
+        let version_text = String::from_utf8_lossy(&probe.stderr);
+        if !crate::java::parse_java_version(&version_text).is_some_and(|m| m >= 9) {
             return;
         }
         let tmp = tempfile::tempdir().unwrap();
