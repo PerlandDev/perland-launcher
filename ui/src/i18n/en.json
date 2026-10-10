@@ -156,6 +156,8 @@
     "removeLabel": "Remove {{name}}",
     "removeTitle": "Remove {{name}}?",
     "removeBody": "You can add it again any time. Your worlds stay where they are.",
+    "removeBodyLocked": "Your worlds stay where they are. Offline accounts can only be added after you sign in with a Microsoft account.",
+    "nowUsing": "{{name}} is now in use.",
     "addOffline": "Add offline account",
     "offlineName": "Player name",
     "offlineHint": "3–16 letters, numbers or underscores. Other players see this name.",

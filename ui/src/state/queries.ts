@@ -97,10 +97,15 @@ export function useDeleteInstance(opts: Opts = {}) {
 export function useAccountMutations(opts: Opts = {}) {
   const qc = useQueryClient();
   const onSuccess = (file: Awaited<ReturnType<typeof commands.accountsList>>) => qc.setQueryData(qk.accounts, file);
+  // A failed change may have been made against a stale list, so the list is asked for again.
+  const failed = (error: unknown) => {
+    void qc.invalidateQueries({ queryKey: qk.accounts });
+    onError(opts)(error);
+  };
   return {
-    addOffline: useMutation({ mutationFn: commands.accountAddOffline, onSuccess, onError: onError(opts) }),
-    setActive: useMutation({ mutationFn: commands.accountSetActive, onSuccess, onError: onError(opts) }),
-    remove: useMutation({ mutationFn: commands.accountRemove, onSuccess, onError: onError(opts) }),
+    addOffline: useMutation({ mutationFn: commands.accountAddOffline, onSuccess, onError: failed }),
+    setActive: useMutation({ mutationFn: commands.accountSetActive, onSuccess, onError: failed }),
+    remove: useMutation({ mutationFn: commands.accountRemove, onSuccess, onError: failed }),
   };
 }
 

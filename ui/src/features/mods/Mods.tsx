@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open } from '@tauri-apps/plugin-dialog';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import type { LocalMod } from '../../ipc/schema';
@@ -14,25 +14,13 @@ import { formatBytes } from '../../ui/format';
 import { Folder, InfoBox, Package, Plus, Trash } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Toggle } from '../../ui/Toggle';
+import { useSingleFlight } from '../../ui/useSingleFlight';
 
 const displayName = (fileName: string) => fileName.replace(/\.disabled$/, '').replace(/\.jar$/i, '');
 const isJar = (path: string) => /\.jar$/i.test(path);
 const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
 type Notice = { kind: 'busy' } | { kind: 'skipped'; names: string[] };
-
-/** Lets one run of an action be in flight at a time; the ref closes the gap before React re-renders. Returns whether it started. */
-function useSingleFlight() {
-  const busy = useRef(false);
-  return useCallback((start: (done: () => void) => void) => {
-    if (busy.current) return false;
-    busy.current = true;
-    start(() => {
-      busy.current = false;
-    });
-    return true;
-  }, []);
-}
 
 export function Mods({ id }: { id: string }) {
   const { t, i18n } = useTranslation();

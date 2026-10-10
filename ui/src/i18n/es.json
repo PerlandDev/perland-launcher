@@ -156,6 +156,8 @@
     "removeLabel": "Quitar {{name}}",
     "removeTitle": "¿Quitar {{name}}?",
     "removeBody": "Puedes volver a agregarla cuando quieras. Tus mundos se quedan donde están.",
+    "removeBodyLocked": "Tus mundos se quedan donde están. Las cuentas sin conexión solo se pueden agregar después de iniciar sesión con una cuenta de Microsoft.",
+    "nowUsing": "{{name}} ahora está en uso.",
     "addOffline": "Agregar cuenta sin conexión",
     "offlineName": "Nombre de jugador",
     "offlineHint": "De 3 a 16 letras, números o guiones bajos. Otros jugadores ven este nombre.",
