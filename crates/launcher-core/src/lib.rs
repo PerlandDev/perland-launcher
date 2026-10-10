@@ -10,6 +10,7 @@ pub mod instances;
 pub mod java;
 pub mod launch;
 pub mod meta;
+pub mod mods;
 pub mod paths;
 pub mod platform;
 pub mod play;
