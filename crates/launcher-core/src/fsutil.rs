@@ -31,10 +31,10 @@ pub async fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
 
 /// Windows device names. A file whose stem is one of these (`nul.txt`, `CON .jar`) opens the
 /// device instead of a file, so such names are never accepted from remote data.
-const DEVICE_NAMES: [&str; 30] = [
-    "con", "prn", "aux", "nul", "conin$", "conout$", "com1", "com2", "com3", "com4", "com5",
-    "com6", "com7", "com8", "com9", "com¹", "com²", "com³", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5",
-    "lpt6", "lpt7", "lpt8", "lpt9", "lpt¹", "lpt²", "lpt³",
+const DEVICE_NAMES: [&str; 32] = [
+    "con", "prn", "aux", "nul", "conin$", "conout$", "com0", "com1", "com2", "com3", "com4",
+    "com5", "com6", "com7", "com8", "com9", "com¹", "com²", "com³", "lpt0", "lpt1", "lpt2", "lpt3",
+    "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9", "lpt¹", "lpt²", "lpt³",
 ];
 
 /// Longest relative path accepted from remote data, in bytes.
@@ -186,6 +186,8 @@ mod tests {
             "mods/NUL.jar",
             "Com1.log",
             "lpt9",
+            "com0",
+            "LPT0.txt",
             "conin$",
             "CONOUT$.x",
             "a/aux .txt",

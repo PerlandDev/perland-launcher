@@ -67,7 +67,7 @@ pub async fn fetch_profile(
             format!("{kind:?} isn't supported"),
         )
         .with_param("loader", format!("{kind:?}"))
-        .with_fix("Use Fabric or Quilt for now; Forge and NeoForge are coming"));
+        .with_fix("Pick another loader"));
     };
     meta.get_json(&url)
         .await

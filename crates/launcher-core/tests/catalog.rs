@@ -377,6 +377,12 @@ async fn non_metadata_page_without_cache_is_an_error_not_empty() {
         .await
         .unwrap_err();
     assert_eq!(err.code, ErrorCode::MetaUnexpected);
+    assert!(
+        !err.message.contains("http"),
+        "messages name the host only: {}",
+        err.message
+    );
+    assert!(err.detail.unwrap().contains("maven-metadata.xml"));
 }
 
 #[tokio::test]
