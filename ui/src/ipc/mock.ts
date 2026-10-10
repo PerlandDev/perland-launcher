@@ -155,8 +155,9 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     }
     case 'instance_rename': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
-      target.name = String(args.name).trim();
-      return target;
+      const renamed: Instance = { ...target, name: String(args.name).trim() };
+      state.listing.instances = state.listing.instances.map((i) => (i.id === renamed.id ? renamed : i));
+      return renamed;
     }
     case 'instance_delete':
       state.listing.instances = state.listing.instances.filter((i) => i.id !== args.id);
@@ -258,7 +259,11 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
 
 export function createMockBackend(options: MockOptions = {}) {
   const state = seed(options);
-  return { state, handle: (cmd: string, args?: unknown) => handle(state, cmd, (args ?? {}) as Record<string, unknown>) };
+  return {
+    state,
+    // Real IPC hands back fresh objects; a shared reference would make TanStack Query see "no change".
+    handle: async (cmd: string, args?: unknown) => clone(await handle(state, cmd, (args ?? {}) as Record<string, unknown>)),
+  };
 }
 
 export function installMock(options: MockOptions = {}) {

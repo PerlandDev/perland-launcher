@@ -33,6 +33,26 @@ describe('mock backend', () => {
     expect(mods.find((m) => m.fileName === 'zoomify-2.11.2.jar')?.enabled).toBe(true);
   });
 
+  it('returns fresh objects like real IPC, never live state', async () => {
+    const { handle } = createMockBackend();
+    const first = (await handle('instances_list')) as InstanceListing;
+    const second = (await handle('instances_list')) as InstanceListing;
+    expect(second).toEqual(first);
+    expect(second).not.toBe(first);
+
+    const before = (await handle('accounts_list')) as AccountsFile;
+    const activeBefore = before.active;
+    const other = before.accounts.find((a) => a.uuid !== activeBefore);
+    const after = (await handle('account_set_active', { uuid: other?.uuid })) as AccountsFile;
+    expect(after.active).toBe(other?.uuid);
+    expect(before.active).toBe(activeBefore);
+    expect(((await handle('accounts_list')) as AccountsFile).active).toBe(other?.uuid);
+
+    const renamed = (await handle('instance_rename', { id: 'asalith-fields', name: 'Renamed' })) as { name: string };
+    expect(renamed.name).toBe('Renamed');
+    expect(first.instances.find((i) => i.id === 'asalith-fields')?.name).not.toBe('Renamed');
+  });
+
   it('rejects offline accounts in a release-like build', async () => {
     const { handle } = createMockBackend({ release: true });
     await expect(handle('account_add_offline', { name: 'Steve' })).rejects.toMatchObject({ code: 'offline_locked' });
