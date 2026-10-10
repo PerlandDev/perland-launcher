@@ -14,7 +14,7 @@ pub enum LoaderKind {
 
 /// A version string that is safe to place in a URL path segment: non-empty, only ASCII
 /// alphanumerics or `.` `_` `+` `-`, and not a dot segment.
-fn valid_component(s: &str) -> bool {
+pub(crate) fn valid_component(s: &str) -> bool {
     !s.is_empty()
         && s != "."
         && s != ".."

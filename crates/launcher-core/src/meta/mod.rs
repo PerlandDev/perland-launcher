@@ -1,3 +1,4 @@
+pub mod catalog;
 pub mod loaders;
 pub mod maven;
 pub mod merge;
