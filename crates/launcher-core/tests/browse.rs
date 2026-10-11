@@ -465,3 +465,100 @@ async fn versions_for_an_instance_fit_it_and_come_newest_first() {
         "release"
     );
 }
+
+use std::{collections::BTreeMap, path::Path};
+
+use launcher_core::{
+    browse::identify::{identify, FileHashes},
+    download::Hashes,
+    sources::FileMode,
+    sync::lockfile::{Managed, ManagedFile},
+};
+
+fn write(dir: &Path, rel: &str, body: &[u8]) {
+    let path = dir.join(rel);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, body).unwrap();
+}
+
+fn managed(paths: &[(&str, &[u8])]) -> Managed {
+    Managed {
+        version: Managed::VERSION,
+        stamp: "s".into(),
+        pack_version: "1".into(),
+        choices: BTreeMap::new(),
+        files: paths
+            .iter()
+            .map(|(p, body)| {
+                (
+                    p.to_string(),
+                    ManagedFile {
+                        name: p.to_string(),
+                        sha1: sha1_hex(body),
+                        size: body.len() as u64,
+                        mode: FileMode::Replace,
+                        declared: Hashes::default(),
+                    },
+                )
+            })
+            .collect(),
+    }
+}
+
+#[tokio::test]
+async fn identify_names_projects_by_hash_and_remembers_hashes() {
+    let server = MockServer::start().await;
+    let game = tempfile::tempdir().unwrap();
+    write(game.path(), "mods/added.jar", b"added");
+    write(game.path(), "mods/off.jar.disabled", b"off");
+    write(game.path(), "mods/pack.jar", b"pack");
+    write(game.path(), "mods/readme.txt", b"ignored");
+    write(game.path(), "resourcepacks/faithful.zip", b"rp");
+    let lock = managed(&[("mods/pack.jar", b"pack")]);
+    let answer = json!({
+        sha1_hex(b"added"): version_json(&server, "v1", "lithium", &["1.20.1"], &["fabric"], "added.jar", b"added"),
+        sha1_hex(b"pack"): version_json(&server, "v2", "sodium", &["1.20.1"], &["fabric"], "pack.jar", b"pack"),
+        sha1_hex(b"rp"): version_json(&server, "v3", "faithful", &["1.20.1"], &["minecraft"], "faithful.zip", b"rp")
+    });
+    Mock::given(method("POST"))
+        .and(path("/v2/version_files"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(answer))
+        .mount(&server)
+        .await;
+    let mut hashes = FileHashes::default();
+    let installed = identify(&api(&server), game.path(), Some(&lock), &mut hashes)
+        .await
+        .unwrap();
+    assert_eq!(
+        installed.project_ids(),
+        vec!["faithful".to_string(), "lithium".into(), "sodium".into()]
+    );
+    assert!(installed.projects["sodium"].managed);
+    assert!(!installed.projects["lithium"].managed);
+    assert_eq!(
+        installed.projects["faithful"].path,
+        "resourcepacks/faithful.zip"
+    );
+    // The managed jar's sha1 came from the lockfile; the other three were hashed once.
+    assert_eq!(hashes.hashed(), 3);
+    identify(&api(&server), game.path(), Some(&lock), &mut hashes)
+        .await
+        .unwrap();
+    assert_eq!(hashes.hashed(), 3, "unchanged files aren't hashed again");
+    let sent: Value =
+        serde_json::from_slice(&server.received_requests().await.unwrap()[0].body).unwrap();
+    assert_eq!(sent["hashes"].as_array().unwrap().len(), 4);
+
+    let empty = tempfile::tempdir().unwrap();
+    let before = hits(&server, "/v2/version_files").await;
+    assert!(identify(&api(&server), empty.path(), None, &mut hashes)
+        .await
+        .unwrap()
+        .projects
+        .is_empty());
+    assert_eq!(
+        hits(&server, "/v2/version_files").await,
+        before,
+        "nothing to ask about"
+    );
+}
