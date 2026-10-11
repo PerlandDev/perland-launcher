@@ -1300,5 +1300,47 @@ async fn the_first_sync_says_installing_and_later_ones_say_updating() {
     publish_v1_1(&env).await;
     ensure(&env, &instance.id).await.unwrap();
     assert!(!keys(&env).is_empty());
-    assert!(keys(&env).iter().all(|k| k == "sync_pack"));
+    assert!(keys(&env)
+        .iter()
+        .all(|k| k == "sync_pack" || k == "check_pack"));
+}
+
+#[tokio::test]
+async fn an_update_reports_checking_the_files_before_it_syncs_them() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1(&env.server)).await;
+    env.events.lock().unwrap().clear();
+    publish_v1_1(&env).await;
+    ensure(&env, &instance.id).await.unwrap();
+    let events = env.events.lock().unwrap().clone();
+    let progress: Vec<(&str, u64, u64)> = events
+        .iter()
+        .filter_map(|e| match e {
+            Event::Progress {
+                task, done, total, ..
+            } => Some((task.key.as_str(), *done, *total)),
+            _ => None,
+        })
+        .collect();
+    let checks: Vec<_> = progress.iter().filter(|p| p.0 == "check_pack").collect();
+    assert!(checks.len() >= 2, "{progress:?}");
+    assert_eq!((checks[0].1, checks[0].2 > 0), (0, true), "starts at zero");
+    let last = checks.last().unwrap();
+    assert_eq!(last.1, last.2, "ends complete: {progress:?}");
+    let first_sync = progress.iter().position(|p| p.0 == "sync_pack").unwrap();
+    let last_check = progress.iter().rposition(|p| p.0 == "check_pack").unwrap();
+    assert!(last_check < first_sync, "{progress:?}");
+    let named = events.iter().any(|e| {
+        matches!(e, Event::Progress { task, .. }
+            if task.key == "check_pack" && task.params["name"] == "Tiny")
+    });
+    assert!(named);
+
+    // Nothing changed: the quick check answers without surveying, so nothing to report.
+    env.events.lock().unwrap().clear();
+    ensure(&env, &instance.id).await.unwrap();
+    assert!(env.events.lock().unwrap().iter().all(|e| !matches!(
+        e,
+        Event::Progress { task, .. } if task.key == "check_pack"
+    )));
 }

@@ -206,6 +206,22 @@ async function packPrelude(
   await wait(200);
   if (run.cancelled) return null;
   setState(state, id, 'syncing');
+  if (pack.installed) {
+    // A pack that is already installed gets its files checked first (hashing takes a while).
+    const files = 6;
+    for (let done = 0; done <= files; done++) {
+      if (run.cancelled) return null;
+      event({
+        type: 'progress',
+        instance: id,
+        task: { key: 'check_pack', params: { name: instance.name } },
+        done,
+        total: files,
+        bytes: 0,
+      });
+      await wait(40);
+    }
+  }
   const total = 24;
   for (let done = 0; done <= total; done++) {
     if (run.cancelled) return null;
@@ -284,7 +300,7 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
       total: 40,
       bytes: done * 7_800_000,
     });
-    await wait(60);
+    await wait(40);
   }
   setState(state, id, 'running');
   const started = Date.now();

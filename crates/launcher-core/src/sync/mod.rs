@@ -182,7 +182,7 @@ async fn kept_edits(
         .copied()
         .filter(|f| f.mode == FileMode::ReplaceUnlessModified)
         .collect();
-    match apply::survey(game_dir, &overrides, None).await {
+    match apply::survey(game_dir, &overrides, None, None).await {
         Ok(disk) => plan::plan(&overrides, managed, &disk).kept_modified,
         Err(_) => Vec::new(),
     }
@@ -523,7 +523,23 @@ impl Syncer {
             }
         }
 
-        let disk = apply::survey(&game_dir, &wanted, managed.as_ref()).await?;
+        // Hashing every file takes a while on a big pack; say so (a first install has nothing to
+        // check, so it stays quiet).
+        let progress: Option<apply::SurveyProgress> = managed.is_some().then(|| {
+            let (sink, task) = (
+                sink.clone(),
+                TaskId::new("check_pack").with("name", &desired.name),
+            );
+            Arc::new(move |done: u64, total: u64| {
+                sink(Event::Progress {
+                    task: task.clone(),
+                    done,
+                    total,
+                    bytes: 0,
+                })
+            }) as apply::SurveyProgress
+        });
+        let disk = apply::survey(&game_dir, &wanted, managed.as_ref(), progress).await?;
         let plan = plan::plan(&wanted, managed.as_ref(), &disk);
         let changes = plan::changes_except(
             &wanted,

@@ -104,6 +104,7 @@
     "install_minecraft": "Instalando Minecraft {{version}}",
     "download_java": "Descargando Java {{version}}",
     "install_loader": "Preparando {{loader}} {{version}}",
+    "check_pack": "Revisando los archivos de {{name}}",
     "sync_pack": "Actualizando {{name}}",
     "install_pack": "Instalando {{name}}"
   },

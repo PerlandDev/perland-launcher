@@ -135,6 +135,19 @@ describe('Home', () => {
     expect(screen.getByRole('button', { name: 'Cancel: Installing Sky Islands' })).toBeInTheDocument();
   });
 
+  it('says the pack files are being checked before an update starts', async () => {
+    renderApp(<Home id="sky-islands" />);
+    await screen.findByRole('heading', { name: 'Sky Islands' });
+    act(() => {
+      runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'syncing', exit: null, update: null });
+      runStore.apply({
+        type: 'progress', instance: 'sky-islands',
+        task: { key: 'check_pack', params: { name: 'Sky Islands' } }, done: 3, total: 88, bytes: 0,
+      });
+    });
+    expect(screen.getByRole('button', { name: 'Cancel: Checking Sky Islands files' })).toBeInTheDocument();
+  });
+
   it('offers the update between plays and runs it on Update', async () => {
     const { user, calls } = renderApp(<Home id="sky-islands" />);
     expect(await screen.findByText('Update ready: 1.0.3 → 1.0.4')).toBeInTheDocument();
