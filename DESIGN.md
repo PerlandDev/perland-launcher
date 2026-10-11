@@ -254,7 +254,8 @@ The shell is a fixed desktop grid with a minimum window of 960 × 600 and no pho
 - **Home:** the marquee fills `main` edge to edge. A bottom grid of `[minmax(0,1fr) auto]` with a 2.5rem column gap and 2.5rem side gutters holds the name and version plate at lower left. The raised Mods button, the overflow menu and Play sit at lower right, aligned to their bottoms, with Play last at the far right.
 - **Other screens:** a screen frame with a Bungee title row (2.5rem gutters, 2.25rem top), then a scrolling column capped at 48rem. Forms inside it run at 42rem, with 2.5rem between sections. Primary actions sit in a **sticky action row** at the bottom of the scroller on `ground`, with a 1 px `line` hairline above, so Save or Create stays reachable in long Spanish layouts.
 - **First run:** the "perland" marquee in attract mode fills the window behind a centered 32rem panel card on a deep-dirt step. Blue bars across the top of the card count the steps.
-- **Toasts** stack at the bottom-right in a 24rem column. **Dialogs** are `min(30rem, 100vw − 4rem)`.
+- **Toasts** stack at the bottom-right in a 24rem column. **Dialogs** are `min(30rem, 100vw − 4rem)`, centred with auto margins (the CSS reset zeroes them) and capped at `100dvh − 4rem` tall, scrolling inside, so a long list never pushes the actions off a 600 px window.
+- **Home, pack with an update:** the update plate takes its own full-width row of the bottom grid, above both the name and Play, so it reads on one line at 960 px.
 
 Rhythm: 0.75rem between sibling controls, 1.25–1.5rem inside cards and dialogs, 2.5rem gutters and section gaps.
 
@@ -297,7 +298,8 @@ Tactile, physical, and loud only when they mean it.
 ### Play (signature)
 The one lit button: 17.5rem × 5.5rem minimum with notched 6px corners. It has an amber face, an 8px `dirt` step and a 3px lit top edge that breathes in three steps every 2.4 s while idle.
 - **Idle:** "PLAY" in Bungee 2rem.
-- **Queued / Preparing:** pressed down onto its spent step, with the lit edge darkened and the breathing stopped. The face switches to body type and holds the phase label, a "Cancel" sub-label in `dirt-deep`, a recessed 20-block blue meter set into a `ground` channel, and tabular file and MB counts. Pressing it cancels.
+- **Checking / Asking / Queued / Preparing / Syncing:** pressed down onto its spent step, with the lit edge darkened and the breathing stopped. The face switches to body type, with 1rem side padding, and always holds three rows in one fixed height: the phase label alone on the full-width top row (it truncates rather than push anything out), the recessed 20-block blue meter in its `ground` channel, then a readout row with the tabular counts at left and "Cancel" in `dirt-deep` at bottom-right. The readout row stays present even when empty. Counts read "done of total files" and the MB figure is its own never-truncating span, in real MB; from 1000 files the counts shorten to compact "done/total" so the MB tail survives in Spanish. Pressing it cancels.
+- **Checking** has no count, so one blue block sweeps the channel and back across the 20 block positions in `steps(20, jump-none)`. It is decorative and stays blue (progress). Under reduced motion it is hidden, leaving the honest empty channel. **Asking** (an update is waiting on the player's choice in a dialog) keeps the empty meter, because nothing is progressing.
 - **Running:** coral face, `dirt-deep` step, pale coral lit edge, "STOP".
 - **Disabled (no account):** a flat `panel` face with a 2px `line` ring, sitting pressed, plus a screen-reader reason and a visible blue-ink link to Accounts.
 
@@ -322,12 +324,27 @@ A recessed 20-block segmented bar: 3px gaps, 0.75rem tall. Empty blocks are `lin
 - **Dialog:** the backdrop is `rgb(12 9 6 / 0.78)`.
 
 ### Navigation
-- **Rail:** `panel` cabinets with notched 6px corners. Hover raises them to `raised`. The selected cabinet is `raised` on a 4px `dirt-deep` step, with a 4px amber **coin-slot light** to its left. A lime LED square in the lower-right corner marks preparing or playing. A damaged instance is greyed to 40% with a coral warning diamond.
+- **Rail:** `panel` cabinets with notched 6px corners. Hover raises them to `raised`. The selected cabinet is `raised` on a 4px `dirt-deep` step, with a 4px amber **coin-slot light** to its left. A lime LED square in the lower-right corner marks preparing or playing. A damaged instance is greyed to 40% with a coral warning diamond. A pack's own icon replaces the generated plot icon (40px, 3px notched corners), falling back to the plot icon if it fails to decode.
 - **Title bar:** flat text buttons 2.25rem tall in `ink-dim`. Hover shows `ink` on `raised`, and the close button's hover is `ground` on coral.
 - **Overflow menu:** a `raised` popover on a 6px `dirt-deep` step with a `line` ring. Items hover to `panel`, and danger items are coral.
 
 ### Activity Drawer
 A `panel` strip pinned to the bottom of `main`. The 2.25rem handle has a chevron, the label and a lime count badge when something runs. Opened, it is 18rem tall and holds instance tabs (when more than one), a labelled meter with tabular counts, the crash card, and the mono log on a `ground` well with a "follow" button.
+
+### Update Plate
+The pack's update status, on the marquee above the name. It is the version plate's translucent laminate with notched 4px corners, led by an 8px square status lamp: **blue** when an update is on offer, **lime** when the pack just updated ("Updated to X · Kept your version of N files"). A failed check shows no lamp and sets its text in `ink-dim`. The change line is `ink-dim` so the title leads. Its action is a compact 2rem secondary button that is **never lit**, because Play owns the lit amber on Home. The plate's foot leaves room for the button's 4px step.
+
+### Dialogs for the pack flow
+- **Update ready:** one lit primary, "Update and play". The change line and kept line sit above a "Show what changed" disclosure whose names list is a well.
+- **Download these manually:** each missing file is a well row. Continue is flat and disabled until every file is found, then lit as the only primary.
+
+### Well
+A recessed row inside a panel or dialog: `ground` fill, 1px `line` inset ring, notched 4px corners. Used for the names list and the manual-download rows, which would otherwise vanish into a `panel` host.
+
+### Pack screens
+- **New instance** offers three source modes as the standard pressed segments with the lime lamp: version, pack link, .mrpack file. The link hint is the field's own hint (linked by `aria-describedby`); "No file chosen yet" is a body sentence in `ink-dim`, and only a chosen file name is mono.
+- **Mods** splits into two labelled sections: "From the pack" (optional mods as toggles) and "Your additions".
+- **Instance settings, Updates** is a segment group; the pack's game line and the "pack picks" hint sit tight (0.25rem) under the Game heading.
 
 ### Marquee (signature)
 The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 PRNG) so an instance looks the same on every computer. The recipe:
@@ -339,7 +356,9 @@ The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 P
 6. **Grille and vignette:** a 3-unit horizontal grille at 10% black, then a radial vignette to 55% black at the edges.
 7. **Bezel:** the T-molding inset (`ground` 4px, then `dirt-deep` 6px) along the top and left where the marquee meets the title bar and rail.
 - **Attract mode:** at rest the hill layers drift in parallax (180 s, 140 s, 100 s, 60 s per loop, nearer layers faster). The drift pauses when not idle and is neutralised under `prefers-reduced-motion`.
-- **Dim:** while a game is queued, preparing or running, the panel snaps to `brightness(0.5) saturate(0.75)` over 180 ms in `steps(2)`.
+- **Pack banner:** a pack's own art replaces steps 1 to 5, anchored to the floor with `object-fit: cover`, under the same grille and vignette. A four-band **stepped scrim** keeps the name and plates legible: laminate bands in whole 8-unit cells, `crispEdges`, at 0.6, 0.42, 0.26 and 0.12 opacity from the floor up. No blur and no smooth gradient. If the banner fails to decode the panel falls back to the generated scene.
+- **Pack art scaling:** `image-rendering: pixelated` applies only where the art is blown up at least 2x (`data-upscale`: the larger cover ratio of box to natural size). Real art that shrinks or grows slightly scales smoothly, because nearest-neighbour on a small upscale gives uneven pixels. The same rule governs rail icons.
+- **Dim:** while a game is checking, queued, preparing or running, the panel and any pack banner snap to `brightness(0.5) saturate(0.75)` over 180 ms in `steps(2)`.
 
 ## Do's and Don'ts
 
@@ -351,7 +370,9 @@ The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 P
 - **Do** notch every corner with `corner-shape: notch` (4px controls, 6px panels).
 - **Do** recess inputs, toggles, the slider track and the meter channel into `ground` with the 2px dark top edge and 1px `line` ring.
 - **Do** shade signage over art with the two-layer hard shade (`dirt` 0.045em, `ground` 0.09em), and seat small text on a laminate plate.
-- **Do** fill progress block by block in blue with tabular counts in real MB.
+- **Do** fill progress block by block in blue with tabular counts in real MB, and never truncate the MB figure.
+- **Do** keep update actions raised, never lit: a status plate leads with a square lamp (blue offer, lime done), and the dialog's one primary is the only amber.
+- **Do** sink rows inside panels and dialogs as a `.well`, and scale pack art with nearest-neighbour only at 2x or more.
 - **Do** pad `main` by the drawer's open height so Play is never covered, and keep primary form actions in a sticky row.
 - **Do** let attract-mode parallax stop under reduced motion. State changes snap.
 
@@ -359,6 +380,7 @@ The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 P
 - **Don't** use blurred box-shadows, glows or soft elevation. Depth is hard offset layers only.
 - **Don't** fill a selection, a heading or decoration with amber. A lit amber selection makes two lit buttons.
 - **Don't** use a navy gradient, rounded cards or a glowing blue button, which are the launcher category default this system replaces.
+- **Don't** blur or smooth-gradient a scrim over art. Use stepped, cell-aligned bands.
 - **Don't** ease state changes or animate progress smoothly. Use `steps()` or snap.
 - **Don't** set sentences, labels or errors in Bungee. Don't set the log or paths in anything but Atkinson Hyperlegible Mono.
 - **Don't** use any hue as the only carrier of status. Pair it with a label, an icon or a shape.
