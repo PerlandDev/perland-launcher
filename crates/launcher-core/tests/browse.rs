@@ -335,3 +335,133 @@ async fn categories_are_filtered_to_the_kind() {
         vec!["16x".to_string()]
     );
 }
+
+use launcher_core::{
+    browse::{compat::Target, project},
+    meta::loaders::LoaderKind,
+};
+
+#[tokio::test]
+async fn a_project_page_has_its_owner_and_featured_gallery_first() {
+    let server = MockServer::start().await;
+    let mut p = project_json("AANobbMI", "sodium", "Sodium", "mod");
+    p["gallery"] = json!([
+        { "url": "https://cdn.modrinth.com/a.png", "featured": false, "title": "A" },
+        { "url": "https://cdn.modrinth.com/b.png", "featured": true, "title": null }
+    ]);
+    serve_json(&server, "/v2/project/sodium", p).await;
+    serve_json(
+        &server,
+        "/v2/project/AANobbMI/members",
+        json!([
+            { "role": "Contributor", "user": { "username": "helper" }, "ordering": 1 },
+            { "role": "Owner", "user": { "username": "jellysquid" }, "ordering": 0 }
+        ]),
+    )
+    .await;
+    let detail = project::project(&api(&server), "sodium").await.unwrap();
+    assert_eq!(detail.author.as_deref(), Some("jellysquid"));
+    assert_eq!(detail.gallery[0].url, "https://cdn.modrinth.com/b.png");
+    assert_eq!(detail.categories, vec!["optimization".to_string()]);
+    assert_eq!(detail.license.as_deref(), Some("GNU LGPL 3.0"));
+    let json = serde_json::to_value(&detail).unwrap();
+    assert_eq!(json["clientSide"], "required");
+    assert_eq!(json["kind"], "mod");
+}
+
+#[tokio::test]
+async fn a_project_without_members_or_of_another_type() {
+    let server = MockServer::start().await;
+    serve_json(
+        &server,
+        "/v2/project/lonely",
+        project_json("lonely", "lonely", "Lonely", "resourcepack"),
+    )
+    .await;
+    Mock::given(method("GET"))
+        .and(path("/v2/project/lonely/members"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+    serve_json(
+        &server,
+        "/v2/project/plug",
+        project_json("plug", "plug", "Plug", "plugin"),
+    )
+    .await;
+    assert_eq!(
+        project::project(&api(&server), "lonely")
+            .await
+            .unwrap()
+            .author,
+        None
+    );
+    assert_eq!(
+        project::project(&api(&server), "plug")
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::ContentNotFound
+    );
+}
+
+#[tokio::test]
+async fn versions_for_an_instance_fit_it_and_come_newest_first() {
+    let server = MockServer::start().await;
+    serve_json(
+        &server,
+        "/v2/project/sodium",
+        project_json("sodium", "sodium", "Sodium", "mod"),
+    )
+    .await;
+    let mut old = version_json(
+        &server,
+        "old",
+        "sodium",
+        &["1.20.1"],
+        &["fabric"],
+        "s-old.jar",
+        b"old",
+    );
+    old["date_published"] = json!("2025-01-01T00:00:00Z");
+    let new = version_json(
+        &server,
+        "new",
+        "sodium",
+        &["1.20.1"],
+        &["fabric"],
+        "s-new.jar",
+        b"newer",
+    );
+    let forge_only = version_json(
+        &server,
+        "forge",
+        "sodium",
+        &["1.20.1"],
+        &["forge"],
+        "s-forge.jar",
+        b"f",
+    );
+    Mock::given(method("GET"))
+        .and(path("/v2/project/sodium/version"))
+        .and(query_param("loaders", r#"["fabric"]"#))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([old, forge_only, new])))
+        .mount(&server)
+        .await;
+    let target = Target {
+        minecraft: "1.20.1".into(),
+        loader: Some(LoaderKind::Fabric),
+    };
+    let list = project::versions(&api(&server), "sodium", Some(&target))
+        .await
+        .unwrap();
+    assert_eq!(
+        list.iter().map(|v| v.id.as_str()).collect::<Vec<_>>(),
+        vec!["new", "old"]
+    );
+    assert_eq!(list[0].size, Some(5));
+    assert_eq!(
+        serde_json::to_value(&list[0]).unwrap()["versionType"],
+        "release"
+    );
+}
