@@ -1,5 +1,5 @@
 //! The seam between the app's run state machine and actually installing and starting a game.
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc};
 
 use launcher_core::{
     accounts::Session,
@@ -7,7 +7,10 @@ use launcher_core::{
     install::Installer,
     instances::{Instance, InstanceStore},
     launch::{GameExit, GameKiller, GameProcess},
+    locks::InstanceLock,
     play::{self, Prepared, StartSpec},
+    sources::PackInput,
+    sync::{Cancel, Ensured, ManualFile, PendingUpdate, Syncer},
     Result,
 };
 
@@ -48,22 +51,43 @@ pub trait Runner: Send + Sync + 'static {
         session: Session,
         sink: EventSink,
     ) -> BoxFuture<Result<Box<dyn RunningGame>>>;
+    /// A new instance for a pack: named after it, with its game version, policy and art.
+    /// Its files arrive with the first sync.
+    fn add_pack(&self, input: PackInput) -> BoxFuture<Result<Instance>>;
+    /// The update this pack instance could take now. `Err` is a warning: play what's installed.
+    fn find_update(&self, instance: Instance) -> BoxFuture<Result<Option<PendingUpdate>>>;
+    /// Bring a pack instance to `accept` (or what's installed). The caller holds `lock`.
+    fn sync(
+        &self,
+        lock: Arc<InstanceLock>,
+        id: String,
+        accept: Option<PendingUpdate>,
+        cancel: Cancel,
+        sink: EventSink,
+    ) -> BoxFuture<Result<Ensured>>;
+    /// Put files the player downloaded by hand into the cache.
+    fn import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>>;
 }
 
 pub struct CoreRunner {
     installer: Arc<Installer>,
+    syncer: Arc<Syncer>,
     launcher_version: String,
 }
 
 impl CoreRunner {
-    pub fn new(installer: Arc<Installer>, launcher_version: String) -> Self {
+    pub fn new(installer: Arc<Installer>, syncer: Syncer, launcher_version: String) -> Self {
         Self {
             installer,
+            syncer: Arc::new(syncer),
             launcher_version,
         }
     }
     pub fn installer(&self) -> &Arc<Installer> {
         &self.installer
+    }
+    fn store(&self) -> InstanceStore {
+        InstanceStore::new(self.installer.dirs.instances())
     }
 }
 
@@ -98,6 +122,37 @@ impl Runner for CoreRunner {
             let game = play::start(&spec, sink).await?;
             Ok(Box::new(game) as Box<dyn RunningGame>)
         })
+    }
+
+    fn add_pack(&self, input: PackInput) -> BoxFuture<Result<Instance>> {
+        let (syncer, store) = (self.syncer.clone(), self.store());
+        Box::pin(async move { Ok(syncer.add_pack(&store, &input).await?.0) })
+    }
+
+    fn find_update(&self, instance: Instance) -> BoxFuture<Result<Option<PendingUpdate>>> {
+        let (syncer, store) = (self.syncer.clone(), self.store());
+        Box::pin(async move { syncer.find_update(&store, &instance).await })
+    }
+
+    fn sync(
+        &self,
+        lock: Arc<InstanceLock>,
+        id: String,
+        accept: Option<PendingUpdate>,
+        cancel: Cancel,
+        sink: EventSink,
+    ) -> BoxFuture<Result<Ensured>> {
+        let (syncer, store) = (self.syncer.clone(), self.store());
+        Box::pin(async move {
+            syncer
+                .ensure_locked(&lock, &store, &id, accept, &sink, &cancel)
+                .await
+        })
+    }
+
+    fn import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>> {
+        let syncer = self.syncer.clone();
+        Box::pin(async move { syncer.import_found(&found).await })
     }
 }
 

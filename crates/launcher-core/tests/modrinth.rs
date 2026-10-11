@@ -263,3 +263,23 @@ async fn sources_facade_routes_by_kind() {
     assert_eq!(src.check(&source, &desired).await, UpdateCheck::UpToDate);
     assert_eq!(src.resolve(&source).await.unwrap(), desired);
 }
+
+#[tokio::test]
+async fn a_deleted_installed_version_still_finds_updates() {
+    let server = MockServer::start().await;
+    let tmp = tempfile::tempdir().unwrap();
+    sky(&server, tmp.path()).await;
+    let src = sources(&server, tmp.path());
+    // "GONE" was deleted upstream: GET /v2/version/GONE answers 404. Releases are still offered.
+    assert_eq!(
+        modrinth::check(&src, "P1", "GONE", "1.20.1").await,
+        UpdateCheck::Available {
+            source: SourceRef::Modrinth {
+                project_id: "P1".into(),
+                version_id: "R1".into()
+            },
+            stamp: "R1".into(),
+            version: "R1-num".into(),
+        }
+    );
+}

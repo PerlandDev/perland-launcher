@@ -2,7 +2,7 @@ import type { ExitInfo } from '../ipc/schema';
 
 /** Same rule as Rust's `ExitInfo::is_crash`: an exit nobody asked for that wasn't clean. */
 export function isCrash(exit: ExitInfo): boolean {
-  return !exit.killed && !exit.cancelled && exit.error === null && exit.code !== 0;
+  return !exit.killed && !exit.cancelled && !exit.updateOnly && exit.error === null && exit.code !== 0;
 }
 
 /** 2 GB more, never above three quarters of this computer's memory. Null when there's no room. */

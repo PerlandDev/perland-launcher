@@ -20,23 +20,47 @@ export function PlayButton({ state, progress, disabled, disabledReason, onPlay, 
   const reasonId = useId();
   const lang = i18n.language;
 
-  if (state === 'queued' || state === 'preparing') {
+  const waiting = state === 'checking' || state === 'asking' || state === 'queued' || state === 'syncing' || state === 'preparing';
+  if (waiting) {
     const label =
-      state === 'queued' ? t('play.queued') : progress ? taskLabel(i18n, progress.task) : t('play.preparing');
+      state === 'checking'
+        ? t('play.checking')
+        : state === 'asking'
+          ? t('play.asking')
+          : state === 'queued'
+            ? t('play.queued')
+            : progress
+              ? taskLabel(i18n, progress.task)
+              : state === 'syncing'
+                ? t('play.syncing')
+                : t('play.preparing');
     const fraction = progress && progress.total > 0 ? progress.done / progress.total : 0;
+    // Syncing and preparing fill the meter; the other waits show it empty.
+    const look = state === 'syncing' || state === 'preparing' ? 'preparing' : 'queued';
     return (
-      <button type="button" className="play" data-state={state} onClick={onStop} aria-label={t('play.cancelLabel', { label })}>
-        <span className="flex items-baseline justify-between gap-3">
-          <span className="truncate">{label}</span>
-          <span className="play-sub">{t('play.cancel')}</span>
-        </span>
-        <Meter value={fraction} label={label} decorative />
-        {progress && progress.total > 0 && (
-          <span className="play-sub tabular text-sm font-normal">
-            {t('play.files', { done: formatCount(progress.done, lang), total: formatCount(progress.total, lang) })}
-            {progress.bytes > 0 && ` · ${formatBytes(progress.bytes, lang)}`}
+      <button type="button" className="play" data-state={look} onClick={onStop} aria-label={t('play.cancelLabel', { label })}>
+        {/* The phase gets the face's full width (Spanish phases run long); Cancel rides the readout row,
+            which every wait state keeps, so the face holds one height from checking to preparing. */}
+        <span className="truncate">{label}</span>
+        <Meter value={fraction} label={label} decorative scan={state === 'checking'} />
+        <span className="play-sub flex items-baseline gap-2 text-sm">
+          {/* The MB figure is the honest part of the readout: only the file counts may truncate.
+              Four-digit totals (a first install's assets) drop to "done/total"; the drawer keeps the sentence. */}
+          <span className="flex min-w-0 flex-1 items-baseline font-normal">
+            {progress && progress.total > 0 && (
+              <>
+                <span className="tabular truncate">
+                  {t(progress.total >= 1000 ? 'play.filesShort' : 'play.files', {
+                    done: formatCount(progress.done, lang),
+                    total: formatCount(progress.total, lang),
+                  })}
+                </span>
+                {progress.bytes > 0 && <span className="tabular flex-none whitespace-pre">{` · ${formatBytes(progress.bytes, lang)}`}</span>}
+              </>
+            )}
           </span>
-        )}
+          <span className="flex-none">{t('play.cancel')}</span>
+        </span>
       </button>
     );
   }

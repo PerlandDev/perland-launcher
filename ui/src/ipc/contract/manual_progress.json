@@ -1,0 +1,19 @@
+{
+  "found": 1,
+  "total": 2,
+  "remaining": [
+    {
+      "path": "mods/optifine.jar",
+      "name": "OptiFine",
+      "fileName": "OptiFine_1.20.1_HD_U_I6.jar",
+      "pageUrl": "https://www.curseforge.com/projects/235216",
+      "hashes": {
+        "sha1": "3f786850e387550fdab836ed7e6dc881de23001b",
+        "sha256": null,
+        "sha512": null,
+        "md5": null,
+        "murmur2": null
+      }
+    }
+  ]
+}

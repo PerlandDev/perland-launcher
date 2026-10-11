@@ -5,9 +5,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import type { LocalMod } from '../../ipc/schema';
-import { useInstances, useModMutations, useMods } from '../../state/queries';
+import { useInstances, useModMutations, useMods, usePackContents, usePackOptional } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
+import { isPack } from '../home/labels';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
@@ -28,10 +29,17 @@ export function Mods({ id }: { id: string }) {
   const listing = useInstances();
   const instance = listing.data?.instances.find((i) => i.id === id);
   const mods = useMods(id);
+  const pack = instance ? isPack(instance) : false;
+  const contents = usePackContents(id, pack);
+  const optional = usePackOptional(id, { inline: true });
+  // A pack instance lists its own mods apart; the jars below are only the player's. Until the
+  // listing says which kind this is, nothing is listed: a pack's jars must never show as removable.
+  const source = pack ? contents : mods;
+  const loading = listing.isPending || source.isPending;
   // The game holds its jars open, so toggling or removing waits for it to stop. Adding is fine.
   const running = useRun(id).state !== 'idle';
   const queryClient = useQueryClient();
-  const refetchMods = mods.refetch;
+  const refetchMods = source.refetch;
   const { toggle, add, remove } = useModMutations(id, { inline: true });
   const [removing, setRemoving] = useState<LocalMod | null>(null);
   const [dragging, setDragging] = useState(false);
@@ -138,7 +146,7 @@ export function Mods({ id }: { id: string }) {
   const confirmRemove = (mod: LocalMod) =>
     removeOnce((done) => remove.mutate(mod.fileName, { onSuccess: closeRemove, onSettled: done }));
 
-  const list = mods.data ?? [];
+  const list = (listing.isPending ? undefined : pack ? contents.data?.additions : mods.data) ?? [];
   // A name normally keys its row, so a toggle (which renames the file) keeps focus. A .jar and its
   // .jar.disabled twin share a name, so those fall back to the file name.
   const nameCount = new Map<string, number>();
@@ -146,7 +154,7 @@ export function Mods({ id }: { id: string }) {
   return (
     <ScreenFrame
       title={t('mods.title')}
-      subtitle={instance ? `${instance.name} · ${t('mods.count', { count: list.length })}` : undefined}
+      subtitle={instance ? `${instance.name} · ${t('mods.count', { count: list.length + (contents.data?.managed.length ?? 0) })}` : undefined}
       onBack={() => navigate({ name: 'home', id })}
       actions={
         <>
@@ -160,7 +168,7 @@ export function Mods({ id }: { id: string }) {
       }
     >
       <div className={`grid max-w-3xl gap-4 ${dragging ? 'outline-2 outline-offset-8 outline-amber outline-dashed' : ''}`}>
-        {instance && !instance.game.loader && (
+        {instance && !pack && !instance.game.loader && (
           <p className="panel flex items-start gap-3 p-4 text-ink-dim">
             <InfoBox className="mt-0.5 h-5 w-5 flex-none text-blue-ink" aria-hidden />
             {t('mods.vanillaNote')}
@@ -179,53 +187,92 @@ export function Mods({ id }: { id: string }) {
             {notice.kind === 'busy' ? t('mods.busy') : t('mods.skipped', { names: notice.names.join(', ') })}
           </p>
         )}
-        {mods.isPending && <p className="text-ink-dim">{t('common.loading')}</p>}
-        {mods.isError && (
+        {loading && <p className="text-ink-dim">{t('common.loading')}</p>}
+        {source.isError && (
           <ErrorCard
-            error={mods.error}
+            error={source.error}
             actions={
-              <Button disabled={mods.isFetching} onClick={() => void mods.refetch()}>
+              <Button disabled={source.isFetching} onClick={() => void source.refetch()}>
                 {t('common.retry')}
               </Button>
             }
           />
         )}
-        {mods.isSuccess && list.length === 0 && <p className="text-ink-dim">{t('mods.empty')}</p>}
-        <ul className="grid gap-2">
-          {list.map((mod) => {
-            const name = displayName(mod.fileName);
-            return (
-              <li key={(nameCount.get(name) ?? 0) > 1 ? mod.fileName : name} className="panel flex items-center gap-4 px-4 py-3">
-                <Package className="h-6 w-6 flex-none text-ink-dim" aria-hidden />
-                <div className="min-w-0 flex-1">
-                  <p className={`truncate font-semibold ${mod.enabled ? '' : 'text-ink-dim'}`}>{name}</p>
-                  <p className="tabular text-sm text-ink-dim">{formatBytes(mod.size, i18n.language)}</p>
-                </div>
-                <Toggle
-                  checked={mod.enabled}
-                  disabled={toggle.isPending || running}
-                  label={t('mods.toggle', { name })}
-                  onChange={(on) =>
-                    toggleOnce((done) => {
-                      setFailure(null);
-                      toggle.mutate({ file: mod.fileName, enabled: on }, { onError: fail, onSettled: done });
-                    })
-                  }
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t('mods.remove', { name })}
-                  aria-disabled={running || undefined}
-                  icon={<Trash />}
-                  onClick={() => {
-                    if (!running) setRemoving(mod);
-                  }}
-                />
-              </li>
-            );
-          })}
-        </ul>
+        {pack && contents.isSuccess && (
+          <section className="grid gap-3" aria-labelledby="pack-mods">
+            <h2 id="pack-mods" className="text-lg font-bold">{t('mods.fromPackTitle')}</h2>
+            {contents.data.managed.length === 0 ? (
+              <p className="text-ink-dim">{t('mods.packEmpty')}</p>
+            ) : (
+              <ul className="grid gap-2">
+                {contents.data.managed.map((mod) => (
+                  <li key={mod.path} className="panel flex items-center gap-4 px-4 py-3">
+                    <Package className="h-6 w-6 flex-none text-ink-dim" aria-hidden />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-semibold">{mod.name}</p>
+                      {mod.optional?.description && <p className="text-sm text-ink-dim">{mod.optional.description}</p>}
+                    </div>
+                    {mod.optional ? (
+                      <Toggle
+                        checked={mod.optional.enabled}
+                        disabled={optional.isPending}
+                        label={t('mods.toggle', { name: mod.name })}
+                        onChange={(on) => optional.mutate({ path: mod.path, enabled: on }, { onError: fail })}
+                      />
+                    ) : (
+                      <span className="badge">{t('mods.fromPack')}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {contents.data.managed.some((m) => m.optional) && <p className="text-sm text-ink-dim">{t('mods.optionalNote')}</p>}
+          </section>
+        )}
+        {/* The player's own jars: their own section on a pack, so the pack's heading doesn't claim them. */}
+        <section className="grid gap-3" aria-labelledby={pack && contents.isSuccess ? 'pack-additions' : undefined}>
+          {pack && contents.isSuccess && (
+            <h2 id="pack-additions" className="mt-4 text-lg font-bold">
+              {t('mods.additionsTitle')}
+            </h2>
+          )}
+          {!loading && source.isSuccess && list.length === 0 && <p className="text-ink-dim">{pack ? t('mods.noAdditions') : t('mods.empty')}</p>}
+          <ul className="grid gap-2">
+            {list.map((mod) => {
+              const name = displayName(mod.fileName);
+              return (
+                <li key={(nameCount.get(name) ?? 0) > 1 ? mod.fileName : name} className="panel flex items-center gap-4 px-4 py-3">
+                  <Package className="h-6 w-6 flex-none text-ink-dim" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className={`truncate font-semibold ${mod.enabled ? '' : 'text-ink-dim'}`}>{name}</p>
+                    <p className="tabular text-sm text-ink-dim">{formatBytes(mod.size, i18n.language)}</p>
+                  </div>
+                  <Toggle
+                    checked={mod.enabled}
+                    disabled={toggle.isPending || running}
+                    label={t('mods.toggle', { name })}
+                    onChange={(on) =>
+                      toggleOnce((done) => {
+                        setFailure(null);
+                        toggle.mutate({ file: mod.fileName, enabled: on }, { onError: fail, onSettled: done });
+                      })
+                    }
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t('mods.remove', { name })}
+                    aria-disabled={running || undefined}
+                    icon={<Trash />}
+                    onClick={() => {
+                      if (!running) setRemoving(mod);
+                    }}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       </div>
       {removing && (
         <Dialog

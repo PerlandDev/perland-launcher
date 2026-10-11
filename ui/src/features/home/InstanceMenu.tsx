@@ -1,16 +1,18 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import type { Instance } from '../../ipc/schema';
-import { useDeleteInstance, useRenameInstance } from '../../state/queries';
+import { qk, useDeleteInstance, useRenameInstance } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { Folder, Gear, Pencil, Trash } from '../../ui/Icon';
+import { Folder, Gear, Pencil, Reload, Trash } from '../../ui/Icon';
 import { Menu } from '../../ui/Menu';
+import { isPack } from './labels';
 
 function RenameDialog({ instance, onClose }: { instance: Instance; onClose: () => void }) {
   const { t } = useTranslation();
@@ -79,12 +81,16 @@ function DeleteDialog({ instance, onClose }: { instance: Instance; onClose: () =
 export function InstanceMenu({ instance }: { instance: Instance }) {
   const { t } = useTranslation();
   const [dialog, setDialog] = useState<'rename' | 'delete' | null>(null);
+  const qc = useQueryClient();
   const close = () => setDialog(null);
   return (
     <>
       <Menu
         label={t('home.more')}
         items={[
+          ...(isPack(instance)
+            ? [{ label: t('home.checkUpdates'), icon: <Reload />, onSelect: () => void qc.invalidateQueries({ queryKey: qk.packStatus(instance.id) }) }]
+            : []),
           { label: t('home.instanceSettings'), icon: <Gear />, onSelect: () => navigate({ name: 'instanceSettings', id: instance.id }) },
           { label: t('common.rename'), icon: <Pencil />, onSelect: () => setDialog('rename') },
           {

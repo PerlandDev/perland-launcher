@@ -1,6 +1,9 @@
-//! Play and Stop: the run state machine. A run is `queued` until it holds the install slot,
-//! `preparing` while installing, `running` while the game is up, `stopping` after a kill, and
-//! leaves the map (idle) with exactly one final `run_state` event carrying how it ended.
+//! Play and Stop: the run state machine. A pack instance's run is `checking` while it looks for
+//! an update, `asking` while the player decides on one, `queued` until it holds the install
+//! slot, `syncing` while its files change, `preparing` while installing, `running` while the
+//! game is up, and `stopping` after a Stop that waits on a sync or a kill. A never-synced or
+//! pinned pack starts at `queued`; a vanilla instance goes `queued`, `preparing`, `running`.
+//! A run leaves the map (idle) with exactly one final `run_state` event carrying how it ended.
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -9,18 +12,29 @@ use std::{
 use launcher_core::{
     accounts::{Provider, Session},
     events::{Event, EventSink},
-    instances::Instance,
+    instances::{Instance, SourceRef, UpdatePolicy},
+    locks::InstanceLock,
+    sync::{
+        lockfile::PACK_FILE, manual::Scanner, Cancel, Ensured, ManualFile, PendingUpdate,
+        SyncOutcome,
+    },
     ErrorCode, LauncherError, Result,
 };
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+};
 
 use crate::{
-    app::{AppCore, Run},
-    dto::RunSnapshot,
+    app::{AppCore, ManualState, Run},
+    dto::{PackUpdate, RunSnapshot, SyncSummary},
     events::{AppEvent, ExitInfo, Host, ProgressThrottle, RunStateKind, PROGRESS_INTERVAL},
     logs::spawn_batcher,
     runner::Runner,
 };
+
+/// How long a run waits for an instance lock that a just-ended run is still letting go of.
+const LOCK_WAIT: Duration = Duration::from_secs(2);
 
 impl<R: Runner, H: Host> AppCore<R, H> {
     /// Queue a run. Everything after this arrives as events.
@@ -47,7 +61,29 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
         let session = account.offline_session();
         let minimize = self.settings_get().await.minimize_on_play;
+        let checks = self.checks_for_updates(&instance).await;
+        self.start_run(id, instance, Some((session, minimize)), checks)
+    }
 
+    /// Does a run of `instance` start with an update check? Only a pack that synced before
+    /// and isn't pinned: a first sync installs the newest version anyway.
+    pub(crate) async fn checks_for_updates(&self, instance: &Instance) -> bool {
+        instance.source != SourceRef::None
+            && instance.update_policy != UpdatePolicy::Pinned
+            && tokio::fs::try_exists(self.instances.perland_dir(&instance.id).join(PACK_FILE))
+                .await
+                .unwrap_or(false)
+    }
+
+    /// Start a run. `play` is the session and minimize setting, or `None` to only take the
+    /// pack's update (the banner's Update).
+    pub(crate) fn start_run(
+        self: &Arc<Self>,
+        id: &str,
+        instance: Instance,
+        play: Option<(Session, bool)>,
+        checks: bool,
+    ) -> Result<()> {
         let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
         if runs.contains_key(id) {
             return Err(LauncherError::game(
@@ -57,31 +93,61 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .with_param("id", id));
         }
         self.logs.reset(id);
-        // Emitted under the lock, before the task exists, so `queued` always comes first.
-        self.emit_state(id, RunStateKind::Queued, None);
+        let first = if checks {
+            RunStateKind::Checking
+        } else {
+            RunStateKind::Queued
+        };
+        // Emitted under the lock, before the task exists, so the first state always comes first.
+        self.emit_state(id, first, None);
+        let cancel = Cancel::default();
         let core = Arc::clone(self);
-        let run_id = id.to_string();
+        let (run_id, run_cancel) = (id.to_string(), cancel.clone());
         let task =
-            tokio::spawn(async move { core.drive(run_id, instance, session, minimize).await });
+            tokio::spawn(
+                async move { core.drive(run_id, instance, play, checks, run_cancel).await },
+            );
         runs.insert(
             id.to_string(),
             Run {
-                phase: RunStateKind::Queued,
+                phase: first,
                 abort: Some(task.abort_handle()),
                 killer: None,
+                cancel,
+                answer: None,
+                offer: None,
             },
         );
         Ok(())
     }
 
-    /// Cancel a queued or preparing run, or kill a running game. Unknown or idle ids are fine.
+    /// The player's answer to "Update ready": take the update, or play what's installed.
+    /// Ignored unless the run is asking, so a double click is harmless.
+    pub fn play_answer(&self, id: &str, update: bool) -> Result<()> {
+        let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(run) = runs.get_mut(id) {
+            if run.phase == RunStateKind::Asking {
+                if let Some(answer) = run.answer.take() {
+                    let _ = answer.send(update);
+                }
+                run.offer = None;
+            }
+        }
+        Ok(())
+    }
+
+    /// Cancel a run that hasn't started its game, or kill a running game. A sync is asked to
+    /// stop, and the run ends once it has. Unknown or idle ids are fine.
     pub fn stop(&self, id: &str) -> Result<()> {
         let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
         let Some(run) = runs.get_mut(id) else {
             return Ok(());
         };
         match run.phase {
-            RunStateKind::Queued | RunStateKind::Preparing => {
+            RunStateKind::Checking
+            | RunStateKind::Asking
+            | RunStateKind::Queued
+            | RunStateKind::Preparing => {
                 if let Some(abort) = run.abort.take() {
                     abort.abort();
                 }
@@ -94,6 +160,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                         ..ExitInfo::default()
                     }),
                 );
+            }
+            // Aborting mid-sync could leave a file write running after the lock is gone.
+            RunStateKind::Syncing => {
+                run.phase = RunStateKind::Stopping;
+                run.cancel.cancel();
+                self.emit_state(id, RunStateKind::Stopping, None);
             }
             RunStateKind::Running => {
                 run.phase = RunStateKind::Stopping;
@@ -141,6 +213,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .map(|(id, run)| RunSnapshot {
                 instance: id.clone(),
                 state: run.phase,
+                update: run.offer.clone(),
             })
             .collect()
     }
@@ -154,14 +227,107 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             instance: id.to_string(),
             state,
             exit,
+            update: None,
         });
     }
 
-    fn set_phase(&self, id: &str, phase: RunStateKind) {
+    /// Move a run on, unless a Stop already put it in `stopping` (it ends from there).
+    /// False when it didn't move.
+    fn set_phase(&self, id: &str, phase: RunStateKind) -> bool {
         let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(run) = runs.get_mut(id) {
-            run.phase = phase;
-            self.emit_state(id, phase, None);
+        match runs.get_mut(id) {
+            Some(run) if run.phase != RunStateKind::Stopping => {
+                run.phase = phase;
+                self.emit_state(id, phase, None);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The instance's lock. A run that just ended may still be letting go of it (a cancelled
+    /// task is dropped a moment after its `idle`), so a busy lock is retried briefly.
+    async fn lock_instance(&self, id: &str) -> Result<InstanceLock> {
+        let dir = self.instances.perland_dir(id);
+        let deadline = tokio::time::Instant::now() + LOCK_WAIT;
+        loop {
+            match InstanceLock::try_acquire(&dir) {
+                Err(e)
+                    if e.code == ErrorCode::InstanceLocked
+                        && tokio::time::Instant::now() < deadline =>
+                {
+                    tokio::time::sleep(Duration::from_millis(20)).await
+                }
+                other => return other,
+            }
+        }
+    }
+
+    /// Check for an update and decide whether this run takes it. `auto` packs and update-only
+    /// runs take it, and `ask` asks the player. A failed check is a warning: the installed
+    /// version plays.
+    async fn decide_update(
+        &self,
+        id: &str,
+        instance: &Instance,
+        update_only: bool,
+    ) -> Option<PendingUpdate> {
+        let update = match self.runner.find_update(instance.clone()).await {
+            Ok(update) => update?,
+            Err(error) => {
+                self.host.emit(AppEvent::Warning {
+                    instance: Some(id.to_string()),
+                    error,
+                });
+                return None;
+            }
+        };
+        if update_only || instance.update_policy == UpdatePolicy::Auto {
+            return Some(update);
+        }
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
+            let run = runs.get_mut(id)?;
+            let offer = PackUpdate::from(&update);
+            run.phase = RunStateKind::Asking;
+            run.answer = Some(tx);
+            run.offer = Some(offer.clone());
+            self.host.emit(AppEvent::RunState {
+                instance: id.to_string(),
+                state: RunStateKind::Asking,
+                exit: None,
+                update: Some(offer),
+            });
+        }
+        match rx.await {
+            Ok(true) => Some(update),
+            _ => None,
+        }
+    }
+
+    /// The sync stopped for files the player must download by hand: remember them for
+    /// `manual_import`, and end the run with the list.
+    async fn needs_manual(&self, id: &str, files: Vec<ManualFile>) -> ExitInfo {
+        self.manual.lock().await.insert(
+            id.to_string(),
+            ManualState {
+                total: files.len(),
+                remaining: files.clone(),
+                scanner: Scanner::default(),
+            },
+        );
+        ExitInfo {
+            error: Some(
+                LauncherError::pack(
+                    ErrorCode::ManualDownloadsNeeded,
+                    format!("{} files have to be downloaded by hand", files.len()),
+                )
+                .with_param("count", files.len())
+                .with_fix("Download them from CurseForge, then try again"),
+            ),
+            manual: files,
+            ..ExitInfo::default()
         }
     }
 
@@ -208,18 +374,156 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self: Arc<Self>,
         id: String,
         instance: Instance,
-        session: Session,
-        minimize: bool,
+        play: Option<(Session, bool)>,
+        checks: bool,
+        cancel: Cancel,
     ) {
+        let update_only = play.is_none();
+        let ended = |info: ExitInfo| ExitInfo {
+            update_only,
+            ..info
+        };
         let (log_tx, batcher) = spawn_batcher(id.clone(), self.host.clone(), self.logs.clone());
         let sink = self.run_sink(&id, log_tx);
+        // Held from the update check until the run ends: the CLI or another window can't
+        // change this instance's files meanwhile (spec addendum §4.2).
+        let lock = match self.lock_instance(&id).await {
+            Ok(lock) => Arc::new(lock),
+            Err(error) => {
+                return self
+                    .finish(&id, ended(failed(error)), sink, batcher, None)
+                    .await
+            }
+        };
+        let accept = if checks {
+            let accept = self.decide_update(&id, &instance, update_only).await;
+            self.set_phase(&id, RunStateKind::Queued);
+            accept
+        } else {
+            None
+        };
         let Ok(permit) = self.install_slot.clone().acquire_owned().await else {
             return;
         };
-        self.set_phase(&id, RunStateKind::Preparing);
+        let mut instance = instance;
+        let mut synced = None;
+        if instance.source != SourceRef::None {
+            // Gone or stopping already (a Stop while queued): end it rather than sync.
+            if !self.set_phase(&id, RunStateKind::Syncing) {
+                drop(permit);
+                let info = ExitInfo {
+                    cancelled: true,
+                    ..ExitInfo::default()
+                };
+                return self
+                    .finish(&id, ended(info), sink, batcher, Some(lock))
+                    .await;
+            }
+            let result = self
+                .runner
+                .sync(
+                    lock.clone(),
+                    id.clone(),
+                    accept,
+                    cancel.clone(),
+                    sink.clone(),
+                )
+                .await;
+            let report = match result {
+                Ok(Ensured {
+                    outcome: SyncOutcome::Done(report),
+                    warning,
+                }) => {
+                    if let Some(error) = warning {
+                        self.host.emit(AppEvent::Warning {
+                            instance: Some(id.clone()),
+                            error,
+                        });
+                    }
+                    self.manual.lock().await.remove(&id);
+                    report
+                }
+                Ok(Ensured {
+                    outcome: SyncOutcome::NeedsManual(files),
+                    ..
+                }) => {
+                    drop(permit);
+                    let info = self.needs_manual(&id, files).await;
+                    return self
+                        .finish(&id, ended(info), sink, batcher, Some(lock))
+                        .await;
+                }
+                Err(error) if error.code == ErrorCode::SyncCancelled => {
+                    drop(permit);
+                    let info = ExitInfo {
+                        cancelled: true,
+                        ..ExitInfo::default()
+                    };
+                    return self
+                        .finish(&id, ended(info), sink, batcher, Some(lock))
+                        .await;
+                }
+                Err(error) => {
+                    drop(permit);
+                    return self
+                        .finish(&id, ended(failed(error)), sink, batcher, Some(lock))
+                        .await;
+                }
+            };
+            synced = (!report.up_to_date).then(|| SyncSummary::from(&report));
+            // Stop arrived once the swap had begun: the sync finished, but the player wants out.
+            if cancel.is_cancelled() {
+                drop(permit);
+                let info = ExitInfo {
+                    cancelled: true,
+                    synced,
+                    ..ExitInfo::default()
+                };
+                return self
+                    .finish(&id, ended(info), sink, batcher, Some(lock))
+                    .await;
+            }
+            // A pack update can change the game version.
+            instance = match self.instances.load(&id).await {
+                Ok(instance) => instance,
+                Err(error) => {
+                    drop(permit);
+                    return self
+                        .finish(&id, ended(failed(error)), sink, batcher, Some(lock))
+                        .await;
+                }
+            };
+        }
+        let Some((session, minimize)) = play else {
+            drop(permit);
+            let info = ExitInfo {
+                synced,
+                update_only: true,
+                ..ExitInfo::default()
+            };
+            return self.finish(&id, info, sink, batcher, Some(lock)).await;
+        };
+        // A Stop that came after the sync returned (while the instance reloaded) left the run
+        // `stopping`: end it here rather than start a game nobody wants.
+        if !self.set_phase(&id, RunStateKind::Preparing) {
+            drop(permit);
+            let info = ExitInfo {
+                cancelled: true,
+                synced,
+                ..ExitInfo::default()
+            };
+            return self.finish(&id, info, sink, batcher, Some(lock)).await;
+        }
         let prepared = match self.runner.prepare(instance.clone(), sink.clone()).await {
             Ok(prepared) => prepared,
-            Err(error) => return self.finish(&id, failed(error), sink, batcher).await,
+            Err(error) => {
+                drop(permit);
+                let info = ExitInfo {
+                    synced,
+                    ..failed(error)
+                };
+                return self.finish(&id, info, sink, batcher, Some(lock)).await;
+            }
         };
         drop(permit);
         let game = match self
@@ -228,7 +532,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .await
         {
             Ok(game) => game,
-            Err(error) => return self.finish(&id, failed(error), sink, batcher).await,
+            Err(error) => {
+                let info = ExitInfo {
+                    synced,
+                    ..failed(error)
+                };
+                return self.finish(&id, info, sink, batcher, Some(lock)).await;
+            }
         };
         // No `.await` between `start` returning and recording the killer, so a Stop can't slip
         // in and leave the game running with nobody holding its killer.
@@ -255,21 +565,34 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 code: exit.code,
                 killed: exit.killed,
                 crash: exit.crash,
+                synced,
                 ..ExitInfo::default()
             },
-            Err(error) => failed(error),
+            Err(error) => ExitInfo {
+                synced,
+                ..failed(error)
+            },
         };
         let crashed = info.is_crash();
-        self.finish(&id, info, sink, batcher).await;
+        self.finish(&id, info, sink, batcher, Some(lock)).await;
         if minimize || crashed {
             self.host.restore();
         }
     }
 
-    async fn finish(&self, id: &str, info: ExitInfo, sink: EventSink, batcher: JoinHandle<()>) {
+    async fn finish(
+        &self,
+        id: &str,
+        info: ExitInfo,
+        sink: EventSink,
+        batcher: JoinHandle<()>,
+        lock: Option<Arc<InstanceLock>>,
+    ) {
         drop(sink);
         // Let the last log lines reach the UI before the idle state does.
         let _ = tokio::time::timeout(Duration::from_secs(2), batcher).await;
+        // Let go of the instance before saying so: a Play right after `idle` must get the lock.
+        drop(lock);
         let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
         // A cancelled run was already removed and reported by `stop`. The final state goes out
         // under the lock, like `stop` does, so a Play arriving now can't report `queued` first.
@@ -291,14 +614,20 @@ mod tests {
     use std::{sync::atomic::Ordering, time::Duration};
 
     use launcher_core::{
-        accounts::BuildKind, launch::CrashHint, settings::Settings, ErrorCode, LauncherError,
+        accounts::BuildKind,
+        instances::{GameSpec, UpdatePolicy},
+        launch::CrashHint,
+        locks::InstanceLock,
+        settings::Settings,
+        sync::{plan::Changes, Ensured, SyncOutcome, SyncReport},
+        ErrorCode, LauncherError,
     };
 
     use crate::{
         app::tests::{core, TestCore},
         dto::NewInstance,
         events::RunStateKind::{self, *},
-        testing::{exit, FakeRunner, RecordingHost},
+        testing::{desired, exit, manual_file, pack_instance, pending, FakeRunner, RecordingHost},
     };
     use std::sync::Arc;
 
@@ -640,5 +969,318 @@ mod tests {
         assert!(!core.has_active_runs());
         assert!(host.last_exit("alpha").unwrap().killed);
         assert!(host.last_exit("beta").unwrap().cancelled);
+    }
+
+    /// A pack instance "Sky" (id `sky`) that synced 1.0.3 before, with `policy`.
+    async fn pack(core: &TestCore, policy: UpdatePolicy) -> String {
+        let installed = desired("1.0.3", vec![]);
+        let mut instance = pack_instance(core, "Sky", Some(&installed)).await;
+        instance.update_policy = policy;
+        core.instances.save(&instance).await.unwrap();
+        instance.id
+    }
+
+    fn offer(runner: &FakeRunner, id: &str) {
+        runner
+            .updates
+            .lock()
+            .unwrap()
+            .insert(id.to_string(), Ok(Some(pending("1.0.3", "1.0.4"))));
+    }
+
+    fn lock_of(core: &TestCore, id: &str) -> launcher_core::Result<InstanceLock> {
+        InstanceLock::try_acquire(&core.instances.perland_dir(id))
+    }
+
+    #[tokio::test]
+    async fn a_pack_checks_then_syncs_then_plays() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(
+            host.states(&id),
+            vec![Checking, Queued, Syncing, Preparing, Running]
+        );
+        assert_eq!(*runner.syncs.lock().unwrap(), vec![(id.clone(), None)]);
+        runner.finish(&id, exit(Some(0)));
+        host.wait_for(&id, Idle).await;
+        assert!(
+            host.last_exit(&id).unwrap().synced.is_none(),
+            "nothing changed"
+        );
+    }
+
+    #[tokio::test]
+    async fn ask_waits_for_the_player_and_takes_the_update() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        offer(&runner, &id);
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        assert_eq!(host.last_update(&id).unwrap().to_version, "1.0.4");
+        let snapshot = core.run_states();
+        assert_eq!(
+            snapshot[0].update.as_ref().unwrap().from_version.as_deref(),
+            Some("1.0.3"),
+            "a reloaded UI can show the dialog again"
+        );
+        assert!(
+            runner.syncs.lock().unwrap().is_empty(),
+            "nothing syncs before the answer"
+        );
+        core.play_answer(&id, true).unwrap();
+        core.play_answer(&id, true).unwrap(); // a second click is harmless
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(
+            host.states(&id),
+            vec![Checking, Asking, Queued, Syncing, Preparing, Running]
+        );
+        assert_eq!(
+            *runner.syncs.lock().unwrap(),
+            vec![(id.clone(), Some("1.0.4".to_string()))]
+        );
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn playing_the_installed_version_skips_the_update() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        offer(&runner, &id);
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        core.play_answer(&id, false).unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(*runner.syncs.lock().unwrap(), vec![(id.clone(), None)]);
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn auto_takes_updates_without_asking_and_pinned_never_checks() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Auto).await;
+        offer(&runner, &id);
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(
+            host.states(&id),
+            vec![Checking, Queued, Syncing, Preparing, Running]
+        );
+        assert_eq!(runner.syncs.lock().unwrap()[0].1.as_deref(), Some("1.0.4"));
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+
+        let mut pinned = core.instances.load(&id).await.unwrap();
+        pinned.update_policy = UpdatePolicy::Pinned;
+        core.instances.save(&pinned).await.unwrap();
+        let checks = runner.checks.load(Ordering::SeqCst);
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for_nth(&id, Running, 2).await;
+        assert_eq!(
+            runner.checks.load(Ordering::SeqCst),
+            checks,
+            "pinned never checks"
+        );
+        let states = host.states(&id);
+        assert_eq!(
+            &states[states.len() - 4..],
+            &[Queued, Syncing, Preparing, Running]
+        );
+        core.stop(&id).unwrap();
+        host.wait_for_nth(&id, Idle, 2).await;
+    }
+
+    #[tokio::test]
+    async fn stop_while_asking_cancels_without_syncing() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        offer(&runner, &id);
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        core.stop(&id).unwrap();
+        assert_eq!(host.states(&id), vec![Checking, Asking, Idle]);
+        assert!(host.last_exit(&id).unwrap().cancelled);
+        assert!(runner.syncs.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_failed_check_warns_and_plays_the_installed_version() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        runner.updates.lock().unwrap().insert(
+            id.clone(),
+            Err(LauncherError::network(
+                ErrorCode::UpdateCheckFailed,
+                "Couldn't check for updates",
+            )),
+        );
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert!(host.warnings().contains(&ErrorCode::UpdateCheckFailed));
+        assert_eq!(*runner.syncs.lock().unwrap(), vec![(id.clone(), None)]);
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn stop_while_syncing_waits_for_the_sync_to_stop() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        runner.hold_sync.store(true, Ordering::SeqCst);
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Syncing).await;
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+        assert_eq!(
+            host.states(&id),
+            vec![Checking, Queued, Syncing, Stopping, Idle]
+        );
+        assert!(host.last_exit(&id).unwrap().cancelled);
+        assert!(runner.prepared.lock().unwrap().is_empty());
+        lock_of(&core, &id).expect("released once the sync stopped");
+    }
+
+    #[tokio::test]
+    async fn a_stop_that_lands_after_the_sync_returned_never_starts_the_game() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        runner.hold_sync.store(true, Ordering::SeqCst);
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Syncing).await;
+        // A Stop the sync never saw: it came once the sync had already returned.
+        core.runs.lock().unwrap().get_mut(&id).unwrap().phase = Stopping;
+        runner.open_sync_gate(1);
+        runner.open_gate(1);
+        host.wait_for(&id, Idle).await;
+        assert!(host.last_exit(&id).unwrap().cancelled);
+        assert!(runner.prepared.lock().unwrap().is_empty());
+        assert!(!host.states(&id).contains(&Running));
+    }
+
+    #[tokio::test]
+    async fn blocked_files_end_the_run_with_the_manual_list() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        runner.sync_results.lock().unwrap().push_back(Ok(Ensured {
+            outcome: SyncOutcome::NeedsManual(vec![manual_file("optifine.jar", b"optifine")]),
+            warning: None,
+        }));
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Idle).await;
+        let exit = host.last_exit(&id).unwrap();
+        let error = exit.error.clone().unwrap();
+        assert_eq!(error.code, ErrorCode::ManualDownloadsNeeded);
+        assert_eq!(error.params["count"], "1");
+        assert_eq!(exit.manual.len(), 1);
+        assert!(!exit.is_crash());
+        assert!(core.manual.lock().await.contains_key(&id));
+    }
+
+    #[tokio::test]
+    async fn the_lock_is_held_from_check_to_game_exit() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        offer(&runner, &id);
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        assert_eq!(
+            lock_of(&core, &id).unwrap_err().code,
+            ErrorCode::InstanceLocked
+        );
+        core.play_answer(&id, false).unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(
+            lock_of(&core, &id).unwrap_err().code,
+            ErrorCode::InstanceLocked
+        );
+        runner.finish(&id, exit(Some(0)));
+        host.wait_for(&id, Idle).await;
+        lock_of(&core, &id).expect("free once the game exited");
+    }
+
+    #[tokio::test]
+    async fn a_locked_instance_ends_the_run_with_instance_locked() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        let _cli = lock_of(&core, &id).unwrap(); // the CLI is syncing it
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Idle).await; // after the short retry
+        assert_eq!(
+            host.last_exit(&id).unwrap().error.unwrap().code,
+            ErrorCode::InstanceLocked
+        );
+        assert!(runner.syncs.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn play_again_right_after_a_cancel_gets_the_lock() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        offer(&runner, &id);
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        core.stop(&id).unwrap();
+        core.play(&id).await.unwrap(); // the cancelled task may still hold the lock
+        host.wait_for_nth(&id, Asking, 2).await;
+        core.stop(&id).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_pack_update_that_changes_the_game_prepares_the_new_version() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        *runner.sync_game.lock().unwrap() = Some(GameSpec {
+            minecraft: "1.21.1".into(),
+            loader: None,
+        });
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(runner.prepared.lock().unwrap()[0].minecraft, "1.21.1");
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn sync_results_reach_the_exit_and_warnings_reach_the_ui() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        runner.sync_results.lock().unwrap().push_back(Ok(Ensured {
+            outcome: SyncOutcome::Done(SyncReport {
+                up_to_date: false,
+                changes: Changes {
+                    from_version: Some("1.0.3".into()),
+                    to_version: "1.0.4".into(),
+                    added: vec!["JEI".into()],
+                    updated: vec![],
+                    removed: vec![],
+                },
+                kept_modified: vec!["config/a.toml".into()],
+                game_changed: false,
+            }),
+            warning: Some(
+                LauncherError::network(ErrorCode::UpdateDownloadFailed, "x")
+                    .with_param("version", "1.0.3"),
+            ),
+        }));
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        runner.finish(&id, exit(Some(0)));
+        host.wait_for(&id, Idle).await;
+        let synced = host.last_exit(&id).unwrap().synced.unwrap();
+        assert_eq!((synced.to_version.as_str(), synced.added), ("1.0.4", 1));
+        assert_eq!(synced.kept_modified, vec!["config/a.toml".to_string()]);
+        assert!(host.warnings().contains(&ErrorCode::UpdateDownloadFailed));
     }
 }

@@ -1,8 +1,10 @@
 import { Webview } from '@tauri-apps/api/webview';
 import { act, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMockBackend } from '../../ipc/mock';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
+import { renderWithProviders } from '../../test/render';
 import { Mods } from './Mods';
 
 type DragHandler = Parameters<Webview['onDragDropEvent']>[0];
@@ -334,12 +336,56 @@ it('refreshes the list when the window regains focus, and stops after the screen
   expect(sent(calls, 'mods_list').length).toBe(before + 1);
 });
 
+describe('a pack instance', () => {
+  it("lists the pack's mods read-only and the player's additions with their actions", async () => {
+    const { user, calls } = renderApp(<Mods id="sky-islands" />);
+    expect(await screen.findByRole('heading', { name: 'From the pack' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Your additions' })).toBeInTheDocument();
+    expect(screen.getByText('Create')).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: 'Use Create' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove Create' })).not.toBeInTheDocument();
+    expect(screen.getByText('Optional mods change the next time you play.')).toBeInTheDocument();
+    await user.click(screen.getByRole('switch', { name: 'Use Iris Shaders' }));
+    expect(sent(calls, 'pack_set_optional')).toEqual([{ id: 'sky-islands', path: 'mods/iris.jar', enabled: true }]);
+    expect(screen.getByRole('button', { name: 'Remove zoomify-2.11.2' })).toBeInTheDocument();
+  });
+
+  it('shows nothing removable until it knows the instance is a pack', async () => {
+    const backend = createMockBackend();
+    let releaseListing = () => {};
+    renderWithProviders(<Mods id="sky-islands" />, {
+      ipc: (cmd, args) => {
+        // The folder holds the pack's own jar; the instance listing is slow to arrive.
+        if (cmd === 'mods_list') return [{ fileName: 'create-0.5.1.jar', enabled: true, size: 1024 }];
+        if (cmd === 'instances_list') return new Promise((resolve) => (releaseListing = () => resolve(backend.handle(cmd, args))));
+        return backend.handle(cmd, args);
+      },
+    });
+    expect(await screen.findByText('Loading…')).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(screen.queryByText('create-0.5.1')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Remove / })).not.toBeInTheDocument();
+    releaseListing();
+    expect(await screen.findByRole('heading', { name: 'From the pack' })).toBeInTheDocument();
+    expect(screen.queryByText('create-0.5.1')).not.toBeInTheDocument();
+  });
+
+  it("asks for the pack's lists again after a failed change", async () => {
+    const { user, calls, backend } = renderApp(<Mods id="sky-islands" />);
+    const zoomify = await screen.findByRole('switch', { name: 'Use zoomify-2.11.2' });
+    intercept(backend, 'mod_set_enabled').mode = 'fail';
+    const before = sent(calls, 'pack_contents').length;
+    await user.click(zoomify);
+    await waitFor(() => expect(sent(calls, 'pack_contents').length).toBe(before + 1));
+  });
+});
+
 it('locks toggles and removal while the game runs, but still lets players add mods', async () => {
   const { user, calls } = renderApp(<Mods id="asalith-fields" />);
   const zoomify = await screen.findByRole('switch', { name: 'Use zoomify-2.11.2' });
   expect(screen.queryByText(/Stop the game to turn mods on or off/)).not.toBeInTheDocument();
 
-  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null }));
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
   expect(screen.getByText(/Stop the game to turn mods on or off or remove them/)).toBeInTheDocument();
   expect(zoomify).toHaveAttribute('aria-disabled', 'true');
   const remove = screen.getByRole('button', { name: 'Remove sodium-fabric-0.5.8+mc1.20.1' });
@@ -353,7 +399,7 @@ it('locks toggles and removal while the game runs, but still lets players add mo
   await user.click(screen.getByRole('button', { name: 'Add mods' }));
   expect(sent(calls, 'mods_add')).toHaveLength(1);
 
-  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'idle', exit: null }));
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'idle', exit: null, update: null }));
   expect(screen.queryByText(/Stop the game to turn mods on or off/)).not.toBeInTheDocument();
   expect(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' })).not.toHaveAttribute('aria-disabled');
   await user.click(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' }));

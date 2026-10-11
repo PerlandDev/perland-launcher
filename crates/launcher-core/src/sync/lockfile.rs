@@ -1,14 +1,17 @@
 //! The two files sync keeps in `.perland/`: `pack.json`, the resolved pack that is installed
 //! (so a pinned or offline instance can repair itself and optional toggles need no network),
 //! and `managed.json`, what sync wrote. `managed.json` is always written last (spec §3.3).
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::{BTreeMap, HashSet},
+    path::Path,
+};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     download::Hashes,
     error::{ErrorCode, LauncherError, Result},
-    fsutil::{normalize_rel, write_atomic},
+    fsutil::{normalize_rel, path_key, write_atomic},
     sources::{DesiredState, FileMode},
 };
 
@@ -85,6 +88,11 @@ pub async fn save_pack(perland_dir: &Path, desired: &DesiredState) -> Result<()>
 /// "Your additions": jars in `mods/` that sync doesn't manage. Sync never touches these.
 pub async fn additions(game_dir: &Path, managed: Option<&Managed>) -> Result<Vec<String>> {
     let mut out = Vec::new();
+    // Keys compare as the file system does: a pack that renamed `foo.jar` to `Foo.jar` still
+    // owns the `foo.jar` on disk.
+    let managed_keys: HashSet<String> = managed
+        .map(|m| m.files.keys().map(|k| path_key(k)).collect())
+        .unwrap_or_default();
     let mut entries = match tokio::fs::read_dir(game_dir.join("mods")).await {
         Ok(rd) => rd,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
@@ -99,9 +107,9 @@ pub async fn additions(game_dir: &Path, managed: Option<&Managed>) -> Result<Vec
         if !(lower.ends_with(".jar") || lower.ends_with(".jar.disabled")) {
             continue;
         }
-        let enabled_name = name.strip_suffix(".disabled").unwrap_or(&name);
-        let key = format!("mods/{enabled_name}");
-        if !managed.is_some_and(|m| m.files.contains_key(&key)) {
+        let key = path_key(&format!("mods/{name}"));
+        let key = key.strip_suffix(".disabled").unwrap_or(&key);
+        if !managed_keys.contains(key) {
             out.push(name);
         }
     }
@@ -200,5 +208,23 @@ mod tests {
         assert_eq!(all, vec!["Mine.jar", "a.jar", "old.jar.disabled"]);
         let empty = tempfile::tempdir().unwrap();
         assert!(additions(empty.path(), None).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn additions_match_managed_paths_ignoring_case() {
+        // A pack renamed `mods/foo.jar` to `mods/Foo.jar` with the same bytes: plan() keeps the
+        // on-disk `foo.jar` while the lockfile records `mods/Foo.jar`. It is still the pack's.
+        let dir = tempfile::tempdir().unwrap();
+        let mods = dir.path().join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        for f in ["foo.jar", "BAR.jar.disabled", "mine.jar"] {
+            std::fs::write(mods.join(f), "x").unwrap();
+        }
+        let mut lock = managed();
+        let entry = lock.files["mods/a.jar"].clone();
+        lock.files.insert("mods/Foo.jar".into(), entry.clone());
+        lock.files.insert("mods/bar.jar".into(), entry);
+        let found = additions(dir.path(), Some(&lock)).await.unwrap();
+        assert_eq!(found, vec!["mine.jar"]);
     }
 }

@@ -13,7 +13,11 @@
     "dialog:allow-open",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://github.com/PerlandDev/*" }, { "url": "https://www.gnu.org/licenses/*" }]
+      "allow": [
+        { "url": "https://github.com/PerlandDev/*" },
+        { "url": "https://www.gnu.org/licenses/*" },
+        { "url": "https://www.curseforge.com/projects/*" }
+      ]
     }
   ]
 }

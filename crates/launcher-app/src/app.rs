@@ -23,12 +23,16 @@ use launcher_core::{
     mods::{self, LocalMod},
     paths::LauncherDirs,
     settings::{Settings, SettingsStore},
+    sync::{manual::Scanner, Cancel, ManualFile},
     ErrorCode, LauncherError, Result,
 };
-use tokio::{sync::Semaphore, task::AbortHandle};
+use tokio::{
+    sync::{oneshot, Semaphore},
+    task::AbortHandle,
+};
 
 use crate::{
-    dto::{AppInfo, JavaTest, NewInstance, OpenTarget},
+    dto::{AppInfo, JavaTest, NewInstance, OpenTarget, PackUpdate},
     events::{AppEvent, Host, RunStateKind},
     logs::LogStore,
     runner::{Kill, Runner},
@@ -39,15 +43,33 @@ pub struct AppConfig {
     pub build: BuildKind,
     pub launcher_version: String,
     pub system_memory_mb: u64,
+    /// Where the player's browser saves files (manual CurseForge downloads).
+    pub downloads_dir: Option<PathBuf>,
 }
+
+/// The names a Java executable has. Anything else is never run.
+const JAVA_NAMES: [&str; 4] = ["java", "javaw", "java.exe", "javaw.exe"];
 
 /// One instance's current run. Absent from `runs` means idle.
 pub(crate) struct Run {
     pub(crate) phase: RunStateKind,
-    /// Set while queued or preparing: aborting the task cancels the run.
+    /// Set until the game is running: aborting the task cancels the run.
     pub(crate) abort: Option<AbortHandle>,
     /// Set once the game is running: stopping kills it.
     pub(crate) killer: Option<Arc<dyn Kill>>,
+    /// Asks a sync to stop at its next file (Stop while syncing).
+    pub(crate) cancel: Cancel,
+    /// Set while asking: delivers the player's answer to "Update ready".
+    pub(crate) answer: Option<oneshot::Sender<bool>>,
+    /// The update on offer while asking, for `run_states` after a reload.
+    pub(crate) offer: Option<PackUpdate>,
+}
+
+/// Files the last sync couldn't download, while the player fetches them by hand.
+pub(crate) struct ManualState {
+    pub(crate) total: usize,
+    pub(crate) remaining: Vec<ManualFile>,
+    pub(crate) scanner: Scanner,
 }
 
 pub struct AppCore<R: Runner, H: Host> {
@@ -64,6 +86,10 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) install_slot: Arc<Semaphore>,
     pub(crate) runs: Mutex<HashMap<String, Run>>,
     pub(crate) logs: LogStore,
+    /// Per instance: the files its last sync couldn't download.
+    pub(crate) manual: tokio::sync::Mutex<HashMap<String, ManualState>>,
+    /// A valid `perland://` pack link waiting for the UI to take it.
+    pub(crate) pending_link: Mutex<Option<String>>,
 }
 
 fn busy(id: &str) -> LauncherError {
@@ -100,6 +126,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             install_slot: Arc::new(Semaphore::new(1)),
             runs: Mutex::new(HashMap::new()),
             logs: LogStore::default(),
+            manual: tokio::sync::Mutex::new(HashMap::new()),
+            pending_link: Mutex::new(None),
             config,
         })
     }
@@ -189,13 +217,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Version and Java changes wait until the game stops; other edits are fine while it runs.
-    pub async fn instance_update(&self, instance: Instance) -> Result<Instance> {
-        if self.is_busy(&instance.id) {
-            let current = self.instances.load(&instance.id).await?;
-            if current.game != instance.game || current.java != instance.java {
-                return Err(busy(&instance.id));
-            }
+    /// The source is sync's to change: a settings form loaded before a sync can't revert it.
+    pub async fn instance_update(&self, mut instance: Instance) -> Result<Instance> {
+        let current = self.instances.load(&instance.id).await?;
+        if self.is_busy(&instance.id)
+            && (current.game != instance.game || current.java != instance.java)
+        {
+            return Err(busy(&instance.id));
         }
+        instance.source = current.source;
         self.instances.update(&instance).await
     }
 
@@ -258,6 +288,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if self.is_busy(id) {
             return Err(busy(id));
         }
+        self.refuse_managed(id, file).await?;
         let dir = self.game_dir(id).await?;
         mods::set_enabled(&dir, file, enabled).await?;
         mods::list(&dir).await
@@ -275,6 +306,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if self.is_busy(id) {
             return Err(busy(id));
         }
+        self.refuse_managed(id, file).await?;
         let dir = self.game_dir(id).await?;
         mods::remove(&dir, file).await?;
         mods::list(&dir).await
@@ -304,12 +336,30 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
             OpenTarget::Data => self.config.dirs.root().to_path_buf(),
             OpenTarget::Logs => self.config.dirs.logs(),
+            OpenTarget::Downloads => self.config.downloads_dir.clone().ok_or_else(|| {
+                LauncherError::disk(ErrorCode::Internal, "Couldn't find your Downloads folder")
+            })?,
         };
         tokio::fs::create_dir_all(&path).await?;
         Ok(path)
     }
 
+    /// Run `<path> -version`, but only for a regular file named like Java: the path comes
+    /// from the webview.
     pub async fn java_test(&self, path: PathBuf) -> Result<JavaTest> {
+        let named_java = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| JAVA_NAMES.iter().any(|j| n.eq_ignore_ascii_case(j)));
+        let is_file = tokio::fs::metadata(&path).await.is_ok_and(|m| m.is_file());
+        if !named_java || !is_file {
+            return Err(LauncherError::java(
+                ErrorCode::JavaTestFailed,
+                "That doesn't look like a working Java",
+            )
+            .with_fix("Pick the java executable inside a Java installation's bin folder")
+            .with_detail(path.display()));
+        }
         Ok(JavaTest {
             major: java::probe(&path).await?,
         })
@@ -338,6 +388,7 @@ pub(crate) mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dirs = LauncherDirs::new(tmp.path());
         let runner = FakeRunner::new();
+        *runner.instances_dir.lock().unwrap() = Some(dirs.instances());
         let host = RecordingHost::new();
         let meta = MetaClient::new(launcher_core::http::client("test").unwrap(), dirs.meta());
         let core = AppCore::new(
@@ -346,6 +397,7 @@ pub(crate) mod tests {
                 build,
                 launcher_version: "0.1.0".into(),
                 system_memory_mb: 16384,
+                downloads_dir: Some(tmp.path().join("Downloads")),
             },
             meta,
             runner.clone(),

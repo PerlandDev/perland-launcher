@@ -1,5 +1,5 @@
-import { act, screen } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { act, fireEvent, screen } from '@testing-library/react';
+import { expect, it, vi } from 'vitest';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { renderApp } from '../../test/backend';
@@ -29,6 +29,22 @@ it('moves focus with the arrow keys and enters at the selected item', async () =
 it('marks a running instance', async () => {
   renderApp(<Rail />);
   await screen.findByRole('button', { name: 'Asalith Fields' });
-  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null }));
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
   expect(screen.getByRole('button', { name: 'Asalith Fields, Playing' })).toBeInTheDocument();
+});
+
+it("uses a pack's icon", async () => {
+  renderApp(<Rail />);
+  const sky = await screen.findByRole('button', { name: 'Sky Islands' });
+  await vi.waitFor(() => expect(sky.querySelector('img')?.getAttribute('src')).toMatch(/^data:image\//));
+  expect(screen.getByRole('button', { name: 'Creative Flat' }).querySelector('img')).toBeNull();
+});
+
+it("falls back to the generated icon when a pack's icon fails to decode", async () => {
+  renderApp(<Rail />);
+  const sky = await screen.findByRole('button', { name: 'Sky Islands' });
+  await vi.waitFor(() => expect(sky.querySelector('img')).not.toBeNull());
+  fireEvent.error(sky.querySelector('img')!);
+  expect(sky.querySelector('img')).toBeNull();
+  expect(sky.querySelector('svg')).not.toBeNull();
 });

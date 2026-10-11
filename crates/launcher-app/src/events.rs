@@ -4,8 +4,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use launcher_core::{events::TaskId, launch::CrashHint, LauncherError};
+use launcher_core::{events::TaskId, launch::CrashHint, sync::ManualFile, LauncherError};
 use serde::Serialize;
+
+use crate::dto::{PackUpdate, SyncSummary};
 
 /// Progress for one task reaches the UI at most this often (first and last updates always do).
 pub const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
@@ -14,7 +16,13 @@ pub const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 #[serde(rename_all = "snake_case")]
 pub enum RunStateKind {
     Idle,
+    /// Looking for a pack update.
+    Checking,
+    /// Waiting for the player's answer to "Update ready".
+    Asking,
     Queued,
+    /// Bringing the pack's files in line.
+    Syncing,
     Preparing,
     Running,
     Stopping,
@@ -22,21 +30,35 @@ pub enum RunStateKind {
 
 /// How a run ended. Exactly one of these is usually interesting: an error, a cancel, a kill, or an exit code.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExitInfo {
     pub code: Option<i32>,
     pub killed: bool,
     pub cancelled: bool,
     pub crash: Option<CrashHint>,
     pub error: Option<LauncherError>,
+    /// What the run's sync changed (None when nothing changed or nothing synced).
+    pub synced: Option<SyncSummary>,
+    /// Files the sync needs the player to download by hand (`manual_downloads_needed`).
+    pub manual: Vec<ManualFile>,
+    /// The banner's Update: the run synced and stopped there, with no game.
+    pub update_only: bool,
 }
 
 impl ExitInfo {
     /// An exit nobody asked for that wasn't clean: the window comes back and the crash card shows.
     pub fn is_crash(&self) -> bool {
-        !self.killed && !self.cancelled && self.error.is_none() && self.code != Some(0)
+        !self.killed
+            && !self.cancelled
+            && self.error.is_none()
+            && self.code != Some(0)
+            && !self.update_only
     }
 }
 
+// A run-state event carries a whole `ExitInfo`; events are short-lived and rare, so boxing would
+// only make every literal in the app and its tests noisier.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AppEvent {
@@ -55,11 +77,15 @@ pub enum AppEvent {
         instance: String,
         state: RunStateKind,
         exit: Option<ExitInfo>,
+        /// The update on offer while `asking`.
+        update: Option<PackUpdate>,
     },
     Warning {
         instance: Option<String>,
         error: LauncherError,
     },
+    /// A `perland://pack` link arrived; the UI asks for it with `deep_link_take`.
+    DeepLink,
 }
 
 /// The window the app runs in. Tauri implements it; tests record what it was asked to do.
@@ -103,6 +129,36 @@ mod tests {
     use launcher_core::ErrorCode;
 
     #[test]
+    fn an_update_only_run_is_never_a_crash() {
+        assert!(!ExitInfo {
+            update_only: true,
+            ..ExitInfo::default()
+        }
+        .is_crash());
+        let json = serde_json::to_value(ExitInfo::default()).unwrap();
+        assert_eq!(json["updateOnly"], false);
+        assert!(json["manual"].as_array().unwrap().is_empty());
+        assert!(json["synced"].is_null());
+    }
+
+    #[test]
+    fn new_phases_and_the_deep_link_event_serialize() {
+        let e = AppEvent::RunState {
+            instance: "sky".into(),
+            state: RunStateKind::Asking,
+            exit: None,
+            update: None,
+        };
+        let json = serde_json::to_value(&e).unwrap();
+        assert_eq!(json["state"], "asking");
+        assert!(json["update"].is_null());
+        assert_eq!(
+            serde_json::to_value(AppEvent::DeepLink).unwrap(),
+            serde_json::json!({ "type": "deep_link" })
+        );
+    }
+
+    #[test]
     fn throttle_keeps_first_and_last_and_spaces_the_rest() {
         let mut t = ProgressThrottle::new(Duration::from_millis(100));
         let start = Instant::now();
@@ -126,6 +182,7 @@ mod tests {
             instance: "pack".into(),
             state: RunStateKind::Preparing,
             exit: None,
+            update: None,
         };
         let json = serde_json::to_value(&e).unwrap();
         assert_eq!(json["type"], "run_state");

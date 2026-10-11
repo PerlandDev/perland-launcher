@@ -1,6 +1,6 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../ipc/commands';
-import type { Instance, LoaderKind, NewInstance, Settings } from '../ipc/schema';
+import type { Instance, LoaderKind, NewInstance, PackAddRequest, Settings } from '../ipc/schema';
 import { pushError } from './toasts';
 
 export function createQueryClient() {
@@ -22,6 +22,10 @@ export const qk = {
   mcVersions: ['catalog', 'minecraft'] as const,
   loaders: (kind: LoaderKind, mc: string) => ['catalog', 'loaders', kind, mc] as const,
   mods: (id: string) => ['mods', id] as const,
+  packStatus: (id: string) => ['pack', 'status', id] as const,
+  packContents: (id: string) => ['pack', 'contents', id] as const,
+  packArt: (id: string) => ['pack', 'art', id] as const,
+  manual: (id: string) => ['pack', 'manual', id] as const,
 };
 
 const TEN_MINUTES = 10 * 60_000;
@@ -40,6 +44,12 @@ export const useLoaderVersions = (kind: LoaderKind | null, mc: string | null) =>
     staleTime: TEN_MINUTES,
   });
 export const useMods = (id: string) => useQuery({ queryKey: qk.mods(id), queryFn: () => commands.modsList(id) });
+export const usePackStatus = (id: string, enabled: boolean) =>
+  useQuery({ queryKey: qk.packStatus(id), queryFn: () => commands.packStatus(id), enabled, staleTime: TEN_MINUTES });
+export const usePackContents = (id: string, enabled: boolean) =>
+  useQuery({ queryKey: qk.packContents(id), queryFn: () => commands.packContents(id), enabled });
+export const usePackArt = (id: string, enabled: boolean) =>
+  useQuery({ queryKey: qk.packArt(id), queryFn: () => commands.packArt(id), enabled, staleTime: Infinity });
 
 interface Opts {
   /** The caller shows the error itself (forms); otherwise it becomes a toast. */
@@ -63,6 +73,27 @@ export function useCreateInstance(opts: Opts = {}) {
   return useMutation({
     mutationFn: (request: NewInstance) => commands.instanceCreate(request),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onError: onError(opts),
+  });
+}
+
+export function useAddPack(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (request: PackAddRequest) => commands.packAdd(request),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onError: onError(opts),
+  });
+}
+
+export function usePackOptional(id: string, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ path, enabled }: { path: string; enabled: boolean }) => commands.packSetOptional(id, path, enabled),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.packContents(id) });
+      void qc.invalidateQueries({ queryKey: qk.instances });
+    },
     onError: onError(opts),
   });
 }
@@ -111,10 +142,15 @@ export function useAccountMutations(opts: Opts = {}) {
 
 export function useModMutations(id: string, opts: Opts = {}) {
   const qc = useQueryClient();
-  const onSuccess = (list: Awaited<ReturnType<typeof commands.modsList>>) => qc.setQueryData(qk.mods(id), list);
+  const onSuccess = (list: Awaited<ReturnType<typeof commands.modsList>>) => {
+    qc.setQueryData(qk.mods(id), list);
+    // A pack instance's additions list follows the mods folder.
+    void qc.invalidateQueries({ queryKey: qk.packContents(id) });
+  };
   // A failed change may still have touched the folder (a partial add), so the list is asked for again.
   const failed = (error: unknown) => {
     void qc.invalidateQueries({ queryKey: qk.mods(id) });
+    void qc.invalidateQueries({ queryKey: qk.packContents(id) });
     onError(opts)(error);
   };
   return {

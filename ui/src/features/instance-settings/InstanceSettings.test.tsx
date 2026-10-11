@@ -1,5 +1,6 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
+import type { Instance } from '../../ipc/schema';
 import { renderApp, sent } from '../../test/backend';
 import { InstanceSettings } from './InstanceSettings';
 
@@ -145,4 +146,16 @@ it('saves an instance whose Minecraft version the catalog does not list unchange
   await user.click(screen.getByRole('button', { name: 'Save' }));
   const saved = sent(calls, 'instance_update')[0] as { instance: { game: unknown } };
   expect(saved.instance.game).toEqual({ minecraft: '1.2.5', loader: null });
+});
+
+it("sets a pack's update policy and leaves its game to the pack", async () => {
+  const { user, calls } = renderApp(<InstanceSettings id="sky-islands" />);
+  expect(await screen.findByText('The pack picks the Minecraft version and loader.')).toBeInTheDocument();
+  expect(screen.queryByRole('combobox', { name: 'Minecraft version' })).not.toBeInTheDocument();
+  expect(screen.getByRole('radio', { name: 'Ask me' })).toBeChecked();
+  await user.click(screen.getByRole('radio', { name: 'Automatic' }));
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  const [sentArgs] = sent(calls, 'instance_update') as { instance: Instance }[];
+  expect(sentArgs!.instance.updatePolicy).toBe('auto');
+  expect(sentArgs!.instance.game).toEqual({ minecraft: '1.20.1', loader: { kind: 'forge', version: '47.4.22' } });
 });

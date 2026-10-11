@@ -1,0 +1,24 @@
+{
+  "managed": [
+    {
+      "path": "mods/create.jar",
+      "name": "Create",
+      "optional": null
+    },
+    {
+      "path": "mods/iris.jar",
+      "name": "Iris Shaders",
+      "optional": {
+        "enabled": false,
+        "description": "Shaders, for strong computers"
+      }
+    }
+  ],
+  "additions": [
+    {
+      "fileName": "zoomify-2.11.2.jar",
+      "enabled": true,
+      "size": 524288
+    }
+  ]
+}

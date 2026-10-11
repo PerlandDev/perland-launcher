@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Marquee } from '../../art/Marquee';
 import { commands } from '../../ipc/commands';
 import type { Instance } from '../../ipc/schema';
-import { useAccounts, useInstances } from '../../state/queries';
+import { useAccounts, useInstances, usePackArt } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
@@ -13,20 +13,30 @@ import { useSingleFlight } from '../../ui/useSingleFlight';
 import { DamagedView } from './DamagedView';
 import { EmptyState } from './EmptyState';
 import { InstanceMenu } from './InstanceMenu';
-import { versionLine } from './labels';
+import { isPack, versionLine } from './labels';
+import { ManualDownloads } from './ManualDownloads';
 import { pick } from './pick';
+import { UpdateDialog } from './UpdateDialog';
+import { UpdatePlate } from './UpdatePlate';
 
 function InstanceView({ instance }: { instance: Instance }) {
   const { t } = useTranslation();
   const run = useRun(instance.id);
   const accounts = useAccounts();
   const hasAccount = Boolean(accounts.data?.active);
+  const art = usePackArt(instance.id, isPack(instance));
   // The second click of a double click lands before the `queued` event; hold it until Play settles.
   const playOnce = useSingleFlight();
   return (
     <section className="relative h-full overflow-hidden" aria-labelledby="instance-name">
-      <Marquee seed={instance.id} attract={run.state === 'idle'} dimmed={run.state !== 'idle'} className="absolute inset-0" />
+      <Marquee seed={instance.id} attract={run.state === 'idle'} dimmed={run.state !== 'idle'} banner={art.data?.banner ?? null} className="absolute inset-0" />
       <div className="absolute inset-x-0 bottom-0 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-10 px-10 pt-6 pb-12">
+        {/* The plate sits above both columns, so it reads on one line instead of wrapping in the name's. */}
+        {isPack(instance) && (
+          <div className="col-span-2 min-w-0">
+            <UpdatePlate instance={instance} />
+          </div>
+        )}
         <div className="min-w-0">
           <h1 id="instance-name" className="marquee-name font-display text-[clamp(2.5rem,5.4vw,5.5rem)] leading-[0.95] [overflow-wrap:anywhere]">
             {instance.name}
@@ -55,6 +65,10 @@ function InstanceView({ instance }: { instance: Instance }) {
           </div>
         </div>
       </div>
+      {run.state === 'asking' && run.update && <UpdateDialog instance={instance} update={run.update} />}
+      {run.state === 'idle' && run.lastExit && run.lastExit.manual.length > 0 && (
+        <ManualDownloads instance={instance} files={run.lastExit.manual} updateOnly={run.lastExit.updateOnly} />
+      )}
     </section>
   );
 }

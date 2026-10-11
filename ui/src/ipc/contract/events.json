@@ -37,7 +37,8 @@
     "type": "run_state",
     "instance": "asalith-fields",
     "state": "queued",
-    "exit": null
+    "exit": null,
+    "update": null
   },
   {
     "type": "run_state",
@@ -48,8 +49,12 @@
       "killed": false,
       "cancelled": false,
       "crash": "out_of_memory",
-      "error": null
-    }
+      "error": null,
+      "synced": null,
+      "manual": [],
+      "updateOnly": false
+    },
+    "update": null
   },
   {
     "type": "run_state",
@@ -69,8 +74,12 @@
         "params": {
           "version": "9.9"
         }
-      }
-    }
+      },
+      "synced": null,
+      "manual": [],
+      "updateOnly": false
+    },
+    "update": null
   },
   {
     "type": "run_state",
@@ -81,8 +90,134 @@
       "killed": false,
       "cancelled": true,
       "crash": null,
-      "error": null
+      "error": null,
+      "synced": null,
+      "manual": [],
+      "updateOnly": false
+    },
+    "update": null
+  },
+  {
+    "type": "run_state",
+    "instance": "asalith-fields",
+    "state": "checking",
+    "exit": null,
+    "update": null
+  },
+  {
+    "type": "run_state",
+    "instance": "asalith-fields",
+    "state": "asking",
+    "exit": null,
+    "update": {
+      "fromVersion": "1.0.3",
+      "toVersion": "1.0.4",
+      "added": [
+        "Just Enough Items",
+        "Create",
+        "Farmer's Delight"
+      ],
+      "updated": [
+        "Sodium",
+        "Iris"
+      ],
+      "removed": [
+        "Zoomify"
+      ],
+      "kept": [
+        "config/sodium-options.json"
+      ]
     }
+  },
+  {
+    "type": "run_state",
+    "instance": "asalith-fields",
+    "state": "syncing",
+    "exit": null,
+    "update": null
+  },
+  {
+    "type": "run_state",
+    "instance": "asalith-fields",
+    "state": "idle",
+    "exit": {
+      "code": 0,
+      "killed": false,
+      "cancelled": false,
+      "crash": null,
+      "error": null,
+      "synced": {
+        "fromVersion": "1.0.3",
+        "toVersion": "1.0.4",
+        "added": 3,
+        "updated": 2,
+        "removed": 1,
+        "keptModified": [
+          "options.txt"
+        ]
+      },
+      "manual": [],
+      "updateOnly": false
+    },
+    "update": null
+  },
+  {
+    "type": "run_state",
+    "instance": "asalith-fields",
+    "state": "idle",
+    "exit": {
+      "code": null,
+      "killed": false,
+      "cancelled": false,
+      "crash": null,
+      "error": {
+        "category": "pack",
+        "code": "manual_downloads_needed",
+        "message": "1 files have to be downloaded by hand",
+        "fix": "Download them from CurseForge, then try again",
+        "detail": null,
+        "params": {
+          "count": "1"
+        }
+      },
+      "synced": null,
+      "manual": [
+        {
+          "path": "mods/optifine.jar",
+          "name": "OptiFine",
+          "fileName": "OptiFine_1.20.1_HD_U_I6.jar",
+          "pageUrl": "https://www.curseforge.com/projects/235216",
+          "hashes": {
+            "sha1": "3f786850e387550fdab836ed7e6dc881de23001b",
+            "sha256": null,
+            "sha512": null,
+            "md5": null,
+            "murmur2": null
+          }
+        }
+      ],
+      "updateOnly": false
+    },
+    "update": null
+  },
+  {
+    "type": "run_state",
+    "instance": "asalith-fields",
+    "state": "idle",
+    "exit": {
+      "code": null,
+      "killed": false,
+      "cancelled": false,
+      "crash": null,
+      "error": null,
+      "synced": null,
+      "manual": [],
+      "updateOnly": true
+    },
+    "update": null
+  },
+  {
+    "type": "deep_link"
   },
   {
     "type": "warning",

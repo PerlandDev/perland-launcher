@@ -12,5 +12,8 @@
   },
   {
     "kind": "logs"
+  },
+  {
+    "kind": "downloads"
   }
 ]

@@ -45,6 +45,7 @@
     "vanilla": "Vanilla",
     "mods": "Mods",
     "more": "More options",
+    "checkUpdates": "Check for updates",
     "instanceSettings": "Instance settings",
     "renameTitle": "Rename instance",
     "nameLabel": "Name",
@@ -61,13 +62,51 @@
     "queued": "Waiting for another download…",
     "preparing": "Getting ready…",
     "files": "{{done}} of {{total}} files",
-    "noAccount": "Add an account to play"
+    "filesShort": "{{done}}/{{total}}",
+    "noAccount": "Add an account to play",
+    "checking": "Checking for updates…",
+    "asking": "Update ready",
+    "syncing": "Updating…"
+  },
+  "manual": {
+    "title": "Download these manually",
+    "body": "Their authors only allow downloads from CurseForge. Open each page and download the file. We'll find it in your Downloads folder.",
+    "found": "Found {{found}} of {{total}}",
+    "openPage": "Open page",
+    "got": "Found",
+    "openDownloads": "Open Downloads folder"
+  },
+  "update": {
+    "title": "Update ready: {{from}} → {{to}}",
+    "titleNew": "Update ready: {{to}}",
+    "updateAndPlay": "Update and play",
+    "playOld": "Play {{version}}",
+    "playInstalled": "Play what you have",
+    "update": "Update",
+    "added_one": "+{{count}} added",
+    "added_other": "+{{count}} added",
+    "updated_one": "{{count}} updated",
+    "updated_other": "{{count}} updated",
+    "removed_one": "{{count}} removed",
+    "removed_other": "{{count}} removed",
+    "sameFiles": "Same mods, new version",
+    "showNames": "Show what changed",
+    "hideNames": "Hide what changed",
+    "addedHeading": "Added",
+    "updatedHeading": "Updated",
+    "removedHeading": "Removed",
+    "kept_one": "Kept your version of {{count}} file",
+    "kept_other": "Kept your version of {{count}} files",
+    "updatedTo": "Updated to {{version}}",
+    "checkFailed": "Couldn't check for updates"
   },
   "progress": {
     "install_minecraft": "Installing Minecraft {{version}}",
     "download_java": "Downloading Java {{version}}",
     "install_loader": "Setting up {{loader}} {{version}}",
-    "sync_pack": "Updating {{name}}"
+    "check_pack": "Checking {{name}} files",
+    "sync_pack": "Updating {{name}}",
+    "install_pack": "Installing {{name}}"
   },
   "activity": {
     "title": "Activity",
@@ -107,7 +146,18 @@
     "mrpack": "Import a .mrpack file",
     "create": "Create instance",
     "creating": "Creating…",
-    "namePlaceholderFallback": "My instance"
+    "namePlaceholderFallback": "My instance",
+    "modeVersion": "Pick a version",
+    "linkLabel": "Pack link",
+    "linkPlaceholder": "https://…/pack.toml",
+    "linkHint": "Paste a pack.toml link, or modrinth: and a project name.",
+    "linkFrom": "From {{host}}",
+    "addPack": "Add pack",
+    "adding": "Adding…",
+    "filePick": "Choose a .mrpack file",
+    "fileNone": "No file chosen yet",
+    "fileFilter": "Modpacks",
+    "packNote": "The pack's mods download the first time you press Play."
   },
   "instanceSettings": {
     "title": "Instance settings",
@@ -126,7 +176,12 @@
     "javaTest": "Test",
     "javaOk": "Java {{major}} works",
     "javaFiles": "Java program",
-    "applyNote": "Changes apply the next time you press Play."
+    "applyNote": "Changes apply the next time you press Play.",
+    "updates": "Updates",
+    "updatesAuto": "Automatic",
+    "updatesAsk": "Ask me",
+    "updatesPinned": "Don't update",
+    "gameFromPack": "The pack picks the Minecraft version and loader."
   },
   "damaged": {
     "title": "“{{id}}” can't be opened",
@@ -150,7 +205,13 @@
     "busy": "Still adding the last files. Drop these again in a moment.",
     "skipped": "Skipped (not a .jar): {{names}}",
     "pickTitle": "Choose mods",
-    "jarFiles": "Mod files"
+    "jarFiles": "Mod files",
+    "fromPackTitle": "From the pack",
+    "additionsTitle": "Your additions",
+    "fromPack": "Pack",
+    "optionalNote": "Optional mods change the next time you play.",
+    "noAdditions": "Mods you add show up here. Updates never touch them.",
+    "packEmpty": "This pack's mods show up after its first Play."
   },
   "accounts": {
     "title": "Accounts",
@@ -269,6 +330,7 @@
     "mod_exists": { "message": "{{file}} is already in this instance." },
     "mod_not_found": { "message": "{{file}} isn't in this instance anymore." },
     "mod_name_invalid": { "message": "That isn't a mod file name." },
+    "mod_managed": { "message": "{{file}} comes with the pack, so the pack decides whether it's on.", "fix": "Mods you add yourself can be turned off or removed." },
     "pack_invalid": { "message": "The pack file {{file}} is damaged or isn't a pack.", "fix": "Check the link, or ask the pack's author." },
     "pack_unsupported": { "message": "This pack uses something the launcher can't handle yet: {{what}}.", "fix": "Ask the pack's author, or try another pack." },
     "pack_unsafe_path": { "message": "The pack tried to write outside its folder ({{path}}).", "fix": "Don't use this pack, and let its author know." },
@@ -280,6 +342,8 @@
     "manual_downloads_needed": { "message": "{{count}} files have to be downloaded by hand.", "fix": "Download them from CurseForge, then try again." },
     "update_check_failed": { "message": "Couldn't check for updates.", "fix": "You can still play the version you have." },
     "pack_path_is_folder": { "message": "The pack wants to put a file where you have a folder ({{path}}).", "fix": "Move or rename that folder, then try again." },
+    "sync_cancelled": { "message": "The update was cancelled." },
+    "update_download_failed": { "message": "Couldn't download the update. You still have {{version}}.", "fix": "Try updating again later." },
     "internal": { "message": "Something unexpected went wrong.", "fix": "Restart the launcher. If it keeps happening, copy the details for support." }
   }
 }

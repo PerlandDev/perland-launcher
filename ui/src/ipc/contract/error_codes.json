@@ -54,6 +54,7 @@
   "mod_exists",
   "mod_not_found",
   "mod_name_invalid",
+  "mod_managed",
   "pack_invalid",
   "pack_unsupported",
   "pack_unsafe_path",
@@ -65,5 +66,7 @@
   "manual_downloads_needed",
   "update_check_failed",
   "pack_path_is_folder",
+  "sync_cancelled",
+  "update_download_failed",
   "internal"
 ]

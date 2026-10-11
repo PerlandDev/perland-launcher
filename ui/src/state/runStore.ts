@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { AppEvent, ExitInfo, RunSnapshot, RunStateKind, TaskId } from '../ipc/schema';
+import type { AppEvent, ExitInfo, PackUpdate, RunSnapshot, RunStateKind, TaskId } from '../ipc/schema';
 
 /** Lines kept per instance, matching the Rust side's log_tail. */
 export const LOG_CAP = 5000;
@@ -15,9 +15,11 @@ export interface RunView {
   state: RunStateKind;
   progress: ProgressView | null;
   lastExit: ExitInfo | null;
+  /** The pack update on offer; set only while the run is asking. */
+  update: PackUpdate | null;
 }
 
-const IDLE: RunView = { state: 'idle', progress: null, lastExit: null };
+const IDLE: RunView = { state: 'idle', progress: null, lastExit: null, update: null };
 const NO_LINES: string[] = [];
 
 export function createRunStore() {
@@ -66,13 +68,16 @@ export function createRunStore() {
           setLog(event.instance, (logs.get(event.instance) ?? NO_LINES).concat(event.lines));
           break;
         case 'run_state': {
-          const { instance: id, state, exit } = event;
+          const { instance: id, state, exit, update } = event;
           heardLive.add(id);
-          if (state === 'queued') setLog(id, NO_LINES);
+          // A run starts when an idle instance reports anything else: checking or queued.
+          const starting = (runs.get(id)?.state ?? 'idle') === 'idle' && state !== 'idle';
+          if (starting) setLog(id, NO_LINES);
           setRun(id, (run) => ({
             state,
-            progress: state === 'queued' || state === 'preparing' ? run.progress : null,
-            lastExit: state === 'queued' ? null : (exit ?? run.lastExit),
+            progress: state === run.state ? run.progress : null,
+            lastExit: starting ? null : (exit ?? run.lastExit),
+            update: state === 'asking' ? (update ?? run.update) : null,
           }));
           break;
         }
@@ -84,7 +89,7 @@ export function createRunStore() {
     hydrate(snapshots: RunSnapshot[], tails: Record<string, string[]>) {
       // Snapshots and tails are read after live events started arriving, so anything already heard live is newer.
       for (const snapshot of snapshots) {
-        if (!heardLive.has(snapshot.instance)) setRun(snapshot.instance, (run) => ({ ...run, state: snapshot.state }));
+        if (!heardLive.has(snapshot.instance)) setRun(snapshot.instance, (run) => ({ ...run, state: snapshot.state, update: snapshot.update }));
       }
       for (const [id, lines] of Object.entries(tails)) {
         if (!logs.has(id)) setLog(id, lines);

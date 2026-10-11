@@ -2,6 +2,7 @@
 use std::{
     collections::{BTreeMap, HashSet},
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -65,6 +66,10 @@ fn path_is_folder(path: &str) -> LauncherError {
     .with_fix("Move or rename that folder, then try again")
 }
 
+/// Told `(files checked, files to check)` as a survey goes: `0` before the first file, then once
+/// per file.
+pub(crate) type SurveyProgress = Arc<dyn Fn(u64, u64) + Send + Sync>;
+
 /// Hash what's on disk at every path the pack wants or the lockfile names. A lockfile path that
 /// differs from a wanted one only in letter case is left out: on a case-insensitive file system
 /// it is the same file. A folder where the pack wants a file stops the sync before anything
@@ -73,6 +78,7 @@ pub(crate) async fn survey(
     game_dir: &Path,
     wanted: &[&PackFile],
     managed: Option<&Managed>,
+    progress: Option<SurveyProgress>,
 ) -> Result<BTreeMap<String, OnDisk>> {
     let mut jobs: Vec<(String, Option<Hashes>)> = wanted
         .iter()
@@ -89,14 +95,21 @@ pub(crate) async fn survey(
     let game_dir = game_dir.to_path_buf();
     tokio::task::spawn_blocking(move || -> Result<BTreeMap<String, OnDisk>> {
         let mut out = BTreeMap::new();
-        for (path, hashes) in jobs {
+        let total = jobs.len() as u64;
+        let report = |done: u64| {
+            if let (Some(progress), true) = (&progress, total > 0) {
+                progress(done, total);
+            }
+        };
+        report(0);
+        for (checked, (path, hashes)) in jobs.into_iter().enumerate() {
             let full = game_dir.join(&path);
             let state = match std::fs::metadata(&full) {
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => OnDisk::Missing,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(OnDisk::Missing),
                 Err(e) => return Err(e.into()),
                 Ok(meta) if !meta.is_file() => match hashes {
                     Some(_) => return Err(path_is_folder(&path)),
-                    None => continue,
+                    None => None,
                 },
                 Ok(meta) => {
                     let sha1 = sha1_file(&full)?;
@@ -108,14 +121,17 @@ pub(crate) async fn survey(
                         },
                     };
                     let size = meta.len();
-                    if same {
+                    Some(if same {
                         OnDisk::Same { sha1, size }
                     } else {
                         OnDisk::Different { sha1, size }
-                    }
+                    })
                 }
             };
-            out.insert(path, state);
+            if let Some(state) = state {
+                out.insert(path, state);
+            }
+            report(checked as u64 + 1);
         }
         Ok(out)
     })
@@ -289,7 +305,7 @@ mod tests {
         );
         let c = pf("mods/c.jar", Hashes::sha1(sha1_hex(b"c")));
         let lock = managed(&[("mods/old.jar", FileMode::Replace, 3)]);
-        let found = survey(dir.path(), &[&a, &b, &c], Some(&lock))
+        let found = survey(dir.path(), &[&a, &b, &c], Some(&lock), None)
             .await
             .unwrap();
         assert_eq!(
@@ -314,13 +330,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn survey_reports_each_file_it_checks() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.jar"), "a").unwrap();
+        let a = pf("a.jar", Hashes::sha1(sha1_hex(b"a")));
+        let b = pf("b.jar", Hashes::sha1(sha1_hex(b"b")));
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = seen.clone();
+        let progress: SurveyProgress =
+            Arc::new(move |done, total| log.lock().unwrap().push((done, total)));
+        survey(dir.path(), &[&a, &b], None, Some(progress))
+            .await
+            .unwrap();
+        assert_eq!(*seen.lock().unwrap(), vec![(0, 2), (1, 2), (2, 2)]);
+    }
+
+    #[tokio::test]
     async fn survey_sees_a_case_only_rename_once() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("mods")).unwrap();
         std::fs::write(dir.path().join("mods/foo.jar"), "foo").unwrap();
         let renamed = pf("mods/Foo.jar", Hashes::sha1(sha1_hex(b"foo")));
         let lock = managed(&[("mods/foo.jar", FileMode::Replace, 3)]);
-        let found = survey(dir.path(), &[&renamed], Some(&lock)).await.unwrap();
+        let found = survey(dir.path(), &[&renamed], Some(&lock), None)
+            .await
+            .unwrap();
         assert!(
             !found.contains_key("mods/foo.jar"),
             "the old spelling is the wanted file: {found:?}"
@@ -357,13 +391,15 @@ mod tests {
         std::fs::create_dir_all(dir.path().join("saves/world.dat")).unwrap();
         std::fs::write(dir.path().join("saves/world.dat/level.dat"), "mine").unwrap();
         let wanted = pf("saves/world.dat", Hashes::sha1(sha1_hex(b"pack")));
-        let err = survey(dir.path(), &[&wanted], None).await.unwrap_err();
+        let err = survey(dir.path(), &[&wanted], None, None)
+            .await
+            .unwrap_err();
         assert_eq!(err.code, ErrorCode::PackPathIsFolder);
         assert_eq!(err.params["path"], "saves/world.dat");
 
         // A managed file the pack dropped that is now a folder: the player's, never trashed.
         let lock = managed(&[("saves/world.dat", FileMode::Replace, 3)]);
-        let found = survey(dir.path(), &[], Some(&lock)).await.unwrap();
+        let found = survey(dir.path(), &[], Some(&lock), None).await.unwrap();
         assert_eq!(found.get("saves/world.dat"), None);
     }
 
@@ -372,7 +408,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         // A path the OS refuses outright (an interior NUL) fails `metadata` with another error.
         let odd = pf("mods/a\0b.jar", Hashes::sha1(sha1_hex(b"x")));
-        let err = survey(dir.path(), &[&odd], None).await.unwrap_err();
+        let err = survey(dir.path(), &[&odd], None, None).await.unwrap_err();
         assert_eq!(err.code, ErrorCode::DiskIo);
     }
 

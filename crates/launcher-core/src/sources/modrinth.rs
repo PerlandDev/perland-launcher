@@ -273,8 +273,10 @@ pub async fn check(
                 .with_detail(e.message),
         )
     };
+    // A version deleted upstream must not hide updates forever: compare by id against releases.
     let installed = match version(src, installed_version_id).await {
-        Ok(v) => v,
+        Ok(v) => Some(v),
+        Err(e) if e.code == ErrorCode::PackNotFound => None,
         Err(e) => return failed(e),
     };
     let mut list = match versions(src, project_id, Some(minecraft)).await {
@@ -283,8 +285,16 @@ pub async fn check(
     };
     // The query filters too, but updates must never move to another Minecraft version.
     list.retain(|v| v.game_versions.iter().any(|g| g == minecraft));
-    match pick_update(&list, &installed.version_type) {
-        Some(v) if v.id != installed.id && v.date_published > installed.date_published => {
+    let installed_type = installed
+        .as_ref()
+        .map_or("release", |v| v.version_type.as_str());
+    match pick_update(&list, installed_type) {
+        Some(v)
+            if v.id != installed_version_id
+                && installed
+                    .as_ref()
+                    .is_none_or(|i| v.date_published > i.date_published) =>
+        {
             UpdateCheck::Available {
                 source: SourceRef::Modrinth {
                     project_id: project_id.to_string(),

@@ -4,11 +4,16 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
 use launcher_app::{
-    dto::{AppInfo, Build, JavaTest, NewInstance, OpenTarget, RunSnapshot},
+    dto::{
+        AppInfo, Build, JavaTest, ManualProgress, NewInstance, OpenTarget, OptionalChoice,
+        PackAddRequest, PackArtData, PackContents, PackMod, PackStatus, PackUpdate, RunSnapshot,
+        SyncSummary,
+    },
     events::{AppEvent, ExitInfo, RunStateKind},
 };
 use launcher_core::{
     accounts::{offline_account, AccountsFile},
+    download::Hashes,
     events::TaskId,
     instances::{
         DamagedInstance, GameSpec, Instance, InstanceListing, JavaSettings, LoaderSpec, SourceRef,
@@ -21,9 +26,35 @@ use launcher_core::{
     },
     mods::LocalMod,
     settings::{Lang, Settings},
+    sync::ManualFile,
     ErrorCode, LauncherError,
 };
 use serde::Serialize;
+
+fn sample_update() -> PackUpdate {
+    PackUpdate {
+        from_version: Some("1.0.3".into()),
+        to_version: "1.0.4".into(),
+        added: vec![
+            "Just Enough Items".into(),
+            "Create".into(),
+            "Farmer's Delight".into(),
+        ],
+        updated: vec!["Sodium".into(), "Iris".into()],
+        removed: vec!["Zoomify".into()],
+        kept: vec!["config/sodium-options.json".into()],
+    }
+}
+
+fn sample_manual() -> ManualFile {
+    ManualFile {
+        path: "mods/optifine.jar".into(),
+        name: "OptiFine".into(),
+        file_name: "OptiFine_1.20.1_HD_U_I6.jar".into(),
+        page_url: "https://www.curseforge.com/projects/235216".into(),
+        hashes: Hashes::sha1("3f786850e387550fdab836ed7e6dc881de23001b"),
+    }
+}
 
 fn dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/ipc/contract")
@@ -236,6 +267,7 @@ fn contract_fixtures_are_current() {
                 instance: "asalith-fields".into(),
                 state: RunStateKind::Queued,
                 exit: None,
+                update: None,
             },
             AppEvent::RunState {
                 instance: "asalith-fields".into(),
@@ -245,6 +277,7 @@ fn contract_fixtures_are_current() {
                     crash: Some(CrashHint::OutOfMemory),
                     ..ExitInfo::default()
                 }),
+                update: None,
             },
             AppEvent::RunState {
                 instance: "creative-flat".into(),
@@ -253,6 +286,7 @@ fn contract_fixtures_are_current() {
                     error: Some(sample_error()),
                     ..ExitInfo::default()
                 }),
+                update: None,
             },
             AppEvent::RunState {
                 instance: "creative-flat".into(),
@@ -261,7 +295,70 @@ fn contract_fixtures_are_current() {
                     cancelled: true,
                     ..ExitInfo::default()
                 }),
+                update: None,
             },
+            AppEvent::RunState {
+                instance: "asalith-fields".into(),
+                state: RunStateKind::Checking,
+                exit: None,
+                update: None,
+            },
+            AppEvent::RunState {
+                instance: "asalith-fields".into(),
+                state: RunStateKind::Asking,
+                exit: None,
+                update: Some(sample_update()),
+            },
+            AppEvent::RunState {
+                instance: "asalith-fields".into(),
+                state: RunStateKind::Syncing,
+                exit: None,
+                update: None,
+            },
+            AppEvent::RunState {
+                instance: "asalith-fields".into(),
+                state: RunStateKind::Idle,
+                exit: Some(ExitInfo {
+                    code: Some(0),
+                    synced: Some(SyncSummary {
+                        from_version: Some("1.0.3".into()),
+                        to_version: "1.0.4".into(),
+                        added: 3,
+                        updated: 2,
+                        removed: 1,
+                        kept_modified: vec!["options.txt".into()],
+                    }),
+                    ..ExitInfo::default()
+                }),
+                update: None,
+            },
+            AppEvent::RunState {
+                instance: "asalith-fields".into(),
+                state: RunStateKind::Idle,
+                exit: Some(ExitInfo {
+                    error: Some(
+                        LauncherError::pack(
+                            ErrorCode::ManualDownloadsNeeded,
+                            "1 files have to be downloaded by hand",
+                        )
+                        .with_param("count", 1)
+                        .with_fix("Download them from CurseForge, then try again"),
+                    ),
+                    manual: vec![sample_manual()],
+                    ..ExitInfo::default()
+                }),
+                update: None,
+            },
+            AppEvent::RunState {
+                instance: "asalith-fields".into(),
+                state: RunStateKind::Idle,
+                exit: Some(ExitInfo {
+                    update_only: true,
+                    ..ExitInfo::default()
+                }),
+                update: None,
+            },
+            AppEvent::DeepLink,
             AppEvent::Warning {
                 instance: Some("asalith-fields".into()),
                 error: LauncherError::disk(
@@ -296,14 +393,95 @@ fn contract_fixtures_are_current() {
             },
             OpenTarget::Data,
             OpenTarget::Logs,
+            OpenTarget::Downloads,
         ],
     );
     check(
         "run_snapshots",
-        vec![RunSnapshot {
-            instance: "asalith-fields".into(),
-            state: RunStateKind::Running,
-        }],
+        vec![
+            RunSnapshot {
+                instance: "asalith-fields".into(),
+                state: RunStateKind::Running,
+                update: None,
+            },
+            RunSnapshot {
+                instance: "sky-islands".into(),
+                state: RunStateKind::Asking,
+                update: Some(sample_update()),
+            },
+        ],
     );
     check("java_test", JavaTest { major: 17 });
+    check(
+        "pack_status",
+        vec![
+            PackStatus {
+                installed_version: Some("1.0.3".into()),
+                update: Some(sample_update()),
+                check_error: None,
+            },
+            PackStatus {
+                installed_version: Some("1.0.3".into()),
+                update: None,
+                check_error: Some(
+                    LauncherError::network(
+                        ErrorCode::UpdateCheckFailed,
+                        "Couldn't check for updates",
+                    )
+                    .with_fix("You can still play the version you have"),
+                ),
+            },
+        ],
+    );
+    check(
+        "pack_contents",
+        PackContents {
+            managed: vec![
+                PackMod {
+                    path: "mods/create.jar".into(),
+                    name: "Create".into(),
+                    optional: None,
+                },
+                PackMod {
+                    path: "mods/iris.jar".into(),
+                    name: "Iris Shaders".into(),
+                    optional: Some(OptionalChoice {
+                        enabled: false,
+                        description: Some("Shaders, for strong computers".into()),
+                    }),
+                },
+            ],
+            additions: vec![LocalMod {
+                file_name: "zoomify-2.11.2.jar".into(),
+                enabled: true,
+                size: 524_288,
+            }],
+        },
+    );
+    check(
+        "manual_progress",
+        ManualProgress {
+            found: 1,
+            total: 2,
+            remaining: vec![sample_manual()],
+        },
+    );
+    check(
+        "pack_art",
+        PackArtData {
+            icon: Some("data:image/png;base64,iVBORw0KGgo=".into()),
+            banner: None,
+        },
+    );
+    check(
+        "pack_add_requests",
+        vec![
+            PackAddRequest::Link {
+                url: "https://perlanddev.github.io/asalith-modpack/pack.toml".into(),
+            },
+            PackAddRequest::File {
+                path: PathBuf::from("C:/Users/player/Downloads/Sky Islands 1.0.4.mrpack"),
+            },
+        ],
+    );
 }
