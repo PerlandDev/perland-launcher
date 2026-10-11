@@ -212,9 +212,12 @@ impl Syncer {
         load_pack(&store.perland_dir(id)).await
     }
 
-    /// Is there an update? `UpToDate` for an instance that was never synced: its first sync
-    /// installs the newest version anyway.
+    /// Is there an update? `UpToDate` for a pinned instance (it never updates) and for one that
+    /// was never synced (its first sync installs the newest version anyway).
     pub async fn check(&self, store: &InstanceStore, instance: &Instance) -> UpdateCheck {
+        if instance.update_policy == UpdatePolicy::Pinned {
+            return UpdateCheck::UpToDate;
+        }
         match self.installed(store, &instance.id).await {
             Some(installed) => self.sources.check(&instance.source, &installed).await,
             None => UpdateCheck::UpToDate,

@@ -486,6 +486,11 @@ async fn pinned_instances_stay_on_their_version() {
         .url_mod("jei", "jei.jar", b"jei", "both", None)
         .mount(&env.server)
         .await;
+    assert_eq!(
+        env.syncer.check(&env.store, &instance).await,
+        UpdateCheck::UpToDate,
+        "a pinned instance has no updates to offer"
+    );
     let ensured = env
         .syncer
         .ensure(&env.store, &instance.id, &env.sink())
