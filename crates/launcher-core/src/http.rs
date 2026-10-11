@@ -16,10 +16,10 @@ pub fn client(launcher_version: &str) -> Result<reqwest::Client> {
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(30))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
-            let from = attempt.previous().last().cloned();
-            if attempt.previous().len() >= MAX_REDIRECTS {
+            // `previous` holds the original URL and every redirect followed so far.
+            if attempt.previous().len() > MAX_REDIRECTS {
                 attempt.error("too many redirects")
-            } else if from.is_some_and(|from| !allow_redirect(&from, attempt.url())) {
+            } else if !allow_redirect_chain(attempt.previous(), attempt.url()) {
                 attempt.error("refused a redirect from https to plain http")
             } else {
                 attempt.follow()
@@ -59,6 +59,20 @@ pub fn allow_redirect(from: &reqwest::Url, to: &reqwest::Url) -> bool {
         (_, "http") => true,
         _ => false,
     }
+}
+
+/// May a request that has visited `previous` (oldest first) follow a redirect to `to`? Each hop
+/// must pass `allow_redirect`, and once any URL in the chain was https, plain http is allowed
+/// only to this computer: a detour through a loopback http hop doesn't reopen the network.
+pub fn allow_redirect_chain(previous: &[reqwest::Url], to: &reqwest::Url) -> bool {
+    if previous
+        .last()
+        .is_some_and(|last| !allow_redirect(last, to))
+    {
+        return false;
+    }
+    let was_secure = previous.iter().any(|u| u.scheme() == "https");
+    !(was_secure && to.scheme() == "http" && !is_loopback(to))
 }
 
 #[cfg(test)]
@@ -106,6 +120,62 @@ mod tests {
                 "{from} -> {to}"
             );
         }
+    }
+
+    #[test]
+    fn a_chain_that_was_on_https_never_drops_to_network_http() {
+        // https → loopback http is fine, but the next hop to the network must not be plain http.
+        let chain = [url("https://a.example/p"), url("http://localhost:1/q")];
+        assert!(!allow_redirect_chain(&chain, &url("http://b.example/r")));
+        assert!(allow_redirect_chain(&chain, &url("http://127.0.0.1:2/r")));
+        assert!(allow_redirect_chain(&chain, &url("https://b.example/r")));
+        let plain = [url("http://a.example/p")];
+        assert!(allow_redirect_chain(&plain, &url("http://b.example/q")));
+        assert!(!allow_redirect_chain(
+            &[url("https://a.example/p")],
+            &url("ftp://a.example/q")
+        ));
+    }
+
+    #[tokio::test]
+    async fn ten_redirects_are_followed_and_the_eleventh_is_refused() {
+        use wiremock::{
+            matchers::{method, path},
+            Mock, MockServer, ResponseTemplate,
+        };
+        let server = MockServer::start().await;
+        for n in 0..11 {
+            Mock::given(method("GET"))
+                .and(path(format!("/hop/{n}")))
+                .respond_with(
+                    ResponseTemplate::new(302).insert_header("location", format!("/hop/{}", n + 1)),
+                )
+                .mount(&server)
+                .await;
+        }
+        Mock::given(method("GET"))
+            .and(path("/hop/11"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("end"))
+            .mount(&server)
+            .await;
+        let client = client("test").unwrap();
+        // /hop/1 → … → /hop/11 is ten redirects.
+        let body = client
+            .get(format!("{}/hop/1", server.uri()))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+        assert_eq!(body, "end");
+        // /hop/0 → … → /hop/11 is eleven.
+        let err = client
+            .get(format!("{}/hop/0", server.uri()))
+            .send()
+            .await
+            .unwrap_err();
+        assert!(err.is_redirect());
     }
 
     #[tokio::test]
