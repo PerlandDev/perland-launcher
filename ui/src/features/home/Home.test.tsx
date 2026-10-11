@@ -1,6 +1,7 @@
 import { act, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import packStatusFx from '../../ipc/contract/pack_status.json';
+import { exitOf } from '../../ipc/mock';
 import type { PackStatus } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
@@ -132,5 +133,51 @@ describe('Home', () => {
       });
     });
     expect(screen.getByRole('button', { name: 'Cancel: Installing Sky Islands' })).toBeInTheDocument();
+  });
+
+  it('offers the update between plays and runs it on Update', async () => {
+    const { user, calls } = renderApp(<Home id="sky-islands" />);
+    expect(await screen.findByText('Update ready: 1.0.3 → 1.0.4')).toBeInTheDocument();
+    expect(screen.getByText('+3 added · 2 updated · 1 removed')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Update' }));
+    expect(sent(calls, 'pack_update')).toEqual([{ id: 'sky-islands' }]);
+    expect(screen.getByRole('button', { name: 'Play' })).toHaveClass('play'); // Play stays the lit one
+  });
+
+  it('says so quietly when it could not check', async () => {
+    const { backend } = renderApp(<Home id="sky-islands" />);
+    const handle = backend.handle;
+    vi.spyOn(backend, 'handle').mockImplementation(async (cmd, args) =>
+      cmd === 'pack_status'
+        ? { installedVersion: '1.0.3', update: null, checkError: { category: 'network', code: 'update_check_failed', message: 'x', fix: null, detail: null, params: {} } }
+        : handle(cmd, args),
+    );
+    expect(await screen.findByText("Couldn't check for updates")).toBeInTheDocument();
+  });
+
+  it('tells what an update changed after the run', async () => {
+    renderApp(<Home id="sky-islands" />, { noUpdate: true });
+    await screen.findByRole('heading', { name: 'Sky Islands' });
+    act(() =>
+      runStore.apply({
+        type: 'run_state', instance: 'sky-islands', state: 'idle', update: null,
+        exit: exitOf({ updateOnly: true, synced: { fromVersion: '1.0.3', toVersion: '1.0.4', added: 3, updated: 2, removed: 1, keptModified: ['options.txt', 'config/a.toml'] } }),
+      }),
+    );
+    expect(screen.getByText('Updated to 1.0.4 · Kept your version of 2 files')).toBeInTheDocument();
+  });
+
+  it('never asks a vanilla instance about updates', async () => {
+    const { calls } = renderApp(<Home id="creative-flat" />);
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    expect(sent(calls, 'pack_status')).toEqual([]);
+  });
+
+  it('checks for updates from the menu', async () => {
+    const { user, calls } = renderApp(<Home id="sky-islands" />);
+    await screen.findByText('Update ready: 1.0.3 → 1.0.4');
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Check for updates' }));
+    await vi.waitFor(() => expect(sent(calls, 'pack_status').length).toBe(2));
   });
 });

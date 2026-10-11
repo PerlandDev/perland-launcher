@@ -13,9 +13,10 @@ import { useSingleFlight } from '../../ui/useSingleFlight';
 import { DamagedView } from './DamagedView';
 import { EmptyState } from './EmptyState';
 import { InstanceMenu } from './InstanceMenu';
-import { versionLine } from './labels';
+import { isPack, versionLine } from './labels';
 import { pick } from './pick';
 import { UpdateDialog } from './UpdateDialog';
+import { UpdatePlate } from './UpdatePlate';
 
 function InstanceView({ instance }: { instance: Instance }) {
   const { t } = useTranslation();
@@ -29,6 +30,7 @@ function InstanceView({ instance }: { instance: Instance }) {
       <Marquee seed={instance.id} attract={run.state === 'idle'} dimmed={run.state !== 'idle'} className="absolute inset-0" />
       <div className="absolute inset-x-0 bottom-0 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-10 px-10 pt-6 pb-12">
         <div className="min-w-0">
+          {isPack(instance) && <UpdatePlate instance={instance} />}
           <h1 id="instance-name" className="marquee-name font-display text-[clamp(2.5rem,5.4vw,5.5rem)] leading-[0.95] [overflow-wrap:anywhere]">
             {instance.name}
           </h1>
