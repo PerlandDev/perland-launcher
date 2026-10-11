@@ -1,7 +1,7 @@
 # Perland Launcher: Browse (Plan 3c), Design Addendum
 
 - **Date:** 2026-10-11
-- **Status:** Draft, awaiting owner review
+- **Status:** Approved by the owner (2026-10-11); refined while planning (see `docs/superpowers/plans/2026-10-11-browse.md`)
 - **Parent specs:** `docs/superpowers/specs/2026-10-09-launcher-core-design.md` (§1.3 content sources, §5 Browse row), `docs/superpowers/specs/2026-10-10-pack-sync-design.md` (§1 split: 3c is "Modrinth search (modpacks, mods, resource packs, shaders) and install into a new or existing instance"; §4 holds the 3b decisions this builds on).
 - **UI spec:** `docs/superpowers/specs/2026-10-10-launcher-desktop-ui-design.md`. **Design system:** `DESIGN.md`, `.impeccable/surfaces/ui-src-app-tsx.md`.
 
@@ -39,7 +39,7 @@ Players find and install Modrinth content without leaving the launcher. A modpac
 
 ### 2.1 Approach
 
-A new `launcher-core::browse` module holds all Browse logic: the search client, project and version fetch, the dependency resolver, identification, the content writer and the image cache. `AppCore` exposes thin commands through the existing `Runner` seam. Content installs run as their own task, outside the run state machine and the install slot, and report through the existing `Progress` event, so the Activity drawer shows them.
+A new `launcher-core::browse` module holds all Browse logic: the search client, project and version fetch, the dependency resolver, identification, the content writer and the image cache. `AppCore` exposes thin commands through the existing `Runner` seam. Content installs run as their own task, outside the run state machine and the install slot. They report through the existing `Progress` event with the task key `install_content`, which the UI routes to its own store and shows on the install button (never on Play).
 
 Rejected:
 - **Content installs as a run kind** (like 3b's update-only run): conflicts with decision 6, since one run per instance means a running game would block installs, and it would bloat `runs.rs`.
@@ -79,13 +79,13 @@ pub enum ContentKind { Modpack, Mod, ResourcePack, Shader }
 - `facets`: `project_type:<kind>`; `versions:<mc>` when set; loader categories (`categories:<loader>` OR-ed over the loader set) for mods; `categories:iris` for shaders; each picked category as its own AND-ed facet; `client_side!=unsupported`.
 - A hit carries `projectId, slug, title, author, summary, iconUrl, downloads, follows, categories, kind`. `total` and `offset` come back for paging.
 
-`categories(kind) -> Vec<String>`: `GET /v2/tag/category`, filtered to the kind and to `header` values that are real categories (not loaders or resolutions). Cached in memory for the process.
+`categories(kind) -> Vec<String>`: `GET /v2/tag/category`, filtered to the kind (resolution headers included; loaders aren't in this list). Cached in memory for the process.
 
 Empty queries are allowed: they list content sorted by the chosen index (the UI defaults to `downloads` for an empty query).
 
 ### 3.3 Projects and versions
 
-- `project(id_or_slug) -> ProjectDetail`: the search-hit fields plus `body` (Markdown), `gallery: [{url, title, featured}]`, `clientSide`, `serverSide`, `license`, `sourceUrl`, `issuesUrl`, `wikiUrl`. Reuses the 3a `modrinth::Project` fetch, extended.
+- `project(id_or_slug) -> ProjectDetail`: the search-hit fields plus `body` (Markdown), `gallery: [{url, title, featured}]` (featured first), `clientSide`, `serverSide`, `license`, `sourceUrl`, `issuesUrl`, `wikiUrl`. Browse has its own small client (`browse::api`) rather than reusing `sources::modrinth`, whose errors use pack wording. The author comes from `GET /project/{id}/members` (the owner, else the first member; none for an organization that lists nobody).
 - `versions(project, target: Option<&Target>) -> Vec<VersionInfo>`: `GET /v2/project/{id}/version` with `game_versions` and `loaders` set from the target. Each has `id, name, number, type, gameVersions, loaders, date, size` (the primary file's).
 - A `Target` is `{ minecraft, loader: Option<LoaderKind> }`, built from an instance's `game`.
 - Ids and slugs pass `valid_modrinth_id` before they go into a URL.
@@ -131,7 +131,7 @@ pub struct PlanItem {
 
 ### 3.6 Writing content
 
-`install(game_dir, plan_items, managed: Option<&Managed>, sink, cancel) -> Vec<String>` (the added file names):
+`install(game_dir, plan_items, managed: Option<&Managed>, task, sink) -> Vec<String>` (the added file names; there is no cancel, since installs are a few files):
 - Each file is fetched through the object cache (`ObjectCache::ensure`, sha512 and sha1 verified), then copied into the kind's folder with a temp file plus a no-replace rename: it never overwrites.
 - **Name collisions:**
   - Same name, same sha1 already there: skipped silently.
@@ -161,7 +161,7 @@ pub struct PlanItem {
 
 ### 4.1 Commands
 
-The real `Runner` (`CoreRunner`) gains the browse calls; `FakeRunner` returns canned data in tests.
+`Runner` hands out a `Browser` (`Runner::browser()`): `CoreBrowser` wraps `launcher_core::browse::Browse`; tests use `FakeBrowser`.
 
 | Command | Returns | Notes |
 |---|---|---|
@@ -199,6 +199,9 @@ Each gets `errors.<code>.message` in `en.json` and `es.json`.
 | `content_needs_loader` | pack | This needs a mod loader. Pick an instance with Fabric, Quilt, Forge or NeoForge |
 | `content_busy` | pack | Wait for {{name}} to finish updating |
 | `content_plan_expired` | pack | That took too long. Try installing again |
+| `content_not_found` | pack | That project wasn't found |
+| `content_already_installed` | pack | {{name}} is already in this instance |
+| `content_installing` | pack | Wait for the download to finish (Play, or a second install, while one runs) |
 | `image_refused` | network | That image can't be shown |
 | `link_refused` | pack | That link can't be opened |
 
@@ -210,13 +213,13 @@ All new DTOs get contract fixtures (`UPDATE_CONTRACT=1 cargo test -p launcher-ap
 
 ### 4.5 Tauri wiring
 
-`src-tauri` forwards each command. `open_link` uses the opener plugin with scope `https://**`; the command itself refuses non-https before calling it. The CSP is unchanged.
+`src-tauri` forwards each command. `open_link` checks the URL with `launcher_app::browse::link_to_open` (https, a host, no user info) and opens it through the opener plugin's Rust API, so the webview's opener capability stays as narrow as it is. The CSP is unchanged.
 
 ## 5. Carry-forwards
 
 | Item | From | Decision |
 |---|---|---|
-| `pack_status` and Play both re-resolve the metafiles | 3b | `Syncer::find_update` keeps the cheap check every time. When it offers the same stamp as last time for the same instance and installed stamp, it reuses the update it resolved before. The memo lives in the `Syncer` behind a mutex, keyed by (instance id, installed stamp, offered stamp); a finished sync drops the instance's entry. |
+| `pack_status` and Play both re-resolve the metafiles | 3b | `Syncer::find_update` keeps the cheap check every time. When it offers the same stamp (and source) as last time for the same instance, it reuses the pack it resolved before; `changes` and `kept` are still recomputed from the disk and the current optional choices. The memo lives in the `Syncer` behind a mutex, keyed by instance id; a finished sync drops the instance's entry. |
 | `stop` in checking, asking or queued reports `update_only: false` | 3b | It reports the run's real `update_only`. A `runs.rs` test covers each phase. |
 | "1 of 1 files" | 3b | `progress.files` becomes `files_one` / `files_other`, keyed on the total, in en and es. |
 | Modrinth version deleted upstream breaks update checks forever | 3a | Already fixed in 3b (`modrinth::check` treats a 404/410 installed version as a release with no date). Nothing to do. |
@@ -266,7 +269,7 @@ Built through `/impeccable` against the Arcade Cabinet contract. The comp settle
   - "Already have: …" for skips.
   - Total size in MB. **Install** (lit) and **Cancel**.
 - **Result toast:** "Added Sodium + 1 more to Asalith" with **Open**. Plus "Restart the game to use it" when the instance is running, or "Turn it on in Options › Resource Packs" / "Options › Video › Shader Packs" for those kinds. The row flips to Installed. A new instance navigates to its home.
-- **Progress:** the Activity drawer shows `install_content` through the existing Progress handling.
+- **Progress:** `install_content` progress events go to a small per-instance store (not `runStore`, so Play never shows them); the action plate shows a meter while its install runs. Success and failure come back as toasts: the toast stack gains a notice kind (lime check, title, body, optional action) next to errors.
 
 ### 6.5 Mock backend
 
