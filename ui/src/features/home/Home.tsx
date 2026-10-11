@@ -14,6 +14,7 @@ import { DamagedView } from './DamagedView';
 import { EmptyState } from './EmptyState';
 import { InstanceMenu } from './InstanceMenu';
 import { isPack, versionLine } from './labels';
+import { ManualDownloads } from './ManualDownloads';
 import { pick } from './pick';
 import { UpdateDialog } from './UpdateDialog';
 import { UpdatePlate } from './UpdatePlate';
@@ -59,6 +60,9 @@ function InstanceView({ instance }: { instance: Instance }) {
         </div>
       </div>
       {run.state === 'asking' && run.update && <UpdateDialog instance={instance} update={run.update} />}
+      {run.state === 'idle' && run.lastExit && run.lastExit.manual.length > 0 && (
+        <ManualDownloads instance={instance} files={run.lastExit.manual} />
+      )}
     </section>
   );
 }

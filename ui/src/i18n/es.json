@@ -67,6 +67,14 @@
     "asking": "¡Actualización lista!",
     "syncing": "Actualizando…"
   },
+  "manual": {
+    "title": "Descarga estos a mano",
+    "body": "Sus autores solo permiten descargarlos desde CurseForge. Abre cada página y descarga el archivo. Lo vamos a encontrar en tu carpeta de Descargas.",
+    "found": "Encontrados: {{found}} de {{total}}",
+    "openPage": "Abrir página",
+    "got": "Encontrado",
+    "openDownloads": "Abrir Descargas"
+  },
   "update": {
     "title": "¡Actualización lista!: {{from}} → {{to}}",
     "titleNew": "¡Actualización lista!: {{to}}",

@@ -67,6 +67,14 @@
     "asking": "Update ready",
     "syncing": "Updating…"
   },
+  "manual": {
+    "title": "Download these manually",
+    "body": "Their authors only allow downloads from CurseForge. Open each page and download the file. We'll find it in your Downloads folder.",
+    "found": "Found {{found}} of {{total}}",
+    "openPage": "Open page",
+    "got": "Found",
+    "openDownloads": "Open Downloads folder"
+  },
   "update": {
     "title": "Update ready: {{from}} → {{to}}",
     "titleNew": "Update ready: {{to}}",
