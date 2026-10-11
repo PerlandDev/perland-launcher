@@ -114,4 +114,27 @@ describe('scripted runs', () => {
       vi.useRealTimers();
     }
   });
+
+  it('never ends a stopped pack run twice', async () => {
+    vi.useFakeTimers();
+    try {
+      const idles: unknown[] = [];
+      mockIPC((cmd, args) => {
+        const payload = (args as { payload?: { type?: string; state?: string; instance?: string } } | undefined)?.payload;
+        if (cmd === 'plugin:event|emit' && payload?.type === 'run_state' && payload.state === 'idle') idles.push(payload);
+        return null;
+      });
+      const { handle } = createMockBackend({ manual: true, noUpdate: true });
+      await handle('play', { id: 'sky-islands' });
+      await vi.advanceTimersByTimeAsync(1_830); // inside the last wait of the sync loop
+      await handle('stop', { id: 'sky-islands' });
+      await vi.advanceTimersByTimeAsync(500);
+      expect(idles).toHaveLength(1);
+      expect(idles[0]).toMatchObject({ exit: { cancelled: true, error: null, manual: [] } });
+    } finally {
+      stopMockRuns();
+      clearMocks();
+      vi.useRealTimers();
+    }
+  });
 });

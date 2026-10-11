@@ -217,6 +217,7 @@ async function packPrelude(
     });
     await wait(50);
   }
+  if (run.cancelled) return null;
   if (pack.found < pack.manual.length) {
     state.runs.delete(id);
     const error: LauncherError = {
