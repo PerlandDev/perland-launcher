@@ -342,7 +342,7 @@
     "update_check_failed": { "message": "No se pudieron buscar actualizaciones.", "fix": "Igual puedes jugar la versión que tienes." },
     "pack_path_is_folder": { "message": "El pack quiere poner un archivo donde tienes una carpeta ({{path}}).", "fix": "Mueve esa carpeta o cámbiale el nombre, y vuelve a intentarlo." },
     "sync_cancelled": { "message": "Se canceló la actualización." },
-    "update_download_failed": { "message": "No se pudo descargar la actualización, así que juegas la {{version}}.", "fix": "Intenta actualizar más tarde." },
+    "update_download_failed": { "message": "No se pudo descargar la actualización. Sigues teniendo la {{version}}.", "fix": "Intenta actualizar más tarde." },
     "internal": { "message": "Ocurrió algo inesperado.", "fix": "Reinicia el launcher. Si sigue pasando, copia los detalles para soporte." }
   }
 }

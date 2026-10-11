@@ -4,6 +4,7 @@ use std::{path::Path, sync::Arc};
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
+    fsutil::path_key,
     instances::{Instance, SourceRef},
     mods,
     sources::{
@@ -193,11 +194,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Mods that came with the pack are the pack's: the player can't turn them off or remove
-    /// them (sync would only put them back).
+    /// them (sync would only put them back). Paths compare as the file system does, so a pack
+    /// that renamed `foo.jar` to `Foo.jar` still owns the `foo.jar` on disk.
     pub(crate) async fn refuse_managed(&self, id: &str, file: &str) -> Result<()> {
         let base = file.strip_suffix(".disabled").unwrap_or(file);
+        let key = path_key(&format!("mods/{file}"));
+        let key = key.strip_suffix(".disabled").unwrap_or(&key);
         let managed = Managed::load(&self.instances.perland_dir(id)).await;
-        if managed.is_some_and(|m| m.files.contains_key(&format!("mods/{base}"))) {
+        if managed.is_some_and(|m| m.files.keys().any(|k| path_key(k) == key)) {
             return Err(LauncherError::disk(
                 ErrorCode::ModManaged,
                 format!("{base} comes with the pack"),
@@ -275,7 +279,10 @@ mod tests {
     use std::sync::atomic::Ordering;
 
     use launcher_core::{
-        accounts::BuildKind, instances::SourceRef, sources::PackInput, sync::manual::Scanner,
+        accounts::BuildKind,
+        instances::{SourceRef, UpdatePolicy},
+        sources::PackInput,
+        sync::manual::Scanner,
         ErrorCode, LauncherError,
     };
 
@@ -538,6 +545,56 @@ mod tests {
             .await
             .unwrap();
         core.mod_remove(&id, "sodium.jar.disabled").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_settings_save_keeps_the_saved_pack_source() {
+        // The settings form was loaded before a sync moved the source on: saving it must not
+        // put the old source back.
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        let mut stale = core.instances.load(&id).await.unwrap();
+        stale.source = SourceRef::Packwiz {
+            url: "https://elsewhere.example/pack.toml".into(),
+        };
+        stale.update_policy = UpdatePolicy::Auto;
+        let saved = core.instance_update(stale).await.unwrap();
+        let expected = SourceRef::Packwiz {
+            url: "https://example.com/pack.toml".into(),
+        };
+        assert_eq!(saved.source, expected);
+        assert_eq!(saved.update_policy, UpdatePolicy::Auto);
+        assert_eq!(core.instances.load(&id).await.unwrap().source, expected);
+    }
+
+    #[tokio::test]
+    async fn pack_mods_are_recognised_whatever_their_case_on_disk() {
+        // The pack renamed `mods/foo.jar` to `mods/Foo.jar` with the same bytes: sync kept the
+        // on-disk `foo.jar` while the lockfile records `mods/Foo.jar`.
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let installed = desired("1.0.4", vec![pack_file("mods/Foo.jar", "Foo", None)]);
+        let id = pack_instance(&core, "Sky", Some(&installed)).await.id;
+        managed_for(&["mods/Foo.jar"])
+            .save(&core.instances.perland_dir(&id))
+            .await
+            .unwrap();
+        let mods = core.instances.game_dir(&id).join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join("foo.jar"), b"foo").unwrap();
+        assert!(core.pack_contents(&id).await.unwrap().additions.is_empty());
+        let refused = core
+            .mod_set_enabled(&id, "foo.jar", false)
+            .await
+            .unwrap_err();
+        assert_eq!(refused.code, ErrorCode::ModManaged);
+        for file in ["foo.jar", "FOO.jar.disabled"] {
+            assert_eq!(
+                core.mod_remove(&id, file).await.unwrap_err().code,
+                ErrorCode::ModManaged,
+                "{file}"
+            );
+        }
+        assert!(mods.join("foo.jar").exists());
     }
 
     #[tokio::test]

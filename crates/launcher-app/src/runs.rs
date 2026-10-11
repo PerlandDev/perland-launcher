@@ -408,7 +408,17 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let mut instance = instance;
         let mut synced = None;
         if instance.source != SourceRef::None {
-            self.set_phase(&id, RunStateKind::Syncing);
+            // Gone or stopping already (a Stop while queued): end it rather than sync.
+            if !self.set_phase(&id, RunStateKind::Syncing) {
+                drop(permit);
+                let info = ExitInfo {
+                    cancelled: true,
+                    ..ExitInfo::default()
+                };
+                return self
+                    .finish(&id, ended(info), sink, batcher, Some(lock))
+                    .await;
+            }
             let result = self
                 .runner
                 .sync(
@@ -437,12 +447,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     outcome: SyncOutcome::NeedsManual(files),
                     ..
                 }) => {
+                    drop(permit);
                     let info = self.needs_manual(&id, files).await;
                     return self
                         .finish(&id, ended(info), sink, batcher, Some(lock))
                         .await;
                 }
                 Err(error) if error.code == ErrorCode::SyncCancelled => {
+                    drop(permit);
                     let info = ExitInfo {
                         cancelled: true,
                         ..ExitInfo::default()
@@ -452,14 +464,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                         .await;
                 }
                 Err(error) => {
+                    drop(permit);
                     return self
                         .finish(&id, ended(failed(error)), sink, batcher, Some(lock))
-                        .await
+                        .await;
                 }
             };
             synced = (!report.up_to_date).then(|| SyncSummary::from(&report));
             // Stop arrived once the swap had begun: the sync finished, but the player wants out.
             if cancel.is_cancelled() {
+                drop(permit);
                 let info = ExitInfo {
                     cancelled: true,
                     synced,
@@ -473,9 +487,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             instance = match self.instances.load(&id).await {
                 Ok(instance) => instance,
                 Err(error) => {
+                    drop(permit);
                     return self
                         .finish(&id, ended(failed(error)), sink, batcher, Some(lock))
-                        .await
+                        .await;
                 }
             };
         }
@@ -491,6 +506,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         // A Stop that came after the sync returned (while the instance reloaded) left the run
         // `stopping`: end it here rather than start a game nobody wants.
         if !self.set_phase(&id, RunStateKind::Preparing) {
+            drop(permit);
             let info = ExitInfo {
                 cancelled: true,
                 synced,
@@ -501,6 +517,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let prepared = match self.runner.prepare(instance.clone(), sink.clone()).await {
             Ok(prepared) => prepared,
             Err(error) => {
+                drop(permit);
                 let info = ExitInfo {
                     synced,
                     ..failed(error)

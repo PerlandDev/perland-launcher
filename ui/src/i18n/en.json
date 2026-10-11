@@ -342,7 +342,7 @@
     "update_check_failed": { "message": "Couldn't check for updates.", "fix": "You can still play the version you have." },
     "pack_path_is_folder": { "message": "The pack wants to put a file where you have a folder ({{path}}).", "fix": "Move or rename that folder, then try again." },
     "sync_cancelled": { "message": "The update was cancelled." },
-    "update_download_failed": { "message": "Couldn't download the update, so you're playing {{version}}.", "fix": "Try updating again later." },
+    "update_download_failed": { "message": "Couldn't download the update. You still have {{version}}.", "fix": "Try updating again later." },
     "internal": { "message": "Something unexpected went wrong.", "fix": "Restart the launcher. If it keeps happening, copy the details for support." }
   }
 }

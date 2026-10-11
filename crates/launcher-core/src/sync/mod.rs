@@ -151,7 +151,7 @@ fn cancelled() -> LauncherError {
 fn update_download_failed(installed: &str, e: LauncherError) -> LauncherError {
     LauncherError::network(
         ErrorCode::UpdateDownloadFailed,
-        format!("Couldn't download the update, so you're playing {installed}"),
+        format!("Couldn't download the update. You still have {installed}"),
     )
     .with_param("version", installed)
     .with_fix("Try updating again later")
@@ -414,6 +414,10 @@ impl Syncer {
             // Network failures happen only while staging or installing the loader, before
             // anything in the game folder moves.
             Err(e) if e.category == ErrorCategory::Network => {
+                // A Stop that raced the failed download is a Stop, not a reason to fall back.
+                if cancel.is_cancelled() {
+                    return Err(cancelled());
+                }
                 let warning = update_download_failed(&installed.pack_version, e);
                 let outcome = self.sync_inner(store, id, &installed, sink, cancel).await?;
                 Ok(Ensured {

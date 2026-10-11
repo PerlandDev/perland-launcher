@@ -1240,6 +1240,46 @@ async fn a_cancelled_sync_stops_before_touching_the_game_folder() {
     );
 }
 
+/// Answers 404, and presses Stop as it does: a cancel racing a failed download.
+struct CancelThen404(Cancel);
+
+impl wiremock::Respond for CancelThen404 {
+    fn respond(&self, _: &wiremock::Request) -> ResponseTemplate {
+        self.0.cancel();
+        ResponseTemplate::new(404)
+    }
+}
+
+#[tokio::test]
+async fn a_stop_during_a_failing_update_download_reports_cancelled() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1(&env.server)).await;
+    publish_v1_1(&env).await;
+    let cancel = Cancel::default();
+    Mock::given(method("GET"))
+        .and(path("/files/jei.jar"))
+        .respond_with(CancelThen404(cancel.clone()))
+        .with_priority(1)
+        .mount(&env.server)
+        .await;
+    let update = update_for(&env, &instance).await;
+    let lock = InstanceLock::try_acquire(&env.store.perland_dir(&instance.id)).unwrap();
+    let err = env
+        .syncer
+        .ensure_locked(
+            &lock,
+            &env.store,
+            &instance.id,
+            Some(update),
+            &env.sink(),
+            &cancel,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::SyncCancelled);
+    assert!(env.game_file(&instance.id, "mods/zoom.jar").exists());
+}
+
 #[tokio::test]
 async fn the_first_sync_says_installing_and_later_ones_say_updating() {
     let env = Env::new().await;

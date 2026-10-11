@@ -217,13 +217,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Version and Java changes wait until the game stops; other edits are fine while it runs.
-    pub async fn instance_update(&self, instance: Instance) -> Result<Instance> {
-        if self.is_busy(&instance.id) {
-            let current = self.instances.load(&instance.id).await?;
-            if current.game != instance.game || current.java != instance.java {
-                return Err(busy(&instance.id));
-            }
+    /// The source is sync's to change: a settings form loaded before a sync can't revert it.
+    pub async fn instance_update(&self, mut instance: Instance) -> Result<Instance> {
+        let current = self.instances.load(&instance.id).await?;
+        if self.is_busy(&instance.id)
+            && (current.game != instance.game || current.java != instance.java)
+        {
+            return Err(busy(&instance.id));
         }
+        instance.source = current.source;
         self.instances.update(&instance).await
     }
 
