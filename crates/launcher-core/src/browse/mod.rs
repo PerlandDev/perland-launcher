@@ -2,3 +2,4 @@
 //! into an instance with their required dependencies. Modpacks go through `sources` instead.
 pub mod api;
 pub mod compat;
+pub mod search;

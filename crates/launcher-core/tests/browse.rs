@@ -246,3 +246,92 @@ async fn version_files_posts_sha1_hashes() {
         DependencyType::Incompatible
     );
 }
+
+use launcher_core::browse::{
+    compat::ContentKind,
+    search::{self, SearchQuery, SortIndex},
+};
+
+fn hit(id: &str, project_type: &str, client_side: &str) -> Value {
+    json!({
+        "project_id": id,
+        "project_type": project_type,
+        "slug": id,
+        "author": "someone",
+        "title": format!("Title {id}"),
+        "description": "Summary",
+        "categories": ["optimization", "fabric"],
+        "display_categories": ["optimization", "fabric", "iris"],
+        "downloads": 10,
+        "follows": 2,
+        "icon_url": null,
+        "client_side": client_side
+    })
+}
+
+#[tokio::test]
+async fn search_drops_server_only_hits_and_loader_tags() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v2/search"))
+        .and(query_param("index", "downloads"))
+        .and(query_param("limit", "20"))
+        .and(query_param("query", "sodium"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "hits": [hit("a", "mod", "required"), hit("b", "mod", "unsupported"), hit("c", "plugin", "required")],
+            "offset": 0,
+            "limit": 20,
+            "total_hits": 3
+        })))
+        .mount(&server)
+        .await;
+    let page = search::search(
+        &api(&server),
+        &SearchQuery {
+            query: "sodium".into(),
+            kind: ContentKind::Mod,
+            minecraft: None,
+            loader: None,
+            categories: vec![],
+            sort: SortIndex::Downloads,
+            offset: 0,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(page.total, 3);
+    assert_eq!(page.hits.len(), 1);
+    assert_eq!(page.hits[0].categories, vec!["optimization".to_string()]);
+    assert_eq!(page.hits[0].kind, ContentKind::Mod);
+    let json = serde_json::to_value(&page).unwrap();
+    assert_eq!(json["hits"][0]["projectId"], "a");
+    assert_eq!(json["hits"][0]["iconUrl"], Value::Null);
+}
+
+#[tokio::test]
+async fn categories_are_filtered_to_the_kind() {
+    let server = MockServer::start().await;
+    serve_json(
+        &server,
+        "/v2/tag/category",
+        json!([
+            { "icon": "", "name": "technology", "project_type": "mod", "header": "categories" },
+            { "icon": "", "name": "adventure", "project_type": "mod", "header": "categories" },
+            { "icon": "", "name": "16x", "project_type": "resourcepack", "header": "resolutions" },
+            { "icon": "", "name": "adventure", "project_type": "mod", "header": "categories" }
+        ]),
+    )
+    .await;
+    assert_eq!(
+        search::categories(&api(&server), ContentKind::Mod)
+            .await
+            .unwrap(),
+        vec!["adventure".to_string(), "technology".into()]
+    );
+    assert_eq!(
+        search::categories(&api(&server), ContentKind::ResourcePack)
+            .await
+            .unwrap(),
+        vec!["16x".to_string()]
+    );
+}
