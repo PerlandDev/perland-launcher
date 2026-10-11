@@ -251,12 +251,54 @@ impl<C: Catalog> Planner<'_, C> {
         }
     }
 
+    /// The shader mod to bring: Iris first, then Oculus (NeoForge 1.20.1 has no Iris build but
+    /// runs Forge's Oculus). One that is already installed wins, so it ends up as a skip.
+    async fn pick_shader_mod(&self, preferred: &str) -> Result<String> {
+        let candidates: &[&str] = if preferred == "iris" {
+            &["iris", "oculus"]
+        } else {
+            &[preferred]
+        };
+        let mut first_title: Option<String> = None;
+        for slug in candidates {
+            let project = match self.catalog.project(slug).await {
+                Ok(p) => p,
+                Err(e) if e.code == ErrorCode::ContentNotFound => continue,
+                Err(e) => return Err(e),
+            };
+            first_title.get_or_insert_with(|| project.title.clone());
+            if self.installed.projects.contains_key(&project.id) {
+                return Ok((*slug).to_string());
+            }
+            let list = self
+                .catalog
+                .versions(&project.id, Some(self.target), ContentKind::Mod)
+                .await?;
+            if list.iter().any(|v| fits(v, ContentKind::Mod, self.target)) {
+                return Ok((*slug).to_string());
+            }
+        }
+        Err(dependency_missing(
+            first_title.as_deref().unwrap_or(preferred),
+        ))
+    }
+
     async fn add(&mut self, next: Pending, queue: &mut VecDeque<Pending>) -> Result<()> {
         if next.project.as_ref().is_some_and(|p| self.seen.contains(p)) {
             return Ok(());
         }
+        // A version that is gone falls back to the project's newest fitting one.
         let pinned = match &next.version {
-            Some(id) => Some(self.catalog.version(id).await?),
+            Some(id) => match self.catalog.version(id).await {
+                Ok(v) => Some(v),
+                Err(e) if e.code == ErrorCode::ContentNotFound => {
+                    if next.project.is_none() {
+                        return Err(dependency_missing(id));
+                    }
+                    None
+                }
+                Err(e) => return Err(e),
+            },
             None => None,
         };
         let project_ref = match (&next.project, &pinned) {
@@ -264,7 +306,13 @@ impl<C: Catalog> Planner<'_, C> {
             (None, Some(v)) => v.project_id.clone(),
             (None, None) => return Ok(()),
         };
-        let project = self.catalog.project(&project_ref).await?;
+        let project = match self.catalog.project(&project_ref).await {
+            Ok(p) => p,
+            Err(e) if e.code == ErrorCode::ContentNotFound => {
+                return Err(dependency_missing(&project_ref));
+            }
+            Err(e) => return Err(e),
+        };
         if !self.seen.insert(project.id.clone()) {
             return Ok(());
         }
@@ -316,6 +364,9 @@ pub async fn plan<C: Catalog>(
     installed: &Installed,
 ) -> Result<InstallPlan> {
     let project = catalog.project(&request.project).await?;
+    if installed.projects.contains_key(&project.id) {
+        return Err(already_installed(&project.title));
+    }
     let kind = match ContentKind::from_project_type(&project.project_type) {
         Some(kind) if kind != ContentKind::Modpack && project.client_side != "unsupported" => kind,
         _ => return Err(incompatible(&project.title)),
@@ -373,9 +424,6 @@ pub async fn plan<C: Catalog>(
             (v, t, Some(new))
         }
     };
-    if installed.projects.contains_key(&project.id) {
-        return Err(already_installed(&project.title));
-    }
     let mut planner = Planner {
         catalog,
         target: &target,
@@ -392,8 +440,9 @@ pub async fn plan<C: Catalog>(
     planner.enqueue_deps(&mut queue, &version, &project.title, 1);
     if kind == ContentKind::Shader {
         let slug = shader_mod(target.loader).ok_or_else(needs_loader)?;
+        let slug = planner.pick_shader_mod(slug).await?;
         queue.push_back(Pending {
-            project: Some(slug.to_string()),
+            project: Some(slug),
             version: None,
             reason: ItemReason::ShaderMod,
             depth: 1,
@@ -424,6 +473,7 @@ mod tests {
     struct FakeCatalog {
         projects: HashMap<String, ApiProject>,
         versions: HashMap<String, Vec<ApiVersion>>,
+        version_requests: std::sync::atomic::AtomicUsize,
     }
 
     impl FakeCatalog {
@@ -463,6 +513,8 @@ mod tests {
             _target: Option<&Target>,
             _kind: ContentKind,
         ) -> Result<Vec<ApiVersion>> {
+            self.version_requests
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Ok(self.versions.get(project_id).cloned().unwrap_or_default())
         }
         async fn version(&self, id: &str) -> Result<ApiVersion> {
@@ -987,6 +1039,25 @@ mod tests {
                 .code,
             ErrorCode::ContentIncompatible
         );
+        // Already installed wins over "no version fits", and no versions are asked for.
+        let before = c.version_requests.load(std::sync::atomic::Ordering::SeqCst);
+        let old = Target {
+            minecraft: "1.16.5".into(),
+            loader: Some(LoaderKind::Fabric),
+        };
+        let held = plan(
+            &c,
+            &request("SOD"),
+            Some(&old),
+            &installed(&[("SOD", false, &[])]),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(held.code, ErrorCode::ContentAlreadyInstalled);
+        assert_eq!(
+            c.version_requests.load(std::sync::atomic::Ordering::SeqCst),
+            before
+        );
         let old_game = Target {
             minecraft: "1.16.5".into(),
             loader: Some(LoaderKind::Fabric),
@@ -1006,5 +1077,123 @@ mod tests {
                 .code,
             ErrorCode::ContentIncompatible
         );
+    }
+
+    #[tokio::test]
+    async fn a_gone_dependency_is_reported_by_name_not_as_not_found() {
+        let mut c = FakeCatalog::default();
+        // Project known, pinned version gone: take the project's newest fitting version.
+        let gone_version = ApiDependency {
+            version_id: Some("ghost".into()),
+            project_id: Some("L".into()),
+            dependency_type: DependencyType::Required,
+        };
+        c.add(
+            "M",
+            "Mod",
+            "mod",
+            vec![fabric_mod("m", "M", vec![gone_version])],
+        );
+        c.add("L", "Lib", "mod", vec![fabric_mod("good", "L", vec![])]);
+        let ok = plan(&c, &request("M"), Some(&fabric()), &Installed::default())
+            .await
+            .unwrap();
+        assert_eq!(titles(&ok), vec!["Mod", "Lib"]);
+        assert_eq!(ok.items[1].version_id, "good");
+
+        // Project gone: the dependency is missing, named by its ref.
+        c.add(
+            "N",
+            "Needy",
+            "mod",
+            vec![fabric_mod(
+                "n",
+                "N",
+                vec![dep("GONE", DependencyType::Required)],
+            )],
+        );
+        let missing = plan(&c, &request("N"), Some(&fabric()), &Installed::default())
+            .await
+            .unwrap_err();
+        assert_eq!(missing.code, ErrorCode::ContentDependencyMissing);
+        assert_eq!(missing.params["name"], "GONE");
+
+        // Only a gone version id: named by that id.
+        let only_version = ApiDependency {
+            version_id: Some("ghost".into()),
+            project_id: None,
+            dependency_type: DependencyType::Required,
+        };
+        c.add(
+            "P",
+            "Pinned",
+            "mod",
+            vec![fabric_mod("p", "P", vec![only_version])],
+        );
+        let missing = plan(&c, &request("P"), Some(&fabric()), &Installed::default())
+            .await
+            .unwrap_err();
+        assert_eq!(missing.code, ErrorCode::ContentDependencyMissing);
+        assert_eq!(missing.params["name"], "ghost");
+    }
+
+    #[tokio::test]
+    async fn a_shader_falls_back_to_oculus_when_iris_has_no_fitting_build() {
+        let mut c = FakeCatalog::default();
+        c.add(
+            "SH",
+            "Complementary",
+            "shader",
+            vec![ver("s", "SH", &["1.20.1"], &["iris"], ".zip", vec![])],
+        );
+        c.add(
+            "IRIS",
+            "Iris",
+            "mod",
+            vec![ver("i", "IRIS", &["1.21.1"], &["neoforge"], ".jar", vec![])],
+        );
+        c.projects.insert("iris".into(), c.projects["IRIS"].clone());
+        c.add(
+            "OCU",
+            "Oculus",
+            "mod",
+            vec![ver("o", "OCU", &["1.20.1"], &["forge"], ".jar", vec![])],
+        );
+        c.projects
+            .insert("oculus".into(), c.projects["OCU"].clone());
+        let neoforge = Target {
+            minecraft: "1.20.1".into(),
+            loader: Some(LoaderKind::NeoForge),
+        };
+        let p = plan(&c, &request("SH"), Some(&neoforge), &Installed::default())
+            .await
+            .unwrap();
+        assert_eq!(titles(&p), vec!["Complementary", "Oculus"]);
+        assert_eq!(p.items[1].reason, ItemReason::ShaderMod);
+
+        // Neither fits: Iris is named.
+        let older = Target {
+            minecraft: "1.19.2".into(),
+            loader: Some(LoaderKind::NeoForge),
+        };
+        c.add(
+            "SH2",
+            "Other Shader",
+            "shader",
+            vec![ver("s2", "SH2", &["1.19.2"], &["iris"], ".zip", vec![])],
+        );
+        let none = plan(&c, &request("SH2"), Some(&older), &Installed::default())
+            .await
+            .unwrap_err();
+        assert_eq!(none.code, ErrorCode::ContentDependencyMissing);
+        assert_eq!(none.params["name"], "Iris");
+
+        // Iris already installed: it is a skip, Oculus is not brought.
+        let have = installed(&[("IRIS", false, &[])]);
+        let p = plan(&c, &request("SH"), Some(&neoforge), &have)
+            .await
+            .unwrap();
+        assert_eq!(titles(&p), vec!["Complementary"]);
+        assert_eq!(p.skipped.len(), 1);
     }
 }
