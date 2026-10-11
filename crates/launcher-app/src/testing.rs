@@ -55,7 +55,6 @@ pub(crate) fn up_to_date() -> Ensured {
     }
 }
 
-#[allow(dead_code)] // used by the pack tests that follow
 pub(crate) fn pack_file(path: &str, name: &str, optional: Option<bool>) -> PackFile {
     PackFile {
         path: path.into(),
@@ -114,7 +113,6 @@ pub(crate) fn manual_file(file_name: &str, body: &[u8]) -> ManualFile {
 }
 
 /// A lockfile that says sync wrote each of `paths`.
-#[allow(dead_code)] // used by the pack tests that follow
 pub(crate) fn managed_for(paths: &[&str]) -> Managed {
     Managed {
         version: Managed::VERSION,

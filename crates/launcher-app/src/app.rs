@@ -47,6 +47,9 @@ pub struct AppConfig {
     pub downloads_dir: Option<PathBuf>,
 }
 
+/// The names a Java executable has. Anything else is never run.
+const JAVA_NAMES: [&str; 4] = ["java", "javaw", "java.exe", "javaw.exe"];
+
 /// One instance's current run. Absent from `runs` means idle.
 pub(crate) struct Run {
     pub(crate) phase: RunStateKind,
@@ -281,6 +284,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if self.is_busy(id) {
             return Err(busy(id));
         }
+        self.refuse_managed(id, file).await?;
         let dir = self.game_dir(id).await?;
         mods::set_enabled(&dir, file, enabled).await?;
         mods::list(&dir).await
@@ -298,6 +302,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if self.is_busy(id) {
             return Err(busy(id));
         }
+        self.refuse_managed(id, file).await?;
         let dir = self.game_dir(id).await?;
         mods::remove(&dir, file).await?;
         mods::list(&dir).await
@@ -338,7 +343,22 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Ok(path)
     }
 
+    /// Run `<path> -version`, but only for a regular file named like Java: the path comes
+    /// from the webview.
     pub async fn java_test(&self, path: PathBuf) -> Result<JavaTest> {
+        let named_java = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| JAVA_NAMES.iter().any(|j| n.eq_ignore_ascii_case(j)));
+        let is_file = tokio::fs::metadata(&path).await.is_ok_and(|m| m.is_file());
+        if !named_java || !is_file {
+            return Err(LauncherError::java(
+                ErrorCode::JavaTestFailed,
+                "That doesn't look like a working Java",
+            )
+            .with_fix("Pick the java executable inside a Java installation's bin folder")
+            .with_detail(path.display()));
+        }
         Ok(JavaTest {
             major: java::probe(&path).await?,
         })
