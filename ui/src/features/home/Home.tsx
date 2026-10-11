@@ -15,6 +15,7 @@ import { EmptyState } from './EmptyState';
 import { InstanceMenu } from './InstanceMenu';
 import { versionLine } from './labels';
 import { pick } from './pick';
+import { UpdateDialog } from './UpdateDialog';
 
 function InstanceView({ instance }: { instance: Instance }) {
   const { t } = useTranslation();
@@ -55,6 +56,7 @@ function InstanceView({ instance }: { instance: Instance }) {
           </div>
         </div>
       </div>
+      {run.state === 'asking' && run.update && <UpdateDialog instance={instance} update={run.update} />}
     </section>
   );
 }

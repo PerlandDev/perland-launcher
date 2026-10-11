@@ -32,7 +32,7 @@ function RailItem({
     ? t('rail.damaged')
     : run.state === 'running' || run.state === 'stopping'
       ? t('rail.playing')
-      : run.state === 'queued' || run.state === 'preparing'
+      : run.state === 'checking' || run.state === 'asking' || run.state === 'queued' || run.state === 'syncing' || run.state === 'preparing'
         ? t('rail.preparing')
         : null;
   return (

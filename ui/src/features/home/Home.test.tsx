@@ -1,5 +1,7 @@
 import { act, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import packStatusFx from '../../ipc/contract/pack_status.json';
+import type { PackStatus } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
@@ -87,5 +89,48 @@ describe('Home', () => {
     await user.type(input, 'Flat World');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(sent(calls, 'instance_rename')).toEqual([{ id: 'creative-flat', name: 'Flat World' }]);
+  });
+
+  const offer = (packStatusFx as PackStatus[])[0]!.update!;
+
+  it('asks before updating and sends the answer', async () => {
+    const { user, calls } = renderApp(<Home id="sky-islands" />);
+    await screen.findByRole('heading', { name: 'Sky Islands' });
+    act(() => runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'asking', exit: null, update: offer }));
+    const dialog = screen.getByRole('dialog', { name: 'Update ready: 1.0.3 → 1.0.4' });
+    expect(within(dialog).getByText('+3 added · 2 updated · 1 removed')).toBeInTheDocument();
+    expect(within(dialog).getByText('Kept your version of 1 file')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Show what changed' }));
+    expect(within(dialog).getByText("Just Enough Items, Create, Farmer's Delight")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Update and play' }));
+    expect(sent(calls, 'play_answer')).toEqual([{ id: 'sky-islands', update: true }]);
+  });
+
+  it('plays the installed version, or cancels with Escape', async () => {
+    const { user, calls } = renderApp(<Home id="sky-islands" />);
+    await screen.findByRole('heading', { name: 'Sky Islands' });
+    act(() => runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'asking', exit: null, update: offer }));
+    await user.click(screen.getByRole('button', { name: 'Play 1.0.3' }));
+    expect(sent(calls, 'play_answer')).toEqual([{ id: 'sky-islands', update: false }]);
+    // jsdom doesn't turn Escape into the dialog's cancel event; dispatch it as the browser would.
+    act(() => {
+      screen.getByRole('dialog').dispatchEvent(new Event('cancel', { cancelable: true }));
+    });
+    expect(sent(calls, 'stop')).toEqual([{ id: 'sky-islands' }]);
+  });
+
+  it('shows checking and installing on the Play button', async () => {
+    renderApp(<Home id="sky-islands" />);
+    await screen.findByRole('heading', { name: 'Sky Islands' });
+    act(() => runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'checking', exit: null, update: null }));
+    expect(screen.getByRole('button', { name: 'Cancel: Checking for updates…' })).toBeInTheDocument();
+    act(() => {
+      runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'syncing', exit: null, update: null });
+      runStore.apply({
+        type: 'progress', instance: 'sky-islands',
+        task: { key: 'install_pack', params: { name: 'Sky Islands' } }, done: 2, total: 24, bytes: 0,
+      });
+    });
+    expect(screen.getByRole('button', { name: 'Cancel: Installing Sky Islands' })).toBeInTheDocument();
   });
 });

@@ -20,12 +20,25 @@ export function PlayButton({ state, progress, disabled, disabledReason, onPlay, 
   const reasonId = useId();
   const lang = i18n.language;
 
-  if (state === 'queued' || state === 'preparing') {
+  const waiting = state === 'checking' || state === 'asking' || state === 'queued' || state === 'syncing' || state === 'preparing';
+  if (waiting) {
     const label =
-      state === 'queued' ? t('play.queued') : progress ? taskLabel(i18n, progress.task) : t('play.preparing');
+      state === 'checking'
+        ? t('play.checking')
+        : state === 'asking'
+          ? t('play.asking')
+          : state === 'queued'
+            ? t('play.queued')
+            : progress
+              ? taskLabel(i18n, progress.task)
+              : state === 'syncing'
+                ? t('play.syncing')
+                : t('play.preparing');
     const fraction = progress && progress.total > 0 ? progress.done / progress.total : 0;
+    // Syncing and preparing fill the meter; the other waits show it empty.
+    const look = state === 'syncing' || state === 'preparing' ? 'preparing' : 'queued';
     return (
-      <button type="button" className="play" data-state={state} onClick={onStop} aria-label={t('play.cancelLabel', { label })}>
+      <button type="button" className="play" data-state={look} onClick={onStop} aria-label={t('play.cancelLabel', { label })}>
         <span className="flex items-baseline justify-between gap-3">
           <span className="truncate">{label}</span>
           <span className="play-sub">{t('play.cancel')}</span>

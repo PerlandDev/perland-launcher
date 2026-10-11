@@ -14,3 +14,13 @@ export function versionLine(t: TFunction, instance: Instance): string {
   const second = loader ? t('home.loaderLine', { loader: loaderName(loader.kind), version: loader.version }) : t('home.vanilla');
   return `${mc} · ${second}`;
 }
+
+/** "+3 added · 2 updated · 1 removed", or a line for a new version with the same mods. */
+export function changeLine(t: TFunction, counts: { added: number; updated: number; removed: number }): string {
+  const parts = [
+    counts.added > 0 ? t('update.added', { count: counts.added }) : null,
+    counts.updated > 0 ? t('update.updated', { count: counts.updated }) : null,
+    counts.removed > 0 ? t('update.removed', { count: counts.removed }) : null,
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(' · ') : t('update.sameFiles');
+}
