@@ -304,6 +304,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
             OpenTarget::Data => self.config.dirs.root().to_path_buf(),
             OpenTarget::Logs => self.config.dirs.logs(),
+            OpenTarget::Downloads => {
+                return Err(LauncherError::disk(
+                    ErrorCode::Internal,
+                    "Couldn't find your Downloads folder",
+                ))
+            }
         };
         tokio::fs::create_dir_all(&path).await?;
         Ok(path)

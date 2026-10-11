@@ -8,7 +8,7 @@ const failure = { category: 'game', code: 'internal', message: 'boom', fix: null
 
 it('restores running games and their recent output', async () => {
   mockIPC((cmd, args) => {
-    if (cmd === 'run_states') return [{ instance: 'pack', state: 'running' }];
+    if (cmd === 'run_states') return [{ instance: 'pack', state: 'running', update: null }];
     if (cmd === 'log_tail') return [`line from ${(args as { id: string }).id}`];
     return null;
   });
@@ -31,9 +31,9 @@ it('keeps the games it could read when some log tails fail, and reports once', a
   mockIPC((cmd, args) => {
     if (cmd === 'run_states') {
       return [
-        { instance: 'a', state: 'running' },
-        { instance: 'b', state: 'running' },
-        { instance: 'c', state: 'preparing' },
+        { instance: 'a', state: 'running', update: null },
+        { instance: 'b', state: 'running', update: null },
+        { instance: 'c', state: 'preparing', update: null },
       ];
     }
     if (cmd === 'log_tail') {
@@ -53,11 +53,11 @@ it('keeps the games it could read when some log tails fail, and reports once', a
 it('does not undo a live event that arrives while the log tails are being fetched', async () => {
   const store = createRunStore();
   mockIPC((cmd) => {
-    if (cmd === 'run_states') return [{ instance: 'pack', state: 'running' }];
+    if (cmd === 'run_states') return [{ instance: 'pack', state: 'running', update: null }];
     if (cmd === 'log_tail') {
       // The game exits and prints a last line while the tail is still on its way.
       store.apply({ type: 'log', instance: 'pack', lines: ['bye'] });
-      store.apply({ type: 'run_state', instance: 'pack', state: 'idle', exit: null });
+      store.apply({ type: 'run_state', instance: 'pack', state: 'idle', exit: null, update: null });
       return ['old'];
     }
     return null;

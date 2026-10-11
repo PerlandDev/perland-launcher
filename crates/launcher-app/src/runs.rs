@@ -81,7 +81,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             return Ok(());
         };
         match run.phase {
-            RunStateKind::Queued | RunStateKind::Preparing => {
+            RunStateKind::Queued
+            | RunStateKind::Preparing
+            | RunStateKind::Checking
+            | RunStateKind::Asking
+            | RunStateKind::Syncing => {
                 if let Some(abort) = run.abort.take() {
                     abort.abort();
                 }
@@ -141,6 +145,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .map(|(id, run)| RunSnapshot {
                 instance: id.clone(),
                 state: run.phase,
+                update: None,
             })
             .collect()
     }
@@ -154,6 +159,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             instance: id.to_string(),
             state,
             exit,
+            update: None,
         });
     }
 

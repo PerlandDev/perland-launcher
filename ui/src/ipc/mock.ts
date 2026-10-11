@@ -15,6 +15,7 @@ import type {
   AccountsFile,
   AppEvent,
   AppInfo,
+  ExitInfo,
   Instance,
   InstanceListing,
   LauncherError,
@@ -73,17 +74,29 @@ function event(e: AppEvent) {
   void emit(APP_EVENT, e);
 }
 
+export const exitOf = (partial: Partial<ExitInfo>): ExitInfo => ({
+  code: null,
+  killed: false,
+  cancelled: false,
+  crash: null,
+  error: null,
+  synced: null,
+  manual: [],
+  updateOnly: false,
+  ...partial,
+});
+
 function setState(state: MockState, id: string, next: RunStateKind) {
   const run = state.runs.get(id);
   if (run) run.state = next;
-  event({ type: 'run_state', instance: id, state: next, exit: null });
+  event({ type: 'run_state', instance: id, state: next, exit: null, update: null });
 }
 
 async function scriptPlay(state: MockState, instance: Instance) {
   const id = instance.id;
   const run: MockRun = { state: 'queued', cancelled: false };
   state.runs.set(id, run);
-  event({ type: 'run_state', instance: id, state: 'queued', exit: null });
+  event({ type: 'run_state', instance: id, state: 'queued', exit: null, update: null });
   await wait(300);
   if (run.cancelled) return;
   setState(state, id, 'preparing');
@@ -112,7 +125,8 @@ async function scriptPlay(state: MockState, instance: Instance) {
         type: 'run_state',
         instance: id,
         state: 'idle',
-        exit: { code: 1, killed: false, cancelled: false, crash: 'out_of_memory', error: null },
+        exit: exitOf({ code: 1, crash: 'out_of_memory' }),
+        update: null,
       });
       return;
     }
@@ -200,19 +214,19 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       if (run.state === 'queued' || run.state === 'preparing') {
         run.cancelled = true;
         state.runs.delete(id);
-        event({ type: 'run_state', instance: id, state: 'idle', exit: { code: null, killed: false, cancelled: true, crash: null, error: null } });
+        event({ type: 'run_state', instance: id, state: 'idle', exit: exitOf({ cancelled: true }), update: null });
       } else if (run.state === 'running') {
         setState(state, id, 'stopping');
         setTimeout(() => {
           if (state.runs.get(id) !== run) return;
           state.runs.delete(id);
-          event({ type: 'run_state', instance: id, state: 'idle', exit: { code: null, killed: true, cancelled: false, crash: null, error: null } });
+          event({ type: 'run_state', instance: id, state: 'idle', exit: exitOf({ killed: true }), update: null });
         }, 400);
       }
       return null;
     }
     case 'run_states':
-      return [...state.runs].map(([instance, run]) => ({ instance, state: run.state }));
+      return [...state.runs].map(([instance, run]) => ({ instance, state: run.state, update: null }));
     case 'log_tail':
       return [];
     case 'mods_list':

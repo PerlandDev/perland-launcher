@@ -1,5 +1,6 @@
 import { act, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { exitOf } from '../../ipc/mock';
 import { openActivity } from '../../state/activity';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
@@ -16,7 +17,7 @@ describe('ActivityDrawer', () => {
   it('opens from its handle and shows the game log', async () => {
     const { user } = renderApp(<ActivityDrawer />);
     act(() => {
-      runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null });
+      runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null });
       runStore.apply({ type: 'log', instance: 'asalith-fields', lines: ['[INFO] Hello', '[INFO] World'] });
     });
     await user.click(screen.getByRole('button', { name: /Activity/ }));
@@ -28,12 +29,13 @@ describe('ActivityDrawer', () => {
   it('explains an out-of-memory crash and raises memory in one click', async () => {
     const { user, calls } = renderApp(<ActivityDrawer />);
     act(() => {
-      runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'queued', exit: null });
+      runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'queued', exit: null, update: null });
       runStore.apply({
         type: 'run_state',
         instance: 'asalith-fields',
         state: 'idle',
-        exit: { code: 1, killed: false, cancelled: false, crash: 'out_of_memory', error: null },
+        exit: exitOf({ code: 1, crash: 'out_of_memory' }),
+        update: null,
       });
       openActivity('asalith-fields');
     });
@@ -50,13 +52,10 @@ describe('ActivityDrawer', () => {
         type: 'run_state',
         instance: 'creative-flat',
         state: 'idle',
-        exit: {
-          code: null,
-          killed: false,
-          cancelled: false,
-          crash: null,
+        exit: exitOf({
           error: { category: 'network', code: 'offline', message: 'x', fix: null, detail: null, params: {} },
-        },
+        }),
+        update: null,
       });
       openActivity('creative-flat');
     });

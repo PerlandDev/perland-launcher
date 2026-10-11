@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { exitOf } from '../ipc/mock';
 import { createRunStore, LOG_CAP } from './runStore';
 
 const progress = (done: number) =>
@@ -15,15 +16,15 @@ describe('runStore', () => {
   it('follows a run from queued to idle', () => {
     const store = createRunStore();
     expect(store.run('pack').state).toBe('idle');
-    store.apply({ type: 'run_state', instance: 'pack', state: 'queued', exit: null });
-    store.apply({ type: 'run_state', instance: 'pack', state: 'preparing', exit: null });
+    store.apply({ type: 'run_state', instance: 'pack', state: 'queued', exit: null, update: null });
+    store.apply({ type: 'run_state', instance: 'pack', state: 'preparing', exit: null, update: null });
     store.apply(progress(4));
     expect(store.run('pack').progress?.done).toBe(4);
-    store.apply({ type: 'run_state', instance: 'pack', state: 'running', exit: null });
+    store.apply({ type: 'run_state', instance: 'pack', state: 'running', exit: null, update: null });
     expect(store.run('pack').progress).toBeNull();
     expect(store.active()).toEqual(['pack']);
-    const exit = { code: 1, killed: false, cancelled: false, crash: 'out_of_memory', error: null } as const;
-    store.apply({ type: 'run_state', instance: 'pack', state: 'idle', exit });
+    const exit = exitOf({ code: 1, crash: 'out_of_memory' });
+    store.apply({ type: 'run_state', instance: 'pack', state: 'idle', exit, update: null });
     expect(store.run('pack')).toMatchObject({ state: 'idle', lastExit: exit });
     expect(store.active()).toEqual([]);
     store.dismissExit('pack');
@@ -33,7 +34,7 @@ describe('runStore', () => {
   it('starts a fresh log on every new run and caps it', () => {
     const store = createRunStore();
     store.apply({ type: 'log', instance: 'pack', lines: ['old'] });
-    store.apply({ type: 'run_state', instance: 'pack', state: 'queued', exit: null });
+    store.apply({ type: 'run_state', instance: 'pack', state: 'queued', exit: null, update: null });
     expect(store.log('pack')).toEqual([]);
     const many = Array.from({ length: LOG_CAP + 10 }, (_, i) => `l${i}`);
     store.apply({ type: 'log', instance: 'pack', lines: many });
@@ -51,15 +52,15 @@ describe('runStore', () => {
 
   it('hydrates after a reload', () => {
     const store = createRunStore();
-    store.hydrate([{ instance: 'pack', state: 'running' }], { pack: ['a', 'b'] });
+    store.hydrate([{ instance: 'pack', state: 'running', update: null }], { pack: ['a', 'b'] });
     expect(store.run('pack').state).toBe('running');
     expect(store.log('pack')).toEqual(['a', 'b']);
   });
 
   it('does not let a late snapshot overwrite a state the store already heard live', () => {
     const store = createRunStore();
-    store.apply({ type: 'run_state', instance: 'pack', state: 'idle', exit: null });
-    store.hydrate([{ instance: 'pack', state: 'running' }, { instance: 'other', state: 'running' }], {});
+    store.apply({ type: 'run_state', instance: 'pack', state: 'idle', exit: null, update: null });
+    store.hydrate([{ instance: 'pack', state: 'running', update: null }, { instance: 'other', state: 'running', update: null }], {});
     expect(store.run('pack').state).toBe('idle');
     expect(store.run('other').state).toBe('running');
   });
@@ -74,9 +75,9 @@ describe('runStore', () => {
 
   it('forgets what it heard live on reset', () => {
     const store = createRunStore();
-    store.apply({ type: 'run_state', instance: 'pack', state: 'idle', exit: null });
+    store.apply({ type: 'run_state', instance: 'pack', state: 'idle', exit: null, update: null });
     store.reset();
-    store.hydrate([{ instance: 'pack', state: 'running' }], {});
+    store.hydrate([{ instance: 'pack', state: 'running', update: null }], {});
     expect(store.run('pack').state).toBe('running');
   });
 });

@@ -70,16 +70,50 @@ export const openTarget = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('mods'), id: z.string() }),
   z.strictObject({ kind: z.literal('data') }),
   z.strictObject({ kind: z.literal('logs') }),
+  z.strictObject({ kind: z.literal('downloads') }),
 ]);
 
-export const runStateKind = z.enum(['idle', 'queued', 'preparing', 'running', 'stopping']);
+export const runStateKind = z.enum(['idle', 'checking', 'asking', 'queued', 'syncing', 'preparing', 'running', 'stopping']);
 export const crashHint = z.enum(['out_of_memory']);
+export const hashes = z.strictObject({
+  sha1: z.string().nullable(),
+  sha256: z.string().nullable(),
+  sha512: z.string().nullable(),
+  md5: z.string().nullable(),
+  murmur2: z.number().int().nullable(),
+});
+export const manualFile = z.strictObject({
+  path: z.string(),
+  name: z.string(),
+  fileName: z.string(),
+  pageUrl: z.string(),
+  hashes,
+});
+export const packUpdate = z.strictObject({
+  fromVersion: z.string().nullable(),
+  toVersion: z.string(),
+  added: z.array(z.string()),
+  updated: z.array(z.string()),
+  removed: z.array(z.string()),
+  kept: z.array(z.string()),
+});
+export const syncSummary = z.strictObject({
+  fromVersion: z.string().nullable(),
+  toVersion: z.string(),
+  added: z.number().int(),
+  updated: z.number().int(),
+  removed: z.number().int(),
+  keptModified: z.array(z.string()),
+});
 export const exitInfo = z.strictObject({
   code: z.number().int().nullable(),
   killed: z.boolean(),
   cancelled: z.boolean(),
   crash: crashHint.nullable(),
   error: launcherError.nullable(),
+  synced: syncSummary.nullable(),
+  manual: z.array(manualFile),
+  updateOnly: z.boolean(),
 });
 export const taskId = z.strictObject({ key: z.string(), params: z.record(z.string(), z.string()) });
 export const appEvent = z.discriminatedUnion('type', [
@@ -97,10 +131,26 @@ export const appEvent = z.discriminatedUnion('type', [
     instance: z.string(),
     state: runStateKind,
     exit: exitInfo.nullable(),
+    update: packUpdate.nullable(),
   }),
   z.strictObject({ type: z.literal('warning'), instance: z.string().nullable(), error: launcherError }),
+  z.strictObject({ type: z.literal('deep_link') }),
 ]);
-export const runSnapshot = z.strictObject({ instance: z.string(), state: runStateKind });
+export const runSnapshot = z.strictObject({ instance: z.string(), state: runStateKind, update: packUpdate.nullable() });
+export const packStatus = z.strictObject({
+  installedVersion: z.string().nullable(),
+  update: packUpdate.nullable(),
+  checkError: launcherError.nullable(),
+});
+export const optionalChoice = z.strictObject({ enabled: z.boolean(), description: z.string().nullable() });
+export const packMod = z.strictObject({ path: z.string(), name: z.string(), optional: optionalChoice.nullable() });
+export const packContents = z.strictObject({ managed: z.array(packMod), additions: z.array(localMod) });
+export const manualProgress = z.strictObject({ found: z.number().int(), total: z.number().int(), remaining: z.array(manualFile) });
+export const packArtData = z.strictObject({ icon: z.string().nullable(), banner: z.string().nullable() });
+export const packAddRequest = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('link'), url: z.string() }),
+  z.strictObject({ kind: z.literal('file'), path: z.string() }),
+]);
 export const javaTest = z.strictObject({ major: z.number().int() });
 
 export type ErrorCategory = z.infer<typeof errorCategory>;
@@ -125,8 +175,19 @@ export type NewInstance = z.infer<typeof newInstance>;
 export type OpenTarget = z.infer<typeof openTarget>;
 export type RunStateKind = z.infer<typeof runStateKind>;
 export type CrashHint = z.infer<typeof crashHint>;
+export type Hashes = z.infer<typeof hashes>;
+export type ManualFile = z.infer<typeof manualFile>;
+export type PackUpdate = z.infer<typeof packUpdate>;
+export type SyncSummary = z.infer<typeof syncSummary>;
 export type ExitInfo = z.infer<typeof exitInfo>;
 export type TaskId = z.infer<typeof taskId>;
 export type AppEvent = z.infer<typeof appEvent>;
 export type RunSnapshot = z.infer<typeof runSnapshot>;
 export type JavaTest = z.infer<typeof javaTest>;
+export type PackStatus = z.infer<typeof packStatus>;
+export type OptionalChoice = z.infer<typeof optionalChoice>;
+export type PackMod = z.infer<typeof packMod>;
+export type PackContents = z.infer<typeof packContents>;
+export type ManualProgress = z.infer<typeof manualProgress>;
+export type PackArtData = z.infer<typeof packArtData>;
+export type PackAddRequest = z.infer<typeof packAddRequest>;

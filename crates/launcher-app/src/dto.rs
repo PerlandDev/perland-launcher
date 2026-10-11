@@ -1,5 +1,13 @@
 //! Shapes the commands take and return that aren't core types.
-use launcher_core::{accounts::BuildKind, instances::LoaderSpec};
+use std::path::PathBuf;
+
+use launcher_core::{
+    accounts::BuildKind,
+    instances::LoaderSpec,
+    mods::LocalMod,
+    sync::{ManualFile, PendingUpdate, SyncReport},
+    LauncherError,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::events::RunStateKind;
@@ -46,12 +54,125 @@ pub enum OpenTarget {
     Mods { id: String },
     Data,
     Logs,
+    Downloads,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RunSnapshot {
     pub instance: String,
     pub state: RunStateKind,
+    pub update: Option<PackUpdate>,
+}
+
+/// An update the player can take, as the "Update ready" dialog and banner show it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackUpdate {
+    pub from_version: Option<String>,
+    pub to_version: String,
+    pub added: Vec<String>,
+    pub updated: Vec<String>,
+    pub removed: Vec<String>,
+    /// Files the player edited that the update keeps as they are ("Kept your version of N files").
+    pub kept: Vec<String>,
+}
+
+impl From<&PendingUpdate> for PackUpdate {
+    fn from(u: &PendingUpdate) -> Self {
+        Self {
+            from_version: u.changes.from_version.clone(),
+            to_version: u.changes.to_version.clone(),
+            added: u.changes.added.clone(),
+            updated: u.changes.updated.clone(),
+            removed: u.changes.removed.clone(),
+            kept: u.kept.clone(),
+        }
+    }
+}
+
+/// What a finished sync changed: "Updated to 1.0.4", "Kept your version of N files".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSummary {
+    pub from_version: Option<String>,
+    pub to_version: String,
+    pub added: usize,
+    pub updated: usize,
+    pub removed: usize,
+    pub kept_modified: Vec<String>,
+}
+
+impl From<&SyncReport> for SyncSummary {
+    fn from(r: &SyncReport) -> Self {
+        Self {
+            from_version: r.changes.from_version.clone(),
+            to_version: r.changes.to_version.clone(),
+            added: r.changes.added.len(),
+            updated: r.changes.updated.len(),
+            removed: r.changes.removed.len(),
+            kept_modified: r.kept_modified.clone(),
+        }
+    }
+}
+
+/// For the banner: the installed version, and the update (or why there's no answer).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackStatus {
+    pub installed_version: Option<String>,
+    pub update: Option<PackUpdate>,
+    pub check_error: Option<LauncherError>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OptionalChoice {
+    pub enabled: bool,
+    pub description: Option<String>,
+}
+
+/// A mod that comes with the pack. Read-only, except an optional one's toggle.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackMod {
+    pub path: String,
+    pub name: String,
+    pub optional: Option<OptionalChoice>,
+}
+
+/// A pack instance's Mods screen: the pack's mods, and the player's own jars.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackContents {
+    pub managed: Vec<PackMod>,
+    pub additions: Vec<LocalMod>,
+}
+
+/// "Download these manually": how many of the blocked files were found so far.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManualProgress {
+    pub found: usize,
+    pub total: usize,
+    pub remaining: Vec<ManualFile>,
+}
+
+/// Pack art as `data:` URLs (the CSP allows no remote images). `None` falls back to the
+/// generated art.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackArtData {
+    pub icon: Option<String>,
+    pub banner: Option<String>,
+}
+
+/// What the New-instance screen hands over. A link is never a file path, and a file is only
+/// ever a `.mrpack`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PackAddRequest {
+    Link { url: String },
+    File { path: PathBuf },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -62,6 +183,83 @@ pub struct JavaTest {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use launcher_core::{
+        instances::SourceRef,
+        sources::{DesiredState, PackAbout},
+        sync::{plan::Changes, PendingUpdate, SyncReport},
+    };
+
+    fn changes() -> Changes {
+        Changes {
+            from_version: Some("1.0.3".into()),
+            to_version: "1.0.4".into(),
+            added: vec!["JEI".into(), "Create".into()],
+            updated: vec!["Sodium".into()],
+            removed: vec!["Zoomify".into()],
+        }
+    }
+
+    #[test]
+    fn an_update_and_a_summary_keep_names_and_counts() {
+        let pending = PendingUpdate {
+            source: SourceRef::Packwiz {
+                url: "https://example.com/pack.toml".into(),
+            },
+            desired: DesiredState {
+                name: "Sky".into(),
+                pack_version: "1.0.4".into(),
+                minecraft: "1.20.1".into(),
+                loader: None,
+                files: vec![],
+                stamp: "s2".into(),
+                about: PackAbout::default(),
+                archive: None,
+            },
+            changes: changes(),
+            kept: vec!["config/a.toml".into()],
+        };
+        let update = PackUpdate::from(&pending);
+        assert_eq!(update.added, vec!["JEI".to_string(), "Create".to_string()]);
+        assert_eq!(update.kept, vec!["config/a.toml".to_string()]);
+        let json = serde_json::to_value(&update).unwrap();
+        assert_eq!(json["fromVersion"], "1.0.3");
+        assert_eq!(json["toVersion"], "1.0.4");
+
+        let summary = SyncSummary::from(&SyncReport {
+            up_to_date: false,
+            changes: changes(),
+            kept_modified: vec!["options.txt".into()],
+            game_changed: false,
+        });
+        assert_eq!((summary.added, summary.updated, summary.removed), (2, 1, 1));
+        assert_eq!(
+            serde_json::to_value(&summary).unwrap()["keptModified"][0],
+            "options.txt"
+        );
+    }
+
+    #[test]
+    fn pack_add_requests_are_tagged_by_kind() {
+        let link: PackAddRequest =
+            serde_json::from_str(r#"{"kind":"link","url":"https://x.example/pack.toml"}"#).unwrap();
+        assert_eq!(
+            link,
+            PackAddRequest::Link {
+                url: "https://x.example/pack.toml".into()
+            }
+        );
+        let file: PackAddRequest =
+            serde_json::from_str(r#"{"kind":"file","path":"C:/Downloads/Sky.mrpack"}"#).unwrap();
+        assert_eq!(
+            file,
+            PackAddRequest::File {
+                path: "C:/Downloads/Sky.mrpack".into()
+            }
+        );
+        let downloads: OpenTarget = serde_json::from_str(r#"{"kind":"downloads"}"#).unwrap();
+        assert_eq!(downloads, OpenTarget::Downloads);
+    }
 
     #[test]
     fn open_target_round_trips_tagged() {

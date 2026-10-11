@@ -1,0 +1,37 @@
+[
+  {
+    "installedVersion": "1.0.3",
+    "update": {
+      "fromVersion": "1.0.3",
+      "toVersion": "1.0.4",
+      "added": [
+        "Just Enough Items",
+        "Create",
+        "Farmer's Delight"
+      ],
+      "updated": [
+        "Sodium",
+        "Iris"
+      ],
+      "removed": [
+        "Zoomify"
+      ],
+      "kept": [
+        "config/sodium-options.json"
+      ]
+    },
+    "checkError": null
+  },
+  {
+    "installedVersion": "1.0.3",
+    "update": null,
+    "checkError": {
+      "category": "network",
+      "code": "update_check_failed",
+      "message": "Couldn't check for updates",
+      "fix": "You can still play the version you have",
+      "detail": null,
+      "params": {}
+    }
+  }
+]

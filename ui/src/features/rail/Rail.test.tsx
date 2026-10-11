@@ -29,6 +29,6 @@ it('moves focus with the arrow keys and enters at the selected item', async () =
 it('marks a running instance', async () => {
   renderApp(<Rail />);
   await screen.findByRole('button', { name: 'Asalith Fields' });
-  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null }));
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
   expect(screen.getByRole('button', { name: 'Asalith Fields, Playing' })).toBeInTheDocument();
 });

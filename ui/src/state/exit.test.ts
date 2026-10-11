@@ -1,7 +1,8 @@
 import { expect, it } from 'vitest';
+import { exitOf } from '../ipc/mock';
 import { isCrash, suggestMemory } from './exit';
 
-const base = { code: 0, killed: false, cancelled: false, crash: null, error: null } as const;
+const base = exitOf({ code: 0 });
 
 it('matches the Rust definition of a crash', () => {
   expect(isCrash({ ...base, code: 1 })).toBe(true);

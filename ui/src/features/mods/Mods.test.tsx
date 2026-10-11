@@ -339,7 +339,7 @@ it('locks toggles and removal while the game runs, but still lets players add mo
   const zoomify = await screen.findByRole('switch', { name: 'Use zoomify-2.11.2' });
   expect(screen.queryByText(/Stop the game to turn mods on or off/)).not.toBeInTheDocument();
 
-  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null }));
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
   expect(screen.getByText(/Stop the game to turn mods on or off or remove them/)).toBeInTheDocument();
   expect(zoomify).toHaveAttribute('aria-disabled', 'true');
   const remove = screen.getByRole('button', { name: 'Remove sodium-fabric-0.5.8+mc1.20.1' });
@@ -353,7 +353,7 @@ it('locks toggles and removal while the game runs, but still lets players add mo
   await user.click(screen.getByRole('button', { name: 'Add mods' }));
   expect(sent(calls, 'mods_add')).toHaveLength(1);
 
-  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'idle', exit: null }));
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'idle', exit: null, update: null }));
   expect(screen.queryByText(/Stop the game to turn mods on or off/)).not.toBeInTheDocument();
   expect(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' })).not.toHaveAttribute('aria-disabled');
   await user.click(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' }));

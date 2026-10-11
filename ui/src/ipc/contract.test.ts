@@ -10,9 +10,14 @@ import instanceListing from './contract/instance_listing.json';
 import javaTest from './contract/java_test.json';
 import loaderVersions from './contract/loader_versions.json';
 import localMods from './contract/local_mods.json';
+import manualProgress from './contract/manual_progress.json';
 import mcVersions from './contract/mc_versions.json';
 import newInstance from './contract/new_instance.json';
 import openTargets from './contract/open_targets.json';
+import packAddRequests from './contract/pack_add_requests.json';
+import packArt from './contract/pack_art.json';
+import packContents from './contract/pack_contents.json';
+import packStatus from './contract/pack_status.json';
 import runSnapshots from './contract/run_snapshots.json';
 import settingsFx from './contract/settings.json';
 import { decodeEvent } from './events';
@@ -27,9 +32,14 @@ const cases: [string, ZodType, unknown][] = [
   ['java_test', s.javaTest, javaTest],
   ['loader_versions', s.loaderVersion.array(), loaderVersions],
   ['local_mods', s.localMod.array(), localMods],
+  ['manual_progress', s.manualProgress, manualProgress],
   ['mc_versions', s.mcVersion.array(), mcVersions],
   ['new_instance', s.newInstance, newInstance],
   ['open_targets', s.openTarget.array(), openTargets],
+  ['pack_add_requests', s.packAddRequest.array(), packAddRequests],
+  ['pack_art', s.packArtData, packArt],
+  ['pack_contents', s.packContents, packContents],
+  ['pack_status', s.packStatus.array(), packStatus],
   ['run_snapshots', s.runSnapshot.array(), runSnapshots],
   ['settings', s.settings, settingsFx],
   ['events', s.appEvent.array(), events],

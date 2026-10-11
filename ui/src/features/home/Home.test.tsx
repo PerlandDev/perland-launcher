@@ -32,7 +32,7 @@ describe('Home', () => {
     const { user, calls } = renderApp(<Home id="asalith-fields" />);
     await screen.findByRole('heading', { name: 'Asalith Fields' });
     act(() => {
-      runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'preparing', exit: null });
+      runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'preparing', exit: null, update: null });
       runStore.apply({
         type: 'progress',
         instance: 'asalith-fields',
@@ -43,7 +43,7 @@ describe('Home', () => {
       });
     });
     expect(screen.getByRole('button', { name: 'Cancel: Installing Minecraft 1.20.1' })).toBeInTheDocument();
-    act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null }));
+    act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
     await user.click(screen.getByRole('button', { name: 'Stop' }));
     expect(sent(calls, 'stop')).toEqual([{ id: 'asalith-fields' }]);
   });

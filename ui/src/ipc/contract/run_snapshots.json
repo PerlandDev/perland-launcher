@@ -1,6 +1,30 @@
 [
   {
     "instance": "asalith-fields",
-    "state": "running"
+    "state": "running",
+    "update": null
+  },
+  {
+    "instance": "sky-islands",
+    "state": "asking",
+    "update": {
+      "fromVersion": "1.0.3",
+      "toVersion": "1.0.4",
+      "added": [
+        "Just Enough Items",
+        "Create",
+        "Farmer's Delight"
+      ],
+      "updated": [
+        "Sodium",
+        "Iris"
+      ],
+      "removed": [
+        "Zoomify"
+      ],
+      "kept": [
+        "config/sodium-options.json"
+      ]
+    }
   }
 ]
