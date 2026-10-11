@@ -1,7 +1,10 @@
 //! One thin wrapper per UI command. All behavior lives in `launcher_app::AppCore`.
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
-use launcher_app::dto::{AppInfo, JavaTest, NewInstance, OpenTarget, RunSnapshot};
+use launcher_app::dto::{
+    AppInfo, JavaTest, ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackArtData,
+    PackContents, PackStatus, RunSnapshot,
+};
 use launcher_core::{
     accounts::AccountsFile,
     instances::{Instance, InstanceListing},
@@ -153,6 +156,56 @@ pub async fn open_folder(app: AppHandle, core: CoreState<'_>, target: OpenTarget
 #[tauri::command]
 pub async fn java_test(core: CoreState<'_>, path: PathBuf) -> Res<JavaTest> {
     core.java_test(path).await
+}
+
+#[tauri::command]
+pub async fn pack_add(core: CoreState<'_>, request: PackAddRequest) -> Res<Instance> {
+    core.pack_add(request).await
+}
+
+#[tauri::command]
+pub fn play_answer(core: CoreState<'_>, id: String, update: bool) -> Res<()> {
+    core.play_answer(&id, update)
+}
+
+#[tauri::command]
+pub async fn pack_update(core: CoreState<'_>, id: String) -> Res<()> {
+    core.inner().pack_update(&id).await
+}
+
+#[tauri::command]
+pub async fn pack_status(core: CoreState<'_>, id: String) -> Res<PackStatus> {
+    core.pack_status(&id).await
+}
+
+#[tauri::command]
+pub async fn pack_contents(core: CoreState<'_>, id: String) -> Res<PackContents> {
+    core.pack_contents(&id).await
+}
+
+#[tauri::command]
+pub async fn pack_set_optional(
+    core: CoreState<'_>,
+    id: String,
+    path: String,
+    enabled: bool,
+) -> Res<Instance> {
+    core.pack_set_optional(&id, &path, enabled).await
+}
+
+#[tauri::command]
+pub async fn manual_import(core: CoreState<'_>, id: String) -> Res<ManualProgress> {
+    core.manual_import(&id).await
+}
+
+#[tauri::command]
+pub async fn pack_art(core: CoreState<'_>, id: String) -> Res<PackArtData> {
+    core.pack_art(&id).await
+}
+
+#[tauri::command]
+pub fn deep_link_take(core: CoreState<'_>) -> Option<String> {
+    core.deep_link_take()
 }
 
 /// Called by the close dialog. Stopping waits a few seconds so the kills land before exit.

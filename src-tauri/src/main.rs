@@ -12,6 +12,7 @@ use launcher_core::{
     paths::LauncherDirs, platform::Platform,
 };
 use tauri::{Emitter, Manager, WindowEvent};
+use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_window_state::StateFlags;
 
 pub type Core = AppCore<CoreRunner, host::TauriHost>;
@@ -28,6 +29,7 @@ fn main() {
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
@@ -37,7 +39,25 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let core = build_core(app.handle().clone())?;
-            app.manage(core);
+            app.manage(core.clone());
+            // Installers register the scheme; a dev run registers itself (per user, no admin).
+            #[cfg(all(debug_assertions, any(windows, target_os = "linux")))]
+            if let Err(e) = app.deep_link().register_all() {
+                eprintln!("couldn't register perland:// links: {e}");
+            }
+            // Started by a link…
+            if let Ok(Some(urls)) = app.deep_link().get_current() {
+                for url in urls {
+                    core.deep_link(url.as_str());
+                }
+            }
+            // …or handed one while running (a second launch, through single-instance).
+            let linked = core.clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    linked.deep_link(url.as_str());
+                }
+            });
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -76,6 +96,15 @@ fn main() {
             commands::mod_remove,
             commands::open_folder,
             commands::java_test,
+            commands::pack_add,
+            commands::play_answer,
+            commands::pack_update,
+            commands::pack_status,
+            commands::pack_contents,
+            commands::pack_set_optional,
+            commands::manual_import,
+            commands::pack_art,
+            commands::deep_link_take,
             commands::quit,
         ])
         .run(tauri::generate_context!())
