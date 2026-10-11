@@ -8,7 +8,10 @@ import appInfoFx from './contract/app_info.json';
 import listingFx from './contract/instance_listing.json';
 import loaderVersionsFx from './contract/loader_versions.json';
 import localModsFx from './contract/local_mods.json';
+import manualProgressFx from './contract/manual_progress.json';
 import mcVersionsFx from './contract/mc_versions.json';
+import packContentsFx from './contract/pack_contents.json';
+import packStatusFx from './contract/pack_status.json';
 import settingsFx from './contract/settings.json';
 import { APP_EVENT } from './events';
 import type {
@@ -20,21 +23,56 @@ import type {
   InstanceListing,
   LauncherError,
   LocalMod,
+  ManualFile,
+  ManualProgress,
   NewInstance,
+  PackAddRequest,
+  PackArtData,
+  PackContents,
+  PackStatus,
+  PackUpdate,
   RunStateKind,
   Settings,
+  SyncSummary,
 } from './schema';
 
 export interface MockOptions {
   firstRun?: boolean;
   crash?: boolean;
   release?: boolean;
+  /** The pack's first sync ends with two files the player has to download by hand. */
+  manual?: boolean;
+  /** The pack has no update on offer. */
+  noUpdate?: boolean;
+  /** A pending perland:// or pack link, handed over once by deep_link_take. */
+  link?: string;
 }
 
 interface MockRun {
   state: RunStateKind;
   cancelled: boolean;
+  /** Set while asking: resolves with the player's answer. */
+  answer: ((update: boolean) => void) | null;
 }
+
+interface MockPack {
+  installed: string | null;
+  update: PackUpdate | null;
+  contents: PackContents;
+  art: PackArtData;
+  manual: ManualFile[];
+  found: number;
+}
+
+const svg = (body: string) => `data:image/svg+xml;base64,${btoa(body)}`;
+const SKY_ART: PackArtData = {
+  icon: svg(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect width="16" height="16" fill="#7cc4ff"/><rect y="9" width="16" height="7" fill="#3f8f4f"/><rect y="12" width="16" height="4" fill="#6b4a2b"/></svg>',
+  ),
+  banner: svg(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 270" shape-rendering="crispEdges"><defs><linearGradient id="s" x2="0" y2="1"><stop offset="0" stop-color="#9fd8ff"/><stop offset="1" stop-color="#e9c46a"/></linearGradient></defs><rect width="480" height="270" fill="url(#s)"/><rect x="60" y="120" width="140" height="40" fill="#3f8f4f"/><rect x="80" y="160" width="100" height="24" fill="#6b4a2b"/><rect x="290" y="90" width="120" height="36" fill="#3f8f4f"/><rect x="306" y="126" width="88" height="20" fill="#6b4a2b"/></svg>',
+  ),
+};
 
 const clone = <T>(value: T): T => structuredClone(value);
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -65,7 +103,51 @@ function seed(options: MockOptions) {
     offlineAllowed: !options.release,
   };
   const mods = new Map<string, LocalMod[]>([['asalith-fields', clone(localModsFx) as LocalMod[]]]);
-  return { listing, accounts, settings, appInfo, mods, runs: new Map<string, MockRun>(), options };
+  const packs = new Map<string, MockPack>();
+  if (!options.firstRun) {
+    const sky: Instance = {
+      id: 'sky-islands',
+      name: 'Sky Islands',
+      source: { kind: 'packwiz', url: 'https://packs.example/sky-islands/pack.toml' },
+      game: { minecraft: '1.20.1', loader: { kind: 'forge', version: '47.4.22' } },
+      updatePolicy: 'ask',
+      optionalChoices: {},
+      java: { path: null, memoryMb: 6144 },
+    };
+    listing.instances = [...listing.instances, sky];
+    const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
+    const blocked = (clone(manualProgressFx) as ManualProgress).remaining;
+    packs.set(sky.id, {
+      installed: '1.0.3',
+      update: options.noUpdate ? null : offer,
+      contents: clone(packContentsFx) as PackContents,
+      art: SKY_ART,
+      manual: options.manual
+        ? [
+            ...blocked,
+            {
+              ...blocked[0]!,
+              path: 'mods/sodium-extra.jar',
+              name: 'Sodium Extra',
+              fileName: 'sodium-extra-0.5.4.jar',
+              pageUrl: 'https://www.curseforge.com/projects/447673',
+            },
+          ]
+        : [],
+      found: 0,
+    });
+  }
+  return {
+    listing,
+    accounts,
+    settings,
+    appInfo,
+    mods,
+    packs,
+    pendingLink: options.link ?? null,
+    runs: new Map<string, MockRun>(),
+    options,
+  };
 }
 
 export type MockState = ReturnType<typeof seed>;
@@ -92,13 +174,102 @@ function setState(state: MockState, id: string, next: RunStateKind) {
   event({ type: 'run_state', instance: id, state: next, exit: null, update: null });
 }
 
-async function scriptPlay(state: MockState, instance: Instance) {
+/** Check, ask, sync, like the real run. Returns the sync summary, or null when the run was
+ *  stopped or ended early (update only, or blocked files). */
+async function packPrelude(
+  state: MockState,
+  instance: Instance,
+  run: MockRun,
+  updateOnly: boolean,
+): Promise<{ synced: SyncSummary | null } | null> {
   const id = instance.id;
-  const run: MockRun = { state: 'queued', cancelled: false };
+  const pack = state.packs.get(id);
+  if (!pack) return { synced: null };
+  const checks = pack.installed !== null && instance.updatePolicy !== 'pinned';
+  let take = false;
+  if (checks) {
+    await wait(400);
+    if (run.cancelled) return null;
+    if (pack.update) {
+      if (updateOnly || instance.updatePolicy === 'auto') take = true;
+      else {
+        run.state = 'asking';
+        event({ type: 'run_state', instance: id, state: 'asking', exit: null, update: pack.update });
+        take = await new Promise<boolean>((resolve) => (run.answer = resolve));
+        if (run.cancelled) return null;
+      }
+    }
+    setState(state, id, 'queued');
+  }
+  await wait(200);
+  if (run.cancelled) return null;
+  setState(state, id, 'syncing');
+  const total = 24;
+  for (let done = 0; done <= total; done++) {
+    if (run.cancelled) return null;
+    event({
+      type: 'progress',
+      instance: id,
+      task: { key: pack.installed ? 'sync_pack' : 'install_pack', params: { name: instance.name } },
+      done,
+      total,
+      bytes: done * 2_400_000,
+    });
+    await wait(50);
+  }
+  if (pack.found < pack.manual.length) {
+    state.runs.delete(id);
+    const error: LauncherError = {
+      category: 'pack',
+      code: 'manual_downloads_needed',
+      message: `${pack.manual.length} files have to be downloaded by hand`,
+      fix: null,
+      detail: null,
+      params: { count: String(pack.manual.length) },
+    };
+    event({ type: 'run_state', instance: id, state: 'idle', exit: exitOf({ error, manual: pack.manual, updateOnly }), update: null });
+    return null;
+  }
+  let synced: SyncSummary | null = null;
+  if (take && pack.update) {
+    const u = pack.update;
+    synced = {
+      fromVersion: u.fromVersion,
+      toVersion: u.toVersion,
+      added: u.added.length,
+      updated: u.updated.length,
+      removed: u.removed.length,
+      keptModified: u.kept,
+    };
+    pack.installed = u.toVersion;
+    pack.update = null;
+  } else if (!pack.installed) {
+    pack.installed = '1.0.3';
+  }
+  if (updateOnly) {
+    state.runs.delete(id);
+    event({ type: 'run_state', instance: id, state: 'idle', exit: exitOf({ synced, updateOnly: true }), update: null });
+    return null;
+  }
+  return { synced };
+}
+
+async function scriptRun(state: MockState, instance: Instance, updateOnly = false) {
+  const id = instance.id;
+  const pack = state.packs.get(id);
+  const first: RunStateKind = pack && pack.installed !== null && instance.updatePolicy !== 'pinned' ? 'checking' : 'queued';
+  const run: MockRun = { state: first, cancelled: false, answer: null };
   state.runs.set(id, run);
-  event({ type: 'run_state', instance: id, state: 'queued', exit: null, update: null });
-  await wait(300);
-  if (run.cancelled) return;
+  event({ type: 'run_state', instance: id, state: first, exit: null, update: null });
+  let synced: SyncSummary | null = null;
+  if (pack) {
+    const outcome = await packPrelude(state, instance, run, updateOnly);
+    if (!outcome || run.cancelled) return;
+    synced = outcome.synced;
+  } else {
+    await wait(300);
+    if (run.cancelled) return;
+  }
   setState(state, id, 'preparing');
   for (let done = 0; done <= 40; done++) {
     if (run.cancelled) return;
@@ -125,7 +296,7 @@ async function scriptPlay(state: MockState, instance: Instance) {
         type: 'run_state',
         instance: id,
         state: 'idle',
-        exit: exitOf({ code: 1, crash: 'out_of_memory' }),
+        exit: exitOf({ code: 1, crash: 'out_of_memory', synced }),
         update: null,
       });
       return;
@@ -179,8 +350,17 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       return null;
     case 'catalog_minecraft':
       return mcVersionsFx;
-    case 'catalog_loaders':
+    case 'catalog_loaders': {
+      const kind = String(args.kind);
+      if (kind === 'forge') {
+        return [
+          { version: '47.4.22', stable: true },
+          { version: '47.4.20', stable: true },
+        ];
+      }
+      if (kind === 'neoforge') return [{ version: '21.1.209', stable: true }];
       return loaderVersionsFx;
+    }
     case 'accounts_list':
       return state.accounts;
     case 'account_add_offline': {
@@ -204,15 +384,85 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
       if (!state.accounts.active) fail('auth', 'no_account', 'Add an account before playing');
       if (state.runs.has(target.id)) fail('game', 'already_running', 'already running');
-      void scriptPlay(state, target);
+      void scriptRun(state, target);
       return null;
+    }
+    case 'play_answer': {
+      const run = state.runs.get(String(args.id));
+      if (run?.state === 'asking' && run.answer) {
+        run.answer(Boolean(args.update));
+        run.answer = null;
+      }
+      return null;
+    }
+    case 'pack_update': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (!state.packs.has(target.id)) fail('pack', 'no_pack', "This instance doesn't come from a pack");
+      if (state.runs.has(target.id)) fail('game', 'already_running', 'already running');
+      void scriptRun(state, target, true);
+      return null;
+    }
+    case 'pack_status': {
+      const pack = state.packs.get(String(args.id)) ?? fail('pack', 'no_pack', "This instance doesn't come from a pack");
+      return { installedVersion: pack.installed, update: pack.installed ? pack.update : null, checkError: null } satisfies PackStatus;
+    }
+    case 'pack_contents':
+      return (state.packs.get(String(args.id)) ?? fail('pack', 'no_pack', 'no pack')).contents;
+    case 'pack_set_optional': {
+      const id = String(args.id);
+      const pack = state.packs.get(id) ?? fail('pack', 'no_pack', 'no pack');
+      const target = find(id) ?? fail('disk', 'instance_not_found', 'gone');
+      const mod = pack.contents.managed.find((m) => m.path === args.path && m.optional);
+      if (!mod?.optional) fail('disk', 'mod_not_found', 'not optional', { file: String(args.path) });
+      mod.optional.enabled = Boolean(args.enabled);
+      const updated: Instance = { ...target, optionalChoices: { ...target.optionalChoices, [String(args.path)]: Boolean(args.enabled) } };
+      state.listing.instances = state.listing.instances.map((i) => (i.id === id ? updated : i));
+      return updated;
+    }
+    case 'manual_import': {
+      const pack = state.packs.get(String(args.id));
+      if (!pack || pack.manual.length === 0) return { found: 0, total: 0, remaining: [] } satisfies ManualProgress;
+      pack.found = Math.min(pack.found + 1, pack.manual.length);
+      return { found: pack.found, total: pack.manual.length, remaining: pack.manual.slice(pack.found) } satisfies ManualProgress;
+    }
+    case 'pack_art':
+      return state.packs.get(String(args.id))?.art ?? ({ icon: null, banner: null } satisfies PackArtData);
+    case 'pack_add': {
+      const request = args.request as PackAddRequest;
+      if (request.kind === 'link' && !/^(https:\/\/|modrinth:)/.test(request.url.trim())) {
+        fail('pack', 'pack_link_invalid', "That doesn't look like a pack link");
+      }
+      const name = request.kind === 'file' ? (request.path.split(/[\\/]/).pop() ?? 'Pack').replace(/\.mrpack$/i, '') : 'Asalith';
+      let id = slug(name);
+      for (let n = 2; find(id); n++) id = `${slug(name)}-${n}`;
+      const created: Instance = {
+        id,
+        name,
+        source:
+          request.kind === 'file'
+            ? { kind: 'mrpack', name: `${name}.mrpack`, sha1: '0'.repeat(40) }
+            : { kind: 'packwiz', url: request.url.trim() },
+        game: { minecraft: '1.20.1', loader: { kind: 'forge', version: '47.4.22' } },
+        updatePolicy: 'ask',
+        optionalChoices: {},
+        java: { path: null, memoryMb: state.settings.defaultMemoryMb },
+      };
+      state.listing.instances = [...state.listing.instances, created].sort((a, b) => a.name.localeCompare(b.name));
+      state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });
+      return created;
+    }
+    case 'deep_link_take': {
+      const link = state.pendingLink;
+      state.pendingLink = null;
+      return link;
     }
     case 'stop': {
       const id = String(args.id);
       const run = state.runs.get(id);
       if (!run) return null;
-      if (run.state === 'queued' || run.state === 'preparing') {
+      if (['checking', 'asking', 'queued', 'syncing', 'preparing'].includes(run.state)) {
         run.cancelled = true;
+        run.answer?.(false);
         state.runs.delete(id);
         event({ type: 'run_state', instance: id, state: 'idle', exit: exitOf({ cancelled: true }), update: null });
       } else if (run.state === 'running') {
@@ -261,8 +511,10 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       return { major: 17 };
     case 'plugin:dialog|open': {
       // Mirrors the real dialog: an array when `multiple` is set, otherwise one path.
+      const options = args.options as { multiple?: boolean; filters?: { extensions?: string[] }[] } | undefined;
+      if (options?.filters?.[0]?.extensions?.includes('mrpack')) return 'C:/Users/player/Downloads/Sky Islands 1.0.4.mrpack';
       const path = 'C:/Users/player/Downloads/lithium-fabric-0.11.2.jar';
-      return (args.options as { multiple?: boolean } | undefined)?.multiple ? [path] : path;
+      return options?.multiple ? [path] : path;
     }
     case 'plugin:window|is_maximized':
       return false;
@@ -278,7 +530,10 @@ const backends = new Set<MockState>();
 /** Stop every scripted run. A run left going outlives its test and emits after the IPC mocks are gone. */
 export function stopMockRuns() {
   for (const state of backends) {
-    for (const run of state.runs.values()) run.cancelled = true;
+    for (const run of state.runs.values()) {
+      run.cancelled = true;
+      run.answer?.(false);
+    }
     state.runs.clear();
   }
   backends.clear();

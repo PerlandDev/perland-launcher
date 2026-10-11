@@ -27,10 +27,10 @@ it('offers Forge and NeoForge and creates a Forge instance', async () => {
   await screen.findByRole('option', { name: '26.3' });
   expect(screen.getByRole('radio', { name: 'NeoForge' })).toBeInTheDocument();
   await user.click(screen.getByRole('radio', { name: 'Forge' }));
-  expect(await screen.findByRole('combobox', { name: 'Loader version' })).toHaveValue('0.19.5');
+  expect(await screen.findByRole('combobox', { name: 'Loader version' })).toHaveValue('47.4.22');
   await user.click(screen.getByRole('button', { name: 'Create instance' }));
   expect(sent(calls, 'instance_create')).toEqual([
-    { request: { name: 'Minecraft 26.3', minecraft: '26.3', loader: { kind: 'forge', version: '0.19.5' } } },
+    { request: { name: 'Minecraft 26.3', minecraft: '26.3', loader: { kind: 'forge', version: '47.4.22' } } },
   ]);
 });
 

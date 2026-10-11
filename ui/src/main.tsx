@@ -14,7 +14,14 @@ async function bootstrap() {
   if (import.meta.env.MODE === 'mock') {
     const { installMock } = await import('./ipc/mock');
     const params = new URLSearchParams(window.location.search);
-    installMock({ firstRun: params.has('firstRun'), crash: params.has('crash'), release: params.has('release') });
+    installMock({
+      firstRun: params.has('firstRun'),
+      crash: params.has('crash'),
+      release: params.has('release'),
+      manual: params.has('manual'),
+      noUpdate: params.has('noUpdate'),
+      link: params.get('link') ?? undefined,
+    });
   }
   // Whatever fails here, the window still opens; the failure shows up as a toast.
   try {

@@ -1,13 +1,13 @@
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it, vi } from 'vitest';
-import { createMockBackend, stopMockRuns } from './mock';
-import type { AccountsFile, InstanceListing, Settings } from './schema';
+import { createMockBackend, installMock, stopMockRuns } from './mock';
+import type { AccountsFile, InstanceListing, LoaderVersion, ManualProgress, PackStatus, Settings } from './schema';
 
 describe('mock backend', () => {
   it('serves the contract fixtures', async () => {
     const { handle } = createMockBackend();
     const listing = (await handle('instances_list')) as InstanceListing;
-    expect(listing.instances.map((i) => i.id)).toEqual(['asalith-fields', 'creative-flat']);
+    expect(listing.instances.map((i) => i.id)).toEqual(['asalith-fields', 'creative-flat', 'sky-islands']);
     expect(listing.damaged).toHaveLength(1);
     const settings = (await handle('settings_get')) as Settings;
     expect(settings.firstRunDone).toBe(true);
@@ -57,6 +57,38 @@ describe('mock backend', () => {
   it('rejects offline accounts in a release-like build', async () => {
     const { handle } = createMockBackend({ release: true });
     await expect(handle('account_add_offline', { name: 'Steve' })).rejects.toMatchObject({ code: 'offline_locked' });
+  });
+
+  it('scripts a pack run that asks, updates and plays', async () => {
+    const backend = installMock();
+    await backend.handle('play', { id: 'sky-islands' });
+    await vi.waitFor(() => expect(backend.state.runs.get('sky-islands')?.state).toBe('asking'));
+    await backend.handle('play_answer', { id: 'sky-islands', update: true });
+    await vi.waitFor(() => expect(backend.state.runs.get('sky-islands')?.state).toBe('running'), { timeout: 5000 });
+    const status = (await backend.handle('pack_status', { id: 'sky-islands' })) as PackStatus;
+    expect(status).toMatchObject({ installedVersion: '1.0.4', update: null });
+    stopMockRuns();
+  });
+
+  it('finds manual downloads one poll at a time', async () => {
+    const { handle } = createMockBackend({ manual: true });
+    const first = (await handle('manual_import', { id: 'sky-islands' })) as ManualProgress;
+    const second = (await handle('manual_import', { id: 'sky-islands' })) as ManualProgress;
+    expect([first.found, second.found, second.total]).toEqual([1, 2, 2]);
+    expect(second.remaining).toEqual([]);
+  });
+
+  it('serves Forge versions for Forge', async () => {
+    const { handle } = createMockBackend();
+    const forge = (await handle('catalog_loaders', { kind: 'forge', mc: '1.20.1' })) as LoaderVersion[];
+    expect(forge[0]?.version).toBe('47.4.22');
+  });
+
+  it('refuses links that are not https or modrinth', async () => {
+    const { handle } = createMockBackend();
+    await expect(handle('pack_add', { request: { kind: 'link', url: 'http://evil.example/pack.toml' } })).rejects.toMatchObject({
+      code: 'pack_link_invalid',
+    });
   });
 });
 
