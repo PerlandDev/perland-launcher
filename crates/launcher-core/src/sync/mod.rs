@@ -685,17 +685,22 @@ impl Syncer {
         // may still be writing into staging once this returns and the lock is released.
         let failed = AtomicBool::new(false);
         let failed = &failed;
-        let mut results = futures_util::stream::iter(writes.iter().map(|p| async move {
-            if failed.load(Ordering::SeqCst) || cancel.is_cancelled() {
-                return None;
-            }
-            let result = self.stage_one(&p.file, archive, staging).await;
-            if matches!(result, Err(StageError::Failed(_))) {
-                failed.store(true, Ordering::SeqCst);
-            }
-            Some(result)
-        }))
-        .buffer_unordered(STAGE_CONCURRENCY);
+        // Collected first: a closure taking `&Planned` inside the stream makes this future
+        // fail to prove `Send` (rust-lang/rust#110338), and callers box it as a `Send` future.
+        let stages: Vec<_> = writes
+            .iter()
+            .map(|p| async move {
+                if failed.load(Ordering::SeqCst) || cancel.is_cancelled() {
+                    return None;
+                }
+                let result = self.stage_one(&p.file, archive, staging).await;
+                if matches!(result, Err(StageError::Failed(_))) {
+                    failed.store(true, Ordering::SeqCst);
+                }
+                Some(result)
+            })
+            .collect();
+        let mut results = futures_util::stream::iter(stages).buffer_unordered(STAGE_CONCURRENCY);
         let mut staged = BTreeMap::new();
         let mut blocked = Vec::new();
         let mut first_error = None;

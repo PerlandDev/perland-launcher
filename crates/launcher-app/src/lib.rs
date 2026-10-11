@@ -4,6 +4,7 @@ pub mod app;
 pub mod dto;
 pub mod events;
 pub mod logs;
+mod packs;
 pub mod runner;
 mod runs;
 #[cfg(test)]

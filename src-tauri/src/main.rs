@@ -95,16 +95,18 @@ fn build_core(app: tauri::AppHandle) -> Result<Arc<Core>, Box<dyn std::error::Er
     let installer = Arc::new(Installer {
         dirs: dirs.clone(),
         meta: meta.clone(),
-        downloader: Downloader::new(http),
+        downloader: Downloader::new(http.clone()),
         platform: Platform::current(),
     });
-    let runner = Arc::new(CoreRunner::new(installer, version.clone()));
+    let syncer = launcher_core::sync::Syncer::for_installer(installer.clone(), http);
+    let runner = Arc::new(CoreRunner::new(installer, syncer, version.clone()));
     let host = Arc::new(host::TauriHost::new(app));
     let config = AppConfig {
         dirs,
         build: BuildKind::current(),
         launcher_version: version,
         system_memory_mb: host::system_memory_mb(),
+        downloads_dir: launcher_core::sync::manual::downloads_dir(),
     };
     Ok(AppCore::new(config, meta, runner, host))
 }

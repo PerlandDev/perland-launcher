@@ -39,6 +39,8 @@ pub struct AppConfig {
     pub build: BuildKind,
     pub launcher_version: String,
     pub system_memory_mb: u64,
+    /// Where the player's browser saves files (manual CurseForge downloads).
+    pub downloads_dir: Option<PathBuf>,
 }
 
 /// One instance's current run. Absent from `runs` means idle.
@@ -344,6 +346,7 @@ pub(crate) mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dirs = LauncherDirs::new(tmp.path());
         let runner = FakeRunner::new();
+        *runner.instances_dir.lock().unwrap() = Some(dirs.instances());
         let host = RecordingHost::new();
         let meta = MetaClient::new(launcher_core::http::client("test").unwrap(), dirs.meta());
         let core = AppCore::new(
@@ -352,6 +355,7 @@ pub(crate) mod tests {
                 build,
                 launcher_version: "0.1.0".into(),
                 system_memory_mb: 16384,
+                downloads_dir: Some(tmp.path().join("Downloads")),
             },
             meta,
             runner.clone(),

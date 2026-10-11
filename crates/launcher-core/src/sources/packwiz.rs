@@ -292,15 +292,17 @@ pub async fn resolve(src: &Sources, pack_url: &str) -> Result<DesiredState> {
         .await?;
     let index = parse_index(&index_bytes)?;
 
-    let mut files: Vec<PackFile> = futures_util::stream::iter(
-        index
-            .files
-            .iter()
-            .map(|entry| index_entry(src, &index_url, entry, &index.hash_format)),
-    )
-    .buffered(METAFILE_CONCURRENCY)
-    .try_collect()
-    .await?;
+    // Collected first: a closure taking `&IndexEntry` inside the stream makes this future
+    // fail to prove `Send` (rust-lang/rust#110338), and callers box it as a `Send` future.
+    let fetches: Vec<_> = index
+        .files
+        .iter()
+        .map(|entry| index_entry(src, &index_url, entry, &index.hash_format))
+        .collect();
+    let mut files: Vec<PackFile> = futures_util::stream::iter(fetches)
+        .buffered(METAFILE_CONCURRENCY)
+        .try_collect()
+        .await?;
     files.sort_by(|a, b| a.path.cmp(&b.path));
 
     let (minecraft, loader) = game_from(&pack.versions)?;
