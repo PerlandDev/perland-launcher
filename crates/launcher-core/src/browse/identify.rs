@@ -131,7 +131,14 @@ pub async fn identify(
                 None => continue,
             },
         };
-        by_hash.entry(sha1).or_insert((rel, is_managed));
+        // Same bytes twice: keep the managed file, else the first (paths are sorted).
+        match by_hash.get(&sha1) {
+            Some((_, true)) => {}
+            Some((_, false)) if !is_managed => {}
+            _ => {
+                by_hash.insert(sha1, (rel, is_managed));
+            }
+        }
     }
     if by_hash.is_empty() {
         return Ok(Installed::default());
@@ -140,6 +147,9 @@ pub async fn identify(
     asked.sort();
     let versions = api.version_files(&asked).await?;
     let mut installed = Installed::default();
+    // Stable order, so which file stands for a project never depends on the answer's layout.
+    let mut versions: Vec<_> = versions.into_iter().collect();
+    versions.sort_by(|a, b| a.0.cmp(&b.0));
     for (sha1, version) in versions {
         let Some((path, managed)) = by_hash.get(&sha1.to_ascii_lowercase()) else {
             continue;
@@ -150,14 +160,22 @@ pub async fn identify(
             .filter(|d| d.dependency_type == DependencyType::Incompatible)
             .filter_map(|d| d.project_id.clone())
             .collect();
-        installed
-            .projects
-            .entry(version.project_id.clone())
-            .or_insert(InstalledProject {
-                path: path.clone(),
-                managed: *managed,
-                incompatible,
-            });
+        let candidate = InstalledProject {
+            path: path.clone(),
+            managed: *managed,
+            incompatible,
+        };
+        // Several files of one project: the managed one stands for it, then the smallest path.
+        match installed.projects.get(&version.project_id) {
+            Some(have)
+                if (have.managed, std::cmp::Reverse(&have.path))
+                    >= (candidate.managed, std::cmp::Reverse(&candidate.path)) => {}
+            _ => {
+                installed
+                    .projects
+                    .insert(version.project_id.clone(), candidate);
+            }
+        }
     }
     Ok(installed)
 }

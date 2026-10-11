@@ -562,3 +562,60 @@ async fn identify_names_projects_by_hash_and_remembers_hashes() {
         "nothing to ask about"
     );
 }
+
+async fn serve_version_files(server: &MockServer, answer: Value) {
+    Mock::given(method("POST"))
+        .and(path("/v2/version_files"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(answer))
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn identify_prefers_the_managed_file_then_the_smallest_path() {
+    // Two versions of one project: the pack's jar (managed) sorts after the player's old one.
+    let server = MockServer::start().await;
+    let game = tempfile::tempdir().unwrap();
+    write(game.path(), "mods/a-old.jar", b"old");
+    write(game.path(), "mods/z-pack.jar", b"pack");
+    let lock = managed(&[("mods/z-pack.jar", b"pack")]);
+    serve_version_files(
+        &server,
+        json!({
+            sha1_hex(b"old"): version_json(&server, "v1", "sodium", &["1.20.1"], &["fabric"], "a-old.jar", b"old"),
+            sha1_hex(b"pack"): version_json(&server, "v2", "sodium", &["1.20.1"], &["fabric"], "z-pack.jar", b"pack")
+        }),
+    )
+    .await;
+    let mut hashes = FileHashes::default();
+    for _ in 0..3 {
+        let installed = identify(&api(&server), game.path(), Some(&lock), &mut hashes)
+            .await
+            .unwrap();
+        assert_eq!(installed.project_ids(), vec!["sodium".to_string()]);
+        assert!(installed.projects["sodium"].managed);
+        assert_eq!(installed.projects["sodium"].path, "mods/z-pack.jar");
+    }
+
+    // A player's copy of the same bytes, earlier in path order, doesn't hide the managed one.
+    let copy = tempfile::tempdir().unwrap();
+    write(copy.path(), "mods/a-copy.jar", b"pack");
+    write(copy.path(), "mods/z-pack.jar", b"pack");
+    let installed = identify(&api(&server), copy.path(), Some(&lock), &mut hashes)
+        .await
+        .unwrap();
+    assert!(installed.projects["sodium"].managed);
+    assert_eq!(installed.projects["sodium"].path, "mods/z-pack.jar");
+
+    // Two unmanaged files of one project: the smaller path wins.
+    let plain = tempfile::tempdir().unwrap();
+    write(plain.path(), "mods/b.jar", b"old");
+    write(plain.path(), "mods/a.jar", b"pack");
+    for _ in 0..3 {
+        let installed = identify(&api(&server), plain.path(), None, &mut hashes)
+            .await
+            .unwrap();
+        assert!(!installed.projects["sodium"].managed);
+        assert_eq!(installed.projects["sodium"].path, "mods/a.jar");
+    }
+}
