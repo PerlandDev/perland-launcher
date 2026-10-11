@@ -222,13 +222,19 @@ impl Syncer {
         Self::new(installer, sources, root)
     }
 
-    /// Copy every blocked file found in `dir` into the object cache (the player's copy stays
-    /// where it is). Returns how many were found; the next sync uses them.
-    pub async fn import_manual(&self, dir: &Path, files: &[ManualFile]) -> Result<usize> {
-        let found = manual::scan(dir, files).await?;
-        for (file, path) in &found {
+    /// Copy files a scan found into the object cache (the player's copies stay where they
+    /// are); the next sync uses them.
+    pub async fn import_found(&self, found: &[(ManualFile, PathBuf)]) -> Result<()> {
+        for (file, path) in found {
             self.sources.cache.insert_file(path, &file.hashes).await?;
         }
+        Ok(())
+    }
+
+    /// Scan `dir` once and import every blocked file found there. Returns how many were found.
+    pub async fn import_manual(&self, dir: &Path, files: &[ManualFile]) -> Result<usize> {
+        let found = manual::scan(dir, files).await?;
+        self.import_found(&found).await?;
         Ok(found.len())
     }
 
