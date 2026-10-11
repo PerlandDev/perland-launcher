@@ -136,7 +136,18 @@
     "mrpack": "Importar un archivo .mrpack",
     "create": "Crear instancia",
     "creating": "Creando…",
-    "namePlaceholderFallback": "Mi instancia"
+    "namePlaceholderFallback": "Mi instancia",
+    "modeVersion": "Elegir una versión",
+    "linkLabel": "Link del pack",
+    "linkPlaceholder": "https://…/pack.toml",
+    "linkHint": "Pega un link a pack.toml, o modrinth: y el nombre de un proyecto.",
+    "linkFrom": "De {{host}}",
+    "addPack": "Agregar pack",
+    "adding": "Agregando…",
+    "filePick": "Elegir un archivo .mrpack",
+    "fileNone": "Todavía no elegiste un archivo",
+    "fileFilter": "Modpacks",
+    "packNote": "Los mods del pack se descargan la primera vez que presionas Jugar."
   },
   "instanceSettings": {
     "title": "Configuración de la instancia",

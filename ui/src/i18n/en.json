@@ -136,7 +136,18 @@
     "mrpack": "Import a .mrpack file",
     "create": "Create instance",
     "creating": "Creating…",
-    "namePlaceholderFallback": "My instance"
+    "namePlaceholderFallback": "My instance",
+    "modeVersion": "Pick a version",
+    "linkLabel": "Pack link",
+    "linkPlaceholder": "https://…/pack.toml",
+    "linkHint": "Paste a pack.toml link, or modrinth: and a project name.",
+    "linkFrom": "From {{host}}",
+    "addPack": "Add pack",
+    "adding": "Adding…",
+    "filePick": "Choose a .mrpack file",
+    "fileNone": "No file chosen yet",
+    "fileFilter": "Modpacks",
+    "packNote": "The pack's mods download the first time you press Play."
   },
   "instanceSettings": {
     "title": "Instance settings",

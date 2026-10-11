@@ -3,19 +3,19 @@ import { useTranslation } from 'react-i18next';
 import { useCreateInstance } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
-import { ComingSoon } from '../../ui/ComingSoon';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { Download, Package } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
+import { PackFileForm, PackLinkForm } from './PackSource';
 import { useVersionChoice } from './useVersionChoice';
 import { VersionFields } from './VersionFields';
 
-// `link` is used from Task 17; until then it is accepted and ignored.
+type Mode = 'version' | 'link' | 'file';
+
 export function NewInstance({ link }: { link?: string }) {
-  void link;
   const { t } = useTranslation();
   const choice = useVersionChoice();
+  const [mode, setMode] = useState<Mode>(link ? 'link' : 'version');
   const [name, setName] = useState('');
   const create = useCreateInstance({ inline: true });
   const { minecraft: resolvedVersion } = choice.resolved;
@@ -33,23 +33,34 @@ export function NewInstance({ link }: { link?: string }) {
 
   return (
     <ScreenFrame title={t('newInstance.title')} onBack={() => navigate({ name: 'home', id: null })}>
-      <form onSubmit={submit} className="grid max-w-2xl gap-8">
-        <Field label={t('newInstance.name')}>
-          <input className="field-input" value={name} placeholder={fallbackName} maxLength={64} onChange={(e) => setName(e.target.value)} />
-        </Field>
-        <VersionFields choice={choice} />
-        <div className="grid gap-3 sm:grid-cols-2">
-          <ComingSoon label={t('newInstance.packLink')} icon={<Download className="h-5 w-5" />} />
-          <ComingSoon label={t('newInstance.mrpack')} icon={<Package className="h-5 w-5" />} />
+      <fieldset className="mb-8 grid gap-1.5">
+        <legend className="sr-only">{t('newInstance.title')}</legend>
+        <div className="flex flex-wrap gap-2">
+          {(['version', 'link', 'file'] as const).map((m) => (
+            <label key={m} className="seg" data-checked={mode === m ? '' : undefined}>
+              <input type="radio" name="new-instance-mode" className="sr-only" checked={mode === m} onChange={() => setMode(m)} />
+              {m === 'version' ? t('newInstance.modeVersion') : m === 'link' ? t('newInstance.packLink') : t('newInstance.mrpack')}
+            </label>
+          ))}
         </div>
-        {create.isError && <ErrorCard error={create.error} />}
-        <div className="sticky bottom-0 flex justify-end gap-3 bg-ground py-4 shadow-[0_-1px_0_var(--color-line)]">
-          <Button onClick={() => navigate({ name: 'home', id: null })}>{t('common.cancel')}</Button>
-          <Button type="submit" variant="primary" size="lg" disabled={!choice.resolved.ready || create.isPending}>
-            {create.isPending ? t('newInstance.creating') : t('newInstance.create')}
-          </Button>
-        </div>
-      </form>
+      </fieldset>
+      {mode === 'version' && (
+        <form onSubmit={submit} className="grid max-w-2xl gap-8">
+          <Field label={t('newInstance.name')}>
+            <input className="field-input" value={name} placeholder={fallbackName} maxLength={64} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <VersionFields choice={choice} />
+          {create.isError && <ErrorCard error={create.error} />}
+          <div className="sticky bottom-0 flex justify-end gap-3 bg-ground py-4 shadow-[0_-1px_0_var(--color-line)]">
+            <Button onClick={() => navigate({ name: 'home', id: null })}>{t('common.cancel')}</Button>
+            <Button type="submit" variant="primary" size="lg" disabled={!choice.resolved.ready || create.isPending}>
+              {create.isPending ? t('newInstance.creating') : t('newInstance.create')}
+            </Button>
+          </div>
+        </form>
+      )}
+      {mode === 'link' && <PackLinkForm initial={link} />}
+      {mode === 'file' && <PackFileForm />}
     </ScreenFrame>
   );
 }

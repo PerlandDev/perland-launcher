@@ -34,14 +34,51 @@ it('offers Forge and NeoForge and creates a Forge instance', async () => {
   ]);
 });
 
-it('shows snapshots on request and keeps pack imports as coming soon', async () => {
+it('shows snapshots on request', async () => {
   const { user } = renderApp(<NewInstance />);
   await screen.findByRole('option', { name: '26.3' });
   await user.click(screen.getByRole('switch', { name: 'Show snapshots' }));
   expect(screen.getByRole('option', { name: '26.4-snapshot-3' })).toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: 'Minecraft version' })).toHaveValue('26.3');
-  expect(screen.getByText('Paste a pack link').closest('[aria-disabled]')).toHaveAttribute('aria-disabled', 'true');
-  expect(screen.getByText('Import a .mrpack file').closest('[aria-disabled]')).toHaveAttribute('aria-disabled', 'true');
+});
+
+it('adds a pack from a link and opens it', async () => {
+  const { user, calls } = renderApp(<NewInstance />);
+  await user.click(await screen.findByRole('radio', { name: 'Paste a pack link' }));
+  await user.type(screen.getByRole('textbox', { name: 'Pack link' }), 'https://perlanddev.github.io/asalith-modpack/pack.toml');
+  await user.click(screen.getByRole('button', { name: 'Add pack' }));
+  expect(sent(calls, 'pack_add')).toEqual([
+    { request: { kind: 'link', url: 'https://perlanddev.github.io/asalith-modpack/pack.toml' } },
+  ]);
+  await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'asalith' }));
+});
+
+it('prefills a perland:// link, names its host, and waits for the click', async () => {
+  const { calls } = renderApp(<NewInstance link="https://perlanddev.github.io/asalith-modpack/pack.toml" />);
+  expect(await screen.findByRole('textbox', { name: 'Pack link' })).toHaveValue(
+    'https://perlanddev.github.io/asalith-modpack/pack.toml',
+  );
+  expect(screen.getByText('From perlanddev.github.io')).toBeInTheDocument();
+  expect(sent(calls, 'pack_add')).toEqual([]);
+});
+
+it('imports a .mrpack file', async () => {
+  const { user, calls } = renderApp(<NewInstance />);
+  await user.click(await screen.findByRole('radio', { name: 'Import a .mrpack file' }));
+  await user.click(screen.getByRole('button', { name: 'Choose a .mrpack file' }));
+  expect(await screen.findByText('Sky Islands 1.0.4.mrpack')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Add pack' }));
+  expect(sent(calls, 'pack_add')).toEqual([
+    { request: { kind: 'file', path: 'C:/Users/player/Downloads/Sky Islands 1.0.4.mrpack' } },
+  ]);
+});
+
+it('says why a link was refused', async () => {
+  const { user } = renderApp(<NewInstance />);
+  await user.click(await screen.findByRole('radio', { name: 'Paste a pack link' }));
+  await user.type(screen.getByRole('textbox', { name: 'Pack link' }), 'http://evil.example/pack.toml');
+  await user.click(screen.getByRole('button', { name: 'Add pack' }));
+  expect(await screen.findByText("That doesn't look like a pack link.")).toBeInTheDocument();
 });
 
 /** The mock backend, with the catalog calls overridden per test. */
