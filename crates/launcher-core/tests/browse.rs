@@ -619,3 +619,219 @@ async fn identify_prefers_the_managed_file_then_the_smallest_path() {
         assert_eq!(installed.projects["sodium"].path, "mods/a.jar");
     }
 }
+
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+use launcher_core::{
+    browse::{
+        compat::ContentKind as Kind,
+        install::install,
+        plan::{ItemReason, PlanItem, PlannedFile},
+    },
+    download::{cache::ObjectCache, Downloader},
+    events::{Event, EventSink, TaskId},
+};
+
+fn downloader() -> Downloader {
+    Downloader::new(launcher_core::http::client("test").unwrap())
+        .with_backoff(Duration::from_millis(1))
+}
+
+async fn host_file(server: &MockServer, name: &str, body: &[u8]) {
+    Mock::given(method("GET"))
+        .and(path(format!("/files/{name}")))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(body.to_vec()))
+        .mount(server)
+        .await;
+}
+
+fn planned(server: &MockServer, title: &str, kind: Kind, name: &str, body: &[u8]) -> PlanItem {
+    PlanItem {
+        project_id: title.to_lowercase(),
+        title: title.into(),
+        kind,
+        version_id: "v1".into(),
+        version_number: "1.0".into(),
+        reason: ItemReason::Requested,
+        file: PlannedFile {
+            url: format!("{}/files/{name}", server.uri()),
+            file_name: name.into(),
+            size: body.len() as u64,
+            hashes: Hashes {
+                sha1: Some(sha1_hex(body)),
+                sha512: Some(sha512_hex(body)),
+                ..Hashes::default()
+            },
+        },
+    }
+}
+
+fn recorder() -> (EventSink, Arc<Mutex<Vec<Event>>>) {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let seen = events.clone();
+    (Arc::new(move |e| seen.lock().unwrap().push(e)), events)
+}
+
+#[tokio::test]
+async fn content_goes_into_its_folder_without_overwriting() {
+    let server = MockServer::start().await;
+    host_file(&server, "sodium.jar", b"sodium").await;
+    host_file(&server, "faithful.zip", b"faithful").await;
+    let root = tempfile::tempdir().unwrap();
+    let cache = ObjectCache::new(root.path().join("objects"));
+    let game = root.path().join("game");
+    let items = vec![
+        planned(&server, "Sodium", Kind::Mod, "sodium.jar", b"sodium"),
+        planned(
+            &server,
+            "Faithful",
+            Kind::ResourcePack,
+            "faithful.zip",
+            b"faithful",
+        ),
+    ];
+    let (sink, events) = recorder();
+    let task = TaskId::new("install_content").with("name", "Sodium");
+    let added = install(&cache, &downloader(), &game, &items, None, &task, &sink)
+        .await
+        .unwrap();
+    assert_eq!(added, vec!["sodium.jar".to_string(), "faithful.zip".into()]);
+    assert_eq!(
+        std::fs::read(game.join("mods/sodium.jar")).unwrap(),
+        b"sodium"
+    );
+    assert_eq!(
+        std::fs::read(game.join("resourcepacks/faithful.zip")).unwrap(),
+        b"faithful"
+    );
+    let last = events.lock().unwrap().last().cloned().unwrap();
+    assert_eq!(
+        last,
+        Event::Progress {
+            task: task.clone(),
+            done: 2,
+            total: 2,
+            bytes: 14
+        }
+    );
+    assert!(
+        std::fs::read_dir(game.join("mods")).unwrap().count() == 1,
+        "no temp files left"
+    );
+
+    // The same file again is skipped; a different file with that name is refused.
+    assert!(install(
+        &cache,
+        &downloader(),
+        &game,
+        &items[..1],
+        None,
+        &task,
+        &sink
+    )
+    .await
+    .unwrap()
+    .is_empty());
+    std::fs::write(game.join("mods/sodium.jar"), b"player's own").unwrap();
+    let exists = install(
+        &cache,
+        &downloader(),
+        &game,
+        &items[..1],
+        None,
+        &task,
+        &sink,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(exists.code, ErrorCode::ModExists);
+    assert_eq!(
+        std::fs::read(game.join("mods/sodium.jar")).unwrap(),
+        b"player's own"
+    );
+
+    // A disabled twin counts as present.
+    host_file(&server, "lithium.jar", b"lithium").await;
+    std::fs::write(game.join("mods/lithium.jar.disabled"), b"old").unwrap();
+    let twin = planned(&server, "Lithium", Kind::Mod, "lithium.jar", b"lithium");
+    assert_eq!(
+        install(&cache, &downloader(), &game, &[twin], None, &task, &sink)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::ModExists
+    );
+}
+
+#[tokio::test]
+async fn pack_paths_and_corrupt_downloads_are_refused() {
+    let server = MockServer::start().await;
+    host_file(&server, "jei.jar", b"tampered").await;
+    let root = tempfile::tempdir().unwrap();
+    let cache = ObjectCache::new(root.path().join("objects"));
+    let game = root.path().join("game");
+    let (sink, _) = recorder();
+    let task = TaskId::new("install_content");
+    let lock = managed(&[("mods/JEI.jar", b"jei")]);
+    let jei = planned(&server, "JEI", Kind::Mod, "jei.jar", b"jei");
+    let refused = install(
+        &cache,
+        &downloader(),
+        &game,
+        std::slice::from_ref(&jei),
+        Some(&lock),
+        &task,
+        &sink,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(refused.code, ErrorCode::ModManaged);
+    assert_eq!(
+        hits(&server, "/files/jei.jar").await,
+        0,
+        "refused before downloading"
+    );
+    let corrupt = install(&cache, &downloader(), &game, &[jei], None, &task, &sink)
+        .await
+        .unwrap_err();
+    assert_eq!(corrupt.code, ErrorCode::DownloadCorrupt);
+    assert!(!game.join("mods/jei.jar").exists());
+}
+
+#[tokio::test]
+async fn hostile_file_names_are_refused_before_downloading() {
+    let server = MockServer::start().await;
+    let root = tempfile::tempdir().unwrap();
+    let cache = ObjectCache::new(root.path().join("objects"));
+    let game = root.path().join("game");
+    let (sink, _) = recorder();
+    let task = TaskId::new("install_content");
+    for name in [
+        "../mods/x.jar",
+        "CON.jar",
+        "a/b.jar",
+        r"a\b.jar",
+        "x.jar.",
+        "x.zip",
+        "",
+    ] {
+        let item = planned(&server, "X", Kind::Mod, name, b"x");
+        let error = install(&cache, &downloader(), &game, &[item], None, &task, &sink)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::ModNameInvalid, "{name:?}");
+    }
+    let shader = planned(&server, "S", Kind::Shader, "s.jar", b"s");
+    assert_eq!(
+        install(&cache, &downloader(), &game, &[shader], None, &task, &sink)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::ModNameInvalid
+    );
+    assert!(server.received_requests().await.unwrap().is_empty());
+    assert!(!game.exists() || std::fs::read_dir(&game).unwrap().next().is_none());
+}
