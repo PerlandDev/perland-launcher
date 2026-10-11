@@ -58,10 +58,10 @@ error_codes! {
     // settings and logs
     SettingsDamaged, LogWriteStopped,
     // mods
-    ModNotJar, ModExists, ModNotFound, ModNameInvalid,
+    ModNotJar, ModExists, ModNotFound, ModNameInvalid, ModManaged,
     // packs and sync
     PackInvalid, PackUnsupported, PackUnsafePath, PackNotFound, PackLinkInvalid, NoPack,
-    NotEnoughSpace, InstanceLocked, ManualDownloadsNeeded, UpdateCheckFailed, PackPathIsFolder,
+    NotEnoughSpace, InstanceLocked, ManualDownloadsNeeded, UpdateCheckFailed, PackPathIsFolder, SyncCancelled, UpdateDownloadFailed,
     // anything unexpected
     Internal,
 }
@@ -157,6 +157,9 @@ mod tests {
             (ErrorCode::ManualDownloadsNeeded, "manual_downloads_needed"),
             (ErrorCode::UpdateCheckFailed, "update_check_failed"),
             (ErrorCode::PackPathIsFolder, "pack_path_is_folder"),
+            (ErrorCode::SyncCancelled, "sync_cancelled"),
+            (ErrorCode::UpdateDownloadFailed, "update_download_failed"),
+            (ErrorCode::ModManaged, "mod_managed"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

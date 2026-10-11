@@ -67,7 +67,8 @@
     "install_minecraft": "Instalando Minecraft {{version}}",
     "download_java": "Descargando Java {{version}}",
     "install_loader": "Preparando {{loader}} {{version}}",
-    "sync_pack": "Actualizando {{name}}"
+    "sync_pack": "Actualizando {{name}}",
+    "install_pack": "Instalando {{name}}"
   },
   "activity": {
     "title": "Actividad",
@@ -269,6 +270,7 @@
     "mod_exists": { "message": "{{file}} ya está en esta instancia." },
     "mod_not_found": { "message": "{{file}} ya no está en esta instancia." },
     "mod_name_invalid": { "message": "Ese no es un nombre de archivo de mod." },
+    "mod_managed": { "message": "{{file}} viene con el pack, así que el pack decide si está activado.", "fix": "Los mods que agregues tú sí puedes desactivarlos o quitarlos." },
     "pack_invalid": { "message": "El archivo {{file}} del pack está dañado o no es un pack.", "fix": "Revisa el enlace o pregúntale al autor del pack." },
     "pack_unsupported": { "message": "Este pack usa algo que el launcher todavía no puede manejar: {{what}}.", "fix": "Pregúntale al autor del pack o prueba otro pack." },
     "pack_unsafe_path": { "message": "El pack intentó escribir fuera de su carpeta ({{path}}).", "fix": "No uses este pack y avísale a su autor." },
@@ -280,6 +282,8 @@
     "manual_downloads_needed": { "message": "Hay {{count}} archivos que tienes que descargar a mano.", "fix": "Descárgalos de CurseForge e inténtalo de nuevo." },
     "update_check_failed": { "message": "No se pudieron buscar actualizaciones.", "fix": "Igual puedes jugar la versión que tienes." },
     "pack_path_is_folder": { "message": "El pack quiere poner un archivo donde tienes una carpeta ({{path}}).", "fix": "Mueve esa carpeta o cámbiale el nombre, y vuelve a intentarlo." },
+    "sync_cancelled": { "message": "Se canceló la actualización." },
+    "update_download_failed": { "message": "No se pudo descargar la actualización, así que juegas la {{version}}.", "fix": "Intenta actualizar más tarde." },
     "internal": { "message": "Ocurrió algo inesperado.", "fix": "Reinicia el launcher. Si sigue pasando, copia los detalles para soporte." }
   }
 }
