@@ -3,6 +3,7 @@
 pub mod api;
 pub mod compat;
 pub mod identify;
+pub mod images;
 pub mod install;
 pub mod plan;
 pub mod project;

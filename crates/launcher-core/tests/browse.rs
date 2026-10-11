@@ -860,3 +860,116 @@ async fn conflicts_are_found_before_anything_is_written() {
     }
     assert!(server.received_requests().await.unwrap().is_empty());
 }
+
+use launcher_core::browse::images::{ImageCache, ImageKind};
+
+const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
+
+#[tokio::test]
+async fn images_come_from_the_cdn_once_and_only_when_real() {
+    let server = MockServer::start().await;
+    host_file(&server, "icon.png", PNG).await;
+    host_file(&server, "page.html", b"<html>login</html>").await;
+    host_file(&server, "anim.gif", b"GIF89a\x01\x00\x01\x00").await;
+    host_file(&server, "big.png", &[PNG, &[0u8; 64]].concat()).await;
+    let dir = tempfile::tempdir().unwrap();
+    let cache = ImageCache::new(
+        launcher_core::http::client("test").unwrap(),
+        dir.path(),
+        &server.uri(),
+    )
+    .with_limits(32, 1 << 20, 1 << 20);
+    let url = |name: &str| format!("{}/files/{name}", server.uri());
+
+    let icon = cache.get(&url("icon.png"), ImageKind::Icon).await.unwrap();
+    assert_eq!((icon.bytes.as_slice(), icon.mime), (PNG, "image/png"));
+    assert_eq!(
+        cache
+            .get(&url("anim.gif"), ImageKind::Icon)
+            .await
+            .unwrap()
+            .mime,
+        "image/gif"
+    );
+    for refused in ["page.html", "big.png"] {
+        assert_eq!(
+            cache
+                .get(&url(refused), ImageKind::Icon)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::ImageRefused,
+            "{refused}"
+        );
+    }
+    assert_eq!(
+        cache
+            .get(&url("big.png"), ImageKind::Gallery)
+            .await
+            .unwrap()
+            .bytes
+            .len(),
+        80
+    );
+    assert_eq!(
+        cache
+            .get("https://i.imgur.com/x.png", ImageKind::Icon)
+            .await
+            .unwrap_err()
+            .code,
+        ErrorCode::ImageRefused
+    );
+
+    // Offline, a cached image still comes back.
+    server.reset().await;
+    assert_eq!(
+        cache
+            .get(&url("icon.png"), ImageKind::Icon)
+            .await
+            .unwrap()
+            .bytes,
+        PNG
+    );
+}
+
+#[tokio::test]
+async fn the_image_cache_prunes_the_oldest_first() {
+    let server = MockServer::start().await;
+    for name in ["a.png", "b.png", "c.png"] {
+        host_file(&server, name, &[PNG, &[0u8; 40]].concat()).await;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let cache = ImageCache::new(
+        launcher_core::http::client("test").unwrap(),
+        dir.path(),
+        &server.uri(),
+    )
+    .with_limits(1 << 20, 1 << 20, 120);
+    let url = |name: &str| format!("{}/files/{name}", server.uri());
+    cache.get(&url("a.png"), ImageKind::Icon).await.unwrap();
+    // Make "a" clearly the oldest, whatever the file system's timestamp resolution.
+    for entry in std::fs::read_dir(dir.path()).unwrap() {
+        let file = std::fs::File::options()
+            .write(true)
+            .open(entry.unwrap().path())
+            .unwrap();
+        file.set_modified(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap();
+    }
+    cache.get(&url("b.png"), ImageKind::Icon).await.unwrap();
+    cache.get(&url("c.png"), ImageKind::Icon).await.unwrap();
+    let total: u64 = std::fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().metadata().unwrap().len())
+        .sum();
+    assert!(total <= 120, "{total}");
+    server.reset().await;
+    assert!(
+        cache.get(&url("a.png"), ImageKind::Icon).await.is_err(),
+        "a was pruned"
+    );
+    assert!(
+        cache.get(&url("c.png"), ImageKind::Icon).await.is_ok(),
+        "c is the newest"
+    );
+}
