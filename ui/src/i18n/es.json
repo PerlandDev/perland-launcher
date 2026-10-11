@@ -190,7 +190,13 @@
     "busy": "Todavía se están agregando los archivos anteriores. Suéltalos de nuevo en un momento.",
     "skipped": "Omitidos (no son .jar): {{names}}",
     "pickTitle": "Elegir mods",
-    "jarFiles": "Archivos de mods"
+    "jarFiles": "Archivos de mods",
+    "fromPackTitle": "Del pack",
+    "additionsTitle": "Lo que agregaste tú",
+    "fromPack": "Pack",
+    "optionalNote": "Los mods opcionales cambian la próxima vez que juegues.",
+    "noAdditions": "Los mods que agregues aparecen aquí. Las actualizaciones nunca los tocan.",
+    "packEmpty": "Los mods de este pack aparecen después de jugarlo por primera vez."
   },
   "accounts": {
     "title": "Cuentas",

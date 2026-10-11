@@ -190,7 +190,13 @@
     "busy": "Still adding the last files. Drop these again in a moment.",
     "skipped": "Skipped (not a .jar): {{names}}",
     "pickTitle": "Choose mods",
-    "jarFiles": "Mod files"
+    "jarFiles": "Mod files",
+    "fromPackTitle": "From the pack",
+    "additionsTitle": "Your additions",
+    "fromPack": "Pack",
+    "optionalNote": "Optional mods change the next time you play.",
+    "noAdditions": "Mods you add show up here. Updates never touch them.",
+    "packEmpty": "This pack's mods show up after its first Play."
   },
   "accounts": {
     "title": "Accounts",

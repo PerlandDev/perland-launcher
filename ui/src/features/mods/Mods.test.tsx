@@ -1,6 +1,6 @@
 import { Webview } from '@tauri-apps/api/webview';
 import { act, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { Mods } from './Mods';
@@ -332,6 +332,21 @@ it('refreshes the list when the window regains focus, and stops after the screen
   window.dispatchEvent(new Event('focus'));
   await act(async () => {});
   expect(sent(calls, 'mods_list').length).toBe(before + 1);
+});
+
+describe('a pack instance', () => {
+  it("lists the pack's mods read-only and the player's additions with their actions", async () => {
+    const { user, calls } = renderApp(<Mods id="sky-islands" />);
+    expect(await screen.findByRole('heading', { name: 'From the pack' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Your additions' })).toBeInTheDocument();
+    expect(screen.getByText('Create')).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: 'Use Create' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove Create' })).not.toBeInTheDocument();
+    expect(screen.getByText('Optional mods change the next time you play.')).toBeInTheDocument();
+    await user.click(screen.getByRole('switch', { name: 'Use Iris Shaders' }));
+    expect(sent(calls, 'pack_set_optional')).toEqual([{ id: 'sky-islands', path: 'mods/iris.jar', enabled: true }]);
+    expect(screen.getByRole('button', { name: 'Remove zoomify-2.11.2' })).toBeInTheDocument();
+  });
 });
 
 it('locks toggles and removal while the game runs, but still lets players add mods', async () => {
