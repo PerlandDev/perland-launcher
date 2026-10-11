@@ -32,6 +32,7 @@ Success means:
    - The instance stays playable at its installed version and still joins the last known address.
    - A quiet plate offers **Use a new link**, which rebinds the instance.
 7. **Entry points:** the invite page and the Panel's invite sheet. Both are hidden behind an Engine flag (`LAUNCHER_DOWNLOAD_URL`) until a public launcher release can actually add an account (Plan 4).
+   - **Phones (decided while planning):** a phone can't open `perland://`. On the invite page, the launcher tab is the default-selected tab only on desktop. On phones it is still listed but not the default, and it says to open the page on a computer instead of showing the button.
 8. **Live check:** the Asalith server is hosted on Perland with an invite turned on. Its invite is used for the owner smoke test. The token never goes into docs, PRs or logs.
 
 ### 1.2 Facts this design rests on (Engine `origin/main` d9fb177)
@@ -39,11 +40,11 @@ Success means:
 **Public routes**
 - They are unauthenticated; the token in the path is the credential:
   - `GET /api/v1/invites/{token}`
-  - `GET /{token}/icon`
-  - `GET|HEAD /{token}/pack`
-  - `GET|HEAD /{token}/pack/zip`
-  - `GET /{token}/mods`
-  - `GET /{token}/preview`
+  - `GET /api/v1/invites/{token}/icon` (404 when the server has no icon)
+  - `GET|HEAD /api/v1/invites/{token}/pack`
+  - `GET|HEAD /api/v1/invites/{token}/pack/zip`
+  - `GET /api/v1/invites/{token}/mods`
+  - `GET /api/v1/invites/{token}/preview`
 - They answer in the standard envelope `{success, data, error, meta}`.
 
 **Token**
@@ -117,7 +118,8 @@ Joining a server is generic and not tied to Perland: `LaunchSpec` gains an optio
 
 | Engine answer | Code |
 |---|---|
-| 404 on any invite route | `invite_gone` |
+| 404 on the view, `/pack` or a HEAD to `/pack` | `invite_gone` |
+| 404 on `/icon` | no icon (`None`), not an error |
 | 429 | `invite_rate_limited` |
 | `kind: network`, or `pack: null` with no `game.version` | `invite_unsupported` |
 | A `config.json` that is missing, unparsable or not https | `invite_site_unreachable` |
@@ -154,7 +156,10 @@ Joining a server is generic and not tied to Perland: `LaunchSpec` gains an optio
   - If there is a commit, compare it, or `vanilla:<version>`, with the installed stamp.
   - **Fallback for an Engine without `commit`:** `HEAD /pack` with `If-None-Match: "<installed stamp>"`. A 304 means up to date; a 200 with a different ETag means an update is available.
   - Never fails: errors come back as `UpdateCheck::Unavailable(err)`, as with the other sources.
-- **`open`:** `resolve` plus the source to persist.
+- **`open`:** reads **only the view** and returns the source to persist, plus a `DesiredState` with no files that carries the name, game version, loader, `about` and stamp. It does not download the `.mrpack`.
+  - **Why:** resolving at Add would download the pack, and while a pack is building it would block `join_add` for up to 3 minutes with no progress shown.
+  - The first Play resolves, because the instance has never synced.
+  - The CLI's `pack add` calls `ensure` for Perland sources instead of syncing the state `open` returns.
 - **Error wrapping:** every `Downloader` / `MetaClient` error for an invite URL is re-wrapped so URL params become the host. `redact_url` keeps the path, and the token is in the path.
 
 **`instances.rs`**
@@ -173,7 +178,9 @@ pub struct ServerLink {
 pub struct ServerAddress { pub host: String, pub port: u16 }
 ```
 
-- `ServerLink` is written by `join_add` and refreshed from every successful view read. When a read returns `invite_gone`, only `gone` changes; the last known address stays.
+- **When `ServerLink` is written:** by `join_add`, `server_status` and `server_relink`, and by Play only when no address is known yet.
+  - The Play-time update check doesn't write instance state, because core `check` has no store access. The 30 s status poll keeps the link fresh.
+  - When a read returns `invite_gone`, only `gone` changes; the last known address stays.
 - **The address is validated before it is stored:**
   - The host must be a DNS name or an IP literal, with no leading `-`, no whitespace and at most 253 characters.
   - The port must be 1–65535.
@@ -219,7 +226,7 @@ idle → checking → queued → syncing → preparing → running → idle
   - `play` gains an optional `join: bool` argument, default `true`.
   - The runner passes `instance.server.address` as `LaunchSpec.join` when it is `true` and an address is known.
   - **No known address:** the run warns `server_address_unknown` and starts at the title screen.
-- **Policy:** `instance_update` refuses to change `update_policy` away from `Auto` for a `Perland` source.
+- **Policy:** `instance_update` keeps `update_policy` at `Auto` for a `Perland` source, silently, with no error. The UI never offers the control.
 
 **Deep link**
 - 3b's `deep_link::parse` currently accepts only `perland://pack?url=`. This plan extends it to return a typed link:
@@ -228,8 +235,8 @@ idle → checking → queued → syncing → preparing → running → idle
 pub enum DeepLink { Pack { url: String }, Join { invite: String } }
 ```
 
-- `perland://join?invite=<url-encoded>` is accepted only when the decoded value passes `InviteLink::parse`.
-- `deep_link_take()` and `AppEvent::DeepLink` carry the typed `DeepLink`. This is a small contract change to 3b's command, made in this plan after 3b merges.
+- `perland://join?invite=<url-encoded>` is accepted only when the decoded value passes `InviteLink::parse` **and is https**. Loopback http is accepted only when pasted, for local development, mirroring 3b's stricter rule for pack links.
+- `deep_link_take()` returns the typed `DeepLink`. `AppEvent::DeepLink` stays whatever 3b ships (its plan makes it a unit signal that tells the UI to call `deep_link_take`). This is a small contract change to 3b's command, made in this plan after 3b merges.
 - The `pack` behaviour itself is untouched.
 
 **Contract fixtures:** new fixtures for `join_preview`, `server_status`, the `perland` `SourceRef`, `ServerLink` and `DeepLink`, plus an `invite_links.json` table shared by the Rust and TypeScript link checks.
@@ -294,7 +301,7 @@ All styling goes through `/impeccable` in the Arcade Cabinet world: one lit butt
     - the status pill with players;
     - the version line, and the pack line (name, version, mod count);
     - "From `<host>`".
-  - **Whitelist:** an amber "Invite only: ask the owner to add *\<active account name\>*" line.
+  - **Whitelist:** an "Invite only: ask the owner to add *\<active account name\>*" line. `DESIGN.md` reserves amber for "act", so `/impeccable` picks the colour and records the choice.
   - **Team accent:** a small mark only, never a second lit element.
   - **Buttons:** **Add server** (lit) and Cancel. In relink mode: **Use this link**, plus the name-mismatch warning.
   - **Errors:** shown inline by code. `invite_unsupported` shows the address with Copy.
@@ -330,9 +337,13 @@ All styling goes through `/impeccable` in the Arcade Cabinet world: one lit butt
      - the owner `InviteDTO` (stacks only) gains `launcher: { joinUrl, downloadUrl }`, with `joinUrl = perland://join?invite=<url-encoded invite url>`, present only when `INVITE_BASE_URL` is set.
    - The Engine owns the `perland://` format, so the Panel never builds it.
 3. **Invite site**
-   - **New tab:** a **Perland Launcher** tab, first in `invite/src/lib/launchers.ts` and selected by default, shown only when `view.launcher` is present. It contains:
-     - the primary button **Open in Perland Launcher**, which opens `perland://join?invite=<encodeURIComponent(location.origin + "/" + token)>`;
-     - below it, "Don't have it? Download Perland Launcher" (`downloadUrl`).
+   - **New tab:** a **Perland Launcher** tab, first in `invite/src/lib/launchers.ts`, shown only when `view.launcher` is present.
+     - **Desktop** (no coarse pointer and no mobile user agent): the tab is selected by default and contains:
+       - the primary button **Open in Perland Launcher**, which opens `perland://join?invite=<encodeURIComponent(location.origin + "/" + token)>`;
+       - below it, "Don't have it? Download Perland Launcher" (`downloadUrl`).
+     - **Phones:** the previous default tab stays selected. The launcher tab shows "Open this page on your computer to play with Perland Launcher." (es: "Abre esta página en tu computadora para jugar con Perland Launcher.") in place of the button, with the download link still visible.
+     - The desktop/phone decision is a pure, unit-tested function in `launchers.ts`.
+     - The invite surface brief names Copy address as the page's one primary button. `/impeccable` decides how the two primaries coexist and records it in `invite/DESIGN.md`.
    - **No-pack servers:** they get the tab too.
    - **Not installed:** there is no reliable detection, so the download link is always visible.
    - The other tabs (Modrinth App, Prism, the official launcher zip, CurseForge) stay.
