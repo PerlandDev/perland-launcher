@@ -66,7 +66,6 @@ pub(crate) struct Run {
 }
 
 /// Files the last sync couldn't download, while the player fetches them by hand.
-#[allow(dead_code)] // read by the manual-download commands that follow
 pub(crate) struct ManualState {
     pub(crate) total: usize,
     pub(crate) remaining: Vec<ManualFile>,
@@ -89,6 +88,8 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) logs: LogStore,
     /// Per instance: the files its last sync couldn't download.
     pub(crate) manual: tokio::sync::Mutex<HashMap<String, ManualState>>,
+    /// A valid `perland://` pack link waiting for the UI to take it.
+    pub(crate) pending_link: Mutex<Option<String>>,
 }
 
 fn busy(id: &str) -> LauncherError {
@@ -126,6 +127,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             runs: Mutex::new(HashMap::new()),
             logs: LogStore::default(),
             manual: tokio::sync::Mutex::new(HashMap::new()),
+            pending_link: Mutex::new(None),
             config,
         })
     }
@@ -332,12 +334,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
             OpenTarget::Data => self.config.dirs.root().to_path_buf(),
             OpenTarget::Logs => self.config.dirs.logs(),
-            OpenTarget::Downloads => {
-                return Err(LauncherError::disk(
-                    ErrorCode::Internal,
-                    "Couldn't find your Downloads folder",
-                ))
-            }
+            OpenTarget::Downloads => self.config.downloads_dir.clone().ok_or_else(|| {
+                LauncherError::disk(ErrorCode::Internal, "Couldn't find your Downloads folder")
+            })?,
         };
         tokio::fs::create_dir_all(&path).await?;
         Ok(path)

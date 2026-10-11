@@ -1,11 +1,15 @@
 //! Pack commands other than playing: adding a pack, its status, its mods, manual downloads
 //! and art (spec addendum §4.4). Runs and syncs live in `runs.rs`.
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
+use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
     instances::{Instance, SourceRef},
     mods,
-    sources::PackInput,
+    sources::{
+        art::{sniff, MAX_ART_BYTES},
+        PackInput,
+    },
     sync::{
         lockfile::{self, Managed},
         plan,
@@ -15,13 +19,46 @@ use launcher_core::{
 
 use crate::{
     app::AppCore,
-    dto::{OptionalChoice, PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate},
-    events::Host,
+    deep_link,
+    dto::{
+        ManualProgress, OptionalChoice, PackAddRequest, PackArtData, PackContents, PackMod,
+        PackStatus, PackUpdate,
+    },
+    events::{AppEvent, Host},
     runner::Runner,
 };
 
 fn no_pack() -> LauncherError {
     LauncherError::pack(ErrorCode::NoPack, "This instance doesn't come from a pack")
+}
+
+/// Each art file type and the media type the webview needs.
+const ART: [(&str, &str); 4] = [
+    ("png", "image/png"),
+    ("jpg", "image/jpeg"),
+    ("webp", "image/webp"),
+    ("svg", "image/svg+xml"),
+];
+
+/// `<dir>/<stem>.<ext>` as a `data:` URL, if it is a real image of that type within the size
+/// limit. The core wrote it, but the disk is the player's, so it is checked again here.
+async fn art_url(dir: &Path, stem: &str) -> Option<String> {
+    for (ext, mime) in ART {
+        let path = dir.join(format!("{stem}.{ext}"));
+        let Ok(meta) = tokio::fs::metadata(&path).await else {
+            continue;
+        };
+        if !meta.is_file() || meta.len() > MAX_ART_BYTES as u64 {
+            continue;
+        }
+        let Ok(bytes) = tokio::fs::read(&path).await else {
+            continue;
+        };
+        if sniff(&bytes) == Some(ext) {
+            return Some(format!("data:{mime};base64,{}", STANDARD.encode(&bytes)));
+        }
+    }
+    None
 }
 
 fn link_invalid() -> LauncherError {
@@ -170,6 +207,67 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
         Ok(())
     }
+
+    /// Look in the Downloads folder for the files the last sync couldn't download, and put
+    /// what's there into the cache. The "Download these manually" dialog polls this.
+    pub async fn manual_import(&self, id: &str) -> Result<ManualProgress> {
+        self.instances.load(id).await?;
+        let mut manual = self.manual.lock().await;
+        let Some(state) = manual.get_mut(id) else {
+            return Ok(ManualProgress {
+                found: 0,
+                total: 0,
+                remaining: Vec::new(),
+            });
+        };
+        if let Some(dir) = &self.config.downloads_dir {
+            let found = state.scanner.scan(dir, &state.remaining).await?;
+            if !found.is_empty() {
+                self.runner.import_manual(found.clone()).await?;
+                state
+                    .remaining
+                    .retain(|f| !found.iter().any(|(got, _)| got.path == f.path));
+            }
+        }
+        Ok(ManualProgress {
+            found: state.total - state.remaining.len(),
+            total: state.total,
+            remaining: state.remaining.clone(),
+        })
+    }
+
+    /// The pack's icon and banner from `.perland/art/`.
+    pub async fn pack_art(&self, id: &str) -> Result<PackArtData> {
+        self.instances.load(id).await?;
+        let dir = self.instances.perland_dir(id).join("art");
+        Ok(PackArtData {
+            icon: art_url(&dir, "icon").await,
+            banner: art_url(&dir, "banner").await,
+        })
+    }
+
+    /// A `perland://` link arrived (at startup or from a second launch). A good one waits for
+    /// the UI (`deep_link_take`); a bad one is only a warning.
+    pub fn deep_link(&self, raw: &str) {
+        match deep_link::parse(raw) {
+            Ok(url) => {
+                *self.pending_link.lock().unwrap_or_else(|e| e.into_inner()) = Some(url);
+                self.host.emit(AppEvent::DeepLink);
+            }
+            Err(error) => self.host.emit(AppEvent::Warning {
+                instance: None,
+                error,
+            }),
+        }
+    }
+
+    /// The waiting pack link, once.
+    pub fn deep_link_take(&self) -> Option<String> {
+        self.pending_link
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+    }
 }
 
 #[cfg(test)]
@@ -177,14 +275,15 @@ mod tests {
     use std::sync::atomic::Ordering;
 
     use launcher_core::{
-        accounts::BuildKind, instances::SourceRef, sources::PackInput, ErrorCode, LauncherError,
+        accounts::BuildKind, instances::SourceRef, sources::PackInput, sync::manual::Scanner,
+        ErrorCode, LauncherError,
     };
 
     use crate::{
-        app::tests::core,
-        dto::{NewInstance, PackAddRequest},
-        events::RunStateKind::*,
-        testing::{desired, exit, managed_for, pack_file, pack_instance, pending},
+        app::{tests::core, ManualState},
+        dto::{NewInstance, OpenTarget, PackAddRequest, PackArtData},
+        events::{AppEvent, RunStateKind::*},
+        testing::{desired, exit, managed_for, manual_file, pack_file, pack_instance, pending},
     };
 
     #[tokio::test]
@@ -466,5 +565,99 @@ mod tests {
             core.mods_add(&plain.id, vec![tool]).await.unwrap_err().code,
             ErrorCode::ModNotJar
         );
+    }
+
+    #[tokio::test]
+    async fn manual_import_finds_downloads_and_imports_each_once() {
+        let (core, runner, _host, tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        assert_eq!(
+            core.manual_import(&id).await.unwrap().total,
+            0,
+            "nothing pending"
+        );
+        let (a, b) = (manual_file("a.jar", b"aaa"), manual_file("b.jar", b"bbb"));
+        core.manual.lock().await.insert(
+            id.clone(),
+            ManualState {
+                total: 2,
+                remaining: vec![a, b],
+                scanner: Scanner::default(),
+            },
+        );
+        let downloads = tmp.path().join("Downloads");
+        std::fs::create_dir_all(&downloads).unwrap();
+        let progress = core.manual_import(&id).await.unwrap();
+        assert_eq!((progress.found, progress.total), (0, 2));
+        std::fs::write(downloads.join("a (1).jar"), b"aaa").unwrap();
+        let progress = core.manual_import(&id).await.unwrap();
+        assert_eq!((progress.found, progress.remaining.len()), (1, 1));
+        core.manual_import(&id).await.unwrap();
+        assert_eq!(
+            runner.imported.lock().unwrap().len(),
+            1,
+            "a found file is imported once"
+        );
+        std::fs::write(downloads.join("b.jar"), b"bbb").unwrap();
+        let progress = core.manual_import(&id).await.unwrap();
+        assert_eq!((progress.found, progress.total), (2, 2));
+        assert!(progress.remaining.is_empty());
+        assert_eq!(core.folder(OpenTarget::Downloads).await.unwrap(), downloads);
+    }
+
+    #[tokio::test]
+    async fn pack_art_comes_back_as_data_urls_of_real_images_only() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        assert_eq!(
+            core.pack_art(&id).await.unwrap(),
+            PackArtData {
+                icon: None,
+                banner: None
+            }
+        );
+        let art = core.instances.perland_dir(&id).join("art");
+        std::fs::create_dir_all(&art).unwrap();
+        std::fs::write(art.join("icon.png"), b"\x89PNG\r\n\x1a\n\0rest").unwrap();
+        std::fs::write(art.join("banner.png"), b"<html>not a png</html>").unwrap();
+        std::fs::write(
+            art.join("banner.svg"),
+            b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+        )
+        .unwrap();
+        let data = core.pack_art(&id).await.unwrap();
+        assert!(data
+            .icon
+            .unwrap()
+            .starts_with("data:image/png;base64,iVBORw0KGgo"));
+        assert!(data
+            .banner
+            .unwrap()
+            .starts_with("data:image/svg+xml;base64,"));
+    }
+
+    #[tokio::test]
+    async fn a_good_deep_link_waits_for_the_ui() {
+        let (core, _runner, host, _t) = core(BuildKind::Dev);
+        core.deep_link("perland://pack?url=https%3A%2F%2Fx.example%2Fpack.toml");
+        assert!(host
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, AppEvent::DeepLink)));
+        assert_eq!(
+            core.deep_link_take().as_deref(),
+            Some("https://x.example/pack.toml")
+        );
+        assert_eq!(core.deep_link_take(), None, "taken once");
+    }
+
+    #[tokio::test]
+    async fn a_bad_deep_link_warns_and_keeps_nothing() {
+        let (core, _runner, host, _t) = core(BuildKind::Dev);
+        core.deep_link("perland://pack?url=http%3A%2F%2Fx.example%2Fpack.toml");
+        assert_eq!(host.warnings(), vec![ErrorCode::PackLinkInvalid]);
+        assert_eq!(core.deep_link_take(), None);
     }
 }
