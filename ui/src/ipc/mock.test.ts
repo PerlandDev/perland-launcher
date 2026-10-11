@@ -64,11 +64,11 @@ describe('mock backend', () => {
     await backend.handle('play', { id: 'sky-islands' });
     await vi.waitFor(() => expect(backend.state.runs.get('sky-islands')?.state).toBe('asking'));
     await backend.handle('play_answer', { id: 'sky-islands', update: true });
-    await vi.waitFor(() => expect(backend.state.runs.get('sky-islands')?.state).toBe('running'), { timeout: 5000 });
+    await vi.waitFor(() => expect(backend.state.runs.get('sky-islands')?.state).toBe('running'), { timeout: 10_000 });
     const status = (await backend.handle('pack_status', { id: 'sky-islands' })) as PackStatus;
     expect(status).toMatchObject({ installedVersion: '1.0.4', update: null });
     stopMockRuns();
-  });
+  }, 15_000); // the scripted run takes ~2.6 s of real timers; slow runners need room
 
   it('finds manual downloads one poll at a time', async () => {
     const { handle } = createMockBackend({ manual: true });
