@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Marquee } from '../../art/Marquee';
 import { commands } from '../../ipc/commands';
 import type { Instance } from '../../ipc/schema';
-import { useAccounts, useInstances } from '../../state/queries';
+import { useAccounts, useInstances, usePackArt } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
@@ -24,11 +24,12 @@ function InstanceView({ instance }: { instance: Instance }) {
   const run = useRun(instance.id);
   const accounts = useAccounts();
   const hasAccount = Boolean(accounts.data?.active);
+  const art = usePackArt(instance.id, isPack(instance));
   // The second click of a double click lands before the `queued` event; hold it until Play settles.
   const playOnce = useSingleFlight();
   return (
     <section className="relative h-full overflow-hidden" aria-labelledby="instance-name">
-      <Marquee seed={instance.id} attract={run.state === 'idle'} dimmed={run.state !== 'idle'} className="absolute inset-0" />
+      <Marquee seed={instance.id} attract={run.state === 'idle'} dimmed={run.state !== 'idle'} banner={art.data?.banner ?? null} className="absolute inset-0" />
       <div className="absolute inset-x-0 bottom-0 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-10 px-10 pt-6 pb-12">
         <div className="min-w-0">
           {isPack(instance) && <UpdatePlate instance={instance} />}

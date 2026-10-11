@@ -1,7 +1,7 @@
 import { useMemo, useRef, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PlotIcon } from '../../art/PlotIcon';
-import { useInstances } from '../../state/queries';
+import { useInstances, usePackArt } from '../../state/queries';
 import { navigate, useRoute, instanceOf } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
@@ -12,6 +12,7 @@ interface Item {
   id: string;
   name: string;
   damaged: boolean;
+  pack: boolean;
 }
 
 function RailItem({
@@ -28,6 +29,7 @@ function RailItem({
 }) {
   const { t } = useTranslation();
   const run = useRun(item.id);
+  const art = usePackArt(item.id, item.pack);
   const status = item.damaged
     ? t('rail.damaged')
     : run.state === 'running' || run.state === 'stopping'
@@ -48,7 +50,11 @@ function RailItem({
       onClick={() => navigate({ name: 'home', id: item.id })}
     >
       <span className={item.damaged ? 'opacity-40 grayscale' : undefined}>
-        <PlotIcon seed={item.id} size={40} />
+        {art.data?.icon ? (
+          <img src={art.data.icon} alt="" width={40} height={40} className="rail-art" draggable={false} />
+        ) : (
+          <PlotIcon seed={item.id} size={40} />
+        )}
       </span>
       {status && !item.damaged && <span className="rail-led" aria-hidden />}
       {item.damaged && <WarningDiamond className="rail-warn" aria-hidden />}
@@ -64,8 +70,8 @@ export function Rail() {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const items = useMemo<Item[]>(
     () => [
-      ...(data?.instances ?? []).map((i) => ({ id: i.id, name: i.name, damaged: false })),
-      ...(data?.damaged ?? []).map((d) => ({ id: d.id, name: d.id, damaged: true })),
+      ...(data?.instances ?? []).map((i) => ({ id: i.id, name: i.name, damaged: false, pack: i.source.kind !== 'none' })),
+      ...(data?.damaged ?? []).map((d) => ({ id: d.id, name: d.id, damaged: true, pack: false })),
     ],
     [data],
   );

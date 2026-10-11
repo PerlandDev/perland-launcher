@@ -12,11 +12,14 @@ export function Marquee({
   seed,
   attract,
   dimmed = false,
+  banner = null,
   className,
 }: {
   seed: string;
   attract: boolean;
   dimmed?: boolean;
+  /** A pack's own art (a data: URL). It replaces the generated sky and hills; the grille and vignette stay over it. */
+  banner?: string | null;
   className?: string;
 }) {
   const scene = useMemo(() => marqueeScene(seed), [seed]);
@@ -41,6 +44,7 @@ export function Marquee({
   const sunY = Math.max(H - visible + fullSunY * (visible / H), H - visible + 5 * CELL);
   return (
     <div ref={frame} className={`marquee ${className ?? ''}`} data-dimmed={dimmed || undefined} aria-hidden="true">
+      {banner && <img src={banner} alt="" className="marquee-banner" draggable={false} />}
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax slice" className="h-full w-full">
         <defs>
           <radialGradient id={`${id}-bloom`} cx={sunX} cy={sunY} r={W * 0.62} gradientUnits="userSpaceOnUse">
@@ -56,25 +60,28 @@ export function Marquee({
             <rect width="3" height="1" fill="#000" fillOpacity="0.1" />
           </pattern>
         </defs>
-        <rect width={W} height={H} fill={scene.sky} />
-        <rect width={W} height={H} fill={`url(#${id}-bloom)`} />
-        <path
-          d={discPath(scene.sun.x + 4, scene.sun.y + 4, 4)}
-          transform={`translate(0 ${Math.round((sunY - fullSunY) / CELL) * CELL})`}
-          fill={scene.sun.color}
-          shapeRendering="crispEdges"
-        />
-        {scene.layers.map((layer, i) => (
-          <g
-            key={i}
-            className="marquee-layer"
+        {!banner && <rect width={W} height={H} fill={scene.sky} />}
+        {!banner && <rect width={W} height={H} fill={`url(#${id}-bloom)`} />}
+        {!banner && (
+          <path
+            d={discPath(scene.sun.x + 4, scene.sun.y + 4, 4)}
+            transform={`translate(0 ${Math.round((sunY - fullSunY) / CELL) * CELL})`}
+            fill={scene.sun.color}
             shapeRendering="crispEdges"
-            style={{ animationDuration: `${layer.duration}s`, animationPlayState: attract ? 'running' : 'paused' }}
-          >
-            <path d={layerPath(layer.heights, ROWS, 0, false) + layerPath(layer.heights, ROWS, COLS, false)} fill={layer.body} />
-            <path d={layerPath(layer.heights, ROWS, 0, true) + layerPath(layer.heights, ROWS, COLS, true)} fill={layer.rim} />
-          </g>
-        ))}
+          />
+        )}
+        {!banner &&
+          scene.layers.map((layer, i) => (
+            <g
+              key={i}
+              className="marquee-layer"
+              shapeRendering="crispEdges"
+              style={{ animationDuration: `${layer.duration}s`, animationPlayState: attract ? 'running' : 'paused' }}
+            >
+              <path d={layerPath(layer.heights, ROWS, 0, false) + layerPath(layer.heights, ROWS, COLS, false)} fill={layer.body} />
+              <path d={layerPath(layer.heights, ROWS, 0, true) + layerPath(layer.heights, ROWS, COLS, true)} fill={layer.rim} />
+            </g>
+          ))}
         <rect width={W} height={H} fill={`url(#${id}-grille)`} />
         <rect width={W} height={H} fill={`url(#${id}-vignette)`} />
       </svg>

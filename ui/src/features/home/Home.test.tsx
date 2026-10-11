@@ -181,3 +181,11 @@ describe('Home', () => {
     await vi.waitFor(() => expect(sent(calls, 'pack_status').length).toBe(2));
   });
 });
+
+it("shows the pack's own banner, and generated art otherwise", async () => {
+  const { container } = renderApp(<Home id="sky-islands" />);
+  await screen.findByRole('heading', { name: 'Sky Islands' });
+  await vi.waitFor(() =>
+    expect(container.querySelector('img.marquee-banner')?.getAttribute('src')).toMatch(/^data:image\/svg\+xml;base64,/),
+  );
+});

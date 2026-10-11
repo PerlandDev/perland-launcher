@@ -11,12 +11,15 @@ import { Field } from '../../ui/Field';
 import { Check } from '../../ui/Icon';
 import { MemorySlider } from '../../ui/MemorySlider';
 import { ScreenFrame } from '../../ui/ScreenFrame';
+import { isPack, versionLine } from '../home/labels';
 import { useVersionChoice } from '../new-instance/useVersionChoice';
 import { VersionFields } from '../new-instance/VersionFields';
 
 function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) {
   const { t } = useTranslation();
   const choice = useVersionChoice(instance.game);
+  const pack = isPack(instance);
+  const [policy, setPolicy] = useState(instance.updatePolicy);
   const [name, setName] = useState(instance.name);
   const [memoryMb, setMemoryMb] = useState(instance.java.memoryMb);
   const [javaMode, setJavaMode] = useState<'auto' | 'custom'>(instance.java.path ? 'custom' : 'auto');
@@ -73,12 +76,13 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
       });
   };
   const shownResult = javaResult && javaResult.path === javaPath ? javaResult : null;
-  const ready = choice.resolved.ready && (javaMode === 'auto' || javaPath !== null);
+  const ready = (pack || choice.resolved.ready) && (javaMode === 'auto' || javaPath !== null);
   const save = () =>
     update.mutate({
       ...instance,
       name,
-      game: { minecraft: choice.resolved.minecraft ?? instance.game.minecraft, loader: choice.resolved.loader },
+      game: pack ? instance.game : { minecraft: choice.resolved.minecraft ?? instance.game.minecraft, loader: choice.resolved.loader },
+      updatePolicy: policy,
       java: { memoryMb, path: javaMode === 'custom' ? javaPath : null },
     });
 
@@ -89,8 +93,28 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
       </Field>
       <section className="grid gap-4" aria-labelledby="game-heading">
         <h2 id="game-heading" className="text-lg font-bold">{t('instanceSettings.game')}</h2>
-        <VersionFields choice={versions} />
+        {pack ? (
+          <>
+            <p>{versionLine(t, instance)}</p>
+            <p className="text-sm text-ink-dim">{t('instanceSettings.gameFromPack')}</p>
+          </>
+        ) : (
+          <VersionFields choice={versions} />
+        )}
       </section>
+      {pack && (
+        <fieldset className="grid gap-3">
+          <legend className="mb-1.5 text-lg font-bold">{t('instanceSettings.updates')}</legend>
+          <div className="flex flex-wrap gap-2">
+            {(['auto', 'ask', 'pinned'] as const).map((value) => (
+              <label key={value} className="seg" data-checked={policy === value ? '' : undefined}>
+                <input type="radio" name="updates" className="sr-only" checked={policy === value} onChange={() => edit(setPolicy)(value)} />
+                {t(value === 'auto' ? 'instanceSettings.updatesAuto' : value === 'ask' ? 'instanceSettings.updatesAsk' : 'instanceSettings.updatesPinned')}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
       <MemorySlider label={t('instanceSettings.memory')} valueMb={memoryMb} onChange={edit(setMemoryMb)} systemMb={systemMb} />
       <fieldset className="grid gap-3">
         <legend className="mb-1.5 text-lg font-bold">{t('instanceSettings.java')}</legend>

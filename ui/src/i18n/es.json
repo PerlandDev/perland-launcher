@@ -174,7 +174,12 @@
     "javaTest": "Probar",
     "javaOk": "Java {{major}} funciona",
     "javaFiles": "Programa de Java",
-    "applyNote": "Los cambios se aplican la próxima vez que presiones Jugar."
+    "applyNote": "Los cambios se aplican la próxima vez que presiones Jugar.",
+    "updates": "Actualizaciones",
+    "updatesAuto": "Automáticas",
+    "updatesAsk": "Preguntarme",
+    "updatesPinned": "No actualizar",
+    "gameFromPack": "El pack elige la versión de Minecraft y el loader."
   },
   "damaged": {
     "title": "No se puede abrir “{{id}}”",

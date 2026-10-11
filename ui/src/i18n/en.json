@@ -174,7 +174,12 @@
     "javaTest": "Test",
     "javaOk": "Java {{major}} works",
     "javaFiles": "Java program",
-    "applyNote": "Changes apply the next time you press Play."
+    "applyNote": "Changes apply the next time you press Play.",
+    "updates": "Updates",
+    "updatesAuto": "Automatic",
+    "updatesAsk": "Ask me",
+    "updatesPinned": "Don't update",
+    "gameFromPack": "The pack picks the Minecraft version and loader."
   },
   "damaged": {
     "title": "“{{id}}” can't be opened",

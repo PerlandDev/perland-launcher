@@ -546,6 +546,17 @@
   .marquee {
     overflow: hidden;
   }
+  .marquee-banner {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center bottom;
+  }
+  .marquee svg {
+    position: relative;
+  }
   .marquee > svg {
     transition: filter 180ms steps(2, end);
   }
@@ -606,6 +617,12 @@
     border-radius: 6px;
     corner-shape: notch;
     cursor: pointer;
+  }
+  .rail-art {
+    width: 40px;
+    height: 40px;
+    object-fit: cover;
+    image-rendering: pixelated;
   }
   .rail-item:hover {
     background: var(--color-raised);
