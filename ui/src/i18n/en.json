@@ -344,6 +344,14 @@
     "pack_path_is_folder": { "message": "The pack wants to put a file where you have a folder ({{path}}).", "fix": "Move or rename that folder, then try again." },
     "sync_cancelled": { "message": "The update was cancelled." },
     "update_download_failed": { "message": "Couldn't download the update. You still have {{version}}.", "fix": "Try updating again later." },
+    "invite_link_invalid": { "message": "That isn't a Perland invite link.", "fix": "Invite links look like https://play.example.com/ followed by a long code." },
+    "invite_gone": { "message": "This invite link doesn't work anymore. Ask the owner for a new one.", "fix": "Use a new invite link." },
+    "invite_unsupported": { "message": "This server can't be joined from the launcher yet. Join with the address {{address}}." },
+    "invite_site_unreachable": { "message": "Couldn't reach the server's Perland site at {{host}}.", "fix": "Check the link, or try again later." },
+    "invite_rate_limited": { "message": "Too many requests. Try again in a minute." },
+    "server_pack_unavailable": { "message": "The server's modpack isn't available right now.", "fix": "Try again later, or let the server's owner know." },
+    "server_pack_pending": { "message": "The server is still preparing the modpack. Try again in a minute." },
+    "server_address_unknown": { "message": "Couldn't get the server address, so the game starts at the title screen." },
     "internal": { "message": "Something unexpected went wrong.", "fix": "Restart the launcher. If it keeps happening, copy the details for support." }
   }
 }

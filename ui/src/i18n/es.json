@@ -344,6 +344,14 @@
     "pack_path_is_folder": { "message": "El pack quiere poner un archivo donde tienes una carpeta ({{path}}).", "fix": "Mueve esa carpeta o cámbiale el nombre, y vuelve a intentarlo." },
     "sync_cancelled": { "message": "Se canceló la actualización." },
     "update_download_failed": { "message": "No se pudo descargar la actualización. Sigues teniendo la {{version}}.", "fix": "Intenta actualizar más tarde." },
+    "invite_link_invalid": { "message": "Eso no es un enlace de invitación de Perland.", "fix": "Los enlaces de invitación se ven como https://play.example.com/ seguido de un código largo." },
+    "invite_gone": { "message": "Este enlace de invitación ya no funciona. Pídele uno nuevo al dueño.", "fix": "Usa un nuevo enlace de invitación." },
+    "invite_unsupported": { "message": "Todavía no puedes unirte a este servidor desde el launcher. Únete con la dirección {{address}}." },
+    "invite_site_unreachable": { "message": "No se pudo conectar con el sitio de Perland del servidor en {{host}}.", "fix": "Revisa el enlace o inténtalo más tarde." },
+    "invite_rate_limited": { "message": "Demasiadas solicitudes. Inténtalo de nuevo en un minuto." },
+    "server_pack_unavailable": { "message": "El modpack del servidor no está disponible ahora.", "fix": "Inténtalo más tarde o avísale al dueño del servidor." },
+    "server_pack_pending": { "message": "El servidor todavía está preparando el modpack. Inténtalo de nuevo en un minuto." },
+    "server_address_unknown": { "message": "No se pudo obtener la dirección del servidor, así que el juego empieza en la pantalla de título." },
     "internal": { "message": "Ocurrió algo inesperado.", "fix": "Reinicia el launcher. Si sigue pasando, copia los detalles para soporte." }
   }
 }
