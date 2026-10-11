@@ -23,12 +23,16 @@ use launcher_core::{
     mods::{self, LocalMod},
     paths::LauncherDirs,
     settings::{Settings, SettingsStore},
+    sync::{manual::Scanner, Cancel, ManualFile},
     ErrorCode, LauncherError, Result,
 };
-use tokio::{sync::Semaphore, task::AbortHandle};
+use tokio::{
+    sync::{oneshot, Semaphore},
+    task::AbortHandle,
+};
 
 use crate::{
-    dto::{AppInfo, JavaTest, NewInstance, OpenTarget},
+    dto::{AppInfo, JavaTest, NewInstance, OpenTarget, PackUpdate},
     events::{AppEvent, Host, RunStateKind},
     logs::LogStore,
     runner::{Kill, Runner},
@@ -46,10 +50,24 @@ pub struct AppConfig {
 /// One instance's current run. Absent from `runs` means idle.
 pub(crate) struct Run {
     pub(crate) phase: RunStateKind,
-    /// Set while queued or preparing: aborting the task cancels the run.
+    /// Set until the game is running: aborting the task cancels the run.
     pub(crate) abort: Option<AbortHandle>,
     /// Set once the game is running: stopping kills it.
     pub(crate) killer: Option<Arc<dyn Kill>>,
+    /// Asks a sync to stop at its next file (Stop while syncing).
+    pub(crate) cancel: Cancel,
+    /// Set while asking: delivers the player's answer to "Update ready".
+    pub(crate) answer: Option<oneshot::Sender<bool>>,
+    /// The update on offer while asking, for `run_states` after a reload.
+    pub(crate) offer: Option<PackUpdate>,
+}
+
+/// Files the last sync couldn't download, while the player fetches them by hand.
+#[allow(dead_code)] // read by the manual-download commands that follow
+pub(crate) struct ManualState {
+    pub(crate) total: usize,
+    pub(crate) remaining: Vec<ManualFile>,
+    pub(crate) scanner: Scanner,
 }
 
 pub struct AppCore<R: Runner, H: Host> {
@@ -66,6 +84,8 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) install_slot: Arc<Semaphore>,
     pub(crate) runs: Mutex<HashMap<String, Run>>,
     pub(crate) logs: LogStore,
+    /// Per instance: the files its last sync couldn't download.
+    pub(crate) manual: tokio::sync::Mutex<HashMap<String, ManualState>>,
 }
 
 fn busy(id: &str) -> LauncherError {
@@ -102,6 +122,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             install_slot: Arc::new(Semaphore::new(1)),
             runs: Mutex::new(HashMap::new()),
             logs: LogStore::default(),
+            manual: tokio::sync::Mutex::new(HashMap::new()),
             config,
         })
     }

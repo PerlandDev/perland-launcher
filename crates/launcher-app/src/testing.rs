@@ -31,7 +31,7 @@ use tokio::sync::{oneshot, Semaphore};
 
 use crate::{
     app::AppCore,
-    dto::NewInstance,
+    dto::{NewInstance, PackUpdate},
     events::{AppEvent, ExitInfo, Host, RunStateKind},
     runner::{BoxFuture, Kill, Runner, RunningGame},
 };
@@ -73,7 +73,6 @@ pub(crate) fn pack_file(path: &str, name: &str, optional: Option<bool>) -> PackF
     }
 }
 
-#[allow(dead_code)] // used by the pack tests that follow
 pub(crate) fn desired(version: &str, files: Vec<PackFile>) -> DesiredState {
     DesiredState {
         name: "Sky Islands".into(),
@@ -87,7 +86,6 @@ pub(crate) fn desired(version: &str, files: Vec<PackFile>) -> DesiredState {
     }
 }
 
-#[allow(dead_code)] // used by the pack tests that follow
 pub(crate) fn pending(from: &str, to: &str) -> PendingUpdate {
     PendingUpdate {
         source: SourceRef::Packwiz {
@@ -105,7 +103,6 @@ pub(crate) fn pending(from: &str, to: &str) -> PendingUpdate {
     }
 }
 
-#[allow(dead_code)] // used by the pack tests that follow
 pub(crate) fn manual_file(file_name: &str, body: &[u8]) -> ManualFile {
     ManualFile {
         path: format!("mods/{file_name}"),
@@ -143,7 +140,6 @@ pub(crate) fn managed_for(paths: &[&str]) -> Managed {
 }
 
 /// A packwiz instance named `name`; `installed` becomes its `pack.json` (as if it had synced).
-#[allow(dead_code)] // used by the pack tests that follow
 pub(crate) async fn pack_instance(
     core: &AppCore<FakeRunner, RecordingHost>,
     name: &str,
@@ -248,6 +244,35 @@ impl RecordingHost {
             .collect()
     }
 
+    pub fn last_update(&self, id: &str) -> Option<PackUpdate> {
+        self.events
+            .lock()
+            .unwrap()
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                AppEvent::RunState {
+                    instance,
+                    update: Some(update),
+                    ..
+                } if instance == id => Some(update.clone()),
+                _ => None,
+            })
+    }
+
+    /// Wait until `id` has reported `state` at least `n` times (panics after 5 s).
+    pub async fn wait_for_nth(&self, id: &str, state: RunStateKind, n: usize) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while self.states(id).iter().filter(|s| **s == state).count() < n {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "{id} never reached {state:?} {n} times; saw {:?}",
+                self.states(id)
+            );
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    }
+
     /// Wait until `id` has reported `state` (panics after 5 s).
     pub async fn wait_for(&self, id: &str, state: RunStateKind) {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
@@ -342,7 +367,6 @@ impl FakeRunner {
     }
 
     /// Let `n` held syncs finish (see `hold_sync`).
-    #[allow(dead_code)] // used by the pack tests that follow
     pub fn open_sync_gate(&self, n: usize) {
         self.sync_gate.add_permits(n);
     }
