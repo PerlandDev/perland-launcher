@@ -225,45 +225,52 @@ export function Mods({ id }: { id: string }) {
               </ul>
             )}
             {contents.data.managed.some((m) => m.optional) && <p className="text-sm text-ink-dim">{t('mods.optionalNote')}</p>}
-            <h2 className="mt-4 text-lg font-bold">{t('mods.additionsTitle')}</h2>
           </section>
         )}
-        {source.isSuccess && list.length === 0 && <p className="text-ink-dim">{pack ? t('mods.noAdditions') : t('mods.empty')}</p>}
-        <ul className="grid gap-2">
-          {list.map((mod) => {
-            const name = displayName(mod.fileName);
-            return (
-              <li key={(nameCount.get(name) ?? 0) > 1 ? mod.fileName : name} className="panel flex items-center gap-4 px-4 py-3">
-                <Package className="h-6 w-6 flex-none text-ink-dim" aria-hidden />
-                <div className="min-w-0 flex-1">
-                  <p className={`truncate font-semibold ${mod.enabled ? '' : 'text-ink-dim'}`}>{name}</p>
-                  <p className="tabular text-sm text-ink-dim">{formatBytes(mod.size, i18n.language)}</p>
-                </div>
-                <Toggle
-                  checked={mod.enabled}
-                  disabled={toggle.isPending || running}
-                  label={t('mods.toggle', { name })}
-                  onChange={(on) =>
-                    toggleOnce((done) => {
-                      setFailure(null);
-                      toggle.mutate({ file: mod.fileName, enabled: on }, { onError: fail, onSettled: done });
-                    })
-                  }
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t('mods.remove', { name })}
-                  aria-disabled={running || undefined}
-                  icon={<Trash />}
-                  onClick={() => {
-                    if (!running) setRemoving(mod);
-                  }}
-                />
-              </li>
-            );
-          })}
-        </ul>
+        {/* The player's own jars: their own section on a pack, so the pack's heading doesn't claim them. */}
+        <section className="grid gap-3" aria-labelledby={pack && contents.isSuccess ? 'pack-additions' : undefined}>
+          {pack && contents.isSuccess && (
+            <h2 id="pack-additions" className="mt-4 text-lg font-bold">
+              {t('mods.additionsTitle')}
+            </h2>
+          )}
+          {source.isSuccess && list.length === 0 && <p className="text-ink-dim">{pack ? t('mods.noAdditions') : t('mods.empty')}</p>}
+          <ul className="grid gap-2">
+            {list.map((mod) => {
+              const name = displayName(mod.fileName);
+              return (
+                <li key={(nameCount.get(name) ?? 0) > 1 ? mod.fileName : name} className="panel flex items-center gap-4 px-4 py-3">
+                  <Package className="h-6 w-6 flex-none text-ink-dim" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <p className={`truncate font-semibold ${mod.enabled ? '' : 'text-ink-dim'}`}>{name}</p>
+                    <p className="tabular text-sm text-ink-dim">{formatBytes(mod.size, i18n.language)}</p>
+                  </div>
+                  <Toggle
+                    checked={mod.enabled}
+                    disabled={toggle.isPending || running}
+                    label={t('mods.toggle', { name })}
+                    onChange={(on) =>
+                      toggleOnce((done) => {
+                        setFailure(null);
+                        toggle.mutate({ file: mod.fileName, enabled: on }, { onError: fail, onSettled: done });
+                      })
+                    }
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t('mods.remove', { name })}
+                    aria-disabled={running || undefined}
+                    icon={<Trash />}
+                    onClick={() => {
+                      if (!running) setRemoving(mod);
+                    }}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       </div>
       {removing && (
         <Dialog

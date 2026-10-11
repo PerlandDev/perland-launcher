@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
@@ -38,4 +38,13 @@ it("uses a pack's icon", async () => {
   const sky = await screen.findByRole('button', { name: 'Sky Islands' });
   await vi.waitFor(() => expect(sky.querySelector('img')?.getAttribute('src')).toMatch(/^data:image\//));
   expect(screen.getByRole('button', { name: 'Creative Flat' }).querySelector('img')).toBeNull();
+});
+
+it("falls back to the generated icon when a pack's icon fails to decode", async () => {
+  renderApp(<Rail />);
+  const sky = await screen.findByRole('button', { name: 'Sky Islands' });
+  await vi.waitFor(() => expect(sky.querySelector('img')).not.toBeNull());
+  fireEvent.error(sky.querySelector('img')!);
+  expect(sky.querySelector('img')).toBeNull();
+  expect(sky.querySelector('svg')).not.toBeNull();
 });

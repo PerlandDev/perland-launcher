@@ -27,7 +27,7 @@ export function ChangeSummary({ update }: { update: PackUpdate }) {
         </button>
       )}
       {open && (
-        <dl id={listId} className="grid gap-2 text-sm">
+        <dl id={listId} className="well grid gap-2 p-3 text-sm">
           {KINDS.filter((kind) => update[kind].length > 0).map((kind) => (
             <div key={kind}>
               <dt className="font-semibold text-ink">{t(`update.${kind}Heading`)}</dt>

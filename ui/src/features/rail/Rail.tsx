@@ -1,4 +1,4 @@
-import { useMemo, useRef, type KeyboardEvent } from 'react';
+import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PlotIcon } from '../../art/PlotIcon';
 import { useInstances, usePackArt } from '../../state/queries';
@@ -30,6 +30,9 @@ function RailItem({
   const { t } = useTranslation();
   const run = useRun(item.id);
   const art = usePackArt(item.id, item.pack);
+  // An icon that fails to decode gives the cabinet back its generated plot icon.
+  const [failed, setFailed] = useState<string | null>(null);
+  const icon = art.data?.icon && art.data.icon !== failed ? art.data.icon : null;
   const status = item.damaged
     ? t('rail.damaged')
     : run.state === 'running' || run.state === 'stopping'
@@ -50,8 +53,8 @@ function RailItem({
       onClick={() => navigate({ name: 'home', id: item.id })}
     >
       <span className={item.damaged ? 'opacity-40 grayscale' : undefined}>
-        {art.data?.icon ? (
-          <img src={art.data.icon} alt="" width={40} height={40} className="rail-art" draggable={false} />
+        {icon ? (
+          <img src={icon} alt="" width={40} height={40} className="rail-art" draggable={false} onError={() => setFailed(icon)} />
         ) : (
           <PlotIcon seed={item.id} size={40} />
         )}

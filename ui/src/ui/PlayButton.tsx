@@ -39,17 +39,21 @@ export function PlayButton({ state, progress, disabled, disabledReason, onPlay, 
     const look = state === 'syncing' || state === 'preparing' ? 'preparing' : 'queued';
     return (
       <button type="button" className="play" data-state={look} onClick={onStop} aria-label={t('play.cancelLabel', { label })}>
-        <span className="flex items-baseline justify-between gap-3">
-          <span className="truncate">{label}</span>
-          <span className="play-sub">{t('play.cancel')}</span>
-        </span>
-        <Meter value={fraction} label={label} decorative />
-        {progress && progress.total > 0 && (
-          <span className="play-sub tabular text-sm font-normal">
-            {t('play.files', { done: formatCount(progress.done, lang), total: formatCount(progress.total, lang) })}
-            {progress.bytes > 0 && ` · ${formatBytes(progress.bytes, lang)}`}
+        {/* The phase gets the face's full width (Spanish phases run long); Cancel rides the readout row,
+            which every wait state keeps, so the face holds one height from checking to preparing. */}
+        <span className="truncate">{label}</span>
+        <Meter value={fraction} label={label} decorative scan={state === 'checking'} />
+        <span className="play-sub flex items-baseline justify-between gap-2 text-sm">
+          <span className="tabular truncate font-normal">
+            {progress && progress.total > 0 && (
+              <>
+                {t('play.files', { done: formatCount(progress.done, lang), total: formatCount(progress.total, lang) })}
+                {progress.bytes > 0 && ` · ${formatBytes(progress.bytes, lang)}`}
+              </>
+            )}
           </span>
-        )}
+          <span className="flex-none">{t('play.cancel')}</span>
+        </span>
       </button>
     );
   }

@@ -31,8 +31,13 @@ function InstanceView({ instance }: { instance: Instance }) {
     <section className="relative h-full overflow-hidden" aria-labelledby="instance-name">
       <Marquee seed={instance.id} attract={run.state === 'idle'} dimmed={run.state !== 'idle'} banner={art.data?.banner ?? null} className="absolute inset-0" />
       <div className="absolute inset-x-0 bottom-0 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-10 px-10 pt-6 pb-12">
+        {/* The plate sits above both columns, so it reads on one line instead of wrapping in the name's. */}
+        {isPack(instance) && (
+          <div className="col-span-2 min-w-0">
+            <UpdatePlate instance={instance} />
+          </div>
+        )}
         <div className="min-w-0">
-          {isPack(instance) && <UpdatePlate instance={instance} />}
           <h1 id="instance-name" className="marquee-name font-display text-[clamp(2.5rem,5.4vw,5.5rem)] leading-[0.95] [overflow-wrap:anywhere]">
             {instance.name}
           </h1>

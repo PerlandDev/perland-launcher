@@ -43,7 +43,7 @@ export function PackLinkForm({ initial }: { initial?: string }) {
   };
   return (
     <form onSubmit={submit} className="grid max-w-2xl gap-6">
-      <Field label={t('newInstance.linkLabel')}>
+      <Field label={t('newInstance.linkLabel')} hint={host ? t('newInstance.linkFrom', { host }) : t('newInstance.linkHint')}>
         <input
           className="field-input"
           type="url"
@@ -57,7 +57,6 @@ export function PackLinkForm({ initial }: { initial?: string }) {
           }}
         />
       </Field>
-      <p className="text-sm text-ink-dim">{host ? t('newInstance.linkFrom', { host }) : t('newInstance.linkHint')}</p>
       {add.isError && <ErrorCard error={add.error} />}
       <AddBar disabled={!url.trim()} pending={add.isPending} />
     </form>
@@ -96,9 +95,12 @@ export function PackFileForm() {
     <form onSubmit={submit} className="grid max-w-2xl gap-6">
       <div className="flex items-center gap-4">
         <Button onClick={() => void pick()}>{t('newInstance.filePick')}</Button>
-        <p className="selectable truncate font-mono text-sm text-ink-dim">
-          {path ? (path.split(/[/\\]/).pop() ?? path) : t('newInstance.fileNone')}
-        </p>
+        {/* A chosen file is a path (mono); before that it's a sentence (body face). */}
+        {path ? (
+          <p className="selectable truncate font-mono text-sm text-ink">{path.split(/[/\\]/).pop() ?? path}</p>
+        ) : (
+          <p className="text-sm text-ink-dim">{t('newInstance.fileNone')}</p>
+        )}
       </div>
       {pickError !== null && <ErrorCard error={pickError} />}
       {add.isError && <ErrorCard error={add.error} />}

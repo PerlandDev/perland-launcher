@@ -20,7 +20,7 @@ export function UpdatePlate({ instance }: { instance: Instance }) {
   if (synced) {
     const kept = synced.keptModified.length;
     return (
-      <p className="marquee-plate mb-3" role="status">
+      <p className="marquee-plate update-plate mb-3" data-lamp="ok" role="status">
         {t('update.updatedTo', { version: synced.toVersion })}
         {kept > 0 && ` · ${t('update.kept', { count: kept })}`}
       </p>
@@ -30,13 +30,13 @@ export function UpdatePlate({ instance }: { instance: Instance }) {
   if (update) {
     const counts = { added: update.added.length, updated: update.updated.length, removed: update.removed.length };
     return (
-      <div className="marquee-plate mb-3 flex flex-wrap items-center gap-x-4 gap-y-2" role="status">
+      <div className="marquee-plate update-plate mb-3" data-lamp="info" role="status">
         <span className="font-semibold">
           {update.fromVersion
             ? t('update.title', { from: update.fromVersion, to: update.toVersion })
             : t('update.titleNew', { to: update.toVersion })}
         </span>
-        <span className="tabular">{changeLine(t, counts)}</span>
+        <span className="tabular text-ink-dim">{changeLine(t, counts)}</span>
         <Button onClick={() => updateOnce((done) => void commands.packUpdate(instance.id).catch(pushError).finally(done))}>
           {t('update.update')}
         </Button>
@@ -44,7 +44,7 @@ export function UpdatePlate({ instance }: { instance: Instance }) {
     );
   }
   if (status.data?.checkError) {
-    return <p className="marquee-plate mb-3 opacity-80">{t('update.checkFailed')}</p>;
+    return <p className="marquee-plate mb-3 text-ink-dim">{t('update.checkFailed')}</p>;
   }
   return null;
 }

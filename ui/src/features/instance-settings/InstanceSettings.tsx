@@ -94,10 +94,10 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
       <section className="grid gap-4" aria-labelledby="game-heading">
         <h2 id="game-heading" className="text-lg font-bold">{t('instanceSettings.game')}</h2>
         {pack ? (
-          <>
+          <div className="grid gap-1">
             <p>{versionLine(t, instance)}</p>
             <p className="text-sm text-ink-dim">{t('instanceSettings.gameFromPack')}</p>
-          </>
+          </div>
         ) : (
           <VersionFields choice={versions} />
         )}

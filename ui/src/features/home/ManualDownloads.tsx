@@ -52,7 +52,7 @@ export function ManualDownloads({ instance, files, pollMs = 2000 }: { instance: 
           {files.map((file) => {
             const got = !remaining.some((r) => r.path === file.path);
             return (
-              <li key={file.path} className="panel flex items-center gap-4 px-4 py-3">
+              <li key={file.path} className="well flex items-center gap-4 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold text-ink">{file.name}</p>
                   <p className="selectable truncate font-mono text-sm">{file.fileName}</p>
