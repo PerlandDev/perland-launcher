@@ -11,3 +11,4 @@
 - Run the app: `pnpm install`, then `pnpm --filter ui dev:mock` (browser, mocked backend) or `pnpm tauri dev` (real app; set `PERLAND_LAUNCHER_ROOT` to a scratch folder).
 - License GPL-3.0-only. Never copy Modrinth branding or Mojang assets. Ported code keeps an attribution header and gets a `NOTICE` entry.
 - Before committing: `pnpm --filter ui build` (Tauri embeds `ui/dist`), `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `pnpm -r lint`, `pnpm -r typecheck`, `pnpm -r test`.
+- Issues by `perland-bot-eve` (label `discord`) were reported on Discord. When work touches one, keep the reporter posted through Perlita with the `reporter-updates` skill (`.claude/skills/reporter-updates/SKILL.md`; the same file is in PerlandEngine and PerlandPanel). This repository is public, so every comment here is too.
