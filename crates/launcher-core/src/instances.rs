@@ -109,6 +109,29 @@ pub enum UpdatePolicy {
     Pinned,
 }
 
+/// A server's state, as its invite view last said.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ServerStatus {
+    Online,
+    Starting,
+    Sleeping,
+    Offline,
+}
+
+impl ServerStatus {
+    /// The Engine's word; anything else (a newer Engine's state) is `None`, shown as "Unknown".
+    pub fn parse(s: &str) -> Option<ServerStatus> {
+        match s {
+            "online" => Some(ServerStatus::Online),
+            "starting" => Some(ServerStatus::Starting),
+            "sleeping" => Some(ServerStatus::Sleeping),
+            "offline" => Some(ServerStatus::Offline),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JavaSettings {
