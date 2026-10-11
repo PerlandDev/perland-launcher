@@ -1,3 +1,4 @@
+pub mod cache;
 pub mod hash;
 
 use std::{
@@ -112,11 +113,25 @@ impl Downloader {
     }
 
     pub async fn fetch(&self, req: &DownloadRequest) -> Result<()> {
+        let key = lock_key(&req.dest);
         let dest_lock = {
             let mut locks = self.locks.lock().unwrap_or_else(|e| e.into_inner());
-            locks.entry(req.dest.clone()).or_default().clone()
+            locks.entry(key.clone()).or_default().clone()
         };
-        let _guard = dest_lock.lock_owned().await;
+        let result = {
+            let _guard = dest_lock.clone().lock_owned().await;
+            self.fetch_locked(req).await
+        };
+        // Forget the lock once nobody else holds or waits for it. Clones are only handed out
+        // under the map's mutex, so the count can't change while it is checked here.
+        let mut locks = self.locks.lock().unwrap_or_else(|e| e.into_inner());
+        if Arc::strong_count(&dest_lock) == 2 {
+            locks.remove(&key);
+        }
+        result
+    }
+
+    async fn fetch_locked(&self, req: &DownloadRequest) -> Result<()> {
         if self.already_valid(req).await {
             return Ok(());
         }
@@ -193,7 +208,7 @@ impl Downloader {
                         ErrorCode::DownloadNoUrl,
                         "This file's download address isn't valid",
                     )
-                    .with_detail(e),
+                    .with_detail(e.without_url()),
                 );
             }
             Attempt::Retry(
@@ -203,7 +218,7 @@ impl Downloader {
                 )
                 .with_param("host", host_of(url))
                 .with_fix("Check your internet connection")
-                .with_detail(e),
+                .with_detail(e.without_url()),
             )
         })?;
         let status = response.status().as_u16();
@@ -231,10 +246,11 @@ impl Downloader {
                 return Err(Attempt::NextUrl(
                     LauncherError::network(
                         ErrorCode::DownloadRejected,
-                        format!("{url} answered {status}"),
+                        format!("{} refused the download ({status})", host_of(url)),
                     )
                     .with_param("host", host_of(url))
-                    .with_param("status", status),
+                    .with_param("status", status)
+                    .with_detail(redact_url(url)),
                 ))
             }
         };
@@ -254,7 +270,7 @@ impl Downloader {
                         ErrorCode::ConnectionDropped,
                         "The connection dropped during a download",
                     )
-                    .with_detail(e),
+                    .with_detail(e.without_url()),
                 )
             })?;
             file.write_all(&chunk)
@@ -324,9 +340,88 @@ fn file_name(path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
-fn host_of(url: &str) -> &str {
-    url.split("://")
-        .nth(1)
-        .and_then(|rest| rest.split('/').next())
-        .unwrap_or(url)
+/// `url` without its query, fragment and user info: fine for `detail`, never for a message.
+pub fn redact_url(url: &str) -> String {
+    match reqwest::Url::parse(url) {
+        Ok(mut u) => {
+            u.set_query(None);
+            u.set_fragment(None);
+            let _ = u.set_username("");
+            let _ = u.set_password(None);
+            u.to_string()
+        }
+        Err(_) => "(not a valid address)".to_string(),
+    }
+}
+
+/// Just the host of `url`, for player-facing messages and params.
+pub fn host_of(url: &str) -> String {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_owned))
+        .unwrap_or_else(|| "the download server".to_string())
+}
+
+/// The key a destination is locked under: absolute and, on Windows, case-folded, so two
+/// spellings of one file share one lock.
+fn lock_key(dest: &Path) -> PathBuf {
+    let abs = std::path::absolute(dest).unwrap_or_else(|_| dest.to_path_buf());
+    if cfg!(windows) {
+        PathBuf::from(abs.as_os_str().to_string_lossy().to_lowercase())
+    } else {
+        abs
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn destination_locks_are_forgotten_after_use() {
+        let dir = tempfile::tempdir().unwrap();
+        let d = Downloader::new(reqwest::Client::new());
+        for i in 0..5 {
+            let dest = dir.path().join(format!("{i}.txt"));
+            std::fs::write(&dest, "hello").unwrap();
+            // Already on disk with the right size: no network needed.
+            d.fetch(&DownloadRequest::new(
+                "http://127.0.0.1:1/x",
+                dest,
+                Hashes::default(),
+                Some(5),
+            ))
+            .await
+            .unwrap();
+        }
+        assert!(d.locks.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn lock_keys_are_absolute() {
+        assert!(lock_key(Path::new("rel/a.jar")).is_absolute());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn lock_keys_ignore_case_and_separators_on_windows() {
+        assert_eq!(
+            lock_key(Path::new("C:/Data/A.jar")),
+            lock_key(Path::new(r"c:\data\a.JAR"))
+        );
+    }
+
+    #[test]
+    fn redact_url_drops_secrets() {
+        assert_eq!(
+            redact_url("https://u:p@cdn.example.com/a/b.jar?sig=x#y"),
+            "https://cdn.example.com/a/b.jar"
+        );
+        assert_eq!(redact_url("not a url"), "(not a valid address)");
+        assert_eq!(
+            host_of("https://u:p@cdn.example.com:8443/a"),
+            "cdn.example.com"
+        );
+        assert_eq!(host_of("nonsense"), "the download server");
+    }
 }

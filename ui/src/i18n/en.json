@@ -66,7 +66,8 @@
   "progress": {
     "install_minecraft": "Installing Minecraft {{version}}",
     "download_java": "Downloading Java {{version}}",
-    "install_loader": "Setting up {{loader}} {{version}}"
+    "install_loader": "Setting up {{loader}} {{version}}",
+    "sync_pack": "Updating {{name}}"
   },
   "activity": {
     "title": "Activity",
@@ -252,7 +253,7 @@
     "no_game_arguments": { "message": "{{version}} doesn't say how to start the game.", "fix": "Pick a different version." },
     "game_files_missing": { "message": "{{count}} game files are missing.", "fix": "Press Play again to repair the instance." },
     "version_invalid": { "message": "“{{value}}” isn't a valid version.", "fix": "Pick a version from the list." },
-    "loader_unsupported": { "message": "{{loader}} isn't supported yet.", "fix": "Pick another loader." },
+    "loader_unsupported": { "message": "{{loader}} isn't supported.", "fix": "Pick another loader." },
     "loader_version_not_found": { "message": "{{loader}} {{loader_version}} isn't available for Minecraft {{version}}.", "fix": "Pick a loader version from the list." },
     "loader_installer_invalid": { "message": "The mod loader's installer couldn't be read.", "fix": "Try again. If it keeps happening, pick another loader version." },
     "loader_too_old": { "message": "This loader version is too old for the launcher.", "fix": "Pick a newer Minecraft version, or another loader." },
@@ -268,6 +269,17 @@
     "mod_exists": { "message": "{{file}} is already in this instance." },
     "mod_not_found": { "message": "{{file}} isn't in this instance anymore." },
     "mod_name_invalid": { "message": "That isn't a mod file name." },
+    "pack_invalid": { "message": "The pack file {{file}} is damaged or isn't a pack.", "fix": "Check the link, or ask the pack's author." },
+    "pack_unsupported": { "message": "This pack uses something the launcher can't handle yet: {{what}}.", "fix": "Ask the pack's author, or try another pack." },
+    "pack_unsafe_path": { "message": "The pack tried to write outside its folder ({{path}}).", "fix": "Don't use this pack, and let its author know." },
+    "pack_not_found": { "message": "That pack wasn't found.", "fix": "Check the link and try again." },
+    "pack_link_invalid": { "message": "That doesn't look like a pack link.", "fix": "Pack links start with https:// and usually end in pack.toml." },
+    "no_pack": { "message": "This instance doesn't come from a pack." },
+    "not_enough_space": { "message": "Not enough free space: {{needed_mb}} MB needed, {{free_mb}} MB free.", "fix": "Free up some space and try again." },
+    "instance_locked": { "message": "Another Perland Launcher window is using this instance.", "fix": "Close the other window, or wait for it to finish." },
+    "manual_downloads_needed": { "message": "{{count}} files have to be downloaded by hand.", "fix": "Download them from CurseForge, then try again." },
+    "update_check_failed": { "message": "Couldn't check for updates.", "fix": "You can still play the version you have." },
+    "pack_path_is_folder": { "message": "The pack wants to put a file where you have a folder ({{path}}).", "fix": "Move or rename that folder, then try again." },
     "internal": { "message": "Something unexpected went wrong.", "fix": "Restart the launcher. If it keeps happening, copy the details for support." }
   }
 }

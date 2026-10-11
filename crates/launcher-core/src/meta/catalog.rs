@@ -191,8 +191,9 @@ pub async fn forge_versions_at(
         } else {
             Err(LauncherError::loader(
                 ErrorCode::MetaUnexpected,
-                format!("Unexpected data from {url}"),
-            ))
+                format!("Unexpected data from {}", crate::download::host_of(&url)),
+            )
+            .with_detail(crate::download::redact_url(&url)))
         }
     };
     let bytes = meta.get_bytes_validated(&url, is_metadata).await?;

@@ -128,6 +128,7 @@ pub fn library_artifact(lib: &Library, dirs: &LauncherDirs) -> Result<Option<Dow
         sha1: lib.sha1.clone(),
         sha256: lib.sha256.clone(),
         sha512: lib.sha512.clone(),
+        md5: None,
         murmur2: None,
     };
     Ok(Some(DownloadRequest::new(
@@ -411,6 +412,8 @@ impl Installer {
 
     /// Download everything the version needs, extract natives, and save the merged JSON for offline launches.
     pub async fn install(&self, resolved: &ResolvedVersion, sink: &EventSink) -> Result<()> {
+        // The app serializes its own installs; this also keeps a CLI run out of the way.
+        let _install_lock = crate::locks::InstallLock::acquire(&self.dirs.install_lock()).await?;
         let ctx = RuleContext::new(self.platform);
         let json = &resolved.json;
         check_version_id(&resolved.vanilla_id)?;

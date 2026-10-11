@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["crates/launcher-core", "crates/launcher-app", "crates/perland-cli", "src-tauri"]
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"
@@ -23,3 +24,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 clap = { version = "4", features = ["derive"] }
 tempfile = "3"
 wiremock = "0.6"
+toml = "1"
+percent-encoding = "2"
+fs4 = "1.1"
+dirs = "7"

@@ -9,12 +9,15 @@ pub mod install;
 pub mod instances;
 pub mod java;
 pub mod launch;
+pub mod locks;
 pub mod meta;
 pub mod mods;
 pub mod paths;
 pub mod platform;
 pub mod play;
 pub mod settings;
+pub mod sources;
+pub mod sync;
 #[cfg(test)]
 pub(crate) mod test_support;
 

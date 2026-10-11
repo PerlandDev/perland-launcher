@@ -66,7 +66,8 @@
   "progress": {
     "install_minecraft": "Instalando Minecraft {{version}}",
     "download_java": "Descargando Java {{version}}",
-    "install_loader": "Preparando {{loader}} {{version}}"
+    "install_loader": "Preparando {{loader}} {{version}}",
+    "sync_pack": "Actualizando {{name}}"
   },
   "activity": {
     "title": "Actividad",
@@ -252,7 +253,7 @@
     "no_game_arguments": { "message": "{{version}} no indica cómo iniciar el juego.", "fix": "Elige otra versión." },
     "game_files_missing": { "message": "Faltan {{count}} archivos del juego.", "fix": "Presiona Jugar otra vez para reparar la instancia." },
     "version_invalid": { "message": "“{{value}}” no es una versión válida.", "fix": "Elige una versión de la lista." },
-    "loader_unsupported": { "message": "{{loader}} todavía no es compatible.", "fix": "Elige otro loader." },
+    "loader_unsupported": { "message": "{{loader}} no es compatible.", "fix": "Elige otro loader." },
     "loader_version_not_found": { "message": "{{loader}} {{loader_version}} no está disponible para Minecraft {{version}}.", "fix": "Elige una versión del loader de la lista." },
     "loader_installer_invalid": { "message": "No se pudo leer el instalador del loader.", "fix": "Inténtalo de nuevo. Si sigue pasando, elige otra versión del loader." },
     "loader_too_old": { "message": "Esta versión del loader es demasiado antigua para el launcher.", "fix": "Elige una versión más nueva de Minecraft u otro loader." },
@@ -268,6 +269,17 @@
     "mod_exists": { "message": "{{file}} ya está en esta instancia." },
     "mod_not_found": { "message": "{{file}} ya no está en esta instancia." },
     "mod_name_invalid": { "message": "Ese no es un nombre de archivo de mod." },
+    "pack_invalid": { "message": "El archivo {{file}} del pack está dañado o no es un pack.", "fix": "Revisa el enlace o pregúntale al autor del pack." },
+    "pack_unsupported": { "message": "Este pack usa algo que el launcher todavía no puede manejar: {{what}}.", "fix": "Pregúntale al autor del pack o prueba otro pack." },
+    "pack_unsafe_path": { "message": "El pack intentó escribir fuera de su carpeta ({{path}}).", "fix": "No uses este pack y avísale a su autor." },
+    "pack_not_found": { "message": "No se encontró ese pack.", "fix": "Revisa el enlace e inténtalo de nuevo." },
+    "pack_link_invalid": { "message": "Eso no parece un enlace de pack.", "fix": "Los enlaces de pack empiezan con https:// y suelen terminar en pack.toml." },
+    "no_pack": { "message": "Esta instancia no viene de un pack." },
+    "not_enough_space": { "message": "No hay suficiente espacio libre: se necesitan {{needed_mb}} MB y hay {{free_mb}} MB.", "fix": "Libera espacio e inténtalo de nuevo." },
+    "instance_locked": { "message": "Otra ventana de Perland Launcher está usando esta instancia.", "fix": "Cierra la otra ventana o espera a que termine." },
+    "manual_downloads_needed": { "message": "Hay {{count}} archivos que tienes que descargar a mano.", "fix": "Descárgalos de CurseForge e inténtalo de nuevo." },
+    "update_check_failed": { "message": "No se pudieron buscar actualizaciones.", "fix": "Igual puedes jugar la versión que tienes." },
+    "pack_path_is_folder": { "message": "El pack quiere poner un archivo donde tienes una carpeta ({{path}}).", "fix": "Mueve esa carpeta o cámbiale el nombre, y vuelve a intentarlo." },
     "internal": { "message": "Ocurrió algo inesperado.", "fix": "Reinicia el launcher. Si sigue pasando, copia los detalles para soporte." }
   }
 }

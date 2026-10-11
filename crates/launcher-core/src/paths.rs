@@ -51,6 +51,14 @@ impl LauncherDirs {
     pub fn logs(&self) -> PathBuf {
         self.root.join("logs")
     }
+    /// Content-addressed pack files (see `download::cache`).
+    pub fn objects(&self) -> PathBuf {
+        self.root.join("cache").join("objects")
+    }
+    /// Locked while shared game files are installed, across every launcher process.
+    pub fn install_lock(&self) -> PathBuf {
+        self.root.join(".install.lock")
+    }
     pub fn version_dir(&self, id: &str) -> PathBuf {
         self.versions().join(id)
     }
@@ -92,6 +100,8 @@ mod tests {
             d.log_config("client-1.12.xml"),
             root.join("assets/log_configs/client-1.12.xml")
         );
+        assert_eq!(d.objects(), root.join("cache/objects"));
+        assert_eq!(d.install_lock(), root.join(".install.lock"));
         assert!(d.instances().starts_with(d.root()));
     }
 

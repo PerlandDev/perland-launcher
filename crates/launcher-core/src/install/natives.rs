@@ -33,9 +33,17 @@ pub fn extract_all(jars: &[NativeJar], dest: &Path) -> Result<()> {
         let _ = fs::remove_dir_all(&tmp);
         return Err(e);
     }
+    swap_in(&tmp, dest, |d| fs::remove_dir_all(d))
+}
+
+/// Replace `dest` with the freshly built `tmp`. The old marker is deleted first: if removing the
+/// old folder then fails halfway (a running game holds a DLL), what's left can never pass for a
+/// complete build of any set of jars.
+fn swap_in(tmp: &Path, dest: &Path, remove_dir: impl Fn(&Path) -> io::Result<()>) -> Result<()> {
     if dest.exists() {
-        if let Err(e) = fs::remove_dir_all(dest) {
-            let _ = fs::remove_dir_all(&tmp);
+        let _ = fs::remove_file(dest.join(MARKER));
+        if let Err(e) = remove_dir(dest) {
+            let _ = fs::remove_dir_all(tmp);
             return Err(LauncherError::game(
                 ErrorCode::VersionInUse,
                 "Another copy of this Minecraft version is running",
@@ -44,7 +52,7 @@ pub fn extract_all(jars: &[NativeJar], dest: &Path) -> Result<()> {
             .with_detail(e));
         }
     }
-    fs::rename(&tmp, dest)?;
+    fs::rename(tmp, dest)?;
     Ok(())
 }
 
@@ -195,6 +203,24 @@ mod tests {
         assert!(dest.join("sub/libx.so").exists());
         assert!(!dest.join("META-INF").exists());
         assert!(!dest.join("stale.dll").exists());
+    }
+
+    #[test]
+    fn a_failed_swap_leaves_no_marker_behind() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("natives");
+        let tmp = dir.path().join("natives.tmp");
+        fs::create_dir_all(&dest).unwrap();
+        fs::write(dest.join(MARKER), "old").unwrap();
+        fs::write(dest.join("lwjgl.dll"), "x").unwrap();
+        fs::create_dir_all(&tmp).unwrap();
+        let err = swap_in(&tmp, &dest, |_| Err(io::Error::other("in use"))).unwrap_err();
+        assert_eq!(err.code, ErrorCode::VersionInUse);
+        assert!(
+            !dest.join(MARKER).exists(),
+            "the old marker must be gone before the folder is removed"
+        );
+        assert!(!tmp.exists());
     }
 
     #[test]

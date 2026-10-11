@@ -59,6 +59,9 @@ error_codes! {
     SettingsDamaged, LogWriteStopped,
     // mods
     ModNotJar, ModExists, ModNotFound, ModNameInvalid,
+    // packs and sync
+    PackInvalid, PackUnsupported, PackUnsafePath, PackNotFound, PackLinkInvalid, NoPack,
+    NotEnoughSpace, InstanceLocked, ManualDownloadsNeeded, UpdateCheckFailed, PackPathIsFolder,
     // anything unexpected
     Internal,
 }
@@ -139,6 +142,26 @@ impl From<std::io::Error> for LauncherError {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+
+    #[test]
+    fn pack_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::PackInvalid, "pack_invalid"),
+            (ErrorCode::PackUnsupported, "pack_unsupported"),
+            (ErrorCode::PackUnsafePath, "pack_unsafe_path"),
+            (ErrorCode::PackNotFound, "pack_not_found"),
+            (ErrorCode::PackLinkInvalid, "pack_link_invalid"),
+            (ErrorCode::NoPack, "no_pack"),
+            (ErrorCode::NotEnoughSpace, "not_enough_space"),
+            (ErrorCode::InstanceLocked, "instance_locked"),
+            (ErrorCode::ManualDownloadsNeeded, "manual_downloads_needed"),
+            (ErrorCode::UpdateCheckFailed, "update_check_failed"),
+            (ErrorCode::PackPathIsFolder, "pack_path_is_folder"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
 
     #[test]
     fn builders_fill_fix_detail_and_params() {

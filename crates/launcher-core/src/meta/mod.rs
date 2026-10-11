@@ -12,7 +12,7 @@ use reqwest::header::{ETAG, IF_NONE_MATCH};
 use serde::de::DeserializeOwned;
 
 use crate::{
-    download::hash::sha1_hex,
+    download::{hash::sha1_hex, host_of, redact_url, Hashes},
     error::{ErrorCode, LauncherError, Result},
     fsutil::write_atomic,
 };
@@ -75,7 +75,10 @@ impl MetaClient {
                 cached.ok_or_else(|| {
                     LauncherError::network(
                         ErrorCode::MetaCacheMissing,
-                        format!("{url} said nothing changed, but there's no saved copy"),
+                        format!(
+                            "{} said nothing changed, but there's no saved copy",
+                            host_of(url)
+                        ),
                     )
                 })
             }
@@ -88,9 +91,10 @@ impl MetaClient {
                 let bytes = resp.bytes().await.map_err(|e| {
                     LauncherError::network(
                         ErrorCode::ConnectionDropped,
-                        format!("Downloading {url} was interrupted"),
+                        format!("Downloading from {} was interrupted", host_of(url)),
                     )
-                    .with_detail(e)
+                    .with_param("host", host_of(url))
+                    .with_detail(e.without_url())
                 })?;
                 if let Err(invalid) = validate(&bytes) {
                     return match cached {
@@ -115,15 +119,17 @@ impl MetaClient {
                 Some(c) => Ok(c),
                 None => {
                     let status = resp.status();
-                    let message = format!("{url} answered {status}");
+                    let message = format!("{} answered {status}", host_of(url));
                     Err(if status.is_client_error() {
                         LauncherError::loader(ErrorCode::MetaNotFound, message)
                             .with_param("status", status.as_u16())
+                            .with_detail(redact_url(url))
                             .with_fix("Check that this version exists")
                     } else {
                         LauncherError::network(ErrorCode::HostTrouble, message)
                             .with_param("host", host_of(url))
                             .with_param("status", status.as_u16())
+                            .with_detail(redact_url(url))
                             .with_fix("Try again in a few minutes")
                     })
                 }
@@ -135,7 +141,7 @@ impl MetaClient {
                     "You seem to be offline, and this hasn't been downloaded before",
                 )
                 .with_fix("Connect to the internet and try again")
-                .with_detail(e)),
+                .with_detail(e.without_url())),
             },
         }
     }
@@ -149,26 +155,34 @@ impl MetaClient {
 
     /// For content-addressed URLs (Mojang packages): a cached copy with the right sha1 is used without any network access.
     pub async fn get_verified_json<T: DeserializeOwned>(&self, url: &str, sha1: &str) -> Result<T> {
+        let bytes = self.get_verified_bytes(url, &Hashes::sha1(sha1)).await?;
+        parse_json(url, &bytes)
+    }
+
+    /// Bytes that must match `hashes` (never empty): a matching cached copy is used without any
+    /// network access; otherwise the URL is fetched and only matching bytes are cached or returned.
+    pub(crate) async fn get_verified_bytes(&self, url: &str, hashes: &Hashes) -> Result<Vec<u8>> {
         if let Ok(cached) = tokio::fs::read(self.body_path(url)).await {
-            if sha1_hex(&cached).eq_ignore_ascii_case(sha1) {
-                return parse_json(url, &cached);
+            if hashes.verify(&cached) {
+                return Ok(cached);
             }
         }
         let verify = |b: &[u8]| {
-            if sha1_hex(b).eq_ignore_ascii_case(sha1) {
+            if hashes.verify(b) {
                 Ok(())
             } else {
                 Err(LauncherError::integrity(
                     ErrorCode::MetaChecksum,
-                    format!("Data from {url} didn't match its checksum"),
+                    format!("Data from {} didn't match its checksum", host_of(url)),
                 )
+                .with_detail(redact_url(url))
                 .with_fix("Try again in a minute"))
             }
         };
         let bytes = self.fetch(url, verify).await?;
-        // A cached fallback (offline / server error) bypasses fetch's validation of fresh bodies.
+        // A cached fallback (offline or server error) bypasses fetch's validation of fresh bodies.
         verify(&bytes)?;
-        parse_json(url, &bytes)
+        Ok(bytes)
     }
 }
 
@@ -176,15 +190,8 @@ pub fn parse_json<T: DeserializeOwned>(url: &str, bytes: &[u8]) -> Result<T> {
     serde_json::from_slice(bytes).map_err(|e| {
         LauncherError::loader(
             ErrorCode::MetaUnexpected,
-            format!("Unexpected data from {url}"),
+            format!("Unexpected data from {}", host_of(url)),
         )
         .with_detail(e)
     })
-}
-
-fn host_of(url: &str) -> &str {
-    url.split("://")
-        .nth(1)
-        .and_then(|rest| rest.split('/').next())
-        .unwrap_or(url)
 }
