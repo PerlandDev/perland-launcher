@@ -4,7 +4,7 @@ export type Route =
   | { name: 'home'; id: string | null }
   | { name: 'mods'; id: string }
   | { name: 'instanceSettings'; id: string }
-  | { name: 'newInstance' }
+  | { name: 'newInstance'; link?: string }
   | { name: 'accounts' }
   | { name: 'settings' };
 

@@ -13,6 +13,7 @@ import { Settings } from './features/settings/Settings';
 import { TitleBar } from './features/titlebar/TitleBar';
 import { applyLanguage } from './i18n';
 import { useActivity } from './state/activity';
+import { takeDeepLink } from './state/deepLink';
 import { useSettings } from './state/queries';
 import { useRoute, type Route } from './state/route';
 import { Button } from './ui/Button';
@@ -29,7 +30,7 @@ function Screen({ route }: { route: Route }) {
     case 'instanceSettings':
       return <InstanceSettings id={route.id} />;
     case 'newInstance':
-      return <NewInstance />;
+      return <NewInstance key={route.link ?? 'new'} link={route.link} />;
     case 'accounts':
       return <Accounts />;
     case 'settings':
@@ -40,6 +41,8 @@ function Screen({ route }: { route: Route }) {
 function Shell() {
   const route = useRoute();
   const activity = useActivity();
+  // Once the shell exists (after first run), pick up a link that started the app.
+  useEffect(() => void takeDeepLink(), []);
   return (
     <div className="grid h-full grid-rows-[2.25rem_1fr]">
       <TitleBar />

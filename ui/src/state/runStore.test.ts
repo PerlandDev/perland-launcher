@@ -80,4 +80,26 @@ describe('runStore', () => {
     store.hydrate([{ instance: 'pack', state: 'running', update: null }], {});
     expect(store.run('pack').state).toBe('running');
   });
+
+  it('keeps the offer only while asking and starts a fresh run from checking', () => {
+    const store = createRunStore();
+    const offer = {
+      fromVersion: '1.0.3', toVersion: '1.0.4', added: ['JEI'], updated: [], removed: [], kept: [],
+    };
+    store.apply({ type: 'log', instance: 'pack', lines: ['old'] });
+    store.apply({ type: 'run_state', instance: 'pack', state: 'checking', exit: null, update: null });
+    expect(store.log('pack')).toEqual([]);
+    store.apply({ type: 'run_state', instance: 'pack', state: 'asking', exit: null, update: offer });
+    expect(store.run('pack').update).toEqual(offer);
+    store.apply({ type: 'run_state', instance: 'pack', state: 'queued', exit: null, update: null });
+    expect(store.run('pack').update).toBeNull();
+    store.apply({ type: 'run_state', instance: 'pack', state: 'syncing', exit: null, update: null });
+    store.apply(progress(1));
+    expect(store.run('pack').progress?.done).toBe(1);
+    store.apply({ type: 'run_state', instance: 'pack', state: 'preparing', exit: null, update: null });
+    expect(store.run('pack').progress).toBeNull();
+    expect(store.log('pack')).toEqual([]); // still the same run
+    store.hydrate([{ instance: 'other', state: 'asking', update: offer }], {});
+    expect(store.run('other').update).toEqual(offer);
+  });
 });

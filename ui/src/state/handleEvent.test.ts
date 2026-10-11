@@ -1,8 +1,11 @@
 import { renderHook } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { mockIPC } from '@tauri-apps/api/mocks';
+import { expect, it, vi } from 'vitest';
 import { exitOf } from '../ipc/mock';
 import { resetActivity, useActivity } from './activity';
 import { handleEvent } from './handleEvent';
+import { qk, queryClient } from './queries';
+import { routeSnapshot } from './route';
 import { runStore } from './runStore';
 import { clearToasts, toastsSnapshot } from './toasts';
 
@@ -52,4 +55,37 @@ it('opens the drawer when a game fails to start', () => {
   });
   const { result } = renderHook(() => useActivity());
   expect(result.current).toEqual({ open: true, focus: 'pack' });
+});
+
+it('an ended run refreshes the instance and its pack queries', () => {
+  const spy = vi.spyOn(queryClient, 'invalidateQueries');
+  handleEvent({ type: 'run_state', instance: 'sky', state: 'idle', exit: exitOf({ code: 0 }), update: null });
+  const keys = spy.mock.calls.map(([filters]) => filters?.queryKey);
+  expect(keys).toContainEqual(qk.instances);
+  expect(keys).toContainEqual(qk.packStatus('sky'));
+  expect(keys).toContainEqual(qk.packContents('sky'));
+  expect(keys).toContainEqual(qk.packArt('sky'));
+  spy.mockRestore();
+});
+
+it('leaves the drawer closed when files need a manual download', () => {
+  resetActivity();
+  const error = { category: 'pack', code: 'manual_downloads_needed', message: 'x', fix: null, detail: null, params: { count: '1' } } as const;
+  const manual = [{ path: 'mods/a.jar', name: 'A', fileName: 'a.jar', pageUrl: 'https://www.curseforge.com/projects/1',
+    hashes: { sha1: 'a', sha256: null, sha512: null, md5: null, murmur2: null } }];
+  handleEvent({ type: 'run_state', instance: 'sky', state: 'idle', exit: exitOf({ error, manual }), update: null });
+  const { result } = renderHook(() => useActivity());
+  expect(result.current.open).toBe(false);
+});
+
+it('opens New instance with a deep link once setup is done', async () => {
+  mockIPC((cmd) => (cmd === 'deep_link_take' ? 'https://x.example/pack.toml' : null));
+  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: false });
+  handleEvent({ type: 'deep_link' });
+  await new Promise((r) => setTimeout(r, 10));
+  expect(routeSnapshot()).toEqual({ name: 'home', id: null }); // first run: the link waits
+  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true });
+  handleEvent({ type: 'deep_link' });
+  await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'newInstance', link: 'https://x.example/pack.toml' }));
+  queryClient.clear();
 });

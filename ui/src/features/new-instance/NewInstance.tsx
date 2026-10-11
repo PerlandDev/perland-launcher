@@ -11,7 +11,9 @@ import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useVersionChoice } from './useVersionChoice';
 import { VersionFields } from './VersionFields';
 
-export function NewInstance() {
+// `link` is used from Task 17; until then it is accepted and ignored.
+export function NewInstance({ link }: { link?: string }) {
+  void link;
   const { t } = useTranslation();
   const choice = useVersionChoice();
   const [name, setName] = useState('');

@@ -18,3 +18,7 @@ it('suggests 2 GB more memory, within what the computer can spare', () => {
   expect(suggestMemory(12288, 16384)).toBeNull(); // already at 75 %
   expect(suggestMemory(2048, 4096)).toBe(3072);
 });
+
+it('never calls an update-only run a crash', () => {
+  expect(isCrash(exitOf({ updateOnly: true }))).toBe(false);
+});
