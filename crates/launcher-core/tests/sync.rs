@@ -19,7 +19,7 @@ use launcher_core::{
     sources::{DesiredState, PackInput, UpdateCheck},
     sync::{
         lockfile::{additions, Managed},
-        BoxFuture, GameInstall, SyncOutcome, SyncReport, Syncer,
+        BoxFuture, Cancel, GameInstall, PendingUpdate, SyncOutcome, SyncReport, Syncer,
     },
     ErrorCode,
 };
@@ -196,7 +196,7 @@ async fn fresh_sync_installs_client_files_and_writes_the_lockfile_last() {
         .iter()
         .filter(|e| {
             matches!(e,
-                Event::Progress { task, .. } if task.key == "sync_pack" && task.params["name"] == "Tiny")
+                Event::Progress { task, .. } if task.key == "install_pack" && task.params["name"] == "Tiny")
         })
         .count();
     assert!(progress >= 2, "{progress}");
@@ -765,12 +765,17 @@ async fn interrupted_sync_keeps_the_old_state_and_resumes_from_the_cache() {
         .up_to_n_times(4)
         .mount(&env.server)
         .await;
-    let err = env
+    // The failed download is a network failure before anything moves: the installed version
+    // plays, with a warning.
+    let ensured = env
         .syncer
         .ensure(&env.store, &instance.id, &env.sink())
         .await
-        .unwrap_err();
-    assert_eq!(err.code, ErrorCode::HostTrouble);
+        .unwrap();
+    let warning = ensured.warning.unwrap();
+    assert_eq!(warning.code, ErrorCode::UpdateDownloadFailed);
+    assert!(warning.detail.is_some());
+    assert!(done(ensured.outcome).up_to_date);
     let managed = Managed::load(&env.store.perland_dir(&instance.id))
         .await
         .unwrap();
@@ -1056,4 +1061,204 @@ async fn an_update_that_fails_to_resolve_plays_the_installed_version() {
     assert!(warning.detail.is_some());
     assert!(done(ensured.outcome).up_to_date);
     assert!(!env.game_file(&instance.id, "mods/jei.jar").exists());
+}
+
+/// v1 plus "jei", minus "zoom", published as 1.1.0.
+async fn publish_v1_1(env: &Env) {
+    env.server.reset().await;
+    PackBuilder::new(&env.server, "Tiny", "1.1.0")
+        .url_mod("appleskin", "appleskin.jar", b"apple v1", "both", None)
+        .url_mod("jei", "jei.jar", b"jei", "both", None)
+        .file("config/a.toml", b"a = 1", true)
+        .mount(&env.server)
+        .await;
+}
+
+async fn update_for(env: &Env, instance: &Instance) -> PendingUpdate {
+    let fresh = env.store.load(&instance.id).await.unwrap();
+    env.syncer
+        .find_update(&env.store, &fresh)
+        .await
+        .unwrap()
+        .expect("an update")
+}
+
+#[tokio::test]
+async fn find_update_previews_without_downloading() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1(&env.server)).await;
+    assert_eq!(
+        env.syncer.find_update(&env.store, &instance).await.unwrap(),
+        None,
+        "up to date"
+    );
+    publish_v1_1(&env).await;
+    let update = update_for(&env, &instance).await;
+    assert_eq!(update.changes.from_version.as_deref(), Some("1.0.0"));
+    assert_eq!(update.changes.to_version, "1.1.0");
+    assert_eq!(update.changes.added, vec!["jei".to_string()]);
+    assert_eq!(update.changes.removed, vec!["zoom".to_string()]);
+    assert!(update.kept.is_empty());
+    assert_eq!(update.desired.pack_version, "1.1.0");
+    assert_eq!(
+        hits(&env.server, "/files/jei.jar").await,
+        0,
+        "a preview downloads nothing"
+    );
+
+    let mut pinned = env.store.load(&instance.id).await.unwrap();
+    pinned.update_policy = UpdatePolicy::Pinned;
+    assert_eq!(
+        env.syncer.find_update(&env.store, &pinned).await.unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn ensure_locked_installs_an_accepted_update_and_names_it_in_the_source() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1(&env.server)).await;
+    publish_v1_1(&env).await;
+    let update = update_for(&env, &instance).await;
+    let lock = InstanceLock::try_acquire(&env.store.perland_dir(&instance.id)).unwrap();
+    let ensured = env
+        .syncer
+        .ensure_locked(
+            &lock,
+            &env.store,
+            &instance.id,
+            Some(update),
+            &env.sink(),
+            &Cancel::default(),
+        )
+        .await
+        .unwrap();
+    assert!(ensured.warning.is_none());
+    assert_eq!(done(ensured.outcome).changes.to_version, "1.1.0");
+    assert!(env.game_file(&instance.id, "mods/jei.jar").exists());
+    assert_eq!(
+        env.syncer
+            .installed(&env.store, &instance.id)
+            .await
+            .unwrap()
+            .pack_version,
+        "1.1.0"
+    );
+    // Without an accepted update, the installed version is kept (fast path).
+    let again = env
+        .syncer
+        .ensure_locked(
+            &lock,
+            &env.store,
+            &instance.id,
+            None,
+            &env.sink(),
+            &Cancel::default(),
+        )
+        .await
+        .unwrap();
+    assert!(done(again.outcome).up_to_date);
+}
+
+#[tokio::test]
+async fn a_failed_update_download_plays_the_installed_version() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1(&env.server)).await;
+    publish_v1_1(&env).await;
+    // The new mod's host refuses it: a network failure while staging, before anything moves.
+    Mock::given(method("GET"))
+        .and(path("/files/jei.jar"))
+        .respond_with(ResponseTemplate::new(404))
+        .with_priority(1)
+        .mount(&env.server)
+        .await;
+    let update = update_for(&env, &instance).await;
+    let lock = InstanceLock::try_acquire(&env.store.perland_dir(&instance.id)).unwrap();
+    let ensured = env
+        .syncer
+        .ensure_locked(
+            &lock,
+            &env.store,
+            &instance.id,
+            Some(update),
+            &env.sink(),
+            &Cancel::default(),
+        )
+        .await
+        .unwrap();
+    let warning = ensured.warning.unwrap();
+    assert_eq!(warning.code, ErrorCode::UpdateDownloadFailed);
+    assert_eq!(warning.params["version"], "1.0.0");
+    assert!(done(ensured.outcome).up_to_date);
+    assert!(!env.game_file(&instance.id, "mods/jei.jar").exists());
+    assert!(env.game_file(&instance.id, "mods/zoom.jar").exists());
+    assert_eq!(
+        env.syncer
+            .installed(&env.store, &instance.id)
+            .await
+            .unwrap()
+            .pack_version,
+        "1.0.0"
+    );
+    assert_eq!(
+        env.store.load(&instance.id).await.unwrap().source,
+        instance.source
+    );
+}
+
+#[tokio::test]
+async fn a_cancelled_sync_stops_before_touching_the_game_folder() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1(&env.server)).await;
+    publish_v1_1(&env).await;
+    let update = update_for(&env, &instance).await;
+    let lock = InstanceLock::try_acquire(&env.store.perland_dir(&instance.id)).unwrap();
+    let cancel = Cancel::default();
+    cancel.cancel();
+    let err = env
+        .syncer
+        .ensure_locked(
+            &lock,
+            &env.store,
+            &instance.id,
+            Some(update),
+            &env.sink(),
+            &cancel,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::SyncCancelled);
+    assert!(env.game_file(&instance.id, "mods/zoom.jar").exists());
+    assert!(!env.game_file(&instance.id, "mods/jei.jar").exists());
+    assert_eq!(
+        env.syncer
+            .installed(&env.store, &instance.id)
+            .await
+            .unwrap()
+            .pack_version,
+        "1.0.0"
+    );
+}
+
+#[tokio::test]
+async fn the_first_sync_says_installing_and_later_ones_say_updating() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1(&env.server)).await;
+    let keys = |env: &Env| -> Vec<String> {
+        env.events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e {
+                Event::Progress { task, .. } => Some(task.key.clone()),
+                _ => None,
+            })
+            .collect()
+    };
+    assert!(keys(&env).iter().all(|k| k == "install_pack"));
+    env.events.lock().unwrap().clear();
+    publish_v1_1(&env).await;
+    ensure(&env, &instance.id).await.unwrap();
+    assert!(!keys(&env).is_empty());
+    assert!(keys(&env).iter().all(|k| k == "sync_pack"));
 }

@@ -22,15 +22,15 @@ use serde::Serialize;
 
 use crate::{
     download::{cache::ObjectCache, hash::sha1_file, Hashes},
-    error::{ErrorCode, LauncherError, Result},
+    error::{ErrorCategory, ErrorCode, LauncherError, Result},
     events::{Event, EventSink, TaskId},
     fsutil::path_key,
     install::Installer,
     instances::{GameSpec, Instance, InstanceStore, SourceRef, UpdatePolicy},
     locks::InstanceLock,
     sources::{
-        art, mrpack, no_pack, DesiredState, FileSource, PackFile, PackInput, SourceConfig, Sources,
-        UpdateCheck,
+        art, mrpack, no_pack, DesiredState, FileMode, FileSource, PackFile, PackInput,
+        SourceConfig, Sources, UpdateCheck,
     },
 };
 use lockfile::{load_pack, save_pack, Managed, ManagedFile};
@@ -127,6 +127,65 @@ fn update_check_failed(e: LauncherError) -> LauncherError {
     LauncherError::network(ErrorCode::UpdateCheckFailed, "Couldn't check for updates")
         .with_fix("You can still play the version you have")
         .with_detail(e.message)
+}
+
+/// Stops a sync before its next file and before the swap. Once the swap starts the sync
+/// finishes, so a cancel never leaves an instance half-updated.
+#[derive(Debug, Clone, Default)]
+pub struct Cancel(Arc<AtomicBool>);
+
+impl Cancel {
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+fn cancelled() -> LauncherError {
+    LauncherError::pack(ErrorCode::SyncCancelled, "The update was cancelled")
+}
+
+/// Downloading the update failed before anything moved: the installed version plays instead.
+fn update_download_failed(installed: &str, e: LauncherError) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::UpdateDownloadFailed,
+        format!("Couldn't download the update, so you're playing {installed}"),
+    )
+    .with_param("version", installed)
+    .with_fix("Try updating again later")
+    .with_detail(e.message)
+}
+
+/// An update the player can take: where it comes from, the pack it is, and what it changes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PendingUpdate {
+    /// What the instance's source becomes once the update is installed.
+    pub source: SourceRef,
+    pub desired: DesiredState,
+    /// What the update adds, updates and removes; edits the player keeps are not "updated".
+    pub changes: Changes,
+    /// Override files the player edited that the update keeps as they are.
+    pub kept: Vec<String>,
+}
+
+/// Override files the player edited that a sync to `wanted` would keep. Only
+/// `ReplaceUnlessModified` files are hashed, never the mods, so a preview stays quick.
+async fn kept_edits(
+    game_dir: &Path,
+    wanted: &[&PackFile],
+    managed: Option<&Managed>,
+) -> Vec<String> {
+    let overrides: Vec<&PackFile> = wanted
+        .iter()
+        .copied()
+        .filter(|f| f.mode == FileMode::ReplaceUnlessModified)
+        .collect();
+    match apply::survey(game_dir, &overrides, None).await {
+        Ok(disk) => plan::plan(&overrides, managed, &disk).kept_modified,
+        Err(_) => Vec::new(),
+    }
 }
 
 fn join_error(e: tokio::task::JoinError) -> LauncherError {
@@ -236,9 +295,45 @@ impl Syncer {
         plan::changes(&wanted, managed.as_ref(), &desired.pack_version)
     }
 
+    /// The update the player could take now, with what it would change, or `None` (pinned,
+    /// never synced, up to date). `Err` is the failed check: a warning, after which the
+    /// installed version plays.
+    pub async fn find_update(
+        &self,
+        store: &InstanceStore,
+        instance: &Instance,
+    ) -> Result<Option<PendingUpdate>> {
+        if instance.update_policy == UpdatePolicy::Pinned {
+            return Ok(None);
+        }
+        let Some(installed) = self.installed(store, &instance.id).await else {
+            return Ok(None);
+        };
+        let source = match self.sources.check(&instance.source, &installed).await {
+            UpdateCheck::UpToDate => return Ok(None),
+            UpdateCheck::Unavailable(e) => return Err(e),
+            UpdateCheck::Available { source, .. } => source,
+        };
+        let desired = self
+            .sources
+            .resolve(&source)
+            .await
+            .map_err(update_check_failed)?;
+        let managed = Managed::load(&store.perland_dir(&instance.id)).await;
+        let wanted = plan::wanted(&desired, &instance.optional_choices);
+        let kept = kept_edits(&store.game_dir(&instance.id), &wanted, managed.as_ref()).await;
+        let changes = plan::changes_except(&wanted, managed.as_ref(), &desired.pack_version, &kept);
+        Ok(Some(PendingUpdate {
+            source,
+            desired,
+            changes,
+            kept,
+        }))
+    }
+
     /// Bring a pack instance up to date before playing, following its update policy (core spec
     /// §3.1). Pinned stays on the installed version. Auto and ask take updates (the app asks
-    /// first, with `check` and `preview`). A failed check plays what's installed, with a warning.
+    /// first, with `find_update`). A failed check plays what's installed, with a warning.
     pub async fn ensure(
         &self,
         store: &InstanceStore,
@@ -251,51 +346,107 @@ impl Syncer {
         if instance.source == SourceRef::None {
             return Err(no_pack());
         }
-        let mut warning = None;
-        let mut new_source = None;
-        let desired = match self.installed(store, id).await {
-            None => self.sources.resolve(&instance.source).await?,
-            Some(installed) if instance.update_policy == UpdatePolicy::Pinned => installed,
-            Some(installed) => match self.sources.check(&instance.source, &installed).await {
-                UpdateCheck::UpToDate => installed,
-                UpdateCheck::Unavailable(e) => {
-                    warning = Some(e);
-                    installed
-                }
-                UpdateCheck::Available { source, .. } => {
-                    match self.sources.resolve(&source).await {
-                        Ok(update) => {
-                            new_source = (source != instance.source).then_some(source);
-                            update
-                        }
-                        Err(e) => {
-                            warning = Some(update_check_failed(e));
-                            installed
-                        }
-                    }
-                }
-            },
+        let (update, check_warning) = match self.find_update(store, &instance).await {
+            Ok(update) => (update, None),
+            Err(e) => (None, Some(e)),
         };
-        let outcome = self.sync_locked(&lock, store, id, &desired, sink).await?;
-        if let SyncOutcome::Done(report) = &outcome {
-            if let Some(source) = new_source {
-                // Only now: a source that names a version whose sync never finished would hide
-                // the update from the next check.
-                let mut fresh = store.load(id).await?;
-                fresh.source = source;
-                store.save(&fresh).await?;
-            }
-            // Offline, the art would only make Play wait on network timeouts.
-            if !report.up_to_date && warning.is_none() {
-                art::fetch(
-                    &self.sources.http,
-                    &desired.about.art,
-                    &store.perland_dir(id).join("art"),
-                )
-                .await;
-            }
+        let ensured = self
+            .ensure_locked(&lock, store, id, update, sink, &Cancel::default())
+            .await?;
+        Ok(Ensured {
+            warning: check_warning.or(ensured.warning),
+            ..ensured
+        })
+    }
+
+    /// `ensure` for a caller that holds the instance's lock and already chose: `accept` is the
+    /// update to install, `None` keeps the installed version. A never-synced instance installs
+    /// what its source names now. If downloading an accepted update fails, nothing has moved
+    /// yet, so the installed version is synced instead, with an `update_download_failed` warning.
+    pub async fn ensure_locked(
+        &self,
+        _lock: &InstanceLock,
+        store: &InstanceStore,
+        id: &str,
+        accept: Option<PendingUpdate>,
+        sink: &EventSink,
+        cancel: &Cancel,
+    ) -> Result<Ensured> {
+        let instance = store.load(id).await?;
+        if instance.source == SourceRef::None {
+            return Err(no_pack());
         }
-        Ok(Ensured { outcome, warning })
+        let Some(installed) = self.installed(store, id).await else {
+            let desired = self.sources.resolve(&instance.source).await?;
+            let outcome = self.sync_inner(store, id, &desired, sink, cancel).await?;
+            self.after_sync(store, id, &desired, &outcome, None).await?;
+            return Ok(Ensured {
+                outcome,
+                warning: None,
+            });
+        };
+        let Some(update) = accept else {
+            let outcome = self.sync_inner(store, id, &installed, sink, cancel).await?;
+            return Ok(Ensured {
+                outcome,
+                warning: None,
+            });
+        };
+        match self
+            .sync_inner(store, id, &update.desired, sink, cancel)
+            .await
+        {
+            Ok(outcome) => {
+                let new_source = (update.source != instance.source).then_some(update.source);
+                self.after_sync(store, id, &update.desired, &outcome, new_source)
+                    .await?;
+                Ok(Ensured {
+                    outcome,
+                    warning: None,
+                })
+            }
+            // Network failures happen only while staging or installing the loader, before
+            // anything in the game folder moves.
+            Err(e) if e.category == ErrorCategory::Network => {
+                let warning = update_download_failed(&installed.pack_version, e);
+                let outcome = self.sync_inner(store, id, &installed, sink, cancel).await?;
+                Ok(Ensured {
+                    outcome,
+                    warning: Some(warning),
+                })
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// After a newly installed version: name it in the instance's source, and fetch its art.
+    async fn after_sync(
+        &self,
+        store: &InstanceStore,
+        id: &str,
+        desired: &DesiredState,
+        outcome: &SyncOutcome,
+        new_source: Option<SourceRef>,
+    ) -> Result<()> {
+        let SyncOutcome::Done(report) = outcome else {
+            return Ok(());
+        };
+        if let Some(source) = new_source {
+            // Only now: a source that names a version whose sync never finished would hide
+            // the update from the next check.
+            let mut fresh = store.load(id).await?;
+            fresh.source = source;
+            store.save(&fresh).await?;
+        }
+        if !report.up_to_date {
+            art::fetch(
+                &self.sources.http,
+                &desired.about.art,
+                &store.perland_dir(id).join("art"),
+            )
+            .await;
+        }
+        Ok(())
     }
 
     /// Make instance `id` match `desired`. Fails with `instance_locked` while anyone else holds
@@ -321,6 +472,18 @@ impl Syncer {
         id: &str,
         desired: &DesiredState,
         sink: &EventSink,
+    ) -> Result<SyncOutcome> {
+        self.sync_inner(store, id, desired, sink, &Cancel::default())
+            .await
+    }
+
+    async fn sync_inner(
+        &self,
+        store: &InstanceStore,
+        id: &str,
+        desired: &DesiredState,
+        sink: &EventSink,
+        cancel: &Cancel,
     ) -> Result<SyncOutcome> {
         let instance = store.load(id).await?;
         let game_dir = store.game_dir(id);
@@ -395,7 +558,13 @@ impl Syncer {
                 archive.as_deref(),
                 &staging,
                 &desired.name,
+                if managed.is_none() {
+                    "install_pack"
+                } else {
+                    "sync_pack"
+                },
                 sink,
+                cancel,
             )
             .await?
         {
@@ -410,6 +579,9 @@ impl Syncer {
         // Every byte of the new version is in the cache now. Recording it before the swap means a
         // swap that stops halfway resumes toward it, even offline, instead of toward the old
         // version (whose leftovers would sit next to the new files as "additions").
+        if cancel.is_cancelled() {
+            return Err(cancelled());
+        }
         save_pack(&perland, desired).await?;
         let trash_dir = apply::trash_folder(&perland, now);
         for p in &plan.write {
@@ -483,15 +655,18 @@ impl Syncer {
     }
 
     /// Stage every file. The outer error stops the sync; the inner `Err` lists blocked files.
+    #[allow(clippy::too_many_arguments)]
     async fn stage_all(
         &self,
         writes: &[Planned],
         archive: Option<&Path>,
         staging: &Path,
         pack_name: &str,
+        task_key: &str,
         sink: &EventSink,
+        cancel: &Cancel,
     ) -> Result<std::result::Result<BTreeMap<String, StagedFile>, Vec<ManualFile>>> {
-        let task = TaskId::new("sync_pack").with("name", pack_name);
+        let task = TaskId::new(task_key).with("name", pack_name);
         let total = writes.len() as u64;
         let (mut done, mut bytes) = (0u64, 0u64);
         sink(Event::Progress {
@@ -505,7 +680,7 @@ impl Syncer {
         let failed = AtomicBool::new(false);
         let failed = &failed;
         let mut results = futures_util::stream::iter(writes.iter().map(|p| async move {
-            if failed.load(Ordering::SeqCst) {
+            if failed.load(Ordering::SeqCst) || cancel.is_cancelled() {
                 return None;
             }
             let result = self.stage_one(&p.file, archive, staging).await;
@@ -540,6 +715,9 @@ impl Syncer {
         }
         if let Some(e) = first_error {
             return Err(e);
+        }
+        if cancel.is_cancelled() {
+            return Err(cancelled());
         }
         if blocked.is_empty() {
             Ok(Ok(staged))
@@ -612,5 +790,58 @@ impl Syncer {
             .map_err(LauncherError::from)?
             .len();
         Ok((file.path.clone(), StagedFile { sha1, size }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        download::hash::sha1_hex,
+        sources::{FileMode, FileSource, Side},
+    };
+
+    fn file(path: &str, mode: FileMode, body: &[u8]) -> PackFile {
+        PackFile {
+            path: path.into(),
+            name: path.into(),
+            source: FileSource::Remote { urls: vec![] },
+            hashes: Hashes::sha1(sha1_hex(body)),
+            size: None,
+            side: Side::Both,
+            optional: None,
+            mode,
+            manual: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn kept_edits_hashes_only_override_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let game = dir.path();
+        std::fs::create_dir_all(game.join("config")).unwrap();
+        std::fs::write(game.join("config/c.toml"), b"mine").unwrap();
+        std::fs::create_dir_all(game.join("mods/a.jar")).unwrap(); // a folder: surveying it fails
+        let old = file("config/c.toml", FileMode::ReplaceUnlessModified, b"old");
+        let managed = Managed {
+            version: Managed::VERSION,
+            stamp: "s1".into(),
+            pack_version: "1.0.0".into(),
+            choices: BTreeMap::new(),
+            files: BTreeMap::from([(
+                "config/c.toml".to_string(),
+                lockfile::ManagedFile {
+                    name: "c".into(),
+                    sha1: sha1_hex(b"old"),
+                    size: 3,
+                    mode: FileMode::ReplaceUnlessModified,
+                    declared: old.hashes.clone(),
+                },
+            )]),
+        };
+        let new = file("config/c.toml", FileMode::ReplaceUnlessModified, b"new");
+        let jar = file("mods/a.jar", FileMode::Replace, b"jar");
+        let kept = kept_edits(game, &[&new, &jar], Some(&managed)).await;
+        assert_eq!(kept, vec!["config/c.toml".to_string()]);
     }
 }
