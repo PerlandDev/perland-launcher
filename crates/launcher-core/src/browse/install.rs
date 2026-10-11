@@ -38,7 +38,11 @@ fn join_error(e: tokio::task::JoinError) -> LauncherError {
 fn relative_path(item: &PlanItem) -> Result<String> {
     let name = &item.file.file_name;
     let folder = item.kind.folder().ok_or_else(|| name_invalid(name))?;
-    if !safe_component(name) || !name.to_ascii_lowercase().ends_with(item.kind.extension()) {
+    let extension = item.kind.extension();
+    if !safe_component(name)
+        || name.len() <= extension.len()
+        || !name.to_ascii_lowercase().ends_with(extension)
+    {
         return Err(name_invalid(name));
     }
     Ok(format!("{folder}/{name}"))
@@ -55,6 +59,13 @@ fn link_no_replace(tmp: &Path, dest: &Path) -> std::io::Result<()> {
     };
     let _ = std::fs::remove_file(tmp);
     result
+}
+
+/// Where a disabled copy of `dest` would be.
+fn disabled_twin(dest: &Path) -> std::path::PathBuf {
+    let mut disabled = dest.as_os_str().to_owned();
+    disabled.push(".disabled");
+    disabled.into()
 }
 
 async fn same_file(path: &Path, sha1: Option<&str>) -> Result<bool> {
@@ -84,6 +95,17 @@ pub async fn install(
         if managed.is_some_and(|m| m.files.keys().any(|k| path_key(k) == key)) {
             return Err(managed_path(&item.file.file_name));
         }
+        // Conflicts are found now, so a clash never leaves earlier items half-installed. The
+        // checks in the loop below stay as the safety net against a race.
+        let dest = game_dir.join(&rel);
+        if tokio::fs::try_exists(&dest).await?
+            && !same_file(&dest, item.file.hashes.sha1.as_deref()).await?
+        {
+            return Err(exists(&item.file.file_name));
+        }
+        if tokio::fs::try_exists(disabled_twin(&dest)).await? {
+            return Err(exists(&item.file.file_name));
+        }
         paths.push(rel);
     }
     let total = items.len() as u64;
@@ -101,8 +123,7 @@ pub async fn install(
     for (item, rel) in items.iter().zip(&paths) {
         let name = &item.file.file_name;
         let dest = game_dir.join(rel);
-        let mut disabled = dest.as_os_str().to_owned();
-        disabled.push(".disabled");
+        let disabled = disabled_twin(&dest);
         if tokio::fs::try_exists(&dest).await? {
             if !same_file(&dest, item.file.hashes.sha1.as_deref()).await? {
                 return Err(exists(name));
@@ -121,7 +142,10 @@ pub async fn install(
             let dir = dest.parent().expect("a folder and a name");
             tokio::fs::create_dir_all(dir).await?;
             let tmp = dir.join(format!(".{name}.{}.perland-tmp", std::process::id()));
-            tokio::fs::copy(&object, &tmp).await?;
+            if let Err(e) = tokio::fs::copy(&object, &tmp).await {
+                let _ = tokio::fs::remove_file(&tmp).await;
+                return Err(e.into());
+            }
             let (from, to) = (tmp.clone(), dest.clone());
             match tokio::task::spawn_blocking(move || link_no_replace(&from, &to))
                 .await

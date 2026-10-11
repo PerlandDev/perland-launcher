@@ -816,6 +816,7 @@ async fn hostile_file_names_are_refused_before_downloading() {
         r"a\b.jar",
         "x.jar.",
         "x.zip",
+        ".jar",
         "",
     ] {
         let item = planned(&server, "X", Kind::Mod, name, b"x");
@@ -834,4 +835,28 @@ async fn hostile_file_names_are_refused_before_downloading() {
     );
     assert!(server.received_requests().await.unwrap().is_empty());
     assert!(!game.exists() || std::fs::read_dir(&game).unwrap().next().is_none());
+}
+
+#[tokio::test]
+async fn conflicts_are_found_before_anything_is_written() {
+    let server = MockServer::start().await;
+    let root = tempfile::tempdir().unwrap();
+    let cache = ObjectCache::new(root.path().join("objects"));
+    let game = root.path().join("game");
+    write(&game, "mods/own.jar", b"player's own");
+    write(&game, "mods/twin.jar.disabled", b"old");
+    let (sink, _) = recorder();
+    let task = TaskId::new("install_content");
+    for clash in ["own.jar", "twin.jar"] {
+        let items = vec![
+            planned(&server, "Good", Kind::Mod, "good.jar", b"good"),
+            planned(&server, "Clash", Kind::Mod, clash, b"clash"),
+        ];
+        let error = install(&cache, &downloader(), &game, &items, None, &task, &sink)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::ModExists, "{clash}");
+        assert!(!game.join("mods/good.jar").exists(), "{clash}");
+    }
+    assert!(server.received_requests().await.unwrap().is_empty());
 }
