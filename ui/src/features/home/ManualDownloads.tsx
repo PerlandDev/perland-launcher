@@ -12,14 +12,27 @@ import { Check, ExternalLink } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 
 /** Files whose authors block other launchers: open each page, and the launcher picks the
- *  downloads up from the Downloads folder (polled). Continue plays again once all are found. */
-export function ManualDownloads({ instance, files, pollMs = 2000 }: { instance: Instance; files: ManualFile[]; pollMs?: number }) {
+ *  downloads up from the Downloads folder (polled). Continue retries the run once all are found:
+ *  plays again, or only updates again when the blocked run was the banner's Update. */
+export function ManualDownloads({
+  instance,
+  files,
+  updateOnly = false,
+  pollMs = 2000,
+}: {
+  instance: Instance;
+  files: ManualFile[];
+  updateOnly?: boolean;
+  pollMs?: number;
+}) {
   const { t } = useTranslation();
   const progress = useQuery({
     queryKey: qk.manual(instance.id),
     queryFn: () => commands.manualImport(instance.id),
     refetchInterval: (query) => (query.state.data && query.state.data.total > 0 && query.state.data.remaining.length === 0 ? false : pollMs),
     staleTime: 0,
+    // Dropped once the dialog closes: a later blocked run must not open on this one's "all found".
+    gcTime: 0,
   });
   // Total 0 means the launcher no longer knows the list (it restarted): trust the run's list.
   const known = progress.data !== undefined && progress.data.total > 0;
@@ -28,7 +41,8 @@ export function ManualDownloads({ instance, files, pollMs = 2000 }: { instance: 
   const found = total - remaining.length;
   const close = () => runStore.dismissExit(instance.id);
   const playOnce = useSingleFlight();
-  const play = () => playOnce((done) => void commands.play(instance.id).then(close, pushError).finally(done));
+  const retry = () => (updateOnly ? commands.packUpdate(instance.id) : commands.play(instance.id));
+  const play = () => playOnce((done) => void retry().then(close, pushError).finally(done));
   return (
     <Dialog
       open

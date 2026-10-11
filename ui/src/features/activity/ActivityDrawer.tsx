@@ -17,11 +17,12 @@ function InstanceActivity({ instance }: { instance: Instance }) {
   const lines = useLog(instance.id);
   const exit = run.lastExit;
   const showExit = exit && (exit.error || isCrash(exit));
-  const progress = run.progress;
+  // Only phases that move files get a meter: checking and asking download nothing.
+  const progress = run.state === 'queued' || run.state === 'syncing' || run.state === 'preparing' ? run.progress : null;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 p-5">
       {showExit && <CrashCard instance={instance} exit={exit} lines={lines} />}
-      {progress && (run.state === 'queued' || run.state === 'preparing') && (
+      {progress && (
         <div className="grid gap-2">
           <div className="flex items-baseline justify-between gap-4">
             <span className="font-semibold">{taskLabel(i18n, progress.task)}</span>

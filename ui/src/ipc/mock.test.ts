@@ -1,7 +1,7 @@
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockBackend, installMock, stopMockRuns } from './mock';
-import type { AccountsFile, InstanceListing, LoaderVersion, ManualProgress, PackStatus, Settings } from './schema';
+import type { AccountsFile, InstanceListing, LoaderVersion, ManualProgress, PackContents, PackStatus, RunSnapshot, Settings } from './schema';
 
 describe('mock backend', () => {
   it('serves the contract fixtures', async () => {
@@ -84,6 +84,17 @@ describe('mock backend', () => {
     expect(forge[0]?.version).toBe('47.4.22');
   });
 
+  it("keeps a pack's additions in step with its mods folder", async () => {
+    const { handle } = createMockBackend();
+    const additions = async () => ((await handle('pack_contents', { id: 'sky-islands' })) as PackContents).additions;
+    await handle('mod_set_enabled', { id: 'sky-islands', file: 'zoomify-2.11.2.jar', enabled: false });
+    expect(await additions()).toEqual([{ fileName: 'zoomify-2.11.2.jar.disabled', enabled: false, size: 524288 }]);
+    await handle('mods_add', { id: 'sky-islands', paths: ['C:/Downloads/lithium.jar'] });
+    expect((await additions()).map((m) => m.fileName)).toEqual(['lithium.jar', 'zoomify-2.11.2.jar.disabled']);
+    await handle('mod_remove', { id: 'sky-islands', file: 'zoomify-2.11.2.jar.disabled' });
+    expect((await additions()).map((m) => m.fileName)).toEqual(['lithium.jar']);
+  });
+
   it('refuses links that are not https or modrinth', async () => {
     const { handle } = createMockBackend();
     await expect(handle('pack_add', { request: { kind: 'link', url: 'http://evil.example/pack.toml' } })).rejects.toMatchObject({
@@ -131,6 +142,48 @@ describe('scripted runs', () => {
       await vi.advanceTimersByTimeAsync(500);
       expect(idles).toHaveLength(1);
       expect(idles[0]).toMatchObject({ exit: { cancelled: true, error: null, manual: [] } });
+    } finally {
+      stopMockRuns();
+      clearMocks();
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports the pending offer while asking, like run_states', async () => {
+    vi.useFakeTimers();
+    try {
+      mockIPC(() => null);
+      const { handle } = createMockBackend();
+      const offer = ((await handle('pack_status', { id: 'sky-islands' })) as PackStatus).update;
+      await handle('play', { id: 'sky-islands' });
+      await vi.advanceTimersByTimeAsync(500); // checked; now asking
+      expect((await handle('run_states')) as RunSnapshot[]).toEqual([{ instance: 'sky-islands', state: 'asking', update: offer }]);
+    } finally {
+      stopMockRuns();
+      clearMocks();
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops a sync through stopping, and an update-only one says so', async () => {
+    vi.useFakeTimers();
+    try {
+      const states: { state?: string; exit?: unknown }[] = [];
+      mockIPC((cmd, args) => {
+        const payload = (args as { payload?: { type?: string; state?: string; exit?: unknown } } | undefined)?.payload;
+        if (cmd === 'plugin:event|emit' && payload?.type === 'run_state') states.push(payload);
+        return null;
+      });
+      const { handle } = createMockBackend();
+      await handle('pack_update', { id: 'sky-islands' });
+      await vi.advanceTimersByTimeAsync(800); // checking 400 ms, queued 200 ms, then syncing
+      expect(states.at(-1)?.state).toBe('syncing');
+      await handle('stop', { id: 'sky-islands' });
+      expect(states.at(-1)?.state).toBe('stopping');
+      await vi.advanceTimersByTimeAsync(1_000);
+      const idles = states.filter((s) => s.state === 'idle');
+      expect(idles).toHaveLength(1);
+      expect(idles[0]).toMatchObject({ exit: { cancelled: true, updateOnly: true } });
     } finally {
       stopMockRuns();
       clearMocks();

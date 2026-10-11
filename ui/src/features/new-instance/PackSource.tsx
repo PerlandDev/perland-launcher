@@ -35,14 +35,15 @@ export function PackLinkForm({ initial }: { initial?: string }) {
   const { t } = useTranslation();
   const [url, setUrl] = useState(initial ?? '');
   const add = useAddPack({ inline: true });
-  const host = initial ? hostOf(initial) : null;
+  const host = hostOf(url);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!url.trim()) return;
     add.mutate({ kind: 'link', url: url.trim() }, { onSuccess: (instance) => navigate({ name: 'home', id: instance.id }) });
   };
+  // noValidate: a bad link gets the launcher's pack_link_invalid message, not the webview's tooltip.
   return (
-    <form onSubmit={submit} className="grid max-w-2xl gap-6">
+    <form onSubmit={submit} noValidate className="grid max-w-2xl gap-6">
       <Field label={t('newInstance.linkLabel')} hint={host ? t('newInstance.linkFrom', { host }) : t('newInstance.linkHint')}>
         <input
           className="field-input"

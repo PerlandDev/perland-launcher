@@ -150,6 +150,7 @@ export function useModMutations(id: string, opts: Opts = {}) {
   // A failed change may still have touched the folder (a partial add), so the list is asked for again.
   const failed = (error: unknown) => {
     void qc.invalidateQueries({ queryKey: qk.mods(id) });
+    void qc.invalidateQueries({ queryKey: qk.packContents(id) });
     onError(opts)(error);
   };
   return {

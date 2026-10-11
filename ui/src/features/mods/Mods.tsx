@@ -32,8 +32,10 @@ export function Mods({ id }: { id: string }) {
   const pack = instance ? isPack(instance) : false;
   const contents = usePackContents(id, pack);
   const optional = usePackOptional(id, { inline: true });
-  // A pack instance lists its own mods apart; the jars below are only the player's.
+  // A pack instance lists its own mods apart; the jars below are only the player's. Until the
+  // listing says which kind this is, nothing is listed: a pack's jars must never show as removable.
   const source = pack ? contents : mods;
+  const loading = listing.isPending || source.isPending;
   // The game holds its jars open, so toggling or removing waits for it to stop. Adding is fine.
   const running = useRun(id).state !== 'idle';
   const queryClient = useQueryClient();
@@ -144,7 +146,7 @@ export function Mods({ id }: { id: string }) {
   const confirmRemove = (mod: LocalMod) =>
     removeOnce((done) => remove.mutate(mod.fileName, { onSuccess: closeRemove, onSettled: done }));
 
-  const list = (pack ? contents.data?.additions : mods.data) ?? [];
+  const list = (listing.isPending ? undefined : pack ? contents.data?.additions : mods.data) ?? [];
   // A name normally keys its row, so a toggle (which renames the file) keeps focus. A .jar and its
   // .jar.disabled twin share a name, so those fall back to the file name.
   const nameCount = new Map<string, number>();
@@ -185,7 +187,7 @@ export function Mods({ id }: { id: string }) {
             {notice.kind === 'busy' ? t('mods.busy') : t('mods.skipped', { names: notice.names.join(', ') })}
           </p>
         )}
-        {source.isPending && <p className="text-ink-dim">{t('common.loading')}</p>}
+        {loading && <p className="text-ink-dim">{t('common.loading')}</p>}
         {source.isError && (
           <ErrorCard
             error={source.error}
@@ -234,7 +236,7 @@ export function Mods({ id }: { id: string }) {
               {t('mods.additionsTitle')}
             </h2>
           )}
-          {source.isSuccess && list.length === 0 && <p className="text-ink-dim">{pack ? t('mods.noAdditions') : t('mods.empty')}</p>}
+          {!loading && source.isSuccess && list.length === 0 && <p className="text-ink-dim">{pack ? t('mods.noAdditions') : t('mods.empty')}</p>}
           <ul className="grid gap-2">
             {list.map((mod) => {
               const name = displayName(mod.fileName);

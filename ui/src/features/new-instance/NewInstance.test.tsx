@@ -62,6 +62,29 @@ it('prefills a perland:// link, names its host, and waits for the click', async 
   expect(sent(calls, 'pack_add')).toEqual([]);
 });
 
+it('names the host of the link as it is now, not as it arrived', async () => {
+  const { user } = renderApp(<NewInstance link="https://perlanddev.github.io/asalith-modpack/pack.toml" />);
+  const input = await screen.findByRole('textbox', { name: 'Pack link' });
+  await user.clear(input);
+  await user.type(input, 'https://packs.example.org/sky/pack.toml');
+  expect(screen.getByText('From packs.example.org')).toBeInTheDocument();
+  expect(screen.queryByText('From perlanddev.github.io')).not.toBeInTheDocument();
+  await user.clear(input);
+  await user.type(input, 'http://packs.example.org/pack.toml');
+  expect(screen.queryByText(/^From /)).not.toBeInTheDocument();
+});
+
+it('explains a bad link in its own words, not the browser tooltip', async () => {
+  const { user, calls } = renderApp(<NewInstance link="https://perlanddev.github.io/asalith-modpack/pack.toml" />);
+  const input = await screen.findByRole('textbox', { name: 'Pack link' });
+  expect(input.closest('form')).toHaveAttribute('novalidate');
+  await user.clear(input);
+  await user.type(input, 'not a link');
+  await user.click(screen.getByRole('button', { name: 'Add pack' }));
+  expect(sent(calls, 'pack_add')).toEqual([{ request: { kind: 'link', url: 'not a link' } }]);
+  expect(await screen.findByText("That doesn't look like a pack link.")).toBeInTheDocument();
+});
+
 it('imports a .mrpack file', async () => {
   const { user, calls } = renderApp(<NewInstance />);
   await user.click(await screen.findByRole('radio', { name: 'Import a .mrpack file' }));

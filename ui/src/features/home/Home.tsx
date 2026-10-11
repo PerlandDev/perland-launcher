@@ -67,7 +67,7 @@ function InstanceView({ instance }: { instance: Instance }) {
       </div>
       {run.state === 'asking' && run.update && <UpdateDialog instance={instance} update={run.update} />}
       {run.state === 'idle' && run.lastExit && run.lastExit.manual.length > 0 && (
-        <ManualDownloads instance={instance} files={run.lastExit.manual} />
+        <ManualDownloads instance={instance} files={run.lastExit.manual} updateOnly={run.lastExit.updateOnly} />
       )}
     </section>
   );

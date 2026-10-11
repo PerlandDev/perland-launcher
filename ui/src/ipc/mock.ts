@@ -51,6 +51,8 @@ export interface MockOptions {
 interface MockRun {
   state: RunStateKind;
   cancelled: boolean;
+  /** The banner's Update: sync only, no game. */
+  updateOnly: boolean;
   /** Set while asking: resolves with the player's answer. */
   answer: ((update: boolean) => void) | null;
 }
@@ -259,7 +261,7 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
   const id = instance.id;
   const pack = state.packs.get(id);
   const first: RunStateKind = pack && pack.installed !== null && instance.updatePolicy !== 'pinned' ? 'checking' : 'queued';
-  const run: MockRun = { state: first, cancelled: false, answer: null };
+  const run: MockRun = { state: first, cancelled: false, updateOnly, answer: null };
   state.runs.set(id, run);
   event({ type: 'run_state', instance: id, state: first, exit: null, update: null });
   let synced: SyncSummary | null = null;
@@ -304,6 +306,15 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
     }
     await wait(400);
   }
+}
+
+/** Change an instance's mods folder. A pack's "Your additions" are jars in that folder, so they follow. */
+function editMods(state: MockState, id: string, change: (list: LocalMod[]) => LocalMod[]): LocalMod[] {
+  const list = change(state.mods.get(id) ?? []);
+  state.mods.set(id, list);
+  const pack = state.packs.get(id);
+  if (pack) pack.contents.additions = change(pack.contents.additions);
+  return list;
 }
 
 async function handle(state: MockState, cmd: string, args: Record<string, unknown> = {}): Promise<unknown> {
@@ -461,11 +472,20 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const id = String(args.id);
       const run = state.runs.get(id);
       if (!run) return null;
-      if (['checking', 'asking', 'queued', 'syncing', 'preparing'].includes(run.state)) {
+      if (['checking', 'asking', 'queued', 'preparing'].includes(run.state)) {
         run.cancelled = true;
         run.answer?.(false);
         state.runs.delete(id);
         event({ type: 'run_state', instance: id, state: 'idle', exit: exitOf({ cancelled: true }), update: null });
+      } else if (run.state === 'syncing') {
+        // Like the real sync: it stops at its next safe point, then the run ends cancelled.
+        run.cancelled = true;
+        setState(state, id, 'stopping');
+        setTimeout(() => {
+          if (state.runs.get(id) !== run) return;
+          state.runs.delete(id);
+          event({ type: 'run_state', instance: id, state: 'idle', exit: exitOf({ cancelled: true, updateOnly: run.updateOnly }), update: null });
+        }, 300);
       } else if (run.state === 'running') {
         setState(state, id, 'stopping');
         setTimeout(() => {
@@ -477,34 +497,28 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       return null;
     }
     case 'run_states':
-      return [...state.runs].map(([instance, run]) => ({ instance, state: run.state, update: null }));
+      return [...state.runs].map(([instance, run]) => ({
+        instance,
+        state: run.state,
+        update: run.state === 'asking' ? (state.packs.get(instance)?.update ?? null) : null,
+      }));
     case 'log_tail':
       return [];
     case 'mods_list':
       return state.mods.get(String(args.id)) ?? [];
     case 'mod_set_enabled': {
-      const id = String(args.id);
       const file = String(args.file);
       const base = file.replace(/\.disabled$/, '');
-      const list = (state.mods.get(id) ?? []).map((m) =>
-        m.fileName === file ? { ...m, fileName: args.enabled ? base : `${base}.disabled`, enabled: Boolean(args.enabled) } : m,
+      return editMods(state, String(args.id), (list) =>
+        list.map((m) => (m.fileName === file ? { ...m, fileName: args.enabled ? base : `${base}.disabled`, enabled: Boolean(args.enabled) } : m)),
       );
-      state.mods.set(id, list);
-      return list;
     }
     case 'mods_add': {
-      const id = String(args.id);
       const added = (args.paths as string[]).map((p) => ({ fileName: p.split(/[\\/]/).pop() ?? p, enabled: true, size: 1_200_000 }));
-      const list = [...(state.mods.get(id) ?? []), ...added].sort((a, b) => a.fileName.localeCompare(b.fileName));
-      state.mods.set(id, list);
-      return list;
+      return editMods(state, String(args.id), (list) => [...list, ...added].sort((a, b) => a.fileName.localeCompare(b.fileName)));
     }
-    case 'mod_remove': {
-      const id = String(args.id);
-      const list = (state.mods.get(id) ?? []).filter((m) => m.fileName !== args.file);
-      state.mods.set(id, list);
-      return list;
-    }
+    case 'mod_remove':
+      return editMods(state, String(args.id), (list) => list.filter((m) => m.fileName !== args.file));
     case 'open_folder':
     case 'quit':
       return null;

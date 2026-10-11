@@ -1,8 +1,10 @@
 import { Webview } from '@tauri-apps/api/webview';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMockBackend } from '../../ipc/mock';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
+import { renderWithProviders } from '../../test/render';
 import { Mods } from './Mods';
 
 type DragHandler = Parameters<Webview['onDragDropEvent']>[0];
@@ -346,6 +348,35 @@ describe('a pack instance', () => {
     await user.click(screen.getByRole('switch', { name: 'Use Iris Shaders' }));
     expect(sent(calls, 'pack_set_optional')).toEqual([{ id: 'sky-islands', path: 'mods/iris.jar', enabled: true }]);
     expect(screen.getByRole('button', { name: 'Remove zoomify-2.11.2' })).toBeInTheDocument();
+  });
+
+  it('shows nothing removable until it knows the instance is a pack', async () => {
+    const backend = createMockBackend();
+    let releaseListing = () => {};
+    renderWithProviders(<Mods id="sky-islands" />, {
+      ipc: (cmd, args) => {
+        // The folder holds the pack's own jar; the instance listing is slow to arrive.
+        if (cmd === 'mods_list') return [{ fileName: 'create-0.5.1.jar', enabled: true, size: 1024 }];
+        if (cmd === 'instances_list') return new Promise((resolve) => (releaseListing = () => resolve(backend.handle(cmd, args))));
+        return backend.handle(cmd, args);
+      },
+    });
+    expect(await screen.findByText('Loading…')).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(screen.queryByText('create-0.5.1')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Remove / })).not.toBeInTheDocument();
+    releaseListing();
+    expect(await screen.findByRole('heading', { name: 'From the pack' })).toBeInTheDocument();
+    expect(screen.queryByText('create-0.5.1')).not.toBeInTheDocument();
+  });
+
+  it("asks for the pack's lists again after a failed change", async () => {
+    const { user, calls, backend } = renderApp(<Mods id="sky-islands" />);
+    const zoomify = await screen.findByRole('switch', { name: 'Use zoomify-2.11.2' });
+    intercept(backend, 'mod_set_enabled').mode = 'fail';
+    const before = sent(calls, 'pack_contents').length;
+    await user.click(zoomify);
+    await waitFor(() => expect(sent(calls, 'pack_contents').length).toBe(before + 1));
   });
 });
 

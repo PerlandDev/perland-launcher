@@ -45,6 +45,24 @@ describe('ActivityDrawer', () => {
     expect(update.instance.java.memoryMb).toBe(6144);
   });
 
+  it('shows the pack sync progress, but no meter while only checking', async () => {
+    renderApp(<ActivityDrawer />);
+    const task = { key: 'install_pack', params: { name: 'Sky Islands' } };
+    act(() => {
+      runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'checking', exit: null, update: null });
+      runStore.apply({ type: 'progress', instance: 'sky-islands', task, done: 0, total: 1, bytes: 0 });
+      openActivity('sky-islands');
+    });
+    await screen.findByText("The game hasn't printed anything yet.");
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    act(() => {
+      runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'syncing', exit: null, update: null });
+      runStore.apply({ type: 'progress', instance: 'sky-islands', task, done: 2, total: 24, bytes: 0 });
+    });
+    expect(screen.getByRole('progressbar', { name: 'Installing Sky Islands' })).toBeInTheDocument();
+    expect(screen.getByText('2 of 24 files', { exact: false })).toBeInTheDocument();
+  });
+
   it('shows a failed start with the translated error', async () => {
     renderApp(<ActivityDrawer />);
     act(() => {
