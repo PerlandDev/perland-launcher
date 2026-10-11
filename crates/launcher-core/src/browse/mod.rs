@@ -3,5 +3,6 @@
 pub mod api;
 pub mod compat;
 pub mod identify;
+pub mod plan;
 pub mod project;
 pub mod search;
