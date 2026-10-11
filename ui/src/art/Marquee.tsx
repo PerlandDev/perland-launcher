@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CELL, COLS, discPath, layerPath, marqueeScene } from './marqueeScene';
+import { pixelUpscale } from './upscale';
 
 const W = COLS * CELL; // 480
 const H = 270;
@@ -35,17 +36,23 @@ export function Marquee({
   // A banner that fails to decode gives the panel back to the generated scene.
   const [failed, setFailed] = useState<string | null>(null);
   const art = banner && banner !== failed ? banner : null;
+  // The banner's own size, keyed by its src, decides hard pixels (blown-up pixel art) or smooth scaling.
+  const [natural, setNatural] = useState<{ src: string; width: number; height: number } | null>(null);
   const id = useId().replace(/:/g, '');
   const frame = useRef<HTMLDivElement>(null);
   // The panel is anchored at the bottom, so a short panel (the drawer open) crops the sky from the top.
   // Keep the lamp the same relative distance below the visible top so it is never cut into a sliver.
   const [visible, setVisible] = useState(H);
+  const [box, setBox] = useState({ width: 0, height: 0 });
   useEffect(() => {
     const el = frame.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry?.contentRect ?? { width: 0, height: 0 };
-      if (width > 0 && height > 0) setVisible(Math.min(H, (W * height) / width));
+      if (width > 0 && height > 0) {
+        setVisible(Math.min(H, (W * height) / width));
+        setBox({ width, height });
+      }
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -56,7 +63,17 @@ export function Marquee({
   const sunY = Math.max(H - visible + fullSunY * (visible / H), H - visible + 5 * CELL);
   return (
     <div ref={frame} className={`marquee ${className ?? ''}`} data-dimmed={dimmed || undefined} aria-hidden="true">
-      {art && <img src={art} alt="" className="marquee-banner" draggable={false} onError={() => setFailed(art)} />}
+      {art && (
+        <img
+          src={art}
+          alt=""
+          className="marquee-banner"
+          draggable={false}
+          data-upscale={natural?.src === art && pixelUpscale(natural, box) ? '' : undefined}
+          onLoad={(e) => setNatural({ src: art, width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })}
+          onError={() => setFailed(art)}
+        />
+      )}
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax slice" className="h-full w-full">
         <defs>
           <radialGradient id={`${id}-bloom`} cx={sunX} cy={sunY} r={W * 0.62} gradientUnits="userSpaceOnUse">

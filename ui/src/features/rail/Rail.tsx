@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PlotIcon } from '../../art/PlotIcon';
+import { pixelUpscale } from '../../art/upscale';
 import { useInstances, usePackArt } from '../../state/queries';
 import { navigate, useRoute, instanceOf } from '../../state/route';
 import { useRun } from '../../state/runStore';
@@ -33,6 +34,8 @@ function RailItem({
   // An icon that fails to decode gives the cabinet back its generated plot icon.
   const [failed, setFailed] = useState<string | null>(null);
   const icon = art.data?.icon && art.data.icon !== failed ? art.data.icon : null;
+  // A small pixel icon blown up to the 40px slot keeps hard pixels; a big icon shrinks smoothly.
+  const [upscaled, setUpscaled] = useState<string | null>(null);
   const status = item.damaged
     ? t('rail.damaged')
     : run.state === 'running' || run.state === 'stopping'
@@ -54,7 +57,20 @@ function RailItem({
     >
       <span className={item.damaged ? 'opacity-40 grayscale' : undefined}>
         {icon ? (
-          <img src={icon} alt="" width={40} height={40} className="rail-art" draggable={false} onError={() => setFailed(icon)} />
+          <img
+            src={icon}
+            alt=""
+            width={40}
+            height={40}
+            className="rail-art"
+            draggable={false}
+            data-upscale={upscaled === icon ? '' : undefined}
+            onLoad={(e) => {
+              const { naturalWidth: width, naturalHeight: height } = e.currentTarget;
+              setUpscaled(pixelUpscale({ width, height }, { width: 40, height: 40 }) ? icon : null);
+            }}
+            onError={() => setFailed(icon)}
+          />
         ) : (
           <PlotIcon seed={item.id} size={40} />
         )}

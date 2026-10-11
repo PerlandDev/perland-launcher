@@ -41,6 +41,23 @@ describe('PlayButton', () => {
     expect(onStop).toHaveBeenCalledOnce();
   });
 
+  it('keeps the real MB figure whole and shortens big counts', () => {
+    render(
+      <PlayButton
+        state="preparing"
+        progress={{ task: { key: 'install_minecraft', params: { version: '1.20.1' } }, done: 1234, total: 2345, bytes: 456_000_000 }}
+        onPlay={vi.fn()}
+        onStop={vi.fn()}
+      />,
+    );
+    const button = screen.getByRole('button', { name: 'Cancel: Installing Minecraft 1.20.1' });
+    expect(button).toHaveTextContent('1,234/2,345');
+    expect(button).not.toHaveTextContent('files');
+    // The MB figure sits outside the part that may truncate.
+    const bytes = screen.getByText('· 456 MB');
+    expect(bytes.closest('.truncate')).toBeNull();
+  });
+
   it('becomes Stop while running and explains when it is disabled', () => {
     const { rerender } = render(<PlayButton state="running" progress={null} onPlay={vi.fn()} onStop={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Stop' })).toBeEnabled();

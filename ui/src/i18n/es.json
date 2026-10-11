@@ -62,6 +62,7 @@
     "queued": "Esperando otra descarga…",
     "preparing": "Preparando…",
     "files": "{{done}} de {{total}} archivos",
+    "filesShort": "{{done}}/{{total}}",
     "noAccount": "Agrega una cuenta para jugar",
     "checking": "Buscando actualizaciones…",
     "asking": "¡Actualización lista!",

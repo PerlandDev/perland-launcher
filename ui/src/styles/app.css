@@ -83,6 +83,10 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+    /* A lamp parked in the meter would read as progress that isn't happening: show the honest empty channel. */
+    .play .meter[data-scan]::after {
+      display: none;
+    }
   }
 }
 
@@ -614,7 +618,8 @@
   .marquee {
     overflow: hidden;
   }
-  /* A pack's banner fills the panel from the floor up; small pixel art scales up in hard pixels. */
+  /* A pack's banner fills the panel from the floor up. Pixel art blown up 2x or more keeps hard pixels
+     (data-upscale); real art that shrinks scales smoothly. */
   .marquee-banner {
     position: absolute;
     inset: 0;
@@ -622,6 +627,9 @@
     height: 100%;
     object-fit: cover;
     object-position: center bottom;
+  }
+  .marquee-banner[data-upscale],
+  .rail-art[data-upscale] {
     image-rendering: pixelated;
   }
   .marquee svg {
@@ -694,7 +702,6 @@
     width: 40px;
     height: 40px;
     object-fit: cover;
-    image-rendering: pixelated;
     border-radius: 3px;
     corner-shape: notch;
   }

@@ -62,6 +62,7 @@
     "queued": "Waiting for another download…",
     "preparing": "Getting ready…",
     "files": "{{done}} of {{total}} files",
+    "filesShort": "{{done}}/{{total}}",
     "noAccount": "Add an account to play",
     "checking": "Checking for updates…",
     "asking": "Update ready",
