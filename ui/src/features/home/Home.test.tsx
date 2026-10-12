@@ -14,7 +14,7 @@ describe('Home', () => {
     expect(await screen.findByRole('heading', { name: 'Asalith Fields' })).toBeInTheDocument();
     expect(screen.getByText('Minecraft 1.20.1 · Fabric 0.16.14')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Play' }));
-    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields' }]);
+    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields', join: true }]);
   });
 
   it('sends one play for a double click', async () => {
@@ -26,7 +26,7 @@ describe('Home', () => {
       return new Promise((resolve) => (release = () => resolve(handle(cmd, args))));
     });
     await user.dblClick(await screen.findByRole('button', { name: 'Play' }));
-    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields' }]);
+    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields', join: true }]);
     await act(async () => release());
     expect(sent(calls, 'play')).toHaveLength(1);
   });

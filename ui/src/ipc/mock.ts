@@ -18,6 +18,7 @@ import type {
   AccountsFile,
   AppEvent,
   AppInfo,
+  DeepLink,
   ExitInfo,
   Instance,
   InstanceListing,
@@ -485,7 +486,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'deep_link_take': {
       const link = state.pendingLink;
       state.pendingLink = null;
-      return link;
+      const taken: DeepLink | null = link ? { kind: 'pack', url: link } : null;
+      return taken;
     }
     case 'stop': {
       const id = String(args.id);

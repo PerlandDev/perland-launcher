@@ -1,0 +1,57 @@
+[
+  {
+    "host": "play.example.com",
+    "name": "survival",
+    "motd": "§6Survival§r\nwith friends",
+    "kind": "stack",
+    "status": "online",
+    "players": {
+      "online": 3,
+      "max": 20
+    },
+    "game": {
+      "version": "1.20.1",
+      "loader": "fabric",
+      "loaderVersion": "0.16.14"
+    },
+    "pack": {
+      "name": "Survival Pack",
+      "version": "1.0.4",
+      "modCount": 142,
+      "state": "ready"
+    },
+    "whitelisted": false,
+    "team": {
+      "displayName": "Acme",
+      "accent": "violet"
+    },
+    "address": {
+      "host": "play.example.com",
+      "port": 25566
+    },
+    "icon": "data:image/png;base64,iVBORw0KGgo=",
+    "existing": null
+  },
+  {
+    "host": "play.example.com",
+    "name": "creative",
+    "motd": "Build",
+    "kind": "stack",
+    "status": "sleeping",
+    "players": null,
+    "game": {
+      "version": "1.21.1",
+      "loader": null,
+      "loaderVersion": null
+    },
+    "pack": null,
+    "whitelisted": true,
+    "team": null,
+    "address": {
+      "host": "play.example.com",
+      "port": 25570
+    },
+    "icon": null,
+    "existing": "creative"
+  }
+]

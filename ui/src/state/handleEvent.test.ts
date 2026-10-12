@@ -79,7 +79,7 @@ it('leaves the drawer closed when files need a manual download', () => {
 });
 
 it('opens New instance with a deep link once setup is done', async () => {
-  mockIPC((cmd) => (cmd === 'deep_link_take' ? 'https://x.example/pack.toml' : null));
+  mockIPC((cmd) => (cmd === 'deep_link_take' ? { kind: 'pack', url: 'https://x.example/pack.toml' } : null));
   queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: false });
   handleEvent({ type: 'deep_link' });
   await new Promise((r) => setTimeout(r, 10));

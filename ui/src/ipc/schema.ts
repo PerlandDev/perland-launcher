@@ -20,6 +20,7 @@ export const sourceRef = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('packwiz'), url: z.string() }),
   z.strictObject({ kind: z.literal('mrpack'), name: z.string(), sha1: z.string() }),
   z.strictObject({ kind: z.literal('modrinth'), projectId: z.string(), versionId: z.string() }),
+  z.strictObject({ kind: z.literal('perland'), invite: z.string(), engine: z.string() }),
 ]);
 export const javaSettings = z.strictObject({ path: z.string().nullable(), memoryMb: z.number().int() });
 export const serverStatus = z.enum(['online', 'starting', 'sleeping', 'offline']);
@@ -33,6 +34,47 @@ export const serverLink = z.strictObject({
   lastSeen: z.number().int().nullable(),
   gone: z.boolean(),
 });
+export const serverPlayers = z.strictObject({ online: z.number().int(), max: z.number().int().nullable() });
+export const serverGame = z.strictObject({
+  version: z.string().nullable(),
+  loader: z.string().nullable(),
+  loaderVersion: z.string().nullable(),
+});
+export const serverPack = z.strictObject({
+  name: z.string(),
+  version: z.string().nullable(),
+  modCount: z.number().int(),
+  state: z.string(),
+});
+export const serverTeam = z.strictObject({ displayName: z.string(), accent: z.string().nullable() });
+export const joinPreview = z.strictObject({
+  host: z.string(),
+  name: z.string(),
+  motd: z.string(),
+  kind: z.string(),
+  status: serverStatus.nullable(),
+  players: serverPlayers.nullable(),
+  game: serverGame,
+  pack: serverPack.nullable(),
+  whitelisted: z.boolean(),
+  team: serverTeam.nullable(),
+  address: serverAddress.nullable(),
+  icon: z.string().nullable(),
+  existing: z.string().nullable(),
+});
+export const serverStatusView = z.strictObject({
+  status: serverStatus.nullable(),
+  players: serverPlayers.nullable(),
+  whitelisted: z.boolean(),
+  packState: z.string().nullable(),
+  gone: z.boolean(),
+  address: serverAddress.nullable(),
+});
+export const deepLink = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('pack'), url: z.string() }),
+  z.strictObject({ kind: z.literal('join'), invite: z.string() }),
+]);
+export const inviteLinkCase = z.strictObject({ input: z.string(), canonical: z.string().nullable() });
 export const instance = z.strictObject({
   id: z.string(),
   name: z.string(),
@@ -175,6 +217,10 @@ export type JavaSettings = z.infer<typeof javaSettings>;
 export type ServerStatus = z.infer<typeof serverStatus>;
 export type ServerAddress = z.infer<typeof serverAddress>;
 export type ServerLink = z.infer<typeof serverLink>;
+export type ServerPlayers = z.infer<typeof serverPlayers>;
+export type JoinPreview = z.infer<typeof joinPreview>;
+export type ServerStatusView = z.infer<typeof serverStatusView>;
+export type DeepLink = z.infer<typeof deepLink>;
 export type Instance = z.infer<typeof instance>;
 export type DamagedInstance = z.infer<typeof damagedInstance>;
 export type InstanceListing = z.infer<typeof instanceListing>;
