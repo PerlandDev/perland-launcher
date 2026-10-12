@@ -1,6 +1,6 @@
-import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../ipc/commands';
-import type { Instance, LoaderKind, NewInstance, PackAddRequest, Settings } from '../ipc/schema';
+import type { ContentKind, ImageKind, Instance, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
 import { pushError } from './toasts';
 
 export function createQueryClient() {
@@ -26,6 +26,12 @@ export const qk = {
   packContents: (id: string) => ['pack', 'contents', id] as const,
   packArt: (id: string) => ['pack', 'art', id] as const,
   manual: (id: string) => ['pack', 'manual', id] as const,
+  browseSearch: (request: Omit<SearchRequest, 'offset'>) => ['browse', 'search', request] as const,
+  browseCategories: (kind: ContentKind) => ['browse', 'categories', kind] as const,
+  browseProject: (id: string) => ['browse', 'project', id] as const,
+  browseVersions: (id: string) => ['browse', 'versions', id] as const,
+  browseInstalled: (id: string) => ['browse', 'installed', id] as const,
+  browseImage: (url: string, kind: ImageKind) => ['browse', 'image', kind, url] as const,
 };
 
 const TEN_MINUTES = 10 * 60_000;
@@ -50,6 +56,34 @@ export const usePackContents = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packContents(id), queryFn: () => commands.packContents(id), enabled });
 export const usePackArt = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packArt(id), queryFn: () => commands.packArt(id), enabled, staleTime: Infinity });
+
+export const BROWSE_PAGE = 20;
+const FIVE_MINUTES = 5 * 60_000;
+
+export const useBrowseSearch = (request: Omit<SearchRequest, 'offset'>) =>
+  useInfiniteQuery({
+    queryKey: qk.browseSearch(request),
+    queryFn: ({ pageParam }) => commands.browseSearch({ ...request, offset: pageParam }),
+    initialPageParam: 0,
+    // The core drops server-only hits, so a page can be short; step by the page size.
+    getNextPageParam: (last) => (last.offset + BROWSE_PAGE < last.total ? last.offset + BROWSE_PAGE : undefined),
+    staleTime: FIVE_MINUTES,
+  });
+export const useBrowseCategories = (kind: ContentKind) =>
+  useQuery({ queryKey: qk.browseCategories(kind), queryFn: () => commands.browseCategories(kind), staleTime: Infinity });
+export const useBrowseProject = (id: string) =>
+  useQuery({ queryKey: qk.browseProject(id), queryFn: () => commands.browseProject(id), staleTime: FIVE_MINUTES });
+export const useBrowseVersions = (id: string) =>
+  useQuery({ queryKey: qk.browseVersions(id), queryFn: () => commands.browseVersions(id, null), staleTime: FIVE_MINUTES });
+export const useBrowseInstalled = (id: string | null) =>
+  useQuery({ queryKey: qk.browseInstalled(id ?? ''), queryFn: () => commands.browseInstalled(id as string), enabled: id !== null });
+export const useBrowseImage = (url: string | null, kind: ImageKind) =>
+  useQuery({
+    queryKey: qk.browseImage(url ?? '', kind),
+    queryFn: () => commands.browseImage(url as string, kind),
+    enabled: url !== null,
+    staleTime: Infinity,
+  });
 
 interface Opts {
   /** The caller shows the error itself (forms); otherwise it becomes a toast. */

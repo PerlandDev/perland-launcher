@@ -4,7 +4,9 @@ import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import i18n from '../i18n';
 import { stopMockRuns } from '../ipc/mock';
+import { resetBrowseSession } from '../features/browse/session';
 import { resetActivity } from '../state/activity';
+import { resetContentProgress } from '../state/contentProgress';
 import { resetRoute } from '../state/route';
 import { runStore } from '../state/runStore';
 import { clearToasts } from '../state/toasts';
@@ -41,5 +43,7 @@ afterEach(async () => {
   resetRoute();
   clearToasts();
   resetActivity();
+  resetBrowseSession();
+  resetContentProgress();
   await i18n.changeLanguage('en');
 });

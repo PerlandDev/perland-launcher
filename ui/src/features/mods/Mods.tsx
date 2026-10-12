@@ -13,7 +13,7 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { formatBytes } from '../../ui/format';
-import { Folder, InfoBox, Package, Plus, Trash } from '../../ui/Icon';
+import { Folder, InfoBox, Package, Plus, Search, Trash } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Toggle } from '../../ui/Toggle';
 import { useSingleFlight } from '../../ui/useSingleFlight';
@@ -158,6 +158,11 @@ export function Mods({ id }: { id: string }) {
       onBack={() => navigate({ name: 'home', id })}
       actions={
         <>
+          {instance?.game.loader && (
+            <Button icon={<Search />} onClick={() => navigate({ name: 'browse', kind: 'mod', instance: id })}>
+              {t('browse.findMods')}
+            </Button>
+          )}
           <Button icon={<Folder />} disabled={opening} onClick={openFolder}>
             {t('common.openFolder')}
           </Button>

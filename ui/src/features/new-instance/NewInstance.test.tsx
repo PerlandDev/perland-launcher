@@ -173,3 +173,9 @@ it('uses a plain name hint until the version list has loaded', async () => {
   await screen.findByRole('option', { name: '26.3' });
   expect(name).toHaveAttribute('placeholder', 'Minecraft 26.3');
 });
+
+it('offers to browse modpacks', async () => {
+  const { user } = renderApp(<NewInstance />);
+  await user.click(await screen.findByRole('button', { name: 'Browse modpacks' }));
+  expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
+});

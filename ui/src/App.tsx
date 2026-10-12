@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Accounts } from './features/accounts/Accounts';
 import { ActivityDrawer } from './features/activity/ActivityDrawer';
+import { Browse } from './features/browse/Browse';
 import { CloseGuard } from './features/close-guard/CloseGuard';
 import { FirstRun } from './features/first-run/FirstRun';
 import { Home } from './features/home/Home';
@@ -31,6 +32,8 @@ function Screen({ route }: { route: Route }) {
       return <InstanceSettings id={route.id} />;
     case 'newInstance':
       return <NewInstance key={route.link ?? 'new'} link={route.link} />;
+    case 'browse':
+      return <Browse route={route} />;
     case 'accounts':
       return <Accounts />;
     case 'settings':

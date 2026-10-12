@@ -9,19 +9,22 @@ export function ScreenFrame({
   subtitle,
   onBack,
   actions,
+  wide,
   children,
 }: {
   title: string;
   subtitle?: string;
   onBack?: () => void;
   actions?: ReactNode;
+  /** A 64rem column instead of 48rem, for screens with a grid or a side panel. */
+  wide?: boolean;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
   return (
     <section className="flex h-full flex-col">
       {/* The header spans the same 48rem column as the content (plus its padding), so actions line up with it. */}
-      <header className="flex max-w-[53rem] flex-wrap items-end justify-between gap-6 px-10 pt-9 pb-6">
+      <header className={`flex ${wide ? 'max-w-[69rem]' : 'max-w-[53rem]'} flex-wrap items-end justify-between gap-6 px-10 pt-9 pb-6`}>
         <div className="flex min-w-0 items-center gap-4">
           {onBack && (
             <Button variant="ghost" size="icon" aria-label={t('common.back')} onClick={onBack} icon={<ChevronDown className="rotate-90" />} />
@@ -35,7 +38,7 @@ export function ScreenFrame({
       </header>
       {/* Bottom padding lives inside the scroller's content, so a sticky action row meets the scroller's edge. */}
       <div className="min-h-0 flex-1 overflow-auto px-10">
-        <div className="pb-10">{children}</div>
+        <div className={`pb-10 ${wide ? 'max-w-[64rem]' : ''}`}>{children}</div>
       </div>
     </section>
   );

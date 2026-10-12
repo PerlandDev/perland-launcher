@@ -1,5 +1,6 @@
 import type { AppEvent, Settings } from '../ipc/schema';
 import { openActivity } from './activity';
+import { applyContentProgress } from './contentProgress';
 import { takeDeepLink } from './deepLink';
 import { isCrash } from './exit';
 import { qk, queryClient } from './queries';
@@ -8,6 +9,11 @@ import { pushError } from './toasts';
 
 /** Everything the UI does with an event from Rust. */
 export function handleEvent(event: AppEvent) {
+  // A Browse install has its own progress; it never shows on Play.
+  if (event.type === 'progress' && event.task.key === 'install_content') {
+    applyContentProgress(event);
+    return;
+  }
   runStore.apply(event);
   if (event.type === 'warning') pushError(event.error);
   // During first-run setup the link waits in Rust; the shell takes it once setup is done.

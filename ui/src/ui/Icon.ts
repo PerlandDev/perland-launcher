@@ -18,6 +18,7 @@ export {
   Play,
   Plus,
   Reload,
+  Search,
   Square,
   Terminal,
   Trash,
