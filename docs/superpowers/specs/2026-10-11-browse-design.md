@@ -170,14 +170,14 @@ pub struct PlanItem {
 | `browse_project(idOrSlug)` | `ProjectDetail` | |
 | `browse_versions(project, instance?)` | `Vec<VersionInfo>` | Filtered to the instance when given. |
 | `browse_image(url, kind)` | `String` (data URL) | `kind` = `icon | gallery`. |
-| `browse_installed(instance)` | `Vec<String>` (project ids) | For "Installed" badges. The `FileHashes` memo lives per instance in `AppCore`. |
+| `browse_installed(instance)` | `Vec<String>` (project ids) | For "Installed" badges. The `FileHashes` memo lives in core `Browse`: one per process, keyed by file path. |
 | `browse_plan(PlanRequest)` | `InstallPlanView` | `PlanRequest { project, version?, target: {kind: instance, id} | {kind: new} }`. Not for modpacks (`content_incompatible`; modpacks use `pack_add`). The view adds `planId`, total size and per-item display fields; URLs and hashes stay in the app. |
 | `browse_install(planId)` | `InstallResult { instance, added: Vec<String> }` | See §4.2. |
 | `open_link(url)` | `()` | https only (else `link_refused`); the host opens it in the system browser. Used for Markdown links and project links. |
 
 ### 4.2 Install rules
 
-- **Plans live in `AppCore`.** `browse_plan` stores the full plan under a random `planId`; the webview only ever sends that id back. Plans expire after 10 minutes and are consumed by `browse_install`. An unknown or expired id: `content_plan_expired`.
+- **Plans live in `AppCore`.** `browse_plan` stores the full plan under a sequential `planId` (`plan-N`); the webview only ever sends that id back. Nothing relies on the id being unguessable: the webview can create plans itself. Plans expire after 10 minutes and are consumed by `browse_install`. An unknown or expired id: `content_plan_expired`.
 - **New instance target:** `browse_install` first creates the instance through the same path as `instance_create` (default memory, the plan's game), then installs. If the install fails, the new instance stays so the player can retry from it.
 - **Busy rules:**
   - This app has a run for the instance in `checking`, `asking`, `queued` or `syncing`: `content_busy` ("Wait for {name} to finish updating").
@@ -257,7 +257,7 @@ Built through `/impeccable` against the Arcade Cabinet contract. The comp settle
 - **Body:** `react-markdown` + `remark-gfm`. Raw HTML is skipped (no `rehype-raw`). Images render only when their URL passes the core's host rule, through `browse_image`; any other image renders as its alt text (or nothing). Links render as buttons that call `open_link`; non-https links render as plain text. Source, issues and wiki links sit beside the body.
 - **Action plate:**
   - Version select: compatible versions only; defaults to the newest compatible release (else beta, else alpha).
-  - **Install to:** the player's instances; incompatible ones disabled with the reason ("Needs Fabric", "Only for Minecraft 1.21"); **New instance** last. Scoped Browse preselects its instance.
+  - **Install to:** the player's instances; incompatible ones disabled with the reason ("Needs a mod loader" or "No version for this instance"; naming the specific loader or Minecraft version, such as "Needs Fabric" or "Only for Minecraft 1.21", is deferred); **New instance** last. Scoped Browse preselects its instance.
   - The lit **Install** button, the page's one lit button.
   - Modpacks: the version select and **Create instance**, which calls `pack_add` and navigates to the new instance.
 
