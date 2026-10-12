@@ -750,14 +750,16 @@
     background: var(--color-lime);
   }
   /* A server cabinet's last-known status: three pixel signal bars in a small ground socket, top right.
-     The lime "Playing" LED is a solid square at bottom right, so the two never share a shape, a corner
-     or a hue: the bars are never lime. The status word is in the item's aria-label. */
+     The bar COUNT carries the state, so hue is never the only carrier: online 3/3 in ink, starting 2/3
+     in blue, sleeping 1/3 dim, offline 0/3 with a coral flatline along the foot, unknown 0/3. The lime
+     "Playing" LED is a solid square at bottom right, so the two never share a shape, a corner or a hue:
+     the bars are never lime. The status word is in the item's aria-label and its hover title. */
   .rail-server {
-    --on: var(--color-ink);
     --off: color-mix(in oklab, var(--color-line), var(--color-ink-dim) 30%);
     --b1: var(--off);
     --b2: var(--off);
     --b3: var(--off);
+    --flat: transparent;
     position: absolute;
     right: 0.125rem;
     top: 0.125rem;
@@ -767,28 +769,26 @@
     border-radius: 2px;
     corner-shape: notch;
     background:
+      linear-gradient(var(--flat), var(--flat)) 0 100% / 10px 2px no-repeat content-box,
       linear-gradient(var(--b1), var(--b1)) 0 100% / 2px 4px no-repeat content-box,
       linear-gradient(var(--b2), var(--b2)) 4px 100% / 2px 7px no-repeat content-box,
       linear-gradient(var(--b3), var(--b3)) 8px 100% / 2px 10px no-repeat content-box,
       var(--color-ground);
   }
   .rail-server[data-status='online'] {
-    --b1: var(--on);
-    --b2: var(--on);
-    --b3: var(--on);
+    --b1: var(--color-ink);
+    --b2: var(--color-ink);
+    --b3: var(--color-ink);
   }
   .rail-server[data-status='starting'] {
     --b1: var(--color-blue);
     --b2: var(--color-blue);
-    --b3: var(--color-blue);
   }
   .rail-server[data-status='sleeping'] {
     --b1: var(--color-ink-dim);
   }
   .rail-server[data-status='offline'] {
-    --b1: var(--color-coral);
-    --b2: var(--color-coral);
-    --b3: var(--color-coral);
+    --flat: var(--color-coral);
   }
   .rail-warn {
     position: absolute;

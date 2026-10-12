@@ -235,6 +235,18 @@ describe('server instances', () => {
     expect(await screen.findByText('Copied')).toBeInTheDocument();
   });
 
+  it('name the button Copied and announce the copy', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    await user.click(await screen.findByRole('button', { name: 'Copy server address' }));
+    expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    expect(screen.getByText('Address copied')).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('read a starting server as Starting', async () => {
+    renderApp(<Home id="survival" />, { server: 'starting' });
+    expect(await screen.findByRole('status', { name: 'Server status: Starting' })).toBeInTheDocument();
+  });
+
   it('keep the label as Copy and toast when the clipboard refuses', async () => {
     const { user } = renderApp(<Home id="survival" />, { server: 'online' });
     const failure = new Error('denied');

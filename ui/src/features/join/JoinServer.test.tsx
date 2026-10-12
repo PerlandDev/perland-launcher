@@ -32,7 +32,8 @@ describe('JoinServer', () => {
     renderApp(<JoinServer invite={OTHER} />, { server: 'online' });
     const card = (await screen.findByRole('heading', { name: 'survival' })).closest('article')!;
     const icon = card.querySelector('img')!;
-    expect(icon).toHaveAttribute('width', '128');
+    // 64 px at 2 device px per icon px (jsdom is 1 dppx).
+    expect(icon.style.width).toBe('128px');
     fireEvent.error(icon);
     expect(card.querySelector('img')).toBeNull();
     expect(card.querySelector('.server-icon svg')).not.toBeNull();
@@ -63,6 +64,22 @@ describe('JoinServer', () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Copy address' }));
     expect(await navigator.clipboard.readText()).toBe('play.example.com:25577');
+  });
+
+  it.each([
+    ['network', "This server can't be joined from the launcher yet. Join with the address play.example.com:25577."],
+    ['gone', "This invite link doesn't work anymore. Ask the owner for a new one."],
+  ] as const)('offers a way out when the link fails (%s)', async (server, message) => {
+    const { user } = renderApp(<JoinServer invite={OTHER} />, { server });
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(routeSnapshot()).toEqual({ name: 'home', id: null });
+  });
+
+  it('offers a way out of relinking before a link is checked', async () => {
+    const { user } = renderApp(<JoinServer invite="" relinkFor="survival" />, { server: 'online' });
+    await user.click(await screen.findByRole('button', { name: 'Cancel' }));
+    expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival' });
   });
 
   it('says when the link is dead', async () => {

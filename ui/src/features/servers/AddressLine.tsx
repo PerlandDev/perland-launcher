@@ -32,9 +32,13 @@ export function AddressLine({ address }: { address: ServerAddress | null }) {
     <p className="marquee-plate plate-row">
       <span className="text-sm text-ink-dim">{t('server.address')}</span>
       <span className="selectable font-mono text-[13px]">{text}</span>
-      <Button variant="ghost" icon={copied ? <Check /> : <Copy />} aria-label={t('server.copyAddress')} onClick={copy}>
+      {/* The name follows the visible label, and a polite live region says what just happened. */}
+      <Button variant="ghost" icon={copied ? <Check /> : <Copy />} aria-label={copied ? t('common.copied') : t('server.copyAddress')} onClick={copy}>
         {copied ? t('common.copied') : t('common.copy')}
       </Button>
+      <span className="sr-only" aria-live="polite">
+        {copied ? t('server.addressCopied') : ''}
+      </span>
     </p>
   );
 }

@@ -56,3 +56,10 @@ it('marks a server with its last status, in words too', async () => {
   expect(container.querySelector('.rail-server')).toHaveAttribute('data-status', 'online');
   expect(container.querySelector('.rail-led')).toBeNull();
 });
+
+it("shows a server's status word on hover too", async () => {
+  renderApp(<Rail />, { server: 'starting' });
+  const survival = await screen.findByRole('button', { name: 'Survival, Starting' });
+  expect(survival).toHaveAttribute('title', 'Survival · Starting');
+  expect(screen.getByRole('button', { name: 'Creative Flat' })).toHaveAttribute('title', 'Creative Flat');
+});

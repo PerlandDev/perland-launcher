@@ -310,6 +310,7 @@
     "address": "Address",
     "noAddress": "No address yet",
     "copyAddress": "Copy server address",
+    "addressCopied": "Address copied",
     "deadLink": "This invite link stopped working",
     "useNewLink": "Use a new link",
     "updated": "Server updated · updates when you play",

@@ -159,7 +159,7 @@
       "**Do** fill progress block by block in blue with tabular counts in real MB, and never truncate the MB figure.",
       "**Do** keep update actions raised, never lit: a status plate leads with a square lamp (blue offer, lime done), and the dialog's one primary is the only amber.",
       "**Do** sink rows inside panels and dialogs as a `.well`, and scale pack art with nearest-neighbour only at 2x or more.",
-      "**Do** show a server's state as a square LED plus its word, keep the rail's server mark in signal bars at the top-right, and show a 64px server icon only at 64 or 128px.",
+      "**Do** show a server's state as a square LED plus its word, keep the rail's server mark in signal bars at the top-right with the bar count carrying the state, and show a 64px server icon only at a whole number of device pixels per icon pixel.",
       "**Do** pad `main` by the drawer's open height so Play is never covered, and keep primary form actions in a sticky row.",
       "**Do** let attract-mode parallax stop under reduced motion. State changes snap."
     ],

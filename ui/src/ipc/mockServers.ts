@@ -6,11 +6,24 @@ import serverStatusFx from './contract/server_status.json';
 import { inviteCanonical } from './inviteLink';
 import type { Instance, JoinPreview, LauncherError, ServerStatusView } from './schema';
 
-export type ServerScenario = 'online' | 'vanilla' | 'pending' | 'whitelisted' | 'gone' | 'network' | 'modded-no-pack';
+export type ServerScenario =
+  | 'online'
+  | 'starting'
+  | 'offline'
+  | 'vanilla'
+  | 'pending'
+  | 'whitelisted'
+  | 'gone'
+  | 'network'
+  | 'modded-no-pack';
 
 /** The invite the seeded server instance has. */
 export const MOCK_INVITE = `https://play.example.com/${'A'.repeat(43)}`;
 export const MOCK_SERVER_ID = 'survival';
+/** A real 64 × 64 server icon (original pixel art, terraced plots at dusk, generated with Node), so the
+ *  mock shows the icon at its integer pixel scale. The contract fixture's icon is only a PNG signature. */
+export const MOCK_SERVER_ICON =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABdElEQVR42u2YPW7CQBCF5xqhI6IykpsoFFSR6FxwgDRcIXUOkCLHQjQoXCAnoIaCdpCRiIiz4B+88YzfK54sQLPr+fxmvIOMBqkiSwiAAP5vs8Nu6weAxZtlCRBA++VHB8ADSB8n2lS5re6JtyDxngAUAP3+vCm3AKqUUlnyTSGIyye/X/3WHRDEVfLFxG+AaBVAl93eBAATDihLvgChcwBtuSY6gOl4qpbVFEDV9QnADYCaTZAA+gLgD4QKB6E6a7sAEIRwRXXXdQOgCoQma7oCEEMEkD2/KLIIgAAIgAAIABrA8ONLkUUA71mib7NE8+s8fdDLz5fX/LfQ997jpI9J1YmTvj/hsjhBsnsoTtabRC0rNgzzAGI7Q1Br/xwnqLX/4wC0934xTpAPQVcd0OYmunwyLYlN3DwA5EPQqQeg1v45jtMg/DSorwvtQmamwa4AmJkGkQ9BwR6ABoPTIKdBToOcBhW5EQryX+JBB3AaBINxBGzHqnIKs/OSAAAAAElFTkSuQmCC';
 export const NOT_MINE = Symbol('not a server command');
 
 export interface MockServers {
@@ -44,12 +57,20 @@ export function seedServers(scenario: ServerScenario | undefined, listing: Listi
   return { scenario };
 }
 
+/** The scenarios that pin the server's live status, or null to keep the fixture's. */
+const pinnedStatus = (scenario: ServerScenario): 'starting' | 'offline' | null =>
+  scenario === 'starting' || scenario === 'offline' ? scenario : null;
+
 function preview(servers: MockServers, existing: string | null): JoinPreview {
   const [modded, vanilla] = clone(joinPreviewFx) as JoinPreview[];
   const base = servers.scenario === 'vanilla' ? vanilla! : modded!;
+  const pinned = pinnedStatus(servers.scenario);
   return {
     ...base,
     existing,
+    icon: base.icon ? MOCK_SERVER_ICON : null,
+    status: pinned ?? base.status,
+    players: pinned ? null : base.players,
     whitelisted: servers.scenario === 'whitelisted',
     pack: base.pack && servers.scenario === 'pending' ? { ...base.pack, state: 'pending' } : base.pack,
   };
@@ -59,10 +80,11 @@ function status(servers: MockServers): ServerStatusView {
   const [online, gone] = clone(serverStatusFx) as ServerStatusView[];
   if (servers.scenario === 'gone') return gone!;
   const asleep = servers.scenario === 'vanilla';
+  const pinned = pinnedStatus(servers.scenario);
   return {
     ...online!,
-    status: asleep ? 'sleeping' : online!.status,
-    players: asleep ? null : online!.players,
+    status: asleep ? 'sleeping' : (pinned ?? online!.status),
+    players: asleep || pinned ? null : online!.players,
     whitelisted: servers.scenario === 'whitelisted',
   };
 }

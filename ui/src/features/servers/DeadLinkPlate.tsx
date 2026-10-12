@@ -8,9 +8,10 @@ import { Unlink } from '../../ui/Icon';
 export function DeadLinkPlate({ id }: { id: string }) {
   const { t } = useTranslation();
   return (
-    <p className="marquee-plate plate-row dead-link" role="status">
+    <p className="marquee-plate plate-row dead-link">
       <Unlink aria-hidden />
-      <span>{t('server.deadLink')}</span>
+      {/* Only the sentence is the live region; the button is not announced as part of it. */}
+      <span role="status">{t('server.deadLink')}</span>
       <Button onClick={() => navigate({ name: 'joinServer', invite: '', relinkFor: id })}>{t('server.useNewLink')}</Button>
     </p>
   );

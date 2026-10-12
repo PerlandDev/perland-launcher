@@ -102,15 +102,16 @@ export function JoinServer({ invite, relinkFor }: { invite: string; relinkFor?: 
         )}
         {add.isError && <ErrorCard error={add.error} />}
         {relink.isError && <ErrorCard error={relink.error} />}
-        {data && (
-          <div className="sticky bottom-0 flex items-center justify-end gap-4 bg-ground py-4 shadow-[0_-1px_0_var(--color-line)]">
-            {!relinkFor && !data.existing && <p className="text-sm text-ink-dim">{t('join.note')}</p>}
-            <Button onClick={() => navigate({ name: 'home', id: relinkFor ?? null })}>{t('common.cancel')}</Button>
+        {/* Cancel is always here, so a link that fails (or a deep link the player didn't mean) has a way out. */}
+        <div className="sticky bottom-0 flex items-center justify-end gap-4 bg-ground py-4 shadow-[0_-1px_0_var(--color-line)]">
+          {data && !relinkFor && !data.existing && <p className="text-sm text-ink-dim">{t('join.note')}</p>}
+          <Button onClick={() => navigate({ name: 'home', id: relinkFor ?? null })}>{t('common.cancel')}</Button>
+          {data && (
             <Button variant="primary" size="lg" disabled={busy} onClick={go}>
               {label}
             </Button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </ScreenFrame>
   );

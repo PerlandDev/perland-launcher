@@ -62,7 +62,7 @@ function RailItem({
       data-selected={selected ? '' : undefined}
       aria-current={selected ? 'page' : undefined}
       aria-label={label}
-      title={item.name}
+      title={[item.name, serverWord].filter(Boolean).join(' · ')}
       tabIndex={entry ? 0 : -1}
       onClick={() => navigate({ name: 'home', id: item.id })}
     >
