@@ -331,7 +331,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 .await?
             }
         };
-        let _guard = self.content_guard(&instance)?;
+        let _guard = match self.content_guard(&instance) {
+            Ok(guard) => guard,
+            Err(refused) => {
+                // Busy is temporary: keep the plan (and its age) so the player can retry it.
+                // A new instance has just been created and can't be busy.
+                if stored.instance.is_some() {
+                    self.plans
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(plan_id.to_string(), stored);
+                }
+                return Err(refused);
+            }
+        };
         let managed = Managed::load(&self.instances.perland_dir(&instance.id)).await;
         let title = stored
             .plan
@@ -599,6 +612,7 @@ mod tests {
     async fn installs_wait_for_updates_but_not_for_a_running_game() {
         let (core, runner, _, _t) = core(BuildKind::Dev);
         let instance = fabric(&core).await;
+        let mut refused = String::new();
         for phase in [
             RunStateKind::Checking,
             RunStateKind::Asking,
@@ -610,7 +624,16 @@ mod tests {
             let error = core.browse_install(&view.plan_id).await.unwrap_err();
             assert_eq!(error.code, ErrorCode::ContentBusy, "{phase:?}");
             assert_eq!(error.params["name"], "Asalith");
+            refused = view.plan_id;
         }
+        // A refusal keeps the plan: once the update is over, the same plan id installs.
+        core.runs.lock().unwrap().clear();
+        core.browse_install(&refused).await.unwrap();
+        assert_eq!(runner.browser.installs.lock().unwrap().len(), 1);
+
+        // A starting or running game holds the instance lock itself; the install doesn't need it.
+        let run_lock =
+            InstanceLock::try_acquire(&core.instances.perland_dir(&instance.id)).unwrap();
         for phase in [
             RunStateKind::Preparing,
             RunStateKind::Running,
@@ -623,7 +646,8 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{phase:?}: {e:?}"));
         }
         core.runs.lock().unwrap().clear();
-        assert_eq!(runner.browser.installs.lock().unwrap().len(), 3);
+        drop(run_lock);
+        assert_eq!(runner.browser.installs.lock().unwrap().len(), 4);
 
         // Another process (the CLI) syncing holds the instance lock.
         let foreign = InstanceLock::try_acquire(&core.instances.perland_dir(&instance.id)).unwrap();
@@ -633,6 +657,55 @@ mod tests {
             ErrorCode::ContentBusy
         );
         drop(foreign);
+        core.browse_install(&view.plan_id).await.unwrap();
+        assert_eq!(runner.browser.installs.lock().unwrap().len(), 5);
+    }
+
+    #[tokio::test]
+    async fn an_instance_cannot_be_deleted_or_changed_mid_install() {
+        let (core, runner, _, _t) = core(BuildKind::Dev);
+        let instance = fabric(&core).await;
+        runner.browser.hold_install.store(true, Ordering::SeqCst);
+        let view = core.browse_plan(into(&instance.id)).await.unwrap();
+        let task = {
+            let core = core.clone();
+            let id = view.plan_id.clone();
+            tokio::spawn(async move { core.browse_install(&id).await })
+        };
+        while runner.browser.installs.lock().unwrap().is_empty() {
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+        let mut other_game = instance.clone();
+        other_game.game.minecraft = "1.21.1".into();
+        let mut other_java = instance.clone();
+        other_java.java.memory_mb += 512;
+        assert_eq!(
+            core.instance_update(other_game.clone())
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::ContentInstalling
+        );
+        assert_eq!(
+            core.instance_update(other_java.clone())
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::ContentInstalling
+        );
+        assert_eq!(
+            core.instance_delete(&instance.id).await.unwrap_err().code,
+            ErrorCode::ContentInstalling
+        );
+        // Names don't touch the files being written.
+        core.instance_rename(&instance.id, "Renamed").await.unwrap();
+
+        runner.browser.open_install_gate();
+        task.await.unwrap().unwrap();
+        let mut renamed_game = core.instances.load(&instance.id).await.unwrap();
+        renamed_game.game.minecraft = "1.21.1".into();
+        core.instance_update(renamed_game).await.unwrap();
+        core.instance_delete(&instance.id).await.unwrap();
     }
 
     #[tokio::test]
@@ -712,6 +785,11 @@ mod tests {
             .await
             .unwrap();
         core.browse_install(&again.plan_id).await.unwrap_err();
-        assert_eq!(core.instances_list().await.unwrap().instances.len(), 2);
+        let listing = core.instances_list().await.unwrap();
+        assert_eq!(listing.instances.len(), 2);
+        assert!(core.installing.lock().unwrap().is_empty());
+        for kept in &listing.instances {
+            InstanceLock::try_acquire(&core.instances.perland_dir(&kept.id)).unwrap();
+        }
     }
 }

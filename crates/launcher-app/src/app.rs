@@ -149,6 +149,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .contains_key(id)
     }
 
+    /// Is a content install writing into this instance? (Not a run: see `browse.rs`.)
+    pub(crate) fn is_installing(&self, id: &str) -> bool {
+        self.installing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(id)
+    }
+
     /// A damaged accounts file doesn't fail this: Settings needs it to offer "Open data folder",
     /// which is the fix. Offline then stays locked in release builds, and the damage is reported
     /// once as a warning (without the file's contents).
@@ -235,6 +243,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         {
             return Err(busy(&instance.id));
         }
+        // An install in flight was planned for this game; it must not land in another one.
+        if self.is_installing(&instance.id)
+            && (current.game != instance.game || current.java != instance.java)
+        {
+            return Err(crate::browse::content_installing());
+        }
         instance.source = current.source;
         self.instances.update(&instance).await
     }
@@ -249,6 +263,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     pub async fn instance_delete(&self, id: &str) -> Result<()> {
         if self.is_busy(id) {
             return Err(busy(id));
+        }
+        if self.is_installing(id) {
+            return Err(crate::browse::content_installing());
         }
         self.instances.delete(id).await
     }
