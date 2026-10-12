@@ -17,7 +17,8 @@
     "java": {
       "path": null,
       "memoryMb": 4096
-    }
+    },
+    "server": null
   },
   "added": [
     "sodium-fabric-0.5.11+mc1.20.1.jar"

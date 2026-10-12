@@ -80,5 +80,13 @@
   "content_plan_expired",
   "image_refused",
   "link_refused",
+  "invite_link_invalid",
+  "invite_gone",
+  "invite_unsupported",
+  "invite_site_unreachable",
+  "invite_rate_limited",
+  "server_pack_unavailable",
+  "server_pack_pending",
+  "server_address_unknown",
   "internal"
 ]
