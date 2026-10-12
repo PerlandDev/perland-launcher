@@ -82,7 +82,7 @@ impl Target {
 pub const SHADER_TAG: &str = "iris";
 
 /// Tags Modrinth lists among a project's categories that are loaders, not categories.
-pub const NON_CATEGORY_TAGS: [&str; 10] = [
+pub const NON_CATEGORY_TAGS: [&str; 22] = [
     "fabric",
     "quilt",
     "forge",
@@ -93,6 +93,18 @@ pub const NON_CATEGORY_TAGS: [&str; 10] = [
     "vanilla",
     "minecraft",
     "datapack",
+    "bukkit",
+    "paper",
+    "spigot",
+    "purpur",
+    "folia",
+    "velocity",
+    "bungeecord",
+    "waterfall",
+    "sponge",
+    "liteloader",
+    "modloader",
+    "rift",
 ];
 
 pub fn loader_tag(kind: LoaderKind) -> &'static str {

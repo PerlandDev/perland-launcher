@@ -244,6 +244,33 @@ mod tests {
     }
 
     #[test]
+    fn loader_and_server_tags_are_not_categories() {
+        let tags = [
+            "adventure",
+            "fabric",
+            "paper",
+            "bukkit",
+            "spigot",
+            "purpur",
+            "folia",
+            "velocity",
+            "bungeecord",
+            "waterfall",
+            "sponge",
+            "liteloader",
+            "modloader",
+            "rift",
+            "optimization",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(
+            only_categories(tags),
+            vec!["adventure".to_string(), "optimization".into()]
+        );
+    }
+
+    #[test]
     fn params_page_and_sort() {
         let mut q = query(ContentKind::Modpack);
         q.sort = SortIndex::Downloads;

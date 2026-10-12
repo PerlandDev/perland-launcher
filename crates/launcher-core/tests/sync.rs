@@ -1380,3 +1380,30 @@ async fn a_second_check_reuses_the_resolved_update() {
         None
     );
 }
+
+#[tokio::test]
+async fn a_changed_offered_stamp_resolves_again() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1(&env.server)).await;
+    publish_v1_1(&env).await;
+    let first = update_for(&env, &instance).await;
+    assert_eq!(first.desired.pack_version, "1.1.0");
+
+    // The pack moves on before the 1.1.0 update is taken: the remembered resolve is stale.
+    env.server.reset().await;
+    PackBuilder::new(&env.server, "Tiny", "1.2.0")
+        .url_mod("appleskin", "appleskin.jar", b"apple v1", "both", None)
+        .url_mod("jei", "jei.jar", b"jei", "both", None)
+        .url_mod("sodium", "sodium.jar", b"sodium", "both", None)
+        .file("config/a.toml", b"a = 1", true)
+        .mount(&env.server)
+        .await;
+    // A reset server counts from zero.
+    let before = hits(&env.server, "/pack/pack.toml").await;
+    let second = update_for(&env, &instance).await;
+    assert_eq!(second.desired.pack_version, "1.2.0");
+    assert!(
+        hits(&env.server, "/pack/pack.toml").await > before,
+        "the new offer was fetched, not served from the remembered one"
+    );
+}

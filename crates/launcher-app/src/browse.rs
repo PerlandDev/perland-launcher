@@ -533,6 +533,10 @@ mod tests {
             link_to_open(" https://github.com/CaffeineMC/sodium ").unwrap(),
             "https://github.com/CaffeineMC/sodium"
         );
+        assert_eq!(
+            link_to_open("HTTPS://Example.com").unwrap(),
+            "https://example.com/"
+        );
         for bad in [
             "http://example.com",
             "javascript:alert(1)",
@@ -540,6 +544,9 @@ mod tests {
             "https://user:pw@example.com/",
             "perland://pack?url=https://x",
             "https:///nohost",
+            r"https:\host",
+            r"https://\host",
+            "  https://user:pw@example.com/  ",
             "",
         ] {
             assert_eq!(

@@ -1123,3 +1123,40 @@ async fn browse_plans_and_installs_a_mod_with_its_dependency() {
         "categories are fetched once"
     );
 }
+
+#[tokio::test]
+async fn browse_fetches_images_with_the_client_that_never_follows_redirects() {
+    let cdn = MockServer::start().await;
+    let elsewhere = MockServer::start().await;
+    host_file(&elsewhere, "icon.png", PNG).await;
+    Mock::given(method("GET"))
+        .and(path("/files/moved.png"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/files/icon.png", elsewhere.uri())),
+        )
+        .mount(&cdn)
+        .await;
+    let root = tempfile::tempdir().unwrap();
+    // The API client follows redirects; only `image_http` must not.
+    let browse = Browse::new(
+        launcher_core::http::client("test").unwrap(),
+        launcher_core::http::client_without_redirects("test").unwrap(),
+        downloader(),
+        &LauncherDirs::new(root.path()),
+        BrowseConfig {
+            api: format!("{}/v2", cdn.uri()),
+            cdn: cdn.uri(),
+        },
+    );
+    let err = browse
+        .image(&format!("{}/files/moved.png", cdn.uri()), ImageKind::Icon)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::ImageRefused);
+    assert_eq!(hits(&cdn, "/files/moved.png").await, 1);
+    assert!(
+        elsewhere.received_requests().await.unwrap().is_empty(),
+        "the redirect target was never contacted"
+    );
+}
