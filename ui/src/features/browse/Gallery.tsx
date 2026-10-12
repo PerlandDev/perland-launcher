@@ -18,7 +18,7 @@ export function Gallery({ images }: { images: GalleryImage[] }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState<number | null>(null);
   if (images.length === 0) return null;
-  const name = (i: number) => images[i]?.title ?? t('project.galleryImage', { n: i + 1, total: images.length });
+  const name = (i: number) => images[i]?.title || t('project.galleryImage', { n: i + 1, total: images.length });
   const current = open === null ? null : images[open];
   return (
     <section aria-label={t('project.gallery')}>

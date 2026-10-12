@@ -7,6 +7,7 @@ import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
 import { Toasts } from '../../ui/Toasts';
+import type { VersionInfo } from '../../ipc/schema';
 import { Browse } from './Browse';
 
 const page = (project: string, instance?: string) => (
@@ -192,4 +193,54 @@ it('does not call the install failed when only showing the result goes wrong', a
   await waitFor(() => expect(log).toHaveBeenCalled());
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   vi.restoreAllMocks();
+});
+
+it('starts a new instance from the newest version the core can make one from', async () => {
+  const backend = createMockBackend();
+  const sodium = (await backend.handle('browse_versions', { project: 'AANobbMI' })) as VersionInfo[];
+  const base = sodium[0]!;
+  const versions: VersionInfo[] = [
+    // The newest is a server plugin build, which no instance can run.
+    { ...base, id: 'paper-build', number: '9.9', versionType: 'release', date: '2026-09-01T00:00:00Z', gameVersions: ['1.21.1'], loaders: ['bukkit', 'paper'] },
+    { ...base, id: 'snapshot-only', number: '9.8', versionType: 'release', date: '2026-08-01T00:00:00Z', gameVersions: ['24w14a'], loaders: ['fabric'] },
+    { ...base, id: 'fabric-build', number: '1.0', versionType: 'release', date: '2026-01-01T00:00:00Z', gameVersions: ['1.21.1'], loaders: ['fabric'] },
+  ];
+  const calls: [string, unknown][] = [];
+  const { user } = renderWithProviders(page('sodium'), {
+    ipc: (cmd, args) => {
+      calls.push([cmd, args]);
+      if (cmd === 'browse_versions') return versions;
+      return backend.handle(cmd, args);
+    },
+  });
+  const picker = await screen.findByRole('combobox', { name: 'Install to' });
+  await user.selectOptions(picker, 'New instance');
+  const version = screen.getByRole('combobox', { name: 'Version' });
+  await waitFor(() => expect(within(version).getAllByRole('option')).toHaveLength(1));
+  await user.click(screen.getByRole('button', { name: 'Install' }));
+  await waitFor(() => expect(sent(calls, 'browse_plan')).toHaveLength(1));
+  expect(sent(calls, 'browse_plan')).toMatchObject([{ request: { version: 'fabric-build', target: { kind: 'new' } } }]);
+});
+
+it('shows the instance a failed new-instance install left behind', async () => {
+  const backend = createMockBackend();
+  const calls: [string, unknown][] = [];
+  const { user } = renderWithProviders(page('sodium'), {
+    ipc: async (cmd, args) => {
+      calls.push([cmd, args]);
+      if (cmd === 'browse_install') {
+        // The core made the instance, then the install itself failed.
+        await backend.handle('instance_create', { request: { name: 'Sodium', minecraft: '1.20.1', loader: null } });
+        throw unreachable;
+      }
+      return backend.handle(cmd, args);
+    },
+  });
+  const picker = await screen.findByRole('combobox', { name: 'Install to' });
+  await user.selectOptions(picker, 'New instance');
+  await user.click(screen.getByRole('button', { name: 'Install' }));
+  const dialog = await screen.findByRole('dialog', { name: /^New instance: Sodium/ });
+  const before = sent(calls, 'instances_list').length;
+  await user.click(within(dialog).getByRole('button', { name: 'Install' }));
+  await waitFor(() => expect(sent(calls, 'instances_list').length).toBeGreaterThan(before));
 });

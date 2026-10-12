@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import projectFx from '../../ipc/contract/project_detail.json';
 import type { ProjectDetail } from '../../ipc/schema';
@@ -56,4 +56,54 @@ it('renders the description without raw HTML or foreign images', async () => {
   expect(within(article as HTMLElement).queryByRole('button', { name: 'plain' })).not.toBeInTheDocument();
   await user.click(within(article as HTMLElement).getByRole('button', { name: 'Wiki' }));
   expect(opened).toEqual([{ url: 'https://example.com/wiki' }]);
+});
+
+function renderDetail(detail: ProjectDetail) {
+  return renderWithProviders(<Browse route={route} />, {
+    ipc: (cmd) => {
+      if (cmd === 'browse_project') return detail;
+      if (cmd === 'browse_image') return 'data:image/png;base64,AAAA';
+      if (cmd === 'browse_versions' || cmd === 'browse_installed') return [];
+      if (cmd === 'instances_list') return { instances: [], damaged: [] };
+      return null;
+    },
+  });
+}
+
+it('shows no foreign image through a reference or a link around it', async () => {
+  const { container } = renderDetail({
+    ...(projectFx as ProjectDetail),
+    body: [
+      'Reference ![r][ref]',
+      '[ref]: https://i.imgur.com/y.png',
+      '[![linked](https://i.imgur.com/x.png)](https://example.com)',
+    ].join('\n\n'),
+  });
+  await screen.findByRole('heading', { name: 'Sodium', level: 1 });
+  const article = within(container.querySelector('.markdown') as HTMLElement);
+  expect(await article.findByRole('button', { name: 'linked' })).toBeInTheDocument();
+  expect(article.queryByRole('img')).not.toBeInTheDocument();
+  expect(container.querySelector('.markdown img')).toBeNull();
+  expect(article.getByText('r')).toBeInTheDocument();
+});
+
+it('keeps the footnote label out of sight', async () => {
+  const { container } = renderDetail({ ...(projectFx as ProjectDetail), body: 'A claim[^1].\n\n[^1]: The proof.' });
+  await screen.findByRole('heading', { name: 'Sodium', level: 1 });
+  const label = await waitFor(() => {
+    const el = container.querySelector('#footnote-label');
+    expect(el).not.toBeNull();
+    return el as HTMLElement;
+  });
+  expect(label).toHaveClass('sr-only');
+});
+
+it('names a gallery image without a title by its place in the set', async () => {
+  const gallery = [
+    { url: 'https://cdn.modrinth.com/data/x/a.png', title: '', featured: true },
+    { url: 'https://cdn.modrinth.com/data/x/b.png', title: 'Named', featured: false },
+  ];
+  renderDetail({ ...(projectFx as ProjectDetail), gallery });
+  expect(await screen.findByRole('button', { name: 'Image 1 of 2' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Named' })).toBeInTheDocument();
 });

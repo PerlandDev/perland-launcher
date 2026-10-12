@@ -53,6 +53,8 @@ export function useInstallFlow() {
     } catch (error) {
       // A failed install must not leave its meter lit. A new instance has no id the UI knows yet.
       if (view.target.kind === 'instance') clearContentProgress(view.target.id);
+      // A New install makes its instance first and keeps it when the install fails, so the list has changed.
+      else void qc.invalidateQueries({ queryKey: qk.instances });
       pushError(error);
       return;
     } finally {

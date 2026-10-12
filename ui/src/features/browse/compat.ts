@@ -23,6 +23,23 @@ export function fitsVersion(v: VersionInfo, kind: ContentKind, instance: Instanc
   }
 }
 
+const RELEASE = /^\d+\.\d+(\.\d+)?$/;
+
+/** Whether a version can start a new instance: the core's `new_target` needs a Minecraft release and a loader it can make. */
+export function fitsNewInstance(v: VersionInfo, kind: ContentKind): boolean {
+  if (!v.gameVersions.some((g) => RELEASE.test(g))) return false;
+  switch (kind) {
+    case 'mod':
+      return ['fabric', 'quilt', 'neoforge', 'forge'].some((tag) => v.loaders.includes(tag));
+    case 'shader':
+      return v.loaders.includes('iris');
+    case 'resource_pack':
+      return true;
+    case 'modpack':
+      return false;
+  }
+}
+
 export type Fit = { ok: true } | { ok: false; reason: 'needsLoader' | 'noVersion' };
 
 export function fitFor(versions: VersionInfo[], kind: ContentKind, instance: Instance): Fit {

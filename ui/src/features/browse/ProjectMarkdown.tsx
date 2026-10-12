@@ -29,12 +29,33 @@ export function ProjectMarkdown({ source }: { source: string }) {
         remarkPlugins={[remarkGfm]}
         skipHtml
         components={{
-          // The page title is the h1; the description's headings start one level below it.
-          h1: ({ children }) => <h2>{children}</h2>,
-          h2: ({ children }) => <h3>{children}</h3>,
-          h3: ({ children }) => <h4>{children}</h4>,
-          h4: ({ children }) => <h5>{children}</h5>,
-          h5: ({ children }) => <h6>{children}</h6>,
+          // The page title is the h1; the description's headings start one level below it. The class and id
+          // stay: remark-gfm's footnote label is an `sr-only` heading that must not become visible.
+          h1: ({ children, className, id }) => (
+            <h2 className={className} id={id}>
+              {children}
+            </h2>
+          ),
+          h2: ({ children, className, id }) => (
+            <h3 className={className} id={id}>
+              {children}
+            </h3>
+          ),
+          h3: ({ children, className, id }) => (
+            <h4 className={className} id={id}>
+              {children}
+            </h4>
+          ),
+          h4: ({ children, className, id }) => (
+            <h5 className={className} id={id}>
+              {children}
+            </h5>
+          ),
+          h5: ({ children, className, id }) => (
+            <h6 className={className} id={id}>
+              {children}
+            </h6>
+          ),
           a: ({ href, children }) =>
             href?.startsWith('https://') ? (
               <button type="button" className="md-link" onClick={() => void commands.openLink(href).catch(pushError)}>

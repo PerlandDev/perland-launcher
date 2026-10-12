@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Instance, VersionInfo } from '../../ipc/schema';
-import { fitFor, fitsVersion, loaderTags, pickDefault } from './compat';
+import { fitFor, fitsNewInstance, fitsVersion, loaderTags, pickDefault } from './compat';
 
 const instance = (minecraft: string, loader: Instance['game']['loader']): Instance => ({
   id: 'i',
@@ -42,6 +42,24 @@ describe('compat', () => {
     expect(fitFor([fabricMod], 'mod', vanilla)).toEqual({ ok: false, reason: 'needsLoader' });
     expect(fitFor([fabricMod], 'mod', instance('1.21.1', { kind: 'fabric', version: '1' }))).toEqual({ ok: false, reason: 'noVersion' });
     expect(fitFor([fabricMod], 'mod', fabric)).toEqual({ ok: true });
+  });
+
+  it('mirrors the core rules for a version that can start a new instance', () => {
+    const v = (mc: string[], loaders: string[]) => version('n', 'release', 'd', mc, loaders);
+    expect(fitsNewInstance(v(['1.21.1'], ['fabric']), 'mod')).toBe(true);
+    expect(fitsNewInstance(v(['1.21.1'], ['forge']), 'mod')).toBe(true);
+    expect(fitsNewInstance(v(['1.21.1'], ['neoforge']), 'mod')).toBe(true);
+    expect(fitsNewInstance(v(['1.21.1'], ['quilt']), 'mod')).toBe(true);
+    // A server plugin build has no loader the launcher can make.
+    expect(fitsNewInstance(v(['1.21.1'], ['bukkit', 'paper', 'spigot']), 'mod')).toBe(false);
+    // Snapshots only: no release to make the instance on.
+    expect(fitsNewInstance(v(['24w14a', '1.21-pre1'], ['fabric']), 'mod')).toBe(false);
+    expect(fitsNewInstance(v(['1.20', '24w14a'], ['fabric']), 'mod')).toBe(true);
+    expect(fitsNewInstance(v(['1.21.1'], ['iris']), 'shader')).toBe(true);
+    expect(fitsNewInstance(v(['1.21.1'], ['fabric']), 'shader')).toBe(false);
+    expect(fitsNewInstance(v(['1.21.1'], ['minecraft']), 'resource_pack')).toBe(true);
+    expect(fitsNewInstance(v(['24w14a'], ['minecraft']), 'resource_pack')).toBe(false);
+    expect(fitsNewInstance(v(['1.21.1'], ['fabric']), 'modpack')).toBe(false);
   });
 
   it('defaults to the newest release, then beta, then alpha', () => {

@@ -10,7 +10,7 @@ import { ErrorCard } from '../../ui/ErrorCard';
 import { Meter } from '../../ui/Meter';
 import { Select } from '../../ui/Select';
 import type { BrowseRoute } from './Browse';
-import { fitFor, fitsVersion, pickDefault } from './compat';
+import { fitFor, fitsNewInstance, fitsVersion, pickDefault } from './compat';
 import { InstallDialog } from './InstallDialog';
 import { versionLabel } from './labels';
 import { useInstallFlow } from './useInstallFlow';
@@ -69,7 +69,8 @@ function ContentPlate({ project, route }: { project: ProjectDetail; route: Brows
   const known = (id: string | null) => (id !== null && list.some((i) => i.id === id) ? id : null);
   const target = (picked === NEW ? NEW : known(picked)) ?? known(route.instance ?? null) ?? firstFit ?? NEW;
   const instance = list.find((i) => i.id === target) ?? null;
-  const options = instance ? all.filter((v) => fitsVersion(v, project.kind, instance)) : all;
+  // A new instance is made from the version itself, so only versions the core can make one from are offered.
+  const options = instance ? all.filter((v) => fitsVersion(v, project.kind, instance)) : all.filter((v) => fitsNewInstance(v, project.kind));
   const version = options.some((v) => v.id === chosen) ? chosen : (pickDefault(options)?.id ?? null);
   const installed = useBrowseInstalled(instance?.id ?? null);
   const already = installed.data?.includes(project.projectId) ?? false;

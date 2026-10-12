@@ -441,7 +441,7 @@
   },
   "categories": {
     "adventure": "Aventura", "cursed": "Raros", "decoration": "Decoración", "economy": "Economía",
-    "equipment": "Equipo", "food": "Comida", "game-mechanics": "Mecánicas", "library": "Librería",
+    "equipment": "Equipo", "food": "Comida", "game-mechanics": "Mecánicas", "library": "Bibliotecas",
     "magic": "Magia", "management": "Gestión", "minigame": "Minijuegos", "mobs": "Criaturas",
     "optimization": "Optimización", "social": "Social", "storage": "Almacenamiento", "technology": "Tecnología",
     "transportation": "Transporte", "utility": "Utilidades", "worldgen": "Generación de mundos",
