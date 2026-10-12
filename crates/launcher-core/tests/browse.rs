@@ -1003,3 +1003,123 @@ async fn an_image_redirect_is_refused_and_never_followed() {
     assert_eq!(err.code, ErrorCode::ImageRefused);
     assert!(elsewhere.received_requests().await.unwrap().is_empty());
 }
+
+use launcher_core::{
+    browse::{plan::PlanRequest, Browse, BrowseConfig},
+    paths::LauncherDirs,
+};
+
+#[tokio::test]
+async fn browse_plans_and_installs_a_mod_with_its_dependency() {
+    let server = MockServer::start().await;
+    let mut sodium = version_json(
+        &server,
+        "s1",
+        "SOD",
+        &["1.20.1"],
+        &["fabric"],
+        "sodium.jar",
+        b"sodium",
+    );
+    sodium["dependencies"] =
+        json!([{ "project_id": "API", "version_id": null, "dependency_type": "required" }]);
+    serve_json(
+        &server,
+        "/v2/project/sodium",
+        project_json("SOD", "sodium", "Sodium", "mod"),
+    )
+    .await;
+    serve_json(
+        &server,
+        "/v2/project/SOD",
+        project_json("SOD", "sodium", "Sodium", "mod"),
+    )
+    .await;
+    serve_json(
+        &server,
+        "/v2/project/API",
+        project_json("API", "fabric-api", "Fabric API", "mod"),
+    )
+    .await;
+    serve_json(&server, "/v2/project/SOD/version", json!([sodium])).await;
+    serve_json(
+        &server,
+        "/v2/project/API/version",
+        json!([version_json(
+            &server,
+            "a1",
+            "API",
+            &["1.20.1"],
+            &["fabric"],
+            "fabric-api.jar",
+            b"api"
+        )]),
+    )
+    .await;
+    host_file(&server, "sodium.jar", b"sodium").await;
+    host_file(&server, "fabric-api.jar", b"api").await;
+    serve_json(
+        &server,
+        "/v2/tag/category",
+        json!([{ "name": "optimization", "project_type": "mod", "header": "categories" }]),
+    )
+    .await;
+
+    let root = tempfile::tempdir().unwrap();
+    let dirs = LauncherDirs::new(root.path());
+    let browse = Browse::new(
+        launcher_core::http::client("test").unwrap(),
+        launcher_core::http::client_without_redirects("test").unwrap(),
+        downloader(),
+        &dirs,
+        BrowseConfig {
+            api: format!("{}/v2", server.uri()),
+            cdn: server.uri(),
+        },
+    );
+    let target = Target {
+        minecraft: "1.20.1".into(),
+        loader: Some(LoaderKind::Fabric),
+    };
+    let game = root.path().join("game");
+    let installed = browse.identify(&game, None).await.unwrap();
+    let plan = browse
+        .plan(
+            &PlanRequest {
+                project: "sodium".into(),
+                version: None,
+            },
+            Some(&target),
+            &installed,
+        )
+        .await
+        .unwrap();
+    assert_eq!(plan.items.len(), 2);
+    let (sink, _) = recorder();
+    let added = browse
+        .install(
+            &game,
+            &plan.items,
+            None,
+            &TaskId::new("install_content"),
+            &sink,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        added,
+        vec!["sodium.jar".to_string(), "fabric-api.jar".into()]
+    );
+    assert!(
+        dirs.objects().exists(),
+        "files went through the object cache"
+    );
+
+    browse.categories(Kind::Mod).await.unwrap();
+    browse.categories(Kind::Mod).await.unwrap();
+    assert_eq!(
+        hits(&server, "/v2/tag/category").await,
+        1,
+        "categories are fetched once"
+    );
+}
