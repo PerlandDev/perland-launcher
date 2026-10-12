@@ -1,11 +1,12 @@
 import { act, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import packStatusFx from '../../ipc/contract/pack_status.json';
-import { exitOf } from '../../ipc/mock';
+import { createMockBackend, exitOf } from '../../ipc/mock';
 import type { PackStatus } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
+import { renderWithProviders } from '../../test/render';
 import { Home } from './Home';
 
 describe('Home', () => {
@@ -201,4 +202,73 @@ it("shows the pack's own banner, and generated art otherwise", async () => {
   await vi.waitFor(() =>
     expect(container.querySelector('img.marquee-banner')?.getAttribute('src')).toMatch(/^data:image\/svg\+xml;base64,/),
   );
+});
+
+describe('server instances', () => {
+  it('show the live status, the address and the invite-only line', async () => {
+    renderApp(<Home id="survival" />, { server: 'whitelisted' });
+    expect(await screen.findByRole('status', { name: 'Server status: Online · 3/20' })).toBeInTheDocument();
+    expect(screen.getByText('play.example.com:25566')).toBeInTheDocument();
+    expect(screen.getByText('Invite only: ask the owner to add Steve')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['vanilla', 'Sleeping · join to wake it'],
+    ['gone', 'Unknown'],
+  ] as const)('read %s as %s', async (server, word) => {
+    renderApp(<Home id="survival" />, { server });
+    expect(await screen.findByRole('status', { name: `Server status: ${word}` })).toBeInTheDocument();
+  });
+
+  it('copy the address', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    await user.click(await screen.findByRole('button', { name: 'Copy server address' }));
+    expect(await navigator.clipboard.readText()).toBe('play.example.com:25566');
+  });
+
+  it('raise the dead-link plate, which opens relinking', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'gone' });
+    expect(await screen.findByText(/This invite link stopped working/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Use a new link' }));
+    expect(routeSnapshot()).toEqual({ name: 'joinServer', invite: '', relinkFor: 'survival' });
+  });
+
+  it('say a server update happens at Play, with no Update button', async () => {
+    const backend = createMockBackend({ server: 'online' });
+    renderWithProviders(<Home id="survival" />, {
+      ipc: (cmd, args) =>
+        cmd === 'pack_status'
+          ? {
+              installedVersion: '1.0.4',
+              update: { fromVersion: '1.0.4', toVersion: '1.0.5', added: [], updated: [], removed: [], kept: [] },
+              checkError: null,
+            }
+          : backend.handle(cmd, args),
+    });
+    expect(await screen.findByText('Server updated · updates when you play')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument();
+  });
+
+  it.each(['checking', 'syncing'] as const)('label the wait while the server builds its pack (%s)', async (state) => {
+    renderApp(<Home id="survival" />, { server: 'pending' });
+    await screen.findByRole('heading', { name: 'Survival' });
+    act(() => {
+      runStore.apply({ type: 'run_state', instance: 'survival', state, exit: null, update: null });
+      runStore.apply({
+        type: 'progress',
+        instance: 'survival',
+        task: { key: 'server_pack_wait', params: { name: 'survival' } },
+        done: 0,
+        total: 0,
+        bytes: 0,
+      });
+    });
+    expect(screen.getByRole('button', { name: 'Cancel: Server is preparing the modpack…' })).toBeInTheDocument();
+  });
+
+  it('never poll a plain instance', async () => {
+    const { calls } = renderApp(<Home id="creative-flat" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    expect(sent(calls, 'server_status')).toEqual([]);
+  });
 });

@@ -106,7 +106,8 @@
     "install_loader": "Setting up {{loader}} {{version}}",
     "check_pack": "Checking {{name}} files",
     "sync_pack": "Updating {{name}}",
-    "install_pack": "Installing {{name}}"
+    "install_pack": "Installing {{name}}",
+    "server_pack_wait": "Server is preparing the modpack…"
   },
   "activity": {
     "title": "Activity",
@@ -305,7 +306,13 @@
     "sleeping": "Sleeping · join to wake it",
     "offline": "Offline",
     "unknown": "Unknown",
-    "statusLabel": "Server status: {{status}}"
+    "statusLabel": "Server status: {{status}}",
+    "address": "Address",
+    "noAddress": "No address yet",
+    "copyAddress": "Copy server address",
+    "deadLink": "This invite link stopped working",
+    "useNewLink": "Use a new link",
+    "updated": "Server updated · updates when you play"
   },
   "errors": {
     "offline_name_invalid": { "message": "Player names must be 3–16 letters, numbers or underscores." },

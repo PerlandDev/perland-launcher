@@ -106,7 +106,8 @@
     "install_loader": "Preparando {{loader}} {{version}}",
     "check_pack": "Revisando los archivos de {{name}}",
     "sync_pack": "Actualizando {{name}}",
-    "install_pack": "Instalando {{name}}"
+    "install_pack": "Instalando {{name}}",
+    "server_pack_wait": "El servidor está preparando el modpack…"
   },
   "activity": {
     "title": "Actividad",
@@ -305,7 +306,13 @@
     "sleeping": "Dormido · únete para despertarlo",
     "offline": "Apagado",
     "unknown": "Desconocido",
-    "statusLabel": "Estado del servidor: {{status}}"
+    "statusLabel": "Estado del servidor: {{status}}",
+    "address": "Dirección",
+    "noAddress": "Todavía no hay dirección",
+    "copyAddress": "Copiar dirección del servidor",
+    "deadLink": "Este enlace de invitación dejó de funcionar",
+    "useNewLink": "Usar un enlace nuevo",
+    "updated": "Servidor actualizado · se actualiza cuando juegues"
   },
   "errors": {
     "offline_name_invalid": { "message": "Los nombres deben tener de 3 a 16 letras, números o guiones bajos." },

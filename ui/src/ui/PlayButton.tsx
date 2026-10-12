@@ -24,7 +24,9 @@ export function PlayButton({ state, progress, disabled, disabledReason, onPlay, 
   if (waiting) {
     const label =
       state === 'checking'
-        ? t('play.checking')
+        ? progress?.task.key === 'server_pack_wait'
+          ? taskLabel(i18n, progress.task)
+          : t('play.checking')
         : state === 'asking'
           ? t('play.asking')
           : state === 'queued'

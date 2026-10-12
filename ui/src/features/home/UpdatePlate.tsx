@@ -6,7 +6,7 @@ import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { useSingleFlight } from '../../ui/useSingleFlight';
-import { changeLine } from './labels';
+import { changeLine, isServer } from './labels';
 
 /** The marquee plate above the name. After a sync it says what changed; between plays it
  *  offers the update (never lit: Play is the one lit button). */
@@ -27,6 +27,14 @@ export function UpdatePlate({ instance }: { instance: Instance }) {
     );
   }
   const update = status.data?.update ?? null;
+  if (isServer(instance)) {
+    // Server instances always update when played: the plate only says so, with no Update button.
+    return update ? (
+      <p className="marquee-plate mb-3" role="status">
+        {t('server.updated')}
+      </p>
+    ) : null;
+  }
   if (update) {
     const counts = { added: update.added.length, updated: update.updated.length, removed: update.removed.length };
     return (
