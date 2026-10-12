@@ -874,7 +874,7 @@ async fn images_come_from_the_cdn_once_and_only_when_real() {
     host_file(&server, "big.png", &[PNG, &[0u8; 64]].concat()).await;
     let dir = tempfile::tempdir().unwrap();
     let cache = ImageCache::new(
-        launcher_core::http::client("test").unwrap(),
+        launcher_core::http::client_without_redirects("test").unwrap(),
         dir.path(),
         &server.uri(),
     )
@@ -940,7 +940,7 @@ async fn the_image_cache_prunes_the_oldest_first() {
     }
     let dir = tempfile::tempdir().unwrap();
     let cache = ImageCache::new(
-        launcher_core::http::client("test").unwrap(),
+        launcher_core::http::client_without_redirects("test").unwrap(),
         dir.path(),
         &server.uri(),
     )
@@ -972,4 +972,34 @@ async fn the_image_cache_prunes_the_oldest_first() {
         cache.get(&url("c.png"), ImageKind::Icon).await.is_ok(),
         "c is the newest"
     );
+}
+
+#[tokio::test]
+async fn an_image_redirect_is_refused_and_never_followed() {
+    let server = MockServer::start().await;
+    let elsewhere = MockServer::start().await;
+    host_file(&elsewhere, "icon.png", PNG).await;
+    Mock::given(method("GET"))
+        .and(path("/files/moved.png"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("location", format!("{}/files/icon.png", elsewhere.uri())),
+        )
+        .mount(&server)
+        .await;
+    let dir = tempfile::tempdir().unwrap();
+    let cache = ImageCache::new(
+        launcher_core::http::client_without_redirects("test").unwrap(),
+        dir.path(),
+        &server.uri(),
+    );
+    let err = cache
+        .get(
+            &format!("{}/files/moved.png", server.uri()),
+            ImageKind::Icon,
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::ImageRefused);
+    assert!(elsewhere.received_requests().await.unwrap().is_empty());
 }

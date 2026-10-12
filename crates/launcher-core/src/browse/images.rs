@@ -69,7 +69,8 @@ pub struct ImageCache {
 }
 
 impl ImageCache {
-    /// Images only from `origin` (`https://cdn.modrinth.com`; a wiremock server in tests).
+    /// Images only from `origin` (`https://cdn.modrinth.com`; a wiremock server in tests). `http`
+    /// must be built by `http::client_without_redirects`, or a CDN redirect could lead off-origin.
     pub fn new(http: reqwest::Client, dir: impl Into<PathBuf>, origin: &str) -> Self {
         Self {
             http,
