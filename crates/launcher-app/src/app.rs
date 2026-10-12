@@ -11,8 +11,8 @@ use std::{
 use launcher_core::{
     accounts::{AccountStore, AccountsFile, BuildKind},
     instances::{
-        is_valid_instance_id, GameSpec, Instance, InstanceListing, InstanceStore, MAX_MEMORY_MB,
-        MIN_MEMORY_MB,
+        is_valid_instance_id, GameSpec, Instance, InstanceListing, InstanceStore, SourceRef,
+        UpdatePolicy, MAX_MEMORY_MB, MIN_MEMORY_MB,
     },
     java,
     meta::{
@@ -217,15 +217,22 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Version and Java changes wait until the game stops; other edits are fine while it runs.
-    /// The source is sync's to change: a settings form loaded before a sync can't revert it.
-    pub async fn instance_update(&self, mut instance: Instance) -> Result<Instance> {
+    /// Where an instance comes from (`source`) and its server link (`server`) change only through
+    /// their own commands, so a stale copy from the UI can't undo a relink. Server instances
+    /// always follow their server (`Auto`).
+    pub async fn instance_update(&self, instance: Instance) -> Result<Instance> {
         let current = self.instances.load(&instance.id).await?;
         if self.is_busy(&instance.id)
             && (current.game != instance.game || current.java != instance.java)
         {
             return Err(busy(&instance.id));
         }
-        instance.source = current.source;
+        let mut instance = instance;
+        instance.source = current.source.clone();
+        instance.server = current.server.clone();
+        if matches!(current.source, SourceRef::Perland { .. }) {
+            instance.update_policy = UpdatePolicy::Auto;
+        }
         self.instances.update(&instance).await
     }
 

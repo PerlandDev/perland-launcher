@@ -4,12 +4,17 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
     instances::{unix_now, Instance, ServerLink, SourceRef, UpdatePolicy},
-    invite::InviteLink,
+    invite::{EngineView, InviteLink},
     sources::{perland, PackInput},
-    Result,
+    ErrorCode, LauncherError, Result,
 };
 
-use crate::{app::AppCore, dto::JoinPreview, events::Host, runner::Runner};
+use crate::{
+    app::AppCore,
+    dto::{JoinPreview, ServerPlayers, ServerStatusView},
+    events::Host,
+    runner::Runner,
+};
 
 /// A server instance's saved invite, and the Engine it last used.
 pub(crate) fn server_source(instance: &Instance) -> Option<(InviteLink, String)> {
@@ -18,6 +23,21 @@ pub(crate) fn server_source(instance: &Instance) -> Option<(InviteLink, String)>
             .ok()
             .map(|link| (link, engine.clone())),
         _ => None,
+    }
+}
+
+fn not_a_server() -> LauncherError {
+    LauncherError::pack(
+        ErrorCode::NoPack,
+        "This instance doesn't come from a server invite",
+    )
+}
+
+/// A successful read: refresh the link, or start one for an instance that has none yet.
+pub(crate) fn apply_view(server: &mut Option<ServerLink>, ev: &EngineView) {
+    match server {
+        Some(link) => link.refresh(&ev.view, &ev.engine, unix_now()),
+        None => *server = Some(ServerLink::from_view(&ev.view, &ev.engine, unix_now())),
     }
 }
 
@@ -65,6 +85,85 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.instances.save(&instance).await?;
         Ok(instance)
     }
+
+    /// Change a server instance's `ServerLink` on disk and return it. The instance is reloaded
+    /// first, so a rename or a sync made meanwhile stays. It is saved only when it changed.
+    pub(crate) async fn update_server(
+        &self,
+        id: &str,
+        change: impl FnOnce(&mut Option<ServerLink>),
+    ) -> Result<Option<ServerLink>> {
+        let mut instance = self.instances.load(id).await?;
+        let before = instance.server.clone();
+        change(&mut instance.server);
+        if instance.server != before {
+            self.instances.save(&instance).await?;
+        }
+        Ok(instance.server)
+    }
+
+    /// The last read said `invite_gone`: only `gone` changes; the address stays for joining.
+    pub(crate) async fn mark_server_gone(&self, id: &str) {
+        let _ = self
+            .update_server(id, |server| {
+                if let Some(link) = server {
+                    link.mark_gone();
+                }
+            })
+            .await;
+    }
+
+    /// The live status, through the shared 15 s view. It takes no lock, so it works while the
+    /// game runs. A dead link is an answer (`gone`); anything else failing is an error, after
+    /// which the UI polls less often.
+    pub async fn server_status(&self, id: &str) -> Result<ServerStatusView> {
+        let instance = self.instances.load(id).await?;
+        let (link, engine) = server_source(&instance).ok_or_else(not_a_server)?;
+        match self.runner.invite_view(link, Some(engine)).await {
+            Ok(ev) => {
+                let saved = self.update_server(id, |s| apply_view(s, &ev)).await?;
+                Ok(ServerStatusView {
+                    status: ev.view.status(),
+                    players: ev.view.players.as_ref().map(ServerPlayers::from),
+                    whitelisted: ev.view.whitelisted,
+                    pack_state: ev.view.pack.as_ref().map(|p| p.state.clone()),
+                    gone: false,
+                    address: saved.and_then(|s| s.address),
+                })
+            }
+            Err(e) if e.code == ErrorCode::InviteGone => {
+                self.mark_server_gone(id).await;
+                let last = self.instances.load(id).await?.server;
+                Ok(ServerStatusView {
+                    status: None,
+                    players: None,
+                    whitelisted: last.as_ref().is_some_and(|s| s.whitelisted),
+                    pack_state: None,
+                    gone: true,
+                    address: last.and_then(|s| s.address),
+                })
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// "Use a new link": point the instance at another invite. The files stay; the next Play
+    /// checks the new link and syncs.
+    pub async fn server_relink(&self, id: &str, link: &str) -> Result<Instance> {
+        let mut instance = self.instances.load(id).await?;
+        server_source(&instance).ok_or_else(not_a_server)?;
+        let link = InviteLink::parse(link)?;
+        let ev = self.runner.invite_view(link.clone(), None).await?;
+        perland::supported(&ev)?;
+        instance.source = SourceRef::Perland {
+            invite: link.canonical(),
+            engine: ev.engine.to_string(),
+        };
+        instance.server = Some(ServerLink::from_view(&ev.view, &ev.engine, unix_now()));
+        instance.update_policy = UpdatePolicy::Auto;
+        self.instances.save(&instance).await?;
+        Ok(instance)
+    }
 }
 
 #[cfg(test)]
@@ -72,11 +171,12 @@ mod tests {
     use launcher_core::{
         accounts::BuildKind,
         instances::{ServerStatus, SourceRef, UpdatePolicy},
-        ErrorCode,
+        ErrorCode, LauncherError,
     };
 
     use crate::{
         app::tests::core,
+        dto::NewInstance,
         testing::{invite, serve, server_view},
     };
 
@@ -186,5 +286,153 @@ mod tests {
         let second = core.join_add(&shouted).await.unwrap();
         assert_eq!(first.id, second.id);
         assert_eq!(runner.added.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn server_status_refreshes_the_saved_link() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let mut asleep = server_view("survival");
+        asleep.view.status = "sleeping".into();
+        asleep.view.players = None;
+        serve(&runner, &invite('A'), Ok(asleep));
+        let status = core.server_status(&id).await.unwrap();
+        assert_eq!(status.status, Some(ServerStatus::Sleeping));
+        assert!(status.players.is_none() && !status.gone);
+        assert_eq!(status.pack_state.as_deref(), Some("ready"));
+        assert_eq!(
+            core.instances
+                .load(&id)
+                .await
+                .unwrap()
+                .server
+                .unwrap()
+                .last_status,
+            Some(ServerStatus::Sleeping)
+        );
+        assert_eq!(
+            runner
+                .engine_hints
+                .lock()
+                .unwrap()
+                .last()
+                .cloned()
+                .flatten()
+                .as_deref(),
+            Some("https://api.example.com/"),
+            "the saved Engine seeds the shared client"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_dead_link_is_marked_and_keeps_its_address() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        serve(
+            &runner,
+            &invite('A'),
+            Err(LauncherError::pack(ErrorCode::InviteGone, "gone")),
+        );
+        let status = core.server_status(&id).await.unwrap();
+        assert!(status.gone && status.status.is_none());
+        assert_eq!(status.address.unwrap().display(), "play.example.com:25566");
+        assert!(core.instances.load(&id).await.unwrap().server.unwrap().gone);
+        // The owner turned the invite back on.
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        assert!(!core.server_status(&id).await.unwrap().gone);
+    }
+
+    #[tokio::test]
+    async fn a_rate_limit_is_passed_on_and_changes_nothing() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let before = core.instances.load(&id).await.unwrap();
+        serve(
+            &runner,
+            &invite('A'),
+            Err(LauncherError::network(
+                ErrorCode::InviteRateLimited,
+                "slow down",
+            )),
+        );
+        assert_eq!(
+            core.server_status(&id).await.unwrap_err().code,
+            ErrorCode::InviteRateLimited
+        );
+        assert_eq!(core.instances.load(&id).await.unwrap(), before);
+    }
+
+    #[tokio::test]
+    async fn relinking_moves_the_instance_and_keeps_its_files() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let world = core.instances.game_dir(&id).join("saves/home/level.dat");
+        std::fs::create_dir_all(world.parent().unwrap()).unwrap();
+        std::fs::write(&world, b"blocks").unwrap();
+        core.update_server(&id, |s| s.as_mut().unwrap().mark_gone())
+            .await
+            .unwrap();
+        serve(&runner, &invite('B'), Ok(server_view("survival")));
+        let moved = core.server_relink(&id, &invite('B')).await.unwrap();
+        assert!(matches!(&moved.source, SourceRef::Perland { invite: i, .. } if *i == invite('B')));
+        assert!(!moved.server.as_ref().unwrap().gone);
+        assert_eq!(moved.update_policy, UpdatePolicy::Auto);
+        assert!(world.is_file(), "the files stay; the next Play syncs");
+        assert_eq!(core.instances.load(&id).await.unwrap(), moved);
+    }
+
+    #[tokio::test]
+    async fn only_server_instances_have_a_status_or_a_link_to_move() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('B'), Ok(server_view("survival")));
+        let plain = core
+            .instance_create(NewInstance {
+                name: "Plain".into(),
+                minecraft: "1.20.1".into(),
+                loader: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            core.server_status(&plain.id).await.unwrap_err().code,
+            ErrorCode::NoPack
+        );
+        assert_eq!(
+            core.server_relink(&plain.id, &invite('B'))
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::NoPack
+        );
+    }
+
+    #[tokio::test]
+    async fn instance_update_keeps_source_and_server_from_disk() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        serve(&runner, &invite('B'), Ok(server_view("survival")));
+        let stale = core.join_add(&invite('A')).await.unwrap();
+        core.server_relink(&stale.id, &invite('B')).await.unwrap();
+        // Instance settings was opened before the relink and saves now, with a new name.
+        let mut edited = stale.clone();
+        edited.name = "Our server".into();
+        let saved = core.instance_update(edited).await.unwrap();
+        assert_eq!(saved.name, "Our server");
+        assert!(matches!(&saved.source, SourceRef::Perland { invite: i, .. } if *i == invite('B')));
+        assert_eq!(core.instances.load(&stale.id).await.unwrap(), saved);
+    }
+
+    #[tokio::test]
+    async fn instance_update_keeps_servers_automatic() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let mut instance = core.join_add(&invite('A')).await.unwrap();
+        instance.update_policy = UpdatePolicy::Pinned;
+        let saved = core.instance_update(instance).await.unwrap();
+        assert_eq!(saved.update_policy, UpdatePolicy::Auto);
     }
 }

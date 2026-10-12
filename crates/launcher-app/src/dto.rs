@@ -259,6 +259,20 @@ pub struct JoinPreview {
     pub existing: Option<String>,
 }
 
+/// A server instance's live status, for the pill, the address line and the dead-link plate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerStatusView {
+    /// `None` when unknown (a dead link).
+    pub status: Option<ServerStatus>,
+    pub players: Option<ServerPlayers>,
+    pub whitelisted: bool,
+    pub pack_state: Option<String>,
+    pub gone: bool,
+    /// The last known address.
+    pub address: Option<ServerAddress>,
+}
+
 fn owned(s: &Option<String>) -> Option<String> {
     non_empty(s).map(str::to_string)
 }
