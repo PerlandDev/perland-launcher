@@ -77,6 +77,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let input = match request {
             PackAddRequest::Link { url } => match PackInput::parse(&url)? {
                 PackInput::MrpackFile { .. } => return Err(link_invalid()),
+                // The UI routes invite links to Join server first; this is the same thing.
+                PackInput::Perland { .. } => return self.join_add(&url).await,
                 input => input,
             },
             PackAddRequest::File { path } => {
@@ -290,8 +292,29 @@ mod tests {
         app::{tests::core, ManualState},
         dto::{NewInstance, OpenTarget, PackAddRequest, PackArtData},
         events::{AppEvent, RunStateKind::*},
-        testing::{desired, exit, managed_for, manual_file, pack_file, pack_instance, pending},
+        testing::{
+            desired, exit, invite, managed_for, manual_file, pack_file, pack_instance, pending,
+            serve, server_view,
+        },
     };
+
+    #[tokio::test]
+    async fn pack_add_hands_invite_links_to_join_add() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let added = core
+            .pack_add(PackAddRequest::Link { url: invite('A') })
+            .await
+            .unwrap();
+        assert!(matches!(added.source, SourceRef::Perland { .. }));
+        assert!(added.server.is_some());
+        let again = core
+            .pack_add(PackAddRequest::Link { url: invite('A') })
+            .await
+            .unwrap();
+        assert_eq!(again.id, added.id);
+        assert_eq!(runner.added.lock().unwrap().len(), 1);
+    }
 
     #[tokio::test]
     async fn the_banner_update_syncs_without_playing() {

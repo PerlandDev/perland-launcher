@@ -14,7 +14,11 @@ use launcher_core::{
     accounts::Session,
     download::{hash::sha1_hex, Hashes},
     events::{Event, EventSink, TaskId},
-    instances::{GameSpec, Instance, InstanceStore, SourceRef},
+    instances::{GameSpec, Instance, InstanceStore, SourceRef, UpdatePolicy},
+    invite::{
+        EngineView, InviteAddress, InviteGame, InviteLink, InvitePack, InvitePlayers, InviteTeam,
+        InviteView, Url,
+    },
     launch::GameExit,
     locks::InstanceLock,
     sources::{
@@ -161,6 +165,61 @@ pub(crate) async fn pack_instance(
             .unwrap();
     }
     instance
+}
+
+/// An invite link with a fake token of 43 × `c`.
+pub(crate) fn invite(c: char) -> String {
+    format!("https://play.example.com/{}", c.to_string().repeat(43))
+}
+
+/// A modded server that is online with 3 of 20 players, at play.example.com:25566.
+pub(crate) fn server_view(name: &str) -> EngineView {
+    EngineView {
+        engine: Url::parse("https://api.example.com").unwrap(),
+        view: InviteView {
+            kind: "stack".into(),
+            name: name.into(),
+            motd: "§6Survival§r with friends".into(),
+            address: InviteAddress {
+                host: Some("play.example.com".into()),
+                port: 25566,
+                display: Some("play.example.com:25566".into()),
+            },
+            game: InviteGame {
+                kind: "fabric".into(),
+                version: Some("1.20.1".into()),
+                loader: Some("fabric".into()),
+                loader_version: Some("0.16.14".into()),
+            },
+            status: "online".into(),
+            players: Some(InvitePlayers {
+                online: 3,
+                max: Some(20),
+            }),
+            pack: Some(InvitePack {
+                name: "Survival Pack".into(),
+                version: Some("1.0.4".into()),
+                minecraft: "1.20.1".into(),
+                loader: Some("fabric".into()),
+                loader_version: Some("0.16.14".into()),
+                mod_count: 2,
+                state: "ready".into(),
+                zip_state: Some("ready".into()),
+                commit: Some("c1".into()),
+            }),
+            team: InviteTeam {
+                display_name: "Acme".into(),
+                accent: "violet".into(),
+            },
+            ..InviteView::default()
+        },
+    }
+}
+
+/// What `invite_view` answers for `invite` from now on.
+pub(crate) fn serve(runner: &FakeRunner, invite: &str, view: Result<EngineView>) {
+    let key = InviteLink::parse(invite).unwrap().canonical();
+    runner.views.lock().unwrap().insert(key, view);
 }
 
 #[derive(Default)]
@@ -340,6 +399,13 @@ pub(crate) struct FakeRunner {
     pub imported: Mutex<Vec<ManualFile>>,
     /// The game spec of each instance `prepare` was called for.
     pub prepared: Mutex<Vec<GameSpec>>,
+    /// What `invite_view` answers, by canonical invite (missing: `invite_gone`).
+    pub views: Mutex<HashMap<String, Result<EngineView>>>,
+    pub view_reads: AtomicUsize,
+    /// The Engine each `invite_view` call was seeded with.
+    pub engine_hints: Mutex<Vec<Option<String>>>,
+    /// What `invite_icon` answers.
+    pub icon: Mutex<Option<Vec<u8>>>,
 }
 
 impl FakeRunner {
@@ -361,6 +427,10 @@ impl FakeRunner {
             sync_game: Mutex::new(None),
             imported: Mutex::new(Vec::new()),
             prepared: Mutex::new(Vec::new()),
+            views: Mutex::new(HashMap::new()),
+            view_reads: AtomicUsize::new(0),
+            engine_hints: Mutex::new(Vec::new()),
+            icon: Mutex::new(None),
         })
     }
 
@@ -450,7 +520,11 @@ impl Runner for FakeRunner {
             let store = InstanceStore::new(dir);
             let mut instance = store
                 .create(
-                    "Sky Islands",
+                    if matches!(input, PackInput::Perland { .. }) {
+                        "Survival"
+                    } else {
+                        "Sky Islands"
+                    },
                     GameSpec {
                         minecraft: "1.20.1".into(),
                         loader: None,
@@ -475,6 +549,9 @@ impl Runner for FakeRunner {
                     engine: "https://api.example.com/".into(),
                 },
             };
+            if matches!(instance.source, SourceRef::Perland { .. }) {
+                instance.update_policy = UpdatePolicy::Auto;
+            }
             store.save(&instance).await?;
             Ok(instance)
         })
@@ -549,6 +626,28 @@ impl Runner for FakeRunner {
             .unwrap()
             .extend(found.into_iter().map(|(file, _)| file));
         Box::pin(async { Ok(()) })
+    }
+
+    fn invite_view(
+        &self,
+        link: InviteLink,
+        engine: Option<String>,
+    ) -> BoxFuture<Result<EngineView>> {
+        self.view_reads.fetch_add(1, Ordering::SeqCst);
+        self.engine_hints.lock().unwrap().push(engine);
+        let answer = self
+            .views
+            .lock()
+            .unwrap()
+            .get(&link.canonical())
+            .cloned()
+            .unwrap_or_else(|| Err(LauncherError::pack(ErrorCode::InviteGone, "gone")));
+        Box::pin(async move { answer })
+    }
+
+    fn invite_icon(&self, _link: InviteLink) -> BoxFuture<Option<Vec<u8>>> {
+        let icon = self.icon.lock().unwrap().clone();
+        Box::pin(async move { icon })
     }
 }
 

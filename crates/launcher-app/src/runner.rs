@@ -6,6 +6,7 @@ use launcher_core::{
     events::EventSink,
     install::Installer,
     instances::{Instance, InstanceStore},
+    invite::{EngineView, InviteLink},
     launch::{GameExit, GameKiller, GameProcess},
     locks::InstanceLock,
     play::{self, Prepared, StartSpec},
@@ -67,6 +68,15 @@ pub trait Runner: Send + Sync + 'static {
     ) -> BoxFuture<Result<Ensured>>;
     /// Put files the player downloaded by hand into the cache.
     fn import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>>;
+    /// The invite's view and its Engine, shared for 15 s by every caller. `engine` seeds the
+    /// Engine an instance saved, so no `config.json` is needed.
+    fn invite_view(
+        &self,
+        link: InviteLink,
+        engine: Option<String>,
+    ) -> BoxFuture<Result<EngineView>>;
+    /// The invite's icon PNG, or `None`.
+    fn invite_icon(&self, link: InviteLink) -> BoxFuture<Option<Vec<u8>>>;
 }
 
 pub struct CoreRunner {
@@ -154,6 +164,25 @@ impl Runner for CoreRunner {
     fn import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>> {
         let syncer = self.syncer.clone();
         Box::pin(async move { syncer.import_found(&found).await })
+    }
+
+    fn invite_view(
+        &self,
+        link: InviteLink,
+        engine: Option<String>,
+    ) -> BoxFuture<Result<EngineView>> {
+        let invites = self.syncer.sources.invites.clone();
+        Box::pin(async move {
+            if let Some(engine) = engine {
+                invites.remember_engine(&link, &engine);
+            }
+            invites.view(&link).await
+        })
+    }
+
+    fn invite_icon(&self, link: InviteLink) -> BoxFuture<Option<Vec<u8>>> {
+        let invites = self.syncer.sources.invites.clone();
+        Box::pin(async move { invites.icon(&link).await })
     }
 }
 
