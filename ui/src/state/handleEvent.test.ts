@@ -66,6 +66,9 @@ it('an ended run refreshes the instance and its pack queries', () => {
   expect(keys).toContainEqual(qk.packStatus('sky'));
   expect(keys).toContainEqual(qk.packContents('sky'));
   expect(keys).toContainEqual(qk.packArt('sky'));
+  // A sync can change the pack's own resource packs and shaders too.
+  expect(keys).toContainEqual(qk.contentFiles('sky', 'resource_pack'));
+  expect(keys).toContainEqual(qk.contentFiles('sky', 'shader'));
   spy.mockRestore();
 });
 

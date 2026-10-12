@@ -21,9 +21,18 @@ export function handleEvent(event: AppEvent) {
     void takeDeepLink();
   }
   if (event.type === 'run_state' && event.state === 'idle') {
-    // A sync can change the game version, the pack's mods and its art.
+    // A sync can change the game version, the pack's mods, resource packs and shaders, and its art.
     const id = event.instance;
-    for (const queryKey of [qk.instances, qk.mods(id), qk.packStatus(id), qk.packContents(id), qk.packArt(id)]) {
+    const keys = [
+      qk.instances,
+      qk.mods(id),
+      qk.packStatus(id),
+      qk.packContents(id),
+      qk.packArt(id),
+      qk.contentFiles(id, 'resource_pack'),
+      qk.contentFiles(id, 'shader'),
+    ];
+    for (const queryKey of keys) {
       void queryClient.invalidateQueries({ queryKey });
     }
     const exit = event.exit;
