@@ -1344,3 +1344,39 @@ async fn an_update_reports_checking_the_files_before_it_syncs_them() {
         Event::Progress { task, .. } if task.key == "check_pack"
     )));
 }
+
+#[tokio::test]
+async fn a_second_check_reuses_the_resolved_update() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1(&env.server)).await;
+    publish_v1_1(&env).await;
+    let first = update_for(&env, &instance).await;
+    let before = hits(&env.server, "/pack/pack.toml").await;
+    let second = update_for(&env, &instance).await;
+    assert_eq!(first, second);
+    assert_eq!(
+        hits(&env.server, "/pack/pack.toml").await - before,
+        1,
+        "only the cheap check fetched pack.toml again"
+    );
+
+    // Once the update is installed, the next check starts fresh.
+    let lock = InstanceLock::try_acquire(&env.store.perland_dir(&instance.id)).unwrap();
+    env.syncer
+        .ensure_locked(
+            &lock,
+            &env.store,
+            &instance.id,
+            Some(second),
+            &env.sink(),
+            &Cancel::default(),
+        )
+        .await
+        .unwrap();
+    drop(lock);
+    let fresh = env.store.load(&instance.id).await.unwrap();
+    assert_eq!(
+        env.syncer.find_update(&env.store, &fresh).await.unwrap(),
+        None
+    );
+}
