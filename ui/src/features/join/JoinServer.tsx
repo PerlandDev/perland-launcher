@@ -61,7 +61,7 @@ export function JoinServer({ invite, relinkFor }: { invite: string; relinkFor?: 
     <ScreenFrame title={relinkFor ? t('join.relinkTitle') : t('join.title')}>
       <div className="grid max-w-3xl gap-6">
         {asking && (
-          <form onSubmit={check} className="flex flex-wrap items-end gap-3">
+          <form onSubmit={check} noValidate className="flex flex-wrap items-end gap-3">
             <Field label={t('join.linkLabel')}>
               <input
                 className="field-input min-w-[28rem]"

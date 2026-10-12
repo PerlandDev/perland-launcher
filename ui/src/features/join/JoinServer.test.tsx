@@ -62,6 +62,12 @@ describe('JoinServer', () => {
 
   it('checks a pasted link before asking the launcher', async () => {
     const { user, calls } = renderApp(<JoinServer invite="" />, { server: 'online' });
+    // The WebView would otherwise block submit on a non-URL with its own bubble (jsdom doesn't), hiding our error.
+    expect(screen.getByRole('textbox', { name: 'Invite link' }).closest('form')?.noValidate).toBe(true);
+    await user.type(screen.getByRole('textbox', { name: 'Invite link' }), 'abc');
+    await user.click(screen.getByRole('button', { name: 'Check link' }));
+    expect(screen.getByText("That isn't a Perland invite link.")).toBeInTheDocument();
+    await user.clear(screen.getByRole('textbox', { name: 'Invite link' }));
     await user.type(screen.getByRole('textbox', { name: 'Invite link' }), 'https://play.example.com/short');
     await user.click(screen.getByRole('button', { name: 'Check link' }));
     expect(screen.getByText("That isn't a Perland invite link.")).toBeInTheDocument();
