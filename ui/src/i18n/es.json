@@ -43,7 +43,7 @@
     "minecraftLine": "Minecraft {{version}}",
     "loaderLine": "{{loader}} {{version}}",
     "vanilla": "Vanilla",
-    "mods": "Mods",
+    "mods": "Mods y packs",
     "more": "Más opciones",
     "checkUpdates": "Buscar actualizaciones",
     "instanceSettings": "Configuración de la instancia",
@@ -191,7 +191,8 @@
     "deleteBody": "Se borra la carpeta y todo lo que tiene. No se puede deshacer."
   },
   "mods": {
-    "title": "Mods",
+    "screenTitle": "Mods y packs",
+    "tabs": { "mod": "Mods", "resource_pack": "Paquetes de recursos", "shader": "Shaders" },
     "count_one": "{{count}} mod",
     "count_other": "{{count}} mods",
     "add": "Agregar mods",
@@ -214,6 +215,21 @@
     "optionalNote": "Los mods opcionales cambian la próxima vez que juegues.",
     "noAdditions": "Los mods que agregues aparecen aquí. Las actualizaciones nunca los tocan.",
     "packEmpty": "Los mods de este pack aparecen después de jugarlo por primera vez."
+  },
+  "packs": {
+    "findResourcePacks": "Buscar paquetes de recursos",
+    "findShaders": "Buscar shaders",
+    "yours": "Tus packs",
+    "folder": "Carpeta",
+    "remove": "Quitar {{name}}",
+    "removeTitle": "¿Quitar {{name}}?",
+    "removeBody": "El archivo se borra de esta instancia.",
+    "running": "Cierra el juego para quitar packs.",
+    "empty": {
+      "resource_pack": "Todavía no hay paquetes de recursos. Busca algunos o pon archivos .zip en la carpeta.",
+      "shader": "Todavía no hay shaders. Busca algunos o pon archivos .zip en la carpeta."
+    },
+    "shadersNeedLoader": "Los shaders necesitan un loader de mods: Fabric, Quilt, Forge o NeoForge."
   },
   "accounts": {
     "title": "Cuentas",
@@ -332,7 +348,7 @@
     "mod_exists": { "message": "{{file}} ya está en esta instancia." },
     "mod_not_found": { "message": "{{file}} ya no está en esta instancia." },
     "mod_name_invalid": { "message": "Ese no es un nombre de archivo de mod." },
-    "mod_managed": { "message": "{{file}} viene con el pack, así que el pack decide si está activado.", "fix": "Los mods que agregues tú sí puedes desactivarlos o quitarlos." },
+    "mod_managed": { "message": "{{file}} viene con el pack, así que el pack decide si está activado.", "fix": "Lo que agregas tú se puede desactivar o quitar." },
     "pack_invalid": { "message": "El archivo {{file}} del pack está dañado o no es un pack.", "fix": "Revisa el enlace o pregúntale al autor del pack." },
     "pack_unsupported": { "message": "Este pack usa algo que el launcher todavía no puede manejar: {{what}}.", "fix": "Pregúntale al autor del pack o prueba otro pack." },
     "pack_unsafe_path": { "message": "El pack intentó escribir fuera de su carpeta ({{path}}).", "fix": "No uses este pack y avísale a su autor." },

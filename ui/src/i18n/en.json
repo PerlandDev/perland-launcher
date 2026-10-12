@@ -43,7 +43,7 @@
     "minecraftLine": "Minecraft {{version}}",
     "loaderLine": "{{loader}} {{version}}",
     "vanilla": "Vanilla",
-    "mods": "Mods",
+    "mods": "Mods & packs",
     "more": "More options",
     "checkUpdates": "Check for updates",
     "instanceSettings": "Instance settings",
@@ -191,7 +191,8 @@
     "deleteBody": "This removes the folder and everything in it. It can't be undone."
   },
   "mods": {
-    "title": "Mods",
+    "screenTitle": "Mods & packs",
+    "tabs": { "mod": "Mods", "resource_pack": "Resource packs", "shader": "Shaders" },
     "count_one": "{{count}} mod",
     "count_other": "{{count}} mods",
     "add": "Add mods",
@@ -214,6 +215,21 @@
     "optionalNote": "Optional mods change the next time you play.",
     "noAdditions": "Mods you add show up here. Updates never touch them.",
     "packEmpty": "This pack's mods show up after its first Play."
+  },
+  "packs": {
+    "findResourcePacks": "Find resource packs",
+    "findShaders": "Find shaders",
+    "yours": "Your packs",
+    "folder": "Folder",
+    "remove": "Remove {{name}}",
+    "removeTitle": "Remove {{name}}?",
+    "removeBody": "The file is deleted from this instance.",
+    "running": "Stop the game to remove packs.",
+    "empty": {
+      "resource_pack": "No resource packs yet. Find some, or put .zip files in the folder.",
+      "shader": "No shaders yet. Find some, or put .zip files in the folder."
+    },
+    "shadersNeedLoader": "Shaders need a mod loader: Fabric, Quilt, Forge or NeoForge."
   },
   "accounts": {
     "title": "Accounts",
@@ -332,7 +348,7 @@
     "mod_exists": { "message": "{{file}} is already in this instance." },
     "mod_not_found": { "message": "{{file}} isn't in this instance anymore." },
     "mod_name_invalid": { "message": "That isn't a mod file name." },
-    "mod_managed": { "message": "{{file}} comes with the pack, so the pack decides whether it's on.", "fix": "Mods you add yourself can be turned off or removed." },
+    "mod_managed": { "message": "{{file}} comes with the pack, so the pack decides whether it's on.", "fix": "Things you add yourself can be turned off or removed." },
     "pack_invalid": { "message": "The pack file {{file}} is damaged or isn't a pack.", "fix": "Check the link, or ask the pack's author." },
     "pack_unsupported": { "message": "This pack uses something the launcher can't handle yet: {{what}}.", "fix": "Ask the pack's author, or try another pack." },
     "pack_unsafe_path": { "message": "The pack tried to write outside its folder ({{path}}).", "fix": "Don't use this pack, and let its author know." },

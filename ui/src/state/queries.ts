@@ -22,6 +22,7 @@ export const qk = {
   mcVersions: ['catalog', 'minecraft'] as const,
   loaders: (kind: LoaderKind, mc: string) => ['catalog', 'loaders', kind, mc] as const,
   mods: (id: string) => ['mods', id] as const,
+  contentFiles: (id: string, kind: ContentKind) => ['content', id, kind] as const,
   packStatus: (id: string) => ['pack', 'status', id] as const,
   packContents: (id: string) => ['pack', 'contents', id] as const,
   packArt: (id: string) => ['pack', 'art', id] as const,
@@ -50,6 +51,8 @@ export const useLoaderVersions = (kind: LoaderKind | null, mc: string | null) =>
     staleTime: TEN_MINUTES,
   });
 export const useMods = (id: string) => useQuery({ queryKey: qk.mods(id), queryFn: () => commands.modsList(id) });
+export const useContentFiles = (id: string, kind: ContentKind) =>
+  useQuery({ queryKey: qk.contentFiles(id, kind), queryFn: () => commands.contentList(id, kind) });
 export const usePackStatus = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packStatus(id), queryFn: () => commands.packStatus(id), enabled, staleTime: TEN_MINUTES });
 export const usePackContents = (id: string, enabled: boolean) =>
@@ -172,6 +175,20 @@ export function useAccountMutations(opts: Opts = {}) {
     setActive: useMutation({ mutationFn: commands.accountSetActive, onSuccess, onError: failed }),
     remove: useMutation({ mutationFn: commands.accountRemove, onSuccess, onError: failed }),
   };
+}
+
+/** Remove a resource pack or shader. The list the core hands back replaces the cached one. */
+export function useContentRemove(id: string, kind: ContentKind, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: string) => commands.contentRemove(id, kind, file),
+    onSuccess: (list) => qc.setQueryData(qk.contentFiles(id, kind), list),
+    // A refused removal may still have changed the folder, so the list is asked for again.
+    onError: (error) => {
+      void qc.invalidateQueries({ queryKey: qk.contentFiles(id, kind) });
+      onError(opts)(error);
+    },
+  });
 }
 
 export function useModMutations(id: string, opts: Opts = {}) {

@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import type { LocalMod } from '../../ipc/schema';
 import { useInstances, useModMutations, useMods, usePackContents, usePackOptional } from '../../state/queries';
-import { navigate } from '../../state/route';
+import { navigate, type ModsTab } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { isPack } from '../home/labels';
 import { Button } from '../../ui/Button';
@@ -17,6 +17,8 @@ import { Folder, InfoBox, Package, Plus, Search, Trash } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Toggle } from '../../ui/Toggle';
 import { useSingleFlight } from '../../ui/useSingleFlight';
+import { ContentTabs } from './ContentTabs';
+import { PackList } from './PackList';
 
 const displayName = (fileName: string) => fileName.replace(/\.disabled$/, '').replace(/\.jar$/i, '');
 const isJar = (path: string) => /\.jar$/i.test(path);
@@ -24,7 +26,12 @@ const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
 type Notice = { kind: 'busy' } | { kind: 'skipped'; names: string[] };
 
-export function Mods({ id }: { id: string }) {
+/** Mods & packs: a tab each for mods, resource packs and shaders. No tab means Mods. */
+export function Mods({ id, tab }: { id: string; tab?: ModsTab }) {
+  return tab === 'resource_pack' || tab === 'shader' ? <PackList id={id} kind={tab} /> : <ModList id={id} />;
+}
+
+function ModList({ id }: { id: string }) {
   const { t, i18n } = useTranslation();
   const listing = useInstances();
   const instance = listing.data?.instances.find((i) => i.id === id);
@@ -153,7 +160,7 @@ export function Mods({ id }: { id: string }) {
   for (const mod of list) nameCount.set(displayName(mod.fileName), (nameCount.get(displayName(mod.fileName)) ?? 0) + 1);
   return (
     <ScreenFrame
-      title={t('mods.title')}
+      title={t('mods.screenTitle')}
       subtitle={instance ? `${instance.name} · ${t('mods.count', { count: list.length + (contents.data?.managed.length ?? 0) })}` : undefined}
       onBack={() => navigate({ name: 'home', id })}
       actions={
@@ -173,6 +180,7 @@ export function Mods({ id }: { id: string }) {
       }
     >
       <div className={`grid max-w-3xl gap-4 ${dragging ? 'outline-2 outline-offset-8 outline-amber outline-dashed' : ''}`}>
+        <ContentTabs id={id} active="mod" />
         {instance && !pack && !instance.game.loader && (
           <p className="panel flex items-start gap-3 p-4 text-ink-dim">
             <InfoBox className="mt-0.5 h-5 w-5 flex-none text-blue-ink" aria-hidden />

@@ -1,9 +1,12 @@
 import { useSyncExternalStore } from 'react';
 import type { ContentKind } from '../ipc/schema';
 
+/** The content tabs of the Mods & packs screen; no tab means Mods. */
+export type ModsTab = Exclude<ContentKind, 'modpack'>;
+
 export type Route =
   | { name: 'home'; id: string | null }
-  | { name: 'mods'; id: string }
+  | { name: 'mods'; id: string; tab?: ModsTab }
   | { name: 'instanceSettings'; id: string }
   | { name: 'newInstance'; link?: string }
   | { name: 'browse'; kind: ContentKind; instance?: string; project?: string }

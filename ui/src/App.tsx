@@ -27,7 +27,7 @@ function Screen({ route }: { route: Route }) {
     case 'home':
       return <Home id={route.id} />;
     case 'mods':
-      return <Mods id={route.id} />;
+      return <Mods id={route.id} tab={route.tab} />;
     case 'instanceSettings':
       return <InstanceSettings id={route.id} />;
     case 'newInstance':

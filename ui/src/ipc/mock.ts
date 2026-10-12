@@ -22,6 +22,7 @@ import type {
   AppEvent,
   AppInfo,
   BrowsePlanRequest,
+  ContentFile,
   ContentKind,
   ExitInfo,
   InstallPlanView,
@@ -145,6 +146,8 @@ CATALOG[0]!.versions = (clone(versionsFx) as VersionInfo[]).map((v) => ({ ...v, 
 
 const findProject = (ref: string) => CATALOG.find((p) => p.detail.projectId === ref || p.detail.slug === ref);
 
+const contentKey = (id: string, kind: ContentKind) => `${id}:${kind}`;
+
 function seed(options: MockOptions) {
   const listing = clone(listingFx) as InstanceListing;
   const accounts = clone(accountsFx) as AccountsFile;
@@ -163,6 +166,17 @@ function seed(options: MockOptions) {
   };
   const mods = new Map<string, LocalMod[]>([['asalith-fields', clone(localModsFx) as LocalMod[]]]);
   const packs = new Map<string, MockPack>();
+  // Resource packs and shaders per instance and kind, like the real folders. Mods have their own list.
+  const content = new Map<string, ContentFile[]>();
+  if (!options.firstRun) {
+    content.set(contentKey('asalith-fields', 'resource_pack'), [
+      { fileName: 'Faithful 32x.zip', size: 3_000_000, folder: false, managed: false },
+      { fileName: 'My Pack', size: 0, folder: true, managed: false },
+    ]);
+    content.set(contentKey('asalith-fields', 'shader'), [
+      { fileName: 'ComplementaryReimagined.zip', size: 1_500_000, folder: false, managed: false },
+    ]);
+  }
   if (!options.firstRun) {
     const sky: Instance = {
       id: 'sky-islands',
@@ -176,6 +190,7 @@ function seed(options: MockOptions) {
     listing.instances = [...listing.instances, sky];
     const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
     const blocked = (clone(manualProgressFx) as ManualProgress).remaining;
+    content.set(contentKey(sky.id, 'resource_pack'), [{ fileName: 'Pack Textures.zip', size: 2_000_000, folder: false, managed: true }]);
     packs.set(sky.id, {
       installed: '1.0.3',
       update: options.noUpdate ? null : offer,
@@ -203,6 +218,7 @@ function seed(options: MockOptions) {
     appInfo,
     mods,
     packs,
+    content,
     browse: {
       installed: new Map<string, Set<string>>([['asalith-fields', new Set(['P7dR8mSH'])]]),
       plans: new Map<string, { view: InstallPlanView; kind: ContentKind }>(),
@@ -661,6 +677,14 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       }
       const have = state.browse.installed.get(instance.id) ?? new Set<string>();
       view.items.forEach((item) => have.add(item.projectId));
+      for (const item of view.items) {
+        if (item.kind !== 'resource_pack' && item.kind !== 'shader') continue;
+        const key = contentKey(instance.id, item.kind);
+        const files = state.content.get(key) ?? [];
+        if (!files.some((f) => f.fileName === item.fileName)) {
+          state.content.set(key, [...files, { fileName: item.fileName, size: item.size, folder: false, managed: false }]);
+        }
+      }
       state.browse.installed.set(instance.id, have);
       const task = { key: 'install_content', params: { name: view.items[0]!.title } };
       event({ type: 'progress', instance: instance.id, task, done: view.items.length, total: view.items.length, bytes: view.totalSize });
@@ -725,6 +749,18 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     }
     case 'mod_remove':
       return editMods(state, String(args.id), (list) => list.filter((m) => m.fileName !== args.file));
+    case 'content_list':
+      return clone(state.content.get(contentKey(String(args.id), args.kind as ContentKind)) ?? []);
+    case 'content_remove': {
+      const key = contentKey(String(args.id), args.kind as ContentKind);
+      const files = state.content.get(key) ?? [];
+      const file = files.find((f) => f.fileName === args.file);
+      if (file?.managed) fail('disk', 'mod_managed', 'That file comes with the pack', { file: file.fileName });
+      if (file?.folder) fail('disk', 'mod_name_invalid', "That isn't a pack file name");
+      const left = files.filter((f) => f.fileName !== args.file);
+      state.content.set(key, left);
+      return clone(left);
+    }
     case 'open_folder':
     case 'quit':
       return null;

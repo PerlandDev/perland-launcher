@@ -22,7 +22,15 @@ export function useInstallFlow() {
   const finish = (view: InstallPlanView, result: InstallResult) => {
     const id = result.instance.id;
     clearContentProgress(id);
-    for (const queryKey of [qk.instances, qk.browseInstalled(id), qk.mods(id), qk.packContents(id)]) {
+    const keys = [
+      qk.instances,
+      qk.browseInstalled(id),
+      qk.mods(id),
+      qk.packContents(id),
+      qk.contentFiles(id, 'resource_pack'),
+      qk.contentFiles(id, 'shader'),
+    ];
+    for (const queryKey of keys) {
       void qc.invalidateQueries({ queryKey });
     }
     const first = view.items[0];
