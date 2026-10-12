@@ -14,7 +14,7 @@ use launcher_core::{
     accounts::Session,
     download::{hash::sha1_hex, Hashes},
     events::{Event, EventSink, TaskId},
-    instances::{GameSpec, Instance, InstanceStore, SourceRef, UpdatePolicy},
+    instances::{GameSpec, Instance, InstanceStore, ServerAddress, SourceRef, UpdatePolicy},
     invite::{
         EngineView, InviteAddress, InviteGame, InviteLink, InvitePack, InvitePlayers, InviteTeam,
         InviteView, Url,
@@ -23,6 +23,7 @@ use launcher_core::{
     locks::InstanceLock,
     sources::{
         DesiredState, FileMode, FileSource, OptionalFile, PackAbout, PackFile, PackInput, Side,
+        UpdateCheck,
     },
     sync::{
         lockfile::{self, Managed, ManagedFile},
@@ -406,6 +407,10 @@ pub(crate) struct FakeRunner {
     pub engine_hints: Mutex<Vec<Option<String>>>,
     /// What `invite_icon` answers.
     pub icon: Mutex<Option<Vec<u8>>>,
+    /// The server each `start` was told to join.
+    pub started_joins: Mutex<Vec<Option<ServerAddress>>>,
+    /// What `check_update` reports per instance id (none: up to date).
+    pub update_checks: Mutex<HashMap<String, UpdateCheck>>,
 }
 
 impl FakeRunner {
@@ -431,6 +436,8 @@ impl FakeRunner {
             view_reads: AtomicUsize::new(0),
             engine_hints: Mutex::new(Vec::new()),
             icon: Mutex::new(None),
+            started_joins: Mutex::new(Vec::new()),
+            update_checks: Mutex::new(HashMap::new()),
         })
     }
 
@@ -491,8 +498,10 @@ impl Runner for FakeRunner {
         instance: Instance,
         _prepared: (),
         _session: Session,
+        join: Option<ServerAddress>,
         sink: EventSink,
     ) -> BoxFuture<Result<Box<dyn RunningGame>>> {
+        self.started_joins.lock().unwrap().push(join);
         let lines = self.start_lines.lock().unwrap().clone();
         let (tx, rx) = oneshot::channel();
         let slot: ExitSlot = Arc::new(Mutex::new(Some(tx)));
@@ -557,7 +566,11 @@ impl Runner for FakeRunner {
         })
     }
 
-    fn find_update(&self, instance: Instance) -> BoxFuture<Result<Option<PendingUpdate>>> {
+    fn find_update(
+        &self,
+        instance: Instance,
+        _sink: EventSink,
+    ) -> BoxFuture<Result<Option<PendingUpdate>>> {
         self.checks.fetch_add(1, Ordering::SeqCst);
         let answer = self
             .updates
@@ -566,6 +579,17 @@ impl Runner for FakeRunner {
             .get(&instance.id)
             .cloned()
             .unwrap_or(Ok(None));
+        Box::pin(async move { answer })
+    }
+
+    fn check_update(&self, instance: Instance) -> BoxFuture<UpdateCheck> {
+        let answer = self
+            .update_checks
+            .lock()
+            .unwrap()
+            .get(&instance.id)
+            .cloned()
+            .unwrap_or(UpdateCheck::UpToDate);
         Box::pin(async move { answer })
     }
 

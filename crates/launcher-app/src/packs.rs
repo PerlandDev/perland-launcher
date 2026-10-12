@@ -9,7 +9,7 @@ use launcher_core::{
     mods,
     sources::{
         art::{sniff, MAX_ART_BYTES},
-        PackInput,
+        PackInput, UpdateCheck,
     },
     sync::{
         lockfile::{self, Managed},
@@ -126,7 +126,36 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let installed = lockfile::load_pack(&self.instances.perland_dir(id)).await;
         let (update, check_error) = match &installed {
             None => (None, None),
-            Some(_) => match self.runner.find_update(instance).await {
+            // A server's check is the commit in its view, so the banner never downloads a pack.
+            Some(current) if matches!(instance.source, SourceRef::Perland { .. }) => {
+                match self.runner.check_update(instance).await {
+                    UpdateCheck::UpToDate => (None, None),
+                    UpdateCheck::Available { version, .. } => (
+                        Some(PackUpdate {
+                            from_version: Some(current.pack_version.clone()),
+                            to_version: version,
+                            added: vec![],
+                            updated: vec![],
+                            removed: vec![],
+                            kept: vec![],
+                        }),
+                        None,
+                    ),
+                    UpdateCheck::Unavailable(error) => {
+                        if error.code == ErrorCode::InviteGone {
+                            // The banner is a lockless read: while a run holds the instance,
+                            // the run's own check marks it.
+                            let _ = self.mark_server_gone(id, true).await;
+                        }
+                        (None, Some(error))
+                    }
+                }
+            }
+            Some(_) => match self
+                .runner
+                .find_update(instance, launcher_core::events::noop_sink())
+                .await
+            {
                 Ok(update) => (update.as_ref().map(PackUpdate::from), None),
                 Err(error) => (None, Some(error)),
             },
@@ -283,8 +312,8 @@ mod tests {
     use launcher_core::{
         accounts::BuildKind,
         instances::{SourceRef, UpdatePolicy},
-        sources::PackInput,
-        sync::manual::Scanner,
+        sources::{PackInput, UpdateCheck},
+        sync::{lockfile, manual::Scanner},
         ErrorCode, LauncherError,
     };
 
@@ -314,6 +343,50 @@ mod tests {
             .unwrap();
         assert_eq!(again.id, added.id);
         assert_eq!(runner.added.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_servers_pack_status_comes_from_its_view() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        lockfile::save_pack(&core.instances.perland_dir(&id), &desired("1.0.4", vec![]))
+            .await
+            .unwrap();
+        runner.update_checks.lock().unwrap().insert(
+            id.clone(),
+            UpdateCheck::Available {
+                source: SourceRef::None,
+                stamp: "c2".into(),
+                version: "1.0.5".into(),
+            },
+        );
+        let checks = runner.checks.load(Ordering::SeqCst);
+        let update = core.pack_status(&id).await.unwrap().update.unwrap();
+        assert_eq!(
+            (update.from_version.as_deref(), update.to_version.as_str()),
+            (Some("1.0.4"), "1.0.5")
+        );
+        assert!(update.added.is_empty() && update.updated.is_empty() && update.removed.is_empty());
+        assert_eq!(
+            runner.checks.load(Ordering::SeqCst),
+            checks,
+            "no find_update: the banner never downloads a pack"
+        );
+        runner.update_checks.lock().unwrap().insert(
+            id.clone(),
+            UpdateCheck::Unavailable(LauncherError::pack(ErrorCode::InviteGone, "gone")),
+        );
+        assert_eq!(
+            core.pack_status(&id)
+                .await
+                .unwrap()
+                .check_error
+                .unwrap()
+                .code,
+            ErrorCode::InviteGone
+        );
+        assert!(core.instances.load(&id).await.unwrap().server.unwrap().gone);
     }
 
     #[tokio::test]
