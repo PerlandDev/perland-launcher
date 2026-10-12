@@ -12,13 +12,20 @@ import manualProgressFx from './contract/manual_progress.json';
 import mcVersionsFx from './contract/mc_versions.json';
 import packContentsFx from './contract/pack_contents.json';
 import packStatusFx from './contract/pack_status.json';
+import projectDetailFx from './contract/project_detail.json';
 import settingsFx from './contract/settings.json';
+import versionsFx from './contract/versions.json';
+import { fitFor, fitsVersion, pickDefault } from '../features/browse/compat';
 import { APP_EVENT } from './events';
 import type {
   AccountsFile,
   AppEvent,
   AppInfo,
+  BrowsePlanRequest,
+  ContentKind,
   ExitInfo,
+  InstallPlanView,
+  InstallResult,
   Instance,
   InstanceListing,
   LauncherError,
@@ -31,9 +38,16 @@ import type {
   PackContents,
   PackStatus,
   PackUpdate,
+  PlanItemView,
+  PlanSkip,
+  ProjectDetail,
   RunStateKind,
+  SearchHit,
+  SearchPage,
+  SearchRequest,
   Settings,
   SyncSummary,
+  VersionInfo,
 } from './schema';
 
 export interface MockOptions {
@@ -87,6 +101,49 @@ function slug(name: string) {
   const s = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   return s.slice(0, 48) || 'instance';
 }
+
+// A tiny Modrinth for the browser build and the tests. Icons are one inline SVG.
+const MOCK_ICON = svg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><rect width="8" height="8" fill="#c9cc2a"/></svg>');
+
+interface MockProject {
+  detail: ProjectDetail;
+  versions: VersionInfo[];
+  /** Project ids every version requires. */
+  deps: string[];
+}
+
+function mockProject(
+  projectId: string,
+  title: string,
+  kind: ContentKind,
+  loaders: string[],
+  deps: string[] = [],
+  extra: Partial<ProjectDetail> = {},
+): MockProject {
+  const base = clone(projectDetailFx) as ProjectDetail;
+  const version = (clone(versionsFx) as VersionInfo[])[0]!;
+  return {
+    detail: { ...base, projectId, slug: title.toLowerCase().replace(/\s+/g, '-'), title, kind, categories: [], gallery: [], ...extra },
+    versions: [{ ...version, id: `${projectId}-v1`, name: `${title} 1.0`, number: '1.0', loaders, gameVersions: ['1.20.1', '1.21.1'] }],
+    deps,
+  };
+}
+
+const CATALOG: MockProject[] = [
+  { ...mockProject('AANobbMI', 'Sodium', 'mod', ['fabric', 'quilt'], ['P7dR8mSH']), detail: clone(projectDetailFx) as ProjectDetail },
+  mockProject('P7dR8mSH', 'Fabric API', 'mod', ['fabric'], [], { categories: ['library'] }),
+  mockProject('YL57xq9U', 'Iris', 'mod', ['fabric', 'quilt', 'neoforge'], ['AANobbMI']),
+  mockProject('HVnmMxH1', 'Complementary', 'shader', ['iris']),
+  mockProject('FAITHFUL', 'Faithful', 'resource_pack', ['minecraft']),
+  mockProject('1KVo5zza', 'Fabulously Optimized', 'modpack', ['fabric']),
+  ...Array.from({ length: 24 }, (_, i) =>
+    mockProject(`FILL${String(i + 1).padStart(4, '0')}`, `Mod ${i + 1}`, 'mod', ['fabric', 'forge']),
+  ),
+];
+// Sodium's fixture versions only list 1.20.1; keep its id matching the catalog's.
+CATALOG[0]!.versions = (clone(versionsFx) as VersionInfo[]).map((v) => ({ ...v, id: 'AANobbMI-v1' }));
+
+const findProject = (ref: string) => CATALOG.find((p) => p.detail.projectId === ref || p.detail.slug === ref);
 
 function seed(options: MockOptions) {
   const listing = clone(listingFx) as InstanceListing;
@@ -146,6 +203,12 @@ function seed(options: MockOptions) {
     appInfo,
     mods,
     packs,
+    browse: {
+      installed: new Map<string, Set<string>>([['asalith-fields', new Set(['P7dR8mSH'])]]),
+      plans: new Map<string, { view: InstallPlanView; kind: ContentKind }>(),
+      nextPlan: 1,
+      opened: [] as string[],
+    },
     pendingLink: options.link ?? null,
     runs: new Map<string, MockRun>(),
     options,
@@ -155,7 +218,8 @@ function seed(options: MockOptions) {
 export type MockState = ReturnType<typeof seed>;
 
 function event(e: AppEvent) {
-  void emit(APP_EVENT, e);
+  // Tests that call handle() directly have no IPC mock installed; an event nobody hears is fine.
+  emit(APP_EVENT, e).catch(() => {});
 }
 
 export const exitOf = (partial: Partial<ExitInfo>): ExitInfo => ({
@@ -333,6 +397,60 @@ function editMods(state: MockState, id: string, change: (list: LocalMod[]) => Lo
   return list;
 }
 
+function planFor(state: MockState, request: BrowsePlanRequest): InstallPlanView {
+  const project = findProject(request.project);
+  if (!project) fail('pack', 'content_not_found', "That project wasn't found");
+  const { detail } = project;
+  if (detail.kind === 'modpack') fail('pack', 'content_incompatible', 'Modpacks become instances', { name: detail.title });
+  const targetId = request.target.kind === 'instance' ? request.target.id : null;
+  const instance = targetId ? state.listing.instances.find((i) => i.id === targetId) : undefined;
+  if (targetId && !instance) fail('disk', 'instance_not_found', 'No such instance');
+  if (instance) {
+    const fit = fitFor(project.versions, detail.kind, instance);
+    if (!fit.ok)
+      fail('pack', fit.reason === 'needsLoader' ? 'content_needs_loader' : 'content_incompatible', 'Not for this instance', {
+        name: detail.title,
+      });
+  }
+  const have = instance ? (state.browse.installed.get(instance.id) ?? new Set<string>()) : new Set<string>();
+  if (have.has(detail.projectId)) fail('pack', 'content_already_installed', 'Already there', { name: detail.title });
+  const item = (p: MockProject, reason: PlanItemView['reason']): PlanItemView => ({
+    projectId: p.detail.projectId,
+    title: p.detail.title,
+    kind: p.detail.kind,
+    versionNumber: p.versions[0]!.number,
+    fileName: `${p.detail.slug}.${p.detail.kind === 'mod' ? 'jar' : 'zip'}`,
+    size: p.versions[0]!.size ?? 0,
+    reason,
+  });
+  const items = [item(project, { kind: 'requested' })];
+  const skipped: PlanSkip[] = [];
+  const queue = [...project.deps.map((id) => ({ id, of: detail.title }))];
+  if (detail.kind === 'shader') queue.push({ id: 'YL57xq9U', of: '' });
+  const seen = new Set([detail.projectId]);
+  while (queue.length > 0) {
+    const next = queue.shift()!;
+    if (seen.has(next.id)) continue;
+    seen.add(next.id);
+    const dep = findProject(next.id)!;
+    if (have.has(next.id)) {
+      skipped.push({ projectId: next.id, title: dep.detail.title, reason: 'installed' });
+      continue;
+    }
+    items.push(item(dep, next.of === '' ? { kind: 'shader_mod' } : { kind: 'dependency', of: next.of }));
+    queue.push(...dep.deps.map((id) => ({ id, of: dep.detail.title })));
+  }
+  const version = request.version ? project.versions.find((v) => v.id === request.version) : pickDefault(project.versions);
+  const minecraft = instance?.game.minecraft ?? version?.gameVersions.at(-1) ?? '1.21.1';
+  const target: InstallPlanView['target'] = instance
+    ? { kind: 'instance', id: instance.id, name: instance.name, minecraft, loader: instance.game.loader?.kind ?? null }
+    : { kind: 'new', name: detail.title, minecraft, loader: detail.kind === 'resource_pack' ? null : 'fabric' };
+  const planId = `plan-${state.browse.nextPlan++}`;
+  const view: InstallPlanView = { planId, target, items, skipped, totalSize: items.reduce((sum, i) => sum + i.size, 0) };
+  state.browse.plans.set(planId, { view, kind: detail.kind });
+  return view;
+}
+
 async function handle(state: MockState, cmd: string, args: Record<string, unknown> = {}): Promise<unknown> {
   const find = (id: unknown) => state.listing.instances.find((i) => i.id === id);
   switch (cmd) {
@@ -460,7 +578,11 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       if (request.kind === 'link' && !/^(https:\/\/|modrinth:)/.test(request.url.trim())) {
         fail('pack', 'pack_link_invalid', "That doesn't look like a pack link");
       }
-      const name = request.kind === 'file' ? (request.path.split(/[\\/]/).pop() ?? 'Pack').replace(/\.mrpack$/i, '') : 'Asalith';
+      // `modrinth:<project>@<version>` links name the catalog's project.
+      const modrinth = request.kind === 'link' ? /^modrinth:([^@\s]+)/.exec(request.url.trim()) : null;
+      const catalogName = modrinth ? findProject(modrinth[1]!)?.detail.title : undefined;
+      const name =
+        request.kind === 'file' ? (request.path.split(/[\\/]/).pop() ?? 'Pack').replace(/\.mrpack$/i, '') : (catalogName ?? 'Asalith');
       let id = slug(name);
       for (let n = 2; find(id); n++) id = `${slug(name)}-${n}`;
       const created: Instance = {
@@ -479,6 +601,74 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });
       return created;
     }
+    case 'browse_search': {
+      const request = args.request as SearchRequest;
+      if (request.query === 'offline') fail('network', 'host_unreachable', "Couldn't reach api.modrinth.com", { host: 'api.modrinth.com' });
+      if (request.query === 'busy') fail('network', 'browse_rate_limited', 'Too many searches', { seconds: '3' });
+      const scoped = request.instance ? find(request.instance) : undefined;
+      const matches = CATALOG.filter(
+        (p) =>
+          p.detail.kind === request.kind &&
+          p.detail.title.toLowerCase().includes(request.query.trim().toLowerCase()) &&
+          request.categories.every((c) => p.detail.categories.includes(c)) &&
+          (!scoped || p.versions.some((v) => fitsVersion(v, p.detail.kind, scoped))),
+      );
+      const hits: SearchHit[] = matches.slice(request.offset, request.offset + 20).map((p) => ({
+        projectId: p.detail.projectId,
+        slug: p.detail.slug,
+        title: p.detail.title,
+        author: p.detail.author ?? '',
+        summary: p.detail.summary,
+        iconUrl: p.detail.iconUrl,
+        downloads: p.detail.downloads,
+        follows: p.detail.follows,
+        categories: p.detail.categories,
+        kind: p.detail.kind,
+      }));
+      return { hits, total: matches.length, offset: request.offset } satisfies SearchPage;
+    }
+    case 'browse_categories':
+      return args.kind === 'mod' ? ['library', 'optimization', 'technology'] : ['adventure'];
+    case 'browse_project': {
+      const project = findProject(args.id as string);
+      if (!project) fail('pack', 'content_not_found', "That project wasn't found");
+      return project.detail;
+    }
+    case 'browse_versions':
+      return findProject(args.project as string)?.versions ?? [];
+    case 'browse_image':
+      return MOCK_ICON;
+    case 'browse_installed':
+      return [...(state.browse.installed.get(args.id as string) ?? [])].sort();
+    case 'browse_plan':
+      return planFor(state, args.request as BrowsePlanRequest);
+    case 'browse_install': {
+      const stored = state.browse.plans.get(args.planId as string);
+      if (!stored) fail('pack', 'content_plan_expired', 'That took too long');
+      state.browse.plans.delete(args.planId as string);
+      const { view } = stored;
+      let instance: Instance;
+      if (view.target.kind === 'instance') {
+        instance = find(view.target.id) ?? fail('disk', 'instance_not_found', 'gone');
+      } else {
+        instance = (await handle(state, 'instance_create', {
+          request: {
+            name: view.target.name,
+            minecraft: view.target.minecraft,
+            loader: view.target.loader ? { kind: view.target.loader, version: '0.16.14' } : null,
+          },
+        })) as Instance;
+      }
+      const have = state.browse.installed.get(instance.id) ?? new Set<string>();
+      view.items.forEach((item) => have.add(item.projectId));
+      state.browse.installed.set(instance.id, have);
+      const task = { key: 'install_content', params: { name: view.items[0]!.title } };
+      event({ type: 'progress', instance: instance.id, task, done: view.items.length, total: view.items.length, bytes: view.totalSize });
+      return { instance, added: view.items.map((i) => i.fileName) } satisfies InstallResult;
+    }
+    case 'open_link':
+      state.browse.opened.push(args.url as string);
+      return null;
     case 'deep_link_take': {
       const link = state.pendingLink;
       state.pendingLink = null;
