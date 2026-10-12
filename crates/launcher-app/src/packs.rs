@@ -20,7 +20,7 @@ use launcher_core::{
 
 use crate::{
     app::AppCore,
-    deep_link,
+    deep_link::{self, DeepLink},
     dto::{
         ManualProgress, OptionalChoice, PackAddRequest, PackArtData, PackContents, PackMod,
         PackStatus, PackUpdate,
@@ -285,8 +285,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// the UI (`deep_link_take`); a bad one is only a warning.
     pub fn deep_link(&self, raw: &str) {
         match deep_link::parse(raw) {
-            Ok(url) => {
-                *self.pending_link.lock().unwrap_or_else(|e| e.into_inner()) = Some(url);
+            Ok(link) => {
+                *self.pending_link.lock().unwrap_or_else(|e| e.into_inner()) = Some(link);
                 self.host.emit(AppEvent::DeepLink);
             }
             Err(error) => self.host.emit(AppEvent::Warning {
@@ -296,8 +296,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
     }
 
-    /// The waiting pack link, once.
-    pub fn deep_link_take(&self) -> Option<String> {
+    /// The waiting link, once.
+    pub fn deep_link_take(&self) -> Option<DeepLink> {
         self.pending_link
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -319,6 +319,7 @@ mod tests {
 
     use crate::{
         app::{tests::core, ManualState},
+        deep_link::DeepLink,
         dto::{NewInstance, OpenTarget, PackAddRequest, PackArtData},
         events::{AppEvent, RunStateKind::*},
         testing::{
@@ -800,8 +801,10 @@ mod tests {
             .iter()
             .any(|e| matches!(e, AppEvent::DeepLink)));
         assert_eq!(
-            core.deep_link_take().as_deref(),
-            Some("https://x.example/pack.toml")
+            core.deep_link_take(),
+            Some(DeepLink::Pack {
+                url: "https://x.example/pack.toml".into()
+            })
         );
         assert_eq!(core.deep_link_take(), None, "taken once");
     }
@@ -811,6 +814,23 @@ mod tests {
         let (core, _runner, host, _t) = core(BuildKind::Dev);
         core.deep_link("perland://pack?url=http%3A%2F%2Fx.example%2Fpack.toml");
         assert_eq!(host.warnings(), vec![ErrorCode::PackLinkInvalid]);
+        assert_eq!(core.deep_link_take(), None);
+    }
+    #[tokio::test]
+    async fn a_join_link_waits_typed_and_a_bad_one_warns() {
+        let (core, _runner, host, _t) = core(BuildKind::Dev);
+        let token = "A".repeat(43);
+        core.deep_link(&format!(
+            "perland://join?invite=https%3A%2F%2Fplay.example.com%2F{token}"
+        ));
+        assert_eq!(
+            core.deep_link_take(),
+            Some(DeepLink::Join {
+                invite: format!("https://play.example.com/{token}")
+            })
+        );
+        core.deep_link("perland://join?invite=https%3A%2F%2Fplay.example.com%2Fshort");
+        assert_eq!(host.warnings(), vec![ErrorCode::InviteLinkInvalid]);
         assert_eq!(core.deep_link_take(), None);
     }
 }

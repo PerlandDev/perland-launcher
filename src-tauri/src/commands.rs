@@ -1,6 +1,7 @@
 //! One thin wrapper per UI command. All behavior lives in `launcher_app::AppCore`.
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
+use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
     AppInfo, JavaTest, ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackArtData,
     PackContents, PackStatus, RunSnapshot,
@@ -204,7 +205,7 @@ pub async fn pack_art(core: CoreState<'_>, id: String) -> Res<PackArtData> {
 }
 
 #[tauri::command]
-pub fn deep_link_take(core: CoreState<'_>) -> Option<String> {
+pub fn deep_link_take(core: CoreState<'_>) -> Option<DeepLink> {
     core.deep_link_take()
 }
 

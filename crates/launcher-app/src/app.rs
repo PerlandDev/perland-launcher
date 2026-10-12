@@ -32,6 +32,7 @@ use tokio::{
 };
 
 use crate::{
+    deep_link::DeepLink,
     dto::{AppInfo, JavaTest, NewInstance, OpenTarget, PackUpdate},
     events::{AppEvent, Host, RunStateKind},
     logs::LogStore,
@@ -89,7 +90,7 @@ pub struct AppCore<R: Runner, H: Host> {
     /// Per instance: the files its last sync couldn't download.
     pub(crate) manual: tokio::sync::Mutex<HashMap<String, ManualState>>,
     /// A valid `perland://` pack link waiting for the UI to take it.
-    pub(crate) pending_link: Mutex<Option<String>>,
+    pub(crate) pending_link: Mutex<Option<DeepLink>>,
 }
 
 fn busy(id: &str) -> LauncherError {
