@@ -1,15 +1,18 @@
 //! The app's state and every command except playing (see `runs.rs`).
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
 };
 
 use launcher_core::{
     accounts::{AccountStore, AccountsFile, BuildKind},
+    browse::compat::ContentKind,
+    content,
+    fsutil::path_key,
     instances::{
         is_valid_instance_id, GameSpec, Instance, InstanceListing, InstanceStore, SourceRef,
         UpdatePolicy, MAX_MEMORY_MB, MIN_MEMORY_MB,
@@ -23,7 +26,7 @@ use launcher_core::{
     mods::{self, LocalMod},
     paths::LauncherDirs,
     settings::{Settings, SettingsStore},
-    sync::{manual::Scanner, Cancel, ManualFile},
+    sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
     ErrorCode, LauncherError, Result,
 };
 use tokio::{
@@ -33,7 +36,7 @@ use tokio::{
 
 use crate::{
     deep_link::DeepLink,
-    dto::{AppInfo, JavaTest, NewInstance, OpenTarget, PackUpdate},
+    dto::{AppInfo, ContentFile, JavaTest, NewInstance, OpenTarget, PackUpdate},
     events::{AppEvent, Host, RunStateKind},
     logs::LogStore,
     runner::{Kill, Runner},
@@ -64,6 +67,8 @@ pub(crate) struct Run {
     pub(crate) answer: Option<oneshot::Sender<bool>>,
     /// The update on offer while asking, for `run_states` after a reload.
     pub(crate) offer: Option<PackUpdate>,
+    /// The banner's Update (no game): a Stop still reports the run as update-only.
+    pub(crate) update_only: bool,
 }
 
 /// Files the last sync couldn't download, while the player fetches them by hand.
@@ -91,6 +96,11 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) manual: tokio::sync::Mutex<HashMap<String, ManualState>>,
     /// A valid `perland://` pack link waiting for the UI to take it.
     pub(crate) pending_link: Mutex<Option<DeepLink>>,
+    /// Install plans the webview may install by id (see `browse.rs`).
+    pub(crate) plans: Mutex<HashMap<String, crate::browse::StoredPlan>>,
+    pub(crate) plan_seq: AtomicU64,
+    /// Instances a content install is writing into. Lock order: `runs`, then this.
+    pub(crate) installing: Mutex<HashSet<String>>,
 }
 
 pub(crate) fn busy(id: &str) -> LauncherError {
@@ -129,6 +139,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             logs: LogStore::default(),
             manual: tokio::sync::Mutex::new(HashMap::new()),
             pending_link: Mutex::new(None),
+            plans: Mutex::new(HashMap::new()),
+            plan_seq: AtomicU64::new(0),
+            installing: Mutex::new(HashSet::new()),
             config,
         })
     }
@@ -138,6 +151,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .contains_key(id)
+    }
+
+    /// Is a content install writing into this instance? (Not a run: see `browse.rs`.)
+    pub(crate) fn is_installing(&self, id: &str) -> bool {
+        self.installing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(id)
     }
 
     /// A damaged accounts file doesn't fail this: Settings needs it to offer "Open data folder",
@@ -228,6 +249,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         {
             return Err(busy(&instance.id));
         }
+        // An install in flight was planned for this game; it must not land in another one.
+        if self.is_installing(&instance.id)
+            && (current.game != instance.game || current.java != instance.java)
+        {
+            return Err(crate::browse::content_installing());
+        }
         let mut instance = instance;
         instance.source = current.source.clone();
         instance.server = current.server.clone();
@@ -247,6 +274,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     pub async fn instance_delete(&self, id: &str) -> Result<()> {
         if self.is_busy(id) {
             return Err(busy(id));
+        }
+        if self.is_installing(id) {
+            return Err(crate::browse::content_installing());
         }
         self.instances.delete(id).await
     }
@@ -320,6 +350,47 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         mods::list(&dir).await
     }
 
+    /// The resource packs or shaders in the instance. Those the pack's lockfile owns are flagged
+    /// `managed` (compared as the file system does: case-blind).
+    pub async fn content_list(&self, id: &str, kind: ContentKind) -> Result<Vec<ContentFile>> {
+        let dir = self.game_dir(id).await?;
+        let folder = kind.folder().unwrap_or_default();
+        let owned: HashSet<String> = Managed::load(&self.instances.perland_dir(id))
+            .await
+            .map(|m| m.files.keys().map(|k| path_key(k)).collect())
+            .unwrap_or_default();
+        Ok(content::list(&dir, kind)
+            .await?
+            .into_iter()
+            .map(|p| ContentFile {
+                managed: owned.contains(&path_key(&format!("{folder}/{}", p.file_name))),
+                file_name: p.file_name,
+                size: p.size,
+                folder: p.folder,
+            })
+            .collect())
+    }
+
+    pub async fn content_remove(
+        &self,
+        id: &str,
+        kind: ContentKind,
+        file: &str,
+    ) -> Result<Vec<ContentFile>> {
+        // The game holds its pack zips open; deleting one fails (or sticks) while it runs.
+        if self.is_busy(id) {
+            return Err(busy(id));
+        }
+        if self.is_installing(id) {
+            return Err(crate::browse::content_installing());
+        }
+        self.refuse_managed_in(id, kind.folder().unwrap_or_default(), file)
+            .await?;
+        let dir = self.game_dir(id).await?;
+        content::remove(&dir, kind, file).await?;
+        self.content_list(id, kind).await
+    }
+
     /// The instance folder, or `InstanceNotFound`. Works for damaged instances too.
     async fn existing_instance_dir(&self, id: &str) -> Result<PathBuf> {
         valid_id(id)?;
@@ -341,6 +412,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             OpenTarget::Mods { id } => {
                 self.existing_instance_dir(&id).await?;
                 self.instances.game_dir(&id).join("mods")
+            }
+            OpenTarget::ResourcePacks { id } => {
+                self.existing_instance_dir(&id).await?;
+                self.instances.game_dir(&id).join("resourcepacks")
+            }
+            OpenTarget::ShaderPacks { id } => {
+                self.existing_instance_dir(&id).await?;
+                self.instances.game_dir(&id).join("shaderpacks")
             }
             OpenTarget::Data => self.config.dirs.root().to_path_buf(),
             OpenTarget::Logs => self.config.dirs.logs(),
@@ -564,6 +643,143 @@ pub(crate) mod tests {
             .await
             .unwrap();
         assert!(list.is_empty());
+    }
+
+    fn put_pack(core: &TestCore, id: &str, folder: &str, name: &str) {
+        let dir = core.instances.game_dir(id).join(folder);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(name), b"zip").unwrap();
+    }
+
+    #[tokio::test]
+    async fn folder_opens_and_creates_the_pack_folders() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let pack = core.instance_create(vanilla("Pack")).await.unwrap();
+        let game = core.instances.game_dir(&pack.id);
+        let shaders = core
+            .folder(OpenTarget::ShaderPacks {
+                id: pack.id.clone(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(shaders, game.join("shaderpacks"));
+        assert!(shaders.is_dir());
+        let resources = core
+            .folder(OpenTarget::ResourcePacks {
+                id: pack.id.clone(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(resources, game.join("resourcepacks"));
+        assert!(resources.is_dir());
+        assert_eq!(
+            core.folder(OpenTarget::ShaderPacks { id: "ghost".into() })
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InstanceNotFound
+        );
+    }
+
+    #[tokio::test]
+    async fn content_list_marks_pack_files_managed_whatever_their_case() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let pack = core.instance_create(vanilla("Pack")).await.unwrap();
+        put_pack(&core, &pack.id, "resourcepacks", "faithful.zip");
+        put_pack(&core, &pack.id, "resourcepacks", "Mine.zip");
+        std::fs::create_dir_all(
+            core.instances
+                .game_dir(&pack.id)
+                .join("resourcepacks/Loose Pack"),
+        )
+        .unwrap();
+        crate::testing::managed_for(&["resourcepacks/Faithful.zip", "shaderpacks/Mine.zip"])
+            .save(&core.instances.perland_dir(&pack.id))
+            .await
+            .unwrap();
+        let list = core
+            .content_list(&pack.id, ContentKind::ResourcePack)
+            .await
+            .unwrap();
+        let view: Vec<(&str, bool, bool)> = list
+            .iter()
+            .map(|f| (f.file_name.as_str(), f.folder, f.managed))
+            .collect();
+        assert_eq!(
+            view,
+            vec![
+                ("faithful.zip", false, true),
+                ("Loose Pack", true, false),
+                ("Mine.zip", false, false),
+            ]
+        );
+        assert_eq!(list[0].size, 3);
+        assert_eq!(
+            core.content_list("ghost", ContentKind::Shader)
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InstanceNotFound
+        );
+    }
+
+    #[tokio::test]
+    async fn content_remove_deletes_a_players_pack_and_returns_the_list() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let pack = core.instance_create(vanilla("Pack")).await.unwrap();
+        put_pack(&core, &pack.id, "shaderpacks", "Old.zip");
+        put_pack(&core, &pack.id, "shaderpacks", "New.zip");
+        let list = core
+            .content_remove(&pack.id, ContentKind::Shader, "Old.zip")
+            .await
+            .unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].file_name, "New.zip");
+        assert!(!list[0].managed);
+    }
+
+    #[tokio::test]
+    async fn content_remove_refuses_managed_files_folders_and_running_installs() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let pack = core.instance_create(vanilla("Pack")).await.unwrap();
+        put_pack(&core, &pack.id, "resourcepacks", "Faithful.zip");
+        std::fs::create_dir_all(
+            core.instances
+                .game_dir(&pack.id)
+                .join("resourcepacks/Folder"),
+        )
+        .unwrap();
+        crate::testing::managed_for(&["resourcepacks/faithful.zip"])
+            .save(&core.instances.perland_dir(&pack.id))
+            .await
+            .unwrap();
+        let kind = ContentKind::ResourcePack;
+        let managed = core
+            .content_remove(&pack.id, kind, "Faithful.zip")
+            .await
+            .unwrap_err();
+        assert_eq!(managed.code, ErrorCode::ModManaged);
+        assert_eq!(managed.params["file"], "Faithful.zip");
+        assert_eq!(
+            core.content_remove(&pack.id, kind, "Folder")
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::ModNameInvalid
+        );
+        core.installing.lock().unwrap().insert(pack.id.clone());
+        assert_eq!(
+            core.content_remove(&pack.id, kind, "Faithful.zip")
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::ContentInstalling
+        );
+        assert!(core
+            .instances
+            .game_dir(&pack.id)
+            .join("resourcepacks/Faithful.zip")
+            .is_file());
     }
 
     #[tokio::test]

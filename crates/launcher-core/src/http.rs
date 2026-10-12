@@ -11,11 +11,9 @@ pub fn user_agent(launcher_version: &str) -> String {
 /// A client with the launcher's user agent and timeouts, so a stalled connection fails instead of
 /// hanging forever. The read timeout applies per read, so large downloads still work.
 pub fn client(launcher_version: &str) -> Result<reqwest::Client> {
-    reqwest::Client::builder()
-        .user_agent(user_agent(launcher_version))
-        .connect_timeout(Duration::from_secs(15))
-        .read_timeout(Duration::from_secs(30))
-        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+    build(
+        launcher_version,
+        reqwest::redirect::Policy::custom(|attempt| {
             // `previous` holds the original URL and every redirect followed so far.
             if attempt.previous().len() > MAX_REDIRECTS {
                 attempt.error("too many redirects")
@@ -24,7 +22,22 @@ pub fn client(launcher_version: &str) -> Result<reqwest::Client> {
             } else {
                 attempt.follow()
             }
-        }))
+        }),
+    )
+}
+
+/// Like `client`, but never follows a redirect: a 3xx comes back as an ordinary response. For
+/// fetches that must stay on one host, such as images from the CDN.
+pub fn client_without_redirects(launcher_version: &str) -> Result<reqwest::Client> {
+    build(launcher_version, reqwest::redirect::Policy::none())
+}
+
+fn build(launcher_version: &str, redirect: reqwest::redirect::Policy) -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        .user_agent(user_agent(launcher_version))
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(30))
+        .redirect(redirect)
         .build()
         .map_err(|e| {
             LauncherError::network(
@@ -90,6 +103,29 @@ mod tests {
     #[test]
     fn client_builds() {
         assert!(client("0.1.0").is_ok());
+    }
+
+    #[tokio::test]
+    async fn the_no_redirect_client_hands_back_the_302() {
+        use wiremock::{
+            matchers::{method, path},
+            Mock, MockServer, ResponseTemplate,
+        };
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/old"))
+            .respond_with(ResponseTemplate::new(302).insert_header("location", "/new"))
+            .mount(&server)
+            .await;
+        let response = client_without_redirects("test")
+            .unwrap()
+            .get(format!("{}/old", server.uri()))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), 302);
+        let seen = server.received_requests().await.unwrap();
+        assert_eq!(seen.len(), 1);
     }
 
     fn url(s: &str) -> reqwest::Url {

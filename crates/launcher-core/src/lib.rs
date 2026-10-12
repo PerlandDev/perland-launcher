@@ -1,5 +1,7 @@
 //! Perland Launcher core: everything except the UI.
 pub mod accounts;
+pub mod browse;
+pub mod content;
 pub mod download;
 pub mod error;
 pub mod events;

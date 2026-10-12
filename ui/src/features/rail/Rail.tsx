@@ -8,7 +8,8 @@ import { navigate, useRoute, instanceOf } from '../../state/route';
 import { RAIL_POLL } from '../../state/serverPoll';
 import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
-import { Plus, WarningDiamond } from '../../ui/Icon';
+import { Plus, Search, WarningDiamond } from '../../ui/Icon';
+import { sessionKind } from '../browse/session';
 import { pickId } from '../home/pick';
 import { statusWord } from '../servers/statusWord';
 
@@ -134,6 +135,15 @@ export function Rail() {
           </li>
         ))}
       </ul>
+      <Button
+        size="icon"
+        className="btn-lg rail-browse"
+        aria-label={t('browse.open')}
+        title={t('browse.open')}
+        aria-current={route.name === 'browse' && !route.instance ? 'page' : undefined}
+        icon={<Search />}
+        onClick={() => navigate({ name: 'browse', kind: sessionKind() })}
+      />
       <Button variant="ghost" size="icon" className="btn-lg" aria-label={t('rail.newInstance')} title={t('rail.newInstance')} icon={<Plus />} onClick={() => navigate({ name: 'newInstance' })} />
     </nav>
   );

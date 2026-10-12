@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Accounts } from './features/accounts/Accounts';
 import { ActivityDrawer } from './features/activity/ActivityDrawer';
+import { Browse } from './features/browse/Browse';
 import { CloseGuard } from './features/close-guard/CloseGuard';
 import { FirstRun } from './features/first-run/FirstRun';
 import { Home } from './features/home/Home';
@@ -27,11 +28,13 @@ function Screen({ route }: { route: Route }) {
     case 'home':
       return <Home id={route.id} />;
     case 'mods':
-      return <Mods id={route.id} />;
+      return <Mods id={route.id} tab={route.tab} />;
     case 'instanceSettings':
       return <InstanceSettings id={route.id} />;
     case 'newInstance':
       return <NewInstance key={route.link ?? 'new'} link={route.link} />;
+    case 'browse':
+      return <Browse route={route} />;
     case 'joinServer':
       return <JoinServer key={`${route.invite}|${route.relinkFor ?? ''}`} invite={route.invite} relinkFor={route.relinkFor} />;
     case 'accounts':

@@ -1,7 +1,7 @@
-import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../ipc/commands';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { Instance, LoaderKind, NewInstance, PackAddRequest, Settings } from '../ipc/schema';
+import type { ContentKind, ImageKind, Instance, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { pushError } from './toasts';
 
@@ -24,10 +24,17 @@ export const qk = {
   mcVersions: ['catalog', 'minecraft'] as const,
   loaders: (kind: LoaderKind, mc: string) => ['catalog', 'loaders', kind, mc] as const,
   mods: (id: string) => ['mods', id] as const,
+  contentFiles: (id: string, kind: ContentKind) => ['content', id, kind] as const,
   packStatus: (id: string) => ['pack', 'status', id] as const,
   packContents: (id: string) => ['pack', 'contents', id] as const,
   packArt: (id: string) => ['pack', 'art', id] as const,
   manual: (id: string) => ['pack', 'manual', id] as const,
+  browseSearch: (request: Omit<SearchRequest, 'offset'>) => ['browse', 'search', request] as const,
+  browseCategories: (kind: ContentKind) => ['browse', 'categories', kind] as const,
+  browseProject: (id: string) => ['browse', 'project', id] as const,
+  browseVersions: (id: string) => ['browse', 'versions', id] as const,
+  browseInstalled: (id: string) => ['browse', 'installed', id] as const,
+  browseImage: (url: string, kind: ImageKind) => ['browse', 'image', kind, url] as const,
   joinPreview: (invite: string) => ['join', 'preview', invite] as const,
   serverStatus: (id: string) => ['server', 'status', id] as const,
 };
@@ -53,12 +60,42 @@ export const useLoaderVersions = (kind: LoaderKind | null, mc: string | null) =>
     staleTime: TEN_MINUTES,
   });
 export const useMods = (id: string) => useQuery({ queryKey: qk.mods(id), queryFn: () => commands.modsList(id) });
+export const useContentFiles = (id: string, kind: ContentKind) =>
+  useQuery({ queryKey: qk.contentFiles(id, kind), queryFn: () => commands.contentList(id, kind) });
 export const usePackStatus = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packStatus(id), queryFn: () => commands.packStatus(id), enabled, staleTime: TEN_MINUTES });
 export const usePackContents = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packContents(id), queryFn: () => commands.packContents(id), enabled });
 export const usePackArt = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packArt(id), queryFn: () => commands.packArt(id), enabled, staleTime: Infinity });
+
+export const BROWSE_PAGE = 20;
+const FIVE_MINUTES = 5 * 60_000;
+
+export const useBrowseSearch = (request: Omit<SearchRequest, 'offset'>) =>
+  useInfiniteQuery({
+    queryKey: qk.browseSearch(request),
+    queryFn: ({ pageParam }) => commands.browseSearch({ ...request, offset: pageParam }),
+    initialPageParam: 0,
+    // The core drops server-only hits, so a page can be short; step by the page size.
+    getNextPageParam: (last) => (last.offset + BROWSE_PAGE < last.total ? last.offset + BROWSE_PAGE : undefined),
+    staleTime: FIVE_MINUTES,
+  });
+export const useBrowseCategories = (kind: ContentKind) =>
+  useQuery({ queryKey: qk.browseCategories(kind), queryFn: () => commands.browseCategories(kind), staleTime: Infinity });
+export const useBrowseProject = (id: string) =>
+  useQuery({ queryKey: qk.browseProject(id), queryFn: () => commands.browseProject(id), staleTime: FIVE_MINUTES });
+export const useBrowseVersions = (id: string) =>
+  useQuery({ queryKey: qk.browseVersions(id), queryFn: () => commands.browseVersions(id, null), staleTime: FIVE_MINUTES });
+export const useBrowseInstalled = (id: string | null) =>
+  useQuery({ queryKey: qk.browseInstalled(id ?? ''), queryFn: () => commands.browseInstalled(id as string), enabled: id !== null });
+export const useBrowseImage = (url: string | null, kind: ImageKind) =>
+  useQuery({
+    queryKey: qk.browseImage(url ?? '', kind),
+    queryFn: () => commands.browseImage(url as string, kind),
+    enabled: url !== null,
+    staleTime: Infinity,
+  });
 
 export const useJoinPreview = (invite: string) =>
   useQuery({
@@ -186,6 +223,20 @@ export function useAccountMutations(opts: Opts = {}) {
     setActive: useMutation({ mutationFn: commands.accountSetActive, onSuccess, onError: failed }),
     remove: useMutation({ mutationFn: commands.accountRemove, onSuccess, onError: failed }),
   };
+}
+
+/** Remove a resource pack or shader. The list the core hands back replaces the cached one. */
+export function useContentRemove(id: string, kind: ContentKind, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: string) => commands.contentRemove(id, kind, file),
+    onSuccess: (list) => qc.setQueryData(qk.contentFiles(id, kind), list),
+    // A refused removal may still have changed the folder, so the list is asked for again.
+    onError: (error) => {
+      void qc.invalidateQueries({ queryKey: qk.contentFiles(id, kind) });
+      onError(opts)(error);
+    },
+  });
 }
 
 export function useModMutations(id: string, opts: Opts = {}) {

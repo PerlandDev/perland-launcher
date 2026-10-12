@@ -8,6 +8,14 @@
     "id": "asalith-fields"
   },
   {
+    "kind": "resource_packs",
+    "id": "asalith-fields"
+  },
+  {
+    "kind": "shader_packs",
+    "id": "asalith-fields"
+  },
+  {
     "kind": "data"
   },
   {

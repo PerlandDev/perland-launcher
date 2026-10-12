@@ -6,7 +6,7 @@ pub mod manual;
 pub mod plan;
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     future::Future,
     path::{Path, PathBuf},
     pin::Pin,
@@ -218,6 +218,9 @@ pub struct Syncer {
     pub sources: Sources,
     /// The launcher's data folder; free space is measured here.
     pub root: PathBuf,
+    /// Per instance: the last update `find_update` resolved (offered stamp, source, pack), so
+    /// the banner and Play don't resolve the same version's metafiles twice.
+    resolved: std::sync::Mutex<HashMap<String, (String, SourceRef, DesiredState)>>,
 }
 
 impl Syncer {
@@ -226,7 +229,16 @@ impl Syncer {
             game,
             sources,
             root: root.into(),
+            resolved: std::sync::Mutex::new(HashMap::new()),
         }
+    }
+
+    /// A sync changed what's installed: the next update check resolves afresh.
+    fn forget_update(&self, id: &str) {
+        self.resolved
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(id);
     }
 
     /// The production wiring: the installer's metadata client and downloader, the object cache
@@ -348,16 +360,38 @@ impl Syncer {
         let Some(installed) = self.installed(store, &instance.id).await else {
             return Ok(None);
         };
-        let source = match self.sources.check(&instance.source, &installed).await {
+        let (source, stamp) = match self.sources.check(&instance.source, &installed).await {
             UpdateCheck::UpToDate => return Ok(None),
             UpdateCheck::Unavailable(e) => return Err(e),
-            UpdateCheck::Available { source, .. } => source,
+            UpdateCheck::Available { source, stamp, .. } => (source, stamp),
         };
-        let desired = self
-            .sources
-            .resolve_with(&source, sink, &Cancel::default())
-            .await
-            .map_err(update_check_failed)?;
+        // Only the expensive `resolve` is remembered; `changes` and `kept` below are recomputed
+        // from the disk and the current optional choices on every call.
+        let remembered = self
+            .resolved
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&instance.id)
+            .filter(|(offered, known, _)| *offered == stamp && *known == source)
+            .map(|(_, _, desired)| desired.clone());
+        let desired = match remembered {
+            Some(desired) => desired,
+            None => {
+                let desired = self
+                    .sources
+                    .resolve_with(&source, sink, &Cancel::default())
+                    .await
+                    .map_err(update_check_failed)?;
+                self.resolved
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .insert(
+                        instance.id.clone(),
+                        (stamp, source.clone(), desired.clone()),
+                    );
+                desired
+            }
+        };
         let managed = Managed::load(&store.perland_dir(&instance.id)).await;
         let wanted = plan::wanted(&desired, &instance.optional_choices);
         let kept = kept_edits(&store.game_dir(&instance.id), &wanted, managed.as_ref()).await;
@@ -552,6 +586,7 @@ impl Syncer {
                 && m.choices == choices
                 && apply::quick_check(&game_dir, m)
             {
+                self.forget_update(id);
                 return Ok(SyncOutcome::Done(SyncReport {
                     up_to_date: true,
                     ..SyncReport::default()
@@ -708,6 +743,7 @@ impl Syncer {
         .save(&perland)
         .await?;
         let _ = tokio::fs::remove_dir_all(&staging).await;
+        self.forget_update(id);
         Ok(SyncOutcome::Done(SyncReport {
             up_to_date: false,
             changes,

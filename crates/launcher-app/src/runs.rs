@@ -124,6 +124,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             )
             .with_param("id", id));
         }
+        if self
+            .installing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(id)
+        {
+            return Err(crate::browse::content_installing());
+        }
         self.logs.reset(id);
         let first = if checks {
             RunStateKind::Checking
@@ -133,6 +141,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         // Emitted under the lock, before the task exists, so the first state always comes first.
         self.emit_state(id, first, None);
         let cancel = Cancel::default();
+        let update_only = play.is_none();
         let core = Arc::clone(self);
         let (run_id, run_cancel) = (id.to_string(), cancel.clone());
         let task =
@@ -148,6 +157,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 cancel,
                 answer: None,
                 offer: None,
+                update_only,
             },
         );
         Ok(())
@@ -180,6 +190,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             | RunStateKind::Asking
             | RunStateKind::Queued
             | RunStateKind::Preparing => {
+                let update_only = run.update_only;
                 if let Some(abort) = run.abort.take() {
                     abort.abort();
                 }
@@ -189,6 +200,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     RunStateKind::Idle,
                     Some(ExitInfo {
                         cancelled: true,
+                        update_only,
                         ..ExitInfo::default()
                     }),
                 );
@@ -695,6 +707,7 @@ mod tests {
 
     use launcher_core::{
         accounts::BuildKind,
+        browse::compat::ContentKind,
         instances::{GameSpec, ServerAddress, UpdatePolicy},
         launch::CrashHint,
         locks::InstanceLock,
@@ -978,6 +991,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_running_instances_packs_cannot_be_removed() {
+        let (core, runner, host, _t) = ready(true).await;
+        let packs = core.instances.game_dir("alpha").join("resourcepacks");
+        std::fs::create_dir_all(&packs).unwrap();
+        std::fs::write(packs.join("Faithful.zip"), b"zip").unwrap();
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        assert_eq!(
+            core.content_remove("alpha", ContentKind::ResourcePack, "Faithful.zip")
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InstanceBusy
+        );
+        assert!(packs.join("Faithful.zip").is_file());
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+        let list = core
+            .content_remove("alpha", ContentKind::ResourcePack, "Faithful.zip")
+            .await
+            .unwrap();
+        assert!(list.is_empty());
+    }
+
+    #[tokio::test]
     async fn game_logs_are_batched_and_kept_for_log_tail() {
         let (core, runner, host, _t) = ready(true).await;
         *runner.start_lines.lock().unwrap() = vec!["[INFO] one".into(), "[INFO] two".into()];
@@ -1192,6 +1231,34 @@ mod tests {
         assert_eq!(host.states(&id), vec![Checking, Asking, Idle]);
         assert!(host.last_exit(&id).unwrap().cancelled);
         assert!(runner.syncs.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn stopping_an_update_only_run_says_it_was_one() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        offer(&runner, &id);
+        runner.hold_sync.store(true, Ordering::SeqCst);
+        // The banner's Update: checking, then queued/syncing. Stop while it is still checking
+        // or queued must say it was an update-only run.
+        core.pack_update(&id).await.unwrap();
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+        let exit = host.last_exit(&id).unwrap();
+        assert!(exit.cancelled);
+        assert!(
+            exit.update_only,
+            "an update-only run stays update-only when stopped"
+        );
+
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        core.stop(&id).unwrap();
+        host.wait_for_nth(&id, Idle, 2).await;
+        assert!(
+            !host.last_exit(&id).unwrap().update_only,
+            "Play is not update-only"
+        );
     }
 
     #[tokio::test]

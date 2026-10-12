@@ -94,6 +94,8 @@ fn main() {
             commands::mod_set_enabled,
             commands::mods_add,
             commands::mod_remove,
+            commands::content_list,
+            commands::content_remove,
             commands::open_folder,
             commands::java_test,
             commands::pack_add,
@@ -105,6 +107,15 @@ fn main() {
             commands::manual_import,
             commands::pack_art,
             commands::deep_link_take,
+            commands::browse_search,
+            commands::browse_categories,
+            commands::browse_project,
+            commands::browse_versions,
+            commands::browse_image,
+            commands::browse_installed,
+            commands::browse_plan,
+            commands::browse_install,
+            commands::open_link,
             commands::join_preview,
             commands::join_add,
             commands::server_status,
@@ -131,8 +142,15 @@ fn build_core(app: tauri::AppHandle) -> Result<Arc<Core>, Box<dyn std::error::Er
         downloader: Downloader::new(http.clone()),
         platform: Platform::current(),
     });
+    let browse = launcher_core::browse::Browse::new(
+        http.clone(),
+        launcher_core::http::client_without_redirects(&version)?,
+        Downloader::new(http.clone()),
+        &dirs,
+        launcher_core::browse::BrowseConfig::default(),
+    );
     let syncer = launcher_core::sync::Syncer::for_installer(installer.clone(), http);
-    let runner = Arc::new(CoreRunner::new(installer, syncer, version.clone()));
+    let runner = Arc::new(CoreRunner::new(installer, syncer, version.clone(), browse));
     let host = Arc::new(host::TauriHost::new(app));
     let config = AppConfig {
         dirs,

@@ -63,6 +63,18 @@ describe('ActivityDrawer', () => {
     expect(screen.getByText('2 of 24 files', { exact: false })).toBeInTheDocument();
   });
 
+  it('says "file" for a single file', async () => {
+    renderApp(<ActivityDrawer />);
+    const task = { key: 'install_pack', params: { name: 'Sky Islands' } };
+    act(() => {
+      runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'syncing', exit: null, update: null });
+      runStore.apply({ type: 'progress', instance: 'sky-islands', task, done: 0, total: 1, bytes: 0 });
+      openActivity('sky-islands');
+    });
+    expect(await screen.findByText('0 of 1 file', { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText('0 of 1 files', { exact: false })).not.toBeInTheDocument();
+  });
+
   it('shows a failed start with the translated error', async () => {
     renderApp(<ActivityDrawer />);
     act(() => {

@@ -75,6 +75,8 @@ pub trait Runner: Send + Sync + 'static {
     ) -> BoxFuture<Result<Ensured>>;
     /// Put files the player downloaded by hand into the cache.
     fn import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>>;
+    /// Browse: Modrinth search and content installs.
+    fn browser(&self) -> Arc<dyn crate::browser::Browser>;
     /// The invite's view and its Engine, shared for 15 s by every caller. `engine` seeds the
     /// Engine an instance saved, so no `config.json` is needed.
     fn invite_view(
@@ -90,14 +92,25 @@ pub struct CoreRunner {
     installer: Arc<Installer>,
     syncer: Arc<Syncer>,
     launcher_version: String,
+    browser: Arc<dyn crate::browser::Browser>,
 }
 
 impl CoreRunner {
-    pub fn new(installer: Arc<Installer>, syncer: Syncer, launcher_version: String) -> Self {
+    pub fn new(
+        installer: Arc<Installer>,
+        syncer: Syncer,
+        launcher_version: String,
+        browse: launcher_core::browse::Browse,
+    ) -> Self {
+        let browser = Arc::new(crate::browser::CoreBrowser::new(
+            browse,
+            installer.meta.clone(),
+        ));
         Self {
             installer,
             syncer: Arc::new(syncer),
             launcher_version,
+            browser,
         }
     }
     pub fn installer(&self) -> &Arc<Installer> {
@@ -181,6 +194,10 @@ impl Runner for CoreRunner {
     fn import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>> {
         let syncer = self.syncer.clone();
         Box::pin(async move { syncer.import_found(&found).await })
+    }
+
+    fn browser(&self) -> Arc<dyn crate::browser::Browser> {
+        self.browser.clone()
     }
 
     fn invite_view(

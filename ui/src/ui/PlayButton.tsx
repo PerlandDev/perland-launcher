@@ -53,6 +53,7 @@ export function PlayButton({ state, progress, disabled, disabledReason, onPlay, 
               <>
                 <span className="tabular truncate">
                   {t(progress.total >= 1000 ? 'play.filesShort' : 'play.files', {
+                    count: progress.total,
                     done: formatCount(progress.done, lang),
                     total: formatCount(progress.total, lang),
                   })}

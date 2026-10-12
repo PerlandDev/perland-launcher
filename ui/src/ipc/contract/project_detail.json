@@ -1,0 +1,28 @@
+{
+  "projectId": "AANobbMI",
+  "slug": "sodium",
+  "title": "Sodium",
+  "author": "jellysquid3",
+  "summary": "A modern rendering engine for Minecraft",
+  "body": "# Sodium\n\nFaster rendering. <b>bold</b>\n\n![shot](https://cdn.modrinth.com/data/AANobbMI/images/shot.png)",
+  "iconUrl": "https://cdn.modrinth.com/data/AANobbMI/icon.png",
+  "downloads": 81000000,
+  "follows": 25000,
+  "categories": [
+    "optimization"
+  ],
+  "kind": "mod",
+  "clientSide": "required",
+  "serverSide": "unsupported",
+  "license": "Polyform Shield 1.0.0",
+  "sourceUrl": "https://github.com/CaffeineMC/sodium",
+  "issuesUrl": "https://github.com/CaffeineMC/sodium/issues",
+  "wikiUrl": null,
+  "gallery": [
+    {
+      "url": "https://cdn.modrinth.com/data/AANobbMI/images/shot.png",
+      "title": "Before and after",
+      "featured": true
+    }
+  ]
+}

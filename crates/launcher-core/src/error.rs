@@ -62,6 +62,10 @@ error_codes! {
     // packs and sync
     PackInvalid, PackUnsupported, PackUnsafePath, PackNotFound, PackLinkInvalid, NoPack,
     NotEnoughSpace, InstanceLocked, ManualDownloadsNeeded, UpdateCheckFailed, PackPathIsFolder, SyncCancelled, UpdateDownloadFailed,
+    // browse
+    BrowseRateLimited, ContentNotFound, ContentIncompatible, ContentDependencyMissing,
+    ContentConflict, ContentNeedsLoader, ContentAlreadyInstalled, ContentBusy,
+    ContentInstalling, ContentPlanExpired, ImageRefused, LinkRefused,
     // server invites (join by link)
     InviteLinkInvalid, InviteGone, InviteUnsupported, InviteSiteUnreachable, InviteRateLimited,
     ServerPackUnavailable, ServerPackPending, ServerAddressUnknown,
@@ -166,6 +170,33 @@ mod tests {
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
+    fn browse_codes_exist() {
+        for (code, name) in [
+            (ErrorCode::BrowseRateLimited, "browse_rate_limited"),
+            (ErrorCode::ContentNotFound, "content_not_found"),
+            (ErrorCode::ContentIncompatible, "content_incompatible"),
+            (
+                ErrorCode::ContentDependencyMissing,
+                "content_dependency_missing",
+            ),
+            (ErrorCode::ContentConflict, "content_conflict"),
+            (ErrorCode::ContentNeedsLoader, "content_needs_loader"),
+            (
+                ErrorCode::ContentAlreadyInstalled,
+                "content_already_installed",
+            ),
+            (ErrorCode::ContentBusy, "content_busy"),
+            (ErrorCode::ContentInstalling, "content_installing"),
+            (ErrorCode::ContentPlanExpired, "content_plan_expired"),
+            (ErrorCode::ImageRefused, "image_refused"),
+            (ErrorCode::LinkRefused, "link_refused"),
+        ] {
+            assert!(ErrorCode::ALL.contains(&code));
+            assert_eq!(serde_json::to_value(code).unwrap(), name);
         }
     }
 

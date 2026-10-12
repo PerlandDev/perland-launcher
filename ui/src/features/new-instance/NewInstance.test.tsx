@@ -174,6 +174,12 @@ it('uses a plain name hint until the version list has loaded', async () => {
   expect(name).toHaveAttribute('placeholder', 'Minecraft 26.3');
 });
 
+it('offers to browse modpacks', async () => {
+  const { user } = renderApp(<NewInstance />);
+  await user.click(await screen.findByRole('button', { name: 'Browse modpacks' }));
+  expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
+});
+
 it('sends an invite link pasted as a pack link to Join server', async () => {
   const { user, calls } = renderApp(<NewInstance />);
   await user.click(await screen.findByRole('radio', { name: 'Paste a pack link' }));

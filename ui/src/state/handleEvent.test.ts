@@ -3,6 +3,7 @@ import { mockIPC } from '@tauri-apps/api/mocks';
 import { expect, it, vi } from 'vitest';
 import { exitOf } from '../ipc/mock';
 import { resetActivity, useActivity } from './activity';
+import { contentProgressSnapshot } from './contentProgress';
 import { handleEvent } from './handleEvent';
 import { qk, queryClient } from './queries';
 import { routeSnapshot } from './route';
@@ -65,6 +66,9 @@ it('an ended run refreshes the instance and its pack queries', () => {
   expect(keys).toContainEqual(qk.packStatus('sky'));
   expect(keys).toContainEqual(qk.packContents('sky'));
   expect(keys).toContainEqual(qk.packArt('sky'));
+  // A sync can change the pack's own resource packs and shaders too.
+  expect(keys).toContainEqual(qk.contentFiles('sky', 'resource_pack'));
+  expect(keys).toContainEqual(qk.contentFiles('sky', 'shader'));
   spy.mockRestore();
 });
 
@@ -88,6 +92,19 @@ it('opens New instance with a deep link once setup is done', async () => {
   handleEvent({ type: 'deep_link' });
   await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'newInstance', link: 'https://x.example/pack.toml' }));
   queryClient.clear();
+});
+
+it('sends install progress to its own store, not the run', () => {
+  handleEvent({
+    type: 'progress',
+    instance: 'asalith-fields',
+    task: { key: 'install_content', params: { name: 'Sodium' } },
+    done: 1,
+    total: 2,
+    bytes: 10,
+  });
+  expect(runStore.run('asalith-fields').progress).toBeNull();
+  expect(contentProgressSnapshot('asalith-fields')?.done).toBe(1);
 });
 
 it('opens Join server for a join deep link', async () => {

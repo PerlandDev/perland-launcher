@@ -1,5 +1,6 @@
 import type { AppEvent, Settings } from '../ipc/schema';
 import { openActivity } from './activity';
+import { applyContentProgress } from './contentProgress';
 import { takeDeepLink } from './deepLink';
 import { isCrash } from './exit';
 import { qk, queryClient } from './queries';
@@ -8,6 +9,11 @@ import { pushError } from './toasts';
 
 /** Everything the UI does with an event from Rust. */
 export function handleEvent(event: AppEvent) {
+  // A Browse install has its own progress; it never shows on Play.
+  if (event.type === 'progress' && event.task.key === 'install_content') {
+    applyContentProgress(event);
+    return;
+  }
   runStore.apply(event);
   if (event.type === 'warning') pushError(event.error);
   // During first-run setup the link waits in Rust; the shell takes it once setup is done.
@@ -15,9 +21,19 @@ export function handleEvent(event: AppEvent) {
     void takeDeepLink();
   }
   if (event.type === 'run_state' && event.state === 'idle') {
-    // A sync can change the game version, the pack's mods and its art.
+    // A sync can change the game version, the pack's mods, resource packs and shaders, and its art.
     const id = event.instance;
-    for (const queryKey of [qk.instances, qk.mods(id), qk.packStatus(id), qk.packContents(id), qk.packArt(id), qk.serverStatus(id)]) {
+    const keys = [
+      qk.instances,
+      qk.mods(id),
+      qk.packStatus(id),
+      qk.packContents(id),
+      qk.packArt(id),
+      qk.contentFiles(id, 'resource_pack'),
+      qk.contentFiles(id, 'shader'),
+      qk.serverStatus(id),
+    ];
+    for (const queryKey of keys) {
       void queryClient.invalidateQueries({ queryKey });
     }
     const exit = event.exit;

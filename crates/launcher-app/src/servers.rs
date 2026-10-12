@@ -519,6 +519,7 @@ mod tests {
                 cancel: launcher_core::sync::Cancel::default(),
                 answer: None,
                 offer: None,
+                update_only: false,
             },
         );
     }

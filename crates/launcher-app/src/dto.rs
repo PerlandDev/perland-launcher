@@ -3,8 +3,14 @@ use std::{fmt, path::PathBuf};
 
 use launcher_core::{
     accounts::BuildKind,
-    instances::{accent_of, LoaderSpec, ServerAddress, ServerStatus},
+    browse::{
+        compat::ContentKind,
+        plan::{ItemReason, PlanItem, PlanSkip},
+        search::SortIndex,
+    },
+    instances::{accent_of, Instance, LoaderSpec, ServerAddress, ServerStatus},
     invite::{non_empty, shown_invite, EngineView, InviteLink, InvitePlayers},
+    meta::loaders::LoaderKind,
     mods::LocalMod,
     sync::{ManualFile, PendingUpdate, SyncReport},
     LauncherError,
@@ -53,9 +59,22 @@ pub struct NewInstance {
 pub enum OpenTarget {
     Instance { id: String },
     Mods { id: String },
+    ResourcePacks { id: String },
+    ShaderPacks { id: String },
     Data,
     Logs,
     Downloads,
+}
+
+/// A resource pack or shader in an instance, as the Mods & packs screen lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentFile {
+    pub file_name: String,
+    pub size: u64,
+    pub folder: bool,
+    /// Came with the pack: the player can't remove it (sync would put it back).
+    pub managed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -323,6 +342,104 @@ pub struct JavaTest {
     pub major: u32,
 }
 
+/// Browse's search box and filters. With `instance`, its game decides `minecraft` and `loader`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchRequest {
+    pub query: String,
+    pub kind: ContentKind,
+    #[serde(default)]
+    pub instance: Option<String>,
+    #[serde(default)]
+    pub minecraft: Option<String>,
+    #[serde(default)]
+    pub loader: Option<LoaderKind>,
+    #[serde(default)]
+    pub categories: Vec<String>,
+    #[serde(default)]
+    pub sort: SortIndex,
+    #[serde(default)]
+    pub offset: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PlanTargetRequest {
+    Instance { id: String },
+    New,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowsePlanRequest {
+    pub project: String,
+    #[serde(default)]
+    pub version: Option<String>,
+    pub target: PlanTargetRequest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum PlanTargetView {
+    Instance {
+        id: String,
+        name: String,
+        minecraft: String,
+        loader: Option<LoaderKind>,
+    },
+    New {
+        name: String,
+        minecraft: String,
+        loader: Option<LoaderKind>,
+    },
+}
+
+/// One thing an install adds, as the confirm dialog shows it. URLs and hashes stay in the app.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanItemView {
+    pub project_id: String,
+    pub title: String,
+    pub kind: ContentKind,
+    pub version_number: String,
+    pub file_name: String,
+    pub size: u64,
+    pub reason: ItemReason,
+}
+
+impl From<&PlanItem> for PlanItemView {
+    fn from(item: &PlanItem) -> Self {
+        Self {
+            project_id: item.project_id.clone(),
+            title: item.title.clone(),
+            kind: item.kind,
+            version_number: item.version_number.clone(),
+            file_name: item.file.file_name.clone(),
+            size: item.file.size,
+            reason: item.reason.clone(),
+        }
+    }
+}
+
+/// A stored install plan; the webview installs it by `plan_id` only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallPlanView {
+    pub plan_id: String,
+    pub target: PlanTargetView,
+    pub items: Vec<PlanItemView>,
+    pub skipped: Vec<PlanSkip>,
+    pub total_size: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallResult {
+    /// The instance the files went into (a new one for a "New instance" plan).
+    pub instance: Instance,
+    pub added: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -437,6 +554,12 @@ mod tests {
     fn open_target_round_trips_tagged() {
         let t: OpenTarget = serde_json::from_str(r#"{"kind":"mods","id":"pack"}"#).unwrap();
         assert_eq!(t, OpenTarget::Mods { id: "pack".into() });
+        let packs: OpenTarget =
+            serde_json::from_str(r#"{"kind":"resource_packs","id":"x"}"#).unwrap();
+        assert_eq!(packs, OpenTarget::ResourcePacks { id: "x".into() });
+        let shaders: OpenTarget =
+            serde_json::from_str(r#"{"kind":"shader_packs","id":"x"}"#).unwrap();
+        assert_eq!(shaders, OpenTarget::ShaderPacks { id: "x".into() });
         let d: OpenTarget = serde_json::from_str(r#"{"kind":"data"}"#).unwrap();
         assert_eq!(d, OpenTarget::Data);
     }
@@ -454,5 +577,40 @@ mod tests {
         assert_eq!(json["offlineAllowed"], true);
         assert_eq!(json["build"], "dev");
         assert_eq!(json["systemMemoryMb"], 16384);
+    }
+
+    #[test]
+    fn browse_requests_read_their_wire_shapes() {
+        let search: SearchRequest = serde_json::from_str(
+            r#"{"query":"sodium","kind":"resource_pack","instance":null,"minecraft":"1.20.1","loader":"fabric","categories":["adventure"],"sort":"downloads","offset":20}"#,
+        )
+        .unwrap();
+        assert_eq!(search.kind, ContentKind::ResourcePack);
+        assert_eq!(search.sort, SortIndex::Downloads);
+        let plan: BrowsePlanRequest = serde_json::from_str(
+            r#"{"project":"sodium","version":null,"target":{"kind":"instance","id":"asalith"}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            plan.target,
+            PlanTargetRequest::Instance {
+                id: "asalith".into()
+            }
+        );
+        let new: BrowsePlanRequest =
+            serde_json::from_str(r#"{"project":"x","version":"v1","target":{"kind":"new"}}"#)
+                .unwrap();
+        assert_eq!(new.target, PlanTargetRequest::New);
+    }
+
+    #[test]
+    fn plan_views_hide_urls_and_hashes() {
+        let plan = crate::testing::sample_plan(false);
+        let view = PlanItemView::from(&plan.items[1]);
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(json["reason"]["kind"], "dependency");
+        assert_eq!(json["reason"]["of"], "Sodium");
+        assert_eq!(json["fileName"], "fabric-api.jar");
+        assert!(json.get("url").is_none() && json.get("hashes").is_none());
     }
 }

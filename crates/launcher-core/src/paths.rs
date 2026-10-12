@@ -55,6 +55,10 @@ impl LauncherDirs {
     pub fn objects(&self) -> PathBuf {
         self.root.join("cache").join("objects")
     }
+    /// Browse's image cache (project icons and gallery images), pruned by size.
+    pub fn images(&self) -> PathBuf {
+        self.root.join("cache").join("images")
+    }
     /// Locked while shared game files are installed, across every launcher process.
     pub fn install_lock(&self) -> PathBuf {
         self.root.join(".install.lock")

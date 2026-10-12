@@ -1,9 +1,11 @@
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockBackend, installMock, stopMockRuns } from './mock';
 import { MOCK_INVITE } from './mockServers';
 import type {
   AccountsFile,
+  InstallPlanView,
+  InstallResult,
   Instance,
   InstanceListing,
   JoinPreview,
@@ -12,6 +14,7 @@ import type {
   PackContents,
   PackStatus,
   RunSnapshot,
+  SearchPage,
   ServerStatusView,
   Settings,
 } from './schema';
@@ -265,5 +268,45 @@ describe('scripted runs', () => {
       clearMocks();
       vi.useRealTimers();
     }
+  });
+});
+
+describe('mock browse backend', () => {
+  afterEach(() => stopMockRuns());
+
+  it('pages search results and filters by kind and query', async () => {
+    const { handle } = createMockBackend();
+    const base = { query: '', kind: 'mod', instance: null, minecraft: null, loader: null, categories: [], sort: 'downloads', offset: 0 };
+    const first = (await handle('browse_search', { request: base })) as SearchPage;
+    expect(first.hits).toHaveLength(20);
+    expect(first.total).toBeGreaterThan(20);
+    const second = (await handle('browse_search', { request: { ...base, offset: 20 } })) as SearchPage;
+    expect(second.offset).toBe(20);
+    const sodium = (await handle('browse_search', { request: { ...base, query: 'sodium' } })) as SearchPage;
+    expect(sodium.hits.map((h) => h.title)).toEqual(['Sodium']);
+    await expect(handle('browse_search', { request: { ...base, query: 'offline' } })).rejects.toMatchObject({ code: 'host_unreachable' });
+    await expect(handle('browse_search', { request: { ...base, query: 'busy' } })).rejects.toMatchObject({
+      code: 'browse_rate_limited',
+      params: { seconds: '3' },
+    });
+  });
+
+  it('plans with dependencies and installs once', async () => {
+    const { handle } = createMockBackend();
+    const view = (await handle('browse_plan', {
+      request: { project: 'AANobbMI', version: null, target: { kind: 'instance', id: 'asalith-fields' } },
+    })) as InstallPlanView;
+    expect(view.items.map((i) => i.title)).toEqual(['Sodium']);
+    expect(view.skipped.map((s) => s.title)).toEqual(['Fabric API']);
+    const result = (await handle('browse_install', { planId: view.planId })) as InstallResult;
+    expect(result.instance.id).toBe('asalith-fields');
+    expect(await handle('browse_installed', { id: 'asalith-fields' })).toContain('AANobbMI');
+    await expect(handle('browse_install', { planId: view.planId })).rejects.toMatchObject({ code: 'content_plan_expired' });
+  });
+
+  it('turns a modrinth pack link into an instance named after the project', async () => {
+    const { handle } = createMockBackend();
+    const created = (await handle('pack_add', { request: { kind: 'link', url: 'modrinth:1KVo5zza@1KVo5zza-v1' } })) as Instance;
+    expect(created.name).toBe('Fabulously Optimized');
   });
 });

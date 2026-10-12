@@ -5,6 +5,7 @@ import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
+import { Search } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { PackFileForm, PackLinkForm } from './PackSource';
 import { useVersionChoice } from './useVersionChoice';
@@ -32,7 +33,15 @@ export function NewInstance({ link }: { link?: string }) {
   };
 
   return (
-    <ScreenFrame title={t('newInstance.title')} onBack={() => navigate({ name: 'home', id: null })}>
+    <ScreenFrame
+      title={t('newInstance.title')}
+      onBack={() => navigate({ name: 'home', id: null })}
+      actions={
+        <Button icon={<Search />} onClick={() => navigate({ name: 'browse', kind: 'modpack' })}>
+          {t('browse.browseModpacks')}
+        </Button>
+      }
+    >
       <fieldset className="mb-8 grid gap-1.5">
         <legend className="sr-only">{t('newInstance.title')}</legend>
         <div className="flex flex-wrap gap-2">

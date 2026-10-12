@@ -5,6 +5,7 @@ use std::{path::Path, sync::Arc, time::Duration};
 
 use launcher_core::{
     accounts::BuildKind,
+    browse::{Browse, BrowseConfig},
     download::{cache::ObjectCache, Downloader},
     install::Installer,
     instances::{ServerStatus, SourceRef},
@@ -44,6 +45,14 @@ fn launcher(root: &Path, timing: InviteTiming) -> (Arc<LiveCore>, Arc<RecordingH
         downloader: downloader.clone(),
         platform: Platform::current(),
     });
+    // The invite flows never browse, so Browse keeps its defaults and is never called.
+    let browse = Browse::new(
+        http.clone(),
+        launcher_core::http::client_without_redirects("test").unwrap(),
+        downloader.clone(),
+        &dirs,
+        BrowseConfig::default(),
+    );
     let sources = Sources {
         invites: InviteClient::new(http.clone()).with_timing(timing),
         http,
@@ -53,7 +62,7 @@ fn launcher(root: &Path, timing: InviteTiming) -> (Arc<LiveCore>, Arc<RecordingH
         config: SourceConfig::default(),
     };
     let syncer = Syncer::new(installer.clone(), sources, dirs.root());
-    let runner = Arc::new(CoreRunner::new(installer, syncer, "0.1.0".into()));
+    let runner = Arc::new(CoreRunner::new(installer, syncer, "0.1.0".into(), browse));
     let host = RecordingHost::new();
     let core = AppCore::new(
         AppConfig {

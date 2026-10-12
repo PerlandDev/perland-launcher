@@ -118,10 +118,18 @@ export const mcVersion = z.strictObject({
 });
 export const loaderVersion = z.strictObject({ version: z.string(), stable: z.boolean() });
 export const localMod = z.strictObject({ fileName: z.string(), enabled: z.boolean(), size: z.number().int() });
+export const contentFile = z.strictObject({
+  fileName: z.string(),
+  size: z.number().int(),
+  folder: z.boolean(),
+  managed: z.boolean(),
+});
 export const newInstance = z.strictObject({ name: z.string(), minecraft: z.string(), loader: loaderSpec.nullable() });
 export const openTarget = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('instance'), id: z.string() }),
   z.strictObject({ kind: z.literal('mods'), id: z.string() }),
+  z.strictObject({ kind: z.literal('resource_packs'), id: z.string() }),
+  z.strictObject({ kind: z.literal('shader_packs'), id: z.string() }),
   z.strictObject({ kind: z.literal('data') }),
   z.strictObject({ kind: z.literal('logs') }),
   z.strictObject({ kind: z.literal('downloads') }),
@@ -207,6 +215,100 @@ export const packAddRequest = z.discriminatedUnion('kind', [
 ]);
 export const javaTest = z.strictObject({ major: z.number().int() });
 
+export const contentKind = z.enum(['modpack', 'mod', 'resource_pack', 'shader']);
+export const sortIndex = z.enum(['relevance', 'downloads', 'follows', 'newest', 'updated']);
+export const imageKind = z.enum(['icon', 'gallery']);
+export const searchHit = z.strictObject({
+  projectId: z.string(),
+  slug: z.string(),
+  title: z.string(),
+  author: z.string(),
+  summary: z.string(),
+  iconUrl: z.string().nullable(),
+  downloads: z.number().int(),
+  follows: z.number().int(),
+  categories: z.array(z.string()),
+  kind: contentKind,
+});
+export const searchPage = z.strictObject({ hits: z.array(searchHit), total: z.number().int(), offset: z.number().int() });
+export const sideSupport = z.enum(['required', 'optional', 'unsupported', 'unknown']);
+export const galleryImage = z.strictObject({ url: z.string(), title: z.string().nullable(), featured: z.boolean() });
+export const projectDetail = z.strictObject({
+  projectId: z.string(),
+  slug: z.string(),
+  title: z.string(),
+  author: z.string().nullable(),
+  summary: z.string(),
+  body: z.string(),
+  iconUrl: z.string().nullable(),
+  downloads: z.number().int(),
+  follows: z.number().int(),
+  categories: z.array(z.string()),
+  kind: contentKind,
+  clientSide: sideSupport,
+  serverSide: sideSupport,
+  license: z.string().nullable(),
+  sourceUrl: z.string().nullable(),
+  issuesUrl: z.string().nullable(),
+  wikiUrl: z.string().nullable(),
+  gallery: z.array(galleryImage),
+});
+export const versionInfo = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  number: z.string(),
+  versionType: z.string(),
+  gameVersions: z.array(z.string()),
+  loaders: z.array(z.string()),
+  date: z.string(),
+  size: z.number().int().nullable(),
+});
+export const itemReason = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('requested') }),
+  z.strictObject({ kind: z.literal('dependency'), of: z.string() }),
+  z.strictObject({ kind: z.literal('shader_mod') }),
+]);
+export const planSkip = z.strictObject({ projectId: z.string(), title: z.string(), reason: z.enum(['installed', 'in_pack']) });
+export const planItemView = z.strictObject({
+  projectId: z.string(),
+  title: z.string(),
+  kind: contentKind,
+  versionNumber: z.string(),
+  fileName: z.string(),
+  size: z.number().int(),
+  reason: itemReason,
+});
+export const planTargetView = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('instance'), id: z.string(), name: z.string(), minecraft: z.string(), loader: loaderKind.nullable() }),
+  z.strictObject({ kind: z.literal('new'), name: z.string(), minecraft: z.string(), loader: loaderKind.nullable() }),
+]);
+export const installPlanView = z.strictObject({
+  planId: z.string(),
+  target: planTargetView,
+  items: z.array(planItemView),
+  skipped: z.array(planSkip),
+  totalSize: z.number().int(),
+});
+export const installResult = z.strictObject({ instance, added: z.array(z.string()) });
+export const searchRequest = z.strictObject({
+  query: z.string(),
+  kind: contentKind,
+  instance: z.string().nullable(),
+  minecraft: z.string().nullable(),
+  loader: loaderKind.nullable(),
+  categories: z.array(z.string()),
+  sort: sortIndex,
+  offset: z.number().int(),
+});
+export const browsePlanRequest = z.strictObject({
+  project: z.string(),
+  version: z.string().nullable(),
+  target: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('instance'), id: z.string() }),
+    z.strictObject({ kind: z.literal('new') }),
+  ]),
+});
+
 export type ErrorCategory = z.infer<typeof errorCategory>;
 export type LauncherError = z.infer<typeof launcherError>;
 export type LoaderKind = z.infer<typeof loaderKind>;
@@ -232,6 +334,7 @@ export type AppInfo = z.infer<typeof appInfo>;
 export type McVersion = z.infer<typeof mcVersion>;
 export type LoaderVersion = z.infer<typeof loaderVersion>;
 export type LocalMod = z.infer<typeof localMod>;
+export type ContentFile = z.infer<typeof contentFile>;
 export type NewInstance = z.infer<typeof newInstance>;
 export type OpenTarget = z.infer<typeof openTarget>;
 export type RunStateKind = z.infer<typeof runStateKind>;
@@ -252,3 +355,20 @@ export type PackContents = z.infer<typeof packContents>;
 export type ManualProgress = z.infer<typeof manualProgress>;
 export type PackArtData = z.infer<typeof packArtData>;
 export type PackAddRequest = z.infer<typeof packAddRequest>;
+export type ContentKind = z.infer<typeof contentKind>;
+export type SortIndex = z.infer<typeof sortIndex>;
+export type ImageKind = z.infer<typeof imageKind>;
+export type SearchHit = z.infer<typeof searchHit>;
+export type SearchPage = z.infer<typeof searchPage>;
+export type SideSupport = z.infer<typeof sideSupport>;
+export type GalleryImage = z.infer<typeof galleryImage>;
+export type ProjectDetail = z.infer<typeof projectDetail>;
+export type VersionInfo = z.infer<typeof versionInfo>;
+export type ItemReason = z.infer<typeof itemReason>;
+export type PlanSkip = z.infer<typeof planSkip>;
+export type PlanItemView = z.infer<typeof planItemView>;
+export type PlanTargetView = z.infer<typeof planTargetView>;
+export type InstallPlanView = z.infer<typeof installPlanView>;
+export type InstallResult = z.infer<typeof installResult>;
+export type SearchRequest = z.infer<typeof searchRequest>;
+export type BrowsePlanRequest = z.infer<typeof browsePlanRequest>;

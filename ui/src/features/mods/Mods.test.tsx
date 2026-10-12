@@ -2,6 +2,7 @@ import { Webview } from '@tauri-apps/api/webview';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
+import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
@@ -404,4 +405,14 @@ it('locks toggles and removal while the game runs, but still lets players add mo
   expect(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' })).not.toHaveAttribute('aria-disabled');
   await user.click(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' }));
   expect(sent(calls, 'mod_set_enabled')).toHaveLength(1);
+});
+
+it('finds mods for a modded instance only', async () => {
+  const { user, unmount } = renderApp(<Mods id="asalith-fields" />);
+  await user.click(await screen.findByRole('button', { name: 'Find mods' }));
+  expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'mod', instance: 'asalith-fields' });
+  unmount();
+  renderApp(<Mods id="creative-flat" />);
+  await screen.findByText(/Mods need a mod loader/);
+  expect(screen.queryByRole('button', { name: 'Find mods' })).not.toBeInTheDocument();
 });

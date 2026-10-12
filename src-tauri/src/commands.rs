@@ -3,11 +3,18 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AppInfo, JavaTest, JoinPreview, ManualProgress, NewInstance, OpenTarget, PackAddRequest,
-    PackArtData, PackContents, PackStatus, RunSnapshot, ServerStatusView,
+    AppInfo, BrowsePlanRequest, ContentFile, InstallPlanView, InstallResult, JavaTest, JoinPreview,
+    ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackArtData, PackContents, PackStatus,
+    RunSnapshot, SearchRequest, ServerStatusView,
 };
 use launcher_core::{
     accounts::AccountsFile,
+    browse::{
+        compat::ContentKind,
+        images::ImageKind,
+        project::{ProjectDetail, VersionInfo},
+        search::SearchPage,
+    },
     instances::{Instance, InstanceListing},
     meta::{
         catalog::{LoaderVersion, McVersion},
@@ -145,6 +152,25 @@ pub async fn mod_remove(core: CoreState<'_>, id: String, file: String) -> Res<Ve
 }
 
 #[tauri::command]
+pub async fn content_list(
+    core: CoreState<'_>,
+    id: String,
+    kind: ContentKind,
+) -> Res<Vec<ContentFile>> {
+    core.content_list(&id, kind).await
+}
+
+#[tauri::command]
+pub async fn content_remove(
+    core: CoreState<'_>,
+    id: String,
+    kind: ContentKind,
+    file: String,
+) -> Res<Vec<ContentFile>> {
+    core.content_remove(&id, kind, &file).await
+}
+
+#[tauri::command]
 pub async fn open_folder(app: AppHandle, core: CoreState<'_>, target: OpenTarget) -> Res<()> {
     let path = core.folder(target).await?;
     app.opener()
@@ -207,6 +233,60 @@ pub async fn pack_art(core: CoreState<'_>, id: String) -> Res<PackArtData> {
 #[tauri::command]
 pub fn deep_link_take(core: CoreState<'_>) -> Option<DeepLink> {
     core.deep_link_take()
+}
+
+#[tauri::command]
+pub async fn browse_search(core: CoreState<'_>, request: SearchRequest) -> Res<SearchPage> {
+    core.browse_search(request).await
+}
+
+#[tauri::command]
+pub async fn browse_categories(core: CoreState<'_>, kind: ContentKind) -> Res<Vec<String>> {
+    core.browse_categories(kind).await
+}
+
+#[tauri::command]
+pub async fn browse_project(core: CoreState<'_>, id: String) -> Res<ProjectDetail> {
+    core.browse_project(&id).await
+}
+
+#[tauri::command]
+pub async fn browse_versions(
+    core: CoreState<'_>,
+    project: String,
+    instance: Option<String>,
+) -> Res<Vec<VersionInfo>> {
+    core.browse_versions(&project, instance.as_deref()).await
+}
+
+#[tauri::command]
+pub async fn browse_image(core: CoreState<'_>, url: String, kind: ImageKind) -> Res<String> {
+    core.browse_image(&url, kind).await
+}
+
+#[tauri::command]
+pub async fn browse_installed(core: CoreState<'_>, id: String) -> Res<Vec<String>> {
+    core.browse_installed(&id).await
+}
+
+#[tauri::command]
+pub async fn browse_plan(core: CoreState<'_>, request: BrowsePlanRequest) -> Res<InstallPlanView> {
+    core.browse_plan(request).await
+}
+
+#[tauri::command]
+pub async fn browse_install(core: CoreState<'_>, plan_id: String) -> Res<InstallResult> {
+    core.browse_install(&plan_id).await
+}
+
+/// Project and Markdown links: https only (checked in `launcher-app`), opened from Rust, so the
+/// webview's opener scope stays as narrow as it was.
+#[tauri::command]
+pub fn open_link(app: AppHandle, url: String) -> Res<()> {
+    let url = launcher_app::browse::link_to_open(&url)?;
+    app.opener().open_url(url, None::<&str>).map_err(|e| {
+        LauncherError::pack(ErrorCode::LinkRefused, "That link can't be opened").with_detail(e)
+    })
 }
 
 #[tauri::command]

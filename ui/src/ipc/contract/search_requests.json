@@ -1,0 +1,14 @@
+[
+  {
+    "query": "sodium",
+    "kind": "mod",
+    "instance": "asalith-fields",
+    "minecraft": null,
+    "loader": null,
+    "categories": [
+      "optimization"
+    ],
+    "sort": "relevance",
+    "offset": 0
+  }
+]

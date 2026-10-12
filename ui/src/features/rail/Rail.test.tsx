@@ -49,6 +49,12 @@ it("falls back to the generated icon when a pack's icon fails to decode", async 
   expect(sky.querySelector('svg')).not.toBeNull();
 });
 
+it('opens Browse from the rail', async () => {
+  const { user } = renderApp(<Rail />);
+  await user.click(await screen.findByRole('button', { name: 'Browse' }));
+  expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
+});
+
 it('marks a server with its last status, in words too', async () => {
   const { container } = renderApp(<Rail />, { server: 'online' });
   expect(await screen.findByRole('button', { name: 'Survival, Online · 3/20' })).toBeInTheDocument();

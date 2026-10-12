@@ -1,8 +1,15 @@
 import { useSyncExternalStore } from 'react';
 
+export interface Notice {
+  title: string;
+  body?: string;
+  action?: { label: string; run: () => void };
+}
+
 export interface Toast {
   id: number;
-  error: unknown;
+  error?: unknown;
+  notice?: Notice;
 }
 
 let toasts: Toast[] = [];
@@ -12,6 +19,11 @@ const notify = () => listeners.forEach((listener) => listener());
 
 export function pushError(error: unknown) {
   toasts = [...toasts, { id: nextId++, error }];
+  notify();
+}
+
+export function pushNotice(notice: Notice) {
+  toasts = [...toasts, { id: nextId++, notice }];
   notify();
 }
 
