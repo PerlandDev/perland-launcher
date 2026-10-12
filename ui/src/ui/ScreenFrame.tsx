@@ -10,6 +10,7 @@ export function ScreenFrame({
   onBack,
   actions,
   wide,
+  backLabel,
   children,
 }: {
   title: string;
@@ -18,6 +19,8 @@ export function ScreenFrame({
   actions?: ReactNode;
   /** A 64rem column instead of 48rem, for screens with a grid or a side panel. */
   wide?: boolean;
+  /** The back button's accessible name; "Back" by default. */
+  backLabel?: string;
   children: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -27,7 +30,7 @@ export function ScreenFrame({
       <header className={`flex ${wide ? 'max-w-[69rem]' : 'max-w-[53rem]'} flex-wrap items-end justify-between gap-6 px-10 pt-9 pb-6`}>
         <div className="flex min-w-0 items-center gap-4">
           {onBack && (
-            <Button variant="ghost" size="icon" aria-label={t('common.back')} onClick={onBack} icon={<ChevronDown className="rotate-90" />} />
+            <Button variant="ghost" size="icon" aria-label={backLabel ?? t('common.back')} onClick={onBack} icon={<ChevronDown className="rotate-90" />} />
           )}
           <div className="min-w-0">
             <h1 className="truncate font-display text-[2rem] leading-none">{title}</h1>

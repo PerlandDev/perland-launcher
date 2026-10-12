@@ -774,4 +774,26 @@
     justify-content: space-between;
     gap: 0.75rem;
   }
+  .project-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 18rem;
+    gap: 2rem;
+  }
+  @media (max-width: 70rem) {
+    .project-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+  .gallery-thumb {
+    height: 7.5rem;
+    width: auto;
+  }
+  .gallery-full {
+    max-height: 70vh;
+    max-width: 100%;
+  }
+  .md-img {
+    max-width: 100%;
+    height: auto;
+  }
 }
