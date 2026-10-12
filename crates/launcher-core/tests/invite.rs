@@ -909,3 +909,247 @@ async fn a_server_instance_installs_on_first_play_and_follows_a_redeploy() {
         "c2"
     );
 }
+
+fn assert_token_free(label: &str, e: &launcher_core::LauncherError) {
+    for text in [
+        serde_json::to_string(e).unwrap(),
+        format!("{e:?}"),
+        e.to_string(),
+    ] {
+        assert!(!text.contains(TOKEN), "{label} leaks the token: {text}");
+    }
+}
+
+/// A fresh server with config.json, plus whatever `mount` adds.
+async fn engine_with<F, Fut>(mount: F) -> MockServer
+where
+    F: FnOnce(MockServer) -> Fut,
+    Fut: std::future::Future<Output = MockServer>,
+{
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount(server).await
+}
+
+/// `at` answers GET and HEAD with `status`, so a HEAD never hides what the GET reports.
+async fn answer(server: MockServer, at: String, status: u16, body: Value) -> MockServer {
+    for verb in ["GET", "HEAD"] {
+        Mock::given(method(verb))
+            .and(path(at.clone()))
+            .respond_with(ResponseTemplate::new(status).set_body_json(body.clone()))
+            .mount(&server)
+            .await;
+    }
+    server
+}
+
+#[tokio::test]
+async fn no_failure_path_leaks_the_token() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut errors: Vec<(String, launcher_core::LauncherError)> = Vec::new();
+
+    // config.json
+    for body in ["nope", r#"{"engineUrl":"http://engine.example.com"}"#] {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/config.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+        let e = client().view(&link(&server)).await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::InviteSiteUnreachable, "config {body}");
+        errors.push((format!("config {body}"), e));
+    }
+    let empty = MockServer::start().await;
+    let e = client().view(&link(&empty)).await.unwrap_err();
+    assert_eq!(e.code, ErrorCode::InviteSiteUnreachable, "config 404");
+    errors.push(("config 404".into(), e));
+
+    // The view.
+    for (status, code) in [
+        (404, ErrorCode::InviteGone),
+        (429, ErrorCode::InviteRateLimited),
+        (500, ErrorCode::HostTrouble),
+    ] {
+        let server = engine_with(|s| answer(s, route(""), status, failure(None))).await;
+        let e = client().view(&link(&server)).await.unwrap_err();
+        assert_eq!(e.code, code, "view {status}");
+        errors.push((format!("view {status}"), e));
+    }
+    let offline = InviteLink::parse(&format!("http://127.0.0.1:1/{TOKEN}")).unwrap();
+    let e = client().view(&offline).await.unwrap_err();
+    errors.push(("offline".into(), e));
+
+    // A page that is not the Engine's view.
+    let server = engine_with(|s| async move {
+        Mock::given(method("GET"))
+            .and(path(route("")))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_string(format!("<html>Sign in to reach /{TOKEN}</html>")),
+            )
+            .mount(&s)
+            .await;
+        s
+    })
+    .await;
+    let e = client().view(&link(&server)).await.unwrap_err();
+    assert_eq!(e.code, ErrorCode::MetaUnexpected, "captive portal");
+    errors.push(("captive portal".into(), e));
+
+    // Views the launcher can't turn into an instance: a network, and a modded stack without a
+    // modpack (owner ruling R1), through both `open` and `resolve`.
+    let unsupported: [(&str, Value); 2] = [
+        ("network", network_view()),
+        (
+            "modded without a pack",
+            json!({
+                "kind": "stack", "name": "modded", "motd": "Mods",
+                "address": { "host": "play.example.com", "port": 25566, "display": "play.example.com:25566" },
+                "game": { "type": "fabric", "version": "1.20.1", "loader": "fabric" },
+                "status": "online", "whitelisted": false, "pack": null,
+                "team": { "displayName": "", "accent": "" }
+            }),
+        ),
+    ];
+    for (label, view) in unsupported {
+        let server = engine_with(|s| async move {
+            mount_view(&s, view).await;
+            s
+        })
+        .await;
+        let src = sources(&server, tmp.path());
+        let e = perland::open(&src, &link(&server)).await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::InviteUnsupported, "open {label}");
+        errors.push((format!("open {label}"), e));
+        let e = perland::resolve(&src, &link(&server), &noop_sink())
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::InviteUnsupported, "resolve {label}");
+        errors.push((format!("resolve {label}"), e));
+    }
+
+    // The pack, with a commit: a failed HEAD is ignored and the GET reports the real error.
+    // The HEAD is answered with the same failure, so only the GET can decide the code.
+    for (status, engine_code, want) in [
+        (404, None, ErrorCode::InviteGone),
+        (
+            400,
+            Some("invalid_modpack"),
+            ErrorCode::ServerPackUnavailable,
+        ),
+        (
+            413,
+            Some("export_too_large"),
+            ErrorCode::ServerPackUnavailable,
+        ),
+        (429, None, ErrorCode::InviteRateLimited),
+        (
+            502,
+            Some("mod_download_failed"),
+            ErrorCode::ServerPackUnavailable,
+        ),
+        (503, None, ErrorCode::HostTrouble),
+    ] {
+        let server = engine_with(|s| async move {
+            mount_view(&s, modded_view(Some("c1"), "ready")).await;
+            answer(s, route("/pack"), status, failure(engine_code)).await
+        })
+        .await;
+        let e = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, want, "pack {status}");
+        errors.push((format!("pack {status}"), e));
+    }
+    // The pack, without a commit: the HEAD is the only way to name the stamp, so it reports.
+    for (status, want) in [
+        (404, ErrorCode::InviteGone),
+        (429, ErrorCode::InviteRateLimited),
+        (502, ErrorCode::ServerPackUnavailable),
+        (503, ErrorCode::HostTrouble),
+    ] {
+        let server = engine_with(|s| async move {
+            mount_view(&s, modded_view(None, "ready")).await;
+            answer(s, route("/pack"), status, failure(None)).await
+        })
+        .await;
+        let e = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, want, "pack without commit {status}");
+        errors.push((format!("pack without commit {status}"), e));
+    }
+    // A pack that is still being built, and one the Engine gave up on.
+    for (state, want) in [
+        ("pending", ErrorCode::ServerPackPending),
+        ("unavailable", ErrorCode::ServerPackUnavailable),
+    ] {
+        let server = engine_with(|s| async move {
+            mount_view(&s, modded_view(Some("c1"), state)).await;
+            s
+        })
+        .await;
+        let e = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, want, "pack {state}");
+        errors.push((format!("pack {state}"), e));
+    }
+
+    // Checks.
+    for status in [404, 500] {
+        let server = engine_with(|s| answer(s, route(""), status, failure(None))).await;
+        match sources(&server, tmp.path())
+            .check(&source(&server), &installed("c0"))
+            .await
+        {
+            UpdateCheck::Unavailable(e) => errors.push((format!("check {status}"), e)),
+            other => panic!("{other:?}"),
+        }
+    }
+    // A check with no commit asks HEAD /pack, which can fail too.
+    for status in [404, 500] {
+        let server = engine_with(|s| async move {
+            mount_view(&s, modded_view(None, "ready")).await;
+            answer(s, route("/pack"), status, failure(None)).await
+        })
+        .await;
+        match sources(&server, tmp.path())
+            .check(&source(&server), &installed("c0"))
+            .await
+        {
+            UpdateCheck::Unavailable(e) => errors.push((format!("check head {status}"), e)),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    assert!(errors.len() >= 28, "{}", errors.len());
+    for (label, e) in &errors {
+        assert_token_free(label, e);
+    }
+
+    // Debug of every type that holds the invite.
+    let l = InviteLink::parse(&format!("https://play.example.com/{TOKEN}")).unwrap();
+    let source = SourceRef::Perland {
+        invite: l.canonical(),
+        engine: "https://api.example.com/".into(),
+    };
+    for text in [
+        format!("{l:?}"),
+        l.to_string(),
+        format!("{source:?}"),
+        format!("{:?}", PackInput::Perland { link: l.clone() }),
+        format!("{:?}", client()),
+        format!(
+            "{:?}",
+            UpdateCheck::Available {
+                source: source.clone(),
+                stamp: "c1".into(),
+                version: "1".into()
+            }
+        ),
+    ] {
+        assert!(!text.contains(TOKEN), "{text}");
+    }
+}
