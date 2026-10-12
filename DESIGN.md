@@ -461,7 +461,7 @@ Browse lists projects as rows on the ground, never cards. Filters are small keys
 - **Search field:** the standard recessed input, led by the icon set's own search glyph (pixelarticons, the same paths as the rail's Browse key) at 1.25rem in `ink-dim`, with its clear button drawn as the matching close glyph. Text starts 2.625rem in.
 - **Scope plate:** when Browse adds to one instance, a `panel` plate with notched 6px corners leads with an 8px square **blue** info lamp and a 600-weight line, with a ghost "Browse everything" at its right.
 - **Category keys:** a smaller segment. 2rem tall, 0.75rem padding, 650 at 0.875rem, a `raised` face on a 3px `dirt-deep` step, pressing 3px in `steps(2, end)`. Pressed, a key sinks 3px into a recessed `ground` slot with the 8px lime lamp. "More" is a ghost key in `ink-dim`: no face or step until hover shows `raised`.
-- **Result rows:** rows on the ground with notched 6px corners and 0.75rem padding, split by 1px `line` hairlines inset 0.75rem from each side. Under the pointer a row lifts to `panel` and its icon slot to `raised`. Each row reads in three lines: the Bungee row name and "by author" (0.875rem `ink-dim`) on one baseline, a two-line clamped summary in `ink-dim`, then tabular counts in 0.875rem `ink-dim` with the tags. The project icon (48px in rows, 64px on the project page) sits in a notched 4px `panel` slot so transparent art never floats, and falls back to the generated plot icon.
+- **Result rows:** rows on the ground with notched 6px corners and 0.75rem padding, split by 1px `line` hairlines inset 0.75rem from each side. Under the pointer or keyboard focus a row lifts to `panel` and its icon slot to `raised`. Each row reads in three lines: the Bungee row name and "by author" (0.875rem `ink-dim`) on one baseline, a two-line clamped summary in `ink-dim`, then tabular counts in 0.875rem `ink-dim` with the tags. The project icon (48px in rows, 64px on the project page) sits in a notched 4px `panel` slot so transparent art never floats, and falls back to the generated plot icon.
 - **Tags:** a label, not a key. Flat, with a 1px `line` ring, 3px notched corners and `ink-dim` text. Never stepped.
 - **Installed lamp:** the slot a pressed key leaves behind. A recessed `ground` slot, 2.5rem tall, with the 8px lime lamp and 650-weight text. It replaces a row's Install when the project is already in the instance, and reads "Already in …" on the action plate.
 - **Row Install** is a standard secondary, never lit, because a list of lit buttons would make many.
@@ -472,7 +472,7 @@ Browse lists projects as rows on the ground, never cards. Filters are small keys
 - **Install confirm:** a dialog whose additions read as a manifest, one line per item between 1px `line` seam rules, with the tabular total below. The dialog's primary is its only lit button.
 - **Rail Browse key:** a large raised key on the rail, never lit. While global Browse is open it sits pressed in a recessed `ground` slot.
 
-**The Rows, Not Cards Rule.** Browse results sit on the ground as rows split by seam hairlines and lift to `panel` only under the pointer. Never box a result in a card, and never step a tag.
+**The Rows, Not Cards Rule.** Browse results sit on the ground as rows split by seam hairlines and lift to `panel` only under the pointer or keyboard focus. Never box a result in a card, and never step a tag.
 
 ### Marquee (signature)
 The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 PRNG) so an instance looks the same on every computer. The recipe:

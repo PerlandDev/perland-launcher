@@ -1,3 +1,4 @@
+import { createInstance } from 'i18next';
 import { describe, expect, it } from 'vitest';
 import errorCodes from '../ipc/contract/error_codes.json';
 import en from './en.json';
@@ -43,6 +44,18 @@ describe('translations', () => {
       (k) => flatEn[k] === flatEs[k] && (flatEn[k]?.length ?? 0) > 24 && !k.startsWith('app.'),
     );
     expect(same).toEqual([]);
+  });
+});
+
+describe('Spanish counts', () => {
+  // Spanish has a "many" plural for exact multiples of a million; without it i18next falls back to English.
+  it('stay Spanish at a million', async () => {
+    const i18n = createInstance();
+    await i18n.init({ resources: { en: { translation: en }, es: { translation: es } }, lng: 'es', fallbackLng: 'en' });
+    expect(i18n.t('browse.downloads', { count: 1000000, shown: '1 M' })).toBe('1 M descargas');
+    expect(i18n.t('browse.follows', { count: 2000000, shown: '2 M' })).toBe('2 M seguidores');
+    expect(i18n.t('browse.results', { count: 1000000, shown: '1.000.000' })).toBe('1.000.000 resultados');
+    expect(i18n.t('install.addedMore', { count: 1000000, name: 'Sodium', instance: 'Asalith' })).toBe('Se agregó Sodium y 1000000 más a Asalith');
   });
 });
 

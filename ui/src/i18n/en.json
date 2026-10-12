@@ -382,8 +382,10 @@
     "by": "by {{author}}",
     "downloads_one": "{{shown}} download",
     "downloads_other": "{{shown}} downloads",
+    "downloads_many": "{{shown}} downloads",
     "follows_one": "{{shown}} follow",
     "follows_other": "{{shown}} follows",
+    "follows_many": "{{shown}} follows",
     "installed": "Installed",
     "install": "Install",
     "loadMore": "Load more",
@@ -394,7 +396,8 @@
     "offline": "You're offline. Browse needs the internet.",
     "rateLimited": "Too many searches. Trying again in {{seconds}} s",
     "results_one": "{{shown}} result",
-    "results_other": "{{shown}} results"
+    "results_other": "{{shown}} results",
+    "results_many": "{{shown}} results"
   },
   "project": {
     "back": "Back to results",
@@ -430,6 +433,7 @@
     "added": "Added {{name}} to {{instance}}",
     "addedMore_one": "Added {{name}} + {{count}} more to {{instance}}",
     "addedMore_other": "Added {{name}} + {{count}} more to {{instance}}",
+    "addedMore_many": "Added {{name}} + {{count}} more to {{instance}}",
     "restart": "Restart the game to use it.",
     "turnOnResourcePack": "Turn it on in Options › Resource Packs.",
     "turnOnShader": "Turn it on in Options › Video Settings › Shader Packs.",

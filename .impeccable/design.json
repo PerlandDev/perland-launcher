@@ -173,7 +173,7 @@
       { "name": "The Tabular Rule", "body": "Every live number (files, MB, memory, counts) uses tabular figures so readouts don't jitter while they count.", "section": "typography" },
       { "name": "The Dirt Step Rule", "body": "Everything that can be pressed stands on a hard dirt step: `dirt` under amber, `dirt-deep` under everything else. Pressing travels the full step height and removes it. No blur, ever.", "section": "elevation" },
       { "name": "The Spent Step Rule", "body": "A control whose action is running stays pressed down. Play while queued or preparing, a button with `aria-disabled=\"true\"` while pending, and a disabled control all sit on their spent step with no under-layer.", "section": "elevation" },
-      { "name": "The Rows, Not Cards Rule", "body": "Browse results sit on the ground as rows split by seam hairlines and lift to `panel` only under the pointer. Never box a result in a card, and never step a tag.", "section": "components" }
+      { "name": "The Rows, Not Cards Rule", "body": "Browse results sit on the ground as rows split by seam hairlines and lift to `panel` only under the pointer or keyboard focus. Never box a result in a card, and never step a tag.", "section": "components" }
     ],
     "dos": [
       "**Do** keep Play the only lit control at rest. Amber is for acting: Play, the single primary action on a screen, focus, the caret and the coin-slot light.",

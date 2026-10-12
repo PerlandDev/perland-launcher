@@ -382,8 +382,10 @@
     "by": "de {{author}}",
     "downloads_one": "{{shown}} descarga",
     "downloads_other": "{{shown}} descargas",
+    "downloads_many": "{{shown}} descargas",
     "follows_one": "{{shown}} seguidor",
     "follows_other": "{{shown}} seguidores",
+    "follows_many": "{{shown}} seguidores",
     "installed": "Instalado",
     "install": "Instalar",
     "loadMore": "Cargar más",
@@ -394,7 +396,8 @@
     "offline": "No tienes conexión. Explorar necesita internet.",
     "rateLimited": "Demasiadas búsquedas. Reintentando en {{seconds}} s",
     "results_one": "{{shown}} resultado",
-    "results_other": "{{shown}} resultados"
+    "results_other": "{{shown}} resultados",
+    "results_many": "{{shown}} resultados"
   },
   "project": {
     "back": "Volver a los resultados",
@@ -430,6 +433,7 @@
     "added": "Se agregó {{name}} a {{instance}}",
     "addedMore_one": "Se agregó {{name}} y {{count}} más a {{instance}}",
     "addedMore_other": "Se agregó {{name}} y {{count}} más a {{instance}}",
+    "addedMore_many": "Se agregó {{name}} y {{count}} más a {{instance}}",
     "restart": "Reinicia el juego para usarlo.",
     "turnOnResourcePack": "Actívalo en Opciones › Paquetes de recursos.",
     "turnOnShader": "Actívalo en Opciones › Gráficos › Shaders.",

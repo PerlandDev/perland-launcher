@@ -880,7 +880,8 @@
     height: 1px;
     background: var(--color-line);
   }
-  .browse-row:has(.browse-row-open:hover) {
+  .browse-row:has(.browse-row-open:hover),
+  .browse-row:has(.browse-row-open:focus-visible) {
     background: var(--color-panel);
   }
   .browse-row-open {
@@ -930,7 +931,8 @@
   .project-icon > * {
     display: block;
   }
-  .browse-row:has(.browse-row-open:hover) .project-icon {
+  .browse-row:has(.browse-row-open:hover) .project-icon,
+  .browse-row:has(.browse-row-open:focus-visible) .project-icon {
     background: var(--color-raised);
   }
   .browse-icon {
