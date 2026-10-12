@@ -105,6 +105,10 @@ fn main() {
             commands::manual_import,
             commands::pack_art,
             commands::deep_link_take,
+            commands::join_preview,
+            commands::join_add,
+            commands::server_status,
+            commands::server_relink,
             commands::quit,
         ])
         .run(tauri::generate_context!())
