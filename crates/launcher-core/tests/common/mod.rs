@@ -26,6 +26,7 @@ pub fn sources(server: &MockServer, root: &Path) -> Sources {
             view_ttl: Duration::from_secs(15),
             pack_poll_every: Duration::from_millis(10),
             pack_poll_for: Duration::from_millis(300),
+            ..InviteTiming::default()
         }),
         http: http.clone(),
         meta: MetaClient::new(http.clone(), root.join("meta")),

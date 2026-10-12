@@ -10,7 +10,7 @@ use launcher_core::{
 };
 
 use crate::{
-    app::AppCore,
+    app::{busy, AppCore},
     dto::{JoinPreview, ServerPlayers, ServerStatusView},
     events::Host,
     runner::Runner,
@@ -68,7 +68,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     pub async fn join_preview(&self, link: &str) -> Result<JoinPreview> {
         let link = InviteLink::parse(link)?;
         let ev = self.runner.invite_view(link.clone(), None).await?;
-        perland::supported(&ev)?;
+        perland::supported(&link, &ev)?;
         let icon = self
             .runner
             .invite_icon(link.clone())
@@ -169,12 +169,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// "Use a new link": point the instance at another invite. The files stay; the next Play
     /// checks the new link and syncs.
+    /// Refused while the instance has a run: its sync saves the whole instance.
     pub async fn server_relink(&self, id: &str, link: &str) -> Result<Instance> {
+        if self.is_busy(id) {
+            return Err(busy(id));
+        }
         server_source(&self.instances.load(id).await?).ok_or_else(not_a_server)?;
         let link = InviteLink::parse(link)?;
         let ev = self.runner.invite_view(link.clone(), None).await?;
-        perland::supported(&ev)?;
-        // Reload after the network read, so a save made meanwhile (a rename, a sync) stays.
+        perland::supported(&link, &ev)?;
+        // Reload after the network read, so a save made meanwhile (a rename, a sync) stays. A
+        // Play may have started meanwhile, too.
+        if self.is_busy(id) {
+            return Err(busy(id));
+        }
         let mut instance = self.instances.load(id).await?;
         instance.source = SourceRef::Perland {
             invite: link.canonical(),
@@ -256,6 +264,29 @@ mod tests {
         let err = core.join_preview(&invite('A')).await.unwrap_err();
         assert_eq!(err.code, ErrorCode::InviteUnsupported);
         assert_eq!(err.params["address"], "play.example.com:25566");
+    }
+
+    /// The refusal quotes the view's address text; an Engine that puts the invite link there
+    /// must not get the token into the error.
+    #[tokio::test]
+    async fn a_refusal_never_quotes_the_invite_token() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let mut echo = server_view("hub");
+        echo.view.kind = "network".into();
+        echo.view.address.port = 0;
+        echo.view.address.display = Some(invite('B'));
+        serve(&runner, &invite('B'), Ok(echo));
+        let token = "B".repeat(43);
+        for err in [
+            core.join_preview(&invite('B')).await.unwrap_err(),
+            core.server_relink(&id, &invite('B')).await.unwrap_err(),
+        ] {
+            assert_eq!(err.code, ErrorCode::InviteUnsupported);
+            let text = format!("{err:?} {}", serde_json::to_string(&err).unwrap());
+            assert!(!text.contains(&token), "{text}");
+        }
     }
 
     #[tokio::test]
@@ -514,6 +545,28 @@ mod tests {
         assert!(status.gone);
         assert_eq!(status.address.unwrap().display(), "play.example.com:25566");
         assert_eq!(instance_json(&core, &id), before);
+    }
+
+    /// A run rewrites the whole instance when it syncs, so a relink meanwhile would be lost or
+    /// would swap the source under the run.
+    #[tokio::test]
+    async fn a_running_instance_keeps_its_link() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        serve(&runner, &invite('B'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        hold(&core, &id);
+        let before = instance_json(&core, &id);
+        assert_eq!(
+            core.server_relink(&id, &invite('B'))
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InstanceBusy
+        );
+        assert_eq!(instance_json(&core, &id), before);
+        core.runs.lock().unwrap().clear();
+        core.server_relink(&id, &invite('B')).await.unwrap();
     }
 
     #[tokio::test]

@@ -4,6 +4,8 @@ pub mod app;
 pub mod deep_link;
 pub mod dto;
 pub mod events;
+#[cfg(test)]
+mod live_tests;
 pub mod logs;
 mod packs;
 pub mod runner;

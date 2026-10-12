@@ -22,6 +22,9 @@ pub struct InviteTiming {
     /// How often a pending pack is polled, and for how long.
     pub pack_poll_every: Duration,
     pub pack_poll_for: Duration,
+    /// The longest one `config.json` or view request may take, body included, so a slow
+    /// Engine can't hold the shared view slot.
+    pub request_timeout: Duration,
 }
 
 impl Default for InviteTiming {
@@ -30,6 +33,7 @@ impl Default for InviteTiming {
             view_ttl: Duration::from_secs(15),
             pack_poll_every: Duration::from_secs(5),
             pack_poll_for: Duration::from_secs(180),
+            request_timeout: Duration::from_secs(20),
         }
     }
 }
@@ -64,10 +68,19 @@ pub struct EngineView {
 
 type Slot = Arc<tokio::sync::Mutex<Option<(Instant, InviteView)>>>;
 
+/// Where the launcher learned a site's Engine.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Learned {
+    /// From an instance's saved source: it may be stale.
+    Saved,
+    /// From the site's `config.json`: a saved Engine never replaces it.
+    Site,
+}
+
 #[derive(Default)]
 struct State {
     /// Invite site origin → its Engine.
-    engines: Mutex<HashMap<String, Url>>,
+    engines: Mutex<HashMap<String, (Url, Learned)>>,
     /// (Engine, token) → the last view read. Memory only.
     views: Mutex<HashMap<(String, String), Slot>>,
 }
@@ -252,7 +265,8 @@ impl InviteClient {
     }
 
     /// Seed the Engine for `link`'s site from what an instance saved, so a Play needs no
-    /// `config.json`. An unusable value is ignored, and a known Engine is kept.
+    /// `config.json`. An unusable value is ignored, and a known Engine is kept: above all one
+    /// the site's `config.json` named.
     pub fn remember_engine(&self, link: &InviteLink, engine: &str) {
         if let Some(url) = check_engine_url(engine) {
             self.state
@@ -260,7 +274,7 @@ impl InviteClient {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .entry(link.origin())
-                .or_insert(url);
+                .or_insert((url, Learned::Saved));
         }
     }
 
@@ -275,6 +289,10 @@ impl InviteClient {
     /// The Engine behind `link`'s invite site: `<origin>/config.json` → `engineUrl`, cached
     /// per origin.
     pub async fn engine_for(&self, link: &InviteLink) -> Result<Url> {
+        Ok(self.known_engine(link).await?.0)
+    }
+
+    async fn known_engine(&self, link: &InviteLink) -> Result<(Url, Learned)> {
         let known = self
             .state
             .engines
@@ -282,13 +300,19 @@ impl InviteClient {
             .unwrap_or_else(|e| e.into_inner())
             .get(&link.origin())
             .cloned();
-        if let Some(url) = known {
-            return Ok(url);
+        match known {
+            Some(known) => Ok(known),
+            None => Ok((self.ask_site(link).await?, Learned::Site)),
         }
+    }
+
+    /// `<origin>/config.json` now, remembered as the site's own answer.
+    async fn ask_site(&self, link: &InviteLink) -> Result<Url> {
         let host = link.host();
         let response = self
             .http
             .get(format!("{}/config.json", link.origin()))
+            .timeout(self.timing.request_timeout)
             .send()
             .await
             .map_err(|e| {
@@ -319,7 +343,7 @@ impl InviteClient {
             .engines
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(link.origin(), engine.clone());
+            .insert(link.origin(), (engine.clone(), Learned::Site));
         Ok(engine)
     }
 
@@ -334,8 +358,34 @@ impl InviteClient {
         self.view_inner(link, true).await
     }
 
+    /// A saved Engine that can't be reached, or no longer knows the invite, may have moved:
+    /// the site's `config.json` is asked once, and a different Engine it names is read
+    /// instead. A failure that stands forgets an unreachable Engine, so the next read asks again.
     async fn view_inner(&self, link: &InviteLink, fresh: bool) -> Result<EngineView> {
-        let engine = self.engine_for(link).await?;
+        let (engine, learned) = self.known_engine(link).await?;
+        let result = match self.view_at(&engine, link, fresh).await {
+            Err(e)
+                if learned == Learned::Saved
+                    && matches!(e.code, ErrorCode::Offline | ErrorCode::InviteGone) =>
+            {
+                match self.ask_site(link).await {
+                    Ok(moved) if moved != engine => self.view_at(&moved, link, fresh).await,
+                    // The same Engine, or no answer: the first error stands.
+                    _ => Err(e),
+                }
+            }
+            other => other,
+        };
+        if let Err(e) = &result {
+            if e.code == ErrorCode::Offline {
+                self.forget_engine(link);
+            }
+        }
+        result
+    }
+
+    /// The view from `engine`, through its shared slot.
+    async fn view_at(&self, engine: &Url, link: &InviteLink, fresh: bool) -> Result<EngineView> {
         let slot = {
             let mut views = self.state.views.lock().unwrap_or_else(|e| e.into_inner());
             views
@@ -349,24 +399,18 @@ impl InviteClient {
             if let Some((at, view)) = cached.as_ref() {
                 if at.elapsed() < self.timing.view_ttl {
                     return Ok(EngineView {
-                        engine,
+                        engine: engine.clone(),
                         view: view.clone(),
                     });
                 }
             }
         }
-        let view = match self.fetch_view(&engine, link).await {
-            Ok(view) => view,
-            Err(e) => {
-                // The Engine may have moved: ask the invite site again next time.
-                if e.code == ErrorCode::Offline {
-                    self.forget_engine(link);
-                }
-                return Err(e);
-            }
-        };
+        let view = self.fetch_view(engine, link).await?;
         *cached = Some((Instant::now(), view.clone()));
-        Ok(EngineView { engine, view })
+        Ok(EngineView {
+            engine: engine.clone(),
+            view,
+        })
     }
 
     async fn fetch_view(&self, engine: &Url, link: &InviteLink) -> Result<InviteView> {
@@ -374,6 +418,7 @@ impl InviteClient {
         let response = self
             .http
             .get(invite_route(engine, link, ""))
+            .timeout(self.timing.request_timeout)
             .send()
             .await
             .map_err(|e| request_failed(&host, e))?;

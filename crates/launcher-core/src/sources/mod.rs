@@ -21,6 +21,7 @@ use crate::{
     instances::{LoaderSpec, SourceRef, UpdatePolicy},
     invite::{InviteClient, InviteLink},
     meta::{loaders::LoaderKind, MetaClient},
+    sync::Cancel,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -319,16 +320,22 @@ impl Sources {
                 version_id,
             } => modrinth::resolve(self, project_id, version_id).await,
             SourceRef::Perland { invite, engine } => {
-                perland::resolve_ref(self, invite, engine, &noop_sink()).await
+                perland::resolve_ref(self, invite, engine, &noop_sink(), &Cancel::default()).await
             }
         }
     }
 
     /// `resolve`, telling `sink` about long waits (a server pack the Engine is still building).
-    pub async fn resolve_with(&self, source: &SourceRef, sink: &EventSink) -> Result<DesiredState> {
+    /// `cancel` ends such a wait (`sync_cancelled`); other sources finish what they started.
+    pub async fn resolve_with(
+        &self,
+        source: &SourceRef,
+        sink: &EventSink,
+        cancel: &Cancel,
+    ) -> Result<DesiredState> {
         match source {
             SourceRef::Perland { invite, engine } => {
-                perland::resolve_ref(self, invite, engine, sink).await
+                perland::resolve_ref(self, invite, engine, sink, cancel).await
             }
             other => self.resolve(other).await,
         }

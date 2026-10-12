@@ -93,7 +93,7 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) pending_link: Mutex<Option<DeepLink>>,
 }
 
-fn busy(id: &str) -> LauncherError {
+pub(crate) fn busy(id: &str) -> LauncherError {
     LauncherError::game(
         ErrorCode::InstanceBusy,
         "Stop the game before changing this instance",

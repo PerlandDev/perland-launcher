@@ -13,9 +13,10 @@ use launcher_core::{
     events::{noop_sink, Event, EventSink},
     instances::{GameSpec, InstanceStore, SourceRef, UpdatePolicy},
     invite::{InviteClient, InviteLimits, InviteLink, InviteTiming},
+    locks::InstanceLock,
     meta::loaders::LoaderKind,
     sources::{perland, DesiredState, PackInput, Sources, UpdateCheck},
-    sync::{BoxFuture, GameInstall, SyncOutcome, Syncer},
+    sync::{BoxFuture, Cancel, GameInstall, SyncOutcome, Syncer},
     ErrorCategory, ErrorCode,
 };
 use serde_json::{json, Value};
@@ -111,6 +112,7 @@ fn fast() -> InviteTiming {
         view_ttl: Duration::from_secs(15),
         pack_poll_every: Duration::from_millis(10),
         pack_poll_for: Duration::from_millis(300),
+        ..InviteTiming::default()
     }
 }
 
@@ -327,20 +329,148 @@ async fn a_captive_portal_page_is_unexpected_data() {
     );
 }
 
+/// No view sharing, so every `view` reaches the Engine.
+fn unshared_client() -> InviteClient {
+    client().with_timing(InviteTiming {
+        view_ttl: Duration::ZERO,
+        ..fast()
+    })
+}
+
 #[tokio::test]
-async fn an_unreachable_engine_is_forgotten_and_found_again() {
+async fn a_saved_engine_that_moved_is_found_again_through_config_json() {
     let server = MockServer::start().await;
     mount_config(&server).await;
     mount_view(&server, modded_view(Some("c1"), "ready")).await;
-    let client = client();
+    let client = unshared_client();
     let l = link(&server);
     // An instance saved an Engine that has since moved (nothing listens on port 1).
     client.remember_engine(&l, "http://127.0.0.1:1");
+    let ev = client.view(&l).await.unwrap();
+    assert_eq!(ev.view.name, "survival");
+    assert_eq!(ev.engine.as_str().trim_end_matches('/'), server.uri());
+    // Every later poll seeds the stale Engine again; the one config.json named wins.
+    for _ in 0..3 {
+        client.remember_engine(&l, "http://127.0.0.1:1");
+        assert_eq!(client.view(&l).await.unwrap().view.name, "survival");
+    }
+    assert_eq!(hits(&server, "/config.json").await, 1);
+}
+
+#[tokio::test]
+async fn a_saved_engine_that_answers_404_is_checked_against_config_json() {
+    // The old host still answers, but no longer knows the invite.
+    let old = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(route("")))
+        .respond_with(ResponseTemplate::new(404).set_body_json(failure(None)))
+        .mount(&old)
+        .await;
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(Some("c1"), "ready")).await;
+    let client = unshared_client();
+    let l = link(&server);
+    client.remember_engine(&l, &old.uri());
+    let ev = client.view(&l).await.unwrap();
+    assert_eq!(ev.view.name, "survival", "not invite_gone");
+    assert_eq!(ev.engine.as_str().trim_end_matches('/'), server.uri());
+    client.remember_engine(&l, &old.uri());
+    client.view(&l).await.unwrap();
+    assert_eq!(hits(&old, &route("")).await, 1);
+    assert_eq!(hits(&server, "/config.json").await, 1);
+}
+
+#[tokio::test]
+async fn a_dead_link_on_the_engine_config_json_names_stays_gone() {
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    Mock::given(method("GET"))
+        .and(path(route("")))
+        .respond_with(ResponseTemplate::new(404).set_body_json(failure(None)))
+        .mount(&server)
+        .await;
+    let client = unshared_client();
+    let l = link(&server);
+    for _ in 0..3 {
+        client.remember_engine(&l, &server.uri());
+        assert_eq!(
+            client.view(&l).await.unwrap_err().code,
+            ErrorCode::InviteGone
+        );
+    }
+    assert_eq!(
+        hits(&server, "/config.json").await,
+        1,
+        "the Engine is confirmed once, then trusted"
+    );
+}
+
+#[tokio::test]
+async fn an_unreachable_engine_from_config_json_is_forgotten_and_found_again() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/config.json"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({ "engineUrl": "http://127.0.0.1:1" })),
+        )
+        .mount(&server)
+        .await;
+    let client = client();
+    let l = link(&server);
     let err = client.view(&l).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::Offline);
     assert_eq!(err.params["host"], "127.0.0.1");
+    // The site now names a live Engine.
+    server.reset().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(Some("c1"), "ready")).await;
     assert_eq!(client.view(&l).await.unwrap().view.name, "survival");
-    assert_eq!(hits(&server, "/config.json").await, 1);
+}
+
+#[tokio::test]
+async fn a_slow_site_or_engine_times_out_as_offline() {
+    let quick = || {
+        client().with_timing(InviteTiming {
+            request_timeout: Duration::from_millis(100),
+            ..fast()
+        })
+    };
+    // The Engine never finishes its answer in time.
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    Mock::given(method("GET"))
+        .and(path(route("")))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(envelope(modded_view(Some("c1"), "ready")))
+                .set_delay(Duration::from_secs(3)),
+        )
+        .mount(&server)
+        .await;
+    let started = std::time::Instant::now();
+    let err = quick().view(&link(&server)).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::Offline, "view");
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "the view slot is let go"
+    );
+    assert_token_free("slow view", &err);
+    // Nor does the invite site.
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/config.json"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({ "engineUrl": server.uri() }))
+                .set_delay(Duration::from_secs(3)),
+        )
+        .mount(&server)
+        .await;
+    let started = std::time::Instant::now();
+    let err = quick().view(&link(&server)).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::Offline, "config.json");
+    assert!(started.elapsed() < Duration::from_secs(2));
 }
 
 /// A tiny `.mrpack` for Fabric 1.20.1 with one override file.
@@ -458,9 +588,14 @@ async fn without_a_commit_the_stamp_is_the_pack_etag() {
     mount_config(&server).await;
     mount_view(&server, modded_view(None, "ready")).await;
     mount_pack(&server, mrpack(tmp.path(), "1.0.4"), "e7a9").await;
-    let desired = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
-        .await
-        .unwrap();
+    let desired = perland::resolve(
+        &sources(&server, tmp.path()),
+        &link(&server),
+        &noop_sink(),
+        &Cancel::default(),
+    )
+    .await
+    .unwrap();
     assert_eq!(desired.stamp, "e7a9");
 }
 
@@ -471,9 +606,14 @@ async fn the_installed_stamp_is_the_pack_etag_even_with_a_commit() {
     mount_config(&server).await;
     mount_view(&server, modded_view(Some("c1"), "ready")).await;
     mount_pack(&server, mrpack(tmp.path(), "1.0.4"), "e2").await;
-    let desired = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
-        .await
-        .unwrap();
+    let desired = perland::resolve(
+        &sources(&server, tmp.path()),
+        &link(&server),
+        &noop_sink(),
+        &Cancel::default(),
+    )
+    .await
+    .unwrap();
     assert_eq!(desired.stamp, "e2");
 }
 
@@ -498,9 +638,14 @@ async fn without_an_etag_the_installed_stamp_is_the_commit() {
             .respond_with(ResponseTemplate::new(200).set_body_bytes(mrpack(tmp.path(), "1.0.4")))
             .mount(&server)
             .await;
-        let desired = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
-            .await
-            .unwrap();
+        let desired = perland::resolve(
+            &sources(&server, tmp.path()),
+            &link(&server),
+            &noop_sink(),
+            &Cancel::default(),
+        )
+        .await
+        .unwrap();
         assert_eq!(desired.stamp, "c1");
     }
 }
@@ -683,9 +828,14 @@ async fn pack_failures_map_to_codes_with_the_engine_reason() {
             .respond_with(ResponseTemplate::new(status).set_body_json(failure(engine_code)))
             .mount(&server)
             .await;
-        let err = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
-            .await
-            .unwrap_err();
+        let err = perland::resolve(
+            &sources(&server, tmp.path()),
+            &link(&server),
+            &noop_sink(),
+            &Cancel::default(),
+        )
+        .await
+        .unwrap_err();
         assert_eq!(err.code, want, "{status}");
         if let Some(c) = engine_code {
             assert_eq!(err.detail.as_deref(), Some(c), "{status}");
@@ -699,9 +849,14 @@ async fn an_unavailable_pack_is_refused_before_downloading() {
     let server = MockServer::start().await;
     mount_config(&server).await;
     mount_view(&server, modded_view(Some("c1"), "unavailable")).await;
-    let err = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
-        .await
-        .unwrap_err();
+    let err = perland::resolve(
+        &sources(&server, tmp.path()),
+        &link(&server),
+        &noop_sink(),
+        &Cancel::default(),
+    )
+    .await
+    .unwrap_err();
     assert_eq!(err.code, ErrorCode::ServerPackUnavailable);
     assert_eq!(hits(&server, &route("/pack")).await, 0);
 }
@@ -716,7 +871,7 @@ async fn networks_are_refused_with_their_address() {
     let err = perland::open(&src, &link(&server)).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::InviteUnsupported);
     assert_eq!(err.params["address"], "play.example.com:25577");
-    let err = perland::resolve(&src, &link(&server), &noop_sink())
+    let err = perland::resolve(&src, &link(&server), &noop_sink(), &Cancel::default())
         .await
         .unwrap_err();
     assert_eq!(err.code, ErrorCode::InviteUnsupported);
@@ -742,7 +897,7 @@ async fn a_modded_stack_without_a_pack_is_refused_with_its_address() {
     let err = perland::open(&src, &link(&server)).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::InviteUnsupported);
     assert_eq!(err.params["address"], "play.example.com:25566");
-    let err = perland::resolve(&src, &link(&server), &noop_sink())
+    let err = perland::resolve(&src, &link(&server), &noop_sink(), &Cancel::default())
         .await
         .unwrap_err();
     assert_eq!(err.code, ErrorCode::InviteUnsupported);
@@ -771,9 +926,14 @@ async fn a_pending_pack_is_polled_until_ready() {
     mount_view(&server, modded_view(Some("c1"), "ready")).await;
     mount_pack(&server, mrpack(tmp.path(), "1.0.4"), "c1").await;
     let (sink, seen) = collect();
-    let desired = perland::resolve(&sources(&server, tmp.path()), &link(&server), &sink)
-        .await
-        .unwrap();
+    let desired = perland::resolve(
+        &sources(&server, tmp.path()),
+        &link(&server),
+        &sink,
+        &Cancel::default(),
+    )
+    .await
+    .unwrap();
     assert_eq!(desired.stamp, "c1");
     assert!(hits(&server, &route("")).await >= 3);
     let waits = seen
@@ -795,9 +955,14 @@ async fn a_pack_still_building_after_the_limit_is_pending() {
     mount_config(&server).await;
     mount_view(&server, modded_view(Some("c1"), "pending")).await;
     let started = std::time::Instant::now();
-    let err = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
-        .await
-        .unwrap_err();
+    let err = perland::resolve(
+        &sources(&server, tmp.path()),
+        &link(&server),
+        &noop_sink(),
+        &Cancel::default(),
+    )
+    .await
+    .unwrap_err();
     assert_eq!(err.code, ErrorCode::ServerPackPending);
     assert!(
         started.elapsed() < Duration::from_secs(5),
@@ -1022,7 +1187,7 @@ async fn no_failure_path_leaks_the_token() {
         let e = perland::open(&src, &link(&server)).await.unwrap_err();
         assert_eq!(e.code, ErrorCode::InviteUnsupported, "open {label}");
         errors.push((format!("open {label}"), e));
-        let e = perland::resolve(&src, &link(&server), &noop_sink())
+        let e = perland::resolve(&src, &link(&server), &noop_sink(), &Cancel::default())
             .await
             .unwrap_err();
         assert_eq!(e.code, ErrorCode::InviteUnsupported, "resolve {label}");
@@ -1056,9 +1221,14 @@ async fn no_failure_path_leaks_the_token() {
             answer(s, route("/pack"), status, failure(engine_code)).await
         })
         .await;
-        let e = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
-            .await
-            .unwrap_err();
+        let e = perland::resolve(
+            &sources(&server, tmp.path()),
+            &link(&server),
+            &noop_sink(),
+            &Cancel::default(),
+        )
+        .await
+        .unwrap_err();
         assert_eq!(e.code, want, "pack {status}");
         errors.push((format!("pack {status}"), e));
     }
@@ -1074,9 +1244,14 @@ async fn no_failure_path_leaks_the_token() {
             answer(s, route("/pack"), status, failure(None)).await
         })
         .await;
-        let e = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
-            .await
-            .unwrap_err();
+        let e = perland::resolve(
+            &sources(&server, tmp.path()),
+            &link(&server),
+            &noop_sink(),
+            &Cancel::default(),
+        )
+        .await
+        .unwrap_err();
         assert_eq!(e.code, want, "pack without commit {status}");
         errors.push((format!("pack without commit {status}"), e));
     }
@@ -1090,12 +1265,61 @@ async fn no_failure_path_leaks_the_token() {
             s
         })
         .await;
-        let e = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
-            .await
-            .unwrap_err();
+        let e = perland::resolve(
+            &sources(&server, tmp.path()),
+            &link(&server),
+            &noop_sink(),
+            &Cancel::default(),
+        )
+        .await
+        .unwrap_err();
         assert_eq!(e.code, want, "pack {state}");
         errors.push((format!("pack {state}"), e));
     }
+
+    // A downloader failure `pack_download_error` passes on as it is (the fall-through): a 416
+    // the download never gets past. `scrub` is the only guard on that path.
+    let server = engine_with(|s| async move {
+        mount_view(&s, modded_view(Some("c1"), "ready")).await;
+        answer(s, route("/pack"), 416, failure(None)).await
+    })
+    .await;
+    let e = perland::resolve(
+        &sources(&server, tmp.path()),
+        &link(&server),
+        &noop_sink(),
+        &Cancel::default(),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.code, ErrorCode::DownloadRestarted, "pack 416");
+    errors.push(("pack 416".into(), e));
+
+    // A refused server whose address has no usable port and whose display text is the invite
+    // link itself: the refusal quotes the display, so only `scrub` keeps the token out.
+    let server = MockServer::start().await;
+    let mut echo = network_view();
+    echo["address"] =
+        json!({ "host": "play.example.com", "port": 0, "display": invite_url(&server) });
+    mount_config(&server).await;
+    mount_view(&server, echo).await;
+    let src = sources(&server, tmp.path());
+    let e = perland::open(&src, &link(&server)).await.unwrap_err();
+    assert_eq!(e.code, ErrorCode::InviteUnsupported, "open echo");
+    assert!(e.message.contains("<invite>"), "{}", e.message);
+    errors.push(("open echo".into(), e));
+    let e = perland::resolve(&src, &link(&server), &noop_sink(), &Cancel::default())
+        .await
+        .unwrap_err();
+    errors.push(("resolve echo".into(), e));
+    match src.check(&source(&server), &installed("c0")).await {
+        UpdateCheck::Unavailable(e) => errors.push(("check echo".into(), e)),
+        other => panic!("{other:?}"),
+    }
+    // The app calls `supported` itself (Join server, Use a new link).
+    let ev = src.invites.view(&link(&server)).await.unwrap();
+    let e = perland::supported(&link(&server), &ev).unwrap_err();
+    errors.push(("supported echo".into(), e));
 
     // Checks.
     for status in [404, 500] {
@@ -1152,4 +1376,104 @@ async fn no_failure_path_leaks_the_token() {
     ] {
         assert!(!text.contains(TOKEN), "{text}");
     }
+}
+
+fn is_pack_wait(e: &Event) -> bool {
+    matches!(e, Event::Progress { task, .. } if task.key == "server_pack_wait")
+}
+
+/// The sources with the real 5 s poll and 3 min limit: only a wait that hears Stop ends soon.
+fn real_wait(server: &MockServer, root: &Path) -> Sources {
+    let base = sources(server, root);
+    Sources {
+        invites: InviteClient::new(base.http.clone()).with_timing(InviteTiming {
+            pack_poll_every: Duration::from_secs(5),
+            pack_poll_for: Duration::from_secs(180),
+            ..fast()
+        }),
+        ..base
+    }
+}
+
+#[tokio::test]
+async fn stop_while_the_server_prepares_the_pack_ends_the_first_play() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(Some("c1"), "pending")).await;
+    mount_pack(&server, mrpack(tmp.path(), "1.0.4"), "c1").await;
+    let syncer = Syncer::new(
+        Arc::new(NoInstall),
+        real_wait(&server, tmp.path()),
+        tmp.path(),
+    );
+    let store = InstanceStore::new(tmp.path().join("instances"));
+    let input = PackInput::parse(&invite_url(&server)).unwrap();
+    let (instance, _) = syncer.add_pack(&store, &input).await.unwrap();
+    let lock = InstanceLock::try_acquire(&store.perland_dir(&instance.id)).unwrap();
+    let cancel = Cancel::default();
+    let (sink, seen) = collect();
+    // The run's never-synced branch, as the app calls it, with the run's Stop.
+    let play = syncer.ensure_locked(&lock, &store, &instance.id, None, &sink, &cancel);
+    let stop = async {
+        while !seen.lock().unwrap().iter().any(is_pack_wait) {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        cancel.cancel();
+    };
+    let (result, ()) =
+        tokio::time::timeout(Duration::from_secs(3), async { tokio::join!(play, stop) })
+            .await
+            .expect("Stop ends the wait well within one poll interval");
+    assert_eq!(result.unwrap_err().code, ErrorCode::SyncCancelled);
+    assert_eq!(hits(&server, &route("/pack")).await, 0, "nothing downloads");
+}
+
+#[tokio::test]
+async fn a_stopped_resolve_never_starts_the_pack_download() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(Some("c1"), "ready")).await;
+    mount_pack(&server, mrpack(tmp.path(), "1.0.4"), "c1").await;
+    let cancel = Cancel::default();
+    cancel.cancel();
+    let err = perland::resolve(
+        &sources(&server, tmp.path()),
+        &link(&server),
+        &noop_sink(),
+        &cancel,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.code, ErrorCode::SyncCancelled);
+    assert_eq!(hits(&server, &route("/pack")).await, 0);
+}
+
+#[tokio::test]
+async fn a_stop_during_the_wait_is_heard_before_the_next_poll() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(Some("c1"), "pending")).await;
+    let src = real_wait(&server, tmp.path());
+    let cancel = Cancel::default();
+    let (sink, seen) = collect();
+    let l = link(&server);
+    let resolve = perland::resolve(&src, &l, &sink, &cancel);
+    let stop = async {
+        while !seen.lock().unwrap().iter().any(is_pack_wait) {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        cancel.cancel();
+    };
+    let started = std::time::Instant::now();
+    let (result, ()) = tokio::time::timeout(Duration::from_secs(3), async {
+        tokio::join!(resolve, stop)
+    })
+    .await
+    .expect("the 5 s sleep hears Stop");
+    assert_eq!(result.unwrap_err().code, ErrorCode::SyncCancelled);
+    assert!(started.elapsed() < Duration::from_secs(1));
+    assert_eq!(hits(&server, &route("")).await, 1, "no poll after the Stop");
 }
