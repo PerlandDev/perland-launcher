@@ -10,7 +10,7 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { formatBytes } from '../../ui/format';
-import { Folder, InfoBox, Package, Search, Trash } from '../../ui/Icon';
+import { Folder, Package, Search, Trash } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { ContentTabs } from './ContentTabs';
@@ -76,13 +76,15 @@ export function PackList({ id, kind }: { id: string; kind: PackKind }) {
   const loading = listing.isPending || files.isPending;
 
   const row = (file: ContentFile) => (
-    <li key={file.fileName} className="panel flex items-center gap-4 px-4 py-3">
-      <Package className="h-6 w-6 flex-none text-ink-dim" aria-hidden />
+    <li key={file.fileName} className="content-row">
+      <span className="content-icon" aria-hidden>
+        <Package />
+      </span>
       <div className="min-w-0 flex-1">
         <p className="truncate font-semibold">{displayName(file)}</p>
         {!file.folder && <p className="tabular text-sm text-ink-dim">{formatBytes(file.size, i18n.language)}</p>}
       </div>
-      {file.folder && <span className="badge">{t('packs.folder')}</span>}
+      {file.folder && <span className="tag">{t('packs.folder')}</span>}
       {!file.managed && !file.folder && (
         <Button
           variant="ghost"
@@ -98,7 +100,6 @@ export function PackList({ id, kind }: { id: string; kind: PackKind }) {
     </li>
   );
 
-  const yoursHeading = yours.length > 0 || managed.length > 0;
   return (
     <ScreenFrame
       title={t('mods.screenTitle')}
@@ -119,19 +120,12 @@ export function PackList({ id, kind }: { id: string; kind: PackKind }) {
     >
       <div className="grid max-w-3xl gap-4">
         <ContentTabs id={id} active={kind} />
-        {needsLoader && (
-          <p className="panel flex items-start gap-3 p-4 text-ink-dim">
-            <InfoBox className="mt-0.5 h-5 w-5 flex-none text-blue-ink" aria-hidden />
-            {t('packs.shadersNeedLoader')}
-          </p>
+        {needsLoader && <p className="note-plate">{t('packs.shadersNeedLoader')}</p>}
+        {running && <p className="note-plate">{t('packs.running')}</p>}
+        {/* Vanilla has no Shader Packs menu, so the turn-it-on hint would point nowhere. */}
+        {!needsLoader && (
+          <p className="info-line">{kind === 'resource_pack' ? t('install.turnOnResourcePack') : t('install.turnOnShader')}</p>
         )}
-        {running && (
-          <p className="panel flex items-start gap-3 p-4 text-ink-dim">
-            <InfoBox className="mt-0.5 h-5 w-5 flex-none text-blue-ink" aria-hidden />
-            {t('packs.running')}
-          </p>
-        )}
-        <p className="text-ink-dim">{kind === 'resource_pack' ? t('install.turnOnResourcePack') : t('install.turnOnShader')}</p>
         {failure && <ErrorCard error={failure.error} />}
         {loading && <p className="text-ink-dim">{t('common.loading')}</p>}
         {files.isError && (
@@ -147,22 +141,23 @@ export function PackList({ id, kind }: { id: string; kind: PackKind }) {
         {!loading && files.isSuccess && (
           <>
             {managed.length > 0 && (
-              <section className="grid gap-3" aria-labelledby="pack-files">
+              <section className="content-section" aria-labelledby="pack-files">
                 <h2 id="pack-files" className="text-lg font-bold">
                   {t('mods.fromPackTitle')}
                 </h2>
-                <ul className="grid gap-2">{managed.map(row)}</ul>
+                <ul>{managed.map(row)}</ul>
               </section>
             )}
-            <section className="grid gap-3" aria-labelledby={yoursHeading ? 'your-packs' : undefined}>
-              {yoursHeading && (
-                <h2 id="your-packs" className={`text-lg font-bold ${managed.length > 0 ? 'mt-4' : ''}`}>
+            {yours.length > 0 && (
+              <section className="content-section" aria-labelledby="your-packs">
+                <h2 id="your-packs" className="text-lg font-bold">
                   {t('packs.yours')}
                 </h2>
-              )}
-              {yours.length === 0 && <p className="text-ink-dim">{t(`packs.empty.${kind}`)}</p>}
-              {yours.length > 0 && <ul className="grid gap-2">{yours.map(row)}</ul>}
-            </section>
+                <ul>{yours.map(row)}</ul>
+              </section>
+            )}
+            {/* The empty line only when the folder holds nothing at all, not under a pack's own files. */}
+            {list.length === 0 && <p className="empty-slot">{t(`packs.empty.${kind}`)}</p>}
           </>
         )}
       </div>

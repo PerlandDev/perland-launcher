@@ -30,7 +30,7 @@ function InstanceView({ instance }: { instance: Instance }) {
   return (
     <section className="relative h-full overflow-hidden" aria-labelledby="instance-name">
       <Marquee seed={instance.id} attract={run.state === 'idle'} dimmed={run.state !== 'idle'} banner={art.data?.banner ?? null} className="absolute inset-0" />
-      <div className="absolute inset-x-0 bottom-0 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-10 px-10 pt-6 pb-12">
+      <div className="absolute inset-x-0 bottom-0 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-6 px-10 pt-6 pb-12">
         {/* The plate sits above both columns, so it reads on one line instead of wrapping in the name's. */}
         {isPack(instance) && (
           <div className="col-span-2 min-w-0">
@@ -44,7 +44,9 @@ function InstanceView({ instance }: { instance: Instance }) {
           <p className="marquee-plate mt-3">{versionLine(t, instance)}</p>
         </div>
         <div className="flex items-end gap-3">
-          <Button size="lg" icon={<Package />} onClick={() => navigate({ name: 'mods', id: instance.id })}>
+          {/* "Mods & packs" is long; its 1rem pad and the 1.5rem column gap keep the name's column
+              wide enough at the 960 px minimum that a word like ASALITH doesn't split. */}
+          <Button size="lg" className="px-4" icon={<Package />} onClick={() => navigate({ name: 'mods', id: instance.id })}>
             {t('home.mods')}
           </Button>
           <InstanceMenu instance={instance} />

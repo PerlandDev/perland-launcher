@@ -13,7 +13,7 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { formatBytes } from '../../ui/format';
-import { Folder, InfoBox, Package, Plus, Search, Trash } from '../../ui/Icon';
+import { Folder, Package, Plus, Search, Trash } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Toggle } from '../../ui/Toggle';
 import { useSingleFlight } from '../../ui/useSingleFlight';
@@ -181,22 +181,12 @@ function ModList({ id }: { id: string }) {
     >
       <div className={`grid max-w-3xl gap-4 ${dragging ? 'outline-2 outline-offset-8 outline-amber outline-dashed' : ''}`}>
         <ContentTabs id={id} active="mod" />
-        {instance && !pack && !instance.game.loader && (
-          <p className="panel flex items-start gap-3 p-4 text-ink-dim">
-            <InfoBox className="mt-0.5 h-5 w-5 flex-none text-blue-ink" aria-hidden />
-            {t('mods.vanillaNote')}
-          </p>
-        )}
-        {running && (
-          <p className="panel flex items-start gap-3 p-4 text-ink-dim">
-            <InfoBox className="mt-0.5 h-5 w-5 flex-none text-blue-ink" aria-hidden />
-            {t('mods.running')}
-          </p>
-        )}
+        {instance && !pack && !instance.game.loader && <p className="note-plate">{t('mods.vanillaNote')}</p>}
+        {running && <p className="note-plate">{t('mods.running')}</p>}
         {dragging && <p className="font-semibold text-amber">{t('mods.dropHere')}</p>}
         {failure && <ErrorCard error={failure.error} />}
         {notice && (
-          <p role="status" className="panel p-4 text-ink-dim">
+          <p role="status" className="note-plate">
             {notice.kind === 'busy' ? t('mods.busy') : t('mods.skipped', { names: notice.names.join(', ') })}
           </p>
         )}
@@ -212,28 +202,34 @@ function ModList({ id }: { id: string }) {
           />
         )}
         {pack && contents.isSuccess && (
-          <section className="grid gap-3" aria-labelledby="pack-mods">
+          <section className="content-section" aria-labelledby="pack-mods">
             <h2 id="pack-mods" className="text-lg font-bold">{t('mods.fromPackTitle')}</h2>
             {contents.data.managed.length === 0 ? (
-              <p className="text-ink-dim">{t('mods.packEmpty')}</p>
+              <p className="empty-slot">{t('mods.packEmpty')}</p>
             ) : (
-              <ul className="grid gap-2">
+              <ul>
                 {contents.data.managed.map((mod) => (
-                  <li key={mod.path} className="panel flex items-center gap-4 px-4 py-3">
-                    <Package className="h-6 w-6 flex-none text-ink-dim" aria-hidden />
+                  <li key={mod.path} className="content-row">
+                    <span className="content-icon" aria-hidden>
+                      <Package />
+                    </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{mod.name}</p>
                       {mod.optional?.description && <p className="text-sm text-ink-dim">{mod.optional.description}</p>}
                     </div>
                     {mod.optional ? (
-                      <Toggle
-                        checked={mod.optional.enabled}
-                        disabled={optional.isPending}
-                        label={t('mods.toggle', { name: mod.name })}
-                        onChange={(on) => optional.mutate({ path: mod.path, enabled: on }, { onError: fail })}
-                      />
+                      <>
+                        <Toggle
+                          checked={mod.optional.enabled}
+                          disabled={optional.isPending}
+                          label={t('mods.toggle', { name: mod.name })}
+                          onChange={(on) => optional.mutate({ path: mod.path, enabled: on }, { onError: fail })}
+                        />
+                        {/* Holds the Remove button's place, so this toggle lines up with the additions' toggles. */}
+                        <span className="w-9 flex-none" aria-hidden />
+                      </>
                     ) : (
-                      <span className="badge">{t('mods.fromPack')}</span>
+                      <span className="tag">{t('mods.fromPack')}</span>
                     )}
                   </li>
                 ))}
@@ -243,19 +239,21 @@ function ModList({ id }: { id: string }) {
           </section>
         )}
         {/* The player's own jars: their own section on a pack, so the pack's heading doesn't claim them. */}
-        <section className="grid gap-3" aria-labelledby={pack && contents.isSuccess ? 'pack-additions' : undefined}>
+        <section className="content-section" aria-labelledby={pack && contents.isSuccess ? 'pack-additions' : undefined}>
           {pack && contents.isSuccess && (
-            <h2 id="pack-additions" className="mt-4 text-lg font-bold">
+            <h2 id="pack-additions" className="text-lg font-bold">
               {t('mods.additionsTitle')}
             </h2>
           )}
-          {!loading && source.isSuccess && list.length === 0 && <p className="text-ink-dim">{pack ? t('mods.noAdditions') : t('mods.empty')}</p>}
-          <ul className="grid gap-2">
+          {!loading && source.isSuccess && list.length === 0 && <p className="empty-slot">{pack ? t('mods.noAdditions') : t('mods.empty')}</p>}
+          <ul>
             {list.map((mod) => {
               const name = displayName(mod.fileName);
               return (
-                <li key={(nameCount.get(name) ?? 0) > 1 ? mod.fileName : name} className="panel flex items-center gap-4 px-4 py-3">
-                  <Package className="h-6 w-6 flex-none text-ink-dim" aria-hidden />
+                <li key={(nameCount.get(name) ?? 0) > 1 ? mod.fileName : name} className="content-row">
+                  <span className="content-icon" aria-hidden>
+                    <Package />
+                  </span>
                   <div className="min-w-0 flex-1">
                     <p className={`truncate font-semibold ${mod.enabled ? '' : 'text-ink-dim'}`}>{name}</p>
                     <p className="tabular text-sm text-ink-dim">{formatBytes(mod.size, i18n.language)}</p>

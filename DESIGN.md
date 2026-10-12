@@ -253,6 +253,23 @@ components:
     rounded: "{rounded.panel}"
     padding: "1.5rem"
     width: "64rem"
+  content-row:
+    textColor: "{colors.ink}"
+    padding: "0.75rem 0"
+  content-icon:
+    backgroundColor: "{colors.panel}"
+    textColor: "{colors.ink-dim}"
+    rounded: "{rounded.step}"
+    size: "2.5rem"
+  note-plate:
+    backgroundColor: "{colors.panel}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.panel}"
+    padding: "0.75rem 1rem"
+  empty-slot:
+    textColor: "{colors.ink-dim}"
+    rounded: "{rounded.panel}"
+    padding: "1.25rem"
 ---
 
 # Design System: Perland Launcher
@@ -263,7 +280,7 @@ components:
 
 Every instance is an arcade cabinet. Its seeded landscape is a backlit marquee, the rail down the left is a row of cabinets with a coin-slot light beside the one you're standing at, and Play is the one lit button you press. The room is warm laminate black, never navy. Controls are physical: they stand on a brown dirt step taken from the PerlandDev land-plot mark, and pressing one drops its face onto that step in two snapped frames. Nothing glows, blurs or eases. Depth is hard offset layers, corners are pixel-notched, and state changes snap.
 
-The density is low and the hierarchy is blunt, because the job is "open, press Play, be in the game" for young, often Spanish-speaking players. Home is almost all marquee art: the instance name is huge at lower left, and Play sits lower right with Mods and the overflow menu as quieter raised controls beside it. Every other screen is a plain 48rem column on the ground under a Bungee title, with sticky action rows. The four plot hues are strictly functional: each owns one meaning, and at rest only Play is lit.
+The density is low and the hierarchy is blunt, because the job is "open, press Play, be in the game" for young, often Spanish-speaking players. Home is almost all marquee art: the instance name is huge at lower left, and Play sits lower right with "Mods & packs" and the overflow menu as quieter raised controls beside it. Every other screen is a plain 48rem column on the ground under a Bungee title, with sticky action rows. The four plot hues are strictly functional: each owns one meaning, and at rest only Play is lit.
 
 The system rejects the launcher category default of a navy gradient, rounded cards and a glowing blue button. It also stays clear of the PerlandDev Panel's cyan chamfered "Director HUD" look.
 
@@ -353,7 +370,7 @@ The shell is a fixed desktop grid with a minimum window of 960 × 600 and no pho
 - **Title bar:** 2.25rem tall across the top, on `ground`, and draggable everywhere except its buttons. The mark and name sit left. The account (avatar and name), settings, a 1 px divider and the window controls sit right. On first run and the settings-failed screen it is **minimal**: only the window controls, because nothing else is reachable yet.
 - **Rail:** 4.5rem (72 px) down the left, on `ground`. Generated plot-icon cabinets are 3.5rem squares with 0.75rem between them, and a ghost "+" sits at the foot. The list uses roving arrow keys.
 - **Main:** fills the rest. The activity drawer is pinned along its bottom edge as a 2.25rem handle. Opened, the drawer is 18rem tall, and `main` gets 18rem of bottom padding to match so the screen (and Play) stays above it rather than under it.
-- **Home:** the marquee fills `main` edge to edge. A bottom grid of `[minmax(0,1fr) auto]` with a 2.5rem column gap and 2.5rem side gutters holds the name and version plate at lower left. The raised Mods button, the overflow menu and Play sit at lower right, aligned to their bottoms, with Play last at the far right.
+- **Home:** the marquee fills `main` edge to edge. A bottom grid of `[minmax(0,1fr) auto]` with a 1.5rem column gap and 2.5rem side gutters holds the name and version plate at lower left. The raised "Mods & packs" button, the overflow menu and Play sit at lower right, aligned to their bottoms, with Play last at the far right. "Mods & packs" stays a large button but with 1rem side padding, so with the narrower gap the name's column stays wide enough at 960 px that a long word doesn't split.
 - **Other screens:** a screen frame with a Bungee title row (2.5rem gutters, 2.25rem top), then a scrolling column capped at 48rem. Forms inside it run at 42rem, with 2.5rem between sections. Primary actions sit in a **sticky action row** at the bottom of the scroller on `ground`, with a 1 px `line` hairline above, so Save or Create stays reachable in long Spanish layouts.
 - **First run:** the "perland" marquee in attract mode fills the window behind a centered 32rem panel card on a deep-dirt step. Blue bars across the top of the card count the steps.
 - **Toasts** stack at the bottom-right in a 24rem column. **Dialogs** are `min(30rem, 100vw − 4rem)`, centred with auto margins (the CSS reset zeroes them) and capped at `100dvh − 4rem` tall, scrolling inside, so a long list never pushes the actions off a 600 px window.
@@ -378,7 +395,7 @@ Depth is physical and hard-edged. Nothing in the system uses a blurred shadow. A
 - **Hairline** (`0 -1px 0 var(--color-line)`): above sticky action rows.
 - **Small step** (`0 3px 0 var(--color-dirt-deep)`): category keys in Browse.
 - **Ground collar** (`0 0 0 6px var(--color-ground)`): the sticky action plate, so its notched corners never show scrolled text.
-- **Ring** (`inset 0 0 0 1px var(--color-line)`): flat labels that are not pressable, such as tags, inline code, code blocks and unloaded-image slots.
+- **Ring** (`inset 0 0 0 1px var(--color-line)`): flat labels that are not pressable, such as tags, inline code, code blocks and unloaded-image slots, and the empty slot on Mods & packs.
 - **Seam rule** (`0 1px 0 var(--color-line)`, plus `0 -1px 0` on the first item): between lines of the install manifest.
 
 ### Named Rules
@@ -452,7 +469,7 @@ A recessed row inside a panel or dialog: `ground` fill, 1px `line` inset ring, n
 
 ### Pack screens
 - **New instance** offers three source modes as the standard pressed segments with the lime lamp: version, pack link, .mrpack file. The link hint is the field's own hint (linked by `aria-describedby`); "No file chosen yet" is a body sentence in `ink-dim`, and only a chosen file name is mono.
-- **Mods** splits into two labelled sections: "From the pack" (optional mods as toggles) and "Your additions".
+- **Mods & packs** on a pack instance splits each tab into labelled sections: "From the pack" (on Mods, optional mods as toggles) and the player's own files ("Your additions" on Mods). See Mods & packs below.
 - **Instance settings, Updates** is a segment group; the pack's game line and the "pack picks" hint sit tight (0.25rem) under the Game heading.
 
 ### Browse
@@ -471,6 +488,19 @@ Browse lists projects as rows on the ground, never cards. Filters are small keys
 - **Gallery:** a sideways-scrolling strip of thumbnails 7.5rem tall, 0.75rem apart. Each is a pressable frame on a `ground` fill with notched 4px corners and a 4px `dirt-deep` step, with a zoom-in cursor. It opens a lightbox dialog up to 64rem wide (`min(64rem, 100vw − 4rem)`), with the image capped at `100dvh − 15rem` tall and notched. An image still loading holds a 16:9 `ground` slot.
 - **Install confirm:** a dialog whose additions read as a manifest, one line per item between 1px `line` seam rules, with the tabular total below. The dialog's primary is its only lit button.
 - **Rail Browse key:** a large raised key on the rail, never lit. While global Browse is open it sits pressed in a recessed `ground` slot.
+
+### Mods & packs
+An instance's own files, listed as rows on the ground under the screen title "Mods & packs". It adapts Browse's rows, but a row is not a link, so it never lifts.
+- **Tabs:** Mods · Resource packs · Shaders, as the standard segments 0.5rem apart, pressed with the lime lamp, the same as Browse's kind tabs. Each tab is its own route. The column is 48rem with a 1rem gap.
+- **Content rows:** 0.75rem vertical padding and no side padding, with a 1rem gap. A full-width 1px `line` seam (`border-top`) splits each row from the one above. A row never lifts, because only its own controls press. Each row reads as the 600-weight name (truncating, and `ink-dim` when the mod is off) over its tabular size in 0.875rem `ink-dim`, then its controls: a toggle and a ghost icon Remove.
+- **Icon slot:** a 2.5rem `panel` slot with notched 4px corners, holding the file glyph at 1.5rem in `ink-dim`.
+- **Sections:** a heading (Atkinson 700, 1.125rem) over its rows, 0.25rem apart. A section sits 0.5rem below what precedes it, and 1.5rem after another section, so 2.5rem with the column's 1rem gap.
+- **Note plate:** a `panel` plate with notched 6px corners and 0.75rem × 1rem padding, led by the 8px square blue lamp centred on the first text line (0.4375rem down). It carries the vanilla notes, the running notes and the Mods tab's busy and skipped-files notice.
+- **Empty slot:** a flat 1px `line` ring with notched 6px corners, 1.25rem padding and `ink-dim` text, never stepped. On Resource packs and Shaders it shows only when the folder holds nothing at all, never under a pack's own files.
+- **Labels:** Folder and Pack (a pack's required mod) use the flat `.tag`.
+- **Turn-it-on hint:** an `.info-line` under the tabs on Resource packs and Shaders. It is hidden on a vanilla instance's Shaders tab, where the vanilla note takes its place.
+- **Optional mods:** a pack's optional-mod toggle keeps a 2.25rem spacer where Remove would be, so every toggle on the tab shares one column.
+- **One lit button:** "Add mods" in the Mods tab's action row. Find and Open folder stay secondary. The pack tabs have no lit button, and the remove confirm lights only its coral danger button.
 
 **The Rows, Not Cards Rule.** Browse results sit on the ground as rows split by seam hairlines and lift to `panel` only under the pointer or keyboard focus. Never box a result in a card, and never step a tag.
 
@@ -505,6 +535,7 @@ The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 P
 - **Do** let attract-mode parallax stop under reduced motion. State changes snap.
 - **Do** list Browse results as rows on the ground split by inset seam hairlines, and make filters small 3px-step keys that sink into a slot with the lime lamp.
 - **Do** keep the project page's one lit button in its sticky action plate. Row Install and the rail Browse key stay raised, never lit.
+- **Do** list an instance's files as rows on the ground split by full-width seams, with the glyph in a notched `panel` slot. Don't box them in panel cards, and don't lift a row that isn't a link.
 
 ### Don't:
 - **Don't** use blurred box-shadows, glows or soft elevation. Depth is hard offset layers only.

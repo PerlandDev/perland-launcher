@@ -72,6 +72,9 @@ it("shows a pack's own files read-only under From the pack", async () => {
   expect(await screen.findByText('Pack Textures')).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'From the pack' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /^Remove/ })).not.toBeInTheDocument();
+  // Nothing of the player's own: no Your packs heading over an empty line.
+  expect(screen.queryByRole('heading', { name: 'Your packs' })).not.toBeInTheDocument();
+  expect(screen.queryByText(/No resource packs yet/)).not.toBeInTheDocument();
 });
 
 it('says so when there are no resource packs', async () => {
@@ -83,6 +86,8 @@ it('tells vanilla players shaders need a loader, with no Find shaders button', a
   renderApp(<Mods id="creative-flat" tab="shader" />);
   expect(await screen.findByText('Shaders need a mod loader: Fabric, Quilt, Forge or NeoForge.')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Find shaders' })).not.toBeInTheDocument();
+  // Vanilla has no Shader Packs menu to send the player to.
+  expect(screen.queryByText('Turn it on in Options › Video Settings › Shader Packs.')).not.toBeInTheDocument();
 });
 
 it('keeps Remove off while the game is running', async () => {
@@ -91,6 +96,16 @@ it('keeps Remove off while the game is running', async () => {
   act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
   expect(await screen.findByText('Stop the game to remove packs.')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Remove Faithful 32x' })).toHaveAttribute('aria-disabled', 'true');
+});
+
+it('opens no dialog and removes nothing when Remove is clicked while the game runs', async () => {
+  const { user, calls } = renderApp(<Mods id="asalith-fields" tab="resource_pack" />);
+  await screen.findByText('Faithful 32x');
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
+  await screen.findByText('Stop the game to remove packs.');
+  await user.click(screen.getByRole('button', { name: 'Remove Faithful 32x' }));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(sent(calls, 'content_remove')).toEqual([]);
 });
 
 it('shows a refused removal as a toast and keeps the file listed', async () => {
