@@ -5,6 +5,8 @@ export type Route =
   | { name: 'mods'; id: string }
   | { name: 'instanceSettings'; id: string }
   | { name: 'newInstance'; link?: string }
+  // An empty `invite` means "ask for a link". `relinkFor` is the server instance being re-linked.
+  | { name: 'joinServer'; invite: string; relinkFor?: string }
   | { name: 'accounts' }
   | { name: 'settings' };
 

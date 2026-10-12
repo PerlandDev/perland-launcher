@@ -31,6 +31,8 @@ function Screen({ route }: { route: Route }) {
       return <InstanceSettings id={route.id} />;
     case 'newInstance':
       return <NewInstance key={route.link ?? 'new'} link={route.link} />;
+    case 'joinServer':
+      return null; // Task 17 replaces this with the Join server screen.
     case 'accounts':
       return <Accounts />;
     case 'settings':

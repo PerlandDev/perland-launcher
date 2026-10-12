@@ -7,8 +7,9 @@ import { pushError } from './toasts';
 export async function takeDeepLink(): Promise<void> {
   try {
     const link = await commands.deepLinkTake();
-    // Task 15 routes `join` links to the Join server screen; until then only pack links open.
-    if (link?.kind === 'pack') navigate({ name: 'newInstance', link: link.url });
+    if (!link) return;
+    if (link.kind === 'pack') navigate({ name: 'newInstance', link: link.url });
+    else navigate({ name: 'joinServer', invite: link.invite });
   } catch (error) {
     pushError(error);
   }

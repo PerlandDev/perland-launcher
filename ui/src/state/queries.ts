@@ -1,6 +1,8 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../ipc/commands';
+import { isInviteLink } from '../ipc/inviteLink';
 import type { Instance, LoaderKind, NewInstance, PackAddRequest, Settings } from '../ipc/schema';
+import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { pushError } from './toasts';
 
 export function createQueryClient() {
@@ -26,6 +28,8 @@ export const qk = {
   packContents: (id: string) => ['pack', 'contents', id] as const,
   packArt: (id: string) => ['pack', 'art', id] as const,
   manual: (id: string) => ['pack', 'manual', id] as const,
+  joinPreview: (invite: string) => ['join', 'preview', invite] as const,
+  serverStatus: (id: string) => ['server', 'status', id] as const,
 };
 
 const TEN_MINUTES = 10 * 60_000;
@@ -50,6 +54,25 @@ export const usePackContents = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packContents(id), queryFn: () => commands.packContents(id), enabled });
 export const usePackArt = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packArt(id), queryFn: () => commands.packArt(id), enabled, staleTime: Infinity });
+
+export const useJoinPreview = (invite: string) =>
+  useQuery({
+    queryKey: qk.joinPreview(invite),
+    queryFn: () => commands.joinPreview(invite),
+    enabled: isInviteLink(invite),
+    staleTime: 15_000,
+  });
+
+/** Live status, polled every `base` ms (backing off after rate limits) while the window is in front. */
+export const useServerStatus = (id: string, enabled: boolean, base: number) =>
+  useQuery({
+    queryKey: qk.serverStatus(id),
+    queryFn: () => pollServerStatus(id),
+    enabled,
+    staleTime: 10_000,
+    refetchInterval: () => nextPoll(base, strikesOf(id)),
+    refetchIntervalInBackground: false,
+  });
 
 interface Opts {
   /** The caller shows the error itself (forms); otherwise it becomes a toast. */
@@ -82,6 +105,26 @@ export function useAddPack(opts: Opts = {}) {
   return useMutation({
     mutationFn: (request: PackAddRequest) => commands.packAdd(request),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onError: onError(opts),
+  });
+}
+
+export function useJoinAdd(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (link: string) => commands.joinAdd(link),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onError: onError(opts),
+  });
+}
+
+export function useServerRelink(id: string, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (link: string) => commands.serverRelink(id, link),
+    onSuccess: () => {
+      for (const queryKey of [qk.instances, qk.serverStatus(id), qk.packStatus(id)]) void qc.invalidateQueries({ queryKey });
+    },
     onError: onError(opts),
   });
 }
