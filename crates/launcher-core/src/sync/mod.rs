@@ -310,6 +310,17 @@ impl Syncer {
         store: &InstanceStore,
         instance: &Instance,
     ) -> Result<Option<PendingUpdate>> {
+        self.find_update_with(store, instance, &crate::events::noop_sink())
+            .await
+    }
+
+    /// `find_update`, telling `sink` about long waits (a server pack still being built).
+    pub async fn find_update_with(
+        &self,
+        store: &InstanceStore,
+        instance: &Instance,
+        sink: &EventSink,
+    ) -> Result<Option<PendingUpdate>> {
         if instance.update_policy == UpdatePolicy::Pinned {
             return Ok(None);
         }
@@ -323,7 +334,7 @@ impl Syncer {
         };
         let desired = self
             .sources
-            .resolve(&source)
+            .resolve_with(&source, sink)
             .await
             .map_err(update_check_failed)?;
         let managed = Managed::load(&store.perland_dir(&instance.id)).await;
@@ -353,7 +364,7 @@ impl Syncer {
         if instance.source == SourceRef::None {
             return Err(no_pack());
         }
-        let (update, check_warning) = match self.find_update(store, &instance).await {
+        let (update, check_warning) = match self.find_update_with(store, &instance, sink).await {
             Ok(update) => (update, None),
             Err(e) => (None, Some(e)),
         };
@@ -384,7 +395,7 @@ impl Syncer {
             return Err(no_pack());
         }
         let Some(installed) = self.installed(store, id).await else {
-            let desired = self.sources.resolve(&instance.source).await?;
+            let desired = self.sources.resolve_with(&instance.source, sink).await?;
             let outcome = self.sync_inner(store, id, &desired, sink, cancel).await?;
             self.after_sync(store, id, &desired, &outcome, None).await?;
             return Ok(Ensured {

@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     download::{cache::ObjectCache, host_of, Downloader, Hashes},
     error::{ErrorCode, LauncherError, Result},
-    events::noop_sink,
+    events::{noop_sink, EventSink},
     fsutil::path_key,
     instances::{LoaderSpec, SourceRef, UpdatePolicy},
     invite::{InviteClient, InviteLink},
@@ -321,6 +321,16 @@ impl Sources {
             SourceRef::Perland { invite, engine } => {
                 perland::resolve_ref(self, invite, engine, &noop_sink()).await
             }
+        }
+    }
+
+    /// `resolve`, telling `sink` about long waits (a server pack the Engine is still building).
+    pub async fn resolve_with(&self, source: &SourceRef, sink: &EventSink) -> Result<DesiredState> {
+        match source {
+            SourceRef::Perland { invite, engine } => {
+                perland::resolve_ref(self, invite, engine, sink).await
+            }
+            other => self.resolve(other).await,
         }
     }
 

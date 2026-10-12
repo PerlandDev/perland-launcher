@@ -3,6 +3,7 @@
 mod common;
 
 use std::{
+    path::Path,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -10,10 +11,11 @@ use std::{
 use common::{hits, sources, write_zip};
 use launcher_core::{
     events::{noop_sink, Event, EventSink},
-    instances::SourceRef,
+    instances::{GameSpec, InstanceStore, SourceRef, UpdatePolicy},
     invite::{InviteClient, InviteLimits, InviteLink, InviteTiming},
     meta::loaders::LoaderKind,
-    sources::{perland, DesiredState, PackInput, UpdateCheck},
+    sources::{perland, DesiredState, PackInput, Sources, UpdateCheck},
+    sync::{BoxFuture, GameInstall, SyncOutcome, Syncer},
     ErrorCategory, ErrorCode,
 };
 use serde_json::{json, Value};
@@ -802,4 +804,108 @@ async fn a_pack_still_building_after_the_limit_is_pending() {
         "the poll limit is injectable"
     );
     assert_eq!(hits(&server, &route("/pack")).await, 0);
+}
+
+/// Installs nothing: these tests are about which pack lands, not about Minecraft.
+struct NoInstall;
+
+impl GameInstall for NoInstall {
+    fn install_game<'a>(
+        &'a self,
+        _game: &'a GameSpec,
+        _sink: &'a EventSink,
+    ) -> BoxFuture<'a, launcher_core::Result<()>> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+/// The wiremock sources with no view sharing, so a redeploy is seen at once.
+fn unshared(server: &MockServer, root: &Path) -> Sources {
+    let base = sources(server, root);
+    Sources {
+        invites: InviteClient::new(base.http.clone()).with_timing(InviteTiming {
+            view_ttl: Duration::ZERO,
+            ..fast()
+        }),
+        ..base
+    }
+}
+
+#[tokio::test]
+async fn a_server_instance_installs_on_first_play_and_follows_a_redeploy() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    // The first view says the pack is still building; then it is ready.
+    Mock::given(method("GET"))
+        .and(path(route("")))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(envelope(modded_view(Some("c1"), "pending"))),
+        )
+        .with_priority(1)
+        .up_to_n_times(2)
+        .mount(&server)
+        .await;
+    mount_view(&server, modded_view(Some("c1"), "ready")).await;
+    mount_pack(&server, mrpack(tmp.path(), "1.0.4"), "c1").await;
+
+    let syncer = Syncer::new(
+        Arc::new(NoInstall),
+        unshared(&server, tmp.path()),
+        tmp.path(),
+    );
+    let store = InstanceStore::new(tmp.path().join("instances"));
+    let input = PackInput::parse(&invite_url(&server)).unwrap();
+    let (instance, _) = syncer.add_pack(&store, &input).await.unwrap();
+    assert_eq!(instance.update_policy, UpdatePolicy::Auto);
+    assert!(matches!(instance.source, SourceRef::Perland { .. }));
+    assert_eq!(
+        hits(&server, &route("/pack")).await,
+        0,
+        "Add downloads nothing"
+    );
+
+    // First Play: the never-synced branch resolves with the run's sink.
+    let (sink, seen) = collect();
+    let ensured = syncer.ensure(&store, &instance.id, &sink).await.unwrap();
+    assert!(matches!(ensured.outcome, SyncOutcome::Done(_)));
+    assert!(store
+        .game_dir(&instance.id)
+        .join("config/server.txt")
+        .is_file());
+    assert_eq!(
+        syncer.installed(&store, &instance.id).await.unwrap().stamp,
+        "c1"
+    );
+    assert!(seen
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|e| matches!(e, Event::Progress { task, .. } if task.key == "server_pack_wait")));
+
+    // The owner redeploys: a new commit and a new pack.
+    server.reset().await;
+    mount_config(&server).await;
+    // The view's pack version wins over the archive's, so the redeployed view says 1.0.5 too.
+    let mut redeployed = modded_view(Some("c2"), "ready");
+    redeployed["pack"]["version"] = json!("1.0.5");
+    mount_view(&server, redeployed).await;
+    let dir = tempfile::tempdir().unwrap();
+    mount_pack(&server, mrpack(dir.path(), "1.0.5"), "c2").await;
+    let fresh = store.load(&instance.id).await.unwrap();
+    let update = syncer
+        .find_update_with(&store, &fresh, &noop_sink())
+        .await
+        .unwrap()
+        .expect("the new commit is an update");
+    assert_eq!(update.desired.stamp, "c2");
+    assert_eq!(update.desired.pack_version, "1.0.5");
+    syncer
+        .ensure(&store, &instance.id, &noop_sink())
+        .await
+        .unwrap();
+    assert_eq!(
+        syncer.installed(&store, &instance.id).await.unwrap().stamp,
+        "c2"
+    );
 }
