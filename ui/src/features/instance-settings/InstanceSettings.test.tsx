@@ -1,6 +1,7 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import type { Instance } from '../../ipc/schema';
+import { routeSnapshot } from '../../state/route';
 import { renderApp, sent } from '../../test/backend';
 import { InstanceSettings } from './InstanceSettings';
 
@@ -158,4 +159,20 @@ it("sets a pack's update policy and leaves its game to the pack", async () => {
   const [sentArgs] = sent(calls, 'instance_update') as { instance: Instance }[];
   expect(sentArgs!.instance.updatePolicy).toBe('auto');
   expect(sentArgs!.instance.game).toEqual({ minecraft: '1.20.1', loader: { kind: 'forge', version: '47.4.22' } });
+});
+
+it('shows a server section and no Updates control for a server instance', async () => {
+  const { user } = renderApp(<InstanceSettings id="survival" />, { server: 'online' });
+  expect(await screen.findByText('Invite from play.example.com')).toBeInTheDocument();
+  expect(screen.queryByRole('radio', { name: 'Automatic' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Copy link' }));
+  expect(await navigator.clipboard.readText()).toBe(`https://play.example.com/${'A'.repeat(43)}`);
+  await user.click(screen.getByRole('button', { name: 'Use a new link' }));
+  expect(routeSnapshot()).toEqual({ name: 'joinServer', invite: '', relinkFor: 'survival' });
+});
+
+it('keeps the Server section off plain and pack instances', async () => {
+  renderApp(<InstanceSettings id="sky-islands" />);
+  await screen.findByRole('radio', { name: 'Automatic' });
+  expect(screen.queryByRole('heading', { name: 'Server' })).not.toBeInTheDocument();
 });

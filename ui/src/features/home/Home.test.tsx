@@ -246,6 +246,45 @@ describe('server instances', () => {
     expect(screen.queryByText('Copied')).not.toBeInTheDocument();
   });
 
+  it('offer the server items in the menu', async () => {
+    const { user, calls } = renderApp(<Home id="survival" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Survival' });
+    const open = async () => user.click(screen.getByRole('button', { name: 'More options' }));
+    await open();
+    await user.click(screen.getByRole('menuitem', { name: 'Play without joining' }));
+    expect(sent(calls, 'play')).toEqual([{ id: 'survival', join: false }]);
+    await open();
+    await user.click(screen.getByRole('menuitem', { name: 'Copy invite link' }));
+    expect(await navigator.clipboard.readText()).toBe(`https://play.example.com/${'A'.repeat(43)}`);
+    await open();
+    await user.click(screen.getByRole('menuitem', { name: 'Copy server address' }));
+    expect(await navigator.clipboard.readText()).toBe('play.example.com:25566');
+    await open();
+    await user.click(screen.getByRole('menuitem', { name: 'Use a new invite link' }));
+    expect(routeSnapshot()).toEqual({ name: 'joinServer', invite: '', relinkFor: 'survival' });
+  });
+
+  it('toast when the menu cannot copy', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Survival' });
+    const failure = new Error('denied');
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(failure);
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Copy invite link' }));
+    await vi.waitFor(() => expect(toastsSnapshot().map((toast) => toast.error)).toEqual([failure]));
+  });
+
+  it('keep the server items off plain instances', async () => {
+    const { user } = renderApp(<Home id="creative-flat" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.getByRole('menuitem', { name: 'Instance settings' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Play without joining' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Use a new invite link' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Copy invite link' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Copy server address' })).not.toBeInTheDocument();
+  });
+
   it('raise the dead-link plate, which opens relinking', async () => {
     const { user } = renderApp(<Home id="survival" />, { server: 'gone' });
     expect(await screen.findByText(/This invite link stopped working/)).toBeInTheDocument();

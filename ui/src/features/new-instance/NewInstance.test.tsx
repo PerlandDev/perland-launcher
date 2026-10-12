@@ -173,3 +173,13 @@ it('uses a plain name hint until the version list has loaded', async () => {
   await screen.findByRole('option', { name: '26.3' });
   expect(name).toHaveAttribute('placeholder', 'Minecraft 26.3');
 });
+
+it('sends an invite link pasted as a pack link to Join server', async () => {
+  const { user, calls } = renderApp(<NewInstance />);
+  await user.click(await screen.findByRole('radio', { name: 'Paste a pack link' }));
+  const invite = `https://play.example.com/${'B'.repeat(43)}`;
+  await user.type(screen.getByRole('textbox', { name: 'Pack link' }), invite);
+  await user.click(screen.getByRole('button', { name: 'Add pack' }));
+  expect(routeSnapshot()).toEqual({ name: 'joinServer', invite });
+  expect(sent(calls, 'pack_add')).toEqual([]);
+});

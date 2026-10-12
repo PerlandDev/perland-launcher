@@ -2,18 +2,24 @@ import { useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PlotIcon } from '../../art/PlotIcon';
 import { pixelUpscale } from '../../art/upscale';
-import { useInstances, usePackArt } from '../../state/queries';
+import type { ServerStatus } from '../../ipc/schema';
+import { useInstances, usePackArt, useServerStatus } from '../../state/queries';
 import { navigate, useRoute, instanceOf } from '../../state/route';
+import { RAIL_POLL } from '../../state/serverPoll';
 import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
 import { Plus, WarningDiamond } from '../../ui/Icon';
 import { pickId } from '../home/pick';
+import { statusWord } from '../servers/statusWord';
 
 interface Item {
   id: string;
   name: string;
   damaged: boolean;
   pack: boolean;
+  server: boolean;
+  lastStatus: ServerStatus | null;
+  gone: boolean;
 }
 
 function RailItem({
@@ -43,6 +49,11 @@ function RailItem({
       : run.state === 'checking' || run.state === 'asking' || run.state === 'queued' || run.state === 'syncing' || run.state === 'preparing'
         ? t('rail.preparing')
         : null;
+  const live = useServerStatus(item.id, item.server, RAIL_POLL);
+  const serverStatus = live.data ? live.data.status : item.lastStatus;
+  const serverGone = live.data?.gone ?? item.gone;
+  const serverWord = item.server ? statusWord(t, serverStatus, live.data?.players ?? null, serverGone) : null;
+  const label = [item.name, status, serverWord].filter(Boolean).join(', ');
   return (
     <button
       ref={setRef}
@@ -50,7 +61,7 @@ function RailItem({
       className="rail-item"
       data-selected={selected ? '' : undefined}
       aria-current={selected ? 'page' : undefined}
-      aria-label={status ? `${item.name}, ${status}` : item.name}
+      aria-label={label}
       title={item.name}
       tabIndex={entry ? 0 : -1}
       onClick={() => navigate({ name: 'home', id: item.id })}
@@ -76,6 +87,7 @@ function RailItem({
         )}
       </span>
       {status && !item.damaged && <span className="rail-led" aria-hidden />}
+      {item.server && <span className="rail-server" data-status={serverGone ? 'unknown' : (serverStatus ?? 'unknown')} aria-hidden />}
       {item.damaged && <WarningDiamond className="rail-warn" aria-hidden />}
     </button>
   );
@@ -89,8 +101,8 @@ export function Rail() {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const items = useMemo<Item[]>(
     () => [
-      ...(data?.instances ?? []).map((i) => ({ id: i.id, name: i.name, damaged: false, pack: i.source.kind !== 'none' })),
-      ...(data?.damaged ?? []).map((d) => ({ id: d.id, name: d.id, damaged: true, pack: false })),
+      ...(data?.instances ?? []).map((i) => ({ id: i.id, name: i.name, damaged: false, pack: i.source.kind !== 'none', server: i.source.kind === 'perland', lastStatus: i.server?.lastStatus ?? null, gone: i.server?.gone ?? false })),
+      ...(data?.damaged ?? []).map((d) => ({ id: d.id, name: d.id, damaged: true, pack: false, server: false, lastStatus: null, gone: false })),
     ],
     [data],
   );

@@ -312,7 +312,13 @@
     "copyAddress": "Copy server address",
     "deadLink": "This invite link stopped working",
     "useNewLink": "Use a new link",
-    "updated": "Server updated · updates when you play"
+    "updated": "Server updated · updates when you play",
+    "playWithoutJoining": "Play without joining",
+    "useNewInviteLink": "Use a new invite link",
+    "copyLink": "Copy invite link",
+    "settingsTitle": "Server",
+    "settingsHost": "Invite from {{host}}",
+    "settingsCopyLink": "Copy link"
   },
   "errors": {
     "offline_name_invalid": { "message": "Player names must be 3–16 letters, numbers or underscores." },

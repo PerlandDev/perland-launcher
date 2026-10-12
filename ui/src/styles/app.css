@@ -730,6 +730,23 @@
     height: 0.5rem;
     background: var(--color-lime);
   }
+  /* Placeholder (Task 20 styles it): the server's last status, an outlined mark in the corner opposite the
+     LED, never lime. The status word is in the item's aria-label. */
+  .rail-server {
+    position: absolute;
+    right: 0.375rem;
+    top: 0.375rem;
+    width: 0.5rem;
+    height: 0.5rem;
+    border: 2px solid var(--color-ink-dim);
+    border-radius: 50%;
+  }
+  .rail-server[data-status='online'] {
+    border-color: var(--color-blue-ink);
+  }
+  .rail-server[data-status='offline'] {
+    border-color: var(--color-coral);
+  }
   .rail-warn {
     position: absolute;
     right: 0.125rem;
