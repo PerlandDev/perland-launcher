@@ -1,6 +1,8 @@
 import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../ipc/commands';
+import { isInviteLink } from '../ipc/inviteLink';
 import type { ContentKind, ImageKind, Instance, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
+import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { pushError } from './toasts';
 
 export function createQueryClient() {
@@ -33,6 +35,8 @@ export const qk = {
   browseVersions: (id: string) => ['browse', 'versions', id] as const,
   browseInstalled: (id: string) => ['browse', 'installed', id] as const,
   browseImage: (url: string, kind: ImageKind) => ['browse', 'image', kind, url] as const,
+  joinPreview: (invite: string) => ['join', 'preview', invite] as const,
+  serverStatus: (id: string) => ['server', 'status', id] as const,
 };
 
 const TEN_MINUTES = 10 * 60_000;
@@ -41,6 +45,11 @@ export const useAppInfo = () => useQuery({ queryKey: qk.appInfo, queryFn: comman
 export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: commands.settingsGet });
 export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: commands.instancesList });
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
+/** The active account's name, or null while loading or when there is none. */
+export function useActiveAccountName(): string | null {
+  const { data } = useAccounts();
+  return data?.accounts.find((a) => a.uuid === data.active)?.username ?? null;
+}
 export const useMcVersions = (enabled = true) =>
   useQuery({ queryKey: qk.mcVersions, queryFn: commands.catalogMinecraft, staleTime: TEN_MINUTES, enabled });
 export const useLoaderVersions = (kind: LoaderKind | null, mc: string | null) =>
@@ -88,6 +97,25 @@ export const useBrowseImage = (url: string | null, kind: ImageKind) =>
     staleTime: Infinity,
   });
 
+export const useJoinPreview = (invite: string) =>
+  useQuery({
+    queryKey: qk.joinPreview(invite),
+    queryFn: () => commands.joinPreview(invite),
+    enabled: isInviteLink(invite),
+    staleTime: 15_000,
+  });
+
+/** Live status, polled every `base` ms (backing off after rate limits) while the window is in front. */
+export const useServerStatus = (id: string, enabled: boolean, base: number) =>
+  useQuery({
+    queryKey: qk.serverStatus(id),
+    queryFn: () => pollServerStatus(id),
+    enabled,
+    staleTime: 10_000,
+    refetchInterval: () => nextPoll(base, strikesOf(id)),
+    refetchIntervalInBackground: false,
+  });
+
 interface Opts {
   /** The caller shows the error itself (forms); otherwise it becomes a toast. */
   inline?: boolean;
@@ -119,6 +147,26 @@ export function useAddPack(opts: Opts = {}) {
   return useMutation({
     mutationFn: (request: PackAddRequest) => commands.packAdd(request),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onError: onError(opts),
+  });
+}
+
+export function useJoinAdd(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (link: string) => commands.joinAdd(link),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onError: onError(opts),
+  });
+}
+
+export function useServerRelink(id: string, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (link: string) => commands.serverRelink(id, link),
+    onSuccess: () => {
+      for (const queryKey of [qk.instances, qk.serverStatus(id), qk.packStatus(id)]) void qc.invalidateQueries({ queryKey });
+    },
     onError: onError(opts),
   });
 }

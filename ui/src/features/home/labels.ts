@@ -1,9 +1,20 @@
 import type { TFunction } from 'i18next';
-import type { Instance, LoaderKind } from '../../ipc/schema';
+import type { Instance, LoaderKind, ServerAddress } from '../../ipc/schema';
 
 const NAMES: Record<LoaderKind, string> = { fabric: 'Fabric', quilt: 'Quilt', forge: 'Forge', neoforge: 'NeoForge' };
 
 export const isPack = (instance: Instance) => instance.source.kind !== 'none';
+
+export const isServer = (instance: Instance) => instance.source.kind === 'perland';
+
+/** The saved invite of a server instance. */
+export const inviteOf = (instance: Instance): string | null =>
+  instance.source.kind === 'perland' ? instance.source.invite : null;
+
+/** "play.example.com:25566", with brackets around an IPv6 literal. */
+export function addressText(address: ServerAddress): string {
+  return address.host.includes(':') ? `[${address.host}]:${address.port}` : `${address.host}:${address.port}`;
+}
 
 export const loaderName = (kind: LoaderKind) => NAMES[kind];
 

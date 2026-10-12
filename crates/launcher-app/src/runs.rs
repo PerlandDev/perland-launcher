@@ -12,7 +12,7 @@ use std::{
 use launcher_core::{
     accounts::{Provider, Session},
     events::{Event, EventSink},
-    instances::{Instance, SourceRef, UpdatePolicy},
+    instances::{Instance, ServerAddress, SourceRef, UpdatePolicy},
     locks::InstanceLock,
     sync::{
         lockfile::PACK_FILE, manual::Scanner, Cancel, Ensured, ManualFile, PendingUpdate,
@@ -31,14 +31,37 @@ use crate::{
     events::{AppEvent, ExitInfo, Host, ProgressThrottle, RunStateKind, PROGRESS_INTERVAL},
     logs::spawn_batcher,
     runner::Runner,
+    servers::{apply_view, server_source},
 };
+
+/// What a game run needs besides the instance: who plays, whether the window hides, and
+/// whether the game joins the instance's server.
+pub(crate) struct PlayArgs {
+    pub(crate) session: Session,
+    pub(crate) minimize: bool,
+    pub(crate) join: bool,
+}
+
+fn address_unknown() -> LauncherError {
+    LauncherError::game(
+        ErrorCode::ServerAddressUnknown,
+        "Couldn't get the server address, so the game starts at the title screen",
+    )
+}
 
 /// How long a run waits for an instance lock that a just-ended run is still letting go of.
 const LOCK_WAIT: Duration = Duration::from_secs(2);
 
 impl<R: Runner, H: Host> AppCore<R, H> {
-    /// Queue a run. Everything after this arrives as events.
+    /// Queue a run that joins the instance's server (if it has one). Everything after this
+    /// arrives as events.
     pub async fn play(self: &Arc<Self>, id: &str) -> Result<()> {
+        self.play_with(id, true).await
+    }
+
+    /// Queue a run; `join: false` starts a server instance's game at the title screen
+    /// ("Play without joining"). Everything after this arrives as events.
+    pub async fn play_with(self: &Arc<Self>, id: &str, join: bool) -> Result<()> {
         let instance = self.instances.load(id).await?;
         if instance.id != id {
             return Err(LauncherError::disk(
@@ -62,7 +85,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let session = account.offline_session();
         let minimize = self.settings_get().await.minimize_on_play;
         let checks = self.checks_for_updates(&instance).await;
-        self.start_run(id, instance, Some((session, minimize)), checks)
+        self.start_run(
+            id,
+            instance,
+            Some(PlayArgs {
+                session,
+                minimize,
+                join,
+            }),
+            checks,
+        )
     }
 
     /// Does a run of `instance` start with an update check? Only a pack that synced before
@@ -75,13 +107,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 .unwrap_or(false)
     }
 
-    /// Start a run. `play` is the session and minimize setting, or `None` to only take the
-    /// pack's update (the banner's Update).
+    /// Start a run. `play` is how to play, or `None` to only take the pack's update (the
+    /// banner's Update).
     pub(crate) fn start_run(
         self: &Arc<Self>,
         id: &str,
         instance: Instance,
-        play: Option<(Session, bool)>,
+        play: Option<PlayArgs>,
         checks: bool,
     ) -> Result<()> {
         let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
@@ -277,15 +309,25 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// Check for an update and decide whether this run takes it. `auto` packs and update-only
     /// runs take it, and `ask` asks the player. A failed check is a warning: the installed
-    /// version plays.
+    /// version plays. A dead invite link marks the server instead (its plate says so).
     async fn decide_update(
         &self,
         id: &str,
         instance: &Instance,
         update_only: bool,
+        sink: &EventSink,
     ) -> Option<PendingUpdate> {
-        let update = match self.runner.find_update(instance.clone()).await {
+        let update = match self
+            .runner
+            .find_update(instance.clone(), sink.clone())
+            .await
+        {
             Ok(update) => update?,
+            Err(error) if error.code == ErrorCode::InviteGone => {
+                // The dead-link plate says it; the installed version plays.
+                self.mark_gone(id).await;
+                return None;
+            }
             Err(error) => {
                 self.host.emit(AppEvent::Warning {
                     instance: Some(id.to_string()),
@@ -316,6 +358,36 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             Ok(true) => Some(update),
             _ => None,
         }
+    }
+
+    /// The run learned the server's invite link is dead. The run holds the instance, so the
+    /// write must not be skipped as busy. A failed save only loses the plate until the next
+    /// status poll, so it doesn't end the run.
+    async fn mark_gone(&self, id: &str) {
+        let _ = self.mark_server_gone(id, false).await;
+    }
+
+    /// Where this run's game connects: a server instance's last known address. Without one,
+    /// the view is asked once more (the shared copy); if there is still none, the game starts
+    /// at the title screen with a warning.
+    async fn join_target(&self, id: &str, instance: &Instance) -> Option<ServerAddress> {
+        let (link, engine) = server_source(instance)?;
+        if let Some(address) = instance.server.as_ref().and_then(|s| s.address.clone()) {
+            return Some(address);
+        }
+        if let Ok(ev) = self.runner.invite_view(link, Some(engine)).await {
+            // The run holds the instance, so the learned address is saved, not skipped as busy.
+            if let Ok(Some(server)) = self.update_server(id, false, |s| apply_view(s, &ev)).await {
+                if let Some(address) = server.address {
+                    return Some(address);
+                }
+            }
+        }
+        self.host.emit(AppEvent::Warning {
+            instance: Some(id.to_string()),
+            error: address_unknown(),
+        });
+        None
     }
 
     /// The sync stopped for files the player must download by hand: remember them for
@@ -386,7 +458,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self: Arc<Self>,
         id: String,
         instance: Instance,
-        play: Option<(Session, bool)>,
+        play: Option<PlayArgs>,
         checks: bool,
         cancel: Cancel,
     ) {
@@ -408,7 +480,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
         };
         let accept = if checks {
-            let accept = self.decide_update(&id, &instance, update_only).await;
+            let accept = self.decide_update(&id, &instance, update_only, &sink).await;
             self.set_phase(&id, RunStateKind::Queued);
             accept
         } else {
@@ -477,6 +549,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 }
                 Err(error) => {
                     drop(permit);
+                    if error.code == ErrorCode::InviteGone {
+                        self.mark_gone(&id).await;
+                    }
                     return self
                         .finish(&id, ended(failed(error)), sink, batcher, Some(lock))
                         .await;
@@ -506,7 +581,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 }
             };
         }
-        let Some((session, minimize)) = play else {
+        let Some(args) = play else {
             drop(permit);
             let info = ExitInfo {
                 synced,
@@ -514,6 +589,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 ..ExitInfo::default()
             };
             return self.finish(&id, info, sink, batcher, Some(lock)).await;
+        };
+        let join = if args.join {
+            self.join_target(&id, &instance).await
+        } else {
+            None
         };
         // A Stop that came after the sync returned (while the instance reloaded) left the run
         // `stopping`: end it here rather than start a game nobody wants.
@@ -540,7 +620,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         drop(permit);
         let game = match self
             .runner
-            .start(instance, prepared, session, sink.clone())
+            .start(instance, prepared, args.session, join, sink.clone())
             .await
         {
             Ok(game) => game,
@@ -569,7 +649,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 }
             }
         }
-        if minimize {
+        if args.minimize {
             self.host.minimize();
         }
         let info = match game.wait().await {
@@ -587,7 +667,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         let crashed = info.is_crash();
         self.finish(&id, info, sink, batcher, Some(lock)).await;
-        if minimize || crashed {
+        if args.minimize || crashed {
             self.host.restore();
         }
     }
@@ -628,11 +708,11 @@ mod tests {
     use launcher_core::{
         accounts::BuildKind,
         browse::compat::ContentKind,
-        instances::{GameSpec, UpdatePolicy},
+        instances::{GameSpec, ServerAddress, UpdatePolicy},
         launch::CrashHint,
         locks::InstanceLock,
         settings::Settings,
-        sync::{plan::Changes, Ensured, SyncOutcome, SyncReport},
+        sync::{lockfile, plan::Changes, Ensured, SyncOutcome, SyncReport},
         ErrorCode, LauncherError,
     };
 
@@ -640,7 +720,10 @@ mod tests {
         app::tests::{core, TestCore},
         dto::NewInstance,
         events::RunStateKind::{self, *},
-        testing::{desired, exit, manual_file, pack_instance, pending, FakeRunner, RecordingHost},
+        testing::{
+            desired, exit, invite, manual_file, pack_instance, pending, serve, server_view,
+            FakeRunner, RecordingHost,
+        },
     };
     use std::sync::Arc;
 
@@ -1349,5 +1432,193 @@ mod tests {
         assert_eq!((synced.to_version.as_str(), synced.added), ("1.0.4", 1));
         assert_eq!(synced.kept_modified, vec!["config/a.toml".to_string()]);
         assert!(host.warnings().contains(&ErrorCode::UpdateDownloadFailed));
+    }
+
+    /// A server instance from invite A that installed 1.0.4 before.
+    async fn server(core: &TestCore, runner: &FakeRunner) -> String {
+        serve(runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        lockfile::save_pack(&core.instances.perland_dir(&id), &desired("1.0.4", vec![]))
+            .await
+            .unwrap();
+        id
+    }
+
+    fn address() -> Option<ServerAddress> {
+        ServerAddress::new("play.example.com", 25566)
+    }
+
+    #[tokio::test]
+    async fn a_server_run_updates_without_asking_and_joins() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
+        runner
+            .updates
+            .lock()
+            .unwrap()
+            .insert(id.clone(), Ok(Some(pending("1.0.4", "1.0.5"))));
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(
+            host.states(&id),
+            vec![Checking, Queued, Syncing, Preparing, Running],
+            "asking never happens"
+        );
+        assert_eq!(runner.syncs.lock().unwrap()[0].1.as_deref(), Some("1.0.5"));
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn play_without_joining_starts_at_the_title_screen() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
+        core.play_with(&id, false).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![None]);
+        assert!(!host.warnings().contains(&ErrorCode::ServerAddressUnknown));
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn no_known_address_warns_and_starts_at_the_title_screen() {
+        let (core, runner, host, _t) = ready(true).await;
+        let mut portless = server_view("survival");
+        portless.view.address.port = 0;
+        serve(&runner, &invite('A'), Ok(portless));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![None]);
+        assert!(host.warnings().contains(&ErrorCode::ServerAddressUnknown));
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn an_address_learned_while_playing_is_joined_and_saved() {
+        let (core, runner, host, _t) = ready(true).await;
+        let mut portless = server_view("survival");
+        portless.view.address.port = 0;
+        serve(&runner, &invite('A'), Ok(portless));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        assert!(core
+            .instances
+            .load(&id)
+            .await
+            .unwrap()
+            .server
+            .unwrap()
+            .address
+            .is_none());
+        // The owner set the port since.
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        assert!(!host.warnings().contains(&ErrorCode::ServerAddressUnknown));
+        assert_eq!(
+            core.instances
+                .load(&id)
+                .await
+                .unwrap()
+                .server
+                .unwrap()
+                .address,
+            address(),
+            "saved although the run holds the instance"
+        );
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn a_failed_check_plays_the_installed_version_and_still_joins() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
+        runner.updates.lock().unwrap().insert(
+            id.clone(),
+            Err(LauncherError::network(
+                ErrorCode::UpdateCheckFailed,
+                "offline",
+            )),
+        );
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert!(host.warnings().contains(&ErrorCode::UpdateCheckFailed));
+        assert_eq!(*runner.syncs.lock().unwrap(), vec![(id.clone(), None)]);
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn a_dead_link_plays_the_installed_version_and_raises_the_plate() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
+        runner.updates.lock().unwrap().insert(
+            id.clone(),
+            Err(LauncherError::pack(ErrorCode::InviteGone, "gone")),
+        );
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert!(
+            !host.warnings().contains(&ErrorCode::InviteGone),
+            "the plate says it, not a toast"
+        );
+        assert!(core.instances.load(&id).await.unwrap().server.unwrap().gone);
+        assert_eq!(*runner.syncs.lock().unwrap(), vec![(id.clone(), None)]);
+        assert_eq!(
+            *runner.started_joins.lock().unwrap(),
+            vec![address()],
+            "the last known address"
+        );
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn a_never_synced_server_whose_pack_fails_ends_the_run_with_it() {
+        let (core, runner, host, _t) = ready(true).await;
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        runner
+            .sync_results
+            .lock()
+            .unwrap()
+            .push_back(Err(LauncherError::pack(ErrorCode::InviteGone, "gone")));
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Idle).await;
+        assert_eq!(
+            host.states(&id)[0],
+            Queued,
+            "nothing installed yet, so nothing to check"
+        );
+        assert_eq!(
+            host.last_exit(&id).unwrap().error.unwrap().code,
+            ErrorCode::InviteGone
+        );
+        assert!(core.instances.load(&id).await.unwrap().server.unwrap().gone);
+        assert!(runner.prepared.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn plain_instances_never_join() {
+        let (core, runner, host, _t) = ready(true).await;
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![None]);
+        assert!(!host.warnings().contains(&ErrorCode::ServerAddressUnknown));
+        core.stop("alpha").unwrap();
+        host.wait_for("alpha", Idle).await;
     }
 }

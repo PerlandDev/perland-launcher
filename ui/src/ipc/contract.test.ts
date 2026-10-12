@@ -3,14 +3,17 @@ import type { ZodType } from 'zod';
 import accounts from './contract/accounts.json';
 import appInfo from './contract/app_info.json';
 import contentFiles from './contract/content_files.json';
+import deepLinksFx from './contract/deep_links.json';
 import errorFx from './contract/error.json';
 import errorCodes from './contract/error_codes.json';
 import events from './contract/events.json';
 import installPlans from './contract/install_plans.json';
 import installResult from './contract/install_result.json';
+import inviteLinksFx from './contract/invite_links.json';
 import instanceFx from './contract/instance.json';
 import instanceListing from './contract/instance_listing.json';
 import javaTest from './contract/java_test.json';
+import joinPreviewFx from './contract/join_preview.json';
 import loaderVersions from './contract/loader_versions.json';
 import localMods from './contract/local_mods.json';
 import manualProgress from './contract/manual_progress.json';
@@ -26,6 +29,8 @@ import projectDetail from './contract/project_detail.json';
 import runSnapshots from './contract/run_snapshots.json';
 import searchPage from './contract/search_page.json';
 import searchRequests from './contract/search_requests.json';
+import serverInstanceFx from './contract/server_instance.json';
+import serverStatusFx from './contract/server_status.json';
 import settingsFx from './contract/settings.json';
 import versions from './contract/versions.json';
 import { decodeEvent } from './events';
@@ -51,6 +56,11 @@ const cases: [string, ZodType, unknown][] = [
   ['pack_status', s.packStatus.array(), packStatus],
   ['run_snapshots', s.runSnapshot.array(), runSnapshots],
   ['settings', s.settings, settingsFx],
+  ['server_instance', s.instance, serverInstanceFx],
+  ['join_preview', s.joinPreview.array(), joinPreviewFx],
+  ['server_status', s.serverStatusView.array(), serverStatusFx],
+  ['deep_links', s.deepLink.array(), deepLinksFx],
+  ['invite_links', s.inviteLinkCase.array(), inviteLinksFx],
   ['events', s.appEvent.array(), events],
   ['search_page', s.searchPage, searchPage],
   ['project_detail', s.projectDetail, projectDetail],

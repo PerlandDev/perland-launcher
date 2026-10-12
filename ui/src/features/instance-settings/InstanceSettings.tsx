@@ -2,16 +2,19 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
+import { inviteHost } from '../../ipc/inviteLink';
 import type { Instance } from '../../ipc/schema';
 import { useAppInfo, useInstances, useUpdateInstance } from '../../state/queries';
 import { navigate } from '../../state/route';
+import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { Check } from '../../ui/Icon';
+import { Check, Copy } from '../../ui/Icon';
+import { copyText } from '../../ui/copyText';
 import { MemorySlider } from '../../ui/MemorySlider';
 import { ScreenFrame } from '../../ui/ScreenFrame';
-import { isPack, versionLine } from '../home/labels';
+import { inviteOf, isPack, isServer, versionLine } from '../home/labels';
 import { useVersionChoice } from '../new-instance/useVersionChoice';
 import { VersionFields } from '../new-instance/VersionFields';
 
@@ -19,6 +22,9 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
   const { t } = useTranslation();
   const choice = useVersionChoice(instance.game);
   const pack = isPack(instance);
+  const server = isServer(instance);
+  // A run saves the whole instance when it syncs, so the server link changes only while idle.
+  const running = useRun(instance.id).state !== 'idle';
   const [policy, setPolicy] = useState(instance.updatePolicy);
   const [name, setName] = useState(instance.name);
   const [memoryMb, setMemoryMb] = useState(instance.java.memoryMb);
@@ -102,7 +108,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
           <VersionFields choice={versions} />
         )}
       </section>
-      {pack && (
+      {pack && !server && (
         <fieldset className="grid gap-3">
           <legend className="mb-1.5 text-lg font-bold">{t('instanceSettings.updates')}</legend>
           <div className="flex flex-wrap gap-2">
@@ -114,6 +120,31 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
             ))}
           </div>
         </fieldset>
+      )}
+      {server && (
+        <section className="grid gap-3" aria-labelledby="server-settings">
+          <h2 id="server-settings" className="text-lg font-bold">
+            {t('server.settingsTitle')}
+          </h2>
+          <p>{t('server.settingsHost', { host: inviteHost(inviteOf(instance) ?? '') ?? '' })}</p>
+          <div className="flex flex-wrap gap-3">
+            <Button icon={<Copy />} onClick={() => void copyText(inviteOf(instance) ?? '')}>
+              {t('server.settingsCopyLink')}
+            </Button>
+            <Button
+              disabled={running}
+              aria-describedby={running ? 'relink-running' : undefined}
+              onClick={() => navigate({ name: 'joinServer', invite: '', relinkFor: instance.id })}
+            >
+              {t('server.useNewLink')}
+            </Button>
+          </div>
+          {running && (
+            <p id="relink-running" className="text-sm text-ink-dim">
+              {t('server.relinkRunning')}
+            </p>
+          )}
+        </section>
       )}
       <MemorySlider label={t('instanceSettings.memory')} valueMb={memoryMb} onChange={edit(setMemoryMb)} systemMb={systemMb} />
       <fieldset className="grid gap-3">

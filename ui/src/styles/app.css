@@ -252,10 +252,11 @@
     background: color-mix(in oklab, var(--color-ground), transparent 12%);
     color: var(--color-ink);
   }
-  /* The update plate above the name: the same laminate, led by a square status lamp (blue: an update
-     is on offer; lime: the pack just updated). Its action is a raised control, never lit, and the
-     plate's foot leaves room for that control's step. */
-  .update-plate {
+  /* A plate that carries a row: the update plate, the server's address, the dead-link plate. It is the
+     same laminate, optionally led by a square status lamp (blue: on offer; lime: done) or a small
+     pixel icon. Its action is a raised control, never lit, and the plate's foot leaves room for that
+     control's step. A ghost action (Copy) has no step, so the plate stays tight around it. */
+  .plate-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -264,25 +265,43 @@
     max-width: 100%;
     padding: 0.375rem 0.75rem;
   }
-  .update-plate[data-lamp]::before {
+  .plate-row[data-lamp]::before {
     content: '';
     flex: none;
     width: 0.5rem;
     height: 0.5rem;
     background: var(--lamp);
   }
-  .update-plate[data-lamp='info'] {
+  .plate-row[data-lamp='info'] {
     --lamp: var(--color-blue);
   }
-  .update-plate[data-lamp='ok'] {
+  .plate-row[data-lamp='ok'] {
     --lamp: var(--color-lime);
   }
-  .update-plate:has(.btn) {
+  .plate-row > svg {
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--color-ink-dim);
+  }
+  .plate-row:has(.btn:not(.btn-ghost)) {
     padding: 0.375rem 0.375rem calc(0.375rem + 4px) 0.75rem;
   }
-  .update-plate .btn {
+  .plate-row:has(.btn-ghost) {
+    padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  }
+  .plate-row .btn {
     min-height: 2rem;
     padding: 0 0.875rem;
+  }
+  .plate-row .btn-ghost {
+    min-height: 1.75rem;
+    padding: 0 0.625rem;
+    gap: 0.375rem;
+  }
+  .plate-row .btn-ghost svg {
+    width: 1rem;
+    height: 1rem;
   }
   /* The one lit button. */
   .play {
@@ -608,6 +627,12 @@
   .menu [role='menuitem'][data-danger] {
     color: var(--color-coral);
   }
+  /* As a disabled .btn: dim ink, no hover. */
+  .menu [role='menuitem']:disabled {
+    color: var(--color-ink-dim);
+    background: transparent;
+    cursor: not-allowed;
+  }
   .menu svg {
     width: 1.125rem;
     height: 1.125rem;
@@ -730,6 +755,47 @@
     height: 0.5rem;
     background: var(--color-lime);
   }
+  /* A server cabinet's last-known status: three pixel signal bars in a small ground socket, top right.
+     The bar COUNT carries the state, so hue is never the only carrier: online 3/3 in ink, starting 2/3
+     in blue, sleeping 1/3 dim, offline 0/3 with a coral flatline along the foot, unknown 0/3. The lime
+     "Playing" LED is a solid square at bottom right, so the two never share a shape, a corner or a hue:
+     the bars are never lime. The status word is in the item's aria-label and its hover title. */
+  .rail-server {
+    --off: color-mix(in oklab, var(--color-line), var(--color-ink-dim) 30%);
+    --b1: var(--off);
+    --b2: var(--off);
+    --b3: var(--off);
+    --flat: transparent;
+    position: absolute;
+    right: 0.125rem;
+    top: 0.125rem;
+    width: 14px;
+    height: 14px;
+    padding: 2px;
+    border-radius: 2px;
+    corner-shape: notch;
+    background:
+      linear-gradient(var(--flat), var(--flat)) 0 100% / 10px 2px no-repeat content-box,
+      linear-gradient(var(--b1), var(--b1)) 0 100% / 2px 4px no-repeat content-box,
+      linear-gradient(var(--b2), var(--b2)) 4px 100% / 2px 7px no-repeat content-box,
+      linear-gradient(var(--b3), var(--b3)) 8px 100% / 2px 10px no-repeat content-box,
+      var(--color-ground);
+  }
+  .rail-server[data-status='online'] {
+    --b1: var(--color-ink);
+    --b2: var(--color-ink);
+    --b3: var(--color-ink);
+  }
+  .rail-server[data-status='starting'] {
+    --b1: var(--color-blue);
+    --b2: var(--color-blue);
+  }
+  .rail-server[data-status='sleeping'] {
+    --b1: var(--color-ink-dim);
+  }
+  .rail-server[data-status='offline'] {
+    --flat: var(--color-coral);
+  }
   .rail-warn {
     position: absolute;
     right: 0.125rem;
@@ -737,6 +803,177 @@
     width: 1.125rem;
     height: 1.125rem;
     color: var(--color-coral);
+  }
+
+  /* The server's status readout: a square LED and a word on a laminate chip, a sibling of the marquee
+     plates. Set into a panel it gains the seam ring of a recessed readout. The word always carries the status; the LED follows
+     the hue jobs: lime OK, blue progress (it blinks in two snapped frames while starting), coral stop.
+     Sleeping is a lamp switched off (hollow); unknown is a dimmer hollow lamp. Never amber. */
+  .status-pill {
+    --led: var(--color-line);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: fit-content;
+    min-height: 2rem;
+    padding: 0.25rem 0.75rem 0.25rem 0.625rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-ink);
+    background: color-mix(in oklab, var(--color-ground), transparent 12%);
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+  }
+  .panel .status-pill {
+    box-shadow: inset 0 0 0 1px var(--color-line);
+  }
+  .status-led {
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--led);
+  }
+  .status-pill[data-status='online'] {
+    --led: var(--color-lime);
+  }
+  .status-pill[data-status='starting'] {
+    --led: var(--color-blue);
+  }
+  .status-pill[data-status='starting'] .status-led {
+    animation: led-blink 1.2s steps(1, end) infinite;
+  }
+  .status-pill[data-status='offline'] {
+    --led: var(--color-coral);
+  }
+  .status-pill[data-status='sleeping'] .status-led {
+    background: transparent;
+    box-shadow: inset 0 0 0 2px var(--color-ink-dim);
+  }
+  .status-pill[data-status='unknown'] .status-led {
+    background: transparent;
+    box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--color-ink-dim), var(--color-ground) 45%);
+  }
+  @keyframes led-blink {
+    50% {
+      background: var(--color-line);
+    }
+  }
+
+  /* The server card's icon: a 64 px PNG shown at exactly 2x with hard pixels, set into a recessed
+     window like the screen of a cabinet. The generated plot icon fills the same window. */
+  .server-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    padding: 0.5rem;
+    background: var(--color-ground);
+    border-radius: 6px;
+    corner-shape: notch;
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  .server-icon > img {
+    image-rendering: pixelated;
+  }
+
+  /* The owner's team colour: a small two-cell checker from the land-plot grid. It is a crest, not a
+     lamp (never a solid square) and never lit. The accent hues are the team's content, like § colours. */
+  .team-mark {
+    --accent: var(--color-ink-dim);
+    flex: none;
+    width: 0.75rem;
+    height: 0.75rem;
+    background:
+      linear-gradient(var(--accent), var(--accent)) 0 0 / 50% 50% no-repeat,
+      linear-gradient(var(--accent), var(--accent)) 100% 100% / 50% 50% no-repeat;
+  }
+  .team-mark[data-accent='cyan'] {
+    --accent: #4cc6c9;
+  }
+  .team-mark[data-accent='blue'] {
+    --accent: #6f9cf0;
+  }
+  .team-mark[data-accent='violet'] {
+    --accent: #a888f2;
+  }
+  .team-mark[data-accent='magenta'] {
+    --accent: #e274c8;
+  }
+
+  /* Invite only is advice, not an act and not a fault: Readout Blue, the info hue for text, led by a
+     pixel lock. Over marquee art it rides a laminate plate. */
+  .invite-only {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    width: fit-content;
+    max-width: 100%;
+    color: var(--color-blue-ink);
+  }
+  .invite-only > svg {
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-top: 0.125rem;
+  }
+  .invite-only.marquee-plate {
+    padding: 0.25rem 0.75rem 0.25rem 0.625rem;
+  }
+
+  /* Minecraft's 16 text colours, lifted where needed so every one reads at 4.5:1 or better on `panel`
+     and on a marquee plate over the brightest lamp. Uncoloured MOTD text is dim, as in the game. */
+  .motd {
+    color: var(--color-ink-dim);
+  }
+  .mc-0 {
+    color: #9a9a9a;
+  }
+  .mc-1 {
+    color: #8a8aff;
+  }
+  .mc-2 {
+    color: #2bb82b;
+  }
+  .mc-3 {
+    color: #14b4b4;
+  }
+  .mc-4 {
+    color: #ff6464;
+  }
+  .mc-5 {
+    color: #d86ad8;
+  }
+  .mc-6 {
+    color: #ffaa00;
+  }
+  .mc-7 {
+    color: #c2c2c2;
+  }
+  .mc-8 {
+    color: #a6a6a6;
+  }
+  .mc-9 {
+    color: #9c9cff;
+  }
+  .mc-a {
+    color: #55ff55;
+  }
+  .mc-b {
+    color: #55ffff;
+  }
+  .mc-c {
+    color: #ff7c7c;
+  }
+  .mc-d {
+    color: #ff85ff;
+  }
+  .mc-e {
+    color: #ffff55;
+  }
+  .mc-f {
+    color: #ffffff;
   }
 }
 

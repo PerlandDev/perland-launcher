@@ -1,0 +1,27 @@
+[
+  {
+    "status": "online",
+    "players": {
+      "online": 3,
+      "max": 20
+    },
+    "whitelisted": false,
+    "packState": "ready",
+    "gone": false,
+    "address": {
+      "host": "play.example.com",
+      "port": 25566
+    }
+  },
+  {
+    "status": null,
+    "players": null,
+    "whitelisted": true,
+    "packState": null,
+    "gone": true,
+    "address": {
+      "host": "play.example.com",
+      "port": 25566
+    }
+  }
+]

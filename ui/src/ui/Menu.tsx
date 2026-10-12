@@ -7,7 +7,11 @@ export interface MenuItem {
   onSelect: () => void;
   icon?: ReactNode;
   danger?: boolean;
+  /** Shown but not chosen, and skipped by the arrow keys. */
+  disabled?: boolean;
 }
+
+const ENABLED_ITEM = '[role="menuitem"]:not(:disabled)';
 
 export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
   const [open, setOpen] = useState(false);
@@ -16,7 +20,7 @@ export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
 
   useEffect(() => {
     if (!open) return;
-    list.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    list.current?.querySelector<HTMLElement>(ENABLED_ITEM)?.focus();
     const onPointer = (event: PointerEvent) => {
       if (!list.current?.contains(event.target as Node) && !trigger.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -30,7 +34,7 @@ export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const entries = [...(list.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+    const entries = [...(list.current?.querySelectorAll<HTMLElement>(ENABLED_ITEM) ?? [])];
     const index = entries.indexOf(document.activeElement as HTMLElement);
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -65,6 +69,7 @@ export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
               key={item.label}
               type="button"
               role="menuitem"
+              disabled={item.disabled}
               data-danger={item.danger ? '' : undefined}
               onClick={() => {
                 close();

@@ -1,0 +1,34 @@
+{
+  "id": "survival",
+  "name": "Survival",
+  "source": {
+    "kind": "perland",
+    "invite": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "engine": "https://api.example.com/"
+  },
+  "game": {
+    "minecraft": "1.20.1",
+    "loader": {
+      "kind": "fabric",
+      "version": "0.16.14"
+    }
+  },
+  "updatePolicy": "auto",
+  "optionalChoices": {},
+  "java": {
+    "path": null,
+    "memoryMb": 4096
+  },
+  "server": {
+    "address": {
+      "host": "play.example.com",
+      "port": 25566
+    },
+    "name": "survival",
+    "accent": "violet",
+    "whitelisted": false,
+    "lastStatus": "online",
+    "lastSeen": 1791720000,
+    "gone": false
+  }
+}

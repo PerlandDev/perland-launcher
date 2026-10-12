@@ -218,24 +218,24 @@ For each row, find the merged name with `git grep`. Then do one of two things:
 
 | # | Assumed (3b) | Where | Used by | Merged as |
 |---|---|---|---|---|
-| 1 | `Syncer::find_update(&self, store: &InstanceStore, instance: &Instance) -> Result<Option<PendingUpdate>>` | `launcher-core/src/sync/mod.rs` | 6 | |
-| 2 | `Syncer::ensure_locked(&self, _lock: &InstanceLock, store, id: &str, accept: Option<PendingUpdate>, sink: &EventSink, cancel: &Cancel) -> Result<Ensured>`; its never-synced branch calls `self.sources.resolve(&instance.source)` | same | 6 | |
-| 3 | `PendingUpdate { source, desired, changes, kept }`, `Cancel`, `Ensured { outcome, warning }` | same | 6, 11 | |
-| 4 | `ErrorCode::{SyncCancelled, UpdateDownloadFailed, ModManaged}` exist | `launcher-core/src/error.rs` | 1 | |
-| 5 | `http::allow_redirect_chain` (10 hops; https→http refused across the chain) | `launcher-core/src/http.rs` | 3 | |
-| 6 | `RunStateKind::{Checking, Asking, Syncing}`; `ExitInfo { synced, manual, update_only }`; `AppEvent::RunState { …, update }` | `launcher-app/src/events.rs` | 11, 14 | |
-| 7 | `AppEvent::DeepLink` is a **unit** variant, `{"type":"deep_link"}`, meaning "call `deep_link_take`". The pack-sync spec §4.4 wrote `AppEvent::DeepLink { url }`; 3b's plan made it a unit. | same | 12, 15 | |
-| 8 | `trait Runner { fn add_pack(&self, input: PackInput) -> BoxFuture<Result<Instance>>; fn find_update(&self, instance: Instance) -> BoxFuture<Result<Option<PendingUpdate>>>; fn sync(…); fn import_manual(…); fn prepare(…); fn start(&self, instance, prepared, session, sink) }` | `launcher-app/src/runner.rs` | 9, 11 | |
-| 9 | `CoreRunner { installer, syncer: Arc<Syncer>, launcher_version }`, `CoreRunner::new(installer, syncer: Syncer, launcher_version)` | same | 9 | |
-| 10 | `FakeRunner` pub fields `instances_dir, added, updates, checks, sync_results, syncs, hold_sync, sync_game, imported, prepared`; helpers `up_to_date()`, `desired(version, files)`, `pending(from, to)`, `pack_instance(core, name, installed)` | `launcher-app/src/testing.rs` | 9, 11 | |
-| 11 | `AppCore::{pack_add(PackAddRequest), pack_status(id), pack_update(id), play_answer, deep_link(raw), deep_link_take()}`; `pack_instance(id)`; `checks_for_updates(&Instance)`; `start_run(id, instance, play: Option<(Session, bool)>, checks)`; `drive(id, instance, play, checks, cancel)`; `decide_update(id, &Instance, update_only)` | `launcher-app/src/{packs,runs}.rs` | 9, 11, 12 | |
-| 12 | `AppCore.pending_link: Mutex<Option<String>>`; `launcher_app::deep_link::parse(raw) -> Result<String>`; private `invalid()` there | `launcher-app/src/{app,deep_link}.rs` | 12 | |
-| 13 | `dto::{PackAddRequest::{Link{url}, File{path}}, PackStatus{installed_version, update, check_error}, PackUpdate{from_version, to_version, added, updated, removed, kept}}` | `launcher-app/src/dto.rs` | 9, 11 | |
-| 14 | Tauri: a `deep_link_take` command returning `Option<String>`; `core.deep_link(url)` called from `on_open_url` / `get_current` | `src-tauri/src/{commands,main}.rs` | 13 | |
-| 15 | UI: `commands.{packAdd, packStatus, packUpdate, deepLinkTake}`; `Route` member `{ name: 'newInstance'; link?: string }`; `state/deepLink.ts` `takeDeepLink()`; `handleEvent` `deep_link` branch gated on `firstRunDone`; `qk.packStatus(id)`; `usePackStatus(id, enabled)`; `usePackArt(id, enabled)` | `ui/src/{ipc,state}` | 14, 15 | |
-| 16 | UI: `isPack(instance)` in `features/home/labels.ts`; `UpdatePlate` in `features/home/UpdatePlate.tsx`; `PackLinkForm` in `features/new-instance/PackSource.tsx` (its `submit` calls `add.mutate({ kind: 'link', url })`); the Updates fieldset in `InstanceSettings.tsx` rendered under `pack && (…)`; `RailItem` with a `pack` prop; `PlayButton` labels `t('play.checking')` while `checking` | `ui/src/features`, `ui/src/ui` | 17–19 | |
-| 17 | UI mock: `MockOptions` flags, the `sky-islands` pack instance, `exitOf(…)` exported from `ui/src/ipc/mock.ts`, and a `handle(state, cmd, args)` switch with a `default:` branch | `ui/src/ipc/mock.ts` | 16 | |
-| 18 | i18n sections `update.*` and `play.checking` exist | `ui/src/i18n/*.json` | 18 | |
+| 1 | `Syncer::find_update(&self, store: &InstanceStore, instance: &Instance) -> Result<Option<PendingUpdate>>` | `launcher-core/src/sync/mod.rs` | 6 | ✓ matches (`sync/mod.rs:307`). Pinned and never-synced return `Ok(None)`; an `UpdateCheck::Unavailable` is the `Err`; resolving the update is wrapped in `update_check_failed` |
+| 2 | `Syncer::ensure_locked(&self, _lock: &InstanceLock, store, id: &str, accept: Option<PendingUpdate>, sink: &EventSink, cancel: &Cancel) -> Result<Ensured>`; its never-synced branch calls `self.sources.resolve(&instance.source)` | same | 6 | ✓ matches (`sync/mod.rs:372`), argument order included. The never-synced branch is exactly `let desired = self.sources.resolve(&instance.source).await?;` |
+| 3 | `PendingUpdate { source, desired, changes, kept }`, `Cancel`, `Ensured { outcome, warning }` | same | 6, 11 | ✓ matches. `PendingUpdate` derives `Debug, Clone, PartialEq`; `changes` is `sync::plan::Changes`; `Cancel` is `Clone + Default` with `cancel()`/`is_cancelled()` |
+| 4 | `ErrorCode::{SyncCancelled, UpdateDownloadFailed, ModManaged}` exist | `launcher-core/src/error.rs` | 1 | ✓ matches; all three are in the `// packs and sync` group, before `// anything unexpected` |
+| 5 | `http::allow_redirect_chain` (10 hops; https→http refused across the chain) | `launcher-core/src/http.rs` | 3 | ✓ matches (`MAX_REDIRECTS = 10`); `http::client(launcher_version)` installs it |
+| 6 | `RunStateKind::{Checking, Asking, Syncing}`; `ExitInfo { synced, manual, update_only }`; `AppEvent::RunState { …, update }` | `launcher-app/src/events.rs` | 11, 14 | ✓ matches |
+| 7 | `AppEvent::DeepLink` is a **unit** variant, `{"type":"deep_link"}`, meaning "call `deep_link_take`". The pack-sync spec §4.4 wrote `AppEvent::DeepLink { url }`; 3b's plan made it a unit. | same | 12, 15 | ✓ matches: a unit variant serializing as `{"type":"deep_link"}` |
+| 8 | `trait Runner { fn add_pack(&self, input: PackInput) -> BoxFuture<Result<Instance>>; fn find_update(&self, instance: Instance) -> BoxFuture<Result<Option<PendingUpdate>>>; fn sync(…); fn import_manual(…); fn prepare(…); fn start(&self, instance, prepared, session, sink) }` | `launcher-app/src/runner.rs` | 9, 11 | ✓ matches. Full shapes: `type Prepared`; `prepare(&self, instance: Instance, sink: EventSink)`; `sync(&self, lock: Arc<InstanceLock>, id: String, accept: Option<PendingUpdate>, cancel: Cancel, sink: EventSink) -> BoxFuture<Result<Ensured>>`; `import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>>` |
+| 9 | `CoreRunner { installer, syncer: Arc<Syncer>, launcher_version }`, `CoreRunner::new(installer, syncer: Syncer, launcher_version)` | same | 9 | ✓ matches (fields private; `installer()` accessor) |
+| 10 | `FakeRunner` pub fields `instances_dir, added, updates, checks, sync_results, syncs, hold_sync, sync_game, imported, prepared`; helpers `up_to_date()`, `desired(version, files)`, `pending(from, to)`, `pack_instance(core, name, installed)` | `launcher-app/src/testing.rs` | 9, 11 | ✓ matches. `add_pack` creates every instance as `"Sky Islands"` and maps `PackInput` with an exhaustive `match`; `testing` is a `#[cfg(test)] pub(crate) mod` |
+| 11 | `AppCore::{pack_add(PackAddRequest), pack_status(id), pack_update(id), play_answer, deep_link(raw), deep_link_take()}`; `pack_instance(id)`; `checks_for_updates(&Instance)`; `start_run(id, instance, play: Option<(Session, bool)>, checks)`; `drive(id, instance, play, checks, cancel)`; `decide_update(id, &Instance, update_only)` | `launcher-app/src/{packs,runs}.rs` | 9, 11, 12 | ✓ matches. `drive` takes `self: Arc<Self>`; `decide_update` returns `Option<PendingUpdate>` (a failed check warns, then `None`); `play` ends with `self.start_run(id, instance, Some((session, minimize)), checks)`, and `drive`'s update-only branch is `let Some((session, minimize)) = play else { … };` |
+| 12 | `AppCore.pending_link: Mutex<Option<String>>`; `launcher_app::deep_link::parse(raw) -> Result<String>`; private `invalid()` there | `launcher-app/src/{app,deep_link}.rs` | 12 | ✓ matches. `packs.rs` has its own private `link_invalid()` for `pack_add` |
+| 13 | `dto::{PackAddRequest::{Link{url}, File{path}}, PackStatus{installed_version, update, check_error}, PackUpdate{from_version, to_version, added, updated, removed, kept}}` | `launcher-app/src/dto.rs` | 9, 11 | ✓ matches |
+| 14 | Tauri: a `deep_link_take` command returning `Option<String>`; `core.deep_link(url)` called from `on_open_url` / `get_current` | `src-tauri/src/{commands,main}.rs` | 13 | ✓ matches; `deep_link` is already `pub mod` in `launcher-app/src/lib.rs` |
+| 15 | UI: `commands.{packAdd, packStatus, packUpdate, deepLinkTake}`; `Route` member `{ name: 'newInstance'; link?: string }`; `state/deepLink.ts` `takeDeepLink()`; `handleEvent` `deep_link` branch gated on `firstRunDone`; `qk.packStatus(id)`; `usePackStatus(id, enabled)`; `usePackArt(id, enabled)` | `ui/src/{ipc,state}` | 14, 15 | ✓ matches (`qk.packStatus(id)` is `['pack', 'status', id]`) |
+| 16 | UI: `isPack(instance)` in `features/home/labels.ts`; `UpdatePlate` in `features/home/UpdatePlate.tsx`; `PackLinkForm` in `features/new-instance/PackSource.tsx` (its `submit` calls `add.mutate({ kind: 'link', url })`); the Updates fieldset in `InstanceSettings.tsx` rendered under `pack && (…)`; `RailItem` with a `pack` prop; `PlayButton` labels `t('play.checking')` while `checking` | `ui/src/features`, `ui/src/ui` | 17–19 | ✓ matches. `submit` calls `add.mutate({ kind: 'link', url: url.trim() }, { onSuccess })`; `PlayButton` labels by `state === 'checking'` (a `state` prop, no `checking` prop); `RailItem`'s run LED is `.rail-led` |
+| 17 | UI mock: `MockOptions` flags, the `sky-islands` pack instance, `exitOf(…)` exported from `ui/src/ipc/mock.ts`, and a `handle(state, cmd, args)` switch with a `default:` branch | `ui/src/ipc/mock.ts` | 16 | ✓ matches. `MockRun` is `{ state, cancelled, updateOnly, answer }`; the play script is `scriptRun(state, instance, updateOnly = false)` (there is no `scriptPlay`); `MockOptions.link` seeds `state.pendingLink`, a string that `deep_link_take` hands back as is |
+| 18 | i18n sections `update.*` and `play.checking` exist | `ui/src/i18n/*.json` | 18 | ✓ matches (`update.*` incl. `kept_one`/`kept_other`; `play.checking` in both files) |
 
 - [ ] **Step 4: Stop and ask if 3b's design differs materially**
 
@@ -4672,7 +4672,7 @@ Inside the `impl` block:
     }
 ```
 
-In `app.rs`, replace `instance_update` with:
+In `app.rs`, replace `instance_update` with the version below. 3b's already takes `mut instance` and keeps `source` from disk (`instance.source = current.source;`, pinned by its `a_settings_save_keeps_the_saved_pack_source`); this adds `server` and the `Auto` lock:
 
 ```rust
     /// Version and Java changes wait until the game stops; other edits are fine while it runs.
@@ -4696,12 +4696,12 @@ In `app.rs`, replace `instance_update` with:
     }
 ```
 
-Import `launcher_core::instances::{SourceRef, UpdatePolicy}` in `app.rs` if Plan 3b hasn't already.
+Add `SourceRef` and `UpdatePolicy` to the `launcher_core::instances::{…}` import in `app.rs` (3b's imports neither outside `mod tests`).
 
 - [ ] **Step 4: Run them to verify they pass**
 
 Run: `cargo test -p launcher-app`
-Expected: PASS. If a Plan 3b test changed `source` through `instance_update`, it now fails. It shouldn't: 3b's helpers save through `core.instances`. If one does, change that test to save through `core.instances.save`.
+Expected: PASS. 3b's `a_settings_save_keeps_the_saved_pack_source` still passes: a packwiz instance keeps the policy the form sends, and its source already came from disk. 3b's helpers (`pack_instance`) save through `core.instances`, so none of them depends on `instance_update` changing `source`.
 
 - [ ] **Step 5: Commit**
 
@@ -5032,8 +5032,8 @@ fn address_unknown() -> LauncherError {
 ```
 
 - In `start_run` and `drive`, change the parameter type `Option<(Session, bool)>` to `Option<PlayArgs>`. In `drive`:
-  - The update-only branch stays `let Some(args) = play else { … };`, with the binding renamed from the tuple to `args`.
-  - Right after that `let … else` and before `self.set_phase(&id, RunStateKind::Preparing)`, add:
+  - 3b's update-only branch `let Some((session, minimize)) = play else { … };` becomes `let Some(args) = play else { … };` (body unchanged).
+  - Right after that `let … else` and before `if !self.set_phase(&id, RunStateKind::Preparing) {`, add:
 
 ```rust
         let join = if args.join {
@@ -5044,7 +5044,7 @@ fn address_unknown() -> LauncherError {
 ```
 
   - The start call becomes `self.runner.start(instance, prepared, args.session, join, sink.clone())`.
-  - `minimize` reads `args.minimize`.
+  - 3b reads `minimize` twice after the game starts (`if minimize { self.host.minimize(); }` and `if minimize || crashed { self.host.restore(); }`); both read `args.minimize`. `args.session` has moved into `start` by then, but `args.minimize` is a `bool` field, so it is still usable.
   - In the sync result's generic `Err(error) => { … }` arm, before finishing, add:
 
 ```rust
@@ -5434,7 +5434,7 @@ pub async fn server_relink(core: CoreState<'_>, id: String, link: String) -> Res
 }
 ```
 
-Make `deep_link` `pub mod` in `crates/launcher-app/src/lib.rs` if 3b left it private.
+`deep_link` is already `pub mod` in `crates/launcher-app/src/lib.rs` (3b), so `launcher_app::deep_link::DeepLink` resolves as is.
 
 - [ ] **Step 2: Register them**
 
@@ -5448,7 +5448,7 @@ Expected: OK, no warnings.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src-tauri crates/launcher-app/src/lib.rs
+git add src-tauri
 git commit -m "feat(tauri): join_preview, join_add, server_status, server_relink, play(join), typed deep_link_take
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -5461,7 +5461,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Files:**
 - Modify: `crates/launcher-app/tests/contract.rs`
 - Regenerate: `ui/src/ipc/contract/*.json`. New: `server_instance.json`, `join_preview.json`, `server_status.json`, `deep_links.json`, `invite_links.json`.
-- Modify: `ui/src/ipc/schema.ts`, `ui/src/ipc/contract.test.ts`, `ui/src/ipc/commands.ts`
+- Modify: `ui/src/ipc/schema.ts`, `ui/src/ipc/contract.test.ts`, `ui/src/ipc/commands.ts`, `ui/src/ipc/mock.ts` (`deep_link_take`), `ui/src/state/deepLink.ts`
+- Test: `ui/src/features/home/Home.test.tsx`, `ui/src/features/home/ManualDownloads.test.tsx` (`play` now sends `join`)
 
 **Interfaces:**
 - Consumes every new Rust type: `SourceRef::Perland`, `ServerLink`, `JoinPreview`, `ServerStatusView`, `DeepLink` and `invite_link_cases()`.
@@ -5724,7 +5725,9 @@ In `ui/src/ipc/commands.ts`:
 
 Plan 3b's `state/deepLink.ts` reads the result as a string. Task 15 changes it; until then, make it typecheck by navigating only for `link?.kind === 'pack'` with `link.url`.
 
-Existing tests that assert `sent(calls, 'play')` equals `[{ id: … }]` now see `{ id, join: true }`. Update those expectations (`Home.test.tsx` and any 3b tests), then:
+Plan 3b's mock hands back its pending link as a bare string: `MockOptions.link` (`?link=` in `main.tsx`) seeds `state.pendingLink`, and the `deep_link_take` case returns it as is. In `ui/src/ipc/mock.ts`, make that case return `link ? { kind: 'pack', url: link } : null` (typed `DeepLink | null`), so `dev:mock ?link=…` keeps opening New instance. Task 16 adds join links to it.
+
+Existing tests that assert `sent(calls, 'play')` equals `[{ id: … }]` now see `{ id, join: true }`. Update those expectations: `features/home/Home.test.tsx` (two `toEqual([{ id: 'asalith-fields' }])`) and `features/home/ManualDownloads.test.tsx` (`toEqual([{ id: 'sky-islands' }])`). Then:
 
 Run: `pnpm --filter ui test && pnpm -r typecheck && pnpm -r lint`
 Expected: PASS.
@@ -6241,7 +6244,8 @@ export function handleServer(servers: MockServers | null, listing: Listing, cmd:
 
 In `ui/src/ipc/mock.ts`:
 - `MockOptions` gains `server?: ServerScenario`.
-- In `seed`, after the listing is built, add `const servers = seedServers(options.server, listing);` and add `servers` to the returned state.
+- In `seed`, after the `if (!options.firstRun) { … }` block that adds `sky-islands` and just before `return {`, add `const servers = seedServers(options.server, listing);`, and add `servers` to the returned object.
+- The `deep_link_take` case (Task 14 made it return `{ kind: 'pack', url }`) hands a pending link that `inviteCanonical` accepts over as `{ kind: 'join', invite: <canonical> }` instead, so `dev:mock ?link=<invite>` exercises a join deep link.
 - In `handle`'s `default:` branch, before the `plugin:` check:
 
 ```ts
@@ -6251,7 +6255,7 @@ In `ui/src/ipc/mock.ts`:
       }
 ```
 
-- In the `play` case, before 3b's dispatch to its scripts:
+- In the `play` case, after its `already_running` check and before 3b's `void scriptRun(state, target);`:
 
 ```ts
       if (state.servers?.scenario === 'pending' && target.id === MOCK_SERVER_ID) {
@@ -6260,14 +6264,14 @@ In `ui/src/ipc/mock.ts`:
       }
 ```
 
-- Add this script next to `scriptPlay`. Build the `MockRun` and the `run_state` event with the fields Plan 3b gave them (Task 0 row 17); below, `answer: null` and `update: null` are 3b's names.
+- Add this script next to 3b's `scriptRun`. `MockRun` and the `run_state` event carry the fields Plan 3b gave them (Task 0 row 17): `MockRun` is `{ state, cancelled, updateOnly, answer }`, and every `run_state` has `update`.
 
 ```ts
 /** A server whose pack is still building: Play waits in `checking` with "Server is preparing
  *  the modpack…", then runs like any instance. */
 async function scriptServerWait(state: MockState, instance: Instance) {
   const id = instance.id;
-  const run: MockRun = { state: 'checking', cancelled: false, answer: null };
+  const run: MockRun = { state: 'checking', cancelled: false, updateOnly: false, answer: null };
   state.runs.set(id, run);
   event({ type: 'run_state', instance: id, state: 'checking', exit: null, update: null });
   for (let n = 0; n < 5; n++) {
@@ -6277,7 +6281,8 @@ async function scriptServerWait(state: MockState, instance: Instance) {
   }
   if (run.cancelled || state.runs.get(id) !== run) return;
   state.runs.delete(id);
-  void scriptPlay(state, instance);
+  // No `MockPack` for a server instance, so 3b's script runs it like a plain one: queued, preparing, running.
+  void scriptRun(state, instance);
 }
 ```
 

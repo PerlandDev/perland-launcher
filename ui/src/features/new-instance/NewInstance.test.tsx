@@ -179,3 +179,13 @@ it('offers to browse modpacks', async () => {
   await user.click(await screen.findByRole('button', { name: 'Browse modpacks' }));
   expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
 });
+
+it('sends an invite link pasted as a pack link to Join server', async () => {
+  const { user, calls } = renderApp(<NewInstance />);
+  await user.click(await screen.findByRole('radio', { name: 'Paste a pack link' }));
+  const invite = `https://play.example.com/${'B'.repeat(43)}`;
+  await user.type(screen.getByRole('textbox', { name: 'Pack link' }), invite);
+  await user.click(screen.getByRole('button', { name: 'Add pack' }));
+  expect(routeSnapshot()).toEqual({ name: 'joinServer', invite });
+  expect(sent(calls, 'pack_add')).toEqual([]);
+});

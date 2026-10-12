@@ -1,0 +1,130 @@
+[
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  },
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/",
+    "canonical": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  },
+  {
+    "input": "  https://PLAY.Example.COM/b4sE64url_-b4sE64url_-b4sE64url_-b4sE64url_  ",
+    "canonical": "https://play.example.com/b4sE64url_-b4sE64url_-b4sE64url_-b4sE64url_"
+  },
+  {
+    "input": "https://play.example.com:8443/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": "https://play.example.com:8443/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  },
+  {
+    "input": "https://play.example.com:443/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  },
+  {
+    "input": "http://127.0.0.1:5173/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": "http://127.0.0.1:5173/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  },
+  {
+    "input": "http://localhost:5173/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": "http://localhost:5173/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  },
+  {
+    "input": "http://[::1]:5173/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": "http://[::1]:5173/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  },
+  {
+    "input": "http://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  },
+  {
+    "input": "http://10.0.0.1/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  },
+  {
+    "input": "ftp://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA%41",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA?ref=discord",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA?",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA#top",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA#",
+    "canonical": null
+  },
+  {
+    "input": "https://player@play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  },
+  {
+    "input": "https://player:pw@play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/join/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/pack",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com\\AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAA AAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  },
+  {
+    "input": "play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  },
+  {
+    "input": "perland://join?invite=https%3A%2F%2Fplay.example.com%2FAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  },
+  {
+    "input": "https://perlanddev.github.io/asalith-modpack/pack.toml",
+    "canonical": null
+  },
+  {
+    "input": "https://play.example.com/",
+    "canonical": null
+  },
+  {
+    "input": "",
+    "canonical": null
+  },
+  {
+    "input": "https://éééééééééééééééééééééééééééééééééééééééé.éééééééééééééééééééééééééééééééééééééééé.éééééééééééééééééééééééééééééééééééééééé.éééééééééééééééééééééééééééééééééééééééé.éééééééééééééééééééééééééééééééééééééééé.éééééééééééééééééééééééééééééééééééééééé.éééééééééééééééééééééééééééééééééééééééé.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "canonical": null
+  }
+]

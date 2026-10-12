@@ -116,6 +116,10 @@ fn main() {
             commands::browse_plan,
             commands::browse_install,
             commands::open_link,
+            commands::join_preview,
+            commands::join_add,
+            commands::server_status,
+            commands::server_relink,
             commands::quit,
         ])
         .run(tauri::generate_context!())

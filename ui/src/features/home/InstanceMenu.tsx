@@ -5,14 +5,16 @@ import { commands } from '../../ipc/commands';
 import type { Instance } from '../../ipc/schema';
 import { qk, useDeleteInstance, useRenameInstance } from '../../state/queries';
 import { navigate } from '../../state/route';
+import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { Folder, Gear, Pencil, Reload, Trash } from '../../ui/Icon';
+import { Copy, Folder, Gear, Pencil, Play, Reload, Trash } from '../../ui/Icon';
+import { copyText } from '../../ui/copyText';
 import { Menu } from '../../ui/Menu';
-import { isPack } from './labels';
+import { addressText, inviteOf, isPack, isServer } from './labels';
 
 function RenameDialog({ instance, onClose }: { instance: Instance; onClose: () => void }) {
   const { t } = useTranslation();
@@ -83,11 +85,29 @@ export function InstanceMenu({ instance }: { instance: Instance }) {
   const [dialog, setDialog] = useState<'rename' | 'delete' | null>(null);
   const qc = useQueryClient();
   const close = () => setDialog(null);
+  const invite = inviteOf(instance);
+  const address = instance.server?.address ?? null;
+  // A run saves the whole instance when it syncs, so the link changes only while it is idle.
+  const running = useRun(instance.id).state !== 'idle';
+  const serverItems = isServer(instance)
+    ? [
+        { label: t('server.playWithoutJoining'), icon: <Play />, onSelect: () => void commands.play(instance.id, false).catch(pushError) },
+        {
+          label: t('server.useNewInviteLink'),
+          icon: <Reload />,
+          disabled: running,
+          onSelect: () => navigate({ name: 'joinServer', invite: '', relinkFor: instance.id }),
+        },
+        ...(invite ? [{ label: t('server.copyLink'), icon: <Copy />, onSelect: () => void copyText(invite) }] : []),
+        ...(address ? [{ label: t('server.copyAddress'), icon: <Copy />, onSelect: () => void copyText(addressText(address)) }] : []),
+      ]
+    : [];
   return (
     <>
       <Menu
         label={t('home.more')}
         items={[
+          ...serverItems,
           ...(isPack(instance)
             ? [{ label: t('home.checkUpdates'), icon: <Reload />, onSelect: () => void qc.invalidateQueries({ queryKey: qk.packStatus(instance.id) }) }]
             : []),

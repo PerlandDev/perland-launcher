@@ -6,10 +6,13 @@ pub mod browser;
 pub mod deep_link;
 pub mod dto;
 pub mod events;
+#[cfg(test)]
+mod live_tests;
 pub mod logs;
 mod packs;
 pub mod runner;
 mod runs;
+mod servers;
 #[cfg(test)]
 pub(crate) mod testing;
 

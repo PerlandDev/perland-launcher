@@ -9,6 +9,7 @@ pub mod fsutil;
 pub mod http;
 pub mod install;
 pub mod instances;
+pub mod invite;
 pub mod java;
 pub mod launch;
 pub mod locks;

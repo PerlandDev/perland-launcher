@@ -323,7 +323,7 @@ A warm brown-black cabinet laminate carrying the four saturated land-plot hues, 
 
 **The Lime Lamp Rule.** A chosen option shows a small square lime lamp and sits pressed into its slot. Selection never borrows amber, because amber is reserved for acting.
 
-**The Hue Has One Job Rule.** Lime is running or OK, coral is stop or fault, blue is info or progress. A status never relies on hue alone, so pair it with a label, an icon or a shape (the LED, the warning diamond, the meter blocks).
+**The Hue Has One Job Rule.** Lime is running or OK, coral is stop or fault, blue is info or progress. A status never relies on hue alone, so pair it with a label, an icon or a shape (the LED, the warning diamond, the meter blocks). Amber is never a status or a notice: advice such as a server's invite-only line is info, so it is `blue-ink` text led by a pixel lock.
 
 ## Typography
 
@@ -337,7 +337,7 @@ A warm brown-black cabinet laminate carrying the four saturated land-plot hues, 
 - **Display** (Bungee 400, `clamp(2.5rem, 4.8vw, 5.5rem)`, 0.95): the instance name on the marquee, wrapping anywhere, with the two-layer marquee shade. 4.8vw is sized so an 8-letter name stays whole at the 960 px minimum (see Layout, Home).
 - **Play** (Bungee 400, 2rem, 0.02em tracking): the word on Play, Stop and Stopping. While Play is preparing it switches to the 650-weight body face, left-aligned, so the phase label and meter fit.
 - **Headline** (Bungee 400, 2rem, 1): screen titles in the screen frame. First-run step titles run 1.875–2.25rem.
-- **Title** (Bungee 400, 1.25rem): small signage such as the About heading and the tabular memory readout.
+- **Title** (Bungee 400, 1.25rem): small signage such as the About heading and the tabular memory readout. A server's name on the Join server card is the one in-between step, 1.75rem, so it sits under the 2rem screen title.
 - **Body** (Atkinson Next 400, 15px, 1.5): all running text. Paragraphs use `text-wrap: pretty` and headings use `balance`.
 - **Control** (Atkinson Next 650, 0.9375rem, 1): button and segment labels. Large buttons use 1rem.
 - **Label** (Atkinson Next 600, 0.875rem): field labels, the drawer handle, title-bar account name. Hints and errors use the same size at 400.
@@ -450,7 +450,7 @@ A recessed 20-block segmented bar: 3px gaps, 0.75rem tall. Empty blocks are `lin
 - **Dialog:** the backdrop is `rgb(12 9 6 / 0.78)`.
 
 ### Navigation
-- **Rail:** `panel` cabinets with notched 6px corners. Hover raises them to `raised`. The selected cabinet is `raised` on a 4px `dirt-deep` step, with a 4px amber **coin-slot light** to its left. A lime LED square in the lower-right corner marks preparing or playing. A damaged instance is greyed to 40% with a coral warning diamond. A pack's own icon replaces the generated plot icon (40px, 3px notched corners), falling back to the plot icon if it fails to decode.
+- **Rail:** `panel` cabinets with notched 6px corners. Hover raises them to `raised`. The selected cabinet is `raised` on a 4px `dirt-deep` step, with a 4px amber **coin-slot light** to its left. A lime LED square in the lower-right corner marks preparing or playing. A damaged instance is greyed to 40% with a coral warning diamond. A pack's own icon replaces the generated plot icon (40px, 3px notched corners), falling back to the plot icon if it fails to decode. A server cabinet carries its last-known status as three pixel **signal bars** (2px wide, 4/7/10px tall) in a 14px notched `ground` socket at the **top-right** corner. The **count** of lit bars carries the state, so hue never carries it alone: online 3/3 in `ink`, starting 2/3 in `blue`, sleeping 1/3 in `ink-dim`, offline 0/3 with a 10 × 2px `coral` flatline along the socket's foot, unknown 0/3 (empty bars in a dim seam colour). It never uses lime, the LED's square or the LED's corner, so it can't be read as the Playing lamp. The status word is in the cabinet's accessible name and in its hover title ("Survival · Online · 3/20").
 - **Title bar:** flat text buttons 2.25rem tall in `ink-dim`. Hover shows `ink` on `raised`, and the close button's hover is `ground` on coral.
 - **Overflow menu:** a `raised` popover on a 6px `dirt-deep` step with a `line` ring. Items hover to `panel`, and danger items are coral.
 
@@ -458,7 +458,18 @@ A recessed 20-block segmented bar: 3px gaps, 0.75rem tall. Empty blocks are `lin
 A `panel` strip pinned to the bottom of `main`. The 2.25rem handle has a chevron, the label and a lime count badge when something runs. Opened, it is 18rem tall and holds instance tabs (when more than one), a labelled meter with tabular counts, the crash card, and the mono log on a `ground` well with a "follow" button.
 
 ### Update Plate
-The pack's update status, on the marquee above the name. It is the version plate's translucent laminate with notched 4px corners, led by an 8px square status lamp: **blue** when an update is on offer, **lime** when the pack just updated ("Updated to X · Kept your version of N files"). A failed check shows no lamp and sets its text in `ink-dim`. The change line is `ink-dim` so the title leads. Its action is a compact 2rem secondary button that is **never lit**, because Play owns the lit amber on Home. The plate's foot leaves room for the button's 4px step.
+The pack's update status, on the marquee above the name. It is the version plate's translucent laminate with notched 4px corners, led by an 8px square status lamp: **blue** when an update is on offer, **lime** when the pack just updated ("Updated to X · Kept your version of N files"). A failed check shows no lamp and sets its text in `ink-dim`. The change line is `ink-dim` so the title leads. Its action is a compact 2rem secondary button that is **never lit**, because Play owns the lit amber on Home. The plate's foot leaves room for the button's 4px step. Its layout is the shared `.plate-row`, which the server rows below reuse. A **server** instance's plate has the blue lamp and reads "Server updated · updates when you play" with no button, because a server instance always updates at Play.
+
+### Server surfaces
+- **Status readout** (`StatusPill`): an 8px square LED and the status word, 600-weight 0.875rem tabular, on a laminate chip with notched 4px corners. Set into a panel it gains the 1px `line` ring of a recessed readout; over marquee art it is a plain plate. LED: **lime** online, **blue** starting (blinking to `line` in two snapped frames, steady under reduced motion), **coral** offline, **hollow `ink-dim`** sleeping (a lamp switched off), **hollow and dimmer** unknown. Never amber. The word always carries the state ("Online · 3/20", "Sleeping · join to wake it").
+- **Server panel** on Home: small plates in the name column under the version plate, 0.5rem apart. The status readout and the address plate (an `ink-dim` "Address" label, the address in 13px mono, a compact ghost Copy that swaps to a check and "Copied", its accessible name following the label, with a polite sr-only "Address copied") share a wrapping row, then the invite-only plate and the dead-link plate follow when they apply. At 960px they wrap rather than truncate.
+- **Dead-link plate:** quiet, not an error card. The `.plate-row` led by an `ink-dim` pixel broken-link icon, the sentence in `ink`, and a compact raised "Use a new link" that is never lit. Only the sentence is the live region.
+- **Invite-only line:** `blue-ink` text led by an 18px pixel lock (info, not amber). On the Join screen it sits on the ground under the card; on Home it rides a laminate plate.
+- **Server card** (Join server): a `panel` with an icon window at left: a recessed `ground` well (6px notched, 0.5rem padding) holding the 64px server icon at a whole number of **device** pixels per icon pixel, at least 2 (`64 × k / devicePixelRatio` CSS px with `k = max(1, floor(2 × dpr))`: 128px at 1, 1.5 and 2 dppx, 102.4px at Windows' 125%; recomputed when the screen's scale changes; `image-rendering: pixelated`), or the generated plot icon at the same size when there is none or it fails to decode. Beside it: the 1.75rem Bungee name with the team mark, the MOTD, and the status readout. A `line` hairline separates the facts below: the version line in 600 weight, the pack line (tabular), and "From host" in `ink-dim`. Nothing on the card is lit.
+- **Team mark:** a 12px two-cell checker (two diagonal 6px cells) in the team's accent: cyan `#4cc6c9`, blue `#6f9cf0`, violet `#a888f2`, magenta `#e274c8`, anything else `ink-dim`. It is a crest from the land-plot grid, not a lamp, so it is never a solid square and never lit. The accents are the team's content, like § colours.
+- **MOTD:** uncoloured runs are `ink-dim`, as in the game. The 16 § colours keep their Minecraft identity but are lifted where needed to reach 4.5:1 on `panel` and on a plate over the brightest lamp: 0 `#9a9a9a`, 1 `#8a8aff`, 2 `#2bb82b`, 3 `#14b4b4`, 4 `#ff6464`, 5 `#d86ad8`, 6 `#ffaa00`, 7 `#c2c2c2`, 8 `#a6a6a6`, 9 `#9c9cff`, a `#55ff55`, b `#55ffff`, c `#ff7c7c`, d `#ff85ff`, e `#ffff55`, f `#ffffff`. They are text, never a fill or a control.
+- **Join server screen:** one lit button at a time. Until a server is on screen, "Check link" is the primary; once the card shows, it drops to secondary and "Add server" (or "Open", or "Use this link" when relinking) is the only amber, in the sticky action row with its `line` hairline. That row always holds Cancel, so a failed or unwanted link (an error card, a deep link) always has a way out. The name-mismatch warning is a 600-weight sentence led by the coral warning diamond.
+- **Instance settings, Server:** a section like Game: the "Invite from host" line, then Copy link and Use a new link as secondary buttons. Save stays the only primary.
 
 ### Dialogs for the pack flow
 - **Update ready:** one lit primary, "Update and play". The change line and kept line sit above a "Show what changed" disclosure whose names list is a well.
@@ -531,6 +542,7 @@ The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 P
 - **Do** fill progress block by block in blue with tabular counts in real MB, and never truncate the MB figure.
 - **Do** keep update actions raised, never lit: a status plate leads with a square lamp (blue offer, lime done), and the dialog's one primary is the only amber.
 - **Do** sink rows inside panels and dialogs as a `.well`, and scale pack art with nearest-neighbour only at 2x or more.
+- **Do** show a server's state as a square LED plus its word, keep the rail's server mark in signal bars at the top-right with the bar count carrying the state, and show a 64px server icon only at a whole number of device pixels per icon pixel.
 - **Do** pad `main` by the drawer's open height so Play is never covered, and keep primary form actions in a sticky row.
 - **Do** let attract-mode parallax stop under reduced motion. State changes snap.
 - **Do** list Browse results as rows on the ground split by inset seam hairlines, and make filters small 3px-step keys that sink into a slot with the lime lamp.
@@ -545,6 +557,7 @@ The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 P
 - **Don't** ease state changes or animate progress smoothly. Use `steps()` or snap.
 - **Don't** set sentences, labels or errors in Bungee. Don't set the log or paths in anything but Atkinson Hyperlegible Mono.
 - **Don't** use any hue as the only carrier of status. Pair it with a label, an icon or a shape.
+- **Don't** use amber for a status or a notice (sleeping, invite only). Amber only ever means act.
 - **Don't** reuse the PerlandDev Panel's cyan chamfered mark or HUD language, Modrinth branding or Mojang artwork. Marquees, plot icons and avatars are generated.
 - **Don't** show Modrinth branding in Browse. Show only a project's own title, summary, icon and gallery.
 - **Don't** box Browse results in cards or give a tag a step. Tags are flat ringed labels.

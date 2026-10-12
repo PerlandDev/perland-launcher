@@ -1,10 +1,11 @@
 //! One thin wrapper per UI command. All behavior lives in `launcher_app::AppCore`.
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
+use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AppInfo, BrowsePlanRequest, ContentFile, InstallPlanView, InstallResult, JavaTest,
+    AppInfo, BrowsePlanRequest, ContentFile, InstallPlanView, InstallResult, JavaTest, JoinPreview,
     ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackArtData, PackContents, PackStatus,
-    RunSnapshot, SearchRequest,
+    RunSnapshot, SearchRequest, ServerStatusView,
 };
 use launcher_core::{
     accounts::AccountsFile,
@@ -106,8 +107,8 @@ pub async fn account_remove(core: CoreState<'_>, uuid: String) -> Res<AccountsFi
 }
 
 #[tauri::command]
-pub async fn play(core: CoreState<'_>, id: String) -> Res<()> {
-    core.inner().play(&id).await
+pub async fn play(core: CoreState<'_>, id: String, join: Option<bool>) -> Res<()> {
+    core.inner().play_with(&id, join.unwrap_or(true)).await
 }
 
 #[tauri::command]
@@ -230,7 +231,7 @@ pub async fn pack_art(core: CoreState<'_>, id: String) -> Res<PackArtData> {
 }
 
 #[tauri::command]
-pub fn deep_link_take(core: CoreState<'_>) -> Option<String> {
+pub fn deep_link_take(core: CoreState<'_>) -> Option<DeepLink> {
     core.deep_link_take()
 }
 
@@ -286,6 +287,26 @@ pub fn open_link(app: AppHandle, url: String) -> Res<()> {
     app.opener().open_url(url, None::<&str>).map_err(|e| {
         LauncherError::pack(ErrorCode::LinkRefused, "That link can't be opened").with_detail(e)
     })
+}
+
+#[tauri::command]
+pub async fn join_preview(core: CoreState<'_>, link: String) -> Res<JoinPreview> {
+    core.join_preview(&link).await
+}
+
+#[tauri::command]
+pub async fn join_add(core: CoreState<'_>, link: String) -> Res<Instance> {
+    core.join_add(&link).await
+}
+
+#[tauri::command]
+pub async fn server_status(core: CoreState<'_>, id: String) -> Res<ServerStatusView> {
+    core.server_status(&id).await
+}
+
+#[tauri::command]
+pub async fn server_relink(core: CoreState<'_>, id: String, link: String) -> Res<Instance> {
+    core.server_relink(&id, &link).await
 }
 
 /// Called by the close dialog. Stopping waits a few seconds so the kills land before exit.

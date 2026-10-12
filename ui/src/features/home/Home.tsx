@@ -13,7 +13,8 @@ import { useSingleFlight } from '../../ui/useSingleFlight';
 import { DamagedView } from './DamagedView';
 import { EmptyState } from './EmptyState';
 import { InstanceMenu } from './InstanceMenu';
-import { isPack, versionLine } from './labels';
+import { ServerPanel } from '../servers/ServerPanel';
+import { isPack, isServer, versionLine } from './labels';
 import { ManualDownloads } from './ManualDownloads';
 import { pick } from './pick';
 import { UpdateDialog } from './UpdateDialog';
@@ -42,6 +43,7 @@ function InstanceView({ instance }: { instance: Instance }) {
             {instance.name}
           </h1>
           <p className="marquee-plate mt-3">{versionLine(t, instance)}</p>
+          {isServer(instance) && <ServerPanel instance={instance} />}
         </div>
         <div className="flex items-end gap-3">
           {/* "Mods & packs" is long. Its 1rem pad, the 1rem column gap and the name's 4.8vw size keep

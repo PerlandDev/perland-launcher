@@ -11,6 +11,7 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 launcher-core = { path = "../crates/launcher-core" }
+launcher-app = { path = "../crates/launcher-app" }
 
 # Its own workspace: `cargo test --workspace` never builds it (it needs nightly and libFuzzer).
 [workspace]
@@ -54,6 +55,20 @@ bench = false
 [[bin]]
 name = "pack_paths"
 path = "fuzz_targets/pack_paths.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "invite_link"
+path = "fuzz_targets/invite_link.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "join_deep_link"
+path = "fuzz_targets/join_deep_link.rs"
 test = false
 doc = false
 bench = false

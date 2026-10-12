@@ -7,6 +7,7 @@ import { CloseGuard } from './features/close-guard/CloseGuard';
 import { FirstRun } from './features/first-run/FirstRun';
 import { Home } from './features/home/Home';
 import { InstanceSettings } from './features/instance-settings/InstanceSettings';
+import { JoinServer } from './features/join/JoinServer';
 import { Mods } from './features/mods/Mods';
 import { NewInstance } from './features/new-instance/NewInstance';
 import { Rail } from './features/rail/Rail';
@@ -34,6 +35,8 @@ function Screen({ route }: { route: Route }) {
       return <NewInstance key={route.link ?? 'new'} link={route.link} />;
     case 'browse':
       return <Browse route={route} />;
+    case 'joinServer':
+      return <JoinServer key={`${route.invite}|${route.relinkFor ?? ''}`} invite={route.invite} relinkFor={route.relinkFor} />;
     case 'accounts':
       return <Accounts />;
     case 'settings':

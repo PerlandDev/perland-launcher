@@ -130,20 +130,41 @@ fn update_check_failed(e: LauncherError) -> LauncherError {
 }
 
 /// Stops a sync before its next file and before the swap. Once the swap starts the sync
-/// finishes, so a cancel never leaves an instance half-updated.
+/// finishes, so a cancel never leaves an instance half-updated. A wait (a server pack the
+/// Engine is still building) ends at once.
 #[derive(Debug, Clone, Default)]
-pub struct Cancel(Arc<AtomicBool>);
+pub struct Cancel(Arc<CancelState>);
+
+#[derive(Debug, Default)]
+struct CancelState {
+    flag: AtomicBool,
+    wake: tokio::sync::Notify,
+}
 
 impl Cancel {
     pub fn cancel(&self) {
-        self.0.store(true, Ordering::SeqCst);
+        self.0.flag.store(true, Ordering::SeqCst);
+        self.0.wake.notify_waiters();
     }
     pub fn is_cancelled(&self) -> bool {
-        self.0.load(Ordering::SeqCst)
+        self.0.flag.load(Ordering::SeqCst)
+    }
+    /// Done once `cancel` was called (at once if it already was).
+    pub async fn cancelled(&self) {
+        loop {
+            let woken = self.0.wake.notified();
+            tokio::pin!(woken);
+            // Registered before the flag is read, so a cancel in between still wakes it.
+            woken.as_mut().enable();
+            if self.is_cancelled() {
+                return;
+            }
+            woken.await;
+        }
     }
 }
 
-fn cancelled() -> LauncherError {
+pub(crate) fn sync_cancelled() -> LauncherError {
     LauncherError::pack(ErrorCode::SyncCancelled, "The update was cancelled")
 }
 
@@ -224,6 +245,7 @@ impl Syncer {
     /// under its data folder, and the real upstream addresses.
     pub fn for_installer(installer: Arc<Installer>, http: reqwest::Client) -> Self {
         let sources = Sources {
+            invites: crate::invite::InviteClient::new(http.clone()),
             http,
             meta: installer.meta.clone(),
             downloader: installer.downloader.clone(),
@@ -321,6 +343,17 @@ impl Syncer {
         store: &InstanceStore,
         instance: &Instance,
     ) -> Result<Option<PendingUpdate>> {
+        self.find_update_with(store, instance, &crate::events::noop_sink())
+            .await
+    }
+
+    /// `find_update`, telling `sink` about long waits (a server pack still being built).
+    pub async fn find_update_with(
+        &self,
+        store: &InstanceStore,
+        instance: &Instance,
+        sink: &EventSink,
+    ) -> Result<Option<PendingUpdate>> {
         if instance.update_policy == UpdatePolicy::Pinned {
             return Ok(None);
         }
@@ -346,7 +379,7 @@ impl Syncer {
             None => {
                 let desired = self
                     .sources
-                    .resolve(&source)
+                    .resolve_with(&source, sink, &Cancel::default())
                     .await
                     .map_err(update_check_failed)?;
                 self.resolved
@@ -386,7 +419,7 @@ impl Syncer {
         if instance.source == SourceRef::None {
             return Err(no_pack());
         }
-        let (update, check_warning) = match self.find_update(store, &instance).await {
+        let (update, check_warning) = match self.find_update_with(store, &instance, sink).await {
             Ok(update) => (update, None),
             Err(e) => (None, Some(e)),
         };
@@ -417,7 +450,10 @@ impl Syncer {
             return Err(no_pack());
         }
         let Some(installed) = self.installed(store, id).await else {
-            let desired = self.sources.resolve(&instance.source).await?;
+            let desired = self
+                .sources
+                .resolve_with(&instance.source, sink, cancel)
+                .await?;
             let outcome = self.sync_inner(store, id, &desired, sink, cancel).await?;
             self.after_sync(store, id, &desired, &outcome, None).await?;
             return Ok(Ensured {
@@ -450,7 +486,7 @@ impl Syncer {
             Err(e) if e.category == ErrorCategory::Network => {
                 // A Stop that raced the failed download is a Stop, not a reason to fall back.
                 if cancel.is_cancelled() {
-                    return Err(cancelled());
+                    return Err(sync_cancelled());
                 }
                 let warning = update_download_failed(&installed.pack_version, e);
                 let outcome = self.sync_inner(store, id, &installed, sink, cancel).await?;
@@ -641,7 +677,7 @@ impl Syncer {
         // swap that stops halfway resumes toward it, even offline, instead of toward the old
         // version (whose leftovers would sit next to the new files as "additions").
         if cancel.is_cancelled() {
-            return Err(cancelled());
+            return Err(sync_cancelled());
         }
         save_pack(&perland, desired).await?;
         let trash_dir = apply::trash_folder(&perland, now);
@@ -784,7 +820,7 @@ impl Syncer {
             return Err(e);
         }
         if cancel.is_cancelled() {
-            return Err(cancelled());
+            return Err(sync_cancelled());
         }
         if blocked.is_empty() {
             Ok(Ok(staged))

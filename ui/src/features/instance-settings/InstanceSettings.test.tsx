@@ -1,6 +1,8 @@
 import { act, fireEvent, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import type { Instance } from '../../ipc/schema';
+import { routeSnapshot } from '../../state/route';
+import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { InstanceSettings } from './InstanceSettings';
 
@@ -158,4 +160,32 @@ it("sets a pack's update policy and leaves its game to the pack", async () => {
   const [sentArgs] = sent(calls, 'instance_update') as { instance: Instance }[];
   expect(sentArgs!.instance.updatePolicy).toBe('auto');
   expect(sentArgs!.instance.game).toEqual({ minecraft: '1.20.1', loader: { kind: 'forge', version: '47.4.22' } });
+});
+
+it('shows a server section and no Updates control for a server instance', async () => {
+  const { user } = renderApp(<InstanceSettings id="survival" />, { server: 'online' });
+  expect(await screen.findByText('Invite from play.example.com')).toBeInTheDocument();
+  expect(screen.queryByRole('radio', { name: 'Automatic' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Copy link' }));
+  expect(await navigator.clipboard.readText()).toBe(`https://play.example.com/${'A'.repeat(43)}`);
+  await user.click(screen.getByRole('button', { name: 'Use a new link' }));
+  expect(routeSnapshot()).toEqual({ name: 'joinServer', invite: '', relinkFor: 'survival' });
+});
+
+it('keeps a running server on its link, and says why', async () => {
+  renderApp(<InstanceSettings id="survival" />, { server: 'online' });
+  await screen.findByText('Invite from play.example.com');
+  act(() => runStore.apply({ type: 'run_state', instance: 'survival', state: 'syncing', exit: null, update: null }));
+  const button = screen.getByRole('button', { name: 'Use a new link' });
+  expect(button).toBeDisabled();
+  expect(button).toHaveAccessibleDescription('Stop the game to use a new link.');
+  act(() => runStore.apply({ type: 'run_state', instance: 'survival', state: 'idle', exit: null, update: null }));
+  expect(screen.getByRole('button', { name: 'Use a new link' })).toBeEnabled();
+  expect(screen.queryByText('Stop the game to use a new link.')).not.toBeInTheDocument();
+});
+
+it('keeps the Server section off plain and pack instances', async () => {
+  renderApp(<InstanceSettings id="sky-islands" />);
+  await screen.findByRole('radio', { name: 'Automatic' });
+  expect(screen.queryByRole('heading', { name: 'Server' })).not.toBeInTheDocument();
 });

@@ -25,8 +25,9 @@ use crate::{
     events::{Event, EventSink},
     fsutil::write_atomic,
     install::{classpath, ResolvedVersion},
+    instances::ServerAddress,
     meta::{
-        mojang::LEGACY_JVM_ARGS,
+        mojang::{ArgValue, VersionJson, LEGACY_JVM_ARGS},
         rules::{resolve_args, RuleContext},
     },
     paths::LauncherDirs,
@@ -44,6 +45,9 @@ pub struct LaunchSpec<'a> {
     pub memory_mb: u32,
     pub platform: Platform,
     pub launcher_version: &'a str,
+    /// Join this server once the game starts: quick play where the version supports it,
+    /// `--server`/`--port` elsewhere.
+    pub join: Option<&'a ServerAddress>,
 }
 
 #[derive(Clone)]
@@ -173,9 +177,29 @@ fn path_str(p: &Path) -> String {
     p.to_string_lossy().into_owned()
 }
 
+/// The feature a version JSON declares when it takes `--quickPlayMultiplayer` (1.20 and later).
+pub const QUICK_PLAY_MULTIPLAYER: &str = "is_quick_play_multiplayer";
+
+/// Does the version (with its loader merged in) declare `feature` in a game-argument rule?
+pub fn declares_feature(json: &VersionJson, feature: &str) -> bool {
+    json.arguments.as_ref().is_some_and(|a| {
+        a.game.iter().any(|arg| match arg {
+            ArgValue::Conditional { rules, .. } => rules
+                .iter()
+                .any(|r| r.features.as_ref().is_some_and(|f| f.contains_key(feature))),
+            ArgValue::Plain(_) => false,
+        })
+    })
+}
+
 pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
-    let ctx = RuleContext::new(spec.platform);
     let json = &spec.resolved.json;
+    let quick_play = spec.join.is_some() && declares_feature(json, QUICK_PLAY_MULTIPLAYER);
+    let ctx = if quick_play {
+        RuleContext::new(spec.platform).with_feature(QUICK_PLAY_MULTIPLAYER)
+    } else {
+        RuleContext::new(spec.platform)
+    };
     let classpath = classpath(spec.resolved, spec.dirs, &ctx)?;
     let cp_string = classpath
         .iter()
@@ -189,7 +213,7 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
         .or_else(|| json.assets.clone())
         .unwrap_or_default();
     let s = spec.session;
-    let vars: HashMap<&str, String> = HashMap::from([
+    let mut vars: HashMap<&str, String> = HashMap::from([
         ("auth_player_name", s.username.clone()),
         ("version_name", json.id.clone()),
         ("game_directory", path_str(spec.game_dir)),
@@ -223,6 +247,9 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
         ),
         ("library_directory", path_str(&spec.dirs.libraries())),
     ]);
+    if let (true, Some(address)) = (quick_play, spec.join) {
+        vars.insert("quickPlayMultiplayer", address.display());
+    }
 
     let mut args = vec![format!("-Xmx{}M", spec.memory_mb)];
     match &json.arguments {
@@ -252,6 +279,15 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
             )
             .with_param("version", &json.id))
         }
+    }
+    if let (false, Some(address)) = (quick_play, spec.join) {
+        // 1.13–1.19 and legacy `minecraftArguments`: the older flags every version still reads.
+        args.extend([
+            "--server".to_string(),
+            address.host.clone(),
+            "--port".to_string(),
+            address.port.to_string(),
+        ]);
     }
     Ok(LaunchCommand {
         program: spec.java.to_path_buf(),
@@ -566,11 +602,20 @@ mod tests {
     use super::*;
     use crate::{
         accounts::offline_account,
-        meta::merge::merge,
-        test_support::{version, LINUX_X64, WINDOWS_X64},
+        instances::ServerAddress,
+        meta::{merge::merge, mojang::ArgValue},
+        test_support::{forge_resolved, version, LINUX_X64, WINDOWS_X64},
     };
 
     fn build(resolved: &ResolvedVersion, platform: Platform) -> LaunchCommand {
+        build_joining(resolved, platform, None)
+    }
+
+    fn build_joining(
+        resolved: &ResolvedVersion,
+        platform: Platform,
+        join: Option<&ServerAddress>,
+    ) -> LaunchCommand {
         let dirs = LauncherDirs::new("/pl");
         let session = offline_account("Steve").unwrap().offline_session();
         build_command(&LaunchSpec {
@@ -582,8 +627,125 @@ mod tests {
             memory_mb: 4096,
             platform,
             launcher_version: "0.1.0",
+            join,
         })
         .unwrap()
+    }
+
+    fn server() -> ServerAddress {
+        ServerAddress::new("play.example.com", 25566).unwrap()
+    }
+
+    fn vanilla(file: &str, id: &str) -> ResolvedVersion {
+        ResolvedVersion {
+            vanilla_id: id.into(),
+            json: version(file),
+            forge: None,
+        }
+    }
+
+    #[test]
+    fn quick_play_joins_on_1_20_1() {
+        let cmd = build_joining(
+            &vanilla("1.20.1.json", "1.20.1"),
+            WINDOWS_X64,
+            Some(&server()),
+        );
+        assert_eq!(
+            arg_after(&cmd.args, "--quickPlayMultiplayer"),
+            "play.example.com:25566"
+        );
+        assert!(!cmd.args.contains(&"--server".to_string()));
+        assert!(
+            !cmd.args.contains(&"--quickPlayPath".to_string()),
+            "only the multiplayer feature is on"
+        );
+        assert!(!cmd.args.iter().any(|a| a.contains("${")), "{:?}", cmd.args);
+    }
+
+    #[test]
+    fn quick_play_brackets_an_ipv6_address() {
+        let v6 = ServerAddress::new("2001:db8::1", 25565).unwrap();
+        let cmd = build_joining(&vanilla("1.20.1.json", "1.20.1"), WINDOWS_X64, Some(&v6));
+        assert_eq!(
+            arg_after(&cmd.args, "--quickPlayMultiplayer"),
+            "[2001:db8::1]:25565"
+        );
+    }
+
+    #[test]
+    fn legacy_versions_join_with_server_and_port() {
+        let cmd = build_joining(
+            &vanilla("1.12.2.json", "1.12.2"),
+            LINUX_X64,
+            Some(&server()),
+        );
+        assert_eq!(arg_after(&cmd.args, "--server"), "play.example.com");
+        assert_eq!(arg_after(&cmd.args, "--port"), "25566");
+        assert!(!cmd.args.iter().any(|a| a.starts_with("--quickPlay")));
+        let forge = ResolvedVersion {
+            vanilla_id: "1.12.2".into(),
+            json: merge(
+                version("1.12.2.json"),
+                version("forge-1.12.2-14.23.5.2860-version.json"),
+            ),
+            forge: None,
+        };
+        let cmd = build_joining(&forge, LINUX_X64, Some(&server()));
+        assert_eq!(arg_after(&cmd.args, "--server"), "play.example.com");
+    }
+
+    #[test]
+    fn modern_versions_without_quick_play_join_with_server_and_port() {
+        let mut json = version("1.20.1.json");
+        json.arguments.as_mut().unwrap().game.retain(|arg| {
+            !matches!(arg, ArgValue::Conditional { rules, .. }
+                if rules.iter().any(|r| r.features.as_ref().is_some_and(|f| f.keys().any(|k| k.contains("quick_play")))))
+        });
+        assert!(!declares_feature(&json, QUICK_PLAY_MULTIPLAYER));
+        let resolved = ResolvedVersion {
+            vanilla_id: "1.20.1".into(),
+            json,
+            forge: None,
+        };
+        let cmd = build_joining(&resolved, WINDOWS_X64, Some(&server()));
+        assert_eq!(arg_after(&cmd.args, "--server"), "play.example.com");
+        assert_eq!(arg_after(&cmd.args, "--port"), "25566");
+        assert!(!cmd.args.contains(&"--quickPlayMultiplayer".to_string()));
+    }
+
+    #[test]
+    fn loaders_inherit_quick_play_through_the_merge() {
+        let fabric = ResolvedVersion {
+            vanilla_id: "1.20.1".into(),
+            json: merge(
+                version("1.20.1.json"),
+                version("fabric-1.20.1-0.16.14.json"),
+            ),
+            forge: None,
+        };
+        let cmd = build_joining(&fabric, WINDOWS_X64, Some(&server()));
+        assert_eq!(
+            arg_after(&cmd.args, "--quickPlayMultiplayer"),
+            "play.example.com:25566"
+        );
+        let cmd = build_joining(&forge_resolved(), WINDOWS_X64, Some(&server()));
+        assert_eq!(
+            arg_after(&cmd.args, "--quickPlayMultiplayer"),
+            "play.example.com:25566"
+        );
+    }
+
+    #[test]
+    fn without_a_server_nothing_is_added() {
+        for resolved in [
+            vanilla("1.20.1.json", "1.20.1"),
+            vanilla("1.12.2.json", "1.12.2"),
+        ] {
+            let cmd = build(&resolved, WINDOWS_X64);
+            assert!(!cmd.args.contains(&"--server".to_string()));
+            assert!(!cmd.args.iter().any(|a| a.starts_with("--quickPlay")));
+        }
     }
 
     fn arg_after<'a>(args: &'a [String], flag: &str) -> &'a str {

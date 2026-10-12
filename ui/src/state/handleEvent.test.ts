@@ -83,7 +83,7 @@ it('leaves the drawer closed when files need a manual download', () => {
 });
 
 it('opens New instance with a deep link once setup is done', async () => {
-  mockIPC((cmd) => (cmd === 'deep_link_take' ? 'https://x.example/pack.toml' : null));
+  mockIPC((cmd) => (cmd === 'deep_link_take' ? { kind: 'pack', url: 'https://x.example/pack.toml' } : null));
   queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: false });
   handleEvent({ type: 'deep_link' });
   await new Promise((r) => setTimeout(r, 10));
@@ -105,4 +105,20 @@ it('sends install progress to its own store, not the run', () => {
   });
   expect(runStore.run('asalith-fields').progress).toBeNull();
   expect(contentProgressSnapshot('asalith-fields')?.done).toBe(1);
+});
+
+it('opens Join server for a join deep link', async () => {
+  const invite = `https://play.example.com/${'A'.repeat(43)}`;
+  mockIPC((cmd) => (cmd === 'deep_link_take' ? { kind: 'join', invite } : null));
+  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true });
+  handleEvent({ type: 'deep_link' });
+  await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'joinServer', invite }));
+  queryClient.clear();
+});
+
+it('an ended run refreshes a server instance status', () => {
+  const spy = vi.spyOn(queryClient, 'invalidateQueries');
+  handleEvent({ type: 'run_state', instance: 'survival', state: 'idle', exit: exitOf({ code: 0 }), update: null });
+  expect(spy.mock.calls.map(([f]) => f?.queryKey)).toContainEqual(qk.serverStatus('survival'));
+  spy.mockRestore();
 });

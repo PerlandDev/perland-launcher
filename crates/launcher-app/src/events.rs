@@ -84,7 +84,7 @@ pub enum AppEvent {
         instance: Option<String>,
         error: LauncherError,
     },
-    /// A `perland://pack` link arrived; the UI asks for it with `deep_link_take`.
+    /// A `perland://` link arrived; the UI asks for it with `deep_link_take`.
     DeepLink,
 }
 

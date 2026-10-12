@@ -54,3 +54,18 @@ it('opens Browse from the rail', async () => {
   await user.click(await screen.findByRole('button', { name: 'Browse' }));
   expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
 });
+
+it('marks a server with its last status, in words too', async () => {
+  const { container } = renderApp(<Rail />, { server: 'online' });
+  expect(await screen.findByRole('button', { name: 'Survival, Online · 3/20' })).toBeInTheDocument();
+  expect(container.querySelectorAll('.rail-server')).toHaveLength(1);
+  expect(container.querySelector('.rail-server')).toHaveAttribute('data-status', 'online');
+  expect(container.querySelector('.rail-led')).toBeNull();
+});
+
+it("shows a server's status word on hover too", async () => {
+  renderApp(<Rail />, { server: 'starting' });
+  const survival = await screen.findByRole('button', { name: 'Survival, Starting' });
+  expect(survival).toHaveAttribute('title', 'Survival · Starting');
+  expect(screen.getByRole('button', { name: 'Creative Flat' })).toHaveAttribute('title', 'Creative Flat');
+});

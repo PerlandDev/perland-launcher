@@ -31,6 +31,7 @@ export function handleEvent(event: AppEvent) {
       qk.packArt(id),
       qk.contentFiles(id, 'resource_pack'),
       qk.contentFiles(id, 'shader'),
+      qk.serverStatus(id),
     ];
     for (const queryKey of keys) {
       void queryClient.invalidateQueries({ queryKey });

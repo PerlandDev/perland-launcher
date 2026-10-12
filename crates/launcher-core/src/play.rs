@@ -6,7 +6,8 @@ use crate::{
     error::{ErrorCode, LauncherError, Result},
     events::EventSink,
     install::{Installer, ResolvedVersion},
-    instances::{Instance, InstanceStore},
+    instances::{Instance, InstanceStore, ServerAddress, SourceRef},
+    invite::InviteLink,
     java,
     launch::{self, GameProcess, LaunchCommand, LaunchSpec, Redactor},
     paths::LauncherDirs,
@@ -71,6 +72,8 @@ pub struct StartSpec<'a> {
     pub session: &'a Session,
     pub platform: Platform,
     pub launcher_version: &'a str,
+    /// The server to join, if any (a server instance played with "join").
+    pub join: Option<&'a ServerAddress>,
 }
 
 pub fn command(spec: &StartSpec) -> Result<LaunchCommand> {
@@ -83,7 +86,20 @@ pub fn command(spec: &StartSpec) -> Result<LaunchCommand> {
         memory_mb: spec.instance.java.memory_mb,
         platform: spec.platform,
         launcher_version: spec.launcher_version,
+        join: spec.join,
     })
+}
+
+/// Scrubs the game's output and log: the access token, the home folder, and a server
+/// instance's invite token.
+pub fn redactor_for(spec: &StartSpec) -> Redactor {
+    let mut redactor = Redactor::for_current_user().with_secret(spec.session.access_token.clone());
+    if let SourceRef::Perland { invite, .. } = &spec.instance.source {
+        if let Ok(link) = InviteLink::parse(invite) {
+            redactor = redactor.with_secret(link.token().to_string());
+        }
+    }
+    redactor
 }
 
 /// Fail before spawning when Java or a classpath entry is missing.
@@ -125,7 +141,7 @@ pub async fn start(spec: &StartSpec<'_>, sink: EventSink) -> Result<GameProcess>
         )
         .await?;
     }
-    let redactor = Redactor::for_current_user().with_secret(spec.session.access_token.clone());
+    let redactor = redactor_for(spec);
     let log = spec
         .dirs
         .logs()
@@ -147,7 +163,7 @@ mod tests {
     use super::*;
     use crate::{
         accounts::offline_account,
-        instances::{GameSpec, InstanceStore},
+        instances::{GameSpec, InstanceStore, SourceRef},
         test_support::version,
         ErrorCode,
     };
@@ -200,6 +216,7 @@ mod tests {
             session: &session,
             platform: Platform::current(),
             launcher_version: "0.1.0",
+            join: None,
         };
         let err = start(&spec, crate::events::noop_sink())
             .await
@@ -243,7 +260,54 @@ mod tests {
             session: &session,
             platform: Platform::current(),
             launcher_version: "0.1.0",
+            join: None,
         };
         assert_eq!(java_major(&spec).await, Some(17));
+    }
+
+    #[tokio::test]
+    async fn the_redactor_masks_a_server_instances_invite_token() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = LauncherDirs::new(tmp.path());
+        let store = InstanceStore::new(dirs.instances());
+        let mut instance = store
+            .create(
+                "Survival",
+                GameSpec {
+                    minecraft: "1.20.1".into(),
+                    loader: None,
+                },
+            )
+            .await
+            .unwrap();
+        let token = "B".repeat(43);
+        let invite = format!("https://play.example.com/{token}");
+        instance.source = SourceRef::Perland {
+            invite: invite.clone(),
+            engine: "https://api.example.com/".into(),
+        };
+        let prepared = Prepared {
+            resolved: ResolvedVersion {
+                vanilla_id: "1.20.1".into(),
+                json: version("1.20.1.json"),
+                forge: None,
+            },
+            java: tmp.path().join("java.exe"),
+        };
+        let session = offline_account("Steve").unwrap().offline_session();
+        let game_dir = store.game_dir(&instance.id);
+        let spec = StartSpec {
+            dirs: &dirs,
+            game_dir: &game_dir,
+            instance: &instance,
+            prepared: &prepared,
+            session: &session,
+            platform: Platform::current(),
+            launcher_version: "0.1.0",
+            join: None,
+        };
+        let line = redactor_for(&spec).redact(&format!("[Server] joined via {invite}"));
+        assert!(!line.contains(&token), "{line}");
+        assert!(line.contains("<redacted>"), "{line}");
     }
 }
