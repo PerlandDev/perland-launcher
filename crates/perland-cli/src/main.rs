@@ -292,6 +292,7 @@ async fn launch_instance(
         session: &session,
         platform,
         launcher_version: env!("CARGO_PKG_VERSION"),
+        join: None,
     };
 
     if dry_run {

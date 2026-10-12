@@ -118,6 +118,7 @@ impl Runner for CoreRunner {
                 session: &session,
                 platform: installer.platform,
                 launcher_version: &version,
+                join: None,
             };
             let game = play::start(&spec, sink).await?;
             Ok(Box::new(game) as Box<dyn RunningGame>)
