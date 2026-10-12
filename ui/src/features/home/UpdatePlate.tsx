@@ -20,7 +20,7 @@ export function UpdatePlate({ instance }: { instance: Instance }) {
   if (synced) {
     const kept = synced.keptModified.length;
     return (
-      <p className="marquee-plate update-plate mb-3" data-lamp="ok" role="status">
+      <p className="marquee-plate plate-row mb-3" data-lamp="ok" role="status">
         {t('update.updatedTo', { version: synced.toVersion })}
         {kept > 0 && ` · ${t('update.kept', { count: kept })}`}
       </p>
@@ -30,7 +30,7 @@ export function UpdatePlate({ instance }: { instance: Instance }) {
   if (isServer(instance)) {
     // Server instances always update when played: the plate only says so, with no Update button.
     return update ? (
-      <p className="marquee-plate mb-3" role="status">
+      <p className="marquee-plate plate-row mb-3" data-lamp="info" role="status">
         {t('server.updated')}
       </p>
     ) : null;
@@ -38,7 +38,7 @@ export function UpdatePlate({ instance }: { instance: Instance }) {
   if (update) {
     const counts = { added: update.added.length, updated: update.updated.length, removed: update.removed.length };
     return (
-      <div className="marquee-plate update-plate mb-3" data-lamp="info" role="status">
+      <div className="marquee-plate plate-row mb-3" data-lamp="info" role="status">
         <span className="font-semibold">
           {update.fromVersion
             ? t('update.title', { from: update.fromVersion, to: update.toVersion })

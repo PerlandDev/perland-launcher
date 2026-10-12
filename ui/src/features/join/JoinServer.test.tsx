@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
 import { MOCK_INVITE } from '../../ipc/mockServers';
@@ -26,6 +26,16 @@ describe('JoinServer', () => {
     const { calls } = renderApp(<JoinServer invite={`https://PLAY.example.com/${'B'.repeat(43)}/`} />, { server: 'online' });
     expect(await screen.findByRole('heading', { name: 'survival' })).toBeInTheDocument();
     expect(sent(calls, 'join_preview')).toEqual([{ link: OTHER }]);
+  });
+
+  it("falls back to the generated icon when the server's icon fails to decode", async () => {
+    renderApp(<JoinServer invite={OTHER} />, { server: 'online' });
+    const card = (await screen.findByRole('heading', { name: 'survival' })).closest('article')!;
+    const icon = card.querySelector('img')!;
+    expect(icon).toHaveAttribute('width', '128');
+    fireEvent.error(icon);
+    expect(card.querySelector('img')).toBeNull();
+    expect(card.querySelector('.server-icon svg')).not.toBeNull();
   });
 
   it('offers Open for a server that is already added', async () => {

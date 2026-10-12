@@ -3,14 +3,15 @@ import { useTranslation } from 'react-i18next';
 import { isLauncherError } from '../../ipc/errors';
 import { inviteCanonical, isInviteLink } from '../../ipc/inviteLink';
 import type { LauncherError } from '../../ipc/schema';
-import { useActiveAccountName, useInstances, useJoinAdd, useJoinPreview, useServerRelink } from '../../state/queries';
+import { useInstances, useJoinAdd, useJoinPreview, useServerRelink } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { copyText } from '../../ui/copyText';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { Copy } from '../../ui/Icon';
+import { Copy, WarningDiamond } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
+import { InviteOnly } from '../servers/InviteOnly';
 import { ServerCard } from './ServerCard';
 
 const notAnInvite: LauncherError = {
@@ -27,7 +28,6 @@ const notAnInvite: LauncherError = {
 export function JoinServer({ invite, relinkFor }: { invite: string; relinkFor?: string }) {
   const { t } = useTranslation();
   const listing = useInstances();
-  const account = useActiveAccountName();
   const [draft, setDraft] = useState(invite);
   const [link, setLink] = useState(invite.trim());
   const valid = isInviteLink(link);
@@ -73,7 +73,8 @@ export function JoinServer({ invite, relinkFor }: { invite: string; relinkFor?: 
                 onChange={(e) => setDraft(e.target.value)}
               />
             </Field>
-            <Button type="submit" disabled={!draft.trim()}>
+            {/* Until a server is on screen, checking the link is the act; then the screen's own button is. */}
+            <Button type="submit" variant={data ? 'secondary' : 'primary'} disabled={!draft.trim()}>
               {t('join.check')}
             </Button>
           </form>
@@ -92,14 +93,17 @@ export function JoinServer({ invite, relinkFor }: { invite: string; relinkFor?: 
           />
         )}
         {data && <ServerCard preview={data} />}
-        {data?.whitelisted && (
-          <p className="invite-only">{account ? t('join.inviteOnly', { name: account }) : t('join.inviteOnlyNoAccount')}</p>
+        {data?.whitelisted && <InviteOnly />}
+        {mismatch && (
+          <p role="alert" className="flex items-start gap-2 font-semibold">
+            <WarningDiamond className="mt-0.5 h-5 w-5 flex-none text-coral" aria-hidden />
+            {t('join.mismatch', { new: data.name, old: oldName })}
+          </p>
         )}
-        {mismatch && <p role="alert">{t('join.mismatch', { new: data.name, old: oldName })}</p>}
         {add.isError && <ErrorCard error={add.error} />}
         {relink.isError && <ErrorCard error={relink.error} />}
         {data && (
-          <div className="sticky bottom-0 flex items-center justify-end gap-4 bg-ground py-4">
+          <div className="sticky bottom-0 flex items-center justify-end gap-4 bg-ground py-4 shadow-[0_-1px_0_var(--color-line)]">
             {!relinkFor && !data.existing && <p className="text-sm text-ink-dim">{t('join.note')}</p>}
             <Button onClick={() => navigate({ name: 'home', id: relinkFor ?? null })}>{t('common.cancel')}</Button>
             <Button variant="primary" size="lg" disabled={busy} onClick={go}>

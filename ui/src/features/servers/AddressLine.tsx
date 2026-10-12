@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { ServerAddress } from '../../ipc/schema';
 import { Button } from '../../ui/Button';
 import { copyText } from '../../ui/copyText';
-import { Copy } from '../../ui/Icon';
+import { Check, Copy } from '../../ui/Icon';
 import { addressText } from '../home/labels';
 
 /** The address players type, with Copy. */
@@ -19,7 +19,7 @@ export function AddressLine({ address }: { address: ServerAddress | null }) {
       clearTimeout(timer.current);
     };
   }, []);
-  if (!address) return <p className="text-sm text-ink-dim">{t('server.noAddress')}</p>;
+  if (!address) return <p className="marquee-plate text-sm text-ink-dim">{t('server.noAddress')}</p>;
   const text = addressText(address);
   const copy = () =>
     void copyText(text).then((ok) => {
@@ -29,10 +29,10 @@ export function AddressLine({ address }: { address: ServerAddress | null }) {
       timer.current = setTimeout(() => setCopied(false), 2000);
     });
   return (
-    <p className="flex flex-wrap items-center gap-3">
-      <span className="text-ink-dim">{t('server.address')}</span>
-      <span className="selectable font-mono">{text}</span>
-      <Button variant="ghost" icon={<Copy />} aria-label={t('server.copyAddress')} onClick={copy}>
+    <p className="marquee-plate plate-row">
+      <span className="text-sm text-ink-dim">{t('server.address')}</span>
+      <span className="selectable font-mono text-[13px]">{text}</span>
+      <Button variant="ghost" icon={copied ? <Check /> : <Copy />} aria-label={t('server.copyAddress')} onClick={copy}>
         {copied ? t('common.copied') : t('common.copy')}
       </Button>
     </p>
