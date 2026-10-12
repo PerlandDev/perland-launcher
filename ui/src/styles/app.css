@@ -739,3 +739,39 @@
     color: var(--color-coral);
   }
 }
+
+@layer components {
+  .browse-controls {
+    display: grid;
+    grid-template-columns: minmax(14rem, 1fr) repeat(3, minmax(9rem, auto));
+    align-items: end;
+    gap: 0.75rem;
+  }
+  .browse-list {
+    display: grid;
+    gap: 0.75rem;
+  }
+  .browse-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 1rem;
+  }
+  .browse-row-open {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: start;
+    gap: 1rem;
+    min-width: 0;
+  }
+  .browse-icon {
+    image-rendering: auto;
+  }
+  .browse-scope {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+}

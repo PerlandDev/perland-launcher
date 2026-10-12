@@ -21,3 +21,8 @@ export function formatCount(n: number, lang: string): string {
 export function formatGb(mb: number, lang: string): string {
   return new Intl.NumberFormat(lang, { maximumFractionDigits: 1 }).format(mb / 1024);
 }
+
+/** 81000000 → "81M" (es: "81 M"), for download and follow counts. */
+export function formatCompact(n: number, lang: string): string {
+  return new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+}
