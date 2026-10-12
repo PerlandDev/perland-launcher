@@ -38,7 +38,12 @@ export const useAppInfo = () => useQuery({ queryKey: qk.appInfo, queryFn: comman
 export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: commands.settingsGet });
 export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: commands.instancesList });
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
-export const useMcVersions = (enabled = true) =>
+/** The active account's name, or null while loading or when there is none. */
+export function useActiveAccountName(): string | null {
+  const { data } = useAccounts();
+  return data?.accounts.find((a) => a.uuid === data.active)?.username ?? null;
+}
+export const useMcVersions =(enabled = true) =>
   useQuery({ queryKey: qk.mcVersions, queryFn: commands.catalogMinecraft, staleTime: TEN_MINUTES, enabled });
 export const useLoaderVersions = (kind: LoaderKind | null, mc: string | null) =>
   useQuery({

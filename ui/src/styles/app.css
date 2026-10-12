@@ -738,4 +738,90 @@
     height: 1.125rem;
     color: var(--color-coral);
   }
+
+  /* Server status and MOTD: plain placeholders until the visual pass (Task 20). */
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+  }
+  .status-led {
+    width: 0.625rem;
+    height: 0.625rem;
+    background: var(--color-ink-dim);
+  }
+  .status-pill[data-status='online'] .status-led {
+    background: var(--color-lime);
+  }
+  .status-pill[data-status='starting'] .status-led {
+    background: var(--color-blue-ink);
+  }
+  .status-pill[data-status='sleeping'] .status-led {
+    background: var(--color-amber);
+  }
+  .status-pill[data-status='offline'] .status-led {
+    background: var(--color-coral);
+  }
+  .team-mark {
+    width: 0.75rem;
+    height: 0.75rem;
+    background: var(--color-ink-dim);
+  }
+  .server-icon {
+    image-rendering: pixelated;
+    flex: none;
+  }
+  .invite-only {
+    color: var(--color-amber-hi);
+  }
+  /* Minecraft's 16 text colours, nudged where needed to read on the dark ground. */
+  .mc-0 {
+    color: #8a8a8a;
+  }
+  .mc-1 {
+    color: #5a5aff;
+  }
+  .mc-2 {
+    color: #00aa00;
+  }
+  .mc-3 {
+    color: #00aaaa;
+  }
+  .mc-4 {
+    color: #ff5555;
+  }
+  .mc-5 {
+    color: #aa00aa;
+  }
+  .mc-6 {
+    color: #ffaa00;
+  }
+  .mc-7 {
+    color: #aaaaaa;
+  }
+  .mc-8 {
+    color: #7a7a7a;
+  }
+  .mc-9 {
+    color: #5555ff;
+  }
+  .mc-a {
+    color: #55ff55;
+  }
+  .mc-b {
+    color: #55ffff;
+  }
+  .mc-c {
+    color: #ff5555;
+  }
+  .mc-d {
+    color: #ff55ff;
+  }
+  .mc-e {
+    color: #ffff55;
+  }
+  .mc-f {
+    color: #ffffff;
+  }
 }
