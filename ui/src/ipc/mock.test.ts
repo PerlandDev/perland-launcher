@@ -251,11 +251,19 @@ describe('scripted runs', () => {
   });
 
   it('scripts a pack the server is still building', async () => {
-    const backend = installMock({ server: 'pending' });
-    await backend.handle('play', { id: 'survival' });
-    expect(backend.state.runs.get('survival')?.state).toBe('checking');
-    await vi.waitFor(() => expect(backend.state.runs.get('survival')?.state).toBe('running'), { timeout: 8000 });
-    stopMockRuns();
-    clearMocks();
+    vi.useFakeTimers();
+    try {
+      const backend = installMock({ server: 'pending' });
+      await backend.handle('play', { id: 'survival' });
+      expect(backend.state.runs.get('survival')?.state).toBe('checking');
+      await vi.advanceTimersByTimeAsync(1_500); // still waiting on the server's pack
+      expect(backend.state.runs.get('survival')?.state).toBe('checking');
+      await vi.advanceTimersByTimeAsync(4_000); // 2 s of waiting, then queued, preparing and running
+      expect(backend.state.runs.get('survival')?.state).toBe('running');
+    } finally {
+      stopMockRuns();
+      clearMocks();
+      vi.useRealTimers();
+    }
   });
 });
