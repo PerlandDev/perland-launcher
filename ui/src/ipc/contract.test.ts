@@ -5,6 +5,8 @@ import appInfo from './contract/app_info.json';
 import errorFx from './contract/error.json';
 import errorCodes from './contract/error_codes.json';
 import events from './contract/events.json';
+import installPlans from './contract/install_plans.json';
+import installResult from './contract/install_result.json';
 import instanceFx from './contract/instance.json';
 import instanceListing from './contract/instance_listing.json';
 import javaTest from './contract/java_test.json';
@@ -18,8 +20,13 @@ import packAddRequests from './contract/pack_add_requests.json';
 import packArt from './contract/pack_art.json';
 import packContents from './contract/pack_contents.json';
 import packStatus from './contract/pack_status.json';
+import planRequests from './contract/plan_requests.json';
+import projectDetail from './contract/project_detail.json';
 import runSnapshots from './contract/run_snapshots.json';
+import searchPage from './contract/search_page.json';
+import searchRequests from './contract/search_requests.json';
 import settingsFx from './contract/settings.json';
+import versions from './contract/versions.json';
 import { decodeEvent } from './events';
 import * as s from './schema';
 
@@ -43,6 +50,13 @@ const cases: [string, ZodType, unknown][] = [
   ['run_snapshots', s.runSnapshot.array(), runSnapshots],
   ['settings', s.settings, settingsFx],
   ['events', s.appEvent.array(), events],
+  ['search_page', s.searchPage, searchPage],
+  ['project_detail', s.projectDetail, projectDetail],
+  ['versions', s.versionInfo.array(), versions],
+  ['install_plans', s.installPlanView.array(), installPlans],
+  ['install_result', s.installResult, installResult],
+  ['search_requests', s.searchRequest.array(), searchRequests],
+  ['plan_requests', s.browsePlanRequest.array(), planRequests],
 ];
 
 describe('Rust contract fixtures', () => {

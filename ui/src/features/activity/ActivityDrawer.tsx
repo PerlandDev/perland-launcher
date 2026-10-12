@@ -27,7 +27,7 @@ function InstanceActivity({ instance }: { instance: Instance }) {
           <div className="flex items-baseline justify-between gap-4">
             <span className="font-semibold">{taskLabel(i18n, progress.task)}</span>
             <span className="tabular text-sm text-ink-dim">
-              {t('play.files', { done: formatCount(progress.done, i18n.language), total: formatCount(progress.total, i18n.language) })}
+              {t('play.files', { count: progress.total, done: formatCount(progress.done, i18n.language), total: formatCount(progress.total, i18n.language) })}
               {progress.bytes > 0 && ` · ${formatBytes(progress.bytes, i18n.language)}`}
             </span>
           </div>

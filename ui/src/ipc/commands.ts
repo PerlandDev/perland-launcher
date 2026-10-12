@@ -2,6 +2,11 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   AccountsFile,
   AppInfo,
+  BrowsePlanRequest,
+  ContentKind,
+  ImageKind,
+  InstallPlanView,
+  InstallResult,
   Instance,
   InstanceListing,
   JavaTest,
@@ -16,8 +21,12 @@ import type {
   PackArtData,
   PackContents,
   PackStatus,
+  ProjectDetail,
   RunSnapshot,
+  SearchPage,
+  SearchRequest,
   Settings,
+  VersionInfo,
 } from './schema';
 
 /** The only place the UI calls into Rust. A failed call rejects with a `LauncherError` object. */
@@ -58,4 +67,14 @@ export const commands = {
   packArt: (id: string) => invoke<PackArtData>('pack_art', { id }),
   deepLinkTake: () => invoke<string | null>('deep_link_take'),
   quit: (stopGames: boolean) => invoke<null>('quit', { stopGames }),
+  browseSearch: (request: SearchRequest) => invoke<SearchPage>('browse_search', { request }),
+  browseCategories: (kind: ContentKind) => invoke<string[]>('browse_categories', { kind }),
+  browseProject: (id: string) => invoke<ProjectDetail>('browse_project', { id }),
+  browseVersions: (project: string, instance: string | null) =>
+    invoke<VersionInfo[]>('browse_versions', { project, instance }),
+  browseImage: (url: string, kind: ImageKind) => invoke<string>('browse_image', { url, kind }),
+  browseInstalled: (id: string) => invoke<string[]>('browse_installed', { id }),
+  browsePlan: (request: BrowsePlanRequest) => invoke<InstallPlanView>('browse_plan', { request }),
+  browseInstall: (planId: string) => invoke<InstallResult>('browse_install', { planId }),
+  openLink: (url: string) => invoke<null>('open_link', { url }),
 };
