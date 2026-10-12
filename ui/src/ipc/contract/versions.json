@@ -1,0 +1,17 @@
+[
+  {
+    "id": "4OZL6q9h",
+    "name": "Sodium 0.5.11",
+    "number": "mc1.20.1-0.5.11",
+    "versionType": "release",
+    "gameVersions": [
+      "1.20.1"
+    ],
+    "loaders": [
+      "fabric",
+      "quilt"
+    ],
+    "date": "2024-07-25T00:00:00Z",
+    "size": 1234567
+  }
+]

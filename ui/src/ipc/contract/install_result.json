@@ -1,0 +1,25 @@
+{
+  "instance": {
+    "id": "asalith-fields",
+    "name": "Asalith Fields",
+    "source": {
+      "kind": "none"
+    },
+    "game": {
+      "minecraft": "1.20.1",
+      "loader": {
+        "kind": "fabric",
+        "version": "0.16.14"
+      }
+    },
+    "updatePolicy": "ask",
+    "optionalChoices": {},
+    "java": {
+      "path": null,
+      "memoryMb": 4096
+    }
+  },
+  "added": [
+    "sodium-fabric-0.5.11+mc1.20.1.jar"
+  ]
+}

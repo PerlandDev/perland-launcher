@@ -3,6 +3,10 @@
 //! retyped field fails on one side or the other.
 use std::{collections::BTreeMap, path::PathBuf};
 
+use launcher_app::dto::{
+    BrowsePlanRequest, InstallPlanView, InstallResult, PlanItemView, PlanTargetRequest,
+    PlanTargetView, SearchRequest,
+};
 use launcher_app::{
     dto::{
         AppInfo, Build, JavaTest, ManualProgress, NewInstance, OpenTarget, OptionalChoice,
@@ -10,6 +14,12 @@ use launcher_app::{
         SyncSummary,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
+};
+use launcher_core::browse::{
+    compat::ContentKind,
+    plan::{ItemReason, PlanSkip, SkipReason},
+    project::{GalleryImage, ProjectDetail, SideSupport, VersionInfo},
+    search::{SearchHit, SearchPage, SortIndex},
 };
 use launcher_core::{
     accounts::{offline_account, AccountsFile},
@@ -124,6 +134,118 @@ fn sample_error() -> LauncherError {
     .with_param("version", "9.9")
     .with_fix("Check the version number")
     .with_detail("manifest has no 9.9")
+}
+
+fn sample_hit() -> SearchHit {
+    SearchHit {
+        project_id: "AANobbMI".into(),
+        slug: "sodium".into(),
+        title: "Sodium".into(),
+        author: "jellysquid3".into(),
+        summary: "A modern rendering engine for Minecraft".into(),
+        icon_url: Some("https://cdn.modrinth.com/data/AANobbMI/icon.png".into()),
+        downloads: 81_000_000,
+        follows: 25_000,
+        categories: vec!["optimization".into()],
+        kind: ContentKind::Mod,
+    }
+}
+
+fn sample_project() -> ProjectDetail {
+    ProjectDetail {
+        project_id: "AANobbMI".into(),
+        slug: "sodium".into(),
+        title: "Sodium".into(),
+        author: Some("jellysquid3".into()),
+        summary: "A modern rendering engine for Minecraft".into(),
+        body: "# Sodium\n\nFaster rendering. <b>bold</b>\n\n![shot](https://cdn.modrinth.com/data/AANobbMI/images/shot.png)".into(),
+        icon_url: Some("https://cdn.modrinth.com/data/AANobbMI/icon.png".into()),
+        downloads: 81_000_000,
+        follows: 25_000,
+        categories: vec!["optimization".into()],
+        kind: ContentKind::Mod,
+        client_side: SideSupport::Required,
+        server_side: SideSupport::Unsupported,
+        license: Some("Polyform Shield 1.0.0".into()),
+        source_url: Some("https://github.com/CaffeineMC/sodium".into()),
+        issues_url: Some("https://github.com/CaffeineMC/sodium/issues".into()),
+        wiki_url: None,
+        gallery: vec![GalleryImage {
+            url: "https://cdn.modrinth.com/data/AANobbMI/images/shot.png".into(),
+            title: Some("Before and after".into()),
+            featured: true,
+        }],
+    }
+}
+
+fn sample_versions() -> Vec<VersionInfo> {
+    vec![VersionInfo {
+        id: "4OZL6q9h".into(),
+        name: "Sodium 0.5.11".into(),
+        number: "mc1.20.1-0.5.11".into(),
+        version_type: "release".into(),
+        game_versions: vec!["1.20.1".into()],
+        loaders: vec!["fabric".into(), "quilt".into()],
+        date: "2024-07-25T00:00:00Z".into(),
+        size: Some(1_234_567),
+    }]
+}
+
+fn sample_plan_views() -> Vec<InstallPlanView> {
+    let items = vec![
+        PlanItemView {
+            project_id: "AANobbMI".into(),
+            title: "Sodium".into(),
+            kind: ContentKind::Mod,
+            version_number: "mc1.20.1-0.5.11".into(),
+            file_name: "sodium-fabric-0.5.11+mc1.20.1.jar".into(),
+            size: 1_234_567,
+            reason: ItemReason::Requested,
+        },
+        PlanItemView {
+            project_id: "P7dR8mSH".into(),
+            title: "Fabric API".into(),
+            kind: ContentKind::Mod,
+            version_number: "0.92.2+1.20.1".into(),
+            file_name: "fabric-api-0.92.2+1.20.1.jar".into(),
+            size: 2_000_000,
+            reason: ItemReason::Dependency {
+                of: "Sodium".into(),
+            },
+        },
+    ];
+    vec![
+        InstallPlanView {
+            plan_id: "plan-1".into(),
+            target: PlanTargetView::Instance {
+                id: "asalith-fields".into(),
+                name: "Asalith Fields".into(),
+                minecraft: "1.20.1".into(),
+                loader: Some(LoaderKind::Fabric),
+            },
+            items: items.clone(),
+            skipped: vec![PlanSkip {
+                project_id: "mOgUt4GM".into(),
+                title: "Mod Menu".into(),
+                reason: SkipReason::InPack,
+            }],
+            total_size: 3_234_567,
+        },
+        InstallPlanView {
+            plan_id: "plan-2".into(),
+            target: PlanTargetView::New {
+                name: "Complementary Shaders".into(),
+                minecraft: "1.21.1".into(),
+                loader: Some(LoaderKind::Fabric),
+            },
+            items: vec![PlanItemView {
+                reason: ItemReason::ShaderMod,
+                ..items[1].clone()
+            }],
+            skipped: vec![],
+            total_size: 2_000_000,
+        },
+    ]
 }
 
 #[test]
@@ -481,6 +603,54 @@ fn contract_fixtures_are_current() {
             },
             PackAddRequest::File {
                 path: PathBuf::from("C:/Users/player/Downloads/Sky Islands 1.0.4.mrpack"),
+            },
+        ],
+    );
+    check(
+        "search_page",
+        SearchPage {
+            hits: vec![sample_hit()],
+            total: 1,
+            offset: 0,
+        },
+    );
+    check("project_detail", sample_project());
+    check("versions", sample_versions());
+    check("install_plans", sample_plan_views());
+    check(
+        "install_result",
+        InstallResult {
+            instance: fabric_instance(),
+            added: vec!["sodium-fabric-0.5.11+mc1.20.1.jar".into()],
+        },
+    );
+    check(
+        "search_requests",
+        vec![SearchRequest {
+            query: "sodium".into(),
+            kind: ContentKind::Mod,
+            instance: Some("asalith-fields".into()),
+            minecraft: None,
+            loader: None,
+            categories: vec!["optimization".into()],
+            sort: SortIndex::Relevance,
+            offset: 0,
+        }],
+    );
+    check(
+        "plan_requests",
+        vec![
+            BrowsePlanRequest {
+                project: "sodium".into(),
+                version: None,
+                target: PlanTargetRequest::Instance {
+                    id: "asalith-fields".into(),
+                },
+            },
+            BrowsePlanRequest {
+                project: "complementary".into(),
+                version: Some("v5".into()),
+                target: PlanTargetRequest::New,
             },
         ],
     );

@@ -1,0 +1,20 @@
+{
+  "hits": [
+    {
+      "projectId": "AANobbMI",
+      "slug": "sodium",
+      "title": "Sodium",
+      "author": "jellysquid3",
+      "summary": "A modern rendering engine for Minecraft",
+      "iconUrl": "https://cdn.modrinth.com/data/AANobbMI/icon.png",
+      "downloads": 81000000,
+      "follows": 25000,
+      "categories": [
+        "optimization"
+      ],
+      "kind": "mod"
+    }
+  ],
+  "total": 1,
+  "offset": 0
+}

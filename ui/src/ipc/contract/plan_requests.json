@@ -1,0 +1,17 @@
+[
+  {
+    "project": "sodium",
+    "version": null,
+    "target": {
+      "kind": "instance",
+      "id": "asalith-fields"
+    }
+  },
+  {
+    "project": "complementary",
+    "version": "v5",
+    "target": {
+      "kind": "new"
+    }
+  }
+]

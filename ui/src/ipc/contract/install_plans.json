@@ -1,0 +1,69 @@
+[
+  {
+    "planId": "plan-1",
+    "target": {
+      "kind": "instance",
+      "id": "asalith-fields",
+      "name": "Asalith Fields",
+      "minecraft": "1.20.1",
+      "loader": "fabric"
+    },
+    "items": [
+      {
+        "projectId": "AANobbMI",
+        "title": "Sodium",
+        "kind": "mod",
+        "versionNumber": "mc1.20.1-0.5.11",
+        "fileName": "sodium-fabric-0.5.11+mc1.20.1.jar",
+        "size": 1234567,
+        "reason": {
+          "kind": "requested"
+        }
+      },
+      {
+        "projectId": "P7dR8mSH",
+        "title": "Fabric API",
+        "kind": "mod",
+        "versionNumber": "0.92.2+1.20.1",
+        "fileName": "fabric-api-0.92.2+1.20.1.jar",
+        "size": 2000000,
+        "reason": {
+          "kind": "dependency",
+          "of": "Sodium"
+        }
+      }
+    ],
+    "skipped": [
+      {
+        "projectId": "mOgUt4GM",
+        "title": "Mod Menu",
+        "reason": "in_pack"
+      }
+    ],
+    "totalSize": 3234567
+  },
+  {
+    "planId": "plan-2",
+    "target": {
+      "kind": "new",
+      "name": "Complementary Shaders",
+      "minecraft": "1.21.1",
+      "loader": "fabric"
+    },
+    "items": [
+      {
+        "projectId": "P7dR8mSH",
+        "title": "Fabric API",
+        "kind": "mod",
+        "versionNumber": "0.92.2+1.20.1",
+        "fileName": "fabric-api-0.92.2+1.20.1.jar",
+        "size": 2000000,
+        "reason": {
+          "kind": "shader_mod"
+        }
+      }
+    ],
+    "skipped": [],
+    "totalSize": 2000000
+  }
+]

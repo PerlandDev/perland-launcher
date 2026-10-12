@@ -12,11 +12,23 @@ use std::{
 
 use launcher_core::{
     accounts::Session,
+    browse::{
+        compat::{ContentKind, Target},
+        identify::Installed,
+        images::{Image, ImageKind},
+        plan::{
+            InstallPlan, ItemReason, NewInstancePlan, PlanItem, PlanRequest, PlanSkip, PlannedFile,
+            SkipReason,
+        },
+        project::{ProjectDetail, VersionInfo},
+        search::{SearchPage, SearchQuery},
+    },
     download::{hash::sha1_hex, Hashes},
     events::{Event, EventSink, TaskId},
     instances::{GameSpec, Instance, InstanceStore, SourceRef},
     launch::GameExit,
     locks::InstanceLock,
+    meta::loaders::LoaderKind,
     sources::{
         DesiredState, FileMode, FileSource, OptionalFile, PackAbout, PackFile, PackInput, Side,
     },
@@ -31,6 +43,7 @@ use tokio::sync::{oneshot, Semaphore};
 
 use crate::{
     app::AppCore,
+    browser::Browser,
     dto::{NewInstance, PackUpdate},
     events::{AppEvent, ExitInfo, Host, RunStateKind},
     runner::{BoxFuture, Kill, Runner, RunningGame},
@@ -340,6 +353,7 @@ pub(crate) struct FakeRunner {
     pub imported: Mutex<Vec<ManualFile>>,
     /// The game spec of each instance `prepare` was called for.
     pub prepared: Mutex<Vec<GameSpec>>,
+    pub browser: Arc<FakeBrowser>,
 }
 
 impl FakeRunner {
@@ -361,6 +375,7 @@ impl FakeRunner {
             sync_game: Mutex::new(None),
             imported: Mutex::new(Vec::new()),
             prepared: Mutex::new(Vec::new()),
+            browser: FakeBrowser::new(),
         })
     }
 
@@ -545,6 +560,193 @@ impl Runner for FakeRunner {
             .unwrap()
             .extend(found.into_iter().map(|(file, _)| file));
         Box::pin(async { Ok(()) })
+    }
+
+    fn browser(&self) -> Arc<dyn Browser> {
+        self.browser.clone()
+    }
+}
+
+/// Sodium (requested) and Fabric API (its dependency) for Fabric 1.20.1, with Mod Menu skipped
+/// as part of the pack. `new_instance` makes it a plan for a new Fabric 1.21.1 instance.
+pub(crate) fn sample_plan(new_instance: bool) -> InstallPlan {
+    let file = |name: &str| PlannedFile {
+        url: format!("https://cdn.modrinth.com/data/x/{name}"),
+        file_name: name.into(),
+        size: 100,
+        hashes: Hashes::sha1("a".repeat(40)),
+    };
+    let item = |id: &str, title: &str, name: &str, reason: ItemReason| PlanItem {
+        project_id: id.into(),
+        title: title.into(),
+        kind: ContentKind::Mod,
+        version_id: format!("{id}-v"),
+        version_number: "1.0".into(),
+        reason,
+        file: file(name),
+    };
+    let minecraft = if new_instance { "1.21.1" } else { "1.20.1" };
+    InstallPlan {
+        target: Target {
+            minecraft: minecraft.into(),
+            loader: Some(LoaderKind::Fabric),
+        },
+        new_instance: new_instance.then(|| NewInstancePlan {
+            name: "Sodium".into(),
+            minecraft: minecraft.into(),
+            loader: Some(LoaderKind::Fabric),
+        }),
+        items: vec![
+            item("SOD", "Sodium", "sodium.jar", ItemReason::Requested),
+            item(
+                "API",
+                "Fabric API",
+                "fabric-api.jar",
+                ItemReason::Dependency {
+                    of: "Sodium".into(),
+                },
+            ),
+        ],
+        skipped: vec![PlanSkip {
+            project_id: "MENU".into(),
+            title: "Mod Menu".into(),
+            reason: SkipReason::InPack,
+        }],
+    }
+}
+
+/// Browse answers the test scripts. `install` records what it was asked and can be held open.
+pub(crate) struct FakeBrowser {
+    pub searches: Mutex<Vec<SearchQuery>>,
+    pub installed: Mutex<Installed>,
+    /// Each `identify` call: (game folder, whether a lockfile was passed).
+    pub identified: Mutex<Vec<(PathBuf, bool)>>,
+    /// What `plan` returns (none: `sample_plan` for the target it was given).
+    pub plan_result: Mutex<Option<Result<InstallPlan>>>,
+    pub plans: Mutex<Vec<(PlanRequest, Option<Target>)>>,
+    /// Each `install` call: (game folder, file names).
+    pub installs: Mutex<Vec<(PathBuf, Vec<String>)>>,
+    pub install_error: Mutex<Option<LauncherError>>,
+    /// While set, `install` waits for `open_install_gate`.
+    pub hold_install: AtomicBool,
+    install_gate: Arc<Semaphore>,
+    pub image: Mutex<Option<Image>>,
+}
+
+impl FakeBrowser {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            searches: Mutex::new(Vec::new()),
+            installed: Mutex::new(Installed::default()),
+            identified: Mutex::new(Vec::new()),
+            plan_result: Mutex::new(None),
+            plans: Mutex::new(Vec::new()),
+            installs: Mutex::new(Vec::new()),
+            install_error: Mutex::new(None),
+            hold_install: AtomicBool::new(false),
+            install_gate: Arc::new(Semaphore::new(0)),
+            image: Mutex::new(None),
+        })
+    }
+
+    // Used by the install tests that arrive with the Browse commands.
+    #[allow(dead_code)]
+    pub fn open_install_gate(&self) {
+        self.install_gate.add_permits(1);
+    }
+}
+
+fn empty_page() -> SearchPage {
+    SearchPage {
+        hits: vec![],
+        total: 0,
+        offset: 0,
+    }
+}
+
+impl Browser for FakeBrowser {
+    fn search(&self, query: SearchQuery) -> BoxFuture<Result<SearchPage>> {
+        self.searches.lock().unwrap().push(query);
+        Box::pin(async { Ok(empty_page()) })
+    }
+    fn categories(&self, _kind: ContentKind) -> BoxFuture<Result<Vec<String>>> {
+        Box::pin(async { Ok(vec!["adventure".to_string()]) })
+    }
+    fn project(&self, _id: String) -> BoxFuture<Result<ProjectDetail>> {
+        Box::pin(async { Err(launcher_core::browse::api::not_found()) })
+    }
+    fn versions(
+        &self,
+        _id: String,
+        _target: Option<Target>,
+    ) -> BoxFuture<Result<Vec<VersionInfo>>> {
+        Box::pin(async { Ok(vec![]) })
+    }
+    fn image(&self, _url: String, _kind: ImageKind) -> BoxFuture<Result<Image>> {
+        let image = self.image.lock().unwrap().clone();
+        Box::pin(async move {
+            image.ok_or_else(|| {
+                LauncherError::network(ErrorCode::ImageRefused, "That image can't be shown")
+            })
+        })
+    }
+    fn identify(
+        &self,
+        game_dir: PathBuf,
+        managed: Option<Managed>,
+    ) -> BoxFuture<Result<Installed>> {
+        self.identified
+            .lock()
+            .unwrap()
+            .push((game_dir, managed.is_some()));
+        let installed = self.installed.lock().unwrap().clone();
+        Box::pin(async move { Ok(installed) })
+    }
+    fn plan(
+        &self,
+        request: PlanRequest,
+        target: Option<Target>,
+        _installed: Installed,
+    ) -> BoxFuture<Result<InstallPlan>> {
+        let new = target.is_none();
+        self.plans.lock().unwrap().push((request, target));
+        let scripted = self.plan_result.lock().unwrap().clone();
+        Box::pin(async move { scripted.unwrap_or_else(|| Ok(sample_plan(new))) })
+    }
+    fn install(
+        &self,
+        game_dir: PathBuf,
+        items: Vec<PlanItem>,
+        _managed: Option<Managed>,
+        task: TaskId,
+        sink: EventSink,
+    ) -> BoxFuture<Result<Vec<String>>> {
+        let names: Vec<String> = items.iter().map(|i| i.file.file_name.clone()).collect();
+        self.installs
+            .lock()
+            .unwrap()
+            .push((game_dir, names.clone()));
+        let error = self.install_error.lock().unwrap().take();
+        let hold = self.hold_install.load(Ordering::SeqCst);
+        let gate = self.install_gate.clone();
+        Box::pin(async move {
+            sink(Event::Progress {
+                task,
+                done: 0,
+                total: names.len() as u64,
+                bytes: 0,
+            });
+            if hold {
+                gate.acquire().await.expect("never closed").forget();
+            }
+            match error {
+                Some(e) => Err(e),
+                None => Ok(names),
+            }
+        })
+    }
+    fn loader_version(&self, _kind: LoaderKind, _minecraft: String) -> BoxFuture<Result<String>> {
+        Box::pin(async { Ok("0.16.14".to_string()) })
     }
 }
 

@@ -127,8 +127,15 @@ fn build_core(app: tauri::AppHandle) -> Result<Arc<Core>, Box<dyn std::error::Er
         downloader: Downloader::new(http.clone()),
         platform: Platform::current(),
     });
+    let browse = launcher_core::browse::Browse::new(
+        http.clone(),
+        launcher_core::http::client_without_redirects(&version)?,
+        Downloader::new(http.clone()),
+        &dirs,
+        launcher_core::browse::BrowseConfig::default(),
+    );
     let syncer = launcher_core::sync::Syncer::for_installer(installer.clone(), http);
-    let runner = Arc::new(CoreRunner::new(installer, syncer, version.clone()));
+    let runner = Arc::new(CoreRunner::new(installer, syncer, version.clone(), browse));
     let host = Arc::new(host::TauriHost::new(app));
     let config = AppConfig {
         dirs,
