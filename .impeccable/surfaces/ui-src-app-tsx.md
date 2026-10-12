@@ -7,7 +7,7 @@ related_targets: ["ui/src"]
 
 # Launcher app shell (all screens)
 
-- **Scope:** the whole desktop app in `ui/`: title bar, instance rail, home/instance, activity drawer, new instance, instance settings, mods, accounts, settings, first run.
+- **Scope:** the whole desktop app in `ui/`: title bar, instance rail, home/instance, activity drawer, new instance, instance settings, mods, accounts, settings, first run, Browse (search, project page, install confirm).
 - **Mode:** Operate. The player's task is to get into the game. Expression never hides Play, state or a familiar affordance.
 - **Audience and job:** Perland/Asalith players, often 12–25, casual, many Spanish-speaking. Their job is to open the launcher, press Play and be in the game. Secondary jobs: create an instance, add mods, switch accounts, read an error and fix it.
 - **Constraints:** the pinned layout from the owner's brief (full-bleed art, big Play, left instance rail, custom title bar, dark only). Generated art and avatars only: no Mojang assets, no Modrinth branding. Unbuilt features are "coming soon" or absent. Every string exists in en and es; es runs about 30% longer. Minimum window 960 × 600.

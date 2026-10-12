@@ -77,7 +77,7 @@ function RateLimited({ seconds, onRetry }: { seconds: number; onRetry: () => unk
     return () => clearTimeout(timer);
   }, [left, onRetry]);
   return (
-    <p role="status" className="panel p-4">
+    <p role="status" className="panel tabular p-4">
       {t('browse.rateLimited', { seconds: Math.max(left, 0) })}
     </p>
   );
@@ -197,7 +197,7 @@ function BrowseList({ route }: { route: BrowseRoute }) {
             </Button>
           </div>
         ) : (
-          <p className="text-center text-ink-dim">{t('browse.end')}</p>
+          <p className="browse-end">{t('browse.end')}</p>
         )}
       </>
     );
@@ -205,7 +205,7 @@ function BrowseList({ route }: { route: BrowseRoute }) {
 
   return (
     <ScreenFrame title={t('browse.title')} wide onBack={scope ? () => navigate({ name: 'mods', id: scope.id }) : undefined}>
-      <div className="grid gap-5">
+      <div className="grid gap-3">
         {scope && (
           <div className="browse-scope">
             <p>{t('browse.scope', { name: scope.name, game: gameLabel(scope.game.minecraft, scope.game.loader?.kind ?? null) })}</p>
@@ -266,7 +266,7 @@ function BrowseList({ route }: { route: BrowseRoute }) {
           )}
         </div>
         {chips.length > 0 && (
-          <fieldset className="flex flex-wrap gap-2">
+          <fieldset className="browse-chips">
             <legend className="sr-only">{t('browse.categories')}</legend>
             {shownChips.map((slug) => (
               <button key={slug} type="button" className="chip" aria-pressed={filters.categories.includes(slug)} onClick={() => toggle(slug)}>

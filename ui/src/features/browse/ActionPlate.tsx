@@ -25,7 +25,7 @@ function ModpackPlate({ project }: { project: ProjectDetail }) {
   const list = versions.data ?? [];
   const version = chosen ?? pickDefault(list)?.id ?? '';
   return (
-    <div className="panel grid gap-4 p-5">
+    <div className="panel action-plate grid gap-4 p-5">
       {versions.isError ? (
         <ErrorCard error={versions.error} actions={<Button onClick={() => void versions.refetch()}>{t('common.retry')}</Button>} />
       ) : (
@@ -81,7 +81,7 @@ function ContentPlate({ project, route }: { project: ProjectDetail; route: Brows
     return t(fit.reason === 'needsLoader' ? 'project.needsLoader' : 'project.noVersion');
   };
   return (
-    <div className="panel grid gap-4 p-5">
+    <div className="panel action-plate grid gap-4 p-5">
       <div className="grid gap-1.5">
         <label htmlFor={targetId} className="text-sm font-semibold">
           {t('project.installTo')}

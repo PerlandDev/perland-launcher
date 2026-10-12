@@ -22,7 +22,7 @@ export function Gallery({ images }: { images: GalleryImage[] }) {
   const current = open === null ? null : images[open];
   return (
     <section aria-label={t('project.gallery')}>
-      <ul className="flex gap-3 overflow-x-auto pb-2">
+      <ul className="gallery-strip">
         {images.map((image, i) => (
           <li key={image.url} className="flex-none">
             <button type="button" className="gallery-open" aria-label={name(i)} onClick={() => setOpen(i)}>

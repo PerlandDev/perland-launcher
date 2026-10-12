@@ -7,9 +7,13 @@ export function ProjectIcon({ seed, url, size = 48 }: { seed: string; url: strin
   const image = useBrowseImage(url, 'icon');
   const [failed, setFailed] = useState<string | null>(null);
   const src = image.data && image.data !== failed ? image.data : null;
-  return src ? (
-    <img src={src} alt="" width={size} height={size} className="browse-icon" draggable={false} onError={() => setFailed(src)} />
-  ) : (
-    <PlotIcon seed={seed} size={size} />
+  return (
+    <span className="project-icon">
+      {src ? (
+        <img src={src} alt="" width={size} height={size} className="browse-icon" draggable={false} onError={() => setFailed(src)} />
+      ) : (
+        <PlotIcon seed={seed} size={size} />
+      )}
+    </span>
   );
 }

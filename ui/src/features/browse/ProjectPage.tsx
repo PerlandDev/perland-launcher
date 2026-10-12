@@ -30,7 +30,7 @@ function ProjectLinks({ project }: { project: ProjectDetail }) {
   return (
     <section className="grid gap-2" aria-label={t('project.links')}>
       <h2 className="text-sm font-semibold">{t('project.links')}</h2>
-      <ul className="grid justify-items-start gap-1">
+      <ul className="project-links">
         {links.map(([key, url]) => (
           <li key={key}>
             <Button variant="ghost" icon={<ExternalLink />} onClick={() => void commands.openLink(url).catch(pushError)}>
@@ -84,13 +84,13 @@ export function ProjectPage({ route, project }: { route: BrowseRoute; project: s
                 ))}
               </p>
             )}
-            {p.serverSide === 'required' && <p className="text-sm text-blue-ink">{t('project.serverToo')}</p>}
+            {p.serverSide === 'required' && <p className="info-line">{t('project.serverToo')}</p>}
           </div>
         </div>
         <Gallery images={p.gallery} />
         <ProjectMarkdown source={p.body} />
       </div>
-      <aside className="grid content-start gap-6">
+      <aside className="project-aside">
         {installSlot}
         <ProjectLinks project={p} />
       </aside>

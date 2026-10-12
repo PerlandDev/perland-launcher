@@ -58,6 +58,40 @@ typography:
     fontSize: "13px"
     fontWeight: 400
     lineHeight: "20px"
+  row-name:
+    fontFamily: "Bungee, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.125rem"
+    fontWeight: 400
+    lineHeight: 1.25
+  tag:
+    fontFamily: "Atkinson Hyperlegible Next Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.8125rem"
+    fontWeight: 600
+    lineHeight: "1.375rem"
+  badge:
+    fontFamily: "Atkinson Hyperlegible Next Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.75rem"
+    fontWeight: 650
+  md-h2:
+    fontFamily: "Atkinson Hyperlegible Next Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.375rem"
+    fontWeight: 700
+    lineHeight: 1.25
+  md-h3:
+    fontFamily: "Atkinson Hyperlegible Next Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.125rem"
+    fontWeight: 700
+    lineHeight: 1.25
+  md-h4:
+    fontFamily: "Atkinson Hyperlegible Next Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1rem"
+    fontWeight: 700
+    lineHeight: 1.25
+  md-h5:
+    fontFamily: "Atkinson Hyperlegible Next Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.875rem"
+    fontWeight: 700
+    lineHeight: 1.25
 rounded:
   hairline: "2px"
   thumb: "3px"
@@ -76,6 +110,11 @@ spacing:
   drawer-open: "18rem"
   column: "48rem"
   form-column: "42rem"
+  wide-column: "64rem"
+  wide-header: "69rem"
+  project-aside: "17rem"
+  project-gap: "2rem"
+  measure: "44rem"
 components:
   button-secondary:
     backgroundColor: "{colors.raised}"
@@ -152,6 +191,7 @@ components:
   badge:
     backgroundColor: "{colors.raised}"
     textColor: "{colors.ink-dim}"
+    typography: "{typography.badge}"
     rounded: "{rounded.step}"
     padding: "0.125rem 0.5rem"
   rail-item:
@@ -164,6 +204,55 @@ components:
     textColor: "{colors.ink-dim}"
     padding: "0 0.75rem"
     height: "2.25rem"
+  chip:
+    backgroundColor: "{colors.raised}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.step}"
+    padding: "0 0.75rem"
+    height: "2rem"
+  chip-pressed:
+    backgroundColor: "{colors.ground}"
+  chip-more:
+    textColor: "{colors.ink-dim}"
+    rounded: "{rounded.step}"
+    padding: "0 0.75rem"
+    height: "2rem"
+  result-row:
+    textColor: "{colors.ink}"
+    rounded: "{rounded.panel}"
+    padding: "0.75rem"
+  result-row-hover:
+    backgroundColor: "{colors.panel}"
+  project-icon:
+    backgroundColor: "{colors.panel}"
+    rounded: "{rounded.step}"
+    size: "48px"
+  tag:
+    textColor: "{colors.ink-dim}"
+    typography: "{typography.tag}"
+    rounded: "{rounded.thumb}"
+    padding: "0 0.4375rem"
+  installed-lamp:
+    backgroundColor: "{colors.ground}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.step}"
+    padding: "0.5rem 0.875rem"
+    height: "2.5rem"
+  action-plate:
+    backgroundColor: "{colors.panel}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.panel}"
+    padding: "1.25rem"
+    width: "{spacing.project-aside}"
+  gallery-thumb:
+    backgroundColor: "{colors.ground}"
+    rounded: "{rounded.step}"
+    height: "7.5rem"
+  lightbox:
+    backgroundColor: "{colors.panel}"
+    rounded: "{rounded.panel}"
+    padding: "1.5rem"
+    width: "64rem"
 ---
 
 # Design System: Perland Launcher
@@ -236,6 +325,19 @@ A warm brown-black cabinet laminate carrying the four saturated land-plot hues, 
 - **Control** (Atkinson Next 650, 0.9375rem, 1): button and segment labels. Large buttons use 1rem.
 - **Label** (Atkinson Next 600, 0.875rem): field labels, the drawer handle, title-bar account name. Hints and errors use the same size at 400.
 - **Mono** (Atkinson Mono 400, 13px / 20px): the game log, error detail, Java and data-folder paths. Paths are user-selectable and truncate.
+- **Row name** (Bungee 400, 1.125rem, 1.25): a project's name in a Browse result row, the one piece of signage in a row.
+- **Tag** (Atkinson Next 600, 0.8125rem, 1.375rem line): category tags on rows and the project page. **Badge** text is 650 at 0.75rem.
+
+### Project descriptions
+A project's description is Markdown set in Atkinson, at a 44rem measure, selectable. Paragraphs and blocks are spaced 0.875rem.
+- **Headings** go by weight, never Bungee: 700, line-height 1.25, 1.75rem above and 0.5rem below. h2 is 1.375rem, h3 1.125rem, h4 1rem, and h5/h6 0.875rem in `ink-dim`.
+- **Lists:** square bullets, 1.5rem indent, markers in `ink-dim` with tabular figures.
+- **Code:** inline code is mono 13px in a `ground` well with a 1px `line` ring and 3px notched corners. A `pre` block is the same well at 13px / 20px, 0.75rem × 1rem padding, scrolling sideways.
+- **Blockquote:** `ink-dim` on a `panel` block with notched 4px corners.
+- **Tables:** tabular figures, a `panel` header row in 600 0.875rem, a 1px `line` rule under each cell, scrolling sideways when wide.
+- **Rule:** a 2px pixel rule of 4px `line` blocks with 4px gaps, 1.75rem above and below.
+- **Links** are buttons that open in the system browser, set in `blue-ink`, underlined at a 3px offset. Hover turns them `ink` with a 2px underline.
+- **Images** are notched at 4px and never wider than the column. An image the launcher won't load shows its alt text in a 0.875rem `ink-dim` slot with a 1px `line` ring, never a broken picture.
 
 ### Named Rules
 **The Hard Shade Rule.** Signage over art carries a two-layer hard shade, never a blur: `dirt` offset 0.045em, then `ground` offset 0.09em. The version line under the name sits on a translucent laminate plate, so the art never decides its contrast.
@@ -256,6 +358,9 @@ The shell is a fixed desktop grid with a minimum window of 960 × 600 and no pho
 - **First run:** the "perland" marquee in attract mode fills the window behind a centered 32rem panel card on a deep-dirt step. Blue bars across the top of the card count the steps.
 - **Toasts** stack at the bottom-right in a 24rem column. **Dialogs** are `min(30rem, 100vw − 4rem)`, centred with auto margins (the CSS reset zeroes them) and capped at `100dvh − 4rem` tall, scrolling inside, so a long list never pushes the actions off a 600 px window.
 - **Home, pack with an update:** the update plate takes its own full-width row of the bottom grid, above both the name and Play, so it reads on one line at 960 px.
+- **Wide screens (Browse):** the screen frame's wide variant widens the column to 64rem for screens with a grid or a side panel; its title row widens to 69rem to stay aligned with it.
+- **Browse controls:** one grid row aligned to the bottom edge with a 0.75rem gap. Search takes `minmax(12rem, 1fr)`, and only the selects present get a track (`minmax(9rem, auto)` each), so a scoped Browse with only Sort doesn't leave an empty column. Category keys wrap below with 0.75rem between rows and 0.5rem between keys.
+- **Project page:** a `minmax(0, 1fr) 17rem` grid with a 2rem gap, kept down to the 960 px window. The description and gallery read on the left. The right column holds the action plate, then links and license, 1.5rem apart. The action plate is sticky at the top of the scroller. A 6px `ground` collar fills its notched corners, and a 1.5rem strip of `ground` above it covers the gap, so scrolled text never shows over or through the plate.
 
 Rhythm: 0.75rem between sibling controls, 1.25–1.5rem inside cards and dialogs, 2.5rem gutters and section gaps.
 
@@ -271,6 +376,10 @@ Depth is physical and hard-edged. Nothing in the system uses a blurred shadow. A
 - **Recess** (`inset 0 2px 0 rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--color-line)`): inputs, selects, the slider track and a checked segment.
 - **T-molding** (`inset 4px 4px 0 var(--color-ground), inset 6px 6px 0 var(--color-dirt-deep)`): the marquee's frame where it meets the title bar and rail.
 - **Hairline** (`0 -1px 0 var(--color-line)`): above sticky action rows.
+- **Small step** (`0 3px 0 var(--color-dirt-deep)`): category keys in Browse.
+- **Ground collar** (`0 0 0 6px var(--color-ground)`): the sticky action plate, so its notched corners never show scrolled text.
+- **Ring** (`inset 0 0 0 1px var(--color-line)`): flat labels that are not pressable, such as tags, inline code, code blocks and unloaded-image slots.
+- **Seam rule** (`0 1px 0 var(--color-line)`, plus `0 -1px 0` on the first item): between lines of the install manifest.
 
 ### Named Rules
 **The Dirt Step Rule.** Everything that can be pressed stands on a hard dirt step: `dirt` under amber, `dirt-deep` under everything else. Pressing travels the full step height and removes it. No blur, ever.
@@ -279,7 +388,7 @@ Depth is physical and hard-edged. Nothing in the system uses a blurred shadow. A
 
 ## Shapes
 
-Corners are pixel-notched, taken from the stepped grid of the land-plot mark: `border-radius` plus `corner-shape: notch` cuts a square step out of each corner rather than rounding it. Use 4px (`step`) on controls, inputs, badges and menu items, and 6px (`panel`) on Play, panels, dialogs, menus and rail cabinets. Small inner pieces (meter channel, toggle knob, slider track) use 2–3px. Where `corner-shape` is unsupported the same radii fall back to a slight rounding, which is acceptable.
+Corners are pixel-notched, taken from the stepped grid of the land-plot mark: `border-radius` plus `corner-shape: notch` cuts a square step out of each corner rather than rounding it. Use 4px (`step`) on controls, inputs, badges and menu items, and 6px (`panel`) on Play, panels, dialogs, menus and rail cabinets. Small inner pieces (meter channel, toggle knob, slider track) use 2–3px, and so do flat ringed labels (tags, inline code, unloaded-image slots) at 3px. Where `corner-shape` is unsupported the same radii fall back to a slight rounding, which is acceptable.
 
 The generated art keeps the same grid. The marquee is a 480 × 270 panel on an 8-unit cell grid drawn with `crispEdges`. Plot icons are 8 × 8 cells, the sun is a pixel-stepped disc, and status marks are solid squares (the rail LED, the lime selection lamp, meter blocks). Icons are stroked SVG with square caps.
 
@@ -346,6 +455,25 @@ A recessed row inside a panel or dialog: `ground` fill, 1px `line` inset ring, n
 - **Mods** splits into two labelled sections: "From the pack" (optional mods as toggles) and "Your additions".
 - **Instance settings, Updates** is a segment group; the pack's game line and the "pack picks" hint sit tight (0.25rem) under the Game heading.
 
+### Browse
+Browse lists projects as rows on the ground, never cards. Filters are small keys that sink and light the lime lamp. On a project page the action plate holds the view's one lit button.
+- **Kind tabs** are the standard segments, pressed with the lime lamp.
+- **Search field:** the standard recessed input, led by the icon set's own search glyph (pixelarticons, the same paths as the rail's Browse key) at 1.25rem in `ink-dim`, with its clear button drawn as the matching close glyph. Text starts 2.625rem in.
+- **Scope plate:** when Browse adds to one instance, a `panel` plate with notched 6px corners leads with an 8px square **blue** info lamp and a 600-weight line, with a ghost "Browse everything" at its right.
+- **Category keys:** a smaller segment. 2rem tall, 0.75rem padding, 650 at 0.875rem, a `raised` face on a 3px `dirt-deep` step, pressing 3px in `steps(2, end)`. Pressed, a key sinks 3px into a recessed `ground` slot with the 8px lime lamp. "More" is a ghost key in `ink-dim`: no face or step until hover shows `raised`.
+- **Result rows:** rows on the ground with notched 6px corners and 0.75rem padding, split by 1px `line` hairlines inset 0.75rem from each side. Under the pointer a row lifts to `panel` and its icon slot to `raised`. Each row reads in three lines: the Bungee row name and "by author" (0.875rem `ink-dim`) on one baseline, a two-line clamped summary in `ink-dim`, then tabular counts in 0.875rem `ink-dim` with the tags. The project icon (48px in rows, 64px on the project page) sits in a notched 4px `panel` slot so transparent art never floats, and falls back to the generated plot icon.
+- **Tags:** a label, not a key. Flat, with a 1px `line` ring, 3px notched corners and `ink-dim` text. Never stepped.
+- **Installed lamp:** the slot a pressed key leaves behind. A recessed `ground` slot, 2.5rem tall, with the 8px lime lamp and 650-weight text. It replaces a row's Install when the project is already in the instance, and reads "Already in …" on the action plate.
+- **Row Install** is a standard secondary, never lit, because a list of lit buttons would make many.
+- **End of results:** a 1px `line` rule across the column with the words set into it, 0.875rem `ink-dim`.
+- **Action plate:** a `panel` with 1.25rem padding holding the version and target selects, then the page's one lit primary, large: Install, or Create instance. While installing, the button stays pressed on its spent step and a labelled blue meter appears beneath it.
+- **Server needs it too:** an info line led by the 8px blue lamp, in 600 0.875rem `blue-ink`.
+- **Gallery:** a sideways-scrolling strip of thumbnails 7.5rem tall, 0.75rem apart. Each is a pressable frame on a `ground` fill with notched 4px corners and a 4px `dirt-deep` step, with a zoom-in cursor. It opens a lightbox dialog up to 64rem wide (`min(64rem, 100vw − 4rem)`), with the image capped at `100dvh − 15rem` tall and notched. An image still loading holds a 16:9 `ground` slot.
+- **Install confirm:** a dialog whose additions read as a manifest, one line per item between 1px `line` seam rules, with the tabular total below. The dialog's primary is its only lit button.
+- **Rail Browse key:** a large raised key on the rail, never lit. While global Browse is open it sits pressed in a recessed `ground` slot.
+
+**The Rows, Not Cards Rule.** Browse results sit on the ground as rows split by seam hairlines and lift to `panel` only under the pointer. Never box a result in a card, and never step a tag.
+
 ### Marquee (signature)
 The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 PRNG) so an instance looks the same on every computer. The recipe:
 1. **Sky:** `ground` with 4% of the lamp mixed in. It is a warm black, never navy.
@@ -375,6 +503,8 @@ The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 P
 - **Do** sink rows inside panels and dialogs as a `.well`, and scale pack art with nearest-neighbour only at 2x or more.
 - **Do** pad `main` by the drawer's open height so Play is never covered, and keep primary form actions in a sticky row.
 - **Do** let attract-mode parallax stop under reduced motion. State changes snap.
+- **Do** list Browse results as rows on the ground split by inset seam hairlines, and make filters small 3px-step keys that sink into a slot with the lime lamp.
+- **Do** keep the project page's one lit button in its sticky action plate. Row Install and the rail Browse key stay raised, never lit.
 
 ### Don't:
 - **Don't** use blurred box-shadows, glows or soft elevation. Depth is hard offset layers only.
@@ -385,3 +515,5 @@ The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 P
 - **Don't** set sentences, labels or errors in Bungee. Don't set the log or paths in anything but Atkinson Hyperlegible Mono.
 - **Don't** use any hue as the only carrier of status. Pair it with a label, an icon or a shape.
 - **Don't** reuse the PerlandDev Panel's cyan chamfered mark or HUD language, Modrinth branding or Mojang artwork. Marquees, plot icons and avatars are generated.
+- **Don't** show Modrinth branding in Browse. Show only a project's own title, summary, icon and gallery.
+- **Don't** box Browse results in cards or give a tag a step. Tags are flat ringed labels.

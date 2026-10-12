@@ -124,9 +124,8 @@ export function Rail() {
         ))}
       </ul>
       <Button
-        variant="ghost"
         size="icon"
-        className="btn-lg"
+        className="btn-lg rail-browse"
         aria-label={t('browse.open')}
         title={t('browse.open')}
         aria-current={route.name === 'browse' && !route.instance ? 'page' : undefined}

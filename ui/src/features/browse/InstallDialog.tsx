@@ -37,7 +37,7 @@ export function InstallDialog({
       }
     >
       <div className="grid gap-3">
-        <ul className="grid gap-1">
+        <ul className="install-items">
           {view.items.map((item) => (
             <li key={item.projectId}>
               {item.reason.kind === 'requested' ? (

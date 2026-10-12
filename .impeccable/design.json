@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-10T00:00:00Z",
+  "generatedAt": "2026-10-12T00:00:00Z",
   "title": "Design System: Perland Launcher",
   "extensions": {
     "colorMeta": {
@@ -27,7 +27,14 @@
       "body": { "displayName": "Body", "purpose": "All running text; Atkinson Hyperlegible Next for young and non-native readers." },
       "label": { "displayName": "Label", "purpose": "Field labels, the drawer handle, the title-bar account name." },
       "control": { "displayName": "Control", "purpose": "Button and segment labels." },
-      "mono": { "displayName": "Mono", "purpose": "The game log, error detail, Java and data-folder paths." }
+      "mono": { "displayName": "Mono", "purpose": "The game log, error detail, Java and data-folder paths." },
+      "row-name": { "displayName": "Row name", "purpose": "A project's name in a Browse result row." },
+      "tag": { "displayName": "Tag", "purpose": "Category tags on Browse rows and the project page." },
+      "badge": { "displayName": "Badge", "purpose": "Badge text." },
+      "md-h2": { "displayName": "Markdown h2", "purpose": "Second-level heading in a project description; headings go by weight, never Bungee." },
+      "md-h3": { "displayName": "Markdown h3", "purpose": "Third-level heading in a project description." },
+      "md-h4": { "displayName": "Markdown h4", "purpose": "Fourth-level heading in a project description." },
+      "md-h5": { "displayName": "Markdown h5/h6", "purpose": "Fifth- and sixth-level headings in a project description, in ink-dim." }
     },
     "shadows": [
       { "name": "step", "value": "0 4px 0 var(--color-dirt-deep)", "purpose": "Hard step under secondary buttons, segments and the selected rail cabinet; amber buttons use --color-dirt." },
@@ -37,7 +44,11 @@
       { "name": "recess", "value": "inset 0 2px 0 rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--color-line)", "purpose": "Inputs, selects, slider track, a checked segment." },
       { "name": "t-molding", "value": "inset 4px 4px 0 0 var(--color-ground), inset 6px 6px 0 0 var(--color-dirt-deep)", "purpose": "The marquee bezel where it meets the title bar and rail." },
       { "name": "hairline-top", "value": "0 -1px 0 var(--color-line)", "purpose": "Above sticky action rows." },
-      { "name": "marquee-shade", "value": "text-shadow: 0 0.045em 0 var(--color-dirt), 0 0.09em 0 var(--color-ground)", "purpose": "Two-layer hard shade on signage over art." }
+      { "name": "marquee-shade", "value": "text-shadow: 0 0.045em 0 var(--color-dirt), 0 0.09em 0 var(--color-ground)", "purpose": "Two-layer hard shade on signage over art." },
+      { "name": "step-sm", "value": "0 3px 0 var(--color-dirt-deep)", "purpose": "Category keys in Browse." },
+      { "name": "ground-collar", "value": "0 0 0 6px var(--color-ground)", "purpose": "The sticky action plate, so its notched corners never show scrolled text." },
+      { "name": "ring", "value": "inset 0 0 0 1px var(--color-line)", "purpose": "Flat labels that are not pressable: tags, inline code, code blocks, unloaded-image slots." },
+      { "name": "seam-rule", "value": "0 1px 0 var(--color-line)", "purpose": "Between lines of the install manifest; the first item adds 0 -1px 0." }
     ],
     "motion": [
       { "name": "press", "value": "translate 180ms steps(2, end), box-shadow 180ms steps(2, end)", "purpose": "Press travel onto the step in two 90 ms frames; also the toggle knob and segments." },
@@ -124,6 +135,22 @@
       "description": "A failure in the player's language: coral warning diamond, message, fix, actions.",
       "html": "<div class=\"ds-card\"><svg class=\"ds-card-icon\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"square\"><path d=\"M12 2 22 12 12 22 2 12Z\"/><path d=\"M12 8v5M12 16v1\"/></svg><div><p class=\"ds-card-msg\">Minecraft ran out of memory.</p><p class=\"ds-card-fix\">Give it more memory in the instance settings and try again.</p></div></div>",
       "css": ".ds-card { display: flex; gap: 0.75rem; align-items: flex-start; max-width: 30rem; padding: 1.25rem; color: var(--color-ink, #f6f1e7); background: var(--color-panel, #221c17); border-radius: 6px; corner-shape: notch; font-family: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, sans-serif; font-size: 15px; line-height: 1.5; } .ds-card-icon { flex: none; margin-top: 0.125rem; color: var(--color-coral, #ff5a5f); } .ds-card-msg { margin: 0; font-weight: 600; } .ds-card-fix { margin: 0.25rem 0 0; color: var(--color-ink-dim, #c5b9a8); }"
+    },
+    {
+      "name": "Category Key",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "A Browse filter: a smaller segment on a 3px step; pressed, it sinks into a recessed slot with the lime lamp. \"More\" is a ghost key.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip\">Adventure</button><button class=\"ds-chip\" aria-pressed=\"true\">Magic</button><button class=\"ds-chip\">Storage</button><button class=\"ds-chip-more\">More</button></div>",
+      "css": ".ds-chips { display: flex; flex-wrap: wrap; gap: 0.75rem 0.5rem; } .ds-chip, .ds-chip-more { display: inline-flex; align-items: center; gap: 0.4375rem; min-height: 2rem; padding: 0 0.75rem; font-family: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, sans-serif; font-size: 0.875rem; font-weight: 650; line-height: 1; white-space: nowrap; color: var(--color-ink, #f6f1e7); background: var(--color-raised, #2e261f); border: 0; border-radius: 4px; corner-shape: notch; box-shadow: 0 3px 0 var(--color-dirt-deep, #4e2e19); cursor: pointer; transition: translate 180ms steps(2, end), box-shadow 180ms steps(2, end); } .ds-chip:hover { background: color-mix(in oklab, var(--color-raised, #2e261f), white 7%); } .ds-chip:active, .ds-chip[aria-pressed='true'] { translate: 0 3px; box-shadow: 0 0 0 var(--color-dirt-deep, #4e2e19); } .ds-chip[aria-pressed='true'] { background: var(--color-ground, #181410); box-shadow: inset 0 2px 0 rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--color-line, #463a2f); } .ds-chip[aria-pressed='true']::before { content: ''; flex: none; width: 0.5rem; height: 0.5rem; background: var(--color-lime, #c9cc2a); } .ds-chip-more { color: var(--color-ink-dim, #c5b9a8); background: transparent; box-shadow: none; } .ds-chip-more:hover { color: var(--color-ink, #f6f1e7); background: var(--color-raised, #2e261f); } .ds-chip:focus-visible, .ds-chip-more:focus-visible { outline: 2px solid var(--color-amber, #ffc233); outline-offset: 3px; }"
+    },
+    {
+      "name": "Result Row",
+      "kind": "custom",
+      "refersTo": "result-row",
+      "description": "A Browse result: a row on the ground split by an inset seam hairline, lifting to panel under the pointer; flat ringed tags; the Installed lamp in a recessed slot.",
+      "html": "<ul class=\"ds-list\"><li class=\"ds-row\"><span class=\"ds-icon\"></span><span class=\"ds-text\"><span class=\"ds-head\"><span class=\"ds-name\">Sodium</span><span class=\"ds-by\">by jellysquid</span></span><span class=\"ds-sum\">A modern rendering engine that greatly improves performance.</span><span class=\"ds-meta\"><span class=\"ds-count\">48,210,334 downloads</span><span class=\"ds-tag\">Optimization</span></span></span><span class=\"ds-installed\">Installed</span></li><li class=\"ds-row\"><span class=\"ds-icon\"></span><span class=\"ds-text\"><span class=\"ds-head\"><span class=\"ds-name\">Lithium</span><span class=\"ds-by\">by jellysquid</span></span><span class=\"ds-sum\">General-purpose optimization mod.</span><span class=\"ds-meta\"><span class=\"ds-count\">31,004,118 downloads</span><span class=\"ds-tag\">Optimization</span></span></span></li></ul>",
+      "css": ".ds-list { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; font-family: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, sans-serif; font-size: 15px; line-height: 1.5; color: var(--color-ink, #f6f1e7); } .ds-row { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1rem; padding: 0.75rem; border-radius: 6px; corner-shape: notch; cursor: pointer; } .ds-row + .ds-row::before { content: ''; position: absolute; top: -1px; left: 0.75rem; right: 0.75rem; height: 1px; background: var(--color-line, #463a2f); } .ds-row:hover { background: var(--color-panel, #221c17); } .ds-icon { align-self: start; width: 48px; height: 48px; background: var(--color-panel, #221c17); border-radius: 4px; corner-shape: notch; } .ds-row:hover .ds-icon { background: var(--color-raised, #2e261f); } .ds-text { display: grid; gap: 0.25rem; min-width: 0; } .ds-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.625rem; } .ds-name { font-family: Bungee, ui-sans-serif, sans-serif; font-size: 1.125rem; line-height: 1.25; } .ds-by, .ds-count { font-size: 0.875rem; color: var(--color-ink-dim, #c5b9a8); } .ds-count { font-variant-numeric: tabular-nums; margin-right: 0.375rem; } .ds-sum { color: var(--color-ink-dim, #c5b9a8); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .ds-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; } .ds-tag { display: inline-flex; padding: 0 0.4375rem; font-size: 0.8125rem; font-weight: 600; line-height: 1.375rem; color: var(--color-ink-dim, #c5b9a8); border-radius: 3px; corner-shape: notch; box-shadow: inset 0 0 0 1px var(--color-line, #463a2f); } .ds-installed { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.5rem; padding: 0.5rem 0.875rem; font-weight: 650; line-height: 1.3; background: var(--color-ground, #181410); border-radius: 4px; corner-shape: notch; box-shadow: inset 0 2px 0 rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--color-line, #463a2f); } .ds-installed::before { content: ''; flex: none; width: 0.5rem; height: 0.5rem; background: var(--color-lime, #c9cc2a); }"
     }
   ],
   "narrative": {
@@ -145,7 +172,8 @@
       { "name": "The Signage Names, Atkinson Speaks Rule", "body": "Bungee appears only on names and titles (the instance, the screen, the welcome, Play, a big readout). Sentences, labels, buttons and errors are always Atkinson.", "section": "typography" },
       { "name": "The Tabular Rule", "body": "Every live number (files, MB, memory, counts) uses tabular figures so readouts don't jitter while they count.", "section": "typography" },
       { "name": "The Dirt Step Rule", "body": "Everything that can be pressed stands on a hard dirt step: `dirt` under amber, `dirt-deep` under everything else. Pressing travels the full step height and removes it. No blur, ever.", "section": "elevation" },
-      { "name": "The Spent Step Rule", "body": "A control whose action is running stays pressed down. Play while queued or preparing, a button with `aria-disabled=\"true\"` while pending, and a disabled control all sit on their spent step with no under-layer.", "section": "elevation" }
+      { "name": "The Spent Step Rule", "body": "A control whose action is running stays pressed down. Play while queued or preparing, a button with `aria-disabled=\"true\"` while pending, and a disabled control all sit on their spent step with no under-layer.", "section": "elevation" },
+      { "name": "The Rows, Not Cards Rule", "body": "Browse results sit on the ground as rows split by seam hairlines and lift to `panel` only under the pointer. Never box a result in a card, and never step a tag.", "section": "components" }
     ],
     "dos": [
       "**Do** keep Play the only lit control at rest. Amber is for acting: Play, the single primary action on a screen, focus, the caret and the coin-slot light.",
@@ -159,7 +187,9 @@
       "**Do** keep update actions raised, never lit: a status plate leads with a square lamp (blue offer, lime done), and the dialog's one primary is the only amber.",
       "**Do** sink rows inside panels and dialogs as a `.well`, and scale pack art with nearest-neighbour only at 2x or more.",
       "**Do** pad `main` by the drawer's open height so Play is never covered, and keep primary form actions in a sticky row.",
-      "**Do** let attract-mode parallax stop under reduced motion. State changes snap."
+      "**Do** let attract-mode parallax stop under reduced motion. State changes snap.",
+      "**Do** list Browse results as rows on the ground split by inset seam hairlines, and make filters small 3px-step keys that sink into a slot with the lime lamp.",
+      "**Do** keep the project page's one lit button in its sticky action plate. Row Install and the rail Browse key stay raised, never lit."
     ],
     "donts": [
       "**Don't** use blurred box-shadows, glows or soft elevation. Depth is hard offset layers only.",
@@ -169,7 +199,9 @@
       "**Don't** ease state changes or animate progress smoothly. Use `steps()` or snap.",
       "**Don't** set sentences, labels or errors in Bungee. Don't set the log or paths in anything but Atkinson Hyperlegible Mono.",
       "**Don't** use any hue as the only carrier of status. Pair it with a label, an icon or a shape.",
-      "**Don't** reuse the PerlandDev Panel's cyan chamfered mark or HUD language, Modrinth branding or Mojang artwork. Marquees, plot icons and avatars are generated."
+      "**Don't** reuse the PerlandDev Panel's cyan chamfered mark or HUD language, Modrinth branding or Mojang artwork. Marquees, plot icons and avatars are generated.",
+      "**Don't** show Modrinth branding in Browse. Show only a project's own title, summary, icon and gallery.",
+      "**Don't** box Browse results in cards or give a tag a step. Tags are flat ringed labels."
     ]
   }
 }
