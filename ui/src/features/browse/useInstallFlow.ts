@@ -47,15 +47,23 @@ export function useInstallFlow() {
 
   const install = async (view: InstallPlanView) => {
     setBusy(true);
+    let result: InstallResult;
     try {
-      finish(view, await commands.browseInstall(view.planId));
+      result = await commands.browseInstall(view.planId);
     } catch (error) {
       // A failed install must not leave its meter lit. A new instance has no id the UI knows yet.
       if (view.target.kind === 'instance') clearContentProgress(view.target.id);
       pushError(error);
+      return;
     } finally {
       setConfirming(null);
       setBusy(false);
+    }
+    // The install worked; a slip in the notice or navigation is not a failed install.
+    try {
+      finish(view, result);
+    } catch (error) {
+      console.error('Could not show the install result', error);
     }
   };
 

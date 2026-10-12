@@ -6,6 +6,7 @@ import { useContentProgress } from '../../state/contentProgress';
 import { useAddPack, useBrowseInstalled, useBrowseVersions, useInstances } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
+import { ErrorCard } from '../../ui/ErrorCard';
 import { Meter } from '../../ui/Meter';
 import { Select } from '../../ui/Select';
 import type { BrowseRoute } from './Browse';
@@ -25,17 +26,21 @@ function ModpackPlate({ project }: { project: ProjectDetail }) {
   const version = chosen ?? pickDefault(list)?.id ?? '';
   return (
     <div className="panel grid gap-4 p-5">
-      <Select
-        label={t('project.version')}
-        value={version}
-        onChange={setChosen}
-        disabled={list.length === 0}
-        options={list.map((v) => ({ value: v.id, label: versionLabel(v) }))}
-      />
+      {versions.isError ? (
+        <ErrorCard error={versions.error} actions={<Button onClick={() => void versions.refetch()}>{t('common.retry')}</Button>} />
+      ) : (
+        <Select
+          label={t('project.version')}
+          value={version}
+          onChange={setChosen}
+          disabled={list.length === 0}
+          options={list.map((v) => ({ value: v.id, label: versionLabel(v) }))}
+        />
+      )}
       <Button
         variant="primary"
         size="lg"
-        disabled={!version || add.isPending}
+        disabled={!versions.isSuccess || !version || add.isPending}
         onClick={() =>
           add.mutate(
             { kind: 'link', url: `modrinth:${project.projectId}@${version}` },
@@ -60,7 +65,9 @@ function ContentPlate({ project, route }: { project: ProjectDetail; route: Brows
   const firstFit = list.find((i) => fits.get(i.id)?.ok)?.id;
   const [picked, setPicked] = useState<string | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
-  const target = picked ?? route.instance ?? firstFit ?? NEW;
+  // The target is always something the picker can show: a pick or the route's instance only while it is in the list.
+  const known = (id: string | null) => (id !== null && list.some((i) => i.id === id) ? id : null);
+  const target = (picked === NEW ? NEW : known(picked)) ?? known(route.instance ?? null) ?? firstFit ?? NEW;
   const instance = list.find((i) => i.id === target) ?? null;
   const options = instance ? all.filter((v) => fitsVersion(v, project.kind, instance)) : all;
   const version = options.some((v) => v.id === chosen) ? chosen : (pickDefault(options)?.id ?? null);
@@ -70,7 +77,7 @@ function ContentPlate({ project, route }: { project: ProjectDetail; route: Brows
   const progress = useContentProgress(instance?.id ?? null);
   const reason = (id: string) => {
     const fit = fits.get(id);
-    if (!fit || fit.ok || versions.isPending) return null;
+    if (!versions.isSuccess || !fit || fit.ok) return null;
     return t(fit.reason === 'needsLoader' ? 'project.needsLoader' : 'project.noVersion');
   };
   return (
@@ -99,7 +106,9 @@ function ContentPlate({ project, route }: { project: ProjectDetail; route: Brows
           <option value={NEW}>{t('project.newInstance')}</option>
         </select>
       </div>
-      {options.length > 0 ? (
+      {versions.isError ? (
+        <ErrorCard error={versions.error} actions={<Button onClick={() => void versions.refetch()}>{t('common.retry')}</Button>} />
+      ) : options.length > 0 ? (
         <Select
           label={t('project.version')}
           value={version ?? ''}
@@ -107,7 +116,7 @@ function ContentPlate({ project, route }: { project: ProjectDetail; route: Brows
           options={options.map((v) => ({ value: v.id, label: versionLabel(v) }))}
         />
       ) : (
-        !versions.isPending && <p className="text-ink-dim">{t('project.noVersions')}</p>
+        versions.isSuccess && <p className="text-ink-dim">{t('project.noVersions')}</p>
       )}
       {already && instance ? (
         <p className="installed-lamp">{t('project.alreadyThere', { name: instance.name })}</p>
@@ -115,7 +124,7 @@ function ContentPlate({ project, route }: { project: ProjectDetail; route: Brows
         <Button
           variant="primary"
           size="lg"
-          disabled={flow.busy || version === null}
+          disabled={flow.busy || version === null || !instances.isSuccess || !versions.isSuccess}
           onClick={() =>
             void flow.start({
               project: project.projectId,

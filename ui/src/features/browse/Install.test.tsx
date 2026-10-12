@@ -1,8 +1,9 @@
-import { screen, waitFor, within } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
 import { applyContentProgress, contentProgressSnapshot } from '../../state/contentProgress';
 import { routeSnapshot } from '../../state/route';
+import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
 import { Toasts } from '../../ui/Toasts';
@@ -104,4 +105,91 @@ it('leaves no progress meter behind when an install fails', async () => {
   expect(await screen.findByText('That took too long. Try installing again.')).toBeInTheDocument();
   expect(contentProgressSnapshot('asalith-fields')).toBeNull();
   expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+});
+
+const unreachable = {
+  category: 'network',
+  code: 'host_unreachable',
+  message: "Couldn't reach api.modrinth.com",
+  fix: null,
+  detail: null,
+  params: { host: 'api.modrinth.com' },
+};
+
+it('shows a failed version list with a retry, and no wrong reasons', async () => {
+  const backend = createMockBackend();
+  let failures = 1;
+  const { user } = renderWithProviders(page('sodium'), {
+    ipc: (cmd, args) => {
+      if (cmd === 'browse_versions' && failures-- > 0) throw unreachable;
+      return backend.handle(cmd, args);
+    },
+  });
+  expect(await screen.findByRole('alert')).toBeInTheDocument();
+  expect(screen.queryByText(/No version for this instance/)).not.toBeInTheDocument();
+  expect(screen.queryByText('No version fits this instance.')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Install' })).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: 'Try again' }));
+  const picker = await screen.findByRole('combobox', { name: 'Install to' });
+  expect(await within(picker).findByRole('option', { name: 'Sky Islands — No version for this instance' })).toBeDisabled();
+  expect(screen.getByRole('combobox', { name: 'Version' })).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('keeps Create instance disabled when a modpack has no version list', async () => {
+  const backend = createMockBackend();
+  renderWithProviders(<Browse route={{ name: 'browse', kind: 'modpack', project: 'fabulously-optimized' }} />, {
+    ipc: (cmd, args) => {
+      if (cmd === 'browse_versions') throw unreachable;
+      return backend.handle(cmd, args);
+    },
+  });
+  expect(await screen.findByRole('alert')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Create instance' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+});
+
+it('installs into what the picker shows when the route names an unknown instance', async () => {
+  const { user, calls } = renderApp(page('sodium', 'long-gone'));
+  const picker = await screen.findByRole('combobox', { name: 'Install to' });
+  await waitFor(() => expect(picker).toHaveValue('asalith-fields'));
+  const button = screen.getByRole('button', { name: 'Install' });
+  await waitFor(() => expect(button).toBeEnabled());
+  await user.click(button);
+  await waitFor(() => expect(sent(calls, 'browse_plan')).toHaveLength(1));
+  expect(sent(calls, 'browse_plan')).toMatchObject([{ request: { target: { kind: 'instance', id: 'asalith-fields' } } }]);
+});
+
+it('cannot be cancelled while the install is running', async () => {
+  const backend = createMockBackend();
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const { user } = renderWithProviders(page('iris', 'asalith-fields'), {
+    ipc: async (cmd, args) => {
+      if (cmd === 'browse_install') await gate;
+      return backend.handle(cmd, args);
+    },
+  });
+  await user.click(await screen.findByRole('button', { name: 'Install' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Add Iris to Asalith Fields' });
+  await user.click(within(dialog).getByRole('button', { name: 'Install' }));
+  await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeDisabled());
+  fireEvent(dialog, new Event('cancel', { cancelable: true }));
+  expect(screen.getByRole('dialog', { name: 'Add Iris to Asalith Fields' })).toBeInTheDocument();
+  release();
+  expect(await screen.findByText('Added Iris + 1 more to Asalith Fields')).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+});
+
+it('does not call the install failed when only showing the result goes wrong', async () => {
+  const backend = createMockBackend();
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(runStore, 'run').mockImplementation(() => {
+    throw new Error('boom');
+  });
+  const { user } = renderWithProviders(page('faithful', 'asalith-fields'), { ipc: (cmd, args) => backend.handle(cmd, args) });
+  await user.click(await screen.findByRole('button', { name: 'Install' }));
+  await waitFor(() => expect(log).toHaveBeenCalled());
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  vi.restoreAllMocks();
 });

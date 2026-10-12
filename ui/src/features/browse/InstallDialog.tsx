@@ -25,11 +25,11 @@ export function InstallDialog({
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={busy ? () => {} : onClose}
       title={title}
       actions={
         <>
-          <Button onClick={onClose}>{t('common.cancel')}</Button>
+          <Button disabled={busy} onClick={onClose}>{t('common.cancel')}</Button>
           <Button variant="primary" disabled={busy} onClick={onConfirm}>
             {busy ? t('project.installing') : t('install.confirm')}
           </Button>
