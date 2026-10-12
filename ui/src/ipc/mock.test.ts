@@ -1,7 +1,20 @@
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockBackend, installMock, stopMockRuns } from './mock';
-import type { AccountsFile, InstanceListing, LoaderVersion, ManualProgress, PackContents, PackStatus, RunSnapshot, Settings } from './schema';
+import { MOCK_INVITE } from './mockServers';
+import type {
+  AccountsFile,
+  Instance,
+  InstanceListing,
+  JoinPreview,
+  LoaderVersion,
+  ManualProgress,
+  PackContents,
+  PackStatus,
+  RunSnapshot,
+  ServerStatusView,
+  Settings,
+} from './schema';
 
 describe('mock backend', () => {
   it('serves the contract fixtures', async () => {
@@ -189,5 +202,60 @@ describe('scripted runs', () => {
       clearMocks();
       vi.useRealTimers();
     }
+  });
+
+  it('answers each server scenario', async () => {
+    const online = createMockBackend({ server: 'online' });
+    expect((await online.handle('join_preview', { link: MOCK_INVITE })) as JoinPreview).toMatchObject({
+      name: 'survival',
+      existing: 'survival',
+      whitelisted: false,
+    });
+    expect(((await online.handle('server_status', { id: 'survival' })) as ServerStatusView).status).toBe('online');
+    const preview = async (server: 'vanilla' | 'pending' | 'whitelisted') =>
+      (await createMockBackend({ server }).handle('join_preview', { link: MOCK_INVITE })) as JoinPreview;
+    expect((await preview('vanilla')).pack).toBeNull();
+    expect((await preview('pending')).pack?.state).toBe('pending');
+    expect((await preview('whitelisted')).whitelisted).toBe(true);
+    await expect(createMockBackend({ server: 'network' }).handle('join_preview', { link: MOCK_INVITE })).rejects.toMatchObject({
+      code: 'invite_unsupported',
+      params: { address: 'play.example.com:25577' },
+    });
+    await expect(createMockBackend({ server: 'modded-no-pack' }).handle('join_preview', { link: MOCK_INVITE })).rejects.toMatchObject({
+      code: 'invite_unsupported',
+    });
+    const gone = createMockBackend({ server: 'gone' });
+    await expect(gone.handle('join_preview', { link: MOCK_INVITE })).rejects.toMatchObject({ code: 'invite_gone' });
+    expect(((await gone.handle('server_status', { id: 'survival' })) as ServerStatusView).gone).toBe(true);
+    await expect(online.handle('join_preview', { link: 'https://play.example.com/short' })).rejects.toMatchObject({
+      code: 'invite_link_invalid',
+    });
+  });
+
+  it('adds a server once and moves it to a new link', async () => {
+    const { handle, state } = createMockBackend({ server: 'online' });
+    const other = `https://play.example.com/${'B'.repeat(43)}`;
+    const added = (await handle('join_add', { link: other })) as Instance;
+    expect(((await handle('join_add', { link: ` ${other}/ ` })) as Instance).id).toBe(added.id);
+    expect(state.listing.instances.filter((i) => i.source.kind === 'perland')).toHaveLength(2);
+    const moved = (await handle('server_relink', { id: 'survival', link: other })) as Instance;
+    expect(moved.source).toMatchObject({ kind: 'perland', invite: other });
+  });
+
+  it('hands an invite link over as a join deep link, and any other link as a pack', async () => {
+    const join = createMockBackend({ link: ` ${MOCK_INVITE}/ ` });
+    expect(await join.handle('deep_link_take')).toEqual({ kind: 'join', invite: MOCK_INVITE });
+    expect(await join.handle('deep_link_take')).toBeNull();
+    const pack = createMockBackend({ link: 'https://packs.example/a/pack.toml' });
+    expect(await pack.handle('deep_link_take')).toEqual({ kind: 'pack', url: 'https://packs.example/a/pack.toml' });
+  });
+
+  it('scripts a pack the server is still building', async () => {
+    const backend = installMock({ server: 'pending' });
+    await backend.handle('play', { id: 'survival' });
+    expect(backend.state.runs.get('survival')?.state).toBe('checking');
+    await vi.waitFor(() => expect(backend.state.runs.get('survival')?.state).toBe('running'), { timeout: 8000 });
+    stopMockRuns();
+    clearMocks();
   });
 });
