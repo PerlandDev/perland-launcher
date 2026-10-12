@@ -14,6 +14,7 @@ import { loaderName } from '../home/labels';
 import { categoryLabel, gameLabel } from './labels';
 import { ProjectPage } from './ProjectPage';
 import { ResultRow } from './ResultRow';
+import { RowInstall } from './RowInstall';
 import { remember, sessionFilters, type Filters } from './session';
 
 export type BrowseRoute = Extract<Route, { name: 'browse' }>;
@@ -183,6 +184,7 @@ function BrowseList({ route }: { route: BrowseRoute }) {
               scoped={scoped}
               installed={installed.data?.includes(hit.projectId) ?? false}
               onOpen={() => navigate({ ...route, project: hit.slug })}
+              action={scope ? <RowInstall hit={hit} instanceId={scope.id} /> : undefined}
             />
           ))}
         </ul>

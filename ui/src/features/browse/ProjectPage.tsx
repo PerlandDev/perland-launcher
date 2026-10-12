@@ -10,6 +10,7 @@ import { ErrorCard } from '../../ui/ErrorCard';
 import { formatCompact } from '../../ui/format';
 import { ExternalLink } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
+import { ActionPlate } from './ActionPlate';
 import type { BrowseRoute } from './Browse';
 import { Gallery } from './Gallery';
 import { categoryLabel } from './labels';
@@ -60,7 +61,7 @@ export function ProjectPage({ route, project }: { route: BrowseRoute; project: s
     );
   const p = detail.data;
   const lang = i18n.language;
-  const installSlot = null; // Task 21: <ActionPlate project={p} route={route} />
+  const installSlot = <ActionPlate project={p} route={route} />;
   return frame(
     p.title,
     <div className="project-layout">
