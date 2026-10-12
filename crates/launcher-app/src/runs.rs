@@ -101,6 +101,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         // Emitted under the lock, before the task exists, so the first state always comes first.
         self.emit_state(id, first, None);
         let cancel = Cancel::default();
+        let update_only = play.is_none();
         let core = Arc::clone(self);
         let (run_id, run_cancel) = (id.to_string(), cancel.clone());
         let task =
@@ -116,6 +117,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 cancel,
                 answer: None,
                 offer: None,
+                update_only,
             },
         );
         Ok(())
@@ -148,6 +150,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             | RunStateKind::Asking
             | RunStateKind::Queued
             | RunStateKind::Preparing => {
+                let update_only = run.update_only;
                 if let Some(abort) = run.abort.take() {
                     abort.abort();
                 }
@@ -157,6 +160,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     RunStateKind::Idle,
                     Some(ExitInfo {
                         cancelled: true,
+                        update_only,
                         ..ExitInfo::default()
                     }),
                 );
@@ -1109,6 +1113,34 @@ mod tests {
         assert_eq!(host.states(&id), vec![Checking, Asking, Idle]);
         assert!(host.last_exit(&id).unwrap().cancelled);
         assert!(runner.syncs.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn stopping_an_update_only_run_says_it_was_one() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        offer(&runner, &id);
+        runner.hold_sync.store(true, Ordering::SeqCst);
+        // The banner's Update: checking, then queued/syncing. Stop while it is still checking
+        // or queued must say it was an update-only run.
+        core.pack_update(&id).await.unwrap();
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+        let exit = host.last_exit(&id).unwrap();
+        assert!(exit.cancelled);
+        assert!(
+            exit.update_only,
+            "an update-only run stays update-only when stopped"
+        );
+
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        core.stop(&id).unwrap();
+        host.wait_for_nth(&id, Idle, 2).await;
+        assert!(
+            !host.last_exit(&id).unwrap().update_only,
+            "Play is not update-only"
+        );
     }
 
     #[tokio::test]

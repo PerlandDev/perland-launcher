@@ -63,6 +63,8 @@ pub(crate) struct Run {
     pub(crate) answer: Option<oneshot::Sender<bool>>,
     /// The update on offer while asking, for `run_states` after a reload.
     pub(crate) offer: Option<PackUpdate>,
+    /// The banner's Update (no game): a Stop still reports the run as update-only.
+    pub(crate) update_only: bool,
 }
 
 /// Files the last sync couldn't download, while the player fetches them by hand.
