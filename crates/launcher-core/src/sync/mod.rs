@@ -212,6 +212,7 @@ impl Syncer {
     /// under its data folder, and the real upstream addresses.
     pub fn for_installer(installer: Arc<Installer>, http: reqwest::Client) -> Self {
         let sources = Sources {
+            invites: crate::invite::InviteClient::new(http.clone()),
             http,
             meta: installer.meta.clone(),
             downloader: installer.downloader.clone(),

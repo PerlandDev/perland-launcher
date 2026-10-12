@@ -5,6 +5,7 @@ pub mod curseforge;
 pub mod modrinth;
 pub mod mrpack;
 pub mod packwiz;
+pub mod perland;
 pub mod sidecar;
 
 use std::{collections::BTreeMap, fmt::Display, path::PathBuf};
@@ -15,8 +16,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     download::{cache::ObjectCache, host_of, Downloader, Hashes},
     error::{ErrorCode, LauncherError, Result},
+    events::noop_sink,
     fsutil::path_key,
     instances::{LoaderSpec, SourceRef, UpdatePolicy},
+    invite::{InviteClient, InviteLink},
     meta::{loaders::LoaderKind, MetaClient},
 };
 
@@ -162,6 +165,10 @@ pub enum PackInput {
         project: String,
         version: Option<String>,
     },
+    /// A Perland server's invite link.
+    Perland {
+        link: InviteLink,
+    },
 }
 
 fn link_invalid() -> LauncherError {
@@ -173,7 +180,8 @@ fn link_invalid() -> LauncherError {
 }
 
 impl PackInput {
-    /// `https://…/pack.toml`, `modrinth:<slug or id>[@<version id>]`, or a path ending in `.mrpack`.
+    /// `https://…/pack.toml`, `modrinth:<slug or id>[@<version id>]`, a Perland invite link, or a
+    /// path ending in `.mrpack`.
     pub fn parse(input: &str) -> Result<PackInput> {
         let s = input.trim();
         if let Some(rest) = s.strip_prefix("modrinth:") {
@@ -188,6 +196,10 @@ impl PackInput {
                 project: project.to_string(),
                 version: version.map(str::to_string),
             });
+        }
+        // Before the packwiz rule: an invite is also an https URL, but never ends in pack.toml.
+        if let Ok(link) = InviteLink::parse(s) {
+            return Ok(PackInput::Perland { link });
         }
         if s.starts_with("http://") || s.starts_with("https://") {
             check_pack_url(s)?;
@@ -242,6 +254,8 @@ impl Default for SourceConfig {
 /// Everything a source needs to fetch a pack.
 #[derive(Clone)]
 pub struct Sources {
+    /// Server invites: one per process, so every caller shares its 15 s view cache.
+    pub invites: InviteClient,
     pub http: reqwest::Client,
     pub meta: MetaClient,
     pub downloader: Downloader,
@@ -290,6 +304,7 @@ impl Sources {
             PackInput::Modrinth { project, version } => {
                 modrinth::open(self, project, version.as_deref()).await
             }
+            PackInput::Perland { link } => perland::open(self, link).await,
         }
     }
 
@@ -303,6 +318,9 @@ impl Sources {
                 project_id,
                 version_id,
             } => modrinth::resolve(self, project_id, version_id).await,
+            SourceRef::Perland { invite, engine } => {
+                perland::resolve_ref(self, invite, engine, &noop_sink()).await
+            }
         }
     }
 
@@ -315,6 +333,9 @@ impl Sources {
             SourceRef::Packwiz { url } => packwiz::check(self, url, &installed.stamp).await,
             SourceRef::Modrinth { project_id, .. } => {
                 modrinth::check(self, project_id, &installed.stamp, &installed.minecraft).await
+            }
+            SourceRef::Perland { invite, engine } => {
+                perland::check(self, invite, engine, installed).await
             }
         }
     }
@@ -461,6 +482,24 @@ mod tests {
                 path: "C:\\Downloads\\Pack 1.0.MRPACK".into()
             }
         );
+    }
+
+    #[test]
+    fn pack_input_reads_invite_links_before_packwiz() {
+        let token = "A".repeat(43);
+        let input = PackInput::parse(&format!(" https://play.example.com/{token}/ ")).unwrap();
+        let PackInput::Perland { link } = &input else {
+            panic!("{input:?}");
+        };
+        assert_eq!(
+            link.canonical(),
+            format!("https://play.example.com/{token}")
+        );
+        assert!(!format!("{input:?}").contains(&token));
+        assert!(matches!(
+            PackInput::parse("http://127.0.0.1:8080/pack.toml"),
+            Ok(PackInput::Packwiz { .. })
+        ));
     }
 
     fn versions(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {

@@ -1,18 +1,24 @@
-#![allow(dead_code)]
 //! Server invites against a wiremock Engine. The mock server is both the invite site
 //! (`/config.json`) and the Engine (`/api/v1/invites/…`). Fake tokens only.
 mod common;
 
-use std::time::Duration;
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
-use common::hits;
+use common::{hits, sources, write_zip};
 use launcher_core::{
+    events::{noop_sink, Event, EventSink},
+    instances::SourceRef,
     invite::{InviteClient, InviteLimits, InviteLink, InviteTiming},
+    meta::loaders::LoaderKind,
+    sources::{perland, DesiredState, PackInput, UpdateCheck},
     ErrorCategory, ErrorCode,
 };
 use serde_json::{json, Value};
 use wiremock::{
-    matchers::{method, path},
+    matchers::{header, method, path},
     Mock, MockServer, ResponseTemplate,
 };
 
@@ -333,4 +339,467 @@ async fn an_unreachable_engine_is_forgotten_and_found_again() {
     assert_eq!(err.params["host"], "127.0.0.1");
     assert_eq!(client.view(&l).await.unwrap().view.name, "survival");
     assert_eq!(hits(&server, "/config.json").await, 1);
+}
+
+/// A tiny `.mrpack` for Fabric 1.20.1 with one override file.
+fn mrpack(dir: &std::path::Path, version: &str) -> Vec<u8> {
+    let index = serde_json::to_vec(&json!({
+        "formatVersion": 1, "game": "minecraft", "versionId": version, "name": "Survival Pack (index)",
+        "files": [], "dependencies": { "minecraft": "1.20.1", "fabric-loader": "0.16.14" }
+    }))
+    .unwrap();
+    let path = dir.join(format!("{version}.mrpack"));
+    write_zip(
+        &path,
+        &[
+            ("modrinth.index.json", &index[..]),
+            ("overrides/config/server.txt", &b"motd=hi"[..]),
+        ],
+    );
+    std::fs::read(path).unwrap()
+}
+
+async fn mount_pack(server: &MockServer, bytes: Vec<u8>, etag: &str) {
+    for verb in ["GET", "HEAD"] {
+        Mock::given(method(verb))
+            .and(path(route("/pack")))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("etag", format!("\"{etag}\"").as_str())
+                    .set_body_bytes(bytes.clone()),
+            )
+            .mount(server)
+            .await;
+    }
+}
+
+fn collect() -> (EventSink, Arc<Mutex<Vec<Event>>>) {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let s2 = seen.clone();
+    (Arc::new(move |e| s2.lock().unwrap().push(e)), seen)
+}
+
+fn source(server: &MockServer) -> SourceRef {
+    SourceRef::Perland {
+        invite: invite_url(server),
+        engine: server.uri(),
+    }
+}
+
+fn installed(stamp: &str) -> DesiredState {
+    DesiredState {
+        name: "survival".into(),
+        pack_version: "1.0.3".into(),
+        minecraft: "1.20.1".into(),
+        loader: None,
+        files: vec![],
+        stamp: stamp.into(),
+        about: Default::default(),
+        archive: None,
+    }
+}
+
+#[tokio::test]
+async fn adding_reads_only_the_view_and_resolving_downloads_the_commit() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(Some("c1"), "ready")).await;
+    mount_pack(&server, mrpack(tmp.path(), "1.0.4"), "c1").await;
+    let src = sources(&server, tmp.path());
+
+    let input = PackInput::parse(&invite_url(&server)).unwrap();
+    let (source, shell) = src.open(&input).await.unwrap();
+    assert_eq!(
+        source,
+        SourceRef::Perland {
+            invite: invite_url(&server),
+            engine: format!("{}/", server.uri()),
+        }
+    );
+    assert_eq!(shell.name, "survival");
+    assert_eq!(shell.minecraft, "1.20.1");
+    assert_eq!(shell.loader.as_ref().unwrap().kind, LoaderKind::Fabric);
+    assert!(shell.files.is_empty());
+    assert_eq!(
+        hits(&server, &route("/pack")).await,
+        0,
+        "Add downloads nothing"
+    );
+
+    let desired = src.resolve(&source).await.unwrap();
+    assert_eq!(desired.stamp, "c1");
+    assert_eq!(desired.name, "survival");
+    assert_eq!(desired.pack_version, "1.0.4");
+    assert_eq!(desired.loader.as_ref().unwrap().version, "0.16.14");
+    let paths: Vec<_> = desired.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, vec!["config/server.txt"]);
+    assert!(desired.archive.is_some());
+    assert_eq!(
+        desired.about.policy,
+        Some(launcher_core::instances::UpdatePolicy::Auto)
+    );
+    assert_eq!(desired.about.description.as_deref(), Some("Be nice."));
+    assert!(desired
+        .about
+        .art
+        .icon
+        .as_deref()
+        .unwrap()
+        .ends_with(&route("/icon")));
+}
+
+#[tokio::test]
+async fn without_a_commit_the_stamp_is_the_pack_etag() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(None, "ready")).await;
+    mount_pack(&server, mrpack(tmp.path(), "1.0.4"), "e7a9").await;
+    let desired = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
+        .await
+        .unwrap();
+    assert_eq!(desired.stamp, "e7a9");
+}
+
+#[tokio::test]
+async fn the_installed_stamp_is_the_pack_etag_even_with_a_commit() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(Some("c1"), "ready")).await;
+    mount_pack(&server, mrpack(tmp.path(), "1.0.4"), "e2").await;
+    let desired = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
+        .await
+        .unwrap();
+    assert_eq!(desired.stamp, "e2");
+}
+
+#[tokio::test]
+async fn without_an_etag_the_installed_stamp_is_the_commit() {
+    // HEAD answers without an ETag, or fails: the commit names what was downloaded.
+    for head in [
+        ResponseTemplate::new(200),
+        ResponseTemplate::new(503).set_body_json(failure(None)),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        let server = MockServer::start().await;
+        mount_config(&server).await;
+        mount_view(&server, modded_view(Some("c1"), "ready")).await;
+        Mock::given(method("HEAD"))
+            .and(path(route("/pack")))
+            .respond_with(head)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(route("/pack")))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(mrpack(tmp.path(), "1.0.4")))
+            .mount(&server)
+            .await;
+        let desired = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
+            .await
+            .unwrap();
+        assert_eq!(desired.stamp, "c1");
+    }
+}
+
+#[tokio::test]
+async fn a_vanilla_server_resolves_to_vanilla_and_follows_its_version() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, vanilla_view("1.21.1")).await;
+    let desired = sources(&server, tmp.path())
+        .resolve(&source(&server))
+        .await
+        .unwrap();
+    assert_eq!(desired.stamp, "vanilla:1.21.1");
+    assert_eq!(
+        (desired.minecraft.as_str(), desired.pack_version.as_str()),
+        ("1.21.1", "1.21.1")
+    );
+    assert!(desired.loader.is_none() && desired.files.is_empty() && desired.archive.is_none());
+
+    // Same version: up to date. The server moves to 1.21.4: an update (fresh sources, so the
+    // 15 s shared view doesn't hide the change).
+    let src = sources(&server, tmp.path());
+    assert_eq!(
+        src.check(&source(&server), &desired).await,
+        UpdateCheck::UpToDate
+    );
+    server.reset().await;
+    mount_config(&server).await;
+    mount_view(&server, vanilla_view("1.21.4")).await;
+    match sources(&server, tmp.path())
+        .check(&source(&server), &desired)
+        .await
+    {
+        UpdateCheck::Available { stamp, version, .. } => {
+            assert_eq!(
+                (stamp.as_str(), version.as_str()),
+                ("vanilla:1.21.4", "1.21.4")
+            )
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_server_that_drops_its_modpack_offers_vanilla() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, vanilla_view("1.20.1")).await;
+    match sources(&server, tmp.path())
+        .check(&source(&server), &installed("c1"))
+        .await
+    {
+        UpdateCheck::Available { stamp, .. } => assert_eq!(stamp, "vanilla:1.20.1"),
+        other => panic!("{other:?}"),
+    }
+    // And back: a vanilla instance whose server gained a modpack.
+    server.reset().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(Some("c2"), "ready")).await;
+    match sources(&server, tmp.path())
+        .check(&source(&server), &installed("vanilla:1.20.1"))
+        .await
+    {
+        UpdateCheck::Available {
+            stamp, source: s, ..
+        } => {
+            assert_eq!(stamp, "c2");
+            assert!(matches!(s, SourceRef::Perland { .. }));
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn the_update_check_compares_commits() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(Some("c1"), "ready")).await;
+    let src = sources(&server, tmp.path());
+    assert_eq!(
+        src.check(&source(&server), &installed("c1")).await,
+        UpdateCheck::UpToDate
+    );
+    match src.check(&source(&server), &installed("c0")).await {
+        UpdateCheck::Available { stamp, version, .. } => {
+            assert_eq!((stamp.as_str(), version.as_str()), ("c1", "1.0.4"))
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(
+        hits(&server, &route("/pack")).await,
+        0,
+        "the commit answers it; no HEAD"
+    );
+}
+
+#[tokio::test]
+async fn without_a_commit_the_check_asks_head_pack() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(None, "ready")).await;
+    Mock::given(method("HEAD"))
+        .and(path(route("/pack")))
+        .and(header("if-none-match", "\"c1\""))
+        .respond_with(ResponseTemplate::new(304))
+        .mount(&server)
+        .await;
+    Mock::given(method("HEAD"))
+        .and(path(route("/pack")))
+        .respond_with(ResponseTemplate::new(200).insert_header("etag", "\"c2\""))
+        .mount(&server)
+        .await;
+    let src = sources(&server, tmp.path());
+    assert_eq!(
+        src.check(&source(&server), &installed("c1")).await,
+        UpdateCheck::UpToDate
+    );
+    match src.check(&source(&server), &installed("c0")).await {
+        UpdateCheck::Available { stamp, .. } => assert_eq!(stamp, "c2"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn the_check_never_fails_and_a_dead_link_stays_recognizable() {
+    for (status, code) in [
+        (404u16, ErrorCode::InviteGone),
+        (500, ErrorCode::UpdateCheckFailed),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        let server = MockServer::start().await;
+        mount_config(&server).await;
+        Mock::given(method("GET"))
+            .and(path(route("")))
+            .respond_with(ResponseTemplate::new(status).set_body_json(failure(None)))
+            .mount(&server)
+            .await;
+        match sources(&server, tmp.path())
+            .check(&source(&server), &installed("c1"))
+            .await
+        {
+            UpdateCheck::Unavailable(e) => assert_eq!(e.code, code, "{status}"),
+            other => panic!("{other:?}"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn pack_failures_map_to_codes_with_the_engine_reason() {
+    for (status, engine_code, want) in [
+        (
+            502u16,
+            Some("modrinth_unavailable"),
+            ErrorCode::ServerPackUnavailable,
+        ),
+        (
+            413,
+            Some("export_too_large"),
+            ErrorCode::ServerPackUnavailable,
+        ),
+        (
+            400,
+            Some("invalid_modpack"),
+            ErrorCode::ServerPackUnavailable,
+        ),
+        (404, None, ErrorCode::InviteGone),
+        (429, None, ErrorCode::InviteRateLimited),
+    ] {
+        let tmp = tempfile::tempdir().unwrap();
+        let server = MockServer::start().await;
+        mount_config(&server).await;
+        mount_view(&server, modded_view(Some("c1"), "ready")).await;
+        Mock::given(method("GET"))
+            .and(path(route("/pack")))
+            .respond_with(ResponseTemplate::new(status).set_body_json(failure(engine_code)))
+            .mount(&server)
+            .await;
+        let err = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, want, "{status}");
+        if let Some(c) = engine_code {
+            assert_eq!(err.detail.as_deref(), Some(c), "{status}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn an_unavailable_pack_is_refused_before_downloading() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(Some("c1"), "unavailable")).await;
+    let err = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::ServerPackUnavailable);
+    assert_eq!(hits(&server, &route("/pack")).await, 0);
+}
+
+#[tokio::test]
+async fn networks_are_refused_with_their_address() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, network_view()).await;
+    let src = sources(&server, tmp.path());
+    let err = perland::open(&src, &link(&server)).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::InviteUnsupported);
+    assert_eq!(err.params["address"], "play.example.com:25577");
+    let err = perland::resolve(&src, &link(&server), &noop_sink())
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::InviteUnsupported);
+}
+
+#[tokio::test]
+async fn a_modded_stack_without_a_pack_is_refused_with_its_address() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(
+        &server,
+        json!({
+            "kind": "stack", "name": "modded", "motd": "Mods",
+            "address": { "host": "play.example.com", "port": 25566, "display": "play.example.com:25566" },
+            "game": { "type": "fabric", "version": "1.20.1", "loader": "fabric" },
+            "status": "online", "whitelisted": false, "pack": null,
+            "team": { "displayName": "", "accent": "" }
+        }),
+    )
+    .await;
+    let src = sources(&server, tmp.path());
+    let err = perland::open(&src, &link(&server)).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::InviteUnsupported);
+    assert_eq!(err.params["address"], "play.example.com:25566");
+    let err = perland::resolve(&src, &link(&server), &noop_sink())
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::InviteUnsupported);
+    assert_eq!(err.params["address"], "play.example.com:25566");
+    // An installed instance still plays what it has.
+    match src.check(&source(&server), &installed("c1")).await {
+        UpdateCheck::Unavailable(e) => assert_eq!(e.code, ErrorCode::UpdateCheckFailed),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_pending_pack_is_polled_until_ready() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    Mock::given(method("GET"))
+        .and(path(route("")))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(envelope(modded_view(Some("c1"), "pending"))),
+        )
+        .with_priority(1)
+        .up_to_n_times(2)
+        .mount(&server)
+        .await;
+    mount_view(&server, modded_view(Some("c1"), "ready")).await;
+    mount_pack(&server, mrpack(tmp.path(), "1.0.4"), "c1").await;
+    let (sink, seen) = collect();
+    let desired = perland::resolve(&sources(&server, tmp.path()), &link(&server), &sink)
+        .await
+        .unwrap();
+    assert_eq!(desired.stamp, "c1");
+    assert!(hits(&server, &route("")).await >= 3);
+    let waits = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|e| matches!(e, Event::Progress { task, .. } if task.key == "server_pack_wait"))
+        .count();
+    assert!(
+        waits >= 1,
+        "the run can say the server is preparing the modpack"
+    );
+}
+
+#[tokio::test]
+async fn a_pack_still_building_after_the_limit_is_pending() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modded_view(Some("c1"), "pending")).await;
+    let started = std::time::Instant::now();
+    let err = perland::resolve(&sources(&server, tmp.path()), &link(&server), &noop_sink())
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::ServerPackPending);
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "the poll limit is injectable"
+    );
+    assert_eq!(hits(&server, &route("/pack")).await, 0);
 }

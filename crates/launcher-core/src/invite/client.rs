@@ -2,8 +2,6 @@
 //! `config.json`, reads the public view (shared by every caller for 15 s), and fetches the
 //! icon. There is one per process, owned by `Sources`. Every error names the host only: the
 //! token is in each request path, so no URL ever reaches a `LauncherError`.
-// Temporary: `pack_url`, `error_code` and the status helpers get their callers in Task 5.
-#![allow(dead_code)]
 
 use std::{
     collections::HashMap,
@@ -162,7 +160,7 @@ fn unexpected(host: &str, why: &str) -> LauncherError {
 }
 
 /// A request that never got an answer. `without_url` keeps the token out of the detail.
-fn request_failed(host: &str, e: reqwest::Error) -> LauncherError {
+pub(crate) fn request_failed(host: &str, e: reqwest::Error) -> LauncherError {
     if e.is_redirect() {
         host_trouble(host, "redirect")
     } else {

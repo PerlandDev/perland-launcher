@@ -71,7 +71,7 @@ pub struct InstanceListing {
 
 /// Where an instance's content comes from. `Mrpack` is an imported file, kept in the object
 /// cache under its sha1; `name` is only for display.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum SourceRef {
     None,
@@ -87,6 +87,40 @@ pub enum SourceRef {
         project_id: String,
         version_id: String,
     },
+    /// A Perland server's invite. `invite` is the canonical invite URL (a credential: `Debug`
+    /// hides its token); `engine` is the Engine it was last found at.
+    Perland {
+        invite: String,
+        engine: String,
+    },
+}
+
+// Manual Debug: a Perland invite URL holds its token.
+impl std::fmt::Debug for SourceRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SourceRef::None => f.write_str("None"),
+            SourceRef::Packwiz { url } => f.debug_struct("Packwiz").field("url", url).finish(),
+            SourceRef::Mrpack { name, sha1 } => f
+                .debug_struct("Mrpack")
+                .field("name", name)
+                .field("sha1", sha1)
+                .finish(),
+            SourceRef::Modrinth {
+                project_id,
+                version_id,
+            } => f
+                .debug_struct("Modrinth")
+                .field("project_id", project_id)
+                .field("version_id", version_id)
+                .finish(),
+            SourceRef::Perland { invite, engine } => f
+                .debug_struct("Perland")
+                .field("invite", &crate::invite::shown_invite(invite))
+                .field("engine", engine)
+                .finish(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -688,6 +722,24 @@ mod tests {
             serde_json::to_string(&s).unwrap(),
             r#"{"kind":"modrinth","projectId":"abc","versionId":"def"}"#
         );
+    }
+
+    #[test]
+    fn perland_sources_round_trip_and_hide_their_token() {
+        let token = "A".repeat(43);
+        let source = SourceRef::Perland {
+            invite: format!("https://play.example.com/{token}"),
+            engine: "https://api.example.com/".into(),
+        };
+        let json = serde_json::to_value(&source).unwrap();
+        assert_eq!(json["kind"], "perland");
+        assert_eq!(json["engine"], "https://api.example.com/");
+        let back: SourceRef = serde_json::from_value(json).unwrap();
+        assert_eq!(back, source);
+        let shown = format!("{source:?}");
+        assert!(!shown.contains(&token), "{shown}");
+        assert!(shown.contains("play.example.com/<invite>"), "{shown}");
+        assert_eq!(format!("{:?}", SourceRef::None), "None");
     }
 
     #[test]

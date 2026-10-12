@@ -10,6 +10,7 @@ use launcher_core::{
         hash::{sha1_hex, sha256_hex, sha512_hex},
         Downloader,
     },
+    invite::{InviteClient, InviteTiming},
     meta::MetaClient,
     sources::{SourceConfig, Sources},
 };
@@ -21,6 +22,11 @@ use wiremock::{
 pub fn sources(server: &MockServer, root: &Path) -> Sources {
     let http = launcher_core::http::client("test").unwrap();
     Sources {
+        invites: InviteClient::new(http.clone()).with_timing(InviteTiming {
+            view_ttl: Duration::from_secs(15),
+            pack_poll_every: Duration::from_millis(10),
+            pack_poll_for: Duration::from_millis(300),
+        }),
         http: http.clone(),
         meta: MetaClient::new(http.clone(), root.join("meta")),
         downloader: Downloader::new(http).with_backoff(Duration::from_millis(1)),

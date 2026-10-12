@@ -194,9 +194,17 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
             let (instance, desired) = syncer.add_pack(&store, &PackInput::parse(&input)?).await?;
             // If the sync fails, the player can still find the half-synced instance.
             eprintln!("created instance {}", instance.id);
-            let outcome = syncer
-                .sync(&store, &instance.id, &desired, &progress_sink())
-                .await?;
+            // A server's pack is resolved by its first sync (perland::open reads only the invite).
+            let outcome = if matches!(instance.source, SourceRef::Perland { .. }) {
+                syncer
+                    .ensure(&store, &instance.id, &progress_sink())
+                    .await?
+                    .outcome
+            } else {
+                syncer
+                    .sync(&store, &instance.id, &desired, &progress_sink())
+                    .await?
+            };
             // stdout carries only the id (scripts capture it), so the changelog goes to stderr.
             if report(&outcome, true).is_some() {
                 eprintln!("then run: perland-cli sync --instance {}", instance.id);

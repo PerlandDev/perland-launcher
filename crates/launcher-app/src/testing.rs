@@ -470,6 +470,10 @@ impl Runner for FakeRunner {
                     project_id: project,
                     version_id: version.unwrap_or_else(|| "v1".into()),
                 },
+                PackInput::Perland { link } => SourceRef::Perland {
+                    invite: link.canonical(),
+                    engine: "https://api.example.com/".into(),
+                },
             };
             store.save(&instance).await?;
             Ok(instance)
