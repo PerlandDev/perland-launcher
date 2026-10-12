@@ -64,10 +64,18 @@ export const mcVersion = z.strictObject({
 });
 export const loaderVersion = z.strictObject({ version: z.string(), stable: z.boolean() });
 export const localMod = z.strictObject({ fileName: z.string(), enabled: z.boolean(), size: z.number().int() });
+export const contentFile = z.strictObject({
+  fileName: z.string(),
+  size: z.number().int(),
+  folder: z.boolean(),
+  managed: z.boolean(),
+});
 export const newInstance = z.strictObject({ name: z.string(), minecraft: z.string(), loader: loaderSpec.nullable() });
 export const openTarget = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('instance'), id: z.string() }),
   z.strictObject({ kind: z.literal('mods'), id: z.string() }),
+  z.strictObject({ kind: z.literal('resource_packs'), id: z.string() }),
+  z.strictObject({ kind: z.literal('shader_packs'), id: z.string() }),
   z.strictObject({ kind: z.literal('data') }),
   z.strictObject({ kind: z.literal('logs') }),
   z.strictObject({ kind: z.literal('downloads') }),
@@ -265,6 +273,7 @@ export type AppInfo = z.infer<typeof appInfo>;
 export type McVersion = z.infer<typeof mcVersion>;
 export type LoaderVersion = z.infer<typeof loaderVersion>;
 export type LocalMod = z.infer<typeof localMod>;
+export type ContentFile = z.infer<typeof contentFile>;
 export type NewInstance = z.infer<typeof newInstance>;
 export type OpenTarget = z.infer<typeof openTarget>;
 export type RunStateKind = z.infer<typeof runStateKind>;

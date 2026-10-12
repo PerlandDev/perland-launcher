@@ -58,9 +58,22 @@ pub struct NewInstance {
 pub enum OpenTarget {
     Instance { id: String },
     Mods { id: String },
+    ResourcePacks { id: String },
+    ShaderPacks { id: String },
     Data,
     Logs,
     Downloads,
+}
+
+/// A resource pack or shader in an instance, as the Mods & packs screen lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContentFile {
+    pub file_name: String,
+    pub size: u64,
+    pub folder: bool,
+    /// Came with the pack: the player can't remove it (sync would put it back).
+    pub managed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -369,6 +382,12 @@ mod tests {
     fn open_target_round_trips_tagged() {
         let t: OpenTarget = serde_json::from_str(r#"{"kind":"mods","id":"pack"}"#).unwrap();
         assert_eq!(t, OpenTarget::Mods { id: "pack".into() });
+        let packs: OpenTarget =
+            serde_json::from_str(r#"{"kind":"resource_packs","id":"x"}"#).unwrap();
+        assert_eq!(packs, OpenTarget::ResourcePacks { id: "x".into() });
+        let shaders: OpenTarget =
+            serde_json::from_str(r#"{"kind":"shader_packs","id":"x"}"#).unwrap();
+        assert_eq!(shaders, OpenTarget::ShaderPacks { id: "x".into() });
         let d: OpenTarget = serde_json::from_str(r#"{"kind":"data"}"#).unwrap();
         assert_eq!(d, OpenTarget::Data);
     }

@@ -9,9 +9,9 @@ use launcher_app::dto::{
 };
 use launcher_app::{
     dto::{
-        AppInfo, Build, JavaTest, ManualProgress, NewInstance, OpenTarget, OptionalChoice,
-        PackAddRequest, PackArtData, PackContents, PackMod, PackStatus, PackUpdate, RunSnapshot,
-        SyncSummary,
+        AppInfo, Build, ContentFile, JavaTest, ManualProgress, NewInstance, OpenTarget,
+        OptionalChoice, PackAddRequest, PackArtData, PackContents, PackMod, PackStatus, PackUpdate,
+        RunSnapshot, SyncSummary,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
 };
@@ -362,6 +362,29 @@ fn contract_fixtures_are_current() {
         ],
     );
     check(
+        "content_files",
+        vec![
+            ContentFile {
+                file_name: "Faithful 32x.zip".into(),
+                size: 18_874_368,
+                folder: false,
+                managed: true,
+            },
+            ContentFile {
+                file_name: "Fresh Animations.zip".into(),
+                size: 4_194_304,
+                folder: false,
+                managed: false,
+            },
+            ContentFile {
+                file_name: "My Pack".into(),
+                size: 0,
+                folder: true,
+                managed: false,
+            },
+        ],
+    );
+    check(
         "events",
         vec![
             AppEvent::Progress {
@@ -511,6 +534,12 @@ fn contract_fixtures_are_current() {
                 id: "asalith-fields".into(),
             },
             OpenTarget::Mods {
+                id: "asalith-fields".into(),
+            },
+            OpenTarget::ResourcePacks {
+                id: "asalith-fields".into(),
+            },
+            OpenTarget::ShaderPacks {
                 id: "asalith-fields".into(),
             },
             OpenTarget::Data,

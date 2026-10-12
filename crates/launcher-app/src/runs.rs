@@ -627,6 +627,7 @@ mod tests {
 
     use launcher_core::{
         accounts::BuildKind,
+        browse::compat::ContentKind,
         instances::{GameSpec, UpdatePolicy},
         launch::CrashHint,
         locks::InstanceLock,
@@ -904,6 +905,32 @@ mod tests {
         core.mod_remove("alpha", "sodium.jar.disabled")
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_running_instances_packs_cannot_be_removed() {
+        let (core, runner, host, _t) = ready(true).await;
+        let packs = core.instances.game_dir("alpha").join("resourcepacks");
+        std::fs::create_dir_all(&packs).unwrap();
+        std::fs::write(packs.join("Faithful.zip"), b"zip").unwrap();
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        assert_eq!(
+            core.content_remove("alpha", ContentKind::ResourcePack, "Faithful.zip")
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InstanceBusy
+        );
+        assert!(packs.join("Faithful.zip").is_file());
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+        let list = core
+            .content_remove("alpha", ContentKind::ResourcePack, "Faithful.zip")
+            .await
+            .unwrap();
+        assert!(list.is_empty());
     }
 
     #[tokio::test]

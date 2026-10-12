@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ZodType } from 'zod';
 import accounts from './contract/accounts.json';
 import appInfo from './contract/app_info.json';
+import contentFiles from './contract/content_files.json';
 import errorFx from './contract/error.json';
 import errorCodes from './contract/error_codes.json';
 import events from './contract/events.json';
@@ -33,6 +34,7 @@ import * as s from './schema';
 const cases: [string, ZodType, unknown][] = [
   ['accounts', s.accountsFile, accounts],
   ['app_info', s.appInfo, appInfo],
+  ['content_files', s.contentFile.array(), contentFiles],
   ['error', s.launcherError, errorFx],
   ['instance', s.instance, instanceFx],
   ['instance_listing', s.instanceListing, instanceListing],

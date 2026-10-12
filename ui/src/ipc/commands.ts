@@ -3,6 +3,7 @@ import type {
   AccountsFile,
   AppInfo,
   BrowsePlanRequest,
+  ContentFile,
   ContentKind,
   ImageKind,
   InstallPlanView,
@@ -54,6 +55,9 @@ export const commands = {
     invoke<LocalMod[]>('mod_set_enabled', { id, file, enabled }),
   modsAdd: (id: string, paths: string[]) => invoke<LocalMod[]>('mods_add', { id, paths }),
   modRemove: (id: string, file: string) => invoke<LocalMod[]>('mod_remove', { id, file }),
+  contentList: (id: string, kind: ContentKind) => invoke<ContentFile[]>('content_list', { id, kind }),
+  contentRemove: (id: string, kind: ContentKind, file: string) =>
+    invoke<ContentFile[]>('content_remove', { id, kind, file }),
   openFolder: (target: OpenTarget) => invoke<null>('open_folder', { target }),
   javaTest: (path: string) => invoke<JavaTest>('java_test', { path }),
   packAdd: (request: PackAddRequest) => invoke<Instance>('pack_add', { request }),

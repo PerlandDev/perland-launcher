@@ -94,6 +94,8 @@ fn main() {
             commands::mod_set_enabled,
             commands::mods_add,
             commands::mod_remove,
+            commands::content_list,
+            commands::content_remove,
             commands::open_folder,
             commands::java_test,
             commands::pack_add,

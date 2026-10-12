@@ -197,16 +197,27 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// them (sync would only put them back). Paths compare as the file system does, so a pack
     /// that renamed `foo.jar` to `Foo.jar` still owns the `foo.jar` on disk.
     pub(crate) async fn refuse_managed(&self, id: &str, file: &str) -> Result<()> {
-        let base = file.strip_suffix(".disabled").unwrap_or(file);
         let key = path_key(&format!("mods/{file}"));
         let key = key.strip_suffix(".disabled").unwrap_or(&key);
+        self.refuse_if_owned(id, key, file.strip_suffix(".disabled").unwrap_or(file))
+            .await
+    }
+
+    /// The same for a file in another content folder (`resourcepacks`, `shaderpacks`), which
+    /// has no on/off state, so the name is compared as it is.
+    pub(crate) async fn refuse_managed_in(&self, id: &str, folder: &str, file: &str) -> Result<()> {
+        self.refuse_if_owned(id, &path_key(&format!("{folder}/{file}")), file)
+            .await
+    }
+
+    async fn refuse_if_owned(&self, id: &str, key: &str, shown: &str) -> Result<()> {
         let managed = Managed::load(&self.instances.perland_dir(id)).await;
         if managed.is_some_and(|m| m.files.keys().any(|k| path_key(k) == key)) {
             return Err(LauncherError::disk(
                 ErrorCode::ModManaged,
-                format!("{base} comes with the pack"),
+                format!("{shown} comes with the pack"),
             )
-            .with_param("file", base)
+            .with_param("file", shown)
             .with_fix("Mods you add yourself can be turned off or removed"));
         }
         Ok(())

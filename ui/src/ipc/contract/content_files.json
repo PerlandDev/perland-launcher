@@ -1,0 +1,20 @@
+[
+  {
+    "fileName": "Faithful 32x.zip",
+    "size": 18874368,
+    "folder": false,
+    "managed": true
+  },
+  {
+    "fileName": "Fresh Animations.zip",
+    "size": 4194304,
+    "folder": false,
+    "managed": false
+  },
+  {
+    "fileName": "My Pack",
+    "size": 0,
+    "folder": true,
+    "managed": false
+  }
+]

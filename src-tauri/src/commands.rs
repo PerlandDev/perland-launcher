@@ -2,9 +2,9 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::dto::{
-    AppInfo, BrowsePlanRequest, InstallPlanView, InstallResult, JavaTest, ManualProgress,
-    NewInstance, OpenTarget, PackAddRequest, PackArtData, PackContents, PackStatus, RunSnapshot,
-    SearchRequest,
+    AppInfo, BrowsePlanRequest, ContentFile, InstallPlanView, InstallResult, JavaTest,
+    ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackArtData, PackContents, PackStatus,
+    RunSnapshot, SearchRequest,
 };
 use launcher_core::{
     accounts::AccountsFile,
@@ -148,6 +148,25 @@ pub async fn mods_add(core: CoreState<'_>, id: String, paths: Vec<PathBuf>) -> R
 #[tauri::command]
 pub async fn mod_remove(core: CoreState<'_>, id: String, file: String) -> Res<Vec<LocalMod>> {
     core.mod_remove(&id, &file).await
+}
+
+#[tauri::command]
+pub async fn content_list(
+    core: CoreState<'_>,
+    id: String,
+    kind: ContentKind,
+) -> Res<Vec<ContentFile>> {
+    core.content_list(&id, kind).await
+}
+
+#[tauri::command]
+pub async fn content_remove(
+    core: CoreState<'_>,
+    id: String,
+    kind: ContentKind,
+    file: String,
+) -> Res<Vec<ContentFile>> {
+    core.content_remove(&id, kind, &file).await
 }
 
 #[tauri::command]
