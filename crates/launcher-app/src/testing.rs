@@ -649,8 +649,6 @@ impl FakeBrowser {
         })
     }
 
-    // Used by the install tests that arrive with the Browse commands.
-    #[allow(dead_code)]
     pub fn open_install_gate(&self) {
         self.install_gate.add_permits(1);
     }

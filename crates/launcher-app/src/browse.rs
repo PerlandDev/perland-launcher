@@ -1,18 +1,86 @@
 //! Browse commands (spec §4): search, project pages, images, what an instance has, and (in
 //! Task 14) planned installs. All Modrinth work happens behind `Runner::browser`.
+use std::{
+    collections::HashSet,
+    sync::{atomic::Ordering, Arc, Mutex},
+    time::Duration,
+};
+
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
     browse::{
         compat::{ContentKind, Target},
+        identify::Installed,
         images::ImageKind,
+        plan::{InstallPlan, PlanRequest},
         project::{ProjectDetail, VersionInfo},
         search::{SearchPage, SearchQuery},
     },
+    events::{Event, EventSink, TaskId},
+    instances::{GameSpec, Instance, LoaderSpec},
+    locks::InstanceLock,
     sync::lockfile::Managed,
     ErrorCode, LauncherError, Result,
 };
+use tokio::time::Instant;
 
-use crate::{app::AppCore, dto::SearchRequest, events::Host, runner::Runner};
+use crate::{
+    app::AppCore,
+    dto::{
+        BrowsePlanRequest, InstallPlanView, InstallResult, NewInstance, PlanItemView,
+        PlanTargetRequest, PlanTargetView, SearchRequest,
+    },
+    events::{AppEvent, Host, RunStateKind},
+    runner::Runner,
+};
+
+/// How long a plan stays installable.
+pub const PLAN_TTL: Duration = Duration::from_secs(10 * 60);
+
+pub(crate) struct StoredPlan {
+    plan: InstallPlan,
+    /// The target instance, and its game when planned (a changed game makes the plan stale).
+    instance: Option<(String, GameSpec)>,
+    created: Instant,
+}
+
+fn plan_expired() -> LauncherError {
+    LauncherError::pack(
+        ErrorCode::ContentPlanExpired,
+        "That took too long. Try installing again",
+    )
+}
+
+fn content_busy(name: &str) -> LauncherError {
+    LauncherError::pack(
+        ErrorCode::ContentBusy,
+        format!("Wait for {name} to finish updating"),
+    )
+    .with_param("name", name)
+}
+
+pub(crate) fn content_installing() -> LauncherError {
+    LauncherError::pack(
+        ErrorCode::ContentInstalling,
+        "Wait for the download to finish",
+    )
+}
+
+/// Marks an instance as being installed into; holds the instance lock when no run does.
+pub(crate) struct ContentGuard<'a> {
+    installing: &'a Mutex<HashSet<String>>,
+    id: String,
+    _lock: Option<InstanceLock>,
+}
+
+impl Drop for ContentGuard<'_> {
+    fn drop(&mut self) {
+        self.installing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.id);
+    }
+}
 
 /// The link a project page may open in the browser: https only, with a host and no user info.
 pub fn link_to_open(raw: &str) -> Result<String> {
@@ -110,6 +178,178 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .await?;
         Ok(installed.project_ids())
     }
+
+    /// Spec §4.2: refused while the instance updates; fine while its game prepares or runs
+    /// (the run holds the lock, and installs only add files); otherwise take the lock.
+    fn content_guard(&self, instance: &Instance) -> Result<ContentGuard<'_>> {
+        let runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
+        let mut installing = self.installing.lock().unwrap_or_else(|e| e.into_inner());
+        if installing.contains(&instance.id) {
+            return Err(content_installing());
+        }
+        let lock = match runs.get(&instance.id).map(|run| run.phase) {
+            Some(
+                RunStateKind::Checking
+                | RunStateKind::Asking
+                | RunStateKind::Queued
+                | RunStateKind::Syncing,
+            ) => return Err(content_busy(&instance.name)),
+            Some(_) => None,
+            None => Some(
+                InstanceLock::try_acquire(&self.instances.perland_dir(&instance.id)).map_err(
+                    |e| {
+                        if e.code == ErrorCode::InstanceLocked {
+                            content_busy(&instance.name)
+                        } else {
+                            e
+                        }
+                    },
+                )?,
+            ),
+        };
+        installing.insert(instance.id.clone());
+        Ok(ContentGuard {
+            installing: &self.installing,
+            id: instance.id.clone(),
+            _lock: lock,
+        })
+    }
+
+    /// Install progress, tagged with the instance (the UI shows it on the install button).
+    fn content_sink(&self, id: &str) -> EventSink {
+        let (host, id) = (self.host.clone(), id.to_string());
+        Arc::new(move |event| {
+            if let Event::Progress {
+                task,
+                done,
+                total,
+                bytes,
+            } = event
+            {
+                host.emit(AppEvent::Progress {
+                    instance: Some(id.clone()),
+                    task,
+                    done,
+                    total,
+                    bytes,
+                });
+            }
+        })
+    }
+
+    pub async fn browse_plan(&self, request: BrowsePlanRequest) -> Result<InstallPlanView> {
+        let browser = self.runner.browser();
+        let wanted = PlanRequest {
+            project: request.project,
+            version: request.version,
+        };
+        let (instance, plan) = match request.target {
+            PlanTargetRequest::Instance { id } => {
+                let instance = self.instances.load(&id).await?;
+                let managed = Managed::load(&self.instances.perland_dir(&instance.id)).await;
+                let installed = browser
+                    .identify(self.instances.game_dir(&instance.id), managed)
+                    .await?;
+                let plan = browser
+                    .plan(wanted, Some(Target::of(&instance.game)), installed)
+                    .await?;
+                (Some(instance), plan)
+            }
+            PlanTargetRequest::New => (
+                None,
+                browser.plan(wanted, None, Installed::default()).await?,
+            ),
+        };
+        let target = match (&instance, &plan.new_instance) {
+            (Some(i), _) => PlanTargetView::Instance {
+                id: i.id.clone(),
+                name: i.name.clone(),
+                minecraft: i.game.minecraft.clone(),
+                loader: i.game.loader.as_ref().map(|l| l.kind),
+            },
+            (None, Some(new)) => PlanTargetView::New {
+                name: new.name.clone(),
+                minecraft: new.minecraft.clone(),
+                loader: new.loader,
+            },
+            (None, None) => return Err(plan_expired()),
+        };
+        let plan_id = format!("plan-{}", self.plan_seq.fetch_add(1, Ordering::Relaxed) + 1);
+        let view = InstallPlanView {
+            plan_id: plan_id.clone(),
+            target,
+            items: plan.items.iter().map(PlanItemView::from).collect(),
+            skipped: plan.skipped.clone(),
+            total_size: plan.items.iter().map(|i| i.file.size).sum(),
+        };
+        let mut plans = self.plans.lock().unwrap_or_else(|e| e.into_inner());
+        plans.retain(|_, p| p.created.elapsed() < PLAN_TTL);
+        plans.insert(
+            plan_id,
+            StoredPlan {
+                plan,
+                instance: instance.map(|i| (i.id, i.game)),
+                created: Instant::now(),
+            },
+        );
+        Ok(view)
+    }
+
+    /// Install a stored plan, once. A "New instance" plan creates the instance first; if the
+    /// install then fails, the instance stays so the player can retry from it.
+    pub async fn browse_install(&self, plan_id: &str) -> Result<InstallResult> {
+        let stored = self
+            .plans
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(plan_id)
+            .filter(|p| p.created.elapsed() < PLAN_TTL)
+            .ok_or_else(plan_expired)?;
+        let browser = self.runner.browser();
+        let instance = match &stored.instance {
+            Some((id, game)) => {
+                let instance = self.instances.load(id).await?;
+                if instance.game != *game {
+                    return Err(plan_expired());
+                }
+                instance
+            }
+            None => {
+                let new = stored.plan.new_instance.clone().ok_or_else(plan_expired)?;
+                let loader = match new.loader {
+                    Some(kind) => Some(LoaderSpec {
+                        kind,
+                        version: browser.loader_version(kind, new.minecraft.clone()).await?,
+                    }),
+                    None => None,
+                };
+                self.instance_create(NewInstance {
+                    name: new.name,
+                    minecraft: new.minecraft,
+                    loader,
+                })
+                .await?
+            }
+        };
+        let _guard = self.content_guard(&instance)?;
+        let managed = Managed::load(&self.instances.perland_dir(&instance.id)).await;
+        let title = stored
+            .plan
+            .items
+            .first()
+            .map(|i| i.title.clone())
+            .unwrap_or_default();
+        let added = browser
+            .install(
+                self.instances.game_dir(&instance.id),
+                stored.plan.items,
+                managed,
+                TaskId::new("install_content").with("name", &title),
+                self.content_sink(&instance.id),
+            )
+            .await?;
+        Ok(InstallResult { instance, added })
+    }
 }
 
 #[cfg(test)]
@@ -129,10 +369,49 @@ mod tests {
 
     use super::*;
     use crate::{
-        app::tests::core,
-        dto::{NewInstance, SearchRequest},
-        testing::managed_for,
+        app::{tests::core, Run},
+        dto::{BrowsePlanRequest, NewInstance, PlanTargetRequest, PlanTargetView, SearchRequest},
+        events::RunStateKind,
+        testing::{managed_for, FakeRunner, RecordingHost},
     };
+
+    type Core = std::sync::Arc<crate::app::AppCore<FakeRunner, RecordingHost>>;
+
+    async fn fabric(core: &Core) -> Instance {
+        core.instance_create(NewInstance {
+            name: "Asalith".into(),
+            minecraft: "1.20.1".into(),
+            loader: Some(LoaderSpec {
+                kind: LoaderKind::Fabric,
+                version: "0.16.14".into(),
+            }),
+        })
+        .await
+        .unwrap()
+    }
+
+    fn into(id: &str) -> BrowsePlanRequest {
+        BrowsePlanRequest {
+            project: "sodium".into(),
+            version: None,
+            target: PlanTargetRequest::Instance { id: id.into() },
+        }
+    }
+
+    fn fake_run(core: &Core, id: &str, phase: RunStateKind) {
+        core.runs.lock().unwrap().insert(
+            id.to_string(),
+            Run {
+                phase,
+                abort: None,
+                killer: None,
+                cancel: Default::default(),
+                answer: None,
+                offer: None,
+                update_only: false,
+            },
+        );
+    }
 
     fn request(instance: Option<&str>) -> SearchRequest {
         SearchRequest {
@@ -256,5 +535,183 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn a_plan_installs_once() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        let instance = fabric(&core).await;
+        let view = core.browse_plan(into(&instance.id)).await.unwrap();
+        assert_eq!(view.items.len(), 2);
+        assert_eq!(view.total_size, 200);
+        assert_eq!(view.skipped[0].title, "Mod Menu");
+        assert!(matches!(&view.target, PlanTargetView::Instance { id, .. } if *id == instance.id));
+        let (_, target) = runner.browser.plans.lock().unwrap()[0].clone();
+        assert_eq!(target.unwrap().minecraft, "1.20.1");
+
+        let result = core.browse_install(&view.plan_id).await.unwrap();
+        assert_eq!(
+            result.added,
+            vec!["sodium.jar".to_string(), "fabric-api.jar".into()]
+        );
+        assert_eq!(result.instance.id, instance.id);
+        assert_eq!(
+            core.browse_install(&view.plan_id).await.unwrap_err().code,
+            ErrorCode::ContentPlanExpired
+        );
+        assert_eq!(runner.browser.installs.lock().unwrap().len(), 1);
+        assert!(
+            host.progress_count(&instance.id) >= 1,
+            "progress names the instance"
+        );
+        assert!(core.installing.lock().unwrap().is_empty());
+        // The instance lock was released: sync could take it now.
+        InstanceLock::try_acquire(&core.instances.perland_dir(&instance.id)).unwrap();
+    }
+
+    #[tokio::test]
+    async fn plans_expire_and_go_stale_when_the_game_changes() {
+        let (core, runner, _, _t) = core(BuildKind::Dev);
+        let instance = fabric(&core).await;
+        let stale = core.browse_plan(into(&instance.id)).await.unwrap();
+        let mut changed = instance.clone();
+        changed.game.minecraft = "1.21.1".into();
+        core.instance_update(changed).await.unwrap();
+        assert_eq!(
+            core.browse_install(&stale.plan_id).await.unwrap_err().code,
+            ErrorCode::ContentPlanExpired
+        );
+        tokio::time::pause();
+        let old = core.browse_plan(into(&instance.id)).await.unwrap();
+        tokio::time::advance(PLAN_TTL + Duration::from_secs(1)).await;
+        assert_eq!(
+            core.browse_install(&old.plan_id).await.unwrap_err().code,
+            ErrorCode::ContentPlanExpired
+        );
+        assert!(runner.browser.installs.lock().unwrap().is_empty());
+        assert_eq!(
+            core.browse_install("plan-999").await.unwrap_err().code,
+            ErrorCode::ContentPlanExpired
+        );
+    }
+
+    #[tokio::test]
+    async fn installs_wait_for_updates_but_not_for_a_running_game() {
+        let (core, runner, _, _t) = core(BuildKind::Dev);
+        let instance = fabric(&core).await;
+        for phase in [
+            RunStateKind::Checking,
+            RunStateKind::Asking,
+            RunStateKind::Queued,
+            RunStateKind::Syncing,
+        ] {
+            fake_run(&core, &instance.id, phase);
+            let view = core.browse_plan(into(&instance.id)).await.unwrap();
+            let error = core.browse_install(&view.plan_id).await.unwrap_err();
+            assert_eq!(error.code, ErrorCode::ContentBusy, "{phase:?}");
+            assert_eq!(error.params["name"], "Asalith");
+        }
+        for phase in [
+            RunStateKind::Preparing,
+            RunStateKind::Running,
+            RunStateKind::Stopping,
+        ] {
+            fake_run(&core, &instance.id, phase);
+            let view = core.browse_plan(into(&instance.id)).await.unwrap();
+            core.browse_install(&view.plan_id)
+                .await
+                .unwrap_or_else(|e| panic!("{phase:?}: {e:?}"));
+        }
+        core.runs.lock().unwrap().clear();
+        assert_eq!(runner.browser.installs.lock().unwrap().len(), 3);
+
+        // Another process (the CLI) syncing holds the instance lock.
+        let foreign = InstanceLock::try_acquire(&core.instances.perland_dir(&instance.id)).unwrap();
+        let view = core.browse_plan(into(&instance.id)).await.unwrap();
+        assert_eq!(
+            core.browse_install(&view.plan_id).await.unwrap_err().code,
+            ErrorCode::ContentBusy
+        );
+        drop(foreign);
+    }
+
+    #[tokio::test]
+    async fn play_waits_for_a_content_install() {
+        let (core, runner, _, _t) = core(BuildKind::Dev);
+        let instance = fabric(&core).await;
+        let accounts = core.account_add_offline("Steve").await.unwrap();
+        core.account_set_active(&accounts.accounts[0].uuid)
+            .await
+            .unwrap();
+        runner.browser.hold_install.store(true, Ordering::SeqCst);
+        let first = core.browse_plan(into(&instance.id)).await.unwrap();
+        let second = core.browse_plan(into(&instance.id)).await.unwrap();
+        let task = {
+            let core = core.clone();
+            let id = first.plan_id.clone();
+            tokio::spawn(async move { core.browse_install(&id).await })
+        };
+        while runner.browser.installs.lock().unwrap().is_empty() {
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+        assert_eq!(
+            core.play(&instance.id).await.unwrap_err().code,
+            ErrorCode::ContentInstalling
+        );
+        assert_eq!(
+            core.browse_install(&second.plan_id).await.unwrap_err().code,
+            ErrorCode::ContentInstalling
+        );
+        runner.browser.open_install_gate();
+        task.await.unwrap().unwrap();
+        assert!(core.installing.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_new_instance_plan_creates_the_instance_first() {
+        let (core, runner, _, _t) = core(BuildKind::Dev);
+        let view = core
+            .browse_plan(BrowsePlanRequest {
+                project: "sodium".into(),
+                version: None,
+                target: PlanTargetRequest::New,
+            })
+            .await
+            .unwrap();
+        assert!(
+            matches!(&view.target, PlanTargetView::New { minecraft, .. } if minecraft == "1.21.1")
+        );
+        assert!(
+            runner.browser.identified.lock().unwrap().is_empty(),
+            "nothing to identify yet"
+        );
+        let result = core.browse_install(&view.plan_id).await.unwrap();
+        assert_eq!(result.instance.name, "Sodium");
+        assert_eq!(result.instance.game.minecraft, "1.21.1");
+        assert_eq!(
+            result.instance.game.loader,
+            Some(LoaderSpec {
+                kind: LoaderKind::Fabric,
+                version: "0.16.14".into()
+            })
+        );
+        let (dir, _) = runner.browser.installs.lock().unwrap()[0].clone();
+        assert_eq!(dir, core.instances.game_dir(&result.instance.id));
+
+        // A failed install keeps the new instance, so the player can retry from it.
+        *runner.browser.install_error.lock().unwrap() = Some(LauncherError::network(
+            ErrorCode::HostUnreachable,
+            "offline",
+        ));
+        let again = core
+            .browse_plan(BrowsePlanRequest {
+                project: "sodium".into(),
+                version: None,
+                target: PlanTargetRequest::New,
+            })
+            .await
+            .unwrap();
+        core.browse_install(&again.plan_id).await.unwrap_err();
+        assert_eq!(core.instances_list().await.unwrap().instances.len(), 2);
     }
 }

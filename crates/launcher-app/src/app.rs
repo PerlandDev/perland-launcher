@@ -1,9 +1,9 @@
 //! The app's state and every command except playing (see `runs.rs`).
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
 };
@@ -92,6 +92,11 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) manual: tokio::sync::Mutex<HashMap<String, ManualState>>,
     /// A valid `perland://` pack link waiting for the UI to take it.
     pub(crate) pending_link: Mutex<Option<String>>,
+    /// Install plans the webview may install by id (see `browse.rs`).
+    pub(crate) plans: Mutex<HashMap<String, crate::browse::StoredPlan>>,
+    pub(crate) plan_seq: AtomicU64,
+    /// Instances a content install is writing into. Lock order: `runs`, then this.
+    pub(crate) installing: Mutex<HashSet<String>>,
 }
 
 fn busy(id: &str) -> LauncherError {
@@ -130,6 +135,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             logs: LogStore::default(),
             manual: tokio::sync::Mutex::new(HashMap::new()),
             pending_link: Mutex::new(None),
+            plans: Mutex::new(HashMap::new()),
+            plan_seq: AtomicU64::new(0),
+            installing: Mutex::new(HashSet::new()),
             config,
         })
     }

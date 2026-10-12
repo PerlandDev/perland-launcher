@@ -92,6 +92,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             )
             .with_param("id", id));
         }
+        if self
+            .installing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(id)
+        {
+            return Err(crate::browse::content_installing());
+        }
         self.logs.reset(id);
         let first = if checks {
             RunStateKind::Checking
