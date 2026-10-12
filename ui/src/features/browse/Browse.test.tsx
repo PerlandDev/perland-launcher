@@ -1,8 +1,10 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
+import { createMockBackend } from '../../ipc/mock';
 import type { SearchRequest } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
 import { renderApp, sent } from '../../test/backend';
+import { renderWithProviders } from '../../test/render';
 import { Browse } from './Browse';
 
 const searches = (calls: [string, unknown][]) =>
@@ -81,4 +83,51 @@ it('filters by category', async () => {
   await waitFor(() => expect(searches(calls).at(-1)?.categories).toEqual(['library']));
   expect(await screen.findByRole('button', { name: /Fabric API/ })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Sodium/ })).not.toBeInTheDocument();
+});
+
+it('keeps the first page and offers a retry when a later page fails', async () => {
+  const backend = createMockBackend();
+  let failPage2 = true;
+  const { user } = renderWithProviders(<Browse route={{ name: 'browse', kind: 'mod' }} />, {
+    ipc: (cmd, args) => {
+      const offset = (args as { request?: SearchRequest } | undefined)?.request?.offset;
+      if (cmd === 'browse_search' && offset === 20 && failPage2) {
+        throw { category: 'network', code: 'host_unreachable', message: 'x', fix: null, detail: null, params: { host: 'api.modrinth.com' } };
+      }
+      return backend.handle(cmd, args);
+    },
+  });
+  expect(await screen.findByRole('button', { name: /Sodium/ })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Load more' }));
+  expect(await screen.findByText("You're offline. Browse needs the internet.")).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Sodium/ })).toBeInTheDocument();
+  failPage2 = false;
+  await user.click(screen.getByRole('button', { name: 'Load more' }));
+  expect(await screen.findByText("That's everything")).toBeInTheDocument();
+  expect(screen.queryByText("You're offline. Browse needs the internet.")).not.toBeInTheDocument();
+});
+
+it('never offers modpacks while the scope is still loading', () => {
+  renderApp(<Browse route={{ name: 'browse', kind: 'mod', instance: 'asalith-fields' }} />);
+  expect(screen.queryByRole('tab', { name: 'Modpacks' })).not.toBeInTheDocument();
+});
+
+it('leaves / alone when a modifier is held', async () => {
+  const { user } = renderApp(<Browse route={{ name: 'browse', kind: 'mod' }} />);
+  await screen.findByRole('button', { name: /Sodium/ });
+  await user.keyboard('{Control>}/{/Control}');
+  expect(searchbox()).not.toHaveFocus();
+});
+
+it('falls back to 10 s when the wait is unreadable', async () => {
+  const backend = createMockBackend();
+  renderWithProviders(<Browse route={{ name: 'browse', kind: 'mod' }} />, {
+    ipc: (cmd, args) => {
+      if (cmd === 'browse_search') {
+        throw { category: 'network', code: 'browse_rate_limited', message: 'x', fix: null, detail: null, params: { seconds: 'soon' } };
+      }
+      return backend.handle(cmd, args);
+    },
+  });
+  expect(await screen.findByText('Too many searches. Trying again in 10 s')).toBeInTheDocument();
 });

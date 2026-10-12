@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { isLauncherError } from '../../ipc/errors';
+import { describeError, isLauncherError } from '../../ipc/errors';
 import type { ContentKind, LoaderKind, SortIndex } from '../../ipc/schema';
 import { useBrowseCategories, useBrowseInstalled, useBrowseSearch, useInstances, useMcVersions } from '../../state/queries';
 import { navigate, type Route } from '../../state/route';
@@ -41,6 +41,27 @@ function Sentinel({ onVisible }: { onVisible: () => void }) {
     return () => observer.disconnect();
   }, [onVisible]);
   return <div ref={ref} aria-hidden className="h-px" />;
+}
+
+/** The wait the core asked for; anything unusable falls back to 10 s so the countdown still ends. */
+function retrySeconds(value: string | undefined): number {
+  const seconds = Number(value ?? '10');
+  return Number.isFinite(seconds) && seconds >= 0 ? seconds : 10;
+}
+
+/** Why the next page didn't load. The first page stays; Load more is the retry. */
+function PageError({ error }: { error: unknown }) {
+  const { t, i18n } = useTranslation();
+  let text: string;
+  if (isLauncherError(error) && error.code === 'host_unreachable') text = t('browse.offline');
+  else if (isLauncherError(error) && error.code === 'browse_rate_limited') {
+    text = t('browse.rateLimited', { seconds: retrySeconds(error.params.seconds) });
+  } else text = describeError(i18n, error).message;
+  return (
+    <p role="alert" className="text-center">
+      {text}
+    </p>
+  );
 }
 
 function RateLimited({ seconds, onRetry }: { seconds: number; onRetry: () => unknown }) {
@@ -92,7 +113,7 @@ function BrowseList({ route }: { route: BrowseRoute }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (event.key !== '/' || target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || target?.closest('input, textarea, select, [contenteditable="true"]')) return;
       event.preventDefault();
       searchRef.current?.focus();
     };
@@ -101,10 +122,14 @@ function BrowseList({ route }: { route: BrowseRoute }) {
   }, []);
 
   const { fetchNextPage } = results;
-  const loadMore = useCallback(() => void fetchNextPage(), [fetchNextPage]);
+  const { hasNextPage, isFetchingNextPage } = results;
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage]);
 
-  const kinds = scope
-    ? ALL_KINDS.filter((k) => k !== 'modpack' && (scope.game.loader !== null || k === 'resource_pack'))
+  // Scoped: never modpacks, even before the instance has loaded; a vanilla instance takes only resource packs.
+  const kinds = scoped
+    ? ALL_KINDS.filter((k) => k !== 'modpack' && (!scope || scope.game.loader !== null || k === 'resource_pack'))
     : ALL_KINDS;
   const hits = results.data?.pages.flatMap((page) => page.hits) ?? [];
   const total = results.data?.pages[0]?.total ?? 0;
@@ -133,7 +158,7 @@ function BrowseList({ route }: { route: BrowseRoute }) {
         </div>
       );
     } else if (isLauncherError(error) && error.code === 'browse_rate_limited') {
-      body = <RateLimited key={results.errorUpdatedAt} seconds={Number(error.params.seconds ?? '10')} onRetry={results.refetch} />;
+      body = <RateLimited key={results.errorUpdatedAt} seconds={retrySeconds(error.params.seconds)} onRetry={results.refetch} />;
     } else {
       body = <ErrorCard error={error} actions={<Button onClick={() => void results.refetch()}>{t('common.retry')}</Button>} />;
     }
@@ -163,7 +188,8 @@ function BrowseList({ route }: { route: BrowseRoute }) {
         </ul>
         {results.hasNextPage ? (
           <div className="grid justify-items-center gap-2">
-            <Sentinel onVisible={loadMore} />
+            {results.isError && <PageError error={results.error} />}
+            {!results.isError && <Sentinel onVisible={loadMore} />}
             <Button disabled={results.isFetchingNextPage} onClick={loadMore}>
               {results.isFetchingNextPage ? t('common.loading') : t('browse.loadMore')}
             </Button>
