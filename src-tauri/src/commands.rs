@@ -2,11 +2,18 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::dto::{
-    AppInfo, JavaTest, ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackArtData,
-    PackContents, PackStatus, RunSnapshot,
+    AppInfo, BrowsePlanRequest, InstallPlanView, InstallResult, JavaTest, ManualProgress,
+    NewInstance, OpenTarget, PackAddRequest, PackArtData, PackContents, PackStatus, RunSnapshot,
+    SearchRequest,
 };
 use launcher_core::{
     accounts::AccountsFile,
+    browse::{
+        compat::ContentKind,
+        images::ImageKind,
+        project::{ProjectDetail, VersionInfo},
+        search::SearchPage,
+    },
     instances::{Instance, InstanceListing},
     meta::{
         catalog::{LoaderVersion, McVersion},
@@ -206,6 +213,60 @@ pub async fn pack_art(core: CoreState<'_>, id: String) -> Res<PackArtData> {
 #[tauri::command]
 pub fn deep_link_take(core: CoreState<'_>) -> Option<String> {
     core.deep_link_take()
+}
+
+#[tauri::command]
+pub async fn browse_search(core: CoreState<'_>, request: SearchRequest) -> Res<SearchPage> {
+    core.browse_search(request).await
+}
+
+#[tauri::command]
+pub async fn browse_categories(core: CoreState<'_>, kind: ContentKind) -> Res<Vec<String>> {
+    core.browse_categories(kind).await
+}
+
+#[tauri::command]
+pub async fn browse_project(core: CoreState<'_>, id: String) -> Res<ProjectDetail> {
+    core.browse_project(&id).await
+}
+
+#[tauri::command]
+pub async fn browse_versions(
+    core: CoreState<'_>,
+    project: String,
+    instance: Option<String>,
+) -> Res<Vec<VersionInfo>> {
+    core.browse_versions(&project, instance.as_deref()).await
+}
+
+#[tauri::command]
+pub async fn browse_image(core: CoreState<'_>, url: String, kind: ImageKind) -> Res<String> {
+    core.browse_image(&url, kind).await
+}
+
+#[tauri::command]
+pub async fn browse_installed(core: CoreState<'_>, id: String) -> Res<Vec<String>> {
+    core.browse_installed(&id).await
+}
+
+#[tauri::command]
+pub async fn browse_plan(core: CoreState<'_>, request: BrowsePlanRequest) -> Res<InstallPlanView> {
+    core.browse_plan(request).await
+}
+
+#[tauri::command]
+pub async fn browse_install(core: CoreState<'_>, plan_id: String) -> Res<InstallResult> {
+    core.browse_install(&plan_id).await
+}
+
+/// Project and Markdown links: https only (checked in `launcher-app`), opened from Rust, so the
+/// webview's opener scope stays as narrow as it was.
+#[tauri::command]
+pub fn open_link(app: AppHandle, url: String) -> Res<()> {
+    let url = launcher_app::browse::link_to_open(&url)?;
+    app.opener().open_url(url, None::<&str>).map_err(|e| {
+        LauncherError::pack(ErrorCode::LinkRefused, "That link can't be opened").with_detail(e)
+    })
 }
 
 /// Called by the close dialog. Stopping waits a few seconds so the kills land before exit.

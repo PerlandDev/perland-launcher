@@ -105,6 +105,15 @@ fn main() {
             commands::manual_import,
             commands::pack_art,
             commands::deep_link_take,
+            commands::browse_search,
+            commands::browse_categories,
+            commands::browse_project,
+            commands::browse_versions,
+            commands::browse_image,
+            commands::browse_installed,
+            commands::browse_plan,
+            commands::browse_install,
+            commands::open_link,
             commands::quit,
         ])
         .run(tauri::generate_context!())
