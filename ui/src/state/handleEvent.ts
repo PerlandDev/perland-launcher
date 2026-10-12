@@ -17,7 +17,7 @@ export function handleEvent(event: AppEvent) {
   if (event.type === 'run_state' && event.state === 'idle') {
     // A sync can change the game version, the pack's mods and its art.
     const id = event.instance;
-    for (const queryKey of [qk.instances, qk.mods(id), qk.packStatus(id), qk.packContents(id), qk.packArt(id)]) {
+    for (const queryKey of [qk.instances, qk.mods(id), qk.packStatus(id), qk.packContents(id), qk.packArt(id), qk.serverStatus(id)]) {
       void queryClient.invalidateQueries({ queryKey });
     }
     const exit = event.exit;

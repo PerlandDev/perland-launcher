@@ -46,6 +46,7 @@
       { "name": "marquee-dim", "value": "filter 180ms steps(2, end) to brightness(0.5) saturate(0.75)", "purpose": "The marquee and any pack banner snap down while a game is checking, queued, preparing or running." },
       { "name": "attract-drift", "value": "translateX(-480px) linear infinite; 180s / 140s / 100s / 60s far to near", "purpose": "Attract-mode parallax at rest; paused when not idle and neutralised under prefers-reduced-motion." },
       { "name": "meter-scan", "value": "1.9s steps(20, jump-none) infinite alternate", "purpose": "One blue block sweeps the Play meter while checking; hidden under prefers-reduced-motion." },
+      { "name": "led-blink", "value": "1.2s steps(1, end) infinite; blue to line at 50%", "purpose": "A server's status LED blinks in two snapped frames while it is starting; steady blue under prefers-reduced-motion." },
       { "name": "reduced-motion", "value": "animation/transition-duration 0.01ms", "purpose": "Global prefers-reduced-motion override." }
     ],
     "breakpoints": [
@@ -158,6 +159,7 @@
       "**Do** fill progress block by block in blue with tabular counts in real MB, and never truncate the MB figure.",
       "**Do** keep update actions raised, never lit: a status plate leads with a square lamp (blue offer, lime done), and the dialog's one primary is the only amber.",
       "**Do** sink rows inside panels and dialogs as a `.well`, and scale pack art with nearest-neighbour only at 2x or more.",
+      "**Do** show a server's state as a square LED plus its word, keep the rail's server mark in signal bars at the top-right with the bar count carrying the state, and show a 64px server icon only at a whole number of device pixels per icon pixel.",
       "**Do** pad `main` by the drawer's open height so Play is never covered, and keep primary form actions in a sticky row.",
       "**Do** let attract-mode parallax stop under reduced motion. State changes snap."
     ],
@@ -169,6 +171,7 @@
       "**Don't** ease state changes or animate progress smoothly. Use `steps()` or snap.",
       "**Don't** set sentences, labels or errors in Bungee. Don't set the log or paths in anything but Atkinson Hyperlegible Mono.",
       "**Don't** use any hue as the only carrier of status. Pair it with a label, an icon or a shape.",
+      "**Don't** use amber for a status or a notice (sleeping, invite only). Amber only ever means act.",
       "**Don't** reuse the PerlandDev Panel's cyan chamfered mark or HUD language, Modrinth branding or Mojang artwork. Marquees, plot icons and avatars are generated."
     ]
   }

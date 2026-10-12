@@ -12,6 +12,11 @@ related_targets: ["ui/src"]
 - **Audience and job:** Perland/Asalith players, often 12–25, casual, many Spanish-speaking. Their job is to open the launcher, press Play and be in the game. Secondary jobs: create an instance, add mods, switch accounts, read an error and fix it.
 - **Constraints:** the pinned layout from the owner's brief (full-bleed art, big Play, left instance rail, custom title bar, dark only). Generated art and avatars only: no Mojang assets, no Modrinth branding. Unbuilt features are "coming soon" or absent. Every string exists in en and es; es runs about 30% longer. Minimum window 960 × 600.
 - **Memorable moment:** pressing Play. The amber button physically drops onto its brown step, the segmented meter fills block by block through plain-language phases, and the marquee dims as the game takes over.
+- **Server surfaces (join by link), decided 2026-10-12:**
+  - *Invite only is not amber.* The spec asked for an "amber" line, but amber only means act here. Invite only is advice, so it is info: `blue-ink` text led by a pixel lock, on a laminate plate over marquee art. Amber stays on the one lit button.
+  - *The rail's server mark is not a lamp.* It is three pixel signal bars in a ground socket at the cabinet's top-right, never lime. The bar count carries the state (online 3 ink, starting 2 blue, sleeping 1 dim, offline 0 plus a coral flatline, unknown 0), and the hover title adds the word. The lime Playing LED stays a solid square at bottom-right, so shape, corner and hue all differ.
+  - *One lit button per view.* Home: Play only; the server plates' actions (Copy, Use a new link) are ghost or raised. Join server: "Check link" is lit only until a server card shows, then the action row's Add server / Open / Use this link is the only amber. Instance settings: Save.
+  - *Status in words.* The LED (lime OK, blue starting, coral offline, hollow sleeping/unknown) always rides its word.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract

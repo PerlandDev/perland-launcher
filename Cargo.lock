@@ -2210,6 +2210,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "url",
+ "wiremock",
 ]
 
 [[package]]

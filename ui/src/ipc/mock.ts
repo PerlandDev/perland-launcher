@@ -14,10 +14,13 @@ import packContentsFx from './contract/pack_contents.json';
 import packStatusFx from './contract/pack_status.json';
 import settingsFx from './contract/settings.json';
 import { APP_EVENT } from './events';
+import { inviteCanonical } from './inviteLink';
+import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, type ServerScenario } from './mockServers';
 import type {
   AccountsFile,
   AppEvent,
   AppInfo,
+  DeepLink,
   ExitInfo,
   Instance,
   InstanceListing,
@@ -46,6 +49,8 @@ export interface MockOptions {
   noUpdate?: boolean;
   /** A pending perland:// or pack link, handed over once by deep_link_take. */
   link?: string;
+  /** Seeds the `survival` Perland server and picks how its invite answers. */
+  server?: ServerScenario;
 }
 
 interface MockRun {
@@ -115,6 +120,7 @@ function seed(options: MockOptions) {
       updatePolicy: 'ask',
       optionalChoices: {},
       java: { path: null, memoryMb: 6144 },
+      server: null,
     };
     listing.instances = [...listing.instances, sky];
     const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
@@ -139,8 +145,10 @@ function seed(options: MockOptions) {
       found: 0,
     });
   }
+  const servers = seedServers(options.server, listing);
   return {
     listing,
+    servers,
     accounts,
     settings,
     appInfo,
@@ -324,6 +332,24 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
   }
 }
 
+/** A server whose pack is still building: Play waits in `checking` with "Server is preparing
+ *  the modpack…", then runs like any instance. */
+async function scriptServerWait(state: MockState, instance: Instance) {
+  const id = instance.id;
+  const run: MockRun = { state: 'checking', cancelled: false, updateOnly: false, answer: null };
+  state.runs.set(id, run);
+  event({ type: 'run_state', instance: id, state: 'checking', exit: null, update: null });
+  for (let n = 0; n < 5; n++) {
+    if (run.cancelled) return;
+    event({ type: 'progress', instance: id, task: { key: 'server_pack_wait', params: { name: instance.name } }, done: 0, total: 0, bytes: 0 });
+    await wait(400);
+  }
+  if (run.cancelled || state.runs.get(id) !== run) return;
+  state.runs.delete(id);
+  // No `MockPack` for a server instance, so the plain script runs it: queued, preparing, running.
+  void scriptRun(state, instance);
+}
+
 /** Change an instance's mods folder. A pack's "Your additions" are jars in that folder, so they follow. */
 function editMods(state: MockState, id: string, change: (list: LocalMod[]) => LocalMod[]): LocalMod[] {
   const list = change(state.mods.get(id) ?? []);
@@ -357,6 +383,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         updatePolicy: 'ask',
         optionalChoices: {},
         java: { path: null, memoryMb: state.settings.defaultMemoryMb },
+        server: null,
       };
       state.listing.instances = [...state.listing.instances, created].sort((a, b) => a.name.localeCompare(b.name));
       return created;
@@ -412,6 +439,10 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
       if (!state.accounts.active) fail('auth', 'no_account', 'Add an account before playing');
       if (state.runs.has(target.id)) fail('game', 'already_running', 'already running');
+      if (state.servers?.scenario === 'pending' && target.id === MOCK_SERVER_ID) {
+        void scriptServerWait(state, target);
+        return null;
+      }
       void scriptRun(state, target);
       return null;
     }
@@ -474,6 +505,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         updatePolicy: 'ask',
         optionalChoices: {},
         java: { path: null, memoryMb: state.settings.defaultMemoryMb },
+        server: null,
       };
       state.listing.instances = [...state.listing.instances, created].sort((a, b) => a.name.localeCompare(b.name));
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });
@@ -482,7 +514,9 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'deep_link_take': {
       const link = state.pendingLink;
       state.pendingLink = null;
-      return link;
+      const invite = link ? inviteCanonical(link) : null;
+      const taken: DeepLink | null = invite ? { kind: 'join', invite } : link ? { kind: 'pack', url: link } : null;
+      return taken;
     }
     case 'stop': {
       const id = String(args.id);
@@ -549,9 +583,12 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     }
     case 'plugin:window|is_maximized':
       return false;
-    default:
+    default: {
+      const served = handleServer(state.servers, state.listing, cmd, args);
+      if (served !== NOT_MINE) return served;
       if (cmd.startsWith('plugin:')) return null;
       return fail('game', 'internal', `mock has no command ${cmd}`);
+    }
   }
 }
 

@@ -9,7 +9,7 @@ use launcher_core::{
     mods,
     sources::{
         art::{sniff, MAX_ART_BYTES},
-        PackInput,
+        PackInput, UpdateCheck,
     },
     sync::{
         lockfile::{self, Managed},
@@ -20,7 +20,7 @@ use launcher_core::{
 
 use crate::{
     app::AppCore,
-    deep_link,
+    deep_link::{self, DeepLink},
     dto::{
         ManualProgress, OptionalChoice, PackAddRequest, PackArtData, PackContents, PackMod,
         PackStatus, PackUpdate,
@@ -77,6 +77,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let input = match request {
             PackAddRequest::Link { url } => match PackInput::parse(&url)? {
                 PackInput::MrpackFile { .. } => return Err(link_invalid()),
+                // The UI routes invite links to Join server first; this is the same thing.
+                PackInput::Perland { .. } => return self.join_add(&url).await,
                 input => input,
             },
             PackAddRequest::File { path } => {
@@ -124,7 +126,36 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let installed = lockfile::load_pack(&self.instances.perland_dir(id)).await;
         let (update, check_error) = match &installed {
             None => (None, None),
-            Some(_) => match self.runner.find_update(instance).await {
+            // A server's check is the commit in its view, so the banner never downloads a pack.
+            Some(current) if matches!(instance.source, SourceRef::Perland { .. }) => {
+                match self.runner.check_update(instance).await {
+                    UpdateCheck::UpToDate => (None, None),
+                    UpdateCheck::Available { version, .. } => (
+                        Some(PackUpdate {
+                            from_version: Some(current.pack_version.clone()),
+                            to_version: version,
+                            added: vec![],
+                            updated: vec![],
+                            removed: vec![],
+                            kept: vec![],
+                        }),
+                        None,
+                    ),
+                    UpdateCheck::Unavailable(error) => {
+                        if error.code == ErrorCode::InviteGone {
+                            // The banner is a lockless read: while a run holds the instance,
+                            // the run's own check marks it.
+                            let _ = self.mark_server_gone(id, true).await;
+                        }
+                        (None, Some(error))
+                    }
+                }
+            }
+            Some(_) => match self
+                .runner
+                .find_update(instance, launcher_core::events::noop_sink())
+                .await
+            {
                 Ok(update) => (update.as_ref().map(PackUpdate::from), None),
                 Err(error) => (None, Some(error)),
             },
@@ -254,8 +285,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// the UI (`deep_link_take`); a bad one is only a warning.
     pub fn deep_link(&self, raw: &str) {
         match deep_link::parse(raw) {
-            Ok(url) => {
-                *self.pending_link.lock().unwrap_or_else(|e| e.into_inner()) = Some(url);
+            Ok(link) => {
+                *self.pending_link.lock().unwrap_or_else(|e| e.into_inner()) = Some(link);
                 self.host.emit(AppEvent::DeepLink);
             }
             Err(error) => self.host.emit(AppEvent::Warning {
@@ -265,8 +296,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
     }
 
-    /// The waiting pack link, once.
-    pub fn deep_link_take(&self) -> Option<String> {
+    /// The waiting link, once.
+    pub fn deep_link_take(&self) -> Option<DeepLink> {
         self.pending_link
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -281,17 +312,83 @@ mod tests {
     use launcher_core::{
         accounts::BuildKind,
         instances::{SourceRef, UpdatePolicy},
-        sources::PackInput,
-        sync::manual::Scanner,
+        sources::{PackInput, UpdateCheck},
+        sync::{lockfile, manual::Scanner},
         ErrorCode, LauncherError,
     };
 
     use crate::{
         app::{tests::core, ManualState},
+        deep_link::DeepLink,
         dto::{NewInstance, OpenTarget, PackAddRequest, PackArtData},
         events::{AppEvent, RunStateKind::*},
-        testing::{desired, exit, managed_for, manual_file, pack_file, pack_instance, pending},
+        testing::{
+            desired, exit, invite, managed_for, manual_file, pack_file, pack_instance, pending,
+            serve, server_view,
+        },
     };
+
+    #[tokio::test]
+    async fn pack_add_hands_invite_links_to_join_add() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let added = core
+            .pack_add(PackAddRequest::Link { url: invite('A') })
+            .await
+            .unwrap();
+        assert!(matches!(added.source, SourceRef::Perland { .. }));
+        assert!(added.server.is_some());
+        let again = core
+            .pack_add(PackAddRequest::Link { url: invite('A') })
+            .await
+            .unwrap();
+        assert_eq!(again.id, added.id);
+        assert_eq!(runner.added.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_servers_pack_status_comes_from_its_view() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        lockfile::save_pack(&core.instances.perland_dir(&id), &desired("1.0.4", vec![]))
+            .await
+            .unwrap();
+        runner.update_checks.lock().unwrap().insert(
+            id.clone(),
+            UpdateCheck::Available {
+                source: SourceRef::None,
+                stamp: "c2".into(),
+                version: "1.0.5".into(),
+            },
+        );
+        let checks = runner.checks.load(Ordering::SeqCst);
+        let update = core.pack_status(&id).await.unwrap().update.unwrap();
+        assert_eq!(
+            (update.from_version.as_deref(), update.to_version.as_str()),
+            (Some("1.0.4"), "1.0.5")
+        );
+        assert!(update.added.is_empty() && update.updated.is_empty() && update.removed.is_empty());
+        assert_eq!(
+            runner.checks.load(Ordering::SeqCst),
+            checks,
+            "no find_update: the banner never downloads a pack"
+        );
+        runner.update_checks.lock().unwrap().insert(
+            id.clone(),
+            UpdateCheck::Unavailable(LauncherError::pack(ErrorCode::InviteGone, "gone")),
+        );
+        assert_eq!(
+            core.pack_status(&id)
+                .await
+                .unwrap()
+                .check_error
+                .unwrap()
+                .code,
+            ErrorCode::InviteGone
+        );
+        assert!(core.instances.load(&id).await.unwrap().server.unwrap().gone);
+    }
 
     #[tokio::test]
     async fn the_banner_update_syncs_without_playing() {
@@ -704,8 +801,10 @@ mod tests {
             .iter()
             .any(|e| matches!(e, AppEvent::DeepLink)));
         assert_eq!(
-            core.deep_link_take().as_deref(),
-            Some("https://x.example/pack.toml")
+            core.deep_link_take(),
+            Some(DeepLink::Pack {
+                url: "https://x.example/pack.toml".into()
+            })
         );
         assert_eq!(core.deep_link_take(), None, "taken once");
     }
@@ -715,6 +814,23 @@ mod tests {
         let (core, _runner, host, _t) = core(BuildKind::Dev);
         core.deep_link("perland://pack?url=http%3A%2F%2Fx.example%2Fpack.toml");
         assert_eq!(host.warnings(), vec![ErrorCode::PackLinkInvalid]);
+        assert_eq!(core.deep_link_take(), None);
+    }
+    #[tokio::test]
+    async fn a_join_link_waits_typed_and_a_bad_one_warns() {
+        let (core, _runner, host, _t) = core(BuildKind::Dev);
+        let token = "A".repeat(43);
+        core.deep_link(&format!(
+            "perland://join?invite=https%3A%2F%2Fplay.example.com%2F{token}"
+        ));
+        assert_eq!(
+            core.deep_link_take(),
+            Some(DeepLink::Join {
+                invite: format!("https://play.example.com/{token}")
+            })
+        );
+        core.deep_link("perland://join?invite=https%3A%2F%2Fplay.example.com%2Fshort");
+        assert_eq!(host.warnings(), vec![ErrorCode::InviteLinkInvalid]);
         assert_eq!(core.deep_link_take(), None);
     }
 }

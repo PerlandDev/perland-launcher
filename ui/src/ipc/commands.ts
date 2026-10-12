@@ -2,9 +2,11 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   AccountsFile,
   AppInfo,
+  DeepLink,
   Instance,
   InstanceListing,
   JavaTest,
+  JoinPreview,
   LoaderKind,
   LoaderVersion,
   LocalMod,
@@ -17,6 +19,7 @@ import type {
   PackContents,
   PackStatus,
   RunSnapshot,
+  ServerStatusView,
   Settings,
 } from './schema';
 
@@ -36,7 +39,7 @@ export const commands = {
   accountAddOffline: (name: string) => invoke<AccountsFile>('account_add_offline', { name }),
   accountSetActive: (uuid: string) => invoke<AccountsFile>('account_set_active', { uuid }),
   accountRemove: (uuid: string) => invoke<AccountsFile>('account_remove', { uuid }),
-  play: (id: string) => invoke<null>('play', { id }),
+  play: (id: string, join = true) => invoke<null>('play', { id, join }),
   stop: (id: string) => invoke<null>('stop', { id }),
   runStates: () => invoke<RunSnapshot[]>('run_states'),
   logTail: (id: string) => invoke<string[]>('log_tail', { id }),
@@ -56,6 +59,10 @@ export const commands = {
     invoke<Instance>('pack_set_optional', { id, path, enabled }),
   manualImport: (id: string) => invoke<ManualProgress>('manual_import', { id }),
   packArt: (id: string) => invoke<PackArtData>('pack_art', { id }),
-  deepLinkTake: () => invoke<string | null>('deep_link_take'),
+  deepLinkTake: () => invoke<DeepLink | null>('deep_link_take'),
+  joinPreview: (link: string) => invoke<JoinPreview>('join_preview', { link }),
+  joinAdd: (link: string) => invoke<Instance>('join_add', { link }),
+  serverStatus: (id: string) => invoke<ServerStatusView>('server_status', { id }),
+  serverRelink: (id: string, link: string) => invoke<Instance>('server_relink', { id, link }),
   quit: (stopGames: boolean) => invoke<null>('quit', { stopGames }),
 };

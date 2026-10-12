@@ -1,6 +1,7 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { isInviteLink } from '../../ipc/inviteLink';
 import { useAddPack } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
@@ -39,6 +40,11 @@ export function PackLinkForm({ initial }: { initial?: string }) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!url.trim()) return;
+    // A server invite isn't a pack link: confirm the server first (spec §2.3).
+    if (isInviteLink(url)) {
+      navigate({ name: 'joinServer', invite: url.trim() });
+      return;
+    }
     add.mutate({ kind: 'link', url: url.trim() }, { onSuccess: (instance) => navigate({ name: 'home', id: instance.id }) });
   };
   // noValidate: a bad link gets the launcher's pack_link_invalid message, not the webview's tooltip.

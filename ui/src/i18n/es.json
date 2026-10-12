@@ -106,7 +106,8 @@
     "install_loader": "Preparando {{loader}} {{version}}",
     "check_pack": "Revisando los archivos de {{name}}",
     "sync_pack": "Actualizando {{name}}",
-    "install_pack": "Instalando {{name}}"
+    "install_pack": "Instalando {{name}}",
+    "server_pack_wait": "El servidor está preparando el modpack…"
   },
   "activity": {
     "title": "Actividad",
@@ -274,6 +275,53 @@
     "minimize": "Mejor minimizar",
     "quit": "Salir y detener juegos"
   },
+  "join": {
+    "title": "Unirse a un servidor",
+    "relinkTitle": "Usar un nuevo enlace de invitación",
+    "linkLabel": "Enlace de invitación",
+    "linkPlaceholder": "https://play.ejemplo.com/…",
+    "check": "Revisar enlace",
+    "from": "De {{host}}",
+    "add": "Agregar servidor",
+    "adding": "Agregando…",
+    "open": "Abrir",
+    "useLink": "Usar este enlace",
+    "mismatch": "Este enlace es de {{new}}, no de {{old}}.",
+    "inviteOnly": "Solo con invitación: pídele al dueño que agregue a {{name}}",
+    "inviteOnlyNoAccount": "Solo con invitación: pídele al dueño que te agregue",
+    "versionLabel": "Versión",
+    "versionLine": "Minecraft {{version}}",
+    "vanilla": "Minecraft {{version}} sin mods",
+    "packLabel": "Modpack",
+    "packMods_one": "{{count}} mod",
+    "packMods_other": "{{count}} mods",
+    "note": "Los mods del servidor se descargan la primera vez que presionas Jugar.",
+    "copyAddress": "Copiar dirección"
+  },
+  "server": {
+    "online": "En línea",
+    "onlinePlayers": "En línea · {{online}}/{{max}}",
+    "onlineCount": "En línea · {{online}}",
+    "starting": "Iniciando",
+    "sleeping": "Dormido · únete para despertarlo",
+    "offline": "Apagado",
+    "unknown": "Desconocido",
+    "statusLabel": "Estado del servidor: {{status}}",
+    "address": "Dirección",
+    "noAddress": "Todavía no hay dirección",
+    "copyAddress": "Copiar dirección del servidor",
+    "addressCopied": "Dirección copiada",
+    "deadLink": "Este enlace de invitación dejó de funcionar",
+    "useNewLink": "Usar un enlace nuevo",
+    "updated": "Servidor actualizado · se actualiza cuando juegues",
+    "playWithoutJoining": "Jugar sin unirse",
+    "useNewInviteLink": "Usar un nuevo enlace de invitación",
+    "copyLink": "Copiar enlace de invitación",
+    "settingsTitle": "Servidor",
+    "settingsHost": "Invitación de {{host}}",
+    "settingsCopyLink": "Copiar enlace",
+    "relinkRunning": "Detén el juego para usar un enlace nuevo."
+  },
   "errors": {
     "offline_name_invalid": { "message": "Los nombres deben tener de 3 a 16 letras, números o guiones bajos." },
     "accounts_damaged": { "message": "Tu archivo de cuentas está dañado.", "fix": "Borra accounts.json de la carpeta de datos y vuelve a agregar tus cuentas." },
@@ -344,6 +392,14 @@
     "pack_path_is_folder": { "message": "El pack quiere poner un archivo donde tienes una carpeta ({{path}}).", "fix": "Mueve esa carpeta o cámbiale el nombre, y vuelve a intentarlo." },
     "sync_cancelled": { "message": "Se canceló la actualización." },
     "update_download_failed": { "message": "No se pudo descargar la actualización. Sigues teniendo la {{version}}.", "fix": "Intenta actualizar más tarde." },
+    "invite_link_invalid": { "message": "Eso no es un enlace de invitación de Perland.", "fix": "Los enlaces de invitación se ven como https://play.example.com/ seguido de un código largo." },
+    "invite_gone": { "message": "Este enlace de invitación ya no funciona. Pídele uno nuevo al dueño.", "fix": "Usa un nuevo enlace de invitación." },
+    "invite_unsupported": { "message": "Todavía no puedes unirte a este servidor desde el launcher. Únete con la dirección {{address}}." },
+    "invite_site_unreachable": { "message": "No se pudo conectar con el sitio de Perland del servidor en {{host}}.", "fix": "Revisa el enlace o inténtalo más tarde." },
+    "invite_rate_limited": { "message": "Demasiadas solicitudes. Inténtalo de nuevo en un minuto." },
+    "server_pack_unavailable": { "message": "El modpack del servidor no está disponible ahora.", "fix": "Inténtalo más tarde o avísale al dueño del servidor." },
+    "server_pack_pending": { "message": "El servidor todavía está preparando el modpack. Inténtalo de nuevo en un minuto." },
+    "server_address_unknown": { "message": "No se pudo obtener la dirección del servidor, así que el juego empieza en la pantalla de título." },
     "internal": { "message": "Ocurrió algo inesperado.", "fix": "Reinicia el launcher. Si sigue pasando, copia los detalles para soporte." }
   }
 }

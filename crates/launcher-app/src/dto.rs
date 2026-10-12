@@ -1,9 +1,10 @@
 //! Shapes the commands take and return that aren't core types.
-use std::path::PathBuf;
+use std::{fmt, path::PathBuf};
 
 use launcher_core::{
     accounts::BuildKind,
-    instances::LoaderSpec,
+    instances::{accent_of, LoaderSpec, ServerAddress, ServerStatus},
+    invite::{non_empty, shown_invite, EngineView, InviteLink, InvitePlayers},
     mods::LocalMod,
     sync::{ManualFile, PendingUpdate, SyncReport},
     LauncherError,
@@ -168,11 +169,153 @@ pub struct PackArtData {
 
 /// What the New-instance screen hands over. A link is never a file path, and a file is only
 /// ever a `.mrpack`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PackAddRequest {
     Link { url: String },
     File { path: PathBuf },
+}
+
+// Manual Debug: a link may be an invite, and its token is a credential.
+impl fmt::Debug for PackAddRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PackAddRequest::Link { url } => {
+                let shown = match InviteLink::parse(url) {
+                    Ok(_) => shown_invite(url),
+                    Err(_) => url.clone(),
+                };
+                f.debug_struct("Link").field("url", &shown).finish()
+            }
+            PackAddRequest::File { path } => f.debug_struct("File").field("path", path).finish(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerPlayers {
+    pub online: u32,
+    /// Absent for networks.
+    pub max: Option<u32>,
+}
+
+impl From<&InvitePlayers> for ServerPlayers {
+    fn from(p: &InvitePlayers) -> Self {
+        Self {
+            online: p.online,
+            max: p.max,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerGame {
+    pub version: Option<String>,
+    pub loader: Option<String>,
+    pub loader_version: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerPack {
+    pub name: String,
+    pub version: Option<String>,
+    pub mod_count: u32,
+    /// `ready | pending | unavailable`.
+    pub state: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerTeam {
+    pub display_name: String,
+    /// `cyan | blue | violet | magenta | other`: a small mark, never a second lit element.
+    pub accent: Option<String>,
+}
+
+/// What Join server shows before anything is written. Holds no token: the host is enough.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JoinPreview {
+    /// The invite's host ("From play.example.com").
+    pub host: String,
+    pub name: String,
+    /// May hold `§` colour codes.
+    pub motd: String,
+    /// `stack` or `network`.
+    pub kind: String,
+    pub status: Option<ServerStatus>,
+    pub players: Option<ServerPlayers>,
+    pub game: ServerGame,
+    pub pack: Option<ServerPack>,
+    pub whitelisted: bool,
+    pub team: Option<ServerTeam>,
+    pub address: Option<ServerAddress>,
+    /// The icon as a `data:image/png` URL (the CSP allows no remote images).
+    pub icon: Option<String>,
+    /// The instance that already joins this server, if any: the screen offers Open.
+    pub existing: Option<String>,
+}
+
+/// A server instance's live status, for the pill, the address line and the dead-link plate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerStatusView {
+    /// `None` when unknown (a dead link).
+    pub status: Option<ServerStatus>,
+    pub players: Option<ServerPlayers>,
+    pub whitelisted: bool,
+    pub pack_state: Option<String>,
+    pub gone: bool,
+    /// The last known address.
+    pub address: Option<ServerAddress>,
+}
+
+fn owned(s: &Option<String>) -> Option<String> {
+    non_empty(s).map(str::to_string)
+}
+
+impl JoinPreview {
+    pub fn new(
+        link: &InviteLink,
+        ev: &EngineView,
+        icon: Option<String>,
+        existing: Option<String>,
+    ) -> Self {
+        let view = &ev.view;
+        let display_name = view.team.display_name.trim().to_string();
+        let accent = accent_of(&view.team.accent);
+        let team = (!display_name.is_empty() || accent.is_some()).then_some(ServerTeam {
+            display_name,
+            accent,
+        });
+        JoinPreview {
+            host: link.host().to_string(),
+            name: view.name.trim().to_string(),
+            motd: view.motd.chars().take(512).collect(),
+            kind: view.kind.clone(),
+            status: view.status(),
+            players: view.players.as_ref().map(ServerPlayers::from),
+            game: ServerGame {
+                version: owned(&view.game.version),
+                loader: owned(&view.game.loader),
+                loader_version: owned(&view.game.loader_version),
+            },
+            pack: view.pack.as_ref().map(|p| ServerPack {
+                name: p.name.trim().to_string(),
+                version: owned(&p.version),
+                mod_count: p.mod_count,
+                state: p.state.clone(),
+            }),
+            whitelisted: view.whitelisted,
+            team,
+            address: ServerAddress::from_view(&view.address, &ev.engine),
+            icon,
+            existing,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -259,6 +402,35 @@ mod tests {
         );
         let downloads: OpenTarget = serde_json::from_str(r#"{"kind":"downloads"}"#).unwrap();
         assert_eq!(downloads, OpenTarget::Downloads);
+    }
+
+    #[test]
+    fn a_pack_add_request_never_prints_an_invite_token() {
+        let token = "Z".repeat(43);
+        let invite = PackAddRequest::Link {
+            url: format!("https://play.example.com/{token}"),
+        };
+        let shown = format!("{invite:?}");
+        assert!(!shown.contains(&token), "{shown}");
+        assert!(
+            shown.contains("https://play.example.com/<invite>"),
+            "{shown}"
+        );
+
+        let packwiz = PackAddRequest::Link {
+            url: "https://x.example/pack.toml".into(),
+        };
+        assert_eq!(
+            format!("{packwiz:?}"),
+            r#"Link { url: "https://x.example/pack.toml" }"#
+        );
+        let file = PackAddRequest::File {
+            path: "C:/Downloads/Sky.mrpack".into(),
+        };
+        assert_eq!(
+            format!("{file:?}"),
+            r#"File { path: "C:/Downloads/Sky.mrpack" }"#
+        );
     }
 
     #[test]

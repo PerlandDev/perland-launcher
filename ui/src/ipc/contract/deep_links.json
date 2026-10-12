@@ -1,0 +1,10 @@
+[
+  {
+    "kind": "pack",
+    "url": "https://perlanddev.github.io/asalith-modpack/pack.toml"
+  },
+  {
+    "kind": "join",
+    "invite": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+  }
+]

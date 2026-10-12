@@ -18,7 +18,8 @@
       "java": {
         "path": null,
         "memoryMb": 4096
-      }
+      },
+      "server": null
     },
     {
       "id": "creative-flat",
@@ -35,7 +36,8 @@
       "java": {
         "path": "C:/Java/bin/java.exe",
         "memoryMb": 6144
-      }
+      },
+      "server": null
     }
   ],
   "damaged": [

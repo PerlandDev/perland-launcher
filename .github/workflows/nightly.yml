@@ -72,11 +72,11 @@ jobs:
         with:
           workspaces: fuzz
       - run: cargo install cargo-fuzz --locked
-      - name: Fuzz each pack parser for 3 minutes
+      - name: Fuzz each pack and link parser for 3 minutes
         run: |
           # Run every target even if one finds a crash, then fail at the end.
           rc=0
-          for target in packwiz_pack packwiz_index packwiz_meta mrpack_index sidecar pack_paths; do
+          for target in packwiz_pack packwiz_index packwiz_meta mrpack_index sidecar pack_paths invite_link join_deep_link; do
             cargo fuzz run "$target" -- -max_total_time=180 -rss_limit_mb=2048 -max_len=65536 -timeout=10 || rc=1
           done
           exit $rc

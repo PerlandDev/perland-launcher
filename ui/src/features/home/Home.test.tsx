@@ -1,11 +1,13 @@
 import { act, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import packStatusFx from '../../ipc/contract/pack_status.json';
-import { exitOf } from '../../ipc/mock';
+import { createMockBackend, exitOf } from '../../ipc/mock';
 import type { PackStatus } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
+import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
+import { renderWithProviders } from '../../test/render';
 import { Home } from './Home';
 
 describe('Home', () => {
@@ -14,7 +16,7 @@ describe('Home', () => {
     expect(await screen.findByRole('heading', { name: 'Asalith Fields' })).toBeInTheDocument();
     expect(screen.getByText('Minecraft 1.20.1 · Fabric 0.16.14')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Play' }));
-    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields' }]);
+    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields', join: true }]);
   });
 
   it('sends one play for a double click', async () => {
@@ -26,7 +28,7 @@ describe('Home', () => {
       return new Promise((resolve) => (release = () => resolve(handle(cmd, args))));
     });
     await user.dblClick(await screen.findByRole('button', { name: 'Play' }));
-    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields' }]);
+    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields', join: true }]);
     await act(async () => release());
     expect(sent(calls, 'play')).toHaveLength(1);
   });
@@ -201,4 +203,156 @@ it("shows the pack's own banner, and generated art otherwise", async () => {
   await vi.waitFor(() =>
     expect(container.querySelector('img.marquee-banner')?.getAttribute('src')).toMatch(/^data:image\/svg\+xml;base64,/),
   );
+});
+
+describe('server instances', () => {
+  it('show the live status, the address and the invite-only line', async () => {
+    renderApp(<Home id="survival" />, { server: 'whitelisted' });
+    expect(await screen.findByRole('status', { name: 'Server status: Online · 3/20' })).toBeInTheDocument();
+    expect(screen.getByText('play.example.com:25566')).toBeInTheDocument();
+    expect(screen.getByText('Invite only: ask the owner to add Steve')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['vanilla', 'Sleeping · join to wake it'],
+    ['gone', 'Unknown'],
+  ] as const)('read %s as %s', async (server, word) => {
+    renderApp(<Home id="survival" />, { server });
+    expect(await screen.findByRole('status', { name: `Server status: ${word}` })).toBeInTheDocument();
+  });
+
+  it('copy the address', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    await user.click(await screen.findByRole('button', { name: 'Copy server address' }));
+    expect(await navigator.clipboard.readText()).toBe('play.example.com:25566');
+  });
+
+  it('say Copied only when the copy worked', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    const button = await screen.findByRole('button', { name: 'Copy server address' });
+    expect(button).toHaveTextContent('Copy');
+    await user.click(button);
+    expect(await screen.findByText('Copied')).toBeInTheDocument();
+  });
+
+  it('name the button Copied and announce the copy', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    await user.click(await screen.findByRole('button', { name: 'Copy server address' }));
+    expect(await screen.findByRole('button', { name: 'Copied' })).toBeInTheDocument();
+    expect(screen.getByText('Address copied')).toHaveAttribute('aria-live', 'polite');
+  });
+
+  it('read a starting server as Starting', async () => {
+    renderApp(<Home id="survival" />, { server: 'starting' });
+    expect(await screen.findByRole('status', { name: 'Server status: Starting' })).toBeInTheDocument();
+  });
+
+  it('keep the label as Copy and toast when the clipboard refuses', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    const failure = new Error('denied');
+    const button = await screen.findByRole('button', { name: 'Copy server address' });
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(failure);
+    await user.click(button);
+    await vi.waitFor(() => expect(toastsSnapshot().map((toast) => toast.error)).toEqual([failure]));
+    expect(button).toHaveTextContent(/^Copy$/);
+    expect(screen.queryByText('Copied')).not.toBeInTheDocument();
+  });
+
+  it('offer the server items in the menu', async () => {
+    const { user, calls } = renderApp(<Home id="survival" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Survival' });
+    const open = async () => user.click(screen.getByRole('button', { name: 'More options' }));
+    await open();
+    await user.click(screen.getByRole('menuitem', { name: 'Play without joining' }));
+    expect(sent(calls, 'play')).toEqual([{ id: 'survival', join: false }]);
+    await open();
+    await user.click(screen.getByRole('menuitem', { name: 'Copy invite link' }));
+    expect(await navigator.clipboard.readText()).toBe(`https://play.example.com/${'A'.repeat(43)}`);
+    await open();
+    await user.click(screen.getByRole('menuitem', { name: 'Copy server address' }));
+    expect(await navigator.clipboard.readText()).toBe('play.example.com:25566');
+    await open();
+    await user.click(screen.getByRole('menuitem', { name: 'Use a new invite link' }));
+    expect(routeSnapshot()).toEqual({ name: 'joinServer', invite: '', relinkFor: 'survival' });
+  });
+
+  it('toast when the menu cannot copy', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Survival' });
+    const failure = new Error('denied');
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(failure);
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Copy invite link' }));
+    await vi.waitFor(() => expect(toastsSnapshot().map((toast) => toast.error)).toEqual([failure]));
+  });
+
+  it('keep the server items off plain instances', async () => {
+    const { user } = renderApp(<Home id="creative-flat" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.getByRole('menuitem', { name: 'Instance settings' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Play without joining' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Use a new invite link' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Copy invite link' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Copy server address' })).not.toBeInTheDocument();
+  });
+
+  it('raise the dead-link plate, which opens relinking', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'gone' });
+    expect(await screen.findByText(/This invite link stopped working/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Use a new link' }));
+    expect(routeSnapshot()).toEqual({ name: 'joinServer', invite: '', relinkFor: 'survival' });
+  });
+
+  it('keep a running server on its link: no new link from the plate or the menu', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'gone' });
+    await screen.findByText(/This invite link stopped working/);
+    act(() => runStore.apply({ type: 'run_state', instance: 'survival', state: 'running', exit: null, update: null }));
+    expect(screen.getByRole('button', { name: 'Use a new link' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.getByRole('menuitem', { name: 'Use a new invite link' })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'Copy invite link' })).toBeEnabled();
+    await user.keyboard('{Escape}');
+    act(() => runStore.apply({ type: 'run_state', instance: 'survival', state: 'idle', exit: null, update: null }));
+    expect(screen.getByRole('button', { name: 'Use a new link' })).toBeEnabled();
+  });
+
+  it('say a server update happens at Play, with no Update button', async () => {
+    const backend = createMockBackend({ server: 'online' });
+    renderWithProviders(<Home id="survival" />, {
+      ipc: (cmd, args) =>
+        cmd === 'pack_status'
+          ? {
+              installedVersion: '1.0.4',
+              update: { fromVersion: '1.0.4', toVersion: '1.0.5', added: [], updated: [], removed: [], kept: [] },
+              checkError: null,
+            }
+          : backend.handle(cmd, args),
+    });
+    expect(await screen.findByText('Server updated · updates when you play')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument();
+  });
+
+  it.each(['checking', 'syncing'] as const)('label the wait while the server builds its pack (%s)', async (state) => {
+    renderApp(<Home id="survival" />, { server: 'pending' });
+    await screen.findByRole('heading', { name: 'Survival' });
+    act(() => {
+      runStore.apply({ type: 'run_state', instance: 'survival', state, exit: null, update: null });
+      runStore.apply({
+        type: 'progress',
+        instance: 'survival',
+        task: { key: 'server_pack_wait', params: { name: 'survival' } },
+        done: 0,
+        total: 0,
+        bytes: 0,
+      });
+    });
+    expect(screen.getByRole('button', { name: 'Cancel: Server is preparing the modpack…' })).toBeInTheDocument();
+  });
+
+  it('never poll a plain instance', async () => {
+    const { calls } = renderApp(<Home id="creative-flat" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    expect(sent(calls, 'server_status')).toEqual([]);
+  });
 });

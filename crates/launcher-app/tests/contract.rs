@@ -4,9 +4,11 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
 use launcher_app::{
+    deep_link::DeepLink,
     dto::{
-        AppInfo, Build, JavaTest, ManualProgress, NewInstance, OpenTarget, OptionalChoice,
-        PackAddRequest, PackArtData, PackContents, PackMod, PackStatus, PackUpdate, RunSnapshot,
+        AppInfo, Build, JavaTest, JoinPreview, ManualProgress, NewInstance, OpenTarget,
+        OptionalChoice, PackAddRequest, PackArtData, PackContents, PackMod, PackStatus, PackUpdate,
+        RunSnapshot, ServerGame, ServerPack, ServerPlayers, ServerStatusView, ServerTeam,
         SyncSummary,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
@@ -16,9 +18,10 @@ use launcher_core::{
     download::Hashes,
     events::TaskId,
     instances::{
-        DamagedInstance, GameSpec, Instance, InstanceListing, JavaSettings, LoaderSpec, SourceRef,
-        UpdatePolicy,
+        DamagedInstance, GameSpec, Instance, InstanceListing, JavaSettings, LoaderSpec,
+        ServerAddress, ServerLink, ServerStatus, SourceRef, UpdatePolicy,
     },
+    invite::invite_link_cases,
     launch::CrashHint,
     meta::{
         catalog::{LoaderVersion, McKind, McVersion},
@@ -95,6 +98,7 @@ fn fabric_instance() -> Instance {
             path: None,
             memory_mb: 4096,
         },
+        server: None,
     }
 }
 
@@ -113,6 +117,52 @@ fn vanilla_instance() -> Instance {
             path: Some(PathBuf::from("C:/Java/bin/java.exe")),
             memory_mb: 6144,
         },
+        server: None,
+    }
+}
+
+/// A fake invite (43 × A): fixtures never hold a real token.
+fn sample_invite() -> String {
+    format!("https://play.example.com/{}", "A".repeat(43))
+}
+
+fn sample_address() -> ServerAddress {
+    ServerAddress {
+        host: "play.example.com".into(),
+        port: 25566,
+    }
+}
+
+fn server_instance() -> Instance {
+    Instance {
+        id: "survival".into(),
+        name: "Survival".into(),
+        source: SourceRef::Perland {
+            invite: sample_invite(),
+            engine: "https://api.example.com/".into(),
+        },
+        game: GameSpec {
+            minecraft: "1.20.1".into(),
+            loader: Some(LoaderSpec {
+                kind: LoaderKind::Fabric,
+                version: "0.16.14".into(),
+            }),
+        },
+        update_policy: UpdatePolicy::Auto,
+        optional_choices: BTreeMap::new(),
+        java: JavaSettings {
+            path: None,
+            memory_mb: 4096,
+        },
+        server: Some(ServerLink {
+            address: Some(sample_address()),
+            name: "survival".into(),
+            accent: Some("violet".into()),
+            whitelisted: false,
+            last_status: Some(ServerStatus::Online),
+            last_seen: Some(1_791_720_000),
+            gone: false,
+        }),
     }
 }
 
@@ -484,4 +534,100 @@ fn contract_fixtures_are_current() {
             },
         ],
     );
+    check("server_instance", server_instance());
+    check(
+        "join_preview",
+        vec![
+            JoinPreview {
+                host: "play.example.com".into(),
+                name: "survival".into(),
+                motd: "§6Survival§r
+with friends"
+                    .into(),
+                kind: "stack".into(),
+                status: Some(ServerStatus::Online),
+                players: Some(ServerPlayers {
+                    online: 3,
+                    max: Some(20),
+                }),
+                game: ServerGame {
+                    version: Some("1.20.1".into()),
+                    loader: Some("fabric".into()),
+                    loader_version: Some("0.16.14".into()),
+                },
+                pack: Some(ServerPack {
+                    name: "Survival Pack".into(),
+                    version: Some("1.0.4".into()),
+                    mod_count: 142,
+                    state: "ready".into(),
+                }),
+                whitelisted: false,
+                team: Some(ServerTeam {
+                    display_name: "Acme".into(),
+                    accent: Some("violet".into()),
+                }),
+                address: Some(sample_address()),
+                icon: Some("data:image/png;base64,iVBORw0KGgo=".into()),
+                existing: None,
+            },
+            JoinPreview {
+                host: "play.example.com".into(),
+                name: "creative".into(),
+                motd: "Build".into(),
+                kind: "stack".into(),
+                status: Some(ServerStatus::Sleeping),
+                players: None,
+                game: ServerGame {
+                    version: Some("1.21.1".into()),
+                    loader: None,
+                    loader_version: None,
+                },
+                pack: None,
+                whitelisted: true,
+                team: None,
+                address: Some(ServerAddress {
+                    host: "play.example.com".into(),
+                    port: 25570,
+                }),
+                icon: None,
+                existing: Some("creative".into()),
+            },
+        ],
+    );
+    check(
+        "server_status",
+        vec![
+            ServerStatusView {
+                status: Some(ServerStatus::Online),
+                players: Some(ServerPlayers {
+                    online: 3,
+                    max: Some(20),
+                }),
+                whitelisted: false,
+                pack_state: Some("ready".into()),
+                gone: false,
+                address: Some(sample_address()),
+            },
+            ServerStatusView {
+                status: None,
+                players: None,
+                whitelisted: true,
+                pack_state: None,
+                gone: true,
+                address: Some(sample_address()),
+            },
+        ],
+    );
+    check(
+        "deep_links",
+        vec![
+            DeepLink::Pack {
+                url: "https://perlanddev.github.io/asalith-modpack/pack.toml".into(),
+            },
+            DeepLink::Join {
+                invite: sample_invite(),
+            },
+        ],
+    );
+    check("invite_links", invite_link_cases());
 }

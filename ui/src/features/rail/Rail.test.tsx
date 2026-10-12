@@ -48,3 +48,18 @@ it("falls back to the generated icon when a pack's icon fails to decode", async 
   expect(sky.querySelector('img')).toBeNull();
   expect(sky.querySelector('svg')).not.toBeNull();
 });
+
+it('marks a server with its last status, in words too', async () => {
+  const { container } = renderApp(<Rail />, { server: 'online' });
+  expect(await screen.findByRole('button', { name: 'Survival, Online · 3/20' })).toBeInTheDocument();
+  expect(container.querySelectorAll('.rail-server')).toHaveLength(1);
+  expect(container.querySelector('.rail-server')).toHaveAttribute('data-status', 'online');
+  expect(container.querySelector('.rail-led')).toBeNull();
+});
+
+it("shows a server's status word on hover too", async () => {
+  renderApp(<Rail />, { server: 'starting' });
+  const survival = await screen.findByRole('button', { name: 'Survival, Starting' });
+  expect(survival).toHaveAttribute('title', 'Survival · Starting');
+  expect(screen.getByRole('button', { name: 'Creative Flat' })).toHaveAttribute('title', 'Creative Flat');
+});

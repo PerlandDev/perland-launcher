@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './i18n';
 import { onAppEvent } from './ipc/events';
+import type { ServerScenario } from './ipc/mockServers';
 import { handleEvent } from './state/handleEvent';
 import { hydrateRuns } from './state/hydrateRuns';
 import { queryClient } from './state/queries';
@@ -21,6 +22,7 @@ async function bootstrap() {
       manual: params.has('manual'),
       noUpdate: params.has('noUpdate'),
       link: params.get('link') ?? undefined,
+      server: (params.get('server') as ServerScenario | null) ?? undefined,
     });
   }
   // Whatever fails here, the window still opens; the failure shows up as a toast.

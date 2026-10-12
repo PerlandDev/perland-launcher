@@ -62,6 +62,9 @@ error_codes! {
     // packs and sync
     PackInvalid, PackUnsupported, PackUnsafePath, PackNotFound, PackLinkInvalid, NoPack,
     NotEnoughSpace, InstanceLocked, ManualDownloadsNeeded, UpdateCheckFailed, PackPathIsFolder, SyncCancelled, UpdateDownloadFailed,
+    // server invites (join by link)
+    InviteLinkInvalid, InviteGone, InviteUnsupported, InviteSiteUnreachable, InviteRateLimited,
+    ServerPackUnavailable, ServerPackPending, ServerAddressUnknown,
     // anything unexpected
     Internal,
 }
@@ -160,6 +163,23 @@ mod tests {
             (ErrorCode::SyncCancelled, "sync_cancelled"),
             (ErrorCode::UpdateDownloadFailed, "update_download_failed"),
             (ErrorCode::ModManaged, "mod_managed"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
+    fn invite_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::InviteLinkInvalid, "invite_link_invalid"),
+            (ErrorCode::InviteGone, "invite_gone"),
+            (ErrorCode::InviteUnsupported, "invite_unsupported"),
+            (ErrorCode::InviteSiteUnreachable, "invite_site_unreachable"),
+            (ErrorCode::InviteRateLimited, "invite_rate_limited"),
+            (ErrorCode::ServerPackUnavailable, "server_pack_unavailable"),
+            (ErrorCode::ServerPackPending, "server_pack_pending"),
+            (ErrorCode::ServerAddressUnknown, "server_address_unknown"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

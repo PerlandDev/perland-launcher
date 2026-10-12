@@ -5,11 +5,12 @@ use launcher_core::{
     accounts::Session,
     events::EventSink,
     install::Installer,
-    instances::{Instance, InstanceStore},
+    instances::{Instance, InstanceStore, ServerAddress},
+    invite::{EngineView, InviteLink},
     launch::{GameExit, GameKiller, GameProcess},
     locks::InstanceLock,
     play::{self, Prepared, StartSpec},
-    sources::PackInput,
+    sources::{PackInput, UpdateCheck},
     sync::{Cancel, Ensured, ManualFile, PendingUpdate, Syncer},
     Result,
 };
@@ -49,13 +50,20 @@ pub trait Runner: Send + Sync + 'static {
         instance: Instance,
         prepared: Self::Prepared,
         session: Session,
+        join: Option<ServerAddress>,
         sink: EventSink,
     ) -> BoxFuture<Result<Box<dyn RunningGame>>>;
     /// A new instance for a pack: named after it, with its game version, policy and art.
     /// Its files arrive with the first sync.
     fn add_pack(&self, input: PackInput) -> BoxFuture<Result<Instance>>;
     /// The update this pack instance could take now. `Err` is a warning: play what's installed.
-    fn find_update(&self, instance: Instance) -> BoxFuture<Result<Option<PendingUpdate>>>;
+    fn find_update(
+        &self,
+        instance: Instance,
+        sink: EventSink,
+    ) -> BoxFuture<Result<Option<PendingUpdate>>>;
+    /// The cheap update check only (no pack download): a server's banner.
+    fn check_update(&self, instance: Instance) -> BoxFuture<UpdateCheck>;
     /// Bring a pack instance to `accept` (or what's installed). The caller holds `lock`.
     fn sync(
         &self,
@@ -67,6 +75,15 @@ pub trait Runner: Send + Sync + 'static {
     ) -> BoxFuture<Result<Ensured>>;
     /// Put files the player downloaded by hand into the cache.
     fn import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>>;
+    /// The invite's view and its Engine, shared for 15 s by every caller. `engine` seeds the
+    /// Engine an instance saved, so no `config.json` is needed.
+    fn invite_view(
+        &self,
+        link: InviteLink,
+        engine: Option<String>,
+    ) -> BoxFuture<Result<EngineView>>;
+    /// The invite's icon PNG, or `None`.
+    fn invite_icon(&self, link: InviteLink) -> BoxFuture<Option<Vec<u8>>>;
 }
 
 pub struct CoreRunner {
@@ -104,6 +121,7 @@ impl Runner for CoreRunner {
         instance: Instance,
         prepared: Prepared,
         session: Session,
+        join: Option<ServerAddress>,
         sink: EventSink,
     ) -> BoxFuture<Result<Box<dyn RunningGame>>> {
         let installer = self.installer.clone();
@@ -118,6 +136,7 @@ impl Runner for CoreRunner {
                 session: &session,
                 platform: installer.platform,
                 launcher_version: &version,
+                join: join.as_ref(),
             };
             let game = play::start(&spec, sink).await?;
             Ok(Box::new(game) as Box<dyn RunningGame>)
@@ -129,9 +148,18 @@ impl Runner for CoreRunner {
         Box::pin(async move { Ok(syncer.add_pack(&store, &input).await?.0) })
     }
 
-    fn find_update(&self, instance: Instance) -> BoxFuture<Result<Option<PendingUpdate>>> {
+    fn find_update(
+        &self,
+        instance: Instance,
+        sink: EventSink,
+    ) -> BoxFuture<Result<Option<PendingUpdate>>> {
         let (syncer, store) = (self.syncer.clone(), self.store());
-        Box::pin(async move { syncer.find_update(&store, &instance).await })
+        Box::pin(async move { syncer.find_update_with(&store, &instance, &sink).await })
+    }
+
+    fn check_update(&self, instance: Instance) -> BoxFuture<UpdateCheck> {
+        let (syncer, store) = (self.syncer.clone(), self.store());
+        Box::pin(async move { syncer.check(&store, &instance).await })
     }
 
     fn sync(
@@ -153,6 +181,25 @@ impl Runner for CoreRunner {
     fn import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>> {
         let syncer = self.syncer.clone();
         Box::pin(async move { syncer.import_found(&found).await })
+    }
+
+    fn invite_view(
+        &self,
+        link: InviteLink,
+        engine: Option<String>,
+    ) -> BoxFuture<Result<EngineView>> {
+        let invites = self.syncer.sources.invites.clone();
+        Box::pin(async move {
+            if let Some(engine) = engine {
+                invites.remember_engine(&link, &engine);
+            }
+            invites.view(&link).await
+        })
+    }
+
+    fn invite_icon(&self, link: InviteLink) -> BoxFuture<Option<Vec<u8>>> {
+        let invites = self.syncer.sources.invites.clone();
+        Box::pin(async move { invites.icon(&link).await })
     }
 }
 

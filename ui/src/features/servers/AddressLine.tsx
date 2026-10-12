@@ -1,0 +1,44 @@
+import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { ServerAddress } from '../../ipc/schema';
+import { Button } from '../../ui/Button';
+import { copyText } from '../../ui/copyText';
+import { Check, Copy } from '../../ui/Icon';
+import { addressText } from '../home/labels';
+
+/** The address players type, with Copy. */
+export function AddressLine({ address }: { address: ServerAddress | null }) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearTimeout(timer.current);
+    };
+  }, []);
+  if (!address) return <p className="marquee-plate text-sm text-ink-dim">{t('server.noAddress')}</p>;
+  const text = addressText(address);
+  const copy = () =>
+    void copyText(text).then((ok) => {
+      if (!ok || !mounted.current) return;
+      setCopied(true);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 2000);
+    });
+  return (
+    <p className="marquee-plate plate-row">
+      <span className="text-sm text-ink-dim">{t('server.address')}</span>
+      <span className="selectable font-mono text-[13px]">{text}</span>
+      {/* The name follows the visible label, and a polite live region says what just happened. */}
+      <Button variant="ghost" icon={copied ? <Check /> : <Copy />} aria-label={copied ? t('common.copied') : t('server.copyAddress')} onClick={copy}>
+        {copied ? t('common.copied') : t('common.copy')}
+      </Button>
+      <span className="sr-only" aria-live="polite">
+        {copied ? t('server.addressCopied') : ''}
+      </span>
+    </p>
+  );
+}

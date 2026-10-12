@@ -7,7 +7,9 @@ import { pushError } from './toasts';
 export async function takeDeepLink(): Promise<void> {
   try {
     const link = await commands.deepLinkTake();
-    if (link) navigate({ name: 'newInstance', link });
+    if (!link) return;
+    if (link.kind === 'pack') navigate({ name: 'newInstance', link: link.url });
+    else navigate({ name: 'joinServer', invite: link.invite });
   } catch (error) {
     pushError(error);
   }
