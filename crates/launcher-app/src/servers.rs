@@ -41,6 +41,19 @@ pub(crate) fn apply_view(server: &mut Option<ServerLink>, ev: &EngineView) {
     }
 }
 
+/// Whether two links differ in anything but when they were last read.
+fn differs(before: &Option<ServerLink>, after: &Option<ServerLink>) -> bool {
+    match (before, after) {
+        (Some(before), Some(after)) => {
+            let mut same_time = after.clone();
+            same_time.last_seen = before.last_seen;
+            same_time != *before
+        }
+        (None, None) => false,
+        _ => true,
+    }
+}
+
 impl<R: Runner, H: Host> AppCore<R, H> {
     /// The instance that already joins `link`'s server, compared by canonical invite.
     pub(crate) async fn instance_for_invite(&self, link: &InviteLink) -> Result<Option<Instance>> {
@@ -87,30 +100,38 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Change a server instance's `ServerLink` on disk and return it. The instance is reloaded
-    /// first, so a rename or a sync made meanwhile stays. It is saved only when it changed.
+    /// first, so a rename or a sync made meanwhile stays. It is saved only on a real change:
+    /// `last_seen` alone moving on every poll doesn't count.
+    /// With `skip_when_busy`, the disk is left alone while the instance has a run: a run's own
+    /// saves (sync, after-sync) rewrite the whole instance, and a poll must not race them. The
+    /// returned link is still the fresh one.
     pub(crate) async fn update_server(
         &self,
         id: &str,
+        skip_when_busy: bool,
         change: impl FnOnce(&mut Option<ServerLink>),
     ) -> Result<Option<ServerLink>> {
         let mut instance = self.instances.load(id).await?;
         let before = instance.server.clone();
         change(&mut instance.server);
-        if instance.server != before {
+        if differs(&before, &instance.server) && !(skip_when_busy && self.is_busy(id)) {
             self.instances.save(&instance).await?;
         }
         Ok(instance.server)
     }
 
     /// The last read said `invite_gone`: only `gone` changes; the address stays for joining.
-    pub(crate) async fn mark_server_gone(&self, id: &str) {
-        let _ = self
-            .update_server(id, |server| {
-                if let Some(link) = server {
-                    link.mark_gone();
-                }
-            })
-            .await;
+    pub(crate) async fn mark_server_gone(
+        &self,
+        id: &str,
+        skip_when_busy: bool,
+    ) -> Result<Option<ServerLink>> {
+        self.update_server(id, skip_when_busy, |server| {
+            if let Some(link) = server {
+                link.mark_gone();
+            }
+        })
+        .await
     }
 
     /// The live status, through the shared 15 s view. It takes no lock, so it works while the
@@ -121,7 +142,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let (link, engine) = server_source(&instance).ok_or_else(not_a_server)?;
         match self.runner.invite_view(link, Some(engine)).await {
             Ok(ev) => {
-                let saved = self.update_server(id, |s| apply_view(s, &ev)).await?;
+                let saved = self.update_server(id, true, |s| apply_view(s, &ev)).await?;
                 Ok(ServerStatusView {
                     status: ev.view.status(),
                     players: ev.view.players.as_ref().map(ServerPlayers::from),
@@ -132,8 +153,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 })
             }
             Err(e) if e.code == ErrorCode::InviteGone => {
-                self.mark_server_gone(id).await;
-                let last = self.instances.load(id).await?.server;
+                let last = self.mark_server_gone(id, true).await?;
                 Ok(ServerStatusView {
                     status: None,
                     players: None,
@@ -150,11 +170,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// "Use a new link": point the instance at another invite. The files stay; the next Play
     /// checks the new link and syncs.
     pub async fn server_relink(&self, id: &str, link: &str) -> Result<Instance> {
-        let mut instance = self.instances.load(id).await?;
-        server_source(&instance).ok_or_else(not_a_server)?;
+        server_source(&self.instances.load(id).await?).ok_or_else(not_a_server)?;
         let link = InviteLink::parse(link)?;
         let ev = self.runner.invite_view(link.clone(), None).await?;
         perland::supported(&ev)?;
+        // Reload after the network read, so a save made meanwhile (a rename, a sync) stays.
+        let mut instance = self.instances.load(id).await?;
         instance.source = SourceRef::Perland {
             invite: link.canonical(),
             engine: ev.engine.to_string(),
@@ -373,7 +394,7 @@ mod tests {
         let world = core.instances.game_dir(&id).join("saves/home/level.dat");
         std::fs::create_dir_all(world.parent().unwrap()).unwrap();
         std::fs::write(&world, b"blocks").unwrap();
-        core.update_server(&id, |s| s.as_mut().unwrap().mark_gone())
+        core.update_server(&id, false, |s| s.as_mut().unwrap().mark_gone())
             .await
             .unwrap();
         serve(&runner, &invite('B'), Ok(server_view("survival")));
@@ -414,7 +435,10 @@ mod tests {
     async fn instance_update_keeps_source_and_server_from_disk() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        serve(&runner, &invite('B'), Ok(server_view("survival")));
+        // B is another server, so its link differs from A's in more than the token.
+        let mut creative = server_view("creative");
+        creative.view.address.port = 25570;
+        serve(&runner, &invite('B'), Ok(creative));
         let stale = core.join_add(&invite('A')).await.unwrap();
         core.server_relink(&stale.id, &invite('B')).await.unwrap();
         // Instance settings was opened before the relink and saves now, with a new name.
@@ -423,7 +447,20 @@ mod tests {
         let saved = core.instance_update(edited).await.unwrap();
         assert_eq!(saved.name, "Our server");
         assert!(matches!(&saved.source, SourceRef::Perland { invite: i, .. } if *i == invite('B')));
+        let server = saved.server.clone().unwrap();
+        assert_eq!(
+            server.name, "creative",
+            "the stale copy's link is not written back"
+        );
+        assert_eq!(server.address.unwrap().display(), "play.example.com:25570");
         assert_eq!(core.instances.load(&stale.id).await.unwrap(), saved);
+        // A form that sends no link at all doesn't erase it either.
+        let mut bare = saved.clone();
+        bare.server = None;
+        assert_eq!(
+            core.instance_update(bare).await.unwrap().server,
+            saved.server
+        );
     }
 
     #[tokio::test]
@@ -434,5 +471,81 @@ mod tests {
         instance.update_policy = UpdatePolicy::Pinned;
         let saved = core.instance_update(instance).await.unwrap();
         assert_eq!(saved.update_policy, UpdatePolicy::Auto);
+    }
+
+    fn instance_json(core: &crate::app::tests::TestCore, id: &str) -> Vec<u8> {
+        std::fs::read(core.instances.instance_dir(id).join("instance.json")).unwrap()
+    }
+
+    /// Pretend a run holds the instance.
+    fn hold(core: &crate::app::tests::TestCore, id: &str) {
+        core.runs.lock().unwrap().insert(
+            id.to_string(),
+            crate::app::Run {
+                phase: crate::events::RunStateKind::Running,
+                abort: None,
+                killer: None,
+                cancel: launcher_core::sync::Cancel::default(),
+                answer: None,
+                offer: None,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn a_busy_instance_answers_but_is_not_written() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        hold(&core, &id);
+        let before = instance_json(&core, &id);
+        let mut asleep = server_view("survival");
+        asleep.view.status = "sleeping".into();
+        serve(&runner, &invite('A'), Ok(asleep));
+        let status = core.server_status(&id).await.unwrap();
+        assert_eq!(status.status, Some(ServerStatus::Sleeping));
+        assert_eq!(instance_json(&core, &id), before);
+        serve(
+            &runner,
+            &invite('A'),
+            Err(LauncherError::pack(ErrorCode::InviteGone, "gone")),
+        );
+        let status = core.server_status(&id).await.unwrap();
+        assert!(status.gone);
+        assert_eq!(status.address.unwrap().display(), "play.example.com:25566");
+        assert_eq!(instance_json(&core, &id), before);
+    }
+
+    #[tokio::test]
+    async fn an_unchanged_poll_does_not_rewrite_the_instance() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        // An old read time, so a poll that rewrote `last_seen` would show.
+        core.update_server(&id, false, |s| s.as_mut().unwrap().last_seen = Some(1))
+            .await
+            .unwrap();
+        let before = instance_json(&core, &id);
+        core.server_status(&id).await.unwrap();
+        core.server_status(&id).await.unwrap();
+        assert_eq!(instance_json(&core, &id), before);
+    }
+
+    #[tokio::test]
+    async fn a_real_change_is_saved_with_a_fresh_read_time() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        core.update_server(&id, false, |s| s.as_mut().unwrap().last_seen = Some(1))
+            .await
+            .unwrap();
+        let mut renamed = server_view("survival 2");
+        renamed.view.status = "offline".into();
+        serve(&runner, &invite('A'), Ok(renamed));
+        core.server_status(&id).await.unwrap();
+        let server = core.instances.load(&id).await.unwrap().server.unwrap();
+        assert_eq!(server.name, "survival 2");
+        assert_eq!(server.last_status, Some(ServerStatus::Offline));
+        assert!(server.last_seen.unwrap() > 1);
     }
 }
