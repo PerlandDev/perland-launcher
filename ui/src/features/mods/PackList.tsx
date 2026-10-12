@@ -156,8 +156,9 @@ export function PackList({ id, kind }: { id: string; kind: PackKind }) {
                 <ul>{yours.map(row)}</ul>
               </section>
             )}
-            {/* The empty line only when the folder holds nothing at all, not under a pack's own files. */}
-            {list.length === 0 && <p className="empty-slot">{t(`packs.empty.${kind}`)}</p>}
+            {/* The empty line only when the folder holds nothing at all, not under a pack's own files,
+                and not on vanilla shaders, where the loader note already says why and there is no Find. */}
+            {list.length === 0 && !needsLoader && <p className="empty-slot">{t(`packs.empty.${kind}`)}</p>}
           </>
         )}
       </div>

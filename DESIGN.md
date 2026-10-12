@@ -19,7 +19,7 @@ colors:
 typography:
   display:
     fontFamily: "Bungee, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "clamp(2.5rem, 5.4vw, 5.5rem)"
+    fontSize: "clamp(2.5rem, 4.8vw, 5.5rem)"
     fontWeight: 400
     lineHeight: 0.95
   headline:
@@ -334,7 +334,7 @@ A warm brown-black cabinet laminate carrying the four saturated land-plot hues, 
 **Character:** Bungee is arcade-marquee signage: blocky, all-caps by design, and loud. Atkinson Hyperlegible is the opposite, a face built for readers with low vision and for readers still learning, here chosen for young and non-native players. Signage names things. Atkinson says everything else.
 
 ### Hierarchy
-- **Display** (Bungee 400, `clamp(2.5rem, 5.4vw, 5.5rem)`, 0.95): the instance name on the marquee, wrapping anywhere, with the two-layer marquee shade.
+- **Display** (Bungee 400, `clamp(2.5rem, 4.8vw, 5.5rem)`, 0.95): the instance name on the marquee, wrapping anywhere, with the two-layer marquee shade. 4.8vw is sized so an 8-letter name stays whole at the 960 px minimum (see Layout, Home).
 - **Play** (Bungee 400, 2rem, 0.02em tracking): the word on Play, Stop and Stopping. While Play is preparing it switches to the 650-weight body face, left-aligned, so the phase label and meter fit.
 - **Headline** (Bungee 400, 2rem, 1): screen titles in the screen frame. First-run step titles run 1.875–2.25rem.
 - **Title** (Bungee 400, 1.25rem): small signage such as the About heading and the tabular memory readout.
@@ -370,7 +370,7 @@ The shell is a fixed desktop grid with a minimum window of 960 × 600 and no pho
 - **Title bar:** 2.25rem tall across the top, on `ground`, and draggable everywhere except its buttons. The mark and name sit left. The account (avatar and name), settings, a 1 px divider and the window controls sit right. On first run and the settings-failed screen it is **minimal**: only the window controls, because nothing else is reachable yet.
 - **Rail:** 4.5rem (72 px) down the left, on `ground`. Generated plot-icon cabinets are 3.5rem squares with 0.75rem between them, and a ghost "+" sits at the foot. The list uses roving arrow keys.
 - **Main:** fills the rest. The activity drawer is pinned along its bottom edge as a 2.25rem handle. Opened, the drawer is 18rem tall, and `main` gets 18rem of bottom padding to match so the screen (and Play) stays above it rather than under it.
-- **Home:** the marquee fills `main` edge to edge. A bottom grid of `[minmax(0,1fr) auto]` with a 1.5rem column gap and 2.5rem side gutters holds the name and version plate at lower left. The raised "Mods & packs" button, the overflow menu and Play sit at lower right, aligned to their bottoms, with Play last at the far right. "Mods & packs" stays a large button but with 1rem side padding, so with the narrower gap the name's column stays wide enough at 960 px that a long word doesn't split.
+- **Home:** the marquee fills `main` edge to edge. A bottom grid of `[minmax(0,1fr) auto]` with a 1rem column gap and 2.5rem side gutters holds the name and version plate at lower left. The raised "Mods & packs" button, the overflow menu and Play sit at lower right, aligned to their bottoms, with Play last at the far right. "Mods & packs" stays a large button but with 1rem side padding. At the 960 px minimum this leaves the name's column about 275 px (279 px in Spanish), and the 4.8vw name (46px there) fits a word of up to 8 letters of typical width (CREATIVE 247 px, SURVIVAL 258 px, MODPACKS 265 px). A longer word, or 8 very wide letters (WWWWWWWW), still breaks anywhere rather than overflow. Wider windows only add room, because the column grows faster than the name.
 - **Other screens:** a screen frame with a Bungee title row (2.5rem gutters, 2.25rem top), then a scrolling column capped at 48rem. Forms inside it run at 42rem, with 2.5rem between sections. Primary actions sit in a **sticky action row** at the bottom of the scroller on `ground`, with a 1 px `line` hairline above, so Save or Create stays reachable in long Spanish layouts.
 - **First run:** the "perland" marquee in attract mode fills the window behind a centered 32rem panel card on a deep-dirt step. Blue bars across the top of the card count the steps.
 - **Toasts** stack at the bottom-right in a 24rem column. **Dialogs** are `min(30rem, 100vw − 4rem)`, centred with auto margins (the CSS reset zeroes them) and capped at `100dvh − 4rem` tall, scrolling inside, so a long list never pushes the actions off a 600 px window.
@@ -496,7 +496,7 @@ An instance's own files, listed as rows on the ground under the screen title "Mo
 - **Icon slot:** a 2.5rem `panel` slot with notched 4px corners, holding the file glyph at 1.5rem in `ink-dim`.
 - **Sections:** a heading (Atkinson 700, 1.125rem) over its rows, 0.25rem apart. A section sits 0.5rem below what precedes it, and 1.5rem after another section, so 2.5rem with the column's 1rem gap.
 - **Note plate:** a `panel` plate with notched 6px corners and 0.75rem × 1rem padding, led by the 8px square blue lamp centred on the first text line (0.4375rem down). It carries the vanilla notes, the running notes and the Mods tab's busy and skipped-files notice.
-- **Empty slot:** a flat 1px `line` ring with notched 6px corners, 1.25rem padding and `ink-dim` text, never stepped. On Resource packs and Shaders it shows only when the folder holds nothing at all, never under a pack's own files.
+- **Empty slot:** a flat 1px `line` ring with notched 6px corners, 1.25rem padding and `ink-dim` text, never stepped. On Resource packs and Shaders it shows only when the folder holds nothing at all, never under a pack's own files, and never on a vanilla instance's Shaders tab, where the loader note already explains and there is no Find.
 - **Labels:** Folder and Pack (a pack's required mod) use the flat `.tag`.
 - **Turn-it-on hint:** an `.info-line` under the tabs on Resource packs and Shaders. It is hidden on a vanilla instance's Shaders tab, where the vanilla note takes its place.
 - **Optional mods:** a pack's optional-mod toggle keeps a 2.25rem spacer where Remove would be, so every toggle on the tab shares one column.

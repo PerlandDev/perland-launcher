@@ -88,6 +88,9 @@ it('tells vanilla players shaders need a loader, with no Find shaders button', a
   expect(screen.queryByRole('button', { name: 'Find shaders' })).not.toBeInTheDocument();
   // Vanilla has no Shader Packs menu to send the player to.
   expect(screen.queryByText('Turn it on in Options › Video Settings › Shader Packs.')).not.toBeInTheDocument();
+  // The note already explains the empty folder; "Find some" would point at a button that isn't there.
+  await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
+  expect(screen.queryByText(/No shaders yet/)).not.toBeInTheDocument();
 });
 
 it('keeps Remove off while the game is running', async () => {
