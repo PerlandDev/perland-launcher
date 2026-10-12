@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { navigate } from '../../state/route';
+import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
 import { Unlink } from '../../ui/Icon';
 
@@ -7,12 +8,16 @@ import { Unlink } from '../../ui/Icon';
  *  the update plate's anatomy (a raised action, never lit), led by a broken-link icon, not a fault. */
 export function DeadLinkPlate({ id }: { id: string }) {
   const { t } = useTranslation();
+  // The link changes only while the instance is idle: a run saves the whole instance.
+  const running = useRun(id).state !== 'idle';
   return (
     <p className="marquee-plate plate-row dead-link">
       <Unlink aria-hidden />
       {/* Only the sentence is the live region; the button is not announced as part of it. */}
       <span role="status">{t('server.deadLink')}</span>
-      <Button onClick={() => navigate({ name: 'joinServer', invite: '', relinkFor: id })}>{t('server.useNewLink')}</Button>
+      <Button disabled={running} onClick={() => navigate({ name: 'joinServer', invite: '', relinkFor: id })}>
+        {t('server.useNewLink')}
+      </Button>
     </p>
   );
 }

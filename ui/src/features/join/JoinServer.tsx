@@ -12,6 +12,7 @@ import { Field } from '../../ui/Field';
 import { Copy, WarningDiamond } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { InviteOnly } from '../servers/InviteOnly';
+import { savedServerName } from '../servers/serverName';
 import { ServerCard } from './ServerCard';
 
 const notAnInvite: LauncherError = {
@@ -39,7 +40,8 @@ export function JoinServer({ invite, relinkFor }: { invite: string; relinkFor?: 
   const asking = relinkFor !== undefined || !valid;
   const data = preview.data;
   const oldName = target?.server?.name ?? target?.name ?? '';
-  const mismatch = data && target && data.name.trim().toLowerCase() !== oldName.trim().toLowerCase();
+  // The saved name was cut to the core's limit; the preview's is whole. Compare them cut alike.
+  const mismatch = data && target && savedServerName(data.name).trim().toLowerCase() !== oldName.trim().toLowerCase();
   const address = isLauncherError(preview.error) && preview.error.code === 'invite_unsupported' ? preview.error.params.address : undefined;
   const busy = add.isPending || relink.isPending;
 

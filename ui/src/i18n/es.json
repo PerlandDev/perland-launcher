@@ -319,7 +319,8 @@
     "copyLink": "Copiar enlace de invitación",
     "settingsTitle": "Servidor",
     "settingsHost": "Invitación de {{host}}",
-    "settingsCopyLink": "Copiar enlace"
+    "settingsCopyLink": "Copiar enlace",
+    "relinkRunning": "Detén el juego para usar un enlace nuevo."
   },
   "errors": {
     "offline_name_invalid": { "message": "Los nombres deben tener de 3 a 16 letras, números o guiones bajos." },

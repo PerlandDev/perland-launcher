@@ -43,7 +43,7 @@ export function useActiveAccountName(): string | null {
   const { data } = useAccounts();
   return data?.accounts.find((a) => a.uuid === data.active)?.username ?? null;
 }
-export const useMcVersions =(enabled = true) =>
+export const useMcVersions = (enabled = true) =>
   useQuery({ queryKey: qk.mcVersions, queryFn: commands.catalogMinecraft, staleTime: TEN_MINUTES, enabled });
 export const useLoaderVersions = (kind: LoaderKind | null, mc: string | null) =>
   useQuery({

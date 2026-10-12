@@ -627,6 +627,12 @@
   .menu [role='menuitem'][data-danger] {
     color: var(--color-coral);
   }
+  /* As a disabled .btn: dim ink, no hover. */
+  .menu [role='menuitem']:disabled {
+    color: var(--color-ink-dim);
+    background: transparent;
+    cursor: not-allowed;
+  }
   .menu svg {
     width: 1.125rem;
     height: 1.125rem;

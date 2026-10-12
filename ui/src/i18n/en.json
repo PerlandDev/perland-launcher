@@ -319,7 +319,8 @@
     "copyLink": "Copy invite link",
     "settingsTitle": "Server",
     "settingsHost": "Invite from {{host}}",
-    "settingsCopyLink": "Copy link"
+    "settingsCopyLink": "Copy link",
+    "relinkRunning": "Stop the game to use a new link."
   },
   "errors": {
     "offline_name_invalid": { "message": "Player names must be 3–16 letters, numbers or underscores." },

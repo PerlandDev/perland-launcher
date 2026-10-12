@@ -2,6 +2,7 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
 import { MOCK_INVITE } from '../../ipc/mockServers';
+import type { Instance } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
@@ -114,6 +115,32 @@ describe('JoinServer', () => {
     await user.click(screen.getByRole('button', { name: 'Use this link' }));
     expect(sent(calls, 'server_relink')).toEqual([{ id: 'survival', link: OTHER }]);
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival' }));
+  });
+
+  it('does not call a long name another server: the saved name is cut to 64 characters', async () => {
+    // 66 characters, the first two outside the Basic Multilingual Plane (two UTF-16 units each).
+    const long = `🌻🌻 ${'Survival '.repeat(7)}`.trim() + ' and friends';
+    const cut = Array.from(long).slice(0, 64).join('');
+    expect(Array.from(long).length).toBeGreaterThan(64);
+    const backend = createMockBackend({ server: 'online' });
+    const { user } = renderWithProviders(<JoinServer invite="" relinkFor="survival" />, {
+      ipc: async (cmd, args) => {
+        const answer = await backend.handle(cmd, args);
+        if (cmd === 'join_preview') return { ...(answer as object), name: `  ${long} ` };
+        if (cmd === 'instances_list') {
+          const listing = answer as { instances: Instance[] };
+          return {
+            ...listing,
+            instances: listing.instances.map((i) => (i.id === 'survival' && i.server ? { ...i, server: { ...i.server, name: cut } } : i)),
+          };
+        }
+        return answer;
+      },
+    });
+    await user.type(await screen.findByRole('textbox', { name: 'Invite link' }), OTHER);
+    await user.click(screen.getByRole('button', { name: 'Check link' }));
+    expect(await screen.findByRole('button', { name: 'Use this link' })).toBeInTheDocument();
+    expect(screen.queryByText(/This link is for/)).not.toBeInTheDocument();
   });
 
   it('locks the primary button while the add is in flight, so a double click adds once', async () => {

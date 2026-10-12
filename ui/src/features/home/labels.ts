@@ -16,7 +16,7 @@ export function addressText(address: ServerAddress): string {
   return address.host.includes(':') ? `[${address.host}]:${address.port}` : `${address.host}:${address.port}`;
 }
 
-export const loaderName =(kind: LoaderKind) => NAMES[kind];
+export const loaderName = (kind: LoaderKind) => NAMES[kind];
 
 /** "Minecraft 1.20.1 · Fabric 0.16.14" or "Minecraft 26.3 · Vanilla". */
 export function versionLine(t: TFunction, instance: Instance): string {

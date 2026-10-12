@@ -2,6 +2,7 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import type { Instance } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
+import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { InstanceSettings } from './InstanceSettings';
 
@@ -169,6 +170,18 @@ it('shows a server section and no Updates control for a server instance', async 
   expect(await navigator.clipboard.readText()).toBe(`https://play.example.com/${'A'.repeat(43)}`);
   await user.click(screen.getByRole('button', { name: 'Use a new link' }));
   expect(routeSnapshot()).toEqual({ name: 'joinServer', invite: '', relinkFor: 'survival' });
+});
+
+it('keeps a running server on its link, and says why', async () => {
+  renderApp(<InstanceSettings id="survival" />, { server: 'online' });
+  await screen.findByText('Invite from play.example.com');
+  act(() => runStore.apply({ type: 'run_state', instance: 'survival', state: 'syncing', exit: null, update: null }));
+  const button = screen.getByRole('button', { name: 'Use a new link' });
+  expect(button).toBeDisabled();
+  expect(button).toHaveAccessibleDescription('Stop the game to use a new link.');
+  act(() => runStore.apply({ type: 'run_state', instance: 'survival', state: 'idle', exit: null, update: null }));
+  expect(screen.getByRole('button', { name: 'Use a new link' })).toBeEnabled();
+  expect(screen.queryByText('Stop the game to use a new link.')).not.toBeInTheDocument();
 });
 
 it('keeps the Server section off plain and pack instances', async () => {

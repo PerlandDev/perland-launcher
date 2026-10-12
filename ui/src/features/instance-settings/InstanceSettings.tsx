@@ -6,6 +6,7 @@ import { inviteHost } from '../../ipc/inviteLink';
 import type { Instance } from '../../ipc/schema';
 import { useAppInfo, useInstances, useUpdateInstance } from '../../state/queries';
 import { navigate } from '../../state/route';
+import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
@@ -22,6 +23,8 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
   const choice = useVersionChoice(instance.game);
   const pack = isPack(instance);
   const server = isServer(instance);
+  // A run saves the whole instance when it syncs, so the server link changes only while idle.
+  const running = useRun(instance.id).state !== 'idle';
   const [policy, setPolicy] = useState(instance.updatePolicy);
   const [name, setName] = useState(instance.name);
   const [memoryMb, setMemoryMb] = useState(instance.java.memoryMb);
@@ -128,8 +131,19 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
             <Button icon={<Copy />} onClick={() => void copyText(inviteOf(instance) ?? '')}>
               {t('server.settingsCopyLink')}
             </Button>
-            <Button onClick={() => navigate({ name: 'joinServer', invite: '', relinkFor: instance.id })}>{t('server.useNewLink')}</Button>
+            <Button
+              disabled={running}
+              aria-describedby={running ? 'relink-running' : undefined}
+              onClick={() => navigate({ name: 'joinServer', invite: '', relinkFor: instance.id })}
+            >
+              {t('server.useNewLink')}
+            </Button>
           </div>
+          {running && (
+            <p id="relink-running" className="text-sm text-ink-dim">
+              {t('server.relinkRunning')}
+            </p>
+          )}
         </section>
       )}
       <MemorySlider label={t('instanceSettings.memory')} valueMb={memoryMb} onChange={edit(setMemoryMb)} systemMb={systemMb} />

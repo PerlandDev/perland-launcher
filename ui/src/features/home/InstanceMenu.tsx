@@ -5,6 +5,7 @@ import { commands } from '../../ipc/commands';
 import type { Instance } from '../../ipc/schema';
 import { qk, useDeleteInstance, useRenameInstance } from '../../state/queries';
 import { navigate } from '../../state/route';
+import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
@@ -86,10 +87,17 @@ export function InstanceMenu({ instance }: { instance: Instance }) {
   const close = () => setDialog(null);
   const invite = inviteOf(instance);
   const address = instance.server?.address ?? null;
+  // A run saves the whole instance when it syncs, so the link changes only while it is idle.
+  const running = useRun(instance.id).state !== 'idle';
   const serverItems = isServer(instance)
     ? [
         { label: t('server.playWithoutJoining'), icon: <Play />, onSelect: () => void commands.play(instance.id, false).catch(pushError) },
-        { label: t('server.useNewInviteLink'), icon: <Reload />, onSelect: () => navigate({ name: 'joinServer', invite: '', relinkFor: instance.id }) },
+        {
+          label: t('server.useNewInviteLink'),
+          icon: <Reload />,
+          disabled: running,
+          onSelect: () => navigate({ name: 'joinServer', invite: '', relinkFor: instance.id }),
+        },
         ...(invite ? [{ label: t('server.copyLink'), icon: <Copy />, onSelect: () => void copyText(invite) }] : []),
         ...(address ? [{ label: t('server.copyAddress'), icon: <Copy />, onSelect: () => void copyText(addressText(address)) }] : []),
       ]

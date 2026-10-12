@@ -304,6 +304,19 @@ describe('server instances', () => {
     expect(routeSnapshot()).toEqual({ name: 'joinServer', invite: '', relinkFor: 'survival' });
   });
 
+  it('keep a running server on its link: no new link from the plate or the menu', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'gone' });
+    await screen.findByText(/This invite link stopped working/);
+    act(() => runStore.apply({ type: 'run_state', instance: 'survival', state: 'running', exit: null, update: null }));
+    expect(screen.getByRole('button', { name: 'Use a new link' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.getByRole('menuitem', { name: 'Use a new invite link' })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'Copy invite link' })).toBeEnabled();
+    await user.keyboard('{Escape}');
+    act(() => runStore.apply({ type: 'run_state', instance: 'survival', state: 'idle', exit: null, update: null }));
+    expect(screen.getByRole('button', { name: 'Use a new link' })).toBeEnabled();
+  });
+
   it('say a server update happens at Play, with no Update button', async () => {
     const backend = createMockBackend({ server: 'online' });
     renderWithProviders(<Home id="survival" />, {
