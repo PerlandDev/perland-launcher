@@ -95,6 +95,7 @@ fn fabric_instance() -> Instance {
             path: None,
             memory_mb: 4096,
         },
+        server: None,
     }
 }
 
@@ -113,6 +114,7 @@ fn vanilla_instance() -> Instance {
             path: Some(PathBuf::from("C:/Java/bin/java.exe")),
             memory_mb: 6144,
         },
+        server: None,
     }
 }
 

@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use serde::{Deserialize, Serialize};
@@ -8,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::{ErrorCode, LauncherError, Result},
     fsutil::write_atomic,
+    invite::{non_empty, InviteAddress, InviteView, Url},
     meta::loaders::LoaderKind,
 };
 
@@ -132,6 +134,151 @@ impl ServerStatus {
     }
 }
 
+/// Where the game connects: a validated host (a DNS name or an IP literal) and a port.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServerAddress {
+    /// Lowercase; an IPv6 literal without brackets.
+    pub host: String,
+    pub port: u16,
+}
+
+/// A DNS name or an IP literal: no leading `-`, no whitespace, at most 253 characters.
+pub fn valid_host(host: &str) -> bool {
+    if host.is_empty()
+        || host.len() > 253
+        || host.starts_with('-')
+        || host.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        return false;
+    }
+    let bare = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+    if bare.parse::<std::net::IpAddr>().is_ok() {
+        return true;
+    }
+    let name = host.strip_suffix('.').unwrap_or(host);
+    !name.is_empty()
+        && name.split('.').all(|label| {
+            (1..=63).contains(&label.len())
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        })
+}
+
+impl ServerAddress {
+    /// `None` unless `host` passes [`valid_host`] and `port` is 1–65535. The address reaches the
+    /// game's arguments, so nothing else gets through.
+    pub fn new(host: &str, port: i64) -> Option<ServerAddress> {
+        let port = u16::try_from(port).ok().filter(|p| *p != 0)?;
+        if !valid_host(host) {
+            return None;
+        }
+        let bare = host
+            .strip_prefix('[')
+            .and_then(|h| h.strip_suffix(']'))
+            .unwrap_or(host);
+        Some(ServerAddress {
+            host: bare.to_ascii_lowercase(),
+            port,
+        })
+    }
+
+    /// From the view: its host, or the Engine's host when it has none (as the invite page does).
+    pub fn from_view(address: &InviteAddress, engine: &Url) -> Option<ServerAddress> {
+        let host = non_empty(&address.host).or(engine.host_str())?;
+        ServerAddress::new(host, address.port)
+    }
+
+    /// `host:port`, with brackets around an IPv6 literal: what quick play takes and players type.
+    pub fn display(&self) -> String {
+        if self.host.contains(':') {
+            format!("[{}]:{}", self.host, self.port)
+        } else {
+            format!("{}:{}", self.host, self.port)
+        }
+    }
+}
+
+const ACCENTS: [&str; 4] = ["cyan", "blue", "violet", "magenta"];
+
+/// The team accent: one of the Engine's four, `other` for anything else, `None` when unset.
+pub fn accent_of(raw: &str) -> Option<String> {
+    let accent = raw.trim();
+    if accent.is_empty() {
+        None
+    } else if ACCENTS.contains(&accent) {
+        Some(accent.to_string())
+    } else {
+        Some("other".to_string())
+    }
+}
+
+/// Seconds since the Unix epoch.
+pub fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// What a server instance knows about its server, from the last invite view read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerLink {
+    /// Last known and validated. Kept when the link stops working.
+    #[serde(default)]
+    pub address: Option<ServerAddress>,
+    /// The view's name at the last read.
+    pub name: String,
+    /// `cyan | blue | violet | magenta | other`.
+    #[serde(default)]
+    pub accent: Option<String>,
+    #[serde(default)]
+    pub whitelisted: bool,
+    #[serde(default)]
+    pub last_status: Option<ServerStatus>,
+    /// Unix seconds of the last successful view read.
+    #[serde(default)]
+    pub last_seen: Option<i64>,
+    /// The last read said `invite_gone`.
+    #[serde(default)]
+    pub gone: bool,
+}
+
+impl ServerLink {
+    pub fn from_view(view: &InviteView, engine: &Url, now: i64) -> ServerLink {
+        ServerLink {
+            address: ServerAddress::from_view(&view.address, engine),
+            name: view.name.trim().chars().take(MAX_NAME_CHARS).collect(),
+            accent: accent_of(&view.team.accent),
+            whitelisted: view.whitelisted,
+            last_status: view.status(),
+            last_seen: Some(now),
+            gone: false,
+        }
+    }
+
+    /// A successful read. Everything follows the view, except that an invalid address keeps
+    /// the last good one.
+    pub fn refresh(&mut self, view: &InviteView, engine: &Url, now: i64) {
+        let last = self.address.take();
+        *self = ServerLink::from_view(view, engine, now);
+        if self.address.is_none() {
+            self.address = last;
+        }
+    }
+
+    /// The read said `invite_gone`: only `gone` changes.
+    pub fn mark_gone(&mut self) {
+        self.gone = true;
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JavaSettings {
@@ -167,6 +314,9 @@ pub struct Instance {
     pub optional_choices: BTreeMap<String, bool>,
     #[serde(default)]
     pub java: JavaSettings,
+    /// Set for server instances (`SourceRef::Perland`): what the invite view last said.
+    #[serde(default)]
+    pub server: Option<ServerLink>,
 }
 
 pub struct InstanceStore {
@@ -216,6 +366,7 @@ impl InstanceStore {
             update_policy: UpdatePolicy::Ask,
             optional_choices: BTreeMap::new(),
             java: JavaSettings::default(),
+            server: None,
         };
         tokio::fs::create_dir_all(self.game_dir(&instance.id)).await?;
         tokio::fs::create_dir_all(self.perland_dir(&instance.id)).await?;
@@ -644,5 +795,144 @@ mod tests {
             store.delete("../x").await.unwrap_err().code,
             ErrorCode::InstanceIdInvalid
         );
+    }
+
+    use crate::invite::{InviteAddress, InviteTeam, InviteView, Url};
+
+    fn engine() -> Url {
+        Url::parse("https://api.example.com").unwrap()
+    }
+
+    #[test]
+    fn addresses_are_validated() {
+        let long = format!("{}.example.com", "a".repeat(250));
+        for (host, port, want) in [
+            ("play.example.com", 25565, Some(("play.example.com", 25565))),
+            ("PLAY.Example.com", 1, Some(("play.example.com", 1))),
+            ("10.0.0.5", 25565, Some(("10.0.0.5", 25565))),
+            ("[2001:db8::1]", 25565, Some(("2001:db8::1", 25565))),
+            ("2001:db8::1", 65535, Some(("2001:db8::1", 65535))),
+            (
+                "play.example.com.",
+                25565,
+                Some(("play.example.com.", 25565)),
+            ),
+            ("-evil.example", 25565, None),
+            ("--server", 1, None),
+            ("play example.com", 25565, None),
+            ("play.example.com\n", 25565, None),
+            ("x_y.example.com", 25565, None),
+            ("a..b", 25565, None),
+            ("", 25565, None),
+            (long.as_str(), 25565, None),
+            ("play.example.com", 0, None),
+            ("play.example.com", 65536, None),
+            ("play.example.com", -1, None),
+        ] {
+            let got = ServerAddress::new(host, port);
+            let want = want.map(|(h, p): (&str, u16)| ServerAddress {
+                host: h.into(),
+                port: p,
+            });
+            assert_eq!(got, want, "{host:?}:{port}");
+        }
+        let v6 = ServerAddress::new("2001:db8::1", 25565).unwrap();
+        assert_eq!(v6.display(), "[2001:db8::1]:25565");
+        assert_eq!(
+            ServerAddress::new("play.example.com", 25566)
+                .unwrap()
+                .display(),
+            "play.example.com:25566"
+        );
+    }
+
+    #[test]
+    fn the_address_falls_back_to_the_engine_host() {
+        let none = InviteAddress {
+            host: None,
+            port: 25566,
+            display: None,
+        };
+        assert_eq!(
+            ServerAddress::from_view(&none, &engine())
+                .unwrap()
+                .display(),
+            "api.example.com:25566"
+        );
+        let blank = InviteAddress {
+            host: Some("  ".into()),
+            port: 25566,
+            display: None,
+        };
+        assert_eq!(
+            ServerAddress::from_view(&blank, &engine()).unwrap().host,
+            "api.example.com"
+        );
+    }
+
+    fn view(port: i64, status: &str) -> InviteView {
+        InviteView {
+            kind: "stack".into(),
+            name: " survival ".into(),
+            status: status.into(),
+            whitelisted: true,
+            address: InviteAddress {
+                host: Some("play.example.com".into()),
+                port,
+                display: None,
+            },
+            team: InviteTeam {
+                display_name: "Acme".into(),
+                accent: "violet".into(),
+            },
+            ..InviteView::default()
+        }
+    }
+
+    #[test]
+    fn server_link_follows_the_view_and_keeps_the_last_address() {
+        let mut link = ServerLink::from_view(&view(25566, "online"), &engine(), 100);
+        assert_eq!(link.name, "survival");
+        assert_eq!(link.accent.as_deref(), Some("violet"));
+        assert!(link.whitelisted && !link.gone);
+        assert_eq!(link.last_status, Some(ServerStatus::Online));
+        assert_eq!(link.last_seen, Some(100));
+        let address = link.address.clone().unwrap();
+
+        link.refresh(&view(0, "sleeping"), &engine(), 200);
+        assert_eq!(
+            link.address,
+            Some(address.clone()),
+            "a bad port keeps the last good one"
+        );
+        assert_eq!(link.last_status, Some(ServerStatus::Sleeping));
+        assert_eq!(link.last_seen, Some(200));
+
+        link.mark_gone();
+        assert!(link.gone);
+        assert_eq!(link.address, Some(address));
+        assert_eq!(link.last_seen, Some(200));
+        link.refresh(&view(25566, "online"), &engine(), 300);
+        assert!(!link.gone, "a link that works again isn't dead");
+
+        let fresh = ServerLink::from_view(&view(0, "exploding"), &engine(), 1);
+        assert_eq!((fresh.address, fresh.last_status), (None, None));
+    }
+
+    #[test]
+    fn accents_are_known_or_other() {
+        assert_eq!(accent_of("cyan").as_deref(), Some("cyan"));
+        assert_eq!(accent_of("red").as_deref(), Some("other"));
+        assert_eq!(accent_of(" "), None);
+    }
+
+    #[test]
+    fn instance_files_without_a_server_still_load() {
+        let json =
+            r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"}}"#;
+        let instance: Instance = serde_json::from_str(json).unwrap();
+        assert_eq!(instance.server, None);
+        let back = serde_json::to_value(&instance).unwrap();
+        assert!(back["server"].is_null());
     }
 }

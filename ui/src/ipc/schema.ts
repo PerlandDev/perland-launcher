@@ -22,6 +22,17 @@ export const sourceRef = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('modrinth'), projectId: z.string(), versionId: z.string() }),
 ]);
 export const javaSettings = z.strictObject({ path: z.string().nullable(), memoryMb: z.number().int() });
+export const serverStatus = z.enum(['online', 'starting', 'sleeping', 'offline']);
+export const serverAddress = z.strictObject({ host: z.string(), port: z.number().int() });
+export const serverLink = z.strictObject({
+  address: serverAddress.nullable(),
+  name: z.string(),
+  accent: z.string().nullable(),
+  whitelisted: z.boolean(),
+  lastStatus: serverStatus.nullable(),
+  lastSeen: z.number().int().nullable(),
+  gone: z.boolean(),
+});
 export const instance = z.strictObject({
   id: z.string(),
   name: z.string(),
@@ -30,6 +41,7 @@ export const instance = z.strictObject({
   updatePolicy: z.enum(['auto', 'ask', 'pinned']),
   optionalChoices: z.record(z.string(), z.boolean()),
   java: javaSettings,
+  server: serverLink.nullable(),
 });
 export const damagedInstance = z.strictObject({ id: z.string(), error: launcherError });
 export const instanceListing = z.strictObject({ instances: z.array(instance), damaged: z.array(damagedInstance) });
@@ -160,6 +172,9 @@ export type LoaderSpec = z.infer<typeof loaderSpec>;
 export type GameSpec = z.infer<typeof gameSpec>;
 export type SourceRef = z.infer<typeof sourceRef>;
 export type JavaSettings = z.infer<typeof javaSettings>;
+export type ServerStatus = z.infer<typeof serverStatus>;
+export type ServerAddress = z.infer<typeof serverAddress>;
+export type ServerLink = z.infer<typeof serverLink>;
 export type Instance = z.infer<typeof instance>;
 export type DamagedInstance = z.infer<typeof damagedInstance>;
 export type InstanceListing = z.infer<typeof instanceListing>;

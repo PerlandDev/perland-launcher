@@ -16,5 +16,6 @@
   "java": {
     "path": null,
     "memoryMb": 4096
-  }
+  },
+  "server": null
 }
