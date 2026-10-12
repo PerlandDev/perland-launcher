@@ -11,11 +11,19 @@ export function AddressLine({ address }: { address: ServerAddress | null }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  useEffect(() => () => clearTimeout(timer.current), []);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearTimeout(timer.current);
+    };
+  }, []);
   if (!address) return <p className="text-sm text-ink-dim">{t('server.noAddress')}</p>;
   const text = addressText(address);
   const copy = () =>
-    void copyText(text).then(() => {
+    void copyText(text).then((ok) => {
+      if (!ok || !mounted.current) return;
       setCopied(true);
       clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(false), 2000);

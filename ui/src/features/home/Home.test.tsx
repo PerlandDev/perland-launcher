@@ -5,6 +5,7 @@ import { createMockBackend, exitOf } from '../../ipc/mock';
 import type { PackStatus } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
+import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
 import { Home } from './Home';
@@ -224,6 +225,25 @@ describe('server instances', () => {
     const { user } = renderApp(<Home id="survival" />, { server: 'online' });
     await user.click(await screen.findByRole('button', { name: 'Copy server address' }));
     expect(await navigator.clipboard.readText()).toBe('play.example.com:25566');
+  });
+
+  it('say Copied only when the copy worked', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    const button = await screen.findByRole('button', { name: 'Copy server address' });
+    expect(button).toHaveTextContent('Copy');
+    await user.click(button);
+    expect(await screen.findByText('Copied')).toBeInTheDocument();
+  });
+
+  it('keep the label as Copy and toast when the clipboard refuses', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    const failure = new Error('denied');
+    const button = await screen.findByRole('button', { name: 'Copy server address' });
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValueOnce(failure);
+    await user.click(button);
+    await vi.waitFor(() => expect(toastsSnapshot().map((toast) => toast.error)).toEqual([failure]));
+    expect(button).toHaveTextContent(/^Copy$/);
+    expect(screen.queryByText('Copied')).not.toBeInTheDocument();
   });
 
   it('raise the dead-link plate, which opens relinking', async () => {
