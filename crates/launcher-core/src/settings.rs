@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    accounts::BuildKind,
     error::{ErrorCode, LauncherError, Result},
     fsutil::write_atomic,
     instances::validate_memory,
@@ -16,6 +17,25 @@ pub enum Lang {
     Es,
 }
 
+/// Which launcher releases this install follows (spec §4.4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Channel {
+    Stable,
+    Beta,
+}
+
+impl Channel {
+    /// The player's pick, else the build's own channel: beta builds follow beta, the rest stable.
+    pub fn effective(choice: Option<Channel>, build: BuildKind) -> Channel {
+        choice.unwrap_or(if build == BuildKind::Beta {
+            Channel::Beta
+        } else {
+            Channel::Stable
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -25,6 +45,8 @@ pub struct Settings {
     pub default_memory_mb: u32,
     pub minimize_on_play: bool,
     pub first_run_done: bool,
+    /// `None` until the player picks one; then it follows the build (`Channel::effective`).
+    pub update_channel: Option<Channel>,
 }
 
 impl Default for Settings {
@@ -35,6 +57,7 @@ impl Default for Settings {
             default_memory_mb: 4096,
             minimize_on_play: true,
             first_run_done: false,
+            update_channel: None,
         }
     }
 }
@@ -86,6 +109,7 @@ fn damaged(e: impl std::fmt::Display) -> LauncherError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accounts::BuildKind;
     use crate::ErrorCode;
 
     #[tokio::test]
@@ -148,5 +172,61 @@ mod tests {
             store.save(&bad).await.unwrap_err().code,
             ErrorCode::MemoryOutOfRange
         );
+    }
+
+    #[test]
+    fn channel_follows_the_build_until_the_player_picks() {
+        assert_eq!(Channel::effective(None, BuildKind::Beta), Channel::Beta);
+        assert_eq!(
+            Channel::effective(None, BuildKind::Release),
+            Channel::Stable
+        );
+        assert_eq!(Channel::effective(None, BuildKind::Dev), Channel::Stable);
+        assert_eq!(
+            Channel::effective(Some(Channel::Stable), BuildKind::Beta),
+            Channel::Stable
+        );
+        assert_eq!(
+            Channel::effective(Some(Channel::Beta), BuildKind::Release),
+            Channel::Beta
+        );
+    }
+
+    #[tokio::test]
+    async fn an_old_file_without_a_channel_reads_as_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"version":1,"language":"en","defaultMemoryMb":4096,"minimizeOnPlay":true,"firstRunDone":true}"#,
+        )
+        .unwrap();
+        let (settings, warning) = SettingsStore::new(&path).load().await;
+        assert!(warning.is_none());
+        assert_eq!(settings.update_channel, None);
+    }
+
+    #[tokio::test]
+    async fn channel_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(tmp.path().join("settings.json"));
+        let settings = Settings {
+            update_channel: Some(Channel::Beta),
+            ..Settings::default()
+        };
+        store.save(&settings).await.unwrap();
+        let raw = std::fs::read_to_string(tmp.path().join("settings.json")).unwrap();
+        assert!(raw.contains("\"updateChannel\": \"beta\""), "{raw}");
+        assert_eq!(store.load().await, (settings, None));
+    }
+
+    #[tokio::test]
+    async fn unknown_channel_is_a_damaged_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(&path, r#"{"updateChannel":"nightly"}"#).unwrap();
+        let (settings, warning) = SettingsStore::new(&path).load().await;
+        assert_eq!(settings, Settings::default());
+        assert_eq!(warning.unwrap().code, ErrorCode::SettingsDamaged);
     }
 }

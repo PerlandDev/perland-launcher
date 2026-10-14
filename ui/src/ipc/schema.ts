@@ -96,12 +96,14 @@ export const accountsFile = z.strictObject({
 });
 
 export const lang = z.enum(['en', 'es']);
+export const channel = z.enum(['stable', 'beta']);
 export const settings = z.strictObject({
   version: z.number().int(),
   language: lang.nullable(),
   defaultMemoryMb: z.number().int(),
   minimizeOnPlay: z.boolean(),
   firstRunDone: z.boolean(),
+  updateChannel: channel.nullable(),
 });
 export const appInfo = z.strictObject({
   version: z.string(),
@@ -329,6 +331,7 @@ export type InstanceListing = z.infer<typeof instanceListing>;
 export type Account = z.infer<typeof account>;
 export type AccountsFile = z.infer<typeof accountsFile>;
 export type Lang = z.infer<typeof lang>;
+export type Channel = z.infer<typeof channel>;
 export type Settings = z.infer<typeof settings>;
 export type AppInfo = z.infer<typeof appInfo>;
 export type McVersion = z.infer<typeof mcVersion>;
