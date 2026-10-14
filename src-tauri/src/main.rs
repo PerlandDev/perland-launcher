@@ -40,10 +40,17 @@ fn main() {
         .setup(|app| {
             let core = build_core(app.handle().clone())?;
             app.manage(core.clone());
-            // Installers register the scheme; a dev run registers itself (per user, no admin).
-            #[cfg(all(debug_assertions, any(windows, target_os = "linux")))]
-            if let Err(e) = app.deep_link().register_all() {
-                eprintln!("couldn't register perland:// links: {e}");
+            // Installers register the scheme (NSIS, the .deb); a dev run or an AppImage registers
+            // itself (per user, no admin).
+            #[cfg(any(windows, target_os = "linux"))]
+            if launcher_app::deep_link::should_self_register(
+                cfg!(debug_assertions),
+                cfg!(windows),
+                std::env::var_os("APPIMAGE").is_some(),
+            ) {
+                if let Err(e) = app.deep_link().register_all() {
+                    eprintln!("couldn't register perland:// links: {e}");
+                }
             }
             // Started by a link…
             if let Ok(Some(urls)) = app.deep_link().get_current() {

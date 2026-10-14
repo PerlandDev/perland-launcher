@@ -161,6 +161,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .contains(id)
     }
 
+    /// Restart now and install-on-quit wait while a game runs, an install holds the slot, or a
+    /// content install writes into an instance.
+    pub fn update_blocked(&self) -> bool {
+        self.has_active_runs()
+            || self.install_slot.available_permits() == 0
+            || !self
+                .installing
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty()
+    }
+
     /// A damaged accounts file doesn't fail this: Settings needs it to offer "Open data folder",
     /// which is the fix. Offline then stays locked in release builds, and the damage is reported
     /// once as a warning (without the file's contents).
@@ -785,6 +797,17 @@ pub(crate) mod tests {
             .game_dir(&pack.id)
             .join("resourcepacks/Faithful.zip")
             .is_file());
+    }
+
+    #[tokio::test]
+    async fn an_install_or_content_install_blocks_updates() {
+        let (core, _, _, _t) = core(BuildKind::Beta);
+        assert!(!core.update_blocked());
+        let permit = core.install_slot.clone().try_acquire_owned().unwrap();
+        assert!(core.update_blocked());
+        drop(permit);
+        core.installing.lock().unwrap().insert("asalith".into());
+        assert!(core.update_blocked());
     }
 
     #[tokio::test]
