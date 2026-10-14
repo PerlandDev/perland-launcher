@@ -45,6 +45,10 @@ impl LauncherDirs {
     pub fn instances(&self) -> PathBuf {
         self.root.join("instances")
     }
+    /// The player's own instance order (see `instance_order`).
+    pub fn instance_order(&self) -> PathBuf {
+        self.root.join("instance-order.json")
+    }
     pub fn meta(&self) -> PathBuf {
         self.root.join("meta")
     }
@@ -104,6 +108,7 @@ mod tests {
             d.log_config("client-1.12.xml"),
             root.join("assets/log_configs/client-1.12.xml")
         );
+        assert_eq!(d.instance_order(), root.join("instance-order.json"));
         assert_eq!(d.objects(), root.join("cache/objects"));
         assert_eq!(d.install_lock(), root.join(".install.lock"));
         assert!(d.instances().starts_with(d.root()));
