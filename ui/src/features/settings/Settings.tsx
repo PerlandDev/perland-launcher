@@ -103,6 +103,7 @@ export function Settings() {
               <p className="text-sm text-ink-dim">
                 {t('settings.version', { version: appInfo.data.version })}
                 {appInfo.data.build === 'dev' && ` · ${t('settings.devBuild')}`}
+                {appInfo.data.build === 'beta' && ` · ${t('settings.betaBuild')}`}
               </p>
             </div>
           </div>

@@ -105,7 +105,7 @@ export const settings = z.strictObject({
 });
 export const appInfo = z.strictObject({
   version: z.string(),
-  build: z.enum(['dev', 'release']),
+  build: z.enum(['dev', 'beta', 'release']),
   offlineAllowed: z.boolean(),
   systemMemoryMb: z.number().int(),
   dataDir: z.string(),

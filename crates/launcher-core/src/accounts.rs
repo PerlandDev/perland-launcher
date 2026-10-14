@@ -99,22 +99,33 @@ pub fn offline_account(name: &str) -> Result<Account> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildKind {
     Dev,
+    /// An optimized build made with `PERLAND_BUILD=beta`: offline accounts stay open (spec §3.1).
+    Beta,
     Release,
 }
 
 impl BuildKind {
     pub fn current() -> Self {
-        if cfg!(debug_assertions) {
+        Self::from_parts(cfg!(debug_assertions), option_env!("PERLAND_BUILD"))
+    }
+
+    /// Debug assertions make a dev build; otherwise `PERLAND_BUILD=beta` at compile time makes
+    /// a beta. rustc tracks `option_env!`, so changing the variable rebuilds this crate.
+    pub fn from_parts(debug_assertions: bool, flag: Option<&str>) -> Self {
+        if debug_assertions {
             Self::Dev
+        } else if flag == Some("beta") {
+            Self::Beta
         } else {
             Self::Release
         }
     }
 }
 
-/// Release builds unlock offline accounts only after a licensed Microsoft sign-in on this install.
+/// Dev and beta builds allow offline accounts; release builds unlock them only after a licensed
+/// Microsoft sign-in on this install.
 pub fn offline_allowed(build: BuildKind, licensed_signin_seen: bool) -> bool {
-    build == BuildKind::Dev || licensed_signin_seen
+    matches!(build, BuildKind::Dev | BuildKind::Beta) || licensed_signin_seen
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -260,10 +271,32 @@ mod tests {
     }
 
     #[test]
+    fn build_kind_comes_from_debug_assertions_then_the_beta_flag() {
+        assert_eq!(BuildKind::from_parts(true, None), BuildKind::Dev);
+        assert_eq!(BuildKind::from_parts(true, Some("beta")), BuildKind::Dev);
+        assert_eq!(BuildKind::from_parts(false, Some("beta")), BuildKind::Beta);
+        assert_eq!(BuildKind::from_parts(false, None), BuildKind::Release);
+        assert_eq!(BuildKind::from_parts(false, Some("")), BuildKind::Release);
+        assert_eq!(
+            BuildKind::from_parts(false, Some("Beta")),
+            BuildKind::Release
+        );
+    }
+
+    #[test]
     fn offline_gate() {
         assert!(offline_allowed(BuildKind::Dev, false));
+        assert!(offline_allowed(BuildKind::Beta, false));
         assert!(!offline_allowed(BuildKind::Release, false));
         assert!(offline_allowed(BuildKind::Release, true));
+    }
+
+    #[tokio::test]
+    async fn beta_builds_add_offline_accounts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = AccountStore::new(tmp.path().join("accounts.json"));
+        let added = store.add_offline("Steve", BuildKind::Beta).await.unwrap();
+        assert_eq!(added.username, "Steve");
     }
 
     #[tokio::test]

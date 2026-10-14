@@ -191,3 +191,8 @@ it('shows it when a link cannot be opened', async () => {
   await user.click(await screen.findByRole('button', { name: 'Read the license' }));
   await waitFor(() => expect(toastsSnapshot()).toHaveLength(1));
 });
+
+it('labels a beta build in About', async () => {
+  renderApp(<Settings />, { beta: true });
+  expect(await screen.findByText(/Version .* · Beta build/)).toBeInTheDocument();
+});

@@ -58,6 +58,8 @@ export interface MockOptions {
   firstRun?: boolean;
   crash?: boolean;
   release?: boolean;
+  /** An optimized beta build: offline accounts stay open, About says so. */
+  beta?: boolean;
   /** The pack's first sync ends with two files the player has to download by hand. */
   manual?: boolean;
   /** The pack has no update on offer. */
@@ -166,7 +168,7 @@ function seed(options: MockOptions) {
   }
   const appInfo: AppInfo = {
     ...(clone(appInfoFx) as AppInfo),
-    build: options.release ? 'release' : 'dev',
+    build: options.release ? 'release' : options.beta ? 'beta' : 'dev',
     offlineAllowed: !options.release,
   };
   const mods = new Map<string, LocalMod[]>([['asalith-fields', clone(localModsFx) as LocalMod[]]]);

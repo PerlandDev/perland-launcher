@@ -266,6 +266,7 @@
     "about": "About",
     "version": "Version {{version}}",
     "devBuild": "Developer build",
+    "betaBuild": "Beta build",
     "license": "Free software under the GNU General Public License v3.",
     "licenseLink": "Read the license",
     "source": "Source code",

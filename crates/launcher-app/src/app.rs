@@ -514,6 +514,11 @@ pub(crate) mod tests {
             release.account_add_offline("Steve").await.unwrap_err().code,
             ErrorCode::OfflineLocked
         );
+        let (beta, _, _, _t3) = core(BuildKind::Beta);
+        let info = beta.app_info().await.unwrap();
+        assert_eq!(info.build, Build::Beta);
+        assert!(info.offline_allowed);
+        beta.account_add_offline("Steve").await.unwrap();
     }
 
     #[tokio::test]
