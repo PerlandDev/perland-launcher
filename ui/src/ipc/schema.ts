@@ -12,6 +12,17 @@ export const launcherError = z.strictObject({
   params: z.record(z.string(), z.string()),
 });
 
+export const updateState = z.discriminatedUnion('state', [
+  z.strictObject({ state: z.literal('off') }),
+  z.strictObject({ state: z.literal('idle') }),
+  z.strictObject({ state: z.literal('checking') }),
+  z.strictObject({ state: z.literal('downloading'), percent: z.number().int().nullable() }),
+  z.strictObject({ state: z.literal('ready'), version: z.string() }),
+  z.strictObject({ state: z.literal('up_to_date') }),
+  z.strictObject({ state: z.literal('failed'), error: launcherError }),
+]);
+export type UpdateState = z.infer<typeof updateState>;
+
 export const loaderKind = z.enum(['fabric', 'quilt', 'forge', 'neoforge']);
 export const loaderSpec = z.strictObject({ kind: loaderKind, version: z.string() });
 export const gameSpec = z.strictObject({ minecraft: z.string(), loader: loaderSpec.nullable() });
@@ -199,6 +210,7 @@ export const appEvent = z.discriminatedUnion('type', [
   }),
   z.strictObject({ type: z.literal('warning'), instance: z.string().nullable(), error: launcherError }),
   z.strictObject({ type: z.literal('deep_link') }),
+  z.strictObject({ type: z.literal('update'), state: updateState }),
 ]);
 export const runSnapshot = z.strictObject({ instance: z.string(), state: runStateKind, update: packUpdate.nullable() });
 export const packStatus = z.strictObject({

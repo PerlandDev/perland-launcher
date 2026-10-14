@@ -69,6 +69,8 @@ error_codes! {
     // server invites (join by link)
     InviteLinkInvalid, InviteGone, InviteUnsupported, InviteSiteUnreachable, InviteRateLimited,
     ServerPackUnavailable, ServerPackPending, ServerAddressUnknown,
+    // launcher updates
+    LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
     // anything unexpected
     Internal,
 }
@@ -149,6 +151,18 @@ impl From<std::io::Error> for LauncherError {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+
+    #[test]
+    fn launcher_update_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::LauncherUpdateFailed, "launcher_update_failed"),
+            (ErrorCode::LauncherUpdateInvalid, "launcher_update_invalid"),
+            (ErrorCode::LauncherUpdateBusy, "launcher_update_busy"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
 
     #[test]
     fn pack_codes_exist() {

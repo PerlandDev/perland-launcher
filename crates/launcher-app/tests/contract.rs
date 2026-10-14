@@ -16,6 +16,7 @@ use launcher_app::{
         ServerTeam, SyncSummary,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
+    updates::UpdateState,
 };
 use launcher_core::browse::{
     compat::ContentKind,
@@ -554,6 +555,11 @@ fn contract_fixtures_are_current() {
                 update: None,
             },
             AppEvent::DeepLink,
+            AppEvent::Update {
+                state: UpdateState::Ready {
+                    version: "0.2.0-beta.2".into(),
+                },
+            },
             AppEvent::Warning {
                 instance: Some("asalith-fields".into()),
                 error: LauncherError::disk(
@@ -829,4 +835,25 @@ with friends"
         ],
     );
     check("invite_links", invite_link_cases());
+    check(
+        "update_states",
+        vec![
+            UpdateState::Off,
+            UpdateState::Idle,
+            UpdateState::Checking,
+            UpdateState::Downloading { percent: Some(40) },
+            UpdateState::Downloading { percent: None },
+            UpdateState::Ready {
+                version: "0.2.0-beta.2".into(),
+            },
+            UpdateState::UpToDate,
+            UpdateState::Failed {
+                error: LauncherError::network(
+                    ErrorCode::LauncherUpdateFailed,
+                    "Couldn't check for launcher updates",
+                )
+                .with_fix("You can keep playing. It tries again next time you open the launcher"),
+            },
+        ],
+    );
 }

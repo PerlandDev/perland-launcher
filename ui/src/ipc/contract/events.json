@@ -220,6 +220,13 @@
     "type": "deep_link"
   },
   {
+    "type": "update",
+    "state": {
+      "state": "ready",
+      "version": "0.2.0-beta.2"
+    }
+  },
+  {
     "type": "warning",
     "instance": "asalith-fields",
     "error": {

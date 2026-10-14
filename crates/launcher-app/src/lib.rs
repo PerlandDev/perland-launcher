@@ -15,6 +15,7 @@ mod runs;
 mod servers;
 #[cfg(test)]
 pub(crate) mod testing;
+pub mod updates;
 
 pub use app::{AppConfig, AppCore};
 pub use browser::{Browser, CoreBrowser};

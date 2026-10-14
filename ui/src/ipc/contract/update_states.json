@@ -1,0 +1,37 @@
+[
+  {
+    "state": "off"
+  },
+  {
+    "state": "idle"
+  },
+  {
+    "state": "checking"
+  },
+  {
+    "state": "downloading",
+    "percent": 40
+  },
+  {
+    "state": "downloading",
+    "percent": null
+  },
+  {
+    "state": "ready",
+    "version": "0.2.0-beta.2"
+  },
+  {
+    "state": "up_to_date"
+  },
+  {
+    "state": "failed",
+    "error": {
+      "category": "network",
+      "code": "launcher_update_failed",
+      "message": "Couldn't check for launcher updates",
+      "fix": "You can keep playing. It tries again next time you open the launcher",
+      "detail": null,
+      "params": {}
+    }
+  }
+]

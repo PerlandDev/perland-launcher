@@ -88,5 +88,8 @@
   "server_pack_unavailable",
   "server_pack_pending",
   "server_address_unknown",
+  "launcher_update_failed",
+  "launcher_update_invalid",
+  "launcher_update_busy",
   "internal"
 ]

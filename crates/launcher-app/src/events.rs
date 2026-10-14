@@ -86,6 +86,8 @@ pub enum AppEvent {
     },
     /// A `perland://` link arrived; the UI asks for it with `deep_link_take`.
     DeepLink,
+    /// The launcher's own update moved on (see `updates.rs`).
+    Update { state: crate::updates::UpdateState },
 }
 
 /// The window the app runs in. Tauri implements it; tests record what it was asked to do.
