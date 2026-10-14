@@ -281,6 +281,8 @@ mod tests {
         chunks: Vec<(u64, Option<u64>)>,
         endpoints: StdMutex<Vec<&'static str>>,
         installs: StdMutex<Vec<(String, Vec<u8>, bool)>>,
+        /// What a given endpoint offers (None: nothing newer); overrides `found` for that endpoint.
+        per_endpoint: StdMutex<Vec<(&'static str, Option<String>)>>,
         /// When set, check waits for one permit (to hold a check in flight).
         check_gate: Option<Arc<Semaphore>>,
         /// When set, download waits for one permit.
@@ -300,7 +302,15 @@ mod tests {
         type Update = String;
         fn check(&self, endpoint: &'static str) -> BoxFuture<Result<Option<String>>> {
             self.endpoints.lock().unwrap().push(endpoint);
-            let result = self.found.lock().unwrap().clone().unwrap_or(Ok(None));
+            let offered = self
+                .per_endpoint
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(e, _)| *e == endpoint)
+                .map(|(_, version)| Ok(version.clone()));
+            let result =
+                offered.unwrap_or_else(|| self.found.lock().unwrap().clone().unwrap_or(Ok(None)));
             let gate = self.check_gate.clone();
             Box::pin(async move {
                 if let Some(gate) = gate {
@@ -588,12 +598,18 @@ mod tests {
         assert_eq!(source.endpoints.lock().unwrap().len(), 2);
     }
 
-    #[tokio::test]
-    async fn channel_change_waits_for_the_running_check() {
+    /// Holds a beta check in flight, switches to stable meanwhile, and lets both finish.
+    async fn switch_during_a_check(
+        stable: Option<&str>,
+    ) -> (Arc<FakeSource>, Arc<Updates<FakeSource, RecordingHost>>) {
         let gate = Arc::new(Semaphore::new(0));
         let source = Arc::new(FakeSource {
             check_gate: Some(gate.clone()),
-            ..FakeSource::offering("0.2.0-beta.2")
+            per_endpoint: StdMutex::new(vec![
+                (BETA_ENDPOINT, Some("0.2.0-beta.2".to_string())),
+                (STABLE_ENDPOINT, stable.map(str::to_string)),
+            ]),
+            ..FakeSource::default()
         });
         let updates = Updates::new(
             source.clone(),
@@ -619,8 +635,29 @@ mod tests {
             *source.endpoints.lock().unwrap(),
             vec![BETA_ENDPOINT, STABLE_ENDPOINT]
         );
-        // The beta download finished first, then the switch dropped it and the stable check
-        // (the fake still offers the same version) downloaded again for stable.
-        assert_eq!(updates.status(), ready("0.2.0-beta.2"));
+        (source, updates)
+    }
+
+    #[tokio::test]
+    async fn channel_change_waits_for_the_running_check() {
+        // The beta download lands first, then the switch drops it; the stable check offers a
+        // different version, so the final state can only be the stable one.
+        let (source, updates) = switch_during_a_check(Some("0.2.0")).await;
+        assert_eq!(updates.status(), ready("0.2.0"));
+        assert!(updates.on_quit(false).await);
+        assert_eq!(
+            *source.installs.lock().unwrap(),
+            vec![("0.2.0".to_string(), b"setup".to_vec(), false)]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_beta_download_finishing_during_a_switch_never_survives_it() {
+        // Stable has nothing newer, so a beta update that outlived the switch would show up as
+        // `Ready` here (the failure mode of switching without waiting for the running check).
+        let (source, updates) = switch_during_a_check(None).await;
+        assert_eq!(updates.status(), UpdateState::UpToDate);
+        assert!(!updates.on_quit(false).await);
+        assert!(source.installs.lock().unwrap().is_empty());
     }
 }
