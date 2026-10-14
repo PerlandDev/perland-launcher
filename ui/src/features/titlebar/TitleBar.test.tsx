@@ -1,6 +1,7 @@
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { routeSnapshot } from '../../state/route';
+import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { TitleBar } from './TitleBar';
 
@@ -28,4 +29,28 @@ it('keeps only the window controls when minimal', async () => {
 it('asks for an account when there is none', async () => {
   renderApp(<TitleBar />, { firstRun: true });
   expect(await screen.findByRole('button', { name: 'Add account' })).toBeInTheDocument();
+});
+
+it('shows a quiet note with Restart now when an update is ready', async () => {
+  const { user, calls } = renderApp(<TitleBar />, { beta: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
+  expect(await screen.findByText('Update ready · installs when you close')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Restart now' }));
+  expect(sent(calls, 'update_restart')).toHaveLength(1);
+});
+
+it('disables Restart now while a game runs', async () => {
+  renderApp(<TitleBar />, { beta: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
+  expect(await screen.findByRole('button', { name: 'Restart now' })).toBeEnabled();
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
+  expect(screen.getByRole('button', { name: 'Restart now' })).toBeDisabled();
+});
+
+it('shows no note when nothing is ready, and none in the minimal bar', async () => {
+  const { unmount } = renderApp(<TitleBar />, { beta: true, update: { state: 'up_to_date' } });
+  await screen.findByRole('button', { name: 'Close' });
+  expect(screen.queryByText('Update ready · installs when you close')).not.toBeInTheDocument();
+  unmount();
+  renderApp(<TitleBar minimal />, { beta: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
+  await screen.findByRole('button', { name: 'Close' });
+  expect(screen.queryByText('Update ready · installs when you close')).not.toBeInTheDocument();
 });

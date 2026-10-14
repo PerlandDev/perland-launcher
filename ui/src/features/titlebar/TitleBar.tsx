@@ -3,8 +3,11 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '../../art/Avatar';
 import mark from '../../assets/mark.svg';
-import { useAccounts } from '../../state/queries';
+import { commands } from '../../ipc/commands';
+import { useAccounts, useUpdate } from '../../state/queries';
 import { navigate } from '../../state/route';
+import { useActiveIds } from '../../state/runStore';
+import { pushError } from '../../state/toasts';
 import { Close, Gear, Minus, Square, WindowFrame } from '../../ui/Icon';
 
 /** The custom title bar: drag anywhere that isn't a button. `minimal` keeps only the window
@@ -12,6 +15,8 @@ import { Close, Gear, Minus, Square, WindowFrame } from '../../ui/Icon';
 export function TitleBar({ minimal = false }: { minimal?: boolean }) {
   const { t } = useTranslation();
   const accounts = useAccounts();
+  const update = useUpdate();
+  const busy = useActiveIds().length > 0;
   const active = accounts.data?.accounts.find((a) => a.uuid === accounts.data?.active) ?? null;
   const [maximized, setMaximized] = useState(false);
 
@@ -46,6 +51,20 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
       <div className="flex items-center">
         {!minimal && (
           <>
+            {update.data?.state === 'ready' && (
+              <span className="flex items-center gap-2 pr-2 text-sm text-ink-dim">
+                {t('titlebar.updateReady')}
+                <button
+                  type="button"
+                  className="tb-btn font-semibold text-ink"
+                  disabled={busy}
+                  title={busy ? t('settings.updates.busy') : undefined}
+                  onClick={() => void commands.updateRestart().catch(pushError)}
+                >
+                  {t('titlebar.restart')}
+                </button>
+              </span>
+            )}
             <button type="button" className="tb-btn flex" onClick={() => navigate({ name: 'accounts' })}>
               {active ? (
                 <>

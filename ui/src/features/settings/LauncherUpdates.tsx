@@ -1,8 +1,9 @@
 import type { TFunction } from 'i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import type { AppInfo, Channel, UpdateState } from '../../ipc/schema';
-import { useUpdate } from '../../state/queries';
+import { qk, useUpdate } from '../../state/queries';
 import { useActiveIds } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
@@ -42,6 +43,7 @@ export function LauncherUpdates({
 }) {
   const { t } = useTranslation();
   const update = useUpdate();
+  const queryClient = useQueryClient();
   const busy = useActiveIds().length > 0;
   const once = useSingleFlight();
   const state: UpdateState = update.data ?? { state: appInfo.build === 'dev' ? 'off' : 'idle' };
@@ -76,7 +78,7 @@ export function LauncherUpdates({
       <p className="text-sm text-ink-dim">{hint}</p>
       <p role="status" className="text-sm">{statusLine(t, state, appInfo.version)}</p>
       <div className="flex flex-wrap items-center gap-3">
-        <Button disabled={working} onClick={() => run(() => commands.updateCheck())}>
+        <Button disabled={working} onClick={() => run(async () => queryClient.setQueryData(qk.update, await commands.updateCheck()))}>
           {t('settings.updates.check')}
         </Button>
         {state.state === 'ready' && (

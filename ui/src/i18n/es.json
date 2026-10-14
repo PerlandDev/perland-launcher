@@ -27,7 +27,9 @@
     "close": "Cerrar",
     "accounts": "Cuentas",
     "settings": "Configuración",
-    "noAccount": "Agregar cuenta"
+    "noAccount": "Agregar cuenta",
+    "updateReady": "Actualización lista · se instala al cerrar",
+    "restart": "Reiniciar ahora"
   },
   "rail": {
     "label": "Instancias",

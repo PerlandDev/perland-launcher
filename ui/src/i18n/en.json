@@ -27,7 +27,9 @@
     "close": "Close",
     "accounts": "Accounts",
     "settings": "Settings",
-    "noAccount": "Add account"
+    "noAccount": "Add account",
+    "updateReady": "Update ready · installs when you close",
+    "restart": "Restart now"
   },
   "rail": {
     "label": "Instances",
