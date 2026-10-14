@@ -122,3 +122,8 @@ it('an ended run refreshes a server instance status', () => {
   expect(spy.mock.calls.map(([f]) => f?.queryKey)).toContainEqual(qk.serverStatus('survival'));
   spy.mockRestore();
 });
+
+it('keeps the latest launcher update state in the query cache', () => {
+  handleEvent({ type: 'update', state: { state: 'ready', version: '0.2.0' } });
+  expect(queryClient.getQueryData(qk.update)).toEqual({ state: 'ready', version: '0.2.0' });
+});

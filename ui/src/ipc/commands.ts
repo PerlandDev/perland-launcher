@@ -30,6 +30,7 @@ import type {
   SearchRequest,
   ServerStatusView,
   Settings,
+  UpdateState,
   VersionInfo,
 } from './schema';
 
@@ -38,6 +39,9 @@ export const commands = {
   appInfo: () => invoke<AppInfo>('app_info'),
   settingsGet: () => invoke<Settings>('settings_get'),
   settingsSet: (settings: Settings) => invoke<Settings>('settings_set', { settings }),
+  updateStatus: () => invoke<UpdateState>('update_status'),
+  updateCheck: () => invoke<UpdateState>('update_check'),
+  updateRestart: () => invoke<null>('update_restart'),
   instancesList: () => invoke<InstanceListing>('instances_list'),
   instanceCreate: (request: NewInstance) => invoke<Instance>('instance_create', { request }),
   instanceUpdate: (instance: Instance) => invoke<Instance>('instance_update', { instance }),

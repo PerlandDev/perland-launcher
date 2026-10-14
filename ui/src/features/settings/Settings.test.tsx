@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { toastsSnapshot } from '../../state/toasts';
 import { createMockBackend } from '../../ipc/mock';
@@ -174,7 +174,8 @@ it('shows the version, the data folder and the license, with links that open out
   expect(await screen.findByText('Version 0.1.0 · Developer build')).toBeInTheDocument();
   expect(screen.getByText('C:/Users/player/AppData/Roaming/PerlandLauncher')).toBeInTheDocument();
   expect(screen.getByText('Free software under the GNU General Public License v3.')).toBeInTheDocument();
-  expect(screen.queryByText(/update/i)).not.toBeInTheDocument();
+  // Updates have their own section; the About card makes no update claims.
+  expect(within(screen.getByRole('region', { name: 'Perland Launcher' })).queryByText(/update/i)).not.toBeInTheDocument();
   expect(screen.queryByText(/modrinth/i)).not.toBeInTheDocument();
 
   await user.click(screen.getByRole('button', { name: 'Read the license' }));

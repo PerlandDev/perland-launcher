@@ -270,7 +270,27 @@
     "license": "Free software under the GNU General Public License v3.",
     "licenseLink": "Read the license",
     "source": "Source code",
-    "notOfficial": "Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft."
+    "notOfficial": "Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft.",
+    "updates": {
+      "title": "Launcher updates",
+      "channel": "Update channel",
+      "stable": "Stable",
+      "beta": "Beta",
+      "stableHint": "Tested releases.",
+      "betaHint": "New builds first, with a few rough edges.",
+      "stableFromBeta": "You'll move to stable once it's newer than your beta.",
+      "off": "Updates are off in developer builds.",
+      "idle": "Checks for updates when the launcher opens.",
+      "checking": "Checking for updates…",
+      "downloading": "Downloading the update…",
+      "downloadingPercent": "Downloading the update… {{percent}}%",
+      "ready": "Version {{version}} is ready. It installs when you close the launcher.",
+      "upToDate": "Up to date · {{version}}",
+      "failed": "Couldn't check for updates.",
+      "check": "Check now",
+      "restart": "Restart now",
+      "busy": "Close your games first."
+    }
   },
   "firstRun": {
     "welcomeTitle": "Welcome to Perland",

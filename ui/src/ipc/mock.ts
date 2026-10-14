@@ -51,6 +51,7 @@ import type {
   SearchRequest,
   Settings,
   SyncSummary,
+  UpdateState,
   VersionInfo,
 } from './schema';
 
@@ -60,6 +61,8 @@ export interface MockOptions {
   release?: boolean;
   /** An optimized beta build: offline accounts stay open, About says so. */
   beta?: boolean;
+  /** The launcher's own update state; defaults to idle on release and beta builds, off in dev. */
+  update?: UpdateState;
   /** The pack's first sync ends with two files the player has to download by hand. */
   manual?: boolean;
   /** The pack has no update on offer. */
@@ -171,6 +174,7 @@ function seed(options: MockOptions) {
     build: options.release ? 'release' : options.beta ? 'beta' : 'dev',
     offlineAllowed: !options.release,
   };
+  const update: UpdateState = options.update ?? { state: options.release || options.beta ? 'idle' : 'off' };
   const mods = new Map<string, LocalMod[]>([['asalith-fields', clone(localModsFx) as LocalMod[]]]);
   const packs = new Map<string, MockPack>();
   // Resource packs and shaders per instance and kind, like the real folders. Mods have their own list.
@@ -226,6 +230,7 @@ function seed(options: MockOptions) {
     accounts,
     settings,
     appInfo,
+    update,
     mods,
     packs,
     content,
@@ -505,6 +510,16 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'settings_set':
       state.settings = args.settings as Settings;
       return state.settings;
+    case 'update_status':
+      return state.update;
+    case 'update_check':
+      if (state.update.state === 'off' || state.update.state === 'ready') return state.update;
+      state.update = { state: 'up_to_date' };
+      event({ type: 'update', state: state.update });
+      return state.update;
+    case 'update_restart':
+      if (state.runs.size > 0) fail('game', 'launcher_update_busy', 'Close your games before restarting to update');
+      return null;
     case 'instances_list':
       return state.listing;
     case 'instance_create': {
