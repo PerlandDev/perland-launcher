@@ -25,10 +25,23 @@ it('blocks the page context menu but keeps it in text fields', () => {
   expect(fire(document.getElementById('c')!, menu())).toBe(false);
 });
 
+it('keeps the menu only where text is typed: not on sliders, checkboxes or dropdowns', () => {
+  uninstall = installBrowserGuard(document);
+  document.body.innerHTML =
+    '<input id="search" type="search"><input id="num" type="number"><input id="range" type="range"><input id="box" type="checkbox"><select id="sel"><option>a</option></select>';
+  expect(fire(document.getElementById('search')!, menu())).toBe(false);
+  expect(fire(document.getElementById('num')!, menu())).toBe(false);
+  // Chromium shows the page menu (Save as, Print) on these, not an edit menu.
+  expect(fire(document.getElementById('range')!, menu())).toBe(true);
+  expect(fire(document.getElementById('box')!, menu())).toBe(true);
+  expect(fire(document.getElementById('sel')!, menu())).toBe(true);
+});
+
 it('blocks reload, print, save, find and view-source, not editing keys', () => {
   uninstall = installBrowserGuard(document);
   const body = document.body;
   const blocked: KeyboardEventInit[] = [
+    { key: 'F3' },
     { key: 'F5' },
     { key: 'F7' },
     { key: 'r', ctrlKey: true },
