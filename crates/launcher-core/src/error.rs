@@ -61,7 +61,7 @@ error_codes! {
     ModNotJar, ModExists, ModNotFound, ModNameInvalid, ModManaged,
     // packs and sync
     PackInvalid, PackUnsupported, PackUnsafePath, PackNotFound, PackLinkInvalid, NoPack,
-    NotEnoughSpace, InstanceLocked, ManualDownloadsNeeded, UpdateCheckFailed, PackPathIsFolder, SyncCancelled, UpdateDownloadFailed,
+    NotEnoughSpace, InstanceLocked, InstanceFolderInUse, ManualDownloadsNeeded, UpdateCheckFailed, PackPathIsFolder, SyncCancelled, UpdateDownloadFailed,
     // browse
     BrowseRateLimited, ContentNotFound, ContentIncompatible, ContentDependencyMissing,
     ContentConflict, ContentNeedsLoader, ContentAlreadyInstalled, ContentBusy,
@@ -161,6 +161,7 @@ mod tests {
             (ErrorCode::NoPack, "no_pack"),
             (ErrorCode::NotEnoughSpace, "not_enough_space"),
             (ErrorCode::InstanceLocked, "instance_locked"),
+            (ErrorCode::InstanceFolderInUse, "instance_folder_in_use"),
             (ErrorCode::ManualDownloadsNeeded, "manual_downloads_needed"),
             (ErrorCode::UpdateCheckFailed, "update_check_failed"),
             (ErrorCode::PackPathIsFolder, "pack_path_is_folder"),

@@ -192,6 +192,8 @@ function seed(options: MockOptions) {
       optionalChoices: {},
       java: { path: null, memoryMb: 6144 },
       server: null,
+      artSeed: null,
+      art: 'auto',
     };
     listing.instances = [...listing.instances, sky];
     const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
@@ -518,6 +520,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         optionalChoices: {},
         java: { path: null, memoryMb: state.settings.defaultMemoryMb },
         server: null,
+        artSeed: null,
+        art: 'auto',
       };
       state.listing.instances = [...state.listing.instances, created].sort((a, b) => a.name.localeCompare(b.name));
       return created;
@@ -644,6 +648,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         optionalChoices: {},
         java: { path: null, memoryMb: state.settings.defaultMemoryMb },
         server: null,
+        artSeed: null,
+        art: 'auto',
       };
       state.listing.instances = [...state.listing.instances, created].sort((a, b) => a.name.localeCompare(b.name));
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });

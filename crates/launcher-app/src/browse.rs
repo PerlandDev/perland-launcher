@@ -704,8 +704,12 @@ mod tests {
             core.instance_delete(&instance.id).await.unwrap_err().code,
             ErrorCode::ContentInstalling
         );
-        // Names don't touch the files being written.
-        core.instance_rename(&instance.id, "Renamed").await.unwrap();
+        // A name in the same family doesn't move the folder being written.
+        let renamed = core
+            .instance_rename(&instance.id, "Asalith!")
+            .await
+            .unwrap();
+        assert_eq!(renamed.id, instance.id);
 
         runner.browser.open_install_gate();
         task.await.unwrap().unwrap();

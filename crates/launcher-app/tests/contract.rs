@@ -28,7 +28,7 @@ use launcher_core::{
     download::Hashes,
     events::TaskId,
     instances::{
-        DamagedInstance, GameSpec, Instance, InstanceListing, JavaSettings, LoaderSpec,
+        ArtMode, DamagedInstance, GameSpec, Instance, InstanceListing, JavaSettings, LoaderSpec,
         ServerAddress, ServerLink, ServerStatus, SourceRef, UpdatePolicy,
     },
     invite::invite_link_cases,
@@ -109,6 +109,8 @@ fn fabric_instance() -> Instance {
             memory_mb: 4096,
         },
         server: None,
+        art_seed: None,
+        art: ArtMode::Auto,
     }
 }
 
@@ -128,6 +130,8 @@ fn vanilla_instance() -> Instance {
             memory_mb: 6144,
         },
         server: None,
+        art_seed: None,
+        art: ArtMode::Auto,
     }
 }
 
@@ -173,6 +177,8 @@ fn server_instance() -> Instance {
             last_seen: Some(1_791_720_000),
             gone: false,
         }),
+        art_seed: None,
+        art: ArtMode::Auto,
     }
 }
 

@@ -84,6 +84,8 @@ export const instance = z.strictObject({
   optionalChoices: z.record(z.string(), z.boolean()),
   java: javaSettings,
   server: serverLink.nullable(),
+  artSeed: z.string().nullable(),
+  art: z.enum(['auto', 'generated', 'custom']),
 });
 export const damagedInstance = z.strictObject({ id: z.string(), error: launcherError });
 export const instanceListing = z.strictObject({ instances: z.array(instance), damaged: z.array(damagedInstance) });

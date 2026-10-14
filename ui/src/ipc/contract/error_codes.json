@@ -63,6 +63,7 @@
   "no_pack",
   "not_enough_space",
   "instance_locked",
+  "instance_folder_in_use",
   "manual_downloads_needed",
   "update_check_failed",
   "pack_path_is_folder",

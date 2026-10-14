@@ -323,13 +323,13 @@ async fn a_rename_during_a_loader_change_survives() {
     *env.game.rename.lock().unwrap() = Some((
         env._tmp.path().join("instances"),
         instance.id.clone(),
-        "Renamed".into(),
+        "Tiny!".into(), // the same family, so the folder stays
     ));
     let report = done(env.sync(&instance.id, &v2).await.unwrap());
     assert!(report.game_changed);
 
     let saved = env.store.load(&instance.id).await.unwrap();
-    assert_eq!(saved.name, "Renamed", "the sync must not revert the rename");
+    assert_eq!(saved.name, "Tiny!", "the sync must not revert the rename");
     assert_eq!(saved.game.loader.unwrap().version, "47.4.30");
 }
 

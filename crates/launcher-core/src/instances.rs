@@ -10,6 +10,7 @@ use crate::{
     error::{ErrorCode, LauncherError, Result},
     fsutil::write_atomic,
     invite::{non_empty, InviteAddress, InviteView, Url},
+    locks::InstanceLock,
     meta::loaders::LoaderKind,
 };
 
@@ -335,6 +336,17 @@ impl Default for JavaSettings {
     }
 }
 
+/// Where an instance's picture comes from: the launcher's choice, a generated landscape the
+/// player picked, or their own file.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ArtMode {
+    #[default]
+    Auto,
+    Generated,
+    Custom,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Instance {
@@ -351,6 +363,12 @@ pub struct Instance {
     /// Set for server instances (`SourceRef::Perland`): what the invite view last said.
     #[serde(default)]
     pub server: Option<ServerLink>,
+    /// What the generated landscape is drawn from. Pinned to the first id when a rename moves the
+    /// folder, so the picture doesn't change with the name; the player can set it too.
+    #[serde(default)]
+    pub art_seed: Option<String>,
+    #[serde(default)]
+    pub art: ArtMode,
 }
 
 pub struct InstanceStore {
@@ -383,15 +401,20 @@ impl InstanceStore {
         self.instance_dir(id).join("instance.json")
     }
 
-    pub async fn create(&self, name: &str, game: GameSpec) -> Result<Instance> {
-        let name = validate_name(name)?;
-        let base = slugify(&name);
-        let mut id = base.clone();
+    /// The first of `base`, `base-2`, `base-3`, … that has no folder yet.
+    async fn free_id(&self, base: &str) -> Result<String> {
+        let mut id = base.to_string();
         let mut n = 2;
         while tokio::fs::try_exists(self.instance_dir(&id)).await? {
             id = format!("{base}-{n}");
             n += 1;
         }
+        Ok(id)
+    }
+
+    pub async fn create(&self, name: &str, game: GameSpec) -> Result<Instance> {
+        let name = validate_name(name)?;
+        let id = self.free_id(&slugify(&name)).await?;
         let instance = Instance {
             id,
             name,
@@ -401,6 +424,8 @@ impl InstanceStore {
             optional_choices: BTreeMap::new(),
             java: JavaSettings::default(),
             server: None,
+            art_seed: None,
+            art: ArtMode::Auto,
         };
         tokio::fs::create_dir_all(self.game_dir(&instance.id)).await?;
         tokio::fs::create_dir_all(self.perland_dir(&instance.id)).await?;
@@ -429,7 +454,7 @@ impl InstanceStore {
             .with_param("id", id)
             .with_detail(e)
         })?;
-        serde_json::from_slice(&bytes).map_err(|e| {
+        let mut instance: Instance = serde_json::from_slice(&bytes).map_err(|e| {
             LauncherError::disk(
                 ErrorCode::InstanceDamaged,
                 format!("The settings file of \"{id}\" is damaged"),
@@ -437,7 +462,11 @@ impl InstanceStore {
             .with_param("id", id)
             .with_fix("Restore instance.json from a backup or recreate the instance")
             .with_detail(e)
-        })
+        })?;
+        // The folder is the truth: a file copied or restored under another name still answers
+        // to the folder it sits in.
+        instance.id = id.to_string();
+        Ok(instance)
     }
 
     pub async fn list(&self) -> Result<Vec<Instance>> {
@@ -494,11 +523,37 @@ impl InstanceStore {
         Ok(instance)
     }
 
-    /// Change the display name only; the id and folder stay the same.
+    /// Change the display name, and move the folder to the new name's slug unless the id is
+    /// already in that slug's family. The returned `id` may differ from `id`. Refused with
+    /// `instance_locked` while anything holds the instance, and nothing changes if the OS says
+    /// the folder is in use (`instance_folder_in_use`).
     pub async fn rename(&self, id: &str, name: &str) -> Result<Instance> {
         let mut instance = self.load(id).await?;
-        instance.name = validate_name(name)?;
-        self.save(&instance).await?;
+        let name = validate_name(name)?;
+        let base = slugify(&name);
+        if same_family(id, &base) {
+            instance.name = name;
+            self.save(&instance).await?;
+            return Ok(instance);
+        }
+
+        let new_id = self.free_id(&base).await?;
+        let lock = InstanceLock::try_acquire(&self.perland_dir(id))?;
+        // Windows can't rename a folder that has a file open inside it.
+        drop(lock);
+        let (old_dir, new_dir) = (self.instance_dir(id), self.instance_dir(&new_id));
+        tokio::fs::rename(&old_dir, &new_dir)
+            .await
+            .map_err(|e| rename_io_error(e, id))?;
+
+        instance.id = new_id;
+        instance.art_seed.get_or_insert_with(|| id.to_string());
+        instance.name = name;
+        if let Err(e) = self.save(&instance).await {
+            // Put the folder back so the instance isn't left under a name it didn't ask for.
+            let _ = tokio::fs::rename(&new_dir, &old_dir).await;
+            return Err(e);
+        }
         Ok(instance)
     }
 
@@ -521,6 +576,41 @@ impl InstanceStore {
 /// optional `-N` suffix. Rejects path separators, `.`/`..`, absolute paths and Windows device names.
 pub fn is_valid_instance_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= MAX_ID_LEN && finish_slug(slug_core(id), None) == id
+}
+
+/// True when `id` is `base` or `base-N` (N ≥ 2): the ids `create` makes for one slug, so a
+/// rename to a name with that slug has no reason to move the folder.
+pub fn same_family(id: &str, base: &str) -> bool {
+    match id.strip_prefix(base) {
+        Some("") => true,
+        Some(rest) => rest.strip_prefix('-').is_some_and(|n| {
+            n.bytes().all(|b| b.is_ascii_digit()) && n.parse::<u32>().is_ok_and(|n| n >= 2)
+        }),
+        None => false,
+    }
+}
+
+/// An error from moving an instance's folder. A refusal by the OS (another program holds a
+/// file in it) becomes `instance_folder_in_use`.
+fn rename_io_error(e: std::io::Error, id: &str) -> LauncherError {
+    // 5 = ERROR_ACCESS_DENIED, 32 = ERROR_SHARING_VIOLATION
+    if e.kind() == std::io::ErrorKind::PermissionDenied || matches!(e.raw_os_error(), Some(5 | 32))
+    {
+        LauncherError::disk(
+            ErrorCode::InstanceFolderInUse,
+            "Another program is using this instance's folder",
+        )
+        .with_fix("Close any window or program using the folder, then try again")
+        .with_param("id", id)
+        .with_detail(e)
+    } else {
+        LauncherError::disk(
+            ErrorCode::DiskWriteFailed,
+            "Couldn't rename the instance's folder",
+        )
+        .with_param("item", "instance")
+        .with_detail(e)
+    }
 }
 
 fn check_id(id: &str) -> Result<()> {
@@ -833,9 +923,12 @@ mod tests {
             ErrorCode::JavaPathMissing
         );
 
-        let renamed = store.rename("pack", "  New name ").await.unwrap();
-        assert_eq!(renamed.name, "New name");
-        assert_eq!(renamed.id, "pack", "rename keeps the id and folder");
+        let renamed = store.rename("pack", "  Pack! ").await.unwrap();
+        assert_eq!(renamed.name, "Pack!");
+        assert_eq!(
+            renamed.id, "pack",
+            "a name in the same family keeps the folder"
+        );
 
         store.delete("pack").await.unwrap();
         assert!(!store.instance_dir("pack").exists());
@@ -847,6 +940,140 @@ mod tests {
             store.delete("../x").await.unwrap_err().code,
             ErrorCode::InstanceIdInvalid
         );
+    }
+
+    #[tokio::test]
+    async fn rename_moves_the_folder_and_keeps_the_art() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        store.create("Pack", vanilla("1.21.1")).await.unwrap();
+        let renamed = store.rename("pack", "Asalith Fields").await.unwrap();
+        assert_eq!(renamed.id, "asalith-fields");
+        assert_eq!(renamed.name, "Asalith Fields");
+        assert!(!store.instance_dir("pack").exists());
+        assert!(store.game_dir("asalith-fields").is_dir());
+        assert!(store.perland_dir("asalith-fields").is_dir());
+        assert_eq!(renamed.art_seed.as_deref(), Some("pack"));
+        assert_eq!(store.load("asalith-fields").await.unwrap(), renamed);
+    }
+
+    #[tokio::test]
+    async fn rename_within_the_family_keeps_the_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        store
+            .create("Asalith Fields", vanilla("1.21.1"))
+            .await
+            .unwrap();
+        let same = store
+            .rename("asalith-fields", "asalith fields!")
+            .await
+            .unwrap();
+        assert_eq!(same.id, "asalith-fields");
+        assert_eq!(same.name, "asalith fields!");
+
+        store.create("foo", vanilla("1.21.1")).await.unwrap();
+        store.create("foo", vanilla("1.21.1")).await.unwrap();
+        let kept = store.rename("foo-2", "Foo").await.unwrap();
+        assert_eq!(kept.id, "foo-2");
+        assert_eq!(kept.art_seed, None, "nothing moved, so no seed is pinned");
+    }
+
+    #[tokio::test]
+    async fn rename_onto_a_taken_slug_gets_a_suffix() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        store.create("A", vanilla("1.21.1")).await.unwrap();
+        store.create("B", vanilla("1.21.1")).await.unwrap();
+        let renamed = store.rename("b", "a").await.unwrap();
+        assert_eq!(renamed.id, "a-2");
+        assert!(store.game_dir("a").is_dir());
+        assert!(store.game_dir("a-2").is_dir());
+        assert!(!store.instance_dir("b").exists());
+    }
+
+    #[tokio::test]
+    async fn rename_keeps_a_second_art_seed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        store.create("Pack", vanilla("1.21.1")).await.unwrap();
+        store.rename("pack", "Second").await.unwrap();
+        let third = store.rename("second", "Third").await.unwrap();
+        assert_eq!(third.id, "third");
+        assert_eq!(third.art_seed.as_deref(), Some("pack"));
+    }
+
+    #[tokio::test]
+    async fn rename_is_refused_while_locked() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        store.create("Pack", vanilla("1.21.1")).await.unwrap();
+        let _held = crate::locks::InstanceLock::try_acquire(&store.perland_dir("pack")).unwrap();
+        let err = store.rename("pack", "Elsewhere").await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::InstanceLocked);
+        assert!(store.game_dir("pack").is_dir(), "the folder stays put");
+        assert!(!store.instance_dir("elsewhere").exists());
+        assert_eq!(store.load("pack").await.unwrap().name, "Pack");
+    }
+
+    #[tokio::test]
+    async fn load_trusts_the_folder_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        let made = store.create("Pack", vanilla("1.21.1")).await.unwrap();
+        let mut stale = made.clone();
+        stale.id = "old".into();
+        std::fs::create_dir_all(store.instance_dir("new")).unwrap();
+        std::fs::write(
+            store.instance_dir("new").join("instance.json"),
+            serde_json::to_vec(&stale).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(store.load("new").await.unwrap().id, "new");
+    }
+
+    #[test]
+    fn same_family_matches_the_base_and_its_numbered_copies() {
+        assert!(same_family("foo", "foo"));
+        assert!(same_family("foo-2", "foo"));
+        assert!(same_family("foo-17", "foo"));
+        assert!(!same_family("foo-1", "foo"));
+        assert!(!same_family("foo-0", "foo"));
+        assert!(!same_family("foo-x", "foo"));
+        assert!(!same_family("foo-", "foo"));
+        assert!(!same_family("foo-2-3", "foo"));
+        assert!(!same_family("foobar", "foo"));
+        assert!(!same_family("bar-2", "foo"));
+    }
+
+    #[test]
+    fn rename_io_error_maps_in_use() {
+        use std::io::{Error, ErrorKind};
+        for e in [
+            Error::from(ErrorKind::PermissionDenied),
+            Error::from_raw_os_error(32),
+            Error::from_raw_os_error(5),
+        ] {
+            let mapped = rename_io_error(e, "pack");
+            assert_eq!(mapped.code, ErrorCode::InstanceFolderInUse);
+            assert_eq!(mapped.params.get("id").map(String::as_str), Some("pack"));
+            assert!(mapped.fix.is_some());
+        }
+        let other = rename_io_error(Error::from(ErrorKind::Other), "pack");
+        assert_eq!(other.code, ErrorCode::DiskWriteFailed);
+        assert!(other.detail.is_some());
+    }
+
+    #[test]
+    fn instance_files_without_art_still_load() {
+        let json =
+            r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"}}"#;
+        let instance: Instance = serde_json::from_str(json).unwrap();
+        assert_eq!(instance.art_seed, None);
+        assert_eq!(instance.art, ArtMode::Auto);
+        let back = serde_json::to_value(&instance).unwrap();
+        assert_eq!(back["art"], "auto");
+        assert!(back["artSeed"].is_null());
     }
 
     use crate::invite::{InviteAddress, InviteTeam, InviteView, Url};
