@@ -1,7 +1,7 @@
 # Perland Launcher: Distribution (Plan 6), Design Addendum
 
 - **Date:** 2026-10-14
-- **Status:** Sections approved by the owner in brainstorming (2026-10-14); written spec awaiting owner review
+- **Status:** Approved by the owner (2026-10-14); updated while planning with facts read from the `tauri-plugin-updater` 2.14 and `tauri-bundler` 2.10 sources (§4.7)
 - **Parent spec:** `docs/superpowers/specs/2026-10-09-launcher-core-design.md` (§4 offline accounts, §5 Settings "launcher updates", §6 logs, diagnostics, self-update, installers, §7 release checklist).
 - **Related:** `docs/superpowers/specs/2026-10-11-join-by-link-design.md` (installer-time `perland://` registration was deferred to this plan). **Design system:** `DESIGN.md`, `.impeccable/surfaces/ui-src-app-tsx.md`.
 - **Second repository:** `PerlandDev/PerlandDev-site` (Astro), page `/launcher` and `/es/launcher`.
@@ -46,7 +46,7 @@ After this plan, a tester:
 5. **Carry-forwards:** this plan takes the public-release ones (metadata body caps, Windows argfile encoding, the mrpack corrupt-entry code). The rest go to a separate hardening session.
 6. **Manifests: rolling GitHub releases** `channel-beta` and `channel-stable` (§3.3), not perland.online or the GitHub API.
 7. **Tester-build workflow: retired.** The Release workflow's dry run replaces it.
-8. **End-to-end test releases are published from the PR branch, before merge.** Only the beta channel may publish from a branch other than `main`; stable is `main`-only.
+8. **End-to-end test releases are published from the PR branch, before merge.** Only the beta channel may publish from a branch other than `main`; stable is `main`-only. GitHub offers `workflow_dispatch` only for a workflow file that exists on the default branch, so a one-file PR adds `release.yml` to `main` first. A run started with `--ref <branch>` uses the branch's own copy of the workflow and scripts.
 9. **Download page: keep the waitlist form** lower on the page, reworded to "get notified when it's out of beta"; the hero call to action becomes the beta download.
 
 ## 3. Builds and releases
@@ -99,7 +99,7 @@ Two rolling releases hold each channel's Tauri updater manifest and a fixed-name
   - stable: `https://github.com/PerlandDev/perland-launcher/releases/download/channel-stable/latest.json`
 - A **beta** publish replaces `channel-beta`'s assets. A **stable** publish replaces `channel-stable`'s assets **and** `channel-beta`'s `latest.json` (but not its installer copies, which stay the newest beta), so beta players move up to a stable that is newer than their beta (semver: `0.2.0` > `0.2.0-beta.5`).
 - The channel releases are named "Beta channel (updates)" and "Stable channel (updates)", with a body explaining they are update feeds and pointing at perland.online/launcher. `channel-beta` is a pre-release; `channel-stable` is not marked latest (`make_latest: false`) so the versioned release stays "Latest".
-- `latest.json` follows Tauri v2's static format (`version`, `notes`, `pub_date`, `platforms.{windows-x86_64, linux-x86_64}.{signature, url}`). Its `url`s point at the **versioned** release's assets, not the fixed-name copies, so an in-flight update never changes under the updater. It is built by `scripts/release/manifest.mjs` from the `.sig` files, unit tested with `node:test`. Any platform missing a signature fails the publish.
+- `latest.json` follows Tauri v2's static format (`version`, `notes`, `pub_date`, `platforms.<key>.{signature, url}`). The updater looks up `<os>-<arch>-<installer>` first, so the keys are `windows-x86_64-nsis`, `linux-x86_64-appimage` and `linux-x86_64-deb` (a `.deb` install must never fall back to an AppImage entry). Its `url`s point at the **versioned** release's assets, not the fixed-name copies, so an in-flight update never changes under the updater. It is built by `scripts/release/manifest.mjs` from the `.sig` files, unit tested with `node:test`. Any platform missing a signature fails the publish.
 - Moving off GitHub later needs one update that changes the endpoints first. Accepted.
 
 ### 3.4 Release workflow (`.github/workflows/release.yml`)
@@ -109,7 +109,7 @@ Two rolling releases hold each channel's Tauri updater manifest and a fixed-name
 - **Build matrix** (`contents: read`, `timeout-minutes` on each):
   - `windows-latest`: `tauri build --bundles nsis`.
   - `ubuntu-22.04` (older glibc, so the AppImage runs on more distributions): `tauri build --bundles appimage,deb`, with the webview build dependencies CI already installs.
-  - Each job patches the version into `Cargo.toml`, sets `PERLAND_BUILD=beta` for the beta channel, and passes `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` from secrets. `bundle.createUpdaterArtifacts` is `true`, so each bundle gets a `.sig`.
+  - Each job patches the version into `Cargo.toml`, sets `PERLAND_BUILD=beta` for the beta channel, and passes `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` from secrets. It turns on `bundle.createUpdaterArtifacts` through `tauri build --config '{"bundle":{"createUpdaterArtifacts":true}}'`, so each installer gets a `.sig` (`*_x64-setup.exe.sig`, `*.AppImage.sig`, `*.deb.sig`) while a local `pnpm tauri build` needs no key. A missing key fails `tauri build` only after bundling, so the guard job checks it first.
   - Uploads the bundles and signatures as workflow artifacts (also the dry-run output).
 - **Publish job** (only when `dry_run` is false; the only job with `contents: write`):
   1. creates tag `v<version>` on the built commit and a GitHub Release for it (pre-release for beta) with the installers and `.sig` files;
@@ -121,7 +121,7 @@ Two rolling releases hold each channel's Tauri updater manifest and a fixed-name
 
 ### 3.5 Installers
 
-- `bundle.active: true`, with targets passed per platform by the workflow. Local `pnpm tauri build` builds the host's default bundles.
+- `bundle.active: true` and `bundle.targets: ["nsis", "appimage", "deb"]`; the workflow narrows them per platform with `--bundles`. A local `pnpm tauri build` builds the host's targets from that list.
 - **Windows NSIS:** `bundle.windows.nsis.installMode: "currentUser"` (installs under `%LOCALAPPDATA%`, no admin prompt). `nsis.languages: ["English", "Spanish"]` with `displayLanguageSelector: false`, so the installer follows the Windows display language.
 - **Linux:** `.deb` and AppImage.
 - **`perland://` registration:**
@@ -130,7 +130,7 @@ Two rolling releases hold each channel's Tauri updater manifest and a fixed-name
   - Dev builds keep registering themselves as today.
 - **Data folder:** unchanged (`%APPDATA%\PerlandLauncher`, `~/.local/share/PerlandLauncher`), so a tester's dev-mode worlds and accounts carry over to the installed build. The NSIS installer overwrites the dev-mode exe's `perland://` registration.
 - **Authenticode signing (dormant):** when the repository variable `AZURE_TRUSTED_SIGNING` is `true`, the Windows job adds `bundle.windows.signCommand` (through `--config`) calling `trusted-signing-cli` with the Azure secrets. It is off for now. Tauri signs binaries and the installer before it computes the updater signature, so enabling it later changes nothing else.
-- **Updater key:** the owner generates it on their own machine (`pnpm tauri signer generate`) and stores the private key and password as the secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The **public** key goes in `plugins.updater.pubkey` in `tauri.conf.json` (it is not secret). Nobody asks for the private key or password in chat.
+- **Updater key:** the owner generates it on their own machine (`pnpm tauri signer generate`) and stores the private key and password as the secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The **public** key goes in `plugins.updater.pubkey` in `tauri.conf.json` (it is not secret). The plugin refuses to start without a `plugins.updater` section that has a `pubkey`, so the key is committed when the updater is wired in. Nobody asks for the private key or password in chat.
 
 ### 3.6 Smart App Control and SmartScreen
 
@@ -141,10 +141,11 @@ Unsigned installers trigger SmartScreen ("Windows protected your PC", passable t
 ### 4.1 Units
 
 - **`launcher-app::updates`** (new, no Tauri): the update state machine and policy.
-  - `trait UpdateSource: Send + Sync`:
-    - `async fn check(&self, channel: Channel) -> Result<Option<Available>>` (`Available { version: String }`);
-    - `async fn download(&self, available: &Available, progress: &dyn Fn(u64, Option<u64>)) -> Result<Downloaded>` (`Downloaded` is opaque bytes plus version);
-    - `fn install(&self, downloaded: Downloaded, relaunch: bool) -> Result<()>`.
+  - `trait UpdateSource: Send + Sync + 'static`, with an associated `type Update` (Tauri's `Update`; a version string in tests) and boxed futures like `Runner`:
+    - `check(endpoint) -> Result<Option<Update>>`;
+    - `version(&Update) -> String`;
+    - `download(Arc<Update>, progress) -> Result<Vec<u8>>` (the signature is verified here);
+    - `install(Arc<Update>, Arc<Vec<u8>>, relaunch) -> Result<()>`.
   - `Updates<S: UpdateSource, H: Host>`: holds the state, emits `AppEvent::Update(UpdateState)`, and exposes `start()`, `check_now()`, `restart_now(busy: bool)`, `on_quit(busy: bool)`, `set_channel()`.
   - `fn endpoint(channel: Channel) -> &'static str` (§3.3).
 - **`src-tauri/src/updater.rs`** (wiring only): `TauriUpdateSource` over `tauri-plugin-updater`, building an updater per check with `updater_builder().endpoints(vec![endpoint(channel)])`. The public key comes from config. Windows install mode is `passive`.
@@ -168,7 +169,7 @@ Unsigned installers trigger SmartScreen ("Windows protected your PC", passable t
 
 - **On start** (Beta and Release builds): a few seconds after launch, `check`. If a newer version is available, download it in the background, then `Ready`. Checks do not repeat during the session except through **Check now** or a channel change.
 - **Busy** means any game running, an install running, or a sync running. `AppCore` already knows this (`has_active_runs` plus the install slot); `updates` takes `busy` as an argument rather than reaching into runs.
-- **Restart now:** refused with `update_busy` while busy (the UI also disables the button). Otherwise `install(relaunch: true)`.
+- **Restart now:** refused with `launcher_update_busy` while busy (the UI also disables the button). Otherwise `install(relaunch: true)` (§4.7 covers how each platform relaunches).
 - **On quit** (the `quit` command, and a window close with nothing running): if `Ready` and not busy, `install(relaunch: false)`. If the player confirmed quitting while a game still ran, the install waits for a later quit. A game is never interrupted.
 - **Check now:** allowed in any state except `Checking`/`Downloading`. A `Ready` update stays ready; a newer one replaces it.
 - **Channel change:** saves `updateChannel` and checks right away.
@@ -193,23 +194,26 @@ A new section in Settings, above About, styled through `/impeccable` and `DESIGN
 
 - A failed check or download is quiet: logged, `Failed` in Settings ("Couldn't check for updates" plus Try again). No popup on start.
 - A signature or integrity failure is never installed and gets its own code.
-- New `ErrorCode`s, each with `errors.<code>.message` in `en.json` and `es.json`:
-  - `update_failed` (check or download failed);
-  - `update_invalid` (bad signature or manifest);
-  - `update_busy` (Restart now while something runs).
+- New `ErrorCode`s, each with `errors.<code>.message` in `en.json` and `es.json`. They are named `launcher_update_*` because `update_check_failed` and `update_download_failed` already mean a pack update:
+  - `launcher_update_failed` (check or download failed);
+  - `launcher_update_invalid` (bad signature or manifest);
+  - `launcher_update_busy` (Restart now while something runs).
 - New commands: `update_status`, `update_check`, `update_restart`. The channel is set through the existing `settings_set`, which then triggers a check.
 
-### 4.7 Verified early in the plan, not assumed
+### 4.7 Verified in the plugin and bundler sources (2026-10-14)
 
-1. **Does the NSIS update always relaunch the app?** If `install(relaunch: false)` can't stop Tauri's NSIS installer from relaunching, install-on-quit becomes **install on the next start, before the window opens** (the downloaded bytes are kept in the data folder's `updates/`, re-verified, then installed). That still never interrupts a game, and the copy becomes "installs the next time you open the launcher". The plan's first task settles this.
-2. **Can a `.deb` install update itself?** If `tauri-plugin-updater` can't, `.deb` installs show "Version X is out" with **Download**, which opens perland.online/launcher; the AppImage updates itself either way. The install type is detected at runtime and passed to `updates` as a flag.
+1. **Relaunching on Windows is controllable.** The NSIS template relaunches only in passive or silent mode **and** when `/R` is passed; the plugin passes `/R` unless the updater was built with `restart_after_install(false)`. Install-on-quit therefore builds its updater with `restart_after_install(false)`. Because that choice is fixed when the updater is built, **Restart now** on Windows runs a fresh check with `restart_after_install(true)` and installs the already downloaded, already verified bytes through that update when its version matches; if that check fails, it installs without relaunching. `Update::install` on Windows starts the installer and calls `std::process::exit(0)`.
+2. **`.deb` installs update themselves.** The plugin installs a `.deb` with `pkexec dpkg -i` (falling back to a zenity or kdialog password prompt, then `sudo`), so a `.deb` player is asked for their password when an update installs. An AppImage replaces the file at `$APPIMAGE`. Linux never relaunches by itself, so Restart now calls `AppHandle::restart()` after installing. The bundle type comes from a marker `tauri build` patches into each package's binary.
+3. **Traps:** `UpdaterBuilder::on_before_exit` replaces the default hook that runs `cleanup_before_exit`, so it is never set. Plugin-level `installer_args` are dropped unless `plugins.updater.windows` exists, so that section is present (`installMode: "passive"`).
+4. **Prerelease versions are fine for NSIS:** `0.2.0-beta.1` becomes `VIProductVersion 0.2.0.0` with the full string as the display version, and the installer compares versions with semver. MSI would fail on a prerelease, which is one more reason MSI isn't built (`bundle.targets` lists `nsis`, `appimage` and `deb` only).
 
 ## 5. Logs and diagnostics
 
 ### 5.1 Launcher log
 
 - New `launcher-core::logging` on `tracing`, `tracing-subscriber` and `tracing-appender`. `src-tauri` calls `logging::init(&dirs)` once at startup and keeps the guard alive.
-- Files: `logs/launcher.YYYY-MM-DD.log`, daily rotation, newest 14 kept. Pruning matches the `launcher` prefix only, so `<id>-latest.log` game logs are never touched.
+- Files: `logs/launcher/launcher.YYYY-MM-DD.log`, daily rotation, newest 14 kept. They live in their own folder so pruning can never match a game log (an instance called "Launcher test" writes `logs/launcher-test-latest.log`).
+- Writes are synchronous through the rolling appender (no background worker), so nothing is lost when the process exits through `std::process::exit` during an update install. The volume is small.
 - Every formatted line goes through `Redactor::for_current_user()` (home path → `~`) in a wrapping writer. Tokens are never logged, by rule; invite links already print without their token. **Plan 4 must add Microsoft tokens to this redactor.**
 - Logged: startup (version, build kind, channel, OS, arch); update checks and results; run start and exit (instance id, Minecraft and loader versions, exit code); sync summaries; every `LauncherError` returned through IPC (code plus redacted detail).
 - Level `info` by default; `PERLAND_LOG=debug` raises it.
@@ -219,7 +223,7 @@ A new section in Settings, above About, styled through `/impeccable` and `DESIGN
 
 - `launcher-core::diagnostics::export(dirs: &LauncherDirs, info: &SystemInfo, out: &Path) -> Result<()>` writes a zip:
   - `system.json`: launcher version, build kind, update channel, OS name and version, arch, total memory, installed Java runtimes, instance count;
-  - `logs/`: the retained launcher logs and each `<id>-latest.log`, each cut to its last 5 MB;
+  - `logs/launcher/`: the retained launcher logs; `logs/`: each `<id>-latest.log`; every log cut to its last 5 MB;
   - `instances/<id>/instance.json` and `instances/<id>/managed.json`;
   - `settings.json`.
 - Never included: `accounts.json`, `jvm-args.txt`, caches, game files.
@@ -231,7 +235,7 @@ A new section in Settings, above About, styled through `/impeccable` and `DESIGN
 
 ### 6.1 In this plan
 
-- **Body-size caps on metadata fetches.** A shared `http::read_capped(response, limit) -> Result<Bytes>` reads at most `limit` bytes and fails with a stable code if the body is larger (the `Content-Length` is checked first when present). Used by `MetaClient` (Mojang, Fabric, Quilt, Forge, NeoForge JSON; about 32 MB), packwiz `pack.toml`, `index.toml` and metafiles (a few MB), and Modrinth API JSON. Invites and Browse images keep their existing caps.
+- **Body-size caps on metadata fetches.** The invite client's `read_capped(response, limit)` moves to `http::read_capped` and is shared. It reads at most `limit` bytes and returns `None` when the body is larger (checking `Content-Length` first when present). Callers turn `None` into their existing "unexpected data" error (`meta_unexpected`, or an unavailable update check), so no new code is needed. Used by `MetaClient` (Mojang, Fabric, Quilt, Forge, NeoForge JSON; about 32 MB), packwiz `pack.toml`, `index.toml` and metafiles (a few MB), and Modrinth API JSON. Invites and Browse images keep their existing caps.
 - **Windows argfile encoding.** Java's launcher reads `@argfiles` in the system ANSI code page on Windows. On Windows the argfile is encoded with `WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS)` (`windows-sys`, in `launcher-core`); if any JVM argument isn't representable, the argfile is skipped and the command line is used unchanged (the same fallback as the secret check). Other platforms keep UTF-8.
 - **mrpack corrupt entry.** A damaged zip or entry inside a `.mrpack` fails with a new `ErrorCode::MrpackCorrupt` ("This .mrpack file is damaged") instead of the generic invalid-file error, with en/es strings.
 - **Workflow `permissions` and `timeout-minutes`:** already present in `ci.yml`, `nightly.yml` and `tester-build.yml`; the new `release.yml` follows suit. Nothing else to do.
@@ -259,7 +263,7 @@ A small PR in `PerlandDev/PerlandDev-site`, styled through that repository's `/i
 
 - `BuildKind::from_parts` and `offline_allowed` for all three kinds; `app_info` reports `beta`.
 - `should_self_register` for each OS, build and AppImage combination.
-- `updates`: with a fake `UpdateSource` and fake host: start → available → downloading → ready; up to date; check failure → `Failed`, no event spam; Restart now refused while busy (`update_busy`); quit while busy doesn't install; quit when ready installs with `relaunch: false`; channel change re-checks with the new endpoint; Dev is `Off` and never checks.
+- `updates`: with a fake `UpdateSource` and fake host: start → available → downloading → ready; up to date; check failure → `Failed`, no event spam; Restart now refused while busy (`launcher_update_busy`); quit while busy doesn't install; quit when ready installs with `relaunch: false`; channel change re-checks with the new endpoint; Dev is `Off` and never checks.
 - `Settings` reads an old file without `update_channel`.
 - `logging`: a temp-dir log has the home path redacted; pruning leaves `*-latest.log` alone.
 - `diagnostics::export`: zip contents and names; planted token and home path absent; `accounts.json` absent; 5 MB tail cut.
