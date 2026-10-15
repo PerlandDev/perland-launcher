@@ -255,6 +255,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         settings
     }
 
+    /// The update channel to follow, read without the warn-once path: startup reads this before
+    /// the UI listens, so a damaged file's warning stays for the UI's first `settings_get`.
+    pub async fn update_channel(&self) -> Channel {
+        let (settings, _) = self.settings.lock().await.load().await;
+        Channel::effective(settings.update_channel, self.config.build)
+    }
+
     pub async fn settings_set(&self, settings: Settings) -> Result<Settings> {
         self.settings.lock().await.save(&settings).await?;
         Ok(settings)
@@ -635,6 +642,17 @@ pub(crate) mod tests {
         let (core, _, host, tmp) = core(BuildKind::Dev);
         std::fs::write(tmp.path().join("settings.json"), "{nope").unwrap();
         assert_eq!(core.settings_get().await, Settings::default());
+        core.settings_get().await;
+        assert_eq!(host.warnings(), vec![ErrorCode::SettingsDamaged]);
+    }
+
+    #[tokio::test]
+    async fn the_startup_channel_read_leaves_the_settings_warning_for_the_ui() {
+        let (core, _, host, tmp) = core(BuildKind::Beta);
+        std::fs::write(tmp.path().join("settings.json"), "{nope").unwrap();
+        assert_eq!(core.update_channel().await, Channel::Beta);
+        assert!(host.warnings().is_empty());
+        core.settings_get().await;
         core.settings_get().await;
         assert_eq!(host.warnings(), vec![ErrorCode::SettingsDamaged]);
     }

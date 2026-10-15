@@ -51,9 +51,8 @@ fn main() {
             let core = build_core(host.clone())?;
             app.manage(core.clone());
             let build = BuildKind::current();
-            let settings = tauri::async_runtime::block_on(core.settings_get());
-            let channel =
-                launcher_core::settings::Channel::effective(settings.update_channel, build);
+            // Not `settings_get`: its one-time damaged-settings warning would go to no listener.
+            let channel = tauri::async_runtime::block_on(core.update_channel());
             tracing::info!(
                 version = env!("CARGO_PKG_VERSION"),
                 build = ?build,
