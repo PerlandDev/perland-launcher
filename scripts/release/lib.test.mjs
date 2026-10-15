@@ -132,14 +132,15 @@ test('release notes depend on the channel and on code signing', () => {
 });
 
 test('the signing command tells plugins, the installer and our own binaries apart', () => {
-  assert.equal(signRole('D:\a\perland-launcher\perland-launcher\target\release\perland-launcher.exe'), 'binary');
-  assert.equal(signRole('C:\Users\RUNNER~1\AppData\Local\Temp\nst1234.tmp'), 'binary');
-  assert.equal(signRole('D:\a\p\target\release\nsis\x64\Plugins\x86-unicode\System.dll'), 'plugin');
+  const raw = String.raw;
+  assert.equal(signRole(raw`D:\a\perland-launcher\perland-launcher\target\release\perland-launcher.exe`), 'binary');
+  assert.equal(signRole(raw`C:\Users\RUNNER~1\AppData\Local\Temp\nst1234.tmp`), 'binary');
+  assert.equal(signRole(raw`D:\a\p\target\release\nsis\x64\Plugins\x86-unicode\System.dll`), 'plugin');
   assert.equal(signRole('D:/a/p/target/release/nsis/x64/plugins/X86-UNICODE/additional/nsis_tauri_utils.dll'), 'plugin');
-  assert.equal(signRole('D:\a\p\target\release\bundle\nsis\Perland Launcher_0.2.0-beta.3_x64-setup.exe'), 'installer');
+  assert.equal(signRole(raw`D:\a\p\target\release\bundle\nsis\Perland Launcher_0.2.0-beta.3_x64-setup.exe`), 'installer');
   assert.equal(signRole('/home/runner/work/p/target/release/bundle/nsis/Perland Launcher_0.2.0_x64-setup.exe'), 'installer');
   // A -setup.exe outside bundle/nsis is not the final installer.
-  assert.equal(signRole('D:\a\p\target\release\other-setup.exe'), 'binary');
+  assert.equal(signRole(raw`D:\a\p\target\release\other-setup.exe`), 'binary');
 });
 
 test('the apply pass replaces our binaries, skips the rest, and refuses unknown ones', () => {
