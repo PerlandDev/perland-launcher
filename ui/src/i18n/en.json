@@ -34,7 +34,9 @@
     "newInstance": "New instance",
     "playing": "Playing",
     "preparing": "Getting ready",
-    "damaged": "Needs attention"
+    "damaged": "Needs attention",
+    "expand": "Show names",
+    "collapse": "Hide names"
   },
   "home": {
     "emptyTitle": "No instances yet",

@@ -2,7 +2,7 @@ import { act, fireEvent, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
-import { renderApp } from '../../test/backend';
+import { renderApp, sent } from '../../test/backend';
 import { Rail } from './Rail';
 
 it('lists instances, then damaged ones, and selects on click', async () => {
@@ -18,6 +18,9 @@ it('lists instances, then damaged ones, and selects on click', async () => {
 it('moves focus with the arrow keys and enters at the selected item', async () => {
   const { user } = renderApp(<Rail />);
   await screen.findByRole('button', { name: 'Asalith Fields' });
+  // The rail key comes first, at the top.
+  await user.tab();
+  expect(screen.getByRole('button', { name: 'Show names' })).toHaveFocus();
   await user.tab();
   expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
   await user.keyboard('{ArrowDown}');
@@ -68,4 +71,48 @@ it("shows a server's status word on hover too", async () => {
   const survival = await screen.findByRole('button', { name: 'Survival, Starting' });
   expect(survival).toHaveAttribute('title', 'Survival · Starting');
   expect(screen.getByRole('button', { name: 'Creative Flat' })).toHaveAttribute('title', 'Creative Flat');
+});
+
+it('shows no names in the compact rail', async () => {
+  renderApp(<Rail />);
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  expect(screen.getByRole('button', { name: 'Show names' })).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.queryByText('Asalith Fields')).toBeNull();
+  expect(screen.queryByText('Creative Flat')).toBeNull();
+});
+
+it('shows names when its key is pressed, and remembers it in the settings', async () => {
+  const { user, calls } = renderApp(<Rail />);
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  await user.click(screen.getByRole('button', { name: 'Show names' }));
+  expect(await screen.findByText('Asalith Fields')).toBeVisible();
+  expect(screen.getByText('Creative Flat')).toBeVisible();
+  expect(sent(calls, 'settings_set')).toEqual([{ settings: expect.objectContaining({ railExpanded: true }) }]);
+  const hide = screen.getByRole('button', { name: 'Hide names' });
+  expect(hide).toHaveAttribute('aria-pressed', 'true');
+  // The rows keep their accessible names, so the rest of the app still finds them.
+  expect(screen.getByRole('button', { name: 'Asalith Fields' })).toBeInTheDocument();
+  await user.click(hide);
+  await vi.waitFor(() => expect(screen.queryByText('Asalith Fields')).toBeNull());
+  expect(sent(calls, 'settings_set').at(-1)).toEqual({ settings: expect.objectContaining({ railExpanded: false }) });
+});
+
+it('shows the full name on hover and the status word in a wide row', async () => {
+  renderApp(<Rail />, { railExpanded: true, server: 'starting' });
+  expect(await screen.findByText('Asalith Fields')).toHaveAttribute('title', 'Asalith Fields');
+  expect(await screen.findByText('Starting')).toBeVisible();
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
+  expect(screen.getByRole('button', { name: 'Asalith Fields, Playing' })).toHaveTextContent('Playing');
+});
+
+it('moves focus with the arrow keys in the wide rail too', async () => {
+  const { user } = renderApp(<Rail />, { railExpanded: true });
+  await screen.findByText('Asalith Fields');
+  await user.tab();
+  await user.tab();
+  expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
+  await user.keyboard('{ArrowDown}');
+  expect(screen.getByRole('button', { name: 'Creative Flat' })).toHaveFocus();
+  await user.keyboard('{ArrowUp}');
+  expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
 });

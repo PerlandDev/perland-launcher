@@ -23,6 +23,7 @@ async function bootstrap() {
       noUpdate: params.has('noUpdate'),
       link: params.get('link') ?? undefined,
       server: (params.get('server') as ServerScenario | null) ?? undefined,
+      railExpanded: params.has('railExpanded'),
     });
   }
   // Whatever fails here, the window still opens; the failure shows up as a toast.

@@ -34,7 +34,9 @@
     "newInstance": "Nueva instancia",
     "playing": "Jugando",
     "preparing": "Preparando",
-    "damaged": "Requiere atención"
+    "damaged": "Requiere atención",
+    "expand": "Mostrar nombres",
+    "collapse": "Ocultar nombres"
   },
   "home": {
     "emptyTitle": "Todavía no tienes instancias",

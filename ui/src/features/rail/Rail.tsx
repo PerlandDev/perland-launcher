@@ -3,12 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { PlotIcon } from '../../art/PlotIcon';
 import { pixelUpscale } from '../../art/upscale';
 import type { ServerStatus } from '../../ipc/schema';
-import { useInstances, useInstanceArt, useServerStatus } from '../../state/queries';
+import { useInstances, useInstanceArt, useSaveSettings, useServerStatus, useSettings } from '../../state/queries';
 import { navigate, useRoute, instanceOf } from '../../state/route';
 import { RAIL_POLL } from '../../state/serverPoll';
 import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
-import { Plus, Search, WarningDiamond } from '../../ui/Icon';
+import { ArrowBarLeft, ArrowBarRight, Plus, Search, WarningDiamond } from '../../ui/Icon';
 import { sessionKind } from '../browse/session';
 import { pickId } from '../home/pick';
 import { statusWord } from '../servers/statusWord';
@@ -27,10 +27,13 @@ function RailItem({
   item,
   selected,
   entry,
+  wide,
   setRef,
 }: {
   item: Item;
   selected: boolean;
+  /** The wide rail shows the name and the status word beside the icon. */
+  wide: boolean;
   /** The one item Tab lands on: the selected one, or the first when none is selected. */
   entry: boolean;
   setRef: (el: HTMLButtonElement | null) => void;
@@ -55,6 +58,7 @@ function RailItem({
   const serverGone = live.data?.gone ?? item.gone;
   const serverWord = item.server ? statusWord(t, serverStatus, live.data?.players ?? null, serverGone) : null;
   const label = [item.name, status, serverWord].filter(Boolean).join(', ');
+  const word = [status, serverWord].filter(Boolean).join(' · ');
   return (
     <button
       ref={setRef}
@@ -67,37 +71,54 @@ function RailItem({
       tabIndex={entry ? 0 : -1}
       onClick={() => navigate({ name: 'home', id: item.id })}
     >
-      <span className={item.damaged ? 'opacity-40 grayscale' : undefined}>
-        {icon ? (
-          <img
-            src={icon}
-            alt=""
-            width={40}
-            height={40}
-            className="rail-art"
-            draggable={false}
-            data-upscale={upscaled === icon ? '' : undefined}
-            onLoad={(e) => {
-              const { naturalWidth: width, naturalHeight: height } = e.currentTarget;
-              setUpscaled(pixelUpscale({ width, height }, { width: 40, height: 40 }) ? icon : null);
-            }}
-            onError={() => setFailed(icon)}
-          />
-        ) : (
-          <PlotIcon seed={item.id} size={40} />
-        )}
+      <span className="rail-icon">
+        <span className={item.damaged ? 'opacity-40 grayscale' : undefined}>
+          {icon ? (
+            <img
+              src={icon}
+              alt=""
+              width={40}
+              height={40}
+              className="rail-art"
+              draggable={false}
+              data-upscale={upscaled === icon ? '' : undefined}
+              onLoad={(e) => {
+                const { naturalWidth: width, naturalHeight: height } = e.currentTarget;
+                setUpscaled(pixelUpscale({ width, height }, { width: 40, height: 40 }) ? icon : null);
+              }}
+              onError={() => setFailed(icon)}
+            />
+          ) : (
+            <PlotIcon seed={item.id} size={40} />
+          )}
+        </span>
+        {status && !item.damaged && <span className="rail-led" aria-hidden />}
+        {item.server && <span className="rail-server" data-status={serverGone ? 'unknown' : (serverStatus ?? 'unknown')} aria-hidden />}
+        {item.damaged && <WarningDiamond className="rail-warn" aria-hidden />}
       </span>
-      {status && !item.damaged && <span className="rail-led" aria-hidden />}
-      {item.server && <span className="rail-server" data-status={serverGone ? 'unknown' : (serverStatus ?? 'unknown')} aria-hidden />}
-      {item.damaged && <WarningDiamond className="rail-warn" aria-hidden />}
+      {wide && (
+        <span className="rail-text">
+          <span className="rail-name" title={item.name}>
+            {item.name}
+          </span>
+          {word && <span className="rail-word">{word}</span>}
+        </span>
+      )}
     </button>
   );
 }
 
-/** Every instance as a cabinet icon; the selected one has the lit light. Arrow keys move along it. */
+/** Every instance as a cabinet icon; the selected one has the lit light. Arrow keys move along it.
+ *  Its key at the top widens it to show each name and status word, and the settings remember that. */
 export function Rail() {
   const { t } = useTranslation();
   const { data } = useInstances();
+  const settings = useSettings();
+  const save = useSaveSettings();
+  const wide = settings.data?.railExpanded ?? false;
+  const toggleWide = () => {
+    if (settings.data) save.mutate({ ...settings.data, railExpanded: !wide });
+  };
   const route = useRoute();
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const items = useMemo<Item[]>(
@@ -120,14 +141,27 @@ export function Rail() {
   };
 
   return (
-    <nav aria-label={t('rail.label')} className="flex min-h-0 flex-col items-center gap-3 bg-ground py-4">
-      <ul className="flex min-h-0 flex-col items-center gap-3 overflow-y-auto px-3" onKeyDown={onKeyDown}>
+    <nav aria-label={t('rail.label')} className="rail" data-wide={wide ? '' : undefined}>
+      <Button
+        variant="ghost"
+        size={wide ? 'md' : 'icon'}
+        className="rail-key"
+        aria-pressed={wide}
+        aria-label={wide ? t('rail.collapse') : t('rail.expand')}
+        title={wide ? t('rail.collapse') : t('rail.expand')}
+        icon={wide ? <ArrowBarLeft /> : <ArrowBarRight />}
+        onClick={toggleWide}
+      >
+        {wide && t('rail.collapse')}
+      </Button>
+      <ul className="rail-list" onKeyDown={onKeyDown}>
         {items.map((item, index) => (
           <li key={item.id}>
             <RailItem
               item={item}
               selected={item.id === selected}
               entry={selected ? item.id === selected : index === 0}
+              wide={wide}
               setRef={(el) => {
                 refs.current[index] = el;
               }}
@@ -136,15 +170,27 @@ export function Rail() {
         ))}
       </ul>
       <Button
-        size="icon"
-        className="btn-lg rail-browse"
+        size={wide ? 'md' : 'icon'}
+        className="btn-lg rail-browse rail-foot"
         aria-label={t('browse.open')}
         title={t('browse.open')}
         aria-current={route.name === 'browse' && !route.instance ? 'page' : undefined}
         icon={<Search />}
         onClick={() => navigate({ name: 'browse', kind: sessionKind() })}
-      />
-      <Button variant="ghost" size="icon" className="btn-lg" aria-label={t('rail.newInstance')} title={t('rail.newInstance')} icon={<Plus />} onClick={() => navigate({ name: 'newInstance' })} />
+      >
+        {wide && t('browse.open')}
+      </Button>
+      <Button
+        variant="ghost"
+        size={wide ? 'md' : 'icon'}
+        className="btn-lg rail-foot"
+        aria-label={t('rail.newInstance')}
+        title={t('rail.newInstance')}
+        icon={<Plus />}
+        onClick={() => navigate({ name: 'newInstance' })}
+      >
+        {wide && t('rail.newInstance')}
+      </Button>
     </nav>
   );
 }
