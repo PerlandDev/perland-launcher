@@ -49,6 +49,49 @@ export function releaseNotes({ channel, signed }) {
   return notes;
 }
 
+/** What the Windows signCommand does with a file Tauri hands it (signing spec §3.3). NSIS plugins are
+ *  upstream binaries and stay unsigned; the final installer is signed in round 2; everything else is
+ *  ours (the launcher .exe, the uninstaller) and is signed in round 1. */
+export function signRole(path) {
+  const p = String(path).replaceAll('\\', '/').toLowerCase();
+  if (p.includes('/plugins/x86-unicode/')) return 'plugin';
+  if (p.includes('/bundle/nsis/') && p.endsWith('-setup.exe')) return 'installer';
+  return 'binary';
+}
+
+/** In pass 2, a binary must be one round 1 signed; anything else means the passes built different bytes. */
+export function planApply({ role, hash, signed }) {
+  if (role !== 'binary') return 'skip';
+  if (signed.has(hash)) return 'replace';
+  throw new Error(
+    `Round 1 never saw this file (sha256 ${hash}), so the build is not reproducible between the two passes. ` +
+      'See the signing spec §3.3 for the three-round fallback.',
+  );
+}
+
+/** Check one signing pass from its ledger lines (`<command> <role> <sha256> <outcome> <file>`). makensis
+ *  ignores the exit code of the uninstaller's sign command, so a failure there only shows up here. */
+export function checkSignLedger({ pass, lines, signedHashes }) {
+  const entries = lines
+    .filter((line) => line.trim())
+    .map((line) => {
+      const [command, role, hash, outcome] = line.trim().split(' ');
+      return { command, role, hash, outcome };
+    })
+    .filter((e) => e.command === `sign-${pass}`);
+  const failed = entries.filter((e) => e.outcome === 'error');
+  if (failed.length > 0) {
+    throw new Error(`The ${pass} pass failed for ${failed.map((e) => `${e.role} ${e.hash}`).join(', ')}; see the ledger above`);
+  }
+  const done = new Set(entries.filter((e) => e.role === 'binary' && e.outcome !== 'skipped').map((e) => e.hash));
+  if (pass === 'collect') {
+    if (done.size < 2) throw new Error(`Pass 1 collected ${done.size} binaries; expected the launcher and the uninstaller`);
+    return;
+  }
+  const missing = signedHashes.filter((hash) => !done.has(hash));
+  if (missing.length > 0) throw new Error(`Pass 2 never applied the signed ${missing.join(', ')}`);
+}
+
 export function releaseName(platform, version) {
   return `PerlandLauncher_${version}${SUFFIX[platform].release}`;
 }

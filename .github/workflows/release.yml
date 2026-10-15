@@ -14,6 +14,10 @@ on:
         description: Dry run (build only, publish nothing)
         type: boolean
         default: true
+      release_certificate:
+        description: Sign with the release certificate (asks for two approvals in SignPath). Publishes always do.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -71,7 +75,8 @@ jobs:
           - os: ubuntu-22.04
             bundles: appimage,deb
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # Two SignPath approval waits of up to 60 minutes each, on top of the build.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Linux webview build dependencies
@@ -92,32 +97,110 @@ jobs:
         env:
           VERSION: ${{ needs.plan.outputs.version }}
         run: node scripts/release/cli.mjs set-version "$VERSION"
-      # Authenticode signing stays off until Azure Trusted Signing exists (spec §3.5): set the
-      # repository variable AZURE_TRUSTED_SIGNING=true and the AZURE_* secrets to turn it on.
-      - name: Install the signing tool
-        if: runner.os == 'Windows' && vars.AZURE_TRUSTED_SIGNING == 'true'
-        run: cargo install trusted-signing-cli --locked --version 0.11.0
+      # Windows Authenticode signing (docs/superpowers/specs/2026-10-15-windows-code-signing-design.md)
+      # is off until the repository variable SIGNPATH_SIGNING is true. With it off, every platform
+      # builds exactly as before.
       - name: Build and sign the updater artifacts
+        if: runner.os != 'Windows' || vars.SIGNPATH_SIGNING != 'true'
         shell: bash
         env:
           PERLAND_BUILD: ${{ inputs.channel == 'beta' && 'beta' || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           BUNDLES: ${{ matrix.bundles }}
-          SIGN_WINDOWS: ${{ runner.os == 'Windows' && vars.AZURE_TRUSTED_SIGNING == 'true' }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
-          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
-          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: pnpm tauri build --bundles "$BUNDLES" --config '{"bundle":{"createUpdaterArtifacts":true}}'
+      # Signed Windows build: Tauri's signCommand collects our binaries in pass 1, SignPath signs them
+      # (round 1), pass 2 swaps the signed copies in by hash, SignPath signs the installer (round 2),
+      # and only then is the updater .sig computed, over the signed bytes. NSIS plugin DLLs are
+      # upstream binaries and stay unsigned (SignPath Foundation terms).
+      - name: "Signing pass 1: build and collect our binaries"
+        if: runner.os == 'Windows' && vars.SIGNPATH_SIGNING == 'true'
+        shell: bash
+        env:
+          PERLAND_BUILD: ${{ inputs.channel == 'beta' && 'beta' || '' }}
         run: |
-          args=(--bundles "$BUNDLES" --config '{"bundle":{"createUpdaterArtifacts":true}}')
-          if [ "$SIGN_WINDOWS" = "true" ]; then
-            sign="trusted-signing-cli -e $AZURE_SIGNING_ENDPOINT -a $AZURE_SIGNING_ACCOUNT -c $AZURE_SIGNING_PROFILE -d PerlandLauncher %1"
-            args+=(--config "{\"bundle\":{\"windows\":{\"signCommand\":\"$sign\"}}}")
-          fi
-          pnpm tauri build "${args[@]}"
+          export SIGN_DIR="$(cygpath -m "$RUNNER_TEMP/sign")"
+          echo "SIGN_DIR=$SIGN_DIR" >> "$GITHUB_ENV"
+          mkdir -p "$SIGN_DIR"
+          node scripts/release/cli.mjs sign-config collect "$SIGN_DIR/collect.json"
+          pnpm tauri build --bundles nsis --config "$SIGN_DIR/collect.json"
+          # makensis ignores the uninstaller sign command's exit code: check the pass from its ledger.
+          node scripts/release/cli.mjs sign-check collect
+      - name: Upload our binaries for signing
+        if: runner.os == 'Windows' && vars.SIGNPATH_SIGNING == 'true'
+        id: unsigned-binaries
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: signing-binaries
+          path: ${{ env.SIGN_DIR }}/unsigned/*
+          if-no-files-found: error
+          retention-days: 1
+      - name: "Signing round 1: our binaries (approve in SignPath)"
+        if: runner.os == 'Windows' && vars.SIGNPATH_SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ (!inputs.dry_run || inputs.release_certificate) && 'release-signing' || 'test-signing' }}
+          artifact-configuration-slug: launcher-binaries
+          github-artifact-id: ${{ steps.unsigned-binaries.outputs.artifact-id }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: ${{ env.SIGN_DIR }}/signed
+      - name: "Signing pass 2: bundle with the signed binaries"
+        if: runner.os == 'Windows' && vars.SIGNPATH_SIGNING == 'true'
+        shell: bash
+        env:
+          PERLAND_BUILD: ${{ inputs.channel == 'beta' && 'beta' || '' }}
+        run: |
+          node scripts/release/cli.mjs sign-config apply "$SIGN_DIR/apply.json"
+          pnpm tauri bundle --bundles nsis --config "$SIGN_DIR/apply.json"
+          node scripts/release/cli.mjs sign-check apply
+      - name: Upload the installer for signing
+        if: runner.os == 'Windows' && vars.SIGNPATH_SIGNING == 'true'
+        id: unsigned-installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: signing-installer
+          path: target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          retention-days: 1
+      - name: "Signing round 2: the installer (approve in SignPath)"
+        if: runner.os == 'Windows' && vars.SIGNPATH_SIGNING == 'true'
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ (!inputs.dry_run || inputs.release_certificate) && 'release-signing' || 'test-signing' }}
+          artifact-configuration-slug: launcher-installer
+          github-artifact-id: ${{ steps.unsigned-installer.outputs.artifact-id }}
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: ${{ env.SIGN_DIR }}/installer
+      - name: Updater signature over the signed installer
+        if: runner.os == 'Windows' && vars.SIGNPATH_SIGNING == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          shopt -s nullglob
+          signed=("$SIGN_DIR"/installer/*-setup.exe)
+          test "${#signed[@]}" -eq 1
+          target="target/release/bundle/nsis/$(basename "${signed[0]}")"
+          test -f "$target"
+          cp "${signed[0]}" "$target"
+          pnpm tauri signer sign --app-version "$VERSION" "$target"
+      - name: Check the Authenticode signatures
+        if: runner.os == 'Windows' && vars.SIGNPATH_SIGNING == 'true'
+        shell: pwsh
+        env:
+          TRUSTED: ${{ (!inputs.dry_run || inputs.release_certificate) && 'true' || 'false' }}
+        run: |
+          $installer = (Get-ChildItem target/release/bundle/nsis/*-setup.exe).FullName
+          if ($env:TRUSTED -eq 'true') { ./scripts/release/verify-authenticode.ps1 -Installer $installer -RequireTrusted }
+          else { ./scripts/release/verify-authenticode.ps1 -Installer $installer }
       - name: Stage the installers
         shell: bash
         env:
@@ -143,7 +226,7 @@ jobs:
       CHANNEL: ${{ inputs.channel }}
       REPO: ${{ github.repository }}
       SHA: ${{ github.sha }}
-      SIGNED: ${{ vars.AZURE_TRUSTED_SIGNING == 'true' }}
+      SIGNED: ${{ vars.SIGNPATH_SIGNING == 'true' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0

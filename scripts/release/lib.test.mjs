@@ -3,14 +3,17 @@ import { test } from 'node:test';
 import {
   buildManifest,
   channelName,
+  checkSignLedger,
   checkSignatureKeys,
   findBundle,
   keyIdOf,
   nextVersion,
+  planApply,
   PLATFORMS,
   releaseName,
   releaseNotes,
   setWorkspaceVersion,
+  signRole,
 } from './lib.mjs';
 
 test('the first beta of a base version is beta.1', () => {
@@ -127,4 +130,40 @@ test('release notes depend on the channel and on code signing', () => {
   assert.equal(releaseNotes({ channel: 'beta', signed: false }), `Beta build. Download it from https://perland.online/launcher.${warning}`);
   assert.equal(releaseNotes({ channel: 'stable', signed: false }), `Download it from https://perland.online/launcher.${warning}`);
   assert.throws(() => releaseNotes({ channel: 'nightly', signed: true }), /channel/);
+});
+
+test('the signing command tells plugins, the installer and our own binaries apart', () => {
+  const raw = String.raw;
+  assert.equal(signRole(raw`D:\a\perland-launcher\perland-launcher\target\release\perland-launcher.exe`), 'binary');
+  assert.equal(signRole(raw`C:\Users\RUNNER~1\AppData\Local\Temp\nst1234.tmp`), 'binary');
+  assert.equal(signRole(raw`D:\a\p\target\release\nsis\x64\Plugins\x86-unicode\System.dll`), 'plugin');
+  assert.equal(signRole('D:/a/p/target/release/nsis/x64/plugins/X86-UNICODE/additional/nsis_tauri_utils.dll'), 'plugin');
+  assert.equal(signRole(raw`D:\a\p\target\release\bundle\nsis\Perland Launcher_0.2.0-beta.3_x64-setup.exe`), 'installer');
+  assert.equal(signRole('/home/runner/work/p/target/release/bundle/nsis/Perland Launcher_0.2.0_x64-setup.exe'), 'installer');
+  // A -setup.exe outside bundle/nsis is not the final installer.
+  assert.equal(signRole(raw`D:\a\p\target\release\other-setup.exe`), 'binary');
+});
+
+test('the apply pass replaces our binaries, skips the rest, and refuses unknown ones', () => {
+  const signed = new Set(['aa11']);
+  assert.equal(planApply({ role: 'binary', hash: 'aa11', signed }), 'replace');
+  assert.equal(planApply({ role: 'plugin', hash: 'ffff', signed }), 'skip');
+  assert.equal(planApply({ role: 'installer', hash: 'ffff', signed }), 'skip');
+  assert.throws(() => planApply({ role: 'binary', hash: 'bb22', signed }), /bb22.*not reproducible/s);
+});
+
+// makensis ignores the exit code of the uninstaller's sign command, so each pass is checked from the ledger.
+test('the ledger check passes a clean collect and a clean apply', () => {
+  const collect = ['sign-collect binary aa11 collected C:/t/perland-launcher.exe', 'sign-collect plugin ff00 skipped C:/x/Plugins/x86-unicode/System.dll', 'sign-collect binary bb22 collected C:/Temp/nst1.tmp'];
+  assert.doesNotThrow(() => checkSignLedger({ pass: 'collect', lines: collect, signedHashes: [] }));
+  const apply = ['sign-apply binary aa11 replaced C:/t/perland-launcher.exe', 'sign-apply binary bb22 replaced C:/Temp/nst2.tmp', 'sign-apply installer cc33 skipped C:/b/x-setup.exe'];
+  assert.doesNotThrow(() => checkSignLedger({ pass: 'apply', lines: apply, signedHashes: ['aa11', 'bb22'] }));
+});
+
+test('the ledger check fails on a swallowed error, a missing uninstaller, or a signed file never applied', () => {
+  const errored = ['sign-apply binary aa11 replaced C:/t/a.exe', 'sign-apply binary dd44 error C:/Temp/nst2.tmp'];
+  assert.throws(() => checkSignLedger({ pass: 'apply', lines: errored, signedHashes: ['aa11'] }), /dd44/);
+  assert.throws(() => checkSignLedger({ pass: 'collect', lines: ['sign-collect binary aa11 collected C:/t/a.exe'], signedHashes: [] }), /collected 1/);
+  assert.throws(() => checkSignLedger({ pass: 'collect', lines: [], signedHashes: [] }), /collected 0/);
+  assert.throws(() => checkSignLedger({ pass: 'apply', lines: ['sign-apply binary aa11 replaced C:/t/a.exe'], signedHashes: ['aa11', 'bb22'] }), /bb22/);
 });

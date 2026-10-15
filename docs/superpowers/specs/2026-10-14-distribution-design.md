@@ -31,7 +31,7 @@ After this plan, a tester:
 ### 1.2 Out of scope
 
 - macOS.
-- Authenticode signing. The pipeline has a dormant hook for Azure Trusted Signing (§3.5); builds ship unsigned.
+- Authenticode signing: designed separately in `2026-10-15-windows-code-signing-design.md` (SignPath Foundation), which replaced the Azure hook (§3.5).
 - Microsoft sign-in (Plan 4, paused) and therefore any useful **stable** release: a Release build cannot add an account until Plan 4. The stable channel exists but stays empty.
 - Flatpak, MSI, portable zips.
 - Telemetry or uploading diagnostics anywhere.
@@ -129,7 +129,7 @@ Two rolling releases hold each channel's Tauri updater manifest and a fixed-name
   - An AppImage has no install step, so at runtime a non-dev build calls `register_all()` only when `$APPIMAGE` is set. The condition is a pure function in `launcher-app` (`fn should_self_register(dev: bool, os: Os, appimage: bool) -> bool`), unit tested; `main.rs` only calls it.
   - Dev builds keep registering themselves as today.
 - **Data folder:** unchanged (`%APPDATA%\PerlandLauncher`, `~/.local/share/PerlandLauncher`), so a tester's dev-mode worlds and accounts carry over to the installed build. The NSIS installer overwrites the dev-mode exe's `perland://` registration.
-- **Authenticode signing (dormant):** when the repository variable `AZURE_TRUSTED_SIGNING` is `true`, the Windows job adds `bundle.windows.signCommand` (through `--config`) calling `trusted-signing-cli` with the Azure secrets. It is off for now. Tauri signs binaries and the installer before it computes the updater signature, so enabling it later changes nothing else.
+- **Authenticode signing:** designed separately in `2026-10-15-windows-code-signing-design.md` (SignPath Foundation, a two-pass Windows build). It replaced the dormant Azure Trusted Signing hook first planned here, because Azure doesn't accept individuals outside the US and Canada.
 - **Updater key:** the owner generates it on their own machine (`pnpm tauri signer generate`) and stores the private key and password as the secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The **public** key goes in `plugins.updater.pubkey` in `tauri.conf.json` (it is not secret). The plugin refuses to start without a `plugins.updater` section that has a `pubkey`, so the key is committed when the updater is wired in. Nobody asks for the private key or password in chat. A public key that doesn't pair with the secret would make every installed launcher reject every update, so the manifest step compares the 8-byte minisign key id of each `.sig` with the committed key's and fails on any difference (§3.3).
 
 ### 3.6 Smart App Control and SmartScreen
