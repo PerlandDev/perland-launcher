@@ -238,7 +238,15 @@ fn mrpack_format_problems_are_named() {
     );
 
     std::fs::write(&p, b"not a zip").unwrap();
-    assert_eq!(read().unwrap_err().code, ErrorCode::MrpackCorrupt);
+    let broken = read().unwrap_err();
+    assert_eq!(broken.code, ErrorCode::MrpackCorrupt);
+    // Whole-archive damage names no entry: the UI picks the message without one.
+    assert_eq!(broken.message, "This .mrpack file is damaged");
+    assert_eq!(broken.params.get("file"), None);
+    assert_eq!(
+        broken.params.get("context").map(String::as_str),
+        Some("archive")
+    );
 }
 
 #[test]
@@ -276,4 +284,9 @@ fn a_damaged_entry_is_mrpack_corrupt_not_a_disk_error() {
     )
     .unwrap_err();
     assert_eq!(err.code, ErrorCode::MrpackCorrupt, "{err:?}");
+    assert_eq!(
+        err.params.get("file").map(String::as_str),
+        Some("config/a.txt")
+    );
+    assert_eq!(err.params.get("context"), None);
 }

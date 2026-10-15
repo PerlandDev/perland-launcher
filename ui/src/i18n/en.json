@@ -429,7 +429,7 @@
     "mod_name_invalid": { "message": "That isn't a mod file name." },
     "mod_managed": { "message": "{{file}} comes with the pack, so the pack decides whether it's on.", "fix": "Things you add yourself can be turned off or removed." },
     "pack_invalid": { "message": "The pack file {{file}} is damaged or isn't a pack.", "fix": "Check the link, or ask the pack's author." },
-    "mrpack_corrupt": { "message": "This .mrpack file is damaged ({{file}}).", "fix": "Download the pack again." },
+    "mrpack_corrupt": { "message": "This .mrpack file is damaged ({{file}}).", "message_archive": "This .mrpack file is damaged.", "fix": "Download the pack again." },
     "pack_unsupported": { "message": "This pack uses something the launcher can't handle yet: {{what}}.", "fix": "Ask the pack's author, or try another pack." },
     "pack_unsafe_path": { "message": "The pack tried to write outside its folder ({{path}}).", "fix": "Don't use this pack, and let its author know." },
     "pack_not_found": { "message": "That pack wasn't found.", "fix": "Check the link and try again." },

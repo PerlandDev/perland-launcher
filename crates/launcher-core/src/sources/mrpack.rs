@@ -154,8 +154,8 @@ fn index_files(index: &MrIndex) -> Result<Vec<PackFile>> {
         .collect()
 }
 
-/// The archive itself is damaged (a broken zip, or an entry that won't inflate), which is not a
-/// disk problem.
+/// An entry of the archive is damaged (it won't inflate, or it changed), which is not a disk
+/// problem.
 fn corrupt(file: &str, detail: impl std::fmt::Display) -> LauncherError {
     LauncherError::pack(
         ErrorCode::MrpackCorrupt,
@@ -166,8 +166,13 @@ fn corrupt(file: &str, detail: impl std::fmt::Display) -> LauncherError {
     .with_detail(detail)
 }
 
+/// The whole archive is damaged, so there is no entry to name. The `context` param makes i18next
+/// pick `errors.mrpack_corrupt.message_archive`, the message without a file name.
 fn zip_error(e: zip::result::ZipError) -> LauncherError {
-    corrupt("the .mrpack", e)
+    LauncherError::pack(ErrorCode::MrpackCorrupt, "This .mrpack file is damaged")
+        .with_param("context", "archive")
+        .with_fix("Download the pack again")
+        .with_detail(e)
 }
 
 /// The sha1 and length of everything `reader` yields.

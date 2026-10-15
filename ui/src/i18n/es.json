@@ -429,7 +429,7 @@
     "mod_name_invalid": { "message": "Ese no es un nombre de archivo de mod." },
     "mod_managed": { "message": "{{file}} viene con el pack, así que el pack decide si está activado.", "fix": "Lo que agregas tú se puede desactivar o quitar." },
     "pack_invalid": { "message": "El archivo {{file}} del pack está dañado o no es un pack.", "fix": "Revisa el enlace o pregúntale al autor del pack." },
-    "mrpack_corrupt": { "message": "Este archivo .mrpack está dañado ({{file}}).", "fix": "Vuelve a descargar el pack." },
+    "mrpack_corrupt": { "message": "Este archivo .mrpack está dañado ({{file}}).", "message_archive": "Este archivo .mrpack está dañado.", "fix": "Vuelve a descargar el pack." },
     "pack_unsupported": { "message": "Este pack usa algo que el launcher todavía no puede manejar: {{what}}.", "fix": "Pregúntale al autor del pack o prueba otro pack." },
     "pack_unsafe_path": { "message": "El pack intentó escribir fuera de su carpeta ({{path}}).", "fix": "No uses este pack y avísale a su autor." },
     "pack_not_found": { "message": "No se encontró ese pack.", "fix": "Revisa el enlace e inténtalo de nuevo." },
