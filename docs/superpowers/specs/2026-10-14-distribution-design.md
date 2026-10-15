@@ -1,7 +1,7 @@
 # Perland Launcher: Distribution (Plan 6), Design Addendum
 
 - **Date:** 2026-10-14
-- **Status:** Approved by the owner (2026-10-14); updated while planning with facts read from the `tauri-plugin-updater` 2.14 and `tauri-bundler` 2.10 sources (§4.7)
+- **Status:** Approved by the owner (2026-10-14); updated while planning with facts read from the `tauri-plugin-updater` 2.14 and `tauri-bundler` 2.10 sources (§4.7); aligned with what shipped on 2026-10-15 (the plugin is pinned at `=2.13.1`, and §4.7 was re-checked against that version)
 - **Parent spec:** `docs/superpowers/specs/2026-10-09-launcher-core-design.md` (§4 offline accounts, §5 Settings "launcher updates", §6 logs, diagnostics, self-update, installers, §7 release checklist).
 - **Related:** `docs/superpowers/specs/2026-10-11-join-by-link-design.md` (installer-time `perland://` registration was deferred to this plan). **Design system:** `DESIGN.md`, `.impeccable/surfaces/ui-src-app-tsx.md`.
 - **Second repository:** `PerlandDev/PerlandDev-site` (Astro), page `/launcher` and `/es/launcher`.
@@ -83,7 +83,7 @@ The parallel "Fix beta feedback" session turns off the webview context menu and 
   - beta: `<base>-beta.<N>`, where `N` is one more than the highest existing `v<base>-beta.*` tag (starting at 1);
   - stable: `<base>`; the workflow fails if `v<base>` already exists.
 - The workflow writes the computed version into `Cargo.toml` (and `Cargo.lock`) inside the runner only; it is never committed. The tag `v<version>` points at the built commit.
-- The calculation lives in `scripts/release/version.mjs` (pure function plus a thin CLI), unit tested with `node:test`.
+- The calculation is `nextVersion` in `scripts/release/lib.mjs` (every release decision is a pure function there), run through the thin CLI `scripts/release/cli.mjs version`, and unit tested with `node:test` (`lib.test.mjs`).
 
 ### 3.3 Channels and manifests
 
@@ -99,13 +99,13 @@ Two rolling releases hold each channel's Tauri updater manifest and a fixed-name
   - stable: `https://github.com/PerlandDev/perland-launcher/releases/download/channel-stable/latest.json`
 - A **beta** publish replaces `channel-beta`'s assets. A **stable** publish replaces `channel-stable`'s assets **and** `channel-beta`'s `latest.json` (but not its installer copies, which stay the newest beta), so beta players move up to a stable that is newer than their beta (semver: `0.2.0` > `0.2.0-beta.5`).
 - The channel releases are named "Beta channel (updates)" and "Stable channel (updates)", with a body explaining they are update feeds and pointing at perland.online/launcher. `channel-beta` is a pre-release; `channel-stable` is not marked latest (`make_latest: false`) so the versioned release stays "Latest".
-- `latest.json` follows Tauri v2's static format (`version`, `notes`, `pub_date`, `platforms.<key>.{signature, url}`). The updater looks up `<os>-<arch>-<installer>` first, so the keys are `windows-x86_64-nsis`, `linux-x86_64-appimage` and `linux-x86_64-deb` (a `.deb` install must never fall back to an AppImage entry). Its `url`s point at the **versioned** release's assets, not the fixed-name copies, so an in-flight update never changes under the updater. It is built by `scripts/release/manifest.mjs` from the `.sig` files, unit tested with `node:test`. Any platform missing a signature fails the publish.
+- `latest.json` follows Tauri v2's static format (`version`, `notes`, `pub_date`, `platforms.<key>.{signature, url}`). The updater looks up `<os>-<arch>-<installer>` first, so the keys are `windows-x86_64-nsis`, `linux-x86_64-appimage` and `linux-x86_64-deb` (a `.deb` install must never fall back to an AppImage entry). Its `url`s point at the **versioned** release's assets, not the fixed-name copies, so an in-flight update never changes under the updater. It is built by `buildManifest` in `scripts/release/lib.mjs` (through `cli.mjs manifest`) from the `.sig` files, unit tested with `node:test`. Any platform missing a signature fails the publish, and so does any `.sig` whose minisign key id differs from the committed public key's (`keyIdOf` and `checkSignatureKeys`, §3.5).
 - Moving off GitHub later needs one update that changes the endpoints first. Accepted.
 
 ### 3.4 Release workflow (`.github/workflows/release.yml`)
 
 - **Trigger:** `workflow_dispatch` with inputs `channel` (`beta` | `stable`) and `dry_run` (boolean, default `true`).
-- **Guard job** (`contents: read`): fails if `channel == stable` and the ref is not `main`; fails unless `TAURI_SIGNING_PRIVATE_KEY` is set; computes the version (§3.2) and exposes it as an output.
+- **Plan job** (`contents: read`): fails if `channel == stable` and the ref is not `main`; fails unless `TAURI_SIGNING_PRIVATE_KEY` is set; fails while `plugins.updater.pubkey` in `tauri.conf.json` is empty; computes the version (§3.2) and exposes it as an output, failing when the version step fails or prints nothing.
 - **Build matrix** (`contents: read`, `timeout-minutes` on each):
   - `windows-latest`: `tauri build --bundles nsis`.
   - `ubuntu-22.04` (older glibc, so the AppImage runs on more distributions): `tauri build --bundles appimage,deb`, with the webview build dependencies CI already installs.
@@ -113,7 +113,7 @@ Two rolling releases hold each channel's Tauri updater manifest and a fixed-name
   - Uploads the bundles and signatures as workflow artifacts (also the dry-run output).
 - **Publish job** (only when `dry_run` is false; the only job with `contents: write`):
   1. creates tag `v<version>` on the built commit and a GitHub Release for it (pre-release for beta) with the installers and `.sig` files;
-  2. builds `latest.json` (§3.3);
+  2. builds `latest.json` (§3.3), which first checks every `.sig` against the committed public key, so a mismatched pair stops the publish before anything is created;
   3. creates the channel release if it doesn't exist, then replaces its assets.
 - **Concurrency:** one release at a time (`concurrency: release`, no cancel in progress), so two runs can't pick the same beta number.
 - Secrets never reach logs: they are passed only through `env`, never echoed, and the workflow never runs `set -x`.
@@ -130,7 +130,7 @@ Two rolling releases hold each channel's Tauri updater manifest and a fixed-name
   - Dev builds keep registering themselves as today.
 - **Data folder:** unchanged (`%APPDATA%\PerlandLauncher`, `~/.local/share/PerlandLauncher`), so a tester's dev-mode worlds and accounts carry over to the installed build. The NSIS installer overwrites the dev-mode exe's `perland://` registration.
 - **Authenticode signing (dormant):** when the repository variable `AZURE_TRUSTED_SIGNING` is `true`, the Windows job adds `bundle.windows.signCommand` (through `--config`) calling `trusted-signing-cli` with the Azure secrets. It is off for now. Tauri signs binaries and the installer before it computes the updater signature, so enabling it later changes nothing else.
-- **Updater key:** the owner generates it on their own machine (`pnpm tauri signer generate`) and stores the private key and password as the secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The **public** key goes in `plugins.updater.pubkey` in `tauri.conf.json` (it is not secret). The plugin refuses to start without a `plugins.updater` section that has a `pubkey`, so the key is committed when the updater is wired in. Nobody asks for the private key or password in chat.
+- **Updater key:** the owner generates it on their own machine (`pnpm tauri signer generate`) and stores the private key and password as the secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The **public** key goes in `plugins.updater.pubkey` in `tauri.conf.json` (it is not secret). The plugin refuses to start without a `plugins.updater` section that has a `pubkey`, so the key is committed when the updater is wired in. Nobody asks for the private key or password in chat. A public key that doesn't pair with the secret would make every installed launcher reject every update, so the manifest step compares the 8-byte minisign key id of each `.sig` with the committed key's and fails on any difference (§3.3).
 
 ### 3.6 Smart App Control and SmartScreen
 
@@ -148,7 +148,7 @@ Unsigned installers trigger SmartScreen ("Windows protected your PC", passable t
     - `install(Arc<Update>, Arc<Vec<u8>>, relaunch) -> Result<()>`.
   - `Updates<S: UpdateSource, H: Host>`: holds the state, emits `AppEvent::Update(UpdateState)`, and exposes `start()`, `check_now()`, `restart_now(busy: bool)`, `on_quit(busy: bool)`, `set_channel()`.
   - `fn endpoint(channel: Channel) -> &'static str` (§3.3).
-- **`src-tauri/src/updater.rs`** (wiring only): `TauriUpdateSource` over `tauri-plugin-updater`, building an updater per check with `updater_builder().endpoints(vec![endpoint(channel)])`. The public key comes from config. Windows install mode is `passive`.
+- **`src-tauri/src/updater.rs`** (wiring only): `TauriUpdateSource` over `tauri-plugin-updater` (pinned `=2.13.1`), building an updater per check with `updater_builder().endpoints(vec![endpoint(channel)])`. The public key comes from config. Windows install mode is `passive`.
 - The webview gets **no** updater capability. The UI talks to our commands only.
 
 ### 4.2 States
@@ -162,14 +162,14 @@ Unsigned installers trigger SmartScreen ("Windows protected your PC", passable t
 | `Checking` | |
 | `Downloading { percent: Option<u8> }` | |
 | `Ready { version }` | Downloaded and verified; installs on quit or Restart now. |
-| `UpToDate { checkedAt }` | |
+| `UpToDate` | Nothing newer on the channel (no timestamp: nothing reads one). |
 | `Failed { error: LauncherError }` | The last check or download failed. |
 
 ### 4.3 Flow
 
 - **On start** (Beta and Release builds): a few seconds after launch, `check`. If a newer version is available, download it in the background, then `Ready`. Checks do not repeat during the session except through **Check now** or a channel change.
-- **Busy** means any game running, an install running, or a sync running. `AppCore` already knows this (`has_active_runs` plus the install slot); `updates` takes `busy` as an argument rather than reaching into runs.
-- **Restart now:** refused with `launcher_update_busy` while busy (the UI also disables the button). Otherwise `install(relaunch: true)` (§4.7 covers how each platform relaunches).
+- **Busy** means any game running, an install running, a sync running, or a Browse content install writing into an instance. `AppCore::update_blocked` knows this (`has_active_runs`, the install slot, and the content installs in flight); `updates` takes `busy` as an argument rather than reaching into runs. The UI mirrors it: Restart now is disabled while a run is active or a Browse install is in flight.
+- **Restart now:** refused with `launcher_update_busy` while busy (the UI also disables the button; the reason reads "Wait for games and installs to finish first."). Otherwise `install(relaunch: true)` (§4.7 covers how each platform relaunches). On Windows the installer ends the process before the window-state plugin's exit save runs, so Restart now saves the window's size, position and maximized state first.
 - **On quit** (the `quit` command, and a window close with nothing running): if `Ready` and not busy, `install(relaunch: false)`. If the player confirmed quitting while a game still ran, the install waits for a later quit. A game is never interrupted.
 - **Check now:** allowed in any state except `Checking`/`Downloading`. A `Ready` update stays ready; a newer one replaces it.
 - **Channel change:** saves `updateChannel` and checks right away.
@@ -183,9 +183,9 @@ Unsigned installers trigger SmartScreen ("Windows protected your PC", passable t
 
 A new section in Settings, above About, styled through `/impeccable` and `DESIGN.md` (one lit button per view, lime only for selection, blue for progress):
 
-- a Stable / Beta switch, with a one-line hint for the current choice;
+- the channel as two segments, Stable and Beta (a radio group drawn as the standard pressed segments, lime on the chosen one), with a one-line hint for the current choice;
 - a status line: "Up to date · 0.2.0-beta.3", "Checking for updates…", "Downloading update… 40%", "0.2.0-beta.4 is ready. It installs when you close the launcher.", "Couldn't check for updates";
-- **Check now**; **Restart now** when ready (disabled while busy, with the reason);
+- **Check now**; **Restart now** when ready (disabled while a game runs or a Browse install is in flight, with the reason);
 - Dev builds: "Updates are off in dev builds."
 
 **Title-bar note:** while `Ready`, a quiet note in the title bar ("Update ready · installs when you close") with **Restart now**. It never takes the lit-button role.
@@ -202,7 +202,7 @@ A new section in Settings, above About, styled through `/impeccable` and `DESIGN
 
 ### 4.7 Verified in the plugin and bundler sources (2026-10-14)
 
-1. **Relaunching on Windows is controllable.** The NSIS template relaunches only in passive or silent mode **and** when `/R` is passed; the plugin passes `/R` unless the updater was built with `restart_after_install(false)`. Install-on-quit therefore builds its updater with `restart_after_install(false)`. Because that choice is fixed when the updater is built, **Restart now** on Windows runs a fresh check with `restart_after_install(true)` and installs the already downloaded, already verified bytes through that update when its version matches; if that check fails, it installs without relaunching. `Update::install` on Windows starts the installer and calls `std::process::exit(0)`.
+1. **Relaunching on Windows is controllable.** The NSIS template relaunches only in passive or silent mode **and** when `/R` is passed; the plugin passes `/R` unless the updater was built with `restart_after_install(false)`. In 2.13.1 the choice is also per update: `Update::restart_after_install(bool)` sets it on the found update, and the installer arguments read it. So install-on-quit installs the downloaded, already verified bytes with `restart_after_install(false)`, and **Restart now** installs the same bytes with `restart_after_install(true)`. There is no second check. `Update::install` on Windows starts the installer and calls `std::process::exit(0)`.
 2. **`.deb` installs update themselves.** The plugin installs a `.deb` with `pkexec dpkg -i` (falling back to a zenity or kdialog password prompt, then `sudo`), so a `.deb` player is asked for their password when an update installs. An AppImage replaces the file at `$APPIMAGE`. Linux never relaunches by itself, so Restart now calls `AppHandle::restart()` after installing. The bundle type comes from a marker `tauri build` patches into each package's binary.
 3. **Traps:** `UpdaterBuilder::on_before_exit` replaces the default hook that runs `cleanup_before_exit`, so it is never set. Plugin-level `installer_args` are dropped unless `plugins.updater.windows` exists, so that section is present (`installMode: "passive"`).
 4. **Prerelease versions are fine for NSIS:** `0.2.0-beta.1` becomes `VIProductVersion 0.2.0.0` with the full string as the display version, and the installer compares versions with semver. MSI would fail on a prerelease, which is one more reason MSI isn't built (`bundle.targets` lists `nsis`, `appimage` and `deb` only).
@@ -214,9 +214,9 @@ A new section in Settings, above About, styled through `/impeccable` and `DESIGN
 - New `launcher-core::logging` on `tracing`, `tracing-subscriber` and `tracing-appender`. `src-tauri` calls `logging::init(&dirs)` once at startup and keeps the guard alive.
 - Files: `logs/launcher/launcher.YYYY-MM-DD.log`, daily rotation, newest 14 kept. They live in their own folder so pruning can never match a game log (an instance called "Launcher test" writes `logs/launcher-test-latest.log`).
 - Writes are synchronous through the rolling appender (no background worker), so nothing is lost when the process exits through `std::process::exit` during an update install. The volume is small.
-- Every formatted line goes through `Redactor::for_current_user()` (home path → `~`) in a wrapping writer. Tokens are never logged, by rule; invite links already print without their token. **Plan 4 must add Microsoft tokens to this redactor.**
+- Every formatted line goes through `Redactor::for_current_user()` (home path → `~`) in a wrapping writer. On Windows it also masks the home written with forward slashes (`C:/Users/x`, as Java prints it) and with every backslash doubled (`C:\\Users\\x`, as Debug-formatted fields print it). Short (8.3) and differently-cased forms are left to the hardening session. Tokens are never logged, by rule; invite links already print without their token. **Plan 4 must add Microsoft tokens to this redactor.**
 - Logged: startup (version, build kind, channel, OS, arch); update checks and results; run start and exit (instance id, Minecraft and loader versions, exit code); sync summaries; every `LauncherError` returned through IPC (code plus redacted detail).
-- Level `info` by default; `PERLAND_LOG=debug` raises it.
+- The launcher's crates (`launcher_core`, `launcher_app`, `perland_launcher`) log at `info` by default, and every dependency at `warn`. `PERLAND_LOG` takes a plain level name (`trace`, `debug`, `info`, `warn`, `error`) and applies it to the launcher's crates only; anything else is ignored (back to `info`). Dependencies stay at `warn` because at debug they log full request URLs, and an invite's path carries its token.
 - If the log can't be opened, the launcher runs without one (it never fails to start over logging).
 
 ### 5.2 Export diagnostics
@@ -229,15 +229,15 @@ A new section in Settings, above About, styled through `/impeccable` and `DESIGN
 - Never included: `accounts.json`, `jvm-args.txt`, caches, game files.
 - Every text entry passes through a `Redactor` built with the home path and every instance's invite token as secrets. Tests plant a token and the home path in each source and assert neither appears anywhere in the zip.
 - The zip is written to a temp file next to `out` and renamed into place.
-- **UI:** Settings → **Export diagnostics** opens a native save dialog (default `perland-diagnostics-YYYY-MM-DD.zip` in Downloads), then a toast "Diagnostics saved" with **Show in folder**. New command `diagnostics_export(path)`; the dialog runs in the webview through the existing dialog plugin, and the core validates that the path ends in `.zip`.
+- **UI:** Settings → **Export diagnostics** opens a native save dialog (default `perland-diagnostics-YYYY-MM-DD.zip` in Downloads, with the player's local date), then a toast "Diagnostics saved" with **Show in folder**. New command `diagnostics_export(path)`; the dialog runs in the webview through the existing dialog plugin, and the core validates the path: a name with no extension gets `.zip` appended (some save dialogs return the typed name as is), and any extension other than `.zip` is refused (`diagnostics_path_invalid`).
 
 ## 6. Carry-forwards
 
 ### 6.1 In this plan
 
 - **Body-size caps on metadata fetches.** The invite client's `read_capped(response, limit)` moves to `http::read_capped` and is shared. It reads at most `limit` bytes and returns `None` when the body is larger (checking `Content-Length` first when present). Callers turn `None` into their existing "unexpected data" error (`meta_unexpected`, or an unavailable update check), so no new code is needed. Used by `MetaClient` (Mojang, Fabric, Quilt, Forge, NeoForge JSON; about 32 MB), packwiz `pack.toml`, `index.toml` and metafiles (a few MB), and Modrinth API JSON. Invites and Browse images keep their existing caps.
-- **Windows argfile encoding.** Java's launcher reads `@argfiles` in the system ANSI code page on Windows. On Windows the argfile is encoded with `WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS)` (`windows-sys`, in `launcher-core`); if any JVM argument isn't representable, the argfile is skipped and the command line is used unchanged (the same fallback as the secret check). Other platforms keep UTF-8.
-- **mrpack corrupt entry.** A damaged zip or entry inside a `.mrpack` fails with a new `ErrorCode::MrpackCorrupt` ("This .mrpack file is damaged") instead of the generic invalid-file error, with en/es strings.
+- **Windows argfile encoding.** Java's launcher reads `@argfiles` in the system ANSI code page on Windows. On Windows the argfile is encoded with `WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS)` (`windows-sys`, in `launcher-core`); if any JVM argument isn't representable, the argfile is skipped and the command line is used unchanged (the same fallback as the secret check). The same fallback applies when the encoded bytes hold more 0x5C bytes than the text holds backslashes: in a double-byte code page (Shift-JIS encodes `表` as 0x95 0x5C) a trail byte would read as an escape to Java's byte-wise argfile parser and mangle the path. Other platforms keep UTF-8.
+- **mrpack corrupt entry.** A damaged zip or entry inside a `.mrpack` fails with a new `ErrorCode::MrpackCorrupt` instead of the generic invalid-file error, with en/es strings. A damaged entry is named ("This .mrpack file is damaged (config/a.txt)."). Whole-archive damage has no entry to name, so it carries the param `context: archive`, and i18next shows `message_archive` ("This .mrpack file is damaged.").
 - **Workflow `permissions` and `timeout-minutes`:** already present in `ci.yml`, `nightly.yml` and `tester-build.yml`; the new `release.yml` follows suit. Nothing else to do.
 - **Join by link follow-ups:** the only distribution item (installer-time `perland://`) is §3.5.
 
@@ -270,7 +270,7 @@ A small PR in `PerlandDev/PerlandDev-site`, styled through that repository's `/i
 - `read_capped` against wiremock: under, at and over the limit, with and without `Content-Length`. Local inputs stay tiny (a limit of a few bytes in tests, never a large body).
 - argfile: Windows-only tests for an ASCII argfile, a code-page-representable one, and the fallback.
 - mrpack: a damaged archive gives `MrpackCorrupt`.
-- `scripts/release/version.mjs` and `manifest.mjs`: `node:test`, run in CI.
+- `scripts/release/lib.mjs` (version, names, manifest, key ids): `node:test` in `lib.test.mjs`, with tiny hand-built minisign-shaped fixtures (no real keys), run in CI.
 - UI (Vitest + Testing Library): the Settings updates section in each state, the channel switch, the title-bar note, Restart now disabled while busy, Export diagnostics flow; en/es keys present.
 - The IPC contract is regenerated, never hand-edited.
 

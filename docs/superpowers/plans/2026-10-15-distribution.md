@@ -3277,6 +3277,7 @@ Each publish step needs the owner's explicit go-ahead in chat, quoted in the PR'
 - [ ] **Step 6: Check the empty stable channel.** In Settings, switch to Stable: the status says "Up to date" (Review Focus 1), never "Couldn't check". Switch back to Beta.
 - [ ] **Step 7: Linux spot check** (a VM or the owner's Linux box, if there is one): the AppImage starts and `perland://` registers; the `.deb` installs.
 - [ ] **Step 8: Check diagnostics.** Export diagnostics from the installed build, open the zip, and confirm there's no home path, no invite token and no `accounts.json`.
+  - [ ] The installed build's `logs/launcher/launcher.<date>.log` has the startup line and no home path.
 
 ---
 
