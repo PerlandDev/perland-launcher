@@ -29,6 +29,7 @@
     "settings": "Settings",
     "noAccount": "Add account",
     "updateReady": "Update ready · installs when you close",
+    "updateReadyBusy": "Update ready · close your games to restart",
     "restart": "Restart now"
   },
   "rail": {
@@ -285,10 +286,9 @@
       "idle": "Checks for updates when the launcher opens.",
       "checking": "Checking for updates…",
       "downloading": "Downloading the update…",
-      "downloadingPercent": "Downloading the update… {{percent}}%",
+      "percent": "{{percent}}%",
       "ready": "Version {{version}} is ready. It installs when you close the launcher.",
       "upToDate": "Up to date · {{version}}",
-      "failed": "Couldn't check for updates.",
       "check": "Check now",
       "restart": "Restart now",
       "busy": "Close your games first."

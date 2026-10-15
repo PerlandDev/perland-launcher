@@ -452,6 +452,7 @@ A recessed 20-block segmented bar: 3px gaps, 0.75rem tall. Empty blocks are `lin
 ### Navigation
 - **Rail:** `panel` cabinets with notched 6px corners. Hover raises them to `raised`. The selected cabinet is `raised` on a 4px `dirt-deep` step, with a 4px amber **coin-slot light** to its left. A lime LED square in the lower-right corner marks preparing or playing. A damaged instance is greyed to 40% with a coral warning diamond. A pack's own icon replaces the generated plot icon (40px, 3px notched corners), falling back to the plot icon if it fails to decode. A server cabinet carries its last-known status as three pixel **signal bars** (2px wide, 4/7/10px tall) in a 14px notched `ground` socket at the **top-right** corner. The **count** of lit bars carries the state, so hue never carries it alone: online 3/3 in `ink`, starting 2/3 in `blue`, sleeping 1/3 in `ink-dim`, offline 0/3 with a 10 × 2px `coral` flatline along the socket's foot, unknown 0/3 (empty bars in a dim seam colour). It never uses lime, the LED's square or the LED's corner, so it can't be read as the Playing lamp. The status word is in the cabinet's accessible name and in its hover title ("Survival · Online · 3/20").
 - **Title bar:** flat text buttons 2.25rem tall in `ink-dim`. Hover shows `ink` on `raised`, and the close button's hover is `ground` on coral.
+- **Update-ready note:** when a launcher update is downloaded, a quiet line sits left of the account: `ink-dim` 0.875rem words ("Update ready · installs when you close") and a flat 600-weight `ink` "Restart now" title-bar button. It is never lit and never stepped. It stays on one line: the words truncate (full text in the hover title) while Restart now and the account keep their width, and the header carries `min-width: 0` so the shell's grid can't grow past the window. While a game runs, Restart now is disabled (`ink-dim` at 60%) and the words themselves change to the reason ("close your games to restart"), linked by `aria-describedby`, because a disabled button can't take focus to show a tooltip.
 - **Overflow menu:** a `raised` popover on a 6px `dirt-deep` step with a `line` ring. Items hover to `panel`, and danger items are coral.
 
 ### Activity Drawer
@@ -474,6 +475,14 @@ The pack's update status, on the marquee above the name. It is the version plate
 ### Dialogs for the pack flow
 - **Update ready:** one lit primary, "Update and play". The change line and kept line sit above a "Show what changed" disclosure whose names list is a well.
 - **Download these manually:** each missing file is a well row. Continue is flat and disabled until every file is found, then lit as the only primary.
+
+### Settings: launcher updates and diagnostics
+Settings has no lit button: it saves as you go, so Check now, Restart now, Export diagnostics and About's links are all raised secondaries, and none compete.
+- **Sections:** a 700-weight 1.125rem heading over its content, 1rem apart, like Instance settings' Game.
+- **Channel:** Stable and Beta are the standard pressed segments with the lime lamp, under a 600 0.875rem legend, with the channel's hint in `ink-dim` below (linked by `aria-describedby`). On this screen lime marks only the chosen channel.
+- **Status readout:** a note plate holding the state in words, which is the live region. The blue lamp lights while an update is on its way (checking, downloading, ready); idle, up to date and a failed check have no lamp. A failure shows the error's own message with its fix beneath in `ink-dim`. While downloading, a labelled 20-block blue meter and a tabular 600-weight percent sit under the words, outside the live region, so a screen reader hears each state once instead of every percent.
+- **Actions:** Restart now (when ready) then Check now, a raised row under the plate. A disabled Restart now is described by the visible "Close your games first." beside it.
+- **Diagnostics:** the heading, one `ink-dim` sentence on what the zip holds and leaves out, and a raised Export diagnostics led by the download glyph.
 
 ### Well
 A recessed row inside a panel or dialog: `ground` fill, 1px `line` inset ring, notched 4px corners. Used for the names list and the manual-download rows, which would otherwise vanish into a `panel` host.
@@ -506,7 +515,7 @@ An instance's own files, listed as rows on the ground under the screen title "Mo
 - **Content rows:** 0.75rem vertical padding and no side padding, with a 1rem gap. A full-width 1px `line` seam (`border-top`) splits each row from the one above. A row never lifts, because only its own controls press. Each row reads as the 600-weight name (truncating, and `ink-dim` when the mod is off) over its tabular size in 0.875rem `ink-dim`, then its controls: a toggle and a ghost icon Remove.
 - **Icon slot:** a 2.5rem `panel` slot with notched 4px corners, holding the file glyph at 1.5rem in `ink-dim`.
 - **Sections:** a heading (Atkinson 700, 1.125rem) over its rows, 0.25rem apart. A section sits 0.5rem below what precedes it, and 1.5rem after another section, so 2.5rem with the column's 1rem gap.
-- **Note plate:** a `panel` plate with notched 6px corners and 0.75rem × 1rem padding, led by the 8px square blue lamp centred on the first text line (0.4375rem down). It carries the vanilla notes, the running notes and the Mods tab's busy and skipped-files notice.
+- **Note plate:** a `panel` plate with notched 6px corners and 0.75rem × 1rem padding, led by the 8px square blue lamp centred on the first text line (0.4375rem down). It carries the vanilla notes, the running notes and the Mods tab's busy and skipped-files notice. With `data-lamp="none"` it drops the lamp, for a readout with nothing on its way (Settings' update status).
 - **Empty slot:** a flat 1px `line` ring with notched 6px corners, 1.25rem padding and `ink-dim` text, never stepped. On Resource packs and Shaders it shows only when the folder holds nothing at all, never under a pack's own files, and never on a vanilla instance's Shaders tab, where the loader note already explains and there is no Find.
 - **Labels:** Folder and Pack (a pack's required mod) use the flat `.tag`.
 - **Turn-it-on hint:** an `.info-line` under the tabs on Resource packs and Shaders. It is hidden on a vanilla instance's Shaders tab, where the vanilla note takes its place.

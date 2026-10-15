@@ -1,37 +1,50 @@
-import type { TFunction } from 'i18next';
+import type { i18n as I18n } from 'i18next';
 import { useQueryClient } from '@tanstack/react-query';
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
+import { describeError } from '../../ipc/errors';
 import type { AppInfo, Channel, UpdateState } from '../../ipc/schema';
 import { qk, useUpdate } from '../../state/queries';
 import { useActiveIds } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
-import { Select } from '../../ui/Select';
+import { Reload } from '../../ui/Icon';
+import { Meter } from '../../ui/Meter';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 
-function statusLine(t: TFunction, state: UpdateState, version: string): string {
+/** The plate's blue lamp is lit while an update is on its way (checking, downloading, ready).
+ *  Up to date gets no lamp: on this screen lime marks only the chosen channel. */
+const lampOf = (state: UpdateState) =>
+  state.state === 'checking' || state.state === 'downloading' || state.state === 'ready' ? 'info' : 'none';
+
+/** The state in words, and the way forward when there is one. The percent is not here: it ticks,
+ *  and this is the live region, so a screen reader hears each state once rather than every percent. */
+function statusText(i18n: I18n, state: UpdateState, version: string): { line: string; fix: string | null } {
+  const t = i18n.t;
   switch (state.state) {
     case 'off':
-      return t('settings.updates.off');
+      return { line: t('settings.updates.off'), fix: null };
     case 'idle':
-      return t('settings.updates.idle');
+      return { line: t('settings.updates.idle'), fix: null };
     case 'checking':
-      return t('settings.updates.checking');
+      return { line: t('settings.updates.checking'), fix: null };
     case 'downloading':
-      return state.percent == null
-        ? t('settings.updates.downloading')
-        : t('settings.updates.downloadingPercent', { percent: state.percent });
+      return { line: t('settings.updates.downloading'), fix: null };
     case 'ready':
-      return t('settings.updates.ready', { version: state.version });
+      return { line: t('settings.updates.ready', { version: state.version }), fix: null };
     case 'up_to_date':
-      return t('settings.updates.upToDate', { version });
-    case 'failed':
-      return t('settings.updates.failed');
+      return { line: t('settings.updates.upToDate', { version }), fix: null };
+    case 'failed': {
+      // The error's own words: a download that failed its safety check is not "couldn't check".
+      const { message, fix } = describeError(i18n, state.error);
+      return { line: message, fix };
+    }
   }
 }
 
-/** Settings → Launcher updates (spec §4.5). */
+/** Settings → Launcher updates (spec §4.5). Nothing here is lit: these and About's buttons are all
+ *  raised, so no two primaries compete. Blue is progress; lime is only the channel you're on. */
 export function LauncherUpdates({
   appInfo,
   choice,
@@ -41,18 +54,21 @@ export function LauncherUpdates({
   choice: Channel | null;
   onChannel: (channel: Channel) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const update = useUpdate();
   const queryClient = useQueryClient();
   const busy = useActiveIds().length > 0;
   const once = useSingleFlight();
+  const ids = useId();
   const state: UpdateState = update.data ?? { state: appInfo.build === 'dev' ? 'off' : 'idle' };
   const run = (action: () => Promise<unknown>) => once((done) => void action().catch(pushError).finally(done));
 
   if (appInfo.build === 'dev') {
     return (
       <section className="grid gap-2" aria-labelledby="updates-heading">
-        <h2 id="updates-heading" className="font-semibold">{t('settings.updates.title')}</h2>
+        <h2 id="updates-heading" className="text-lg font-bold">
+          {t('settings.updates.title')}
+        </h2>
         <p className="text-sm text-ink-dim">{t('settings.updates.off')}</p>
       </section>
     );
@@ -63,30 +79,77 @@ export function LauncherUpdates({
       ? t('settings.updates.stableFromBeta')
       : t(channel === 'beta' ? 'settings.updates.betaHint' : 'settings.updates.stableHint');
   const working = state.state === 'checking' || state.state === 'downloading';
+  const ready = state.state === 'ready';
+  const { line, fix } = statusText(i18n, state, appInfo.version);
+  const percent = state.state === 'downloading' ? state.percent : null;
+  const hintId = `${ids}-hint`;
+  const busyId = `${ids}-busy`;
   return (
-    <section className="grid gap-3" aria-labelledby="updates-heading">
-      <h2 id="updates-heading" className="font-semibold">{t('settings.updates.title')}</h2>
-      <Select
-        label={t('settings.updates.channel')}
-        value={channel}
-        options={[
-          { value: 'stable', label: t('settings.updates.stable') },
-          { value: 'beta', label: t('settings.updates.beta') },
-        ]}
-        onChange={(value) => onChannel(value as Channel)}
-      />
-      <p className="text-sm text-ink-dim">{hint}</p>
-      <p role="status" className="text-sm">{statusLine(t, state, appInfo.version)}</p>
-      <div className="flex flex-wrap items-center gap-3">
-        <Button disabled={working} onClick={() => run(async () => queryClient.setQueryData(qk.update, await commands.updateCheck()))}>
-          {t('settings.updates.check')}
-        </Button>
-        {state.state === 'ready' && (
-          <Button disabled={busy} onClick={() => run(() => commands.updateRestart())}>
+    <section className="grid gap-4" aria-labelledby="updates-heading">
+      <h2 id="updates-heading" className="text-lg font-bold">
+        {t('settings.updates.title')}
+      </h2>
+      <fieldset className="grid gap-1.5" aria-describedby={hintId}>
+        <legend className="mb-1.5 text-sm font-semibold">{t('settings.updates.channel')}</legend>
+        <div className="flex flex-wrap gap-2">
+          {(['stable', 'beta'] as const).map((value) => (
+            <label key={value} className="seg" data-checked={channel === value ? '' : undefined}>
+              <input
+                type="radio"
+                name="update-channel"
+                className="sr-only"
+                checked={channel === value}
+                onChange={() => onChannel(value)}
+              />
+              {t(value === 'beta' ? 'settings.updates.beta' : 'settings.updates.stable')}
+            </label>
+          ))}
+        </div>
+        {/* 0.25rem below the segments' 4px travel, so the hint never touches a pressed segment. */}
+        <p id={hintId} className="mt-1 text-sm text-ink-dim">
+          {hint}
+        </p>
+      </fieldset>
+      <div className="note-plate" data-lamp={lampOf(state)}>
+        <div className="grid min-w-0 flex-1 gap-2">
+          <p role="status" className={state.state === 'idle' ? 'text-ink-dim' : undefined}>
+            {line}
+          </p>
+          {fix && <p className="text-sm text-ink-dim">{fix}</p>}
+          {percent != null && (
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <Meter value={percent / 100} label={t('settings.updates.downloading')} />
+              </div>
+              <span className="tabular text-sm font-semibold" aria-hidden>
+                {t('settings.updates.percent', { percent })}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {ready && (
+          <Button
+            disabled={busy}
+            aria-describedby={busy ? busyId : undefined}
+            onClick={() => run(() => commands.updateRestart())}
+          >
             {t('settings.updates.restart')}
           </Button>
         )}
-        {state.state === 'ready' && busy && <p className="text-sm text-ink-dim">{t('settings.updates.busy')}</p>}
+        <Button
+          icon={<Reload />}
+          disabled={working}
+          onClick={() => run(async () => queryClient.setQueryData(qk.update, await commands.updateCheck()))}
+        >
+          {t('settings.updates.check')}
+        </Button>
+        {ready && busy && (
+          <p id={busyId} className="text-sm text-ink-dim">
+            {t('settings.updates.busy')}
+          </p>
+        )}
       </div>
     </section>
   );

@@ -1,5 +1,5 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '../../art/Avatar';
 import mark from '../../assets/mark.svg';
@@ -9,6 +9,7 @@ import { navigate } from '../../state/route';
 import { useActiveIds } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
 import { Close, Gear, Minus, Square, WindowFrame } from '../../ui/Icon';
+import { useSingleFlight } from '../../ui/useSingleFlight';
 
 /** The custom title bar: drag anywhere that isn't a button. `minimal` keeps only the window
  *  controls, for screens (first run, settings failed) where account and settings can't be reached. */
@@ -19,6 +20,9 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
   const busy = useActiveIds().length > 0;
   const active = accounts.data?.accounts.find((a) => a.uuid === accounts.data?.active) ?? null;
   const [maximized, setMaximized] = useState(false);
+  const restartOnce = useSingleFlight();
+  const noteId = useId();
+  const note = t(busy ? 'titlebar.updateReadyBusy' : 'titlebar.updateReady');
 
   useEffect(() => {
     const win = getCurrentWindow();
@@ -41,31 +45,37 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
 
   const win = getCurrentWindow();
   return (
-    <header className="flex h-9 items-center justify-between bg-ground" data-tauri-drag-region>
-      <div className="flex items-center gap-2 pl-3" data-tauri-drag-region>
+    <header className="flex h-9 min-w-0 items-center justify-between gap-3 bg-ground" data-tauri-drag-region>
+      <div className="flex shrink-0 items-center gap-2 pl-3" data-tauri-drag-region>
         <img src={mark} alt="" width={21} height={18} data-tauri-drag-region />
         <span className="text-sm font-bold" data-tauri-drag-region>
           {t('app.name')}
         </span>
       </div>
-      <div className="flex items-center">
+      <div className="flex min-w-0 items-center">
         {!minimal && (
           <>
             {update.data?.state === 'ready' && (
-              <span className="flex items-center gap-2 pr-2 text-sm text-ink-dim">
-                {t('titlebar.updateReady')}
+              // Quiet by design: dim text and a flat title-bar button, never lit, on one line. When the
+              // bar runs short the sentence truncates and Restart now and the account keep their room.
+              <span className="tb-note" data-tauri-drag-region>
+                {/* While a game runs the note itself says why Restart now is off, in visible text:
+                    a disabled button can't take focus, so a hover title would reach no one. */}
+                <span id={noteId} className="truncate" title={note} data-tauri-drag-region>
+                  {note}
+                </span>
                 <button
                   type="button"
-                  className="tb-btn font-semibold text-ink"
+                  className="tb-btn tb-restart"
                   disabled={busy}
-                  title={busy ? t('settings.updates.busy') : undefined}
-                  onClick={() => void commands.updateRestart().catch(pushError)}
+                  aria-describedby={busy ? noteId : undefined}
+                  onClick={() => restartOnce((done) => void commands.updateRestart().catch(pushError).finally(done))}
                 >
                   {t('titlebar.restart')}
                 </button>
               </span>
             )}
-            <button type="button" className="tb-btn flex" onClick={() => navigate({ name: 'accounts' })}>
+            <button type="button" className="tb-btn flex shrink-0" onClick={() => navigate({ name: 'accounts' })}>
               {active ? (
                 <>
                   <Avatar uuid={active.uuid} size={20} />

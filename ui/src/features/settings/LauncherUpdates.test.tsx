@@ -11,9 +11,10 @@ it('shows the state, checks now and switches channel', async () => {
   expect(await screen.findByText(/Up to date · 0\.1\.0/)).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Check now' }));
   expect(sent(calls, 'update_check')).toHaveLength(1);
-  const channel = screen.getByRole('combobox', { name: 'Update channel' });
-  expect(channel).toHaveValue('beta');
-  await user.selectOptions(channel, 'stable');
+  // Two channels: the standard pressed segments, so the choice lights the lime lamp.
+  expect(screen.getByRole('group', { name: 'Update channel' })).toHaveAccessibleDescription('New builds first, with a few rough edges.');
+  expect(screen.getByRole('radio', { name: 'Beta' })).toBeChecked();
+  await user.click(screen.getByRole('radio', { name: 'Stable' }));
   expect(await screen.findByText("You'll move to stable once it's newer than your beta.")).toBeInTheDocument();
   expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { updateChannel: 'stable' } });
 });
@@ -33,14 +34,20 @@ it('says updates are off in dev builds', async () => {
 
 it('shows download progress and a failed check', async () => {
   const { qc } = renderApp(<Settings />, { beta: true, update: { state: 'downloading', percent: 40 } });
-  expect(await screen.findByText('Downloading the update… 40%')).toBeInTheDocument();
+  // The live region says the state once; the percent lives outside it, on a blue meter.
+  expect(await screen.findByText('Downloading the update…', { selector: '[role=status]' })).toHaveTextContent(/^Downloading the update…$/);
+  expect(screen.getByRole('progressbar', { name: 'Downloading the update…' })).toHaveAttribute('aria-valuenow', '40');
+  expect(screen.getByText('40%')).toBeInTheDocument();
   // handleEvent writes an `update` event here (covered in handleEvent.test.ts).
   const failed: UpdateState = {
     state: 'failed',
     error: { category: 'network', code: 'launcher_update_failed', message: 'x', fix: null, detail: null, params: {} },
   };
   act(() => qc.setQueryData(qk.update, failed));
-  expect(await screen.findByText("Couldn't check for updates.")).toBeInTheDocument();
+  // The error's own words and its way forward, so a bad download isn't called a failed check.
+  expect(await screen.findByText("Couldn't check for launcher updates.")).toBeInTheDocument();
+  expect(screen.getByText('You can keep playing. It tries again next time you open the launcher.')).toBeInTheDocument();
+  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
 });
 
 it('shows the state Check now returns even if the update event is missed', async () => {
@@ -55,5 +62,5 @@ it('disables Restart now and explains why while a game runs', async () => {
   expect(restart).toBeEnabled();
   act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
   expect(screen.getByRole('button', { name: 'Restart now' })).toBeDisabled();
-  expect(screen.getByText('Close your games first.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Restart now' })).toHaveAccessibleDescription('Close your games first.');
 });

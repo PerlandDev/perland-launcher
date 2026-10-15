@@ -13,12 +13,14 @@ import './styles/app.css';
 
 async function bootstrap() {
   if (import.meta.env.MODE === 'mock') {
-    const { installMock } = await import('./ipc/mock');
+    const { installMock, mockUpdateState } = await import('./ipc/mock');
     const params = new URLSearchParams(window.location.search);
     installMock({
       firstRun: params.has('firstRun'),
       crash: params.has('crash'),
       release: params.has('release'),
+      beta: params.has('beta'),
+      update: mockUpdateState(params.get('update')),
       manual: params.has('manual'),
       noUpdate: params.has('noUpdate'),
       link: params.get('link') ?? undefined,

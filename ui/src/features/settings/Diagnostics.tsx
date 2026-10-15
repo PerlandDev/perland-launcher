@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import { pushError, pushNotice } from '../../state/toasts';
 import { Button } from '../../ui/Button';
+import { Download } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -26,13 +27,15 @@ export function Diagnostics() {
     });
   };
   return (
-    <section className="grid gap-2" aria-labelledby="diagnostics-heading">
-      <h2 id="diagnostics-heading" className="font-semibold">
+    <section className="grid gap-4" aria-labelledby="diagnostics-heading">
+      <h2 id="diagnostics-heading" className="text-lg font-bold">
         {t('settings.diagnostics.title')}
       </h2>
-      <p className="text-sm text-ink-dim">{t('settings.diagnostics.body')}</p>
+      <p className="text-sm text-ink-dim">
+        {t('settings.diagnostics.body')}
+      </p>
       <div>
-        <Button onClick={() => once((done) => void exportZip().catch(pushError).finally(done))}>
+        <Button icon={<Download />} onClick={() => once((done) => void exportZip().catch(pushError).finally(done))}>
           {t('settings.diagnostics.export')}
         </Button>
       </div>

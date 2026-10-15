@@ -877,3 +877,24 @@ export function installMock(options: MockOptions = {}) {
   mockIPC((cmd, args) => backend.handle(cmd, args), { shouldMockEvents: true });
   return backend;
 }
+
+/** The `?update=` preview param: a launcher update state by name (dev:mock only). */
+export function mockUpdateState(name: string | null): UpdateState | undefined {
+  switch (name) {
+    case 'idle':
+    case 'checking':
+    case 'up_to_date':
+      return { state: name };
+    case 'downloading':
+      return { state: 'downloading', percent: 40 };
+    case 'ready':
+      return { state: 'ready', version: '0.2.0-beta.2' };
+    case 'failed':
+      return {
+        state: 'failed',
+        error: { category: 'network', code: 'launcher_update_failed', message: "Couldn't check for launcher updates.", fix: null, detail: null, params: {} },
+      };
+    default:
+      return undefined;
+  }
+}

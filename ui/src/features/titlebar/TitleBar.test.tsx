@@ -1,5 +1,5 @@
 import { act, screen } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
@@ -38,11 +38,26 @@ it('shows a quiet note with Restart now when an update is ready', async () => {
   expect(sent(calls, 'update_restart')).toHaveLength(1);
 });
 
-it('disables Restart now while a game runs', async () => {
+it('sends one restart for a double click', async () => {
+  const { user, backend, calls } = renderApp(<TitleBar />, { beta: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
+  // A real restart never answers: the launcher closes. Park it, so the second click lands while it's in flight.
+  const handle = backend.handle;
+  vi.spyOn(backend, 'handle').mockImplementation((cmd, args) => (cmd === 'update_restart' ? new Promise(() => {}) : handle(cmd, args)));
+  await user.dblClick(await screen.findByRole('button', { name: 'Restart now' }));
+  expect(sent(calls, 'update_restart')).toHaveLength(1);
+});
+
+it('disables Restart now while a game runs and says why in the note', async () => {
   renderApp(<TitleBar />, { beta: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
-  expect(await screen.findByRole('button', { name: 'Restart now' })).toBeEnabled();
+  const restart = await screen.findByRole('button', { name: 'Restart now' });
+  expect(restart).toBeEnabled();
+  expect(restart).not.toHaveAccessibleDescription();
   act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
   expect(screen.getByRole('button', { name: 'Restart now' })).toBeDisabled();
+  // Visible text, not a hover title: a disabled button can't be focused to show one.
+  expect(screen.getByText('Update ready · close your games to restart')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Restart now' })).toHaveAccessibleDescription('Update ready · close your games to restart');
+  expect(screen.getByRole('button', { name: 'Restart now' })).not.toHaveAttribute('title');
 });
 
 it('shows no note when nothing is ready, and none in the minimal bar', async () => {
