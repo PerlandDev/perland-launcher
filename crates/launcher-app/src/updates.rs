@@ -95,7 +95,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 pub fn busy_error() -> LauncherError {
     LauncherError::game(
         ErrorCode::LauncherUpdateBusy,
-        "Close your games before restarting to update",
+        "Wait for games and installs to finish before restarting to update",
     )
     .with_fix("The update also installs when you close the launcher")
 }
@@ -524,9 +524,12 @@ mod tests {
             Channel::Beta,
         );
         updates.check().await;
+        let refused = updates.restart_now(true).await.unwrap_err();
+        assert_eq!(refused.code, ErrorCode::LauncherUpdateBusy);
+        // Busy also means a Browse install or an instance install, not only a game.
         assert_eq!(
-            updates.restart_now(true).await.unwrap_err().code,
-            ErrorCode::LauncherUpdateBusy
+            refused.message,
+            "Wait for games and installs to finish before restarting to update"
         );
         assert!(source.installs.lock().unwrap().is_empty());
     }

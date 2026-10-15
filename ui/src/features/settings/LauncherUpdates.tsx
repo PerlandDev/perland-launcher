@@ -6,8 +6,8 @@ import { commands } from '../../ipc/commands';
 import { describeError } from '../../ipc/errors';
 import type { AppInfo, Channel, UpdateState } from '../../ipc/schema';
 import { qk, useUpdate } from '../../state/queries';
-import { useActiveIds } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
+import { useUpdateBusy } from '../../state/updateBusy';
 import { Button } from '../../ui/Button';
 import { Reload } from '../../ui/Icon';
 import { Meter } from '../../ui/Meter';
@@ -57,7 +57,7 @@ export function LauncherUpdates({
   const { t, i18n } = useTranslation();
   const update = useUpdate();
   const queryClient = useQueryClient();
-  const busy = useActiveIds().length > 0;
+  const busy = useUpdateBusy();
   const once = useSingleFlight();
   const ids = useId();
   const state: UpdateState = update.data ?? { state: appInfo.build === 'dev' ? 'off' : 'idle' };

@@ -1,5 +1,6 @@
 import { act, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
+import { beginContentInstall } from '../../state/contentProgress';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
@@ -55,9 +56,22 @@ it('disables Restart now while a game runs and says why in the note', async () =
   act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
   expect(screen.getByRole('button', { name: 'Restart now' })).toBeDisabled();
   // Visible text, not a hover title: a disabled button can't be focused to show one.
-  expect(screen.getByText('Update ready · close your games to restart')).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Restart now' })).toHaveAccessibleDescription('Update ready · close your games to restart');
+  expect(screen.getByText('Update ready · wait for games and installs to finish')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Restart now' })).toHaveAccessibleDescription('Update ready · wait for games and installs to finish');
   expect(screen.getByRole('button', { name: 'Restart now' })).not.toHaveAttribute('title');
+});
+
+it('disables Restart now while a Browse install runs', async () => {
+  renderApp(<TitleBar />, { beta: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
+  expect(await screen.findByRole('button', { name: 'Restart now' })).toBeEnabled();
+  let end = () => {};
+  act(() => {
+    end = beginContentInstall();
+  });
+  expect(screen.getByRole('button', { name: 'Restart now' })).toBeDisabled();
+  expect(screen.getByText('Update ready · wait for games and installs to finish')).toBeVisible();
+  act(() => end());
+  expect(screen.getByRole('button', { name: 'Restart now' })).toBeEnabled();
 });
 
 it('shows no note when nothing is ready, and none in the minimal bar', async () => {

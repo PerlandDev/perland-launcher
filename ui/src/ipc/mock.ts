@@ -520,7 +520,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       event({ type: 'update', state: state.update });
       return state.update;
     case 'update_restart':
-      if (state.runs.size > 0) fail('game', 'launcher_update_busy', 'Close your games before restarting to update');
+      if (state.runs.size > 0) fail('game', 'launcher_update_busy', 'Wait for games and installs to finish before restarting to update');
       return null;
     case 'instances_list':
       return state.listing;

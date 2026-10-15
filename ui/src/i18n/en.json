@@ -29,7 +29,7 @@
     "settings": "Settings",
     "noAccount": "Add account",
     "updateReady": "Update ready · installs when you close",
-    "updateReadyBusy": "Update ready · close your games to restart",
+    "updateReadyBusy": "Update ready · wait for games and installs to finish",
     "restart": "Restart now"
   },
   "rail": {
@@ -291,7 +291,7 @@
       "upToDate": "Up to date · {{version}}",
       "check": "Check now",
       "restart": "Restart now",
-      "busy": "Close your games first."
+      "busy": "Wait for games and installs to finish first."
     },
     "diagnostics": {
       "title": "Diagnostics",
@@ -452,7 +452,7 @@
     "server_address_unknown": { "message": "Couldn't get the server address, so the game starts at the title screen." },
     "launcher_update_failed": { "message": "Couldn't check for launcher updates.", "fix": "You can keep playing. It tries again next time you open the launcher." },
     "launcher_update_invalid": { "message": "The launcher update didn't pass its safety check, so it wasn't installed.", "fix": "Try again later. If it keeps happening, let us know." },
-    "launcher_update_busy": { "message": "Close your games before restarting to update.", "fix": "The update also installs when you close the launcher." },
+    "launcher_update_busy": { "message": "Wait for games and installs to finish before restarting to update.", "fix": "The update also installs when you close the launcher." },
     "internal": { "message": "Something unexpected went wrong.", "fix": "Restart the launcher. If it keeps happening, copy the details for support." },
     "browse_rate_limited": { "message": "Too many searches. Try again in {{seconds}} s." },
     "content_not_found": { "message": "That project wasn't found.", "fix": "It may have been removed." },

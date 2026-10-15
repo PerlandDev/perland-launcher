@@ -1,6 +1,7 @@
 import { act, screen } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import type { UpdateState } from '../../ipc/schema';
+import { beginContentInstall } from '../../state/contentProgress';
 import { qk } from '../../state/queries';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
@@ -62,5 +63,18 @@ it('disables Restart now and explains why while a game runs', async () => {
   expect(restart).toBeEnabled();
   act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
   expect(screen.getByRole('button', { name: 'Restart now' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Restart now' })).toHaveAccessibleDescription('Close your games first.');
+  expect(screen.getByRole('button', { name: 'Restart now' })).toHaveAccessibleDescription('Wait for games and installs to finish first.');
+});
+
+it('disables Restart now while a Browse install runs', async () => {
+  renderApp(<Settings />, { beta: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
+  expect(await screen.findByRole('button', { name: 'Restart now' })).toBeEnabled();
+  let end = () => {};
+  act(() => {
+    end = beginContentInstall();
+  });
+  expect(screen.getByRole('button', { name: 'Restart now' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Restart now' })).toHaveAccessibleDescription('Wait for games and installs to finish first.');
+  act(() => end());
+  expect(screen.getByRole('button', { name: 'Restart now' })).toBeEnabled();
 });

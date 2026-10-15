@@ -6,8 +6,8 @@ import mark from '../../assets/mark.svg';
 import { commands } from '../../ipc/commands';
 import { useAccounts, useUpdate } from '../../state/queries';
 import { navigate } from '../../state/route';
-import { useActiveIds } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
+import { useUpdateBusy } from '../../state/updateBusy';
 import { Close, Gear, Minus, Square, WindowFrame } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 
@@ -17,7 +17,7 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
   const { t } = useTranslation();
   const accounts = useAccounts();
   const update = useUpdate();
-  const busy = useActiveIds().length > 0;
+  const busy = useUpdateBusy();
   const active = accounts.data?.accounts.find((a) => a.uuid === accounts.data?.active) ?? null;
   const [maximized, setMaximized] = useState(false);
   const restartOnce = useSingleFlight();
@@ -59,7 +59,7 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
               // Quiet by design: dim text and a flat title-bar button, never lit, on one line. When the
               // bar runs short the sentence truncates and Restart now and the account keep their room.
               <span className="tb-note" data-tauri-drag-region>
-                {/* While a game runs the note itself says why Restart now is off, in visible text:
+                {/* While a game or an install runs the note itself says why Restart now is off, in visible text:
                     a disabled button can't take focus, so a hover title would reach no one. */}
                 <span id={noteId} className="truncate" title={note} data-tauri-drag-region>
                   {note}

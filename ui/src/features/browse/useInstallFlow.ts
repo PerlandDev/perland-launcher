@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import type { BrowsePlanRequest, InstallPlanView, InstallResult } from '../../ipc/schema';
-import { clearContentProgress } from '../../state/contentProgress';
+import { beginContentInstall, clearContentProgress } from '../../state/contentProgress';
 import { qk } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { runStore } from '../../state/runStore';
@@ -55,6 +55,7 @@ export function useInstallFlow() {
 
   const install = async (view: InstallPlanView) => {
     setBusy(true);
+    const ended = beginContentInstall();
     let result: InstallResult;
     try {
       result = await commands.browseInstall(view.planId);
@@ -66,6 +67,7 @@ export function useInstallFlow() {
       pushError(error);
       return;
     } finally {
+      ended();
       setConfirming(null);
       setBusy(false);
     }
