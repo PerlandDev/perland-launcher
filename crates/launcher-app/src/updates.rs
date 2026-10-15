@@ -100,9 +100,15 @@ pub fn busy_error() -> LauncherError {
     .with_fix("The update also installs when you close the launcher")
 }
 
-/// Restart now with nothing downloaded: said like a failed install, the reason in the detail.
+/// Restart now with nothing downloaded: the install-failed code, worded by the `nothing_ready`
+/// context. Quitting installs nothing either, so the fix says to check for updates.
 fn nothing_ready() -> LauncherError {
-    install_error().with_detail("No launcher update is ready yet")
+    LauncherError::disk(
+        ErrorCode::LauncherUpdateInstallFailed,
+        "No launcher update is ready to install yet",
+    )
+    .with_fix("Check for updates, then try again")
+    .with_param("context", "nothing_ready")
 }
 
 /// Installing failed. A failed signature keeps its own code; anything else becomes
@@ -554,6 +560,22 @@ mod tests {
             "Wait for games and installs to finish before restarting to update"
         );
         assert!(source.installs.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn restart_now_with_nothing_downloaded_says_nothing_is_ready() {
+        let updates = Updates::new(
+            Arc::new(FakeSource::offering("0.2.0-beta.2")),
+            RecordingHost::new(),
+            BuildKind::Beta,
+            Channel::Beta,
+        );
+        let e = updates.restart_now(false).await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::LauncherUpdateInstallFailed);
+        assert_eq!(e.params["context"], "nothing_ready");
+        assert_eq!(e.message, "No launcher update is ready to install yet");
+        // Nothing was downloaded, so closing the launcher installs nothing.
+        assert_eq!(e.fix.as_deref(), Some("Check for updates, then try again"));
     }
 
     #[tokio::test]

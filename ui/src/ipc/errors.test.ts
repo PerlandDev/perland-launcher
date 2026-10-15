@@ -57,6 +57,21 @@ describe('describeError', () => {
     expect(describeError(i18n, game).message).toBe('Este .mrpack es para terraria, no para Minecraft.');
   });
 
+  it('says no launcher update is ready, without promising an install on close', async () => {
+    const failed = { category: 'disk', code: 'launcher_update_install_failed', message: 'x', fix: null, detail: null } as const;
+    const nothingReady = { ...failed, params: { context: 'nothing_ready' } };
+    expect(describeError(i18n, nothingReady)).toMatchObject({
+      message: 'No launcher update is ready to install yet.',
+      fix: 'Check for updates, then try again.',
+    });
+    expect(describeError(i18n, { ...failed, params: {} }).fix).toBe('It tries again when you close the launcher.');
+    await i18n.changeLanguage('es');
+    expect(describeError(i18n, nothingReady)).toMatchObject({
+      message: 'Todavía no hay una actualización del launcher lista para instalar.',
+      fix: 'Busca actualizaciones y vuelve a intentarlo.',
+    });
+  });
+
   it('says what is wrong with a pack when no file is to blame', async () => {
     const invalid = { category: 'pack', code: 'pack_invalid', message: 'x', fix: null, detail: null } as const;
     const noChecksum = { ...invalid, params: { context: 'no_checksum' } };
