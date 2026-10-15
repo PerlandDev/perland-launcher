@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // CLI for the release workflow. Every decision is in lib.mjs.
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import {
   buildManifest,
@@ -9,10 +10,12 @@ import {
   checkSignatureKeys,
   findBundle,
   nextVersion,
+  planApply,
   PLATFORMS,
   releaseName,
   releaseNotes,
   setWorkspaceVersion,
+  signRole,
 } from './lib.mjs';
 
 const root = new URL('../../', import.meta.url);
@@ -72,6 +75,27 @@ switch (command) {
     for (const platform of PLATFORMS) {
       copyFileSync(join(dir, releaseName(platform, version)), join(outDir, channelName(platform, channel)));
     }
+    break;
+  }
+  case 'sign-collect':
+  case 'sign-apply': {
+    // Tauri's bundle.windows.signCommand in the two-pass Windows build (signing spec §3.2–§3.3).
+    const [file] = args;
+    const dir = process.env.SIGN_DIR;
+    if (!dir) throw new Error('SIGN_DIR is not set');
+    const role = signRole(file);
+    const hash = createHash('sha256').update(readFileSync(file)).digest('hex');
+    if (command === 'sign-collect') {
+      if (role === 'binary') {
+        mkdirSync(join(dir, 'unsigned'), { recursive: true });
+        copyFileSync(file, join(dir, 'unsigned', `${hash}.exe`));
+      }
+    } else {
+      const signedDir = join(dir, 'signed');
+      const signed = new Set(existsSync(signedDir) ? readdirSync(signedDir).map((n) => n.replace(/\.exe$/i, '')) : []);
+      if (planApply({ role, hash, signed }) === 'replace') copyFileSync(join(signedDir, `${hash}.exe`), file);
+    }
+    console.log(`${command} ${role} ${hash} ${file}`);
     break;
   }
   default:
