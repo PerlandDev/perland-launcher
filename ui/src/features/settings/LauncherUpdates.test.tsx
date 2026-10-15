@@ -36,7 +36,7 @@ it('says updates are off in dev builds', async () => {
 it('shows download progress and a failed check', async () => {
   const { qc } = renderApp(<Settings />, { beta: true, update: { state: 'downloading', percent: 40 } });
   // The live region says the state once; the percent lives outside it, on a blue meter.
-  expect(await screen.findByText('Downloading the update…', { selector: '[role=status]' })).toHaveTextContent(/^Downloading the update…$/);
+  expect((await screen.findByText('Downloading the update…')).closest('[role=status]')).toHaveTextContent(/^Downloading the update…$/);
   expect(screen.getByRole('progressbar', { name: 'Downloading the update…' })).toHaveAttribute('aria-valuenow', '40');
   expect(screen.getByText('40%')).toBeInTheDocument();
   // handleEvent writes an `update` event here (covered in handleEvent.test.ts).
@@ -48,6 +48,10 @@ it('shows download progress and a failed check', async () => {
   // The error's own words and its way forward, so a bad download isn't called a failed check.
   expect(await screen.findByText("Couldn't check for launcher updates.")).toBeInTheDocument();
   expect(screen.getByText('You can keep playing. It tries again next time you open the launcher.')).toBeInTheDocument();
+  // The way forward is in the live region too, so a screen reader hears it with the failure.
+  expect(screen.getByText("Couldn't check for launcher updates.").closest('[role=status]')).toHaveTextContent(
+    "Couldn't check for launcher updates.You can keep playing. It tries again next time you open the launcher.",
+  );
   expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
 });
 
