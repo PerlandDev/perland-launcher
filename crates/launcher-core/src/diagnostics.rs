@@ -5,6 +5,7 @@ use std::{
     fs::File,
     io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use serde::Serialize;
@@ -19,6 +20,9 @@ use crate::{
 };
 
 pub const LOG_TAIL_BYTES: u64 = 5 << 20;
+
+/// Makes each export's temp file name unique.
+static PART_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -114,8 +118,10 @@ fn sanitize_instance(raw: &str) -> (String, Vec<String>) {
             .and_then(|v| v.as_str())
             .map(str::to_owned)
         {
-            if let Ok(link) = InviteLink::parse(&invite) {
-                tokens.push(link.token().to_string());
+            match InviteLink::parse(&invite) {
+                Ok(link) => tokens.push(link.token().to_string()),
+                // No token to pull out, so mask the whole raw string wherever it shows up.
+                Err(_) => tokens.push(invite.clone()),
             }
             source.insert("invite".into(), "<redacted>".into());
         }
@@ -208,13 +214,26 @@ fn write_zip(
         serde_json::to_vec_pretty(&system).unwrap_or_default(),
     ));
 
-    let part = out.with_extension("zip.part");
+    // Unique per call (like `fsutil::write_atomic`), so it never clobbers a user's own file or
+    // another export's temp file.
+    let n = PART_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let mut part = out.as_os_str().to_owned();
+    part.push(format!(".{}.{n}.part", std::process::id()));
+    let part = PathBuf::from(part);
+    let file = File::create_new(&part).map_err(write_failed)?;
     let written = (|| -> std::result::Result<(), Box<dyn std::error::Error>> {
-        let mut zip = ZipWriter::new(File::create(&part)?);
+        let mut zip = ZipWriter::new(file);
         let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
         for (name, bytes) in entries {
+            let text = String::from_utf8_lossy(&bytes);
+            // A live log can end mid-line, cutting a token in half.
+            let text = if name.starts_with("logs/") {
+                redactor.redact_cut(&text)
+            } else {
+                redactor.redact(&text)
+            };
             zip.start_file(name, options)?;
-            zip.write_all(redactor.redact(&String::from_utf8_lossy(&bytes)).as_bytes())?;
+            zip.write_all(text.as_bytes())?;
         }
         zip.finish()?;
         std::fs::rename(&part, out)?;
@@ -397,6 +416,64 @@ mod tests {
         std::fs::write(&out, "old").unwrap();
         run(&dirs, &out, Limits::default()).await.unwrap();
         assert!(!entries(&out).is_empty());
-        assert!(!tmp.path().join("d.zip.part").exists());
+        let parts: Vec<_> = listing(tmp.path())
+            .into_iter()
+            .filter(|(n, _)| n.ends_with(".part"))
+            .collect();
+        assert!(parts.is_empty(), "{parts:?}");
+    }
+
+    #[tokio::test]
+    async fn a_user_file_named_like_the_old_part_file_is_left_alone() {
+        let (tmp, dirs) = seed();
+        let out = tmp.path().join("d.zip");
+        let mine = tmp.path().join("d.zip.part");
+        std::fs::write(&mine, "mine").unwrap();
+        run(&dirs, &out, Limits::default()).await.unwrap();
+        assert!(!entries(&out).is_empty());
+        assert_eq!(std::fs::read_to_string(&mine).unwrap(), "mine");
+    }
+
+    #[tokio::test]
+    async fn an_invite_that_does_not_parse_is_still_masked_everywhere() {
+        let (tmp, dirs) = seed();
+        let raw = format!("http://play.example.com/{}", "B".repeat(20));
+        let odd = dirs.instances().join("odd");
+        std::fs::create_dir_all(&odd).unwrap();
+        std::fs::write(
+            odd.join("instance.json"),
+            format!(r#"{{"id":"odd","source":{{"kind":"perland","invite":"{raw}"}}}}"#),
+        )
+        .unwrap();
+        std::fs::write(
+            crate::logging::dir(&dirs).join("launcher.2026-10-15.log"),
+            format!("join {raw}\n"),
+        )
+        .unwrap();
+        let out = tmp.path().join("d.zip");
+        run(&dirs, &out, Limits::default()).await.unwrap();
+        for (name, text) in entries(&out) {
+            assert!(!text.contains(&raw), "{name} leaks the raw invite:\n{text}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_token_cut_at_the_end_of_a_log_is_masked() {
+        let (tmp, dirs) = seed();
+        let fragment = &token()[..8];
+        std::fs::write(
+            dirs.logs().join("asalith-latest.log"),
+            format!("[main] started\n[main] join https://play.example.com/{fragment}"),
+        )
+        .unwrap();
+        let out = tmp.path().join("d.zip");
+        run(&dirs, &out, Limits::default()).await.unwrap();
+        let log = entries(&out)
+            .into_iter()
+            .find(|(n, _)| n == "logs/asalith-latest.log")
+            .unwrap()
+            .1;
+        assert!(!log.contains(fragment), "{log}");
+        assert!(log.ends_with("<redacted>"), "{log}");
     }
 }
