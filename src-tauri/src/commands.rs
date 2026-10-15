@@ -7,8 +7,9 @@ use launcher_app::dto::{
     ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackArtData, PackContents, PackStatus,
     RunSnapshot, SearchRequest, ServerStatusView,
 };
+use launcher_app::updates::UpdateState;
 use launcher_core::{
-    accounts::AccountsFile,
+    accounts::{AccountsFile, BuildKind},
     browse::{
         compat::ContentKind,
         images::ImageKind,
@@ -21,7 +22,7 @@ use launcher_core::{
         loaders::LoaderKind,
     },
     mods::LocalMod,
-    settings::Settings,
+    settings::{Channel, Settings},
     ErrorCode, LauncherError,
 };
 use tauri::{AppHandle, State};
@@ -31,6 +32,7 @@ use crate::Core;
 
 type Res<T> = Result<T, LauncherError>;
 type CoreState<'a> = State<'a, Arc<Core>>;
+type UpdatesState<'a> = State<'a, Arc<crate::Updates>>;
 
 #[tauri::command]
 pub async fn app_info(core: CoreState<'_>) -> Res<AppInfo> {
@@ -43,8 +45,33 @@ pub async fn settings_get(core: CoreState<'_>) -> Res<Settings> {
 }
 
 #[tauri::command]
-pub async fn settings_set(core: CoreState<'_>, settings: Settings) -> Res<Settings> {
-    core.settings_set(settings).await
+pub async fn settings_set(
+    core: CoreState<'_>,
+    updates: UpdatesState<'_>,
+    settings: Settings,
+) -> Res<Settings> {
+    let saved = core.settings_set(settings).await?;
+    let channel = Channel::effective(saved.update_channel, BuildKind::current());
+    let updates = updates.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        updates.set_channel(channel).await;
+    });
+    Ok(saved)
+}
+
+#[tauri::command]
+pub fn update_status(updates: UpdatesState<'_>) -> UpdateState {
+    updates.status()
+}
+
+#[tauri::command]
+pub async fn update_check(updates: UpdatesState<'_>) -> Res<UpdateState> {
+    Ok(updates.check().await)
+}
+
+#[tauri::command]
+pub async fn update_restart(core: CoreState<'_>, updates: UpdatesState<'_>) -> Res<()> {
+    updates.restart_now(core.update_blocked()).await
 }
 
 #[tauri::command]

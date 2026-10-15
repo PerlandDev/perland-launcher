@@ -3,6 +3,7 @@
 
 mod commands;
 mod host;
+mod updater;
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -16,6 +17,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_window_state::StateFlags;
 
 pub type Core = AppCore<CoreRunner, host::TauriHost>;
+pub type Updates = launcher_app::updates::Updates<updater::TauriUpdateSource, host::TauriHost>;
 
 const CLOSE_REQUESTED: &str = "launcher://close-requested";
 
@@ -37,9 +39,24 @@ fn main() {
         )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            let core = build_core(app.handle().clone())?;
+            // One host for the core and the updater.
+            let host = Arc::new(host::TauriHost::new(app.handle().clone()));
+            let core = build_core(host.clone())?;
             app.manage(core.clone());
+            let build = BuildKind::current();
+            let settings = tauri::async_runtime::block_on(core.settings_get());
+            let updates = Updates::new(
+                Arc::new(updater::TauriUpdateSource::new(app.handle().clone())),
+                host,
+                build,
+                launcher_core::settings::Channel::effective(settings.update_channel, build),
+            );
+            app.manage(updates.clone());
+            tauri::async_runtime::spawn(async move {
+                updates.start(launcher_app::updates::START_DELAY).await;
+            });
             // Installers register the scheme (NSIS, the .deb); a dev run or an AppImage registers
             // itself (per user, no admin).
             #[cfg(any(windows, target_os = "linux"))]
@@ -127,14 +144,29 @@ fn main() {
             commands::join_add,
             commands::server_status,
             commands::server_relink,
+            commands::update_status,
+            commands::update_check,
+            commands::update_restart,
             commands::quit,
         ])
-        .run(tauri::generate_context!())
-        .expect("Perland Launcher failed to start");
+        .build(tauri::generate_context!())
+        .expect("Perland Launcher failed to start")
+        .run(|app, event| {
+            // Quitting installs a ready update, unless something still runs (spec §4.3).
+            if let tauri::RunEvent::Exit = event {
+                if let (Some(core), Some(updates)) = (
+                    app.try_state::<Arc<Core>>(),
+                    app.try_state::<Arc<Updates>>(),
+                ) {
+                    let busy = core.update_blocked();
+                    tauri::async_runtime::block_on(updates.on_quit(busy));
+                }
+            }
+        });
 }
 
 /// `PERLAND_LAUNCHER_ROOT` points development runs at a scratch data folder.
-fn build_core(app: tauri::AppHandle) -> Result<Arc<Core>, Box<dyn std::error::Error>> {
+fn build_core(host: Arc<host::TauriHost>) -> Result<Arc<Core>, Box<dyn std::error::Error>> {
     let root = std::env::var_os("PERLAND_LAUNCHER_ROOT")
         .map(PathBuf::from)
         .or_else(LauncherDirs::default_root)
@@ -158,7 +190,6 @@ fn build_core(app: tauri::AppHandle) -> Result<Arc<Core>, Box<dyn std::error::Er
     );
     let syncer = launcher_core::sync::Syncer::for_installer(installer.clone(), http);
     let runner = Arc::new(CoreRunner::new(installer, syncer, version.clone(), browse));
-    let host = Arc::new(host::TauriHost::new(app));
     let config = AppConfig {
         dirs,
         build: BuildKind::current(),
