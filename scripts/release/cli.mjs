@@ -11,6 +11,7 @@ import {
   nextVersion,
   PLATFORMS,
   releaseName,
+  releaseNotes,
   setWorkspaceVersion,
 } from './lib.mjs';
 
@@ -51,17 +52,20 @@ switch (command) {
     break;
   }
   case 'manifest': {
-    const [version, dir, baseUrl, out] = args;
+    const [version, dir, baseUrl, out, channel] = args;
     const signatures = Object.fromEntries(
       PLATFORMS.map((p) => [p, readFileSync(join(dir, `${releaseName(p, version)}.sig`), 'utf8').trim()]),
     );
     // A .sig from a key other than the committed pubkey would be rejected by every installed launcher.
     checkSignatureKeys(JSON.parse(readFileSync(tauriConfPath, 'utf8')).plugins?.updater?.pubkey, signatures);
-    const notes = 'Closed beta. Download it from https://perland.online/launcher';
+    const notes = releaseNotes({ channel, signed: process.env.SIGNED === 'true' });
     const manifest = buildManifest({ version, notes, pubDate: new Date().toISOString(), signatures, baseUrl });
     writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
     break;
   }
+  case 'notes':
+    console.log(releaseNotes({ channel: args[0], signed: process.env.SIGNED === 'true' }));
+    break;
   case 'channel-copies': {
     const [version, channel, dir, outDir] = args;
     mkdirSync(outDir, { recursive: true });

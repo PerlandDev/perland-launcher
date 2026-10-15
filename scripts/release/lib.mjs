@@ -34,7 +34,19 @@ export function setWorkspaceVersion(cargoToml, version) {
   }
   const section = /(\[workspace\.package\][^[]*?\nversion = ")[^"]*(")/;
   if (!section.test(cargoToml)) throw new Error('No [workspace.package] version in Cargo.toml');
-  return cargoToml.replace(section, `$1${version}$2`);
+  return cargoToml.replace(section, (_, before, after) => `${before}${version}${after}`);
+}
+
+const DOWNLOAD = 'Download it from https://perland.online/launcher.';
+
+/** Release and updater notes. Players see them in the update prompt and on the GitHub Release. */
+export function releaseNotes({ channel, signed }) {
+  let notes;
+  if (channel === 'beta') notes = `Beta build. ${DOWNLOAD}`;
+  else if (channel === 'stable') notes = DOWNLOAD;
+  else throw new Error(`Unknown channel ${channel}`);
+  if (!signed) notes += " The installers aren't code-signed yet, so Windows may warn before it runs.";
+  return notes;
 }
 
 export function releaseName(platform, version) {

@@ -9,6 +9,7 @@ import {
   nextVersion,
   PLATFORMS,
   releaseName,
+  releaseNotes,
   setWorkspaceVersion,
 } from './lib.mjs';
 
@@ -67,7 +68,7 @@ test('the manifest lists every platform at the versioned release', () => {
   const signatures = Object.fromEntries(PLATFORMS.map((p) => [p, `sig-${p}`]));
   const manifest = buildManifest({
     version: '0.2.0-beta.1',
-    notes: 'Closed beta',
+    notes: 'Beta build.',
     pubDate: '2026-10-15T10:00:00Z',
     signatures,
     baseUrl: 'https://github.com/PerlandDev/perland-launcher/releases/download/v0.2.0-beta.1',
@@ -117,4 +118,13 @@ test('every signature must come from the committed public key', () => {
   assert.doesNotThrow(() => checkSignatureKeys(pubkey, good));
   assert.throws(() => checkSignatureKeys(pubkey, { ...good, 'linux-x86_64-deb': fakeSig(id(2)) }), /linux-x86_64-deb.*pubkey/s);
   assert.throws(() => checkSignatureKeys('', good), /pubkey/);
+});
+
+test('release notes depend on the channel and on code signing', () => {
+  const warning = " The installers aren't code-signed yet, so Windows may warn before it runs.";
+  assert.equal(releaseNotes({ channel: 'beta', signed: true }), 'Beta build. Download it from https://perland.online/launcher.');
+  assert.equal(releaseNotes({ channel: 'stable', signed: true }), 'Download it from https://perland.online/launcher.');
+  assert.equal(releaseNotes({ channel: 'beta', signed: false }), `Beta build. Download it from https://perland.online/launcher.${warning}`);
+  assert.equal(releaseNotes({ channel: 'stable', signed: false }), `Download it from https://perland.online/launcher.${warning}`);
+  assert.throws(() => releaseNotes({ channel: 'nightly', signed: true }), /channel/);
 });
