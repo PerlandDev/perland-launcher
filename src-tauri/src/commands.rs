@@ -3,9 +3,9 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AppInfo, BrowsePlanRequest, ContentFile, InstallPlanView, InstallResult, JavaTest, JoinPreview,
-    ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackArtData, PackContents, PackStatus,
-    RunSnapshot, SearchRequest, ServerStatusView,
+    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, InstallPlanView, InstallResult,
+    InstanceArtData, JavaTest, JoinPreview, ManualProgress, NewInstance, OpenTarget,
+    PackAddRequest, PackContents, PackStatus, RunSnapshot, SearchRequest, ServerStatusView,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -88,6 +88,11 @@ pub async fn update_restart(core: CoreState<'_>, updates: UpdatesState<'_>) -> R
 #[tauri::command]
 pub async fn instances_list(core: CoreState<'_>) -> Res<InstanceListing> {
     logged("instances_list", core.instances_list().await)
+}
+
+#[tauri::command]
+pub async fn instance_reorder(core: CoreState<'_>, ids: Vec<String>) -> Res<InstanceListing> {
+    logged("instance_reorder", core.instance_reorder(ids).await)
 }
 
 #[tauri::command]
@@ -279,8 +284,13 @@ pub async fn manual_import(core: CoreState<'_>, id: String) -> Res<ManualProgres
 }
 
 #[tauri::command]
-pub async fn pack_art(core: CoreState<'_>, id: String) -> Res<PackArtData> {
-    logged("pack_art", core.pack_art(&id).await)
+pub async fn instance_art(core: CoreState<'_>, id: String) -> Res<InstanceArtData> {
+    logged("instance_art", core.instance_art(&id).await)
+}
+
+#[tauri::command]
+pub async fn instance_art_set(core: CoreState<'_>, id: String, choice: ArtChoice) -> Res<Instance> {
+    logged("instance_art_set", core.instance_art_set(&id, choice).await)
 }
 
 #[tauri::command]

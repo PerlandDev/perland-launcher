@@ -17,5 +17,7 @@
     "path": null,
     "memoryMb": 4096
   },
-  "server": null
+  "server": null,
+  "artSeed": null,
+  "art": "auto"
 }

@@ -62,6 +62,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Queue a run; `join: false` starts a server instance's game at the title screen
     /// ("Play without joining"). Everything after this arrives as events.
     pub async fn play_with(self: &Arc<Self>, id: &str, join: bool) -> Result<()> {
+        // `load` takes the id from the folder, so a copied instance.json can't name another one.
         let instance = self.instances.load(id).await?;
         tracing::info!(
             instance = id,
@@ -70,15 +71,6 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             join,
             "play"
         );
-        if instance.id != id {
-            return Err(LauncherError::disk(
-                ErrorCode::InstanceDamaged,
-                format!("The settings file of \"{id}\" is damaged"),
-            )
-            .with_param("id", id)
-            .with_fix("Delete the instance and create it again")
-            .with_detail(format!("instance.json says id \"{}\"", instance.id)));
-        }
         let account = self.accounts.lock().await.active().await?.ok_or_else(|| {
             LauncherError::auth(ErrorCode::NoAccount, "Add an account before playing")
                 .with_fix("Open Accounts and add one")
@@ -1071,8 +1063,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_copied_instance_with_the_wrong_id_cannot_play() {
-        let (core, _runner, _host, _t) = ready(true).await;
+    async fn a_copied_instance_with_the_wrong_id_plays_as_its_folder() {
+        let (core, _runner, host, _t) = ready(true).await;
         let mut copied = core.instances.load("beta").await.unwrap();
         copied.id = "alpha".into();
         std::fs::write(
@@ -1080,11 +1072,10 @@ mod tests {
             serde_json::to_vec_pretty(&copied).unwrap(),
         )
         .unwrap();
-        assert_eq!(
-            core.play("beta").await.unwrap_err().code,
-            ErrorCode::InstanceDamaged
-        );
-        assert!(!core.has_active_runs());
+        core.play("beta").await.unwrap();
+        host.wait_for("beta", Preparing).await;
+        assert!(core.has_active_runs());
+        core.stop("beta").unwrap();
     }
 
     #[tokio::test]

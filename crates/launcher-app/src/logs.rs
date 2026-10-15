@@ -37,6 +37,14 @@ impl LogStore {
         }
     }
 
+    /// A rename moved the instance: its kept lines follow it.
+    pub fn rename(&self, old: &str, new: &str) {
+        let mut all = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(lines) = all.remove(old) {
+            all.insert(new.to_string(), lines);
+        }
+    }
+
     pub fn tail(&self, id: &str) -> Vec<String> {
         self.0
             .lock()

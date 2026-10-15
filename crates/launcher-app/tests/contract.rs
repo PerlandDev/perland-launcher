@@ -10,10 +10,10 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AppInfo, Build, ContentFile, JavaTest, JoinPreview, ManualProgress, NewInstance,
-        OpenTarget, OptionalChoice, PackAddRequest, PackArtData, PackContents, PackMod, PackStatus,
-        PackUpdate, RunSnapshot, ServerGame, ServerPack, ServerPlayers, ServerStatusView,
-        ServerTeam, SyncSummary,
+        AppInfo, ArtChoice, Build, ContentFile, InstanceArtData, JavaTest, JoinPreview,
+        ManualProgress, NewInstance, OpenTarget, OptionalChoice, PackAddRequest, PackContents,
+        PackMod, PackStatus, PackUpdate, RunSnapshot, ServerGame, ServerPack, ServerPlayers,
+        ServerStatusView, ServerTeam, SyncSummary,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -29,7 +29,7 @@ use launcher_core::{
     download::Hashes,
     events::TaskId,
     instances::{
-        DamagedInstance, GameSpec, Instance, InstanceListing, JavaSettings, LoaderSpec,
+        ArtMode, DamagedInstance, GameSpec, Instance, InstanceListing, JavaSettings, LoaderSpec,
         ServerAddress, ServerLink, ServerStatus, SourceRef, UpdatePolicy,
     },
     invite::invite_link_cases,
@@ -110,6 +110,8 @@ fn fabric_instance() -> Instance {
             memory_mb: 4096,
         },
         server: None,
+        art_seed: None,
+        art: ArtMode::Auto,
     }
 }
 
@@ -129,6 +131,8 @@ fn vanilla_instance() -> Instance {
             memory_mb: 6144,
         },
         server: None,
+        art_seed: Some("creative-flat".into()),
+        art: ArtMode::Generated,
     }
 }
 
@@ -174,6 +178,8 @@ fn server_instance() -> Instance {
             last_seen: Some(1_791_720_000),
             gone: false,
         }),
+        art_seed: None,
+        art: ArtMode::Auto,
     }
 }
 
@@ -332,6 +338,7 @@ fn contract_fixtures_are_current() {
         "settings",
         Settings {
             language: Some(Lang::Es),
+            rail_expanded: true,
             ..Settings::default()
         },
     );
@@ -674,11 +681,23 @@ fn contract_fixtures_are_current() {
         },
     );
     check(
-        "pack_art",
-        PackArtData {
+        "instance_art",
+        InstanceArtData {
             icon: Some("data:image/png;base64,iVBORw0KGgo=".into()),
             banner: None,
         },
+    );
+    check(
+        "art_choices",
+        vec![
+            ArtChoice::Generated {
+                seed: "dunes".into(),
+            },
+            ArtChoice::Pack,
+            ArtChoice::Upload {
+                path: PathBuf::from("C:/Users/player/Pictures/my island.png"),
+            },
+        ],
     );
     check(
         "pack_add_requests",

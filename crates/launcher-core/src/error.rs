@@ -46,7 +46,7 @@ error_codes! {
     MojangMismatch, NoAssetIndex, NativesExtractFailed, VersionInUse, ArchiveInvalid,
     // instances
     InstanceNotFound, InstanceDamaged, InstanceIdInvalid, InstanceBusy, AlreadyRunning,
-    NameInvalid, MemoryOutOfRange,
+    NameInvalid, MemoryOutOfRange, ArtFileInvalid,
     // java
     JavaUnavailable, JavaStartFailed, JavaPathMissing, JavaTestFailed,
     // launch
@@ -61,7 +61,7 @@ error_codes! {
     ModNotJar, ModExists, ModNotFound, ModNameInvalid, ModManaged,
     // packs and sync
     PackInvalid, PackUnsupported, PackUnsafePath, PackNotFound, PackLinkInvalid, NoPack, MrpackCorrupt,
-    NotEnoughSpace, InstanceLocked, ManualDownloadsNeeded, UpdateCheckFailed, PackPathIsFolder, SyncCancelled, UpdateDownloadFailed,
+    NotEnoughSpace, InstanceLocked, InstanceFolderInUse, ManualDownloadsNeeded, UpdateCheckFailed, PackPathIsFolder, SyncCancelled, UpdateDownloadFailed,
     // browse
     BrowseRateLimited, ContentNotFound, ContentIncompatible, ContentDependencyMissing,
     ContentConflict, ContentNeedsLoader, ContentAlreadyInstalled, ContentBusy,
@@ -186,12 +186,14 @@ mod tests {
             (ErrorCode::MrpackCorrupt, "mrpack_corrupt"),
             (ErrorCode::NotEnoughSpace, "not_enough_space"),
             (ErrorCode::InstanceLocked, "instance_locked"),
+            (ErrorCode::InstanceFolderInUse, "instance_folder_in_use"),
             (ErrorCode::ManualDownloadsNeeded, "manual_downloads_needed"),
             (ErrorCode::UpdateCheckFailed, "update_check_failed"),
             (ErrorCode::PackPathIsFolder, "pack_path_is_folder"),
             (ErrorCode::SyncCancelled, "sync_cancelled"),
             (ErrorCode::UpdateDownloadFailed, "update_download_failed"),
             (ErrorCode::ModManaged, "mod_managed"),
+            (ErrorCode::ArtFileInvalid, "art_file_invalid"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

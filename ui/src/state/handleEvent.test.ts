@@ -65,7 +65,7 @@ it('an ended run refreshes the instance and its pack queries', () => {
   expect(keys).toContainEqual(qk.instances);
   expect(keys).toContainEqual(qk.packStatus('sky'));
   expect(keys).toContainEqual(qk.packContents('sky'));
-  expect(keys).toContainEqual(qk.packArt('sky'));
+  expect(keys).toContainEqual(qk.instanceArt('sky'));
   // A sync can change the pack's own resource packs and shaders too.
   expect(keys).toContainEqual(qk.contentFiles('sky', 'resource_pack'));
   expect(keys).toContainEqual(qk.contentFiles('sky', 'shader'));
@@ -84,11 +84,11 @@ it('leaves the drawer closed when files need a manual download', () => {
 
 it('opens New instance with a deep link once setup is done', async () => {
   mockIPC((cmd) => (cmd === 'deep_link_take' ? { kind: 'pack', url: 'https://x.example/pack.toml' } : null));
-  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: false });
+  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: false, railExpanded: false });
   handleEvent({ type: 'deep_link' });
   await new Promise((r) => setTimeout(r, 10));
   expect(routeSnapshot()).toEqual({ name: 'home', id: null }); // first run: the link waits
-  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true });
+  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true, railExpanded: false });
   handleEvent({ type: 'deep_link' });
   await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'newInstance', link: 'https://x.example/pack.toml' }));
   queryClient.clear();
@@ -110,7 +110,7 @@ it('sends install progress to its own store, not the run', () => {
 it('opens Join server for a join deep link', async () => {
   const invite = `https://play.example.com/${'A'.repeat(43)}`;
   mockIPC((cmd) => (cmd === 'deep_link_take' ? { kind: 'join', invite } : null));
-  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true });
+  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true, railExpanded: false });
   handleEvent({ type: 'deep_link' });
   await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'joinServer', invite }));
   queryClient.clear();

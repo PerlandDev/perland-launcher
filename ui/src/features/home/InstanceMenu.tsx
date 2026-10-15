@@ -11,9 +11,10 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { Copy, Folder, Gear, Pencil, Play, Reload, Trash } from '../../ui/Icon';
+import { Copy, Folder, Gear, Image, Pencil, Play, Reload, Trash } from '../../ui/Icon';
 import { copyText } from '../../ui/copyText';
 import { Menu } from '../../ui/Menu';
+import { ImageDialog } from './ImageDialog';
 import { addressText, inviteOf, isPack, isServer } from './labels';
 
 function RenameDialog({ instance, onClose }: { instance: Instance; onClose: () => void }) {
@@ -82,7 +83,7 @@ function DeleteDialog({ instance, onClose }: { instance: Instance; onClose: () =
 
 export function InstanceMenu({ instance }: { instance: Instance }) {
   const { t } = useTranslation();
-  const [dialog, setDialog] = useState<'rename' | 'delete' | null>(null);
+  const [dialog, setDialog] = useState<'rename' | 'image' | 'delete' | null>(null);
   const qc = useQueryClient();
   const close = () => setDialog(null);
   const invite = inviteOf(instance);
@@ -113,6 +114,8 @@ export function InstanceMenu({ instance }: { instance: Instance }) {
             : []),
           { label: t('home.instanceSettings'), icon: <Gear />, onSelect: () => navigate({ name: 'instanceSettings', id: instance.id }) },
           { label: t('common.rename'), icon: <Pencil />, onSelect: () => setDialog('rename') },
+          // The core refuses a new picture while a run could save the whole instance over it (R3).
+          { label: t('image.menu'), icon: <Image />, disabled: running, onSelect: () => setDialog('image') },
           {
             label: t('common.openFolder'),
             icon: <Folder />,
@@ -122,6 +125,7 @@ export function InstanceMenu({ instance }: { instance: Instance }) {
         ]}
       />
       {dialog === 'rename' && <RenameDialog instance={instance} onClose={close} />}
+      {dialog === 'image' && <ImageDialog instance={instance} onClose={close} />}
       {dialog === 'delete' && <DeleteDialog instance={instance} onClose={close} />}
     </>
   );

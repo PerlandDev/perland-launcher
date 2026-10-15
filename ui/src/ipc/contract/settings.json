@@ -4,5 +4,5 @@
   "defaultMemoryMb": 4096,
   "minimizeOnPlay": true,
   "firstRunDone": false,
-  "updateChannel": null
+  "railExpanded": true
 }

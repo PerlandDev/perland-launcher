@@ -1,5 +1,7 @@
 // One icon system: pixelarticons (MIT), drawn on a 24px pixel grid that matches the mark.
 export {
+  ArrowBarLeft,
+  ArrowBarRight,
   Check,
   ChevronDown,
   Close,
@@ -8,6 +10,7 @@ export {
   ExternalLink,
   Folder,
   Gear,
+  Image,
   InfoBox,
   Languages,
   Lock,
@@ -24,6 +27,7 @@ export {
   Terminal,
   Trash,
   Unlink,
+  Upload,
   User,
   Users,
   WarningDiamond,

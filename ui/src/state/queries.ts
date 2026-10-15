@@ -1,8 +1,9 @@
 import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../ipc/commands';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ContentKind, ImageKind, Instance, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
+import type { ArtChoice, ContentKind, ImageKind, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
+import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { pushError } from './toasts';
 
 export function createQueryClient() {
@@ -28,7 +29,7 @@ export const qk = {
   contentFiles: (id: string, kind: ContentKind) => ['content', id, kind] as const,
   packStatus: (id: string) => ['pack', 'status', id] as const,
   packContents: (id: string) => ['pack', 'contents', id] as const,
-  packArt: (id: string) => ['pack', 'art', id] as const,
+  instanceArt: (id: string) => ['instance', 'art', id] as const,
   manual: (id: string) => ['pack', 'manual', id] as const,
   browseSearch: (request: Omit<SearchRequest, 'offset'>) => ['browse', 'search', request] as const,
   browseCategories: (kind: ContentKind) => ['browse', 'categories', kind] as const,
@@ -68,8 +69,8 @@ export const usePackStatus = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packStatus(id), queryFn: () => commands.packStatus(id), enabled, staleTime: TEN_MINUTES });
 export const usePackContents = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packContents(id), queryFn: () => commands.packContents(id), enabled });
-export const usePackArt = (id: string, enabled: boolean) =>
-  useQuery({ queryKey: qk.packArt(id), queryFn: () => commands.packArt(id), enabled, staleTime: Infinity });
+export const useInstanceArt = (id: string) =>
+  useQuery({ queryKey: qk.instanceArt(id), queryFn: () => commands.instanceArt(id), staleTime: Infinity });
 
 export const BROWSE_PAGE = 20;
 const FIVE_MINUTES = 5 * 60_000;
@@ -194,12 +195,87 @@ export function useUpdateInstance(opts: Opts = {}) {
   });
 }
 
+/** The same route, pointed at `to` wherever it named the instance `from`; null when it never did. */
+function routeFollowing(route: Route, from: string, to: string): Route | null {
+  switch (route.name) {
+    case 'home':
+    case 'mods':
+    case 'instanceSettings':
+      return route.id === from ? { ...route, id: to } : null;
+    case 'browse':
+      return route.instance === from ? { ...route, instance: to } : null;
+    case 'joinServer':
+      return route.relinkFor === from ? { ...route, relinkFor: to } : null;
+    default:
+      return null;
+  }
+}
+
 export function useRenameInstance(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => commands.instanceRename(id, name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onSuccess: (renamed, { id }) => {
+      if (renamed.id !== id) {
+        // The folder (and so the id) moved with the name. Put the new id in the cached listing before the route follows, so the screen never falls back to another instance.
+        qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
+          listing && { ...listing, instances: listing.instances.map((i) => (i.id === id ? renamed : i)) },
+        );
+        const next = routeFollowing(routeSnapshot(), id, renamed.id);
+        if (next) navigate(next);
+        else if (lastInstance() === id) rememberInstance(renamed.id);
+        void qc.invalidateQueries({ queryKey: qk.instanceArt(id) });
+        void qc.invalidateQueries({ queryKey: qk.serverStatus(id) });
+      }
+      return qc.invalidateQueries({ queryKey: qk.instances });
+    },
     onError: onError(opts),
+  });
+}
+
+/** Change an instance's picture. The cached listing takes the saved instance at once, so the
+ *  picker's lamp moves without waiting; the art and the listing are read again so the rail icon
+ *  and the marquee follow. */
+export function useSetInstanceArt(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, choice }: { id: string; choice: ArtChoice }) => commands.instanceArtSet(id, choice),
+    onSuccess: (saved, { id }) => {
+      qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
+        listing && { ...listing, instances: listing.instances.map((i) => (i.id === id ? saved : i)) },
+      );
+      void qc.invalidateQueries({ queryKey: qk.instanceArt(id) });
+      return qc.invalidateQueries({ queryKey: qk.instances });
+    },
+    onError: onError(opts),
+  });
+}
+
+/** Save the player's rail order. The cached listing takes the new order at once and goes back if
+ *  the core refuses it; the core's own listing replaces it on success. Moves run one at a time, so
+ *  quick Alt+arrow presses reach the core in the order they were made. */
+export function useReorderInstances(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    scope: { id: 'instance-order' },
+    mutationFn: (ids: string[]) => commands.instanceReorder(ids),
+    onMutate: async (ids) => {
+      await qc.cancelQueries({ queryKey: qk.instances });
+      const previous = qc.getQueryData<InstanceListing>(qk.instances);
+      if (previous) {
+        const byId = new Map(previous.instances.map((i) => [i.id, i]));
+        const ordered = ids.flatMap((id) => byId.get(id) ?? []);
+        // Anything the ids missed (an instance added meanwhile) stays on top, like the core's rule.
+        const rest = previous.instances.filter((i) => !ids.includes(i.id));
+        qc.setQueryData<InstanceListing>(qk.instances, { ...previous, instances: [...rest, ...ordered] });
+      }
+      return { previous };
+    },
+    onSuccess: (listing) => qc.setQueryData(qk.instances, listing),
+    onError: (error, _ids, context) => {
+      if (context?.previous) qc.setQueryData(qk.instances, context.previous);
+      onError(opts)(error);
+    },
   });
 }
 

@@ -47,12 +47,14 @@ function Screen({ route }: { route: Route }) {
 function Shell() {
   const route = useRoute();
   const activity = useActivity();
+  // The rail is 4.5rem of icons, or 15rem with names when the player widens it; the switch snaps.
+  const wide = useSettings().data?.railExpanded ?? false;
   // Once the shell exists (after first run), pick up a link that started the app.
   useEffect(() => void takeDeepLink(), []);
   return (
     <div className="grid h-full grid-rows-[2.25rem_1fr]">
       <TitleBar />
-      <div className="grid min-h-0 grid-cols-[4.5rem_1fr]">
+      <div className={`grid min-h-0 ${wide ? 'grid-cols-[15rem_1fr]' : 'grid-cols-[4.5rem_1fr]'}`}>
         <Rail />
         {/* The open drawer is 18rem tall (ActivityDrawer); padding by the same keeps the screen above it. */}
         <main className={`relative min-h-0 overflow-hidden ${activity.open ? 'pb-[18rem]' : 'pb-9'}`}>

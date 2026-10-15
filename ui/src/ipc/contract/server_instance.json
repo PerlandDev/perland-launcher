@@ -30,5 +30,7 @@
     "lastStatus": "online",
     "lastSeen": 1791720000,
     "gone": false
-  }
+  },
+  "artSeed": null,
+  "art": "auto"
 }
