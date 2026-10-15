@@ -49,6 +49,26 @@ export function releaseNotes({ channel, signed }) {
   return notes;
 }
 
+/** What the Windows signCommand does with a file Tauri hands it (signing spec §3.3). NSIS plugins are
+ *  upstream binaries and stay unsigned; the final installer is signed in round 2; everything else is
+ *  ours (the launcher .exe, the uninstaller) and is signed in round 1. */
+export function signRole(path) {
+  const p = String(path).replaceAll('\\', '/').toLowerCase();
+  if (p.includes('/plugins/x86-unicode/')) return 'plugin';
+  if (p.includes('/bundle/nsis/') && p.endsWith('-setup.exe')) return 'installer';
+  return 'binary';
+}
+
+/** In pass 2, a binary must be one round 1 signed; anything else means the passes built different bytes. */
+export function planApply({ role, hash, signed }) {
+  if (role !== 'binary') return 'skip';
+  if (signed.has(hash)) return 'replace';
+  throw new Error(
+    `Round 1 never saw this file (sha256 ${hash}), so the build is not reproducible between the two passes. ` +
+      'See the signing spec §3.3 for the three-round fallback.',
+  );
+}
+
 export function releaseName(platform, version) {
   return `PerlandLauncher_${version}${SUFFIX[platform].release}`;
 }
