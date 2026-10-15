@@ -50,13 +50,16 @@ export function releaseNotes({ channel, signed }) {
 }
 
 /** What the Windows signCommand does with a file Tauri hands it (signing spec §3.3). NSIS plugins are
- *  upstream binaries and stay unsigned; the final installer is signed in round 2; everything else is
- *  ours (the launcher .exe, the uninstaller) and is signed in round 1. */
+ *  upstream binaries and stay unsigned; the final installer is signed in round 2; our binaries (the
+ *  launcher .exe, and the uninstaller, which makensis hands over as a GetTempFileName `nstXXXX.tmp`)
+ *  are signed in round 1. Anything else throws, so a new file in the bundle is never signed unseen. */
 export function signRole(path) {
   const p = String(path).replaceAll('\\', '/').toLowerCase();
+  const name = p.slice(p.lastIndexOf('/') + 1);
   if (p.includes('/plugins/x86-unicode/')) return 'plugin';
   if (p.includes('/bundle/nsis/') && p.endsWith('-setup.exe')) return 'installer';
-  return 'binary';
+  if (name === 'perland-launcher.exe' || /^nst[0-9a-f]{1,4}\.tmp$/.test(name)) return 'binary';
+  throw new Error(`${path} is not a file this build signs; add it to signRole in scripts/release/lib.mjs if it should be`);
 }
 
 /** In pass 2, a binary must be one round 1 signed; anything else means the passes built different bytes. */

@@ -85,7 +85,9 @@ The Linux matrix leg is unchanged: one `tauri build` with `createUpdaterArtifact
 |---|---|---|---|
 | `plugin` | path contains `/plugins/x86-unicode/` | no-op | no-op |
 | `installer` | under `/bundle/nsis/` and ends in `-setup.exe` | no-op | no-op (signed in round 2) |
-| `binary` | anything else: the patched `perland-launcher.exe`, the uninstaller temp file | copy to `<sha256>.exe` | replace with the signed copy, or fail |
+| `binary` | named `perland-launcher.exe` (the patched launcher), or makensis's uninstaller temp file `nstXXXX.tmp` | copy to `<sha256>.exe` | replace with the signed copy, or fail (with "round 1 delivered nothing" if `signed/` is missing or empty) |
+
+Any other path fails the command and is logged as `unknown … error`, so `sign-check` fails the pass. A file Tauri starts handing over in a later version is never signed unseen; it is added to `signRole` on purpose.
 
 `collect` must see exactly the `binary` files that `apply` later sees. The uninstaller does not contain the app `.exe` (it holds only uninstall code and the plugins it calls), and the plugins are byte-identical across passes. So it should be identical in both passes. The dry run proves it. If it fails, the fallback is a third round: pass 2 collects the uninstaller after round 1, and pass 3 applies. That fallback is not built unless needed.
 

@@ -135,6 +135,8 @@ jobs:
           path: ${{ env.SIGN_DIR }}/unsigned/*
           if-no-files-found: error
           retention-days: 1
+          # A re-run of the failed job (say, after a SignPath timeout) uploads again under the same name.
+          overwrite: true
       - name: "Signing round 1: our binaries (approve in SignPath)"
         if: runner.os == 'Windows' && vars.SIGNPATH_SIGNING == 'true'
         uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
@@ -165,6 +167,8 @@ jobs:
           path: target/release/bundle/nsis/*-setup.exe
           if-no-files-found: error
           retention-days: 1
+          # A re-run of the failed job (say, after a SignPath timeout) uploads again under the same name.
+          overwrite: true
       - name: "Signing round 2: the installer (approve in SignPath)"
         if: runner.os == 'Windows' && vars.SIGNPATH_SIGNING == 'true'
         uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
