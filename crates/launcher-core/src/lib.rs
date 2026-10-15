@@ -13,6 +13,7 @@ pub mod invite;
 pub mod java;
 pub mod launch;
 pub mod locks;
+pub mod logging;
 pub mod meta;
 pub mod mods;
 pub mod paths;

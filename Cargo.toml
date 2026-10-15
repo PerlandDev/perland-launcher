@@ -28,6 +28,9 @@ toml = "1"
 percent-encoding = "2"
 fs4 = "1.1"
 dirs = "7"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 
 # Hashing every pack file is ~10× slower unoptimized; keep dev runs and tests close to release.
 [profile.dev.package.sha1]
