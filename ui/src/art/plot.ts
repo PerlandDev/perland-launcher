@@ -1,4 +1,5 @@
 import { DIRT, hash, PLOT_HUES, rng } from './random';
+import { hueIndex } from './variant';
 
 export interface Cell {
   x: number;
@@ -9,7 +10,7 @@ export interface Cell {
 /** A tiny terraced plot like one quarter of the mark: stepped grass on dirt, in the instance's hue. */
 export function plotCells(seed: string): Cell[] {
   const random = rng(hash(`plot:${seed}`));
-  const hue = PLOT_HUES[hash(seed) % PLOT_HUES.length] ?? PLOT_HUES[0];
+  const hue = PLOT_HUES[hueIndex(seed)] ?? PLOT_HUES[0];
   const rising = random() < 0.5;
   const cells: Cell[] = [];
   let height = 2 + Math.floor(random() * 2);

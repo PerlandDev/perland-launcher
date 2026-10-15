@@ -1,4 +1,5 @@
 import { DIRT, GROUND, hash, mix, PLOT_HUES, rng } from './random';
+import { hueIndex, presetVariant, type Variant } from './variant';
 
 /** The marquee is a 480×270 panel on an 8-unit pixel grid: 60 columns, 33.75 rows. */
 export const COLS = 60;
@@ -6,6 +7,33 @@ export const CELL = 8;
 const HALF = COLS / 2;
 /** The warm tube light behind every marquee panel; instances only tint it slightly. */
 const LAMP = '#ffd98a';
+
+/** The four hill bands, far to near. Far hills catch the most light; the nearest band is the dark
+ *  cabinet floor the name sits on, the same in every variant. */
+const BANDS: Record<Variant['ridge'], { min: number; max: number; light: number }[]> = {
+  hills: [
+    { min: 18, max: 23, light: 0.5 },
+    { min: 15, max: 19, light: 0.3 },
+    { min: 12, max: 15, light: 0.14 },
+    { min: 9, max: 12, light: 0 },
+  ],
+  plains: [
+    { min: 13, max: 16, light: 0.5 },
+    { min: 11, max: 14, light: 0.3 },
+    { min: 10, max: 12, light: 0.14 },
+    { min: 9, max: 12, light: 0 },
+  ],
+  peaks: [
+    { min: 22, max: 27, light: 0.5 },
+    { min: 17, max: 22, light: 0.3 },
+    { min: 13, max: 16, light: 0.14 },
+    { min: 9, max: 12, light: 0 },
+  ],
+};
+
+/** Where a variant's sun sits: its column (before the random nudge) and its row range. */
+const SUN_X = { left: 6, right: Math.round(COLS * 0.79) };
+const SUN_Y = { high: [1, 2], mid: [5, 8], low: [10, 12] } as const;
 
 export interface MarqueeLayer {
   /** The backlit top edge of the silhouette. */
@@ -26,23 +54,23 @@ export interface MarqueeScene {
   layers: MarqueeLayer[];
 }
 
-/** Terraced hills seen as silhouettes against a lamp behind the horizon, seeded by the instance id. */
+/** Terraced hills seen as silhouettes against a lamp behind the horizon, seeded by the instance id.
+ *  A picked preset (`<base>~N`) pins its own hue, sun and ridge; every other seed draws as it always has. */
 export function marqueeScene(seed: string): MarqueeScene {
+  const variant = presetVariant(seed)?.variant ?? null;
   const random = rng(hash(seed));
-  const accent = PLOT_HUES[hash(seed) % PLOT_HUES.length] ?? PLOT_HUES[0];
-  const glow = mix(LAMP, accent, 0.15);
+  const hue = hueIndex(seed);
+  const accent = PLOT_HUES[hue] ?? PLOT_HUES[0];
+  // A preset leans further into its hue, so six of them read as six lights, not one dusk.
+  const glow = mix(LAMP, accent, variant ? 0.32 : 0.15);
+  const sunSide = variant?.sun.side ?? 'right';
+  const [sunTop, sunBottom] = SUN_Y[variant?.sun.height ?? 'mid'];
   const sun = {
-    x: Math.round(COLS * 0.79) + Math.floor(random() * Math.round(COLS * 0.07)),
-    y: 5 + Math.floor(random() * 4),
+    x: SUN_X[sunSide] + Math.floor(random() * Math.round(COLS * 0.07)),
+    y: sunTop + Math.floor(random() * (sunBottom - sunTop + 1)),
     color: mix(glow, '#fff8e8', 0.7),
   };
-  // Far hills catch the most light; the nearest band is the dark cabinet floor the name sits on.
-  const bands = [
-    { min: 18, max: 23, light: 0.5 },
-    { min: 15, max: 19, light: 0.3 },
-    { min: 12, max: 15, light: 0.14 },
-    { min: 9, max: 12, light: 0 },
-  ];
+  const bands = BANDS[variant?.ridge ?? 'hills'];
   const layers = bands.map((band, depth) => {
     const half: number[] = [];
     let h = band.min + Math.floor(random() * (band.max - band.min + 1));
@@ -66,10 +94,11 @@ export function marqueeScene(seed: string): MarqueeScene {
     }
     const near = depth === bands.length - 1;
     const body = near ? mix(GROUND, DIRT, 0.08) : mix(mix(GROUND, DIRT, 0.2), glow, band.light);
-    const hue = PLOT_HUES[(hash(seed) + depth) % PLOT_HUES.length] ?? accent;
+    // The base recipe walks the rims through the hues; a preset keeps them in its own hue but for one contrasting band.
+    const rimHue = variant ? PLOT_HUES[(hue + (depth === 2 ? 2 : 0)) % PLOT_HUES.length] : PLOT_HUES[(hue + depth) % PLOT_HUES.length];
     return {
       body,
-      rim: near ? mix(body, hue, 0.35) : mix(mix(body, hue, 0.7), glow, 0.2),
+      rim: near ? mix(body, rimHue ?? accent, 0.35) : mix(mix(body, rimHue ?? accent, 0.7), glow, 0.2),
       heights,
       duration: 180 - depth * 40,
     };

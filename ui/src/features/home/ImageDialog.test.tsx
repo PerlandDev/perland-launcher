@@ -1,4 +1,5 @@
 import { act, screen, within } from '@testing-library/react';
+import i18n from '../../i18n';
 import { describe, expect, it, vi } from 'vitest';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
@@ -96,4 +97,18 @@ describe('Change image', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Done' }));
     expect(screen.queryByRole('dialog', { name: 'Change image' })).not.toBeInTheDocument();
   });
+});
+
+it.each([
+  ['en', 'Upload your own…', 'PNG, JPEG or WebP, up to 5 MB'],
+  ['es', 'Sube la tuya…', 'PNG, JPEG o WebP, hasta 5 MB'],
+])('states what an upload may be before picking (%s)', async (lang, upload, limits) => {
+  await act(() => i18n.changeLanguage(lang));
+  const { user } = renderApp(<Home id="asalith-fields" />);
+  await screen.findByRole('heading', { name: 'Asalith Fields' });
+  await user.click(screen.getByRole('button', { name: lang === 'en' ? 'More options' : 'Más opciones' }));
+  await user.click(screen.getByRole('menuitem', { name: lang === 'en' ? 'Change image…' : 'Cambiar imagen…' }));
+  const key = screen.getByRole('button', { name: upload });
+  expect(key).toHaveTextContent(limits);
+  expect(key).toHaveAccessibleDescription(limits);
 });

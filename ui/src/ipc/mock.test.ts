@@ -108,7 +108,8 @@ describe('mock backend', () => {
     expect(custom.art).toBe('custom');
     const mine = await art('sky-islands');
     expect(mine.icon).toMatch(/^data:image\/jpeg;base64,/);
-    expect(mine.banner).toBe(mine.icon);
+    // Sent once, as the icon, like the core: the marquee falls back to it.
+    expect(mine.banner).toBeNull();
     const back = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'pack' } })) as Instance;
     expect(back.art).toBe('auto');
     expect((await art('sky-islands')).icon).toMatch(/^data:image\/svg/);

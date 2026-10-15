@@ -700,18 +700,18 @@
       inset 0 2px 0 rgb(0 0 0 / 0.45),
       inset 0 0 0 1px var(--color-line);
   }
+  /* The lamp leads the label, as on segments, category keys and the tiles: after the icon slot, before the words. */
   .art-key[aria-pressed='true']::before {
     content: '';
     flex: none;
-    order: 2;
     width: 0.5rem;
     height: 0.5rem;
-    margin-inline-start: auto;
     background: var(--color-lime);
   }
   .art-key-slot {
     display: grid;
     flex: none;
+    order: -1;
     place-items: center;
     width: 2rem;
     height: 2rem;
@@ -721,6 +721,20 @@
     border-radius: 3px;
     corner-shape: notch;
     box-shadow: inset 0 0 0 1px var(--color-line);
+  }
+  .art-key-text {
+    display: grid;
+    gap: 0.125rem;
+    min-width: 0;
+  }
+  /* What an upload may be, said before the pick: a dim second line, not a third button state. */
+  .art-key-hint {
+    color: var(--color-ink-dim);
+    font-size: 0.8125rem;
+    font-weight: 400;
+    line-height: 1.25;
+    /* At half the dialog it takes two lines; balance keeps "up to 5 MB" whole on the second. */
+    text-wrap: balance;
   }
   .art-key-slot svg {
     width: 1.25rem;
@@ -885,36 +899,42 @@
   .rail-list > li {
     position: relative;
   }
-  /* Reordering: a carried cabinet is picked up off the rail. It stands on the large step, rides the
-     pointer 1:1 (direct manipulation, so nothing eases and reduced motion has nothing to remove) and
-     drops back into place in one snap. */
-  .rail-item[data-dragging] {
-    z-index: 1;
-    translate: 0 var(--lift, 0);
-    background: var(--color-raised);
-    box-shadow: 0 6px 0 var(--color-dirt-deep);
-    cursor: grabbing;
+  /* Reordering. The rows between the carried cabinet's place and where it would land snap one place over
+     (a snap, never a slide), so the open slot is always where it will land. */
+  .rail-list > li[data-shift] {
+    translate: 0 var(--shift, 0);
   }
-  /* The drop line is an insertion caret, so it is amber like the text caret and the drop-zone cue:
-     a 4px bar on its own 2px dirt step, centred in the 0.75rem gap and clear of a selected cabinet's step.
-     It draws over the carried cabinet, which would otherwise hide it whenever the pointer is near a gap. */
-  .rail-list > li[data-drop]::after {
+  /* The open slot is the slot a pressed key leaves behind: a recessed ground socket with its seam ring,
+     never a hole in the rail. It hangs off the carried cabinet's own <li> and follows the landing place. */
+  .rail-list > li[data-carry]::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    translate: 0 var(--socket, 0);
+    pointer-events: none;
+    background: var(--color-ground);
+    border-radius: 6px;
+    corner-shape: notch;
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  /* The drop line is an insertion caret, so it is amber like the text caret and the drop-zone cue: a 4px
+     bar on its own 2px dirt step in the gap above the open slot, drawn over the carried cabinet. It shows
+     only once the landing place differs from the cabinet's own, and never sits below the last row. */
+  .rail-list > li[data-carry][data-drop]::after {
     content: '';
     position: absolute;
     z-index: 2;
+    top: -7px;
     inset-inline: 0;
     height: 4px;
+    translate: 0 var(--socket, 0);
     background: var(--color-amber);
     box-shadow: 0 2px 0 var(--color-dirt);
     border-radius: 2px;
     corner-shape: notch;
     pointer-events: none;
-  }
-  .rail-list > li[data-drop='before']::after {
-    top: -7px;
-  }
-  .rail-list > li[data-drop='after']::after {
-    bottom: -9px;
   }
   /* The rail key is chrome, not content: dim ink at rest, like the title-bar icons. */
   .rail-key {
@@ -1012,6 +1032,23 @@
     width: 4px;
     height: 40%;
     background: var(--color-amber);
+  }
+  /* Held: the carried cabinet is off the rail, in the hand. It rides the pointer 1:1 (direct manipulation,
+     so nothing eases and reduced motion has nothing to remove) on the 8px card step with a dim-ink seam
+     ring, so it never reads as the selected cabinet at rest (raised on 4px). It comes after
+     [data-selected] and is more specific, so it wins for a carried selected cabinet too; that cabinet's
+     coin-slot light stays off until it lands. */
+  .rail-list .rail-item[data-dragging] {
+    z-index: 1;
+    translate: 0 var(--lift, 0);
+    background: var(--color-raised);
+    box-shadow:
+      inset 0 0 0 1px var(--color-ink-dim),
+      0 8px 0 var(--color-dirt-deep);
+    cursor: grabbing;
+  }
+  .rail-list .rail-item[data-dragging]::before {
+    content: none;
   }
   .rail-led {
     position: absolute;

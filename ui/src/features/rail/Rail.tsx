@@ -54,6 +54,8 @@ interface Carry {
   lift: number;
   /** The slot (0..n) it would land in. */
   slot: number;
+  /** Each healthy cabinet's vertical midpoint when the drag began, top to bottom. */
+  midpoints: number[];
 }
 
 interface Item {
@@ -170,13 +172,17 @@ function RailItem({
   );
 }
 
-/** Where the drop line shows while a cabinet is carried: above the cabinet at `order`, or below the
- *  last healthy one. Nothing at the two slots either side of the carried cabinet, which leave it where it is. */
-function dropMark(carry: Carry, order: number, count: number): 'before' | 'after' | undefined {
-  if (order < 0 || carry.slot === carry.from || carry.slot === carry.from + 1) return undefined;
-  if (carry.slot === order) return 'before';
-  if (carry.slot === count && order === count - 1) return 'after';
-  return undefined;
+/** Where everything stands while a cabinet is carried. The rows between its own place and the place it
+ *  would land snap one place toward its own (a snap, never a slide), so the open slot is always where it
+ *  will land: a recessed socket, marked by the drop line, under the carried cabinet. `shift` is how far a
+ *  row at `order` has moved; `socket` is how far the open slot is from the carried cabinet's own place. */
+function preview(carry: Carry, order: number): { shift: number; socket: number; moved: boolean } {
+  const { from, midpoints: mid } = carry;
+  const target = carry.slot > from ? carry.slot - 1 : carry.slot;
+  const at = (k: number) => mid[k] ?? 0;
+  const shift =
+    order > from && order <= target ? at(order - 1) - at(order) : order < from && order >= target ? at(order + 1) - at(order) : 0;
+  return { shift, socket: at(target) - at(from), moved: target !== from };
 }
 
 /** Every instance as a cabinet icon; the selected one has the lit light. Arrow keys move along it,
@@ -220,6 +226,8 @@ export function Rail() {
     if (button && document.activeElement !== button && (document.activeElement === null || document.activeElement === document.body)) {
       button.focus();
     }
+    // Once: a later change to the list (a run ending, a refetch) never pulls focus back to the rail.
+    follow.current = null;
   }, [items]);
 
   const move = (from: number, to: number) => {
@@ -279,7 +287,7 @@ export function Rail() {
       const own = p.midpoints[p.from] ?? p.y;
       // The carried cabinet stays between the first and last healthy places, never over the damaged ones or the keys.
       const lift = Math.min(Math.max(y - p.y, (p.midpoints[0] ?? own) - own), (p.midpoints.at(-1) ?? own) - own);
-      setCarry({ id, from: p.from, lift, slot: dropIndex(p.midpoints, y) });
+      setCarry({ id, from: p.from, lift, slot: dropIndex(p.midpoints, y), midpoints: p.midpoints });
     },
     onPointerUp: (event: PointerEvent<HTMLButtonElement>) => {
       const p = press.current;
@@ -289,7 +297,10 @@ export function Rail() {
         follow.current = id;
         const scrolled = (listRef.current?.scrollTop ?? 0) - p.scrollTop;
         const slot = dropIndex(p.midpoints, event.clientY + scrolled);
-        move(p.from, slot > p.from ? slot - 1 : slot);
+        // The list may have changed under the drag (another window, a pending move): move this cabinet
+        // by its id, from where it is now, or nothing if it is gone.
+        const from = ids.indexOf(p.id);
+        if (from >= 0) move(from, slot > from ? slot - 1 : slot);
       }
       stopCarrying();
     },
@@ -305,8 +316,10 @@ export function Rail() {
 
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     if (event.key === 'Escape' && press.current?.carrying) {
-      // Put it back. The release that follows is still not a click.
+      // Put it back. The release that follows is still not a click, and the Escape is the drag's alone
+      // (it never also closes a dialog or anything else listening further up).
       event.preventDefault();
+      event.stopPropagation();
       endedDrag.current = true;
       stopCarrying();
       return;
@@ -349,8 +362,22 @@ export function Rail() {
       <ul ref={listRef} className="rail-list" onKeyDown={onKeyDown}>
         {items.map((item, index) => {
           const order = ids.indexOf(item.id);
+          const held = carry?.id === item.id;
+          const place = carry && order >= 0 ? preview(carry, order) : null;
           return (
-            <li key={item.id} data-drop={carry ? dropMark(carry, order, ids.length) : undefined}>
+            <li
+              key={item.id}
+              data-carry={held ? '' : undefined}
+              data-drop={held && place?.moved ? '' : undefined}
+              data-shift={!held && place?.shift ? '' : undefined}
+              style={
+                held
+                  ? ({ '--socket': `${place?.socket ?? 0}px` } as CSSProperties)
+                  : place?.shift
+                    ? ({ '--shift': `${place.shift}px` } as CSSProperties)
+                    : undefined
+              }
+            >
               <RailItem
                 item={item}
                 selected={item.id === selected}

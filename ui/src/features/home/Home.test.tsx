@@ -1,4 +1,5 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
+import { Marquee } from '../../art/Marquee';
 import { describe, expect, it, vi } from 'vitest';
 import packStatusFx from '../../ipc/contract/pack_status.json';
 import { createMockBackend, exitOf } from '../../ipc/mock';
@@ -382,4 +383,17 @@ it("fills the marquee with the player's own picture, which arrives once as the i
   const { container } = renderWithProviders(<Home id="asalith-fields" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
   await screen.findByRole('heading', { name: 'Asalith Fields' });
   await vi.waitFor(() => expect(container.querySelector('img.marquee-banner')?.getAttribute('src')).toMatch(/^data:image\/png;base64,/));
+});
+
+it('draws the marquee from the art seed, not the id', async () => {
+  const backend = createMockBackend();
+  backend.state.listing.instances = backend.state.listing.instances.map((i) =>
+    i.id === 'creative-flat' ? { ...i, artSeed: 'old-name', art: 'generated' as const } : i,
+  );
+  const { container } = renderWithProviders(<Home id="creative-flat" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
+  await screen.findByRole('heading', { name: 'Creative Flat' });
+  const hills = (root: Element) => [...root.querySelectorAll('.marquee-layer path')].map((p) => p.getAttribute('d'));
+  const want = hills(render(<Marquee seed="old-name" attract={false} />).container);
+  expect(want).not.toEqual(hills(render(<Marquee seed="creative-flat" attract={false} />).container));
+  expect(hills(container.querySelector('section .marquee')!)).toEqual(want);
 });

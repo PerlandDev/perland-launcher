@@ -1,5 +1,5 @@
 import { open } from '@tauri-apps/plugin-dialog';
-import { useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Marquee } from '../../art/Marquee';
 import { artSeed, presetSeeds } from '../../art/seed';
@@ -27,6 +27,7 @@ function currentChoice(instance: Instance): 'upload' | 'pack' | { seed: string }
 /** A picture-choice key: a raised key with its icon slot, pressed into its slot with the lime lamp while in use. */
 function PictureKey({
   label,
+  hint,
   glyph,
   picture,
   current,
@@ -34,6 +35,8 @@ function PictureKey({
   onChoose,
 }: {
   label: string;
+  /** A second, dim line under the label (what an upload may be). It describes the key; the label alone names it. */
+  hint?: string;
   glyph: ReactNode;
   /** The picture in use (a data: URL) when this is the current choice; otherwise the glyph shows. */
   picture: string | null;
@@ -41,11 +44,20 @@ function PictureKey({
   busy: boolean;
   onChoose: () => void;
 }) {
+  const id = useId();
   const [failed, setFailed] = useState<string | null>(null);
   const [upscaled, setUpscaled] = useState<string | null>(null);
   const shown = current && picture && picture !== failed ? picture : null;
   return (
-    <button type="button" className="art-key" aria-pressed={current} aria-disabled={busy || undefined} onClick={onChoose}>
+    <button
+      type="button"
+      className="art-key"
+      aria-pressed={current}
+      aria-disabled={busy || undefined}
+      aria-labelledby={`${id}-label`}
+      aria-describedby={hint ? `${id}-hint` : undefined}
+      onClick={onChoose}
+    >
       <span className="art-key-slot" aria-hidden>
         {shown ? (
           <img
@@ -65,7 +77,14 @@ function PictureKey({
           glyph
         )}
       </span>
-      <span className="min-w-0">{label}</span>
+      <span className="art-key-text">
+        <span id={`${id}-label`}>{label}</span>
+        {hint && (
+          <span id={`${id}-hint`} className="art-key-hint">
+            {hint}
+          </span>
+        )}
+      </span>
     </button>
   );
 }
@@ -137,6 +156,7 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
           )}
           <PictureKey
             label={t('image.upload')}
+            hint={t('image.uploadHint')}
             glyph={<Upload />}
             picture={picture}
             current={current === 'upload'}

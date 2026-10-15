@@ -64,6 +64,7 @@
     "landscape": "Paisaje {{n}}",
     "pack": "Imagen del pack",
     "upload": "Sube la tuya…",
+    "uploadHint": "PNG, JPEG o WebP, hasta 5 MB",
     "pickTitle": "Elige una imagen",
     "fileFilter": "Imágenes",
     "done": "Listo"
