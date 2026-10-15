@@ -127,7 +127,7 @@ async fn imports_files_env_and_overrides() {
         &out,
         &sha1_hex(b"client"),
     );
-    assert_eq!(wrong.unwrap_err().code, ErrorCode::PackInvalid);
+    assert_eq!(wrong.unwrap_err().code, ErrorCode::MrpackCorrupt);
 }
 
 #[test]
@@ -238,5 +238,42 @@ fn mrpack_format_problems_are_named() {
     );
 
     std::fs::write(&p, b"not a zip").unwrap();
-    assert_eq!(read().unwrap_err().code, ErrorCode::PackInvalid);
+    assert_eq!(read().unwrap_err().code, ErrorCode::MrpackCorrupt);
+}
+
+#[test]
+fn a_damaged_entry_is_mrpack_corrupt_not_a_disk_error() {
+    use std::io::Write;
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("pack.mrpack");
+    {
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&path).unwrap());
+        let deflated = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file("modrinth.index.json", deflated).unwrap();
+        zip.write_all(&index(json!([]))).unwrap();
+        zip.start_file("overrides/config/a.txt", deflated).unwrap();
+        zip.write_all(&b"hello world ".repeat(64)).unwrap();
+        zip.finish().unwrap();
+    }
+    // Flip bytes inside the second entry's compressed data (after its local header).
+    let mut bytes = std::fs::read(&path).unwrap();
+    let at = bytes
+        .windows(22)
+        .position(|w| w == b"overrides/config/a.txt")
+        .unwrap()
+        + 22
+        + 4;
+    for b in &mut bytes[at..at + 8] {
+        *b ^= 0xFF;
+    }
+    std::fs::write(&path, &bytes).unwrap();
+    let err = mrpack::read_archive(
+        &path,
+        "stamp".into(),
+        Hashes::sha1("0".repeat(40)),
+        Limits::default(),
+    )
+    .unwrap_err();
+    assert_eq!(err.code, ErrorCode::MrpackCorrupt, "{err:?}");
 }

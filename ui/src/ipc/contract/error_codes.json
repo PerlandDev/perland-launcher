@@ -61,6 +61,7 @@
   "pack_not_found",
   "pack_link_invalid",
   "no_pack",
+  "mrpack_corrupt",
   "not_enough_space",
   "instance_locked",
   "manual_downloads_needed",
