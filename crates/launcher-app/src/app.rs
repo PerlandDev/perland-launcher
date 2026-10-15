@@ -139,7 +139,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     pub fn new(config: AppConfig, meta: MetaClient, runner: Arc<R>, host: Arc<H>) -> Arc<Self> {
         let root = config.dirs.root().to_path_buf();
         Arc::new(Self {
-            instances: InstanceStore::new(config.dirs.instances()),
+            instances: InstanceStore::new(config.dirs.instances())
+                .with_objects(config.dirs.objects()),
             accounts: tokio::sync::Mutex::new(AccountStore::new(root.join("accounts.json"))),
             settings: tokio::sync::Mutex::new(SettingsStore::new(root.join("settings.json"))),
             order: tokio::sync::Mutex::new(OrderStore::new(config.dirs.instance_order())),

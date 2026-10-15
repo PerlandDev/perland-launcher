@@ -5,6 +5,7 @@
 //!
 //! A file known only by CurseForge's murmur2 fingerprint is kept per instance: murmur2 is
 //! trivially forged, so a shared key would let one pack plant a file another pack receives.
+//! Renaming an instance moves its objects to the new id's scope ([`ObjectCache::rescope`]).
 //! Reusing an object marks it used (its modified time), which `gc` reads.
 use std::{
     path::{Path, PathBuf},
@@ -143,6 +144,45 @@ impl ObjectCache {
             .fetch(&req)
             .await?;
         Ok(dest)
+    }
+
+    /// Move the murmur2-only objects among `hashes` from `from`'s keys to `to`'s, for an
+    /// instance whose id changed (a rename). Objects with a strong hash are shared and stay.
+    /// Best effort: a missing or unmovable object is skipped, and is only downloaded again.
+    /// Returns how many moved.
+    pub async fn rescope(&self, from: &CacheScope, to: &CacheScope, hashes: &[Hashes]) -> usize {
+        let mut seen = std::collections::HashSet::new();
+        let mut moved = 0;
+        for hashes in hashes {
+            if object_key(hashes, None).is_some() {
+                continue;
+            }
+            let (Some(old), Some(new)) =
+                (object_key(hashes, Some(from)), object_key(hashes, Some(to)))
+            else {
+                continue;
+            };
+            if old == new || !seen.insert(old.clone()) {
+                continue;
+            }
+            let src = self.dir.join(&old[..2]).join(&old);
+            let dest = self.dir.join(&new[..2]).join(&new);
+            // Never follows a symlink: only a regular file is moved.
+            let is_file = tokio::fs::symlink_metadata(&src)
+                .await
+                .is_ok_and(|m| m.file_type().is_file());
+            if !is_file
+                || tokio::fs::create_dir_all(&self.dir.join(&new[..2]))
+                    .await
+                    .is_err()
+            {
+                continue;
+            }
+            if tokio::fs::rename(&src, &dest).await.is_ok() {
+                moved += 1;
+            }
+        }
+        moved
     }
 
     /// Copy a local file in (a manual download, an imported `.mrpack`) after checking it.
