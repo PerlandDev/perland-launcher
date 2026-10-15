@@ -1,0 +1,178 @@
+name: Release
+# Publishes a launcher release (spec §3.4). Run it from the Actions tab → Release → Run workflow:
+# pick the channel and untick "Dry run" to publish. Beta may run from any branch; stable only
+# from main. Each publish is public.
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Update channel
+        type: choice
+        options: [beta, stable]
+        default: beta
+      dry_run:
+        description: Dry run (build only, publish nothing)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Stable comes from main only
+        if: inputs.channel == 'stable' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Stable releases are published from main only."
+          exit 1
+      - name: The updater signing key is set
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::Add the TAURI_SIGNING_PRIVATE_KEY secret first."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: version
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        run: echo "version=$(node scripts/release/cli.mjs version "$CHANNEL")" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: nsis
+          - os: ubuntu-22.04
+            bundles: appimage,deb
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux webview build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Set the release version
+        shell: bash
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: node scripts/release/cli.mjs set-version "$VERSION"
+      # Authenticode signing stays off until Azure Trusted Signing exists (spec §3.5): set the
+      # repository variable AZURE_TRUSTED_SIGNING=true and the AZURE_* secrets to turn it on.
+      - name: Install the signing tool
+        if: runner.os == 'Windows' && vars.AZURE_TRUSTED_SIGNING == 'true'
+        run: cargo install trusted-signing-cli --locked
+      - name: Build and sign the updater artifacts
+        shell: bash
+        env:
+          PERLAND_BUILD: ${{ inputs.channel == 'beta' && 'beta' || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          BUNDLES: ${{ matrix.bundles }}
+          SIGN_WINDOWS: ${{ runner.os == 'Windows' && vars.AZURE_TRUSTED_SIGNING == 'true' }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          args=(--bundles "$BUNDLES" --config '{"bundle":{"createUpdaterArtifacts":true}}')
+          if [ "$SIGN_WINDOWS" = "true" ]; then
+            sign="trusted-signing-cli -e $AZURE_SIGNING_ENDPOINT -a $AZURE_SIGNING_ACCOUNT -c $AZURE_SIGNING_PROFILE -d PerlandLauncher %1"
+            args+=(--config "{\"bundle\":{\"windows\":{\"signCommand\":\"$sign\"}}}")
+          fi
+          pnpm tauri build "${args[@]}"
+      - name: Stage the installers
+        shell: bash
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: node scripts/release/cli.mjs stage "$VERSION" target/release/bundle dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ runner.os }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    needs: [plan, build]
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      CHANNEL: ${{ inputs.channel }}
+      REPO: ${{ github.repository }}
+      SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: bundles-*
+          merge-multiple: true
+      - name: Updater manifest
+        run: node scripts/release/cli.mjs manifest "$VERSION" dist "https://github.com/$REPO/releases/download/v$VERSION" latest.json
+      - name: Versioned release
+        run: |
+          notes="Closed beta. Download it from https://perland.online/launcher. The installers aren't code-signed yet, so Windows may warn before it runs."
+          flags=(--latest=false)
+          if [ "$CHANNEL" = "beta" ]; then flags+=(--prerelease); else flags=(--latest); fi
+          gh release create "v$VERSION" --repo "$REPO" --target "$SHA" --title "Perland Launcher $VERSION" --notes "$notes" "${flags[@]}" dist/*
+      - name: Channel releases
+        run: |
+          feed() {
+            tag="$1"; title="$2"; shift 2
+            if ! gh release view "$tag" --repo "$REPO" >/dev/null 2>&1; then
+              gh release create "$tag" --repo "$REPO" --target "$SHA" --title "$title" --latest=false "$@" \
+                --notes "The launcher's update feed. Download the launcher from https://perland.online/launcher."
+            fi
+          }
+          node scripts/release/cli.mjs channel-copies "$VERSION" "$CHANNEL" dist channel
+          cp latest.json channel/latest.json
+          if [ "$CHANNEL" = "beta" ]; then
+            feed channel-beta "Beta channel (updates)" --prerelease
+            gh release upload channel-beta channel/* --repo "$REPO" --clobber
+          else
+            feed channel-stable "Stable channel (updates)"
+            gh release upload channel-stable channel/* --repo "$REPO" --clobber
+            # Beta players move up to a newer stable (spec §3.3); the beta installers stay.
+            feed channel-beta "Beta channel (updates)" --prerelease
+            gh release upload channel-beta latest.json --repo "$REPO" --clobber
+          fi
