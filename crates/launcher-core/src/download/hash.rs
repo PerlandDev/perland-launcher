@@ -133,9 +133,10 @@ impl Hashes {
         Some(h)
     }
 
-    /// The object-cache key: the first well-formed hash among sha1, sha256, sha512 and md5
-    /// (their lengths never collide), else `m2-<murmur2>`. Values that aren't hex of the right
-    /// length are skipped, so a pack can never steer the key out of the cache folder.
+    /// The shared object-cache key: the first well-formed hash among sha1, sha256, sha512 and md5
+    /// (their lengths never collide). Values that aren't hex of the right length are skipped, so
+    /// a pack can never steer the key out of the cache folder. murmur2 alone gives no shared key:
+    /// it is forgeable, so those objects are kept per instance (`cache::object_key`).
     pub fn cache_key(&self) -> Option<String> {
         [
             (&self.sha1, 40),
@@ -145,7 +146,6 @@ impl Hashes {
         ]
         .into_iter()
         .find_map(|(value, len)| value.as_deref().and_then(|v| well_formed_hex(v, len)))
-        .or_else(|| self.murmur2.map(|m| format!("m2-{m}")))
     }
 }
 
@@ -406,7 +406,11 @@ mod tests {
             murmur2: Some(7),
             ..Default::default()
         };
-        assert_eq!(m2.cache_key().as_deref(), Some("m2-7"));
+        assert_eq!(
+            m2.cache_key(),
+            None,
+            "murmur2 is forgeable: its objects are keyed per instance (`cache::object_key`)"
+        );
         assert_eq!(Hashes::default().cache_key(), None);
     }
 

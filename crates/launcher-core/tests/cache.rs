@@ -1,7 +1,11 @@
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use launcher_core::{
-    download::{cache::ObjectCache, hash::sha1_hex, Downloader, Hashes},
+    download::{
+        cache::{CacheScope, ObjectCache},
+        hash::{curseforge_murmur2, sha1_hex},
+        Downloader, Hashes,
+    },
     ErrorCode,
 };
 use wiremock::{
@@ -114,4 +118,114 @@ async fn concurrent_inserts_of_one_object_all_succeed() {
     }
     let stored = cache.get(&hashes).await.expect("object verifies");
     assert_eq!(std::fs::read_to_string(stored).unwrap(), "hello");
+}
+
+fn murmur2_only(body: &[u8]) -> Hashes {
+    Hashes {
+        murmur2: Some(curseforge_murmur2(body)),
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn murmur2_only_objects_are_kept_apart_per_instance() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = ObjectCache::new(dir.path().join("objects"));
+    let (a, b) = (
+        cache.scoped(CacheScope::for_instance("a")),
+        cache.scoped(CacheScope::for_instance("b")),
+    );
+    let src = dir.path().join("cozy.jar");
+    std::fs::write(&src, "cozy").unwrap();
+    let hashes = murmur2_only(b"cozy");
+    let in_a = a.insert_file(&src, &hashes).await.unwrap();
+    assert_eq!(a.get(&hashes).await, Some(in_a.clone()));
+    assert_eq!(b.get(&hashes).await, None, "b never sees a's file");
+    let in_b = b.insert_file(&src, &hashes).await.unwrap();
+    assert_ne!(in_a, in_b);
+    let name = in_a.file_name().unwrap().to_string_lossy().into_owned();
+    let tag = &sha1_hex(b"a")[..12];
+    assert_eq!(name, format!("m2-{}-{tag}", curseforge_murmur2(b"cozy")));
+    // Without an instance there is no key at all.
+    let err = cache.insert_file(&src, &hashes).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::PackInvalid);
+    assert_eq!(
+        err.params.get("file").map(String::as_str),
+        Some("cozy.jar"),
+        "the real file name, never a placeholder word"
+    );
+    assert_eq!(cache.path_for(&hashes), None);
+}
+
+#[test]
+fn strong_hashes_are_shared_by_every_instance() {
+    let cache = ObjectCache::new("objects");
+    let hashes = Hashes {
+        sha1: Some(sha1_hex(b"x")),
+        murmur2: Some(7),
+        ..Default::default()
+    };
+    let shared = cache.path_for(&hashes);
+    assert!(shared.is_some());
+    assert_eq!(
+        cache
+            .scoped(CacheScope::for_instance("a"))
+            .path_for(&hashes),
+        shared
+    );
+    assert_eq!(
+        cache
+            .scoped(CacheScope::for_instance("b"))
+            .path_for(&hashes),
+        shared
+    );
+}
+
+const OLD: SystemTime = SystemTime::UNIX_EPOCH;
+
+fn age(path: &std::path::Path) {
+    std::fs::File::options()
+        .write(true)
+        .open(path)
+        .unwrap()
+        .set_modified(OLD)
+        .unwrap();
+}
+
+fn modified(path: &std::path::Path) -> SystemTime {
+    std::fs::metadata(path).unwrap().modified().unwrap()
+}
+
+#[tokio::test]
+async fn reusing_an_object_marks_it_used() {
+    let server = MockServer::start().await;
+    serve(&server, "/a.jar", "hello", 1).await;
+    let dir = tempfile::tempdir().unwrap();
+    let cache = ObjectCache::new(dir.path().join("objects"));
+    let hashes = Hashes::sha1(sha1_hex(b"hello"));
+    let urls = vec![format!("{}/a.jar", server.uri())];
+    let object = cache
+        .ensure(&downloader(), &urls, &hashes, Some(5))
+        .await
+        .unwrap();
+
+    age(&object);
+    cache.get(&hashes).await.unwrap();
+    assert!(modified(&object) > OLD, "a get hit counts as a use");
+
+    age(&object);
+    cache
+        .ensure(&downloader(), &urls, &hashes, Some(5))
+        .await
+        .unwrap();
+    assert!(modified(&object) > OLD, "ensure reusing it counts as a use");
+
+    age(&object);
+    let src = dir.path().join("hello.jar");
+    std::fs::write(&src, "hello").unwrap();
+    cache.insert_file(&src, &hashes).await.unwrap();
+    assert!(
+        modified(&object) > OLD,
+        "an insert finding it counts as a use"
+    );
 }

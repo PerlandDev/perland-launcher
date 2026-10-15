@@ -364,7 +364,10 @@ async fn blocked_curseforge_files_wait_for_a_manual_download() {
     std::fs::create_dir_all(&downloads).unwrap();
     std::fs::write(downloads.join("cozy (1).jar"), b"cozy").unwrap();
     assert_eq!(
-        env.syncer.import_manual(&downloads, &files).await.unwrap(),
+        env.syncer
+            .import_manual(&instance.id, &downloads, &files)
+            .await
+            .unwrap(),
         1
     );
     done(env.sync(&instance.id, &desired).await.unwrap());
@@ -376,6 +379,42 @@ async fn blocked_curseforge_files_wait_for_a_manual_download() {
         downloads.join("cozy (1).jar").exists(),
         "the player's download is left alone"
     );
+}
+
+#[tokio::test]
+async fn a_hand_download_known_only_by_murmur2_serves_only_its_instance() {
+    let env = Env::new().await;
+    let url = PackBuilder::new(&env.server, "Tiny", "1.0.0")
+        .cf_mod_murmur2("cozy", "cozy.jar", 1234567, 42, b"cozy")
+        .mount(&env.server)
+        .await;
+    let (a, desired) = env.instance(&url).await;
+    let (b, _) = env.instance(&url).await;
+    assert_ne!(a.id, b.id);
+    let files = match env.sync(&a.id, &desired).await.unwrap() {
+        SyncOutcome::NeedsManual(files) => files,
+        other => panic!("{other:?}"),
+    };
+    let downloads = env._tmp.path().join("Downloads");
+    std::fs::create_dir_all(&downloads).unwrap();
+    std::fs::write(downloads.join("cozy.jar"), b"cozy").unwrap();
+    assert_eq!(
+        env.syncer
+            .import_manual(&a.id, &downloads, &files)
+            .await
+            .unwrap(),
+        1
+    );
+    done(env.sync(&a.id, &desired).await.unwrap());
+    assert_eq!(
+        std::fs::read(env.game_file(&a.id, "mods/cozy.jar")).unwrap(),
+        b"cozy"
+    );
+    // murmur2 is easy to forge: a file imported for one pack must never reach another.
+    assert!(matches!(
+        env.sync(&b.id, &desired).await.unwrap(),
+        SyncOutcome::NeedsManual(_)
+    ));
 }
 
 const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR";

@@ -659,7 +659,11 @@ impl Runner for FakeRunner {
         })
     }
 
-    fn import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>> {
+    fn import_manual(
+        &self,
+        _id: String,
+        found: Vec<(ManualFile, PathBuf)>,
+    ) -> BoxFuture<Result<()>> {
         self.imported
             .lock()
             .unwrap()

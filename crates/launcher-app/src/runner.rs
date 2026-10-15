@@ -73,8 +73,9 @@ pub trait Runner: Send + Sync + 'static {
         cancel: Cancel,
         sink: EventSink,
     ) -> BoxFuture<Result<Ensured>>;
-    /// Put files the player downloaded by hand into the cache.
-    fn import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>>;
+    /// Put files the player downloaded by hand into the cache, for instance `id`.
+    fn import_manual(&self, id: String, found: Vec<(ManualFile, PathBuf)>)
+        -> BoxFuture<Result<()>>;
     /// Browse: Modrinth search and content installs.
     fn browser(&self) -> Arc<dyn crate::browser::Browser>;
     /// The invite's view and its Engine, shared for 15 s by every caller. `engine` seeds the
@@ -191,9 +192,13 @@ impl Runner for CoreRunner {
         })
     }
 
-    fn import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>> {
+    fn import_manual(
+        &self,
+        id: String,
+        found: Vec<(ManualFile, PathBuf)>,
+    ) -> BoxFuture<Result<()>> {
         let syncer = self.syncer.clone();
-        Box::pin(async move { syncer.import_found(&found).await })
+        Box::pin(async move { syncer.import_found(&id, &found).await })
     }
 
     fn browser(&self) -> Arc<dyn crate::browser::Browser> {

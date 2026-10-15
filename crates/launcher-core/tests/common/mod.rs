@@ -169,6 +169,31 @@ impl PackBuilder {
         self
     }
 
+    /// A CurseForge file the pack knows only by its murmur2 fingerprint. Never hosted: it has to
+    /// be downloaded by hand.
+    pub fn cf_mod_murmur2(
+        mut self,
+        slug: &str,
+        file_name: &str,
+        file_id: u64,
+        project_id: u64,
+        body: &[u8],
+    ) -> Self {
+        let meta = format!(
+            "name = \"{slug}\"\nfilename = \"{file_name}\"\nside = \"both\"\n\n[download]\n\
+             hash-format = \"murmur2\"\nhash = \"{}\"\nmode = \"metadata:curseforge\"\n\n\
+             [update]\n[update.curseforge]\nfile-id = {file_id}\nproject-id = {project_id}\n",
+            launcher_core::download::hash::curseforge_murmur2(body)
+        );
+        self.entry(
+            &format!("mods/{slug}.pw.toml"),
+            meta.as_bytes(),
+            true,
+            false,
+        );
+        self
+    }
+
     /// Any extra file at `at` (an absolute path on the server, like `/pack/icon.png`).
     pub fn host(mut self, at: &str, body: &[u8]) -> Self {
         self.hosted.push((at.into(), body.to_vec()));
