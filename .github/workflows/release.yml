@@ -121,9 +121,11 @@ jobs:
         run: |
           export SIGN_DIR="$(cygpath -m "$RUNNER_TEMP/sign")"
           echo "SIGN_DIR=$SIGN_DIR" >> "$GITHUB_ENV"
-          cli="$(cygpath -m "$GITHUB_WORKSPACE/scripts/release/cli.mjs")"
-          pnpm tauri build --bundles nsis --config "{\"bundle\":{\"windows\":{\"signCommand\":{\"cmd\":\"node\",\"args\":[\"$cli\",\"sign-collect\",\"%1\"]}}}}"
-          ls "$SIGN_DIR/unsigned"
+          mkdir -p "$SIGN_DIR"
+          node scripts/release/cli.mjs sign-config collect "$SIGN_DIR/collect.json"
+          pnpm tauri build --bundles nsis --config "$SIGN_DIR/collect.json"
+          # makensis ignores the uninstaller sign command's exit code: check the pass from its ledger.
+          node scripts/release/cli.mjs sign-check collect
       - name: Upload our binaries for signing
         if: runner.os == 'Windows' && vars.SIGNPATH_SIGNING == 'true'
         id: unsigned-binaries
@@ -151,8 +153,9 @@ jobs:
         env:
           PERLAND_BUILD: ${{ inputs.channel == 'beta' && 'beta' || '' }}
         run: |
-          cli="$(cygpath -m "$GITHUB_WORKSPACE/scripts/release/cli.mjs")"
-          pnpm tauri bundle --bundles nsis --config "{\"bundle\":{\"windows\":{\"signCommand\":{\"cmd\":\"node\",\"args\":[\"$cli\",\"sign-apply\",\"%1\"]}}}}"
+          node scripts/release/cli.mjs sign-config apply "$SIGN_DIR/apply.json"
+          pnpm tauri bundle --bundles nsis --config "$SIGN_DIR/apply.json"
+          node scripts/release/cli.mjs sign-check apply
       - name: Upload the installer for signing
         if: runner.os == 'Windows' && vars.SIGNPATH_SIGNING == 'true'
         id: unsigned-installer

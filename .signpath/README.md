@@ -29,7 +29,7 @@ The owner does these steps; agents never handle the token.
 
 1. Tauri builds the installer. Its `signCommand` (`scripts/release/cli.mjs sign-collect`) copies the launcher `.exe` and the uninstaller out, named by SHA-256.
 2. **Round 1:** SignPath signs them. A `release-signing` request waits for an approval.
-3. Tauri bundles again. `sign-apply` swaps in the signed copies by hash, and fails if the second pass produced different bytes.
+3. Tauri bundles again. `sign-apply` swaps in the signed copies by hash. `sign-check` then reads `ledger.log`, because makensis ignores the uninstaller sign command's exit code, and fails the step if the second pass produced different bytes.
 4. **Round 2:** SignPath signs the installer. This is the second approval.
 5. `tauri signer sign` writes the updater `.sig` over the signed installer. `scripts/release/verify-authenticode.ps1` installs it on the runner and checks every signature.
 

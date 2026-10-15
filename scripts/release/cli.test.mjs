@@ -46,3 +46,30 @@ test('apply fails on a binary round 1 never saw, and both commands need SIGN_DIR
   assert.throws(() => run(['sign-apply', exe], { SIGN_DIR: signDir }), /not reproducible/);
   assert.throws(() => run(['sign-collect', exe], { SIGN_DIR: '' }), /SIGN_DIR/);
 });
+
+test('every call is in the ledger, failures included, and sign-check fails the pass on them', () => {
+  const { exe, plugin, signDir } = scratch();
+  run(['sign-collect', exe], { SIGN_DIR: signDir });
+  run(['sign-collect', plugin], { SIGN_DIR: signDir });
+  assert.throws(() => run(['sign-apply', exe], { SIGN_DIR: signDir }), /not reproducible/);
+  const ledger = readFileSync(join(signDir, 'ledger.log'), 'utf8').trim().split('\n');
+  assert.equal(ledger.length, 3);
+  assert.match(ledger[0], new RegExp(`^sign-collect binary ${sha('unsigned launcher')} collected `));
+  assert.match(ledger[1], /^sign-collect plugin [0-9a-f]{64} skipped /);
+  assert.match(ledger[2], /^sign-apply binary [0-9a-f]{64} error /);
+  // One binary is not enough for pass 1, and pass 2 had an error.
+  assert.throws(() => run(['sign-check', 'collect'], { SIGN_DIR: signDir }), /collected 1/);
+  assert.throws(() => run(['sign-check', 'apply'], { SIGN_DIR: signDir }), /apply pass failed/);
+});
+
+test('sign-config writes the Tauri signCommand config with an absolute, forward-slash script path', () => {
+  const { signDir } = scratch();
+  mkdirSync(signDir, { recursive: true });
+  const out = join(signDir, 'collect.json');
+  run(['sign-config', 'collect', out], {});
+  const command = JSON.parse(readFileSync(out, 'utf8')).bundle.windows.signCommand;
+  assert.equal(command.cmd, 'node');
+  assert.equal(command.args[0], cli.replaceAll('\\', '/'));
+  assert.deepEqual(command.args.slice(1), ['sign-collect', '%1']);
+  assert.throws(() => run(['sign-config', 'publish', out], {}), /collect or apply/);
+});

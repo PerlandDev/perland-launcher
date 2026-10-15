@@ -63,12 +63,14 @@ All steps run in one `build` matrix job on `windows-latest`, so pass 2 reuses pa
 1. **Pass 1:** `pnpm tauri build --bundles nsis` with `signCommand` = `node <repo>/scripts/release/cli.mjs sign-collect %1`.
    - The command copies each file it should sign into `$SIGN_DIR/unsigned/<sha256>.exe` and makes no change to the file itself.
    - `createUpdaterArtifacts` stays off in both passes.
+   - The `signCommand` reaches Tauri as a `--config` file written by `cli.mjs sign-config`, not inline JSON, so no shell (pnpm's Windows cmd shim included) re-quotes it or touches `%1`.
+   - makensis ignores the exit code of the uninstaller's sign command (`!uninstfinalize` without a compare operator), so a failing call would not stop the build. Every call therefore appends `<command> <role> <sha256> <outcome> <file>` to `$SIGN_DIR/ledger.log`. After each pass, `cli.mjs sign-check` fails the step on any `error` line. It also fails if pass 1 collected fewer than two binaries, or if pass 2 didn't apply every signed file.
 2. **Upload** `$SIGN_DIR/unsigned/` with `actions/upload-artifact` (v4+, pinned) and keep its `artifact-id`.
 3. **Round 1:** `signpath/github-action-submit-signing-request` (pinned SHA), artifact configuration `launcher-binaries`, signing policy per §3.5, `wait-for-completion-timeout-in-seconds: 3600`, `output-artifact-directory: $SIGN_DIR/signed`.
 4. **Pass 2:** `pnpm tauri bundle --bundles nsis` (no recompile) with `signCommand` = `... sign-apply %1`.
    - For each file, the command looks up `$SIGN_DIR/signed/<sha256>.exe` and copies it over the file.
    - The final installer is left alone (§3.3).
-   - A file whose hash round 1 never saw fails the build: "the build is not reproducible between passes".
+   - A file whose hash round 1 never saw fails the build: "the build is not reproducible between passes". For the uninstaller, this failure arrives through `sign-check apply`, before round 2 is requested.
 5. **Upload** the installer alone and run **round 2** with artifact configuration `launcher-installer`. The signed installer replaces the unsigned one in `target/release/bundle/nsis/`.
 6. **Updater signature:** `pnpm tauri signer sign --app-version "$VERSION" <installer>` (the version binding `tauri build` adds on its own), with `TAURI_SIGNING_PRIVATE_KEY` and `_PASSWORD` in `env:`, writes `<installer>.sig` over the **signed** bytes. Ed25519 is computed after Authenticode, as the updater requires.
 7. **Verify** (§3.7), then the existing `stage` and `upload-artifact` steps.

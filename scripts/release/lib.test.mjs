@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   buildManifest,
   channelName,
+  checkSignLedger,
   checkSignatureKeys,
   findBundle,
   keyIdOf,
@@ -149,4 +150,20 @@ test('the apply pass replaces our binaries, skips the rest, and refuses unknown 
   assert.equal(planApply({ role: 'plugin', hash: 'ffff', signed }), 'skip');
   assert.equal(planApply({ role: 'installer', hash: 'ffff', signed }), 'skip');
   assert.throws(() => planApply({ role: 'binary', hash: 'bb22', signed }), /bb22.*not reproducible/s);
+});
+
+// makensis ignores the exit code of the uninstaller's sign command, so each pass is checked from the ledger.
+test('the ledger check passes a clean collect and a clean apply', () => {
+  const collect = ['sign-collect binary aa11 collected C:/t/perland-launcher.exe', 'sign-collect plugin ff00 skipped C:/x/Plugins/x86-unicode/System.dll', 'sign-collect binary bb22 collected C:/Temp/nst1.tmp'];
+  assert.doesNotThrow(() => checkSignLedger({ pass: 'collect', lines: collect, signedHashes: [] }));
+  const apply = ['sign-apply binary aa11 replaced C:/t/perland-launcher.exe', 'sign-apply binary bb22 replaced C:/Temp/nst2.tmp', 'sign-apply installer cc33 skipped C:/b/x-setup.exe'];
+  assert.doesNotThrow(() => checkSignLedger({ pass: 'apply', lines: apply, signedHashes: ['aa11', 'bb22'] }));
+});
+
+test('the ledger check fails on a swallowed error, a missing uninstaller, or a signed file never applied', () => {
+  const errored = ['sign-apply binary aa11 replaced C:/t/a.exe', 'sign-apply binary dd44 error C:/Temp/nst2.tmp'];
+  assert.throws(() => checkSignLedger({ pass: 'apply', lines: errored, signedHashes: ['aa11'] }), /dd44/);
+  assert.throws(() => checkSignLedger({ pass: 'collect', lines: ['sign-collect binary aa11 collected C:/t/a.exe'], signedHashes: [] }), /collected 1/);
+  assert.throws(() => checkSignLedger({ pass: 'collect', lines: [], signedHashes: [] }), /collected 0/);
+  assert.throws(() => checkSignLedger({ pass: 'apply', lines: ['sign-apply binary aa11 replaced C:/t/a.exe'], signedHashes: ['aa11', 'bb22'] }), /bb22/);
 });

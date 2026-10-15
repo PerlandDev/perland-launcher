@@ -69,6 +69,29 @@ export function planApply({ role, hash, signed }) {
   );
 }
 
+/** Check one signing pass from its ledger lines (`<command> <role> <sha256> <outcome> <file>`). makensis
+ *  ignores the exit code of the uninstaller's sign command, so a failure there only shows up here. */
+export function checkSignLedger({ pass, lines, signedHashes }) {
+  const entries = lines
+    .filter((line) => line.trim())
+    .map((line) => {
+      const [command, role, hash, outcome] = line.trim().split(' ');
+      return { command, role, hash, outcome };
+    })
+    .filter((e) => e.command === `sign-${pass}`);
+  const failed = entries.filter((e) => e.outcome === 'error');
+  if (failed.length > 0) {
+    throw new Error(`The ${pass} pass failed for ${failed.map((e) => `${e.role} ${e.hash}`).join(', ')}; see the ledger above`);
+  }
+  const done = new Set(entries.filter((e) => e.role === 'binary' && e.outcome !== 'skipped').map((e) => e.hash));
+  if (pass === 'collect') {
+    if (done.size < 2) throw new Error(`Pass 1 collected ${done.size} binaries; expected the launcher and the uninstaller`);
+    return;
+  }
+  const missing = signedHashes.filter((hash) => !done.has(hash));
+  if (missing.length > 0) throw new Error(`Pass 2 never applied the signed ${missing.join(', ')}`);
+}
+
 export function releaseName(platform, version) {
   return `PerlandLauncher_${version}${SUFFIX[platform].release}`;
 }
