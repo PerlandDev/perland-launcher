@@ -68,13 +68,33 @@ impl<'a> MakeWriter<'a> for RedactingFile {
     }
 }
 
+/// The launcher's crates; `PERLAND_LOG` sets their level and nothing else's.
+const OUR_CRATES: [&str; 3] = ["launcher_core", "launcher_app", "perland_launcher"];
+
+/// The filter for a `PERLAND_LOG` value: a plain level name (`debug`, ...) applies to our crates
+/// only, and everything else stays at `warn`. Dependencies at debug log full request URLs (an
+/// invite's path carries its token), so anything but a plain level falls back to `info`.
+pub fn directives(perland_log: Option<&str>) -> String {
+    let wanted = perland_log.unwrap_or("").trim().to_ascii_lowercase();
+    let level = match wanted.as_str() {
+        "trace" | "debug" | "info" | "warn" | "error" => wanted.as_str(),
+        _ => "info",
+    };
+    let mut out = String::from("warn");
+    for name in OUR_CRATES {
+        out.push_str(&format!(",{name}={level}"));
+    }
+    out
+}
+
 /// Start logging. Never fails the launcher: without a log file it simply runs without one.
-/// `PERLAND_LOG` (e.g. `debug`) overrides the default `info` level.
+/// `PERLAND_LOG` (e.g. `debug`) sets our crates' level, `info` by default (see `directives`).
 pub fn init(dirs: &LauncherDirs) {
     let Ok(file) = RedactingFile::new(&dir(dirs), Redactor::for_current_user()) else {
         return;
     };
-    let filter = EnvFilter::try_from_env("PERLAND_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
+    let wanted = std::env::var("PERLAND_LOG").ok();
+    let filter = EnvFilter::new(directives(wanted.as_deref()));
     let _ = tracing_subscriber::fmt()
         .with_ansi(false)
         .with_target(false)
@@ -107,6 +127,23 @@ mod tests {
             .collect();
         assert_eq!(files.len(), 1, "{files:?}");
         files[0].clone()
+    }
+
+    #[test]
+    fn perland_log_sets_the_level_of_our_crates_only() {
+        let ours = |lvl: &str| {
+            format!("warn,launcher_core={lvl},launcher_app={lvl},perland_launcher={lvl}")
+        };
+        assert_eq!(directives(None), ours("info"));
+        assert_eq!(directives(Some("debug")), ours("debug"));
+        assert_eq!(directives(Some(" TRACE ")), ours("trace"));
+        assert_eq!(directives(Some("error")), ours("error"));
+        // Anything but a plain level is ignored, so no one can raise reqwest or hyper with it.
+        for bad in ["", "reqwest=debug", "debug,hyper=trace", "loud", "info,"] {
+            assert_eq!(directives(Some(bad)), ours("info"), "{bad:?}");
+        }
+        // And the result parses.
+        EnvFilter::try_new(directives(Some("debug"))).unwrap();
     }
 
     #[test]
