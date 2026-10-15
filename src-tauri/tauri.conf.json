@@ -31,7 +31,7 @@
   "plugins": {
     "deep-link": { "desktop": { "schemes": ["perland"] } },
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDU1MjgxOUYyQzQ2NDdFMUIKUldRYmZtVEU4aGtvVllPb2NodFRzZTZKM2ovcjQrR1FhaXBKZ1RNSHJJOXp4R3c4V0FSN1l2SS8K",
       "windows": { "installMode": "passive" }
     }
   },
