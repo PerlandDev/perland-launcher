@@ -3,5 +3,6 @@
   "language": "es",
   "defaultMemoryMb": 4096,
   "minimizeOnPlay": true,
-  "firstRunDone": false
+  "firstRunDone": false,
+  "railExpanded": true
 }

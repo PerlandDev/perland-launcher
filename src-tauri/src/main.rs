@@ -76,6 +76,7 @@ fn main() {
             commands::settings_get,
             commands::settings_set,
             commands::instances_list,
+            commands::instance_reorder,
             commands::instance_create,
             commands::instance_update,
             commands::instance_rename,

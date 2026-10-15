@@ -40,8 +40,8 @@
         "memoryMb": 6144
       },
       "server": null,
-      "artSeed": null,
-      "art": "auto"
+      "artSeed": "creative-flat",
+      "art": "generated"
     }
   ],
   "damaged": [

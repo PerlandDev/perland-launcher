@@ -84,11 +84,11 @@ it('leaves the drawer closed when files need a manual download', () => {
 
 it('opens New instance with a deep link once setup is done', async () => {
   mockIPC((cmd) => (cmd === 'deep_link_take' ? { kind: 'pack', url: 'https://x.example/pack.toml' } : null));
-  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: false });
+  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: false, railExpanded: false });
   handleEvent({ type: 'deep_link' });
   await new Promise((r) => setTimeout(r, 10));
   expect(routeSnapshot()).toEqual({ name: 'home', id: null }); // first run: the link waits
-  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true });
+  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true, railExpanded: false });
   handleEvent({ type: 'deep_link' });
   await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'newInstance', link: 'https://x.example/pack.toml' }));
   queryClient.clear();
@@ -110,7 +110,7 @@ it('sends install progress to its own store, not the run', () => {
 it('opens Join server for a join deep link', async () => {
   const invite = `https://play.example.com/${'A'.repeat(43)}`;
   mockIPC((cmd) => (cmd === 'deep_link_take' ? { kind: 'join', invite } : null));
-  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true });
+  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true, railExpanded: false });
   handleEvent({ type: 'deep_link' });
   await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'joinServer', invite }));
   queryClient.clear();

@@ -156,7 +156,7 @@ const contentKey = (id: string, kind: ContentKind) => `${id}:${kind}`;
 function seed(options: MockOptions) {
   const listing = clone(listingFx) as InstanceListing;
   const accounts = clone(accountsFx) as AccountsFile;
-  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, language: null };
+  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: false, language: null };
   if (options.firstRun) {
     listing.instances = [];
     listing.damaged = [];
@@ -222,6 +222,8 @@ function seed(options: MockOptions) {
   const servers = seedServers(options.server, listing);
   return {
     listing,
+    // The player's own order, like instance-order.json. Existing instances start A-Z, so a new one lands above them.
+    order: [...listing.instances].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map((i) => i.id),
     servers,
     accounts,
     settings,
@@ -495,6 +497,20 @@ function planFor(state: MockState, request: BrowsePlanRequest): InstallPlanView 
   return view;
 }
 
+/** The core's rule: instances not in the stored order first (A-Z), then the stored order. Damaged ones are a separate list, so they stay last. */
+function applyOrder(state: MockState): InstanceListing {
+  const rank = (id: string) => state.order.indexOf(id);
+  state.listing.instances = [...state.listing.instances].sort((a, b) => {
+    const [x, y] = [rank(a.id), rank(b.id)];
+    if (x < 0 && y < 0) return a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id);
+    if (x < 0) return -1;
+    if (y < 0) return 1;
+    return x - y;
+  });
+  state.order = state.listing.instances.map((i) => i.id);
+  return state.listing;
+}
+
 async function handle(state: MockState, cmd: string, args: Record<string, unknown> = {}): Promise<unknown> {
   const find = (id: unknown) => state.listing.instances.find((i) => i.id === id);
   switch (cmd) {
@@ -506,7 +522,11 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.settings = args.settings as Settings;
       return state.settings;
     case 'instances_list':
-      return state.listing;
+      return applyOrder(state);
+    case 'instance_reorder': {
+      state.order = args.ids as string[];
+      return applyOrder(state);
+    }
     case 'instance_create': {
       const request = args.request as NewInstance;
       let id = slug(request.name);
@@ -523,7 +543,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         artSeed: null,
         art: 'auto',
       };
-      state.listing.instances = [...state.listing.instances, created].sort((a, b) => a.name.localeCompare(b.name));
+      state.listing.instances = [created, ...state.listing.instances];
       return created;
     }
     case 'instance_update': {
@@ -651,7 +671,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         artSeed: null,
         art: 'auto',
       };
-      state.listing.instances = [...state.listing.instances, created].sort((a, b) => a.name.localeCompare(b.name));
+      state.listing.instances = [created, ...state.listing.instances];
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });
       return created;
     }

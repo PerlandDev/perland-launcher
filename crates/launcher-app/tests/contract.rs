@@ -130,8 +130,8 @@ fn vanilla_instance() -> Instance {
             memory_mb: 6144,
         },
         server: None,
-        art_seed: None,
-        art: ArtMode::Auto,
+        art_seed: Some("creative-flat".into()),
+        art: ArtMode::Generated,
     }
 }
 
@@ -337,6 +337,7 @@ fn contract_fixtures_are_current() {
         "settings",
         Settings {
             language: Some(Lang::Es),
+            rail_expanded: true,
             ..Settings::default()
         },
     );

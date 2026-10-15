@@ -44,6 +44,15 @@ pub(crate) struct StoredPlan {
     created: Instant,
 }
 
+impl StoredPlan {
+    /// Does this plan install into the instance `id`?
+    pub(crate) fn targets(&self, id: &str) -> bool {
+        self.instance
+            .as_ref()
+            .is_some_and(|(target, _)| target == id)
+    }
+}
+
 fn plan_expired() -> LauncherError {
     LauncherError::pack(
         ErrorCode::ContentPlanExpired,
@@ -704,12 +713,14 @@ mod tests {
             core.instance_delete(&instance.id).await.unwrap_err().code,
             ErrorCode::ContentInstalling
         );
-        // A name in the same family doesn't move the folder being written.
-        let renamed = core
-            .instance_rename(&instance.id, "Asalith!")
-            .await
-            .unwrap();
-        assert_eq!(renamed.id, instance.id);
+        // Not even a same-family name: the install is writing into this folder.
+        assert_eq!(
+            core.instance_rename(&instance.id, "Asalith!")
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::ContentInstalling
+        );
 
         runner.browser.open_install_gate();
         task.await.unwrap().unwrap();
@@ -717,6 +728,17 @@ mod tests {
         renamed_game.game.minecraft = "1.21.1".into();
         core.instance_update(renamed_game).await.unwrap();
         core.instance_delete(&instance.id).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_rename_that_moves_the_folder_drops_its_plans() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let instance = fabric(&core).await;
+        let view = core.browse_plan(into(&instance.id)).await.unwrap();
+        assert!(core.plans.lock().unwrap().contains_key(&view.plan_id));
+        let renamed = core.instance_rename(&instance.id, "Zed").await.unwrap();
+        assert_ne!(renamed.id, instance.id);
+        assert!(core.plans.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

@@ -29,6 +29,17 @@ describe('mock backend', () => {
     expect(settings.firstRunDone).toBe(true);
   });
 
+  it('puts new instances on top and keeps a reorder', async () => {
+    const { handle } = createMockBackend();
+    const ids = async () => ((await handle('instances_list')) as InstanceListing).instances.map((i) => i.id);
+    await handle('instance_create', { request: { name: 'Zed', minecraft: '1.21.1', loader: null } });
+    expect(await ids()).toEqual(['zed', 'asalith-fields', 'creative-flat', 'sky-islands']);
+    const reordered = (await handle('instance_reorder', { ids: ['sky-islands', 'zed', 'asalith-fields', 'gone'] })) as InstanceListing;
+    // Ids left out (and unknown ones) are dropped from the order; the left-out instance is unlisted, so on top.
+    expect(reordered.instances.map((i) => i.id)).toEqual(['creative-flat', 'sky-islands', 'zed', 'asalith-fields']);
+    expect(await ids()).toEqual(['creative-flat', 'sky-islands', 'zed', 'asalith-fields']);
+  });
+
   it('starts empty for first run', async () => {
     const { handle } = createMockBackend({ firstRun: true });
     expect(((await handle('instances_list')) as InstanceListing).instances).toEqual([]);

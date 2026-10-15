@@ -53,6 +53,11 @@ pub async fn instances_list(core: CoreState<'_>) -> Res<InstanceListing> {
 }
 
 #[tauri::command]
+pub async fn instance_reorder(core: CoreState<'_>, ids: Vec<String>) -> Res<InstanceListing> {
+    core.instance_reorder(ids).await
+}
+
+#[tauri::command]
 pub async fn instance_create(core: CoreState<'_>, request: NewInstance) -> Res<Instance> {
     core.instance_create(request).await
 }

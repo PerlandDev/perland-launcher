@@ -42,6 +42,7 @@ export const commands = {
   instanceCreate: (request: NewInstance) => invoke<Instance>('instance_create', { request }),
   instanceUpdate: (instance: Instance) => invoke<Instance>('instance_update', { instance }),
   instanceRename: (id: string, name: string) => invoke<Instance>('instance_rename', { id, name }),
+  instanceReorder: (ids: string[]) => invoke<InstanceListing>('instance_reorder', { ids }),
   instanceDelete: (id: string) => invoke<null>('instance_delete', { id }),
   catalogMinecraft: () => invoke<McVersion[]>('catalog_minecraft'),
   catalogLoaders: (kind: LoaderKind, mc: string) => invoke<LoaderVersion[]>('catalog_loaders', { kind, mc }),

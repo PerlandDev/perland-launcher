@@ -104,6 +104,7 @@ export const settings = z.strictObject({
   defaultMemoryMb: z.number().int(),
   minimizeOnPlay: z.boolean(),
   firstRunDone: z.boolean(),
+  railExpanded: z.boolean(),
 });
 export const appInfo = z.strictObject({
   version: z.string(),
