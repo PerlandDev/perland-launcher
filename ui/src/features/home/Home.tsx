@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Marquee } from '../../art/Marquee';
+import { artSeed } from '../../art/seed';
 import { commands } from '../../ipc/commands';
 import type { Instance } from '../../ipc/schema';
 import { useAccounts, useInstances, useInstanceArt } from '../../state/queries';
@@ -31,7 +32,7 @@ function InstanceView({ instance }: { instance: Instance }) {
   return (
     // Home measures its own width (`@container`), not the window's, so the wide rail narrows it honestly.
     <section className="@container relative h-full overflow-hidden" aria-labelledby="instance-name">
-      <Marquee seed={instance.id} attract={run.state === 'idle'} dimmed={run.state !== 'idle'} banner={art.data?.banner ?? null} className="absolute inset-0" />
+      <Marquee seed={artSeed(instance)} attract={run.state === 'idle'} dimmed={run.state !== 'idle'} banner={art.data?.banner ?? null} className="absolute inset-0" />
       {/* Under 55rem (the wide rail at the 960 px minimum) the name takes its own row and the controls sit
           under it at the right, instead of squeezing the name into a column a few letters wide. */}
       <div className="absolute inset-x-0 bottom-0 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-4 px-10 pt-6 pb-12 @max-[55rem]:grid-cols-1 @max-[55rem]:gap-y-5">

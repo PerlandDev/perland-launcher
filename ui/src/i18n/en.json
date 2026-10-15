@@ -56,6 +56,18 @@
     "deleteBody": "This removes the instance and everything in it, including worlds and screenshots. It can't be undone.",
     "deleteConfirm": "Delete instance"
   },
+  "image": {
+    "menu": "Change image…",
+    "title": "Change image",
+    "body": "Pick a landscape, or use a picture of your own.",
+    "bodyPack": "Pick a landscape, the pack's art or a picture of your own.",
+    "landscape": "Landscape {{n}}",
+    "pack": "Pack art",
+    "upload": "Upload your own…",
+    "pickTitle": "Choose an image",
+    "fileFilter": "Images",
+    "done": "Done"
+  },
   "play": {
     "play": "Play",
     "stop": "Stop",

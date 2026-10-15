@@ -56,6 +56,18 @@
     "deleteBody": "Se borra la instancia y todo lo que tiene, incluidos mundos y capturas. No se puede deshacer.",
     "deleteConfirm": "Borrar instancia"
   },
+  "image": {
+    "menu": "Cambiar imagen…",
+    "title": "Cambiar imagen",
+    "body": "Elige un paisaje o usa una imagen tuya.",
+    "bodyPack": "Elige un paisaje, la imagen del pack o una imagen tuya.",
+    "landscape": "Paisaje {{n}}",
+    "pack": "Imagen del pack",
+    "upload": "Sube la tuya…",
+    "pickTitle": "Elige una imagen",
+    "fileFilter": "Imágenes",
+    "done": "Listo"
+  },
   "play": {
     "play": "Jugar",
     "stop": "Detener",

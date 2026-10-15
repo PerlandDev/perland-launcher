@@ -1,7 +1,7 @@
 import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../ipc/commands';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ContentKind, ImageKind, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
+import type { ArtChoice, ContentKind, ImageKind, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { pushError } from './toasts';
@@ -225,6 +225,24 @@ export function useRenameInstance(opts: Opts = {}) {
         void qc.invalidateQueries({ queryKey: qk.instanceArt(id) });
         void qc.invalidateQueries({ queryKey: qk.serverStatus(id) });
       }
+      return qc.invalidateQueries({ queryKey: qk.instances });
+    },
+    onError: onError(opts),
+  });
+}
+
+/** Change an instance's picture. The cached listing takes the saved instance at once, so the
+ *  picker's lamp moves without waiting; the art and the listing are read again so the rail icon
+ *  and the marquee follow. */
+export function useSetInstanceArt(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, choice }: { id: string; choice: ArtChoice }) => commands.instanceArtSet(id, choice),
+    onSuccess: (saved, { id }) => {
+      qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
+        listing && { ...listing, instances: listing.instances.map((i) => (i.id === id ? saved : i)) },
+      );
+      void qc.invalidateQueries({ queryKey: qk.instanceArt(id) });
       return qc.invalidateQueries({ queryKey: qk.instances });
     },
     onError: onError(opts),

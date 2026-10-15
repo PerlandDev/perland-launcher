@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PlotIcon } from '../../art/PlotIcon';
+import { artSeed } from '../../art/seed';
 import { pixelUpscale } from '../../art/upscale';
 import type { ServerStatus } from '../../ipc/schema';
 import { useInstances, useInstanceArt, useReorderInstances, useSaveSettings, useServerStatus, useSettings } from '../../state/queries';
@@ -58,6 +59,8 @@ interface Carry {
 interface Item {
   id: string;
   name: string;
+  /** What its generated plot icon grows from. */
+  seed: string;
   damaged: boolean;
   pack: boolean;
   server: boolean;
@@ -148,7 +151,7 @@ function RailItem({
               onError={() => setFailed(icon)}
             />
           ) : (
-            <PlotIcon seed={item.id} size={40} />
+            <PlotIcon seed={item.seed} size={40} />
           )}
         </span>
         {status && !item.damaged && <span className="rail-led" aria-hidden />}
@@ -200,8 +203,8 @@ export function Rail() {
   const [announcement, setAnnouncement] = useState('');
   const items = useMemo<Item[]>(
     () => [
-      ...(data?.instances ?? []).map((i) => ({ id: i.id, name: i.name, damaged: false, pack: i.source.kind !== 'none', server: i.source.kind === 'perland', lastStatus: i.server?.lastStatus ?? null, gone: i.server?.gone ?? false })),
-      ...(data?.damaged ?? []).map((d) => ({ id: d.id, name: d.id, damaged: true, pack: false, server: false, lastStatus: null, gone: false })),
+      ...(data?.instances ?? []).map((i) => ({ id: i.id, name: i.name, seed: artSeed(i), damaged: false, pack: i.source.kind !== 'none', server: i.source.kind === 'perland', lastStatus: i.server?.lastStatus ?? null, gone: i.server?.gone ?? false })),
+      ...(data?.damaged ?? []).map((d) => ({ id: d.id, name: d.id, seed: d.id, damaged: true, pack: false, server: false, lastStatus: null, gone: false })),
     ],
     [data],
   );

@@ -907,6 +907,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       // Mirrors the real dialog: an array when `multiple` is set, otherwise one path.
       const options = args.options as { multiple?: boolean; filters?: { extensions?: string[] }[] } | undefined;
       if (options?.filters?.[0]?.extensions?.includes('mrpack')) return 'C:/Users/player/Downloads/Sky Islands 1.0.4.mrpack';
+      if (options?.filters?.[0]?.extensions?.includes('png')) return 'C:/Users/player/Pictures/castle.png';
       const path = 'C:/Users/player/Downloads/lithium-fabric-0.11.2.jar';
       return options?.multiple ? [path] : path;
     }

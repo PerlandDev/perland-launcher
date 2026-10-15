@@ -271,6 +271,18 @@ components:
     textColor: "{colors.ink-dim}"
     rounded: "{rounded.panel}"
     padding: "1.25rem"
+  art-tile:
+    backgroundColor: "{colors.ground}"
+    rounded: "{rounded.step}"
+  art-key:
+    backgroundColor: "{colors.raised}"
+    textColor: "{colors.ink}"
+    typography: "{typography.control}"
+    rounded: "{rounded.step}"
+    padding: "0.5rem 0.75rem 0.5rem 0.5rem"
+    height: "3rem"
+  art-key-selected:
+    backgroundColor: "{colors.ground}"
 ---
 
 # Design System: Perland Launcher
@@ -479,6 +491,14 @@ The pack's update status, on the marquee above the name. It is the version plate
 - **Update ready:** one lit primary, "Update and play". The change line and kept line sit above a "Show what changed" disclosure whose names list is a well.
 - **Download these manually:** each missing file is a well row. Continue is flat and disabled until every file is found, then lit as the only primary.
 
+### Change image
+The ⋯ menu's "Change image…" opens a standard dialog (30rem, card step) that picks the one picture an instance wears: it fills the marquee and, cropped square, the rail icon. The item is disabled while the instance runs or prepares, because the core refuses the change then.
+- **Lead:** one `ink-dim` sentence naming the choices ("Pick a landscape, the pack's art or a picture of your own."). No headings.
+- **Landscapes:** six small marquees, three to a row 0.75rem apart, from `presetSeeds` (the instance's art seed with any `~N` stripped, then `~2` to `~6`), so picking one never changes the six on offer. Each is a pressable 16:9 tile on a `ground` fill with notched 4px corners, a 1px `line` ring drawn over the art and a 4px `dirt-deep` step. Tiles are thumbnails, not cabinet fronts: no T-molding and no attract drift. Hover brightens the art one notch (`brightness(1.18)`). Each is named "Landscape 3" for screen readers.
+- **Pack art and Upload:** raised keys in a two-column row under the landscapes (Pack art only on a pack instance): a 2rem recessed `ground` icon slot with 3px notches, then the 650-weight label. The slot holds the package or upload glyph in `ink-dim`, or the picture itself while that choice is in use (nearest-neighbour only at 2x or more).
+- **The current choice** (an upload; else the pack's art while it is on auto; else the landscape whose seed matches) is pressed into its slot with the 8px lime lamp: in a 3px `ground` socket at a tile's top-left, at the right end of a key. A choice applies at once and the lamp moves to it; the rail and the marquee behind the backdrop change with it. While a choice saves, every tile is `aria-disabled` with a progress cursor.
+- **Nothing is lit.** The only action is a secondary "Done": choices apply as they are made, so there is nothing to confirm, and Play keeps the room's one amber. A refused picture shows as the standard error card under the keys.
+
 ### Well
 A recessed row inside a panel or dialog: `ground` fill, 1px `line` inset ring, notched 4px corners. Used for the names list and the manual-download rows, which would otherwise vanish into a `panel` host.
 
@@ -520,7 +540,7 @@ An instance's own files, listed as rows on the ground under the screen title "Mo
 **The Rows, Not Cards Rule.** Browse results sit on the ground as rows split by seam hairlines and lift to `panel` only under the pointer or keyboard focus. Never box a result in a card, and never step a tag.
 
 ### Marquee (signature)
-The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 PRNG) so an instance looks the same on every computer. The recipe:
+The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 PRNG) so an instance looks the same on every computer. The seed is the instance's art seed (a picked landscape, or its id from before a rename), else its id, and the rail's plot icon grows from the same seed. The recipe:
 1. **Sky:** `ground` with 4% of the lamp mixed in. It is a warm black, never navy.
 2. **Lamp bloom:** a radial bloom of the warm tube light (`#ffd98a`, tinted 15% toward one plot hue) behind the horizon, fading from 0.7 to 0.26 to 0 opacity.
 3. **Sun:** a pixel-stepped disc of radius 4 cells in pale lamp cream, at upper right. It is kept whole: when the panel is cropped short (drawer open), it moves down so it is never closer to the visible top than its radius plus one cell, and it sets behind the hills instead of being sliced.
