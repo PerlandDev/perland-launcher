@@ -1,5 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
 import { Settings } from './Settings';
@@ -19,4 +19,22 @@ it('does nothing when the save dialog is cancelled', async () => {
   await user.click(await screen.findByRole('button', { name: 'Export diagnostics' }));
   await new Promise((r) => setTimeout(r, 20));
   expect(sent(calls, 'diagnostics_export')).toHaveLength(0);
+});
+
+it("names the file with the player's local date, not the UTC one", async () => {
+  // Just after local midnight: west of UTC it is still the 14th there; east of it, already the 15th.
+  // Either way the UTC date differs from the local one at one end of the day, so try both ends.
+  for (const hour of [0, 23]) {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date(2026, 9, 15, hour, 30));
+      const { user, calls, unmount } = renderApp(<Settings />, { beta: true });
+      await user.click(await screen.findByRole('button', { name: 'Export diagnostics' }));
+      await waitFor(() => expect(sent(calls, 'plugin:dialog|save')).toHaveLength(1));
+      expect(JSON.stringify(sent(calls, 'plugin:dialog|save')[0])).toContain('perland-diagnostics-2026-10-15.zip');
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  }
 });

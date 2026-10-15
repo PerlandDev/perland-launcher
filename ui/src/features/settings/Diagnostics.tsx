@@ -7,7 +7,12 @@ import { Button } from '../../ui/Button';
 import { Download } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 
-const today = () => new Date().toISOString().slice(0, 10);
+/** The player's local date (YYYY-MM-DD): an evening export in the Americas is not named tomorrow. */
+const today = () => {
+  const now = new Date();
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`;
+};
 
 /** Settings → Diagnostics (spec §5.2): a zip for whoever helps the player; nothing uploads. */
 export function Diagnostics() {

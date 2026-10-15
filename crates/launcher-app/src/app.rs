@@ -207,7 +207,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Export diagnostics to `out` (a `.zip` the player picked in the save dialog).
+    /// A name with no extension at all gets `.zip` (some save dialogs return the typed name as is);
+    /// any other extension is refused.
     pub async fn diagnostics_export(&self, out: PathBuf, os: String) -> Result<PathBuf> {
+        let out = if out.extension().is_none() && out.file_name().is_some() {
+            out.with_extension("zip")
+        } else {
+            out
+        };
         if !out
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("zip"))
@@ -915,5 +922,21 @@ pub(crate) mod tests {
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::DiagnosticsPathInvalid);
         assert_eq!(core.diagnostics_last(), None);
+    }
+
+    #[tokio::test]
+    async fn diagnostics_without_an_extension_get_zip_appended() {
+        // Some save dialogs (GTK) return the typed name as is.
+        let (core, _, _, tmp) = core(BuildKind::Beta);
+        let picked = tmp.path().join("perland-diagnostics");
+        let out = tmp.path().join("perland-diagnostics.zip");
+        assert_eq!(
+            core.diagnostics_export(picked.clone(), "Linux".into())
+                .await
+                .unwrap(),
+            out
+        );
+        assert!(out.is_file() && !picked.exists());
+        assert_eq!(core.diagnostics_last(), Some(out));
     }
 }
