@@ -85,6 +85,13 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 updates.start(launcher_app::updates::START_DELAY).await;
             });
+            // Once per start; the core logs what it did.
+            let cleanup = core.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = cleanup
+                    .collect_cache_after(launcher_app::app::CACHE_CLEANUP_DELAY)
+                    .await;
+            });
             // Installers register the scheme (NSIS, the .deb); a dev run or an AppImage registers
             // itself (per user, no admin).
             #[cfg(any(windows, target_os = "linux"))]
