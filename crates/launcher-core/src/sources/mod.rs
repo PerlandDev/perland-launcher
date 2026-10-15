@@ -316,7 +316,7 @@ fn fetch_error(e: LauncherError, host: &str, damaged: LauncherError) -> Launcher
 
 fn host_trouble(host: &str, message: &str) -> LauncherError {
     LauncherError::network(ErrorCode::HostTrouble, message)
-        .with_param("host", host)
+        .with_host(host)
         .with_fix("Try again in a few minutes")
 }
 
@@ -394,7 +394,13 @@ impl Sources {
 pub fn game_from(versions: &BTreeMap<String, String>) -> Result<(String, Option<LoaderSpec>)> {
     let minecraft = versions
         .get("minecraft")
-        .ok_or_else(|| invalid("versions", "no minecraft version"))?
+        .ok_or_else(|| {
+            invalid_because(
+                "no_minecraft_version",
+                "The pack doesn't say which Minecraft version it needs",
+                "no minecraft version",
+            )
+        })?
         .clone();
     let mut loader = None;
     for (key, version) in versions {
@@ -404,10 +410,14 @@ pub fn game_from(versions: &BTreeMap<String, String>) -> Result<(String, Option<
             "neoforge" => LoaderKind::NeoForge,
             "fabric" | "fabric-loader" => LoaderKind::Fabric,
             "quilt" | "quilt-loader" => LoaderKind::Quilt,
-            other => return Err(unsupported(&format!("the {other} loader"))),
+            other => {
+                return Err(
+                    unsupported("loader", format!("the {other} loader")).with_param("name", other)
+                )
+            }
         };
         if loader.is_some() {
-            return Err(unsupported("more than one loader"));
+            return Err(unsupported("multiple_loaders", "more than one loader"));
         }
         let version = version
             .strip_prefix(&format!("{minecraft}-"))
@@ -418,12 +428,14 @@ pub fn game_from(versions: &BTreeMap<String, String>) -> Result<(String, Option<
     Ok((minecraft, loader))
 }
 
-pub(crate) fn unsupported(what: &str) -> LauncherError {
+/// `context` (an i18next context) picks the UI's sentence; callers add its raw values as params
+/// (never English words). `what` is only for the English fallback.
+pub(crate) fn unsupported(context: &str, what: impl Display) -> LauncherError {
     LauncherError::pack(
         ErrorCode::PackUnsupported,
         format!("This pack uses something the launcher can't handle yet: {what}"),
     )
-    .with_param("what", what)
+    .with_param("context", context)
     .with_fix("Ask the pack's author, or try another pack")
 }
 
@@ -647,17 +659,23 @@ mod tests {
             None
         );
         let lite = game_from(&versions(&[("minecraft", "1.12.2"), ("liteloader", "1")]));
-        assert_eq!(lite.unwrap_err().code, ErrorCode::PackUnsupported);
+        let lite = lite.unwrap_err();
+        assert_eq!(lite.code, ErrorCode::PackUnsupported);
+        assert_eq!(lite.params["context"], "loader");
+        assert_eq!(lite.params["name"], "liteloader");
+        assert!(!lite.params.contains_key("what"));
         let two = game_from(&versions(&[
             ("minecraft", "1.20.1"),
             ("forge", "1"),
             ("fabric", "2"),
         ]));
-        assert_eq!(two.unwrap_err().code, ErrorCode::PackUnsupported);
-        assert_eq!(
-            game_from(&versions(&[])).unwrap_err().code,
-            ErrorCode::PackInvalid
-        );
+        let two = two.unwrap_err();
+        assert_eq!(two.code, ErrorCode::PackUnsupported);
+        assert_eq!(two.params["context"], "multiple_loaders");
+        let none = game_from(&versions(&[])).unwrap_err();
+        assert_eq!(none.code, ErrorCode::PackInvalid);
+        assert_eq!(none.params["context"], "no_minecraft_version");
+        assert!(!none.params.contains_key("file"));
     }
 
     fn file(path: &str) -> PackFile {

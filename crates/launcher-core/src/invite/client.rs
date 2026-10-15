@@ -124,7 +124,7 @@ struct ErrorData {
 
 pub(crate) fn offline(host: &str, detail: impl Display) -> LauncherError {
     LauncherError::network(ErrorCode::Offline, "You seem to be offline")
-        .with_param("host", host)
+        .with_host(host)
         .with_fix("Check your internet connection and try again")
         .with_detail(detail)
 }
@@ -134,7 +134,7 @@ fn site_unreachable(host: &str, why: &str) -> LauncherError {
         ErrorCode::InviteSiteUnreachable,
         format!("Couldn't reach the server's Perland site at {host}"),
     )
-    .with_param("host", host)
+    .with_host(host)
     .with_fix("Check the link, or try again later")
     .with_detail(why)
 }
@@ -144,7 +144,7 @@ pub(crate) fn gone(host: &str) -> LauncherError {
         ErrorCode::InviteGone,
         "This invite link doesn't work anymore. Ask the owner for a new one.",
     )
-    .with_param("host", host)
+    .with_host(host)
     .with_fix("Use a new invite link")
 }
 
@@ -153,7 +153,7 @@ pub(crate) fn rate_limited(host: &str) -> LauncherError {
         ErrorCode::InviteRateLimited,
         "Too many requests. Try again in a minute.",
     )
-    .with_param("host", host)
+    .with_host(host)
 }
 
 pub(crate) fn host_trouble(host: &str, status: impl Display) -> LauncherError {
@@ -161,7 +161,7 @@ pub(crate) fn host_trouble(host: &str, status: impl Display) -> LauncherError {
         ErrorCode::HostTrouble,
         format!("{host} is having trouble ({status})"),
     )
-    .with_param("host", host)
+    .with_host(host)
     .with_param("status", status)
     .with_fix("Try again in a few minutes")
 }
@@ -171,7 +171,7 @@ fn unexpected(host: &str, why: &str) -> LauncherError {
         ErrorCode::MetaUnexpected,
         format!("Unexpected data from {host}"),
     )
-    .with_param("host", host)
+    .with_host(host)
     .with_detail(why)
 }
 

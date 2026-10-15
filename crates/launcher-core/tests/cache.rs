@@ -229,3 +229,19 @@ async fn reusing_an_object_marks_it_used() {
         "an insert finding it counts as a use"
     );
 }
+
+#[tokio::test]
+async fn a_file_with_no_usable_hash_says_so_by_context() {
+    let dir = tempfile::tempdir().unwrap();
+    let cache = ObjectCache::new(dir.path());
+    let err = cache
+        .ensure(&downloader(), &[], &Hashes::default(), None)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::PackInvalid);
+    // The UI's plain message names a file; with none to name it needs its own sentence.
+    assert_eq!(
+        err.params.get("context").map(String::as_str),
+        Some("no_checksum")
+    );
+}

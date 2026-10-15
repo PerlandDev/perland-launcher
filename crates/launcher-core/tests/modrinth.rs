@@ -142,6 +142,14 @@ async fn only_modpacks_open() {
     let src = sources(&server, tmp.path());
     let err = modrinth::open(&src, "sodium", Some("X")).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::PackUnsupported);
+    assert_eq!(
+        err.params.get("context").map(String::as_str),
+        Some("modrinth_project_type")
+    );
+    assert_eq!(
+        err.params.get("project_type").map(String::as_str),
+        Some("mod")
+    );
     let missing = modrinth::open(&src, "nothing-here", None)
         .await
         .unwrap_err();

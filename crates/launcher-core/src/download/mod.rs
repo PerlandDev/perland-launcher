@@ -217,7 +217,7 @@ impl Downloader {
                     ErrorCode::HostUnreachable,
                     format!("Couldn't reach {}", host_of(url)),
                 )
-                .with_param("host", host_of(url))
+                .with_host(host_of(url))
                 .with_fix("Check your internet connection")
                 .with_detail(e.without_url()),
             )
@@ -239,7 +239,7 @@ impl Downloader {
                         ErrorCode::HostTrouble,
                         format!("{} is having trouble ({status})", host_of(url)),
                     )
-                    .with_param("host", host_of(url))
+                    .with_host(host_of(url))
                     .with_param("status", status),
                 ))
             }
@@ -249,7 +249,7 @@ impl Downloader {
                         ErrorCode::DownloadRejected,
                         format!("{} refused the download ({status})", host_of(url)),
                     )
-                    .with_param("host", host_of(url))
+                    .with_host(host_of(url))
                     .with_param("status", status)
                     .with_detail(redact_url(url)),
                 ))
@@ -360,7 +360,7 @@ pub fn host_of(url: &str) -> String {
     reqwest::Url::parse(url)
         .ok()
         .and_then(|u| u.host_str().map(str::to_owned))
-        .unwrap_or_else(|| "the download server".to_string())
+        .unwrap_or_else(|| crate::error::UNKNOWN_HOST.to_string())
 }
 
 /// The key a destination is locked under: absolute and, on Windows, case-folded, so two

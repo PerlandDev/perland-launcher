@@ -114,7 +114,7 @@ impl OrderStore {
                 ErrorCode::DiskWriteFailed,
                 "Couldn't save the instance order",
             )
-            .with_param("item", "instance order")
+            .with_param("item", "instance_order")
             .with_detail(e)
         })?;
         write_atomic(&self.path, &bytes).await

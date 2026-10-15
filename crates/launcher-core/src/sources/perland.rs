@@ -12,7 +12,9 @@ use std::{
 
 use sha1::Digest;
 
-use super::{game_from, invalid, mrpack, DesiredState, PackAbout, PackArt, Sources, UpdateCheck};
+use super::{
+    game_from, invalid_because, mrpack, DesiredState, PackAbout, PackArt, Sources, UpdateCheck,
+};
 use crate::{
     download::{hash::sha1_hex, DownloadRequest, Hashes},
     error::{ErrorCode, LauncherError, Result},
@@ -95,7 +97,11 @@ fn valid_version(v: &str) -> bool {
 }
 
 fn unusable_version() -> LauncherError {
-    invalid("the server's invite", "no usable Minecraft version")
+    invalid_because(
+        "invite_minecraft_version",
+        "The server's invite has no Minecraft version the launcher can use",
+        "no usable Minecraft version",
+    )
 }
 
 fn display_name(view: &InviteView) -> String {
@@ -549,6 +555,14 @@ mod tests {
     use super::*;
 
     const TOKEN: &str = "b4sE64url_-b4sE64url_-b4sE64url_-b4sE64url_";
+
+    #[test]
+    fn an_unusable_invite_version_says_so_by_context() {
+        let e = unusable_version();
+        assert_eq!(e.code, ErrorCode::PackInvalid);
+        assert_eq!(e.params["context"], "invite_minecraft_version");
+        assert!(!e.params.contains_key("file"));
+    }
 
     #[test]
     fn scrub_takes_the_token_out_of_every_field() {

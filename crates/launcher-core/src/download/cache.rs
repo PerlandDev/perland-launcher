@@ -52,9 +52,11 @@ pub struct ObjectCache {
     scope: Option<CacheScope>,
 }
 
-/// `file` is the file's own name when the caller has one (the UI's message names it).
+/// The UI words this from the `no_checksum` context (there may be no file name to show). `file`
+/// is the file's own name when the caller has one.
 fn no_usable_hash(file: Option<&str>) -> LauncherError {
-    let e = LauncherError::pack(ErrorCode::PackInvalid, "A pack file has no usable checksum");
+    let e = LauncherError::pack(ErrorCode::PackInvalid, "A pack file has no usable checksum")
+        .with_param("context", "no_checksum");
     match file {
         Some(name) if !name.is_empty() => e.with_param("file", name),
         _ => e,

@@ -194,7 +194,7 @@ fn checked(id: &str) -> Result<&str> {
 
 fn unreachable(host: &str, e: reqwest::Error) -> LauncherError {
     LauncherError::network(ErrorCode::HostUnreachable, format!("Couldn't reach {host}"))
-        .with_param("host", host)
+        .with_host(host)
         .with_fix("Check your internet connection")
         .with_detail(e.without_url())
 }
@@ -204,7 +204,7 @@ fn dropped(host: &str, e: reqwest::Error) -> LauncherError {
         ErrorCode::ConnectionDropped,
         format!("Downloading from {host} was interrupted"),
     )
-    .with_param("host", host)
+    .with_host(host)
     .with_detail(e.without_url())
 }
 
@@ -213,7 +213,7 @@ fn unexpected(host: &str, detail: impl Display) -> LauncherError {
         ErrorCode::MetaUnexpected,
         format!("Unexpected data from {host}"),
     )
-    .with_param("host", host)
+    .with_host(host)
     .with_detail(detail)
 }
 
@@ -243,7 +243,7 @@ fn status_error(
             ErrorCode::HostTrouble,
             format!("{host} is having trouble ({status})"),
         )
-        .with_param("host", host)
+        .with_host(host)
         .with_param("status", code)
         .with_fix("Try again in a few minutes"),
     }

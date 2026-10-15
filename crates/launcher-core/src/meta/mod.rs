@@ -106,7 +106,7 @@ impl MetaClient {
                             ErrorCode::MetaUnexpected,
                             format!("Unexpected data from {}", host_of(url)),
                         )
-                        .with_param("host", host_of(url))
+                        .with_host(host_of(url))
                         .with_detail(format!("the answer is over {} MB", self.limit >> 20));
                         return match cached {
                             Some(c) if validate(&c).is_ok() => Ok(c),
@@ -118,7 +118,7 @@ impl MetaClient {
                             ErrorCode::ConnectionDropped,
                             format!("Downloading from {} was interrupted", host_of(url)),
                         )
-                        .with_param("host", host_of(url))
+                        .with_host(host_of(url))
                         .with_detail(e.without_url()))
                     }
                 };
@@ -153,7 +153,7 @@ impl MetaClient {
                             .with_fix("Check that this version exists")
                     } else {
                         LauncherError::network(ErrorCode::HostTrouble, message)
-                            .with_param("host", host_of(url))
+                            .with_host(host_of(url))
                             .with_param("status", status.as_u16())
                             .with_detail(redact_url(url))
                             .with_fix("Try again in a few minutes")

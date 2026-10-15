@@ -120,7 +120,8 @@ pub fn parse_pack(bytes: &[u8]) -> Result<PackToml> {
     let pack: PackToml = toml_from(bytes, "pack.toml")?;
     if let Some(format) = &pack.pack_format {
         if !format.starts_with("packwiz:1.") {
-            return Err(unsupported(&format!("pack format {format}")));
+            return Err(unsupported("pack_format", format!("pack format {format}"))
+                .with_param("format", format));
         }
     }
     Ok(pack)
@@ -137,7 +138,9 @@ pub fn parse_meta(bytes: &[u8], file: &str) -> Result<MetaToml> {
 /// A pack's hash, checked: an unknown format can't be verified, and a malformed value is damage.
 pub fn entry_hashes(format: &str, value: &str, file: &str) -> Result<Hashes> {
     if !Hashes::is_known_format(format) {
-        return Err(unsupported(&format!("{format} checksums")));
+        return Err(
+            unsupported("hash_format", format!("{format} checksums")).with_param("format", format)
+        );
     }
     Hashes::from_format(format, value).ok_or_else(|| invalid(file, "malformed checksum"))
 }
@@ -156,7 +159,11 @@ fn check_file_url(url: &str, file: &str) -> Result<String> {
     if check_pack_url(url).is_ok() {
         Ok(parsed.to_string())
     } else {
-        Err(unsupported(&format!("{} downloads", parsed.scheme())))
+        let scheme = parsed.scheme();
+        Err(
+            unsupported("download_scheme", format!("{scheme} downloads"))
+                .with_param("scheme", scheme),
+        )
     }
 }
 
@@ -203,7 +210,12 @@ pub fn meta_file(
                 }),
             )
         }
-        other => return Err(unsupported(&format!("download mode {other}"))),
+        other => {
+            return Err(
+                unsupported("download_mode", format!("download mode {other}"))
+                    .with_param("mode", other),
+            )
+        }
     };
     Ok(PackFile {
         path,
@@ -622,6 +634,44 @@ project-id = 825733
                 .unwrap_err()
                 .code,
             ErrorCode::PackUnsupported
+        );
+    }
+
+    /// The UI words these from a context and raw values; English phrases never go in params.
+    #[test]
+    fn unsupported_packs_say_what_by_context_and_raw_values() {
+        let params = |e: LauncherError| {
+            assert_eq!(e.code, ErrorCode::PackUnsupported);
+            assert!(!e.params.contains_key("what"));
+            e.params
+        };
+        let future = PACK.replace("packwiz:1.1.0", "packwiz:2.0.0");
+        let p = params(parse_pack(future.as_bytes()).unwrap_err());
+        assert_eq!(
+            (p["context"].as_str(), p["format"].as_str()),
+            ("pack_format", "packwiz:2.0.0")
+        );
+
+        let p = params(entry_hashes("crc32", "00", "mods/a.pw.toml").unwrap_err());
+        assert_eq!(
+            (p["context"].as_str(), p["format"].as_str()),
+            ("hash_format", "crc32")
+        );
+
+        let ftp = APPLESKIN.replace("url = \"https://", "url = \"ftp://");
+        let meta = parse_meta(ftp.as_bytes(), "mods/a.pw.toml").unwrap();
+        let p = params(meta_file(&cfg(), "mods/a.pw.toml", &meta, false).unwrap_err());
+        assert_eq!(
+            (p["context"].as_str(), p["scheme"].as_str()),
+            ("download_scheme", "ftp")
+        );
+
+        let mode = COZY.replace("metadata:curseforge", "metadata:ftb");
+        let meta = parse_meta(mode.as_bytes(), "mods/c.pw.toml").unwrap();
+        let p = params(meta_file(&cfg(), "mods/c.pw.toml", &meta, false).unwrap_err());
+        assert_eq!(
+            (p["context"].as_str(), p["mode"].as_str()),
+            ("download_mode", "metadata:ftb")
         );
     }
 
