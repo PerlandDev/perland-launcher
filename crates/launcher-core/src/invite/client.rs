@@ -13,7 +13,10 @@ use std::{
 use serde::Deserialize;
 
 use super::{InviteLink, InviteView, Url};
-use crate::error::{ErrorCode, LauncherError, Result};
+use crate::{
+    error::{ErrorCode, LauncherError, Result},
+    http::read_capped,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub struct InviteTiming {
@@ -189,24 +192,6 @@ pub(crate) fn status_error(status: reqwest::StatusCode, host: &str) -> Option<La
         429 => Some(rate_limited(host)),
         s => Some(host_trouble(host, s)),
     }
-}
-
-/// At most `cap` bytes of the body; `None` when it is longer.
-async fn read_capped(
-    mut response: reqwest::Response,
-    cap: usize,
-) -> std::result::Result<Option<Vec<u8>>, reqwest::Error> {
-    if response.content_length().is_some_and(|n| n > cap as u64) {
-        return Ok(None);
-    }
-    let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await? {
-        body.extend_from_slice(&chunk);
-        if body.len() > cap {
-            return Ok(None);
-        }
-    }
-    Ok(Some(body))
 }
 
 /// An `engineUrl` the launcher will call: https (or http on this computer), with a host and no

@@ -128,13 +128,30 @@ pub async fn versions(
         .with_param("host", &host)
         .with_param("status", status.as_u16()));
     }
-    response.json().await.map_err(|e| {
+    json_capped(response, &host, MAX_API_BYTES).await
+}
+
+/// The largest Modrinth API answer read.
+pub const MAX_API_BYTES: usize = 8 << 20;
+
+/// `response`'s body parsed as JSON, refusing one over `cap` bytes.
+async fn json_capped<T: serde::de::DeserializeOwned>(
+    response: reqwest::Response,
+    host: &str,
+    cap: usize,
+) -> Result<T> {
+    let unexpected = |detail: String| {
         LauncherError::loader(
             ErrorCode::MetaUnexpected,
             format!("Unexpected data from {host}"),
         )
-        .with_detail(e.without_url())
-    })
+        .with_detail(detail)
+    };
+    match crate::http::read_capped(response, cap).await {
+        Ok(Some(bytes)) => serde_json::from_slice(&bytes).map_err(|e| unexpected(e.to_string())),
+        Ok(None) => Err(unexpected("the answer is too big".into())),
+        Err(e) => Err(unexpected(e.without_url().to_string())),
+    }
 }
 
 fn stability(kind: &str) -> u8 {
@@ -336,5 +353,29 @@ mod tests {
         assert_eq!(pick_update(&list, "beta").unwrap().id, "beta-mid");
         assert_eq!(pick_update(&list, "alpha").unwrap().id, "alpha-new");
         assert!(pick_update(&list[..1], "release").is_none());
+    }
+
+    async fn answer(body: &str) -> reqwest::Response {
+        use wiremock::{matchers::method, Mock, MockServer, ResponseTemplate};
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(body))
+            .mount(&server)
+            .await;
+        reqwest::get(server.uri()).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn an_api_answer_over_the_cap_is_unexpected_data() {
+        let err = json_capped::<serde_json::Value>(answer("[1,2,3,4,5,6,7,8]").await, "host", 4)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::MetaUnexpected);
+    }
+
+    #[tokio::test]
+    async fn an_api_answer_within_the_cap_is_parsed() {
+        let got: Vec<u8> = json_capped(answer("[1,2]").await, "host", 5).await.unwrap();
+        assert_eq!(got, vec![1, 2]);
     }
 }

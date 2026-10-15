@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use launcher_core::{download::hash::sha1_hex, meta::MetaClient, ErrorCategory};
+use launcher_core::{download::hash::sha1_hex, meta::MetaClient, ErrorCategory, ErrorCode};
 use serde::Deserialize;
 use wiremock::{
     matchers::{header, method, path},
@@ -213,4 +213,79 @@ async fn meta_errors_never_show_the_query_string() {
     );
     assert!(!all.contains("SECRET123"), "{all}");
     assert!(err.message.contains("404"), "{}", err.message);
+}
+
+#[tokio::test]
+async fn meta_refuses_an_answer_over_its_cap() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("x".repeat(64)))
+        .mount(&server)
+        .await;
+    let tmp = tempfile::tempdir().unwrap();
+    let meta = MetaClient::new(http(), tmp.path().to_path_buf()).with_limit(16);
+    let err = meta
+        .get_bytes(&format!("{}/v.json", server.uri()))
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::MetaUnexpected);
+}
+
+#[tokio::test]
+async fn meta_accepts_an_answer_at_its_cap() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("y".repeat(16)))
+        .mount(&server)
+        .await;
+    let tmp = tempfile::tempdir().unwrap();
+    let meta = MetaClient::new(http(), tmp.path().to_path_buf()).with_limit(16);
+    let body = meta
+        .get_bytes(&format!("{}/v.json", server.uri()))
+        .await
+        .unwrap();
+    assert_eq!(body.len(), 16);
+}
+
+#[tokio::test]
+async fn read_capped_cuts_off_at_the_cap() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/b"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("z".repeat(64)))
+        .mount(&server)
+        .await;
+    let http = http();
+    let url = format!("{}/b", server.uri());
+    let over = launcher_core::http::read_capped(http.get(&url).send().await.unwrap(), 16)
+        .await
+        .unwrap();
+    assert_eq!(over, None);
+    let fits = launcher_core::http::read_capped(http.get(&url).send().await.unwrap(), 64)
+        .await
+        .unwrap();
+    assert_eq!(fits.map(|b| b.len()), Some(64));
+}
+
+#[tokio::test]
+async fn an_oversized_answer_keeps_the_good_cached_copy() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(BODY))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/v.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("{\"a\":1,\"pad\":\"xxxxxxxx\"}"))
+        .mount(&server)
+        .await;
+    let tmp = tempfile::tempdir().unwrap();
+    let meta = MetaClient::new(http(), tmp.path().to_path_buf()).with_limit(16);
+    let url = format!("{}/v.json", server.uri());
+    assert_eq!(meta.get_bytes(&url).await.unwrap(), BODY.as_bytes());
+    assert_eq!(meta.get_bytes(&url).await.unwrap(), BODY.as_bytes());
 }
