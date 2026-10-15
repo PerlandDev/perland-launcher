@@ -3,10 +3,20 @@
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { buildManifest, channelName, findBundle, nextVersion, PLATFORMS, releaseName, setWorkspaceVersion } from './lib.mjs';
+import {
+  buildManifest,
+  channelName,
+  checkSignatureKeys,
+  findBundle,
+  nextVersion,
+  PLATFORMS,
+  releaseName,
+  setWorkspaceVersion,
+} from './lib.mjs';
 
 const root = new URL('../../', import.meta.url);
 const cargoPath = new URL('Cargo.toml', root);
+const tauriConfPath = new URL('src-tauri/tauri.conf.json', root);
 
 function walk(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]));
@@ -45,6 +55,8 @@ switch (command) {
     const signatures = Object.fromEntries(
       PLATFORMS.map((p) => [p, readFileSync(join(dir, `${releaseName(p, version)}.sig`), 'utf8').trim()]),
     );
+    // A .sig from a key other than the committed pubkey would be rejected by every installed launcher.
+    checkSignatureKeys(JSON.parse(readFileSync(tauriConfPath, 'utf8')).plugins?.updater?.pubkey, signatures);
     const notes = 'Closed beta. Download it from https://perland.online/launcher';
     const manifest = buildManifest({ version, notes, pubDate: new Date().toISOString(), signatures, baseUrl });
     writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);

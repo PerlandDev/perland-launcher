@@ -49,6 +49,41 @@ export function findBundle(paths, platform) {
   return paths.find((p) => SUFFIX[platform].bundle.test(p));
 }
 
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+function fromBase64(text) {
+  const trimmed = text.trim();
+  if (!BASE64.test(trimmed)) throw new Error('Not a minisign key or signature (not base64)');
+  return Buffer.from(trimmed, 'base64');
+}
+
+/** The 8-byte key id (hex) of a Tauri updater public key or `.sig`. Both are base64 of a minisign
+ *  text file whose second line is base64 of [2-byte algorithm "Ed"/"ED"][8-byte key id][...]. */
+export function keyIdOf(base64Text) {
+  const line = fromBase64(base64Text ?? '').toString('utf8').split(/\r?\n/)[1];
+  if (!line) throw new Error('Not a minisign key or signature (no key line)');
+  const bytes = fromBase64(line);
+  if (bytes.length < 10 || bytes[0] !== 0x45 || (bytes[1] !== 0x64 && bytes[1] !== 0x44)) {
+    throw new Error('Not a minisign key or signature (bad key line)');
+  }
+  return bytes.subarray(2, 10).toString('hex');
+}
+
+/** Every platform's `.sig` must come from the key whose public half is committed, or installed
+ *  launchers reject the update (and every later one). */
+export function checkSignatureKeys(pubkey, signatures) {
+  if (!pubkey?.trim()) throw new Error('plugins.updater.pubkey in src-tauri/tauri.conf.json is empty');
+  const want = keyIdOf(pubkey);
+  const wrong = Object.entries(signatures).filter(([, sig]) => keyIdOf(sig) !== want);
+  if (wrong.length > 0) {
+    const names = wrong.map(([platform, sig]) => `${platform} (key ${keyIdOf(sig)})`).join(', ');
+    throw new Error(
+      `Signed with a different key than the committed pubkey (key ${want}): ${names}. ` +
+        'TAURI_SIGNING_PRIVATE_KEY and plugins.updater.pubkey in src-tauri/tauri.conf.json must be one pair.',
+    );
+  }
+}
+
 export function buildManifest({ version, notes, pubDate, signatures, baseUrl }) {
   const platforms = {};
   for (const platform of PLATFORMS) {

@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildManifest, channelName, findBundle, nextVersion, PLATFORMS, releaseName, setWorkspaceVersion } from './lib.mjs';
+import {
+  buildManifest,
+  channelName,
+  checkSignatureKeys,
+  findBundle,
+  keyIdOf,
+  nextVersion,
+  PLATFORMS,
+  releaseName,
+  setWorkspaceVersion,
+} from './lib.mjs';
 
 test('the first beta of a base version is beta.1', () => {
   assert.equal(nextVersion({ base: '0.2.0', channel: 'beta', tags: ['v0.1.0-beta.3'] }), '0.2.0-beta.1');
@@ -75,4 +85,36 @@ test('a missing signature fails the manifest', () => {
     () => buildManifest({ version: '0.2.0', notes: '', pubDate: '2026-10-15T10:00:00Z', signatures: { 'windows-x86_64-nsis': 's' }, baseUrl: 'https://x' }),
     /linux-x86_64-appimage/,
   );
+});
+
+// Minisign-shaped blobs as Tauri stores them: base64 of a text file whose second line is base64 of
+// [2-byte algorithm][8-byte key id][key or signature bytes]. Tiny and fake: no real keys.
+const id = (n) => Array.from({ length: 8 }, (_, i) => n + i);
+const b64 = (bytes) => Buffer.from(bytes).toString('base64');
+const fakeKey = (keyId) =>
+  b64(`untrusted comment: minisign public key\n${b64([0x45, 0x64, ...keyId, ...new Array(32).fill(7)])}\n`);
+const fakeSig = (keyId) =>
+  b64(
+    `untrusted comment: signature from tauri secret key\n${b64([0x45, 0x44, ...keyId, ...new Array(64).fill(9)])}\n` +
+      `trusted comment: timestamp:1\n${b64('global')}\n`,
+  );
+
+test('the key id is read from a public key and from a signature', () => {
+  assert.equal(keyIdOf(fakeKey(id(1))), '0102030405060708');
+  assert.equal(keyIdOf(fakeSig(id(1))), '0102030405060708');
+  assert.notEqual(keyIdOf(fakeSig(id(2))), keyIdOf(fakeKey(id(1))));
+});
+
+test('anything that is not a minisign blob is refused', () => {
+  for (const junk of ['', 'not base64 at all!', b64('one line only'), b64('comment\nAAAA\n'), b64(`c\n${b64('Xy12345678')}\n`)]) {
+    assert.throws(() => keyIdOf(junk), /minisign/, JSON.stringify(junk));
+  }
+});
+
+test('every signature must come from the committed public key', () => {
+  const pubkey = fakeKey(id(1));
+  const good = Object.fromEntries(PLATFORMS.map((p) => [p, fakeSig(id(1))]));
+  assert.doesNotThrow(() => checkSignatureKeys(pubkey, good));
+  assert.throws(() => checkSignatureKeys(pubkey, { ...good, 'linux-x86_64-deb': fakeSig(id(2)) }), /linux-x86_64-deb.*pubkey/s);
+  assert.throws(() => checkSignatureKeys('', good), /pubkey/);
 });
