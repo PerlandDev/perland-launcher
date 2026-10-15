@@ -232,7 +232,11 @@ export function Rail() {
 
   const move = (from: number, to: number) => {
     const id = ids[from];
-    if (id === undefined || to === from || to < 0 || to >= ids.length) return;
+    if (id === undefined || to === from || to < 0 || to >= ids.length) {
+      // Nothing moves, so no list change will hand focus back: drop the follow, or a later change would.
+      follow.current = null;
+      return;
+    }
     // With nothing chosen yet, Home shows the first instance; pin the one on screen so a move doesn't swap it.
     if (selected && !instanceOf(route)) rememberInstance(selected);
     reorder.mutate(moveItem(ids, from, to));

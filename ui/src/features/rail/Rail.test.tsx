@@ -364,3 +364,19 @@ it('grows each plot icon from the art seed, not the id', async () => {
 async function settle() {
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
 }
+
+it('never pulls focus back after a move that went nowhere', async () => {
+  const { user, qc } = renderApp(<Rail />);
+  const asalith = await screen.findByRole('button', { name: 'Asalith Fields' });
+  act(() => asalith.focus());
+  // Alt+Up on the first cabinet: no move, so no list change hands focus back and clears the follow.
+  await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+  act(() => (document.activeElement as HTMLElement).blur());
+  const listing = qc.getQueryData<InstanceListing>(qk.instances)!;
+  act(() =>
+    qc.setQueryData<InstanceListing>(qk.instances, { ...listing, instances: listing.instances.map((i) => (i.id === 'sky-islands' ? { ...i, name: 'Sky Isles' } : i)) }),
+  );
+  await settle();
+  expect(screen.getByRole('button', { name: 'Sky Isles' })).toBeInTheDocument();
+  expect(document.activeElement).toBe(document.body);
+});

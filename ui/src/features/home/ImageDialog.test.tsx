@@ -110,5 +110,9 @@ it.each([
   await user.click(screen.getByRole('menuitem', { name: lang === 'en' ? 'Change image…' : 'Cambiar imagen…' }));
   const key = screen.getByRole('button', { name: upload });
   expect(key).toHaveTextContent(limits);
-  expect(key).toHaveAccessibleDescription(limits);
+  // Tied with no-break spaces, so it can only break once: before "up to" / "hasta", never mid-list.
+  const hint = key.querySelector('.art-key-hint')!.textContent!;
+  const tied = (words: string) => words.replaceAll(' ', '\u00a0');
+  expect(hint.split(' ')).toEqual(lang === 'en' ? [tied('PNG, JPEG or WebP,'), tied('up to 5 MB')] : [tied('PNG, JPEG o WebP,'), tied('hasta 5 MB')]);
+  expect(key).toHaveAccessibleDescription(hint);
 });

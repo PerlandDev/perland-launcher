@@ -733,8 +733,8 @@
     font-size: 0.8125rem;
     font-weight: 400;
     line-height: 1.25;
-    /* At half the dialog it takes two lines; balance keeps "up to 5 MB" whole on the second. */
-    text-wrap: balance;
+    /* Its copy is tied with no-break spaces, so at half the dialog it breaks only once: the kinds,
+       then "up to 5 MB" ("hasta 5 MB"), never mid-list. */
   }
   .art-key-slot svg {
     width: 1.25rem;
