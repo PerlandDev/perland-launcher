@@ -292,6 +292,13 @@
       "check": "Buscar ahora",
       "restart": "Reiniciar ahora",
       "busy": "Primero cierra tus juegos."
+    },
+    "diagnostics": {
+      "title": "Diagnóstico",
+      "body": "Guarda tus registros y la configuración de tus instancias en un .zip para quien te ayude. Tus cuentas y los nombres de tus carpetas personales quedan fuera.",
+      "export": "Exportar diagnóstico",
+      "saved": "Diagnóstico guardado",
+      "show": "Mostrar en la carpeta"
     }
   },
   "firstRun": {
@@ -415,6 +422,7 @@
     "meta_unexpected": { "message": "Un servidor envió datos que el launcher no entiende.", "fix": "Inténtalo más tarde." },
     "settings_damaged": { "message": "No se pudo leer tu configuración del launcher, así que se usan los valores predeterminados.", "fix": "Vuelve a ajustar tus preferencias en Configuración." },
     "log_write_stopped": { "message": "El registro del juego dejó de guardarse en el disco.", "fix": "Revisa el espacio libre. El juego sigue abierto." },
+    "diagnostics_path_invalid": { "message": "El diagnóstico se guarda como archivo .zip.", "fix": "Elige un nombre que termine en .zip." },
     "mod_not_jar": { "message": "Solo se pueden agregar archivos .jar como mods." },
     "mod_exists": { "message": "{{file}} ya está en esta instancia." },
     "mod_not_found": { "message": "{{file}} ya no está en esta instancia." },

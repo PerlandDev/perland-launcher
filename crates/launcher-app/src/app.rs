@@ -12,6 +12,7 @@ use launcher_core::{
     accounts::{AccountStore, AccountsFile, BuildKind},
     browse::compat::ContentKind,
     content,
+    diagnostics::{self, SystemInfo},
     fsutil::path_key,
     instances::{
         is_valid_instance_id, GameSpec, Instance, InstanceListing, InstanceStore, SourceRef,
@@ -25,7 +26,7 @@ use launcher_core::{
     },
     mods::{self, LocalMod},
     paths::LauncherDirs,
-    settings::{Settings, SettingsStore},
+    settings::{Channel, Settings, SettingsStore},
     sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
     ErrorCode, LauncherError, Result,
 };
@@ -101,6 +102,8 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) plan_seq: AtomicU64,
     /// Instances a content install is writing into. Lock order: `runs`, then this.
     pub(crate) installing: Mutex<HashSet<String>>,
+    /// The file the last diagnostics export wrote (for "Show in folder").
+    last_export: Mutex<Option<PathBuf>>,
 }
 
 pub(crate) fn busy(id: &str) -> LauncherError {
@@ -142,6 +145,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             plans: Mutex::new(HashMap::new()),
             plan_seq: AtomicU64::new(0),
             installing: Mutex::new(HashSet::new()),
+            last_export: Mutex::new(None),
             config,
         })
     }
@@ -200,6 +204,41 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             system_memory_mb: self.config.system_memory_mb,
             data_dir: self.config.dirs.root().display().to_string(),
         })
+    }
+
+    /// Export diagnostics to `out` (a `.zip` the player picked in the save dialog).
+    pub async fn diagnostics_export(&self, out: PathBuf, os: String) -> Result<PathBuf> {
+        if !out
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("zip"))
+        {
+            return Err(LauncherError::disk(
+                ErrorCode::DiagnosticsPathInvalid,
+                "Diagnostics are saved as a .zip file",
+            )
+            .with_fix("Pick a file name that ends in .zip"));
+        }
+        let channel =
+            Channel::effective(self.settings_get().await.update_channel, self.config.build);
+        let info = SystemInfo {
+            launcher_version: self.config.launcher_version.clone(),
+            build: format!("{:?}", self.config.build).to_lowercase(),
+            update_channel: format!("{channel:?}").to_lowercase(),
+            os,
+            arch: std::env::consts::ARCH.into(),
+            total_memory_mb: self.config.system_memory_mb,
+        };
+        diagnostics::export(&self.config.dirs, &info, &out).await?;
+        *self.last_export.lock().unwrap_or_else(|e| e.into_inner()) = Some(out.clone());
+        Ok(out)
+    }
+
+    /// The file the last export wrote, for "Show in folder" (never a path from the webview).
+    pub fn diagnostics_last(&self) -> Option<PathBuf> {
+        self.last_export
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// The saved settings, or the defaults. A damaged file is reported once as a warning.
@@ -833,5 +872,30 @@ pub(crate) mod tests {
                 .code,
             ErrorCode::JavaTestFailed
         );
+    }
+
+    #[tokio::test]
+    async fn diagnostics_export_writes_a_zip_and_remembers_it() {
+        let (core, _, _, tmp) = core(BuildKind::Beta);
+        let out = tmp.path().join("perland-diagnostics.zip");
+        assert_eq!(
+            core.diagnostics_export(out.clone(), "Windows 11".into())
+                .await
+                .unwrap(),
+            out
+        );
+        assert!(out.is_file());
+        assert_eq!(core.diagnostics_last(), Some(out));
+    }
+
+    #[tokio::test]
+    async fn diagnostics_must_be_a_zip() {
+        let (core, _, _, tmp) = core(BuildKind::Beta);
+        let err = core
+            .diagnostics_export(tmp.path().join("notes.txt"), "Windows 11".into())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::DiagnosticsPathInvalid);
+        assert_eq!(core.diagnostics_last(), None);
     }
 }

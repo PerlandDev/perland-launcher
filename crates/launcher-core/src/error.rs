@@ -56,7 +56,7 @@ error_codes! {
     MetaChecksum, MetaUnexpected, LoaderInstallerInvalid, LoaderTooOld, LoaderProcessorFailed,
     LoaderOutputCorrupt,
     // settings and logs
-    SettingsDamaged, LogWriteStopped,
+    SettingsDamaged, LogWriteStopped, DiagnosticsPathInvalid,
     // mods
     ModNotJar, ModExists, ModNotFound, ModNameInvalid, ModManaged,
     // packs and sync
@@ -162,6 +162,16 @@ mod tests {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));
         }
+    }
+
+    #[test]
+    fn diagnostics_code_exists() {
+        let code = ErrorCode::DiagnosticsPathInvalid;
+        assert_eq!(
+            serde_json::to_value(code).unwrap(),
+            "diagnostics_path_invalid"
+        );
+        assert!(ErrorCode::ALL.contains(&code));
     }
 
     #[test]

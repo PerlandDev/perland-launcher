@@ -50,6 +50,7 @@
   "loader_output_corrupt",
   "settings_damaged",
   "log_write_stopped",
+  "diagnostics_path_invalid",
   "mod_not_jar",
   "mod_exists",
   "mod_not_found",

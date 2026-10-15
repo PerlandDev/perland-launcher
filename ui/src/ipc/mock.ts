@@ -71,6 +71,8 @@ export interface MockOptions {
   link?: string;
   /** Seeds the `survival` Perland server and picks how its invite answers. */
   server?: ServerScenario;
+  /** What the save dialog returns; null means the player cancelled. Defaults to a zip in Downloads. */
+  savePath?: string | null;
 }
 
 interface MockRun {
@@ -812,6 +814,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.content.set(key, left);
       return clone(left);
     }
+    case 'diagnostics_reveal':
     case 'open_folder':
     case 'quit':
       return null;
@@ -824,6 +827,14 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const path = 'C:/Users/player/Downloads/lithium-fabric-0.11.2.jar';
       return options?.multiple ? [path] : path;
     }
+    case 'diagnostics_export':
+      return (args as { path: string }).path;
+    case 'plugin:dialog|save':
+      return state.options.savePath === undefined ? 'C:/Users/player/Downloads/perland-diagnostics.zip' : state.options.savePath;
+    case 'plugin:path|resolve_directory':
+      return 'C:/Users/player/Downloads';
+    case 'plugin:path|join':
+      return ((args.paths as string[]) ?? []).join('/');
     case 'plugin:window|is_maximized':
       return false;
     default: {

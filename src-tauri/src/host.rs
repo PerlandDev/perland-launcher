@@ -40,3 +40,8 @@ pub fn system_memory_mb() -> u64 {
     system.refresh_memory();
     system.total_memory() / (1024 * 1024)
 }
+
+/// "Windows 11 Pro 26200" or "Linux 24.04 Ubuntu", for diagnostics.
+pub fn os_description() -> String {
+    sysinfo::System::long_os_version().unwrap_or_else(|| std::env::consts::OS.to_string())
+}

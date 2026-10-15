@@ -292,6 +292,13 @@
       "check": "Check now",
       "restart": "Restart now",
       "busy": "Close your games first."
+    },
+    "diagnostics": {
+      "title": "Diagnostics",
+      "body": "Saves your logs and instance settings in a .zip for whoever helps you. Your accounts and the names of your personal folders stay out.",
+      "export": "Export diagnostics",
+      "saved": "Diagnostics saved",
+      "show": "Show in folder"
     }
   },
   "firstRun": {
@@ -415,6 +422,7 @@
     "meta_unexpected": { "message": "A server sent data the launcher doesn't understand.", "fix": "Try again later." },
     "settings_damaged": { "message": "Your launcher settings couldn't be read, so the defaults are in use.", "fix": "Set your preferences again in Settings." },
     "log_write_stopped": { "message": "The game log stopped being saved to disk.", "fix": "Check free disk space. The game keeps running." },
+    "diagnostics_path_invalid": { "message": "Diagnostics are saved as a .zip file.", "fix": "Pick a file name that ends in .zip." },
     "mod_not_jar": { "message": "Only .jar files can be added as mods." },
     "mod_exists": { "message": "{{file}} is already in this instance." },
     "mod_not_found": { "message": "{{file}} isn't in this instance anymore." },

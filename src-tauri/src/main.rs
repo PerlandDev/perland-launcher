@@ -162,6 +162,8 @@ fn main() {
             commands::update_status,
             commands::update_check,
             commands::update_restart,
+            commands::diagnostics_export,
+            commands::diagnostics_reveal,
             commands::quit,
         ])
         .build(tauri::generate_context!())

@@ -377,3 +377,22 @@ pub async fn quit(app: AppHandle, core: CoreState<'_>, stop_games: bool) -> Res<
     app.exit(0);
     Ok(())
 }
+
+#[tauri::command]
+pub async fn diagnostics_export(core: CoreState<'_>, path: PathBuf) -> Res<String> {
+    logged(
+        "diagnostics_export",
+        core.diagnostics_export(path, crate::host::os_description())
+            .await,
+    )
+    .map(|p| p.display().to_string())
+}
+
+/// Reveals the file the last export wrote. The path never comes from the webview.
+#[tauri::command]
+pub fn diagnostics_reveal(app: AppHandle, core: CoreState<'_>) -> Res<()> {
+    if let Some(path) = core.diagnostics_last() {
+        let _ = app.opener().reveal_item_in_dir(path);
+    }
+    Ok(())
+}
