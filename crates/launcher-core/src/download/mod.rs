@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod gc;
 pub mod hash;
 
 use std::{
