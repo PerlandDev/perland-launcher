@@ -27,7 +27,7 @@ export const qk = {
   contentFiles: (id: string, kind: ContentKind) => ['content', id, kind] as const,
   packStatus: (id: string) => ['pack', 'status', id] as const,
   packContents: (id: string) => ['pack', 'contents', id] as const,
-  packArt: (id: string) => ['pack', 'art', id] as const,
+  instanceArt: (id: string) => ['instance', 'art', id] as const,
   manual: (id: string) => ['pack', 'manual', id] as const,
   browseSearch: (request: Omit<SearchRequest, 'offset'>) => ['browse', 'search', request] as const,
   browseCategories: (kind: ContentKind) => ['browse', 'categories', kind] as const,
@@ -66,8 +66,8 @@ export const usePackStatus = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packStatus(id), queryFn: () => commands.packStatus(id), enabled, staleTime: TEN_MINUTES });
 export const usePackContents = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packContents(id), queryFn: () => commands.packContents(id), enabled });
-export const usePackArt = (id: string, enabled: boolean) =>
-  useQuery({ queryKey: qk.packArt(id), queryFn: () => commands.packArt(id), enabled, staleTime: Infinity });
+export const useInstanceArt = (id: string) =>
+  useQuery({ queryKey: qk.instanceArt(id), queryFn: () => commands.instanceArt(id), staleTime: Infinity });
 
 export const BROWSE_PAGE = 20;
 const FIVE_MINUTES = 5 * 60_000;

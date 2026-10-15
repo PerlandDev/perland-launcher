@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Marquee } from '../../art/Marquee';
 import { commands } from '../../ipc/commands';
 import type { Instance } from '../../ipc/schema';
-import { useAccounts, useInstances, usePackArt } from '../../state/queries';
+import { useAccounts, useInstances, useInstanceArt } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
@@ -25,7 +25,7 @@ function InstanceView({ instance }: { instance: Instance }) {
   const run = useRun(instance.id);
   const accounts = useAccounts();
   const hasAccount = Boolean(accounts.data?.active);
-  const art = usePackArt(instance.id, isPack(instance));
+  const art = useInstanceArt(instance.id);
   // The second click of a double click lands before the `queued` event; hold it until Play settles.
   const playOnce = useSingleFlight();
   return (

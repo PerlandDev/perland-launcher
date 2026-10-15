@@ -4,8 +4,8 @@ use std::{path::Path, sync::Arc};
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
-    fsutil::path_key,
-    instances::{Instance, SourceRef},
+    fsutil::{path_key, write_atomic},
+    instances::{ArtMode, Instance, SourceRef},
     mods,
     sources::{
         art::{sniff, MAX_ART_BYTES},
@@ -19,11 +19,11 @@ use launcher_core::{
 };
 
 use crate::{
-    app::AppCore,
+    app::{busy, AppCore},
     deep_link::{self, DeepLink},
     dto::{
-        ManualProgress, OptionalChoice, PackAddRequest, PackArtData, PackContents, PackMod,
-        PackStatus, PackUpdate,
+        ArtChoice, InstanceArtData, ManualProgress, OptionalChoice, PackAddRequest, PackContents,
+        PackMod, PackStatus, PackUpdate,
     },
     events::{AppEvent, Host},
     runner::Runner,
@@ -60,6 +60,44 @@ async fn art_url(dir: &Path, stem: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Where the player's own picture lives, inside `.perland/`, and what it may be.
+const CUSTOM_DIR: &str = "custom";
+const CUSTOM_STEM: &str = "image";
+const CUSTOM_EXTS: [&str; 3] = ["png", "jpg", "webp"];
+const MAX_SEED_CHARS: usize = 64;
+
+fn art_file_invalid() -> LauncherError {
+    LauncherError::disk(
+        ErrorCode::ArtFileInvalid,
+        "That file can't be used as an instance image",
+    )
+    .with_fix("Pick a PNG, JPEG or WebP image under 5 MB.")
+}
+
+/// The picked file's bytes and real type (by signature, not by name), if it is a PNG, JPEG or
+/// WebP within the size limit.
+async fn read_upload(path: &Path) -> Result<(Vec<u8>, &'static str)> {
+    let meta = tokio::fs::metadata(path)
+        .await
+        .map_err(|e| art_file_invalid().with_detail(e))?;
+    if !meta.is_file() {
+        return Err(art_file_invalid().with_detail("not a file"));
+    }
+    if meta.len() > MAX_ART_BYTES as u64 {
+        return Err(art_file_invalid().with_detail("the file is too big"));
+    }
+    let bytes = tokio::fs::read(path)
+        .await
+        .map_err(|e| art_file_invalid().with_detail(e))?;
+    if bytes.len() > MAX_ART_BYTES {
+        return Err(art_file_invalid().with_detail("the file is too big"));
+    }
+    match sniff(&bytes) {
+        Some(ext) if CUSTOM_EXTS.contains(&ext) => Ok((bytes, ext)),
+        _ => Err(art_file_invalid().with_detail("not a PNG, JPEG or WebP image")),
+    }
 }
 
 fn link_invalid() -> LauncherError {
@@ -282,14 +320,78 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         })
     }
 
-    /// The pack's icon and banner from `.perland/art/`.
-    pub async fn pack_art(&self, id: &str) -> Result<PackArtData> {
-        self.instances.load(id).await?;
-        let dir = self.instances.perland_dir(id).join("art");
-        Ok(PackArtData {
-            icon: art_url(&dir, "icon").await,
-            banner: art_url(&dir, "banner").await,
+    /// The picture the player sees for this instance: their own image (both `icon` and
+    /// `banner`), nothing at all for a generated landscape, or the pack's art from
+    /// `.perland/art/`.
+    pub async fn instance_art(&self, id: &str) -> Result<InstanceArtData> {
+        let instance = self.instances.load(id).await?;
+        let perland = self.instances.perland_dir(id);
+        Ok(match instance.art {
+            ArtMode::Generated => InstanceArtData {
+                icon: None,
+                banner: None,
+            },
+            ArtMode::Custom => {
+                let image = art_url(&perland.join(CUSTOM_DIR), CUSTOM_STEM).await;
+                InstanceArtData {
+                    icon: image.clone(),
+                    banner: image,
+                }
+            }
+            ArtMode::Auto => {
+                let dir = perland.join("art");
+                InstanceArtData {
+                    icon: art_url(&dir, "icon").await,
+                    banner: art_url(&dir, "banner").await,
+                }
+            }
         })
+    }
+
+    /// "Change image…": a generated landscape, the pack's own art, or a file of the player's.
+    /// Refused while the instance is busy or installing, like a rename. Everything is checked
+    /// before anything changes, so a bad file leaves the previous picture as it was.
+    pub async fn instance_art_set(&self, id: &str, choice: ArtChoice) -> Result<Instance> {
+        if self.is_busy(id) {
+            return Err(busy(id));
+        }
+        if self.is_installing(id) {
+            return Err(crate::browse::content_installing());
+        }
+        let mut instance = self.instances.load(id).await?;
+        let custom = self.instances.perland_dir(id).join(CUSTOM_DIR);
+        match choice {
+            ArtChoice::Generated { seed } => {
+                if seed.is_empty() || seed.chars().count() > MAX_SEED_CHARS {
+                    return Err(art_file_invalid().with_detail("the picture name is not valid"));
+                }
+                instance.art = ArtMode::Generated;
+                instance.art_seed = Some(seed);
+                let saved = self.instances.update(&instance).await?;
+                // The saved choice is what counts; a leftover file is only unused.
+                let _ = tokio::fs::remove_dir_all(&custom).await;
+                Ok(saved)
+            }
+            ArtChoice::Pack => {
+                if instance.source == SourceRef::None {
+                    return Err(no_pack());
+                }
+                instance.art = ArtMode::Auto;
+                let saved = self.instances.update(&instance).await?;
+                let _ = tokio::fs::remove_dir_all(&custom).await;
+                Ok(saved)
+            }
+            ArtChoice::Upload { path } => {
+                let (bytes, ext) = read_upload(&path).await?;
+                write_atomic(&custom.join(format!("{CUSTOM_STEM}.{ext}")), &bytes).await?;
+                for other in CUSTOM_EXTS.iter().filter(|e| **e != ext) {
+                    let _ =
+                        tokio::fs::remove_file(custom.join(format!("{CUSTOM_STEM}.{other}"))).await;
+                }
+                instance.art = ArtMode::Custom;
+                self.instances.update(&instance).await
+            }
+        }
     }
 
     /// A `perland://` link arrived (at startup or from a second launch). A good one waits for
@@ -322,8 +424,8 @@ mod tests {
 
     use launcher_core::{
         accounts::BuildKind,
-        instances::{SourceRef, UpdatePolicy},
-        sources::{PackInput, UpdateCheck},
+        instances::{ArtMode, SourceRef, UpdatePolicy},
+        sources::{art::MAX_ART_BYTES, PackInput, UpdateCheck},
         sync::{lockfile, manual::Scanner},
         ErrorCode, LauncherError,
     };
@@ -331,7 +433,7 @@ mod tests {
     use crate::{
         app::{tests::core, ManualState},
         deep_link::DeepLink,
-        dto::{NewInstance, OpenTarget, PackAddRequest, PackArtData},
+        dto::{ArtChoice, InstanceArtData, NewInstance, OpenTarget, PackAddRequest},
         events::{AppEvent, RunStateKind::*},
         testing::{
             desired, exit, invite, managed_for, manual_file, pack_file, pack_instance, pending,
@@ -771,12 +873,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pack_art_comes_back_as_data_urls_of_real_images_only() {
+    async fn instance_art_comes_back_as_data_urls_of_real_images_only() {
         let (core, _runner, _host, _t) = core(BuildKind::Dev);
         let id = pack_instance(&core, "Sky", None).await.id;
         assert_eq!(
-            core.pack_art(&id).await.unwrap(),
-            PackArtData {
+            core.instance_art(&id).await.unwrap(),
+            InstanceArtData {
                 icon: None,
                 banner: None
             }
@@ -790,7 +892,7 @@ mod tests {
             b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
         )
         .unwrap();
-        let data = core.pack_art(&id).await.unwrap();
+        let data = core.instance_art(&id).await.unwrap();
         assert!(data
             .icon
             .unwrap()
@@ -799,6 +901,288 @@ mod tests {
             .banner
             .unwrap()
             .starts_with("data:image/svg+xml;base64,"));
+    }
+
+    const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0rest";
+    const WEBP: &[u8] = b"RIFF\0\0\0\0WEBPrest";
+
+    /// A file of the player's own, outside the instance.
+    fn picked(dir: &std::path::Path, name: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, bytes).unwrap();
+        path
+    }
+
+    fn custom_files(core: &crate::app::tests::TestCore, id: &str) -> Vec<String> {
+        let dir = core.instances.perland_dir(id).join("custom");
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .map(|d| {
+                d.map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                    .collect()
+            })
+            .unwrap_or_default();
+        names.sort();
+        names
+    }
+
+    #[tokio::test]
+    async fn custom_image_wins_over_pack_art_and_survives_a_sync() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        let art = core.instances.perland_dir(&id).join("art");
+        std::fs::create_dir_all(&art).unwrap();
+        std::fs::write(art.join("icon.png"), b"\x89PNG\r\n\x1a\n\0pack").unwrap();
+        let pack_icon = core.instance_art(&id).await.unwrap().icon.unwrap();
+        let file = picked(tmp.path(), "mine.png", PNG);
+        let set = core
+            .instance_art_set(&id, ArtChoice::Upload { path: file })
+            .await
+            .unwrap();
+        assert_eq!(set.art, ArtMode::Custom);
+        assert_eq!(core.instances.load(&id).await.unwrap().art, ArtMode::Custom);
+        // A sync rewrites the pack's art; the player's picture stays.
+        std::fs::write(art.join("icon.png"), b"\x89PNG\r\n\x1a\n\0again").unwrap();
+        let data = core.instance_art(&id).await.unwrap();
+        assert_ne!(data.icon.as_ref().unwrap(), &pack_icon);
+        assert!(data
+            .icon
+            .as_ref()
+            .unwrap()
+            .starts_with("data:image/png;base64,iVBORw0KGgo"));
+        assert_eq!(data.icon, data.banner, "one picture fills both");
+        assert_eq!(custom_files(&core, &id), ["image.png"]);
+    }
+
+    #[tokio::test]
+    async fn generated_choice_hides_pack_art_and_sets_the_seed() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        let art = core.instances.perland_dir(&id).join("art");
+        std::fs::create_dir_all(&art).unwrap();
+        std::fs::write(art.join("icon.png"), PNG).unwrap();
+        core.instance_art_set(
+            &id,
+            ArtChoice::Upload {
+                path: picked(tmp.path(), "mine.png", PNG),
+            },
+        )
+        .await
+        .unwrap();
+        let set = core
+            .instance_art_set(
+                &id,
+                ArtChoice::Generated {
+                    seed: "dunes".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            (set.art, set.art_seed.as_deref()),
+            (ArtMode::Generated, Some("dunes"))
+        );
+        assert_eq!(
+            core.instance_art(&id).await.unwrap(),
+            InstanceArtData {
+                icon: None,
+                banner: None
+            }
+        );
+        assert!(custom_files(&core, &id).is_empty());
+        assert!(!core.instances.perland_dir(&id).join("custom").exists());
+        // Back to the pack's own art.
+        let set = core.instance_art_set(&id, ArtChoice::Pack).await.unwrap();
+        assert_eq!(set.art, ArtMode::Auto);
+        assert!(core.instance_art(&id).await.unwrap().icon.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_bad_seed_changes_nothing() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        for seed in ["".to_string(), "x".repeat(65)] {
+            let err = core
+                .instance_art_set(&id, ArtChoice::Generated { seed })
+                .await
+                .unwrap_err();
+            assert_eq!(err.code, ErrorCode::ArtFileInvalid);
+        }
+        let now = core.instances.load(&id).await.unwrap();
+        assert_eq!((now.art, now.art_seed), (ArtMode::Auto, None));
+        core.instance_art_set(
+            &id,
+            ArtChoice::Generated {
+                seed: "x".repeat(64),
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn pack_choice_needs_a_pack() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let plain = core
+            .instance_create(NewInstance {
+                name: "Plain".into(),
+                minecraft: "1.20.1".into(),
+                loader: None,
+            })
+            .await
+            .unwrap();
+        core.instance_art_set(
+            &plain.id,
+            ArtChoice::Generated {
+                seed: "dunes".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let err = core
+            .instance_art_set(&plain.id, ArtChoice::Pack)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::NoPack);
+        assert_eq!(
+            core.instances.load(&plain.id).await.unwrap().art,
+            ArtMode::Generated
+        );
+    }
+
+    #[tokio::test]
+    async fn uploads_are_checked() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        core.instance_art_set(
+            &id,
+            ArtChoice::Upload {
+                path: picked(tmp.path(), "first.png", PNG),
+            },
+        )
+        .await
+        .unwrap();
+        let sparse = tmp.path().join("huge.png");
+        let file = std::fs::File::create(&sparse).unwrap();
+        file.set_len(MAX_ART_BYTES as u64 + 1).unwrap();
+        drop(file);
+        let folder = tmp.path().join("folder.png");
+        std::fs::create_dir(&folder).unwrap();
+        for bad in [
+            picked(tmp.path(), "fake.png", b"MZ\x90\0this is an exe"),
+            picked(
+                tmp.path(),
+                "vector.png",
+                b"<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+            ),
+            picked(tmp.path(), "anim.png", b"GIF89a\x01\0\x01\0"),
+            sparse,
+            folder,
+            tmp.path().join("missing.png"),
+        ] {
+            let err = core
+                .instance_art_set(&id, ArtChoice::Upload { path: bad.clone() })
+                .await
+                .unwrap_err();
+            assert_eq!(err.code, ErrorCode::ArtFileInvalid, "{bad:?}");
+            assert_eq!(
+                err.fix.as_deref(),
+                Some("Pick a PNG, JPEG or WebP image under 5 MB.")
+            );
+            // The previous picture and the mode are untouched.
+            assert_eq!(core.instances.load(&id).await.unwrap().art, ArtMode::Custom);
+            assert_eq!(custom_files(&core, &id), ["image.png"]);
+        }
+        // Never set: a bad first upload leaves the mode as it was.
+        let other = pack_instance(&core, "Other", None).await.id;
+        core.instance_art_set(
+            &other,
+            ArtChoice::Upload {
+                path: tmp.path().join("missing.png"),
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            core.instances.load(&other).await.unwrap().art,
+            ArtMode::Auto
+        );
+        assert!(!core.instances.perland_dir(&other).join("custom").exists());
+    }
+
+    #[tokio::test]
+    async fn upload_replaces_a_previous_upload_of_another_type() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        for (name, bytes) in [("a.png", PNG), ("b.webp", WEBP)] {
+            core.instance_art_set(
+                &id,
+                ArtChoice::Upload {
+                    path: picked(tmp.path(), name, bytes),
+                },
+            )
+            .await
+            .unwrap();
+        }
+        assert_eq!(custom_files(&core, &id), ["image.webp"]);
+        assert!(core
+            .instance_art(&id)
+            .await
+            .unwrap()
+            .icon
+            .unwrap()
+            .starts_with("data:image/webp;base64,"));
+    }
+
+    #[tokio::test]
+    async fn the_picture_follows_the_bytes_not_the_name() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        core.instance_art_set(
+            &id,
+            ArtChoice::Upload {
+                path: picked(tmp.path(), "photo.jpg", WEBP),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(custom_files(&core, &id), ["image.webp"]);
+    }
+
+    #[tokio::test]
+    async fn art_changes_are_refused_while_busy_or_installing() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        let file = picked(tmp.path(), "mine.png", PNG);
+        core.runs.lock().unwrap().insert(
+            id.clone(),
+            crate::app::Run {
+                phase: Running,
+                abort: None,
+                killer: None,
+                cancel: launcher_core::sync::Cancel::default(),
+                answer: None,
+                offer: None,
+                update_only: false,
+            },
+        );
+        let upload = ArtChoice::Upload { path: file };
+        let err = core
+            .instance_art_set(&id, upload.clone())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InstanceBusy);
+        core.runs.lock().unwrap().clear();
+        core.installing.lock().unwrap().insert(id.clone());
+        let err = core.instance_art_set(&id, upload).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::ContentInstalling);
+        let err = core
+            .instance_art_set(&id, ArtChoice::Pack)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::ContentInstalling);
+        let now = core.instances.load(&id).await.unwrap();
+        assert_eq!(now.art, ArtMode::Auto);
+        assert!(!core.instances.perland_dir(&id).join("custom").exists());
     }
 
     #[tokio::test]

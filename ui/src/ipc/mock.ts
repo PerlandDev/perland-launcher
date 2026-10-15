@@ -21,6 +21,7 @@ import { inviteCanonical } from './inviteLink';
 import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, type ServerScenario } from './mockServers';
 import type {
   AccountsFile,
+  ArtChoice,
   AppEvent,
   AppInfo,
   BrowsePlanRequest,
@@ -38,7 +39,7 @@ import type {
   ManualProgress,
   NewInstance,
   PackAddRequest,
-  PackArtData,
+  InstanceArtData,
   PackContents,
   PackStatus,
   PackUpdate,
@@ -81,13 +82,13 @@ interface MockPack {
   installed: string | null;
   update: PackUpdate | null;
   contents: PackContents;
-  art: PackArtData;
+  art: InstanceArtData;
   manual: ManualFile[];
   found: number;
 }
 
 const svg = (body: string) => `data:image/svg+xml;base64,${btoa(body)}`;
-const SKY_ART: PackArtData = {
+const SKY_ART: InstanceArtData = {
   icon: svg(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect width="16" height="16" fill="#7cc4ff"/><rect y="9" width="16" height="7" fill="#3f8f4f"/><rect y="12" width="16" height="4" fill="#6b4a2b"/></svg>',
   ),
@@ -95,6 +96,9 @@ const SKY_ART: PackArtData = {
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 270" shape-rendering="crispEdges"><defs><linearGradient id="s" x2="0" y2="1"><stop offset="0" stop-color="#9fd8ff"/><stop offset="1" stop-color="#e9c46a"/></linearGradient></defs><rect width="480" height="270" fill="url(#s)"/><rect x="60" y="120" width="140" height="40" fill="#3f8f4f"/><rect x="80" y="160" width="100" height="24" fill="#6b4a2b"/><rect x="290" y="90" width="120" height="36" fill="#3f8f4f"/><rect x="306" y="126" width="88" height="20" fill="#6b4a2b"/></svg>',
   ),
 };
+
+/** A 1x1 PNG, the stand-in for a picked image. */
+const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 const clone = <T>(value: T): T => structuredClone(value);
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -230,6 +234,8 @@ function seed(options: MockOptions) {
     appInfo,
     mods,
     packs,
+    // The player's own picture per instance, as a data URL (the real one lives in .perland/custom/).
+    custom: new Map<string, string>(),
     content,
     browse: {
       installed: new Map<string, Set<string>>([['asalith-fields', new Set(['P7dR8mSH'])]]),
@@ -642,8 +648,39 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       pack.found = Math.min(pack.found + 1, pack.manual.length);
       return { found: pack.found, total: pack.manual.length, remaining: pack.manual.slice(pack.found) } satisfies ManualProgress;
     }
-    case 'pack_art':
-      return state.packs.get(String(args.id))?.art ?? ({ icon: null, banner: null } satisfies PackArtData);
+    case 'instance_art': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      const none: InstanceArtData = { icon: null, banner: null };
+      if (target.art === 'generated') return none;
+      if (target.art === 'custom') {
+        const image = state.custom.get(target.id) ?? null;
+        return { icon: image, banner: image } satisfies InstanceArtData;
+      }
+      return state.packs.get(target.id)?.art ?? none;
+    }
+    case 'instance_art_set': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (state.runs.has(target.id)) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: target.id });
+      const choice = args.choice as ArtChoice;
+      const invalid = () => fail('disk', 'art_file_invalid', "That file can't be used as an instance image");
+      let updated: Instance;
+      if (choice.kind === 'generated') {
+        if (choice.seed.length === 0 || choice.seed.length > 64) invalid();
+        state.custom.delete(target.id);
+        updated = { ...target, art: 'generated', artSeed: choice.seed };
+      } else if (choice.kind === 'pack') {
+        if (target.source.kind === 'none') fail('pack', 'no_pack', "This instance doesn't come from a pack");
+        state.custom.delete(target.id);
+        updated = { ...target, art: 'auto' };
+      } else {
+        const ext = /\.(png|jpe?g|webp)$/i.exec(choice.path)?.[1]?.toLowerCase();
+        if (!ext || /invalid/i.test(choice.path)) invalid();
+        state.custom.set(target.id, `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${TINY_PNG}`);
+        updated = { ...target, art: 'custom' };
+      }
+      state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
+      return updated;
+    }
     case 'pack_add': {
       const request = args.request as PackAddRequest;
       if (request.kind === 'link' && !/^(https:\/\/|modrinth:)/.test(request.url.trim())) {

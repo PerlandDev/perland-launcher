@@ -81,6 +81,36 @@ describe('mock backend', () => {
     expect(first.instances.find((i) => i.id === 'asalith-fields')?.name).not.toBe('Renamed');
   });
 
+  it('changes an instance image: presets, pack art and uploads', async () => {
+    const { handle } = createMockBackend();
+    const art = (id: string) => handle('instance_art', { id }) as Promise<{ icon: string | null; banner: string | null }>;
+    expect((await art('sky-islands')).icon).toMatch(/^data:image\/svg/);
+    const generated = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'generated', seed: 'dunes' } })) as Instance;
+    expect([generated.art, generated.artSeed]).toEqual(['generated', 'dunes']);
+    expect(await art('sky-islands')).toEqual({ icon: null, banner: null });
+    const custom = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/Me.JPG' } })) as Instance;
+    expect(custom.art).toBe('custom');
+    const mine = await art('sky-islands');
+    expect(mine.icon).toMatch(/^data:image\/jpeg;base64,/);
+    expect(mine.banner).toBe(mine.icon);
+    const back = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'pack' } })) as Instance;
+    expect(back.art).toBe('auto');
+    expect((await art('sky-islands')).icon).toMatch(/^data:image\/svg/);
+  });
+
+  it('refuses a bad upload and a pack choice without a pack', async () => {
+    const { handle } = createMockBackend();
+    for (const path of ['C:/pics/invalid.png', 'C:/pics/clip.gif']) {
+      await expect(handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'upload', path } })).rejects.toMatchObject({
+        code: 'art_file_invalid',
+      });
+    }
+    const listing = (await handle('instances_list')) as InstanceListing;
+    expect(listing.instances.find((i) => i.id === 'sky-islands')?.art).toBe('auto');
+    const plain = listing.instances.find((i) => i.source.kind === 'none')!;
+    await expect(handle('instance_art_set', { id: plain.id, choice: { kind: 'pack' } })).rejects.toMatchObject({ code: 'no_pack' });
+  });
+
   it('rejects offline accounts in a release-like build', async () => {
     const { handle } = createMockBackend({ release: true });
     await expect(handle('account_add_offline', { name: 'Steve' })).rejects.toMatchObject({ code: 'offline_locked' });

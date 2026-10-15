@@ -177,13 +177,23 @@ pub struct ManualProgress {
     pub remaining: Vec<ManualFile>,
 }
 
-/// Pack art as `data:` URLs (the CSP allows no remote images). `None` falls back to the
-/// generated art.
+/// An instance's picture as `data:` URLs (the CSP allows no remote images). `None` falls back to
+/// the generated art.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PackArtData {
+pub struct InstanceArtData {
     pub icon: Option<String>,
     pub banner: Option<String>,
+}
+
+/// What the player picked in "Change image…": one of the generated landscapes (by seed), the
+/// pack's own art, or a file of their own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum ArtChoice {
+    Generated { seed: String },
+    Pack,
+    Upload { path: PathBuf },
 }
 
 /// What the New-instance screen hands over. A link is never a file path, and a file is only

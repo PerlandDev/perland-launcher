@@ -10,10 +10,10 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AppInfo, Build, ContentFile, JavaTest, JoinPreview, ManualProgress, NewInstance,
-        OpenTarget, OptionalChoice, PackAddRequest, PackArtData, PackContents, PackMod, PackStatus,
-        PackUpdate, RunSnapshot, ServerGame, ServerPack, ServerPlayers, ServerStatusView,
-        ServerTeam, SyncSummary,
+        AppInfo, ArtChoice, Build, ContentFile, InstanceArtData, JavaTest, JoinPreview,
+        ManualProgress, NewInstance, OpenTarget, OptionalChoice, PackAddRequest, PackContents,
+        PackMod, PackStatus, PackUpdate, RunSnapshot, ServerGame, ServerPack, ServerPlayers,
+        ServerStatusView, ServerTeam, SyncSummary,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
 };
@@ -675,11 +675,23 @@ fn contract_fixtures_are_current() {
         },
     );
     check(
-        "pack_art",
-        PackArtData {
+        "instance_art",
+        InstanceArtData {
             icon: Some("data:image/png;base64,iVBORw0KGgo=".into()),
             banner: None,
         },
+    );
+    check(
+        "art_choices",
+        vec![
+            ArtChoice::Generated {
+                seed: "dunes".into(),
+            },
+            ArtChoice::Pack,
+            ArtChoice::Upload {
+                path: PathBuf::from("C:/Users/player/Pictures/my island.png"),
+            },
+        ],
     );
     check(
         "pack_add_requests",

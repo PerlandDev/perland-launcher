@@ -46,7 +46,7 @@ error_codes! {
     MojangMismatch, NoAssetIndex, NativesExtractFailed, VersionInUse, ArchiveInvalid,
     // instances
     InstanceNotFound, InstanceDamaged, InstanceIdInvalid, InstanceBusy, AlreadyRunning,
-    NameInvalid, MemoryOutOfRange,
+    NameInvalid, MemoryOutOfRange, ArtFileInvalid,
     // java
     JavaUnavailable, JavaStartFailed, JavaPathMissing, JavaTestFailed,
     // launch
@@ -168,6 +168,7 @@ mod tests {
             (ErrorCode::SyncCancelled, "sync_cancelled"),
             (ErrorCode::UpdateDownloadFailed, "update_download_failed"),
             (ErrorCode::ModManaged, "mod_managed"),
+            (ErrorCode::ArtFileInvalid, "art_file_invalid"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

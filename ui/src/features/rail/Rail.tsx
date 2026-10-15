@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { PlotIcon } from '../../art/PlotIcon';
 import { pixelUpscale } from '../../art/upscale';
 import type { ServerStatus } from '../../ipc/schema';
-import { useInstances, usePackArt, useServerStatus } from '../../state/queries';
+import { useInstances, useInstanceArt, useServerStatus } from '../../state/queries';
 import { navigate, useRoute, instanceOf } from '../../state/route';
 import { RAIL_POLL } from '../../state/serverPoll';
 import { useRun } from '../../state/runStore';
@@ -37,7 +37,7 @@ function RailItem({
 }) {
   const { t } = useTranslation();
   const run = useRun(item.id);
-  const art = usePackArt(item.id, item.pack);
+  const art = useInstanceArt(item.id);
   // An icon that fails to decode gives the cabinet back its generated plot icon.
   const [failed, setFailed] = useState<string | null>(null);
   const icon = art.data?.icon && art.data.icon !== failed ? art.data.icon : null;

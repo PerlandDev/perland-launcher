@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   AccountsFile,
   AppInfo,
+  ArtChoice,
   BrowsePlanRequest,
   ContentFile,
   ContentKind,
@@ -10,6 +11,7 @@ import type {
   InstallPlanView,
   InstallResult,
   Instance,
+  InstanceArtData,
   InstanceListing,
   JavaTest,
   JoinPreview,
@@ -21,7 +23,6 @@ import type {
   NewInstance,
   OpenTarget,
   PackAddRequest,
-  PackArtData,
   PackContents,
   PackStatus,
   ProjectDetail,
@@ -72,7 +73,8 @@ export const commands = {
   packSetOptional: (id: string, path: string, enabled: boolean) =>
     invoke<Instance>('pack_set_optional', { id, path, enabled }),
   manualImport: (id: string) => invoke<ManualProgress>('manual_import', { id }),
-  packArt: (id: string) => invoke<PackArtData>('pack_art', { id }),
+  instanceArt: (id: string) => invoke<InstanceArtData>('instance_art', { id }),
+  instanceArtSet: (id: string, choice: ArtChoice) => invoke<Instance>('instance_art_set', { id, choice }),
   deepLinkTake: () => invoke<DeepLink | null>('deep_link_take'),
   joinPreview: (link: string) => invoke<JoinPreview>('join_preview', { link }),
   joinAdd: (link: string) => invoke<Instance>('join_add', { link }),
