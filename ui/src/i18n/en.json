@@ -36,7 +36,8 @@
     "preparing": "Getting ready",
     "damaged": "Needs attention",
     "expand": "Show names",
-    "collapse": "Hide names"
+    "collapse": "Hide names",
+    "moved": "{{name}} moved to position {{position}} of {{count}}"
   },
   "home": {
     "emptyTitle": "No instances yet",

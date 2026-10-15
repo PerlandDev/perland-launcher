@@ -36,7 +36,8 @@
     "preparing": "Preparando",
     "damaged": "Requiere atención",
     "expand": "Mostrar nombres",
-    "collapse": "Ocultar nombres"
+    "collapse": "Ocultar nombres",
+    "moved": "{{name}} pasó al puesto {{position}} de {{count}}"
   },
   "home": {
     "emptyTitle": "Todavía no tienes instancias",

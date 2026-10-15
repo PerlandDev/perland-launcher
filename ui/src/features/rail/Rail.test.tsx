@@ -116,3 +116,125 @@ it('moves focus with the arrow keys in the wide rail too', async () => {
   await user.keyboard('{ArrowUp}');
   expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
 });
+
+it('moves a cabinet down with Alt+ArrowDown, keeps focus on it and says where it went', async () => {
+  const { user, calls } = renderApp(<Rail />);
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  await user.tab();
+  await user.tab();
+  expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
+  await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
+  // Only healthy instances are sent; the damaged one stays last on its own.
+  expect(sent(calls, 'instance_reorder')).toEqual([{ ids: ['creative-flat', 'asalith-fields', 'sky-islands'] }]);
+  await vi.waitFor(() => expect(cabinetNames()).toEqual(['Creative Flat', 'Asalith Fields', 'Sky Islands', 'old-pack, Needs attention']));
+  expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
+  expect(screen.getByText('Asalith Fields moved to position 2 of 3')).toHaveAttribute('aria-live', 'polite');
+  // It was on screen before the move (the first instance, nothing chosen yet), and it stays there.
+  expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveAttribute('aria-current', 'page');
+});
+
+it('moves a cabinet up with Alt+ArrowUp in the wide rail', async () => {
+  const { user, calls } = renderApp(<Rail />, { railExpanded: true });
+  await screen.findByText('Asalith Fields');
+  act(() => screen.getByRole('button', { name: 'Sky Islands' }).focus());
+  await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+  expect(sent(calls, 'instance_reorder')).toEqual([{ ids: ['asalith-fields', 'sky-islands', 'creative-flat'] }]);
+  await vi.waitFor(() => expect(cabinetNames().slice(0, 3)).toEqual(['Asalith Fields', 'Sky Islands', 'Creative Flat']));
+  expect(screen.getByRole('button', { name: 'Sky Islands' })).toHaveFocus();
+});
+
+it('does nothing on Alt+ArrowUp at the top, and never moves past the end or a damaged cabinet', async () => {
+  const { user, calls } = renderApp(<Rail />);
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  await user.tab();
+  await user.tab();
+  await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+  // Alt+arrow is a move, never a plain roving step (which would wrap to the last cabinet).
+  expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
+  act(() => screen.getByRole('button', { name: 'Sky Islands' }).focus());
+  await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
+  expect(screen.getByRole('button', { name: 'Sky Islands' })).toHaveFocus();
+  act(() => screen.getByRole('button', { name: 'old-pack, Needs attention' }).focus());
+  await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+  expect(sent(calls, 'instance_reorder')).toEqual([]);
+  expect(cabinetNames()).toEqual(['Asalith Fields', 'Creative Flat', 'Sky Islands', 'old-pack, Needs attention']);
+});
+
+it('puts the order back when the move is refused', async () => {
+  const { user, backend, calls } = renderApp(<Rail />);
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  const handle = backend.handle;
+  backend.handle = (cmd, args) =>
+    cmd === 'instance_reorder'
+      ? Promise.reject({ category: 'disk', code: 'io', message: 'The disk said no', fix: null, detail: null, params: {} })
+      : handle(cmd, args);
+  act(() => screen.getByRole('button', { name: 'Asalith Fields' }).focus());
+  await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
+  await vi.waitFor(() => expect(sent(calls, 'instance_reorder')).toHaveLength(1));
+  await vi.waitFor(() => expect(cabinetNames().slice(0, 3)).toEqual(['Asalith Fields', 'Creative Flat', 'Sky Islands']));
+});
+
+/** Lay the cabinets out 56px tall with 12px gaps, the way the rail draws them (jsdom has no layout). */
+function layOut() {
+  screen.getAllByRole('listitem').forEach((li, index) => {
+    const button = li.querySelector('button')!;
+    const top = index * 68;
+    button.getBoundingClientRect = () => ({ top, bottom: top + 56, height: 56, left: 0, right: 56, width: 56, x: 0, y: top, toJSON: () => null });
+  });
+}
+
+it('drags a cabinet to a new place, showing where it will land, without selecting it', async () => {
+  const { calls } = renderApp(<Rail />);
+  const creative = await screen.findByRole('button', { name: 'Creative Flat' });
+  layOut();
+  fireEvent.pointerDown(creative, { pointerId: 1, button: 0, clientX: 28, clientY: 96 });
+  fireEvent.pointerMove(creative, { pointerId: 1, clientX: 28, clientY: 60 });
+  fireEvent.pointerMove(creative, { pointerId: 1, clientX: 28, clientY: 10 });
+  expect(creative).toHaveAttribute('data-dragging');
+  // The drop line sits above the first cabinet.
+  expect(screen.getByRole('button', { name: 'Asalith Fields' }).closest('li')).toHaveAttribute('data-drop', 'before');
+  fireEvent.pointerUp(creative, { pointerId: 1, clientX: 28, clientY: 10 });
+  fireEvent.click(creative);
+  await vi.waitFor(() => expect(sent(calls, 'instance_reorder')).toEqual([{ ids: ['creative-flat', 'asalith-fields', 'sky-islands'] }]));
+  expect(routeSnapshot()).not.toEqual({ name: 'home', id: 'creative-flat' });
+  expect(creative).not.toHaveAttribute('data-dragging');
+  expect(document.querySelector('[data-drop]')).toBeNull();
+  expect(await screen.findByText('Creative Flat moved to position 1 of 3')).toBeInTheDocument();
+});
+
+it('drops below the last healthy cabinet, never among the damaged ones', async () => {
+  const { calls } = renderApp(<Rail />, { railExpanded: true });
+  const asalith = await screen.findByRole('button', { name: 'Asalith Fields' });
+  layOut();
+  fireEvent.pointerDown(asalith, { pointerId: 1, button: 0, clientX: 28, clientY: 28 });
+  fireEvent.pointerMove(asalith, { pointerId: 1, clientX: 28, clientY: 400 });
+  expect(screen.getByRole('button', { name: 'Sky Islands' }).closest('li')).toHaveAttribute('data-drop', 'after');
+  fireEvent.pointerUp(asalith, { pointerId: 1, clientX: 28, clientY: 400 });
+  await vi.waitFor(() => expect(sent(calls, 'instance_reorder')).toEqual([{ ids: ['creative-flat', 'sky-islands', 'asalith-fields'] }]));
+});
+
+it('still selects on a click that wobbles under 4px, and never drags a damaged cabinet', async () => {
+  const { calls } = renderApp(<Rail />);
+  const creative = await screen.findByRole('button', { name: 'Creative Flat' });
+  layOut();
+  fireEvent.pointerDown(creative, { pointerId: 1, button: 0, clientX: 28, clientY: 96 });
+  fireEvent.pointerMove(creative, { pointerId: 1, clientX: 30, clientY: 98 });
+  expect(creative).not.toHaveAttribute('data-dragging');
+  fireEvent.pointerUp(creative, { pointerId: 1, clientX: 30, clientY: 98 });
+  fireEvent.click(creative);
+  expect(routeSnapshot()).toEqual({ name: 'home', id: 'creative-flat' });
+  const damaged = screen.getByRole('button', { name: 'old-pack, Needs attention' });
+  fireEvent.pointerDown(damaged, { pointerId: 2, button: 0, clientX: 28, clientY: 232 });
+  fireEvent.pointerMove(damaged, { pointerId: 2, clientX: 28, clientY: 0 });
+  expect(damaged).not.toHaveAttribute('data-dragging');
+  fireEvent.pointerUp(damaged, { pointerId: 2, clientX: 28, clientY: 0 });
+  expect(sent(calls, 'instance_reorder')).toEqual([]);
+});
+
+/** The cabinets' accessible names, top to bottom. */
+function cabinetNames() {
+  return screen
+    .getAllByRole('listitem')
+    .map((li) => li.querySelector('button')?.getAttribute('aria-label'))
+    .filter(Boolean);
+}

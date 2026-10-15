@@ -231,6 +231,34 @@ export function useRenameInstance(opts: Opts = {}) {
   });
 }
 
+/** Save the player's rail order. The cached listing takes the new order at once and goes back if
+ *  the core refuses it; the core's own listing replaces it on success. Moves run one at a time, so
+ *  quick Alt+arrow presses reach the core in the order they were made. */
+export function useReorderInstances(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    scope: { id: 'instance-order' },
+    mutationFn: (ids: string[]) => commands.instanceReorder(ids),
+    onMutate: async (ids) => {
+      await qc.cancelQueries({ queryKey: qk.instances });
+      const previous = qc.getQueryData<InstanceListing>(qk.instances);
+      if (previous) {
+        const byId = new Map(previous.instances.map((i) => [i.id, i]));
+        const ordered = ids.flatMap((id) => byId.get(id) ?? []);
+        // Anything the ids missed (an instance added meanwhile) stays on top, like the core's rule.
+        const rest = previous.instances.filter((i) => !ids.includes(i.id));
+        qc.setQueryData<InstanceListing>(qk.instances, { ...previous, instances: [...rest, ...ordered] });
+      }
+      return { previous };
+    },
+    onSuccess: (listing) => qc.setQueryData(qk.instances, listing),
+    onError: (error, _ids, context) => {
+      if (context?.previous) qc.setQueryData(qk.instances, context.previous);
+      onError(opts)(error);
+    },
+  });
+}
+
 export function useDeleteInstance(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({

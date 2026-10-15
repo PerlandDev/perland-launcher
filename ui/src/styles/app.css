@@ -729,8 +729,45 @@
     align-items: center;
     gap: 0.75rem;
     min-height: 0;
-    padding-inline: 0.75rem;
+    /* Half a gap of room above and below (taken back by the margin, so nothing shifts) keeps the drop
+       line over the first cabinet and the step under the last one inside the scroller. */
+    margin-block: -0.5rem;
+    padding: 0.5rem 0.75rem;
     overflow-y: auto;
+  }
+  .rail-list > li {
+    position: relative;
+  }
+  /* Reordering: a carried cabinet is picked up off the rail. It stands on the large step, rides the
+     pointer 1:1 (direct manipulation, so nothing eases and reduced motion has nothing to remove) and
+     drops back into place in one snap. */
+  .rail-item[data-dragging] {
+    z-index: 1;
+    translate: 0 var(--lift, 0);
+    background: var(--color-raised);
+    box-shadow: 0 6px 0 var(--color-dirt-deep);
+    cursor: grabbing;
+  }
+  /* The drop line is an insertion caret, so it is amber like the text caret and the drop-zone cue:
+     a 4px bar on its own 2px dirt step, centred in the 0.75rem gap and clear of a selected cabinet's step.
+     It draws over the carried cabinet, which would otherwise hide it whenever the pointer is near a gap. */
+  .rail-list > li[data-drop]::after {
+    content: '';
+    position: absolute;
+    z-index: 2;
+    inset-inline: 0;
+    height: 4px;
+    background: var(--color-amber);
+    box-shadow: 0 2px 0 var(--color-dirt);
+    border-radius: 2px;
+    corner-shape: notch;
+    pointer-events: none;
+  }
+  .rail-list > li[data-drop='before']::after {
+    top: -7px;
+  }
+  .rail-list > li[data-drop='after']::after {
+    bottom: -9px;
   }
   /* The rail key is chrome, not content: dim ink at rest, like the title-bar icons. */
   .rail-key {
