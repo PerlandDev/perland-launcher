@@ -264,29 +264,60 @@ pub struct Sources {
     pub config: SourceConfig,
 }
 
-/// `MetaClient` raises `MetaNotFound` for any 4xx. Only 404 and 410 mean the pack is gone; a rate
-/// limit or a refusal is the host having trouble, and must not say the pack doesn't exist.
-pub(crate) fn pack_not_found(e: LauncherError) -> LauncherError {
-    if e.code != ErrorCode::MetaNotFound {
-        return e;
+/// A `MetaClient` error from fetching the pack file at `url` (`file` is its name or path in the
+/// pack), in pack terms: `MetaClient`'s own codes talk about version lists.
+/// - `MetaNotFound` is any 4xx. Only 404 and 410 mean the pack is gone; a rate limit or a
+///   refusal is the host having trouble, and must not say the pack doesn't exist.
+/// - A missing saved copy is the host's trouble too, and stays a network failure, so an update
+///   that can't be fetched still falls back to what is installed.
+/// - Data that fails its checksum or can't be taken means the pack file is damaged.
+pub(crate) fn pack_fetch_error(url: &str, file: &str) -> impl Fn(LauncherError) -> LauncherError {
+    let (host, file) = (host_of(url), file.to_string());
+    move |e| {
+        let damaged = invalid(&file, "");
+        fetch_error(e, &host, damaged)
     }
-    let status = e.params.get("status").cloned().unwrap_or_default();
-    if status == "404" || status == "410" {
-        let mut out = LauncherError::pack(ErrorCode::PackNotFound, "That pack wasn't found")
-            .with_fix("Check the link and try again");
-        out.detail = e.detail.or(Some(e.message));
-        return out;
+}
+
+/// [`pack_fetch_error`] for Modrinth's API, whose answers aren't files in the pack.
+pub(crate) fn modrinth_fetch_error(url: &str) -> impl Fn(LauncherError) -> LauncherError {
+    let host = host_of(url);
+    move |e| {
+        let damaged = invalid_because(
+            "modrinth_data",
+            "Modrinth sent pack details the launcher couldn't read",
+            "",
+        )
+        .with_fix("Try again in a few minutes");
+        fetch_error(e, &host, damaged)
     }
-    let host = e.detail.as_deref().map(host_of).unwrap_or_default();
-    let mut out = LauncherError::network(
-        ErrorCode::HostTrouble,
-        format!("{host} is having trouble ({status})"),
-    )
-    .with_param("host", &host)
-    .with_param("status", &status)
-    .with_fix("Try again in a few minutes");
-    out.detail = e.detail;
+}
+
+fn fetch_error(e: LauncherError, host: &str, damaged: LauncherError) -> LauncherError {
+    let detail = e.detail.clone().or_else(|| Some(e.message.clone()));
+    let mut out = match e.code {
+        ErrorCode::MetaNotFound => {
+            let status = e.params.get("status").cloned().unwrap_or_default();
+            if status == "404" || status == "410" {
+                LauncherError::pack(ErrorCode::PackNotFound, "That pack wasn't found")
+                    .with_fix("Check the link and try again")
+            } else {
+                host_trouble(host, &format!("{host} is having trouble ({status})"))
+                    .with_param("status", &status)
+            }
+        }
+        ErrorCode::MetaCacheMissing => host_trouble(host, &e.message),
+        ErrorCode::MetaChecksum | ErrorCode::MetaUnexpected => damaged,
+        _ => return e,
+    };
+    out.detail = detail;
     out
+}
+
+fn host_trouble(host: &str, message: &str) -> LauncherError {
+    LauncherError::network(ErrorCode::HostTrouble, message)
+        .with_param("host", host)
+        .with_fix("Try again in a few minutes")
 }
 
 pub(crate) fn no_pack() -> LauncherError {
@@ -406,6 +437,15 @@ pub(crate) fn invalid(file: &str, detail: impl Display) -> LauncherError {
     .with_detail(detail)
 }
 
+/// [`invalid`] when no single pack file is to blame: `context` (an i18next context) picks the
+/// UI's sentence for what is wrong, and `message` is the English fallback.
+pub(crate) fn invalid_because(context: &str, message: &str, detail: impl Display) -> LauncherError {
+    LauncherError::pack(ErrorCode::PackInvalid, message)
+        .with_param("context", context)
+        .with_fix("Check the link, or ask the pack's author")
+        .with_detail(detail)
+}
+
 pub(crate) fn unsafe_path(path: &str) -> LauncherError {
     let shown: String = path.chars().take(120).collect();
     LauncherError::pack(
@@ -517,6 +557,58 @@ mod tests {
             PackInput::parse("http://127.0.0.1:8080/pack.toml"),
             Ok(PackInput::Packwiz { .. })
         ));
+    }
+
+    #[test]
+    fn pack_fetch_errors_become_pack_codes() {
+        let url = "https://packs.example.com/a/index.toml";
+        let map = pack_fetch_error(url, "index.toml");
+        let param = |e: &LauncherError, k: &str| e.params.get(k).cloned();
+
+        let missing = map(LauncherError::network(ErrorCode::MetaCacheMissing, "x"));
+        assert_eq!(missing.code, ErrorCode::HostTrouble);
+        // Still a network failure, so a pack update that can't download falls back.
+        assert_eq!(missing.category, crate::error::ErrorCategory::Network);
+        assert_eq!(
+            param(&missing, "host").as_deref(),
+            Some("packs.example.com")
+        );
+
+        for code in [ErrorCode::MetaChecksum, ErrorCode::MetaUnexpected] {
+            let bad = map(LauncherError::integrity(code, "x").with_detail("why"));
+            assert_eq!(bad.code, ErrorCode::PackInvalid, "{code:?}");
+            assert_eq!(param(&bad, "file").as_deref(), Some("index.toml"));
+            assert_eq!(bad.detail.as_deref(), Some("why"));
+        }
+
+        let gone =
+            map(LauncherError::loader(ErrorCode::MetaNotFound, "x").with_param("status", 410));
+        assert_eq!(gone.code, ErrorCode::PackNotFound);
+        let refused =
+            map(LauncherError::loader(ErrorCode::MetaNotFound, "x").with_param("status", 429));
+        assert_eq!(refused.code, ErrorCode::HostTrouble);
+        assert_eq!(
+            param(&refused, "host").as_deref(),
+            Some("packs.example.com")
+        );
+        assert_eq!(param(&refused, "status").as_deref(), Some("429"));
+
+        let offline = map(LauncherError::network(ErrorCode::Offline, "x"));
+        assert_eq!(
+            offline.code,
+            ErrorCode::Offline,
+            "everything else passes through"
+        );
+
+        let modrinth = modrinth_fetch_error("https://api.modrinth.com/v2/project/x")(
+            LauncherError::loader(ErrorCode::MetaUnexpected, "x"),
+        );
+        assert_eq!(modrinth.code, ErrorCode::PackInvalid);
+        assert_eq!(
+            param(&modrinth, "context").as_deref(),
+            Some("modrinth_data")
+        );
+        assert_eq!(param(&modrinth, "file"), None);
     }
 
     fn versions(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {

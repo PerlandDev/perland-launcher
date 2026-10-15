@@ -444,7 +444,7 @@
     "mod_not_found": { "message": "{{file}} ya no está en esta instancia." },
     "mod_name_invalid": { "message": "Ese no es un nombre de archivo de mod." },
     "mod_managed": { "message": "{{file}} viene con el pack, así que el pack decide si está activado.", "fix": "Lo que agregas tú se puede desactivar o quitar." },
-    "pack_invalid": { "message": "El archivo {{file}} del pack está dañado o no es un pack.", "fix": "Revisa el enlace o pregúntale al autor del pack." },
+    "pack_invalid": { "message": "El archivo {{file}} del pack está dañado o no es un pack.", "message_modrinth_data": "Modrinth envió datos del pack que el launcher no pudo leer.", "fix": "Revisa el enlace o pregúntale al autor del pack.", "fix_modrinth_data": "Inténtalo en unos minutos." },
     "mrpack_corrupt": { "message": "Este archivo .mrpack está dañado ({{file}}).", "message_archive": "Este archivo .mrpack está dañado.", "fix": "Vuelve a descargar el pack." },
     "pack_unsupported": { "message": "Este pack usa algo que el launcher todavía no puede manejar: {{what}}.", "fix": "Pregúntale al autor del pack o prueba otro pack." },
     "pack_unsafe_path": { "message": "El pack intentó escribir fuera de su carpeta ({{path}}).", "fix": "No uses este pack y avísale a su autor." },

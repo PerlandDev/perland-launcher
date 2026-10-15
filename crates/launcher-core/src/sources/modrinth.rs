@@ -3,8 +3,8 @@
 use serde::Deserialize;
 
 use super::{
-    check_pack_url, invalid, mrpack, pack_not_found, unsupported, valid_modrinth_id, DesiredState,
-    PackAbout, PackArt, Sources, UpdateCheck,
+    check_pack_url, invalid, modrinth_fetch_error, mrpack, unsupported, valid_modrinth_id,
+    DesiredState, PackAbout, PackArt, Sources, UpdateCheck,
 };
 use crate::{
     download::{host_of, redact_url, Hashes},
@@ -81,12 +81,18 @@ fn checked_id(id: &str) -> Result<&str> {
 
 pub async fn project(src: &Sources, id: &str) -> Result<Project> {
     let url = api(src, &format!("project/{}", checked_id(id)?));
-    src.meta.get_json(&url).await.map_err(pack_not_found)
+    src.meta
+        .get_json(&url)
+        .await
+        .map_err(modrinth_fetch_error(&url))
 }
 
 pub async fn version(src: &Sources, id: &str) -> Result<Version> {
     let url = api(src, &format!("version/{}", checked_id(id)?));
-    src.meta.get_json(&url).await.map_err(pack_not_found)
+    src.meta
+        .get_json(&url)
+        .await
+        .map_err(modrinth_fetch_error(&url))
 }
 
 /// A project's versions, optionally only those for one Minecraft version. Always fresh.
@@ -114,10 +120,10 @@ pub async fn versions(
     })?;
     let status = response.status();
     if status == reqwest::StatusCode::NOT_FOUND {
-        return Err(pack_not_found(
+        return Err(modrinth_fetch_error(&shown)(
             LauncherError::loader(ErrorCode::MetaNotFound, "not found")
                 .with_param("status", status.as_u16())
-                .with_detail(shown),
+                .with_detail(&shown),
         ));
     }
     if !status.is_success() {
@@ -128,7 +134,9 @@ pub async fn versions(
         .with_param("host", &host)
         .with_param("status", status.as_u16()));
     }
-    json_capped(response, &host, MAX_API_BYTES).await
+    json_capped(response, &host, MAX_API_BYTES)
+        .await
+        .map_err(modrinth_fetch_error(&shown))
 }
 
 /// The largest Modrinth API answer read.

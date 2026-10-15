@@ -6,7 +6,7 @@ use futures_util::{StreamExt, TryStreamExt};
 use serde::{de::DeserializeOwned, Deserialize};
 
 use super::{
-    check_pack_url, curseforge, encode_path, game_from, invalid, pack_not_found,
+    check_pack_url, curseforge, encode_path, game_from, invalid, pack_fetch_error,
     sidecar::parse_sidecar, unsafe_path, unsupported, DesiredState, FileMode, FileSource,
     ManualDownload, OptionalFile, PackAbout, PackFile, Side, SourceConfig, Sources, UpdateCheck,
 };
@@ -277,7 +277,7 @@ pub async fn resolve(src: &Sources, pack_url: &str) -> Result<DesiredState> {
         .meta
         .get_bytes_validated(url.as_str(), |b| parse_pack(b).map(|_| ()))
         .await
-        .map_err(pack_not_found)?;
+        .map_err(pack_fetch_error(url.as_str(), "pack.toml"))?;
     let pack = parse_pack(&pack_bytes)?;
 
     let index_file =
@@ -289,7 +289,8 @@ pub async fn resolve(src: &Sources, pack_url: &str) -> Result<DesiredState> {
     let index_bytes = src
         .meta
         .get_verified_bytes(index_url.as_str(), &index_hashes)
-        .await?;
+        .await
+        .map_err(pack_fetch_error(index_url.as_str(), &index_file))?;
     let index = parse_index(&index_bytes)?;
 
     // Collected first: a closure taking `&IndexEntry` inside the stream makes this future
@@ -339,7 +340,11 @@ async fn index_entry(
     let url = index_url
         .join(&encode_path(&file))
         .map_err(|e| invalid(&file, e))?;
-    let bytes = src.meta.get_verified_bytes(url.as_str(), &hashes).await?;
+    let bytes = src
+        .meta
+        .get_verified_bytes(url.as_str(), &hashes)
+        .await
+        .map_err(pack_fetch_error(url.as_str(), &file))?;
     let meta = parse_meta(&bytes, &file)?;
     meta_file(&src.config, &file, &meta, entry.preserve)
 }
