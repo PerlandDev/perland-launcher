@@ -71,8 +71,6 @@ pub trait UpdateSource: Send + Sync + 'static {
 }
 
 /// A downloaded update with its installer bytes.
-type Pair<U> = (Arc<U>, Arc<Vec<u8>>);
-
 struct Downloaded<U> {
     update: Arc<U>,
     bytes: Arc<Vec<u8>>,
@@ -244,8 +242,7 @@ impl<S: UpdateSource, H: Host> Updates<S, H> {
         if busy {
             return Err(busy_error());
         }
-        let (update, bytes) = self.downloaded().ok_or_else(nothing_ready)?;
-        self.source.install(update, bytes, true).await
+        self.install_ready(true).await.ok_or_else(nothing_ready)?
     }
 
     /// Install a ready update as the launcher quits, unless something still runs (spec §4.3).
@@ -254,16 +251,23 @@ impl<S: UpdateSource, H: Host> Updates<S, H> {
         if busy {
             return false;
         }
-        match self.downloaded() {
-            Some((update, bytes)) => self.source.install(update, bytes, false).await.is_ok(),
-            None => false,
-        }
+        matches!(self.install_ready(false).await, Some(Ok(())))
     }
 
-    fn downloaded(&self) -> Option<Pair<S::Update>> {
-        lock(&self.ready)
-            .as_ref()
-            .map(|r| (r.update.clone(), r.bytes.clone()))
+    /// Install the ready update, consuming it: when Restart now exits the process, the exit hook
+    /// must not find the same download and install it a second time. A failed install puts it
+    /// back, so quitting can still try. None when nothing is ready.
+    async fn install_ready(&self, relaunch: bool) -> Option<Result<()>> {
+        let taken = lock(&self.ready).take()?;
+        let result = self
+            .source
+            .install(taken.update.clone(), taken.bytes.clone(), relaunch)
+            .await;
+        if result.is_err() {
+            // A newer download that arrived meanwhile wins.
+            lock(&self.ready).get_or_insert(taken);
+        }
+        Some(result)
     }
 }
 
@@ -281,6 +285,8 @@ mod tests {
         chunks: Vec<(u64, Option<u64>)>,
         endpoints: StdMutex<Vec<&'static str>>,
         installs: StdMutex<Vec<(String, Vec<u8>, bool)>>,
+        /// What the next installs return, in order (empty: success).
+        install_results: StdMutex<Vec<Result<()>>>,
         /// What a given endpoint offers (None: nothing newer); overrides `found` for that endpoint.
         per_endpoint: StdMutex<Vec<(&'static str, Option<String>)>>,
         /// When set, check waits for one permit (to hold a check in flight).
@@ -350,7 +356,15 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(((*update).clone(), (*bytes).clone(), relaunch));
-            Box::pin(async { Ok(()) })
+            let result = {
+                let mut results = self.install_results.lock().unwrap();
+                if results.is_empty() {
+                    Ok(())
+                } else {
+                    results.remove(0)
+                }
+            };
+            Box::pin(async move { result })
         }
     }
 
@@ -524,6 +538,49 @@ mod tests {
         assert_eq!(
             *source.installs.lock().unwrap(),
             vec![("0.2.0-beta.2".to_string(), b"setup".to_vec(), true)]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_install_consumes_the_download() {
+        // Restart now ends the process through the exit hook, which asks on_quit: it must not
+        // install the same download again.
+        let source = Arc::new(FakeSource::offering("0.2.0-beta.2"));
+        let updates = Updates::new(
+            source.clone(),
+            RecordingHost::new(),
+            BuildKind::Beta,
+            Channel::Beta,
+        );
+        updates.check().await;
+        updates.restart_now(false).await.unwrap();
+        assert!(!updates.on_quit(false).await, "already installed");
+        assert_eq!(source.installs.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_failed_install_keeps_the_download_for_quit() {
+        let failure = LauncherError::network(ErrorCode::LauncherUpdateFailed, "no");
+        let source = Arc::new(FakeSource {
+            install_results: StdMutex::new(vec![Err(failure)]),
+            ..FakeSource::offering("0.2.0-beta.2")
+        });
+        let updates = Updates::new(
+            source.clone(),
+            RecordingHost::new(),
+            BuildKind::Beta,
+            Channel::Beta,
+        );
+        updates.check().await;
+        assert!(updates.restart_now(false).await.is_err());
+        assert_eq!(updates.status(), ready("0.2.0-beta.2"));
+        assert!(updates.on_quit(false).await);
+        assert_eq!(
+            *source.installs.lock().unwrap(),
+            vec![
+                ("0.2.0-beta.2".to_string(), b"setup".to_vec(), true),
+                ("0.2.0-beta.2".to_string(), b"setup".to_vec(), false),
+            ]
         );
     }
 
