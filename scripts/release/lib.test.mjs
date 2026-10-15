@@ -25,6 +25,9 @@ test('no beta after its stable, no bad input', () => {
 test('the workspace version is replaced and nothing else', () => {
   const toml = '[workspace.package]\nversion = "0.2.0"\nedition = "2021"\n\n[workspace.dependencies]\nfoo = { version = "1" }\n';
   assert.equal(setWorkspaceVersion(toml, '0.2.0-beta.3'), toml.replace('version = "0.2.0"', 'version = "0.2.0-beta.3"'));
+  assert.throws(() => setWorkspaceVersion(toml, ''), /Not a version/);
+  assert.throws(() => setWorkspaceVersion(toml, 'latest'), /Not a version/);
+  assert.throws(() => setWorkspaceVersion(toml, undefined), /Not a version/);
   assert.throws(() => setWorkspaceVersion('[package]\nversion = "1.0.0"\n', '1.0.1'), /workspace\.package/);
 });
 

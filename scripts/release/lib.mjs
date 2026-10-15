@@ -29,6 +29,9 @@ export function nextVersion({ base, channel, tags }) {
 
 /** Set `[workspace.package] version`, leaving every other `version =` alone. */
 export function setWorkspaceVersion(cargoToml, version) {
+  if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(String(version))) {
+    throw new Error(`Not a version: "${version}"`);
+  }
   const section = /(\[workspace\.package\][^[]*?\nversion = ")[^"]*(")/;
   if (!section.test(cargoToml)) throw new Error('No [workspace.package] version in Cargo.toml');
   return cargoToml.replace(section, `$1${version}$2`);

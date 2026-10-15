@@ -49,10 +49,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: The updater public key is set
+        run: |
+          node -e "const k=require('./src-tauri/tauri.conf.json').plugins?.updater?.pubkey; if(!k||!k.trim()){console.log('::error::Set plugins.updater.pubkey in src-tauri/tauri.conf.json to the updater public key first.');process.exit(1)}"
       - id: version
         env:
           CHANNEL: ${{ inputs.channel }}
-        run: echo "version=$(node scripts/release/cli.mjs version "$CHANNEL")" >> "$GITHUB_OUTPUT"
+        run: |
+          v=$(node scripts/release/cli.mjs version "$CHANNEL")
+          test -n "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
 
   build:
     needs: plan
