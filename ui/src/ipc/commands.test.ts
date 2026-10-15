@@ -17,6 +17,8 @@ it('sends the argument names Rust expects', async () => {
   await commands.modSetEnabled('pack', 'a.jar', false);
   await commands.quit(true);
   await commands.catalogLoaders('quilt', '1.20.1');
+  await commands.instanceArt('pack');
+  await commands.instanceArtSet('pack', { kind: 'generated', seed: 'dunes' });
   expect(calls).toEqual([
     ['play', { id: 'pack', join: true }],
     ['play', { id: 'pack', join: false }],
@@ -27,6 +29,8 @@ it('sends the argument names Rust expects', async () => {
     ['mod_set_enabled', { id: 'pack', file: 'a.jar', enabled: false }],
     ['quit', { stopGames: true }],
     ['catalog_loaders', { kind: 'quilt', mc: '1.20.1' }],
+    ['instance_art', { id: 'pack' }],
+    ['instance_art_set', { id: 'pack', choice: { kind: 'generated', seed: 'dunes' } }],
   ]);
 });
 

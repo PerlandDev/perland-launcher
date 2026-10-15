@@ -28,7 +28,7 @@ export function handleEvent(event: AppEvent) {
       qk.mods(id),
       qk.packStatus(id),
       qk.packContents(id),
-      qk.packArt(id),
+      qk.instanceArt(id),
       qk.contentFiles(id, 'resource_pack'),
       qk.contentFiles(id, 'shader'),
       qk.serverStatus(id),

@@ -8,6 +8,7 @@ pub mod events;
 pub mod fsutil;
 pub mod http;
 pub mod install;
+pub mod instance_order;
 pub mod instances;
 pub mod invite;
 pub mod java;

@@ -13,6 +13,7 @@ use launcher_core::{
     browse::compat::ContentKind,
     content,
     fsutil::path_key,
+    instance_order::{apply_order, keep_in_place, rename_in_order, OrderStore},
     instances::{
         is_valid_instance_id, GameSpec, Instance, InstanceListing, InstanceStore, SourceRef,
         UpdatePolicy, MAX_MEMORY_MB, MIN_MEMORY_MB,
@@ -83,6 +84,8 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) instances: InstanceStore,
     pub(crate) accounts: tokio::sync::Mutex<AccountStore>,
     settings: tokio::sync::Mutex<SettingsStore>,
+    /// The player's instance order. Held across every read-modify-write of the stored order.
+    order: tokio::sync::Mutex<OrderStore>,
     settings_warned: AtomicBool,
     accounts_warned: AtomicBool,
     meta: MetaClient,
@@ -111,6 +114,10 @@ pub(crate) fn busy(id: &str) -> LauncherError {
     .with_param("id", id)
 }
 
+fn damaged_ids(listing: &InstanceListing) -> HashSet<&str> {
+    listing.damaged.iter().map(|d| d.id.as_str()).collect()
+}
+
 fn valid_id(id: &str) -> Result<()> {
     if is_valid_instance_id(id) {
         Ok(())
@@ -129,6 +136,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             instances: InstanceStore::new(config.dirs.instances()),
             accounts: tokio::sync::Mutex::new(AccountStore::new(root.join("accounts.json"))),
             settings: tokio::sync::Mutex::new(SettingsStore::new(root.join("settings.json"))),
+            order: tokio::sync::Mutex::new(OrderStore::new(config.dirs.instance_order())),
             settings_warned: AtomicBool::new(false),
             accounts_warned: AtomicBool::new(false),
             meta,
@@ -209,8 +217,38 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Ok(settings)
     }
 
+    /// The instances in the player's order: ones not in it yet on top (A-Z), then the stored order.
+    /// Damaged ones stay last. The stored order is rewritten when this changes it, keeping damaged
+    /// instances' ids in their places so a repaired one comes back where it was. An order file
+    /// that can't be read right now is left alone.
     pub async fn instances_list(&self) -> Result<InstanceListing> {
-        self.instances.list_all().await
+        let order = self.order.lock().await;
+        let mut listing = self.instances.list_all().await?;
+        let Some(stored) = order.load().await else {
+            apply_order(&mut listing.instances, &[]);
+            return Ok(listing);
+        };
+        let ordered = apply_order(&mut listing.instances, &stored);
+        let ordered = keep_in_place(&ordered, &stored, &damaged_ids(&listing));
+        if ordered != stored {
+            // Only a convenience: a failed save shows the same listing next time.
+            let _ = order.save(&ordered).await;
+        }
+        Ok(listing)
+    }
+
+    /// Save the player's drag order and return the listing in it. Damaged instances (which the
+    /// player can't drag) keep their stored places.
+    pub async fn instance_reorder(&self, ids: Vec<String>) -> Result<InstanceListing> {
+        ids.iter().try_for_each(|id| valid_id(id))?;
+        let order = self.order.lock().await;
+        let mut listing = self.instances.list_all().await?;
+        let stored = order.load().await.unwrap_or_default();
+        let ordered = apply_order(&mut listing.instances, &ids);
+        order
+            .save(&keep_in_place(&ordered, &stored, &damaged_ids(&listing)))
+            .await?;
+        Ok(listing)
     }
 
     pub async fn instance_create(&self, request: NewInstance) -> Result<Instance> {
@@ -258,17 +296,46 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let mut instance = instance;
         instance.source = current.source.clone();
         instance.server = current.server.clone();
+        instance.art = current.art;
+        instance.art_seed = current.art_seed.clone();
         if matches!(current.source, SourceRef::Perland { .. }) {
             instance.update_policy = UpdatePolicy::Auto;
         }
         self.instances.update(&instance).await
     }
 
+    /// Refused while the game runs or a download writes into the instance. A rename that moves
+    /// the folder changes the id, so everything keyed by the old id follows (or is dropped).
     pub async fn instance_rename(&self, id: &str, name: &str) -> Result<Instance> {
         if self.is_busy(id) {
             return Err(busy(id));
         }
-        self.instances.rename(id, name).await
+        if self.is_installing(id) {
+            return Err(crate::browse::content_installing());
+        }
+        let order = self.order.lock().await;
+        let renamed = self.instances.rename(id, name).await?;
+        if renamed.id != id {
+            // The rename already happened; an unreadable order or a failed save only loses the
+            // place in the list.
+            if let Some(mut ids) = order.load().await {
+                rename_in_order(&mut ids, id, &renamed.id);
+                let _ = order.save(&ids).await;
+            }
+            let logs = self.config.dirs.logs();
+            let _ = tokio::fs::rename(
+                logs.join(format!("{id}-latest.log")),
+                logs.join(format!("{}-latest.log", renamed.id)),
+            )
+            .await;
+            self.logs.rename(id, &renamed.id);
+            self.manual.lock().await.remove(id);
+            self.plans
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .retain(|_, plan| !plan.targets(id));
+        }
+        Ok(renamed)
     }
 
     pub async fn instance_delete(&self, id: &str) -> Result<()> {
@@ -780,6 +847,165 @@ pub(crate) mod tests {
             .game_dir(&pack.id)
             .join("resourcepacks/Faithful.zip")
             .is_file());
+    }
+
+    async fn listed(core: &TestCore) -> Vec<String> {
+        core.instances_list()
+            .await
+            .unwrap()
+            .instances
+            .into_iter()
+            .map(|i| i.id)
+            .collect()
+    }
+
+    fn ids(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[tokio::test]
+    async fn listing_puts_new_instances_on_top() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        core.instance_create(vanilla("A")).await.unwrap();
+        core.instance_create(vanilla("B")).await.unwrap();
+        assert_eq!(listed(&core).await, ids(&["a", "b"]));
+        core.instance_create(vanilla("C")).await.unwrap();
+        assert_eq!(listed(&core).await, ids(&["c", "a", "b"]));
+    }
+
+    #[tokio::test]
+    async fn reorder_is_kept_and_survives_a_settings_save() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        for name in ["A", "B", "C"] {
+            core.instance_create(vanilla(name)).await.unwrap();
+        }
+        let listing = core.instance_reorder(ids(&["b", "c", "a"])).await.unwrap();
+        let got: Vec<_> = listing.instances.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(got, ["b", "c", "a"]);
+        core.settings_set(Settings {
+            language: Some(launcher_core::settings::Lang::Es),
+            ..Settings::default()
+        })
+        .await
+        .unwrap();
+        assert_eq!(listed(&core).await, ids(&["b", "c", "a"]));
+    }
+
+    #[tokio::test]
+    async fn a_repaired_instance_comes_back_in_its_old_place() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        for name in ["A", "B", "C"] {
+            core.instance_create(vanilla(name)).await.unwrap();
+        }
+        core.instance_reorder(ids(&["c", "a", "b"])).await.unwrap();
+        let json = core.instances.instance_dir("a").join("instance.json");
+        let good = std::fs::read(&json).unwrap();
+        std::fs::write(&json, b"{oops").unwrap();
+        let listing = core.instances_list().await.unwrap();
+        assert_eq!(listing.damaged[0].id, "a");
+        assert_eq!(listed(&core).await, ids(&["c", "b"]));
+        // A drag while it's damaged doesn't lose its place either.
+        core.instance_reorder(ids(&["b", "c"])).await.unwrap();
+        // A new instance meanwhile still lands on top.
+        core.instance_create(vanilla("D")).await.unwrap();
+        assert_eq!(listed(&core).await, ids(&["d", "b", "c"]));
+        std::fs::write(&json, good).unwrap();
+        assert_eq!(listed(&core).await, ids(&["d", "b", "c", "a"]));
+    }
+
+    #[tokio::test]
+    async fn rename_keeps_the_place_in_the_order() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        core.instance_create(vanilla("A")).await.unwrap();
+        core.instance_create(vanilla("B")).await.unwrap();
+        core.instance_reorder(ids(&["b", "a"])).await.unwrap();
+        let renamed = core.instance_rename("a", "Zed").await.unwrap();
+        assert_eq!(renamed.id, "zed");
+        assert_eq!(listed(&core).await, ids(&["b", "zed"]));
+    }
+
+    #[tokio::test]
+    async fn rename_moves_the_latest_log() {
+        let (core, _, _, tmp) = core(BuildKind::Dev);
+        core.instance_create(vanilla("A")).await.unwrap();
+        let logs = tmp.path().join("logs");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(logs.join("a-latest.log"), "hello").unwrap();
+        core.logs.push("a", &["line".to_string()]);
+        core.instance_rename("a", "Zed").await.unwrap();
+        assert!(!logs.join("a-latest.log").exists());
+        assert_eq!(
+            std::fs::read_to_string(logs.join("zed-latest.log")).unwrap(),
+            "hello"
+        );
+        assert_eq!(core.logs.tail("zed"), ["line"]);
+        assert!(core.logs.tail("a").is_empty());
+        // No log yet: nothing to move, and the rename still succeeds.
+        core.instance_create(vanilla("B")).await.unwrap();
+        assert_eq!(core.instance_rename("b", "Yak").await.unwrap().id, "yak");
+    }
+
+    #[tokio::test]
+    async fn rename_drops_state_keyed_by_the_old_id() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        core.instance_create(vanilla("A")).await.unwrap();
+        core.manual.lock().await.insert(
+            "a".into(),
+            ManualState {
+                total: 1,
+                remaining: Vec::new(),
+                scanner: Scanner::default(),
+            },
+        );
+        core.instance_rename("a", "Zed").await.unwrap();
+        assert!(core.manual.lock().await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn rename_refused_while_installing() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        core.instance_create(vanilla("A")).await.unwrap();
+        core.installing.lock().unwrap().insert("a".into());
+        let err = core.instance_rename("a", "Zed").await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::ContentInstalling);
+        assert_eq!(core.instances.load("a").await.unwrap().name, "A");
+    }
+
+    #[tokio::test]
+    async fn reorder_rejects_bad_ids() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        core.instance_create(vanilla("A")).await.unwrap();
+        for bad in ["../x", "", "A b"] {
+            assert_eq!(
+                core.instance_reorder(ids(&["a", bad]))
+                    .await
+                    .unwrap_err()
+                    .code,
+                ErrorCode::InstanceIdInvalid,
+                "{bad}"
+            );
+        }
+        assert!(!core.config.dirs.instance_order().exists());
+    }
+
+    #[tokio::test]
+    async fn update_keeps_the_art_the_disk_has() {
+        use launcher_core::instances::ArtMode;
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let mut instance = core.instance_create(vanilla("A")).await.unwrap();
+        let mut stored = core.instances.load("a").await.unwrap();
+        stored.art_seed = Some("seed-1".into());
+        stored.art = ArtMode::Generated;
+        core.instances.update(&stored).await.unwrap();
+        // A stale copy from the UI doesn't undo the art.
+        instance.art_seed = None;
+        instance.art = ArtMode::Auto;
+        instance.java.memory_mb += 512;
+        core.instance_update(instance).await.unwrap();
+        let after = core.instances.load("a").await.unwrap();
+        assert_eq!(after.art_seed.as_deref(), Some("seed-1"));
+        assert_eq!(after.art, ArtMode::Generated);
+        assert_eq!(after.java.memory_mb, stored.java.memory_mb + 512);
     }
 
     #[tokio::test]

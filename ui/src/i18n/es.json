@@ -34,7 +34,10 @@
     "newInstance": "Nueva instancia",
     "playing": "Jugando",
     "preparing": "Preparando",
-    "damaged": "Requiere atención"
+    "damaged": "Requiere atención",
+    "expand": "Mostrar nombres",
+    "collapse": "Ocultar nombres",
+    "moved": "{{name}} pasó al puesto {{position}} de {{count}}"
   },
   "home": {
     "emptyTitle": "Todavía no tienes instancias",
@@ -52,6 +55,19 @@
     "deleteTitle": "¿Borrar {{name}}?",
     "deleteBody": "Se borra la instancia y todo lo que tiene, incluidos mundos y capturas. No se puede deshacer.",
     "deleteConfirm": "Borrar instancia"
+  },
+  "image": {
+    "menu": "Cambiar imagen…",
+    "title": "Cambiar imagen",
+    "body": "Elige un paisaje o usa una imagen tuya.",
+    "bodyPack": "Elige un paisaje, la imagen del pack o una imagen tuya.",
+    "landscape": "Paisaje {{n}}",
+    "pack": "Imagen del pack",
+    "upload": "Sube la tuya…",
+    "uploadHint": "PNG,\u00a0JPEG\u00a0o\u00a0WebP, hasta\u00a05\u00a0MB",
+    "pickTitle": "Elige una imagen",
+    "fileFilter": "Imágenes",
+    "done": "Listo"
   },
   "play": {
     "play": "Jugar",
@@ -405,6 +421,8 @@
     "no_pack": { "message": "Esta instancia no viene de un pack." },
     "not_enough_space": { "message": "No hay suficiente espacio libre: se necesitan {{needed_mb}} MB y hay {{free_mb}} MB.", "fix": "Libera espacio e inténtalo de nuevo." },
     "instance_locked": { "message": "Otra ventana de Perland Launcher está usando esta instancia.", "fix": "Cierra la otra ventana o espera a que termine." },
+    "instance_folder_in_use": { "message": "Otro programa está usando la carpeta de esta instancia.", "fix": "Cierra cualquier ventana o programa que use la carpeta y vuelve a intentarlo." },
+    "art_file_invalid": { "message": "Ese archivo no se puede usar como imagen de la instancia.", "fix": "Elige una imagen PNG, JPEG o WebP de menos de 5 MB." },
     "manual_downloads_needed": { "message": "Hay {{count}} archivos que tienes que descargar a mano.", "fix": "Descárgalos de CurseForge e inténtalo de nuevo." },
     "update_check_failed": { "message": "No se pudieron buscar actualizaciones.", "fix": "Igual puedes jugar la versión que tienes." },
     "pack_path_is_folder": { "message": "El pack quiere poner un archivo donde tienes una carpeta ({{path}}).", "fix": "Mueve esa carpeta o cámbiale el nombre, y vuelve a intentarlo." },

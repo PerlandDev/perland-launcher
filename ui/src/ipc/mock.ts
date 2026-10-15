@@ -21,6 +21,7 @@ import { inviteCanonical } from './inviteLink';
 import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, type ServerScenario } from './mockServers';
 import type {
   AccountsFile,
+  ArtChoice,
   AppEvent,
   AppInfo,
   BrowsePlanRequest,
@@ -38,7 +39,7 @@ import type {
   ManualProgress,
   NewInstance,
   PackAddRequest,
-  PackArtData,
+  InstanceArtData,
   PackContents,
   PackStatus,
   PackUpdate,
@@ -66,6 +67,8 @@ export interface MockOptions {
   link?: string;
   /** Seeds the `survival` Perland server and picks how its invite answers. */
   server?: ServerScenario;
+  /** The rail starts wide, with names. */
+  railExpanded?: boolean;
 }
 
 interface MockRun {
@@ -81,13 +84,13 @@ interface MockPack {
   installed: string | null;
   update: PackUpdate | null;
   contents: PackContents;
-  art: PackArtData;
+  art: InstanceArtData;
   manual: ManualFile[];
   found: number;
 }
 
 const svg = (body: string) => `data:image/svg+xml;base64,${btoa(body)}`;
-const SKY_ART: PackArtData = {
+const SKY_ART: InstanceArtData = {
   icon: svg(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect width="16" height="16" fill="#7cc4ff"/><rect y="9" width="16" height="7" fill="#3f8f4f"/><rect y="12" width="16" height="4" fill="#6b4a2b"/></svg>',
   ),
@@ -96,6 +99,9 @@ const SKY_ART: PackArtData = {
   ),
 };
 
+/** A 1x1 PNG, the stand-in for a picked image. */
+const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
 const clone = <T>(value: T): T => structuredClone(value);
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -103,9 +109,36 @@ function fail(category: LauncherError['category'], code: string, message: string
   throw { category, code, message, fix: null, detail: null, params } satisfies LauncherError;
 }
 
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
+
+/** The core's slugify: lowercase ASCII letters and digits joined by single dashes, at most 48 long. */
 function slug(name: string) {
-  const s = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return s.slice(0, 48) || 'instance';
+  const s = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 48).replace(/-+$/, '');
+  if (!s) return 'instance';
+  return WINDOWS_RESERVED.test(s) ? `${s}-instance` : s;
+}
+
+/** True when `id` is `base` or `base-N` (N >= 2), the ids create makes for one slug. */
+function sameFamily(id: string, base: string) {
+  if (id === base) return true;
+  const rest = id.startsWith(`${base}-`) ? id.slice(base.length + 1) : null;
+  return rest !== null && /^\d+$/.test(rest) && Number(rest) >= 2;
+}
+
+/** Move every id-keyed piece of mock state to a renamed instance's new id. */
+function moveId(state: MockState, from: string, to: string) {
+  state.order = state.order.map((id) => (id === from ? to : id));
+  for (const map of [state.mods, state.packs, state.custom, state.browse.installed] as Map<string, unknown>[]) {
+    if (map.has(from)) {
+      map.set(to, map.get(from));
+      map.delete(from);
+    }
+  }
+  for (const [key, files] of [...state.content]) {
+    if (!key.startsWith(`${from}:`)) continue;
+    state.content.delete(key);
+    state.content.set(`${to}:${key.slice(from.length + 1)}`, files);
+  }
 }
 
 // A tiny Modrinth for the browser build and the tests. Icons are one inline SVG.
@@ -156,7 +189,7 @@ const contentKey = (id: string, kind: ContentKind) => `${id}:${kind}`;
 function seed(options: MockOptions) {
   const listing = clone(listingFx) as InstanceListing;
   const accounts = clone(accountsFx) as AccountsFile;
-  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, language: null };
+  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, language: null };
   if (options.firstRun) {
     listing.instances = [];
     listing.damaged = [];
@@ -192,6 +225,8 @@ function seed(options: MockOptions) {
       optionalChoices: {},
       java: { path: null, memoryMb: 6144 },
       server: null,
+      artSeed: null,
+      art: 'auto',
     };
     listing.instances = [...listing.instances, sky];
     const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
@@ -220,12 +255,16 @@ function seed(options: MockOptions) {
   const servers = seedServers(options.server, listing);
   return {
     listing,
+    // The player's own order, like instance-order.json. Existing instances start A-Z, so a new one lands above them.
+    order: [...listing.instances].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map((i) => i.id),
     servers,
     accounts,
     settings,
     appInfo,
     mods,
     packs,
+    // The player's own picture per instance, as a data URL (the real one lives in .perland/custom/).
+    custom: new Map<string, string>(),
     content,
     browse: {
       installed: new Map<string, Set<string>>([['asalith-fields', new Set(['P7dR8mSH'])]]),
@@ -493,6 +532,20 @@ function planFor(state: MockState, request: BrowsePlanRequest): InstallPlanView 
   return view;
 }
 
+/** The core's rule: instances not in the stored order first (A-Z), then the stored order. Damaged ones are a separate list, so they stay last. */
+function applyOrder(state: MockState): InstanceListing {
+  const rank = (id: string) => state.order.indexOf(id);
+  state.listing.instances = [...state.listing.instances].sort((a, b) => {
+    const [x, y] = [rank(a.id), rank(b.id)];
+    if (x < 0 && y < 0) return a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id);
+    if (x < 0) return -1;
+    if (y < 0) return 1;
+    return x - y;
+  });
+  state.order = state.listing.instances.map((i) => i.id);
+  return state.listing;
+}
+
 async function handle(state: MockState, cmd: string, args: Record<string, unknown> = {}): Promise<unknown> {
   const find = (id: unknown) => state.listing.instances.find((i) => i.id === id);
   switch (cmd) {
@@ -504,7 +557,11 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.settings = args.settings as Settings;
       return state.settings;
     case 'instances_list':
-      return state.listing;
+      return applyOrder(state);
+    case 'instance_reorder': {
+      state.order = args.ids as string[];
+      return applyOrder(state);
+    }
     case 'instance_create': {
       const request = args.request as NewInstance;
       let id = slug(request.name);
@@ -518,8 +575,10 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         optionalChoices: {},
         java: { path: null, memoryMb: state.settings.defaultMemoryMb },
         server: null,
+        artSeed: null,
+        art: 'auto',
       };
-      state.listing.instances = [...state.listing.instances, created].sort((a, b) => a.name.localeCompare(b.name));
+      state.listing.instances = [created, ...state.listing.instances];
       return created;
     }
     case 'instance_update': {
@@ -529,8 +588,19 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     }
     case 'instance_rename': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
-      const renamed: Instance = { ...target, name: String(args.name).trim() };
-      state.listing.instances = state.listing.instances.map((i) => (i.id === renamed.id ? renamed : i));
+      if (state.runs.has(target.id)) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: target.id });
+      const name = String(args.name).trim();
+      const base = slug(name);
+      let id = target.id;
+      if (!sameFamily(id, base)) {
+        const taken = new Set([...state.listing.instances.map((i) => i.id), ...state.listing.damaged.map((d) => d.id)]);
+        id = base;
+        for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+      }
+      // Like the core: a moved instance keeps its generated look by pinning the old id as its seed.
+      const renamed: Instance = { ...target, id, name, artSeed: id === target.id ? target.artSeed : (target.artSeed ?? target.id) };
+      if (id !== target.id) moveId(state, target.id, id);
+      state.listing.instances = state.listing.instances.map((i) => (i.id === target.id ? renamed : i));
       return renamed;
     }
     case 'instance_delete':
@@ -618,8 +688,39 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       pack.found = Math.min(pack.found + 1, pack.manual.length);
       return { found: pack.found, total: pack.manual.length, remaining: pack.manual.slice(pack.found) } satisfies ManualProgress;
     }
-    case 'pack_art':
-      return state.packs.get(String(args.id))?.art ?? ({ icon: null, banner: null } satisfies PackArtData);
+    case 'instance_art': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      const none: InstanceArtData = { icon: null, banner: null };
+      if (target.art === 'generated') return none;
+      if (target.art === 'custom') {
+        // Sent once, as the icon: the marquee falls back to it (like the core).
+        return { icon: state.custom.get(target.id) ?? null, banner: null } satisfies InstanceArtData;
+      }
+      return state.packs.get(target.id)?.art ?? none;
+    }
+    case 'instance_art_set': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (state.runs.has(target.id)) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: target.id });
+      const choice = args.choice as ArtChoice;
+      const invalid = () => fail('disk', 'art_file_invalid', "That file can't be used as an instance image");
+      let updated: Instance;
+      if (choice.kind === 'generated') {
+        if (choice.seed.length === 0 || choice.seed.length > 64) invalid();
+        state.custom.delete(target.id);
+        updated = { ...target, art: 'generated', artSeed: choice.seed };
+      } else if (choice.kind === 'pack') {
+        if (target.source.kind === 'none') fail('pack', 'no_pack', "This instance doesn't come from a pack");
+        state.custom.delete(target.id);
+        updated = { ...target, art: 'auto' };
+      } else {
+        const ext = /\.(png|jpe?g|webp)$/i.exec(choice.path)?.[1]?.toLowerCase();
+        if (!ext || /invalid/i.test(choice.path)) invalid();
+        state.custom.set(target.id, `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${TINY_PNG}`);
+        updated = { ...target, art: 'custom' };
+      }
+      state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
+      return updated;
+    }
     case 'pack_add': {
       const request = args.request as PackAddRequest;
       if (request.kind === 'link' && !/^(https:\/\/|modrinth:)/.test(request.url.trim())) {
@@ -644,8 +745,10 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         optionalChoices: {},
         java: { path: null, memoryMb: state.settings.defaultMemoryMb },
         server: null,
+        artSeed: null,
+        art: 'auto',
       };
-      state.listing.instances = [...state.listing.instances, created].sort((a, b) => a.name.localeCompare(b.name));
+      state.listing.instances = [created, ...state.listing.instances];
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });
       return created;
     }
@@ -804,6 +907,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       // Mirrors the real dialog: an array when `multiple` is set, otherwise one path.
       const options = args.options as { multiple?: boolean; filters?: { extensions?: string[] }[] } | undefined;
       if (options?.filters?.[0]?.extensions?.includes('mrpack')) return 'C:/Users/player/Downloads/Sky Islands 1.0.4.mrpack';
+      if (options?.filters?.[0]?.extensions?.includes('png')) return 'C:/Users/player/Pictures/castle.png';
       const path = 'C:/Users/player/Downloads/lithium-fabric-0.11.2.jar';
       return options?.multiple ? [path] : path;
     }

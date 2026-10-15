@@ -29,6 +29,17 @@ describe('mock backend', () => {
     expect(settings.firstRunDone).toBe(true);
   });
 
+  it('puts new instances on top and keeps a reorder', async () => {
+    const { handle } = createMockBackend();
+    const ids = async () => ((await handle('instances_list')) as InstanceListing).instances.map((i) => i.id);
+    await handle('instance_create', { request: { name: 'Zed', minecraft: '1.21.1', loader: null } });
+    expect(await ids()).toEqual(['zed', 'asalith-fields', 'creative-flat', 'sky-islands']);
+    const reordered = (await handle('instance_reorder', { ids: ['sky-islands', 'zed', 'asalith-fields', 'gone'] })) as InstanceListing;
+    // Ids left out (and unknown ones) are dropped from the order; the left-out instance is unlisted, so on top.
+    expect(reordered.instances.map((i) => i.id)).toEqual(['creative-flat', 'sky-islands', 'zed', 'asalith-fields']);
+    expect(await ids()).toEqual(['creative-flat', 'sky-islands', 'zed', 'asalith-fields']);
+  });
+
   it('starts empty for first run', async () => {
     const { handle } = createMockBackend({ firstRun: true });
     expect(((await handle('instances_list')) as InstanceListing).instances).toEqual([]);
@@ -68,6 +79,53 @@ describe('mock backend', () => {
     const renamed = (await handle('instance_rename', { id: 'asalith-fields', name: 'Renamed' })) as { name: string };
     expect(renamed.name).toBe('Renamed');
     expect(first.instances.find((i) => i.id === 'asalith-fields')?.name).not.toBe('Renamed');
+  });
+
+  it('moves an instance to a new id when the name leaves its slug family, like the core', async () => {
+    const { handle } = createMockBackend();
+    const rename = (id: string, name: string) => handle('instance_rename', { id, name }) as Promise<Instance>;
+    const ids = async () => ((await handle('instances_list')) as InstanceListing).instances.map((i) => i.id);
+    // Same family (punctuation, case, or a numbered copy) keeps the id and the seed.
+    expect(await rename('asalith-fields', 'Asalith  FIELDS!')).toMatchObject({ id: 'asalith-fields', artSeed: null });
+    // A new slug moves the id, keeps its place in the order and pins the old id as the generated look.
+    const before = await ids();
+    expect(await rename('asalith-fields', 'Sky Base')).toMatchObject({ id: 'sky-base', name: 'Sky Base', artSeed: 'asalith-fields' });
+    expect(await ids()).toEqual(before.map((id) => (id === 'asalith-fields' ? 'sky-base' : id)));
+    // A taken slug gets a number.
+    expect((await rename('sky-base', 'Creative Flat')).id).toBe('creative-flat-2');
+    expect((await rename('creative-flat-2', 'creative flat')).id).toBe('creative-flat-2');
+    await expect(rename('asalith-fields', 'x')).rejects.toMatchObject({ code: 'instance_not_found' });
+  });
+
+  it('changes an instance image: presets, pack art and uploads', async () => {
+    const { handle } = createMockBackend();
+    const art = (id: string) => handle('instance_art', { id }) as Promise<{ icon: string | null; banner: string | null }>;
+    expect((await art('sky-islands')).icon).toMatch(/^data:image\/svg/);
+    const generated = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'generated', seed: 'dunes' } })) as Instance;
+    expect([generated.art, generated.artSeed]).toEqual(['generated', 'dunes']);
+    expect(await art('sky-islands')).toEqual({ icon: null, banner: null });
+    const custom = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/Me.JPG' } })) as Instance;
+    expect(custom.art).toBe('custom');
+    const mine = await art('sky-islands');
+    expect(mine.icon).toMatch(/^data:image\/jpeg;base64,/);
+    // Sent once, as the icon, like the core: the marquee falls back to it.
+    expect(mine.banner).toBeNull();
+    const back = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'pack' } })) as Instance;
+    expect(back.art).toBe('auto');
+    expect((await art('sky-islands')).icon).toMatch(/^data:image\/svg/);
+  });
+
+  it('refuses a bad upload and a pack choice without a pack', async () => {
+    const { handle } = createMockBackend();
+    for (const path of ['C:/pics/invalid.png', 'C:/pics/clip.gif']) {
+      await expect(handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'upload', path } })).rejects.toMatchObject({
+        code: 'art_file_invalid',
+      });
+    }
+    const listing = (await handle('instances_list')) as InstanceListing;
+    expect(listing.instances.find((i) => i.id === 'sky-islands')?.art).toBe('auto');
+    const plain = listing.instances.find((i) => i.source.kind === 'none')!;
+    await expect(handle('instance_art_set', { id: plain.id, choice: { kind: 'pack' } })).rejects.toMatchObject({ code: 'no_pack' });
   });
 
   it('rejects offline accounts in a release-like build', async () => {

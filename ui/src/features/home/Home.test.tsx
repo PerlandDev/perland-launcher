@@ -1,13 +1,15 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
+import { Marquee } from '../../art/Marquee';
 import { describe, expect, it, vi } from 'vitest';
 import packStatusFx from '../../ipc/contract/pack_status.json';
 import { createMockBackend, exitOf } from '../../ipc/mock';
 import type { PackStatus } from '../../ipc/schema';
-import { routeSnapshot } from '../../state/route';
+import { lastInstance, navigate, routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
+import App from '../../App';
 import { Home } from './Home';
 
 describe('Home', () => {
@@ -92,6 +94,23 @@ describe('Home', () => {
     await user.type(input, 'Flat World');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(sent(calls, 'instance_rename')).toEqual([{ id: 'creative-flat', name: 'Flat World' }]);
+  });
+
+  it('follows a rename to the new folder id', async () => {
+    const { user, calls } = renderApp(<App />);
+    await screen.findByRole('navigation', { name: 'Instances' });
+    act(() => navigate({ name: 'home', id: 'creative-flat' }));
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    const input = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(input);
+    await user.type(input, 'Sky Base');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('heading', { name: 'Sky Base' })).toBeInTheDocument();
+    expect(sent(calls, 'instance_rename')).toEqual([{ id: 'creative-flat', name: 'Sky Base' }]);
+    expect(routeSnapshot()).toEqual({ name: 'home', id: 'sky-base' });
+    expect(lastInstance()).toBe('sky-base');
   });
 
   const offer = (packStatusFx as PackStatus[])[0]!.update!;
@@ -355,4 +374,26 @@ describe('server instances', () => {
     await screen.findByRole('heading', { name: 'Creative Flat' });
     expect(sent(calls, 'server_status')).toEqual([]);
   });
+});
+
+it("fills the marquee with the player's own picture, which arrives once as the icon", async () => {
+  const backend = createMockBackend();
+  await backend.handle('instance_art_set', { id: 'asalith-fields', choice: { kind: 'upload', path: 'C:/castle.png' } });
+  expect(await backend.handle('instance_art', { id: 'asalith-fields' })).toMatchObject({ banner: null });
+  const { container } = renderWithProviders(<Home id="asalith-fields" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
+  await screen.findByRole('heading', { name: 'Asalith Fields' });
+  await vi.waitFor(() => expect(container.querySelector('img.marquee-banner')?.getAttribute('src')).toMatch(/^data:image\/png;base64,/));
+});
+
+it('draws the marquee from the art seed, not the id', async () => {
+  const backend = createMockBackend();
+  backend.state.listing.instances = backend.state.listing.instances.map((i) =>
+    i.id === 'creative-flat' ? { ...i, artSeed: 'old-name', art: 'generated' as const } : i,
+  );
+  const { container } = renderWithProviders(<Home id="creative-flat" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
+  await screen.findByRole('heading', { name: 'Creative Flat' });
+  const hills = (root: Element) => [...root.querySelectorAll('.marquee-layer path')].map((p) => p.getAttribute('d'));
+  const want = hills(render(<Marquee seed="old-name" attract={false} />).container);
+  expect(want).not.toEqual(hills(render(<Marquee seed="creative-flat" attract={false} />).container));
+  expect(hills(container.querySelector('section .marquee')!)).toEqual(want);
 });

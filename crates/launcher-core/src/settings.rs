@@ -25,6 +25,8 @@ pub struct Settings {
     pub default_memory_mb: u32,
     pub minimize_on_play: bool,
     pub first_run_done: bool,
+    /// The instance rail shows names and status (wide) rather than icons only.
+    pub rail_expanded: bool,
 }
 
 impl Default for Settings {
@@ -35,6 +37,7 @@ impl Default for Settings {
             default_memory_mb: 4096,
             minimize_on_play: true,
             first_run_done: false,
+            rail_expanded: false,
         }
     }
 }
@@ -98,6 +101,7 @@ mod tests {
         assert_eq!(settings.default_memory_mb, 4096);
         assert!(settings.minimize_on_play);
         assert!(!settings.first_run_done);
+        assert!(!settings.rail_expanded);
     }
 
     #[tokio::test]
@@ -107,12 +111,14 @@ mod tests {
         let settings = Settings {
             language: Some(Lang::Es),
             first_run_done: true,
+            rail_expanded: true,
             ..Settings::default()
         };
         store.save(&settings).await.unwrap();
         let raw = std::fs::read_to_string(tmp.path().join("settings.json")).unwrap();
         assert!(raw.contains("\"language\": \"es\""), "{raw}");
         assert!(raw.contains("\"firstRunDone\": true"), "{raw}");
+        assert!(raw.contains("\"railExpanded\": true"), "{raw}");
         assert_eq!(store.load().await, (settings, None));
     }
 

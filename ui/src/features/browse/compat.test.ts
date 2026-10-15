@@ -11,6 +11,8 @@ const instance = (minecraft: string, loader: Instance['game']['loader']): Instan
   optionalChoices: {},
   java: { path: null, memoryMb: 4096 },
   server: null,
+  artSeed: null,
+  art: 'auto',
 });
 const version = (id: string, type: string, date: string, mc: string[], loaders: string[]): VersionInfo => ({
   id,

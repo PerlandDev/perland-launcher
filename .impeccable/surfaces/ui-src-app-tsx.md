@@ -27,7 +27,7 @@ OWN-WORLD: A warm laminate-black ground. The four land-plot hues have roles: amb
 
 STORY: The player sees their instance lit up, understands it's ready, presses Play, watches honest progress with real MB figures, and is in the game. Errors tell them what to do in their own language.
 
-FIRST VIEWPORT: The custom title bar is a thin strip on top. A 72 px rail of authored plot icons runs down the left. The marquee art fills the rest. The instance name is huge at lower left, with version and loader beneath it. The amber Play button, about 280 × 88, sits on its step at lower right, with Mods and ⋯ beside it as secondary controls. The activity drawer handle sits on the bottom edge.
+FIRST VIEWPORT: The custom title bar is a thin strip on top. A rail of authored plot icons runs down the left in the player's chosen width: compact 72 px of icons, or wide 240 px where each cabinet is a plate with its name and status word; the rail key at its top switches them and settings remember it. The marquee art fills the rest. The instance name is huge at lower left, with version and loader beneath it (when Home is under 55rem wide, as with the wide rail at 960 px, the name takes its own row and the controls sit beneath it at the right). The amber Play button, about 280 × 88, sits on its step at lower right, with Mods and ⋯ beside it as secondary controls. The activity drawer handle sits on the bottom edge.
 
 SIGNATURE / MOTION: Play's press travel lands in 2 steps of 90 ms. The segmented meter fills by blocks with tabular readouts. In attract mode the marquee drifts in slow parallax and stops under reduced motion. State changes snap; they never ease.
 

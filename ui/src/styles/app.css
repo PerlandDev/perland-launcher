@@ -588,6 +588,167 @@
     background: rgb(12 9 6 / 0.78);
   }
 
+  /* Change image: the six landscapes are small marquees standing on their steps, three to a row. The one
+     in use is pressed into its slot with the lime lamp in a ground socket; amber stays on acting. */
+  .art-tiles {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+    padding-bottom: 4px;
+  }
+  .art-tile {
+    position: relative;
+    display: block;
+    aspect-ratio: 16 / 9;
+    padding: 0;
+    overflow: hidden;
+    background: var(--color-ground);
+    border: 0;
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow: 0 4px 0 var(--color-dirt-deep);
+    cursor: pointer;
+    transition:
+      translate 180ms steps(2, end),
+      box-shadow 180ms steps(2, end);
+  }
+  /* A tile is a thumbnail, not a cabinet front: no T-molding. */
+  .art-tile .marquee::after {
+    content: none;
+  }
+  .art-tile:hover:not([aria-pressed='true'], [aria-disabled='true']) .marquee svg {
+    filter: brightness(1.18);
+  }
+  /* A seam ring over the art, so a dark scene never melts into the panel. */
+  .art-tile::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    border-radius: inherit;
+    corner-shape: notch;
+    box-shadow: inset 0 0 0 1px var(--color-line);
+  }
+  .art-tile:active:not([aria-disabled='true']),
+  .art-tile[aria-pressed='true'] {
+    translate: 0 4px;
+    box-shadow: 0 0 0 var(--color-dirt-deep);
+  }
+  .art-tile[aria-pressed='true']::after {
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  .art-tile[aria-pressed='true']::before {
+    content: '';
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 2;
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--color-lime);
+    box-shadow: 0 0 0 3px var(--color-ground);
+  }
+  .art-tile[aria-disabled='true'],
+  .art-key[aria-disabled='true'] {
+    cursor: progress;
+  }
+
+  /* Pack art and Upload: raised keys with a recessed icon slot, pressed with the lime lamp while in use. */
+  .art-keys {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  .art-key {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 3rem;
+    padding: 0.5rem 0.75rem 0.5rem 0.5rem;
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 650;
+    line-height: 1.2;
+    text-align: start;
+    color: var(--color-ink);
+    background: var(--color-raised);
+    border: 0;
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow: 0 4px 0 var(--color-dirt-deep);
+    cursor: pointer;
+    transition:
+      translate 180ms steps(2, end),
+      box-shadow 180ms steps(2, end),
+      background-color 120ms linear;
+  }
+  .art-key:hover:not([aria-pressed='true'], [aria-disabled='true']) {
+    background: color-mix(in oklab, var(--color-raised), white 7%);
+  }
+  .art-key:active:not([aria-disabled='true']),
+  .art-key[aria-pressed='true'] {
+    translate: 0 4px;
+    box-shadow: 0 0 0 var(--color-dirt-deep);
+  }
+  .art-key[aria-pressed='true'] {
+    background: var(--color-ground);
+    box-shadow:
+      0 0 0 var(--color-dirt-deep),
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  /* The lamp leads the label, as on segments, category keys and the tiles: after the icon slot, before the words. */
+  .art-key[aria-pressed='true']::before {
+    content: '';
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--color-lime);
+  }
+  .art-key-slot {
+    display: grid;
+    flex: none;
+    order: -1;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    overflow: hidden;
+    color: var(--color-ink-dim);
+    background: var(--color-ground);
+    border-radius: 3px;
+    corner-shape: notch;
+    box-shadow: inset 0 0 0 1px var(--color-line);
+  }
+  .art-key-text {
+    display: grid;
+    gap: 0.125rem;
+    min-width: 0;
+  }
+  /* What an upload may be, said before the pick: a dim second line, not a third button state. */
+  .art-key-hint {
+    color: var(--color-ink-dim);
+    font-size: 0.8125rem;
+    font-weight: 400;
+    line-height: 1.25;
+    /* Its copy is tied with no-break spaces, so at half the dialog it breaks only once: the kinds,
+       then "up to 5 MB" ("hasta 5 MB"), never mid-list. */
+  }
+  .art-key-slot svg {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+  .art-key-slot img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .art-key-slot img[data-upscale] {
+    image-rendering: pixelated;
+  }
+
   .menu {
     position: absolute;
     right: 0;
@@ -711,17 +872,142 @@
     color: var(--color-ground);
     background: var(--color-coral);
   }
+  /* The rail: a column of cabinets on the ground, its key at the top and Browse and New at the foot.
+     Compact it is 4.5rem of icons; wide (15rem, the player's choice in settings) each cabinet becomes a
+     long plate with the name and status word beside its icon. The switch snaps, like every state change. */
+  .rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 0;
+    padding-block: 0.75rem 1rem;
+    background: var(--color-ground);
+  }
+  .rail-list {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 0;
+    /* Half a gap of room above and below (taken back by the margin, so nothing shifts) keeps the drop
+       line over the first cabinet and the step under the last one inside the scroller. */
+    margin-block: -0.5rem;
+    padding: 0.5rem 0.75rem;
+    overflow-y: auto;
+  }
+  .rail-list > li {
+    position: relative;
+  }
+  /* Reordering. The rows between the carried cabinet's place and where it would land snap one place over
+     (a snap, never a slide), so the open slot is always where it will land. */
+  .rail-list > li[data-shift] {
+    translate: 0 var(--shift, 0);
+  }
+  /* The open slot is the slot a pressed key leaves behind: a recessed ground socket with its seam ring,
+     never a hole in the rail. It hangs off the carried cabinet's own <li> and follows the landing place. */
+  .rail-list > li[data-carry]::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    translate: 0 var(--socket, 0);
+    pointer-events: none;
+    background: var(--color-ground);
+    border-radius: 6px;
+    corner-shape: notch;
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  /* The drop line is an insertion caret, so it is amber like the text caret and the drop-zone cue: a 4px
+     bar on its own 2px dirt step in the gap above the open slot, drawn over the carried cabinet. It shows
+     only once the landing place differs from the cabinet's own, and never sits below the last row. */
+  .rail-list > li[data-carry][data-drop]::after {
+    content: '';
+    position: absolute;
+    z-index: 2;
+    top: -7px;
+    inset-inline: 0;
+    height: 4px;
+    translate: 0 var(--socket, 0);
+    background: var(--color-amber);
+    box-shadow: 0 2px 0 var(--color-dirt);
+    border-radius: 2px;
+    corner-shape: notch;
+    pointer-events: none;
+  }
+  /* The rail key is chrome, not content: dim ink at rest, like the title-bar icons. */
+  .rail-key {
+    --face-ink: var(--color-ink-dim);
+    min-height: 2.25rem;
+  }
+  .rail-key:hover:not(:disabled) {
+    --face-ink: var(--color-ink);
+  }
+  /* Wide, the keys stretch to the plates' width with their icon centred over the cabinet icons
+     (0.75rem gutter + 1.125rem = the 3.5rem slot's centre) and their words starting where the names do. */
+  .rail[data-wide] {
+    align-items: stretch;
+  }
+  .rail[data-wide] > .btn {
+    justify-content: flex-start;
+    gap: 1.125rem;
+    margin-inline: 0.75rem;
+    padding-inline: 1.125rem 0.75rem;
+  }
+  .rail[data-wide] .rail-list {
+    align-items: stretch;
+  }
   .rail-item {
     position: relative;
     display: grid;
     place-items: center;
     width: 3.5rem;
     height: 3.5rem;
+    color: var(--color-ink);
     background: var(--color-panel);
     border: 0;
     border-radius: 6px;
     corner-shape: notch;
     cursor: pointer;
+  }
+  .rail[data-wide] .rail-item {
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+    place-items: center start;
+    width: 100%;
+    padding-right: 0.75rem;
+    text-align: left;
+  }
+  /* The cabinet's screen: the icon and its marks (LED, signal bars, warning) sit in this 3.5rem slot in both widths. */
+  .rail-icon {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+  .rail-text {
+    display: grid;
+    gap: 0.125rem;
+    min-width: 0;
+    width: 100%;
+  }
+  .rail-name,
+  .rail-word {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rail-name {
+    font-weight: 650;
+    font-size: 0.9375rem;
+    line-height: 1.25;
+  }
+  .rail-word {
+    color: var(--color-ink-dim);
+    font-size: 0.8125rem;
+    line-height: 1.25;
+    font-variant-numeric: tabular-nums;
   }
   .rail-art {
     width: 40px;
@@ -746,6 +1032,23 @@
     width: 4px;
     height: 40%;
     background: var(--color-amber);
+  }
+  /* Held: the carried cabinet is off the rail, in the hand. It rides the pointer 1:1 (direct manipulation,
+     so nothing eases and reduced motion has nothing to remove) on the 8px card step with a dim-ink seam
+     ring, so it never reads as the selected cabinet at rest (raised on 4px). It comes after
+     [data-selected] and is more specific, so it wins for a carried selected cabinet too; that cabinet's
+     coin-slot light stays off until it lands. */
+  .rail-list .rail-item[data-dragging] {
+    z-index: 1;
+    translate: 0 var(--lift, 0);
+    background: var(--color-raised);
+    box-shadow:
+      inset 0 0 0 1px var(--color-ink-dim),
+      0 8px 0 var(--color-dirt-deep);
+    cursor: grabbing;
+  }
+  .rail-list .rail-item[data-dragging]::before {
+    content: none;
   }
   .rail-led {
     position: absolute;

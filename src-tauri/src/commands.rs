@@ -3,9 +3,9 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AppInfo, BrowsePlanRequest, ContentFile, InstallPlanView, InstallResult, JavaTest, JoinPreview,
-    ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackArtData, PackContents, PackStatus,
-    RunSnapshot, SearchRequest, ServerStatusView,
+    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, InstallPlanView, InstallResult,
+    InstanceArtData, JavaTest, JoinPreview, ManualProgress, NewInstance, OpenTarget,
+    PackAddRequest, PackContents, PackStatus, RunSnapshot, SearchRequest, ServerStatusView,
 };
 use launcher_core::{
     accounts::AccountsFile,
@@ -50,6 +50,11 @@ pub async fn settings_set(core: CoreState<'_>, settings: Settings) -> Res<Settin
 #[tauri::command]
 pub async fn instances_list(core: CoreState<'_>) -> Res<InstanceListing> {
     core.instances_list().await
+}
+
+#[tauri::command]
+pub async fn instance_reorder(core: CoreState<'_>, ids: Vec<String>) -> Res<InstanceListing> {
+    core.instance_reorder(ids).await
 }
 
 #[tauri::command]
@@ -226,8 +231,13 @@ pub async fn manual_import(core: CoreState<'_>, id: String) -> Res<ManualProgres
 }
 
 #[tauri::command]
-pub async fn pack_art(core: CoreState<'_>, id: String) -> Res<PackArtData> {
-    core.pack_art(&id).await
+pub async fn instance_art(core: CoreState<'_>, id: String) -> Res<InstanceArtData> {
+    core.instance_art(&id).await
+}
+
+#[tauri::command]
+pub async fn instance_art_set(core: CoreState<'_>, id: String, choice: ArtChoice) -> Res<Instance> {
+    core.instance_art_set(&id, choice).await
 }
 
 #[tauri::command]

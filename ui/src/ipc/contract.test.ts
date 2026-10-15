@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ZodType } from 'zod';
 import accounts from './contract/accounts.json';
+import artChoices from './contract/art_choices.json';
 import appInfo from './contract/app_info.json';
 import contentFiles from './contract/content_files.json';
 import deepLinksFx from './contract/deep_links.json';
@@ -10,6 +11,7 @@ import events from './contract/events.json';
 import installPlans from './contract/install_plans.json';
 import installResult from './contract/install_result.json';
 import inviteLinksFx from './contract/invite_links.json';
+import instanceArt from './contract/instance_art.json';
 import instanceFx from './contract/instance.json';
 import instanceListing from './contract/instance_listing.json';
 import javaTest from './contract/java_test.json';
@@ -21,7 +23,6 @@ import mcVersions from './contract/mc_versions.json';
 import newInstance from './contract/new_instance.json';
 import openTargets from './contract/open_targets.json';
 import packAddRequests from './contract/pack_add_requests.json';
-import packArt from './contract/pack_art.json';
 import packContents from './contract/pack_contents.json';
 import packStatus from './contract/pack_status.json';
 import planRequests from './contract/plan_requests.json';
@@ -51,7 +52,8 @@ const cases: [string, ZodType, unknown][] = [
   ['new_instance', s.newInstance, newInstance],
   ['open_targets', s.openTarget.array(), openTargets],
   ['pack_add_requests', s.packAddRequest.array(), packAddRequests],
-  ['pack_art', s.packArtData, packArt],
+  ['instance_art', s.instanceArtData, instanceArt],
+  ['art_choices', s.artChoice.array(), artChoices],
   ['pack_contents', s.packContents, packContents],
   ['pack_status', s.packStatus.array(), packStatus],
   ['run_snapshots', s.runSnapshot.array(), runSnapshots],

@@ -19,7 +19,7 @@ colors:
 typography:
   display:
     fontFamily: "Bungee, ui-sans-serif, system-ui, sans-serif"
-    fontSize: "clamp(2.5rem, 4.8vw, 5.5rem)"
+    fontSize: "clamp(2.5rem, 5.2cqi, 5.5rem)"
     fontWeight: 400
     lineHeight: 0.95
   headline:
@@ -105,6 +105,7 @@ spacing:
   gutter: "2.5rem"
   section: "2.5rem"
   rail: "4.5rem"
+  rail-wide: "15rem"
   titlebar: "2.25rem"
   drawer-handle: "2.25rem"
   drawer-open: "18rem"
@@ -270,6 +271,18 @@ components:
     textColor: "{colors.ink-dim}"
     rounded: "{rounded.panel}"
     padding: "1.25rem"
+  art-tile:
+    backgroundColor: "{colors.ground}"
+    rounded: "{rounded.step}"
+  art-key:
+    backgroundColor: "{colors.raised}"
+    textColor: "{colors.ink}"
+    typography: "{typography.control}"
+    rounded: "{rounded.step}"
+    padding: "0.5rem 0.75rem 0.5rem 0.5rem"
+    height: "3rem"
+  art-key-selected:
+    backgroundColor: "{colors.ground}"
 ---
 
 # Design System: Perland Launcher
@@ -334,7 +347,7 @@ A warm brown-black cabinet laminate carrying the four saturated land-plot hues, 
 **Character:** Bungee is arcade-marquee signage: blocky, all-caps by design, and loud. Atkinson Hyperlegible is the opposite, a face built for readers with low vision and for readers still learning, here chosen for young and non-native players. Signage names things. Atkinson says everything else.
 
 ### Hierarchy
-- **Display** (Bungee 400, `clamp(2.5rem, 4.8vw, 5.5rem)`, 0.95): the instance name on the marquee, wrapping anywhere, with the two-layer marquee shade. 4.8vw is sized so an 8-letter name stays whole at the 960 px minimum (see Layout, Home).
+- **Display** (Bungee 400, `clamp(2.5rem, 5.2cqi, 5.5rem)`, 0.95): the instance name on the marquee, wrapping anywhere, with the two-layer marquee shade. It is sized against Home's own width (a container), not the window's, so the wide rail shrinks it honestly. 5.2cqi is 46px at the 960 px minimum with the compact rail, sized so an 8-letter name stays whole (see Layout, Home).
 - **Play** (Bungee 400, 2rem, 0.02em tracking): the word on Play, Stop and Stopping. While Play is preparing it switches to the 650-weight body face, left-aligned, so the phase label and meter fit.
 - **Headline** (Bungee 400, 2rem, 1): screen titles in the screen frame. First-run step titles run 1.875–2.25rem.
 - **Title** (Bungee 400, 1.25rem): small signage such as the About heading and the tabular memory readout. A server's name on the Join server card is the one in-between step, 1.75rem, so it sits under the 2rem screen title.
@@ -368,9 +381,9 @@ A project's description is Markdown set in Atkinson, at a 44rem measure, selecta
 The shell is a fixed desktop grid with a minimum window of 960 × 600 and no phone breakpoints:
 
 - **Title bar:** 2.25rem tall across the top, on `ground`, and draggable everywhere except its buttons. The mark and name sit left. The account (avatar and name), settings, a 1 px divider and the window controls sit right. On first run and the settings-failed screen it is **minimal**: only the window controls, because nothing else is reachable yet.
-- **Rail:** 4.5rem (72 px) down the left, on `ground`. Generated plot-icon cabinets are 3.5rem squares with 0.75rem between them, and a ghost "+" sits at the foot. The list uses roving arrow keys.
+- **Rail:** down the left, on `ground`, in one of two widths the player picks with the rail key at its top, remembered in settings (`railExpanded`). **Compact** is 4.5rem (72 px): generated plot-icon cabinets are 3.5rem squares with 0.75rem between them. **Wide** is 15rem (240 px): each cabinet becomes a 3.5rem-tall plate across the rail (0.75rem gutters) with the icon in its 3.5rem slot at left and the name and status word beside it. The rail key sits at the top in both widths, then the cabinets (they scroll), then the Browse key and a ghost "+" at the foot. Wide, the keys stretch to the plates' width with their label beside the icon, the icon centred on the cabinet icons' axis. The switch snaps; nothing slides. The list uses roving arrow keys in both widths.
 - **Main:** fills the rest. The activity drawer is pinned along its bottom edge as a 2.25rem handle. Opened, the drawer is 18rem tall, and `main` gets 18rem of bottom padding to match so the screen (and Play) stays above it rather than under it.
-- **Home:** the marquee fills `main` edge to edge. A bottom grid of `[minmax(0,1fr) auto]` with a 1rem column gap and 2.5rem side gutters holds the name and version plate at lower left. The raised "Mods & packs" button, the overflow menu and Play sit at lower right, aligned to their bottoms, with Play last at the far right. "Mods & packs" stays a large button but with 1rem side padding. At the 960 px minimum this leaves the name's column about 275 px (279 px in Spanish), and the 4.8vw name (46px there) fits a word of up to 8 letters of typical width (CREATIVE 247 px, SURVIVAL 258 px, MODPACKS 265 px). A longer word, or 8 very wide letters (WWWWWWWW), still breaks anywhere rather than overflow. Wider windows only add room, because the column grows faster than the name.
+- **Home:** the marquee fills `main` edge to edge. A bottom grid of `[minmax(0,1fr) auto]` with a 1rem column gap and 2.5rem side gutters holds the name and version plate at lower left. The raised "Mods & packs" button, the overflow menu and Play sit at lower right, aligned to their bottoms, with Play last at the far right. "Mods & packs" stays a large button but with 1rem side padding. With the compact rail at the 960 px minimum this leaves the name's column about 275 px (279 px in Spanish), and the name, sized at 5.2cqi of Home's own width (46px there), fits a word of up to 8 letters of typical width (CREATIVE 247 px, SURVIVAL 258 px, MODPACKS 265 px). A longer word, or 8 very wide letters (WWWWWWWW), still breaks anywhere rather than overflow. Because the name follows Home's width rather than the window's, the wide rail shrinks it honestly, and from 55rem of Home width up the column grows faster than the name. Below 55rem of Home width (the wide rail under a window of about 1120 px, so always at the 960 px minimum) the bottom grid drops to one column: the name and plates take their own full-width row, and the controls sit 1.25rem below at the right, Play still last, so the name never squeezes into a column a few letters wide.
 - **Other screens:** a screen frame with a Bungee title row (2.5rem gutters, 2.25rem top), then a scrolling column capped at 48rem. Forms inside it run at 42rem, with 2.5rem between sections. Primary actions sit in a **sticky action row** at the bottom of the scroller on `ground`, with a 1 px `line` hairline above, so Save or Create stays reachable in long Spanish layouts.
 - **First run:** the "perland" marquee in attract mode fills the window behind a centered 32rem panel card on a deep-dirt step. Blue bars across the top of the card count the steps.
 - **Toasts** stack at the bottom-right in a 24rem column. **Dialogs** are `min(30rem, 100vw − 4rem)`, centred with auto margins (the CSS reset zeroes them) and capped at `100dvh − 4rem` tall, scrolling inside, so a long list never pushes the actions off a 600 px window.
@@ -389,8 +402,8 @@ Depth is physical and hard-edged. Nothing in the system uses a blurred shadow. A
 - **Step** (`box-shadow: 0 4px 0 var(--color-dirt-deep)`): secondary buttons, segments and the selected rail cabinet. Amber buttons use `dirt`.
 - **Large step** (`0 6px 0`): large buttons, menus and toasts.
 - **Play step** (`0 8px 0 var(--color-dirt)` plus `inset 0 3px 0` lit edge): Play only. When running, the step turns to `dirt-deep`.
-- **Card step** (`0 8px 0 var(--color-dirt-deep)`): dialogs and the first-run card.
-- **Recess** (`inset 0 2px 0 rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--color-line)`): inputs, selects, the slider track and a checked segment.
+- **Card step** (`0 8px 0 var(--color-dirt-deep)`): dialogs and the first-run card, and a carried rail cabinet (with a 1px `ink-dim` seam ring).
+- **Recess** (`inset 0 2px 0 rgb(0 0 0 / 0.45), inset 0 0 0 1px var(--color-line)`): inputs, selects, the slider track and a checked segment, and the open slot in the rail while a cabinet is carried.
 - **T-molding** (`inset 4px 4px 0 var(--color-ground), inset 6px 6px 0 var(--color-dirt-deep)`): the marquee's frame where it meets the title bar and rail.
 - **Hairline** (`0 -1px 0 var(--color-line)`): above sticky action rows.
 - **Small step** (`0 3px 0 var(--color-dirt-deep)`): category keys in Browse.
@@ -451,6 +464,9 @@ A recessed 20-block segmented bar: 3px gaps, 0.75rem tall. Empty blocks are `lin
 
 ### Navigation
 - **Rail:** `panel` cabinets with notched 6px corners. Hover raises them to `raised`. The selected cabinet is `raised` on a 4px `dirt-deep` step, with a 4px amber **coin-slot light** to its left. A lime LED square in the lower-right corner marks preparing or playing. A damaged instance is greyed to 40% with a coral warning diamond. A pack's own icon replaces the generated plot icon (40px, 3px notched corners), falling back to the plot icon if it fails to decode. A server cabinet carries its last-known status as three pixel **signal bars** (2px wide, 4/7/10px tall) in a 14px notched `ground` socket at the **top-right** corner. The **count** of lit bars carries the state, so hue never carries it alone: online 3/3 in `ink`, starting 2/3 in `blue`, sleeping 1/3 in `ink-dim`, offline 0/3 with a 10 × 2px `coral` flatline along the socket's foot, unknown 0/3 (empty bars in a dim seam colour). It never uses lime, the LED's square or the LED's corner, so it can't be read as the Playing lamp. The status word is in the cabinet's accessible name and in its hover title ("Survival · Online · 3/20").
+- **Wide rail rows:** the same cabinet, stretched: icon, marks and coin-slot light stay exactly where they are in the compact rail, and to the right of the icon slot the name (Atkinson 650, 0.9375rem, `ink`; a navigation label, so not Bungee) sits over the status word (0.8125rem `ink-dim`, tabular): "Playing", "Getting ready", "Needs attention", the server word, or two of them joined by " · ". An idle instance shows the name alone. Both truncate on one line with an ellipsis, and the name's hover title holds it whole. The accessible name is unchanged from the compact rail.
+- **Rail key:** a ghost key at the rail's top, 2.25rem tall: no face or step, `ink-dim` at rest like the title-bar icons, and `ink` on the ghost's `raised` hover face. Compact it is an icon (a pixel arrow into a bar, pointing out: "Show names"); wide it reads "Hide names" beside the arrow pointing back. It carries `aria-pressed`. It is chrome, so it never stands on a step and is never lit.
+- **Reordering the rail:** the player's own order, in both widths. Dragging a healthy cabinet (pointer events, after 4px of travel; less is still a click that selects) picks it up. **Held**, it is a `raised` face on the 8px card step (`0 8px 0` `dirt-deep`) inside a 1px `ink-dim` seam ring, so it never reads as the selected cabinet at rest (4px step, no ring); its coin-slot light goes out until it lands. It rides the pointer 1:1, held between the first and last healthy places. The cabinets between its place and the landing place **snap** one place over (never slide), so the **open slot** is always where it will land: the slot a pressed key leaves behind, a recessed `ground` socket (the recess inset and `line` ring, 6px notches), never a hole in the rail. The carried cabinet hangs over it. Once the landing place differs from its own, an **amber drop line** marks the open slot: a 4px notched bar on a 2px `dirt` step in the 0.75rem gap above the socket, drawn over the carried cabinet. It is amber because it is an insertion caret, like the text caret and the mods drop cue, and it shows only while carrying. Release snaps the list into its new order; Escape (which goes no further than the rail) and a cancelled pointer put the cabinet back. Alt+↑/↓ moves the focused cabinet one place, keeps focus on it, and a polite live region says "Asalith Fields moved to position 2 of 3". Damaged cabinets are never carried, never move and are never drop targets; they always sit last.
 - **Title bar:** flat text buttons 2.25rem tall in `ink-dim`. Hover shows `ink` on `raised`, and the close button's hover is `ground` on coral.
 - **Overflow menu:** a `raised` popover on a 6px `dirt-deep` step with a `line` ring. Items hover to `panel`, and danger items are coral.
 
@@ -475,6 +491,14 @@ The pack's update status, on the marquee above the name. It is the version plate
 - **Update ready:** one lit primary, "Update and play". The change line and kept line sit above a "Show what changed" disclosure whose names list is a well.
 - **Download these manually:** each missing file is a well row. Continue is flat and disabled until every file is found, then lit as the only primary.
 
+### Change image
+The ⋯ menu's "Change image…" opens a standard dialog (30rem, card step) that picks the one picture an instance wears: it fills the marquee and, cropped square, the rail icon. The item is disabled while the instance runs or prepares, because the core refuses the change then.
+- **Lead:** one `ink-dim` sentence naming the choices ("Pick a landscape, the pack's art or a picture of your own."). No headings.
+- **Landscapes:** six small marquees, three to a row 0.75rem apart, from `presetSeeds` (the instance's art seed with any `~N` stripped, then `~2` to `~6`), so picking one never changes the six on offer. The first is the instance's own scene, drawn exactly as the marquee always drew it. The five `~N` seeds each pin a variant so the six read as six places at tile size: the bloom leans twice as far (32%) into its plot hue, `~2` to `~4` walk through the three other plot hues, and the rims keep that hue but for one contrasting band. Each also sets the sun's side (right or left) and height (high, mid, or low and setting behind the hills) and the ridge (plains, hills or peaks), so any two of the six differ in at least two of four things: the bloom's colour, the sun's side, the sun's height and the ridge (and at least four of the six blooms differ). The rail's plot icon takes the same hue. Only the picker makes `~N` seeds, so an instance id or a pinned seed never changes how it looks. Each is a pressable 16:9 tile on a `ground` fill with notched 4px corners, a 1px `line` ring drawn over the art and a 4px `dirt-deep` step. Tiles are thumbnails, not cabinet fronts: no T-molding and no attract drift. Hover brightens the art one notch (`brightness(1.18)`). Each is named "Landscape 3" for screen readers.
+- **Pack art and Upload:** raised keys in a two-column row under the landscapes (Pack art only on a pack instance): a 2rem recessed `ground` icon slot with 3px notches, then the 650-weight label. The slot holds the package or upload glyph in `ink-dim`, or the picture itself while that choice is in use (nearest-neighbour only at 2x or more). Upload says what it takes before the pick, as a dim second line under its label ("PNG, JPEG or WebP, up to 5 MB" / "PNG, JPEG o WebP, hasta 5 MB", Atkinson 400 0.8125rem `ink-dim`), which is the key's description, not part of its name. Its words are tied with no-break spaces, so at half the dialog it breaks only once, before "up to" / "hasta", never mid-list.
+- **The current choice** (an upload; else the pack's art while it is on auto; else the landscape whose seed matches) is pressed into its slot with the 8px lime lamp: in a 3px `ground` socket at a tile's top-left, and on a key after the icon slot, before the label, leading like every other lamp. A choice applies at once and the lamp moves to it; the rail and the marquee behind the backdrop change with it. While a choice saves, every tile is `aria-disabled` with a progress cursor.
+- **Nothing is lit.** The only action is a secondary "Done": choices apply as they are made, so there is nothing to confirm, and Play keeps the room's one amber. A refused picture shows as the standard error card under the keys.
+
 ### Well
 A recessed row inside a panel or dialog: `ground` fill, 1px `line` inset ring, notched 4px corners. Used for the names list and the manual-download rows, which would otherwise vanish into a `panel` host.
 
@@ -498,7 +522,7 @@ Browse lists projects as rows on the ground, never cards. Filters are small keys
 - **Server needs it too:** an info line led by the 8px blue lamp, in 600 0.875rem `blue-ink`.
 - **Gallery:** a sideways-scrolling strip of thumbnails 7.5rem tall, 0.75rem apart. Each is a pressable frame on a `ground` fill with notched 4px corners and a 4px `dirt-deep` step, with a zoom-in cursor. It opens a lightbox dialog up to 64rem wide (`min(64rem, 100vw − 4rem)`), with the image capped at `100dvh − 15rem` tall and notched. An image still loading holds a 16:9 `ground` slot.
 - **Install confirm:** a dialog whose additions read as a manifest, one line per item between 1px `line` seam rules, with the tabular total below. The dialog's primary is its only lit button.
-- **Rail Browse key:** a large raised key on the rail, never lit. While global Browse is open it sits pressed in a recessed `ground` slot.
+- **Rail Browse key:** a large raised key on the rail, never lit. While global Browse is open it sits pressed in a recessed `ground` slot. In the wide rail it stretches with the plates and reads "Browse" beside its glyph.
 
 ### Mods & packs
 An instance's own files, listed as rows on the ground under the screen title "Mods & packs". It adapts Browse's rows, but a row is not a link, so it never lifts.
@@ -516,10 +540,10 @@ An instance's own files, listed as rows on the ground under the screen title "Mo
 **The Rows, Not Cards Rule.** Browse results sit on the ground as rows split by seam hairlines and lift to `panel` only under the pointer or keyboard focus. Never box a result in a card, and never step a tag.
 
 ### Marquee (signature)
-The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 PRNG) so an instance looks the same on every computer. The recipe:
+The instance's backlit marquee, generated from a seed (FNV-1a hash, mulberry32 PRNG) so an instance looks the same on every computer. The seed is the instance's art seed (a picked landscape, or its id from before a rename), else its id, and the rail's plot icon grows from the same seed. The recipe:
 1. **Sky:** `ground` with 4% of the lamp mixed in. It is a warm black, never navy.
 2. **Lamp bloom:** a radial bloom of the warm tube light (`#ffd98a`, tinted 15% toward one plot hue) behind the horizon, fading from 0.7 to 0.26 to 0 opacity.
-3. **Sun:** a pixel-stepped disc of radius 4 cells in pale lamp cream, at upper right. It is kept whole: when the panel is cropped short (drawer open), it moves down so it is never closer to the visible top than its radius plus one cell, and it sets behind the hills instead of being sliced.
+3. **Sun:** a pixel-stepped disc of radius 4 cells in pale lamp cream, at upper right. The one exception is a picked preset: a `~2` to `~6` seed sets the sun's side (left or right) and height (high, mid, or low and setting behind the hills); see Change image. It is kept whole: when the panel is cropped short (drawer open), it moves down so it is never closer to the visible top than its radius plus one cell, and it sets behind the hills instead of being sliced.
 4. **Hills:** four mirrored, seamlessly tiling silhouette bands with stepped values. The far bands catch the most lamp light (0.5, 0.3, 0.14). Each carries a one-cell rim in a plot hue. Drops deeper than one cell span at least two columns, so no single-cell "drips".
 5. **Near floor:** the nearest band is nearly `ground` (8% dirt) with a muted rim, a dark floor the name sits on.
 6. **Grille and vignette:** a 3-unit horizontal grille at 10% black, then a radial vignette to 55% black at the edges.
