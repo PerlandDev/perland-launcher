@@ -8,7 +8,7 @@
 //! Best effort throughout: what can't be deleted is counted and skipped. Symlinks are never
 //! followed, and nothing outside those two folders is touched.
 use std::{
-    collections::HashSet,
+    collections::{BTreeSet, HashSet},
     fs,
     io::ErrorKind,
     path::Path,
@@ -46,6 +46,9 @@ pub enum GcSkip {
     RanRecently,
     /// This many instance records exist but couldn't be read: what they reference is unknown.
     UnreadableRecords(usize),
+    /// An instance folder appeared, went or was renamed while the records were read, so some
+    /// roots may have been missed. The next start tries again.
+    InstancesChanged,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -82,7 +85,7 @@ fn collect_blocking(dirs: &LauncherDirs, now: SystemTime) -> GcReport {
     }
     let roots = match roots(&dirs.instances()) {
         Ok(roots) => roots,
-        Err(unreadable) => return skipped(GcSkip::UnreadableRecords(unreadable)),
+        Err(why) => return skipped(why),
     };
     let mut report = GcReport::default();
     sweep_objects(&objects, &roots, now, &mut report);
@@ -129,15 +132,16 @@ struct InstanceSource {
     source: SourceRef,
 }
 
-/// Every object key an instance references, or how many records couldn't be read.
-fn roots(instances: &Path) -> std::result::Result<HashSet<String>, usize> {
+/// Every object key an instance references; else why they aren't all known.
+fn roots(instances: &Path) -> std::result::Result<HashSet<String>, GcSkip> {
     let mut keys = HashSet::new();
     let entries = match fs::read_dir(instances) {
         Ok(rd) => rd,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(keys),
-        Err(_) => return Err(1),
+        Err(_) => return Err(GcSkip::UnreadableRecords(1)),
     };
     let mut unreadable = 0;
+    let mut scanned = BTreeSet::new();
     for entry in entries {
         let Ok(entry) = entry else {
             unreadable += 1;
@@ -148,6 +152,7 @@ fn roots(instances: &Path) -> std::result::Result<HashSet<String>, usize> {
             continue;
         }
         let id = entry.file_name().to_string_lossy().into_owned();
+        scanned.insert(id.clone());
         let scope = CacheScope::for_instance(&id);
         let mut add = |hashes: &Hashes| {
             if let Some(key) = object_key(hashes, Some(&scope)) {
@@ -179,10 +184,33 @@ fn roots(instances: &Path) -> std::result::Result<HashSet<String>, usize> {
         }
     }
     if unreadable > 0 {
-        Err(unreadable)
+        Err(GcSkip::UnreadableRecords(unreadable))
+    } else if instances_changed(instances, &scanned) {
+        // A rename mid-scan can hide a folder from both its old and its new name.
+        Err(GcSkip::InstancesChanged)
     } else {
         Ok(keys)
     }
+}
+
+/// True when the instance folders in `instances` now aren't exactly `scanned`, or can't be
+/// listed. A missing `instances` folder holds none.
+fn instances_changed(instances: &Path, scanned: &BTreeSet<String>) -> bool {
+    let entries = match fs::read_dir(instances) {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == ErrorKind::NotFound => return !scanned.is_empty(),
+        Err(_) => return true,
+    };
+    let mut now = BTreeSet::new();
+    for entry in entries {
+        let Ok(entry) = entry else {
+            return true;
+        };
+        if entry.path().is_dir() {
+            now.insert(entry.file_name().to_string_lossy().into_owned());
+        }
+    }
+    now != *scanned
 }
 
 /// `Ok(None)` when the file doesn't exist; `Err` when it exists but can't be read or parsed.
@@ -219,6 +247,9 @@ fn sweep_objects(objects: &Path, roots: &HashSet<String>, now: SystemTime, repor
                 !roots.contains(name) && age.is_some_and(|a| a > UNUSED_FOR)
             }
         });
+        // `remove_dir` never deletes a folder with anything in it: a download that recreated
+        // the prefix and wrote a file meanwhile makes it fail, harmlessly. At worst a download
+        // loses its just-created, still-empty folder and its write fails; nothing is deleted.
         if fs::read_dir(&prefix).is_ok_and(|mut d| d.next().is_none()) {
             let _ = fs::remove_dir(&prefix);
         }
@@ -250,10 +281,20 @@ fn sweep_files(
             continue;
         }
         let name = entry.file_name();
-        if !doomed(&name.to_string_lossy(), age(&meta, now)) {
+        let name = name.to_string_lossy();
+        if !doomed(&name, age(&meta, now)) {
             continue;
         }
-        match fs::remove_file(entry.path()) {
+        // A `get()` may have reused it since: decide again on fresh metadata just before the
+        // delete. A touch dated after `now` gives no age, which never dooms an object.
+        let path = entry.path();
+        let Ok(meta) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        if !meta.file_type().is_file() || !doomed(&name, age(&meta, now)) {
+            continue;
+        }
+        match fs::remove_file(&path) {
             Ok(()) => {
                 report.removed += 1;
                 report.freed_bytes += meta.len();
@@ -265,7 +306,10 @@ fn sweep_files(
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, path::PathBuf};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        path::PathBuf,
+    };
 
     use super::*;
     use crate::{
@@ -500,6 +544,47 @@ mod tests {
             assert_eq!(report.removed, 0);
         }
         assert!(unused.exists() && part.exists());
+    }
+
+    #[test]
+    fn an_object_used_during_the_sweep_stays() {
+        let env = Env::new();
+        let path = env.object(&key("busy"), 31 * DAY);
+        let calls = std::cell::Cell::new(0);
+        let mut report = GcReport::default();
+        sweep_files(path.parent().unwrap(), env.now, &mut report, |_, age| {
+            calls.set(calls.get() + 1);
+            if calls.get() == 1 {
+                // A `get()` reuses it between the scan and the delete.
+                std::fs::File::options()
+                    .write(true)
+                    .open(&path)
+                    .unwrap()
+                    .set_modified(env.now)
+                    .unwrap();
+            }
+            age.is_some_and(|a| a > UNUSED_FOR)
+        });
+        assert!(path.exists());
+        assert_eq!(calls.get(), 2, "the rule is checked again before deleting");
+        assert_eq!(report, GcReport::default());
+    }
+
+    #[test]
+    fn a_renamed_instance_folder_is_noticed() {
+        let env = Env::new();
+        let instances = env.dirs.instances();
+        assert!(!instances_changed(&instances, &BTreeSet::new()));
+        env.record("a", "instance.json", b"{}");
+        let scanned = BTreeSet::from(["a".to_string()]);
+        assert!(!instances_changed(&instances, &scanned));
+        assert!(instances_changed(&instances, &BTreeSet::new()));
+        std::fs::rename(instances.join("a"), instances.join("b")).unwrap();
+        assert!(instances_changed(&instances, &scanned));
+        // A plain file isn't an instance.
+        std::fs::rename(instances.join("b"), instances.join("a")).unwrap();
+        std::fs::write(instances.join("notes.txt"), b"x").unwrap();
+        assert!(!instances_changed(&instances, &scanned));
     }
 
     #[tokio::test]

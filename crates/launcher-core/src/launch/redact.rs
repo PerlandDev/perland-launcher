@@ -69,7 +69,7 @@ impl Redactor {
         }
         for (form, windows) in self.home_forms() {
             out = if windows {
-                replace_ascii_case_insensitive(&out, &form, "~")
+                replace_case_insensitive(&out, &form, "~")
             } else {
                 out.replace(form.as_str(), "~")
             };
@@ -79,7 +79,7 @@ impl Redactor {
 
     /// Every form of every home, longest first so a home that is a prefix of another
     /// (`C:\Users\steve` and `C:\Users\steve.old`) never leaves a fragment behind. Each form says
-    /// whether it is a Windows path, which matches without regard to ASCII letter case.
+    /// whether it is a Windows path, which matches without regard to letter case.
     fn home_forms(&self) -> Vec<(String, bool)> {
         let mut forms: Vec<(String, bool)> = Vec::new();
         for home in &self.homes {
@@ -132,12 +132,42 @@ fn is_windows_path(path: &str) -> bool {
     path.contains('\\') || (b.len() >= 2 && b[0].is_ascii_alphabetic() && b[1] == b':')
 }
 
-/// `str::replace`, but ASCII letters match regardless of case. Lowercasing ASCII keeps every
-/// byte offset (and char boundary), so matches found in the lowercased copy splice the original.
-fn replace_ascii_case_insensitive(haystack: &str, needle: &str, with: &str) -> String {
+/// `str::replace`, but letters match regardless of case (`C:\Users\josé` and `C:\USERS\JOSÉ`).
+fn replace_case_insensitive(haystack: &str, needle: &str, with: &str) -> String {
     if needle.is_empty() {
         return haystack.to_string();
     }
+    if needle.is_ascii() {
+        return replace_ascii_case_insensitive(haystack, needle, with);
+    }
+    // Lowercasing can change a char's byte length (the Kelvin sign is 3 bytes, "k" is 1), so
+    // compare char by char and splice the original at its own char boundaries.
+    let needle: Vec<char> = needle.chars().collect();
+    let chars: Vec<(usize, char)> = haystack.char_indices().collect();
+    let same = |a: char, b: char| a == b || a.to_lowercase().eq(b.to_lowercase());
+    let mut out = String::with_capacity(haystack.len());
+    let (mut last, mut i) = (0, 0);
+    while i + needle.len() <= chars.len() {
+        let window = &chars[i..i + needle.len()];
+        if window.iter().zip(&needle).all(|(&(_, h), &n)| same(h, n)) {
+            let end = chars
+                .get(i + needle.len())
+                .map_or(haystack.len(), |&(b, _)| b);
+            out.push_str(&haystack[last..chars[i].0]);
+            out.push_str(with);
+            last = end;
+            i += needle.len();
+        } else {
+            i += 1;
+        }
+    }
+    out.push_str(&haystack[last..]);
+    out
+}
+
+/// The fast path for an ASCII needle. Lowercasing ASCII keeps every byte offset (and char
+/// boundary), so matches found in the lowercased copy splice the original.
+fn replace_ascii_case_insensitive(haystack: &str, needle: &str, with: &str) -> String {
     let lower = haystack.to_ascii_lowercase();
     let needle_lower = needle.to_ascii_lowercase();
     let mut out = String::with_capacity(haystack.len());
@@ -235,6 +265,22 @@ mod tests {
         assert_eq!(fwd.redact("c:/USERS/steve/x"), "~/x");
         // Non-ASCII text around a match keeps its place.
         assert_eq!(r.redact(r"ñ C:\USERS\steve ñ"), "ñ ~ ñ");
+    }
+
+    #[test]
+    fn a_windows_home_with_non_ascii_letters_matches_in_any_case() {
+        let r = Redactor::new().with_home(r"C:\Users\josé");
+        assert_eq!(r.redact(r"C:\USERS\JOSÉ\x"), r"~\x");
+        assert_eq!(r.redact(r"c:\\users\\José\\x"), r"~\\x");
+        assert_eq!(r.redact("c:/USERS/JOSÉ/x"), "~/x");
+        assert_eq!(r.redact_cut(r"C:\USERS\JOSÉ\x"), r"~\x");
+        assert_eq!(r.redact(r"C:\Users\jose\x"), r"C:\Users\jose\x");
+        // The Kelvin sign (3 bytes) lowercases to "k" (1 byte): the match is longer in the text
+        // than the home is, and the text around it still lands in the right place.
+        let k = Redactor::new().with_home(r"C:\Users\kjosé");
+        assert_eq!(k.redact("ñ€ C:\\USERS\\\u{212A}JOSÉ\\😀 ß"), "ñ€ ~\\😀 ß");
+        assert_eq!(k.redact("ends C:\\Users\\kjos"), "ends C:\\Users\\kjos");
+        assert_eq!(k.redact(""), "");
     }
 
     #[test]
