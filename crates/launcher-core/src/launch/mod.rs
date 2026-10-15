@@ -344,16 +344,22 @@ pub fn argfile_text(args: &[String]) -> String {
 
 /// The bytes Java reads an argfile as. Java's launcher reads `@argfiles` in the system ANSI code
 /// page on Windows, so they are encoded in it (or as UTF-8 when the system code page is UTF-8);
-/// elsewhere it is UTF-8. `None` when some character has no form in that code page.
+/// elsewhere it is UTF-8. `None` when some character has no form in that code page, or when its
+/// form holds a stray `\` byte (a trail byte of a multi-byte character, as in Shift-JIS), which
+/// Java would read as an escape.
 pub fn encode_argfile(text: &str) -> Option<Vec<u8>> {
     #[cfg(windows)]
-    {
-        ansi_bytes(text)
-    }
+    let bytes = ansi_bytes(text)?;
     #[cfg(not(windows))]
-    {
-        Some(text.as_bytes().to_vec())
-    }
+    let bytes = text.as_bytes().to_vec();
+    backslashes_survive(text, &bytes).then_some(bytes)
+}
+
+/// Whether the encoded `bytes` hold exactly the `\` bytes the `text` holds. `argfile_text` escapes
+/// every real backslash, so an extra 0x5C can only be a trail byte of a multi-byte character, and
+/// Java's parser would take it for an escape and mangle the path.
+fn backslashes_survive(text: &str, bytes: &[u8]) -> bool {
+    text.matches('\\').count() == bytes.iter().filter(|&&b| b == b'\\').count()
 }
 
 #[cfg(windows)]
@@ -1365,6 +1371,9 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn windows_skips_the_argfile_when_the_code_page_cant_hold_a_path() {
+        if system_code_page_is_utf8() {
+            return; // UTF-8 can hold any path, so there is nothing to reject
+        }
         // No Windows ANSI code page holds both CJK and Cyrillic, and none maps emoji.
         assert_eq!(encode_argfile("\"C:/Users/玩家/Игрок/🎮\"\n"), None);
     }
@@ -1372,6 +1381,9 @@ mod tests {
     #[cfg(windows)]
     #[tokio::test]
     async fn an_unencodable_argfile_falls_back_to_the_command_line() {
+        if system_code_page_is_utf8() {
+            return; // UTF-8 can hold any path, so there is nothing to fall back from
+        }
         let tmp = tempfile::tempdir().unwrap();
         let cmd = LaunchCommand {
             args: vec![
@@ -1393,5 +1405,23 @@ mod tests {
         .unwrap();
         assert_eq!(out.args, cmd.args);
         assert!(!file.exists());
+    }
+
+    #[test]
+    fn backslashes_survive_only_when_no_trail_byte_is_a_backslash() {
+        assert!(backslashes_survive("a\\b", b"a\\b"));
+        assert!(backslashes_survive("plain", b"plain"));
+        // Shift-JIS encodes 表 as 0x95 0x5C: the second byte reads as a backslash to Java.
+        assert!(!backslashes_survive("表", &[0x95, 0x5C]));
+    }
+
+    /// True when the system code page is UTF-8, which can encode every character.
+    #[cfg(windows)]
+    fn system_code_page_is_utf8() -> bool {
+        // SAFETY: GetACP takes no arguments and only reads system state.
+        #[allow(unsafe_code)]
+        unsafe {
+            windows_sys::Win32::Globalization::GetACP() == 65001
+        }
     }
 }
