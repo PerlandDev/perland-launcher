@@ -12,6 +12,7 @@ use launcher_core::{
     accounts::{AccountStore, AccountsFile, BuildKind},
     browse::compat::ContentKind,
     content,
+    diagnostics::{self, SystemInfo},
     fsutil::path_key,
     instance_order::{apply_order, keep_in_place, rename_in_order, OrderStore},
     instances::{
@@ -26,7 +27,7 @@ use launcher_core::{
     },
     mods::{self, LocalMod},
     paths::LauncherDirs,
-    settings::{Settings, SettingsStore},
+    settings::{Channel, Settings, SettingsStore},
     sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
     ErrorCode, LauncherError, Result,
 };
@@ -104,6 +105,8 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) plan_seq: AtomicU64,
     /// Instances a content install is writing into. Lock order: `runs`, then this.
     pub(crate) installing: Mutex<HashSet<String>>,
+    /// The file the last diagnostics export wrote (for "Show in folder").
+    last_export: Mutex<Option<PathBuf>>,
 }
 
 pub(crate) fn busy(id: &str) -> LauncherError {
@@ -150,6 +153,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             plans: Mutex::new(HashMap::new()),
             plan_seq: AtomicU64::new(0),
             installing: Mutex::new(HashSet::new()),
+            last_export: Mutex::new(None),
             config,
         })
     }
@@ -167,6 +171,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .contains(id)
+    }
+
+    /// Restart now and install-on-quit wait while a game runs, an install holds the slot, or a
+    /// content install writes into an instance.
+    pub fn update_blocked(&self) -> bool {
+        self.has_active_runs()
+            || self.install_slot.available_permits() == 0
+            || !self
+                .installing
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty()
     }
 
     /// A damaged accounts file doesn't fail this: Settings needs it to offer "Open data folder",
@@ -198,6 +214,48 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         })
     }
 
+    /// Export diagnostics to `out` (a `.zip` the player picked in the save dialog).
+    /// A name with no extension at all gets `.zip` (some save dialogs return the typed name as is);
+    /// any other extension is refused.
+    pub async fn diagnostics_export(&self, out: PathBuf, os: String) -> Result<PathBuf> {
+        let out = if out.extension().is_none() && out.file_name().is_some() {
+            out.with_extension("zip")
+        } else {
+            out
+        };
+        if !out
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("zip"))
+        {
+            return Err(LauncherError::disk(
+                ErrorCode::DiagnosticsPathInvalid,
+                "Diagnostics are saved as a .zip file",
+            )
+            .with_fix("Pick a file name that ends in .zip"));
+        }
+        let channel =
+            Channel::effective(self.settings_get().await.update_channel, self.config.build);
+        let info = SystemInfo {
+            launcher_version: self.config.launcher_version.clone(),
+            build: format!("{:?}", self.config.build).to_lowercase(),
+            update_channel: format!("{channel:?}").to_lowercase(),
+            os,
+            arch: std::env::consts::ARCH.into(),
+            total_memory_mb: self.config.system_memory_mb,
+        };
+        diagnostics::export(&self.config.dirs, &info, &out).await?;
+        *self.last_export.lock().unwrap_or_else(|e| e.into_inner()) = Some(out.clone());
+        Ok(out)
+    }
+
+    /// The file the last export wrote, for "Show in folder" (never a path from the webview).
+    pub fn diagnostics_last(&self) -> Option<PathBuf> {
+        self.last_export
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
     /// The saved settings, or the defaults. A damaged file is reported once as a warning.
     pub async fn settings_get(&self) -> Settings {
         let (settings, warning) = self.settings.lock().await.load().await;
@@ -210,6 +268,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
         }
         settings
+    }
+
+    /// The update channel to follow, read without the warn-once path: startup reads this before
+    /// the UI listens, so a damaged file's warning stays for the UI's first `settings_get`.
+    pub async fn update_channel(&self) -> Channel {
+        let (settings, _) = self.settings.lock().await.load().await;
+        Channel::effective(settings.update_channel, self.config.build)
     }
 
     pub async fn settings_set(&self, settings: Settings) -> Result<Settings> {
@@ -581,6 +646,11 @@ pub(crate) mod tests {
             release.account_add_offline("Steve").await.unwrap_err().code,
             ErrorCode::OfflineLocked
         );
+        let (beta, _, _, _t3) = core(BuildKind::Beta);
+        let info = beta.app_info().await.unwrap();
+        assert_eq!(info.build, Build::Beta);
+        assert!(info.offline_allowed);
+        beta.account_add_offline("Steve").await.unwrap();
     }
 
     #[tokio::test]
@@ -646,6 +716,17 @@ pub(crate) mod tests {
         let (core, _, host, tmp) = core(BuildKind::Dev);
         std::fs::write(tmp.path().join("settings.json"), "{nope").unwrap();
         assert_eq!(core.settings_get().await, Settings::default());
+        core.settings_get().await;
+        assert_eq!(host.warnings(), vec![ErrorCode::SettingsDamaged]);
+    }
+
+    #[tokio::test]
+    async fn the_startup_channel_read_leaves_the_settings_warning_for_the_ui() {
+        let (core, _, host, tmp) = core(BuildKind::Beta);
+        std::fs::write(tmp.path().join("settings.json"), "{nope").unwrap();
+        assert_eq!(core.update_channel().await, Channel::Beta);
+        assert!(host.warnings().is_empty());
+        core.settings_get().await;
         core.settings_get().await;
         assert_eq!(host.warnings(), vec![ErrorCode::SettingsDamaged]);
     }
@@ -1009,6 +1090,17 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn an_install_or_content_install_blocks_updates() {
+        let (core, _, _, _t) = core(BuildKind::Beta);
+        assert!(!core.update_blocked());
+        let permit = core.install_slot.clone().try_acquire_owned().unwrap();
+        assert!(core.update_blocked());
+        drop(permit);
+        core.installing.lock().unwrap().insert("asalith".into());
+        assert!(core.update_blocked());
+    }
+
+    #[tokio::test]
     async fn accounts_add_switch_remove() {
         let (core, _, _, _t) = core(BuildKind::Dev);
         let steve = core.account_add_offline("Steve").await.unwrap();
@@ -1031,5 +1123,46 @@ pub(crate) mod tests {
                 .code,
             ErrorCode::JavaTestFailed
         );
+    }
+
+    #[tokio::test]
+    async fn diagnostics_export_writes_a_zip_and_remembers_it() {
+        let (core, _, _, tmp) = core(BuildKind::Beta);
+        let out = tmp.path().join("perland-diagnostics.zip");
+        assert_eq!(
+            core.diagnostics_export(out.clone(), "Windows 11".into())
+                .await
+                .unwrap(),
+            out
+        );
+        assert!(out.is_file());
+        assert_eq!(core.diagnostics_last(), Some(out));
+    }
+
+    #[tokio::test]
+    async fn diagnostics_must_be_a_zip() {
+        let (core, _, _, tmp) = core(BuildKind::Beta);
+        let err = core
+            .diagnostics_export(tmp.path().join("notes.txt"), "Windows 11".into())
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::DiagnosticsPathInvalid);
+        assert_eq!(core.diagnostics_last(), None);
+    }
+
+    #[tokio::test]
+    async fn diagnostics_without_an_extension_get_zip_appended() {
+        // Some save dialogs (GTK) return the typed name as is.
+        let (core, _, _, tmp) = core(BuildKind::Beta);
+        let picked = tmp.path().join("perland-diagnostics");
+        let out = tmp.path().join("perland-diagnostics.zip");
+        assert_eq!(
+            core.diagnostics_export(picked.clone(), "Linux".into())
+                .await
+                .unwrap(),
+            out
+        );
+        assert!(out.is_file() && !picked.exists());
+        assert_eq!(core.diagnostics_last(), Some(out));
     }
 }

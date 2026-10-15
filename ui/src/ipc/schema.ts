@@ -12,6 +12,17 @@ export const launcherError = z.strictObject({
   params: z.record(z.string(), z.string()),
 });
 
+export const updateState = z.discriminatedUnion('state', [
+  z.strictObject({ state: z.literal('off') }),
+  z.strictObject({ state: z.literal('idle') }),
+  z.strictObject({ state: z.literal('checking') }),
+  z.strictObject({ state: z.literal('downloading'), percent: z.number().int().nullable() }),
+  z.strictObject({ state: z.literal('ready'), version: z.string() }),
+  z.strictObject({ state: z.literal('up_to_date') }),
+  z.strictObject({ state: z.literal('failed'), error: launcherError }),
+]);
+export type UpdateState = z.infer<typeof updateState>;
+
 export const loaderKind = z.enum(['fabric', 'quilt', 'forge', 'neoforge']);
 export const loaderSpec = z.strictObject({ kind: loaderKind, version: z.string() });
 export const gameSpec = z.strictObject({ minecraft: z.string(), loader: loaderSpec.nullable() });
@@ -98,17 +109,19 @@ export const accountsFile = z.strictObject({
 });
 
 export const lang = z.enum(['en', 'es']);
+export const channel = z.enum(['stable', 'beta']);
 export const settings = z.strictObject({
   version: z.number().int(),
   language: lang.nullable(),
   defaultMemoryMb: z.number().int(),
   minimizeOnPlay: z.boolean(),
   firstRunDone: z.boolean(),
+  updateChannel: channel.nullable(),
   railExpanded: z.boolean(),
 });
 export const appInfo = z.strictObject({
   version: z.string(),
-  build: z.enum(['dev', 'release']),
+  build: z.enum(['dev', 'beta', 'release']),
   offlineAllowed: z.boolean(),
   systemMemoryMb: z.number().int(),
   dataDir: z.string(),
@@ -200,6 +213,7 @@ export const appEvent = z.discriminatedUnion('type', [
   }),
   z.strictObject({ type: z.literal('warning'), instance: z.string().nullable(), error: launcherError }),
   z.strictObject({ type: z.literal('deep_link') }),
+  z.strictObject({ type: z.literal('update'), state: updateState }),
 ]);
 export const runSnapshot = z.strictObject({ instance: z.string(), state: runStateKind, update: packUpdate.nullable() });
 export const packStatus = z.strictObject({
@@ -337,6 +351,7 @@ export type InstanceListing = z.infer<typeof instanceListing>;
 export type Account = z.infer<typeof account>;
 export type AccountsFile = z.infer<typeof accountsFile>;
 export type Lang = z.infer<typeof lang>;
+export type Channel = z.infer<typeof channel>;
 export type Settings = z.infer<typeof settings>;
 export type AppInfo = z.infer<typeof appInfo>;
 export type McVersion = z.infer<typeof mcVersion>;

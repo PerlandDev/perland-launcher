@@ -28,6 +28,21 @@ describe('describeError', () => {
     expect(text.fix).toBe('Check the version number');
   });
 
+  it('names the damaged .mrpack entry, and drops the name when the whole archive is damaged', async () => {
+    await i18n.changeLanguage('es');
+    const corrupt = { category: 'pack', code: 'mrpack_corrupt', message: 'x', fix: null, detail: null } as const;
+    expect(describeError(i18n, { ...corrupt, params: { file: 'config/a.txt' } }).message).toBe(
+      'Este archivo .mrpack está dañado (config/a.txt).',
+    );
+    expect(describeError(i18n, { ...corrupt, params: { context: 'archive' } }).message).toBe(
+      'Este archivo .mrpack está dañado.',
+    );
+    await i18n.changeLanguage('en');
+    expect(describeError(i18n, { ...corrupt, params: { context: 'archive' } }).message).toBe(
+      'This .mrpack file is damaged.',
+    );
+  });
+
   it('wraps anything that is not a LauncherError', () => {
     expect(isLauncherError(new Error('x'))).toBe(false);
     const text = describeError(i18n, new Error('boom'));

@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
-import { applyContentProgress, contentProgressSnapshot } from '../../state/contentProgress';
+import { applyContentProgress, contentInstalling, contentProgressSnapshot } from '../../state/contentProgress';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
@@ -106,6 +106,23 @@ it('leaves no progress meter behind when an install fails', async () => {
   expect(await screen.findByText('That took too long. Try installing again.')).toBeInTheDocument();
   expect(contentProgressSnapshot('asalith-fields')).toBeNull();
   expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  expect(contentInstalling()).toBe(false);
+});
+
+it('counts as an install in flight (Restart now waits) only while browse_install runs', async () => {
+  const backend = createMockBackend();
+  const during: boolean[] = [];
+  const { user } = renderWithProviders(page('faithful', 'asalith-fields'), {
+    ipc: (cmd, args) => {
+      if (cmd === 'browse_install') during.push(contentInstalling());
+      return backend.handle(cmd, args);
+    },
+  });
+  expect(contentInstalling()).toBe(false);
+  await user.click(await screen.findByRole('button', { name: 'Install' }));
+  expect(await screen.findByText('Added Faithful to Asalith Fields')).toBeInTheDocument();
+  expect(during).toEqual([true]);
+  expect(contentInstalling()).toBe(false);
 });
 
 const unreachable = {

@@ -17,6 +17,9 @@ use crate::{
     fsutil::write_atomic,
 };
 
+/// The largest metadata answer read; a bigger one is refused as unexpected data.
+pub const MAX_META_BYTES: usize = 32 << 20;
+
 /// Fetches upstream metadata and keeps the last good copy on disk, so the launcher works offline.
 ///
 /// A fresh response only replaces the cached copy after it passes validation (it parses, or its
@@ -25,6 +28,7 @@ use crate::{
 pub struct MetaClient {
     http: reqwest::Client,
     dir: PathBuf,
+    limit: usize,
 }
 
 impl MetaClient {
@@ -32,7 +36,14 @@ impl MetaClient {
         Self {
             http,
             dir: dir.into(),
+            limit: MAX_META_BYTES,
         }
+    }
+
+    /// Refuse answers over `limit` bytes (default [`MAX_META_BYTES`]).
+    pub fn with_limit(mut self, limit: usize) -> Self {
+        self.limit = limit;
+        self
     }
 
     fn body_path(&self, url: &str) -> PathBuf {
@@ -88,14 +99,29 @@ impl MetaClient {
                     .get(ETAG)
                     .and_then(|v| v.to_str().ok())
                     .map(str::to_owned);
-                let bytes = resp.bytes().await.map_err(|e| {
-                    LauncherError::network(
-                        ErrorCode::ConnectionDropped,
-                        format!("Downloading from {} was interrupted", host_of(url)),
-                    )
-                    .with_param("host", host_of(url))
-                    .with_detail(e.without_url())
-                })?;
+                let bytes = match crate::http::read_capped(resp, self.limit).await {
+                    Ok(Some(bytes)) => bytes,
+                    Ok(None) => {
+                        let too_big = LauncherError::loader(
+                            ErrorCode::MetaUnexpected,
+                            format!("Unexpected data from {}", host_of(url)),
+                        )
+                        .with_param("host", host_of(url))
+                        .with_detail(format!("the answer is over {} MB", self.limit >> 20));
+                        return match cached {
+                            Some(c) if validate(&c).is_ok() => Ok(c),
+                            _ => Err(too_big),
+                        };
+                    }
+                    Err(e) => {
+                        return Err(LauncherError::network(
+                            ErrorCode::ConnectionDropped,
+                            format!("Downloading from {} was interrupted", host_of(url)),
+                        )
+                        .with_param("host", host_of(url))
+                        .with_detail(e.without_url()))
+                    }
+                };
                 if let Err(invalid) = validate(&bytes) {
                     return match cached {
                         Some(c) if validate(&c).is_ok() => Ok(c),
@@ -113,7 +139,7 @@ impl MetaClient {
                         let _ = tokio::fs::remove_file(self.etag_path(url)).await;
                     }
                 }
-                Ok(bytes.to_vec())
+                Ok(bytes)
             }
             Ok(resp) => match cached {
                 Some(c) => Ok(c),

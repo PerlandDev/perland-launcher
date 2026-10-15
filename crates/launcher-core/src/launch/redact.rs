@@ -50,6 +50,12 @@ impl Redactor {
             out = out.replace(secret.as_str(), "<redacted>");
         }
         if let Some(home) = &self.home {
+            // Debug-formatted log fields double every backslash, and Java prints Windows paths
+            // with forward slashes, so mask those forms too.
+            if home.contains('\\') {
+                out = out.replace(home.replace('\\', "\\\\").as_str(), "~");
+                out = out.replace(home.replace('\\', "/").as_str(), "~");
+            }
             out = out.replace(home.as_str(), "~");
         }
         out
@@ -91,6 +97,26 @@ mod tests {
             .with_home("C:\\Users\\mmxtu");
         let out = r.redact("token=eyJhbGciOiJ.secret.token dir=C:\\Users\\mmxtu\\AppData");
         assert_eq!(out, "token=<redacted> dir=~\\AppData");
+    }
+
+    #[test]
+    fn the_home_path_is_masked_in_its_backslash_escaped_form_too() {
+        let r = Redactor::new().with_home(r"C:\Users\steve");
+        assert_eq!(r.redact(r"C:\Users\steve\x"), r"~\x");
+        assert_eq!(r.redact(r"C:\\Users\\steve\\x"), r"~\\x");
+        assert_eq!(r.redact_cut(r"C:\\Users\\steve\\x"), r"~\\x");
+    }
+
+    #[test]
+    fn the_forward_slash_form_of_a_windows_home_is_masked_too() {
+        let r = Redactor::new().with_home(r"C:\Users\steve");
+        assert_eq!(
+            r.redact("game dir C:/Users/steve/AppData/x"),
+            "game dir ~/AppData/x"
+        );
+        // A POSIX home is left as it is.
+        let posix = Redactor::new().with_home("/home/steve");
+        assert_eq!(posix.redact("/home/steve/x"), "~/x");
     }
 
     #[test]

@@ -2,6 +2,7 @@
 pub mod accounts;
 pub mod browse;
 pub mod content;
+pub mod diagnostics;
 pub mod download;
 pub mod error;
 pub mod events;
@@ -14,6 +15,7 @@ pub mod invite;
 pub mod java;
 pub mod launch;
 pub mod locks;
+pub mod logging;
 pub mod meta;
 pub mod mods;
 pub mod paths;

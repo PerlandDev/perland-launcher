@@ -14,6 +14,8 @@ import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Select } from '../../ui/Select';
 import { Toggle } from '../../ui/Toggle';
 import { useSingleFlight } from '../../ui/useSingleFlight';
+import { Diagnostics } from './Diagnostics';
+import { LauncherUpdates } from './LauncherUpdates';
 import { useSettingsDraft } from './useSettingsDraft';
 
 const SOURCE = 'https://github.com/PerlandDev/perland-launcher';
@@ -95,6 +97,8 @@ export function Settings() {
             </Button>
           </div>
         </div>
+        <LauncherUpdates appInfo={appInfo.data} choice={data.updateChannel} onChannel={(updateChannel) => edit({ updateChannel })} />
+        <Diagnostics />
         <section className="panel grid gap-4 p-6" aria-labelledby="about-heading">
           <div className="flex items-center gap-4">
             <img src={mark} alt="" width={56} height={48} />
@@ -103,6 +107,7 @@ export function Settings() {
               <p className="text-sm text-ink-dim">
                 {t('settings.version', { version: appInfo.data.version })}
                 {appInfo.data.build === 'dev' && ` · ${t('settings.devBuild')}`}
+                {appInfo.data.build === 'beta' && ` · ${t('settings.betaBuild')}`}
               </p>
             </div>
           </div>

@@ -51,6 +51,7 @@
   "loader_output_corrupt",
   "settings_damaged",
   "log_write_stopped",
+  "diagnostics_path_invalid",
   "mod_not_jar",
   "mod_exists",
   "mod_not_found",
@@ -62,6 +63,7 @@
   "pack_not_found",
   "pack_link_invalid",
   "no_pack",
+  "mrpack_corrupt",
   "not_enough_space",
   "instance_locked",
   "instance_folder_in_use",
@@ -90,5 +92,8 @@
   "server_pack_unavailable",
   "server_pack_pending",
   "server_address_unknown",
+  "launcher_update_failed",
+  "launcher_update_invalid",
+  "launcher_update_busy",
   "internal"
 ]

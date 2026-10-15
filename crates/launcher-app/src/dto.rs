@@ -23,6 +23,7 @@ use crate::events::RunStateKind;
 #[serde(rename_all = "snake_case")]
 pub enum Build {
     Dev,
+    Beta,
     Release,
 }
 
@@ -30,6 +31,7 @@ impl From<BuildKind> for Build {
     fn from(kind: BuildKind) -> Self {
         match kind {
             BuildKind::Dev => Build::Dev,
+            BuildKind::Beta => Build::Beta,
             BuildKind::Release => Build::Release,
         }
     }

@@ -56,11 +56,11 @@ error_codes! {
     MetaChecksum, MetaUnexpected, LoaderInstallerInvalid, LoaderTooOld, LoaderProcessorFailed,
     LoaderOutputCorrupt,
     // settings and logs
-    SettingsDamaged, LogWriteStopped,
+    SettingsDamaged, LogWriteStopped, DiagnosticsPathInvalid,
     // mods
     ModNotJar, ModExists, ModNotFound, ModNameInvalid, ModManaged,
     // packs and sync
-    PackInvalid, PackUnsupported, PackUnsafePath, PackNotFound, PackLinkInvalid, NoPack,
+    PackInvalid, PackUnsupported, PackUnsafePath, PackNotFound, PackLinkInvalid, NoPack, MrpackCorrupt,
     NotEnoughSpace, InstanceLocked, InstanceFolderInUse, ManualDownloadsNeeded, UpdateCheckFailed, PackPathIsFolder, SyncCancelled, UpdateDownloadFailed,
     // browse
     BrowseRateLimited, ContentNotFound, ContentIncompatible, ContentDependencyMissing,
@@ -69,6 +69,8 @@ error_codes! {
     // server invites (join by link)
     InviteLinkInvalid, InviteGone, InviteUnsupported, InviteSiteUnreachable, InviteRateLimited,
     ServerPackUnavailable, ServerPackPending, ServerAddressUnknown,
+    // launcher updates
+    LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
     // anything unexpected
     Internal,
 }
@@ -151,6 +153,28 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
+    fn launcher_update_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::LauncherUpdateFailed, "launcher_update_failed"),
+            (ErrorCode::LauncherUpdateInvalid, "launcher_update_invalid"),
+            (ErrorCode::LauncherUpdateBusy, "launcher_update_busy"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
+    fn diagnostics_code_exists() {
+        let code = ErrorCode::DiagnosticsPathInvalid;
+        assert_eq!(
+            serde_json::to_value(code).unwrap(),
+            "diagnostics_path_invalid"
+        );
+        assert!(ErrorCode::ALL.contains(&code));
+    }
+
+    #[test]
     fn pack_codes_exist() {
         for (code, wire) in [
             (ErrorCode::PackInvalid, "pack_invalid"),
@@ -159,6 +183,7 @@ mod tests {
             (ErrorCode::PackNotFound, "pack_not_found"),
             (ErrorCode::PackLinkInvalid, "pack_link_invalid"),
             (ErrorCode::NoPack, "no_pack"),
+            (ErrorCode::MrpackCorrupt, "mrpack_corrupt"),
             (ErrorCode::NotEnoughSpace, "not_enough_space"),
             (ErrorCode::InstanceLocked, "instance_locked"),
             (ErrorCode::InstanceFolderInUse, "instance_folder_in_use"),

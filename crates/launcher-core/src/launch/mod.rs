@@ -342,9 +342,79 @@ pub fn argfile_text(args: &[String]) -> String {
     out
 }
 
+/// The bytes Java reads an argfile as. Java's launcher reads `@argfiles` in the system ANSI code
+/// page on Windows, so they are encoded in it (or as UTF-8 when the system code page is UTF-8);
+/// elsewhere it is UTF-8. `None` when some character has no form in that code page, or when its
+/// form holds a stray `\` byte (a trail byte of a multi-byte character, as in Shift-JIS), which
+/// Java would read as an escape.
+pub fn encode_argfile(text: &str) -> Option<Vec<u8>> {
+    #[cfg(windows)]
+    let bytes = ansi_bytes(text)?;
+    #[cfg(not(windows))]
+    let bytes = text.as_bytes().to_vec();
+    backslashes_survive(text, &bytes).then_some(bytes)
+}
+
+/// Whether the encoded `bytes` hold exactly the `\` bytes the `text` holds. `argfile_text` escapes
+/// every real backslash, so an extra 0x5C can only be a trail byte of a multi-byte character, and
+/// Java's parser would take it for an escape and mangle the path.
+fn backslashes_survive(text: &str, bytes: &[u8]) -> bool {
+    text.matches('\\').count() == bytes.iter().filter(|&&b| b == b'\\').count()
+}
+
+#[cfg(windows)]
+#[allow(unsafe_code)]
+fn ansi_bytes(text: &str) -> Option<Vec<u8>> {
+    use windows_sys::Win32::Globalization::{
+        GetACP, WideCharToMultiByte, CP_ACP, WC_NO_BEST_FIT_CHARS,
+    };
+    // SAFETY: GetACP takes no arguments and only reads system state.
+    if unsafe { GetACP() } == 65001 {
+        return Some(text.as_bytes().to_vec());
+    }
+    let wide: Vec<u16> = text.encode_utf16().collect();
+    if wide.is_empty() {
+        return Some(Vec::new());
+    }
+    let mut lossy = 0;
+    // SAFETY: `wide` is a valid UTF-16 buffer of the given length; a null output buffer with
+    // size 0 asks only for the needed size; `lossy` is a valid out pointer.
+    let needed = unsafe {
+        WideCharToMultiByte(
+            CP_ACP,
+            WC_NO_BEST_FIT_CHARS,
+            wide.as_ptr(),
+            wide.len() as i32,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null(),
+            &mut lossy,
+        )
+    };
+    if needed <= 0 || lossy != 0 {
+        return None;
+    }
+    let mut out = vec![0u8; needed as usize];
+    // SAFETY: `out` has exactly `needed` bytes, as measured above.
+    let written = unsafe {
+        WideCharToMultiByte(
+            CP_ACP,
+            WC_NO_BEST_FIT_CHARS,
+            wide.as_ptr(),
+            wide.len() as i32,
+            out.as_mut_ptr(),
+            needed,
+            std::ptr::null(),
+            &mut lossy,
+        )
+    };
+    (written == needed && lossy == 0).then_some(out)
+}
+
 /// Move the JVM arguments (everything before `main_class`) into the argfile at `path`. The game
 /// arguments, which carry the access token, stay on the command line. If any JVM argument holds
-/// `secret`, nothing is written and the command comes back unchanged.
+/// `secret`, or the system code page can't hold some character of them (see [`encode_argfile`]),
+/// nothing is written and the command comes back unchanged.
 pub async fn with_argfile(
     cmd: &LaunchCommand,
     main_class: &str,
@@ -358,7 +428,12 @@ pub async fn with_argfile(
     if secret.len() >= 4 && jvm.iter().any(|a| a.contains(secret)) {
         return Ok(cmd.clone());
     }
-    write_atomic(path, argfile_text(jvm).as_bytes()).await?;
+    // A path the system code page can't hold: keep the plain command line (below Windows'
+    // 32k limit it still starts; above it, the spawn fails with the usual start error).
+    let Some(bytes) = encode_argfile(&argfile_text(jvm)) else {
+        return Ok(cmd.clone());
+    };
+    write_atomic(path, &bytes).await?;
     let mut args = vec![format!("@{}", path.display())];
     args.extend_from_slice(&cmd.args[split..]);
     Ok(LaunchCommand {
@@ -1274,5 +1349,79 @@ mod tests {
             "{text}"
         );
         assert!(text.contains("perland.plain = ok"), "{text}");
+    }
+
+    #[test]
+    fn ascii_argfiles_encode_as_is() {
+        assert_eq!(
+            encode_argfile("\"-Xmx4G\"\n").unwrap(),
+            b"\"-Xmx4G\"\n".to_vec()
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn other_platforms_write_utf8() {
+        assert_eq!(
+            encode_argfile("\"C:/Jugadores/Ñandú\"\n").unwrap(),
+            "\"C:/Jugadores/Ñandú\"\n".as_bytes().to_vec()
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_skips_the_argfile_when_the_code_page_cant_hold_a_path() {
+        if system_code_page_is_utf8() {
+            return; // UTF-8 can hold any path, so there is nothing to reject
+        }
+        // No Windows ANSI code page holds both CJK and Cyrillic, and none maps emoji.
+        assert_eq!(encode_argfile("\"C:/Users/玩家/Игрок/🎮\"\n"), None);
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn an_unencodable_argfile_falls_back_to_the_command_line() {
+        if system_code_page_is_utf8() {
+            return; // UTF-8 can hold any path, so there is nothing to fall back from
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let cmd = LaunchCommand {
+            args: vec![
+                "-Djava.library.path=C:/玩家/Игрок/🎮".into(),
+                "net.minecraft.client.main.Main".into(),
+                "--accessToken".into(),
+                "tok-0123456789".into(),
+            ],
+            ..long_command()
+        };
+        let file = tmp.path().join("jvm-args.txt");
+        let out = with_argfile(
+            &cmd,
+            "net.minecraft.client.main.Main",
+            &file,
+            "tok-0123456789",
+        )
+        .await
+        .unwrap();
+        assert_eq!(out.args, cmd.args);
+        assert!(!file.exists());
+    }
+
+    #[test]
+    fn backslashes_survive_only_when_no_trail_byte_is_a_backslash() {
+        assert!(backslashes_survive("a\\b", b"a\\b"));
+        assert!(backslashes_survive("plain", b"plain"));
+        // Shift-JIS encodes 表 as 0x95 0x5C: the second byte reads as a backslash to Java.
+        assert!(!backslashes_survive("表", &[0x95, 0x5C]));
+    }
+
+    /// True when the system code page is UTF-8, which can encode every character.
+    #[cfg(windows)]
+    fn system_code_page_is_utf8() -> bool {
+        // SAFETY: GetACP takes no arguments and only reads system state.
+        #[allow(unsafe_code)]
+        unsafe {
+            windows_sys::Win32::Globalization::GetACP() == 65001
+        }
     }
 }

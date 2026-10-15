@@ -357,6 +357,9 @@ async fn fetch_sidecar(src: &Sources, pack_url: &reqwest::Url) -> PackAbout {
     }
 }
 
+/// The largest `pack.toml` the update check reads.
+pub const MAX_PACK_TOML_BYTES: usize = 1 << 20;
+
 /// The cheap check (spec §3.1): fetch `pack.toml` fresh and compare its sha256. Never fails:
 /// problems come back as `Unavailable` so the player can still play what they have.
 pub async fn check(src: &Sources, pack_url: &str, installed_stamp: &str) -> UpdateCheck {
@@ -382,8 +385,9 @@ pub async fn check(src: &Sources, pack_url: &str, installed_stamp: &str) -> Upda
             response.status()
         ));
     }
-    let bytes = match response.bytes().await {
-        Ok(b) => b,
+    let bytes = match crate::http::read_capped(response, MAX_PACK_TOML_BYTES).await {
+        Ok(Some(b)) => b,
+        Ok(None) => return unavailable("pack.toml is over 1 MB".into()),
         Err(e) => return unavailable(e.without_url().to_string()),
     };
     let pack = match parse_pack(&bytes) {

@@ -20,7 +20,13 @@ toml.workspace = true
 percent-encoding.workspace = true
 fs4.workspace = true
 dirs.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 wiremock.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Globalization"] }

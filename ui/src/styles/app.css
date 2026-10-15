@@ -872,6 +872,29 @@
     color: var(--color-ground);
     background: var(--color-coral);
   }
+  /* The update-ready note: dim words and a flat Restart now, never lit. One line always; when the bar
+     runs short the words truncate and Restart now keeps its room. */
+  .tb-note {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.25rem;
+    padding-right: 0.25rem;
+    font-size: 0.875rem;
+    color: var(--color-ink-dim);
+    white-space: nowrap;
+  }
+  .tb-restart {
+    flex: none;
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+  .tb-restart:disabled {
+    color: var(--color-ink-dim);
+    background: transparent;
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
   /* The rail: a column of cabinets on the ground, its key at the top and Browse and New at the foot.
      Compact it is 4.5rem of icons; wide (15rem, the player's choice in settings) each cabinet becomes a
      long plate with the name and status word beside its icon. The switch snaps, like every state change. */
@@ -1850,6 +1873,10 @@
     /* Centred on the first line of 15px / 1.5 text. */
     margin-top: 0.4375rem;
     background: var(--color-blue);
+  }
+  /* A readout with nothing on its way (Settings' update status when idle, up to date or failed): no lamp. */
+  .note-plate[data-lamp='none']::before {
+    display: none;
   }
   /* Nothing here yet: the slot the rows will fill, drawn as a flat seam ring. */
   .empty-slot {

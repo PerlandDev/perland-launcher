@@ -33,6 +33,7 @@ import searchRequests from './contract/search_requests.json';
 import serverInstanceFx from './contract/server_instance.json';
 import serverStatusFx from './contract/server_status.json';
 import settingsFx from './contract/settings.json';
+import updateStates from './contract/update_states.json';
 import versions from './contract/versions.json';
 import { decodeEvent } from './events';
 import * as s from './schema';
@@ -63,6 +64,7 @@ const cases: [string, ZodType, unknown][] = [
   ['server_status', s.serverStatusView.array(), serverStatusFx],
   ['deep_links', s.deepLink.array(), deepLinksFx],
   ['invite_links', s.inviteLinkCase.array(), inviteLinksFx],
+  ['update_states', s.updateState.array(), updateStates],
   ['events', s.appEvent.array(), events],
   ['search_page', s.searchPage, searchPage],
   ['project_detail', s.projectDetail, projectDetail],

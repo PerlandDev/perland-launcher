@@ -52,6 +52,7 @@ import type {
   SearchRequest,
   Settings,
   SyncSummary,
+  UpdateState,
   VersionInfo,
 } from './schema';
 
@@ -59,6 +60,10 @@ export interface MockOptions {
   firstRun?: boolean;
   crash?: boolean;
   release?: boolean;
+  /** An optimized beta build: offline accounts stay open, About says so. */
+  beta?: boolean;
+  /** The launcher's own update state; defaults to idle on release and beta builds, off in dev. */
+  update?: UpdateState;
   /** The pack's first sync ends with two files the player has to download by hand. */
   manual?: boolean;
   /** The pack has no update on offer. */
@@ -67,6 +72,8 @@ export interface MockOptions {
   link?: string;
   /** Seeds the `survival` Perland server and picks how its invite answers. */
   server?: ServerScenario;
+  /** What the save dialog returns; null means the player cancelled. Defaults to a zip in Downloads. */
+  savePath?: string | null;
   /** The rail starts wide, with names. */
   railExpanded?: boolean;
 }
@@ -199,9 +206,10 @@ function seed(options: MockOptions) {
   }
   const appInfo: AppInfo = {
     ...(clone(appInfoFx) as AppInfo),
-    build: options.release ? 'release' : 'dev',
+    build: options.release ? 'release' : options.beta ? 'beta' : 'dev',
     offlineAllowed: !options.release,
   };
+  const update: UpdateState = options.update ?? { state: options.release || options.beta ? 'idle' : 'off' };
   const mods = new Map<string, LocalMod[]>([['asalith-fields', clone(localModsFx) as LocalMod[]]]);
   const packs = new Map<string, MockPack>();
   // Resource packs and shaders per instance and kind, like the real folders. Mods have their own list.
@@ -261,6 +269,7 @@ function seed(options: MockOptions) {
     accounts,
     settings,
     appInfo,
+    update,
     mods,
     packs,
     // The player's own picture per instance, as a data URL (the real one lives in .perland/custom/).
@@ -556,6 +565,16 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'settings_set':
       state.settings = args.settings as Settings;
       return state.settings;
+    case 'update_status':
+      return state.update;
+    case 'update_check':
+      if (state.update.state === 'off' || state.update.state === 'ready') return state.update;
+      state.update = { state: 'up_to_date' };
+      event({ type: 'update', state: state.update });
+      return state.update;
+    case 'update_restart':
+      if (state.runs.size > 0) fail('game', 'launcher_update_busy', 'Wait for games and installs to finish before restarting to update');
+      return null;
     case 'instances_list':
       return applyOrder(state);
     case 'instance_reorder': {
@@ -898,6 +917,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.content.set(key, left);
       return clone(left);
     }
+    case 'diagnostics_reveal':
     case 'open_folder':
     case 'quit':
       return null;
@@ -911,6 +931,14 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const path = 'C:/Users/player/Downloads/lithium-fabric-0.11.2.jar';
       return options?.multiple ? [path] : path;
     }
+    case 'diagnostics_export':
+      return (args as { path: string }).path;
+    case 'plugin:dialog|save':
+      return state.options.savePath === undefined ? 'C:/Users/player/Downloads/perland-diagnostics.zip' : state.options.savePath;
+    case 'plugin:path|resolve_directory':
+      return 'C:/Users/player/Downloads';
+    case 'plugin:path|join':
+      return ((args.paths as string[]) ?? []).join('/');
     case 'plugin:window|is_maximized':
       return false;
     default: {
@@ -952,4 +980,25 @@ export function installMock(options: MockOptions = {}) {
   mockWindows('main');
   mockIPC((cmd, args) => backend.handle(cmd, args), { shouldMockEvents: true });
   return backend;
+}
+
+/** The `?update=` preview param: a launcher update state by name (dev:mock only). */
+export function mockUpdateState(name: string | null): UpdateState | undefined {
+  switch (name) {
+    case 'idle':
+    case 'checking':
+    case 'up_to_date':
+      return { state: name };
+    case 'downloading':
+      return { state: 'downloading', percent: 40 };
+    case 'ready':
+      return { state: 'ready', version: '0.2.0-beta.2' };
+    case 'failed':
+      return {
+        state: 'failed',
+        error: { category: 'network', code: 'launcher_update_failed', message: "Couldn't check for launcher updates.", fix: null, detail: null, params: {} },
+      };
+    default:
+      return undefined;
+  }
 }

@@ -88,6 +88,24 @@ pub fn allow_redirect_chain(previous: &[reqwest::Url], to: &reqwest::Url) -> boo
     !(was_secure && to.scheme() == "http" && !is_loopback(to))
 }
 
+/// At most `cap` bytes of the body; `None` when it is longer.
+pub async fn read_capped(
+    mut response: reqwest::Response,
+    cap: usize,
+) -> std::result::Result<Option<Vec<u8>>, reqwest::Error> {
+    if response.content_length().is_some_and(|n| n > cap as u64) {
+        return Ok(None);
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        body.extend_from_slice(&chunk);
+        if body.len() > cap {
+            return Ok(None);
+        }
+    }
+    Ok(Some(body))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

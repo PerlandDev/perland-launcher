@@ -154,8 +154,25 @@ fn index_files(index: &MrIndex) -> Result<Vec<PackFile>> {
         .collect()
 }
 
+/// An entry of the archive is damaged (it won't inflate, or it changed), which is not a disk
+/// problem.
+fn corrupt(file: &str, detail: impl std::fmt::Display) -> LauncherError {
+    LauncherError::pack(
+        ErrorCode::MrpackCorrupt,
+        format!("This .mrpack file is damaged ({file})"),
+    )
+    .with_param("file", file)
+    .with_fix("Download the pack again")
+    .with_detail(detail)
+}
+
+/// The whole archive is damaged, so there is no entry to name. The `context` param makes i18next
+/// pick `errors.mrpack_corrupt.message_archive`, the message without a file name.
 fn zip_error(e: zip::result::ZipError) -> LauncherError {
-    invalid("the .mrpack", e)
+    LauncherError::pack(ErrorCode::MrpackCorrupt, "This .mrpack file is damaged")
+        .with_param("context", "archive")
+        .with_fix("Download the pack again")
+        .with_detail(e)
 }
 
 /// The sha1 and length of everything `reader` yields.
@@ -185,7 +202,10 @@ pub fn read_archive(
     let index = {
         let entry = zip.by_name(INDEX).map_err(|e| invalid(INDEX, e))?;
         let mut bytes = Vec::new();
-        entry.take(limits.index + 1).read_to_end(&mut bytes)?;
+        entry
+            .take(limits.index + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| corrupt(INDEX, e))?;
         if bytes.len() as u64 > limits.index {
             return Err(invalid(INDEX, "too large"));
         }
@@ -212,7 +232,8 @@ pub fn read_archive(
             if declared > limits.entry || total > limits.total {
                 return Err(invalid(&path, "larger than a pack file may be"));
             }
-            let (sha1, size) = hash_reader((&mut entry).take(declared + 1))?;
+            let (sha1, size) =
+                hash_reader((&mut entry).take(declared + 1)).map_err(|e| corrupt(&path, e))?;
             if size != declared {
                 return Err(invalid(&path, "its size doesn't match the archive"));
             }
@@ -267,7 +288,7 @@ pub fn extract_entry(archive: &Path, entry: &str, dest: &Path, sha1: &str) -> Re
     let mut hasher = Sha1::new();
     let mut buf = vec![0u8; 64 * 1024];
     loop {
-        let n = source.read(&mut buf)?;
+        let n = source.read(&mut buf).map_err(|e| corrupt(entry, e))?;
         if n == 0 {
             break;
         }
@@ -277,7 +298,7 @@ pub fn extract_entry(archive: &Path, entry: &str, dest: &Path, sha1: &str) -> Re
     drop(out);
     if !hex::encode(hasher.finalize()).eq_ignore_ascii_case(sha1) {
         let _ = std::fs::remove_file(dest);
-        return Err(invalid(entry, "it changed since the pack was read"));
+        return Err(corrupt(entry, "it changed since the pack was read"));
     }
     Ok(())
 }

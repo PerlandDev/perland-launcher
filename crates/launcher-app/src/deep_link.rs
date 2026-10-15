@@ -103,9 +103,34 @@ fn parse_pack(link: &url::Url) -> Result<String> {
     }
 }
 
+/// Should this run register `perland://` itself? Installers register it for installed builds
+/// (NSIS on Windows, the `.deb`'s desktop file on Linux); an AppImage has no install step, and a
+/// dev build has no installer.
+pub fn should_self_register(dev: bool, windows: bool, appimage: bool) -> bool {
+    dev || (appimage && !windows)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_dev_runs_and_appimages_register_themselves() {
+        assert!(should_self_register(true, true, false));
+        assert!(should_self_register(true, false, false));
+        assert!(
+            !should_self_register(false, true, false),
+            "the NSIS installer registers it"
+        );
+        assert!(
+            !should_self_register(false, false, false),
+            "the .deb registers it"
+        );
+        assert!(
+            should_self_register(false, false, true),
+            "an AppImage has no install step"
+        );
+    }
 
     #[test]
     fn deep_links_accept_only_https_pack_links() {
