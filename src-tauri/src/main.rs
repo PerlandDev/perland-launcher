@@ -44,6 +44,20 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            // The window is built here rather than from the config so that DevTools exist only
+            // while developing (`tauri dev`): tester builds have debug assertions on, which would
+            // otherwise turn them on (and "Inspect" in the page menu) for players.
+            let window = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|w| w.label == "main")
+                .ok_or("the main window is missing from tauri.conf.json")?
+                .clone();
+            tauri::WebviewWindowBuilder::from_config(app.handle(), &window)?
+                .devtools(cfg!(dev))
+                .build()?;
             // One host for the core and the updater.
             let host = Arc::new(launcher_app::logged::LoggedHost(host::TauriHost::new(
                 app.handle().clone(),
