@@ -100,11 +100,30 @@ pub fn busy_error() -> LauncherError {
     .with_fix("The update also installs when you close the launcher")
 }
 
+/// Restart now with nothing downloaded: said like a failed install, the reason in the detail.
 fn nothing_ready() -> LauncherError {
-    LauncherError::network(
-        ErrorCode::LauncherUpdateFailed,
-        "No launcher update is ready yet",
+    install_error().with_detail("No launcher update is ready yet")
+}
+
+/// Installing failed. A failed signature keeps its own code; anything else becomes
+/// `launcher_update_install_failed`, its cause kept in the detail.
+fn install_failed(e: LauncherError) -> LauncherError {
+    if e.code == ErrorCode::LauncherUpdateInvalid {
+        return e;
+    }
+    let mut out = install_error();
+    out.detail = e.detail.or(Some(e.message));
+    out
+}
+
+/// The fix is true: a failed install puts the download back (see `install_ready`), and
+/// quitting installs it.
+fn install_error() -> LauncherError {
+    LauncherError::disk(
+        ErrorCode::LauncherUpdateInstallFailed,
+        "Couldn't install the launcher update",
     )
+    .with_fix("It tries again when you close the launcher")
 }
 
 impl<S: UpdateSource, H: Host> Updates<S, H> {
@@ -242,7 +261,10 @@ impl<S: UpdateSource, H: Host> Updates<S, H> {
         if busy {
             return Err(busy_error());
         }
-        self.install_ready(true).await.ok_or_else(nothing_ready)?
+        self.install_ready(true)
+            .await
+            .ok_or_else(nothing_ready)?
+            .map_err(install_failed)
     }
 
     /// Install a ready update as the launcher quits, unless something still runs (spec §4.3).
@@ -545,7 +567,7 @@ mod tests {
         );
         assert_eq!(
             updates.restart_now(false).await.unwrap_err().code,
-            ErrorCode::LauncherUpdateFailed
+            ErrorCode::LauncherUpdateInstallFailed
         );
         updates.check().await;
         updates.restart_now(false).await.unwrap();
@@ -586,7 +608,13 @@ mod tests {
             Channel::Beta,
         );
         updates.check().await;
-        assert!(updates.restart_now(false).await.is_err());
+        let failed = updates.restart_now(false).await.unwrap_err();
+        assert_eq!(failed.code, ErrorCode::LauncherUpdateInstallFailed);
+        assert_eq!(
+            failed.detail.as_deref(),
+            Some("no"),
+            "the cause stays in the detail"
+        );
         assert_eq!(updates.status(), ready("0.2.0-beta.2"));
         assert!(updates.on_quit(false).await);
         assert_eq!(
@@ -596,6 +624,23 @@ mod tests {
                 ("0.2.0-beta.2".to_string(), b"setup".to_vec(), false),
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn a_failed_signature_keeps_its_own_code() {
+        let invalid = LauncherError::integrity(ErrorCode::LauncherUpdateInvalid, "bad signature");
+        let source = Arc::new(FakeSource {
+            install_results: StdMutex::new(vec![Err(invalid.clone())]),
+            ..FakeSource::offering("0.2.0-beta.2")
+        });
+        let updates = Updates::new(
+            source.clone(),
+            RecordingHost::new(),
+            BuildKind::Beta,
+            Channel::Beta,
+        );
+        updates.check().await;
+        assert_eq!(updates.restart_now(false).await.unwrap_err(), invalid);
     }
 
     #[tokio::test]

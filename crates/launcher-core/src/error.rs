@@ -70,7 +70,7 @@ error_codes! {
     InviteLinkInvalid, InviteGone, InviteUnsupported, InviteSiteUnreachable, InviteRateLimited,
     ServerPackUnavailable, ServerPackPending, ServerAddressUnknown,
     // launcher updates
-    LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
+    LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy, LauncherUpdateInstallFailed,
     // anything unexpected
     Internal,
 }
@@ -185,6 +185,10 @@ mod tests {
             (ErrorCode::LauncherUpdateFailed, "launcher_update_failed"),
             (ErrorCode::LauncherUpdateInvalid, "launcher_update_invalid"),
             (ErrorCode::LauncherUpdateBusy, "launcher_update_busy"),
+            (
+                ErrorCode::LauncherUpdateInstallFailed,
+                "launcher_update_install_failed",
+            ),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));
