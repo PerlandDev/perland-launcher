@@ -341,10 +341,13 @@ impl Default for JavaSettings {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ArtMode {
-    #[default]
-    Auto,
     Generated,
     Custom,
+    /// Also what an unknown mode from a newer launcher loads as, so a downgrade doesn't mark the
+    /// instance damaged. (`serde(other)` must be the last variant.)
+    #[default]
+    #[serde(other)]
+    Auto,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -433,8 +436,17 @@ impl InstanceStore {
         Ok(instance)
     }
 
+    /// Writes `instance.json` into the instance's existing folder. Refused with `instance_not_found`
+    /// when the folder is gone, so a save that loaded before a rename moved the folder can't
+    /// recreate the old one.
     pub async fn save(&self, instance: &Instance) -> Result<()> {
         check_id(&instance.id)?;
+        if !tokio::fs::metadata(self.instance_dir(&instance.id))
+            .await
+            .is_ok_and(|m| m.is_dir())
+        {
+            return Err(not_found(&instance.id));
+        }
         let bytes = serde_json::to_vec_pretty(instance).map_err(|e| {
             LauncherError::disk(ErrorCode::DiskWriteFailed, "Couldn't save the instance")
                 .with_param("item", "instance")
@@ -446,14 +458,9 @@ impl InstanceStore {
     pub async fn load(&self, id: &str) -> Result<Instance> {
         check_id(id)?;
         let path = self.json_path(id);
-        let bytes = tokio::fs::read(&path).await.map_err(|e| {
-            LauncherError::disk(
-                ErrorCode::InstanceNotFound,
-                format!("Instance \"{id}\" wasn't found"),
-            )
-            .with_param("id", id)
-            .with_detail(e)
-        })?;
+        let bytes = tokio::fs::read(&path)
+            .await
+            .map_err(|e| not_found(id).with_detail(e))?;
         let mut instance: Instance = serde_json::from_slice(&bytes).map_err(|e| {
             LauncherError::disk(
                 ErrorCode::InstanceDamaged,
@@ -561,11 +568,7 @@ impl InstanceStore {
         check_id(id)?;
         let dir = self.instance_dir(id);
         if !tokio::fs::try_exists(&dir).await? {
-            return Err(LauncherError::disk(
-                ErrorCode::InstanceNotFound,
-                format!("Instance \"{id}\" wasn't found"),
-            )
-            .with_param("id", id));
+            return Err(not_found(id));
         }
         tokio::fs::remove_dir_all(&dir).await?;
         Ok(())
@@ -611,6 +614,14 @@ fn rename_io_error(e: std::io::Error, id: &str) -> LauncherError {
         .with_param("item", "instance")
         .with_detail(e)
     }
+}
+
+fn not_found(id: &str) -> LauncherError {
+    LauncherError::disk(
+        ErrorCode::InstanceNotFound,
+        format!("Instance \"{id}\" wasn't found"),
+    )
+    .with_param("id", id)
 }
 
 fn check_id(id: &str) -> Result<()> {
@@ -1074,6 +1085,47 @@ mod tests {
         let back = serde_json::to_value(&instance).unwrap();
         assert_eq!(back["art"], "auto");
         assert!(back["artSeed"].is_null());
+    }
+
+    #[test]
+    fn an_unknown_art_mode_loads_as_auto() {
+        let json = r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"},"art":"hologram"}"#;
+        let instance: Instance = serde_json::from_str(json).unwrap();
+        assert_eq!(instance.art, ArtMode::Auto);
+    }
+
+    #[tokio::test]
+    async fn save_refuses_an_instance_whose_folder_is_gone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        let stale = store.create("Pack", vanilla("1.21.1")).await.unwrap();
+        store.rename("pack", "Moved").await.unwrap();
+        // A save that loaded before the move must not bring the old folder back.
+        let err = store.save(&stale).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::InstanceNotFound);
+        assert!(!store.instance_dir("pack").exists());
+        // A plain file where the folder was isn't an instance folder either.
+        std::fs::write(store.instance_dir("pack"), b"x").unwrap();
+        assert_eq!(
+            store.save(&stale).await.unwrap_err().code,
+            ErrorCode::InstanceNotFound
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn rename_is_refused_while_a_file_inside_is_open() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        store.create("Pack", vanilla("1.21.1")).await.unwrap();
+        let held = store.game_dir("pack").join("options.txt");
+        std::fs::write(&held, b"x").unwrap();
+        let _open = std::fs::File::open(&held).unwrap();
+        let err = store.rename("pack", "Elsewhere").await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::InstanceFolderInUse);
+        assert!(store.game_dir("pack").is_dir(), "the folder stays put");
+        assert!(!store.instance_dir("elsewhere").exists());
+        assert_eq!(store.load("pack").await.unwrap().name, "Pack");
     }
 
     use crate::invite::{InviteAddress, InviteTeam, InviteView, Url};

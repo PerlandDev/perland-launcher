@@ -35,6 +35,38 @@ pub fn apply_order(instances: &mut Vec<Instance>, order: &[String]) -> Vec<Strin
     instances.iter().map(|i| i.id.clone()).collect()
 }
 
+/// `saved` (the order about to be stored) with the ids of `stored` that are in `keep` put back
+/// beside the stored id they followed, so a damaged instance keeps its place until it's repaired.
+/// Kept ids that led the stored order go before the first stored id that follows them; with
+/// nothing to follow they go last. Other ids missing from `saved` are dropped.
+pub fn keep_in_place(saved: &[String], stored: &[String], keep: &HashSet<&str>) -> Vec<String> {
+    let mut out = saved.to_vec();
+    let mut cursor: Option<usize> = None;
+    let mut leading: Vec<String> = Vec::new();
+    for id in stored {
+        if let Some(at) = out.iter().position(|o| o == id) {
+            let at = if cursor.is_none() && !leading.is_empty() {
+                let n = leading.len();
+                out.splice(at..at, leading.drain(..));
+                at + n
+            } else {
+                at
+            };
+            cursor = Some(at);
+        } else if keep.contains(id.as_str()) && !leading.contains(id) {
+            match cursor {
+                Some(c) => {
+                    out.insert(c + 1, id.clone());
+                    cursor = Some(c + 1);
+                }
+                None => leading.push(id.clone()),
+            }
+        }
+    }
+    out.extend(leading);
+    out
+}
+
 /// Replace `old` with `new` in place, for a rename that moved the instance folder.
 pub fn rename_in_order(order: &mut [String], old: &str, new: &str) {
     for id in order.iter_mut().filter(|id| id.as_str() == old) {
@@ -57,14 +89,19 @@ impl OrderStore {
         Self { path: path.into() }
     }
 
-    /// Never fails: a missing or damaged file means no stored order.
-    pub async fn load(&self) -> Vec<String> {
-        let Ok(bytes) = tokio::fs::read(&self.path).await else {
-            return Vec::new();
-        };
-        serde_json::from_slice::<OrderFile>(&bytes)
-            .map(|f| f.ids)
-            .unwrap_or_default()
+    /// The stored order. A missing or damaged file is an empty order: there's nothing in it to keep,
+    /// so saving over it is fine. `None` when the file is there but can't be read right now (another
+    /// program holds it, say): show the default order and don't save over the player's.
+    pub async fn load(&self) -> Option<Vec<String>> {
+        match tokio::fs::read(&self.path).await {
+            Ok(bytes) => Some(
+                serde_json::from_slice::<OrderFile>(&bytes)
+                    .map(|f| f.ids)
+                    .unwrap_or_default(),
+            ),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(Vec::new()),
+            Err(_) => None,
+        }
     }
 
     pub async fn save(&self, ids: &[String]) -> Result<()> {
@@ -154,7 +191,7 @@ mod tests {
             std::fs::read_to_string(&path).unwrap(),
             r#"{"version":1,"ids":["b","a"]}"#
         );
-        assert_eq!(store.load().await, s(&["b", "a"]));
+        assert_eq!(store.load().await, Some(s(&["b", "a"])));
     }
 
     #[tokio::test]
@@ -162,10 +199,52 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("instance-order.json");
         let store = OrderStore::new(&path);
-        assert!(store.load().await.is_empty());
+        assert_eq!(store.load().await, Some(Vec::new()));
         for junk in ["{oops", r#"{"ids":"nope"}"#, "[1,2]", ""] {
             std::fs::write(&path, junk).unwrap();
-            assert!(store.load().await.is_empty(), "{junk}");
+            assert_eq!(store.load().await, Some(Vec::new()), "{junk}");
         }
+    }
+
+    #[tokio::test]
+    async fn an_unreadable_file_is_no_answer() {
+        let tmp = tempfile::tempdir().unwrap();
+        // A folder where the file should be: it exists but can't be read as a file.
+        let path = tmp.path().join("instance-order.json");
+        std::fs::create_dir(&path).unwrap();
+        assert_eq!(OrderStore::new(&path).load().await, None);
+    }
+
+    #[test]
+    fn kept_ids_stay_beside_the_id_they_followed() {
+        let keep: HashSet<&str> = ["x", "y"].into_iter().collect();
+        // x followed a, so it goes back after a (behind any new id on top).
+        assert_eq!(
+            keep_in_place(
+                &s(&["new", "a", "b", "c"]),
+                &s(&["a", "x", "b", "c"]),
+                &keep
+            ),
+            s(&["new", "a", "x", "b", "c"])
+        );
+        // Leading kept ids go before the first id that follows them.
+        assert_eq!(
+            keep_in_place(&s(&["new", "a", "b"]), &s(&["x", "y", "a", "b"]), &keep),
+            s(&["new", "x", "y", "a", "b"])
+        );
+        // A new order from a drag: x keeps following a wherever a went.
+        assert_eq!(
+            keep_in_place(&s(&["c", "a", "b"]), &s(&["a", "x", "b", "c"]), &keep),
+            s(&["c", "a", "x", "b"])
+        );
+        // Ids not kept are dropped; with nothing to follow, kept ids go last.
+        assert_eq!(
+            keep_in_place(&s(&["a"]), &s(&["gone", "x"]), &keep),
+            s(&["a", "x"])
+        );
+        assert_eq!(
+            keep_in_place(&s(&["a"]), &s(&["x", "x"]), &keep),
+            s(&["a", "x"])
+        );
     }
 }

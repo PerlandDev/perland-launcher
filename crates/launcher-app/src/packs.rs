@@ -100,6 +100,23 @@ async fn read_upload(path: &Path) -> Result<(Vec<u8>, &'static str)> {
     }
 }
 
+/// Create `dir` (somewhere under `instance`) without ever creating `instance` itself: if the
+/// instance folder is gone (a rename moved it), this is `instance_not_found`, not a new folder.
+async fn make_dir_in_instance(instance: &Path, dir: &Path, id: &str) -> Result<()> {
+    if !tokio::fs::metadata(instance)
+        .await
+        .is_ok_and(|m| m.is_dir())
+    {
+        return Err(LauncherError::disk(
+            ErrorCode::InstanceNotFound,
+            format!("Instance \"{id}\" wasn't found"),
+        )
+        .with_param("id", id));
+    }
+    tokio::fs::create_dir_all(dir).await?;
+    Ok(())
+}
+
 fn link_invalid() -> LauncherError {
     LauncherError::pack(
         ErrorCode::PackLinkInvalid,
@@ -320,9 +337,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         })
     }
 
-    /// The picture the player sees for this instance: their own image (both `icon` and
-    /// `banner`), nothing at all for a generated landscape, or the pack's art from
-    /// `.perland/art/`.
+    /// The picture the player sees for this instance: their own image (as `icon` only, so a big
+    /// file crosses IPC once; the marquee falls back to the icon), nothing at all for a
+    /// generated landscape, or the pack's art from `.perland/art/`.
     pub async fn instance_art(&self, id: &str) -> Result<InstanceArtData> {
         let instance = self.instances.load(id).await?;
         let perland = self.instances.perland_dir(id);
@@ -331,13 +348,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 icon: None,
                 banner: None,
             },
-            ArtMode::Custom => {
-                let image = art_url(&perland.join(CUSTOM_DIR), CUSTOM_STEM).await;
-                InstanceArtData {
-                    icon: image.clone(),
-                    banner: image,
-                }
-            }
+            ArtMode::Custom => InstanceArtData {
+                icon: art_url(&perland.join(CUSTOM_DIR), CUSTOM_STEM).await,
+                banner: None,
+            },
             ArtMode::Auto => {
                 let dir = perland.join("art");
                 InstanceArtData {
@@ -349,8 +363,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// "Change image…": a generated landscape, the pack's own art, or a file of the player's.
-    /// Refused while the instance is busy or installing, like a rename. Everything is checked
-    /// before anything changes, so a bad file leaves the previous picture as it was.
+    /// Refused while the instance is busy or installing, like a rename. Every check runs before
+    /// anything is written, so a bad file leaves the previous picture as it was. Only the art
+    /// fields change (a `save`, not an `update`), so a stale Java path doesn't block a picture.
     pub async fn instance_art_set(&self, id: &str, choice: ArtChoice) -> Result<Instance> {
         if self.is_busy(id) {
             return Err(busy(id));
@@ -358,8 +373,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if self.is_installing(id) {
             return Err(crate::browse::content_installing());
         }
-        let mut instance = self.instances.load(id).await?;
         let custom = self.instances.perland_dir(id).join(CUSTOM_DIR);
+        let upload = match &choice {
+            ArtChoice::Upload { path } => Some(read_upload(path).await?),
+            _ => None,
+        };
+        // Loaded after the upload is read, right before writing: a rename that moved the folder
+        // meanwhile is refused here instead of writing into the old place.
+        let mut instance = self.instances.load(id).await?;
         match choice {
             ArtChoice::Generated { seed } => {
                 if seed.is_empty() || seed.chars().count() > MAX_SEED_CHARS {
@@ -367,31 +388,28 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 }
                 instance.art = ArtMode::Generated;
                 instance.art_seed = Some(seed);
-                let saved = self.instances.update(&instance).await?;
-                // The saved choice is what counts; a leftover file is only unused.
-                let _ = tokio::fs::remove_dir_all(&custom).await;
-                Ok(saved)
             }
             ArtChoice::Pack => {
                 if instance.source == SourceRef::None {
                     return Err(no_pack());
                 }
                 instance.art = ArtMode::Auto;
-                let saved = self.instances.update(&instance).await?;
-                let _ = tokio::fs::remove_dir_all(&custom).await;
-                Ok(saved)
             }
-            ArtChoice::Upload { path } => {
-                let (bytes, ext) = read_upload(&path).await?;
-                write_atomic(&custom.join(format!("{CUSTOM_STEM}.{ext}")), &bytes).await?;
-                for other in CUSTOM_EXTS.iter().filter(|e| **e != ext) {
-                    let _ =
-                        tokio::fs::remove_file(custom.join(format!("{CUSTOM_STEM}.{other}"))).await;
-                }
-                instance.art = ArtMode::Custom;
-                self.instances.update(&instance).await
-            }
+            ArtChoice::Upload { .. } => instance.art = ArtMode::Custom,
         }
+        let Some((bytes, ext)) = upload else {
+            self.instances.save(&instance).await?;
+            // The saved choice is what counts; a leftover file is only unused.
+            let _ = tokio::fs::remove_dir_all(&custom).await;
+            return Ok(instance);
+        };
+        make_dir_in_instance(&self.instances.instance_dir(id), &custom, id).await?;
+        write_atomic(&custom.join(format!("{CUSTOM_STEM}.{ext}")), &bytes).await?;
+        self.instances.save(&instance).await?;
+        for other in CUSTOM_EXTS.iter().filter(|e| **e != ext) {
+            let _ = tokio::fs::remove_file(custom.join(format!("{CUSTOM_STEM}.{other}"))).await;
+        }
+        Ok(instance)
     }
 
     /// A `perland://` link arrived (at startup or from a second launch). A good one waits for
@@ -949,7 +967,10 @@ mod tests {
             .as_ref()
             .unwrap()
             .starts_with("data:image/png;base64,iVBORw0KGgo"));
-        assert_eq!(data.icon, data.banner, "one picture fills both");
+        assert_eq!(
+            data.banner, None,
+            "one picture, sent once: the marquee uses the icon"
+        );
         assert_eq!(custom_files(&core, &id), ["image.png"]);
     }
 
@@ -1146,6 +1167,36 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(custom_files(&core, &id), ["image.webp"]);
+    }
+
+    #[tokio::test]
+    async fn a_missing_java_doesnt_block_an_image_change() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        let mut stored = core.instances.load(&id).await.unwrap();
+        stored.java.path = Some(tmp.path().join("uninstalled/java.exe"));
+        core.instances.save(&stored).await.unwrap();
+        let set = core
+            .instance_art_set(
+                &id,
+                ArtChoice::Generated {
+                    seed: "dunes".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(set.art, ArtMode::Generated);
+        let file = picked(tmp.path(), "mine.png", PNG);
+        let set = core
+            .instance_art_set(&id, ArtChoice::Upload { path: file })
+            .await
+            .unwrap();
+        assert_eq!(set.art, ArtMode::Custom);
+        assert_eq!(custom_files(&core, &id), ["image.png"]);
+        let set = core.instance_art_set(&id, ArtChoice::Pack).await.unwrap();
+        assert_eq!(set.art, ArtMode::Auto);
+        // The player's other settings are kept as they were.
+        assert_eq!(core.instances.load(&id).await.unwrap().java, stored.java);
     }
 
     #[tokio::test]

@@ -13,7 +13,7 @@ use launcher_core::{
     browse::compat::ContentKind,
     content,
     fsutil::path_key,
-    instance_order::{apply_order, rename_in_order, OrderStore},
+    instance_order::{apply_order, keep_in_place, rename_in_order, OrderStore},
     instances::{
         is_valid_instance_id, GameSpec, Instance, InstanceListing, InstanceStore, SourceRef,
         UpdatePolicy, MAX_MEMORY_MB, MIN_MEMORY_MB,
@@ -112,6 +112,10 @@ pub(crate) fn busy(id: &str) -> LauncherError {
         "Stop the game before changing this instance",
     )
     .with_param("id", id)
+}
+
+fn damaged_ids(listing: &InstanceListing) -> HashSet<&str> {
+    listing.damaged.iter().map(|d| d.id.as_str()).collect()
 }
 
 fn valid_id(id: &str) -> Result<()> {
@@ -214,12 +218,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// The instances in the player's order: ones not in it yet on top (A-Z), then the stored order.
-    /// Damaged ones stay last. The stored order is rewritten when this changes it.
+    /// Damaged ones stay last. The stored order is rewritten when this changes it, keeping damaged
+    /// instances' ids in their places so a repaired one comes back where it was. An order file
+    /// that can't be read right now is left alone.
     pub async fn instances_list(&self) -> Result<InstanceListing> {
         let order = self.order.lock().await;
         let mut listing = self.instances.list_all().await?;
-        let stored = order.load().await;
+        let Some(stored) = order.load().await else {
+            apply_order(&mut listing.instances, &[]);
+            return Ok(listing);
+        };
         let ordered = apply_order(&mut listing.instances, &stored);
+        let ordered = keep_in_place(&ordered, &stored, &damaged_ids(&listing));
         if ordered != stored {
             // Only a convenience: a failed save shows the same listing next time.
             let _ = order.save(&ordered).await;
@@ -227,13 +237,17 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Ok(listing)
     }
 
-    /// Save the player's drag order and return the listing in it.
+    /// Save the player's drag order and return the listing in it. Damaged instances (which the
+    /// player can't drag) keep their stored places.
     pub async fn instance_reorder(&self, ids: Vec<String>) -> Result<InstanceListing> {
         ids.iter().try_for_each(|id| valid_id(id))?;
         let order = self.order.lock().await;
         let mut listing = self.instances.list_all().await?;
+        let stored = order.load().await.unwrap_or_default();
         let ordered = apply_order(&mut listing.instances, &ids);
-        order.save(&ordered).await?;
+        order
+            .save(&keep_in_place(&ordered, &stored, &damaged_ids(&listing)))
+            .await?;
         Ok(listing)
     }
 
@@ -302,10 +316,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let order = self.order.lock().await;
         let renamed = self.instances.rename(id, name).await?;
         if renamed.id != id {
-            let mut ids = order.load().await;
-            rename_in_order(&mut ids, id, &renamed.id);
-            // The rename already happened; a failed save only loses the place in the list.
-            let _ = order.save(&ids).await;
+            // The rename already happened; an unreadable order or a failed save only loses the
+            // place in the list.
+            if let Some(mut ids) = order.load().await {
+                rename_in_order(&mut ids, id, &renamed.id);
+                let _ = order.save(&ids).await;
+            }
             let logs = self.config.dirs.logs();
             let _ = tokio::fs::rename(
                 logs.join(format!("{id}-latest.log")),
@@ -873,6 +889,28 @@ pub(crate) mod tests {
         .await
         .unwrap();
         assert_eq!(listed(&core).await, ids(&["b", "c", "a"]));
+    }
+
+    #[tokio::test]
+    async fn a_repaired_instance_comes_back_in_its_old_place() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        for name in ["A", "B", "C"] {
+            core.instance_create(vanilla(name)).await.unwrap();
+        }
+        core.instance_reorder(ids(&["c", "a", "b"])).await.unwrap();
+        let json = core.instances.instance_dir("a").join("instance.json");
+        let good = std::fs::read(&json).unwrap();
+        std::fs::write(&json, b"{oops").unwrap();
+        let listing = core.instances_list().await.unwrap();
+        assert_eq!(listing.damaged[0].id, "a");
+        assert_eq!(listed(&core).await, ids(&["c", "b"]));
+        // A drag while it's damaged doesn't lose its place either.
+        core.instance_reorder(ids(&["b", "c"])).await.unwrap();
+        // A new instance meanwhile still lands on top.
+        core.instance_create(vanilla("D")).await.unwrap();
+        assert_eq!(listed(&core).await, ids(&["d", "b", "c"]));
+        std::fs::write(&json, good).unwrap();
+        assert_eq!(listed(&core).await, ids(&["d", "b", "c", "a"]));
     }
 
     #[tokio::test]

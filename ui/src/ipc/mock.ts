@@ -693,8 +693,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const none: InstanceArtData = { icon: null, banner: null };
       if (target.art === 'generated') return none;
       if (target.art === 'custom') {
-        const image = state.custom.get(target.id) ?? null;
-        return { icon: image, banner: image } satisfies InstanceArtData;
+        // Sent once, as the icon: the marquee falls back to it (like the core).
+        return { icon: state.custom.get(target.id) ?? null, banner: null } satisfies InstanceArtData;
       }
       return state.packs.get(target.id)?.art ?? none;
     }
