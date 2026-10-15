@@ -140,6 +140,24 @@ mod tests {
     }
 
     #[test]
+    fn a_windows_home_path_is_masked_when_debug_formatting_doubles_the_backslashes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file =
+            RedactingFile::new(tmp.path(), Redactor::new().with_home(r"C:\Users\steve")).unwrap();
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(file)
+            .finish();
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!(path = r"C:\Users\steve\x", "opened");
+        });
+        let text = std::fs::read_to_string(only_file(tmp.path())).unwrap();
+        assert!(text.contains('~'), "{text}");
+        assert!(!text.contains(r"Users\steve"), "{text}");
+        assert!(!text.contains(r"Users\\steve"), "{text}");
+    }
+
+    #[test]
     fn errors_log_their_code_and_detail() {
         let tmp = tempfile::tempdir().unwrap();
         let file = RedactingFile::new(tmp.path(), Redactor::new()).unwrap();
