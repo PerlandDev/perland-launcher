@@ -88,10 +88,11 @@ switch (command) {
     const dir = process.env.SIGN_DIR;
     if (!dir) throw new Error('SIGN_DIR is not set');
     mkdirSync(dir, { recursive: true });
-    const role = signRole(file);
+    let role = 'unknown';
     let hash = '-';
     let outcome = 'error';
     try {
+      role = signRole(file);
       hash = createHash('sha256').update(readFileSync(file)).digest('hex');
       if (command === 'sign-collect') {
         outcome = 'skipped';
@@ -103,6 +104,9 @@ switch (command) {
       } else {
         const signedDir = join(dir, 'signed');
         const signed = new Set(existsSync(signedDir) ? readdirSync(signedDir).map((n) => n.replace(/\.exe$/i, '')) : []);
+        if (role === 'binary' && signed.size === 0) {
+          throw new Error(`no signed files in ${signedDir} (round 1 delivered nothing)`);
+        }
         outcome = 'skipped';
         if (planApply({ role, hash, signed }) === 'replace') {
           copyFileSync(join(signedDir, `${hash}.exe`), file);

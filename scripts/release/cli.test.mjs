@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -12,18 +12,36 @@ const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const run = (args, env) =>
   execFileSync(process.execPath, [cli, ...args], { env: { ...process.env, ...env }, encoding: 'utf8', stdio: 'pipe' });
 
-function scratch() {
+/** A temp folder with a launcher exe and an NSIS plugin, removed when test `t` ends. */
+function scratch(t) {
   const dir = mkdtempSync(join(tmpdir(), 'perland-sign-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
   const exe = join(dir, 'perland-launcher.exe');
   writeFileSync(exe, 'unsigned launcher');
   mkdirSync(join(dir, 'Plugins', 'x86-unicode'), { recursive: true });
   const plugin = join(dir, 'Plugins', 'x86-unicode', 'System.dll');
   writeFileSync(plugin, 'plugin');
-  return { exe, plugin, signDir: join(dir, 'sign') };
+  return { dir, exe, plugin, signDir: join(dir, 'sign') };
 }
 
-test('collect copies our binaries out by hash and leaves files and plugins untouched', () => {
-  const { exe, plugin, signDir } = scratch();
+/** Round 1's output: a signed copy of something other than `exe`, so `exe` is a hash it never saw. */
+function signedOther(signDir) {
+  mkdirSync(join(signDir, 'signed'), { recursive: true });
+  writeFileSync(join(signDir, 'signed', `${sha('another binary')}.exe`), 'signed other');
+}
+
+test('every scratch folder is removed when its test ends', async (t) => {
+  let dir;
+  await t.test('uses a scratch folder', (t) => {
+    dir = scratch(t).dir;
+    assert.ok(existsSync(dir));
+  });
+  assert.ok(dir);
+  assert.equal(existsSync(dir), false);
+});
+
+test('collect copies our binaries out by hash and leaves files and plugins untouched', (t) => {
+  const { exe, plugin, signDir } = scratch(t);
   const out = run(['sign-collect', exe], { SIGN_DIR: signDir });
   run(['sign-collect', plugin], { SIGN_DIR: signDir });
   assert.deepEqual(readdirSync(join(signDir, 'unsigned')), [`${sha('unsigned launcher')}.exe`]);
@@ -31,8 +49,8 @@ test('collect copies our binaries out by hash and leaves files and plugins untou
   assert.match(out, /sign-collect binary [0-9a-f]{64} /);
 });
 
-test('apply swaps in the signed copy with the same hash', () => {
-  const { exe, plugin, signDir } = scratch();
+test('apply swaps in the signed copy with the same hash', (t) => {
+  const { exe, plugin, signDir } = scratch(t);
   mkdirSync(join(signDir, 'signed'), { recursive: true });
   writeFileSync(join(signDir, 'signed', `${sha('unsigned launcher')}.exe`), 'signed launcher');
   run(['sign-apply', exe], { SIGN_DIR: signDir });
@@ -41,16 +59,37 @@ test('apply swaps in the signed copy with the same hash', () => {
   assert.equal(readFileSync(plugin, 'utf8'), 'plugin');
 });
 
-test('apply fails on a binary round 1 never saw, and both commands need SIGN_DIR', () => {
-  const { exe, signDir } = scratch();
+test('apply fails on a binary round 1 never saw, and both commands need SIGN_DIR', (t) => {
+  const { exe, signDir } = scratch(t);
+  signedOther(signDir);
   assert.throws(() => run(['sign-apply', exe], { SIGN_DIR: signDir }), /not reproducible/);
   assert.throws(() => run(['sign-collect', exe], { SIGN_DIR: '' }), /SIGN_DIR/);
 });
 
-test('every call is in the ledger, failures included, and sign-check fails the pass on them', () => {
-  const { exe, plugin, signDir } = scratch();
+test('apply says round 1 delivered nothing when the signed folder is missing or empty', (t) => {
+  const { exe, signDir } = scratch(t);
+  assert.throws(() => run(['sign-apply', exe], { SIGN_DIR: signDir }), /no signed files in .*signed \(round 1 delivered nothing\)/);
+  mkdirSync(join(signDir, 'signed'), { recursive: true });
+  assert.throws(() => run(['sign-apply', exe], { SIGN_DIR: signDir }), /round 1 delivered nothing/);
+  assert.equal(readFileSync(exe, 'utf8'), 'unsigned launcher');
+});
+
+test('a path the signing command does not recognise fails and is in the ledger', (t) => {
+  const { dir, signDir } = scratch(t);
+  const stray = join(dir, 'stray.exe');
+  writeFileSync(stray, 'stray');
+  assert.throws(() => run(['sign-collect', stray], { SIGN_DIR: signDir }), /not a file this build signs/);
+  assert.equal(existsSync(join(signDir, 'unsigned')), false);
+  const ledger = readFileSync(join(signDir, 'ledger.log'), 'utf8').trim().split('\n');
+  assert.match(ledger[0], /^sign-collect unknown - error .*stray\.exe$/);
+  assert.throws(() => run(['sign-check', 'collect'], { SIGN_DIR: signDir }), /collect pass failed/);
+});
+
+test('every call is in the ledger, failures included, and sign-check fails the pass on them', (t) => {
+  const { exe, plugin, signDir } = scratch(t);
   run(['sign-collect', exe], { SIGN_DIR: signDir });
   run(['sign-collect', plugin], { SIGN_DIR: signDir });
+  signedOther(signDir);
   assert.throws(() => run(['sign-apply', exe], { SIGN_DIR: signDir }), /not reproducible/);
   const ledger = readFileSync(join(signDir, 'ledger.log'), 'utf8').trim().split('\n');
   assert.equal(ledger.length, 3);
@@ -62,8 +101,8 @@ test('every call is in the ledger, failures included, and sign-check fails the p
   assert.throws(() => run(['sign-check', 'apply'], { SIGN_DIR: signDir }), /apply pass failed/);
 });
 
-test('sign-config writes the Tauri signCommand config with an absolute, forward-slash script path', () => {
-  const { signDir } = scratch();
+test('sign-config writes the Tauri signCommand config with an absolute, forward-slash script path', (t) => {
+  const { signDir } = scratch(t);
   mkdirSync(signDir, { recursive: true });
   const out = join(signDir, 'collect.json');
   run(['sign-config', 'collect', out], {});

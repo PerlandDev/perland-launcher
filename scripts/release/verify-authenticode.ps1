@@ -26,7 +26,10 @@ $failures += Test-File $Installer
 
 # Tauri's per-user NSIS installer installs to $LOCALAPPDATA\<productName>.
 $installDir = Join-Path $env:LOCALAPPDATA 'Perland Launcher'
-$p = Start-Process -FilePath $Installer -ArgumentList '/S' -Wait -PassThru
+# WaitForExit, not -Wait: -Wait also waits for every child process, and one that outlives the
+# installer (a WebView2 bootstrapper, say) would hang the step.
+$p = Start-Process -FilePath $Installer -ArgumentList '/S' -PassThru
+$p.WaitForExit()
 if ($p.ExitCode -ne 0) { $failures += "the installer exited with $($p.ExitCode)" }
 $exes = @(Get-ChildItem -LiteralPath $installDir -Filter *.exe -ErrorAction SilentlyContinue)
 if ($exes.Count -lt 2) { $failures += "expected the launcher and uninstall.exe in $installDir, found $($exes.Count) .exe files" }
