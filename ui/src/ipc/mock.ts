@@ -107,9 +107,36 @@ function fail(category: LauncherError['category'], code: string, message: string
   throw { category, code, message, fix: null, detail: null, params } satisfies LauncherError;
 }
 
+const WINDOWS_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/;
+
+/** The core's slugify: lowercase ASCII letters and digits joined by single dashes, at most 48 long. */
 function slug(name: string) {
-  const s = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return s.slice(0, 48) || 'instance';
+  const s = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '').slice(0, 48).replace(/-+$/, '');
+  if (!s) return 'instance';
+  return WINDOWS_RESERVED.test(s) ? `${s}-instance` : s;
+}
+
+/** True when `id` is `base` or `base-N` (N >= 2), the ids create makes for one slug. */
+function sameFamily(id: string, base: string) {
+  if (id === base) return true;
+  const rest = id.startsWith(`${base}-`) ? id.slice(base.length + 1) : null;
+  return rest !== null && /^\d+$/.test(rest) && Number(rest) >= 2;
+}
+
+/** Move every id-keyed piece of mock state to a renamed instance's new id. */
+function moveId(state: MockState, from: string, to: string) {
+  state.order = state.order.map((id) => (id === from ? to : id));
+  for (const map of [state.mods, state.packs, state.custom, state.browse.installed] as Map<string, unknown>[]) {
+    if (map.has(from)) {
+      map.set(to, map.get(from));
+      map.delete(from);
+    }
+  }
+  for (const [key, files] of [...state.content]) {
+    if (!key.startsWith(`${from}:`)) continue;
+    state.content.delete(key);
+    state.content.set(`${to}:${key.slice(from.length + 1)}`, files);
+  }
 }
 
 // A tiny Modrinth for the browser build and the tests. Icons are one inline SVG.
@@ -559,8 +586,19 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     }
     case 'instance_rename': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
-      const renamed: Instance = { ...target, name: String(args.name).trim() };
-      state.listing.instances = state.listing.instances.map((i) => (i.id === renamed.id ? renamed : i));
+      if (state.runs.has(target.id)) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: target.id });
+      const name = String(args.name).trim();
+      const base = slug(name);
+      let id = target.id;
+      if (!sameFamily(id, base)) {
+        const taken = new Set([...state.listing.instances.map((i) => i.id), ...state.listing.damaged.map((d) => d.id)]);
+        id = base;
+        for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+      }
+      // Like the core: a moved instance keeps its generated look by pinning the old id as its seed.
+      const renamed: Instance = { ...target, id, name, artSeed: id === target.id ? target.artSeed : (target.artSeed ?? target.id) };
+      if (id !== target.id) moveId(state, target.id, id);
+      state.listing.instances = state.listing.instances.map((i) => (i.id === target.id ? renamed : i));
       return renamed;
     }
     case 'instance_delete':

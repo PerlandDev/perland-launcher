@@ -1,8 +1,9 @@
 import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../ipc/commands';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ContentKind, ImageKind, Instance, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
+import type { ContentKind, ImageKind, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
+import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { pushError } from './toasts';
 
 export function createQueryClient() {
@@ -192,11 +193,40 @@ export function useUpdateInstance(opts: Opts = {}) {
   });
 }
 
+/** The same route, pointed at `to` wherever it named the instance `from`; null when it never did. */
+function routeFollowing(route: Route, from: string, to: string): Route | null {
+  switch (route.name) {
+    case 'home':
+    case 'mods':
+    case 'instanceSettings':
+      return route.id === from ? { ...route, id: to } : null;
+    case 'browse':
+      return route.instance === from ? { ...route, instance: to } : null;
+    case 'joinServer':
+      return route.relinkFor === from ? { ...route, relinkFor: to } : null;
+    default:
+      return null;
+  }
+}
+
 export function useRenameInstance(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) => commands.instanceRename(id, name),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onSuccess: (renamed, { id }) => {
+      if (renamed.id !== id) {
+        // The folder (and so the id) moved with the name. Put the new id in the cached listing before the route follows, so the screen never falls back to another instance.
+        qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
+          listing && { ...listing, instances: listing.instances.map((i) => (i.id === id ? renamed : i)) },
+        );
+        const next = routeFollowing(routeSnapshot(), id, renamed.id);
+        if (next) navigate(next);
+        else if (lastInstance() === id) rememberInstance(renamed.id);
+        void qc.invalidateQueries({ queryKey: qk.instanceArt(id) });
+        void qc.invalidateQueries({ queryKey: qk.serverStatus(id) });
+      }
+      return qc.invalidateQueries({ queryKey: qk.instances });
+    },
     onError: onError(opts),
   });
 }

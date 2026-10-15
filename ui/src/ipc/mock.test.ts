@@ -81,6 +81,22 @@ describe('mock backend', () => {
     expect(first.instances.find((i) => i.id === 'asalith-fields')?.name).not.toBe('Renamed');
   });
 
+  it('moves an instance to a new id when the name leaves its slug family, like the core', async () => {
+    const { handle } = createMockBackend();
+    const rename = (id: string, name: string) => handle('instance_rename', { id, name }) as Promise<Instance>;
+    const ids = async () => ((await handle('instances_list')) as InstanceListing).instances.map((i) => i.id);
+    // Same family (punctuation, case, or a numbered copy) keeps the id and the seed.
+    expect(await rename('asalith-fields', 'Asalith  FIELDS!')).toMatchObject({ id: 'asalith-fields', artSeed: null });
+    // A new slug moves the id, keeps its place in the order and pins the old id as the generated look.
+    const before = await ids();
+    expect(await rename('asalith-fields', 'Sky Base')).toMatchObject({ id: 'sky-base', name: 'Sky Base', artSeed: 'asalith-fields' });
+    expect(await ids()).toEqual(before.map((id) => (id === 'asalith-fields' ? 'sky-base' : id)));
+    // A taken slug gets a number.
+    expect((await rename('sky-base', 'Creative Flat')).id).toBe('creative-flat-2');
+    expect((await rename('creative-flat-2', 'creative flat')).id).toBe('creative-flat-2');
+    await expect(rename('asalith-fields', 'x')).rejects.toMatchObject({ code: 'instance_not_found' });
+  });
+
   it('changes an instance image: presets, pack art and uploads', async () => {
     const { handle } = createMockBackend();
     const art = (id: string) => handle('instance_art', { id }) as Promise<{ icon: string | null; banner: string | null }>;

@@ -3,11 +3,12 @@ import { describe, expect, it, vi } from 'vitest';
 import packStatusFx from '../../ipc/contract/pack_status.json';
 import { createMockBackend, exitOf } from '../../ipc/mock';
 import type { PackStatus } from '../../ipc/schema';
-import { routeSnapshot } from '../../state/route';
+import { lastInstance, navigate, routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
+import App from '../../App';
 import { Home } from './Home';
 
 describe('Home', () => {
@@ -92,6 +93,23 @@ describe('Home', () => {
     await user.type(input, 'Flat World');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(sent(calls, 'instance_rename')).toEqual([{ id: 'creative-flat', name: 'Flat World' }]);
+  });
+
+  it('follows a rename to the new folder id', async () => {
+    const { user, calls } = renderApp(<App />);
+    await screen.findByRole('navigation', { name: 'Instances' });
+    act(() => navigate({ name: 'home', id: 'creative-flat' }));
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    const input = screen.getByRole('textbox', { name: 'Name' });
+    await user.clear(input);
+    await user.type(input, 'Sky Base');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('heading', { name: 'Sky Base' })).toBeInTheDocument();
+    expect(sent(calls, 'instance_rename')).toEqual([{ id: 'creative-flat', name: 'Sky Base' }]);
+    expect(routeSnapshot()).toEqual({ name: 'home', id: 'sky-base' });
+    expect(lastInstance()).toBe('sky-base');
   });
 
   const offer = (packStatusFx as PackStatus[])[0]!.update!;
