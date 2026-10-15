@@ -251,7 +251,18 @@ impl<S: UpdateSource, H: Host> Updates<S, H> {
         if busy {
             return false;
         }
-        matches!(self.install_ready(false).await, Some(Ok(())))
+        match self.install_ready(false).await {
+            Some(Ok(())) => true,
+            Some(Err(e)) => {
+                tracing::warn!(
+                    code = ?e.code,
+                    detail = e.detail.as_deref().unwrap_or(""),
+                    "launcher update didn't install on quit"
+                );
+                false
+            }
+            None => false,
+        }
     }
 
     /// Install the ready update, consuming it: when Restart now exits the process, the exit hook

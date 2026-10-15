@@ -63,6 +63,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// ("Play without joining"). Everything after this arrives as events.
     pub async fn play_with(self: &Arc<Self>, id: &str, join: bool) -> Result<()> {
         let instance = self.instances.load(id).await?;
+        tracing::info!(
+            instance = id,
+            minecraft = instance.game.minecraft.as_str(),
+            loader = ?instance.game.loader.as_ref().map(|l| (l.kind, l.version.as_str())),
+            join,
+            "play"
+        );
         if instance.id != id {
             return Err(LauncherError::disk(
                 ErrorCode::InstanceDamaged,

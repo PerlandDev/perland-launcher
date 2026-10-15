@@ -16,12 +16,15 @@ use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_window_state::StateFlags;
 
-pub type Core = AppCore<CoreRunner, host::TauriHost>;
-pub type Updates = launcher_app::updates::Updates<updater::TauriUpdateSource, host::TauriHost>;
+/// The window's host, logging what matters on its way (the launcher log).
+pub type Host = launcher_app::logged::LoggedHost<host::TauriHost>;
+pub type Core = AppCore<CoreRunner, Host>;
+pub type Updates = launcher_app::updates::Updates<updater::TauriUpdateSource, Host>;
 
 const CLOSE_REQUESTED: &str = "launcher://close-requested";
 
 fn main() {
+    launcher_core::logging::init(&LauncherDirs::new(data_root()));
     tauri::Builder::default()
         // Must be first: a second launch focuses the running launcher instead.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -42,16 +45,28 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // One host for the core and the updater.
-            let host = Arc::new(host::TauriHost::new(app.handle().clone()));
+            let host = Arc::new(launcher_app::logged::LoggedHost(host::TauriHost::new(
+                app.handle().clone(),
+            )));
             let core = build_core(host.clone())?;
             app.manage(core.clone());
             let build = BuildKind::current();
             let settings = tauri::async_runtime::block_on(core.settings_get());
+            let channel =
+                launcher_core::settings::Channel::effective(settings.update_channel, build);
+            tracing::info!(
+                version = env!("CARGO_PKG_VERSION"),
+                build = ?build,
+                channel = ?channel,
+                os = std::env::consts::OS,
+                arch = std::env::consts::ARCH,
+                "Perland Launcher started"
+            );
             let updates = Updates::new(
                 Arc::new(updater::TauriUpdateSource::new(app.handle().clone())),
                 host,
                 build,
-                launcher_core::settings::Channel::effective(settings.update_channel, build),
+                channel,
             );
             app.manage(updates.clone());
             tauri::async_runtime::spawn(async move {
@@ -66,7 +81,7 @@ fn main() {
                 std::env::var_os("APPIMAGE").is_some(),
             ) {
                 if let Err(e) = app.deep_link().register_all() {
-                    eprintln!("couldn't register perland:// links: {e}");
+                    tracing::warn!(error = %e, "couldn't register perland:// links");
                 }
             }
             // Started by a link…
@@ -165,12 +180,20 @@ fn main() {
         });
 }
 
-/// `PERLAND_LAUNCHER_ROOT` points development runs at a scratch data folder.
-fn build_core(host: Arc<host::TauriHost>) -> Result<Arc<Core>, Box<dyn std::error::Error>> {
-    let root = std::env::var_os("PERLAND_LAUNCHER_ROOT")
+/// The launcher's data folder. `PERLAND_LAUNCHER_ROOT` points development runs at a scratch
+/// one. With neither, "." only lets logging start; `build_core` then refuses to start the app.
+fn data_root() -> PathBuf {
+    root_from_env().unwrap_or_else(|| PathBuf::from("."))
+}
+
+fn root_from_env() -> Option<PathBuf> {
+    std::env::var_os("PERLAND_LAUNCHER_ROOT")
         .map(PathBuf::from)
         .or_else(LauncherDirs::default_root)
-        .ok_or("couldn't find a data folder")?;
+}
+
+fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> {
+    let root = root_from_env().ok_or("couldn't find a data folder")?;
     let dirs = LauncherDirs::new(root);
     let version = env!("CARGO_PKG_VERSION").to_string();
     let http = launcher_core::http::client(&version)?;

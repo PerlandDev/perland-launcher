@@ -8,6 +8,7 @@ pub mod dto;
 pub mod events;
 #[cfg(test)]
 mod live_tests;
+pub mod logged;
 pub mod logs;
 mod packs;
 pub mod runner;
