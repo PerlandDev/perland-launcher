@@ -9,6 +9,7 @@ use launcher_app::{
 use launcher_core::{ErrorCode, LauncherError, Result};
 use tauri::AppHandle;
 use tauri_plugin_updater::{Error, Update, UpdaterExt};
+use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 pub struct TauriUpdateSource {
     app: AppHandle,
@@ -109,6 +110,14 @@ impl UpdateSource for TauriUpdateSource {
     ) -> BoxFuture<Result<()>> {
         let app = self.app.clone();
         Box::pin(async move {
+            if relaunch {
+                // Windows ends the process inside `install`, before the window-state plugin's exit
+                // save runs, so save this session's size and position now. Install on quit runs
+                // after that save, so it needs none.
+                let _ = app.save_window_state(
+                    StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED,
+                );
+            }
             // Windows: starts the installer and ends the process; `/R` relaunches only when asked.
             // Linux: replaces the AppImage or installs the .deb (pkexec asks for the password);
             // Linux never relaunches by itself.
