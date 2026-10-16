@@ -27,6 +27,7 @@ use launcher_core::{
     },
     mods::{self, LocalMod},
     paths::LauncherDirs,
+    playtime,
     settings::{Channel, Settings, SettingsStore},
     sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
     ErrorCode, LauncherError, Result,
@@ -38,7 +39,7 @@ use tokio::{
 
 use crate::{
     deep_link::DeepLink,
-    dto::{AppInfo, ContentFile, JavaTest, NewInstance, OpenTarget, PackUpdate},
+    dto::{AppInfo, ContentFile, JavaTest, NewInstance, OpenTarget, PackUpdate, PlaytimeEntry},
     events::{AppEvent, Host, RunStateKind},
     logs::LogStore,
     runner::{Kill, Runner},
@@ -107,6 +108,9 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) installing: Mutex<HashSet<String>>,
     /// The file the last diagnostics export wrote (for "Show in folder").
     last_export: Mutex<Option<PathBuf>>,
+    /// Seconds the run clock is ahead of the real one, so a test can play a long game at once.
+    #[cfg(test)]
+    pub(crate) clock_ahead: AtomicU64,
 }
 
 pub(crate) fn busy(id: &str) -> LauncherError {
@@ -154,6 +158,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             plan_seq: AtomicU64::new(0),
             installing: Mutex::new(HashSet::new()),
             last_export: Mutex::new(None),
+            #[cfg(test)]
+            clock_ahead: AtomicU64::new(0),
             config,
         })
     }
@@ -403,6 +409,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 .retain(|_, plan| !plan.targets(id));
         }
         Ok(renamed)
+    }
+
+    /// Time played in every listed instance, zeros included.
+    pub async fn playtime_list(&self) -> Result<Vec<PlaytimeEntry>> {
+        let mut out = Vec::new();
+        for instance in self.instances.list().await? {
+            let played = playtime::read(&self.instances.perland_dir(&instance.id)).await;
+            out.push(PlaytimeEntry {
+                id: instance.id,
+                seconds: played.seconds,
+                last_played: played.last_played,
+            });
+        }
+        Ok(out)
     }
 
     pub async fn instance_delete(&self, id: &str) -> Result<()> {
@@ -1026,6 +1046,35 @@ pub(crate) mod tests {
         // No log yet: nothing to move, and the rename still succeeds.
         core.instance_create(vanilla("B")).await.unwrap();
         assert_eq!(core.instance_rename("b", "Yak").await.unwrap().id, "yak");
+    }
+
+    #[tokio::test]
+    async fn playtime_follows_a_rename() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        core.instance_create(vanilla("A")).await.unwrap();
+        core.instance_create(vanilla("B")).await.unwrap();
+        launcher_core::playtime::add(&core.instances.perland_dir("a"), 120, 1_700_000_000)
+            .await
+            .unwrap();
+        core.instance_rename("a", "Zed").await.unwrap();
+        let list = core.playtime_list().await.unwrap();
+        assert_eq!(
+            list,
+            vec![
+                PlaytimeEntry {
+                    id: "b".into(),
+                    seconds: 0,
+                    last_played: 0,
+                },
+                PlaytimeEntry {
+                    id: "zed".into(),
+                    seconds: 120,
+                    last_played: 1_700_000_000,
+                },
+            ]
+        );
+        core.instance_delete("zed").await.unwrap();
+        assert_eq!(core.playtime_list().await.unwrap().len(), 1);
     }
 
     #[tokio::test]

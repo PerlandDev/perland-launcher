@@ -57,7 +57,8 @@
     "nameLabel": "Name",
     "deleteTitle": "Delete {{name}}?",
     "deleteBody": "This removes the instance and everything in it, including worlds and screenshots. It can't be undone.",
-    "deleteConfirm": "Delete instance"
+    "deleteConfirm": "Delete instance",
+    "played": "{{time}} played"
   },
   "image": {
     "menu": "Change image…",
@@ -276,7 +277,8 @@
     "offlineLocked": "Offline accounts unlock after you sign in once with a Microsoft account that owns Minecraft.",
     "microsoft": "Sign in with Microsoft",
     "offlineBadge": "Offline",
-    "empty": "No accounts yet."
+    "empty": "No accounts yet.",
+    "totalPlayed": "Time played on this computer: {{time}}"
   },
   "settings": {
     "title": "Settings",
@@ -593,5 +595,13 @@
     "foliage": "Foliage", "path-tracing": "Path tracing", "reflections": "Reflections", "shadows": "Shadows",
     "challenging": "Challenging", "kitchen-sink": "Everything", "lightweight": "Lightweight",
     "multiplayer": "Multiplayer", "quests": "Quests"
+  },
+  "time": {
+    "minutes": "{{count}} min",
+    "hours": "{{count}} h",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "years_one": "{{count}} year",
+    "years_other": "{{count}} years"
   }
 }

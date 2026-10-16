@@ -69,6 +69,8 @@ it('an ended run refreshes the instance and its pack queries', () => {
   // A sync can change the pack's own resource packs and shaders too.
   expect(keys).toContainEqual(qk.contentFiles('sky', 'resource_pack'));
   expect(keys).toContainEqual(qk.contentFiles('sky', 'shader'));
+  // The game's time is on disk before `idle` goes out.
+  expect(keys).toContainEqual(qk.playtime);
   spy.mockRestore();
 });
 

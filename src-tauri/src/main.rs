@@ -129,6 +129,7 @@ fn main() {
             commands::settings_set,
             commands::instances_list,
             commands::instance_reorder,
+            commands::playtime_list,
             commands::instance_create,
             commands::instance_update,
             commands::instance_rename,

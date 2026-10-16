@@ -370,7 +370,7 @@ A project's description is Markdown set in Atkinson, at a 44rem measure, selecta
 - **Images** are notched at 4px and never wider than the column. An image the launcher won't load shows its alt text in a 0.875rem `ink-dim` slot with a 1px `line` ring, never a broken picture.
 
 ### Named Rules
-**The Hard Shade Rule.** Signage over art carries a two-layer hard shade, never a blur: `dirt` offset 0.045em, then `ground` offset 0.09em. The version line under the name sits on a translucent laminate plate, so the art never decides its contrast.
+**The Hard Shade Rule.** Signage over art carries a two-layer hard shade, never a blur: `dirt` offset 0.045em, then `ground` offset 0.09em. The version line under the name sits on a translucent laminate plate, so the art never decides its contrast. Once an instance has a minute of play, the same line ends with the time played on this computer ("Minecraft 1.20.1 · Fabric 0.16.14 · 12 h played", "… · 12 h de juego"), in the plate's own voice: no badge, lamp or second plate. Time reads in its two biggest units ("3 h 5 min", "1 year 35 days").
 
 **The Signage Names, Atkinson Speaks Rule.** Bungee appears only on names and titles (the instance, the screen, the welcome, Play, a big readout). Sentences, labels, buttons and errors are always Atkinson.
 
@@ -387,6 +387,7 @@ The shell is a fixed desktop grid with a minimum window of 960 × 600 and no pho
 - **Other screens:** a screen frame with a Bungee title row (2.5rem gutters, 2.25rem top), then a scrolling column capped at 48rem. Forms inside it run at 42rem, with 2.5rem between sections. Primary actions sit in a **sticky action row** at the bottom of the scroller on `ground`, with a 1 px `line` hairline above, so Save or Create stays reachable in long Spanish layouts.
 - **First run:** the "perland" marquee in attract mode fills the window behind a centered 32rem panel card on a deep-dirt step. Blue bars across the top of the card count the steps.
 - **Toasts** stack at the bottom-right in a 24rem column. **Dialogs** are `min(30rem, 100vw − 4rem)`, centred with auto margins (the CSS reset zeroes them) and capped at `100dvh − 4rem` tall, scrolling inside, so a long list never pushes the actions off a 600 px window.
+- **Accounts, time played:** under the account list, a quiet 0.875rem `ink-dim` line sums every instance's time on this computer ("Time played on this computer: 12 h 30 min"). It is absent under a minute. It is a fact, not a stat: no number styling, card or lamp.
 - **Home, pack with an update:** the update plate takes its own full-width row of the bottom grid, above both the name and Play, so it reads on one line at 960 px.
 - **Wide screens (Browse):** the screen frame's wide variant widens the column to 64rem for screens with a grid or a side panel; its title row widens to 69rem to stay aligned with it.
 - **Browse controls:** one grid row aligned to the bottom edge with a 0.75rem gap. Search takes `minmax(12rem, 1fr)`, and only the selects present get a track (`minmax(9rem, auto)` each), so a scoped Browse with only Sort doesn't leave an empty column. Category keys wrap below with 0.75rem between rows and 0.5rem between keys.

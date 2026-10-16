@@ -5,13 +5,14 @@ import { artSeed } from '../../art/seed';
 import { pixelUpscale } from '../../art/upscale';
 import { commands } from '../../ipc/commands';
 import type { Instance } from '../../ipc/schema';
-import { useAccounts, useInstances, useInstanceArt } from '../../state/queries';
+import { useAccounts, useInstances, useInstanceArt, usePlaytime } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { Package } from '../../ui/Icon';
 import { PlayButton } from '../../ui/PlayButton';
+import { formatPlaytime } from '../../ui/playtime';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { DamagedView } from './DamagedView';
 import { EmptyState } from './EmptyState';
@@ -54,6 +55,8 @@ function InstanceView({ instance }: { instance: Instance }) {
   const accounts = useAccounts();
   const hasAccount = Boolean(accounts.data?.active);
   const art = useInstanceArt(instance.id);
+  const seconds = usePlaytime().data?.find((p) => p.id === instance.id)?.seconds ?? 0;
+  const played = formatPlaytime(seconds, t);
   // The background arrives apart from the icon, the player's own picture included.
   const banner = art.data?.banner ?? null;
   // Only a real icon gets a plate: the generated initials would only repeat the name.
@@ -87,7 +90,10 @@ function InstanceView({ instance }: { instance: Instance }) {
               {instance.name}
             </h1>
           </div>
-          <p className="marquee-plate mt-3">{versionLine(t, instance)}</p>
+          {/* The time played rides the version line in the same voice; under a minute it stays out. */}
+          <p className="marquee-plate mt-3">
+            {played ? `${versionLine(t, instance)} · ${t('home.played', { time: played })}` : versionLine(t, instance)}
+          </p>
           {isServer(instance) && <ServerPanel instance={instance} />}
         </div>
         <div className={`flex items-end gap-3 ${icon ? '@max-[64rem]:justify-self-end' : '@max-[55rem]:justify-self-end'}`}>

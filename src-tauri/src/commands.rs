@@ -5,7 +5,8 @@ use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
     AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, IconChoice, InstallPlanView, InstallResult,
     InstanceArtData, JavaTest, JoinPreview, ManualProgress, NewInstance, OpenTarget,
-    PackAddRequest, PackContents, PackStatus, RunSnapshot, SearchRequest, ServerStatusView,
+    PackAddRequest, PackContents, PackStatus, PlaytimeEntry, RunSnapshot, SearchRequest,
+    ServerStatusView,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -88,6 +89,11 @@ pub async fn update_restart(core: CoreState<'_>, updates: UpdatesState<'_>) -> R
 #[tauri::command]
 pub async fn instances_list(core: CoreState<'_>) -> Res<InstanceListing> {
     logged("instances_list", core.instances_list().await)
+}
+
+#[tauri::command]
+pub async fn playtime_list(core: CoreState<'_>) -> Res<Vec<PlaytimeEntry>> {
+    logged("playtime_list", core.playtime_list().await)
 }
 
 #[tauri::command]

@@ -36,6 +36,7 @@ export function handleEvent(event: AppEvent) {
       qk.contentFiles(id, 'resource_pack'),
       qk.contentFiles(id, 'shader'),
       qk.serverStatus(id),
+      qk.playtime,
     ];
     for (const queryKey of keys) {
       void queryClient.invalidateQueries({ queryKey });

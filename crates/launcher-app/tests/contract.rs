@@ -12,8 +12,8 @@ use launcher_app::{
     dto::{
         AppInfo, ArtChoice, Build, ContentFile, IconChoice, InstanceArtData, JavaTest, JoinPreview,
         ManualProgress, NewInstance, OpenTarget, OptionalChoice, PackAddRequest, PackContents,
-        PackMod, PackStatus, PackUpdate, RunSnapshot, ServerGame, ServerPack, ServerPlayers,
-        ServerStatusView, ServerTeam, SyncSummary,
+        PackMod, PackStatus, PackUpdate, PlaytimeEntry, RunSnapshot, ServerGame, ServerPack,
+        ServerPlayers, ServerStatusView, ServerTeam, SyncSummary,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -329,6 +329,21 @@ fn contract_fixtures_are_current() {
                 .with_detail("expected value at line 1 column 1"),
             }],
         },
+    );
+    check(
+        "playtime",
+        vec![
+            PlaytimeEntry {
+                id: "asalith-fields".into(),
+                seconds: 43_200,
+                last_played: 1_791_878_400,
+            },
+            PlaytimeEntry {
+                id: "vanilla-1-20-1".into(),
+                seconds: 0,
+                last_played: 0,
+            },
+        ],
     );
     let steve = offline_account("Steve").unwrap();
     let alex = offline_account("Alex_Builds").unwrap();

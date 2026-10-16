@@ -46,6 +46,7 @@ import type {
   PackUpdate,
   PlanItemView,
   PlanSkip,
+  PlaytimeEntry,
   ProjectDetail,
   RunStateKind,
   SearchHit,
@@ -79,6 +80,8 @@ export interface MockOptions {
   railExpanded?: boolean;
   /** The rail draws round instance icons. */
   iconShape?: 'square' | 'round';
+  /** Seconds played per instance id. Defaults to 12 h in Asalith Fields (none on first run). */
+  playtime?: Record<string, number>;
 }
 
 interface MockRun {
@@ -88,6 +91,8 @@ interface MockRun {
   updateOnly: boolean;
   /** Set while asking: resolves with the player's answer. */
   answer: ((update: boolean) => void) | null;
+  /** When the game came up (ms), for the time played. */
+  startedAt?: number;
 }
 
 interface MockPack {
@@ -151,7 +156,7 @@ function uploadUrl(path: string): string | null {
 /** Move every id-keyed piece of mock state to a renamed instance's new id. */
 function moveId(state: MockState, from: string, to: string) {
   state.order = state.order.map((id) => (id === from ? to : id));
-  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.browse.installed] as Map<string, unknown>[]) {
+  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.browse.installed, state.playtime, state.lastPlayed] as Map<string, unknown>[]) {
     if (map.has(from)) {
       map.set(to, map.get(from));
       map.delete(from);
@@ -301,12 +306,23 @@ function seed(options: MockOptions) {
       opened: [] as string[],
     },
     pendingLink: options.link ?? null,
+    // Seconds played per instance (the real one is .perland/playtime.json), and when each last ended.
+    playtime: new Map<string, number>(Object.entries(options.playtime ?? (options.firstRun ? {} : { 'asalith-fields': 12 * 3600 }))),
+    lastPlayed: new Map<string, number>(),
     runs: new Map<string, MockRun>(),
     options,
   };
 }
 
 export type MockState = ReturnType<typeof seed>;
+
+/** Like the core: a game that ran adds its time before the run goes idle. */
+function addPlaytime(state: MockState, id: string, run: MockRun) {
+  if (run.startedAt === undefined) return;
+  const seconds = Math.floor((Date.now() - run.startedAt) / 1000);
+  state.playtime.set(id, (state.playtime.get(id) ?? 0) + seconds);
+  state.lastPlayed.set(id, Math.floor(Date.now() / 1000));
+}
 
 function event(e: AppEvent) {
   // Tests that call handle() directly have no IPC mock installed; an event nobody hears is fine.
@@ -459,6 +475,7 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
   }
   setState(state, id, 'running');
   const started = Date.now();
+  run.startedAt = started;
   let n = 0;
   while (state.runs.get(id) === run && run.state === 'running') {
     event({ type: 'log', instance: id, lines: [`[12:00:${String(n % 60).padStart(2, '0')}] [Render thread/INFO]: Tick ${n}`] });
@@ -466,6 +483,7 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
     if (state.options.crash && Date.now() - started > 2500) {
       event({ type: 'log', instance: id, lines: ['Exception in thread "main" java.lang.OutOfMemoryError: Java heap space'] });
       state.runs.delete(id);
+      addPlaytime(state, id, run);
       event({
         type: 'run_state',
         instance: id,
@@ -647,7 +665,18 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'instance_delete':
       state.listing.instances = state.listing.instances.filter((i) => i.id !== args.id);
       state.listing.damaged = state.listing.damaged.filter((d) => d.id !== args.id);
+      state.playtime.delete(String(args.id));
+      state.lastPlayed.delete(String(args.id));
       return null;
+    case 'playtime_list':
+      return state.listing.instances.map(
+        (i): PlaytimeEntry => ({
+          id: i.id,
+          seconds: state.playtime.get(i.id) ?? 0,
+          // Seeded time counts as ended a while ago (2026-10-14); a mock game stamps its real end.
+          lastPlayed: state.lastPlayed.get(i.id) ?? (state.playtime.has(i.id) ? 1_791_878_400 : 0),
+        }),
+      );
     case 'catalog_minecraft':
       return mcVersionsFx;
     case 'catalog_loaders': {
@@ -927,6 +956,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         setTimeout(() => {
           if (state.runs.get(id) !== run) return;
           state.runs.delete(id);
+          addPlaytime(state, id, run);
           event({ type: 'run_state', instance: id, state: 'idle', exit: exitOf({ killed: true }), update: null });
         }, 400);
       }

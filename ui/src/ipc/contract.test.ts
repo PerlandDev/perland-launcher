@@ -27,6 +27,7 @@ import packAddRequests from './contract/pack_add_requests.json';
 import packContents from './contract/pack_contents.json';
 import packStatus from './contract/pack_status.json';
 import planRequests from './contract/plan_requests.json';
+import playtimeFx from './contract/playtime.json';
 import projectDetail from './contract/project_detail.json';
 import runSnapshots from './contract/run_snapshots.json';
 import searchPage from './contract/search_page.json';
@@ -59,6 +60,7 @@ const cases: [string, ZodType, unknown][] = [
   ['icon_choices', s.iconChoice.array(), iconChoices],
   ['pack_contents', s.packContents, packContents],
   ['pack_status', s.packStatus.array(), packStatus],
+  ['playtime', s.playtimeEntry.array(), playtimeFx],
   ['run_snapshots', s.runSnapshot.array(), runSnapshots],
   ['settings', s.settings, settingsFx],
   ['server_instance', s.instance, serverInstanceFx],

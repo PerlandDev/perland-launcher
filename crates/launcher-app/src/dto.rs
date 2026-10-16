@@ -55,6 +55,16 @@ pub struct NewInstance {
     pub loader: Option<LoaderSpec>,
 }
 
+/// Time played in one instance on this computer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaytimeEntry {
+    pub id: String,
+    pub seconds: u64,
+    /// Seconds since the Unix epoch when its last game ended (0: never played).
+    pub last_played: u64,
+}
+
 /// Folders the UI may ask to open. Never a raw path, so the webview can't open arbitrary places.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

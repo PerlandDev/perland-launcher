@@ -280,3 +280,16 @@ it('does not name a replacement when the account being removed is not in use', a
   await user.click(await screen.findByRole('button', { name: 'Remove Alex_Builds' }));
   expect(screen.getByRole('dialog')).not.toHaveTextContent(/will be used instead|No accounts will be left/);
 });
+
+it('shows the time played in every instance together', async () => {
+  renderApp(<Accounts />, { playtime: { 'asalith-fields': 12 * 3600, 'creative-flat': 30 * 60 } });
+  expect(await screen.findByText('Time played on this computer: 12 h 30 min')).toBeInTheDocument();
+});
+
+it('leaves the total out before a minute is played', async () => {
+  const { calls } = renderApp(<Accounts />, { playtime: { 'asalith-fields': 59 } });
+  await screen.findByText('Steve');
+  await waitFor(() => expect(sent(calls, 'playtime_list')).toHaveLength(1));
+  await act(async () => {});
+  expect(screen.queryByText(/Time played/)).toBeNull();
+});

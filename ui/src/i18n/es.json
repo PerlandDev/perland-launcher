@@ -57,7 +57,8 @@
     "nameLabel": "Nombre",
     "deleteTitle": "¿Borrar {{name}}?",
     "deleteBody": "Se borra la instancia y todo lo que tiene, incluidos mundos y capturas. No se puede deshacer.",
-    "deleteConfirm": "Borrar instancia"
+    "deleteConfirm": "Borrar instancia",
+    "played": "{{time}} de juego"
   },
   "image": {
     "menu": "Cambiar imagen…",
@@ -276,7 +277,8 @@
     "offlineLocked": "Las cuentas sin conexión se desbloquean después de iniciar sesión una vez con una cuenta de Microsoft que tenga Minecraft.",
     "microsoft": "Iniciar sesión con Microsoft",
     "offlineBadge": "Sin conexión",
-    "empty": "Todavía no hay cuentas."
+    "empty": "Todavía no hay cuentas.",
+    "totalPlayed": "Tiempo jugado en esta computadora: {{time}}"
   },
   "settings": {
     "title": "Configuración",
@@ -593,5 +595,13 @@
     "foliage": "Vegetación", "path-tracing": "Path tracing", "reflections": "Reflejos", "shadows": "Sombras",
     "challenging": "Desafiantes", "kitchen-sink": "De todo", "lightweight": "Ligeros",
     "multiplayer": "Multijugador", "quests": "Misiones"
+  },
+  "time": {
+    "minutes": "{{count}} min",
+    "hours": "{{count}} h",
+    "days_one": "{{count}} día",
+    "days_other": "{{count}} días",
+    "years_one": "{{count}} año",
+    "years_other": "{{count}} años"
   }
 }

@@ -243,6 +243,7 @@ export const packAddRequest = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('file'), path: z.string() }),
 ]);
 export const javaTest = z.strictObject({ major: z.number().int() });
+export const playtimeEntry = z.strictObject({ id: z.string(), seconds: z.number().int(), lastPlayed: z.number().int() });
 
 export const contentKind = z.enum(['modpack', 'mod', 'resource_pack', 'shader']);
 export const sortIndex = z.enum(['relevance', 'downloads', 'follows', 'newest', 'updated']);
@@ -378,6 +379,7 @@ export type TaskId = z.infer<typeof taskId>;
 export type AppEvent = z.infer<typeof appEvent>;
 export type RunSnapshot = z.infer<typeof runSnapshot>;
 export type JavaTest = z.infer<typeof javaTest>;
+export type PlaytimeEntry = z.infer<typeof playtimeEntry>;
 export type PackStatus = z.infer<typeof packStatus>;
 export type OptionalChoice = z.infer<typeof optionalChoice>;
 export type PackMod = z.infer<typeof packMod>;

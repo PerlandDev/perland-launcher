@@ -2,13 +2,14 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '../../art/Avatar';
 import type { Account, AccountsFile } from '../../ipc/schema';
-import { useAccountMutations, useAccounts, useAppInfo } from '../../state/queries';
+import { useAccountMutations, useAccounts, useAppInfo, usePlaytime } from '../../state/queries';
 import { Button } from '../../ui/Button';
 import { ComingSoon } from '../../ui/ComingSoon';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
 import { Check, Trash, User } from '../../ui/Icon';
+import { formatPlaytime } from '../../ui/playtime';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { OFFLINE_NAME } from './offlineName';
@@ -17,6 +18,9 @@ export function Accounts() {
   const { t } = useTranslation();
   const accounts = useAccounts();
   const appInfo = useAppInfo();
+  const playtime = usePlaytime();
+  // Every instance's time on this computer, whoever played it: the launcher doesn't count per account.
+  const totalPlayed = formatPlaytime(playtime.data?.reduce((sum, p) => sum + p.seconds, 0) ?? 0, t);
   // A failed switch is a toast; adding and removing show their error where the player is looking.
   const { setActive } = useAccountMutations();
   const { addOffline: add, remove } = useAccountMutations({ inline: true });
@@ -144,6 +148,7 @@ export function Accounts() {
               );
             })}
           </ul>
+          {totalPlayed && <p className="mt-1 text-sm text-ink-dim">{t('accounts.totalPlayed', { time: totalPlayed })}</p>}
         </div>
 
         <section className="grid gap-4" aria-labelledby="add-heading">

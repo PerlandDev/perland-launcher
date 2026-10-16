@@ -23,6 +23,7 @@ export const qk = {
   update: ['update'] as const,
   instances: ['instances'] as const,
   accounts: ['accounts'] as const,
+  playtime: ['playtime'] as const,
   mcVersions: ['catalog', 'minecraft'] as const,
   loaders: (kind: LoaderKind, mc: string) => ['catalog', 'loaders', kind, mc] as const,
   mods: (id: string) => ['mods', id] as const,
@@ -48,6 +49,8 @@ export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: comm
 export const useUpdate = () => useQuery({ queryKey: qk.update, queryFn: commands.updateStatus });
 export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: commands.instancesList });
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
+/** Time played per instance on this computer. Refreshed when a run ends and when an instance moves or goes. */
+export const usePlaytime = () => useQuery({ queryKey: qk.playtime, queryFn: commands.playtimeList });
 /** The active account's name, or null while loading or when there is none. */
 export function useActiveAccountName(): string | null {
   const { data } = useAccounts();
@@ -226,6 +229,7 @@ export function useRenameInstance(opts: Opts = {}) {
         else if (lastInstance() === id) rememberInstance(renamed.id);
         void qc.invalidateQueries({ queryKey: qk.instanceArt(id) });
         void qc.invalidateQueries({ queryKey: qk.serverStatus(id) });
+        void qc.invalidateQueries({ queryKey: qk.playtime });
       }
       return qc.invalidateQueries({ queryKey: qk.instances });
     },
@@ -300,7 +304,11 @@ export function useDeleteInstance(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => commands.instanceDelete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onSuccess: () => {
+      // The instance's time goes with it, so the Accounts total drops too.
+      void qc.invalidateQueries({ queryKey: qk.playtime });
+      return qc.invalidateQueries({ queryKey: qk.instances });
+    },
     onError: onError(opts),
   });
 }
