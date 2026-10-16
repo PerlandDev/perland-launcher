@@ -84,6 +84,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      # Rust builds much faster on a Dev Drive (ReFS) than on C:, so the Windows job builds in a
+      # copy of the checkout there. DEV_DRIVE_WORKSPACE stays unset on Linux, which builds in place.
+      - name: Dev Drive
+        if: runner.os == 'Windows'
+        uses: samypr100/setup-dev-drive@562171fe8df7401fdf582d766cd3b6ab80d5b1a0 # v4.1.0
+        with:
+          drive-size: 12GB
+          workspace-copy: true
+          env-mapping: |
+            CARGO_HOME,{{ DEV_DRIVE }}/.cargo
       - name: Linux webview build dependencies
         if: runner.os == 'Linux'
         run: |
@@ -95,10 +105,14 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ env.DEV_DRIVE_WORKSPACE || '.' }}
       - name: Set the release version
         shell: bash
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
         env:
           VERSION: ${{ needs.plan.outputs.version }}
         run: node scripts/release/cli.mjs set-version "$VERSION"
@@ -109,6 +123,7 @@ jobs:
         run: cargo install trusted-signing-cli --locked
       - name: Build and sign the updater artifacts
         shell: bash
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
         env:
           PERLAND_BUILD: ${{ inputs.channel == 'beta' && 'beta' || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -130,9 +145,10 @@ jobs:
           pnpm tauri build "${args[@]}"
       - name: Stage the installers
         shell: bash
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
         env:
           VERSION: ${{ needs.plan.outputs.version }}
-        run: node scripts/release/cli.mjs stage "$VERSION" target/release/bundle dist
+        run: node scripts/release/cli.mjs stage "$VERSION" target/release/bundle "$GITHUB_WORKSPACE/dist"
       - uses: actions/upload-artifact@v4
         with:
           name: bundles-${{ runner.os }}
