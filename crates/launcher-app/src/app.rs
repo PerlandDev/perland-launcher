@@ -187,11 +187,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .contains(id)
     }
 
-    /// Restart now and install-on-quit wait while a game runs, an install holds the slot, or a
-    /// content install writes into an instance.
+    /// Restart now and install-on-quit wait while a game runs, an install holds the slot, a
+    /// content install writes into an instance, or an import is copying.
     pub fn update_blocked(&self) -> bool {
         self.has_active_runs()
             || self.install_slot.available_permits() == 0
+            || self
+                .import_slot
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_some()
             || !self
                 .installing
                 .lock()
@@ -1195,6 +1200,16 @@ pub(crate) mod tests {
         drop(permit);
         core.installing.lock().unwrap().insert("asalith".into());
         assert!(core.update_blocked());
+    }
+
+    #[tokio::test]
+    async fn a_running_import_blocks_updates() {
+        let (core, _, _, _t) = core(BuildKind::Beta);
+        assert!(!core.update_blocked());
+        *core.import_slot.lock().unwrap() = Some(Cancel::default());
+        assert!(core.update_blocked());
+        *core.import_slot.lock().unwrap() = None;
+        assert!(!core.update_blocked());
     }
 
     #[tokio::test]

@@ -119,7 +119,24 @@ it('cancels a running import and goes back to the form quietly', async () => {
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled();
   expect(screen.getByRole('textbox', { name: 'Name' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Cancel' })).not.toHaveAttribute('aria-disabled');
   expect(routeSnapshot()).toEqual({ name: 'newInstance' });
+});
+
+it('names the import after the folder around a bare .minecraft when nothing was detected', async () => {
+  const path = 'C:\\Users\\p\\Profiles\\Survival\\.minecraft';
+  const { user, calls, settle } = renderImport({
+    'plugin:dialog|open': () => path,
+    import_inspect: () => ({ path, name: null, minecraft: null, loader: null, sizeBytes: 1000 }),
+  });
+  const name = await choose(user);
+  expect(name).toHaveValue('');
+  expect(name).toHaveAttribute('placeholder', 'Survival');
+  await screen.findByRole('option', { name: '26.3' });
+
+  await user.click(screen.getByRole('button', { name: 'Import' }));
+  expect(sent(calls, 'import_instance')).toEqual([{ request: expect.objectContaining({ path, name: 'Survival', loader: null }) }]);
+  settle();
 });
 
 it('explains a folder that is not an instance, and lets the player choose again', async () => {

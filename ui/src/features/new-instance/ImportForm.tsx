@@ -15,7 +15,17 @@ import { Meter } from '../../ui/Meter';
 import { useVersionChoice } from './useVersionChoice';
 import { VersionFields } from './VersionFields';
 
-const folderName = (path: string) => path.split(/[/\\]/).filter(Boolean).pop() ?? path;
+const folderParts = (path: string) => path.split(/[/\\]/).filter(Boolean);
+const folderName = (path: string) => folderParts(path).pop() ?? path;
+
+/** The name to fall back on: the folder's own, or its parent's when it is a bare `.minecraft`. */
+function fallbackNameFor(path: string) {
+  const parts = folderParts(path);
+  const last = parts.pop();
+  if (last === undefined) return path;
+  if (/^\.?minecraft$/i.test(last)) return parts.pop() ?? last;
+  return last;
+}
 
 /** The player's cancel isn't a failure: the form just comes back. */
 const isCancel = (error: unknown) => isLauncherError(error) && error.code === 'import_cancelled';
@@ -100,7 +110,7 @@ function ImportDetails({ preview, onPick, errors }: { preview: ImportPreview; on
   const run = useImportInstance({ inline: true });
   const progress = useImportProgress();
   const busy = run.isPending;
-  const fallbackName = folderName(preview.path);
+  const fallbackName = fallbackNameFor(preview.path);
   // Leaving the form (Back, another mode) mid-copy cancels it: nobody would see it finish.
   const busyRef = useRef(false);
   useEffect(() => {
@@ -163,7 +173,7 @@ function ImportDetails({ preview, onPick, errors }: { preview: ImportPreview; on
         <VersionFields choice={choice} />
       </fieldset>
       {run.isError && !isCancel(run.error) && <ErrorCard error={run.error} />}
-      <ActionRow meter={meter} onCancel={cancel} cancelPending={cancelling} disabled={!choice.resolved.ready} pending={busy} />
+      <ActionRow meter={meter} onCancel={cancel} cancelPending={busy && cancelling} disabled={!choice.resolved.ready} pending={busy} />
     </form>
   );
 }
