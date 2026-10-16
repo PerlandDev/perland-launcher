@@ -1,26 +1,26 @@
-# Perland integration: idea issues (draft)
+# Perland integration: idea issues
 
-- **Status:** brainstormed with the owner on 2026-10-16. These are ideas recorded as issues, not committed work. Each one gets its own spec and plan before anything is built.
+- **Status:** brainstormed with the owner on 2026-10-16 and posted as issues the same day. These are ideas, not committed work. Each one gets its own spec and plan before anything is built.
 - **Why:** the launcher should connect deeply with Perland, but stay simple. Every addition must be easy to understand and useful to a casual player; the launcher must not become deep or complicated.
 - **Where the issues go:** launcher work in `PerlandDev/perland-launcher`, server-side work in `PerlandDev/PerlandEngine`, owner-facing work in `PerlandDev/PerlandPanel`. The in-game plugin is filed in PerlandEngine until it gets its own repo.
 - **Cross-repo work:** when a launcher issue needs Engine or Panel work, the plan for it says so and the owner is prompted to start a session in that repo.
 
-Placeholders like `[E1]` become real issue links once the issues exist.
+The GitHub issues are the live record; this file is the snapshot from the brainstorm.
 
 ## Suggested order
 
-1. **Player accounts:** [E1] then [L1].
-2. **Free servers for friends:** [E2], [P1] then [L2].
-3. **Public server list:** [E3], [P2] then [L3].
-4. **Server news:** [E4], [P3] then [L4].
-5. **Perland plugin, first part** (achievements and playtime, Minecraft account link code): [E5], with the launcher side in [L5].
-6. **Later:** finding every Perland server plus personal invites ([E6], [P4]), the rest of the plugin, and linking the Minecraft account through Microsoft sign-in ([L5]).
+1. **Player accounts:** [PerlandEngine#429](https://github.com/PerlandDev/PerlandEngine/issues/429) then [perland-launcher#48](https://github.com/PerlandDev/perland-launcher/issues/48).
+2. **Free servers for friends:** [PerlandEngine#430](https://github.com/PerlandDev/PerlandEngine/issues/430), [PerlandPanel#204](https://github.com/PerlandDev/PerlandPanel/issues/204) then [perland-launcher#49](https://github.com/PerlandDev/perland-launcher/issues/49).
+3. **Public server list:** [PerlandEngine#431](https://github.com/PerlandDev/PerlandEngine/issues/431), [PerlandPanel#205](https://github.com/PerlandDev/PerlandPanel/issues/205) then [perland-launcher#50](https://github.com/PerlandDev/perland-launcher/issues/50).
+4. **Server news:** [PerlandEngine#432](https://github.com/PerlandDev/PerlandEngine/issues/432), [PerlandPanel#206](https://github.com/PerlandDev/PerlandPanel/issues/206) then [perland-launcher#51](https://github.com/PerlandDev/perland-launcher/issues/51).
+5. **Perland plugin, first part** (achievements and playtime, Minecraft account link code): [PerlandEngine#433](https://github.com/PerlandDev/PerlandEngine/issues/433), with the launcher side in [perland-launcher#52](https://github.com/PerlandDev/perland-launcher/issues/52).
+6. **Later:** finding every Perland server plus personal invites ([PerlandEngine#434](https://github.com/PerlandDev/PerlandEngine/issues/434), [PerlandPanel#207](https://github.com/PerlandDev/PerlandPanel/issues/207)), the rest of the plugin, and linking the Minecraft account through Microsoft sign-in ([perland-launcher#52](https://github.com/PerlandDev/perland-launcher/issues/52)).
 
-The umbrella issue [L0] in the launcher repo tracks all of it.
+The umbrella issue [perland-launcher#47](https://github.com/PerlandDev/perland-launcher/issues/47) in the launcher repo tracks all of it.
 
 ---
 
-## [L0] perland-launcher: Perland integration roadmap (umbrella)
+## L0: Perland integration roadmap (umbrella) ([perland-launcher#47](https://github.com/PerlandDev/perland-launcher/issues/47))
 
 **Labels:** enhancement
 
@@ -29,46 +29,46 @@ Tracks the Perland integration ideas brainstormed on 2026-10-16. They are ideas,
 **Principle:** go deep with Perland, but keep the launcher simple. Every addition must be easy to understand and must add something for the player.
 
 **Suggested order**
-1. Player accounts: [E1], [L1]
-2. Free servers for friends: [E2], [P1], [L2]
-3. Public server list: [E3], [P2], [L3]
-4. Server news: [E4], [P3], [L4]
-5. Perland plugin, first part: [E5], [L5]
-6. Later: find every Perland server and personal invites ([E6], [P4]), the rest of the plugin, and Minecraft account linking through Microsoft sign-in ([L5])
+1. Player accounts: [PerlandEngine#429](https://github.com/PerlandDev/PerlandEngine/issues/429), [perland-launcher#48](https://github.com/PerlandDev/perland-launcher/issues/48)
+2. Free servers for friends: [PerlandEngine#430](https://github.com/PerlandDev/PerlandEngine/issues/430), [PerlandPanel#204](https://github.com/PerlandDev/PerlandPanel/issues/204), [perland-launcher#49](https://github.com/PerlandDev/perland-launcher/issues/49)
+3. Public server list: [PerlandEngine#431](https://github.com/PerlandDev/PerlandEngine/issues/431), [PerlandPanel#205](https://github.com/PerlandDev/PerlandPanel/issues/205), [perland-launcher#50](https://github.com/PerlandDev/perland-launcher/issues/50)
+4. Server news: [PerlandEngine#432](https://github.com/PerlandDev/PerlandEngine/issues/432), [PerlandPanel#206](https://github.com/PerlandDev/PerlandPanel/issues/206), [perland-launcher#51](https://github.com/PerlandDev/perland-launcher/issues/51)
+5. Perland plugin, first part: [PerlandEngine#433](https://github.com/PerlandDev/PerlandEngine/issues/433), [perland-launcher#52](https://github.com/PerlandDev/perland-launcher/issues/52)
+6. Later: find every Perland server and personal invites ([PerlandEngine#434](https://github.com/PerlandDev/PerlandEngine/issues/434), [PerlandPanel#207](https://github.com/PerlandDev/PerlandPanel/issues/207)), the rest of the plugin, and Minecraft account linking through Microsoft sign-in ([perland-launcher#52](https://github.com/PerlandDev/perland-launcher/issues/52))
 
 Related: #32 (achievements, finished by the plugin), #36 (skin editor, waits for Microsoft sign-in).
 
 ---
 
-## [L1] perland-launcher: Sign in with Perland and "Your servers"
+## L1: Sign in with Perland and "Your servers" ([perland-launcher#48](https://github.com/PerlandDev/perland-launcher/issues/48))
 
-**Labels:** enhancement · **Needs:** [E1]
+**Labels:** enhancement · **Needs:** [PerlandEngine#429](https://github.com/PerlandDev/PerlandEngine/issues/429)
 
 **Idea**
-A player can link their Perland account in the launcher. It is optional: without it the launcher works as today, including browsing public servers ([L3]).
+A player can link their Perland account in the launcher. It is optional: without it the launcher works as today, including browsing public servers ([perland-launcher#50](https://github.com/PerlandDev/perland-launcher/issues/50)).
 
 **Sign-in**
 - "Sign in with Perland" opens the browser on Perland's sign-in page. The launcher never sees the password, as with "Sign in with Google" in other apps.
-- Players sign in with Discord or an email code ([E1]).
+- Players sign in with Discord or an email code ([PerlandEngine#429](https://github.com/PerlandDev/PerlandEngine/issues/429)).
 
 **What a signed-in player gets**
 - **Your servers:** one list at the top of the servers screen, holding:
   - servers they own, tagged *Owner*;
-  - servers they were invited to, tagged *Invited*. In the first version this means a server they joined through an invite link while signed in. Personal invites to a Perland account come later ([E6]);
+  - servers they were invited to, tagged *Invited*. In the first version this means a server they joined through an invite link while signed in. Personal invites to a Perland account come later ([PerlandEngine#434](https://github.com/PerlandDev/PerlandEngine/issues/434));
   - public servers they follow, with no tag.
-- **Following:** pressing Play on a public server follows it automatically, and its menu has *Unfollow*. Following shows the server's news ([L4]). The player never has to learn a "follow" step.
+- **Following:** pressing Play on a public server follows it automatically, and its menu has *Unfollow*. Following shows the server's news ([perland-launcher#51](https://github.com/PerlandDev/perland-launcher/issues/51)). The player never has to learn a "follow" step.
 
 **Later**
-- Link the player's Minecraft account to the Perland account once the launcher has Microsoft sign-in ([L5]).
+- Link the player's Minecraft account to the Perland account once the launcher has Microsoft sign-in ([perland-launcher#52](https://github.com/PerlandDev/perland-launcher/issues/52)).
 
 **Non-goals**
 - Three separate lists, a social feed, friends lists.
 
 ---
 
-## [L2] perland-launcher: Create a server for friends
+## L2: Create a server for friends ([perland-launcher#49](https://github.com/PerlandDev/perland-launcher/issues/49))
 
-**Labels:** enhancement · **Needs:** [E2], [L1]
+**Labels:** enhancement · **Needs:** [PerlandEngine#430](https://github.com/PerlandDev/PerlandEngine/issues/430), [perland-launcher#48](https://github.com/PerlandDev/perland-launcher/issues/48)
 
 **Idea**
 A signed-in player creates a free server in three steps:
@@ -78,7 +78,7 @@ A signed-in player creates a free server in three steps:
 
 **Behaviour**
 - It needs a Perland account with a verified email.
-- The free-plan limits ([E2]) are shown up front, in plain words.
+- The free-plan limits ([PerlandEngine#430](https://github.com/PerlandDev/PerlandEngine/issues/430)) are shown up front, in plain words.
 - A modpack that needs more memory than a free server has is refused **before** the server is created, with a plain message.
 - **Play wakes it:** pressing Play on a sleeping server wakes it and shows "Starting the server…" until it is ready. The player never sees start buttons. Engine already wakes a sleeping server when someone joins.
 - The new server appears in *Your servers* tagged *Owner*.
@@ -88,9 +88,9 @@ A signed-in player creates a free server in three steps:
 
 ---
 
-## [L3] perland-launcher: Public server list
+## L3: Public server list ([perland-launcher#50](https://github.com/PerlandDev/perland-launcher/issues/50))
 
-**Labels:** enhancement · **Needs:** [E3]
+**Labels:** enhancement · **Needs:** [PerlandEngine#431](https://github.com/PerlandDev/PerlandEngine/issues/431)
 
 **Idea**
 Anyone, with or without a Perland account, can find Perland servers whose owner made them public, and join with one click.
@@ -114,15 +114,15 @@ Anyone, with or without a Perland account, can find Perland servers whose owner 
 - Language (set by the owner)
 - Region / ping
 
-**Layout:** its own screen, separate from Browse, which is for Modrinth content. *Your servers* ([L1]) sits above this list for signed-in players.
+**Layout:** its own screen, separate from Browse, which is for Modrinth content. *Your servers* ([perland-launcher#48](https://github.com/PerlandDev/perland-launcher/issues/48)) sits above this list for signed-in players.
 
 **Non-goals:** a mod-loader filter (too technical, and the launcher handles it).
 
 ---
 
-## [L4] perland-launcher: Server news on the server card
+## L4: Server news on the server card ([perland-launcher#51](https://github.com/PerlandDev/perland-launcher/issues/51))
 
-**Labels:** enhancement · **Needs:** [E4]
+**Labels:** enhancement · **Needs:** [PerlandEngine#432](https://github.com/PerlandDev/PerlandEngine/issues/432)
 
 **Idea**
 A server's news shows in the launcher, on the server's card and its page. There is no separate news tab.
@@ -137,21 +137,21 @@ A server's news shows in the launcher, on the server's card and its page. There 
 
 ---
 
-## [L5] perland-launcher: Link the Minecraft account, and show per-server achievements and playtime
+## L5: Link the Minecraft account, and show per-server achievements and playtime ([perland-launcher#52](https://github.com/PerlandDev/perland-launcher/issues/52))
 
-**Labels:** enhancement · **Needs:** [E5], [L1]
+**Labels:** enhancement · **Needs:** [PerlandEngine#433](https://github.com/PerlandDev/PerlandEngine/issues/433), [perland-launcher#48](https://github.com/PerlandDev/perland-launcher/issues/48)
 
 **Idea**
 - **Minecraft account link:** a signed-in player links their Minecraft account to their Perland account, so servers know who they are in the game (invites, whitelists, friends online).
-  - First way: the launcher shows a short code and the player types `/perland link <code>` on a Perland server ([E5]).
+  - First way: the launcher shows a short code and the player types `/perland link <code>` on a Perland server ([PerlandEngine#433](https://github.com/PerlandDev/PerlandEngine/issues/433)).
   - Later way: automatically, once the launcher has Microsoft sign-in.
-- **Achievements and playtime for each server:** with the plugin ([E5]) reporting them, the launcher shows, for example, "12 achievements on Asalith". This finishes the deferred part of #32. Medals can follow once achievements exist.
+- **Achievements and playtime for each server:** with the plugin ([PerlandEngine#433](https://github.com/PerlandDev/PerlandEngine/issues/433)) reporting them, the launcher shows, for example, "12 achievements on Asalith". This finishes the deferred part of #32. Medals can follow once achievements exist.
 
 ---
 
-## [E1] PerlandEngine: Player accounts with Discord and email-code sign-in
+## E1: Player accounts with Discord and email-code sign-in ([PerlandEngine#429](https://github.com/PerlandDev/PerlandEngine/issues/429))
 
-**Labels:** enhancement · **Pairs with:** perland-launcher [L1]
+**Labels:** enhancement · **Pairs with:** [perland-launcher#48](https://github.com/PerlandDev/perland-launcher/issues/48)
 
 **Problem**
 Perland accounts sign in with GitHub only, and sign-up is closed unless the operator opens it. Players (often 12–25 and casual) mostly have no GitHub account.
@@ -161,13 +161,13 @@ Perland accounts sign in with GitHub only, and sign-up is closed unless the oper
 - Perland Launcher can sign a player in through the browser and receives a token for the player's own account (scoped to that player, never the operator's API key).
 - Players can open accounts without the operator opening sign-up to everyone. The details are for the spec, and they relate to the sign-up policy (#129) and multi-account abuse (PerlandPanel#128).
 
-**Later:** link a verified Minecraft UUID to the account ([E5], then Microsoft sign-in in the launcher).
+**Later:** link a verified Minecraft UUID to the account ([PerlandEngine#433](https://github.com/PerlandDev/PerlandEngine/issues/433), then Microsoft sign-in in the launcher).
 
 ---
 
-## [E2] PerlandEngine: Free servers for players
+## E2: Free servers for players ([PerlandEngine#430](https://github.com/PerlandDev/PerlandEngine/issues/430))
 
-**Labels:** enhancement · **Pairs with:** PerlandPanel [P1], perland-launcher [L2]
+**Labels:** enhancement · **Pairs with:** [PerlandPanel#204](https://github.com/PerlandDev/PerlandPanel/issues/204), [perland-launcher#49](https://github.com/PerlandDev/perland-launcher/issues/49)
 
 **Idea**
 A player with a Perland account can create one free server, with or without mods, to play with friends. It is created from the launcher or the panel.
@@ -189,9 +189,9 @@ Most of this is a free resource plan on top of the existing plans, quotas and id
 
 ---
 
-## [E3] PerlandEngine: Public server listing
+## E3: Public server listing ([PerlandEngine#431](https://github.com/PerlandDev/PerlandEngine/issues/431))
 
-**Labels:** enhancement · **Pairs with:** PerlandPanel [P2], perland-launcher [L3]
+**Labels:** enhancement · **Pairs with:** [PerlandPanel#205](https://github.com/PerlandDev/PerlandPanel/issues/205), [perland-launcher#50](https://github.com/PerlandDev/perland-launcher/issues/50)
 
 **Idea**
 An owner can mark a server **public**. Public servers appear in an unauthenticated listing that Perland Launcher reads. It builds on the existing public server page.
@@ -212,9 +212,9 @@ An owner can mark a server **public**. Public servers appear in an unauthenticat
 
 ---
 
-## [E4] PerlandEngine: Server news
+## E4: Server news ([PerlandEngine#432](https://github.com/PerlandDev/PerlandEngine/issues/432))
 
-**Labels:** enhancement · **Pairs with:** PerlandPanel [P3], perland-launcher [L4]
+**Labels:** enhancement · **Pairs with:** [PerlandPanel#206](https://github.com/PerlandDev/PerlandPanel/issues/206), [perland-launcher#51](https://github.com/PerlandDev/perland-launcher/issues/51)
 
 **Idea**
 Each server has news posts written by its owner.
@@ -227,9 +227,9 @@ Each server has news posts written by its owner.
 
 ---
 
-## [E5] PerlandEngine: Perland server plugin / mod
+## E5: Perland server plugin / mod ([PerlandEngine#433](https://github.com/PerlandDev/PerlandEngine/issues/433))
 
-**Labels:** enhancement · **Pairs with:** perland-launcher [L5]
+**Labels:** enhancement · **Pairs with:** [perland-launcher#52](https://github.com/PerlandDev/perland-launcher/issues/52)
 
 **Idea**
 A small Perland add-on that runs inside the Minecraft server and talks to Engine. It lives here until it gets its own repo.
@@ -241,18 +241,18 @@ A small Perland add-on that runs inside the Minecraft server and talks to Engine
 2. **Minecraft account link:** the player types `/perland link <code>` with a code from the launcher, which links their Minecraft account to their Perland account. This only proves ownership on servers that check Minecraft accounts (online mode). Offline-mode servers must not offer it.
 
 **Later**
-3. **News in the game:** the latest post is shown on join, and an event start is announced to everyone online ([E4]).
+3. **News in the game:** the latest post is shown on join, and an event start is announced to everyone online ([PerlandEngine#432](https://github.com/PerlandDev/PerlandEngine/issues/432)).
 4. **`/invite`:** gives the owner an invite link from inside the game.
 5. **Friends online:** "2 friends playing on Asalith" in the launcher. This needs linked Minecraft accounts.
 
 ---
 
-## [E6] PerlandEngine: Find every Perland server, and personal invites (later)
+## E6: Find every Perland server, and personal invites (later) ([PerlandEngine#434](https://github.com/PerlandDev/PerlandEngine/issues/434))
 
-**Labels:** enhancement · **Pairs with:** PerlandPanel [P4]
+**Labels:** enhancement · **Pairs with:** [PerlandPanel#207](https://github.com/PerlandDev/PerlandPanel/issues/207)
 
 **Idea (later, large)**
-Beyond public servers ([E3]):
+Beyond public servers ([PerlandEngine#431](https://github.com/PerlandDev/PerlandEngine/issues/431)):
 - players can find servers made on Perland in general;
 - owners invite a **Perland account** directly, not only through a link, and the player sees those servers under *Invited* in the launcher.
 
@@ -260,9 +260,9 @@ This is a large product change in Engine and Panel. It is recorded here so it is
 
 ---
 
-## [P1] PerlandPanel: Free servers for players
+## P1: Free servers for players ([PerlandPanel#204](https://github.com/PerlandDev/PerlandPanel/issues/204))
 
-**Labels:** enhancement · **Pairs with:** PerlandEngine [E2]
+**Labels:** enhancement · **Pairs with:** [PerlandEngine#430](https://github.com/PerlandDev/PerlandEngine/issues/430)
 
 **Idea**
 The panel side of free servers:
@@ -272,9 +272,9 @@ The panel side of free servers:
 
 ---
 
-## [P2] PerlandPanel: Make a server public
+## P2: Make a server public ([PerlandPanel#205](https://github.com/PerlandDev/PerlandPanel/issues/205))
 
-**Labels:** enhancement · **Pairs with:** PerlandEngine [E3]
+**Labels:** enhancement · **Pairs with:** [PerlandEngine#431](https://github.com/PerlandDev/PerlandEngine/issues/431)
 
 **Idea**
 In a server's settings, the owner can:
@@ -287,9 +287,9 @@ It also shows a preview of how the server appears in the launcher's public list.
 
 ---
 
-## [P3] PerlandPanel: Write server news
+## P3: Write server news ([PerlandPanel#206](https://github.com/PerlandDev/PerlandPanel/issues/206))
 
-**Labels:** enhancement · **Pairs with:** PerlandEngine [E4]
+**Labels:** enhancement · **Pairs with:** [PerlandEngine#432](https://github.com/PerlandDev/PerlandEngine/issues/432)
 
 **Idea**
 A News section for each server, where the owner writes posts:
@@ -302,9 +302,9 @@ The list also shows automatic "modpack updated" posts. Owners can edit or delete
 
 ---
 
-## [P4] PerlandPanel: Find every Perland server, and personal invites (later)
+## P4: Find every Perland server, and personal invites (later) ([PerlandPanel#207](https://github.com/PerlandDev/PerlandPanel/issues/207))
 
-**Labels:** enhancement · **Pairs with:** PerlandEngine [E6]
+**Labels:** enhancement · **Pairs with:** [PerlandEngine#434](https://github.com/PerlandDev/PerlandEngine/issues/434)
 
 **Idea (later, large)**
-Panel side of [E6]: invite a Perland account directly to a server and manage those invites, alongside invite links. Recorded so it isn't lost, not scheduled.
+Panel side of [PerlandEngine#434](https://github.com/PerlandDev/PerlandEngine/issues/434): invite a Perland account directly to a server and manage those invites, alongside invite links. Recorded so it isn't lost, not scheduled.
