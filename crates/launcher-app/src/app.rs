@@ -349,7 +349,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// Version and Java changes wait until the game stops; other edits are fine while it runs.
     /// Where an instance comes from (`source`), its server link (`server`) and its pictures
-    /// (`art`, `art_seed`, `icon`) change only through their own commands, so a stale copy from
+    /// (`art`, `art_seed`, `icon`, `banner_focus`) change only through their own commands, so a stale copy from
     /// the UI can't undo a relink or a picture. Server instances
     /// always follow their server (`Auto`).
     pub async fn instance_update(&self, instance: Instance) -> Result<Instance> {
@@ -371,6 +371,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         instance.art = current.art;
         instance.art_seed = current.art_seed.clone();
         instance.icon = current.icon;
+        instance.banner_focus = current.banner_focus;
         if matches!(current.source, SourceRef::Perland { .. }) {
             instance.update_policy = UpdatePolicy::Auto;
         }
@@ -1154,6 +1155,23 @@ pub(crate) mod tests {
         core.instance_update(instance).await.unwrap();
         let after = core.instances.load("a").await.unwrap();
         assert_eq!(after.icon, Some(IconMode::Generated));
+        assert_eq!(after.java.memory_mb, stored.java.memory_mb + 512);
+    }
+
+    #[tokio::test]
+    async fn update_keeps_the_banner_focus_from_disk() {
+        use launcher_core::instances::Focus;
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let mut instance = core.instance_create(vanilla("A")).await.unwrap();
+        let mut stored = core.instances.load("a").await.unwrap();
+        stored.banner_focus = Some(Focus { x: 20, y: 80 });
+        core.instances.update(&stored).await.unwrap();
+        // A stale copy from the UI doesn't undo the position.
+        instance.banner_focus = None;
+        instance.java.memory_mb += 512;
+        core.instance_update(instance).await.unwrap();
+        let after = core.instances.load("a").await.unwrap();
+        assert_eq!(after.banner_focus, Some(Focus { x: 20, y: 80 }));
         assert_eq!(after.java.memory_mb, stored.java.memory_mb + 512);
     }
 

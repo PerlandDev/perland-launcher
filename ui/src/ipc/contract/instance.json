@@ -21,5 +21,9 @@
   "server": null,
   "artSeed": null,
   "art": "auto",
-  "icon": null
+  "icon": null,
+  "bannerFocus": {
+    "x": 30,
+    "y": 60
+  }
 }

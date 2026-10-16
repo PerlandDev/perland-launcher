@@ -98,6 +98,8 @@ export const instance = z.strictObject({
   artSeed: z.string().nullable(),
   art: z.enum(['auto', 'generated', 'custom']),
   icon: z.enum(['auto', 'generated', 'custom']).nullable(),
+  /** Which point of a picture background stays in view, in percent of its width and height; null is the default (bottom middle). */
+  bannerFocus: z.strictObject({ x: z.number().int(), y: z.number().int() }).nullable(),
 });
 export const damagedInstance = z.strictObject({ id: z.string(), error: launcherError });
 export const instanceListing = z.strictObject({ instances: z.array(instance), damaged: z.array(damagedInstance) });
@@ -354,6 +356,7 @@ export type JoinPreview = z.infer<typeof joinPreview>;
 export type ServerStatusView = z.infer<typeof serverStatusView>;
 export type DeepLink = z.infer<typeof deepLink>;
 export type Instance = z.infer<typeof instance>;
+export type Focus = NonNullable<Instance['bannerFocus']>;
 export type DamagedInstance = z.infer<typeof damagedInstance>;
 export type InstanceListing = z.infer<typeof instanceListing>;
 export type Account = z.infer<typeof account>;

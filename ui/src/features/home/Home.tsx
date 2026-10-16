@@ -66,7 +66,14 @@ function InstanceView({ instance }: { instance: Instance }) {
   return (
     // Home measures its own width (`@container`), not the window's, so the wide rail narrows it honestly.
     <section className="@container relative h-full overflow-hidden" aria-labelledby="instance-name">
-      <Marquee seed={artSeed(instance)} attract={run.state === 'idle'} dimmed={run.state !== 'idle'} banner={banner} className="absolute inset-0" />
+      <Marquee
+        seed={artSeed(instance)}
+        attract={run.state === 'idle'}
+        dimmed={run.state !== 'idle'}
+        banner={banner}
+        focus={instance.bannerFocus}
+        className="absolute inset-0"
+      />
       {/* Under 55rem (the wide rail at the 960 px minimum) the name takes its own row and the controls sit
           under it at the right, instead of squeezing the name into a column a few letters wide. The icon
           plate takes 5.75rem of the name's column, and the name grows with the width, so with a plate the

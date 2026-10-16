@@ -22,7 +22,11 @@
     "server": null,
     "artSeed": null,
     "art": "auto",
-    "icon": null
+    "icon": null,
+    "bannerFocus": {
+      "x": 30,
+      "y": 60
+    }
   },
   "added": [
     "sodium-fabric-0.5.11+mc1.20.1.jar"

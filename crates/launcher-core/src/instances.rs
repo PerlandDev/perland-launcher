@@ -368,6 +368,19 @@ pub enum IconMode {
     Auto,
 }
 
+/// Which point of a background picture stays in view when the marquee crops it, as percentages
+/// of its width and height (0 to 100, like CSS `object-position`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Focus {
+    pub x: u8,
+    pub y: u8,
+}
+
+impl Focus {
+    /// The largest value either axis takes.
+    pub const MAX: u8 = 100;
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Instance {
@@ -394,6 +407,10 @@ pub struct Instance {
     /// The icon's mode. `None` means never chosen; see `icon_mode`.
     #[serde(default)]
     pub icon: Option<IconMode>,
+    /// Which part of a background picture (an upload or the pack's art) the marquee shows.
+    /// `None` is the default, the bottom middle; generated landscapes ignore it.
+    #[serde(default)]
+    pub banner_focus: Option<Focus>,
 }
 
 impl Instance {
@@ -464,6 +481,7 @@ impl InstanceStore {
             art_seed: None,
             art: ArtMode::Auto,
             icon: None,
+            banner_focus: None,
         };
         tokio::fs::create_dir_all(self.game_dir(&instance.id)).await?;
         tokio::fs::create_dir_all(self.perland_dir(&instance.id)).await?;
@@ -1173,6 +1191,20 @@ mod tests {
         let newer = r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"},"icon":"hologram"}"#;
         let instance: Instance = serde_json::from_str(newer).unwrap();
         assert_eq!(instance.icon, Some(IconMode::Auto));
+    }
+
+    #[test]
+    fn old_instance_json_has_no_banner_focus() {
+        let json =
+            r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"}}"#;
+        let mut instance: Instance = serde_json::from_str(json).unwrap();
+        assert_eq!(instance.banner_focus, None);
+        assert!(serde_json::to_value(&instance).unwrap()["bannerFocus"].is_null());
+        instance.banner_focus = Some(Focus { x: 20, y: 80 });
+        let back = serde_json::to_value(&instance).unwrap();
+        assert_eq!(back["bannerFocus"], serde_json::json!({ "x": 20, "y": 80 }));
+        let again: Instance = serde_json::from_value(back).unwrap();
+        assert_eq!(again.banner_focus, Some(Focus { x: 20, y: 80 }));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../ipc/commands';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ArtChoice, ContentKind, IconChoice, ImageKind, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
+import type { ArtChoice, ContentKind, Focus, IconChoice, ImageKind, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { pushError } from './toasts';
@@ -237,12 +237,17 @@ export function useRenameInstance(opts: Opts = {}) {
   });
 }
 
+/** The background, the icon and the background's position are saved one after another: each rewrites the
+ *  instance's file, so two at once could undo each other. */
+const PICTURE_SAVES = { id: 'instance-pictures' };
+
 /** Change an instance's picture. The cached listing takes the saved instance at once, so the
  *  picker's lamp moves without waiting; the art and the listing are read again so the rail icon
  *  and the marquee follow. */
 export function useSetInstanceArt(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
+    scope: PICTURE_SAVES,
     mutationFn: ({ id, choice }: { id: string; choice: ArtChoice }) => commands.instanceArtSet(id, choice),
     onSuccess: (saved, { id }) => {
       qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
@@ -260,6 +265,7 @@ export function useSetInstanceArt(opts: Opts = {}) {
 export function useSetInstanceIcon(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
+    scope: PICTURE_SAVES,
     mutationFn: ({ id, choice }: { id: string; choice: IconChoice }) => commands.instanceIconSet(id, choice),
     onSuccess: (saved, { id }) => {
       qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
@@ -269,6 +275,31 @@ export function useSetInstanceIcon(opts: Opts = {}) {
       return qc.invalidateQueries({ queryKey: qk.instances });
     },
     onError: onError(opts),
+  });
+}
+
+/** Show a background position on the marquee before it is saved: the cached listing takes it at once,
+ *  so the marquee behind "Change image…" follows a drag. `useSetBannerFocus` saves it. */
+export function usePreviewBannerFocus() {
+  const qc = useQueryClient();
+  return (id: string, focus: Focus | null) =>
+    qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
+      listing && { ...listing, instances: listing.instances.map((i) => (i.id === id ? { ...i, bannerFocus: focus } : i)) },
+    );
+}
+
+/** Save which part of a picture background stays in view (null is the default). The marquee already shows
+ *  it (`usePreviewBannerFocus`), so success leaves the cache alone: a newer position may be on screen by
+ *  then. A refused save reads the listing again, so the marquee goes back to what is on disk. */
+export function useSetBannerFocus(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    scope: PICTURE_SAVES,
+    mutationFn: ({ id, focus }: { id: string; focus: Focus | null }) => commands.instanceBannerFocusSet(id, focus),
+    onError: (error) => {
+      onError(opts)(error);
+      return qc.invalidateQueries({ queryKey: qk.instances });
+    },
   });
 }
 

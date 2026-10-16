@@ -17,7 +17,7 @@ use launcher_core::{
         project::{ProjectDetail, VersionInfo},
         search::SearchPage,
     },
-    instances::{Instance, InstanceListing},
+    instances::{Focus, Instance, InstanceListing},
     meta::{
         catalog::{LoaderVersion, McVersion},
         loaders::LoaderKind,
@@ -308,6 +308,18 @@ pub async fn instance_icon_set(
     logged(
         "instance_icon_set",
         core.instance_icon_set(&id, choice).await,
+    )
+}
+
+#[tauri::command]
+pub async fn instance_banner_focus_set(
+    core: CoreState<'_>,
+    id: String,
+    focus: Option<Focus>,
+) -> Res<Instance> {
+    logged(
+        "instance_banner_focus_set",
+        core.instance_banner_focus_set(&id, focus).await,
     )
 }
 

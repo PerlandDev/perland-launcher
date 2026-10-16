@@ -29,8 +29,8 @@ use launcher_core::{
     download::Hashes,
     events::TaskId,
     instances::{
-        ArtMode, DamagedInstance, GameSpec, IconMode, Instance, InstanceListing, JavaSettings,
-        LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdatePolicy,
+        ArtMode, DamagedInstance, Focus, GameSpec, IconMode, Instance, InstanceListing,
+        JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdatePolicy,
     },
     invite::invite_link_cases,
     launch::CrashHint,
@@ -114,6 +114,7 @@ fn fabric_instance() -> Instance {
         art_seed: None,
         art: ArtMode::Auto,
         icon: None,
+        banner_focus: Some(Focus { x: 30, y: 60 }),
     }
 }
 
@@ -137,6 +138,7 @@ fn vanilla_instance() -> Instance {
         art_seed: Some("creative-flat".into()),
         art: ArtMode::Generated,
         icon: Some(IconMode::Generated),
+        banner_focus: None,
     }
 }
 
@@ -186,6 +188,7 @@ fn server_instance() -> Instance {
         art_seed: None,
         art: ArtMode::Auto,
         icon: None,
+        banner_focus: None,
     }
 }
 

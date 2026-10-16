@@ -5,7 +5,7 @@ use std::{path::Path, sync::Arc};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
     fsutil::{path_key, write_atomic},
-    instances::{ArtMode, IconMode, Instance, SourceRef},
+    instances::{ArtMode, Focus, IconMode, Instance, SourceRef},
     mods,
     sources::{
         art::{sniff, MAX_ART_BYTES},
@@ -419,6 +419,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
             ArtChoice::Upload { .. } => instance.art = ArtMode::Custom,
         }
+        // A new picture starts from the default position.
+        instance.banner_focus = None;
         if instance.icon.is_none() {
             if icon == IconMode::Custom {
                 self.pin_legacy_icon(id, &custom).await?;
@@ -433,6 +435,32 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         make_dir_in_instance(&self.instances.instance_dir(id), &custom, id).await?;
         write_custom(&custom, CUSTOM_STEM, &bytes, ext).await?;
+        self.instances.save(&instance).await?;
+        Ok(instance)
+    }
+
+    /// "Change image…", the background's position: which part of a picture background stays in
+    /// view (`None` is the default). The same refusals as `instance_art_set`, and only this field
+    /// is saved.
+    pub async fn instance_banner_focus_set(
+        &self,
+        id: &str,
+        focus: Option<Focus>,
+    ) -> Result<Instance> {
+        if self.is_busy(id) {
+            return Err(busy(id));
+        }
+        if self.is_installing(id) {
+            return Err(crate::browse::content_installing());
+        }
+        if focus.is_some_and(|f| f.x > Focus::MAX || f.y > Focus::MAX) {
+            return Err(LauncherError::disk(
+                ErrorCode::BannerFocusInvalid,
+                "That position is outside the picture",
+            ));
+        }
+        let mut instance = self.instances.load(id).await?;
+        instance.banner_focus = focus;
         self.instances.save(&instance).await?;
         Ok(instance)
     }
@@ -520,7 +548,7 @@ mod tests {
 
     use launcher_core::{
         accounts::BuildKind,
-        instances::{ArtMode, IconMode, SourceRef, UpdatePolicy},
+        instances::{ArtMode, Focus, IconMode, SourceRef, UpdatePolicy},
         sources::{art::MAX_ART_BYTES, PackInput, UpdateCheck},
         sync::{lockfile, manual::Scanner},
         ErrorCode, LauncherError,
@@ -1559,6 +1587,97 @@ mod tests {
         }
         assert_eq!(core.instances.load(&id).await.unwrap().icon, None);
         assert!(!core.instances.perland_dir(&id).join("custom").exists());
+    }
+
+    #[tokio::test]
+    async fn banner_focus_is_saved_and_reset_by_a_new_background() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        core.instance_art_set(
+            &id,
+            ArtChoice::Upload {
+                path: picked(tmp.path(), "mine.png", PNG),
+            },
+        )
+        .await
+        .unwrap();
+        let focus = Focus { x: 20, y: 80 };
+        let set = core
+            .instance_banner_focus_set(&id, Some(focus))
+            .await
+            .unwrap();
+        assert_eq!(set.banner_focus, Some(focus));
+        let loaded = core.instances.load(&id).await.unwrap();
+        assert_eq!(loaded.banner_focus, Some(focus));
+        assert_eq!(loaded.art, ArtMode::Custom, "only the position changes");
+        // Back to the default.
+        let set = core.instance_banner_focus_set(&id, None).await.unwrap();
+        assert_eq!(set.banner_focus, None);
+        core.instance_banner_focus_set(&id, Some(focus))
+            .await
+            .unwrap();
+        // Any new background starts from the default position.
+        let set = core
+            .instance_art_set(&id, ArtChoice::Generated { seed: "sky".into() })
+            .await
+            .unwrap();
+        assert_eq!(set.banner_focus, None);
+        assert_eq!(core.instances.load(&id).await.unwrap().banner_focus, None);
+    }
+
+    #[tokio::test]
+    async fn banner_focus_over_100_is_refused() {
+        let (core, _runner, _host, _tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        let path = core.instances.instance_dir(&id).join("instance.json");
+        let before = std::fs::read(&path).unwrap();
+        for focus in [Focus { x: 101, y: 0 }, Focus { x: 0, y: 255 }] {
+            let err = core
+                .instance_banner_focus_set(&id, Some(focus))
+                .await
+                .unwrap_err();
+            assert_eq!(err.code, ErrorCode::BannerFocusInvalid);
+        }
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        // The edges are inside the picture.
+        let edge = Focus { x: 100, y: 0 };
+        let set = core
+            .instance_banner_focus_set(&id, Some(edge))
+            .await
+            .unwrap();
+        assert_eq!(set.banner_focus, Some(edge));
+    }
+
+    #[tokio::test]
+    async fn banner_focus_refused_while_busy() {
+        let (core, _runner, _host, _tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        core.runs.lock().unwrap().insert(
+            id.clone(),
+            crate::app::Run {
+                phase: Running,
+                abort: None,
+                killer: None,
+                cancel: launcher_core::sync::Cancel::default(),
+                answer: None,
+                offer: None,
+                update_only: false,
+            },
+        );
+        let focus = Some(Focus { x: 20, y: 80 });
+        let err = core
+            .instance_banner_focus_set(&id, focus)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InstanceBusy);
+        core.runs.lock().unwrap().clear();
+        core.installing.lock().unwrap().insert(id.clone());
+        let err = core
+            .instance_banner_focus_set(&id, focus)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::ContentInstalling);
+        assert_eq!(core.instances.load(&id).await.unwrap().banner_focus, None);
     }
 
     #[tokio::test]

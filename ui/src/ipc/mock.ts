@@ -29,6 +29,7 @@ import type {
   ContentKind,
   DeepLink,
   ExitInfo,
+  Focus,
   IconChoice,
   InstallPlanView,
   InstallResult,
@@ -82,6 +83,8 @@ export interface MockOptions {
   iconShape?: 'square' | 'round';
   /** Seconds played per instance id. Defaults to 12 h in Asalith Fields (none on first run). */
   playtime?: Record<string, number>;
+  /** Adds Castle Keep, an instance with the player's own background picture (dev:mock turns it on). */
+  pictureBackground?: boolean;
 }
 
 interface MockRun {
@@ -113,6 +116,11 @@ const SKY_ART: InstanceArtData = {
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 270" shape-rendering="crispEdges"><defs><linearGradient id="s" x2="0" y2="1"><stop offset="0" stop-color="#9fd8ff"/><stop offset="1" stop-color="#e9c46a"/></linearGradient></defs><rect width="480" height="270" fill="url(#s)"/><rect x="60" y="120" width="140" height="40" fill="#3f8f4f"/><rect x="80" y="160" width="100" height="24" fill="#6b4a2b"/><rect x="290" y="90" width="120" height="36" fill="#3f8f4f"/><rect x="306" y="126" width="88" height="20" fill="#6b4a2b"/></svg>',
   ),
 };
+
+/** A player's uploaded background: a 4:3 picture taller than the marquee, so its position matters. */
+const CASTLE_PICTURE = svg(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" shape-rendering="crispEdges"><rect width="800" height="600" fill="#2b3a67"/><rect y="360" width="800" height="240" fill="#3f6b3a"/><rect y="480" width="800" height="120" fill="#5a4030"/><rect x="120" y="80" width="120" height="300" fill="#8a8f98"/><rect x="100" y="60" width="40" height="40" fill="#8a8f98"/><rect x="160" y="60" width="40" height="40" fill="#8a8f98"/><rect x="220" y="60" width="40" height="40" fill="#8a8f98"/><rect x="160" y="160" width="40" height="60" fill="#181410"/><rect x="240" y="240" width="320" height="140" fill="#6f747d"/><rect x="560" y="200" width="100" height="180" fill="#8a8f98"/><rect x="380" y="300" width="60" height="80" fill="#181410"/><rect x="600" y="80" width="40" height="40" fill="#ffc233"/></svg>',
+);
 
 /** A 1x1 PNG, the stand-in for a picked image. */
 const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -257,6 +265,7 @@ function seed(options: MockOptions) {
       artSeed: null,
       art: 'auto',
       icon: null,
+      bannerFocus: null,
     };
     listing.instances = [...listing.instances, sky];
     const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
@@ -282,6 +291,26 @@ function seed(options: MockOptions) {
       found: 0,
     });
   }
+  // An instance with the player's own background, so "Change image…" shows the Position control.
+  const custom = new Map<string, string>();
+  if (options.pictureBackground && !options.firstRun) {
+    const castle: Instance = {
+      id: 'castle-keep',
+      name: 'Castle Keep',
+      source: { kind: 'none' },
+      game: { minecraft: '1.21.1', loader: null },
+      updatePolicy: 'ask',
+      optionalChoices: {},
+      java: { path: null, memoryMb: 4096, args: '' },
+      server: null,
+      artSeed: null,
+      art: 'custom',
+      icon: 'generated',
+      bannerFocus: null,
+    };
+    listing.instances = [...listing.instances, castle];
+    custom.set(castle.id, CASTLE_PICTURE);
+  }
   const servers = seedServers(options.server, listing);
   return {
     listing,
@@ -295,7 +324,7 @@ function seed(options: MockOptions) {
     mods,
     packs,
     // The player's own background per instance, as a data URL (the real one is .perland/custom/image.*).
-    custom: new Map<string, string>(),
+    custom,
     // The player's own icon per instance (.perland/custom/icon.*).
     customIcon: new Map<string, string>(),
     content,
@@ -634,12 +663,16 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         artSeed: null,
         art: 'auto',
         icon: null,
+        bannerFocus: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       return created;
     }
     case 'instance_update': {
-      const updated = args.instance as Instance;
+      const sent = args.instance as Instance;
+      // Like the core: the pictures change only through their own commands.
+      const stored = find(sent.id);
+      const updated: Instance = stored ? { ...sent, art: stored.art, artSeed: stored.artSeed, icon: stored.icon, bannerFocus: stored.bannerFocus } : sent;
       // Like the core: memory comes from the slider, never from the Java arguments.
       if (updated.java.args.split(/\s+/).some((token) => token.startsWith('-Xmx'))) fail('java', 'jvm_args_memory', 'Memory is set with the slider, not in the Java arguments');
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
@@ -790,13 +823,13 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       let updated: Instance;
       if (choice.kind === 'generated') {
         state.custom.delete(target.id);
-        updated = { ...target, art: 'generated', artSeed: choice.seed, icon };
+        updated = { ...target, art: 'generated', artSeed: choice.seed, icon, bannerFocus: null };
       } else if (choice.kind === 'pack') {
         state.custom.delete(target.id);
-        updated = { ...target, art: 'auto', icon };
+        updated = { ...target, art: 'auto', icon, bannerFocus: null };
       } else {
         state.custom.set(target.id, upload ?? invalid());
-        updated = { ...target, art: 'custom', icon };
+        updated = { ...target, art: 'custom', icon, bannerFocus: null };
       }
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
@@ -815,6 +848,17 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         state.customIcon.delete(target.id);
         updated = { ...target, icon: choice.kind === 'pack' ? 'auto' : 'generated' };
       }
+      state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
+      return updated;
+    }
+    case 'instance_banner_focus_set': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (state.runs.has(target.id)) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: target.id });
+      const focus = (args.focus ?? null) as Focus | null;
+      if (focus && [focus.x, focus.y].some((n) => !Number.isInteger(n) || n < 0 || n > 100)) {
+        fail('disk', 'banner_focus_invalid', 'That position is outside the picture');
+      }
+      const updated: Instance = { ...target, bannerFocus: focus };
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
     }
@@ -845,6 +889,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         artSeed: null,
         art: 'auto',
         icon: null,
+        bannerFocus: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });
