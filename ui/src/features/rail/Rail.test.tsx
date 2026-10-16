@@ -110,6 +110,18 @@ it('shows names when its key is pressed, and remembers it in the settings', asyn
   expect(sent(calls, 'settings_set').at(-1)).toEqual({ settings: expect.objectContaining({ railExpanded: false }) });
 });
 
+it('round icon shape marks the rail', async () => {
+  const { container } = renderApp(<Rail />, { iconShape: 'round' });
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  expect(container.querySelector('nav.rail')).toHaveAttribute('data-icon-shape', 'round');
+});
+
+it('leaves the rail square by default', async () => {
+  const { container } = renderApp(<Rail />);
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  expect(container.querySelector('nav.rail')).toHaveAttribute('data-icon-shape', 'square');
+});
+
 it('shows the full name on hover and the status word in a wide row', async () => {
   renderApp(<Rail />, { railExpanded: true, server: 'starting' });
   expect(await screen.findByText('Asalith Fields')).toHaveAttribute('title', 'Asalith Fields');

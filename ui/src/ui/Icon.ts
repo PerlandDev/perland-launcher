@@ -23,6 +23,7 @@ export {
   Plus,
   Reload,
   Search,
+  SettingsCog,
   Square,
   Terminal,
   Trash,

@@ -17,6 +17,15 @@ pub enum Lang {
     Es,
 }
 
+/// How the rail draws instance icons: the notched square, or a pixel-stepped circle.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IconShape {
+    #[default]
+    Square,
+    Round,
+}
+
 /// Which launcher releases this install follows (spec §4.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -49,6 +58,8 @@ pub struct Settings {
     pub update_channel: Option<Channel>,
     /// The instance rail shows names and status (wide) rather than icons only.
     pub rail_expanded: bool,
+    /// The shape of instance icons in the rail.
+    pub icon_shape: IconShape,
 }
 
 impl Default for Settings {
@@ -61,6 +72,7 @@ impl Default for Settings {
             first_run_done: false,
             update_channel: None,
             rail_expanded: false,
+            icon_shape: IconShape::Square,
         }
     }
 }
@@ -126,6 +138,26 @@ mod tests {
         assert!(settings.minimize_on_play);
         assert!(!settings.first_run_done);
         assert!(!settings.rail_expanded);
+    }
+
+    #[tokio::test]
+    async fn icon_shape_defaults_to_square_and_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(&path, r#"{"firstRunDone": true}"#).unwrap();
+        let store = SettingsStore::new(&path);
+        let (settings, warning) = store.load().await;
+        assert!(warning.is_none());
+        assert_eq!(settings.icon_shape, IconShape::Square);
+
+        let round = Settings {
+            icon_shape: IconShape::Round,
+            ..settings
+        };
+        store.save(&round).await.unwrap();
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"iconShape\": \"round\""), "{raw}");
+        assert_eq!(store.load().await, (round, None));
     }
 
     #[tokio::test]

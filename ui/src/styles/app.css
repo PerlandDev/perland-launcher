@@ -1090,6 +1090,22 @@
     border-radius: 3px;
     corner-shape: notch;
   }
+  /* Round icons: the tile (a stored icon or the generated monogram) is clipped to a circle drawn in
+     pixel steps on a 16-cell grid, so the curve is made of the same hard squares as every notched corner.
+     Only the tile is clipped; the coin-slot light, the LED, the signal bars and the warning diamond belong
+     to the cabinet, not the tile, so they stay whole. */
+  .rail {
+    --pixel-circle: polygon(
+      68.75% 0, 68.75% 6.25%, 81.25% 6.25%, 81.25% 12.5%, 87.5% 12.5%, 87.5% 18.75%, 93.75% 18.75%, 93.75% 31.25%,
+      100% 31.25%, 100% 68.75%, 93.75% 68.75%, 93.75% 81.25%, 87.5% 81.25%, 87.5% 87.5%, 81.25% 87.5%, 81.25% 93.75%,
+      68.75% 93.75%, 68.75% 100%, 31.25% 100%, 31.25% 93.75%, 18.75% 93.75%, 18.75% 87.5%, 12.5% 87.5%, 12.5% 81.25%,
+      6.25% 81.25%, 6.25% 68.75%, 0 68.75%, 0 31.25%, 6.25% 31.25%, 6.25% 18.75%, 12.5% 18.75%, 12.5% 12.5%,
+      18.75% 12.5%, 18.75% 6.25%, 31.25% 6.25%, 31.25% 0
+    );
+  }
+  .rail[data-icon-shape='round'] .rail-icon > span > :is(.rail-art, svg) {
+    clip-path: var(--pixel-circle);
+  }
   .rail-item:hover {
     background: var(--color-raised);
   }

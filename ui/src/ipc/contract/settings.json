@@ -5,5 +5,6 @@
   "minimizeOnPlay": true,
   "firstRunDone": false,
   "updateChannel": null,
-  "railExpanded": true
+  "railExpanded": true,
+  "iconShape": "round"
 }

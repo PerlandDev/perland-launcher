@@ -39,7 +39,7 @@ use launcher_core::{
         loaders::LoaderKind,
     },
     mods::LocalMod,
-    settings::{Lang, Settings},
+    settings::{IconShape, Lang, Settings},
     sync::ManualFile,
     ErrorCode, LauncherError,
 };
@@ -345,6 +345,7 @@ fn contract_fixtures_are_current() {
         Settings {
             language: Some(Lang::Es),
             rail_expanded: true,
+            icon_shape: IconShape::Round,
             ..Settings::default()
         },
     );

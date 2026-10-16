@@ -119,6 +119,7 @@ export const settings = z.strictObject({
   firstRunDone: z.boolean(),
   updateChannel: channel.nullable(),
   railExpanded: z.boolean(),
+  iconShape: z.enum(['square', 'round']),
 });
 export const appInfo = z.strictObject({
   version: z.string(),
