@@ -5,6 +5,7 @@ import { commands } from '../../ipc/commands';
 import type { ImportPreview } from '../../ipc/schema';
 import {
   beginImport,
+  clearImportFailure,
   markImportCancelling,
   useImportFailure,
   useImportProgress,
@@ -122,7 +123,10 @@ export function ImportForm() {
     setPickError(null);
     try {
       const chosen = await open({ directory: true, multiple: false, title: t('import.pickTitle') });
-      if (typeof chosen === 'string') inspect.mutate(chosen);
+      if (typeof chosen === 'string') {
+        clearImportFailure();
+        inspect.mutate(chosen);
+      }
     } catch (error: unknown) {
       setPickError(error);
     }

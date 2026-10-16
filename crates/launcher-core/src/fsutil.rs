@@ -35,7 +35,15 @@ pub async fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
 /// or on Windows `ERROR_ACCESS_DENIED` (5) or `ERROR_SHARING_VIOLATION` (32). An antivirus or
 /// indexer often holds a just-written folder for a moment.
 pub fn is_in_use(e: &std::io::Error) -> bool {
-    e.kind() == std::io::ErrorKind::PermissionDenied || matches!(e.raw_os_error(), Some(5 | 32))
+    if e.kind() == std::io::ErrorKind::PermissionDenied {
+        return true;
+    }
+    // Raw codes mean something else elsewhere: on Unix 5 is EIO and 32 is EPIPE.
+    #[cfg(windows)]
+    if matches!(e.raw_os_error(), Some(5 | 32)) {
+        return true;
+    }
+    false
 }
 
 /// The waits between tries of [`rename_with_retry`]: about two seconds in all.
@@ -137,8 +145,17 @@ mod tests {
 
     #[test]
     fn in_use_errors_are_recognised() {
-        assert!(is_in_use(&std::io::Error::from_raw_os_error(32)));
-        assert!(is_in_use(&std::io::Error::from_raw_os_error(5)));
+        #[cfg(windows)]
+        {
+            assert!(is_in_use(&std::io::Error::from_raw_os_error(32)));
+            assert!(is_in_use(&std::io::Error::from_raw_os_error(5)));
+        }
+        // EIO and EPIPE on Unix are not a held file.
+        #[cfg(not(windows))]
+        {
+            assert!(!is_in_use(&std::io::Error::from_raw_os_error(32)));
+            assert!(!is_in_use(&std::io::Error::from_raw_os_error(5)));
+        }
         assert!(is_in_use(&std::io::Error::from(
             ErrorKind::PermissionDenied
         )));
@@ -153,7 +170,7 @@ mod tests {
             let n = calls.get();
             async move {
                 if n < 3 {
-                    Err(std::io::Error::from_raw_os_error(32))
+                    Err(std::io::Error::from(ErrorKind::PermissionDenied))
                 } else {
                     Ok(n)
                 }

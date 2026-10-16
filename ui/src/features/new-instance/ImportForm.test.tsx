@@ -245,6 +245,35 @@ it('reports a failure while the player is elsewhere as a toast, but never a canc
   expect(toastsSnapshot()[0]?.error).toEqual(expect.objectContaining({ code: 'not_enough_space' }));
 });
 
+it('drops the old import failure when another folder is chosen', async () => {
+  const failed: LauncherError = { ...notInstance, code: 'not_enough_space', message: 'Not enough free space.', params: { needed_mb: '900', free_mb: '10' } };
+  let answer: (value: unknown) => void = () => {};
+  const backend = createMockBackend();
+  let inspected = 0;
+  const { user, settle } = renderImport({
+    import_inspect: (args) => {
+      inspected += 1;
+      if (inspected === 1) return backend.handle('import_inspect', args);
+      return new Promise((resolve) => {
+        answer = () => resolve(backend.handle('import_inspect', args));
+      });
+    },
+  });
+  await choose(user);
+  await screen.findByRole('combobox', { name: 'Loader version' });
+  await user.click(screen.getByRole('button', { name: 'Import' }));
+  await act(async () => settle().reject(failed));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Not enough free space: 900 MB needed, 10 MB free.');
+
+  await user.click(screen.getByRole('button', { name: 'Choose folder…' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Reading the folder…');
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+  await act(async () => answer(null));
+  expect(await screen.findByRole('textbox', { name: 'Name' })).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
 it('says it is reading the folder while it looks at it', async () => {
   let answer: (value: unknown) => void = () => {};
   const backend = createMockBackend();

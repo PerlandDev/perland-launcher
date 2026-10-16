@@ -165,7 +165,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .await?;
         match self.import_place(instance, staging, memory).await {
             Ok(instance) => Ok(instance),
-            Err((id, e)) => {
+            Err(failed) => {
+                let (id, e) = *failed;
                 // No half-made instance: it goes with everything moved into it.
                 let _ = self.instances.delete(&id).await;
                 Err(e)
@@ -174,15 +175,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Swap the new instance's empty game folder for the staged copy, and give it the default
-    /// memory. On failure, the error comes back with the instance id to remove.
+    /// memory. On failure, the error comes back with the instance id to remove (boxed: the pair
+    /// is large for a `Result`'s Err).
     async fn import_place(
         &self,
         mut instance: Instance,
         staging: &Path,
         memory: u32,
-    ) -> std::result::Result<Instance, (String, LauncherError)> {
+    ) -> std::result::Result<Instance, Box<(String, LauncherError)>> {
         let id = instance.id.clone();
-        let fail = |e: LauncherError| (id.clone(), e);
+        let fail = |e: LauncherError| Box::new((id.clone(), e));
         let game = self.instances.game_dir(&instance.id);
         tokio::fs::remove_dir(&game)
             .await
@@ -207,8 +209,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .import_fail_move
             .load(std::sync::atomic::Ordering::SeqCst)
         {
-            // Still held after every retry (`ERROR_SHARING_VIOLATION`).
-            return Err(std::io::Error::from_raw_os_error(32));
+            // Still held after every retry (what `ERROR_SHARING_VIOLATION` maps to on Windows).
+            return Err(std::io::Error::from(ErrorKind::PermissionDenied));
         }
         rename_with_retry(staging, game).await
     }

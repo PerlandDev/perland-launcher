@@ -1111,11 +1111,15 @@ mod tests {
     #[test]
     fn rename_io_error_maps_in_use() {
         use std::io::{Error, ErrorKind};
-        for e in [
-            Error::from(ErrorKind::PermissionDenied),
-            Error::from_raw_os_error(32),
-            Error::from_raw_os_error(5),
-        ] {
+        // On Windows also its codes `ERROR_SHARING_VIOLATION` (32) and `ERROR_ACCESS_DENIED` (5).
+        #[cfg(windows)]
+        let raw = [Error::from_raw_os_error(32), Error::from_raw_os_error(5)];
+        #[cfg(not(windows))]
+        let raw: [Error; 0] = [];
+        for e in [Error::from(ErrorKind::PermissionDenied)]
+            .into_iter()
+            .chain(raw)
+        {
             let mapped = rename_io_error(e, "pack");
             assert_eq!(mapped.code, ErrorCode::InstanceFolderInUse);
             assert_eq!(mapped.params.get("id").map(String::as_str), Some("pack"));

@@ -43,6 +43,13 @@ export function beginImport(started: Omit<RunningImport, 'cancelling'>) {
   notify();
 }
 
+/** A new folder is being picked or read: the last import's failure is old news. */
+export function clearImportFailure() {
+  if (failure === null) return;
+  failure = null;
+  notify();
+}
+
 /** The player asked to stop it. False when there is nothing to stop or it was asked already. */
 export function markImportCancelling(): boolean {
   if (!running || running.cancelling) return false;
