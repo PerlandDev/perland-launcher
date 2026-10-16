@@ -75,11 +75,16 @@ jobs:
       - name: Fuzz each pack, link and server list parser for 3 minutes
         run: |
           # Run every target even if one finds a crash, then fail at the end.
-          rc=0
+          failed=""
           for target in packwiz_pack packwiz_index packwiz_meta mrpack_index sidecar pack_paths invite_link join_deep_link server_list; do
-            cargo fuzz run "$target" -- -max_total_time=180 -rss_limit_mb=2048 -max_len=65536 -timeout=10 || rc=1
+            cargo fuzz run "$target" -- -max_total_time=180 -rss_limit_mb=2048 -max_len=65536 -timeout=10 || failed="$failed $target"
           done
-          exit $rc
+          # The full log is too long to scroll back through, so name the failures last.
+          if [ -n "$failed" ]; then
+            echo "::error::fuzz targets failed:$failed"
+            find fuzz/artifacts -type f -exec sh -c 'echo "$1: $(base64 -w0 "$1")"' _ {} \; 2>/dev/null
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
