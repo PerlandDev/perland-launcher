@@ -141,7 +141,11 @@ async fn curseforge(dir: &Path) -> Option<Detected> {
 
 /// Modrinth App (legacy profiles): `profile.json` with a `metadata` object.
 async fn modrinth(dir: &Path) -> Option<Detected> {
-    let json = read_json(&dir.join("profile.json")).await?;
+    let file = dir.join("profile.json");
+    if !is_file(&file).await {
+        return None;
+    }
+    let json = read_json(&file).await?;
     let meta = json.get("metadata").filter(|m| m.is_object())?;
     let minecraft = version(str_at(meta, "game_version"));
     let loader = str_at(meta, "loader")
@@ -161,7 +165,11 @@ async fn modrinth(dir: &Path) -> Option<Detected> {
 
 /// ATLauncher: `instance.json` with a `launcher` object.
 async fn atlauncher(dir: &Path) -> Option<Detected> {
-    let json = read_json(&dir.join("instance.json")).await?;
+    let file = dir.join("instance.json");
+    if !is_file(&file).await {
+        return None;
+    }
+    let json = read_json(&file).await?;
     let launcher = json.get("launcher").filter(|l| l.is_object())?;
     let minecraft = version(str_at(&json, "id"));
     let loader = launcher.get("loaderVersion").and_then(|lv| {

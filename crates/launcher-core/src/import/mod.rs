@@ -47,6 +47,11 @@ const SKIP_ROOT_META: &[&str] = &[
 /// folder. Refuses the launcher's own data folder (and anything inside or around it) and a
 /// folder that isn't a Minecraft instance.
 pub async fn inspect(picked: &Path, launcher_root: &Path) -> Result<(Detected, u64)> {
+    // Links are never followed: a picked link (a linked `.minecraft`, say) would import
+    // whatever it points at.
+    if is_link(picked).await {
+        return Err(not_instance());
+    }
     let picked = match tokio::fs::canonicalize(picked).await {
         Ok(path) if tokio::fs::metadata(&path).await.is_ok_and(|m| m.is_dir()) => path,
         _ => return Err(not_instance()),
@@ -58,6 +63,10 @@ pub async fn inspect(picked: &Path, launcher_root: &Path) -> Result<(Detected, u
         return Err(inside_launcher());
     }
     let detected = detect::detect(&picked).await.ok_or_else(not_instance)?;
+    // A Prism `.minecraft` that is a link: the instance's files live somewhere else.
+    if is_link(&detected.game_dir).await {
+        return Err(not_instance());
+    }
     let plan = plan(&detected.game_dir, detected.skip_root_meta).await?;
     Ok((detected, plan.total))
 }
@@ -72,7 +81,7 @@ pub async fn copy_game_dir(
     dst: &Path,
     skip_root_meta: bool,
     cancel: &Cancel,
-    progress: &dyn Fn(u64, u64),
+    progress: &(dyn Fn(u64, u64) + Sync),
 ) -> Result<()> {
     if cancel.is_cancelled() {
         return Err(cancelled());
@@ -110,11 +119,8 @@ struct Plan {
 
 async fn plan(src: &Path, skip_root_meta: bool) -> Result<Plan> {
     let mut plan = Plan::default();
-    // A game folder that is itself a link (a Prism `.minecraft` pointing elsewhere) isn't followed.
-    if tokio::fs::symlink_metadata(src)
-        .await
-        .is_ok_and(|m| m.file_type().is_symlink())
-    {
+    // A game folder that is itself a link isn't followed ([`inspect`] refuses one).
+    if is_link(src).await {
         return Ok(plan);
     }
     let mut pending = vec![PathBuf::new()];
@@ -147,7 +153,7 @@ async fn plan(src: &Path, skip_root_meta: bool) -> Result<Plan> {
             if meta.is_dir() {
                 plan.dirs.push(child.clone());
                 pending.push(child);
-            } else if meta.is_file() {
+            } else if meta.is_file() && !is_world_lock(&name) {
                 plan.total += meta.len();
                 plan.files.push((child, meta.len()));
             }
@@ -163,6 +169,19 @@ fn skipped_at_top(name: &OsStr, skip_root_meta: bool) -> bool {
     };
     let listed = |list: &[&str]| list.iter().any(|s| s.eq_ignore_ascii_case(name));
     listed(SKIP_ALWAYS) || (skip_root_meta && listed(SKIP_ROOT_META))
+}
+
+/// A world's `session.lock`: the game makes a new one, and on Windows it stays locked while
+/// the other launcher's game runs, which would fail the copy.
+fn is_world_lock(name: &OsStr) -> bool {
+    name.to_str()
+        .is_some_and(|n| n.eq_ignore_ascii_case("session.lock"))
+}
+
+async fn is_link(path: &Path) -> bool {
+    tokio::fs::symlink_metadata(path)
+        .await
+        .is_ok_and(|m| m.file_type().is_symlink())
 }
 
 fn io_failed(path: &Path, e: std::io::Error) -> LauncherError {
@@ -199,9 +218,9 @@ pub fn cancelled() -> LauncherError {
 #[cfg(test)]
 mod tests {
     use std::{
-        cell::Cell,
         collections::BTreeMap,
         path::{Path, PathBuf},
+        sync::Mutex,
     };
 
     use sha2::{Digest, Sha256};
@@ -495,19 +514,21 @@ mod tests {
             ".fabric/x",
             "launcher_profiles.json",
             "instance.cfg",
+            "saves/w/session.lock",
+            "config/Session.LOCK",
         ] {
             put(&src, rel, rel);
         }
         let (d, size) = fx.inspect(&src).await.unwrap();
         assert!(d.skip_root_meta);
         let dst = fx.tmp.path().join("staging/1");
-        let last = Cell::new((u64::MAX, u64::MAX));
+        let last = Mutex::new((u64::MAX, u64::MAX));
         copy_game_dir(
             &d.game_dir,
             &dst,
             d.skip_root_meta,
             &Cancel::default(),
-            &|done, total| last.set((done, total)),
+            &|done, total| *last.lock().unwrap() = (done, total),
         )
         .await
         .unwrap();
@@ -524,7 +545,7 @@ mod tests {
         );
         let bytes: u64 = copied.keys().map(|rel| rel.len() as u64).sum();
         assert_eq!(size, bytes);
-        assert_eq!(last.get(), (bytes, bytes));
+        assert_eq!(*last.lock().unwrap(), (bytes, bytes));
     }
 
     #[tokio::test]
@@ -553,16 +574,14 @@ mod tests {
         let fx = Fixture::new();
         let src = fx.dir("src");
         let dst = fx.tmp.path().join("a/b/dst");
-        let calls = Cell::new(Vec::new());
+        let calls = Mutex::new(Vec::new());
         copy_game_dir(&src, &dst, true, &Cancel::default(), &|done, total| {
-            let mut v = calls.take();
-            v.push((done, total));
-            calls.set(v);
+            calls.lock().unwrap().push((done, total))
         })
         .await
         .unwrap();
         assert!(dst.is_dir());
-        assert_eq!(calls.take().last(), Some(&(0, 0)));
+        assert_eq!(calls.lock().unwrap().last(), Some(&(0, 0)));
     }
 
     #[tokio::test]
@@ -619,7 +638,7 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn a_linked_game_folder_is_not_followed() {
+    async fn a_linked_game_folder_is_refused() {
         let fx = Fixture::new();
         let outside = fx.dir("outside");
         put(&outside, "options.txt", "secret");
@@ -627,19 +646,75 @@ mod tests {
         put(&dir, "instance.cfg", "name=Linked\n");
         put(&dir, "mmc-pack.json", "{}");
         std::os::unix::fs::symlink(&outside, dir.join(".minecraft")).unwrap();
-        let (d, size) = fx.inspect(&dir).await.unwrap();
-        assert_eq!(size, 0);
+        let err = fx.inspect(&dir).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::ImportNotInstance);
+        // Picking the linked inner folder itself doesn't import the link's target either.
+        let err = fx.inspect(&dir.join(".minecraft")).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::ImportNotInstance);
+        // Nor does a copy handed a linked folder directly.
         let dst = fx.tmp.path().join("dst");
         copy_game_dir(
-            &d.game_dir,
+            &dir.join(".minecraft"),
             &dst,
-            d.skip_root_meta,
+            false,
             &Cancel::default(),
             &|_, _| {},
         )
         .await
         .unwrap();
         assert!(files(&dst).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_picked_link_is_refused() {
+        let fx = Fixture::new();
+        let real = fx.dir("real");
+        put(&real, "options.txt", "o");
+        let link = fx.tmp.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let err = fx.inspect(&link).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::ImportNotInstance);
+        assert!(fx.inspect(&real).await.is_ok());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn linked_metadata_files_are_not_markers() {
+        let fx = Fixture::new();
+        let elsewhere = fx.dir("elsewhere");
+        put(
+            &elsewhere,
+            "profile.json",
+            r#"{"metadata":{"name":"MR","game_version":"1.21.1","loader":"vanilla"}}"#,
+        );
+        put(
+            &elsewhere,
+            "instance.json",
+            r#"{"id":"1.19.2","launcher":{"name":"AT"}}"#,
+        );
+        for file in ["profile.json", "instance.json"] {
+            let dir = fx.dir(&format!("linked-{file}"));
+            put(&dir, "mods/a.jar", "jar");
+            std::os::unix::fs::symlink(elsewhere.join(file), dir.join(file)).unwrap();
+            let (d, _) = fx.inspect(&dir).await.unwrap();
+            assert_eq!((d.name, d.minecraft), (None, None), "{file}");
+        }
+    }
+
+    /// Task 5 spawns the copy and awaits it in a command, so these futures must stay `Send`.
+    #[allow(dead_code)]
+    fn import_futures_are_send() {
+        fn send<T: Send>(_: T) {}
+        let cancel = Cancel::default();
+        send(copy_game_dir(
+            Path::new("a"),
+            Path::new("b"),
+            true,
+            &cancel,
+            &|_, _| {},
+        ));
+        send(inspect(Path::new("a"), Path::new("b")));
     }
 
     #[tokio::test]
