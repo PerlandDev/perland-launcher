@@ -397,3 +397,40 @@ it('draws the marquee from the art seed, not the id', async () => {
   expect(want).not.toEqual(hills(render(<Marquee seed="creative-flat" attract={false} />).container));
   expect(hills(container.querySelector('section .marquee')!)).toEqual(want);
 });
+
+describe('the icon plate', () => {
+  it("sits before the name when the instance has a real icon", async () => {
+    const { container } = renderApp(<Home id="sky-islands" />);
+    const name = await screen.findByRole('heading', { name: 'Sky Islands' });
+    const plate = await vi.waitFor(() => {
+      const found = container.querySelector<HTMLImageElement>('img.icon-plate');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(plate.getAttribute('src')).toMatch(/^data:image\/svg\+xml;base64,/);
+    // Decoration beside the name, which already says what it is.
+    expect(plate).toHaveAttribute('alt', '');
+    expect(name.parentElement).toContainElement(plate);
+    expect(plate.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The icon never becomes the background.
+    expect(container.querySelector('img.marquee-banner')?.getAttribute('src')).not.toBe(plate.getAttribute('src'));
+  });
+
+  it('is absent for a generated icon', async () => {
+    const { container, calls } = renderApp(<Home id="asalith-fields" />);
+    await screen.findByRole('heading', { name: 'Asalith Fields' });
+    await vi.waitFor(() => expect(sent(calls, 'instance_art').length).toBeGreaterThan(0));
+    await act(async () => {});
+    expect(container.querySelector('.icon-plate')).toBeNull();
+  });
+
+  it('is absent when the player picked the initials for a pack', async () => {
+    const backend = createMockBackend();
+    await backend.handle('instance_icon_set', { id: 'sky-islands', choice: { kind: 'generated' } });
+    const { container } = renderWithProviders(<Home id="sky-islands" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
+    await screen.findByRole('heading', { name: 'Sky Islands' });
+    // The pack's banner still arrives, so the art has been read.
+    await vi.waitFor(() => expect(container.querySelector('img.marquee-banner')).not.toBeNull());
+    expect(container.querySelector('.icon-plate')).toBeNull();
+  });
+});
