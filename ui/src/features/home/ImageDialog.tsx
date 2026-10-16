@@ -99,7 +99,8 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
   const pack = isPack(instance);
   const current = currentChoice(instance);
   const busy = set.isPending;
-  const picture = art.data?.icon ?? null;
+  // An upload is the background, which comes back apart from the icon.
+  const picture = (current === 'upload' ? art.data?.banner : art.data?.icon) ?? null;
 
   const choose = (choice: ArtChoice) => {
     if (busy) return;

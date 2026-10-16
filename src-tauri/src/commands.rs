@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, InstallPlanView, InstallResult,
+    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, IconChoice, InstallPlanView, InstallResult,
     InstanceArtData, JavaTest, JoinPreview, ManualProgress, NewInstance, OpenTarget,
     PackAddRequest, PackContents, PackStatus, RunSnapshot, SearchRequest, ServerStatusView,
 };
@@ -291,6 +291,18 @@ pub async fn instance_art(core: CoreState<'_>, id: String) -> Res<InstanceArtDat
 #[tauri::command]
 pub async fn instance_art_set(core: CoreState<'_>, id: String, choice: ArtChoice) -> Res<Instance> {
     logged("instance_art_set", core.instance_art_set(&id, choice).await)
+}
+
+#[tauri::command]
+pub async fn instance_icon_set(
+    core: CoreState<'_>,
+    id: String,
+    choice: IconChoice,
+) -> Res<Instance> {
+    logged(
+        "instance_icon_set",
+        core.instance_icon_set(&id, choice).await,
+    )
 }
 
 #[tauri::command]

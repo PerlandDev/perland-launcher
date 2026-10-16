@@ -10,7 +10,7 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AppInfo, ArtChoice, Build, ContentFile, InstanceArtData, JavaTest, JoinPreview,
+        AppInfo, ArtChoice, Build, ContentFile, IconChoice, InstanceArtData, JavaTest, JoinPreview,
         ManualProgress, NewInstance, OpenTarget, OptionalChoice, PackAddRequest, PackContents,
         PackMod, PackStatus, PackUpdate, RunSnapshot, ServerGame, ServerPack, ServerPlayers,
         ServerStatusView, ServerTeam, SyncSummary,
@@ -29,8 +29,8 @@ use launcher_core::{
     download::Hashes,
     events::TaskId,
     instances::{
-        ArtMode, DamagedInstance, GameSpec, Instance, InstanceListing, JavaSettings, LoaderSpec,
-        ServerAddress, ServerLink, ServerStatus, SourceRef, UpdatePolicy,
+        ArtMode, DamagedInstance, GameSpec, IconMode, Instance, InstanceListing, JavaSettings,
+        LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdatePolicy,
     },
     invite::invite_link_cases,
     launch::CrashHint,
@@ -113,6 +113,7 @@ fn fabric_instance() -> Instance {
         server: None,
         art_seed: None,
         art: ArtMode::Auto,
+        icon: None,
     }
 }
 
@@ -135,6 +136,7 @@ fn vanilla_instance() -> Instance {
         server: None,
         art_seed: Some("creative-flat".into()),
         art: ArtMode::Generated,
+        icon: Some(IconMode::Generated),
     }
 }
 
@@ -183,6 +185,7 @@ fn server_instance() -> Instance {
         }),
         art_seed: None,
         art: ArtMode::Auto,
+        icon: None,
     }
 }
 
@@ -699,6 +702,16 @@ fn contract_fixtures_are_current() {
             ArtChoice::Pack,
             ArtChoice::Upload {
                 path: PathBuf::from("C:/Users/player/Pictures/my island.png"),
+            },
+        ],
+    );
+    check(
+        "icon_choices",
+        vec![
+            IconChoice::Generated,
+            IconChoice::Pack,
+            IconChoice::Upload {
+                path: PathBuf::from("C:/Users/player/Pictures/my icon.png"),
             },
         ],
     );

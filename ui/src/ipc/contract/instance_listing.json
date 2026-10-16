@@ -22,7 +22,8 @@
       },
       "server": null,
       "artSeed": null,
-      "art": "auto"
+      "art": "auto",
+      "icon": null
     },
     {
       "id": "creative-flat",
@@ -43,7 +44,8 @@
       },
       "server": null,
       "artSeed": "creative-flat",
-      "art": "generated"
+      "art": "generated",
+      "icon": "generated"
     }
   ],
   "damaged": [

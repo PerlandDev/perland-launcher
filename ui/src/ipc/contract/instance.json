@@ -20,5 +20,6 @@
   },
   "server": null,
   "artSeed": null,
-  "art": "auto"
+  "art": "auto",
+  "icon": null
 }

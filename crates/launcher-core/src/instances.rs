@@ -355,6 +355,19 @@ pub enum ArtMode {
     Auto,
 }
 
+/// Where an instance's icon comes from, apart from its background: the generated monogram, the
+/// player's own file, or the pack's icon.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IconMode {
+    Generated,
+    Custom,
+    /// Also what an unknown mode from a newer launcher loads as, like `ArtMode`.
+    #[default]
+    #[serde(other)]
+    Auto,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Instance {
@@ -375,8 +388,24 @@ pub struct Instance {
     /// folder, so the picture doesn't change with the name; the player can set it too.
     #[serde(default)]
     pub art_seed: Option<String>,
+    /// The background's mode (`art_seed` is its landscape).
     #[serde(default)]
     pub art: ArtMode,
+    /// The icon's mode. `None` means never chosen; see `icon_mode`.
+    #[serde(default)]
+    pub icon: Option<IconMode>,
+}
+
+impl Instance {
+    /// The icon's mode with a never-chosen icon resolved: a round-1 upload (`art == Custom`)
+    /// keeps filling both places, anything else is `Auto`.
+    pub fn icon_mode(&self) -> IconMode {
+        match (self.icon, self.art) {
+            (Some(mode), _) => mode,
+            (None, ArtMode::Custom) => IconMode::Custom,
+            (None, _) => IconMode::Auto,
+        }
+    }
 }
 
 pub struct InstanceStore {
@@ -434,6 +463,7 @@ impl InstanceStore {
             server: None,
             art_seed: None,
             art: ArtMode::Auto,
+            icon: None,
         };
         tokio::fs::create_dir_all(self.game_dir(&instance.id)).await?;
         tokio::fs::create_dir_all(self.perland_dir(&instance.id)).await?;
@@ -1116,6 +1146,33 @@ mod tests {
         let back = serde_json::to_value(&instance).unwrap();
         assert_eq!(back["art"], "auto");
         assert!(back["artSeed"].is_null());
+    }
+
+    #[test]
+    fn icon_mode_resolves_legacy() {
+        let json =
+            r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"}}"#;
+        let mut instance: Instance = serde_json::from_str(json).unwrap();
+        assert_eq!(instance.icon, None);
+        assert!(serde_json::to_value(&instance).unwrap()["icon"].is_null());
+        // Never chosen: a round-1 upload keeps filling both places.
+        instance.art = ArtMode::Custom;
+        assert_eq!(instance.icon_mode(), IconMode::Custom);
+        instance.art = ArtMode::Generated;
+        assert_eq!(instance.icon_mode(), IconMode::Auto);
+        instance.art = ArtMode::Auto;
+        assert_eq!(instance.icon_mode(), IconMode::Auto);
+        // A choice wins over the background.
+        instance.art = ArtMode::Custom;
+        instance.icon = Some(IconMode::Generated);
+        assert_eq!(instance.icon_mode(), IconMode::Generated);
+        assert_eq!(
+            serde_json::to_value(&instance).unwrap()["icon"],
+            "generated"
+        );
+        let newer = r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"},"icon":"hologram"}"#;
+        let instance: Instance = serde_json::from_str(newer).unwrap();
+        assert_eq!(instance.icon, Some(IconMode::Auto));
     }
 
     #[test]

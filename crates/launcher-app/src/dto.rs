@@ -179,8 +179,8 @@ pub struct ManualProgress {
     pub remaining: Vec<ManualFile>,
 }
 
-/// An instance's picture as `data:` URLs (the CSP allows no remote images). `None` falls back to
-/// the generated art.
+/// An instance's pictures as `data:` URLs (the CSP allows no remote images): its icon and its
+/// background. `None` falls back to the generated art.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstanceArtData {
@@ -194,6 +194,16 @@ pub struct InstanceArtData {
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ArtChoice {
     Generated { seed: String },
+    Pack,
+    Upload { path: PathBuf },
+}
+
+/// What the player picked for the icon in "Change image…": the generated monogram, the pack's
+/// own icon, or a file of their own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum IconChoice {
+    Generated,
     Pack,
     Upload { path: PathBuf },
 }

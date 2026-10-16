@@ -8,6 +8,7 @@ import deepLinksFx from './contract/deep_links.json';
 import errorFx from './contract/error.json';
 import errorCodes from './contract/error_codes.json';
 import events from './contract/events.json';
+import iconChoices from './contract/icon_choices.json';
 import installPlans from './contract/install_plans.json';
 import installResult from './contract/install_result.json';
 import inviteLinksFx from './contract/invite_links.json';
@@ -55,6 +56,7 @@ const cases: [string, ZodType, unknown][] = [
   ['pack_add_requests', s.packAddRequest.array(), packAddRequests],
   ['instance_art', s.instanceArtData, instanceArt],
   ['art_choices', s.artChoice.array(), artChoices],
+  ['icon_choices', s.iconChoice.array(), iconChoices],
   ['pack_contents', s.packContents, packContents],
   ['pack_status', s.packStatus.array(), packStatus],
   ['run_snapshots', s.runSnapshot.array(), runSnapshots],

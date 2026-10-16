@@ -27,8 +27,8 @@ function InstanceView({ instance }: { instance: Instance }) {
   const accounts = useAccounts();
   const hasAccount = Boolean(accounts.data?.active);
   const art = useInstanceArt(instance.id);
-  // The player's own picture arrives once, as the icon, and fills the marquee too.
-  const banner = art.data?.banner ?? (instance.art === 'custom' ? art.data?.icon : null) ?? null;
+  // The background arrives apart from the icon, the player's own picture included.
+  const banner = art.data?.banner ?? null;
   // The second click of a double click lands before the `queued` event; hold it until Play settles.
   const playOnce = useSingleFlight();
   return (

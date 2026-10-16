@@ -1,7 +1,7 @@
 import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../ipc/commands';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ArtChoice, ContentKind, ImageKind, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
+import type { ArtChoice, ContentKind, IconChoice, ImageKind, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { pushError } from './toasts';
@@ -240,6 +240,23 @@ export function useSetInstanceArt(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, choice }: { id: string; choice: ArtChoice }) => commands.instanceArtSet(id, choice),
+    onSuccess: (saved, { id }) => {
+      qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
+        listing && { ...listing, instances: listing.instances.map((i) => (i.id === id ? saved : i)) },
+      );
+      void qc.invalidateQueries({ queryKey: qk.instanceArt(id) });
+      return qc.invalidateQueries({ queryKey: qk.instances });
+    },
+    onError: onError(opts),
+  });
+}
+
+/** Change an instance's icon, apart from its background. Like `useSetInstanceArt`: the cached
+ *  listing takes the saved instance at once, then the art and the listing are read again. */
+export function useSetInstanceIcon(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, choice }: { id: string; choice: IconChoice }) => commands.instanceIconSet(id, choice),
     onSuccess: (saved, { id }) => {
       qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
         listing && { ...listing, instances: listing.instances.map((i) => (i.id === id ? saved : i)) },

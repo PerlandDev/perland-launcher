@@ -376,10 +376,10 @@ describe('server instances', () => {
   });
 });
 
-it("fills the marquee with the player's own picture, which arrives once as the icon", async () => {
+it("fills the marquee with the player's own background, which arrives as the banner", async () => {
   const backend = createMockBackend();
   await backend.handle('instance_art_set', { id: 'asalith-fields', choice: { kind: 'upload', path: 'C:/castle.png' } });
-  expect(await backend.handle('instance_art', { id: 'asalith-fields' })).toMatchObject({ banner: null });
+  expect(await backend.handle('instance_art', { id: 'asalith-fields' })).toMatchObject({ banner: expect.stringMatching(/^data:image\/png;base64,/) });
   const { container } = renderWithProviders(<Home id="asalith-fields" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
   await screen.findByRole('heading', { name: 'Asalith Fields' });
   await vi.waitFor(() => expect(container.querySelector('img.marquee-banner')?.getAttribute('src')).toMatch(/^data:image\/png;base64,/));
