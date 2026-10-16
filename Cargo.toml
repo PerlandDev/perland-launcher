@@ -20,7 +20,7 @@ sha1 = "0.10"
 sha2 = "0.10"
 md-5 = "0.10"
 hex = "0.4"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 clap = { version = "4", features = ["derive"] }
 tempfile = "3"
 wiremock = "0.6"

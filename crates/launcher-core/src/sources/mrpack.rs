@@ -222,7 +222,7 @@ pub fn read_archive(
             if entry.is_dir() {
                 continue;
             }
-            let name = entry.name().to_string();
+            let name = entry.name().map_err(zip_error)?.into_owned();
             let Some(rel) = name.strip_prefix(prefix) else {
                 continue;
             };
