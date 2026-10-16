@@ -1251,6 +1251,12 @@
       inset 0 2px 0 rgb(0 0 0 / 0.45),
       inset 0 0 0 1px var(--color-line);
   }
+  /* Round, the open slot is the cabinet's stepped circle: its seam ring on the ground of the rail. */
+  .rail[data-icon-shape='round']:not([data-wide]) .rail-list > li[data-carry]::before {
+    background: var(--color-line);
+    box-shadow: none;
+    clip-path: var(--pixel-ring);
+  }
   /* The drop line is an insertion caret, so it is amber like the text caret and the drop-zone cue: a 4px
      bar on its own 2px dirt step in the gap above the open slot, drawn over the carried cabinet. It shows
      only once the landing place differs from the cabinet's own, and never sits below the last row. */
@@ -1350,15 +1356,40 @@
   }
   /* Round icons: the tile (a stored icon or the generated monogram) is clipped to a circle drawn in
      pixel steps on a 16-cell grid, so the curve is made of the same hard squares as every notched corner.
-     Only the tile is clipped; the coin-slot light, the LED, the signal bars and the warning diamond belong
-     to the cabinet, not the tile, so they stay whole. */
+     The narrow rail's cabinet follows it: its plate, its dirt step, the carried ring and the open socket
+     are the same stepped circle, so no square plate or square shadow shows around a round icon. The
+     coin-slot light, the LED, the signal bars and the warning diamond belong to the cabinet, not the
+     tile, so they stay whole. Wide, a cabinet is a row with its name, so it keeps its notched plate. */
   .rail {
-    --pixel-circle: polygon(
+    --pixel-circle-points:
       68.75% 0, 68.75% 6.25%, 81.25% 6.25%, 81.25% 12.5%, 87.5% 12.5%, 87.5% 18.75%, 93.75% 18.75%, 93.75% 31.25%,
       100% 31.25%, 100% 68.75%, 93.75% 68.75%, 93.75% 81.25%, 87.5% 81.25%, 87.5% 87.5%, 81.25% 87.5%, 81.25% 93.75%,
       68.75% 93.75%, 68.75% 100%, 31.25% 100%, 31.25% 93.75%, 18.75% 93.75%, 18.75% 87.5%, 12.5% 87.5%, 12.5% 81.25%,
       6.25% 81.25%, 6.25% 68.75%, 0 68.75%, 0 31.25%, 6.25% 31.25%, 6.25% 18.75%, 12.5% 18.75%, 12.5% 12.5%,
-      18.75% 12.5%, 18.75% 6.25%, 31.25% 6.25%, 31.25% 0
+      18.75% 12.5%, 18.75% 6.25%, 31.25% 6.25%, 31.25% 0;
+    /* The same circle 1px in: on a stepped circle every corner moves 1px toward the centre on both axes. */
+    --pixel-circle-inner-points:
+      calc(68.75% - 1px) 1px, calc(68.75% - 1px) calc(6.25% + 1px), calc(81.25% - 1px) calc(6.25% + 1px),
+      calc(81.25% - 1px) calc(12.5% + 1px), calc(87.5% - 1px) calc(12.5% + 1px), calc(87.5% - 1px) calc(18.75% + 1px),
+      calc(93.75% - 1px) calc(18.75% + 1px), calc(93.75% - 1px) calc(31.25% + 1px), calc(100% - 1px) calc(31.25% + 1px),
+      calc(100% - 1px) calc(68.75% - 1px), calc(93.75% - 1px) calc(68.75% - 1px), calc(93.75% - 1px) calc(81.25% - 1px),
+      calc(87.5% - 1px) calc(81.25% - 1px), calc(87.5% - 1px) calc(87.5% - 1px), calc(81.25% - 1px) calc(87.5% - 1px),
+      calc(81.25% - 1px) calc(93.75% - 1px), calc(68.75% - 1px) calc(93.75% - 1px), calc(68.75% - 1px) calc(100% - 1px),
+      calc(31.25% + 1px) calc(100% - 1px), calc(31.25% + 1px) calc(93.75% - 1px), calc(18.75% + 1px) calc(93.75% - 1px),
+      calc(18.75% + 1px) calc(87.5% - 1px), calc(12.5% + 1px) calc(87.5% - 1px), calc(12.5% + 1px) calc(81.25% - 1px),
+      calc(6.25% + 1px) calc(81.25% - 1px), calc(6.25% + 1px) calc(68.75% - 1px), 1px calc(68.75% - 1px),
+      1px calc(31.25% + 1px), calc(6.25% + 1px) calc(31.25% + 1px), calc(6.25% + 1px) calc(18.75% + 1px),
+      calc(12.5% + 1px) calc(18.75% + 1px), calc(12.5% + 1px) calc(12.5% + 1px), calc(18.75% + 1px) calc(12.5% + 1px),
+      calc(18.75% + 1px) calc(6.25% + 1px), calc(31.25% + 1px) calc(6.25% + 1px), calc(31.25% + 1px) 1px;
+    --pixel-circle: polygon(var(--pixel-circle-points));
+    /* Its 1px seam: the circle with the inner circle cut out, the two joined at the top-right corner. */
+    --pixel-ring: polygon(
+      evenodd,
+      var(--pixel-circle-points),
+      68.75% 0,
+      calc(68.75% - 1px) 1px,
+      var(--pixel-circle-inner-points),
+      calc(68.75% - 1px) 1px
     );
   }
   .rail[data-icon-shape='round'] .rail-icon > span > :is(.rail-art, svg) {
@@ -1397,6 +1428,56 @@
   }
   .rail-list .rail-item[data-dragging]::before {
     content: none;
+  }
+  /* The round cabinet. The plate, its step and its ring are three stepped circles stacked behind the tile
+     in the cabinet's own stacking context: the dirt-deep step (the same circle dropped by --step), the
+     plate, then the seam ring. They take the states the square plate takes from its background and
+     box-shadow: raised on hover, raised on a 4px step when selected, raised on an 8px step with the
+     dim-ink ring while carried. */
+  .rail[data-icon-shape='round']:not([data-wide]) .rail-item {
+    --plate: var(--color-panel);
+    --step: 0px;
+    --step-color: transparent;
+    --ring: transparent;
+    isolation: isolate;
+    background: none;
+    box-shadow: none;
+  }
+  .rail[data-icon-shape='round']:not([data-wide]) .rail-item:hover {
+    --plate: var(--color-raised);
+  }
+  .rail[data-icon-shape='round']:not([data-wide]) .rail-item[data-selected] {
+    --plate: var(--color-raised);
+    --step: 4px;
+    --step-color: var(--color-dirt-deep);
+  }
+  .rail[data-icon-shape='round']:not([data-wide]) .rail-list .rail-item[data-dragging] {
+    --plate: var(--color-raised);
+    --step: 8px;
+    --step-color: var(--color-dirt-deep);
+    --ring: var(--color-ink-dim);
+  }
+  .rail[data-icon-shape='round']:not([data-wide]) .rail-icon::before,
+  .rail[data-icon-shape='round']:not([data-wide]) .rail-icon::after,
+  .rail[data-icon-shape='round']:not([data-wide]) .rail-item::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    pointer-events: none;
+  }
+  .rail[data-icon-shape='round']:not([data-wide]) .rail-icon::before {
+    translate: 0 var(--step);
+    background: var(--step-color);
+    clip-path: var(--pixel-circle);
+  }
+  .rail[data-icon-shape='round']:not([data-wide]) .rail-icon::after {
+    background: var(--plate);
+    clip-path: var(--pixel-circle);
+  }
+  .rail[data-icon-shape='round']:not([data-wide]) .rail-item::after {
+    background: var(--ring);
+    clip-path: var(--pixel-ring);
   }
   .rail-led {
     position: absolute;
