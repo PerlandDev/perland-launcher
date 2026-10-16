@@ -13,13 +13,19 @@ const GRASS = 4;
  *  the terraces of its plot icon. The plate is dark so it never reads as a lit button; the hue lives in
  *  the tint and the grass. A name with no letter or digit gets the plain plot icon. */
 export function InstanceIcon({ name, seed, size = 44 }: { name: string; seed: string; size?: number }) {
-  const letters = initials(name);
   const art = useMemo(() => {
     const hue = PLOT_HUES[hueIndex(seed)] ?? PLOT_HUES[0];
-    return { hue, plate: mix(GROUND, hue, 0.28), heights: terraceHeights(seed) };
-  }, [seed]);
+    const letters = initials(name);
+    return {
+      hue,
+      plate: mix(GROUND, hue, 0.28),
+      heights: terraceHeights(seed),
+      letters,
+      two: graphemes(letters).length > 1,
+    };
+  }, [name, seed]);
+  const { letters, two } = art;
   if (!letters) return <PlotIcon seed={seed} size={size} />;
-  const two = graphemes(letters).length > 1;
   // Bungee's caps are about 0.72em tall: either size sits centred in the 26px above the tallest terrace.
   const fontSize = two ? 18 : 22;
   const baseline = two ? 20 : 21.5;

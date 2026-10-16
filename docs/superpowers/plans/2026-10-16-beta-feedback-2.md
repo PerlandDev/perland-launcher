@@ -72,6 +72,9 @@
 - **When changes apply:** `JavaSettings` already makes Java changes wait until the game stops (`AppCore::update`). Nothing new is needed.
 - **Error codes (category `java`):** `jvm_args_unclosed_quote`, `jvm_arg_not_option`, `jvm_arg_not_allowed`, `jvm_args_memory`, `jvm_args_too_long`. Each needs en/es `message` and `fix`.
   - Params carry only the player's own text or a number, never English (PR #25's rule).
+- **Rule changes from the final review:**
+  - Module options that take a value (`--add-opens`, `--add-exports`, `--add-reads`, `--add-modules`, `--enable-native-access`, `--patch-module`, `--limit-modules`) consume a following word that doesn't start with `-`. That word skips the dash rule. A dashed word is still checked as an option, and a module option with nothing after it passes through for Java to report.
+  - `-XX:MaxHeapSize=`, `-XX:MaxRAM=` and `-XX:MaxRAMPercentage=` are refused with `jvm_args_memory`, like `-Xmx`, because they override the slider. `-Xms` and `-XX:InitialHeapSize=` stay allowed.
 - **Deferred:** a global default in Settings. The report asks per instance, and it would be the first copy-on-create text setting.
 
 ### #24: recognisable logos (our call)

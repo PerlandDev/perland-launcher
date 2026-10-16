@@ -3,10 +3,16 @@ import { plotCells } from './plot';
 /** What a name's monogram is made of: a letter or digit, with any marks that sit on it. */
 const COUNTS = /[\p{L}\p{N}]/u;
 
+/** Built on first use and kept: a segmenter is costly to make, and names are read on every drag frame. */
+let segmenter: Intl.Segmenter | null | undefined;
+
 /** A word's user-perceived characters, so "ñ" with a combining tilde stays one. */
 export function graphemes(word: string): string[] {
-  if (typeof Intl.Segmenter !== 'function') return Array.from(word);
-  return Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(word), (s) => s.segment);
+  if (segmenter === undefined) {
+    segmenter = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+  }
+  if (segmenter === null) return Array.from(word);
+  return Array.from(segmenter.segment(word), (s) => s.segment);
 }
 
 /** Up to two initials for an instance's generated icon: the first letter or digit of each of the

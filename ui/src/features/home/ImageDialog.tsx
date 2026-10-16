@@ -26,11 +26,12 @@ function currentBackground(instance: Instance): 'upload' | 'pack' | { seed: stri
 }
 
 /** Which icon is in use now. A never-chosen icon follows the core: a round-1 upload still fills it, and
- *  otherwise it is on auto, which is the pack's icon for a pack and the initials for anything else. */
-function currentIcon(instance: Instance): 'upload' | 'pack' | 'generated' {
+ *  otherwise it is on auto, which is the pack's icon for a pack and the initials for anything else. A pack
+ *  with no icon of its own (`packIcon` null, once the art has loaded) shows the initials, as the rail does. */
+function currentIcon(instance: Instance, packIcon: string | null | undefined): 'upload' | 'pack' | 'generated' {
   const mode = instance.icon ?? (instance.art === 'custom' ? 'custom' : 'auto');
   if (mode === 'custom') return 'upload';
-  if (mode === 'auto' && isPack(instance)) return 'pack';
+  if (mode === 'auto' && isPack(instance) && packIcon !== null) return 'pack';
   return 'generated';
 }
 
@@ -144,7 +145,7 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
   const [pickError, setPickError] = useState<unknown>(null);
   const pack = isPack(instance);
   const background = currentBackground(instance);
-  const icon = currentIcon(instance);
+  const icon = currentIcon(instance, art.data && art.data.icon);
   const busy = setArt.isPending || setIcon.isPending;
   // The icon and the background come back apart, each shown on its own current key.
   const iconPicture = art.data?.icon ?? null;

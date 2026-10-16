@@ -36,6 +36,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
   const [javaArgs, setJavaArgs] = useState(instance.java.args);
   const [testing, setTesting] = useState(false);
   const inFlight = useRef(false);
+  const argsField = useRef<HTMLTextAreaElement>(null);
   const update = useUpdateInstance({ inline: true });
 
   // Any edit after a save (or a failed save) makes "Saved" or the old error stale.
@@ -88,13 +89,21 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
   const argsRefused = update.isError && isLauncherError(update.error) && update.error.code.startsWith('jvm_');
   const ready = (pack || choice.resolved.ready) && (javaMode === 'auto' || javaPath !== null);
   const save = () =>
-    update.mutate({
-      ...instance,
-      name,
-      game: pack ? instance.game : { minecraft: choice.resolved.minecraft ?? instance.game.minecraft, loader: choice.resolved.loader },
-      updatePolicy: policy,
-      java: { memoryMb, path: javaMode === 'custom' ? javaPath : null, args: javaArgs },
-    });
+    update.mutate(
+      {
+        ...instance,
+        name,
+        game: pack ? instance.game : { minecraft: choice.resolved.minecraft ?? instance.game.minecraft, loader: choice.resolved.loader },
+        updatePolicy: policy,
+        java: { memoryMb, path: javaMode === 'custom' ? javaPath : null, args: javaArgs },
+      },
+      {
+        // The Save bar is sticky, so a refusal under the field can sit off-screen; focusing it scrolls it into view.
+        onError: (error) => {
+          if (isLauncherError(error) && error.code.startsWith('jvm_')) argsField.current?.focus();
+        },
+      },
+    );
 
   return (
     <div className="grid max-w-2xl gap-10">
@@ -186,6 +195,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
         error={argsRefused ? describeError(i18n, update.error).message : null}
       >
         <textarea
+          ref={argsField}
           className="field-input resize-y font-mono text-sm"
           rows={2}
           spellCheck={false}

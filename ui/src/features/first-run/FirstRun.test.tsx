@@ -212,7 +212,7 @@ it('shows the chosen language pressed, not lit', async () => {
   expect(spanish).not.toHaveClass('btn-primary');
 });
 
-/** Walk a release build (no account step to fill in) to step 3 in English. */
+/** Walk a release build (no account step to fill in) to step 3, in Spanish. */
 async function toInstanceStep(rendered: ReturnType<typeof renderApp>) {
   const { user } = rendered;
   await user.click(await screen.findByRole('button', { name: "Let's go" }));
@@ -233,7 +233,7 @@ it('finishes first run for a community modpack without creating an instance', as
   expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { firstRunDone: true, language: 'es' } });
 });
 
-it('saves the settings once for a double click on Browse modpacks, and again after a failure', async () => {
+it('saves the settings once for a double click on Browse modpacks', async () => {
   const rendered = renderApp(<FirstRun />, { firstRun: true, release: true });
   const { user, calls, backend } = rendered;
   const save = intercept(backend, 'settings_set');

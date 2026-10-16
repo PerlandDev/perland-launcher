@@ -32,6 +32,14 @@ const OWNED: &[&str] = &[
     "--validate-modules",
 ];
 
+/// Options that set the maximum heap, which the memory slider owns.
+const MEMORY_PREFIXES: &[&str] = &[
+    "-Xmx",
+    "-XX:MaxHeapSize=",
+    "-XX:MaxRAMPercentage=",
+    "-XX:MaxRAM=",
+];
+
 /// Long options that also take their value after an `=`.
 const OWNED_WITH_VALUE: &[&str] = &[
     "--class-path=",
@@ -40,10 +48,22 @@ const OWNED_WITH_VALUE: &[&str] = &[
     "--describe-module=",
 ];
 
+/// Module options that take their value as the next word (`--add-opens a/b=c`) as well as after
+/// an `=`.
+const TAKES_VALUE: &[&str] = &[
+    "--add-opens",
+    "--add-exports",
+    "--add-reads",
+    "--add-modules",
+    "--enable-native-access",
+    "--patch-module",
+    "--limit-modules",
+];
+
 /// Split `raw` into arguments. Whitespace (newlines too) separates them; `"…"` and `'…'` group
 /// text with spaces and are removed, even in the middle of a token. A backslash is always
 /// literal. Each argument must be an option the launcher doesn't own, and memory goes through
-/// the slider.
+/// the slider. A module option may be followed by its value, which needn't start with a dash.
 pub fn parse(raw: &str) -> Result<Vec<String>> {
     if raw.chars().count() > MAX_JVM_ARGS_CHARS {
         return Err(LauncherError::java(
@@ -54,8 +74,13 @@ pub fn parse(raw: &str) -> Result<Vec<String>> {
         .with_fix("Remove the arguments you don't need"));
     }
     let args = split(raw)?;
-    for arg in &args {
+    let mut iter = args.iter().peekable();
+    while let Some(arg) = iter.next() {
         check(arg)?;
+        // The value after a module option is not an option; a dashed word is still checked.
+        if TAKES_VALUE.contains(&arg.as_str()) && iter.peek().is_some_and(|v| !v.starts_with('-')) {
+            iter.next();
+        }
     }
     Ok(args)
 }
@@ -105,15 +130,15 @@ fn check(arg: &str) -> Result<()> {
             ErrorCode::JvmArgNotOption,
             "A Java argument doesn't start with a dash",
         )
-        .with_param("arg", arg)
+        .with_param("arg", if arg.is_empty() { "\"\"" } else { arg })
         .with_fix("Remove it, or add the dash it's missing"));
     }
-    if arg.starts_with("-Xmx") {
+    if MEMORY_PREFIXES.iter().any(|p| arg.starts_with(p)) {
         return Err(LauncherError::java(
             ErrorCode::JvmArgsMemory,
             "Memory is set with the slider, not in the Java arguments",
         )
-        .with_fix("Remove -Xmx and move the memory slider instead"));
+        .with_fix("Remove it and move the memory slider instead"));
     }
     if OWNED.contains(&arg) || OWNED_WITH_VALUE.iter().any(|p| arg.starts_with(p)) {
         return Err(LauncherError::java(
@@ -152,7 +177,10 @@ mod tests {
             strs(&["-Dname=My Pack", "-Dq=say \"hi\""])
         );
         assert_eq!(parse(r#"-Dx="""#).unwrap(), strs(&["-Dx="]));
-        assert_eq!(parse(r#""""#).unwrap_err().code, ErrorCode::JvmArgNotOption);
+        let err = parse(r#""""#).unwrap_err();
+        assert_eq!(err.code, ErrorCode::JvmArgNotOption);
+        // Two quote characters, so the message reads as an empty argument.
+        assert_eq!(err.params["arg"], r#""""#);
     }
 
     #[test]
@@ -210,6 +238,63 @@ mod tests {
     #[test]
     fn memory_goes_through_the_slider() {
         assert_eq!(parse("-Xmx8G").unwrap_err().code, ErrorCode::JvmArgsMemory);
+        for arg in [
+            "-XX:MaxHeapSize=8g",
+            "-XX:MaxRAMPercentage=75",
+            "-XX:MaxRAM=16g",
+        ] {
+            assert_eq!(
+                parse(arg).unwrap_err().code,
+                ErrorCode::JvmArgsMemory,
+                "{arg}"
+            );
+        }
+        // The starting size can still be set.
+        assert_eq!(parse("-Xms2G -XX:InitialHeapSize=2g").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn module_options_take_the_next_token_as_their_value() {
+        assert_eq!(
+            parse("--add-opens java.base/java.lang=ALL-UNNAMED").unwrap(),
+            strs(&["--add-opens", "java.base/java.lang=ALL-UNNAMED"])
+        );
+        assert_eq!(
+            parse("--add-modules jdk.incubator.vector -XX:+UseG1GC").unwrap(),
+            strs(&["--add-modules", "jdk.incubator.vector", "-XX:+UseG1GC"])
+        );
+        assert_eq!(
+            parse("--add-opens=java.base/java.lang=ALL-UNNAMED")
+                .unwrap()
+                .len(),
+            1
+        );
+        for opt in [
+            "--add-opens",
+            "--add-exports",
+            "--add-reads",
+            "--add-modules",
+            "--enable-native-access",
+            "--patch-module",
+            "--limit-modules",
+        ] {
+            assert_eq!(parse(&format!("{opt} a/b=c")).unwrap().len(), 2, "{opt}");
+            // With no value after it, it passes through for Java to report.
+            assert_eq!(parse(opt).unwrap(), strs(&[opt]), "{opt}");
+        }
+        // Only a token that isn't an option is taken as the value.
+        let err = parse("--add-opens -cp").unwrap_err();
+        assert_eq!(err.code, ErrorCode::JvmArgNotAllowed);
+        assert_eq!(err.params["arg"], "-cp");
+        // A value is consumed once; the next plain word is still refused.
+        let err = parse("--add-opens a/b=c stray").unwrap_err();
+        assert_eq!(err.code, ErrorCode::JvmArgNotOption);
+        assert_eq!(err.params["arg"], "stray");
+        // Other options don't take a following word.
+        assert_eq!(
+            parse("-Xss4M value").unwrap_err().code,
+            ErrorCode::JvmArgNotOption
+        );
     }
 
     #[test]

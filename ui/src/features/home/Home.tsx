@@ -92,7 +92,7 @@ function InstanceView({ instance }: { instance: Instance }) {
         </div>
         <div className={`flex items-end gap-3 ${icon ? '@max-[64rem]:justify-self-end' : '@max-[55rem]:justify-self-end'}`}>
           {/* "Mods & packs" is long. Its 1rem pad, the 1rem column gap and the name's 5.2cqi size keep
-              an 8-letter name (CREATIVE, SURVIVAL, MODPACKS) whole down to the 55rem side-by-side floor. */}
+              an 8-letter name (CREATIVE, SURVIVAL, MODPACKS) whole down to the side-by-side floor (55rem, or 64rem when the icon plate shows). */}
           <Button size="lg" className="px-4" icon={<Package />} onClick={() => navigate({ name: 'mods', id: instance.id })}>
             {t('home.mods')}
           </Button>

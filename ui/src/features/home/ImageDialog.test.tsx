@@ -15,7 +15,6 @@ async function openPicker(user: ReturnType<typeof renderApp>['user'], name: stri
   return screen.getByRole('dialog', { name: 'Change image' });
 }
 
-
 const group = (dialog: HTMLElement, name: 'Icon' | 'Background') => within(within(dialog).getByRole('radiogroup', { name }));
 
 describe('Change image', () => {
@@ -206,6 +205,17 @@ describe('Change image: the icon', () => {
       .filter((r) => r.getAttribute('aria-checked') === 'true');
     expect(checked).toHaveLength(1);
     expect(checked[0]).toHaveAccessibleName(lit);
+  });
+
+  it('lights the initials for a pack with no icon of its own, and still offers the pack icon', async () => {
+    const backend = createMockBackend();
+    backend.state.packs.get('sky-islands')!.art = { icon: null, banner: null };
+    const { user } = renderWithProviders(<Home id="sky-islands" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
+    const dialog = await openPicker(user, 'Sky Islands');
+    const icons = group(dialog, 'Icon');
+    expect(await icons.findByRole('radio', { name: 'Initials' })).toHaveAttribute('aria-checked', 'true');
+    expect(icons.getByRole('radio', { name: 'Pack icon' })).toHaveAttribute('aria-checked', 'false');
+    expect(icons.getAllByRole('radio').filter((r) => r.tabIndex === 0)).toEqual([icons.getByRole('radio', { name: 'Initials' })]);
   });
 
   it('shows a refused icon as a translated error', async () => {

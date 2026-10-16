@@ -223,6 +223,8 @@ it('shows a refused argument under the field', async () => {
   expect(field).toHaveAttribute('aria-invalid', 'true');
   expect(field).toHaveAccessibleDescription(message);
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  // Focus moves to the field, so the message isn't left off-screen behind the sticky Save bar.
+  expect(field).toHaveFocus();
   await user.clear(field);
   expect(screen.queryByText(message)).not.toBeInTheDocument();
   expect(field).not.toHaveAttribute('aria-invalid');

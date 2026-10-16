@@ -422,7 +422,9 @@ describe('the icon plate', () => {
     expect(name.parentElement).toContainElement(plate);
     expect(plate.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // The icon never becomes the background.
-    expect(container.querySelector('img.marquee-banner')?.getAttribute('src')).not.toBe(plate.getAttribute('src'));
+    const banner = container.querySelector<HTMLImageElement>('img.marquee-banner');
+    expect(banner).not.toBeNull();
+    expect(banner!.getAttribute('src')).not.toBe(plate.getAttribute('src'));
   });
 
   it('is absent for a generated icon', async () => {
