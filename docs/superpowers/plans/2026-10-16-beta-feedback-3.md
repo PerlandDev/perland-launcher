@@ -142,6 +142,39 @@
 - **Size:** `import_inspect` returns `size_bytes`, summed over exactly the files that would be copied.
 - **No brand names in the UI copy:** the hint speaks of "your other launcher". Detection is silent; it only prefills the form.
 
+## Execution notes (2026-10-16)
+
+- **Shipped:** PerlandDev/perland-launcher#39 (draft). It refs #32, #36 and #37 and fixes #38. #36 has no code: it waits for Microsoft sign-in.
+- **Owner question still open:** #37.2, interface colours and fonts.
+- **Calls made during execution, beyond the Decisions above:**
+  - Spanish `home.played` is "{{time}} de juego". "jugadas" doesn't agree with "días" or "años".
+  - The Position control is a labelled group with two visually hidden range inputs plus a pointer surface. Its reset button says "Reset" / "Restablecer", because the default is bottom-centre, not the centre.
+  - The import copy's progress callback is `Sync`, so the future is `Send`.
+  - The import refuses a picked folder that is a link, and a linked game folder.
+  - It skips `session.lock` anywhere in the tree, and every top-level `launcher_*` entry, `webcache`, `webcache2`, `runtime` and `treatment_tags.json`.
+  - It skips a source file that vanishes mid-copy.
+  - It checks free space first (`not_enough_space`).
+  - It retries the final move for about 2 s while Windows holds the folder.
+  - "Restart now" waits for an import.
+  - A player's cancel isn't logged as an error.
+  - A folder with nothing detected is named after its parent when it is `.minecraft` or `minecraft`. Names are capped at 64 characters.
+  - Leaving the import form doesn't cancel the import. It continues in the background; coming back shows its progress, success shows a notice and failure an error toast.
+  - Quitting with "keep playing" records the running games' time so far.
+  - An unknown `iconShape` loads as Square instead of resetting every setting.
+- **Deferred:**
+  - **Import:**
+    - carrying over memory, Java arguments and the icon from the other launcher;
+    - cancel only takes effect between files, so one huge file delays it;
+    - New instance opens on its default mode even while an import runs;
+    - instance rename still has no Windows in-use retry.
+  - **Position control:**
+    - the drag preview is written into the shared listing cache, so an unrelated refetch mid-drag can show the old position on the marquee until the next refetch;
+    - moving the other axis with the arrow keys isn't announced to screen readers.
+  - **Playtime:**
+    - nothing is checkpointed during a session, so a launcher crash mid-game loses that session;
+    - damaged instances drop out of the total.
+  - **Round icons:** the round tile sits on the square cabinet plate.
+
 ## Global Constraints
 
 - `crates/launcher-core` and `crates/launcher-app` never depend on Tauri. `src-tauri` is wiring only and has no tests.
