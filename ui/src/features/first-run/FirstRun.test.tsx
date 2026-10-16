@@ -2,6 +2,7 @@ import { act, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { routeSnapshot } from '../../state/route';
 import { renderApp, sent } from '../../test/backend';
+import App from '../../App';
 import { FirstRun } from './FirstRun';
 
 const failure = { category: 'storage', code: 'disk_io', message: 'nope', fix: null, detail: null, params: {} };
@@ -209,4 +210,62 @@ it('shows the chosen language pressed, not lit', async () => {
   expect(spanish).toHaveAttribute('data-pressed', 'false');
   expect(english).not.toHaveClass('btn-primary');
   expect(spanish).not.toHaveClass('btn-primary');
+});
+
+/** Walk a release build (no account step to fill in) to step 3 in English. */
+async function toInstanceStep(rendered: ReturnType<typeof renderApp>) {
+  const { user } = rendered;
+  await user.click(await screen.findByRole('button', { name: "Let's go" }));
+  await user.click(screen.getByRole('button', { name: 'Español' }));
+  await user.click(await screen.findByRole('button', { name: 'Omitir por ahora' }));
+  return screen.findByRole('button', { name: 'Explorar modpacks' });
+}
+
+it('finishes first run for a community modpack without creating an instance', async () => {
+  const rendered = renderApp(<FirstRun />, { firstRun: true, release: true });
+  const { user, calls } = rendered;
+  const browse = await toInstanceStep(rendered);
+  expect(browse).toBeEnabled();
+  await user.click(browse);
+  await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' }));
+  expect(sent(calls, 'instance_create')).toHaveLength(0);
+  expect(sent(calls, 'settings_set')).toHaveLength(1);
+  expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { firstRunDone: true, language: 'es' } });
+});
+
+it('saves the settings once for a double click on Browse modpacks, and again after a failure', async () => {
+  const rendered = renderApp(<FirstRun />, { firstRun: true, release: true });
+  const { user, calls, backend } = rendered;
+  const save = intercept(backend, 'settings_set');
+  const browse = await toInstanceStep(rendered);
+  save.mode = 'hold';
+  await user.dblClick(browse);
+  expect(sent(calls, 'settings_set')).toHaveLength(1);
+  await act(async () => save.release());
+  await waitFor(() => expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' }));
+  expect(sent(calls, 'instance_create')).toHaveLength(0);
+});
+
+it('keeps first run open and shows why when saving fails on the way to Browse', async () => {
+  const rendered = renderApp(<FirstRun />, { firstRun: true, release: true });
+  const { user, calls, backend } = rendered;
+  const save = intercept(backend, 'settings_set');
+  const browse = await toInstanceStep(rendered);
+  save.mode = 'fail';
+  await user.click(browse);
+  expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo leer o escribir un archivo del launcher.');
+  expect(routeSnapshot()).not.toMatchObject({ name: 'browse' });
+  save.mode = 'pass';
+  await user.click(screen.getByRole('button', { name: 'Explorar modpacks' }));
+  await waitFor(() => expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' }));
+  expect(sent(calls, 'settings_set')).toHaveLength(2);
+});
+
+it('opens Browse in the app shell once first run is done', async () => {
+  const rendered = renderApp(<App />, { firstRun: true, release: true });
+  const browse = await toInstanceStep(rendered);
+  await rendered.user.click(browse);
+  expect(await screen.findByRole('heading', { name: 'Explorar' })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Modpacks' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.queryByRole('heading', { name: 'Tu primera instancia' })).not.toBeInTheDocument();
 });

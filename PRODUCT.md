@@ -47,7 +47,10 @@ Packs stay in sync automatically, so a Perland player never manages mod versions
   - new instance, instance settings
   - a local mods list (the jar files in `mods/`)
   - accounts, settings, first run
-- **Not built (never fake it):** Microsoft sign-in (Plan 4), Forge/NeoForge (Plan 2), pack links, `.mrpack`, Browse and pack sync (Plan 3), the updater and installers (Plan 6). Microsoft sign-in and the pack/`.mrpack` entry points appear as visible, disabled "coming soon" controls. Everything else is absent.
+- **Built since (Plans 3a/3b, Browse in PR #16):**
+  - Browse: search and install Modrinth modpacks, mods, resource packs and shaders
+  - pack links, `.mrpack` files and pack sync
+- **Not built (never fake it):** Microsoft sign-in (Plan 4), Forge/NeoForge (Plan 2), the updater and installers (Plan 6). Microsoft sign-in appears as a visible, disabled "coming soon" control. Everything else is absent.
 - **Offline-account gate:** release builds unlock offline accounts only after one licensed Microsoft sign-in. Dev builds allow them freely.
 - **Terminology:** "instance", "Play", "mods", "account", "loader" (Fabric, Quilt), "Minecraft version", "memory".
 - **Languages:** English and Spanish. Every string, including core error messages (translated by stable error code), exists in both.

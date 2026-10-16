@@ -10,7 +10,7 @@ import { Button } from '../../ui/Button';
 import { ComingSoon } from '../../ui/ComingSoon';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { User } from '../../ui/Icon';
+import { Search, User } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { OFFLINE_NAME } from '../accounts/offlineName';
 import { TitleBar } from '../titlebar/TitleBar';
@@ -97,6 +97,18 @@ export function FirstRun() {
         },
       );
     });
+  };
+
+  // Browse instead of a first instance: the same settings save, no instance. The modpack brings its own game version.
+  const browse = () => {
+    const current = settings.data;
+    if (!current) return;
+    finishOnce((done) =>
+      saveSettings.mutate(
+        { ...current, firstRunDone: true, language: lang },
+        { onSuccess: () => navigate({ name: 'browse', kind: 'modpack' }), onSettled: done },
+      ),
+    );
   };
 
   const latest = choice.list.find((v) => v.kind === 'release')?.id;
@@ -237,6 +249,12 @@ export function FirstRun() {
                 >
                   {t('firstRun.finish')}
                 </Button>
+                <div className="grid justify-items-start gap-2">
+                  <p className="text-sm text-ink-dim">{t('firstRun.browseInstead')}</p>
+                  <Button icon={<Search />} disabled={!settings.data} aria-disabled={busy || undefined} onClick={browse}>
+                    {t('browse.browseModpacks')}
+                  </Button>
+                </div>
               </>
             )}
             {step > 0 && <Steps current={step} />}

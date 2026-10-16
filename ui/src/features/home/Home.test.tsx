@@ -69,6 +69,15 @@ describe('Home', () => {
     expect(routeSnapshot()).toEqual({ name: 'accounts' });
   });
 
+  it('offers community modpacks beside creating the first instance', async () => {
+    const { user } = renderApp(<Home id={null} />, { firstRun: true });
+    expect(await screen.findByRole('button', { name: 'Create an instance' })).toHaveClass('btn-primary');
+    const browse = screen.getByRole('button', { name: 'Browse modpacks' });
+    expect(browse).not.toHaveClass('btn-primary');
+    await user.click(browse);
+    expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
+  });
+
   it('offers to create the first instance when there are none', async () => {
     const { user } = renderApp(<Home id={null} />, { firstRun: true });
     await user.click(await screen.findByRole('button', { name: 'Create an instance' }));

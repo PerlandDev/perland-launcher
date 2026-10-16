@@ -337,6 +337,7 @@
     "latestRelease": "El Minecraft más nuevo ({{version}})",
     "chooseVersion": "Elegir una versión",
     "finish": "A jugar",
+    "browseInstead": "O empieza con un modpack de la comunidad",
     "step": "Paso {{n}} de {{total}}"
   },
   "closeGuard": {

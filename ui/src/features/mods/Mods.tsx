@@ -181,7 +181,15 @@ function ModList({ id }: { id: string }) {
     >
       <div className={`grid max-w-3xl gap-4 ${dragging ? 'outline-2 outline-offset-8 outline-amber outline-dashed' : ''}`}>
         <ContentTabs id={id} active="mod" />
-        {instance && !pack && !instance.game.loader && <p className="note-plate">{t('mods.vanillaNote')}</p>}
+        {instance && !pack && !instance.game.loader && (
+          <div className="note-plate">
+            <p className="min-w-0 flex-1">{t('mods.vanillaNote')}</p>
+            {/* Modpacks bring their own loader, so this is the way forward for a vanilla instance. */}
+            <Button variant="ghost" icon={<Search />} className="shrink-0 self-center" onClick={() => navigate({ name: 'browse', kind: 'modpack' })}>
+              {t('browse.browseModpacks')}
+            </Button>
+          </div>
+        )}
         {running && <p className="note-plate">{t('mods.running')}</p>}
         {dragging && <p className="font-semibold text-amber">{t('mods.dropHere')}</p>}
         {failure && <ErrorCard error={failure.error} />}

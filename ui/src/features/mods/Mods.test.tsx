@@ -416,3 +416,14 @@ it('finds mods for a modded instance only', async () => {
   await screen.findByText(/Mods need a mod loader/);
   expect(screen.queryByRole('button', { name: 'Find mods' })).not.toBeInTheDocument();
 });
+
+it('points vanilla players to modpacks from the loader note, and not on a modded instance', async () => {
+  const { user, unmount } = renderApp(<Mods id="creative-flat" />);
+  await screen.findByText(/Mods need a mod loader/);
+  await user.click(screen.getByRole('button', { name: 'Browse modpacks' }));
+  expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
+  unmount();
+  renderApp(<Mods id="asalith-fields" />);
+  await screen.findByText('sodium-fabric-0.5.8+mc1.20.1');
+  expect(screen.queryByRole('button', { name: 'Browse modpacks' })).not.toBeInTheDocument();
+});
