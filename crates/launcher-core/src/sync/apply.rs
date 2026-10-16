@@ -178,6 +178,52 @@ pub(crate) async fn move_to_trash(game_dir: &Path, trash_dir: &Path, rel: &str) 
     Ok(())
 }
 
+/// The jars directly in `game_dir/mods/` that no wanted file sits at (compared the way the file
+/// system does), sorted: what a linked instance's first sync sets aside. Folders, `.disabled`
+/// jars and other files are left alone; the loaders only load loose jars.
+pub(crate) async fn unwanted_jars(game_dir: &Path, wanted: &[&PackFile]) -> Result<Vec<String>> {
+    let Ok(mut entries) = tokio::fs::read_dir(game_dir.join("mods")).await else {
+        return Ok(Vec::new());
+    };
+    let wanted: HashSet<String> = wanted.iter().map(|f| path_key(&f.path)).collect();
+    let mut found = Vec::new();
+    while let Some(entry) = entries.next_entry().await? {
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
+        let rel = format!("mods/{name}");
+        let is_file = entry.file_type().await.is_ok_and(|t| t.is_file());
+        if is_file && name.to_lowercase().ends_with(".jar") && !wanted.contains(&path_key(&rel)) {
+            found.push(rel);
+        }
+    }
+    found.sort();
+    Ok(found)
+}
+
+/// Move `game_dir/rel` into `game_dir/<SET_ASIDE_DIR>/`, never over a file already there: a
+/// taken name gets `-2`, `-3`, … before its extension.
+pub(crate) async fn move_aside(game_dir: &Path, rel: &str) -> Result<()> {
+    let from = game_dir.join(rel);
+    let Some(name) = Path::new(rel).file_name().and_then(|n| n.to_str()) else {
+        return Ok(());
+    };
+    let dir = game_dir.join(super::SET_ASIDE_DIR);
+    tokio::fs::create_dir_all(&dir).await?;
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((stem, ext)) if !stem.is_empty() => (stem, format!(".{ext}")),
+        _ => (name, String::new()),
+    };
+    let mut to = dir.join(name);
+    let mut n = 2;
+    while tokio::fs::symlink_metadata(&to).await.is_ok() {
+        to = dir.join(format!("{stem}-{n}{ext}"));
+        n += 1;
+    }
+    tokio::fs::rename(&from, &to).await?;
+    Ok(())
+}
+
 /// Is `game_dir/alias` a file of its own, apart from `game_dir/wanted`? Not when it is gone,
 /// and not when both names lead to one file (a case-insensitive file system).
 pub(crate) fn is_separate(game_dir: &Path, alias: &str, wanted: &str) -> bool {

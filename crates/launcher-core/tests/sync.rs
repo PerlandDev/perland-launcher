@@ -1407,3 +1407,102 @@ async fn a_changed_offered_stamp_resolves_again() {
         "the new offer was fetched, not served from the remembered one"
     );
 }
+
+/// A linked instance's game folder as another launcher left it: one pack mod already there
+/// under the pack's name, two old jars under other names, and things that aren't loose jars.
+fn imported_mods(env: &Env, id: &str) {
+    let game = env.store.game_dir(id);
+    std::fs::create_dir_all(game.join("mods/sub")).unwrap();
+    std::fs::create_dir_all(game.join("mods-before-link")).unwrap();
+    std::fs::write(game.join("mods/appleskin.jar"), b"apple v1").unwrap();
+    std::fs::write(game.join("mods/zoom-0.9.jar"), b"old zoom").unwrap();
+    std::fs::write(game.join("mods/mine.JAR"), b"my own mod").unwrap();
+    std::fs::write(game.join("mods/off.jar.disabled"), b"off").unwrap();
+    std::fs::write(game.join("mods/notes.txt"), b"notes").unwrap();
+    std::fs::write(game.join("mods/sub/nested.jar"), b"nested").unwrap();
+    std::fs::write(game.join("mods-before-link/mine.JAR"), b"from before").unwrap();
+}
+
+#[tokio::test]
+async fn a_linked_instance_sets_old_mods_aside_on_its_first_sync() {
+    let env = Env::new().await;
+    let url = v1(&env.server).mount(&env.server).await;
+    let (instance, desired) = env.instance(&url).await;
+    imported_mods(&env, &instance.id);
+    let perland = env.store.perland_dir(&instance.id);
+    launcher_core::sync::mark_adopt(&perland).await.unwrap();
+
+    let report = done(env.sync(&instance.id, &desired).await.unwrap());
+
+    assert_eq!(report.set_aside, vec!["mods/mine.JAR", "mods/zoom-0.9.jar"]);
+    let game = env.store.game_dir(&instance.id);
+    assert!(!game.join("mods/zoom-0.9.jar").exists());
+    assert!(!game.join("mods/mine.JAR").exists());
+    assert_eq!(
+        std::fs::read(game.join("mods-before-link/zoom-0.9.jar")).unwrap(),
+        b"old zoom"
+    );
+    assert_eq!(
+        std::fs::read(game.join("mods-before-link/mine.JAR")).unwrap(),
+        b"from before",
+        "a name already taken there is never overwritten"
+    );
+    assert_eq!(
+        std::fs::read(game.join("mods-before-link/mine-2.JAR")).unwrap(),
+        b"my own mod"
+    );
+    assert_eq!(
+        std::fs::read(game.join("mods/appleskin.jar")).unwrap(),
+        b"apple v1"
+    );
+    assert!(game.join("mods/zoom.jar").exists(), "the pack's own copy");
+    for stays in [
+        "mods/off.jar.disabled",
+        "mods/notes.txt",
+        "mods/sub/nested.jar",
+    ] {
+        assert!(game.join(stays).exists(), "{stays} isn't a loose jar");
+    }
+    assert!(!perland.join("adopt").exists(), "the marker is spent");
+    assert!(Managed::load(&perland).await.is_some());
+
+    // Later syncs never set anything aside, even with new jars.
+    std::fs::write(game.join("mods/later.jar"), b"later").unwrap();
+    let again = done(env.sync(&instance.id, &desired).await.unwrap());
+    assert!(again.set_aside.is_empty());
+    assert!(game.join("mods/later.jar").exists());
+}
+
+#[tokio::test]
+async fn without_the_marker_a_first_sync_keeps_the_players_jars() {
+    let env = Env::new().await;
+    let url = v1(&env.server).mount(&env.server).await;
+    let (instance, desired) = env.instance(&url).await;
+    imported_mods(&env, &instance.id);
+
+    let report = done(env.sync(&instance.id, &desired).await.unwrap());
+
+    assert!(report.set_aside.is_empty());
+    assert!(env.game_file(&instance.id, "mods/zoom-0.9.jar").exists());
+    assert!(env.game_file(&instance.id, "mods/mine.JAR").exists());
+}
+
+#[tokio::test]
+async fn a_failed_first_sync_keeps_the_mods_and_the_marker() {
+    let env = Env::new().await;
+    let url = v1(&env.server).mount(&env.server).await;
+    let (mut instance, desired) = env.instance(&url).await;
+    // Another game version, so the sync installs one, and that install fails.
+    instance.game.minecraft = "1.19.2".into();
+    env.store.save(&instance).await.unwrap();
+    imported_mods(&env, &instance.id);
+    let perland = env.store.perland_dir(&instance.id);
+    launcher_core::sync::mark_adopt(&perland).await.unwrap();
+    env.game.fail.store(true, Ordering::SeqCst);
+
+    env.sync(&instance.id, &desired).await.unwrap_err();
+
+    assert!(env.game_file(&instance.id, "mods/zoom-0.9.jar").exists());
+    assert!(env.game_file(&instance.id, "mods/mine.JAR").exists());
+    assert!(perland.join("adopt").exists(), "the next Play tries again");
+}
