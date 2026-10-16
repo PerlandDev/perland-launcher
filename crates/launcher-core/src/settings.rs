@@ -21,9 +21,12 @@ pub enum Lang {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum IconShape {
-    #[default]
-    Square,
     Round,
+    /// Also what an unknown shape from a newer launcher loads as, so a downgrade doesn't mark
+    /// the whole settings file damaged. (`serde(other)` must be the last variant.)
+    #[default]
+    #[serde(other)]
+    Square,
 }
 
 /// Which launcher releases this install follows (spec §4.4).
@@ -186,6 +189,22 @@ mod tests {
         let (settings, warning) = SettingsStore::new(&path).load().await;
         assert_eq!(settings, Settings::default());
         assert_eq!(warning.unwrap().code, ErrorCode::SettingsDamaged);
+    }
+
+    #[tokio::test]
+    async fn unknown_icon_shape_loads_as_square() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"language":"es","railExpanded":true,"iconShape":"hexagon"}"#,
+        )
+        .unwrap();
+        let (settings, warning) = SettingsStore::new(&path).load().await;
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(settings.icon_shape, IconShape::Square);
+        assert_eq!(settings.language, Some(Lang::Es));
+        assert!(settings.rail_expanded);
     }
 
     #[tokio::test]

@@ -648,10 +648,8 @@ pub fn same_family(id: &str, base: &str) -> bool {
 
 /// An error from moving an instance's folder. A refusal by the OS (another program holds a
 /// file in it) becomes `instance_folder_in_use`.
-fn rename_io_error(e: std::io::Error, id: &str) -> LauncherError {
-    // 5 = ERROR_ACCESS_DENIED, 32 = ERROR_SHARING_VIOLATION
-    if e.kind() == std::io::ErrorKind::PermissionDenied || matches!(e.raw_os_error(), Some(5 | 32))
-    {
+pub fn rename_io_error(e: std::io::Error, id: &str) -> LauncherError {
+    if crate::fsutil::is_in_use(&e) {
         LauncherError::disk(
             ErrorCode::InstanceFolderInUse,
             "Another program is using this instance's folder",

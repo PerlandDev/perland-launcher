@@ -122,7 +122,7 @@
   - `import_inside_launcher`: the picked folder is inside the launcher's data root, or contains it. Copying would recurse or eat our own files.
   - `import_not_instance`: see above.
 - **What is copied:** everything under the game dir, recursively, except:
-  - **these top-level entries:** `assets`, `libraries`, `versions`, `natives`, `.fabric`, `.quilt`, `.cache`, `logs`, `launcher_profiles.json`, `launcher_accounts.json` and `launcher_accounts_microsoft_store.json`. The launcher installs its own copies of the first three, and the rest are caches or another launcher's account data;
+  - **these top-level entries (case-insensitive):** `assets`, `libraries`, `versions`, `natives`, `runtime`, `.fabric`, `.quilt`, `.cache`, `logs`, `webcache`, `webcache2`, `treatment_tags.json`, and every entry whose name starts with `launcher_` (`launcher_profiles.json`, `launcher_accounts*.json`, `launcher_msa_credentials*.bin`, `launcher_settings.json`, `launcher_entitlements.json`, the `launcher_*log*.txt` logs). The launcher installs its own copies of the first three and its own Java runtime, and the rest are caches or another launcher's account data, credentials, settings and logs;
   - **when the game dir is the picked folder itself, also:** `instance.cfg`, `mmc-pack.json`, `minecraftinstance.json`, `profile.json`, `instance.json` and `.curseclient`;
   - **symlinks:** never followed, never copied.
 

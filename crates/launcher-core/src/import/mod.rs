@@ -18,20 +18,26 @@ use crate::{
 pub use detect::Detected;
 
 /// Top-level entries of a game folder that are never copied. The launcher installs its own
-/// `assets`, `libraries` and `versions`; the rest are caches or another launcher's accounts.
+/// `assets`, `libraries`, `versions` and Java `runtime`; the rest are caches or another
+/// launcher's own files. Every top-level name starting with [`SKIP_PREFIX`] is skipped too.
 const SKIP_ALWAYS: &[&str] = &[
     "assets",
     "libraries",
     "versions",
     "natives",
+    "runtime",
     ".fabric",
     ".quilt",
     ".cache",
     "logs",
-    "launcher_profiles.json",
-    "launcher_accounts.json",
-    "launcher_accounts_microsoft_store.json",
+    "webcache",
+    "webcache2",
+    "treatment_tags.json",
 ];
+
+/// The official launcher's accounts, credentials, settings and logs (`launcher_profiles.json`,
+/// `launcher_msa_credentials*.bin`, `launcher_log.txt` and the like), skipped at the top level.
+const SKIP_PREFIX: &str = "launcher_";
 
 /// The other launcher's own files, also skipped when the game folder is the picked folder.
 const SKIP_ROOT_META: &[&str] = &[
@@ -74,7 +80,9 @@ pub async fn inspect(picked: &Path, launcher_root: &Path) -> Result<(Detected, u
 /// Copy the game folder `src` into `dst` (created, with its parents), leaving out the
 /// launcher files [`inspect`] doesn't count and never following links. `progress(done, total)`
 /// reports cumulative bytes: once at the start and after every file, so the last call has
-/// `done == total`. Checks `cancel` before every file. On failure `dst` keeps whatever was
+/// `done == total`. Checks `cancel` before every file. A file gone by the time it is copied
+/// (the other launcher's game is still running and removed it) is skipped, its planned size
+/// still counted so progress ends at `done == total`. On failure `dst` keeps whatever was
 /// copied so far; the caller copies into a staging folder and removes it.
 pub async fn copy_game_dir(
     src: &Path,
@@ -98,9 +106,14 @@ pub async fn copy_game_dir(
         if cancel.is_cancelled() {
             return Err(cancelled());
         }
-        tokio::fs::copy(src.join(rel), dst.join(rel))
-            .await
-            .map_err(|e| io_failed(&src.join(rel), e))?;
+        let from = src.join(rel);
+        if let Err(e) = tokio::fs::copy(&from, dst.join(rel)).await {
+            let vanished = e.kind() == ErrorKind::NotFound
+                && matches!(tokio::fs::try_exists(&from).await, Ok(false));
+            if !vanished {
+                return Err(io_failed(&from, e));
+            }
+        }
         done += size;
         progress(done, plan.total);
     }
@@ -168,7 +181,10 @@ fn skipped_at_top(name: &OsStr, skip_root_meta: bool) -> bool {
         return false;
     };
     let listed = |list: &[&str]| list.iter().any(|s| s.eq_ignore_ascii_case(name));
-    listed(SKIP_ALWAYS) || (skip_root_meta && listed(SKIP_ROOT_META))
+    let prefixed = name
+        .get(..SKIP_PREFIX.len())
+        .is_some_and(|p| p.eq_ignore_ascii_case(SKIP_PREFIX));
+    prefixed || listed(SKIP_ALWAYS) || (skip_root_meta && listed(SKIP_ROOT_META))
 }
 
 /// A world's `session.lock`: the game makes a new one, and on Windows it stays locked while
@@ -203,6 +219,17 @@ pub fn inside_launcher() -> LauncherError {
         "That folder belongs to Perland Launcher itself.",
     )
     .with_fix("Pick a folder from your other launcher.")
+}
+
+/// Refused with `not_enough_space` (params `needed_mb`, `free_mb`) when `free` bytes can't
+/// hold a copy of `needed` bytes plus the margin a pack sync keeps.
+pub fn ensure_space(needed: u64, free: u64) -> Result<()> {
+    crate::sync::apply::ensure_space(needed, free)
+}
+
+/// Free bytes on the volume holding `path` (plenty when it can't be read).
+pub fn free_space(path: &Path) -> u64 {
+    crate::sync::apply::free_space(path)
 }
 
 /// A second import while one is running. Raised by the app, which owns the running import.
@@ -513,6 +540,17 @@ mod tests {
             "logs/latest.log",
             ".fabric/x",
             "launcher_profiles.json",
+            "launcher_msa_credentials.bin",
+            "launcher_msa_credentials_microsoft_store.bin",
+            "launcher_settings.json",
+            "launcher_entitlements.json",
+            "launcher_log.txt",
+            "Launcher_CEF_log.txt",
+            "webcache/x",
+            "WebCache2/Default/x",
+            "runtime/java-runtime-gamma/x",
+            "treatment_tags.json",
+            "config/launcher_x.json",
             "instance.cfg",
             "saves/w/session.lock",
             "config/Session.LOCK",
@@ -537,6 +575,7 @@ mod tests {
             copied.keys().map(String::as_str).collect::<Vec<_>>(),
             [
                 "XaeroWaypoints/x.txt",
+                "config/launcher_x.json",
                 "mods/.index/a.pw.toml",
                 "mods/a.jar",
                 "options.txt",
@@ -567,6 +606,27 @@ mod tests {
             files(&dst).keys().collect::<Vec<_>>(),
             ["config/profile.json"]
         );
+    }
+
+    #[tokio::test]
+    async fn a_file_that_vanishes_before_its_copy_is_skipped() {
+        let fx = Fixture::new();
+        let src = fx.dir("src");
+        put(&src, "a.txt", "a");
+        put(&src, "b.txt", "bb");
+        let dst = fx.tmp.path().join("dst");
+        let last = Mutex::new((u64::MAX, u64::MAX));
+        copy_game_dir(&src, &dst, true, &Cancel::default(), &|done, total| {
+            // The other launcher's game, still running, deletes a file after the plan.
+            if done == 0 {
+                std::fs::remove_file(src.join("b.txt")).unwrap();
+            }
+            *last.lock().unwrap() = (done, total);
+        })
+        .await
+        .unwrap();
+        assert_eq!(files(&dst).keys().collect::<Vec<_>>(), ["a.txt"]);
+        assert_eq!(*last.lock().unwrap(), (3, 3));
     }
 
     #[tokio::test]
