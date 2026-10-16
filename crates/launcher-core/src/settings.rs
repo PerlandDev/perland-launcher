@@ -17,6 +17,18 @@ pub enum Lang {
     Es,
 }
 
+/// How the rail draws instance icons: the notched square, or a pixel-stepped circle.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IconShape {
+    Round,
+    /// Also what an unknown shape from a newer launcher loads as, so a downgrade doesn't mark
+    /// the whole settings file damaged. (`serde(other)` must be the last variant.)
+    #[default]
+    #[serde(other)]
+    Square,
+}
+
 /// Which launcher releases this install follows (spec §4.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -49,6 +61,8 @@ pub struct Settings {
     pub update_channel: Option<Channel>,
     /// The instance rail shows names and status (wide) rather than icons only.
     pub rail_expanded: bool,
+    /// The shape of instance icons in the rail.
+    pub icon_shape: IconShape,
 }
 
 impl Default for Settings {
@@ -61,6 +75,7 @@ impl Default for Settings {
             first_run_done: false,
             update_channel: None,
             rail_expanded: false,
+            icon_shape: IconShape::Square,
         }
     }
 }
@@ -129,6 +144,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn icon_shape_defaults_to_square_and_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(&path, r#"{"firstRunDone": true}"#).unwrap();
+        let store = SettingsStore::new(&path);
+        let (settings, warning) = store.load().await;
+        assert!(warning.is_none());
+        assert_eq!(settings.icon_shape, IconShape::Square);
+
+        let round = Settings {
+            icon_shape: IconShape::Round,
+            ..settings
+        };
+        store.save(&round).await.unwrap();
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"iconShape\": \"round\""), "{raw}");
+        assert_eq!(store.load().await, (round, None));
+    }
+
+    #[tokio::test]
     async fn round_trip_in_camel_case() {
         let tmp = tempfile::tempdir().unwrap();
         let store = SettingsStore::new(tmp.path().join("settings.json"));
@@ -154,6 +189,22 @@ mod tests {
         let (settings, warning) = SettingsStore::new(&path).load().await;
         assert_eq!(settings, Settings::default());
         assert_eq!(warning.unwrap().code, ErrorCode::SettingsDamaged);
+    }
+
+    #[tokio::test]
+    async fn unknown_icon_shape_loads_as_square() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"language":"es","railExpanded":true,"iconShape":"hexagon"}"#,
+        )
+        .unwrap();
+        let (settings, warning) = SettingsStore::new(&path).load().await;
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(settings.icon_shape, IconShape::Square);
+        assert_eq!(settings.language, Some(Lang::Es));
+        assert!(settings.rail_expanded);
     }
 
     #[tokio::test]

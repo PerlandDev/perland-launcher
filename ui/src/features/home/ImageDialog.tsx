@@ -1,16 +1,18 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { open } from '@tauri-apps/plugin-dialog';
-import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { InstanceIcon } from '../../art/InstanceIcon';
 import { Marquee } from '../../art/Marquee';
 import { artSeed, presetSeeds } from '../../art/seed';
 import { pixelUpscale } from '../../art/upscale';
-import type { ArtChoice, IconChoice, Instance } from '../../ipc/schema';
-import { useInstanceArt, useSetInstanceArt, useSetInstanceIcon } from '../../state/queries';
+import type { ArtChoice, Focus, IconChoice, Instance, InstanceListing } from '../../ipc/schema';
+import { qk, useInstanceArt, usePreviewBannerFocus, useSetBannerFocus, useSetInstanceArt, useSetInstanceIcon } from '../../state/queries';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Package, Upload } from '../../ui/Icon';
+import { FocusPicker, type FocusPickerHandle } from './FocusPicker';
 import { isPack } from './labels';
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
@@ -141,12 +143,25 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
   const { t } = useTranslation();
   const setArt = useSetInstanceArt({ inline: true });
   const setIcon = useSetInstanceIcon({ inline: true });
+  const setFocus = useSetBannerFocus({ inline: true });
+  const previewFocus = usePreviewBannerFocus();
   const art = useInstanceArt(instance.id);
   const [pickError, setPickError] = useState<unknown>(null);
+  const qc = useQueryClient();
+  // When a new background lands or a position is refused, Position starts again from what is saved now. The
+  // cache has it before this dialog's `instance` does.
+  const [restart, setRestart] = useState<{ n: number; focus: Focus | null } | null>(null);
+  const restartFocus = () =>
+    setRestart((last) => ({
+      n: (last?.n ?? 0) + 1,
+      focus: qc.getQueryData<InstanceListing>(qk.instances)?.instances.find((i) => i.id === instance.id)?.bannerFocus ?? null,
+    }));
+  const focusPicker = useRef<FocusPickerHandle>(null);
   const pack = isPack(instance);
   const background = currentBackground(instance);
   const icon = currentIcon(instance, art.data && art.data.icon);
-  const busy = setArt.isPending || setIcon.isPending;
+  const pictureBusy = setArt.isPending || setIcon.isPending;
+  const busy = pictureBusy || setFocus.isPending;
   // The icon and the background come back apart, each shown on its own current key.
   const iconPicture = art.data?.icon ?? null;
   const bannerPicture = art.data?.banner ?? null;
@@ -157,16 +172,25 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
     setPickError(null);
     setArt.reset();
     setIcon.reset();
+    setFocus.reset();
   };
   const chooseBackground = (choice: ArtChoice) => {
     if (busy) return;
     fresh();
-    setArt.mutate({ id: instance.id, choice });
+    // A new background starts from the default position, so a position still waiting to be saved goes.
+    focusPicker.current?.cancel();
+    setArt.mutate({ id: instance.id, choice }, { onSuccess: restartFocus });
   };
   const chooseIcon = (choice: IconChoice) => {
     if (busy) return;
     fresh();
+    // Saves run one after another, so a position still waiting lands first.
+    focusPicker.current?.flush();
     setIcon.mutate({ id: instance.id, choice });
+  };
+  const saveFocus = (focus: Focus | null) => {
+    fresh();
+    setFocus.mutate({ id: instance.id, focus }, { onError: restartFocus });
   };
   const upload = async (apply: (path: string) => void) => {
     if (busy) return;
@@ -183,7 +207,7 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
       setPickError(error);
     }
   };
-  const error = pickError ?? (setIcon.isError ? setIcon.error : setArt.isError ? setArt.error : null);
+  const error = pickError ?? (setIcon.isError ? setIcon.error : setArt.isError ? setArt.error : setFocus.isError ? setFocus.error : null);
 
   return (
     <Dialog open onClose={onClose} title={t('image.title')} actions={<Button onClick={onClose}>{t('image.done')}</Button>}>
@@ -215,7 +239,7 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
               )}
               <PictureKey
                 label={t('image.uploadIcon')}
-                hint={t('image.uploadHint')}
+                hint={t('image.uploadHintIcon')}
                 glyph={<Upload />}
                 picture={iconPicture}
                 current={icon === 'upload'}
@@ -225,52 +249,66 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
               />
             </div>
           </ChoiceGroup>
-          <ChoiceGroup label={t('image.backgroundSection')} busy={busy}>
-            <div className="art-tiles">
-              {presetSeeds(instance).map((seed, index) => {
-                const lit = typeof background === 'object' && background.seed === seed;
-                return (
-                  <button
-                    key={seed}
-                    type="button"
-                    role="radio"
-                    className="art-tile"
-                    aria-label={t('image.landscape', { n: index + 1 })}
-                    aria-checked={lit}
-                    aria-disabled={busy || undefined}
-                    // A pinned seed that is none of the six lights nothing; the first landscape keeps the tab stop.
-                    tabIndex={lit || (index === 0 && typeof background === 'object' && !landscapeLit) ? 0 : -1}
-                    onClick={() => chooseBackground({ kind: 'generated', seed })}
-                  >
-                    <Marquee seed={seed} attract={false} className="absolute inset-0" />
-                  </button>
-                );
-              })}
-            </div>
-            <div className="art-keys">
-              {pack && (
+          <div className="art-column">
+            <ChoiceGroup label={t('image.backgroundSection')} busy={busy}>
+              <div className="art-tiles">
+                {presetSeeds(instance).map((seed, index) => {
+                  const lit = typeof background === 'object' && background.seed === seed;
+                  return (
+                    <button
+                      key={seed}
+                      type="button"
+                      role="radio"
+                      className="art-tile"
+                      aria-label={t('image.landscape', { n: index + 1 })}
+                      aria-checked={lit}
+                      aria-disabled={busy || undefined}
+                      // A pinned seed that is none of the six lights nothing; the first landscape keeps the tab stop.
+                      tabIndex={lit || (index === 0 && typeof background === 'object' && !landscapeLit) ? 0 : -1}
+                      onClick={() => chooseBackground({ kind: 'generated', seed })}
+                    >
+                      <Marquee seed={seed} attract={false} className="absolute inset-0" />
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="art-keys">
+                {pack && (
+                  <PictureKey
+                    label={t('image.pack')}
+                    glyph={<Package />}
+                    picture={bannerPicture}
+                    current={background === 'pack'}
+                    tabbable={background === 'pack'}
+                    busy={busy}
+                    onChoose={() => chooseBackground({ kind: 'pack' })}
+                  />
+                )}
                 <PictureKey
-                  label={t('image.pack')}
-                  glyph={<Package />}
+                  label={t('image.upload')}
+                  hint={t('image.uploadHintBackground')}
+                  glyph={<Upload />}
                   picture={bannerPicture}
-                  current={background === 'pack'}
-                  tabbable={background === 'pack'}
+                  current={background === 'upload'}
+                  tabbable={background === 'upload'}
                   busy={busy}
-                  onChoose={() => chooseBackground({ kind: 'pack' })}
+                  onChoose={() => void upload((path) => chooseBackground({ kind: 'upload', path }))}
                 />
-              )}
-              <PictureKey
-                label={t('image.upload')}
-                hint={t('image.uploadHint')}
-                glyph={<Upload />}
+              </div>
+            </ChoiceGroup>
+            {/* Only a picture is cropped by the marquee; a landscape is drawn to fit. */}
+            {bannerPicture && (background === 'upload' || background === 'pack') && (
+              <FocusPicker
+                key={`${background}-${restart?.n ?? 0}`}
+                ref={focusPicker}
                 picture={bannerPicture}
-                current={background === 'upload'}
-                tabbable={background === 'upload'}
-                busy={busy}
-                onChoose={() => void upload((path) => chooseBackground({ kind: 'upload', path }))}
+                focus={restart ? restart.focus : instance.bannerFocus}
+                disabled={pictureBusy}
+                onPreview={(focus) => previewFocus(instance.id, focus)}
+                onSave={saveFocus}
               />
-            </div>
-          </ChoiceGroup>
+            )}
+          </div>
         </div>
         {error !== null && <ErrorCard error={error} />}
       </div>

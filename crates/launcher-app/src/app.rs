@@ -6,6 +6,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
+    time::Instant,
 };
 
 use launcher_core::{
@@ -27,6 +28,7 @@ use launcher_core::{
     },
     mods::{self, LocalMod},
     paths::LauncherDirs,
+    playtime,
     settings::{Channel, Settings, SettingsStore},
     sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
     ErrorCode, LauncherError, Result,
@@ -38,7 +40,7 @@ use tokio::{
 
 use crate::{
     deep_link::DeepLink,
-    dto::{AppInfo, ContentFile, JavaTest, NewInstance, OpenTarget, PackUpdate},
+    dto::{AppInfo, ContentFile, JavaTest, NewInstance, OpenTarget, PackUpdate, PlaytimeEntry},
     events::{AppEvent, Host, RunStateKind},
     logs::LogStore,
     runner::{Kill, Runner},
@@ -107,6 +109,19 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) installing: Mutex<HashSet<String>>,
     /// The file the last diagnostics export wrote (for "Show in folder").
     last_export: Mutex<Option<PathBuf>>,
+    /// The running import from another launcher, if any (see `import.rs`): one at a time.
+    pub(crate) import_slot: Mutex<Option<Cancel>>,
+    /// Per running game: when it started, until its time is counted (see `runs.rs`).
+    pub(crate) playing_since: Mutex<HashMap<String, Instant>>,
+    /// Makes the next import fail while it moves the copied files into the new instance.
+    #[cfg(test)]
+    pub(crate) import_fail_move: AtomicBool,
+    /// The free space an import sees, in bytes, instead of the disk's.
+    #[cfg(test)]
+    pub(crate) import_free_bytes: Mutex<Option<u64>>,
+    /// Seconds the run clock is ahead of the real one, so a test can play a long game at once.
+    #[cfg(test)]
+    pub(crate) clock_ahead: AtomicU64,
 }
 
 pub(crate) fn busy(id: &str) -> LauncherError {
@@ -154,6 +169,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             plan_seq: AtomicU64::new(0),
             installing: Mutex::new(HashSet::new()),
             last_export: Mutex::new(None),
+            import_slot: Mutex::new(None),
+            playing_since: Mutex::new(HashMap::new()),
+            #[cfg(test)]
+            import_fail_move: AtomicBool::new(false),
+            #[cfg(test)]
+            import_free_bytes: Mutex::new(None),
+            #[cfg(test)]
+            clock_ahead: AtomicU64::new(0),
             config,
         })
     }
@@ -173,11 +196,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .contains(id)
     }
 
-    /// Restart now and install-on-quit wait while a game runs, an install holds the slot, or a
-    /// content install writes into an instance.
+    /// Restart now and install-on-quit wait while a game runs, an install holds the slot, a
+    /// content install writes into an instance, or an import is copying.
     pub fn update_blocked(&self) -> bool {
         self.has_active_runs()
             || self.install_slot.available_permits() == 0
+            || self
+                .import_slot
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_some()
             || !self
                 .installing
                 .lock()
@@ -316,14 +344,17 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Ok(listing)
     }
 
-    pub async fn instance_create(&self, request: NewInstance) -> Result<Instance> {
-        // A hand-edited settings file can hold any number; clamp so create + update can't
-        // half-succeed and leave an instance behind.
-        let memory = self
-            .settings_get()
+    /// The memory a new instance gets. A hand-edited settings file can hold any number; clamp
+    /// so create + update can't half-succeed and leave an instance behind.
+    pub(crate) async fn default_memory_mb(&self) -> u32 {
+        self.settings_get()
             .await
             .default_memory_mb
-            .clamp(MIN_MEMORY_MB, MAX_MEMORY_MB);
+            .clamp(MIN_MEMORY_MB, MAX_MEMORY_MB)
+    }
+
+    pub async fn instance_create(&self, request: NewInstance) -> Result<Instance> {
+        let memory = self.default_memory_mb().await;
         let mut instance = self
             .instances
             .create(
@@ -343,7 +374,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// Version and Java changes wait until the game stops; other edits are fine while it runs.
     /// Where an instance comes from (`source`), its server link (`server`) and its pictures
-    /// (`art`, `art_seed`, `icon`) change only through their own commands, so a stale copy from
+    /// (`art`, `art_seed`, `icon`, `banner_focus`) change only through their own commands, so a stale copy from
     /// the UI can't undo a relink or a picture. Server instances
     /// always follow their server (`Auto`).
     pub async fn instance_update(&self, instance: Instance) -> Result<Instance> {
@@ -365,6 +396,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         instance.art = current.art;
         instance.art_seed = current.art_seed.clone();
         instance.icon = current.icon;
+        instance.banner_focus = current.banner_focus;
         if matches!(current.source, SourceRef::Perland { .. }) {
             instance.update_policy = UpdatePolicy::Auto;
         }
@@ -403,6 +435,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 .retain(|_, plan| !plan.targets(id));
         }
         Ok(renamed)
+    }
+
+    /// Time played in every listed instance, zeros included.
+    pub async fn playtime_list(&self) -> Result<Vec<PlaytimeEntry>> {
+        let mut out = Vec::new();
+        for instance in self.instances.list().await? {
+            let played = playtime::read(&self.instances.perland_dir(&instance.id)).await;
+            out.push(PlaytimeEntry {
+                id: instance.id,
+                seconds: played.seconds,
+                last_played: played.last_played,
+            });
+        }
+        Ok(out)
     }
 
     pub async fn instance_delete(&self, id: &str) -> Result<()> {
@@ -1029,6 +1075,35 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn playtime_follows_a_rename() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        core.instance_create(vanilla("A")).await.unwrap();
+        core.instance_create(vanilla("B")).await.unwrap();
+        launcher_core::playtime::add(&core.instances.perland_dir("a"), 120, 1_700_000_000)
+            .await
+            .unwrap();
+        core.instance_rename("a", "Zed").await.unwrap();
+        let list = core.playtime_list().await.unwrap();
+        assert_eq!(
+            list,
+            vec![
+                PlaytimeEntry {
+                    id: "b".into(),
+                    seconds: 0,
+                    last_played: 0,
+                },
+                PlaytimeEntry {
+                    id: "zed".into(),
+                    seconds: 120,
+                    last_played: 1_700_000_000,
+                },
+            ]
+        );
+        core.instance_delete("zed").await.unwrap();
+        assert_eq!(core.playtime_list().await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
     async fn rename_drops_state_keyed_by_the_old_id() {
         let (core, _, _, _t) = core(BuildKind::Dev);
         core.instance_create(vanilla("A")).await.unwrap();
@@ -1109,6 +1184,23 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn update_keeps_the_banner_focus_from_disk() {
+        use launcher_core::instances::Focus;
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let mut instance = core.instance_create(vanilla("A")).await.unwrap();
+        let mut stored = core.instances.load("a").await.unwrap();
+        stored.banner_focus = Some(Focus { x: 20, y: 80 });
+        core.instances.update(&stored).await.unwrap();
+        // A stale copy from the UI doesn't undo the position.
+        instance.banner_focus = None;
+        instance.java.memory_mb += 512;
+        core.instance_update(instance).await.unwrap();
+        let after = core.instances.load("a").await.unwrap();
+        assert_eq!(after.banner_focus, Some(Focus { x: 20, y: 80 }));
+        assert_eq!(after.java.memory_mb, stored.java.memory_mb + 512);
+    }
+
+    #[tokio::test]
     async fn an_install_or_content_install_blocks_updates() {
         let (core, _, _, _t) = core(BuildKind::Beta);
         assert!(!core.update_blocked());
@@ -1117,6 +1209,16 @@ pub(crate) mod tests {
         drop(permit);
         core.installing.lock().unwrap().insert("asalith".into());
         assert!(core.update_blocked());
+    }
+
+    #[tokio::test]
+    async fn a_running_import_blocks_updates() {
+        let (core, _, _, _t) = core(BuildKind::Beta);
+        assert!(!core.update_blocked());
+        *core.import_slot.lock().unwrap() = Some(Cancel::default());
+        assert!(core.update_blocked());
+        *core.import_slot.lock().unwrap() = None;
+        assert!(!core.update_blocked());
     }
 
     #[tokio::test]

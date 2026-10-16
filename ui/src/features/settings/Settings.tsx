@@ -88,6 +88,23 @@ export function Settings() {
           </div>
           <Toggle checked={data.minimizeOnPlay} label={t('settings.minimize')} onChange={(minimizeOnPlay) => edit({ minimizeOnPlay })} />
         </div>
+        <fieldset className="grid gap-2">
+          <legend className="text-sm font-semibold">{t('settings.iconShape')}</legend>
+          <div className="flex flex-wrap gap-2">
+            {(['square', 'round'] as const).map((shape) => (
+              <label key={shape} className="seg" data-checked={data.iconShape === shape ? '' : undefined}>
+                <input
+                  type="radio"
+                  name="icon-shape"
+                  className="sr-only"
+                  checked={data.iconShape === shape}
+                  onChange={() => edit({ iconShape: shape })}
+                />
+                {shape === 'square' ? t('settings.iconSquare') : t('settings.iconRound')}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <div className="grid gap-2">
           <p className="text-sm font-semibold">{t('settings.dataFolder')}</p>
           <div className="flex items-center gap-3">

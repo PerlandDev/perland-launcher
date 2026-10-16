@@ -23,7 +23,11 @@
       "server": null,
       "artSeed": null,
       "art": "auto",
-      "icon": null
+      "icon": null,
+      "bannerFocus": {
+        "x": 30,
+        "y": 60
+      }
     },
     {
       "id": "creative-flat",
@@ -45,7 +49,8 @@
       "server": null,
       "artSeed": "creative-flat",
       "art": "generated",
-      "icon": "generated"
+      "icon": "generated",
+      "bannerFocus": null
     }
   ],
   "damaged": [

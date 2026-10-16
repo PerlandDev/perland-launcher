@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { Marquee } from '../../art/Marquee';
 import { describe, expect, it, vi } from 'vitest';
 import packStatusFx from '../../ipc/contract/pack_status.json';
@@ -16,9 +16,23 @@ describe('Home', () => {
   it('shows the selected instance with its versions and plays it', async () => {
     const { user, calls } = renderApp(<Home id="asalith-fields" />);
     expect(await screen.findByRole('heading', { name: 'Asalith Fields' })).toBeInTheDocument();
-    expect(screen.getByText('Minecraft 1.20.1 · Fabric 0.16.14')).toBeInTheDocument();
+    expect(screen.getByText(/^Minecraft 1\.20\.1 · Fabric 0\.16\.14/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Play' }));
     expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields', join: false }]);
+  });
+
+  it('adds the time played to the version plate', async () => {
+    renderApp(<Home id="asalith-fields" />);
+    expect(await screen.findByText('Minecraft 1.20.1 · Fabric 0.16.14 · 12 h played')).toBeInTheDocument();
+  });
+
+  it('leaves the time out of the plate before a minute is played', async () => {
+    const { calls } = renderApp(<Home id="creative-flat" />);
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    await waitFor(() => expect(sent(calls, 'playtime_list')).toHaveLength(1));
+    await act(async () => {});
+    expect(screen.getByText('Minecraft 26.3 · Vanilla')).toBeInTheDocument();
+    expect(screen.queryByText(/played/)).toBeNull();
   });
 
   it('sends one play for a double click', async () => {

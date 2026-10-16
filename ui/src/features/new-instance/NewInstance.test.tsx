@@ -71,7 +71,7 @@ it('names the host of the link as it is now, not as it arrived', async () => {
   expect(screen.queryByText('From perlanddev.github.io')).not.toBeInTheDocument();
   await user.clear(input);
   await user.type(input, 'http://packs.example.org/pack.toml');
-  expect(screen.queryByText(/^From /)).not.toBeInTheDocument();
+  expect(screen.queryByText(/^From \S+\./)).not.toBeInTheDocument();
 });
 
 it('explains a bad link in its own words, not the browser tooltip', async () => {
@@ -188,4 +188,11 @@ it('sends an invite link pasted as a pack link to Join server', async () => {
   await user.click(screen.getByRole('button', { name: 'Add pack' }));
   expect(routeSnapshot()).toEqual({ name: 'joinServer', invite });
   expect(sent(calls, 'pack_add')).toEqual([]);
+});
+
+it('offers a fourth mode that imports from another launcher', async () => {
+  const { user } = renderApp(<NewInstance />);
+  await user.click(await screen.findByRole('radio', { name: 'From another launcher' }));
+  expect(screen.getByRole('button', { name: 'Choose folder…' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Create instance' })).not.toBeInTheDocument();
 });

@@ -29,6 +29,7 @@ import type {
   ContentKind,
   DeepLink,
   ExitInfo,
+  Focus,
   IconChoice,
   InstallPlanView,
   InstallResult,
@@ -37,6 +38,8 @@ import type {
   LauncherError,
   LocalMod,
   ManualFile,
+  ImportPreview,
+  ImportRequest,
   ManualProgress,
   NewInstance,
   PackAddRequest,
@@ -46,6 +49,7 @@ import type {
   PackUpdate,
   PlanItemView,
   PlanSkip,
+  PlaytimeEntry,
   ProjectDetail,
   RunStateKind,
   SearchHit,
@@ -77,6 +81,12 @@ export interface MockOptions {
   savePath?: string | null;
   /** The rail starts wide, with names. */
   railExpanded?: boolean;
+  /** The rail draws round instance icons. */
+  iconShape?: 'square' | 'round';
+  /** Seconds played per instance id. Defaults to 12 h in Asalith Fields (none on first run). */
+  playtime?: Record<string, number>;
+  /** Adds Castle Keep, an instance with the player's own background picture (dev:mock turns it on). */
+  pictureBackground?: boolean;
 }
 
 interface MockRun {
@@ -86,6 +96,8 @@ interface MockRun {
   updateOnly: boolean;
   /** Set while asking: resolves with the player's answer. */
   answer: ((update: boolean) => void) | null;
+  /** When the game came up (ms), for the time played. */
+  startedAt?: number;
 }
 
 interface MockPack {
@@ -106,6 +118,15 @@ const SKY_ART: InstanceArtData = {
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 270" shape-rendering="crispEdges"><defs><linearGradient id="s" x2="0" y2="1"><stop offset="0" stop-color="#9fd8ff"/><stop offset="1" stop-color="#e9c46a"/></linearGradient></defs><rect width="480" height="270" fill="url(#s)"/><rect x="60" y="120" width="140" height="40" fill="#3f8f4f"/><rect x="80" y="160" width="100" height="24" fill="#6b4a2b"/><rect x="290" y="90" width="120" height="36" fill="#3f8f4f"/><rect x="306" y="126" width="88" height="20" fill="#6b4a2b"/></svg>',
   ),
 };
+
+/** A player's uploaded background: a 4:3 picture taller than the marquee, so its position matters. */
+const CASTLE_PICTURE = svg(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" shape-rendering="crispEdges"><rect width="800" height="600" fill="#2b3a67"/><rect y="360" width="800" height="240" fill="#3f6b3a"/><rect y="480" width="800" height="120" fill="#5a4030"/><rect x="120" y="80" width="120" height="300" fill="#8a8f98"/><rect x="100" y="60" width="40" height="40" fill="#8a8f98"/><rect x="160" y="60" width="40" height="40" fill="#8a8f98"/><rect x="220" y="60" width="40" height="40" fill="#8a8f98"/><rect x="160" y="160" width="40" height="60" fill="#181410"/><rect x="240" y="240" width="320" height="140" fill="#6f747d"/><rect x="560" y="200" width="100" height="180" fill="#8a8f98"/><rect x="380" y="300" width="60" height="80" fill="#181410"/><rect x="600" y="80" width="40" height="40" fill="#ffc233"/></svg>',
+);
+
+/** The folder the directory picker returns, and what the mock import finds in it. */
+export const MOCK_IMPORT_PATH = 'C:/Users/player/Games/instances/Skyblock Adventures';
+const IMPORT_SIZE = 1_234_000_000;
 
 /** A 1x1 PNG, the stand-in for a picked image. */
 const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -149,7 +170,7 @@ function uploadUrl(path: string): string | null {
 /** Move every id-keyed piece of mock state to a renamed instance's new id. */
 function moveId(state: MockState, from: string, to: string) {
   state.order = state.order.map((id) => (id === from ? to : id));
-  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.browse.installed] as Map<string, unknown>[]) {
+  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.browse.installed, state.playtime, state.lastPlayed] as Map<string, unknown>[]) {
     if (map.has(from)) {
       map.set(to, map.get(from));
       map.delete(from);
@@ -210,7 +231,7 @@ const contentKey = (id: string, kind: ContentKind) => `${id}:${kind}`;
 function seed(options: MockOptions) {
   const listing = clone(listingFx) as InstanceListing;
   const accounts = clone(accountsFx) as AccountsFile;
-  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, language: null };
+  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, iconShape: options.iconShape ?? 'square', language: null };
   if (options.firstRun) {
     listing.instances = [];
     listing.damaged = [];
@@ -250,6 +271,7 @@ function seed(options: MockOptions) {
       artSeed: null,
       art: 'auto',
       icon: null,
+      bannerFocus: null,
     };
     listing.instances = [...listing.instances, sky];
     const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
@@ -275,6 +297,26 @@ function seed(options: MockOptions) {
       found: 0,
     });
   }
+  // An instance with the player's own background, so "Change image…" shows the Position control.
+  const custom = new Map<string, string>();
+  if (options.pictureBackground && !options.firstRun) {
+    const castle: Instance = {
+      id: 'castle-keep',
+      name: 'Castle Keep',
+      source: { kind: 'none' },
+      game: { minecraft: '1.21.1', loader: null },
+      updatePolicy: 'ask',
+      optionalChoices: {},
+      java: { path: null, memoryMb: 4096, args: '' },
+      server: null,
+      artSeed: null,
+      art: 'custom',
+      icon: 'generated',
+      bannerFocus: null,
+    };
+    listing.instances = [...listing.instances, castle];
+    custom.set(castle.id, CASTLE_PICTURE);
+  }
   const servers = seedServers(options.server, listing);
   return {
     listing,
@@ -288,7 +330,7 @@ function seed(options: MockOptions) {
     mods,
     packs,
     // The player's own background per instance, as a data URL (the real one is .perland/custom/image.*).
-    custom: new Map<string, string>(),
+    custom,
     // The player's own icon per instance (.perland/custom/icon.*).
     customIcon: new Map<string, string>(),
     content,
@@ -299,12 +341,25 @@ function seed(options: MockOptions) {
       opened: [] as string[],
     },
     pendingLink: options.link ?? null,
+    // Seconds played per instance (the real one is .perland/playtime.json), and when each last ended.
+    playtime: new Map<string, number>(Object.entries(options.playtime ?? (options.firstRun ? {} : { 'asalith-fields': 12 * 3600 }))),
+    lastPlayed: new Map<string, number>(),
     runs: new Map<string, MockRun>(),
+    // The running import from another launcher: Cancel sets `cancelled`.
+    importRun: null as { cancelled: boolean } | null,
     options,
   };
 }
 
 export type MockState = ReturnType<typeof seed>;
+
+/** Like the core: a game that ran adds its time before the run goes idle. */
+function addPlaytime(state: MockState, id: string, run: MockRun) {
+  if (run.startedAt === undefined) return;
+  const seconds = Math.floor((Date.now() - run.startedAt) / 1000);
+  state.playtime.set(id, (state.playtime.get(id) ?? 0) + seconds);
+  state.lastPlayed.set(id, Math.floor(Date.now() / 1000));
+}
 
 function event(e: AppEvent) {
   // Tests that call handle() directly have no IPC mock installed; an event nobody hears is fine.
@@ -457,6 +512,7 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
   }
   setState(state, id, 'running');
   const started = Date.now();
+  run.startedAt = started;
   let n = 0;
   while (state.runs.get(id) === run && run.state === 'running') {
     event({ type: 'log', instance: id, lines: [`[12:00:${String(n % 60).padStart(2, '0')}] [Render thread/INFO]: Tick ${n}`] });
@@ -464,6 +520,7 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
     if (state.options.crash && Date.now() - started > 2500) {
       event({ type: 'log', instance: id, lines: ['Exception in thread "main" java.lang.OutOfMemoryError: Java heap space'] });
       state.runs.delete(id);
+      addPlaytime(state, id, run);
       event({
         type: 'run_state',
         instance: id,
@@ -614,12 +671,16 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         artSeed: null,
         art: 'auto',
         icon: null,
+        bannerFocus: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       return created;
     }
     case 'instance_update': {
-      const updated = args.instance as Instance;
+      const sent = args.instance as Instance;
+      // Like the core: the pictures change only through their own commands.
+      const stored = find(sent.id);
+      const updated: Instance = stored ? { ...sent, art: stored.art, artSeed: stored.artSeed, icon: stored.icon, bannerFocus: stored.bannerFocus } : sent;
       // Like the core: memory comes from the slider, never from the Java arguments.
       if (updated.java.args.split(/\s+/).some((token) => token.startsWith('-Xmx'))) fail('java', 'jvm_args_memory', 'Memory is set with the slider, not in the Java arguments');
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
@@ -645,7 +706,50 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'instance_delete':
       state.listing.instances = state.listing.instances.filter((i) => i.id !== args.id);
       state.listing.damaged = state.listing.damaged.filter((d) => d.id !== args.id);
+      state.playtime.delete(String(args.id));
+      state.lastPlayed.delete(String(args.id));
       return null;
+    case 'import_inspect':
+      return {
+        path: args.path as string,
+        name: 'Skyblock Adventures',
+        minecraft: '1.20.1',
+        loader: { kind: 'fabric', version: '0.19.4' },
+        sizeBytes: IMPORT_SIZE,
+      } satisfies ImportPreview;
+    case 'import_instance': {
+      if (state.importRun) fail('disk', 'import_busy', 'Another import is still running.');
+      const request = args.request as ImportRequest;
+      if (!request.name.trim()) fail('disk', 'name_invalid', 'Instance names must be 1–64 characters', { max: 64 });
+      const run = { cancelled: false };
+      state.importRun = run;
+      try {
+        // About two seconds of copying, like a big instance on a fast disk.
+        const steps = 20;
+        for (let i = 0; i <= steps; i++) {
+          if (run.cancelled) fail('disk', 'import_cancelled', 'The import was cancelled.');
+          const done = Math.round((IMPORT_SIZE * i) / steps);
+          event({ type: 'progress', instance: null, task: { key: 'import_instance', params: {} }, done, total: IMPORT_SIZE, bytes: done });
+          if (i < steps) await wait(100);
+        }
+        if (run.cancelled) fail('disk', 'import_cancelled', 'The import was cancelled.');
+        return await handle(state, 'instance_create', { request: { name: request.name, minecraft: request.minecraft, loader: request.loader } });
+      } finally {
+        state.importRun = null;
+      }
+    }
+    case 'import_cancel':
+      if (state.importRun) state.importRun.cancelled = true;
+      return null;
+    case 'playtime_list':
+      return state.listing.instances.map(
+        (i): PlaytimeEntry => ({
+          id: i.id,
+          seconds: state.playtime.get(i.id) ?? 0,
+          // Seeded time counts as ended a while ago (2026-10-14); a mock game stamps its real end.
+          lastPlayed: state.lastPlayed.get(i.id) ?? (state.playtime.has(i.id) ? 1_791_878_400 : 0),
+        }),
+      );
     case 'catalog_minecraft':
       return mcVersionsFx;
     case 'catalog_loaders': {
@@ -759,13 +863,13 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       let updated: Instance;
       if (choice.kind === 'generated') {
         state.custom.delete(target.id);
-        updated = { ...target, art: 'generated', artSeed: choice.seed, icon };
+        updated = { ...target, art: 'generated', artSeed: choice.seed, icon, bannerFocus: null };
       } else if (choice.kind === 'pack') {
         state.custom.delete(target.id);
-        updated = { ...target, art: 'auto', icon };
+        updated = { ...target, art: 'auto', icon, bannerFocus: null };
       } else {
         state.custom.set(target.id, upload ?? invalid());
-        updated = { ...target, art: 'custom', icon };
+        updated = { ...target, art: 'custom', icon, bannerFocus: null };
       }
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
@@ -784,6 +888,17 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         state.customIcon.delete(target.id);
         updated = { ...target, icon: choice.kind === 'pack' ? 'auto' : 'generated' };
       }
+      state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
+      return updated;
+    }
+    case 'instance_banner_focus_set': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (state.runs.has(target.id)) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: target.id });
+      const focus = (args.focus ?? null) as Focus | null;
+      if (focus && [focus.x, focus.y].some((n) => !Number.isInteger(n) || n < 0 || n > 100)) {
+        fail('disk', 'banner_focus_invalid', 'That position is outside the picture');
+      }
+      const updated: Instance = { ...target, bannerFocus: focus };
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
     }
@@ -814,6 +929,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         artSeed: null,
         art: 'auto',
         icon: null,
+        bannerFocus: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });
@@ -925,6 +1041,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         setTimeout(() => {
           if (state.runs.get(id) !== run) return;
           state.runs.delete(id);
+          addPlaytime(state, id, run);
           event({ type: 'run_state', instance: id, state: 'idle', exit: exitOf({ killed: true }), update: null });
         }, 400);
       }
@@ -973,7 +1090,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       return { major: 17 };
     case 'plugin:dialog|open': {
       // Mirrors the real dialog: an array when `multiple` is set, otherwise one path.
-      const options = args.options as { multiple?: boolean; filters?: { extensions?: string[] }[] } | undefined;
+      const options = args.options as { multiple?: boolean; directory?: boolean; filters?: { extensions?: string[] }[] } | undefined;
+      if (options?.directory) return MOCK_IMPORT_PATH;
       if (options?.filters?.[0]?.extensions?.includes('mrpack')) return 'C:/Users/player/Downloads/Sky Islands 1.0.4.mrpack';
       if (options?.filters?.[0]?.extensions?.includes('png')) return 'C:/Users/player/Pictures/castle.png';
       const path = 'C:/Users/player/Downloads/lithium-fabric-0.11.2.jar';
@@ -1009,6 +1127,7 @@ export function stopMockRuns() {
       run.answer?.(false);
     }
     state.runs.clear();
+    if (state.importRun) state.importRun.cancelled = true;
   }
   backends.clear();
 }

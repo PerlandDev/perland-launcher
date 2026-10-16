@@ -57,7 +57,8 @@
     "nameLabel": "Nombre",
     "deleteTitle": "¿Borrar {{name}}?",
     "deleteBody": "Se borra la instancia y todo lo que tiene, incluidos mundos y capturas. No se puede deshacer.",
-    "deleteConfirm": "Borrar instancia"
+    "deleteConfirm": "Borrar instancia",
+    "played": "{{time}} de juego"
   },
   "image": {
     "menu": "Cambiar imagen…",
@@ -71,7 +72,13 @@
     "packIcon": "Ícono del pack",
     "upload": "Sube la tuya…",
     "uploadIcon": "Sube el tuyo…",
-    "uploadHint": "PNG,\u00a0JPEG\u00a0o\u00a0WebP, hasta\u00a05\u00a0MB",
+    "uploadHintBackground": "PNG,\u00a0JPEG\u00a0o\u00a0WebP, hasta\u00a05\u00a0MB. Ideal:\u00a01920\u00a0×\u00a01080 o\u00a0más.",
+    "uploadHintIcon": "PNG,\u00a0JPEG\u00a0o\u00a0WebP, hasta\u00a05\u00a0MB. Ideal:\u00a0cuadrada.",
+    "position": "Posición",
+    "positionHint": "Arrastra para elegir qué parte de la imagen se ve.",
+    "positionX": "De izquierda a derecha",
+    "positionY": "De arriba abajo",
+    "reset": "Restablecer",
     "pickTitle": "Elige una imagen",
     "fileFilter": "Imágenes",
     "done": "Listo"
@@ -174,6 +181,7 @@
     "creating": "Creando…",
     "namePlaceholderFallback": "Mi instancia",
     "modeVersion": "Elegir una versión",
+    "modeImport": "De otro launcher",
     "linkLabel": "Link del pack",
     "linkPlaceholder": "https://…/pack.toml",
     "linkHint": "Pega un link a pack.toml, o modrinth: y el nombre de un proyecto.",
@@ -184,6 +192,17 @@
     "fileNone": "Todavía no elegiste un archivo",
     "fileFilter": "Modpacks",
     "packNote": "Los mods del pack se descargan la primera vez que presionas Jugar."
+  },
+  "import": {
+    "choose": "Elegir carpeta…",
+    "hint": "En tu otro launcher, abre la carpeta de la instancia (normalmente clic derecho → Abrir carpeta) y elígela aquí. Cierra el juego en tu otro launcher antes.",
+    "size": "Vamos a copiar {{size}}: tus mods, mundos, ajustes y datos de mapas. La carpeta original no se toca.",
+    "submit": "Importar",
+    "importing": "Importando…",
+    "copying": "Copiando… {{done}} de {{total}}",
+    "pickTitle": "Elige la carpeta de la instancia",
+    "reading": "Leyendo la carpeta…",
+    "done": "{{name}} está lista"
   },
   "instanceSettings": {
     "title": "Configuración de la instancia",
@@ -276,7 +295,8 @@
     "offlineLocked": "Las cuentas sin conexión se desbloquean después de iniciar sesión una vez con una cuenta de Microsoft que tenga Minecraft.",
     "microsoft": "Iniciar sesión con Microsoft",
     "offlineBadge": "Sin conexión",
-    "empty": "Todavía no hay cuentas."
+    "empty": "Todavía no hay cuentas.",
+    "totalPlayed": "Tiempo jugado en esta computadora: {{time}}"
   },
   "settings": {
     "title": "Configuración",
@@ -287,6 +307,9 @@
     "memory": "Memoria para instancias nuevas",
     "minimize": "Minimizar mientras juegas",
     "minimizeHint": "El launcher vuelve cuando se cierra el juego.",
+    "iconShape": "Íconos de instancias",
+    "iconSquare": "Cuadrados",
+    "iconRound": "Redondos",
     "dataFolder": "Carpeta de datos",
     "about": "Acerca de",
     "version": "Versión {{version}}",
@@ -467,6 +490,11 @@
     "instance_locked": { "message": "Otra ventana de Perland Launcher está usando esta instancia.", "fix": "Cierra la otra ventana o espera a que termine." },
     "instance_folder_in_use": { "message": "Otro programa está usando la carpeta de esta instancia.", "fix": "Cierra cualquier ventana o programa que use la carpeta y vuelve a intentarlo." },
     "art_file_invalid": { "message": "Ese archivo no se puede usar como imagen de la instancia.", "fix": "Elige una imagen PNG, JPEG o WebP de menos de 5 MB." },
+    "banner_focus_invalid": { "message": "Esa posición está fuera de la imagen." },
+    "import_not_instance": { "message": "Esta carpeta no parece una instancia de Minecraft.", "fix": "Elige la carpeta de la instancia: la que tiene mods, saves o config adentro." },
+    "import_inside_launcher": { "message": "Esa carpeta es del propio Perland Launcher.", "fix": "Elige una carpeta de tu otro launcher." },
+    "import_busy": { "message": "Otra importación sigue en curso.", "fix": "Espera a que termine o cancélala." },
+    "import_cancelled": { "message": "Se canceló la importación." },
     "manual_downloads_needed": { "message": "Hay {{count}} archivos que tienes que descargar a mano.", "fix": "Descárgalos de CurseForge e inténtalo de nuevo." },
     "update_check_failed": { "message": "No se pudieron buscar actualizaciones.", "fix": "Igual puedes jugar la versión que tienes." },
     "pack_path_is_folder": { "message": "El pack quiere poner un archivo donde tienes una carpeta ({{path}}).", "fix": "Mueve esa carpeta o cámbiale el nombre, y vuelve a intentarlo." },
@@ -590,5 +618,13 @@
     "foliage": "Vegetación", "path-tracing": "Path tracing", "reflections": "Reflejos", "shadows": "Sombras",
     "challenging": "Desafiantes", "kitchen-sink": "De todo", "lightweight": "Ligeros",
     "multiplayer": "Multijugador", "quests": "Misiones"
+  },
+  "time": {
+    "minutes": "{{count}} min",
+    "hours": "{{count}} h",
+    "days_one": "{{count}} día",
+    "days_other": "{{count}} días",
+    "years_one": "{{count}} año",
+    "years_other": "{{count}} años"
   }
 }

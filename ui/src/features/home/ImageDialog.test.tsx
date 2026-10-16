@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import i18n from '../../i18n';
 import { describe, expect, it, vi } from 'vitest';
 import { runStore } from '../../state/runStore';
@@ -105,29 +105,194 @@ describe('Change image', () => {
 });
 
 it.each([
-  ['en', 'Upload your own…', 'Upload your own…', 'PNG, JPEG or WebP, up to 5 MB'],
+  ['en', 'Upload your own…', 'Upload your own…', 'PNG, JPEG or WebP, up to 5 MB. Square works best.', 'PNG, JPEG or WebP, up to 5 MB. Best at 1920 × 1080 or larger.'],
   // "Tuyo" for the icon (el ícono), "tuya" for the background (la imagen).
-  ['es', 'Sube el tuyo…', 'Sube la tuya…', 'PNG, JPEG o WebP, hasta 5 MB'],
-])('states what an upload may be before picking (%s)', async (lang, iconUpload, upload, limits) => {
+  ['es', 'Sube el tuyo…', 'Sube la tuya…', 'PNG, JPEG o WebP, hasta 5 MB. Ideal: cuadrada.', 'PNG, JPEG o WebP, hasta 5 MB. Ideal: 1920 × 1080 o más.'],
+])('states what an upload may be before picking (%s)', async (lang, iconUpload, upload, iconHint, backgroundHint) => {
   await act(() => i18n.changeLanguage(lang));
   const { user } = renderApp(<Home id="asalith-fields" />);
   await screen.findByRole('heading', { name: 'Asalith Fields' });
   await user.click(screen.getByRole('button', { name: lang === 'en' ? 'More options' : 'Más opciones' }));
   await user.click(screen.getByRole('menuitem', { name: lang === 'en' ? 'Change image…' : 'Cambiar imagen…' }));
   const dialog = screen.getByRole('dialog');
-  // Both sections take an upload, and both say what it may be.
+  // Both sections take an upload, and each says what suits it.
   const keys = [...new Set([...screen.getAllByRole('radio', { name: iconUpload }), ...screen.getAllByRole('radio', { name: upload })])];
   expect(keys).toHaveLength(2);
   expect(within(dialog).getByRole('radiogroup', { name: lang === 'en' ? 'Icon' : 'Ícono' })).toContainElement(keys[0]!);
   expect(within(dialog).getByRole('radiogroup', { name: lang === 'en' ? 'Background' : 'Fondo' })).toContainElement(keys[1]!);
-  for (const key of keys) {
-    expect(key).toHaveTextContent(limits);
-    // Tied with no-break spaces, so it can only break once: before "up to" / "hasta", never mid-list.
+  const tied = (words: string) => words.replaceAll(' ', ' ');
+  for (const [key, copy] of [
+    [keys[0]!, iconHint],
+    [keys[1]!, backgroundHint],
+  ] as const) {
     const hint = key.querySelector('.art-key-hint')!.textContent!;
-    const tied = (words: string) => words.replaceAll(' ', '\u00a0');
-    expect(hint.split(' ')).toEqual(lang === 'en' ? [tied('PNG, JPEG or WebP,'), tied('up to 5 MB')] : [tied('PNG, JPEG o WebP,'), tied('hasta 5 MB')]);
+    expect(hint.replaceAll(' ', ' ')).toBe(copy);
     expect(key).toHaveAccessibleDescription(hint);
+    // Tied with no-break spaces, so the kinds and the size limit never break inside.
+    expect(hint).toContain(tied(lang === 'en' ? 'PNG, JPEG or WebP,' : 'PNG, JPEG o WebP,'));
+    expect(hint).toContain(tied(lang === 'en' ? 'up to 5 MB.' : 'hasta 5 MB.'));
   }
+  expect(keys[1]!.querySelector('.art-key-hint')!.textContent).toContain(tied('1920 × 1080'));
+});
+
+describe('Change image: the position', () => {
+  const position = (dialog: HTMLElement) => within(dialog).queryByRole('group', { name: 'Position' });
+  const homeBanner = () => document.querySelector<HTMLImageElement>('section > .marquee img.marquee-banner');
+  const rect = (left: number, top: number, width: number, height: number) => () =>
+    ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
+  /** The mock's Castle Keep, with its own background picture and, if given, a saved position. */
+  function castle(bannerFocus: Instance['bannerFocus'] = null) {
+    const backend = createMockBackend({ pictureBackground: true });
+    backend.state.listing.instances = backend.state.listing.instances.map((i) => (i.id === 'castle-keep' ? { ...i, bannerFocus } : i));
+    const calls: [string, unknown][] = [];
+    const rendered = renderWithProviders(<Home id="castle-keep" />, {
+      ipc: (cmd, args) => {
+        calls.push([cmd, args]);
+        return backend.handle(cmd, args);
+      },
+    });
+    return { ...rendered, backend, calls };
+  }
+
+  it('shows only while a picture is the background', async () => {
+    const plain = renderApp(<Home id="asalith-fields" />, { pictureBackground: true });
+    expect(position(await openPicker(plain.user, 'Asalith Fields'))).toBeNull();
+    plain.unmount();
+
+    const pack = renderApp(<Home id="sky-islands" />, { pictureBackground: true });
+    expect(await within(await openPicker(pack.user, 'Sky Islands')).findByRole('group', { name: 'Position' })).toBeInTheDocument();
+    pack.unmount();
+
+    const { user } = castle();
+    const dialog = await openPicker(user, 'Castle Keep');
+    const group = await within(dialog).findByRole('group', { name: 'Position' });
+    expect(group).toHaveAccessibleDescription('Drag to choose which part of the picture stays in view.');
+    // Two range inputs carry it for the keyboard and screen readers; the picture itself is only for the pointer.
+    const x = within(group).getByLabelText('Left to right');
+    const y = within(group).getByLabelText('Top to bottom');
+    for (const input of [x, y]) {
+      expect(input).toHaveAttribute('type', 'range');
+      expect(input).toHaveAttribute('step', '5');
+    }
+    // The default is the bottom middle.
+    expect(x).toHaveValue('50');
+    expect(y).toHaveValue('100');
+    expect(group.querySelector('[aria-hidden="true"] img')).not.toBeNull();
+  });
+
+  it('moves by 5 with the arrow keys and saves once, 300 ms after the last press', async () => {
+    const { user, calls } = castle();
+    const dialog = await openPicker(user, 'Castle Keep');
+    const group = await within(dialog).findByRole('group', { name: 'Position' });
+    const x = within(group).getByLabelText('Left to right');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      x.focus();
+      fireEvent.keyDown(x, { key: 'ArrowLeft' });
+      fireEvent.keyDown(x, { key: 'ArrowUp' });
+      expect(x).toHaveValue('45');
+      expect(within(group).getByLabelText('Top to bottom')).toHaveValue('95');
+      act(() => vi.advanceTimersByTime(299));
+      // The marquee behind the dialog follows before the save.
+      expect(homeBanner()?.style.objectPosition).toBe('45% 95%');
+      expect(sent(calls, 'instance_banner_focus_set')).toEqual([]);
+      act(() => vi.advanceTimersByTime(1));
+      await vi.waitFor(() => expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: { x: 45, y: 95 } }]));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a position still waiting when the dialog closes', async () => {
+    const { user, calls } = castle();
+    const dialog = await openPicker(user, 'Castle Keep');
+    const x = within(await within(dialog).findByRole('group', { name: 'Position' })).getByLabelText('Left to right');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.keyDown(x, { key: 'ArrowRight' });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Done' }));
+    } finally {
+      // The 300 ms wait never ends: only closing can have sent it.
+      vi.useRealTimers();
+    }
+    await vi.waitFor(() => expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: { x: 55, y: 100 } }]));
+  });
+
+  it('saves a drag when the pointer is released', async () => {
+    const { user, calls } = castle();
+    const dialog = await openPicker(user, 'Castle Keep');
+    const group = await within(dialog).findByRole('group', { name: 'Position' });
+    const picture = group.querySelector<HTMLElement>('.focus-picture')!;
+    picture.getBoundingClientRect = rect(100, 50, 200, 100);
+    fireEvent.pointerDown(picture, { clientX: 140, clientY: 70, pointerId: 1, button: 0 });
+    fireEvent.pointerMove(picture, { clientX: 160, clientY: 75, pointerId: 1 });
+    expect(within(group).getByLabelText('Left to right')).toHaveValue('30');
+    await vi.waitFor(() => expect(homeBanner()?.style.objectPosition).toBe('30% 25%'));
+    expect(sent(calls, 'instance_banner_focus_set')).toEqual([]);
+    // Past the edge it stops at the edge.
+    fireEvent.pointerMove(picture, { clientX: 400, clientY: 75, pointerId: 1 });
+    fireEvent.pointerUp(picture, { clientX: 400, clientY: 75, pointerId: 1 });
+    await vi.waitFor(() => expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: { x: 100, y: 25 } }]));
+  });
+
+  it('keeps the last shown point when the pointer is cancelled', async () => {
+    const { user, calls } = castle();
+    const dialog = await openPicker(user, 'Castle Keep');
+    const group = await within(dialog).findByRole('group', { name: 'Position' });
+    const picture = group.querySelector<HTMLElement>('.focus-picture')!;
+    picture.getBoundingClientRect = rect(100, 50, 200, 100);
+    fireEvent.pointerDown(picture, { clientX: 140, clientY: 70, pointerId: 1, button: 0 });
+    fireEvent.pointerMove(picture, { clientX: 160, clientY: 75, pointerId: 1 });
+    // A cancelled pointer (the OS took it) carries no real place: 0, 0 would be the top left.
+    fireEvent.pointerCancel(picture, { clientX: 0, clientY: 0, pointerId: 1 });
+    await vi.waitFor(() => expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: { x: 30, y: 25 } }]));
+  });
+
+  it('goes back to the default with Reset', async () => {
+    const { user, calls } = castle({ x: 30, y: 60 });
+    await vi.waitFor(() => expect(homeBanner()?.style.objectPosition).toBe('30% 60%'));
+    const dialog = await openPicker(user, 'Castle Keep');
+    const group = await within(dialog).findByRole('group', { name: 'Position' });
+    expect(within(group).getByLabelText('Left to right')).toHaveValue('30');
+    await user.click(within(group).getByRole('button', { name: 'Reset' }));
+    expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: null }]);
+    expect(within(group).getByLabelText('Top to bottom')).toHaveValue('100');
+    await vi.waitFor(() => expect(homeBanner()?.style.objectPosition).toBe(''));
+    // Already the default: nothing more to send.
+    expect(within(group).getByRole('button', { name: 'Reset' })).toHaveAttribute('aria-disabled', 'true');
+    await user.click(within(group).getByRole('button', { name: 'Reset' }));
+    expect(sent(calls, 'instance_banner_focus_set')).toHaveLength(1);
+  });
+
+  it('starts a new picture from the default, and leaves a landscape alone', async () => {
+    const { user } = castle({ x: 30, y: 60 });
+    const dialog = await openPicker(user, 'Castle Keep');
+    await within(dialog).findByRole('group', { name: 'Position' });
+    await user.click(group(dialog, 'Background').getByRole('radio', { name: 'Upload your own…' }));
+    await vi.waitFor(() => expect(within(position(dialog)!).getByLabelText('Left to right')).toHaveValue('50'));
+    expect(within(position(dialog)!).getByLabelText('Top to bottom')).toHaveValue('100');
+    await user.click(group(dialog, 'Background').getByRole('radio', { name: 'Landscape 2' }));
+    await vi.waitFor(() => expect(position(dialog)).toBeNull());
+  });
+
+  it('shows a refused position as a translated error and puts the marquee back', async () => {
+    const { user, backend } = castle();
+    const handle = backend.handle;
+    vi.spyOn(backend, 'handle').mockImplementation((cmd, args) =>
+      cmd === 'instance_banner_focus_set'
+        ? Promise.reject({ category: 'disk', code: 'banner_focus_invalid', message: 'That position is outside the picture', fix: null, detail: null, params: {} })
+        : handle(cmd, args),
+    );
+    const dialog = await openPicker(user, 'Castle Keep');
+    const group = await within(dialog).findByRole('group', { name: 'Position' });
+    const picture = group.querySelector<HTMLElement>('.focus-picture')!;
+    picture.getBoundingClientRect = rect(0, 0, 100, 100);
+    fireEvent.pointerDown(picture, { clientX: 10, clientY: 10, pointerId: 1, button: 0 });
+    fireEvent.pointerUp(picture, { clientX: 10, clientY: 10, pointerId: 1 });
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('That position is outside the picture.');
+    await vi.waitFor(() => expect(within(position(dialog)!).getByLabelText('Left to right')).toHaveValue('50'));
+    await vi.waitFor(() => expect(homeBanner()?.style.objectPosition).toBe(''));
+  });
 });
 
 describe('Change image: the icon', () => {

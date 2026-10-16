@@ -1,6 +1,8 @@
 use std::{
+    future::Future,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
+    time::Duration,
 };
 
 use crate::error::Result;
@@ -27,6 +29,55 @@ pub async fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
         return Err(e.into());
     }
     Ok(())
+}
+
+/// True when the OS refused because something holds the file or folder: a permission refusal,
+/// or on Windows `ERROR_ACCESS_DENIED` (5) or `ERROR_SHARING_VIOLATION` (32). An antivirus or
+/// indexer often holds a just-written folder for a moment.
+pub fn is_in_use(e: &std::io::Error) -> bool {
+    if e.kind() == std::io::ErrorKind::PermissionDenied {
+        return true;
+    }
+    // Raw codes mean something else elsewhere: on Unix 5 is EIO and 32 is EPIPE.
+    #[cfg(windows)]
+    if matches!(e.raw_os_error(), Some(5 | 32)) {
+        return true;
+    }
+    false
+}
+
+/// The waits between tries of [`rename_with_retry`]: about two seconds in all.
+const RENAME_RETRY_DELAYS: [Duration; 6] = [
+    Duration::from_millis(50),
+    Duration::from_millis(100),
+    Duration::from_millis(200),
+    Duration::from_millis(400),
+    Duration::from_millis(800),
+    Duration::from_millis(450),
+];
+
+/// Rename `from` to `to`, trying again for about two seconds while the OS says something holds
+/// it ([`is_in_use`]). Any other error, or the last refusal, comes back as is.
+pub async fn rename_with_retry(from: &Path, to: &Path) -> std::io::Result<()> {
+    retry_while_in_use(&RENAME_RETRY_DELAYS, || tokio::fs::rename(from, to)).await
+}
+
+/// Run `op`, and again after each of `delays` while it fails with [`is_in_use`].
+async fn retry_while_in_use<T, F, Fut>(delays: &[Duration], mut op: F) -> std::io::Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = std::io::Result<T>>,
+{
+    let mut delays = delays.iter();
+    loop {
+        match op().await {
+            Err(e) if is_in_use(&e) => match delays.next() {
+                Some(delay) => tokio::time::sleep(*delay).await,
+                None => return Err(e),
+            },
+            result => return result,
+        }
+    }
 }
 
 /// Windows device names. A file whose stem is one of these (`nul.txt`, `CON .jar`) opens the
@@ -88,7 +139,85 @@ pub fn safe_join(base: &Path, rel: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use std::{cell::Cell, io::ErrorKind, time::Duration};
+
     use super::*;
+
+    #[test]
+    fn in_use_errors_are_recognised() {
+        #[cfg(windows)]
+        {
+            assert!(is_in_use(&std::io::Error::from_raw_os_error(32)));
+            assert!(is_in_use(&std::io::Error::from_raw_os_error(5)));
+        }
+        // EIO and EPIPE on Unix are not a held file.
+        #[cfg(not(windows))]
+        {
+            assert!(!is_in_use(&std::io::Error::from_raw_os_error(32)));
+            assert!(!is_in_use(&std::io::Error::from_raw_os_error(5)));
+        }
+        assert!(is_in_use(&std::io::Error::from(
+            ErrorKind::PermissionDenied
+        )));
+        assert!(!is_in_use(&std::io::Error::from(ErrorKind::NotFound)));
+    }
+
+    #[tokio::test]
+    async fn retry_gives_an_in_use_folder_time_to_let_go() {
+        let calls = Cell::new(0);
+        let result = retry_while_in_use(&[Duration::ZERO; 5], || {
+            calls.set(calls.get() + 1);
+            let n = calls.get();
+            async move {
+                if n < 3 {
+                    Err(std::io::Error::from(ErrorKind::PermissionDenied))
+                } else {
+                    Ok(n)
+                }
+            }
+        })
+        .await;
+        assert_eq!(result.unwrap(), 3);
+        assert_eq!(calls.get(), 3);
+    }
+
+    #[tokio::test]
+    async fn retry_gives_up_after_the_last_delay() {
+        let calls = Cell::new(0);
+        let err = retry_while_in_use(&[Duration::ZERO; 4], || {
+            calls.set(calls.get() + 1);
+            async { Err::<(), _>(std::io::Error::from(ErrorKind::PermissionDenied)) }
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::PermissionDenied);
+        assert_eq!(calls.get(), 5, "the first try plus one per delay");
+    }
+
+    #[tokio::test]
+    async fn retry_stops_at_an_error_that_is_not_in_use() {
+        let calls = Cell::new(0);
+        let err = retry_while_in_use(&[Duration::ZERO; 4], || {
+            calls.set(calls.get() + 1);
+            async { Err::<(), _>(std::io::Error::from(ErrorKind::NotFound)) }
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::NotFound);
+        assert_eq!(calls.get(), 1);
+    }
+
+    #[tokio::test]
+    async fn rename_with_retry_moves_a_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir(tmp.path().join("a")).unwrap();
+        std::fs::write(tmp.path().join("a/f"), "f").unwrap();
+        rename_with_retry(&tmp.path().join("a"), &tmp.path().join("b"))
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(tmp.path().join("b/f")).unwrap(), b"f");
+        assert!(!tmp.path().join("a").exists());
+    }
 
     #[tokio::test]
     async fn concurrent_atomic_writes_to_one_path_all_succeed() {

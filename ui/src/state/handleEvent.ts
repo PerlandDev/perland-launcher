@@ -1,6 +1,7 @@
 import type { AppEvent, Settings } from '../ipc/schema';
 import { openActivity } from './activity';
 import { applyContentProgress } from './contentProgress';
+import { applyImportProgress } from './importProgress';
 import { takeDeepLink } from './deepLink';
 import { isCrash } from './exit';
 import { qk, queryClient } from './queries';
@@ -16,6 +17,11 @@ export function handleEvent(event: AppEvent) {
   // A Browse install has its own progress; it never shows on Play.
   if (event.type === 'progress' && event.task.key === 'install_content') {
     applyContentProgress(event);
+    return;
+  }
+  // So does an import from another launcher: it belongs to no instance yet.
+  if (event.type === 'progress' && event.task.key === 'import_instance') {
+    applyImportProgress(event);
     return;
   }
   runStore.apply(event);
@@ -36,6 +42,7 @@ export function handleEvent(event: AppEvent) {
       qk.contentFiles(id, 'resource_pack'),
       qk.contentFiles(id, 'shader'),
       qk.serverStatus(id),
+      qk.playtime,
     ];
     for (const queryKey of keys) {
       void queryClient.invalidateQueries({ queryKey });

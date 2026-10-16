@@ -29,6 +29,8 @@ async function bootstrap() {
       link: params.get('link') ?? undefined,
       server: (params.get('server') as ServerScenario | null) ?? undefined,
       railExpanded: params.has('railExpanded'),
+      iconShape: params.get('iconShape') === 'round' ? 'round' : undefined,
+      pictureBackground: !params.has('noPicture'),
     });
   }
   // Whatever fails here, the window still opens; the failure shows up as a toast.

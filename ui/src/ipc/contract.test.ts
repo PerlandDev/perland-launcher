@@ -9,6 +9,8 @@ import errorFx from './contract/error.json';
 import errorCodes from './contract/error_codes.json';
 import events from './contract/events.json';
 import iconChoices from './contract/icon_choices.json';
+import importPreview from './contract/import_preview.json';
+import importRequest from './contract/import_request.json';
 import installPlans from './contract/install_plans.json';
 import installResult from './contract/install_result.json';
 import inviteLinksFx from './contract/invite_links.json';
@@ -27,6 +29,7 @@ import packAddRequests from './contract/pack_add_requests.json';
 import packContents from './contract/pack_contents.json';
 import packStatus from './contract/pack_status.json';
 import planRequests from './contract/plan_requests.json';
+import playtimeFx from './contract/playtime.json';
 import projectDetail from './contract/project_detail.json';
 import runSnapshots from './contract/run_snapshots.json';
 import searchPage from './contract/search_page.json';
@@ -52,6 +55,8 @@ const cases: [string, ZodType, unknown][] = [
   ['manual_progress', s.manualProgress, manualProgress],
   ['mc_versions', s.mcVersion.array(), mcVersions],
   ['new_instance', s.newInstance, newInstance],
+  ['import_preview', s.importPreview, importPreview],
+  ['import_request', s.importRequest, importRequest],
   ['open_targets', s.openTarget.array(), openTargets],
   ['pack_add_requests', s.packAddRequest.array(), packAddRequests],
   ['instance_art', s.instanceArtData, instanceArt],
@@ -59,6 +64,7 @@ const cases: [string, ZodType, unknown][] = [
   ['icon_choices', s.iconChoice.array(), iconChoices],
   ['pack_contents', s.packContents, packContents],
   ['pack_status', s.packStatus.array(), packStatus],
+  ['playtime', s.playtimeEntry.array(), playtimeFx],
   ['run_snapshots', s.runSnapshot.array(), runSnapshots],
   ['settings', s.settings, settingsFx],
   ['server_instance', s.instance, serverInstanceFx],

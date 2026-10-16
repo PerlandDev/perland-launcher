@@ -13,9 +13,9 @@ use launcher_core::{
     accounts::{Provider, Session},
     events::{Event, EventSink},
     fsutil::write_atomic,
-    instances::{Instance, ServerAddress, SourceRef, UpdatePolicy},
+    instances::{unix_now, Instance, ServerAddress, SourceRef, UpdatePolicy},
     locks::InstanceLock,
-    server_list,
+    playtime, server_list,
     sync::{
         lockfile::PACK_FILE, manual::Scanner, Cancel, Ensured, ManualFile, PendingUpdate,
         SyncOutcome,
@@ -244,6 +244,21 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let deadline = tokio::time::Instant::now() + wait;
         while self.has_active_runs() && tokio::time::Instant::now() < deadline {
             tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    /// Count the time of every game still running, for a quit that leaves them playing: the
+    /// next launcher doesn't know these games, so their time would otherwise be lost. Each is
+    /// counted once; a game ending meanwhile adds nothing more.
+    pub async fn record_running_playtime(&self) {
+        let running: Vec<(String, Instant)> = self
+            .playing_since
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .drain()
+            .collect();
+        for (id, started) in running {
+            self.record_playtime(&id, started).await;
         }
     }
 
@@ -681,13 +696,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     run.killer = Some(game.killer());
                     run.abort = None;
                     self.emit_state(&id, RunStateKind::Running, None);
+                    let started = self.run_clock();
+                    self.playing_since
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(id.clone(), started);
                 }
                 None => {
                     game.killer().kill();
                     return;
                 }
             }
-        }
+        };
         if args.minimize {
             self.host.minimize();
         }
@@ -704,11 +724,45 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 ..failed(error)
             },
         };
+        // Every way out of a running game counts, and before `idle`, so the UI reads the new total.
+        // Unless a quit that left the game playing already counted it.
+        let started = self
+            .playing_since
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&id);
+        if let Some(started) = started {
+            self.record_playtime(&id, started).await;
+        }
         let crashed = info.is_crash();
         self.finish(&id, info, sink, batcher, Some(lock)).await;
         if args.minimize || crashed {
             self.host.restore();
         }
+    }
+
+    /// Add the time since `started` to the instance's playtime. A failed write loses only this
+    /// run's count, so it is logged and nothing more.
+    async fn record_playtime(&self, id: &str, started: Instant) {
+        let seconds = self
+            .run_clock()
+            .saturating_duration_since(started)
+            .as_secs();
+        let now = u64::try_from(unix_now()).unwrap_or(0);
+        if let Err(error) = playtime::add(&self.instances.perland_dir(id), seconds, now).await {
+            tracing::warn!(instance = id, %error, "couldn't save the time played");
+        }
+    }
+
+    #[cfg(not(test))]
+    fn run_clock(&self) -> Instant {
+        Instant::now()
+    }
+
+    #[cfg(test)]
+    fn run_clock(&self) -> Instant {
+        use std::sync::atomic::Ordering;
+        Instant::now() + Duration::from_secs(self.clock_ahead.load(Ordering::SeqCst))
     }
 
     async fn finish(
@@ -750,7 +804,7 @@ mod tests {
         instances::{GameSpec, ServerAddress, UpdatePolicy},
         launch::CrashHint,
         locks::InstanceLock,
-        server_list,
+        playtime, server_list,
         settings::Settings,
         sync::{lockfile, plan::Changes, Ensured, SyncOutcome, SyncReport},
         ErrorCode, LauncherError,
@@ -913,6 +967,63 @@ mod tests {
         assert_eq!(exit.error.unwrap().code, ErrorCode::Offline);
         assert_eq!(host.minimized.load(Ordering::SeqCst), 0);
         assert!(!core.has_active_runs());
+    }
+
+    #[tokio::test]
+    async fn a_finished_game_adds_its_playtime() {
+        let (core, runner, host, _t) = ready(false).await;
+        let perland = core.instances.perland_dir("alpha");
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        core.clock_ahead.store(90, Ordering::SeqCst); // a 90 s game, without waiting for it
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+        let played = playtime::read(&perland).await;
+        assert!((90..100).contains(&played.seconds), "{played:?}");
+        assert!(played.last_played > 0);
+        // A game the player stops counts too, added to what was there.
+        core.clock_ahead.store(0, Ordering::SeqCst);
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for_nth("alpha", Running, 2).await;
+        core.clock_ahead.store(30, Ordering::SeqCst);
+        core.stop("alpha").unwrap();
+        host.wait_for_nth("alpha", Idle, 2).await;
+        let played = playtime::read(&perland).await;
+        assert!((120..130).contains(&played.seconds), "{played:?}");
+    }
+
+    #[tokio::test]
+    async fn quitting_while_games_keep_playing_counts_their_time_once() {
+        let (core, runner, host, _t) = ready(false).await;
+        let perland = core.instances.perland_dir("alpha");
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        core.clock_ahead.store(60, Ordering::SeqCst);
+        core.record_running_playtime().await;
+        let played = playtime::read(&perland).await;
+        assert!((60..70).contains(&played.seconds), "{played:?}");
+        // Had the app stayed open after all, the game's end doesn't count the same time again.
+        core.clock_ahead.store(90, Ordering::SeqCst);
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+        assert_eq!(playtime::read(&perland).await.seconds, played.seconds);
+    }
+
+    #[tokio::test]
+    async fn a_game_that_never_started_adds_nothing() {
+        let (core, runner, host, _t) = ready(false).await;
+        *runner.prepare_error.lock().unwrap() =
+            Some(LauncherError::network(ErrorCode::Offline, "offline"));
+        core.clock_ahead.store(90, Ordering::SeqCst);
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Idle).await;
+        let perland = core.instances.perland_dir("alpha");
+        assert_eq!(playtime::read(&perland).await.seconds, 0);
+        assert!(!perland.join("playtime.json").exists());
     }
 
     #[tokio::test]

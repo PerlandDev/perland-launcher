@@ -244,7 +244,11 @@ pub(crate) struct RecordingHost {
     /// One-shot: the next final `idle` is held back this long before it is recorded, to widen
     /// the window between a run leaving the map and its final state being reported.
     pub idle_delay: Mutex<Option<Duration>>,
+    /// Called with every event as it is emitted (before it is recorded).
+    pub on_emit: Mutex<Option<EmitHook>>,
 }
+
+pub(crate) type EmitHook = Arc<dyn Fn(&AppEvent) + Send + Sync>;
 
 impl RecordingHost {
     pub fn new() -> Arc<Self> {
@@ -372,6 +376,10 @@ impl Host for RecordingHost {
             if let Some(delay) = delay {
                 std::thread::sleep(delay);
             }
+        }
+        let hook = self.on_emit.lock().unwrap().clone();
+        if let Some(hook) = hook {
+            hook(&event);
         }
         self.events.lock().unwrap().push(event);
     }

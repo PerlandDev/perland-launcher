@@ -19,6 +19,12 @@ it('drives the window and shows the active account', async () => {
   expect(routeSnapshot()).toEqual({ name: 'accounts' });
 });
 
+it('draws the settings button as a cog', async () => {
+  renderApp(<TitleBar />);
+  const button = await screen.findByRole('button', { name: 'Settings' });
+  expect(button.querySelector('svg')).toHaveAttribute('data-icon', 'settings-cog');
+});
+
 it('keeps only the window controls when minimal', async () => {
   renderApp(<TitleBar minimal />, { firstRun: true });
   expect(await screen.findByRole('button', { name: 'Close' })).toBeInTheDocument();

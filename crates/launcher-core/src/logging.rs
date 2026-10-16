@@ -106,6 +106,10 @@ pub fn init(dirs: &LauncherDirs) {
 /// A command's error, as the player saw it plus its technical detail. Never a token: errors
 /// never carry them (spec §5.1), and the home path is masked by the writer.
 pub fn log_error(command: &str, error: &LauncherError) {
+    // The player pressing Cancel on an import is an answer, not a failure.
+    if error.code == crate::ErrorCode::ImportCancelled {
+        return;
+    }
     tracing::warn!(
         command,
         code = ?error.code,
@@ -211,5 +215,25 @@ mod tests {
         assert!(text.contains("command=\"play\""), "{text}");
         assert!(text.contains("HostUnreachable"), "{text}");
         assert!(text.contains("dns failed"), "{text}");
+    }
+
+    #[test]
+    fn a_players_import_cancel_stays_out_of_the_log() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = RedactingFile::new(tmp.path(), Redactor::new()).unwrap();
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(file)
+            .finish();
+        let cancelled =
+            LauncherError::disk(ErrorCode::ImportCancelled, "The import was cancelled.");
+        let failed = LauncherError::disk(ErrorCode::ImportNotInstance, "Not an instance");
+        tracing::subscriber::with_default(subscriber, || {
+            log_error("import_instance", &cancelled);
+            log_error("import_instance", &failed);
+        });
+        let text = std::fs::read_to_string(only_file(tmp.path())).unwrap();
+        assert!(!text.contains("ImportCancelled"), "{text}");
+        assert!(text.contains("ImportNotInstance"), "{text}");
     }
 }

@@ -33,6 +33,15 @@ function renderFailing(command: string) {
 const slider = () => screen.getByRole('slider', { name: 'Memory for new instances' });
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+it('picks the round icon shape', async () => {
+  const { user, calls } = renderApp(<Settings />);
+  const group = await screen.findByRole('group', { name: 'Instance icons' });
+  expect(within(group).getByRole('radio', { name: 'Square' })).toBeChecked();
+  await user.click(within(group).getByRole('radio', { name: 'Round' }));
+  expect(within(group).getByRole('radio', { name: 'Round' })).toBeChecked();
+  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { iconShape: 'round' } }));
+});
+
 it('switches language, saves preferences and opens the data folder', async () => {
   const { user, calls } = renderApp(<Settings />);
   const language = await screen.findByRole('combobox', { name: 'Language' });

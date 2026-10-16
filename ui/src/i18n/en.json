@@ -57,7 +57,8 @@
     "nameLabel": "Name",
     "deleteTitle": "Delete {{name}}?",
     "deleteBody": "This removes the instance and everything in it, including worlds and screenshots. It can't be undone.",
-    "deleteConfirm": "Delete instance"
+    "deleteConfirm": "Delete instance",
+    "played": "{{time}} played"
   },
   "image": {
     "menu": "Change image…",
@@ -71,7 +72,13 @@
     "packIcon": "Pack icon",
     "upload": "Upload your own…",
     "uploadIcon": "Upload your own…",
-    "uploadHint": "PNG,\u00a0JPEG\u00a0or\u00a0WebP, up\u00a0to\u00a05\u00a0MB",
+    "uploadHintBackground": "PNG,\u00a0JPEG\u00a0or\u00a0WebP, up\u00a0to\u00a05\u00a0MB. Best\u00a0at\u00a01920\u00a0×\u00a01080 or\u00a0larger.",
+    "uploadHintIcon": "PNG,\u00a0JPEG\u00a0or\u00a0WebP, up\u00a0to\u00a05\u00a0MB. Square\u00a0works\u00a0best.",
+    "position": "Position",
+    "positionHint": "Drag to choose which part of the picture stays in view.",
+    "positionX": "Left to right",
+    "positionY": "Top to bottom",
+    "reset": "Reset",
     "pickTitle": "Choose an image",
     "fileFilter": "Images",
     "done": "Done"
@@ -174,6 +181,7 @@
     "creating": "Creating…",
     "namePlaceholderFallback": "My instance",
     "modeVersion": "Pick a version",
+    "modeImport": "From another launcher",
     "linkLabel": "Pack link",
     "linkPlaceholder": "https://…/pack.toml",
     "linkHint": "Paste a pack.toml link, or modrinth: and a project name.",
@@ -184,6 +192,17 @@
     "fileNone": "No file chosen yet",
     "fileFilter": "Modpacks",
     "packNote": "The pack's mods download the first time you press Play."
+  },
+  "import": {
+    "choose": "Choose folder…",
+    "hint": "In your other launcher, open the instance's folder (usually right-click → Open folder) and pick it here. Close the game in your other launcher first.",
+    "size": "We'll copy {{size}}: your mods, worlds, settings and map data. The original folder isn't changed.",
+    "submit": "Import",
+    "importing": "Importing…",
+    "copying": "Copying… {{done}} of {{total}}",
+    "pickTitle": "Pick the instance's folder",
+    "reading": "Reading the folder…",
+    "done": "{{name}} is ready"
   },
   "instanceSettings": {
     "title": "Instance settings",
@@ -276,7 +295,8 @@
     "offlineLocked": "Offline accounts unlock after you sign in once with a Microsoft account that owns Minecraft.",
     "microsoft": "Sign in with Microsoft",
     "offlineBadge": "Offline",
-    "empty": "No accounts yet."
+    "empty": "No accounts yet.",
+    "totalPlayed": "Time played on this computer: {{time}}"
   },
   "settings": {
     "title": "Settings",
@@ -287,6 +307,9 @@
     "memory": "Memory for new instances",
     "minimize": "Minimize while playing",
     "minimizeHint": "The launcher comes back when the game closes.",
+    "iconShape": "Instance icons",
+    "iconSquare": "Square",
+    "iconRound": "Round",
     "dataFolder": "Data folder",
     "about": "About",
     "version": "Version {{version}}",
@@ -467,6 +490,11 @@
     "instance_locked": { "message": "Another Perland Launcher window is using this instance.", "fix": "Close the other window, or wait for it to finish." },
     "instance_folder_in_use": { "message": "Another program is using this instance's folder.", "fix": "Close any window or program using the folder, then try again." },
     "art_file_invalid": { "message": "That file can't be used as an instance image.", "fix": "Pick a PNG, JPEG or WebP image under 5 MB." },
+    "banner_focus_invalid": { "message": "That position is outside the picture." },
+    "import_not_instance": { "message": "This folder doesn't look like a Minecraft instance.", "fix": "Pick the instance's own folder: the one with mods, saves or config inside." },
+    "import_inside_launcher": { "message": "That folder belongs to Perland Launcher itself.", "fix": "Pick a folder from your other launcher." },
+    "import_busy": { "message": "Another import is still running.", "fix": "Wait for it to finish, or cancel it." },
+    "import_cancelled": { "message": "The import was cancelled." },
     "manual_downloads_needed": { "message": "{{count}} files have to be downloaded by hand.", "fix": "Download them from CurseForge, then try again." },
     "update_check_failed": { "message": "Couldn't check for updates.", "fix": "You can still play the version you have." },
     "pack_path_is_folder": { "message": "The pack wants to put a file where you have a folder ({{path}}).", "fix": "Move or rename that folder, then try again." },
@@ -590,5 +618,13 @@
     "foliage": "Foliage", "path-tracing": "Path tracing", "reflections": "Reflections", "shadows": "Shadows",
     "challenging": "Challenging", "kitchen-sink": "Everything", "lightweight": "Lightweight",
     "multiplayer": "Multiplayer", "quests": "Quests"
+  },
+  "time": {
+    "minutes": "{{count}} min",
+    "hours": "{{count}} h",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "years_one": "{{count}} year",
+    "years_other": "{{count}} years"
   }
 }

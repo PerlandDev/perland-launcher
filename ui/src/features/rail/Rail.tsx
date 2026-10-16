@@ -350,7 +350,7 @@ export function Rail() {
   };
 
   return (
-    <nav aria-label={t('rail.label')} className="rail" data-wide={wide ? '' : undefined}>
+    <nav aria-label={t('rail.label')} className="rail" data-wide={wide ? '' : undefined} data-icon-shape={settings.data?.iconShape ?? 'square'}>
       <Button
         variant="ghost"
         size={wide ? 'md' : 'icon'}

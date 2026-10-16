@@ -23,6 +23,7 @@ export function Marquee({
   attract,
   dimmed = false,
   banner = null,
+  focus = null,
   className,
 }: {
   seed: string;
@@ -30,6 +31,8 @@ export function Marquee({
   dimmed?: boolean;
   /** A pack's own art (a data: URL). It replaces the generated sky and hills; the scrim, grille and vignette stay over it. */
   banner?: string | null;
+  /** Which point of the banner stays in view, in percent (CSS `object-position`). Null keeps the default, the bottom middle. */
+  focus?: { x: number; y: number } | null;
   className?: string;
 }) {
   const scene = useMemo(() => marqueeScene(seed), [seed]);
@@ -68,6 +71,7 @@ export function Marquee({
           src={art}
           alt=""
           className="marquee-banner"
+          style={focus ? { objectPosition: `${focus.x}% ${focus.y}%` } : undefined}
           draggable={false}
           data-upscale={natural?.src === art && pixelUpscale(natural, box) ? '' : undefined}
           onLoad={(e) => setNatural({ src: art, width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })}

@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import type { GameSpec, LoaderKind, LoaderSpec } from '../../ipc/schema';
+import type { LoaderKind, LoaderSpec } from '../../ipc/schema';
 import { useLoaderVersions, useMcVersions } from '../../state/queries';
 
 export type LoaderChoice = 'none' | LoaderKind;
 
 /** Version and loader state for a form. Unset choices resolve to the newest release and the
- *  newest stable loader, derived on render (no effects), so defaults follow the lists as they load. */
-export function useVersionChoice(initial?: GameSpec) {
+ *  newest stable loader, derived on render (no effects), so defaults follow the lists as they load.
+ *  `initial` may leave a part unset (an import that couldn't tell): that part gets the default. */
+export function useVersionChoice(initial?: { minecraft?: string | null; loader?: LoaderSpec | null }) {
   const versions = useMcVersions();
   const [snapshots, setSnapshots] = useState(false);
   const [minecraft, setMinecraft] = useState<string | null>(initial?.minecraft ?? null);

@@ -46,7 +46,7 @@ error_codes! {
     MojangMismatch, NoAssetIndex, NativesExtractFailed, VersionInUse, ArchiveInvalid,
     // instances
     InstanceNotFound, InstanceDamaged, InstanceIdInvalid, InstanceBusy, AlreadyRunning,
-    NameInvalid, MemoryOutOfRange, ArtFileInvalid,
+    NameInvalid, MemoryOutOfRange, ArtFileInvalid, BannerFocusInvalid,
     // java
     JavaUnavailable, JavaStartFailed, JavaPathMissing, JavaTestFailed, JvmArgsUnclosedQuote,
     JvmArgNotOption, JvmArgNotAllowed, JvmArgsMemory, JvmArgsTooLong,
@@ -72,6 +72,8 @@ error_codes! {
     ServerPackUnavailable, ServerPackPending, ServerAddressUnknown, ServerListFailed,
     // launcher updates
     LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
+    // importing from another launcher
+    ImportNotInstance, ImportInsideLauncher, ImportBusy, ImportCancelled,
     // anything unexpected
     Internal,
 }
@@ -166,6 +168,19 @@ mod tests {
     }
 
     #[test]
+    fn import_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::ImportNotInstance, "import_not_instance"),
+            (ErrorCode::ImportInsideLauncher, "import_inside_launcher"),
+            (ErrorCode::ImportBusy, "import_busy"),
+            (ErrorCode::ImportCancelled, "import_cancelled"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
     fn diagnostics_code_exists() {
         let code = ErrorCode::DiagnosticsPathInvalid;
         assert_eq!(
@@ -195,6 +210,7 @@ mod tests {
             (ErrorCode::UpdateDownloadFailed, "update_download_failed"),
             (ErrorCode::ModManaged, "mod_managed"),
             (ErrorCode::ArtFileInvalid, "art_file_invalid"),
+            (ErrorCode::BannerFocusInvalid, "banner_focus_invalid"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

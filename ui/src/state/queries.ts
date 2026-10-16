@@ -1,10 +1,13 @@
 import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import i18n from '../i18n';
 import { commands } from '../ipc/commands';
+import { isLauncherError } from '../ipc/errors';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ArtChoice, ContentKind, IconChoice, ImageKind, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
+import type { ArtChoice, ContentKind, Focus, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
-import { pushError } from './toasts';
+import { endImport, importWatched } from './importProgress';
+import { pushError, pushNotice } from './toasts';
 
 export function createQueryClient() {
   return new QueryClient({
@@ -23,6 +26,7 @@ export const qk = {
   update: ['update'] as const,
   instances: ['instances'] as const,
   accounts: ['accounts'] as const,
+  playtime: ['playtime'] as const,
   mcVersions: ['catalog', 'minecraft'] as const,
   loaders: (kind: LoaderKind, mc: string) => ['catalog', 'loaders', kind, mc] as const,
   mods: (id: string) => ['mods', id] as const,
@@ -48,6 +52,8 @@ export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: comm
 export const useUpdate = () => useQuery({ queryKey: qk.update, queryFn: commands.updateStatus });
 export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: commands.instancesList });
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
+/** Time played per instance on this computer. Refreshed when a run ends and when an instance moves or goes. */
+export const usePlaytime = () => useQuery({ queryKey: qk.playtime, queryFn: commands.playtimeList });
 /** The active account's name, or null while loading or when there is none. */
 export function useActiveAccountName(): string | null {
   const { data } = useAccounts();
@@ -154,6 +160,34 @@ export function useAddPack(opts: Opts = {}) {
   });
 }
 
+/** What a folder from another launcher holds. The form shows the error itself. */
+export function useImportInspect() {
+  return useMutation({ mutationFn: (path: string) => commands.importInspect(path) });
+}
+
+/** The import's whole ending lives here, not in the form: the copy goes on when the player leaves
+ *  it. A form on screen opens the new instance or shows the failure; otherwise a toast tells. */
+export function useImportInstance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (request: ImportRequest) => commands.importInstance(request),
+    onSuccess: (instance) => {
+      const watched = importWatched();
+      endImport();
+      if (watched) navigate({ name: 'home', id: instance.id });
+      else pushNotice({ title: i18n.t('import.done', { name: instance.name }) });
+      return qc.invalidateQueries({ queryKey: qk.instances });
+    },
+    onError: (error) => {
+      // The player's own cancel isn't a failure: nothing to tell.
+      const cancelled = isLauncherError(error) && error.code === 'import_cancelled';
+      const watched = importWatched();
+      endImport(cancelled ? null : error);
+      if (!watched && !cancelled) pushError(error);
+    },
+  });
+}
+
 export function useJoinAdd(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
@@ -226,6 +260,7 @@ export function useRenameInstance(opts: Opts = {}) {
         else if (lastInstance() === id) rememberInstance(renamed.id);
         void qc.invalidateQueries({ queryKey: qk.instanceArt(id) });
         void qc.invalidateQueries({ queryKey: qk.serverStatus(id) });
+        void qc.invalidateQueries({ queryKey: qk.playtime });
       }
       return qc.invalidateQueries({ queryKey: qk.instances });
     },
@@ -233,12 +268,17 @@ export function useRenameInstance(opts: Opts = {}) {
   });
 }
 
+/** The background, the icon and the background's position are saved one after another: each rewrites the
+ *  instance's file, so two at once could undo each other. */
+const PICTURE_SAVES = { id: 'instance-pictures' };
+
 /** Change an instance's picture. The cached listing takes the saved instance at once, so the
  *  picker's lamp moves without waiting; the art and the listing are read again so the rail icon
  *  and the marquee follow. */
 export function useSetInstanceArt(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
+    scope: PICTURE_SAVES,
     mutationFn: ({ id, choice }: { id: string; choice: ArtChoice }) => commands.instanceArtSet(id, choice),
     onSuccess: (saved, { id }) => {
       qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
@@ -256,6 +296,7 @@ export function useSetInstanceArt(opts: Opts = {}) {
 export function useSetInstanceIcon(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
+    scope: PICTURE_SAVES,
     mutationFn: ({ id, choice }: { id: string; choice: IconChoice }) => commands.instanceIconSet(id, choice),
     onSuccess: (saved, { id }) => {
       qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
@@ -265,6 +306,31 @@ export function useSetInstanceIcon(opts: Opts = {}) {
       return qc.invalidateQueries({ queryKey: qk.instances });
     },
     onError: onError(opts),
+  });
+}
+
+/** Show a background position on the marquee before it is saved: the cached listing takes it at once,
+ *  so the marquee behind "Change image…" follows a drag. `useSetBannerFocus` saves it. */
+export function usePreviewBannerFocus() {
+  const qc = useQueryClient();
+  return (id: string, focus: Focus | null) =>
+    qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
+      listing && { ...listing, instances: listing.instances.map((i) => (i.id === id ? { ...i, bannerFocus: focus } : i)) },
+    );
+}
+
+/** Save which part of a picture background stays in view (null is the default). The marquee already shows
+ *  it (`usePreviewBannerFocus`), so success leaves the cache alone: a newer position may be on screen by
+ *  then. A refused save reads the listing again, so the marquee goes back to what is on disk. */
+export function useSetBannerFocus(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    scope: PICTURE_SAVES,
+    mutationFn: ({ id, focus }: { id: string; focus: Focus | null }) => commands.instanceBannerFocusSet(id, focus),
+    onError: (error) => {
+      onError(opts)(error);
+      return qc.invalidateQueries({ queryKey: qk.instances });
+    },
   });
 }
 
@@ -300,7 +366,11 @@ export function useDeleteInstance(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => commands.instanceDelete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onSuccess: () => {
+      // The instance's time goes with it, so the Accounts total drops too.
+      void qc.invalidateQueries({ queryKey: qk.playtime });
+      return qc.invalidateQueries({ queryKey: qk.instances });
+    },
     onError: onError(opts),
   });
 }

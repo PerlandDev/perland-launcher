@@ -10,10 +10,11 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AppInfo, ArtChoice, Build, ContentFile, IconChoice, InstanceArtData, JavaTest, JoinPreview,
-        ManualProgress, NewInstance, OpenTarget, OptionalChoice, PackAddRequest, PackContents,
-        PackMod, PackStatus, PackUpdate, RunSnapshot, ServerGame, ServerPack, ServerPlayers,
-        ServerStatusView, ServerTeam, SyncSummary,
+        AppInfo, ArtChoice, Build, ContentFile, IconChoice, ImportPreview, ImportRequest,
+        InstanceArtData, JavaTest, JoinPreview, ManualProgress, NewInstance, OpenTarget,
+        OptionalChoice, PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate,
+        PlaytimeEntry, RunSnapshot, ServerGame, ServerPack, ServerPlayers, ServerStatusView,
+        ServerTeam, SyncSummary,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -29,8 +30,8 @@ use launcher_core::{
     download::Hashes,
     events::TaskId,
     instances::{
-        ArtMode, DamagedInstance, GameSpec, IconMode, Instance, InstanceListing, JavaSettings,
-        LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdatePolicy,
+        ArtMode, DamagedInstance, Focus, GameSpec, IconMode, Instance, InstanceListing,
+        JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdatePolicy,
     },
     invite::invite_link_cases,
     launch::CrashHint,
@@ -39,7 +40,7 @@ use launcher_core::{
         loaders::LoaderKind,
     },
     mods::LocalMod,
-    settings::{Lang, Settings},
+    settings::{IconShape, Lang, Settings},
     sync::ManualFile,
     ErrorCode, LauncherError,
 };
@@ -114,6 +115,7 @@ fn fabric_instance() -> Instance {
         art_seed: None,
         art: ArtMode::Auto,
         icon: None,
+        banner_focus: Some(Focus { x: 30, y: 60 }),
     }
 }
 
@@ -137,6 +139,7 @@ fn vanilla_instance() -> Instance {
         art_seed: Some("creative-flat".into()),
         art: ArtMode::Generated,
         icon: Some(IconMode::Generated),
+        banner_focus: None,
     }
 }
 
@@ -186,6 +189,7 @@ fn server_instance() -> Instance {
         art_seed: None,
         art: ArtMode::Auto,
         icon: None,
+        banner_focus: None,
     }
 }
 
@@ -330,6 +334,21 @@ fn contract_fixtures_are_current() {
             }],
         },
     );
+    check(
+        "playtime",
+        vec![
+            PlaytimeEntry {
+                id: "asalith-fields".into(),
+                seconds: 43_200,
+                last_played: 1_791_878_400,
+            },
+            PlaytimeEntry {
+                id: "vanilla-1-20-1".into(),
+                seconds: 0,
+                last_played: 0,
+            },
+        ],
+    );
     let steve = offline_account("Steve").unwrap();
     let alex = offline_account("Alex_Builds").unwrap();
     check(
@@ -345,6 +364,7 @@ fn contract_fixtures_are_current() {
         Settings {
             language: Some(Lang::Es),
             rail_expanded: true,
+            icon_shape: IconShape::Round,
             ..Settings::default()
         },
     );
@@ -594,6 +614,28 @@ fn contract_fixtures_are_current() {
                 kind: LoaderKind::Fabric,
                 version: "0.19.5".into(),
             }),
+        },
+    );
+    check(
+        "import_preview",
+        ImportPreview {
+            path: PathBuf::from("C:/Users/player/Games/instances/Skyblock Adventures"),
+            name: Some("Skyblock Adventures".into()),
+            minecraft: Some("1.20.1".into()),
+            loader: Some(LoaderSpec {
+                kind: LoaderKind::Fabric,
+                version: "0.16.14".into(),
+            }),
+            size_bytes: 1_234_000_000,
+        },
+    );
+    check(
+        "import_request",
+        ImportRequest {
+            path: PathBuf::from("C:/Users/player/Games/instances/Skyblock Adventures"),
+            name: "Skyblock".into(),
+            minecraft: "1.20.1".into(),
+            loader: None,
         },
     );
     check(

@@ -5,6 +5,7 @@ import { exitOf } from '../ipc/mock';
 import { resetActivity, useActivity } from './activity';
 import { contentProgressSnapshot } from './contentProgress';
 import { handleEvent } from './handleEvent';
+import { importProgressSnapshot } from './importProgress';
 import { qk, queryClient } from './queries';
 import { routeSnapshot } from './route';
 import { runStore } from './runStore';
@@ -69,6 +70,8 @@ it('an ended run refreshes the instance and its pack queries', () => {
   // A sync can change the pack's own resource packs and shaders too.
   expect(keys).toContainEqual(qk.contentFiles('sky', 'resource_pack'));
   expect(keys).toContainEqual(qk.contentFiles('sky', 'shader'));
+  // The game's time is on disk before `idle` goes out.
+  expect(keys).toContainEqual(qk.playtime);
   spy.mockRestore();
 });
 
@@ -84,11 +87,11 @@ it('leaves the drawer closed when files need a manual download', () => {
 
 it('opens New instance with a deep link once setup is done', async () => {
   mockIPC((cmd) => (cmd === 'deep_link_take' ? { kind: 'pack', url: 'https://x.example/pack.toml' } : null));
-  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: false, railExpanded: false });
+  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: false, railExpanded: false, iconShape: 'square' });
   handleEvent({ type: 'deep_link' });
   await new Promise((r) => setTimeout(r, 10));
   expect(routeSnapshot()).toEqual({ name: 'home', id: null }); // first run: the link waits
-  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true, railExpanded: false });
+  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true, railExpanded: false, iconShape: 'square' });
   handleEvent({ type: 'deep_link' });
   await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'newInstance', link: 'https://x.example/pack.toml' }));
   queryClient.clear();
@@ -107,10 +110,16 @@ it('sends install progress to its own store, not the run', () => {
   expect(contentProgressSnapshot('asalith-fields')?.done).toBe(1);
 });
 
+it('sends import progress to its own store, never onto Play', () => {
+  handleEvent({ type: 'progress', instance: null, task: { key: 'import_instance', params: {} }, done: 5, total: 10, bytes: 5 });
+  expect(importProgressSnapshot()).toEqual({ task: { key: 'import_instance', params: {} }, done: 5, total: 10, bytes: 5 });
+  expect(runStore.active()).toEqual([]);
+});
+
 it('opens Join server for a join deep link', async () => {
   const invite = `https://play.example.com/${'A'.repeat(43)}`;
   mockIPC((cmd) => (cmd === 'deep_link_take' ? { kind: 'join', invite } : null));
-  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true, railExpanded: false });
+  queryClient.setQueryData(qk.settings, { version: 1, language: null, defaultMemoryMb: 4096, minimizeOnPlay: true, firstRunDone: true, railExpanded: false, iconShape: 'square' });
   handleEvent({ type: 'deep_link' });
   await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'joinServer', invite }));
   queryClient.clear();

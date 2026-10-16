@@ -98,6 +98,8 @@ export const instance = z.strictObject({
   artSeed: z.string().nullable(),
   art: z.enum(['auto', 'generated', 'custom']),
   icon: z.enum(['auto', 'generated', 'custom']).nullable(),
+  /** Which point of a picture background stays in view, in percent of its width and height; null is the default (bottom middle). */
+  bannerFocus: z.strictObject({ x: z.number().int(), y: z.number().int() }).nullable(),
 });
 export const damagedInstance = z.strictObject({ id: z.string(), error: launcherError });
 export const instanceListing = z.strictObject({ instances: z.array(instance), damaged: z.array(damagedInstance) });
@@ -119,6 +121,7 @@ export const settings = z.strictObject({
   firstRunDone: z.boolean(),
   updateChannel: channel.nullable(),
   railExpanded: z.boolean(),
+  iconShape: z.enum(['square', 'round']),
 });
 export const appInfo = z.strictObject({
   version: z.string(),
@@ -142,6 +145,14 @@ export const contentFile = z.strictObject({
   managed: z.boolean(),
 });
 export const newInstance = z.strictObject({ name: z.string(), minecraft: z.string(), loader: loaderSpec.nullable() });
+export const importPreview = z.strictObject({
+  path: z.string(),
+  name: z.string().nullable(),
+  minecraft: z.string().nullable(),
+  loader: loaderSpec.nullable(),
+  sizeBytes: z.number().int(),
+});
+export const importRequest = z.strictObject({ path: z.string(), name: z.string(), minecraft: z.string(), loader: loaderSpec.nullable() });
 export const openTarget = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('instance'), id: z.string() }),
   z.strictObject({ kind: z.literal('mods'), id: z.string() }),
@@ -242,6 +253,7 @@ export const packAddRequest = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('file'), path: z.string() }),
 ]);
 export const javaTest = z.strictObject({ major: z.number().int() });
+export const playtimeEntry = z.strictObject({ id: z.string(), seconds: z.number().int(), lastPlayed: z.number().int() });
 
 export const contentKind = z.enum(['modpack', 'mod', 'resource_pack', 'shader']);
 export const sortIndex = z.enum(['relevance', 'downloads', 'follows', 'newest', 'updated']);
@@ -352,6 +364,7 @@ export type JoinPreview = z.infer<typeof joinPreview>;
 export type ServerStatusView = z.infer<typeof serverStatusView>;
 export type DeepLink = z.infer<typeof deepLink>;
 export type Instance = z.infer<typeof instance>;
+export type Focus = NonNullable<Instance['bannerFocus']>;
 export type DamagedInstance = z.infer<typeof damagedInstance>;
 export type InstanceListing = z.infer<typeof instanceListing>;
 export type Account = z.infer<typeof account>;
@@ -365,6 +378,8 @@ export type LoaderVersion = z.infer<typeof loaderVersion>;
 export type LocalMod = z.infer<typeof localMod>;
 export type ContentFile = z.infer<typeof contentFile>;
 export type NewInstance = z.infer<typeof newInstance>;
+export type ImportPreview = z.infer<typeof importPreview>;
+export type ImportRequest = z.infer<typeof importRequest>;
 export type OpenTarget = z.infer<typeof openTarget>;
 export type RunStateKind = z.infer<typeof runStateKind>;
 export type CrashHint = z.infer<typeof crashHint>;
@@ -377,6 +392,7 @@ export type TaskId = z.infer<typeof taskId>;
 export type AppEvent = z.infer<typeof appEvent>;
 export type RunSnapshot = z.infer<typeof runSnapshot>;
 export type JavaTest = z.infer<typeof javaTest>;
+export type PlaytimeEntry = z.infer<typeof playtimeEntry>;
 export type PackStatus = z.infer<typeof packStatus>;
 export type OptionalChoice = z.infer<typeof optionalChoice>;
 export type PackMod = z.infer<typeof packMod>;
