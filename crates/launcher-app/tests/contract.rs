@@ -108,6 +108,7 @@ fn fabric_instance() -> Instance {
         java: JavaSettings {
             path: None,
             memory_mb: 4096,
+            args: String::new(),
         },
         server: None,
         art_seed: None,
@@ -129,6 +130,7 @@ fn vanilla_instance() -> Instance {
         java: JavaSettings {
             path: Some(PathBuf::from("C:/Java/bin/java.exe")),
             memory_mb: 6144,
+            args: "-XX:+UseG1GC -Dperland.note=\"a b\"".into(),
         },
         server: None,
         art_seed: Some("creative-flat".into()),
@@ -168,6 +170,7 @@ fn server_instance() -> Instance {
         java: JavaSettings {
             path: None,
             memory_mb: 4096,
+            args: String::new(),
         },
         server: Some(ServerLink {
             address: Some(sample_address()),

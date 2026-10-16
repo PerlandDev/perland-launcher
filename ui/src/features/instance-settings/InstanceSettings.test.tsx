@@ -18,7 +18,7 @@ it('saves memory and a tested custom Java', async () => {
   expect(await screen.findByText('Java 17 works')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Save' }));
   const saved = sent(calls, 'instance_update')[0] as { instance: { java: { memoryMb: number; path: string } } };
-  expect(saved.instance.java).toEqual({ memoryMb: 10240, path: 'C:/Users/player/Downloads/lithium-fabric-0.11.2.jar' });
+  expect(saved.instance.java).toEqual({ memoryMb: 10240, path: 'C:/Users/player/Downloads/lithium-fabric-0.11.2.jar', args: '' });
   expect(await screen.findByText('Saved')).toBeInTheDocument();
 });
 

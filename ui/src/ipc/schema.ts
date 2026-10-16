@@ -33,7 +33,7 @@ export const sourceRef = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('modrinth'), projectId: z.string(), versionId: z.string() }),
   z.strictObject({ kind: z.literal('perland'), invite: z.string(), engine: z.string() }),
 ]);
-export const javaSettings = z.strictObject({ path: z.string().nullable(), memoryMb: z.number().int() });
+export const javaSettings = z.strictObject({ path: z.string().nullable(), memoryMb: z.number().int(), args: z.string() });
 export const serverStatus = z.enum(['online', 'starting', 'sleeping', 'offline']);
 export const serverAddress = z.strictObject({ host: z.string(), port: z.number().int() });
 export const serverLink = z.strictObject({

@@ -17,7 +17,8 @@
       "optionalChoices": {},
       "java": {
         "path": null,
-        "memoryMb": 4096
+        "memoryMb": 4096,
+        "args": ""
       },
       "server": null,
       "artSeed": null,
@@ -37,7 +38,8 @@
       "optionalChoices": {},
       "java": {
         "path": "C:/Java/bin/java.exe",
-        "memoryMb": 6144
+        "memoryMb": 6144,
+        "args": "-XX:+UseG1GC -Dperland.note=\"a b\""
       },
       "server": null,
       "artSeed": "creative-flat",

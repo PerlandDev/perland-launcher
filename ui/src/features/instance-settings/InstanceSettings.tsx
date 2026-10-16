@@ -89,7 +89,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
       name,
       game: pack ? instance.game : { minecraft: choice.resolved.minecraft ?? instance.game.minecraft, loader: choice.resolved.loader },
       updatePolicy: policy,
-      java: { memoryMb, path: javaMode === 'custom' ? javaPath : null },
+      java: { memoryMb, path: javaMode === 'custom' ? javaPath : null, args: instance.java.args },
     });
 
   return (

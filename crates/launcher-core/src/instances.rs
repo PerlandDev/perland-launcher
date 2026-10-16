@@ -55,6 +55,7 @@ pub fn validate_java(java: &JavaSettings) -> Result<()> {
     if let Some(path) = &java.path {
         crate::play::custom_java(path)?;
     }
+    crate::launch::jvm_args::parse(&java.args)?;
     Ok(())
 }
 
@@ -321,6 +322,9 @@ pub struct JavaSettings {
     pub path: Option<PathBuf>,
     #[serde(default = "default_memory_mb")]
     pub memory_mb: u32,
+    /// Extra Java arguments, exactly as the player typed them.
+    #[serde(default)]
+    pub args: String,
 }
 
 fn default_memory_mb() -> u32 {
@@ -332,6 +336,7 @@ impl Default for JavaSettings {
         Self {
             path: None,
             memory_mb: default_memory_mb(),
+            args: String::new(),
         }
     }
 }
@@ -1073,6 +1078,32 @@ mod tests {
         let other = rename_io_error(Error::from(ErrorKind::Other), "pack");
         assert_eq!(other.code, ErrorCode::DiskWriteFailed);
         assert!(other.detail.is_some());
+    }
+
+    #[tokio::test]
+    async fn update_refuses_bad_java_args() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        let mut instance = store.create("Pack", vanilla("1.21.1")).await.unwrap();
+        let file = store.instance_dir("pack").join("instance.json");
+        let before = std::fs::read(&file).unwrap();
+        instance.java.args = "-cp x".into();
+        assert_eq!(
+            store.update(&instance).await.unwrap_err().code,
+            ErrorCode::JvmArgNotAllowed
+        );
+        assert_eq!(std::fs::read(&file).unwrap(), before);
+        instance.java.args = "-XX:+UseG1GC".into();
+        let saved = store.update(&instance).await.unwrap();
+        assert_eq!(store.load("pack").await.unwrap().java.args, saved.java.args);
+    }
+
+    #[test]
+    fn old_instance_json_loads_with_empty_args() {
+        let json = r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"},"java":{"memoryMb":2048}}"#;
+        let instance: Instance = serde_json::from_str(json).unwrap();
+        assert_eq!(instance.java.args, "");
+        assert_eq!(serde_json::to_value(&instance).unwrap()["java"]["args"], "");
     }
 
     #[test]

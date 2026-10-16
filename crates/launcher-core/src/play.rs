@@ -77,6 +77,8 @@ pub struct StartSpec<'a> {
 }
 
 pub fn command(spec: &StartSpec) -> Result<LaunchCommand> {
+    // Parsed again here: a hand-edited instance.json never went through the settings check.
+    let jvm_args = launch::jvm_args::parse(&spec.instance.java.args)?;
     launch::build_command(&LaunchSpec {
         dirs: spec.dirs,
         resolved: &spec.prepared.resolved,
@@ -84,6 +86,7 @@ pub fn command(spec: &StartSpec) -> Result<LaunchCommand> {
         java: &spec.prepared.java,
         session: spec.session,
         memory_mb: spec.instance.java.memory_mb,
+        jvm_args,
         platform: spec.platform,
         launcher_version: spec.launcher_version,
         join: spec.join,
@@ -225,6 +228,47 @@ mod tests {
         assert_eq!(err.code, ErrorCode::GameFilesMissing);
         let count: usize = err.params["count"].parse().unwrap();
         assert!(count > 10, "{count}");
+    }
+
+    #[tokio::test]
+    async fn stored_bad_args_refuse_to_build_a_command() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = LauncherDirs::new(tmp.path());
+        let store = InstanceStore::new(dirs.instances());
+        let mut instance = store
+            .create(
+                "Smoke",
+                GameSpec {
+                    minecraft: "1.20.1".into(),
+                    loader: None,
+                },
+            )
+            .await
+            .unwrap();
+        // A hand-edited instance.json skips the check that runs when settings are saved.
+        instance.java.args = "-Dx=\"a".into();
+        let prepared = Prepared {
+            resolved: ResolvedVersion {
+                vanilla_id: "1.20.1".into(),
+                json: version("1.20.1.json"),
+                forge: None,
+            },
+            java: tmp.path().join("java.exe"),
+        };
+        let session = offline_account("Steve").unwrap().offline_session();
+        let game_dir = store.game_dir(&instance.id);
+        let spec = StartSpec {
+            dirs: &dirs,
+            game_dir: &game_dir,
+            instance: &instance,
+            prepared: &prepared,
+            session: &session,
+            platform: Platform::current(),
+            launcher_version: "0.1.0",
+            join: None,
+        };
+        let err = command(&spec).expect_err("the quote is never closed");
+        assert_eq!(err.code, ErrorCode::JvmArgsUnclosedQuote);
     }
 
     #[tokio::test]
