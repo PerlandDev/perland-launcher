@@ -218,10 +218,22 @@ describe('Home', () => {
     act(() =>
       runStore.apply({
         type: 'run_state', instance: 'sky-islands', state: 'idle', update: null,
-        exit: exitOf({ updateOnly: true, synced: { fromVersion: '1.0.3', toVersion: '1.0.4', added: 3, updated: 2, removed: 1, keptModified: ['options.txt', 'config/a.toml'] } }),
+        exit: exitOf({ updateOnly: true, synced: { fromVersion: '1.0.3', toVersion: '1.0.4', added: 3, updated: 2, removed: 1, keptModified: ['options.txt', 'config/a.toml'], setAside: [] } }),
       }),
     );
     expect(screen.getByText('Updated to 1.0.4 · Kept your version of 2 files')).toBeInTheDocument();
+  });
+
+  it("says where a linked instance's old mods went after its first Play", async () => {
+    renderApp(<Home id="survival" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Survival' });
+    act(() =>
+      runStore.apply({
+        type: 'run_state', instance: 'survival', state: 'idle', update: null,
+        exit: exitOf({ synced: { fromVersion: null, toVersion: '1.0.4', added: 142, updated: 0, removed: 0, keptModified: [], setAside: ['mods/a.jar', 'mods/b.jar'] } }),
+      }),
+    );
+    expect(screen.getByText('Updated to 1.0.4 · Moved 2 old mods to mods-before-link')).toBeInTheDocument();
   });
 
   it('never asks a vanilla instance about updates', async () => {
@@ -337,6 +349,26 @@ describe('server instances', () => {
     expect(screen.queryByRole('menuitem', { name: 'Use a new invite link' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Copy invite link' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Copy server address' })).not.toBeInTheDocument();
+  });
+
+  it('offer Link to a server on plain instances only, while idle', async () => {
+    const { user } = renderApp(<Home id="creative-flat" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    act(() => runStore.apply({ type: 'run_state', instance: 'creative-flat', state: 'running', exit: null, update: null }));
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.getByRole('menuitem', { name: 'Link to a server' })).toBeDisabled();
+    await user.keyboard('{Escape}');
+    act(() => runStore.apply({ type: 'run_state', instance: 'creative-flat', state: 'idle', exit: null, update: null }));
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Link to a server' }));
+    expect(routeSnapshot()).toEqual({ name: 'joinServer', invite: '', linkFor: 'creative-flat' });
+  });
+
+  it('keep Link to a server off pack and server instances', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Survival' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.queryByRole('menuitem', { name: 'Link to a server' })).not.toBeInTheDocument();
   });
 
   it('raise the dead-link plate, which opens relinking', async () => {

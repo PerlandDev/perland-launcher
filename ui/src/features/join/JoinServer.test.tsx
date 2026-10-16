@@ -143,6 +143,64 @@ describe('JoinServer', () => {
     expect(screen.queryByText(/This link is for/)).not.toBeInTheDocument();
   });
 
+  it('links a plain instance, saying where its old mods go', async () => {
+    const { user, calls } = renderApp(<JoinServer invite="" linkFor="asalith-fields" />, { server: 'online' });
+    expect(await screen.findByRole('heading', { name: 'Link to a server' })).toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: 'Invite link' }), OTHER);
+    await user.click(screen.getByRole('button', { name: 'Check link' }));
+    expect(
+      await screen.findByText(
+        "When you press Play, mods the server doesn't use move to the mods-before-link folder. Your worlds and settings stay.",
+      ),
+    ).toBeInTheDocument();
+    // Same game version and loader: nothing to warn about.
+    expect(screen.queryByText(/back up your worlds/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Link' }));
+    expect(sent(calls, 'server_link')).toEqual([{ id: 'asalith-fields', link: OTHER }]);
+    expect(sent(calls, 'join_add')).toEqual([]);
+    await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'asalith-fields' }));
+  });
+
+  it('warns when linking moves the instance to another game version', async () => {
+    const { user } = renderApp(<JoinServer invite="" linkFor="creative-flat" />, { server: 'online' });
+    await user.type(await screen.findByRole('textbox', { name: 'Invite link' }), OTHER);
+    await user.click(screen.getByRole('button', { name: 'Check link' }));
+    expect(
+      await screen.findByText('This server plays Minecraft 1.20.1 with Fabric. Linking moves this instance to that version, so back up your worlds first.'),
+    ).toBeInTheDocument();
+  });
+
+  it('warns when a modded instance links to a vanilla server', async () => {
+    const { user } = renderApp(<JoinServer invite="" linkFor="asalith-fields" />, { server: 'vanilla' });
+    await user.type(await screen.findByRole('textbox', { name: 'Invite link' }), OTHER);
+    await user.click(screen.getByRole('button', { name: 'Check link' }));
+    expect(
+      await screen.findByText('This server plays vanilla Minecraft 1.21.1. Linking moves this instance to that version, so back up your worlds first.'),
+    ).toBeInTheDocument();
+  });
+
+  it('reads a server that names its loader "vanilla" as vanilla', async () => {
+    const backend = createMockBackend({ server: 'vanilla' });
+    const { user } = renderWithProviders(<JoinServer invite="" linkFor="creative-flat" />, {
+      ipc: async (cmd, args) => {
+        const answer = await backend.handle(cmd, args);
+        if (cmd !== 'join_preview') return answer;
+        const preview = answer as { game: object };
+        return { ...preview, game: { ...preview.game, version: '26.3', loader: 'vanilla' } };
+      },
+    });
+    await user.type(await screen.findByRole('textbox', { name: 'Invite link' }), OTHER);
+    await user.click(screen.getByRole('button', { name: 'Check link' }));
+    expect(await screen.findByRole('button', { name: 'Link' })).toBeInTheDocument();
+    expect(screen.queryByText(/back up your worlds/)).not.toBeInTheDocument();
+  });
+
+  it('links even when another instance already joins that server', async () => {
+    const { user, calls } = renderApp(<JoinServer invite={MOCK_INVITE} linkFor="asalith-fields" />, { server: 'online' });
+    await user.click(await screen.findByRole('button', { name: 'Link' }));
+    expect(sent(calls, 'server_link')).toEqual([{ id: 'asalith-fields', link: MOCK_INVITE }]);
+  });
+
   it('locks the primary button while the add is in flight, so a double click adds once', async () => {
     const backend = createMockBackend({ server: 'online' });
     const calls: [string, unknown][] = [];

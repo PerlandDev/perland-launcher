@@ -128,6 +128,8 @@
     "removedHeading": "Removed",
     "kept_one": "Kept your version of {{count}} file",
     "kept_other": "Kept your version of {{count}} files",
+    "setAside_one": "Moved {{count}} old mod to mods-before-link",
+    "setAside_other": "Moved {{count}} old mods to mods-before-link",
     "updatedTo": "Updated to {{version}}",
     "checkFailed": "Couldn't check for updates"
   },
@@ -390,7 +392,13 @@
     "packMods_one": "{{count}} mod",
     "packMods_other": "{{count}} mods",
     "note": "The server's mods download the first time you press Play.",
-    "copyAddress": "Copy address"
+    "copyAddress": "Copy address",
+    "linkTitle": "Link to a server",
+    "link": "Link",
+    "linking": "Linking…",
+    "linkNote": "When you press Play, mods the server doesn't use move to the mods-before-link folder. Your worlds and settings stay.",
+    "linkVersion": "This server plays Minecraft {{version}} with {{loader}}. Linking moves this instance to that version, so back up your worlds first.",
+    "linkVersionVanilla": "This server plays vanilla Minecraft {{version}}. Linking moves this instance to that version, so back up your worlds first."
   },
   "server": {
     "online": "Online",
@@ -414,7 +422,10 @@
     "settingsTitle": "Server",
     "settingsHost": "Invite from {{host}}",
     "settingsCopyLink": "Copy link",
-    "relinkRunning": "Stop the game to use a new link."
+    "relinkRunning": "Stop the game to use a new link.",
+    "linkToServer": "Link to a server",
+    "linkSettingsBody": "Link this instance to a Perland server and it updates with the server.",
+    "linkRunning": "Stop the game to link this instance."
   },
   "errors": {
     "offline_name_invalid": { "message": "Player names must be 3–16 letters, numbers or underscores." },
@@ -505,6 +516,7 @@
     "invite_unsupported": { "message": "This server can't be joined from the launcher yet. Join with the address {{address}}." },
     "invite_site_unreachable": { "message": "Couldn't reach the server's Perland site at {{host}}.", "fix": "Check the link, or try again later." },
     "invite_rate_limited": { "message": "Too many requests. Try again in a minute." },
+    "link_has_pack": { "message": "This instance already gets its mods from a modpack.", "fix": "Link a vanilla or imported instance, or join the server as a new instance." },
     "server_pack_unavailable": { "message": "The server's modpack isn't available right now.", "fix": "Try again later, or let the server's owner know." },
     "server_pack_pending": { "message": "The server is still preparing the modpack. Try again in a minute." },
     "server_address_unknown": { "message": "Couldn't get the server address, so it isn't in the game's server list." },

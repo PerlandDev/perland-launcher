@@ -156,6 +156,8 @@ pub struct SyncSummary {
     pub updated: usize,
     pub removed: usize,
     pub kept_modified: Vec<String>,
+    /// A linked instance's first sync: the old jars moved to `mods-before-link/`.
+    pub set_aside: Vec<String>,
 }
 
 impl From<&SyncReport> for SyncSummary {
@@ -167,6 +169,7 @@ impl From<&SyncReport> for SyncSummary {
             updated: r.changes.updated.len(),
             removed: r.changes.removed.len(),
             kept_modified: r.kept_modified.clone(),
+            set_aside: r.set_aside.clone(),
         }
     }
 }
@@ -547,12 +550,12 @@ mod tests {
             changes: changes(),
             kept_modified: vec!["options.txt".into()],
             game_changed: false,
+            set_aside: vec!["mods/old.jar".into()],
         });
         assert_eq!((summary.added, summary.updated, summary.removed), (2, 1, 1));
-        assert_eq!(
-            serde_json::to_value(&summary).unwrap()["keptModified"][0],
-            "options.txt"
-        );
+        let json = serde_json::to_value(&summary).unwrap();
+        assert_eq!(json["keptModified"][0], "options.txt");
+        assert_eq!(json["setAside"][0], "mods/old.jar");
     }
 
     #[test]

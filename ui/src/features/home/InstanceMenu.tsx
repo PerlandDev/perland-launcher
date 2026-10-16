@@ -11,7 +11,7 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { Copy, Folder, Gear, Image, Pencil, Play, Reload, Trash } from '../../ui/Icon';
+import { Copy, Folder, Gear, Image, Link, Pencil, Play, Reload, Trash } from '../../ui/Icon';
 import { copyText } from '../../ui/copyText';
 import { Menu } from '../../ui/Menu';
 import { ImageDialog } from './ImageDialog';
@@ -103,12 +103,24 @@ export function InstanceMenu({ instance }: { instance: Instance }) {
         ...(address ? [{ label: t('server.copyAddress'), icon: <Copy />, onSelect: () => void copyText(addressText(address)) }] : []),
       ]
     : [];
+  // Vanilla and imported instances can become server instances; packs keep their own source.
+  const linkItems = isPack(instance)
+    ? []
+    : [
+        {
+          label: t('server.linkToServer'),
+          icon: <Link />,
+          disabled: running,
+          onSelect: () => navigate({ name: 'joinServer', invite: '', linkFor: instance.id }),
+        },
+      ];
   return (
     <>
       <Menu
         label={t('home.more')}
         items={[
           ...serverItems,
+          ...linkItems,
           ...(isPack(instance)
             ? [{ label: t('home.checkUpdates'), icon: <Reload />, onSelect: () => void qc.invalidateQueries({ queryKey: qk.packStatus(instance.id) }) }]
             : []),

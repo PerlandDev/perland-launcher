@@ -97,6 +97,7 @@ export const commands = {
   joinAdd: (link: string) => invoke<Instance>('join_add', { link }),
   serverStatus: (id: string) => invoke<ServerStatusView>('server_status', { id }),
   serverRelink: (id: string, link: string) => invoke<Instance>('server_relink', { id, link }),
+  serverLink: (id: string, link: string) => invoke<Instance>('server_link', { id, link }),
   quit: (stopGames: boolean) => invoke<null>('quit', { stopGames }),
   browseSearch: (request: SearchRequest) => invoke<SearchPage>('browse_search', { request }),
   browseCategories: (kind: ContentKind) => invoke<string[]>('browse_categories', { kind }),

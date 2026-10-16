@@ -467,6 +467,7 @@ async function packPrelude(
       updated: u.updated.length,
       removed: u.removed.length,
       keptModified: u.kept,
+      setAside: [],
     };
     pack.installed = u.toVersion;
     pack.update = null;

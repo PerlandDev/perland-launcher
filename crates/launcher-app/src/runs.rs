@@ -1567,6 +1567,7 @@ mod tests {
                 },
                 kept_modified: vec!["config/a.toml".into()],
                 game_changed: false,
+                set_aside: vec![],
             }),
             warning: Some(
                 LauncherError::network(ErrorCode::UpdateDownloadFailed, "x")

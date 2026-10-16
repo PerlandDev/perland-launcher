@@ -26,6 +26,14 @@ pub(crate) fn server_source(instance: &Instance) -> Option<(InviteLink, String)>
     }
 }
 
+fn has_pack() -> LauncherError {
+    LauncherError::pack(
+        ErrorCode::LinkHasPack,
+        "This instance already gets its mods from a modpack",
+    )
+    .with_fix("Link a vanilla or imported instance, or join the server as a new instance")
+}
+
 fn not_a_server() -> LauncherError {
     LauncherError::pack(
         ErrorCode::NoPack,
@@ -167,6 +175,39 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
     }
 
+    /// "Link to a server": make a vanilla or imported instance a server instance. Its files
+    /// stay; the next Play syncs to the server's pack and sets the jars the pack doesn't
+    /// install aside (link-instance spec §3). Refused while the instance has a run.
+    pub async fn server_link(&self, id: &str, link: &str) -> Result<Instance> {
+        if self.is_busy(id) {
+            return Err(busy(id));
+        }
+        if self.instances.load(id).await?.source != SourceRef::None {
+            return Err(has_pack());
+        }
+        let link = InviteLink::parse(link)?;
+        let ev = self.runner.invite_view(link.clone(), None).await?;
+        perland::supported(&link, &ev)?;
+        // Reload after the network read, so a save made meanwhile stays.
+        if self.is_busy(id) {
+            return Err(busy(id));
+        }
+        let mut instance = self.instances.load(id).await?;
+        if instance.source != SourceRef::None {
+            return Err(has_pack());
+        }
+        // The marker first: on its own it does nothing to an instance without a pack.
+        launcher_core::sync::mark_adopt(&self.instances.perland_dir(id)).await?;
+        instance.source = SourceRef::Perland {
+            invite: link.canonical(),
+            engine: ev.engine.to_string(),
+        };
+        instance.server = Some(ServerLink::from_view(&ev.view, &ev.engine, unix_now()));
+        instance.update_policy = UpdatePolicy::Auto;
+        self.instances.save(&instance).await?;
+        Ok(instance)
+    }
+
     /// "Use a new link": point the instance at another invite. The files stay; the next Play
     /// checks the new link and syncs.
     /// Refused while the instance has a run: its sync saves the whole instance.
@@ -202,6 +243,8 @@ mod tests {
         instances::{ServerStatus, SourceRef, UpdatePolicy},
         ErrorCode, LauncherError,
     };
+
+    use launcher_core::invite::InviteLink;
 
     use crate::{
         app::tests::core,
@@ -435,6 +478,121 @@ mod tests {
         assert_eq!(moved.update_policy, UpdatePolicy::Auto);
         assert!(world.is_file(), "the files stay; the next Play syncs");
         assert_eq!(core.instances.load(&id).await.unwrap(), moved);
+    }
+
+    async fn plain(core: &crate::app::tests::TestCore) -> launcher_core::instances::Instance {
+        core.instance_create(NewInstance {
+            name: "Imported".into(),
+            minecraft: "1.19.2".into(),
+            loader: None,
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn linking_turns_a_plain_instance_into_a_server_instance() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let before = plain(&core).await;
+        let world = core
+            .instances
+            .game_dir(&before.id)
+            .join("saves/home/level.dat");
+        std::fs::create_dir_all(world.parent().unwrap()).unwrap();
+        std::fs::write(&world, b"blocks").unwrap();
+
+        let linked = core.server_link(&before.id, &invite('A')).await.unwrap();
+
+        assert!(
+            matches!(&linked.source, SourceRef::Perland { invite: i, .. } if *i == invite('A'))
+        );
+        assert_eq!(linked.server.as_ref().unwrap().name, "survival");
+        assert_eq!(linked.update_policy, UpdatePolicy::Auto);
+        assert_eq!(linked.name, "Imported", "the player's name stays");
+        assert_eq!(
+            linked.game, before.game,
+            "the first Play changes the version"
+        );
+        assert!(world.is_file());
+        assert!(
+            core.instances
+                .perland_dir(&before.id)
+                .join("adopt")
+                .exists(),
+            "the first sync sets old mods aside"
+        );
+        assert_eq!(core.instances.load(&before.id).await.unwrap(), linked);
+        assert_eq!(
+            core.instance_for_invite(&InviteLink::parse(&invite('A')).unwrap())
+                .await
+                .unwrap()
+                .map(|i| i.id),
+            Some(before.id),
+            "Join server now finds it"
+        );
+    }
+
+    #[tokio::test]
+    async fn only_plain_instances_can_be_linked() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let server = core.join_add(&invite('A')).await.unwrap();
+        let mut pack = plain(&core).await;
+        pack.source = SourceRef::Mrpack {
+            name: "Pack.mrpack".into(),
+            sha1: "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d".into(),
+        };
+        core.instances.save(&pack).await.unwrap();
+        for id in [&server.id, &pack.id] {
+            let before = instance_json(&core, id);
+            assert_eq!(
+                core.server_link(id, &invite('A')).await.unwrap_err().code,
+                ErrorCode::LinkHasPack
+            );
+            assert_eq!(instance_json(&core, id), before);
+            assert!(!core.instances.perland_dir(id).join("adopt").exists());
+        }
+    }
+
+    #[tokio::test]
+    async fn a_refused_link_writes_nothing() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        let mut network = server_view("hub");
+        network.view.kind = "network".into();
+        network.view.pack = None;
+        serve(&runner, &invite('A'), Ok(network));
+        serve(&runner, &invite('B'), Ok(server_view("survival")));
+        let target = plain(&core).await;
+        let before = instance_json(&core, &target.id);
+        assert_eq!(
+            core.server_link(&target.id, &invite('A'))
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InviteUnsupported
+        );
+        assert_eq!(
+            core.server_link(&target.id, "https://play.example.com/short")
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InviteLinkInvalid
+        );
+        hold(&core, &target.id);
+        assert_eq!(
+            core.server_link(&target.id, &invite('B'))
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::InstanceBusy
+        );
+        assert_eq!(instance_json(&core, &target.id), before);
+        assert!(!core
+            .instances
+            .perland_dir(&target.id)
+            .join("adopt")
+            .exists());
     }
 
     #[tokio::test]

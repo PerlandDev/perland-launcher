@@ -154,6 +154,9 @@
         "removed": 1,
         "keptModified": [
           "options.txt"
+        ],
+        "setAside": [
+          "mods/old-zoom.jar"
         ]
       },
       "manual": [],

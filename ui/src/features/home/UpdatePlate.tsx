@@ -19,10 +19,12 @@ export function UpdatePlate({ instance }: { instance: Instance }) {
   const synced = run.lastExit?.synced ?? null;
   if (synced) {
     const kept = synced.keptModified.length;
+    const setAside = synced.setAside.length;
     return (
       <p className="marquee-plate plate-row mb-3" data-lamp="ok" role="status">
         {t('update.updatedTo', { version: synced.toVersion })}
         {kept > 0 && ` · ${t('update.kept', { count: kept })}`}
+        {setAside > 0 && ` · ${t('update.setAside', { count: setAside })}`}
       </p>
     );
   }

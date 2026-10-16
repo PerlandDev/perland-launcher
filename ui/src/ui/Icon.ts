@@ -13,6 +13,7 @@ export {
   Image,
   InfoBox,
   Languages,
+  Link,
   Lock,
   MemoryStick,
   Minus,
