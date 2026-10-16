@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Marquee } from '../../art/Marquee';
 import { artSeed } from '../../art/seed';
@@ -17,6 +17,7 @@ import { useSingleFlight } from '../../ui/useSingleFlight';
 import { DamagedView } from './DamagedView';
 import { EmptyState } from './EmptyState';
 import { InstanceMenu } from './InstanceMenu';
+import { widestWordEm } from './nameFit';
 import { ServerPanel } from '../servers/ServerPanel';
 import { isPack, isServer, versionLine } from './labels';
 import { ManualDownloads } from './ManualDownloads';
@@ -79,7 +80,7 @@ function InstanceView({ instance }: { instance: Instance }) {
           plate takes 5.75rem of the name's column, and the name grows with the width, so with a plate the
           name gets its own row under 64rem instead. */}
       <div
-        className={`absolute inset-x-0 bottom-0 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-4 px-10 pt-6 pb-12 ${icon ? '@max-[64rem]:grid-cols-1 @max-[64rem]:gap-y-5' : '@max-[55rem]:grid-cols-1 @max-[55rem]:gap-y-5'}`}
+        className={`absolute inset-x-0 bottom-0 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-4 px-10 pt-6 pb-12 [--name-size:clamp(2.5rem,5.2cqi,5.5rem)] ${icon ? '@max-[64rem]:grid-cols-1 @max-[64rem]:gap-y-5' : '@max-[55rem]:grid-cols-1 @max-[55rem]:gap-y-5'}`}
       >
         {/* The plate sits above both columns, so it reads on one line instead of wrapping in the name's. */}
         {isPack(instance) && (
@@ -90,12 +91,17 @@ function InstanceView({ instance }: { instance: Instance }) {
         <div className="min-w-0">
           <div className="flex items-end gap-5">
             {icon && <IconPlate src={icon} />}
-            <h1
-              id="instance-name"
-              className="marquee-name min-w-0 font-display text-[clamp(2.5rem,5.2cqi,5.5rem)] leading-[0.95] [overflow-wrap:anywhere]"
-            >
-              {instance.name}
-            </h1>
+            {/* The name's own column is a container, so the size can also shrink until the widest
+                word fits it. Only a word too long even at the 1.5rem floor still breaks. */}
+            <div className="@container/name min-w-0 flex-1">
+              <h1
+                id="instance-name"
+                className="marquee-name font-display text-[max(1.5rem,min(var(--name-size),calc(100cqi/var(--name-widest))))] leading-[0.95] [overflow-wrap:break-word]"
+                style={{ '--name-widest': String(widestWordEm(instance.name)) } as CSSProperties}
+              >
+                {instance.name}
+              </h1>
+            </div>
           </div>
           {/* The time played rides the version line in the same voice; under a minute it stays out. */}
           <p className="marquee-plate mt-3">

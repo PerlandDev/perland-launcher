@@ -21,6 +21,14 @@ describe('Home', () => {
     expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields', join: false }]);
   });
 
+  it('sizes the name so its widest word fits instead of breaking inside it', async () => {
+    renderApp(<Home id="asalith-fields" />);
+    const name = await screen.findByRole('heading', { name: 'Asalith Fields' });
+    // ASALITH is the wider word: 4.825 em in Bungee, with 2% room.
+    expect(name.style.getPropertyValue('--name-widest')).toBe('4.922');
+    expect(name.className).not.toContain('overflow-wrap:anywhere');
+  });
+
   it('adds the time played to the version plate', async () => {
     renderApp(<Home id="asalith-fields" />);
     expect(await screen.findByText('Minecraft 1.20.1 · Fabric 0.16.14 · 12 h played')).toBeInTheDocument();
@@ -465,7 +473,8 @@ describe('the icon plate', () => {
     expect(plate.getAttribute('src')).toMatch(/^data:image\/svg\+xml;base64,/);
     // Decoration beside the name, which already says what it is.
     expect(plate).toHaveAttribute('alt', '');
-    expect(name.parentElement).toContainElement(plate);
+    // The name sits in its own column (a size container) in the plate's row.
+    expect(name.parentElement?.parentElement).toContainElement(plate);
     expect(plate.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // The icon never becomes the background.
     const banner = container.querySelector<HTMLImageElement>('img.marquee-banner');

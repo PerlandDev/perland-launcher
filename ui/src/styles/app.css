@@ -37,6 +37,14 @@
    their one job in every theme, so they live only in @theme. Every theme is dark, and
    styles/themes.test.ts holds each one to the contrast bar. `[data-swatch]` paints a theme's sample
    on its Settings key whatever theme is in use. Laminate repeats @theme, so its swatch is right too. */
+/* Home's name size, measured against the marquee where it is declared. Registered as a length so
+   it arrives at the name already resolved, not re-read against the name's own column container. */
+@property --name-size {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 40px;
+}
+
 @layer base {
   :root[data-theme='laminate'],
   [data-swatch='laminate'] {
