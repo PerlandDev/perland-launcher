@@ -3,7 +3,9 @@ import { expect, it, vi } from 'vitest';
 import { createMockBackend, MOCK_IMPORT_PATH } from '../../ipc/mock';
 import type { Instance, LauncherError } from '../../ipc/schema';
 import { handleEvent } from '../../state/handleEvent';
+import { importRunningSnapshot } from '../../state/importProgress';
 import { navigate, routeSnapshot } from '../../state/route';
+import { toastsSnapshot } from '../../state/toasts';
 import { sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
 import { ImportForm } from './ImportForm';
@@ -56,7 +58,7 @@ async function choose(user: ReturnType<typeof renderImport>['user']) {
 
 it('reads the picked folder and prefills the form from it', async () => {
   const { user, calls } = renderImport();
-  expect(screen.getByText(/In your other launcher, open the instance's folder/)).toBeInTheDocument();
+  expect(screen.getByText(/In your other launcher, open the instance's folder.*Close the game in your other launcher first\./)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Import' })).toBeDisabled();
 
   const name = await choose(user);
@@ -162,12 +164,123 @@ it('explains a folder that is not an instance, and lets the player choose again'
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
-it('cancels the copy when the player leaves the form', async () => {
-  const { user, calls, unmount } = renderImport();
+it('keeps the import running when the player leaves, and shows its progress on coming back', async () => {
+  const first = renderImport();
+  await choose(first.user);
+  await screen.findByRole('combobox', { name: 'Loader version' });
+  await first.user.click(screen.getByRole('button', { name: 'Import' }));
+  progress(100_000_000);
+  first.unmount();
+  expect(sent(first.calls, 'import_cancel')).toHaveLength(0);
+  progress(617_000_000);
+
+  // Back to New instance, From another launcher: the copy, not the pick step.
+  const back = renderImport();
+  expect(screen.getByRole('progressbar', { name: 'Copying… 617 MB of 1.2 GB' })).toHaveAttribute('aria-valuenow', '50');
+  expect(screen.getByText('Skyblock Adventures')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Choose folder…' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Importing…' })).toBeDisabled();
+  expect(sent(back.calls, 'import_instance')).toHaveLength(0);
+
+  await back.user.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(sent(back.calls, 'import_cancel')).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Cancel' })).toHaveAttribute('aria-disabled', 'true');
+  await act(async () => first.settle().reject(cancelled));
+
+  await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+  expect(screen.getByRole('button', { name: 'Choose folder…' })).toBeEnabled();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(toastsSnapshot()).toEqual([]);
+});
+
+it('opens the new instance when an import the player came back to finishes', async () => {
+  const first = renderImport();
+  await choose(first.user);
+  await screen.findByRole('combobox', { name: 'Loader version' });
+  await first.user.click(screen.getByRole('button', { name: 'Import' }));
+  first.unmount();
+  renderImport();
+  const created = (await first.backend.handle('instance_create', {
+    request: { name: 'Skyblock Adventures', minecraft: '1.20.1', loader: { kind: 'fabric', version: '0.19.4' } },
+  })) as Instance;
+  await act(async () => first.settle().resolve(created));
+
+  await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: created.id }));
+  expect(toastsSnapshot()).toEqual([]);
+});
+
+it('says the instance is ready when the import finishes while the player is elsewhere', async () => {
+  navigate({ name: 'newInstance' });
+  const { user, backend, unmount, settle } = renderImport();
   await choose(user);
   await screen.findByRole('combobox', { name: 'Loader version' });
   await user.click(screen.getByRole('button', { name: 'Import' }));
-  expect(sent(calls, 'import_cancel')).toHaveLength(0);
   unmount();
-  expect(sent(calls, 'import_cancel')).toHaveLength(1);
+  navigate({ name: 'settings' });
+  const created = (await backend.handle('instance_create', {
+    request: { name: 'Skyblock Adventures', minecraft: '1.20.1', loader: { kind: 'fabric', version: '0.19.4' } },
+  })) as Instance;
+  await act(async () => settle().resolve(created));
+
+  await vi.waitFor(() => expect(toastsSnapshot()).toEqual([expect.objectContaining({ notice: { title: 'Skyblock Adventures is ready' } })]));
+  expect(routeSnapshot()).toEqual({ name: 'settings' });
+  expect(importRunningSnapshot()).toBeNull();
+});
+
+it('reports a failure while the player is elsewhere as a toast, but never a cancel', async () => {
+  const failed: LauncherError = { ...notInstance, code: 'not_enough_space', message: 'Not enough free space.', params: { needed_mb: '900', free_mb: '10' } };
+  for (const [error, toasts] of [
+    [cancelled, 0],
+    [failed, 1],
+  ] as const) {
+    const { user, unmount, settle } = renderImport();
+    await choose(user);
+    await screen.findByRole('combobox', { name: 'Loader version' });
+    await user.click(screen.getByRole('button', { name: 'Import' }));
+    unmount();
+    await act(async () => settle().reject(error));
+    await vi.waitFor(() => expect(importRunningSnapshot()).toBeNull());
+    expect(toastsSnapshot()).toHaveLength(toasts);
+  }
+  expect(toastsSnapshot()[0]?.error).toEqual(expect.objectContaining({ code: 'not_enough_space' }));
+});
+
+it('says it is reading the folder while it looks at it', async () => {
+  let answer: (value: unknown) => void = () => {};
+  const backend = createMockBackend();
+  const { user } = renderImport({
+    import_inspect: (args) =>
+      new Promise((resolve) => {
+        answer = () => resolve(backend.handle('import_inspect', args));
+      }),
+  });
+  await user.click(await screen.findByRole('button', { name: 'Choose folder…' }));
+
+  expect(await screen.findByRole('status')).toHaveTextContent('Reading the folder…');
+  expect(screen.getByRole('button', { name: 'Choose folder…' })).toBeDisabled();
+  await act(async () => answer(null));
+  expect(await screen.findByRole('textbox', { name: 'Name' })).toHaveValue('Skyblock Adventures');
+  expect(screen.queryByText('Reading the folder…')).not.toBeInTheDocument();
+});
+
+it('cuts a long folder name or detected name to the 64 characters a name can have', async () => {
+  const long = 'A'.repeat(70);
+  const path = `/home/p/instances/${long}`;
+  const first = renderImport({
+    'plugin:dialog|open': () => path,
+    import_inspect: () => ({ path, name: null, minecraft: null, loader: null, sizeBytes: 1000 }),
+  });
+  const name = await choose(first.user);
+  expect(name).toHaveAttribute('placeholder', 'A'.repeat(64));
+  await screen.findByRole('option', { name: '26.3' });
+  await first.user.click(screen.getByRole('button', { name: 'Import' }));
+  expect(sent(first.calls, 'import_instance')).toEqual([{ request: expect.objectContaining({ name: 'A'.repeat(64) }) }]);
+  await act(async () => first.settle().reject(cancelled));
+  first.unmount();
+
+  const second = renderImport({
+    'plugin:dialog|open': () => path,
+    import_inspect: () => ({ path, name: 'B'.repeat(70), minecraft: null, loader: null, sizeBytes: 1000 }),
+  });
+  expect(await choose(second.user)).toHaveValue('B'.repeat(64));
 });

@@ -195,12 +195,14 @@
   },
   "import": {
     "choose": "Elegir carpeta…",
-    "hint": "En tu otro launcher, abre la carpeta de la instancia (normalmente clic derecho → Abrir carpeta) y elígela aquí.",
+    "hint": "En tu otro launcher, abre la carpeta de la instancia (normalmente clic derecho → Abrir carpeta) y elígela aquí. Cierra el juego en tu otro launcher antes.",
     "size": "Vamos a copiar {{size}}: tus mods, mundos, ajustes y datos de mapas. La carpeta original no se toca.",
     "submit": "Importar",
     "importing": "Importando…",
     "copying": "Copiando… {{done}} de {{total}}",
-    "pickTitle": "Elige la carpeta de la instancia"
+    "pickTitle": "Elige la carpeta de la instancia",
+    "reading": "Leyendo la carpeta…",
+    "done": "{{name}} está lista"
   },
   "instanceSettings": {
     "title": "Configuración de la instancia",

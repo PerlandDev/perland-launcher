@@ -1,10 +1,13 @@
 import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import i18n from '../i18n';
 import { commands } from '../ipc/commands';
+import { isLauncherError } from '../ipc/errors';
 import { isInviteLink } from '../ipc/inviteLink';
 import type { ArtChoice, ContentKind, Focus, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
-import { pushError } from './toasts';
+import { endImport, importWatched } from './importProgress';
+import { pushError, pushNotice } from './toasts';
 
 export function createQueryClient() {
   return new QueryClient({
@@ -162,12 +165,26 @@ export function useImportInspect() {
   return useMutation({ mutationFn: (path: string) => commands.importInspect(path) });
 }
 
-export function useImportInstance(opts: Opts = {}) {
+/** The import's whole ending lives here, not in the form: the copy goes on when the player leaves
+ *  it. A form on screen opens the new instance or shows the failure; otherwise a toast tells. */
+export function useImportInstance() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (request: ImportRequest) => commands.importInstance(request),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
-    onError: onError(opts),
+    onSuccess: (instance) => {
+      const watched = importWatched();
+      endImport();
+      if (watched) navigate({ name: 'home', id: instance.id });
+      else pushNotice({ title: i18n.t('import.done', { name: instance.name }) });
+      return qc.invalidateQueries({ queryKey: qk.instances });
+    },
+    onError: (error) => {
+      // The player's own cancel isn't a failure: nothing to tell.
+      const cancelled = isLauncherError(error) && error.code === 'import_cancelled';
+      const watched = importWatched();
+      endImport(cancelled ? null : error);
+      if (!watched && !cancelled) pushError(error);
+    },
   });
 }
 

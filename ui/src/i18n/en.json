@@ -195,12 +195,14 @@
   },
   "import": {
     "choose": "Choose folder…",
-    "hint": "In your other launcher, open the instance's folder (usually right-click → Open folder) and pick it here.",
+    "hint": "In your other launcher, open the instance's folder (usually right-click → Open folder) and pick it here. Close the game in your other launcher first.",
     "size": "We'll copy {{size}}: your mods, worlds, settings and map data. The original folder isn't changed.",
     "submit": "Import",
     "importing": "Importing…",
     "copying": "Copying… {{done}} of {{total}}",
-    "pickTitle": "Pick the instance's folder"
+    "pickTitle": "Pick the instance's folder",
+    "reading": "Reading the folder…",
+    "done": "{{name}} is ready"
   },
   "instanceSettings": {
     "title": "Instance settings",
