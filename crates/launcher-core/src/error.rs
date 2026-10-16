@@ -68,7 +68,7 @@ error_codes! {
     ContentInstalling, ContentPlanExpired, ImageRefused, LinkRefused,
     // server invites (join by link)
     InviteLinkInvalid, InviteGone, InviteUnsupported, InviteSiteUnreachable, InviteRateLimited,
-    ServerPackUnavailable, ServerPackPending, ServerAddressUnknown,
+    ServerPackUnavailable, ServerPackPending, ServerAddressUnknown, ServerListFailed,
     // launcher updates
     LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
     // anything unexpected
@@ -238,6 +238,7 @@ mod tests {
             (ErrorCode::ServerPackUnavailable, "server_pack_unavailable"),
             (ErrorCode::ServerPackPending, "server_pack_pending"),
             (ErrorCode::ServerAddressUnknown, "server_address_unknown"),
+            (ErrorCode::ServerListFailed, "server_list_failed"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

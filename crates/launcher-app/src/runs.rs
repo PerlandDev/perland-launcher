@@ -12,8 +12,10 @@ use std::{
 use launcher_core::{
     accounts::{Provider, Session},
     events::{Event, EventSink},
+    fsutil::write_atomic,
     instances::{Instance, ServerAddress, SourceRef, UpdatePolicy},
     locks::InstanceLock,
+    server_list,
     sync::{
         lockfile::PACK_FILE, manual::Scanner, Cancel, Ensured, ManualFile, PendingUpdate,
         SyncOutcome,
@@ -35,7 +37,8 @@ use crate::{
 };
 
 /// What a game run needs besides the instance: who plays, whether the window hides, and
-/// whether the game joins the instance's server.
+/// whether the game joins the instance's server straight away (else it opens at the title
+/// screen with the server in its Multiplayer list).
 pub(crate) struct PlayArgs {
     pub(crate) session: Session,
     pub(crate) minimize: bool,
@@ -45,22 +48,26 @@ pub(crate) struct PlayArgs {
 fn address_unknown() -> LauncherError {
     LauncherError::game(
         ErrorCode::ServerAddressUnknown,
-        "Couldn't get the server address, so the game starts at the title screen",
+        "Couldn't get the server address, so it isn't in the game's server list",
     )
 }
+
+/// The address a server instance's server was last put in the game's server list with, so a
+/// server that moved keeps its one entry (`<instance>/.perland/<LISTED_FILE>`).
+const LISTED_FILE: &str = "listed-server.json";
 
 /// How long a run waits for an instance lock that a just-ended run is still letting go of.
 const LOCK_WAIT: Duration = Duration::from_secs(2);
 
 impl<R: Runner, H: Host> AppCore<R, H> {
-    /// Queue a run that joins the instance's server (if it has one). Everything after this
-    /// arrives as events.
+    /// Queue a run. A server instance's game opens at the title screen with its server at the
+    /// top of the Multiplayer list. Everything after this arrives as events.
     pub async fn play(self: &Arc<Self>, id: &str) -> Result<()> {
-        self.play_with(id, true).await
+        self.play_with(id, false).await
     }
 
-    /// Queue a run; `join: false` starts a server instance's game at the title screen
-    /// ("Play without joining"). Everything after this arrives as events.
+    /// Queue a run; `join: true` also connects a server instance's game to its server
+    /// ("Play and join"). Everything after this arrives as events.
     pub async fn play_with(self: &Arc<Self>, id: &str, join: bool) -> Result<()> {
         // `load` takes the id from the folder, so a copied instance.json can't name another one.
         let instance = self.instances.load(id).await?;
@@ -366,10 +373,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let _ = self.mark_server_gone(id, false).await;
     }
 
-    /// Where this run's game connects: a server instance's last known address. Without one,
-    /// the view is asked once more (the shared copy); if there is still none, the game starts
-    /// at the title screen with a warning.
-    async fn join_target(&self, id: &str, instance: &Instance) -> Option<ServerAddress> {
+    /// A server instance's last known address. Without one, the view is asked once more (the
+    /// shared copy); if there is still none, the run warns and the game starts without it.
+    async fn server_address(&self, id: &str, instance: &Instance) -> Option<ServerAddress> {
         let (link, engine) = server_source(instance)?;
         if let Some(address) = instance.server.as_ref().and_then(|s| s.address.clone()) {
             return Some(address);
@@ -387,6 +393,40 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             error: address_unknown(),
         });
         None
+    }
+
+    /// Put the server at the top of the game's Multiplayer list. A failure is a warning: the
+    /// game still starts, and the player can add the address by hand.
+    async fn list_server(&self, id: &str, instance: &Instance, address: &ServerAddress) {
+        let name = instance
+            .server
+            .as_ref()
+            .map(|s| s.name.as_str())
+            .filter(|n| !n.trim().is_empty())
+            .unwrap_or(&instance.name);
+        let record = self.instances.perland_dir(id).join(LISTED_FILE);
+        let previous = tokio::fs::read(&record)
+            .await
+            .ok()
+            .and_then(|b| serde_json::from_slice::<ServerAddress>(&b).ok());
+        let game_dir = self.instances.game_dir(id);
+        match server_list::ensure_listed(&game_dir, name, address, previous.as_ref()).await {
+            Ok(_) => {
+                if previous.as_ref() != Some(address) {
+                    let json = serde_json::to_vec(address).unwrap_or_default();
+                    if let Err(error) = write_atomic(&record, &json).await {
+                        tracing::warn!(instance = id, %error, "couldn't remember the listed server");
+                    }
+                }
+            }
+            Err(error) => {
+                tracing::warn!(instance = id, %error, "server list");
+                self.host.emit(AppEvent::Warning {
+                    instance: Some(id.to_string()),
+                    error,
+                });
+            }
+        }
     }
 
     /// The sync stopped for files the player must download by hand: remember them for
@@ -589,11 +629,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             };
             return self.finish(&id, info, sink, batcher, Some(lock)).await;
         };
-        let join = if args.join {
-            self.join_target(&id, &instance).await
-        } else {
-            None
-        };
+        let address = self.server_address(&id, &instance).await;
+        if let Some(address) = &address {
+            self.list_server(&id, &instance, address).await;
+        }
+        let join = address.filter(|_| args.join);
         // A Stop that came after the sync returned (while the instance reloaded) left the run
         // `stopping`: end it here rather than start a game nobody wants.
         if !self.set_phase(&id, RunStateKind::Preparing) {
@@ -710,6 +750,7 @@ mod tests {
         instances::{GameSpec, ServerAddress, UpdatePolicy},
         launch::CrashHint,
         locks::InstanceLock,
+        server_list,
         settings::Settings,
         sync::{lockfile, plan::Changes, Ensured, SyncOutcome, SyncReport},
         ErrorCode, LauncherError,
@@ -1446,8 +1487,20 @@ mod tests {
         ServerAddress::new("play.example.com", 25566)
     }
 
+    /// The game's Multiplayer list for instance `id`, as `(name, ip)`.
+    fn listed(core: &TestCore, id: &str) -> Vec<(String, String)> {
+        match std::fs::read(core.instances.game_dir(id).join(server_list::FILE_NAME)) {
+            Ok(bytes) => server_list::entries(&bytes).unwrap(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    fn survival() -> Vec<(String, String)> {
+        vec![("survival".into(), "play.example.com:25566".into())]
+    }
+
     #[tokio::test]
-    async fn a_server_run_updates_without_asking_and_joins() {
+    async fn a_server_run_updates_without_asking_and_lists_the_server() {
         let (core, runner, host, _t) = ready(true).await;
         let id = server(&core, &runner).await;
         runner
@@ -1464,42 +1517,119 @@ mod tests {
             "asking never happens"
         );
         assert_eq!(runner.syncs.lock().unwrap()[0].1.as_deref(), Some("1.0.5"));
-        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        assert_eq!(
+            *runner.started_joins.lock().unwrap(),
+            vec![None],
+            "the game opens at the title screen"
+        );
+        assert_eq!(listed(&core, &id), survival());
+        assert!(!host.warnings().contains(&ErrorCode::ServerListFailed));
         core.stop(&id).unwrap();
         host.wait_for(&id, Idle).await;
     }
 
     #[tokio::test]
-    async fn play_without_joining_starts_at_the_title_screen() {
+    async fn play_and_join_connects_to_the_server() {
         let (core, runner, host, _t) = ready(true).await;
         let id = server(&core, &runner).await;
-        core.play_with(&id, false).await.unwrap();
+        core.play_with(&id, true).await.unwrap();
         runner.open_gate(1);
         host.wait_for(&id, Running).await;
-        assert_eq!(*runner.started_joins.lock().unwrap(), vec![None]);
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        assert_eq!(listed(&core, &id), survival(), "listed for next time too");
         assert!(!host.warnings().contains(&ErrorCode::ServerAddressUnknown));
         core.stop(&id).unwrap();
         host.wait_for(&id, Idle).await;
     }
 
     #[tokio::test]
-    async fn no_known_address_warns_and_starts_at_the_title_screen() {
+    async fn the_players_servers_stay_and_a_second_play_adds_no_copy() {
         let (core, runner, host, _t) = ready(true).await;
-        let mut portless = server_view("survival");
-        portless.view.address.port = 0;
-        serve(&runner, &invite('A'), Ok(portless));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = server(&core, &runner).await;
+        let game = core.instances.game_dir(&id);
+        server_list::ensure_listed(
+            &game,
+            "Mine",
+            &ServerAddress::new("a.example.com", 25565).unwrap(),
+            None,
+        )
+        .await
+        .unwrap();
+        for n in 1..=2 {
+            core.play(&id).await.unwrap();
+            runner.open_gate(1);
+            host.wait_for_nth(&id, Running, n).await;
+            core.stop(&id).unwrap();
+            host.wait_for_nth(&id, Idle, n).await;
+        }
+        assert_eq!(
+            listed(&core, &id),
+            vec![
+                ("survival".into(), "play.example.com:25566".into()),
+                ("Mine".into(), "a.example.com:25565".into()),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_server_that_moved_keeps_its_one_entry() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
         core.play(&id).await.unwrap();
         runner.open_gate(1);
         host.wait_for(&id, Running).await;
-        assert_eq!(*runner.started_joins.lock().unwrap(), vec![None]);
-        assert!(host.warnings().contains(&ErrorCode::ServerAddressUnknown));
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+        let moved = ServerAddress::new("play.example.com", 25570);
+        core.update_server(&id, false, |s| s.as_mut().unwrap().address = moved.clone())
+            .await
+            .unwrap();
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for_nth(&id, Running, 2).await;
+        assert_eq!(
+            listed(&core, &id),
+            vec![("survival".into(), "play.example.com:25570".into())]
+        );
+        core.stop(&id).unwrap();
+        host.wait_for_nth(&id, Idle, 2).await;
+    }
+
+    #[tokio::test]
+    async fn a_damaged_server_list_warns_and_the_game_still_starts() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
+        let file = core.instances.game_dir(&id).join(server_list::FILE_NAME);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, b"junk").unwrap();
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert!(host.warnings().contains(&ErrorCode::ServerListFailed));
+        assert_eq!(std::fs::read(&file).unwrap(), b"junk", "never overwritten");
         core.stop(&id).unwrap();
         host.wait_for(&id, Idle).await;
     }
 
     #[tokio::test]
-    async fn an_address_learned_while_playing_is_joined_and_saved() {
+    async fn no_known_address_warns_and_lists_nothing() {
+        let (core, runner, host, _t) = ready(true).await;
+        let mut portless = server_view("survival");
+        portless.view.address.port = 0;
+        serve(&runner, &invite('A'), Ok(portless));
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        core.play_with(&id, true).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![None]);
+        assert!(host.warnings().contains(&ErrorCode::ServerAddressUnknown));
+        assert!(listed(&core, &id).is_empty());
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn an_address_learned_while_playing_is_listed_and_saved() {
         let (core, runner, host, _t) = ready(true).await;
         let mut portless = server_view("survival");
         portless.view.address.port = 0;
@@ -1519,7 +1649,7 @@ mod tests {
         core.play(&id).await.unwrap();
         runner.open_gate(1);
         host.wait_for(&id, Running).await;
-        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        assert_eq!(listed(&core, &id), survival());
         assert!(!host.warnings().contains(&ErrorCode::ServerAddressUnknown));
         assert_eq!(
             core.instances
@@ -1537,7 +1667,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_failed_check_plays_the_installed_version_and_still_joins() {
+    async fn a_failed_check_plays_the_installed_version_and_still_lists() {
         let (core, runner, host, _t) = ready(true).await;
         let id = server(&core, &runner).await;
         runner.updates.lock().unwrap().insert(
@@ -1552,7 +1682,7 @@ mod tests {
         host.wait_for(&id, Running).await;
         assert!(host.warnings().contains(&ErrorCode::UpdateCheckFailed));
         assert_eq!(*runner.syncs.lock().unwrap(), vec![(id.clone(), None)]);
-        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        assert_eq!(listed(&core, &id), survival());
         core.stop(&id).unwrap();
         host.wait_for(&id, Idle).await;
     }
@@ -1574,11 +1704,7 @@ mod tests {
         );
         assert!(core.instances.load(&id).await.unwrap().server.unwrap().gone);
         assert_eq!(*runner.syncs.lock().unwrap(), vec![(id.clone(), None)]);
-        assert_eq!(
-            *runner.started_joins.lock().unwrap(),
-            vec![address()],
-            "the last known address"
-        );
+        assert_eq!(listed(&core, &id), survival(), "the last known address");
         core.stop(&id).unwrap();
         host.wait_for(&id, Idle).await;
     }
@@ -1616,6 +1742,7 @@ mod tests {
         host.wait_for("alpha", Running).await;
         assert_eq!(*runner.started_joins.lock().unwrap(), vec![None]);
         assert!(!host.warnings().contains(&ErrorCode::ServerAddressUnknown));
+        assert!(listed(&core, "alpha").is_empty());
         core.stop("alpha").unwrap();
         host.wait_for("alpha", Idle).await;
     }

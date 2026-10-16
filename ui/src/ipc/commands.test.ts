@@ -9,7 +9,7 @@ it('sends the argument names Rust expects', async () => {
     return null;
   });
   await commands.play('pack');
-  await commands.play('pack', false);
+  await commands.play('pack', true);
   await commands.joinPreview('l');
   await commands.joinAdd('l');
   await commands.serverStatus('pack');
@@ -20,8 +20,8 @@ it('sends the argument names Rust expects', async () => {
   await commands.instanceArt('pack');
   await commands.instanceArtSet('pack', { kind: 'generated', seed: 'dunes' });
   expect(calls).toEqual([
-    ['play', { id: 'pack', join: true }],
     ['play', { id: 'pack', join: false }],
+    ['play', { id: 'pack', join: true }],
     ['join_preview', { link: 'l' }],
     ['join_add', { link: 'l' }],
     ['server_status', { id: 'pack' }],

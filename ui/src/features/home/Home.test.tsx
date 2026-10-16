@@ -18,7 +18,7 @@ describe('Home', () => {
     expect(await screen.findByRole('heading', { name: 'Asalith Fields' })).toBeInTheDocument();
     expect(screen.getByText('Minecraft 1.20.1 · Fabric 0.16.14')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Play' }));
-    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields', join: true }]);
+    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields', join: false }]);
   });
 
   it('sends one play for a double click', async () => {
@@ -30,7 +30,7 @@ describe('Home', () => {
       return new Promise((resolve) => (release = () => resolve(handle(cmd, args))));
     });
     await user.dblClick(await screen.findByRole('button', { name: 'Play' }));
-    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields', join: true }]);
+    expect(sent(calls, 'play')).toEqual([{ id: 'asalith-fields', join: false }]);
     await act(async () => release());
     expect(sent(calls, 'play')).toHaveLength(1);
   });
@@ -282,8 +282,8 @@ describe('server instances', () => {
     await screen.findByRole('heading', { name: 'Survival' });
     const open = async () => user.click(screen.getByRole('button', { name: 'More options' }));
     await open();
-    await user.click(screen.getByRole('menuitem', { name: 'Play without joining' }));
-    expect(sent(calls, 'play')).toEqual([{ id: 'survival', join: false }]);
+    await user.click(screen.getByRole('menuitem', { name: 'Play and join the server' }));
+    expect(sent(calls, 'play')).toEqual([{ id: 'survival', join: true }]);
     await open();
     await user.click(screen.getByRole('menuitem', { name: 'Copy invite link' }));
     expect(await navigator.clipboard.readText()).toBe(`https://play.example.com/${'A'.repeat(43)}`);
@@ -310,7 +310,7 @@ describe('server instances', () => {
     await screen.findByRole('heading', { name: 'Creative Flat' });
     await user.click(screen.getByRole('button', { name: 'More options' }));
     expect(screen.getByRole('menuitem', { name: 'Instance settings' })).toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: 'Play without joining' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Play and join the server' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Use a new invite link' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Copy invite link' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Copy server address' })).not.toBeInTheDocument();

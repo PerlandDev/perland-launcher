@@ -72,3 +72,10 @@ path = "fuzz_targets/join_deep_link.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "server_list"
+path = "fuzz_targets/server_list.rs"
+test = false
+doc = false
+bench = false
