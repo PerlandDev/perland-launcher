@@ -491,3 +491,47 @@ describe('the icon plate', () => {
     expect(container.querySelector('.icon-plate')).toBeNull();
   });
 });
+
+describe('the instance name', () => {
+  /** Lay the name out `needed` px wide in a box `available` px wide; jsdom has no layout of its own. */
+  function layOut(available: number, needed: number) {
+    const name = (el: Element) => el.classList.contains('marquee-name');
+    vi.spyOn(Element.prototype, 'clientWidth', 'get').mockImplementation(function (this: Element) {
+      return name(this) ? available : 0;
+    });
+    vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockImplementation(function (this: Element) {
+      return name(this) ? needed : 0;
+    });
+  }
+
+  it('wraps only between words, never inside one', async () => {
+    renderApp(<Home id="asalith-fields" />);
+    const name = await screen.findByRole('heading', { name: 'Asalith Fields' });
+    expect(name).toHaveClass('marquee-name');
+    expect(name.className).not.toMatch(/overflow-wrap|break-all|break-words/);
+    expect(name).not.toHaveAttribute('data-fit');
+  });
+
+  it('shrinks the type when its longest word is too wide for the column', async () => {
+    layOut(301, 400);
+    try {
+      renderApp(<Home id="asalith-fields" />);
+      const name = await screen.findByRole('heading', { name: 'Asalith Fields' });
+      expect(name.style.getPropertyValue('--name-fit')).toBe('0.75');
+      expect(name).not.toHaveAttribute('data-fit');
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('keeps full size when every word fits', async () => {
+    layOut(300, 300);
+    try {
+      renderApp(<Home id="asalith-fields" />);
+      const name = await screen.findByRole('heading', { name: 'Asalith Fields' });
+      expect(name.style.getPropertyValue('--name-fit')).toBe('');
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+});

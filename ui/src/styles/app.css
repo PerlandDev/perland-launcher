@@ -298,11 +298,21 @@
     min-width: 3rem;
   }
 
-  /* Marquee lettering: a signage shade, two hard layers deep, keeps the name readable over any art. */
+  /* Marquee lettering: a signage shade, two hard layers deep, keeps the name readable over any art.
+     The name is sized against Home's width and wraps only between words; a word too wide for the column
+     shrinks the type (`--name-fit`, set by useNameFit) rather than splitting. Only at the 1.125rem floor
+     (`data-fit="floor"`, a long name with no spaces) may a word break. */
   .marquee-name {
+    font-size: calc(clamp(2.5rem, 5.2cqi, 5.5rem) * var(--name-fit, 1));
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: manual;
     text-shadow:
       0 0.045em 0 var(--color-dirt),
       0 0.09em 0 var(--color-ground);
+  }
+  .marquee-name[data-fit='floor'] {
+    overflow-wrap: anywhere;
   }
   /* The version line sits on a laminate plate so the art never decides its contrast. */
   .marquee-plate {
