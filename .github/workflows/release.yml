@@ -107,8 +107,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
       - uses: dtolnay/rust-toolchain@stable
+      # Its own key: CI's job is also called build, and sharing its debug cache leaves this job
+      # compiling every dependency in release mode on each run.
       - uses: Swatinem/rust-cache@v2
         with:
+          key: release
           workspaces: ${{ env.DEV_DRIVE_WORKSPACE || '.' }}
       - name: Set the release version
         shell: bash
