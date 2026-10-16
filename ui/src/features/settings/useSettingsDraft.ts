@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { applyLanguage } from '../../i18n';
 import type { Settings } from '../../ipc/schema';
+import { applyAppearance } from '../../state/appearance';
 import { qk, useSaveSettings } from '../../state/queries';
 
 /** How long a slider has to sit still before its value is saved. */
@@ -12,7 +13,7 @@ const SETTLE_MS = 400;
  * - `draft` is what the player has asked for and is shown until the backend has it, so a control never lags;
  * - one save is in flight at a time and edits made meanwhile go out together afterwards, so an older answer cannot overwrite a newer value;
  * - an edit made with `settle` waits for the player to stop (a dragged slider), and is still sent if the screen closes first;
- * - a failed save is shown by the save hook and the controls go back to what is stored.
+ * - a failed save is shown by the save hook and the controls (and the language and look they applied) go back to what is stored.
  */
 export function useSettingsDraft() {
   const qc = useQueryClient();
@@ -47,7 +48,9 @@ export function useSettingsDraft() {
       desired.current = null;
       stopTimer();
       setDraft(null);
-      applyLanguage(qc.getQueryData<Settings>(qk.settings)?.language ?? null);
+      const stored = qc.getQueryData<Settings>(qk.settings);
+      applyLanguage(stored?.language ?? null);
+      if (stored) applyAppearance({ theme: stored.theme, font: stored.font });
     } finally {
       running.current = false;
     }

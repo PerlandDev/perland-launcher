@@ -6,5 +6,7 @@
   "firstRunDone": false,
   "updateChannel": null,
   "railExpanded": true,
-  "iconShape": "round"
+  "iconShape": "round",
+  "theme": "night",
+  "font": "system"
 }

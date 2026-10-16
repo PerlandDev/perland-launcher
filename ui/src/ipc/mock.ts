@@ -56,6 +56,8 @@ import type {
   SearchPage,
   SearchRequest,
   Settings,
+  Theme,
+  UiFont,
   SyncSummary,
   UpdateState,
   VersionInfo,
@@ -83,6 +85,10 @@ export interface MockOptions {
   railExpanded?: boolean;
   /** The rail draws round instance icons. */
   iconShape?: 'square' | 'round';
+  /** The colour theme the settings start with. */
+  theme?: Theme;
+  /** The text font the settings start with. */
+  font?: UiFont;
   /** Seconds played per instance id. Defaults to 12 h in Asalith Fields (none on first run). */
   playtime?: Record<string, number>;
   /** Adds Castle Keep, an instance with the player's own background picture (dev:mock turns it on). */
@@ -231,7 +237,7 @@ const contentKey = (id: string, kind: ContentKind) => `${id}:${kind}`;
 function seed(options: MockOptions) {
   const listing = clone(listingFx) as InstanceListing;
   const accounts = clone(accountsFx) as AccountsFile;
-  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, iconShape: options.iconShape ?? 'square', language: null };
+  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, iconShape: options.iconShape ?? 'square', theme: options.theme ?? 'laminate', font: options.font ?? 'hyperlegible', language: null };
   if (options.firstRun) {
     listing.instances = [];
     listing.damaged = [];
