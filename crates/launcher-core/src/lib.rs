@@ -8,6 +8,7 @@ pub mod error;
 pub mod events;
 pub mod fsutil;
 pub mod http;
+pub mod import;
 pub mod install;
 pub mod instance_order;
 pub mod instances;

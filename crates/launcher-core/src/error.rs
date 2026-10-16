@@ -72,6 +72,8 @@ error_codes! {
     ServerPackUnavailable, ServerPackPending, ServerAddressUnknown, ServerListFailed,
     // launcher updates
     LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
+    // importing from another launcher
+    ImportNotInstance, ImportInsideLauncher, ImportBusy, ImportCancelled,
     // anything unexpected
     Internal,
 }
@@ -159,6 +161,19 @@ mod tests {
             (ErrorCode::LauncherUpdateFailed, "launcher_update_failed"),
             (ErrorCode::LauncherUpdateInvalid, "launcher_update_invalid"),
             (ErrorCode::LauncherUpdateBusy, "launcher_update_busy"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
+    fn import_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::ImportNotInstance, "import_not_instance"),
+            (ErrorCode::ImportInsideLauncher, "import_inside_launcher"),
+            (ErrorCode::ImportBusy, "import_busy"),
+            (ErrorCode::ImportCancelled, "import_cancelled"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));
