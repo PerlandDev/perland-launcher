@@ -1,6 +1,6 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
-import { PlotIcon } from '../../art/PlotIcon';
+import { InstanceIcon } from '../../art/InstanceIcon';
 import { createMockBackend } from '../../ipc/mock';
 import type { InstanceListing } from '../../ipc/schema';
 import { qk } from '../../state/queries';
@@ -46,6 +46,14 @@ it("uses a pack's icon", async () => {
   const sky = await screen.findByRole('button', { name: 'Sky Islands' });
   await vi.waitFor(() => expect(sky.querySelector('img')?.getAttribute('src')).toMatch(/^data:image\//));
   expect(screen.getByRole('button', { name: 'Creative Flat' }).querySelector('img')).toBeNull();
+});
+
+it('shows a monogram of the name on a cabinet without art, and keeps the name as its accessible name', async () => {
+  renderApp(<Rail />);
+  const creative = await screen.findByRole('button', { name: 'Creative Flat' });
+  expect(creative.querySelector('img')).toBeNull();
+  expect(within(creative).getAllByText('CF').length).toBeGreaterThan(0);
+  expect(creative.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
 });
 
 it("falls back to the generated icon when a pack's icon fails to decode", async () => {
@@ -347,15 +355,15 @@ it('hands focus back after a move only once, not on every later change to the li
   expect(document.activeElement).toBe(document.body);
 });
 
-it('grows each plot icon from the art seed, not the id', async () => {
+it('grows each generated icon from the art seed, not the id', async () => {
   const backend = createMockBackend();
   backend.state.listing.instances = backend.state.listing.instances.map((i) =>
     i.id === 'creative-flat' ? { ...i, artSeed: 'old-name', art: 'generated' as const } : i,
   );
   renderWithProviders(<Rail />, { ipc: (cmd, args) => backend.handle(cmd, args) });
   const creative = await screen.findByRole('button', { name: 'Creative Flat' });
-  const want = render(<PlotIcon seed="old-name" size={40} />).container.innerHTML;
-  const not = render(<PlotIcon seed="creative-flat" size={40} />).container.innerHTML;
+  const want = render(<InstanceIcon name="Creative Flat" seed="old-name" size={40} />).container.innerHTML;
+  const not = render(<InstanceIcon name="Creative Flat" seed="creative-flat" size={40} />).container.innerHTML;
   expect(want).not.toBe(not);
   expect(creative.querySelector('svg')!.outerHTML).toBe(want);
 });
