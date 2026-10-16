@@ -159,6 +159,28 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
           )}
         </section>
       )}
+      {!pack && (
+        <section className="grid gap-3" aria-labelledby="server-settings">
+          <h2 id="server-settings" className="text-lg font-bold">
+            {t('server.settingsTitle')}
+          </h2>
+          <p>{t('server.linkSettingsBody')}</p>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              disabled={running}
+              aria-describedby={running ? 'link-running' : undefined}
+              onClick={() => navigate({ name: 'joinServer', invite: '', linkFor: instance.id })}
+            >
+              {t('server.linkToServer')}
+            </Button>
+          </div>
+          {running && (
+            <p id="link-running" className="text-sm text-ink-dim">
+              {t('server.linkRunning')}
+            </p>
+          )}
+        </section>
+      )}
       <MemorySlider label={t('instanceSettings.memory')} valueMb={memoryMb} onChange={edit(setMemoryMb)} systemMb={systemMb} />
       <fieldset className="grid gap-3">
         <legend className="mb-1.5 text-lg font-bold">{t('instanceSettings.java')}</legend>

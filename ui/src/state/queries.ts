@@ -208,6 +208,17 @@ export function useServerRelink(id: string, opts: Opts = {}) {
   });
 }
 
+export function useServerLink(id: string, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (link: string) => commands.serverLink(id, link),
+    onSuccess: () => {
+      for (const queryKey of [qk.instances, qk.serverStatus(id), qk.packStatus(id)]) void qc.invalidateQueries({ queryKey });
+    },
+    onError: onError(opts),
+  });
+}
+
 export function usePackOptional(id: string, opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
@@ -239,7 +250,8 @@ function routeFollowing(route: Route, from: string, to: string): Route | null {
     case 'browse':
       return route.instance === from ? { ...route, instance: to } : null;
     case 'joinServer':
-      return route.relinkFor === from ? { ...route, relinkFor: to } : null;
+      if (route.relinkFor === from) return { ...route, relinkFor: to };
+      return route.linkFor === from ? { ...route, linkFor: to } : null;
     default:
       return null;
   }

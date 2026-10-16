@@ -121,6 +121,23 @@ export function handleServer(servers: MockServers | null, listing: Listing, cmd:
     case 'server_status':
       if (!servers) fail('pack', 'no_pack', "This instance doesn't come from a server invite");
       return status(servers);
+    case 'server_link': {
+      const target = listing.instances.find((i) => i.id === args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (target.source.kind !== 'none') fail('pack', 'link_has_pack', 'This instance already gets its mods from a modpack');
+      const canonical = inviteCanonical(String(args.link ?? '')) ?? fail('pack', 'invite_link_invalid', "That isn't a Perland invite link");
+      if (!servers || servers.scenario === 'gone') fail('pack', 'invite_gone', "This invite link doesn't work anymore.");
+      if (servers.scenario === 'network' || servers.scenario === 'modded-no-pack') {
+        fail('pack', 'invite_unsupported', "This server can't be joined from the launcher yet.", { address: 'play.example.com:25577' });
+      }
+      const linked: Instance = {
+        ...target,
+        source: { kind: 'perland', invite: canonical, engine: 'https://api.example.com/' },
+        updatePolicy: 'auto',
+        server: (clone(serverInstanceFx) as Instance).server,
+      };
+      listing.instances = listing.instances.map((i) => (i.id === linked.id ? linked : i));
+      return linked;
+    }
     case 'server_relink': {
       const target = listing.instances.find((i) => i.id === args.id) ?? fail('disk', 'instance_not_found', 'gone');
       const canonical = inviteCanonical(String(args.link ?? '')) ?? fail('pack', 'invite_link_invalid', "That isn't a Perland invite link");

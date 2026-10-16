@@ -10,8 +10,9 @@ export type Route =
   | { name: 'instanceSettings'; id: string }
   | { name: 'newInstance'; link?: string }
   | { name: 'browse'; kind: ContentKind; instance?: string; project?: string }
-  // An empty `invite` means "ask for a link". `relinkFor` is the server instance being re-linked.
-  | { name: 'joinServer'; invite: string; relinkFor?: string }
+  // An empty `invite` means "ask for a link". `relinkFor` is the server instance being re-linked;
+  // `linkFor` is a vanilla or imported instance becoming a server instance.
+  | { name: 'joinServer'; invite: string; relinkFor?: string; linkFor?: string }
   | { name: 'accounts' }
   | { name: 'settings' };
 

@@ -38,6 +38,20 @@ use plan::{Changes, Planned};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// In `.perland/`: the instance was just linked to a server, and its first sync sets the jars
+/// the pack doesn't install aside (link-instance spec §3.2).
+const ADOPT_MARKER: &str = "adopt";
+/// In the game folder: where a linked instance's old jars go. Never purged; they're the
+/// player's.
+pub const SET_ASIDE_DIR: &str = "mods-before-link";
+
+/// Mark a never-synced instance as linked: its first sync sets old jars aside.
+pub async fn mark_adopt(perland_dir: &Path) -> Result<()> {
+    tokio::fs::create_dir_all(perland_dir).await?;
+    tokio::fs::write(perland_dir.join(ADOPT_MARKER), b"").await?;
+    Ok(())
+}
+
 /// Installs a Minecraft and loader version. The real one is `Installer`; tests use a fake.
 pub trait GameInstall: Send + Sync {
     fn install_game<'a>(
@@ -81,6 +95,8 @@ pub struct SyncReport {
     /// Override files the player changed, kept instead of updated ("Kept your version of …").
     pub kept_modified: Vec<String>,
     pub game_changed: bool,
+    /// A linked instance's first sync: the jars it moved to `SET_ASIDE_DIR` (old paths).
+    pub set_aside: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -612,6 +628,14 @@ impl Syncer {
         });
         let disk = apply::survey(&game_dir, &wanted, managed.as_ref(), progress).await?;
         let plan = plan::plan(&wanted, managed.as_ref(), &disk);
+        // Only a never-synced instance: once sync has written a lockfile, every jar it doesn't
+        // know is the player's addition.
+        let adopt = perland.join(ADOPT_MARKER);
+        let set_aside = if managed.is_none() && adopt.exists() {
+            apply::unwanted_jars(&game_dir, &wanted).await?
+        } else {
+            Vec::new()
+        };
         let changes = plan::changes_except(
             &wanted,
             managed.as_ref(),
@@ -699,6 +723,9 @@ impl Syncer {
                 apply::move_to_trash(&game_dir, &trash_dir, alias).await?;
             }
         }
+        for path in &set_aside {
+            apply::move_aside(&game_dir, path).await?;
+        }
 
         if game_changed {
             // Reload: a rename or settings change made meanwhile must not be reverted.
@@ -742,6 +769,7 @@ impl Syncer {
         }
         .save(&perland)
         .await?;
+        let _ = tokio::fs::remove_file(&adopt).await;
         let _ = tokio::fs::remove_dir_all(&staging).await;
         self.forget_update(id);
         Ok(SyncOutcome::Done(SyncReport {
@@ -749,6 +777,7 @@ impl Syncer {
             changes,
             kept_modified: plan.kept_modified,
             game_changed,
+            set_aside,
         }))
     }
 

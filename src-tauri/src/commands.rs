@@ -423,6 +423,11 @@ pub async fn server_relink(core: CoreState<'_>, id: String, link: String) -> Res
     logged("server_relink", core.server_relink(&id, &link).await)
 }
 
+#[tauri::command]
+pub async fn server_link(core: CoreState<'_>, id: String, link: String) -> Res<Instance> {
+    logged("server_link", core.server_link(&id, &link).await)
+}
+
 /// Called by the close dialog. Stopping waits a few seconds so the kills land before exit;
 /// keeping the games playing counts their time so far, as nothing tracks them after exit.
 #[tauri::command]

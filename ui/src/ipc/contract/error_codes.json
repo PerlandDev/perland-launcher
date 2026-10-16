@@ -95,6 +95,7 @@
   "invite_unsupported",
   "invite_site_unreachable",
   "invite_rate_limited",
+  "link_has_pack",
   "server_pack_unavailable",
   "server_pack_pending",
   "server_address_unknown",

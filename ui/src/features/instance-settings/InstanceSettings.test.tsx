@@ -184,10 +184,24 @@ it('keeps a running server on its link, and says why', async () => {
   expect(screen.queryByText('Stop the game to use a new link.')).not.toBeInTheDocument();
 });
 
-it('keeps the Server section off plain and pack instances', async () => {
+it('keeps the Server section off pack instances', async () => {
   renderApp(<InstanceSettings id="sky-islands" />);
   await screen.findByRole('radio', { name: 'Automatic' });
   expect(screen.queryByRole('heading', { name: 'Server' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Link to a server' })).not.toBeInTheDocument();
+});
+
+it('offers a plain instance a link to a server, except while it runs', async () => {
+  const { user } = renderApp(<InstanceSettings id="asalith-fields" />);
+  expect(await screen.findByRole('heading', { name: 'Server' })).toBeInTheDocument();
+  expect(screen.getByText('Link this instance to a Perland server and it updates with the server.')).toBeInTheDocument();
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
+  const button = screen.getByRole('button', { name: 'Link to a server' });
+  expect(button).toBeDisabled();
+  expect(button).toHaveAccessibleDescription('Stop the game to link this instance.');
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'idle', exit: null, update: null }));
+  await user.click(screen.getByRole('button', { name: 'Link to a server' }));
+  expect(routeSnapshot()).toEqual({ name: 'joinServer', invite: '', linkFor: 'asalith-fields' });
 });
 
 it('saves the Java arguments as typed', async () => {

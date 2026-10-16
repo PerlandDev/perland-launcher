@@ -199,6 +199,7 @@ export const syncSummary = z.strictObject({
   updated: z.number().int(),
   removed: z.number().int(),
   keptModified: z.array(z.string()),
+  setAside: z.array(z.string()),
 });
 export const exitInfo = z.strictObject({
   code: z.number().int().nullable(),

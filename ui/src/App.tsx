@@ -37,7 +37,14 @@ function Screen({ route }: { route: Route }) {
     case 'browse':
       return <Browse route={route} />;
     case 'joinServer':
-      return <JoinServer key={`${route.invite}|${route.relinkFor ?? ''}`} invite={route.invite} relinkFor={route.relinkFor} />;
+      return (
+        <JoinServer
+          key={`${route.invite}|${route.relinkFor ?? ''}|${route.linkFor ?? ''}`}
+          invite={route.invite}
+          relinkFor={route.relinkFor}
+          linkFor={route.linkFor}
+        />
+      );
     case 'accounts':
       return <Accounts />;
     case 'settings':

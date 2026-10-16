@@ -180,6 +180,7 @@ fn main() {
             commands::join_add,
             commands::server_status,
             commands::server_relink,
+            commands::server_link,
             commands::update_status,
             commands::update_check,
             commands::update_restart,

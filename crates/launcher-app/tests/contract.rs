@@ -558,6 +558,7 @@ fn contract_fixtures_are_current() {
                         updated: 2,
                         removed: 1,
                         kept_modified: vec!["options.txt".into()],
+                        set_aside: vec!["mods/old-zoom.jar".into()],
                     }),
                     ..ExitInfo::default()
                 }),
