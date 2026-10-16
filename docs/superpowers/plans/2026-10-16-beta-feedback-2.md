@@ -130,6 +130,22 @@
   - Choosing one applies at once, as today.
   - The menu label stays "Change image…".
 
+## Execution notes (2026-10-16)
+
+- **Shipped:** PerlandDev/perland-launcher#30, merged as `dc5e001`. It closed #22, #23, #24 and #28. The calls made on the owner's behalf are listed in that PR's body.
+- **Changes during execution:**
+  - Any background change pins the current icon, not only a legacy one. Without this, a never-chosen icon follows a new background upload.
+  - The picker is 46rem with its sections side by side.
+  - The monogram plate is tinted laminate, not the pure hue.
+- **Reporters:** start-of-work updates went out on all four issues. Nothing more is due until a build carrying this ships. Then a short note on "Cambiar imagen…" (Ícono and Fondo) and the Java arguments field would help the tester.
+- **Deferred:**
+  - a global default for Java arguments;
+  - an icon for local `.mrpack` imports, which needs a Modrinth lookup by file hash;
+  - the mock's `instance_update` only refuses `-Xmx`, not the other memory flags or the module-option rule;
+  - a legacy round-1 upload is sent as both icon and banner until the player changes one;
+  - a hand-edited bad `args` is caught only after downloads, and it also refuses an optional-mod toggle;
+  - in Spanish with the wide rail at 960 px, the update plate's "Actualizar" button wraps onto its own line. This predates this branch.
+
 ## Global Constraints
 
 - `crates/launcher-core` and `crates/launcher-app` never depend on Tauri. `src-tauri` is wiring only and has no tests.
