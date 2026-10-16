@@ -64,6 +64,7 @@ Packs stay in sync automatically, so a Perland player never manages mod versions
 - **Mark:** the legacy PerlandDev **pixel land plots**: four stepped, terraced plots in lime, amber, coral-red and blue, with brown "dirt" steps beneath. The only source today is a compressed raster, `E:\PerlandDev-site\public\logo.png` (1000 × 1000, visible artifacts), so it must be redrawn as a clean vector on its pixel grid before use.
 - **Not the Panel's look:** the launcher's look is its own player-facing system. It does not reuse the Panel's cyan chamfered mark or "Director HUD" language.
 - **Owner-chosen direction (binding):** "game-forward". Full-bleed instance/pack hero art, a big friendly Play button, an instance icon rail on the left, a game-client feel (like Battle.net or Lunar), and a custom title bar. Dark only for v1.
+- **Preset themes swap neutrals only:** a player may pick one of four dark rooms (Laminate, the default, Stone, Night, Forest) and the body text font. A theme changes only the neutrals (ground, panels, ink, seam line and the dirt steps); amber, lime, coral and blue keep their one job in every theme, and every theme meets the same tested contrast floor. There are no custom colours and no light theme.
 - **Licensing and trademarks:**
   - GPL-3.0-only.
   - No Modrinth branding.

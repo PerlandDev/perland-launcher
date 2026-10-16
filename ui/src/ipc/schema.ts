@@ -113,6 +113,9 @@ export const accountsFile = z.strictObject({
 
 export const lang = z.enum(['en', 'es']);
 export const channel = z.enum(['stable', 'beta']);
+/** A theme swaps the neutrals only; the first key is the default. */
+export const theme = z.enum(['laminate', 'stone', 'night', 'forest']);
+export const uiFont = z.enum(['hyperlegible', 'system']);
 export const settings = z.strictObject({
   version: z.number().int(),
   language: lang.nullable(),
@@ -122,6 +125,8 @@ export const settings = z.strictObject({
   updateChannel: channel.nullable(),
   railExpanded: z.boolean(),
   iconShape: z.enum(['square', 'round']),
+  theme,
+  font: uiFont,
 });
 export const appInfo = z.strictObject({
   version: z.string(),
@@ -371,6 +376,8 @@ export type Account = z.infer<typeof account>;
 export type AccountsFile = z.infer<typeof accountsFile>;
 export type Lang = z.infer<typeof lang>;
 export type Channel = z.infer<typeof channel>;
+export type Theme = z.infer<typeof theme>;
+export type UiFont = z.infer<typeof uiFont>;
 export type Settings = z.infer<typeof settings>;
 export type AppInfo = z.infer<typeof appInfo>;
 export type McVersion = z.infer<typeof mcVersion>;

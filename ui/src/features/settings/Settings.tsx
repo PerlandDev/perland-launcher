@@ -4,6 +4,7 @@ import mark from '../../assets/mark.svg';
 import { applyLanguage } from '../../i18n';
 import { commands } from '../../ipc/commands';
 import type { Lang } from '../../ipc/schema';
+import { applyAppearance, FONTS, THEMES, type Appearance } from '../../state/appearance';
 import { useAppInfo, useSettings } from '../../state/queries';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
@@ -29,6 +30,13 @@ export function Settings() {
   const openOnce = useSingleFlight();
   const retryOnce = useSingleFlight();
   const data = draft ?? settings.data;
+
+  /** A look applies to the whole app at once, before the save comes back. */
+  const look = (patch: Partial<Appearance>) => {
+    if (!data) return;
+    applyAppearance({ theme: data.theme, font: data.font, ...patch });
+    edit(patch);
+  };
 
   const open = (action: () => Promise<unknown>) => openOnce((done) => void action().catch(pushError).finally(done));
 
@@ -88,23 +96,73 @@ export function Settings() {
           </div>
           <Toggle checked={data.minimizeOnPlay} label={t('settings.minimize')} onChange={(minimizeOnPlay) => edit({ minimizeOnPlay })} />
         </div>
-        <fieldset className="grid gap-2">
-          <legend className="text-sm font-semibold">{t('settings.iconShape')}</legend>
-          <div className="flex flex-wrap gap-2">
-            {(['square', 'round'] as const).map((shape) => (
-              <label key={shape} className="seg" data-checked={data.iconShape === shape ? '' : undefined}>
-                <input
-                  type="radio"
-                  name="icon-shape"
-                  className="sr-only"
-                  checked={data.iconShape === shape}
-                  onChange={() => edit({ iconShape: shape })}
-                />
-                {shape === 'square' ? t('settings.iconSquare') : t('settings.iconRound')}
-              </label>
-            ))}
+        <section className="grid gap-4" aria-labelledby="appearance-heading">
+          <h2 id="appearance-heading" className="text-lg font-bold">
+            {t('settings.appearance')}
+          </h2>
+          <div className="grid gap-6">
+            <fieldset role="radiogroup" className="grid gap-2">
+              <legend className="text-sm font-semibold">{t('settings.theme')}</legend>
+              <div className="swatch-keys">
+                {THEMES.map((theme) => (
+                  <label key={theme} className="swatch-key" data-checked={data.theme === theme ? '' : undefined}>
+                    <input
+                      type="radio"
+                      name="theme"
+                      className="sr-only"
+                      checked={data.theme === theme}
+                      onChange={() => look({ theme })}
+                    />
+                    <span className="swatch" data-swatch={theme} aria-hidden>
+                      <span className="swatch-face" />
+                      <span className="swatch-lamp" />
+                    </span>
+                    <span className="swatch-name">{t(`settings.themes.${theme}`)}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="grid gap-2">
+              <legend className="text-sm font-semibold">{t('settings.font')}</legend>
+              <div className="flex flex-wrap gap-2">
+                {FONTS.map((font) => (
+                  // Each option is set in the face it picks, so the choice shows itself.
+                  <label
+                    key={font}
+                    className={`seg ${font === 'system' ? 'font-system' : 'font-hyperlegible'}`}
+                    data-checked={data.font === font ? '' : undefined}
+                  >
+                    <input
+                      type="radio"
+                      name="font"
+                      className="sr-only"
+                      checked={data.font === font}
+                      onChange={() => look({ font })}
+                    />
+                    {font === 'system' ? t('settings.fontSystem') : t('settings.fontHyperlegible')}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="grid gap-2">
+              <legend className="text-sm font-semibold">{t('settings.iconShape')}</legend>
+              <div className="flex flex-wrap gap-2">
+                {(['square', 'round'] as const).map((shape) => (
+                  <label key={shape} className="seg" data-checked={data.iconShape === shape ? '' : undefined}>
+                    <input
+                      type="radio"
+                      name="icon-shape"
+                      className="sr-only"
+                      checked={data.iconShape === shape}
+                      onChange={() => edit({ iconShape: shape })}
+                    />
+                    {shape === 'square' ? t('settings.iconSquare') : t('settings.iconRound')}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
-        </fieldset>
+        </section>
         <div className="grid gap-2">
           <p className="text-sm font-semibold">{t('settings.dataFolder')}</p>
           <div className="flex items-center gap-3">

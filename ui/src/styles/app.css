@@ -24,9 +24,70 @@
   --font-display: 'Bungee', ui-sans-serif, system-ui, sans-serif;
   --font-sans: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'Atkinson Hyperlegible Mono', ui-monospace, monospace;
+  /* The two body faces a player can pick (Settings → Text font); --font-sans follows data-font. */
+  --font-hyperlegible: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-system: system-ui, 'Segoe UI', sans-serif;
 
   --radius-step: 4px;
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Themes (Settings → Theme). A theme is a different room: it swaps only the eight neutrals, the
+   room (ground, panel, raised, line), its ink and the dirt steps. Amber, lime, coral and blue keep
+   their one job in every theme, so they live only in @theme. Every theme is dark, and
+   styles/themes.test.ts holds each one to the contrast bar. `[data-swatch]` paints a theme's sample
+   on its Settings key whatever theme is in use. Laminate repeats @theme, so its swatch is right too. */
+@layer base {
+  :root[data-theme='laminate'],
+  [data-swatch='laminate'] {
+    --color-ground: #181410;
+    --color-panel: #221c17;
+    --color-raised: #2e261f;
+    --color-line: #463a2f;
+    --color-ink: #f6f1e7;
+    --color-ink-dim: #c5b9a8;
+    --color-dirt: #7a4a2a;
+    --color-dirt-deep: #4e2e19;
+  }
+  /* Cool deepslate grey. */
+  :root[data-theme='stone'],
+  [data-swatch='stone'] {
+    --color-ground: #141619;
+    --color-panel: #1d2024;
+    --color-raised: #282c31;
+    --color-line: #3f454d;
+    --color-ink: #eef1f4;
+    --color-ink-dim: #b6bec8;
+    --color-dirt: #5b636d;
+    --color-dirt-deep: #363b42;
+  }
+  /* A deep blue night sky. */
+  :root[data-theme='night'],
+  [data-swatch='night'] {
+    --color-ground: #10131f;
+    --color-panel: #181c2c;
+    --color-raised: #22283b;
+    --color-line: #363f5c;
+    --color-ink: #eef0fa;
+    --color-ink-dim: #b3bad3;
+    --color-dirt: #4a4f8a;
+    --color-dirt-deep: #2b2f57;
+  }
+  /* Dark moss. */
+  :root[data-theme='forest'],
+  [data-swatch='forest'] {
+    --color-ground: #111712;
+    --color-panel: #19211a;
+    --color-raised: #232d24;
+    --color-line: #3a4a3b;
+    --color-ink: #eef3ea;
+    --color-ink-dim: #b5c3b0;
+    --color-dirt: #4f6b3a;
+    --color-dirt-deep: #2f4223;
+  }
+  :root[data-font='system'] {
+    --font-sans: var(--font-system);
+  }
 }
 
 @layer base {
@@ -540,6 +601,102 @@
     outline-offset: 3px;
   }
 
+  /* Settings → Theme: one key per theme. The key itself is today's raised face; the tile on it is a
+     small sample of that theme's room (its ground, seam line, a raised key on its deep-dirt step and
+     an amber pixel on a dirt step), painted through [data-swatch]. Chosen, the key presses into its
+     slot with the lime lamp before the name, like every other choice. */
+  .swatch-keys {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+    padding-bottom: 4px;
+  }
+  .swatch-key {
+    display: grid;
+    gap: 0.5rem;
+    padding: 0.5rem 0.5rem 0.625rem;
+    font-weight: 650;
+    line-height: 1.2;
+    background: var(--color-raised);
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow: 0 4px 0 var(--color-dirt-deep);
+    cursor: pointer;
+    transition:
+      translate 180ms steps(2, end),
+      box-shadow 180ms steps(2, end),
+      background-color 120ms linear;
+  }
+  .swatch-key:hover:not([data-checked]) {
+    background: color-mix(in oklab, var(--color-raised), white 7%);
+  }
+  .swatch-key:active,
+  .swatch-key[data-checked] {
+    translate: 0 4px;
+    box-shadow: 0 0 0 var(--color-dirt-deep);
+  }
+  .swatch-key[data-checked] {
+    background: var(--color-ground);
+    box-shadow:
+      0 0 0 var(--color-dirt-deep),
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  .swatch-key:has(input:focus-visible) {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+  }
+  .swatch-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    padding-inline: 0.25rem;
+  }
+  .swatch-key[data-checked] .swatch-name::before {
+    content: '';
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--color-lime);
+  }
+  .swatch {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.5rem;
+    height: 3rem;
+    padding: 0 0.625rem 0.75rem;
+    background: var(--color-ground);
+    border-radius: 3px;
+    corner-shape: notch;
+    box-shadow: inset 0 0 0 1px var(--color-line);
+  }
+  /* The key's label is a 2px ink stroke, so the sample shows the theme's text colour too. */
+  .swatch-face {
+    display: grid;
+    flex: 0 1 3.5rem;
+    align-items: center;
+    height: 1.125rem;
+    padding-inline: 0.5rem;
+    background: var(--color-raised);
+    border-radius: 2px;
+    corner-shape: notch;
+    box-shadow: 0 3px 0 var(--color-dirt-deep);
+  }
+  .swatch-face::before {
+    content: '';
+    height: 2px;
+    background: var(--color-ink);
+  }
+  .swatch-lamp {
+    flex: none;
+    width: 0.625rem;
+    height: 0.625rem;
+    background: var(--color-amber);
+    box-shadow: 0 3px 0 var(--color-dirt);
+  }
+
   .range {
     --fill: 0%;
     width: 100%;
@@ -605,8 +762,10 @@
     corner-shape: notch;
     box-shadow: 0 8px 0 var(--color-dirt-deep);
   }
+  /* The room's own black, a shade deeper, so the backdrop follows the theme. An engine whose
+     ::backdrop doesn't inherit custom properties yet gets Laminate's. */
   .dialog::backdrop {
-    background: rgb(12 9 6 / 0.78);
+    background: color-mix(in srgb, color-mix(in srgb, var(--color-ground, #181410), black 50%) 78%, transparent);
   }
 
   /* Change image: the six landscapes are small marquees standing on their steps, three to a row. The one
@@ -858,21 +1017,21 @@
   .focus-line {
     position: absolute;
     pointer-events: none;
-    background: rgb(246 241 231 / 0.8);
+    background: color-mix(in srgb, var(--color-ink) 80%, transparent);
   }
   .focus-line-across {
     left: 0;
     right: 0;
     height: 1px;
     translate: 0 -0.5px;
-    box-shadow: 0 1px 0 rgb(24 20 16 / 0.7);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--color-ground) 70%, transparent);
   }
   .focus-line-down {
     top: 0;
     bottom: 0;
     width: 1px;
     translate: -0.5px 0;
-    box-shadow: 1px 0 0 rgb(24 20 16 / 0.7);
+    box-shadow: 1px 0 0 color-mix(in srgb, var(--color-ground) 70%, transparent);
   }
   .focus-mark {
     position: absolute;

@@ -29,6 +29,33 @@ pub enum IconShape {
     Square,
 }
 
+/// The launcher's colour theme. A theme swaps only the neutrals (the room and its steps); the role
+/// hues (amber, lime, coral, blue) are the same in every theme.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    Stone,
+    Night,
+    Forest,
+    /// Warm laminate black, the original room. Also what an unknown theme from a newer launcher
+    /// loads as. (`serde(other)` must be the last variant.)
+    #[default]
+    #[serde(other)]
+    Laminate,
+}
+
+/// The face for body text. Signage (Bungee) never changes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum UiFont {
+    /// The operating system's own UI font.
+    System,
+    /// Atkinson Hyperlegible Next. Also what an unknown font loads as.
+    #[default]
+    #[serde(other)]
+    Hyperlegible,
+}
+
 /// Which launcher releases this install follows (spec §4.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -63,6 +90,10 @@ pub struct Settings {
     pub rail_expanded: bool,
     /// The shape of instance icons in the rail.
     pub icon_shape: IconShape,
+    /// The colour theme.
+    pub theme: Theme,
+    /// The body text font.
+    pub font: UiFont,
 }
 
 impl Default for Settings {
@@ -76,6 +107,8 @@ impl Default for Settings {
             update_channel: None,
             rail_expanded: false,
             icon_shape: IconShape::Square,
+            theme: Theme::Laminate,
+            font: UiFont::Hyperlegible,
         }
     }
 }
@@ -208,6 +241,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn theme_and_font_default_and_round_trip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(&path, r#"{"firstRunDone": true}"#).unwrap();
+        let store = SettingsStore::new(&path);
+        let (settings, warning) = store.load().await;
+        assert!(warning.is_none());
+        assert_eq!(settings.theme, Theme::Laminate);
+        assert_eq!(settings.font, UiFont::Hyperlegible);
+
+        let night = Settings {
+            theme: Theme::Night,
+            font: UiFont::System,
+            ..settings
+        };
+        store.save(&night).await.unwrap();
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"theme\": \"night\""), "{raw}");
+        assert!(raw.contains("\"font\": \"system\""), "{raw}");
+        assert_eq!(store.load().await, (night, None));
+    }
+
+    #[tokio::test]
+    async fn unknown_theme_and_font_load_as_defaults() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"language":"es","railExpanded":true,"iconShape":"round","theme":"neon","font":"comic"}"#,
+        )
+        .unwrap();
+        let (settings, warning) = SettingsStore::new(&path).load().await;
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(settings.theme, Theme::Laminate);
+        assert_eq!(settings.font, UiFont::Hyperlegible);
+        assert_eq!(settings.language, Some(Lang::Es));
+        assert!(settings.rail_expanded);
+        assert_eq!(settings.icon_shape, IconShape::Round);
+    }
+
+    #[tokio::test]
     async fn unknown_fields_alone_are_fine() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("settings.json");
@@ -261,6 +335,11 @@ mod tests {
         let (settings, warning) = SettingsStore::new(&path).load().await;
         assert!(warning.is_none());
         assert_eq!(settings.update_channel, None);
+        // Files from before themes keep everything they had and get the original look.
+        assert!(settings.first_run_done);
+        assert_eq!(settings.language, Some(Lang::En));
+        assert_eq!(settings.theme, Theme::Laminate);
+        assert_eq!(settings.font, UiFont::Hyperlegible);
     }
 
     #[tokio::test]
