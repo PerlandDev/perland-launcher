@@ -235,19 +235,32 @@ describe('Change image: the position', () => {
     await vi.waitFor(() => expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: { x: 100, y: 25 } }]));
   });
 
-  it('goes back to the default with Center', async () => {
+  it('keeps the last shown point when the pointer is cancelled', async () => {
+    const { user, calls } = castle();
+    const dialog = await openPicker(user, 'Castle Keep');
+    const group = await within(dialog).findByRole('group', { name: 'Position' });
+    const picture = group.querySelector<HTMLElement>('.focus-picture')!;
+    picture.getBoundingClientRect = rect(100, 50, 200, 100);
+    fireEvent.pointerDown(picture, { clientX: 140, clientY: 70, pointerId: 1, button: 0 });
+    fireEvent.pointerMove(picture, { clientX: 160, clientY: 75, pointerId: 1 });
+    // A cancelled pointer (the OS took it) carries no real place: 0, 0 would be the top left.
+    fireEvent.pointerCancel(picture, { clientX: 0, clientY: 0, pointerId: 1 });
+    await vi.waitFor(() => expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: { x: 30, y: 25 } }]));
+  });
+
+  it('goes back to the default with Reset', async () => {
     const { user, calls } = castle({ x: 30, y: 60 });
     await vi.waitFor(() => expect(homeBanner()?.style.objectPosition).toBe('30% 60%'));
     const dialog = await openPicker(user, 'Castle Keep');
     const group = await within(dialog).findByRole('group', { name: 'Position' });
     expect(within(group).getByLabelText('Left to right')).toHaveValue('30');
-    await user.click(within(group).getByRole('button', { name: 'Center' }));
+    await user.click(within(group).getByRole('button', { name: 'Reset' }));
     expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: null }]);
     expect(within(group).getByLabelText('Top to bottom')).toHaveValue('100');
     await vi.waitFor(() => expect(homeBanner()?.style.objectPosition).toBe(''));
     // Already the default: nothing more to send.
-    expect(within(group).getByRole('button', { name: 'Center' })).toHaveAttribute('aria-disabled', 'true');
-    await user.click(within(group).getByRole('button', { name: 'Center' }));
+    expect(within(group).getByRole('button', { name: 'Reset' })).toHaveAttribute('aria-disabled', 'true');
+    await user.click(within(group).getByRole('button', { name: 'Reset' }));
     expect(sent(calls, 'instance_banner_focus_set')).toHaveLength(1);
   });
 

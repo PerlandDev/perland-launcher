@@ -78,7 +78,7 @@
     "positionHint": "Drag to choose which part of the picture stays in view.",
     "positionX": "Left to right",
     "positionY": "Top to bottom",
-    "center": "Center",
+    "reset": "Reset",
     "pickTitle": "Choose an image",
     "fileFilter": "Images",
     "done": "Done"

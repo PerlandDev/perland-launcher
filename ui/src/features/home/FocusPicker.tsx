@@ -43,8 +43,8 @@ function contained(aspect: number) {
  *  The whole picture sits in a recessed frame with a crosshair on the chosen point; a press or a drag moves
  *  it, and two visually hidden range inputs carry it for the keyboard and screen readers (the arrow keys move
  *  it by 5 the way they point). The marquee follows at once through `onPreview`; `onSave` runs when the
- *  pointer lets go, 300 ms after the last key press, or at once for Center, which goes back to the default
- *  (null), not to the middle. */
+ *  pointer lets go (or is cancelled: then the last point shown), 300 ms after the last key press, or at once
+ *  for Reset, which goes back to the default (null), not to the middle. */
 export function FocusPicker({
   picture,
   focus,
@@ -72,6 +72,8 @@ export function FocusPicker({
   const box = contained(aspect);
   const surface = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
+  // The point last shown, for a cancelled pointer: its event carries no real place.
+  const lastShown = useRef<Focus | null>(focus);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The position a key press is still holding back (undefined: nothing waits).
   const waiting = useRef<Focus | null | undefined>(undefined);
@@ -96,6 +98,7 @@ export function FocusPicker({
   useEffect(() => () => flush(), []);
 
   const move = (next: Focus | null, when: 'now' | 'later' | 'drag') => {
+    lastShown.current = next;
     setDraft(next);
     onPreview(next);
     if (when === 'now') {
@@ -132,6 +135,11 @@ export function FocusPicker({
     if (!dragging.current) return;
     dragging.current = false;
     move(at(event) ?? shown, 'now');
+  };
+  const onPointerCancel = () => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    move(lastShown.current, 'now');
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -174,7 +182,7 @@ export function FocusPicker({
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp}
+          onPointerCancel={onPointerCancel}
         >
           <div className="focus-stage">
             <div ref={surface} className="focus-picture" style={{ left: `${box.left}%`, top: `${box.top}%`, width: `${box.width}%`, height: `${box.height}%` }}>
@@ -207,7 +215,7 @@ export function FocusPicker({
               if (draft !== null && !disabled) move(null, 'now');
             }}
           >
-            {t('image.center')}
+            {t('image.reset')}
           </Button>
         </div>
         {range('x')}
