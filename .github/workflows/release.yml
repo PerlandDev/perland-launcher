@@ -26,6 +26,9 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -52,6 +55,13 @@ jobs:
       - name: The updater public key is set
         run: |
           node -e "const k=require('./src-tauri/tauri.conf.json').plugins?.updater?.pubkey; if(!k||!k.trim()){console.log('::error::Set plugins.updater.pubkey in src-tauri/tauri.conf.json to the updater public key first.');process.exit(1)}"
+      # A publish needs CI green on this exact commit; a dry run only warns.
+      - name: CI passed on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MODE: ${{ inputs.dry_run && 'dry-run' || 'publish' }}
+        run: node scripts/release/cli.mjs ci-check "$GITHUB_SHA" "$MODE"
       - id: version
         env:
           CHANNEL: ${{ inputs.channel }}
@@ -155,12 +165,28 @@ jobs:
           merge-multiple: true
       - name: Updater manifest
         run: node scripts/release/cli.mjs manifest "$VERSION" dist "https://github.com/$REPO/releases/download/v$VERSION" latest.json
+      # The release stays a draft until every installer is up, so players never see it half
+      # uploaded. Re-running this job resumes a draft a failed attempt left, and skips a release
+      # that is already out.
       - name: Versioned release
         run: |
+          tag="v$VERSION"
+          title="Perland Launcher $VERSION"
           notes="Closed beta. Download it from https://perland.online/launcher. The installers aren't code-signed yet, so Windows may warn before it runs."
-          flags=(--latest=false)
-          if [ "$CHANNEL" = "beta" ]; then flags+=(--prerelease); else flags=(--latest); fi
-          gh release create "v$VERSION" --repo "$REPO" --target "$SHA" --title "Perland Launcher $VERSION" --notes "$notes" "${flags[@]}" dist/*
+          if state=$(gh release view "$tag" --repo "$REPO" --json isDraft --jq .isDraft 2>&1); then :
+          elif grep -q "release not found" <<<"$state"; then state=none
+          else echo "$state"; exit 1
+          fi
+          if [ "$state" = "false" ]; then
+            echo "$tag is already published."
+            exit 0
+          elif [ "$state" = "none" ]; then
+            gh release create "$tag" --repo "$REPO" --draft --target "$SHA" --title "$title" --notes "$notes" dist/*
+          else
+            gh release upload "$tag" --repo "$REPO" --clobber dist/*
+          fi
+          if [ "$CHANNEL" = "beta" ]; then flags=(--prerelease --latest=false); else flags=(--prerelease=false --latest); fi
+          gh release edit "$tag" --repo "$REPO" --draft=false --target "$SHA" --title "$title" --notes "$notes" "${flags[@]}"
       - name: Channel releases
         run: |
           feed() {

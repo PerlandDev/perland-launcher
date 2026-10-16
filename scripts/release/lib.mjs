@@ -93,3 +93,24 @@ export function buildManifest({ version, notes, pubDate, signatures, baseUrl }) 
   }
   return { version, notes, pub_date: pubDate, platforms };
 }
+
+const FAILED = new Set(['failure', 'timed_out', 'startup_failure']);
+
+/** Whether CI passed on the commit being released, from `gh run list --json status,conclusion`.
+ *  A publish needs a green run and no red one; a dry run only warns. */
+export function ciGate(runs, { publish }) {
+  const level = publish ? 'error' : 'warning';
+  if (runs.some((r) => r.status === 'completed' && FAILED.has(r.conclusion))) {
+    return { level, message: 'CI failed on this commit. Fix it, then release again.' };
+  }
+  if (runs.some((r) => r.status === 'completed' && r.conclusion === 'success')) {
+    return { level: 'ok', message: 'CI passed on this commit.' };
+  }
+  if (runs.some((r) => r.status !== 'completed')) {
+    return { level, message: 'CI is still running on this commit. Wait for it to pass, then release again.' };
+  }
+  if (runs.length > 0) {
+    return { level, message: 'CI has not passed on this commit (its runs were cancelled or skipped). Re-run it first.' };
+  }
+  return { level, message: 'CI has not run on this commit. Push it to main or to a branch with a pull request, and wait for CI to pass.' };
+}

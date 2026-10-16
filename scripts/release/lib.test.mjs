@@ -4,6 +4,7 @@ import {
   buildManifest,
   channelName,
   checkSignatureKeys,
+  ciGate,
   findBundle,
   keyIdOf,
   nextVersion,
@@ -117,4 +118,27 @@ test('every signature must come from the committed public key', () => {
   assert.doesNotThrow(() => checkSignatureKeys(pubkey, good));
   assert.throws(() => checkSignatureKeys(pubkey, { ...good, 'linux-x86_64-deb': fakeSig(id(2)) }), /linux-x86_64-deb.*pubkey/s);
   assert.throws(() => checkSignatureKeys('', good), /pubkey/);
+});
+
+const run = (status, conclusion = null) => ({ status, conclusion });
+
+test('a green CI run lets the release through', () => {
+  assert.equal(ciGate([run('completed', 'success')], { publish: true }).level, 'ok');
+  // A cancelled duplicate or a second run still going does not undo a green one.
+  assert.equal(ciGate([run('completed', 'cancelled'), run('in_progress'), run('completed', 'success')], { publish: true }).level, 'ok');
+});
+
+test('a failed, running or missing CI run stops a publish', () => {
+  const failed = ciGate([run('completed', 'success'), run('completed', 'failure')], { publish: true });
+  assert.equal(failed.level, 'error');
+  assert.match(failed.message, /failed/);
+  assert.match(ciGate([run('completed', 'timed_out')], { publish: true }).message, /failed/);
+  assert.match(ciGate([run('queued')], { publish: true }).message, /still running/);
+  assert.match(ciGate([run('completed', 'cancelled')], { publish: true }).message, /has not passed/);
+  assert.match(ciGate([], { publish: true }).message, /has not run/);
+});
+
+test('a dry run only warns about CI', () => {
+  assert.equal(ciGate([run('completed', 'failure')], { publish: false }).level, 'warning');
+  assert.equal(ciGate([], { publish: false }).level, 'warning');
 });
