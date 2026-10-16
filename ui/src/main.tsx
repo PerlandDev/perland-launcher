@@ -5,6 +5,8 @@ import App from './App';
 import './i18n';
 import { onAppEvent } from './ipc/events';
 import type { ServerScenario } from './ipc/mockServers';
+import { theme, uiFont } from './ipc/schema';
+import { applyAppearance, readMirror } from './state/appearance';
 import { handleEvent } from './state/handleEvent';
 import { hydrateRuns } from './state/hydrateRuns';
 import { queryClient } from './state/queries';
@@ -12,12 +14,18 @@ import { installBrowserGuard } from './shell/browserGuard';
 import { pushError } from './state/toasts';
 import './styles/app.css';
 
+// The last look, before anything renders, so the window never opens in the wrong theme. The settings
+// confirm or correct it once they load (App).
+applyAppearance(readMirror());
+
 async function bootstrap() {
   // The Vite dev server (tauri dev, dev:mock) keeps the browser's menu and Inspect for developers.
   if (!import.meta.env.DEV) installBrowserGuard(document);
   if (import.meta.env.MODE === 'mock') {
     const { installMock, mockUpdateState } = await import('./ipc/mock');
     const params = new URLSearchParams(window.location.search);
+    const themeParam = theme.safeParse(params.get('theme'));
+    const fontParam = uiFont.safeParse(params.get('font'));
     installMock({
       firstRun: params.has('firstRun'),
       crash: params.has('crash'),
@@ -30,6 +38,8 @@ async function bootstrap() {
       server: (params.get('server') as ServerScenario | null) ?? undefined,
       railExpanded: params.has('railExpanded'),
       iconShape: params.get('iconShape') === 'round' ? 'round' : undefined,
+      theme: themeParam.success ? themeParam.data : undefined,
+      font: fontParam.success ? fontParam.data : undefined,
       pictureBackground: !params.has('noPicture'),
     });
   }

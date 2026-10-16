@@ -6,6 +6,7 @@ import i18n from '../i18n';
 import { stopMockRuns } from '../ipc/mock';
 import { resetBrowseSession } from '../features/browse/session';
 import { resetActivity } from '../state/activity';
+import { resetAppearance } from '../state/appearance';
 import { resetContentProgress } from '../state/contentProgress';
 import { resetImport } from '../state/importProgress';
 import { resetRoute } from '../state/route';
@@ -47,5 +48,6 @@ afterEach(async () => {
   resetBrowseSession();
   resetContentProgress();
   resetImport();
+  resetAppearance();
   await i18n.changeLanguage('en');
 });

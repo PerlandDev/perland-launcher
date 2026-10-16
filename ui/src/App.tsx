@@ -15,6 +15,7 @@ import { Settings } from './features/settings/Settings';
 import { TitleBar } from './features/titlebar/TitleBar';
 import { applyLanguage } from './i18n';
 import { useActivity } from './state/activity';
+import { applyAppearance } from './state/appearance';
 import { takeDeepLink } from './state/deepLink';
 import { useSettings } from './state/queries';
 import { useRoute, type Route } from './state/route';
@@ -93,6 +94,12 @@ export default function App() {
   const settings = useSettings();
   const language = settings.data?.language ?? null;
   useEffect(() => applyLanguage(language), [language]);
+  // Until the settings arrive, the look main.tsx applied from the mirror stays.
+  const theme = settings.data?.theme;
+  const font = settings.data?.font;
+  useEffect(() => {
+    if (theme && font) applyAppearance({ theme, font });
+  }, [theme, font]);
 
   // A retry puts the query back to pending, so remember a failure to load (never one with data cached) to keep the error screen up meanwhile.
   const [failure, setFailure] = useState<unknown>(null);

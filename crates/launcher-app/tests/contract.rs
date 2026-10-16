@@ -40,7 +40,7 @@ use launcher_core::{
         loaders::LoaderKind,
     },
     mods::LocalMod,
-    settings::{IconShape, Lang, Settings},
+    settings::{IconShape, Lang, Settings, Theme, UiFont},
     sync::ManualFile,
     ErrorCode, LauncherError,
 };
@@ -365,6 +365,8 @@ fn contract_fixtures_are_current() {
             language: Some(Lang::Es),
             rail_expanded: true,
             icon_shape: IconShape::Round,
+            theme: Theme::Night,
+            font: UiFont::System,
             ..Settings::default()
         },
     );
