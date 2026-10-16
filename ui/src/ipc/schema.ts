@@ -33,7 +33,7 @@ export const sourceRef = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('modrinth'), projectId: z.string(), versionId: z.string() }),
   z.strictObject({ kind: z.literal('perland'), invite: z.string(), engine: z.string() }),
 ]);
-export const javaSettings = z.strictObject({ path: z.string().nullable(), memoryMb: z.number().int() });
+export const javaSettings = z.strictObject({ path: z.string().nullable(), memoryMb: z.number().int(), args: z.string() });
 export const serverStatus = z.enum(['online', 'starting', 'sleeping', 'offline']);
 export const serverAddress = z.strictObject({ host: z.string(), port: z.number().int() });
 export const serverLink = z.strictObject({
@@ -97,6 +97,7 @@ export const instance = z.strictObject({
   server: serverLink.nullable(),
   artSeed: z.string().nullable(),
   art: z.enum(['auto', 'generated', 'custom']),
+  icon: z.enum(['auto', 'generated', 'custom']).nullable(),
 });
 export const damagedInstance = z.strictObject({ id: z.string(), error: launcherError });
 export const instanceListing = z.strictObject({ instances: z.array(instance), damaged: z.array(damagedInstance) });
@@ -228,6 +229,11 @@ export const manualProgress = z.strictObject({ found: z.number().int(), total: z
 export const instanceArtData = z.strictObject({ icon: z.string().nullable(), banner: z.string().nullable() });
 export const artChoice = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('generated'), seed: z.string() }),
+  z.strictObject({ kind: z.literal('pack') }),
+  z.strictObject({ kind: z.literal('upload'), path: z.string() }),
+]);
+export const iconChoice = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('generated') }),
   z.strictObject({ kind: z.literal('pack') }),
   z.strictObject({ kind: z.literal('upload'), path: z.string() }),
 ]);
@@ -378,6 +384,7 @@ export type PackContents = z.infer<typeof packContents>;
 export type ManualProgress = z.infer<typeof manualProgress>;
 export type InstanceArtData = z.infer<typeof instanceArtData>;
 export type ArtChoice = z.infer<typeof artChoice>;
+export type IconChoice = z.infer<typeof iconChoice>;
 export type PackAddRequest = z.infer<typeof packAddRequest>;
 export type ContentKind = z.infer<typeof contentKind>;
 export type SortIndex = z.infer<typeof sortIndex>;

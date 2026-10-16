@@ -160,6 +160,7 @@ fn main() {
             commands::manual_import,
             commands::instance_art,
             commands::instance_art_set,
+            commands::instance_icon_set,
             commands::deep_link_take,
             commands::browse_search,
             commands::browse_categories,

@@ -9,7 +9,7 @@ import {
   type PointerEvent,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PlotIcon } from '../../art/PlotIcon';
+import { InstanceIcon } from '../../art/InstanceIcon';
 import { artSeed } from '../../art/seed';
 import { pixelUpscale } from '../../art/upscale';
 import type { ServerStatus } from '../../ipc/schema';
@@ -61,7 +61,7 @@ interface Carry {
 interface Item {
   id: string;
   name: string;
-  /** What its generated plot icon grows from. */
+  /** What its generated icon grows from. */
   seed: string;
   damaged: boolean;
   pack: boolean;
@@ -99,7 +99,7 @@ function RailItem({
   const { t } = useTranslation();
   const run = useRun(item.id);
   const art = useInstanceArt(item.id);
-  // An icon that fails to decode gives the cabinet back its generated plot icon.
+  // An icon that fails to decode gives the cabinet back its generated icon.
   const [failed, setFailed] = useState<string | null>(null);
   const icon = art.data?.icon && art.data.icon !== failed ? art.data.icon : null;
   // A small pixel icon blown up to the 40px slot keeps hard pixels; a big icon shrinks smoothly.
@@ -153,7 +153,7 @@ function RailItem({
               onError={() => setFailed(icon)}
             />
           ) : (
-            <PlotIcon seed={item.seed} size={40} />
+            <InstanceIcon name={item.name} seed={item.seed} size={40} />
           )}
         </span>
         {status && !item.damaged && <span className="rail-led" aria-hidden />}

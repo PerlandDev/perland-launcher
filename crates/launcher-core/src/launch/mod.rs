@@ -1,4 +1,5 @@
 pub mod crash;
+pub mod jvm_args;
 pub mod redact;
 
 use std::{
@@ -43,6 +44,8 @@ pub struct LaunchSpec<'a> {
     pub java: &'a Path,
     pub session: &'a Session,
     pub memory_mb: u32,
+    /// The player's own Java arguments, already parsed (see [`jvm_args::parse`]).
+    pub jvm_args: Vec<String>,
     pub platform: Platform,
     pub launcher_version: &'a str,
     /// Join this server once the game starts: quick play where the version supports it,
@@ -251,7 +254,10 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
         vars.insert("quickPlayMultiplayer", address.display());
     }
 
+    // The player's arguments come before the version's, so when a property repeats, the
+    // launcher's own (library path, brand, log4j) is the last and wins.
     let mut args = vec![format!("-Xmx{}M", spec.memory_mb)];
+    args.extend(spec.jvm_args.iter().cloned());
     match &json.arguments {
         Some(a) if !a.jvm.is_empty() => args.extend(
             resolve_args(&a.jvm, &ctx)
@@ -691,6 +697,15 @@ mod tests {
         platform: Platform,
         join: Option<&ServerAddress>,
     ) -> LaunchCommand {
+        build_with(resolved, platform, join, Vec::new())
+    }
+
+    fn build_with(
+        resolved: &ResolvedVersion,
+        platform: Platform,
+        join: Option<&ServerAddress>,
+        jvm_args: Vec<String>,
+    ) -> LaunchCommand {
         let dirs = LauncherDirs::new("/pl");
         let session = offline_account("Steve").unwrap().offline_session();
         build_command(&LaunchSpec {
@@ -700,6 +715,7 @@ mod tests {
             java: Path::new("/pl/java/x/bin/java"),
             session: &session,
             memory_mb: 4096,
+            jvm_args,
             platform,
             launcher_version: "0.1.0",
             join,
@@ -1245,6 +1261,52 @@ mod tests {
             cwd: "/pl/instances/x/minecraft".into(),
             classpath: vec![],
         }
+    }
+
+    #[test]
+    fn player_jvm_args_follow_memory_and_precede_the_version_args() {
+        let resolved = vanilla("1.20.1.json", "1.20.1");
+        let cmd = build_with(
+            &resolved,
+            LINUX_X64,
+            None,
+            vec!["-XX:+UseG1GC".into(), "-Dperland.x=1".into()],
+        );
+        let a = &cmd.args;
+        assert_eq!(a[0], "-Xmx4096M");
+        assert_eq!(a[1..3], ["-XX:+UseG1GC", "-Dperland.x=1"]);
+        let at = |x: &str| a.iter().position(|v| v == x).unwrap();
+        assert!(at("-Dminecraft.launcher.brand=perland-launcher") > 2);
+        assert!(at("-cp") > 2);
+        assert!(at("-cp") < at("net.minecraft.client.main.Main"));
+    }
+
+    #[tokio::test]
+    async fn player_jvm_args_go_into_the_argfile() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("jvm-args.txt");
+        let resolved = vanilla("1.20.1.json", "1.20.1");
+        let mut cmd = build_with(&resolved, LINUX_X64, None, vec![r"-Ddir=C:\A B\c".into()]);
+        let at = cmd.args.iter().position(|a| a == "-cp").unwrap();
+        cmd.args[at + 1] = "x".repeat(ARGFILE_THRESHOLD);
+        let out = with_argfile(
+            &cmd,
+            "net.minecraft.client.main.Main",
+            &file,
+            "tok-0123456789",
+        )
+        .await
+        .unwrap();
+        let written = std::fs::read_to_string(&file).unwrap();
+        assert!(written.contains(r#""-Ddir=C:\\A B\\c""#), "{written}");
+        let main = cmd
+            .args
+            .iter()
+            .position(|a| a == "net.minecraft.client.main.Main")
+            .unwrap();
+        let mut expected = vec![format!("@{}", file.display())];
+        expected.extend_from_slice(&cmd.args[main..]);
+        assert_eq!(out.args, expected);
     }
 
     #[test]

@@ -342,8 +342,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Version and Java changes wait until the game stops; other edits are fine while it runs.
-    /// Where an instance comes from (`source`) and its server link (`server`) change only through
-    /// their own commands, so a stale copy from the UI can't undo a relink. Server instances
+    /// Where an instance comes from (`source`), its server link (`server`) and its pictures
+    /// (`art`, `art_seed`, `icon`) change only through their own commands, so a stale copy from
+    /// the UI can't undo a relink or a picture. Server instances
     /// always follow their server (`Auto`).
     pub async fn instance_update(&self, instance: Instance) -> Result<Instance> {
         let current = self.instances.load(&instance.id).await?;
@@ -363,6 +364,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         instance.server = current.server.clone();
         instance.art = current.art;
         instance.art_seed = current.art_seed.clone();
+        instance.icon = current.icon;
         if matches!(current.source, SourceRef::Perland { .. }) {
             instance.update_policy = UpdatePolicy::Auto;
         }
@@ -1086,6 +1088,23 @@ pub(crate) mod tests {
         let after = core.instances.load("a").await.unwrap();
         assert_eq!(after.art_seed.as_deref(), Some("seed-1"));
         assert_eq!(after.art, ArtMode::Generated);
+        assert_eq!(after.java.memory_mb, stored.java.memory_mb + 512);
+    }
+
+    #[tokio::test]
+    async fn update_keeps_the_icon_from_disk() {
+        use launcher_core::instances::IconMode;
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let mut instance = core.instance_create(vanilla("A")).await.unwrap();
+        let mut stored = core.instances.load("a").await.unwrap();
+        stored.icon = Some(IconMode::Generated);
+        core.instances.update(&stored).await.unwrap();
+        // A stale copy from the UI doesn't undo the icon.
+        instance.icon = None;
+        instance.java.memory_mb += 512;
+        core.instance_update(instance).await.unwrap();
+        let after = core.instances.load("a").await.unwrap();
+        assert_eq!(after.icon, Some(IconMode::Generated));
         assert_eq!(after.java.memory_mb, stored.java.memory_mb + 512);
     }
 

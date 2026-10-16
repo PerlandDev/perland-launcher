@@ -5,7 +5,7 @@ use std::{path::Path, sync::Arc};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
     fsutil::{path_key, write_atomic},
-    instances::{ArtMode, Instance, SourceRef},
+    instances::{ArtMode, IconMode, Instance, SourceRef},
     mods,
     sources::{
         art::{sniff, MAX_ART_BYTES},
@@ -22,8 +22,8 @@ use crate::{
     app::{busy, AppCore},
     deep_link::{self, DeepLink},
     dto::{
-        ArtChoice, InstanceArtData, ManualProgress, OptionalChoice, PackAddRequest, PackContents,
-        PackMod, PackStatus, PackUpdate,
+        ArtChoice, IconChoice, InstanceArtData, ManualProgress, OptionalChoice, PackAddRequest,
+        PackContents, PackMod, PackStatus, PackUpdate,
     },
     events::{AppEvent, Host},
     runner::Runner,
@@ -64,7 +64,10 @@ async fn art_url(dir: &Path, stem: &str) -> Option<String> {
 
 /// Where the player's own picture lives, inside `.perland/`, and what it may be.
 const CUSTOM_DIR: &str = "custom";
+/// The background.
 const CUSTOM_STEM: &str = "image";
+/// The icon, once it is chosen apart from the background.
+const ICON_STEM: &str = "icon";
 const CUSTOM_EXTS: [&str; 3] = ["png", "jpg", "webp"];
 const MAX_SEED_CHARS: usize = 64;
 
@@ -115,6 +118,25 @@ async fn make_dir_in_instance(instance: &Path, dir: &Path, id: &str) -> Result<(
     }
     tokio::fs::create_dir_all(dir).await?;
     Ok(())
+}
+
+/// Write `<dir>/<stem>.<ext>` atomically and remove the same picture's other types, so only
+/// the new one is left.
+async fn write_custom(dir: &Path, stem: &str, bytes: &[u8], ext: &str) -> Result<()> {
+    write_atomic(&dir.join(format!("{stem}.{ext}")), bytes).await?;
+    for other in CUSTOM_EXTS.iter().filter(|e| **e != ext) {
+        let _ = tokio::fs::remove_file(dir.join(format!("{stem}.{other}"))).await;
+    }
+    Ok(())
+}
+
+/// Remove `<dir>/<stem>.*`, and `dir` too once nothing is left in it. Best effort: the saved
+/// choice is what counts, a leftover file is only unused.
+async fn remove_custom(dir: &Path, stem: &str) {
+    for ext in CUSTOM_EXTS {
+        let _ = tokio::fs::remove_file(dir.join(format!("{stem}.{ext}"))).await;
+    }
+    let _ = tokio::fs::remove_dir(dir).await;
 }
 
 fn link_invalid() -> LauncherError {
@@ -337,35 +359,34 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         })
     }
 
-    /// The picture the player sees for this instance: their own image (as `icon` only, so a big
-    /// file crosses IPC once; the marquee falls back to the icon), nothing at all for a
-    /// generated landscape, or the pack's art from `.perland/art/`.
+    /// The pictures the player sees for this instance, icon and background apart: their own
+    /// files from `.perland/custom/`, nothing for generated ones, or the pack's art from
+    /// `.perland/art/`. A never-chosen icon on a round-1 upload is that upload, so the one
+    /// picture keeps filling both places until one of them changes.
     pub async fn instance_art(&self, id: &str) -> Result<InstanceArtData> {
         let instance = self.instances.load(id).await?;
         let perland = self.instances.perland_dir(id);
-        Ok(match instance.art {
-            ArtMode::Generated => InstanceArtData {
-                icon: None,
-                banner: None,
-            },
-            ArtMode::Custom => InstanceArtData {
-                icon: art_url(&perland.join(CUSTOM_DIR), CUSTOM_STEM).await,
-                banner: None,
-            },
-            ArtMode::Auto => {
-                let dir = perland.join("art");
-                InstanceArtData {
-                    icon: art_url(&dir, "icon").await,
-                    banner: art_url(&dir, "banner").await,
-                }
-            }
-        })
+        let custom = perland.join(CUSTOM_DIR);
+        let art = perland.join("art");
+        let icon = match instance.icon_mode() {
+            IconMode::Generated => None,
+            IconMode::Custom if instance.icon.is_none() => art_url(&custom, CUSTOM_STEM).await,
+            IconMode::Custom => art_url(&custom, ICON_STEM).await,
+            IconMode::Auto => art_url(&art, "icon").await,
+        };
+        let banner = match instance.art {
+            ArtMode::Generated => None,
+            ArtMode::Custom => art_url(&custom, CUSTOM_STEM).await,
+            ArtMode::Auto => art_url(&art, "banner").await,
+        };
+        Ok(InstanceArtData { icon, banner })
     }
 
-    /// "Change image…": a generated landscape, the pack's own art, or a file of the player's.
-    /// Refused while the instance is busy or installing, like a rename. Every check runs before
-    /// anything is written, so a bad file leaves the previous picture as it was. Only the art
-    /// fields change (a `save`, not an `update`), so a stale Java path doesn't block a picture.
+    /// "Change image…", the background: a generated landscape, the pack's own art, or a file of
+    /// the player's. Refused while the instance is busy or installing, like a rename. Every check
+    /// runs before anything is written, so a bad file leaves the previous picture as it was. Only
+    /// the picture fields change (a `save`, not an `update`), so a stale Java path doesn't block
+    /// a picture. A never-chosen icon is pinned first, so the icon never changes with it.
     pub async fn instance_art_set(&self, id: &str, choice: ArtChoice) -> Result<Instance> {
         if self.is_busy(id) {
             return Err(busy(id));
@@ -381,6 +402,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         // Loaded after the upload is read, right before writing: a rename that moved the folder
         // meanwhile is refused here instead of writing into the old place.
         let mut instance = self.instances.load(id).await?;
+        let icon = instance.icon_mode();
         match choice {
             ArtChoice::Generated { seed } => {
                 if seed.is_empty() || seed.chars().count() > MAX_SEED_CHARS {
@@ -397,18 +419,74 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
             ArtChoice::Upload { .. } => instance.art = ArtMode::Custom,
         }
+        if instance.icon.is_none() {
+            if icon == IconMode::Custom {
+                self.pin_legacy_icon(id, &custom).await?;
+            }
+            instance.icon = Some(icon);
+        }
         let Some((bytes, ext)) = upload else {
             self.instances.save(&instance).await?;
             // The saved choice is what counts; a leftover file is only unused.
-            let _ = tokio::fs::remove_dir_all(&custom).await;
+            remove_custom(&custom, CUSTOM_STEM).await;
             return Ok(instance);
         };
         make_dir_in_instance(&self.instances.instance_dir(id), &custom, id).await?;
-        write_atomic(&custom.join(format!("{CUSTOM_STEM}.{ext}")), &bytes).await?;
+        write_custom(&custom, CUSTOM_STEM, &bytes, ext).await?;
         self.instances.save(&instance).await?;
-        for other in CUSTOM_EXTS.iter().filter(|e| **e != ext) {
-            let _ = tokio::fs::remove_file(custom.join(format!("{CUSTOM_STEM}.{other}"))).await;
+        Ok(instance)
+    }
+
+    /// A round-1 upload is the icon as well as the background: copy it to `icon.<ext>` before
+    /// the background changes, so the icon stays.
+    async fn pin_legacy_icon(&self, id: &str, custom: &Path) -> Result<()> {
+        for ext in CUSTOM_EXTS {
+            let image = custom.join(format!("{CUSTOM_STEM}.{ext}"));
+            if !tokio::fs::metadata(&image).await.is_ok_and(|m| m.is_file()) {
+                continue;
+            }
+            let bytes = tokio::fs::read(&image).await?;
+            make_dir_in_instance(&self.instances.instance_dir(id), custom, id).await?;
+            return write_custom(custom, ICON_STEM, &bytes, ext).await;
         }
+        Ok(())
+    }
+
+    /// "Change image…", the icon: the generated monogram, the pack's own icon, or a file of the
+    /// player's. The same refusals, checks and writes as `instance_art_set`; the background
+    /// stays as it is.
+    pub async fn instance_icon_set(&self, id: &str, choice: IconChoice) -> Result<Instance> {
+        if self.is_busy(id) {
+            return Err(busy(id));
+        }
+        if self.is_installing(id) {
+            return Err(crate::browse::content_installing());
+        }
+        let custom = self.instances.perland_dir(id).join(CUSTOM_DIR);
+        let upload = match &choice {
+            IconChoice::Upload { path } => Some(read_upload(path).await?),
+            _ => None,
+        };
+        // Loaded right before writing, as in `instance_art_set`.
+        let mut instance = self.instances.load(id).await?;
+        instance.icon = Some(match choice {
+            IconChoice::Generated => IconMode::Generated,
+            IconChoice::Pack => {
+                if instance.source == SourceRef::None {
+                    return Err(no_pack());
+                }
+                IconMode::Auto
+            }
+            IconChoice::Upload { .. } => IconMode::Custom,
+        });
+        let Some((bytes, ext)) = upload else {
+            self.instances.save(&instance).await?;
+            remove_custom(&custom, ICON_STEM).await;
+            return Ok(instance);
+        };
+        make_dir_in_instance(&self.instances.instance_dir(id), &custom, id).await?;
+        write_custom(&custom, ICON_STEM, &bytes, ext).await?;
+        self.instances.save(&instance).await?;
         Ok(instance)
     }
 
@@ -442,7 +520,7 @@ mod tests {
 
     use launcher_core::{
         accounts::BuildKind,
-        instances::{ArtMode, SourceRef, UpdatePolicy},
+        instances::{ArtMode, IconMode, SourceRef, UpdatePolicy},
         sources::{art::MAX_ART_BYTES, PackInput, UpdateCheck},
         sync::{lockfile, manual::Scanner},
         ErrorCode, LauncherError,
@@ -451,7 +529,7 @@ mod tests {
     use crate::{
         app::{tests::core, ManualState},
         deep_link::DeepLink,
-        dto::{ArtChoice, InstanceArtData, NewInstance, OpenTarget, PackAddRequest},
+        dto::{ArtChoice, IconChoice, InstanceArtData, NewInstance, OpenTarget, PackAddRequest},
         events::{AppEvent, RunStateKind::*},
         testing::{
             desired, exit, invite, managed_for, manual_file, pack_file, pack_instance, pending,
@@ -958,19 +1036,13 @@ mod tests {
             .unwrap();
         assert_eq!(set.art, ArtMode::Custom);
         assert_eq!(core.instances.load(&id).await.unwrap().art, ArtMode::Custom);
-        // A sync rewrites the pack's art; the player's picture stays.
-        std::fs::write(art.join("icon.png"), b"\x89PNG\r\n\x1a\n\0again").unwrap();
+        // A sync rewrites the pack's art; the player's background stays.
+        std::fs::write(art.join("banner.png"), b"\x89PNG\r\n\x1a\n\0again").unwrap();
         let data = core.instance_art(&id).await.unwrap();
-        assert_ne!(data.icon.as_ref().unwrap(), &pack_icon);
-        assert!(data
-            .icon
-            .as_ref()
-            .unwrap()
-            .starts_with("data:image/png;base64,iVBORw0KGgo"));
-        assert_eq!(
-            data.banner, None,
-            "one picture, sent once: the marquee uses the icon"
-        );
+        assert_eq!(data.banner, Some(png_url(PNG)));
+        // A new background never takes the icon with it: the pack's icon is pinned.
+        assert_eq!(set.icon, Some(IconMode::Auto));
+        assert_eq!(data.icon, Some(pack_icon));
         assert_eq!(custom_files(&core, &id), ["image.png"]);
     }
 
@@ -1002,19 +1074,21 @@ mod tests {
             (set.art, set.art_seed.as_deref()),
             (ArtMode::Generated, Some("dunes"))
         );
+        // The background is generated; the icon stays the pack's.
         assert_eq!(
             core.instance_art(&id).await.unwrap(),
             InstanceArtData {
-                icon: None,
+                icon: Some(png_url(PNG)),
                 banner: None
             }
         );
         assert!(custom_files(&core, &id).is_empty());
         assert!(!core.instances.perland_dir(&id).join("custom").exists());
         // Back to the pack's own art.
+        std::fs::write(art.join("banner.png"), PNG).unwrap();
         let set = core.instance_art_set(&id, ArtChoice::Pack).await.unwrap();
         assert_eq!(set.art, ArtMode::Auto);
-        assert!(core.instance_art(&id).await.unwrap().icon.is_some());
+        assert!(core.instance_art(&id).await.unwrap().banner.is_some());
     }
 
     #[tokio::test]
@@ -1149,7 +1223,7 @@ mod tests {
             .instance_art(&id)
             .await
             .unwrap()
-            .icon
+            .banner
             .unwrap()
             .starts_with("data:image/webp;base64,"));
     }
@@ -1233,6 +1307,257 @@ mod tests {
         assert_eq!(err.code, ErrorCode::ContentInstalling);
         let now = core.instances.load(&id).await.unwrap();
         assert_eq!(now.art, ArtMode::Auto);
+        assert!(!core.instances.perland_dir(&id).join("custom").exists());
+    }
+
+    /// What `instance_art` sends for these PNG bytes.
+    fn png_url(bytes: &[u8]) -> String {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        format!("data:image/png;base64,{}", STANDARD.encode(bytes))
+    }
+
+    const PNG_A: &[u8] = b"\x89PNG\r\n\x1a\n\0A";
+    const PNG_B: &[u8] = b"\x89PNG\r\n\x1a\n\0B";
+
+    #[tokio::test]
+    async fn icon_and_background_uploads_are_separate() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        let set = core
+            .instance_icon_set(
+                &id,
+                IconChoice::Upload {
+                    path: picked(tmp.path(), "a.png", PNG_A),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(set.icon, Some(IconMode::Custom));
+        let set = core
+            .instance_art_set(
+                &id,
+                ArtChoice::Upload {
+                    path: picked(tmp.path(), "b.png", PNG_B),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            (set.icon, set.art),
+            (Some(IconMode::Custom), ArtMode::Custom)
+        );
+        assert_eq!(
+            core.instance_art(&id).await.unwrap(),
+            InstanceArtData {
+                icon: Some(png_url(PNG_A)),
+                banner: Some(png_url(PNG_B)),
+            }
+        );
+        assert_eq!(custom_files(&core, &id), ["icon.png", "image.png"]);
+        // A landscape background keeps the icon.
+        core.instance_art_set(
+            &id,
+            ArtChoice::Generated {
+                seed: "dunes".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            core.instance_art(&id).await.unwrap(),
+            InstanceArtData {
+                icon: Some(png_url(PNG_A)),
+                banner: None,
+            }
+        );
+        assert_eq!(custom_files(&core, &id), ["icon.png"]);
+        assert_eq!(
+            core.instances.load(&id).await.unwrap().icon,
+            Some(IconMode::Custom)
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_upload_fills_both_until_changed() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        // A round-1 instance.json: a custom picture and no `icon` key at all.
+        let mut json = serde_json::to_value(core.instances.load(&id).await.unwrap()).unwrap();
+        json["art"] = "custom".into();
+        json.as_object_mut().unwrap().remove("icon");
+        std::fs::write(
+            core.instances.instance_dir(&id).join("instance.json"),
+            serde_json::to_vec(&json).unwrap(),
+        )
+        .unwrap();
+        let custom = core.instances.perland_dir(&id).join("custom");
+        std::fs::create_dir_all(&custom).unwrap();
+        std::fs::write(custom.join("image.png"), PNG).unwrap();
+        assert_eq!(core.instances.load(&id).await.unwrap().icon, None);
+        assert_eq!(
+            core.instance_art(&id).await.unwrap(),
+            InstanceArtData {
+                icon: Some(png_url(PNG)),
+                banner: Some(png_url(PNG)),
+            }
+        );
+        // A new background pins the old picture as the icon first.
+        let set = core
+            .instance_art_set(
+                &id,
+                ArtChoice::Generated {
+                    seed: "dunes".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(set.icon, Some(IconMode::Custom));
+        assert_eq!(
+            core.instances.load(&id).await.unwrap().icon,
+            Some(IconMode::Custom)
+        );
+        assert_eq!(
+            core.instance_art(&id).await.unwrap(),
+            InstanceArtData {
+                icon: Some(png_url(PNG)),
+                banner: None,
+            }
+        );
+        assert!(custom.join("icon.png").exists());
+        assert_eq!(custom_files(&core, &id), ["icon.png"]);
+    }
+
+    #[tokio::test]
+    async fn pack_icon_choice() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        let plain = core
+            .instance_create(NewInstance {
+                name: "Plain".into(),
+                minecraft: "1.20.1".into(),
+                loader: None,
+            })
+            .await
+            .unwrap();
+        let err = core
+            .instance_icon_set(&plain.id, IconChoice::Pack)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::NoPack);
+        assert_eq!(core.instances.load(&plain.id).await.unwrap().icon, None);
+
+        let id = pack_instance(&core, "Sky", None).await.id;
+        let art = core.instances.perland_dir(&id).join("art");
+        std::fs::create_dir_all(&art).unwrap();
+        std::fs::write(art.join("icon.png"), PNG_B).unwrap();
+        let upload = IconChoice::Upload {
+            path: picked(tmp.path(), "a.png", PNG_A),
+        };
+        core.instance_icon_set(&id, upload.clone()).await.unwrap();
+        assert_eq!(custom_files(&core, &id), ["icon.png"]);
+        let set = core.instance_icon_set(&id, IconChoice::Pack).await.unwrap();
+        assert_eq!(set.icon, Some(IconMode::Auto));
+        assert_eq!(
+            core.instance_art(&id).await.unwrap().icon,
+            Some(png_url(PNG_B))
+        );
+        assert!(custom_files(&core, &id).is_empty());
+
+        core.instance_icon_set(&id, upload).await.unwrap();
+        let set = core
+            .instance_icon_set(&id, IconChoice::Generated)
+            .await
+            .unwrap();
+        assert_eq!(set.icon, Some(IconMode::Generated));
+        assert_eq!(
+            core.instances.load(&id).await.unwrap().icon,
+            Some(IconMode::Generated)
+        );
+        // Even with pack art there, a generated icon sends no image.
+        assert_eq!(core.instance_art(&id).await.unwrap().icon, None);
+        assert!(custom_files(&core, &id).is_empty());
+    }
+
+    #[tokio::test]
+    async fn icon_uploads_are_checked() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        core.instance_icon_set(&id, IconChoice::Generated)
+            .await
+            .unwrap();
+        let fake = picked(tmp.path(), "fake.png", b"MZ\x90\0this is an exe");
+        let err = core
+            .instance_icon_set(&id, IconChoice::Upload { path: fake.clone() })
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::ArtFileInvalid);
+        assert_eq!(
+            err.fix.as_deref(),
+            Some("Pick a PNG, JPEG or WebP image under 5 MB.")
+        );
+        assert_eq!(
+            core.instances.load(&id).await.unwrap().icon,
+            Some(IconMode::Generated)
+        );
+        assert!(!core.instances.perland_dir(&id).join("custom").exists());
+        // A good icon stays as it was after a bad one.
+        core.instance_icon_set(
+            &id,
+            IconChoice::Upload {
+                path: picked(tmp.path(), "good.png", PNG),
+            },
+        )
+        .await
+        .unwrap();
+        core.instance_icon_set(&id, IconChoice::Upload { path: fake })
+            .await
+            .unwrap_err();
+        assert_eq!(
+            core.instances.load(&id).await.unwrap().icon,
+            Some(IconMode::Custom)
+        );
+        assert_eq!(custom_files(&core, &id), ["icon.png"]);
+        // Like the background, the bytes pick the type and a new type replaces the old file.
+        core.instance_icon_set(
+            &id,
+            IconChoice::Upload {
+                path: picked(tmp.path(), "photo.jpg", WEBP),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(custom_files(&core, &id), ["icon.webp"]);
+    }
+
+    #[tokio::test]
+    async fn icon_set_refused_while_busy() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        core.runs.lock().unwrap().insert(
+            id.clone(),
+            crate::app::Run {
+                phase: Running,
+                abort: None,
+                killer: None,
+                cancel: launcher_core::sync::Cancel::default(),
+                answer: None,
+                offer: None,
+                update_only: false,
+            },
+        );
+        let upload = IconChoice::Upload {
+            path: picked(tmp.path(), "mine.png", PNG),
+        };
+        for choice in [IconChoice::Generated, upload.clone()] {
+            let err = core.instance_icon_set(&id, choice).await.unwrap_err();
+            assert_eq!(err.code, ErrorCode::InstanceBusy);
+        }
+        core.runs.lock().unwrap().clear();
+        core.installing.lock().unwrap().insert(id.clone());
+        for choice in [IconChoice::Pack, upload] {
+            let err = core.instance_icon_set(&id, choice).await.unwrap_err();
+            assert_eq!(err.code, ErrorCode::ContentInstalling);
+        }
+        assert_eq!(core.instances.load(&id).await.unwrap().icon, None);
         assert!(!core.instances.perland_dir(&id).join("custom").exists());
     }
 

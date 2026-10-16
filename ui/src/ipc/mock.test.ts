@@ -103,16 +103,56 @@ describe('mock backend', () => {
     expect((await art('sky-islands')).icon).toMatch(/^data:image\/svg/);
     const generated = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'generated', seed: 'dunes' } })) as Instance;
     expect([generated.art, generated.artSeed]).toEqual(['generated', 'dunes']);
-    expect(await art('sky-islands')).toEqual({ icon: null, banner: null });
+    // The background changed; the pack's icon is pinned and stays.
+    expect(generated.icon).toBe('auto');
+    const pinned = await art('sky-islands');
+    expect(pinned.icon).toMatch(/^data:image\/svg/);
+    expect(pinned.banner).toBeNull();
     const custom = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/Me.JPG' } })) as Instance;
     expect(custom.art).toBe('custom');
     const mine = await art('sky-islands');
-    expect(mine.icon).toMatch(/^data:image\/jpeg;base64,/);
-    // Sent once, as the icon, like the core: the marquee falls back to it.
-    expect(mine.banner).toBeNull();
+    expect(mine.banner).toMatch(/^data:image\/jpeg;base64,/);
+    expect(mine.icon).toMatch(/^data:image\/svg/);
     const back = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'pack' } })) as Instance;
     expect(back.art).toBe('auto');
     expect((await art('sky-islands')).icon).toMatch(/^data:image\/svg/);
+  });
+
+  it('keeps the icon apart from the background', async () => {
+    const { handle, state } = createMockBackend();
+    const art = (id: string) => handle('instance_art', { id }) as Promise<{ icon: string | null; banner: string | null }>;
+    const mine = (await handle('instance_icon_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/me.webp' } })) as Instance;
+    expect(mine.icon).toBe('custom');
+    await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/view.png' } });
+    expect(await art('sky-islands')).toEqual({
+      icon: expect.stringMatching(/^data:image\/webp;base64,/),
+      banner: expect.stringMatching(/^data:image\/png;base64,/),
+    });
+    const generated = (await handle('instance_icon_set', { id: 'sky-islands', choice: { kind: 'generated' } })) as Instance;
+    expect(generated.icon).toBe('generated');
+    expect((await art('sky-islands')).icon).toBeNull();
+    const pack = (await handle('instance_icon_set', { id: 'sky-islands', choice: { kind: 'pack' } })) as Instance;
+    expect(pack.icon).toBe('auto');
+    expect((await art('sky-islands')).icon).toMatch(/^data:image\/svg/);
+    await expect(handle('instance_icon_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/invalid.png' } })).rejects.toMatchObject({
+      code: 'art_file_invalid',
+    });
+    const plain = state.listing.instances.find((i) => i.source.kind === 'none')!;
+    await expect(handle('instance_icon_set', { id: plain.id, choice: { kind: 'pack' } })).rejects.toMatchObject({ code: 'no_pack' });
+  });
+
+  it('lets a round-1 upload fill both places until the background changes', async () => {
+    const { handle, state } = createMockBackend();
+    const art = (id: string) => handle('instance_art', { id }) as Promise<{ icon: string | null; banner: string | null }>;
+    await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/old.png' } });
+    // As a round-1 instance.json loads: a custom picture and no icon chosen.
+    state.listing.instances = state.listing.instances.map((i) => (i.id === 'sky-islands' ? { ...i, icon: null } : i));
+    const legacy = await art('sky-islands');
+    expect(legacy.icon).toMatch(/^data:image\/png;base64,/);
+    expect(legacy.banner).toBe(legacy.icon);
+    const set = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'generated', seed: 'dunes' } })) as Instance;
+    expect(set.icon).toBe('custom');
+    expect(await art('sky-islands')).toEqual({ icon: legacy.icon, banner: null });
   });
 
   it('refuses a bad upload and a pack choice without a pack', async () => {

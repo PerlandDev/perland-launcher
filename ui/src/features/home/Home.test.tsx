@@ -69,6 +69,15 @@ describe('Home', () => {
     expect(routeSnapshot()).toEqual({ name: 'accounts' });
   });
 
+  it('offers community modpacks beside creating the first instance', async () => {
+    const { user } = renderApp(<Home id={null} />, { firstRun: true });
+    expect(await screen.findByRole('button', { name: 'Create an instance' })).toHaveClass('btn-primary');
+    const browse = screen.getByRole('button', { name: 'Browse modpacks' });
+    expect(browse).not.toHaveClass('btn-primary');
+    await user.click(browse);
+    expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
+  });
+
   it('offers to create the first instance when there are none', async () => {
     const { user } = renderApp(<Home id={null} />, { firstRun: true });
     await user.click(await screen.findByRole('button', { name: 'Create an instance' }));
@@ -376,10 +385,10 @@ describe('server instances', () => {
   });
 });
 
-it("fills the marquee with the player's own picture, which arrives once as the icon", async () => {
+it("fills the marquee with the player's own background, which arrives as the banner", async () => {
   const backend = createMockBackend();
   await backend.handle('instance_art_set', { id: 'asalith-fields', choice: { kind: 'upload', path: 'C:/castle.png' } });
-  expect(await backend.handle('instance_art', { id: 'asalith-fields' })).toMatchObject({ banner: null });
+  expect(await backend.handle('instance_art', { id: 'asalith-fields' })).toMatchObject({ banner: expect.stringMatching(/^data:image\/png;base64,/) });
   const { container } = renderWithProviders(<Home id="asalith-fields" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
   await screen.findByRole('heading', { name: 'Asalith Fields' });
   await vi.waitFor(() => expect(container.querySelector('img.marquee-banner')?.getAttribute('src')).toMatch(/^data:image\/png;base64,/));
@@ -396,4 +405,43 @@ it('draws the marquee from the art seed, not the id', async () => {
   const want = hills(render(<Marquee seed="old-name" attract={false} />).container);
   expect(want).not.toEqual(hills(render(<Marquee seed="creative-flat" attract={false} />).container));
   expect(hills(container.querySelector('section .marquee')!)).toEqual(want);
+});
+
+describe('the icon plate', () => {
+  it("sits before the name when the instance has a real icon", async () => {
+    const { container } = renderApp(<Home id="sky-islands" />);
+    const name = await screen.findByRole('heading', { name: 'Sky Islands' });
+    const plate = await vi.waitFor(() => {
+      const found = container.querySelector<HTMLImageElement>('img.icon-plate');
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(plate.getAttribute('src')).toMatch(/^data:image\/svg\+xml;base64,/);
+    // Decoration beside the name, which already says what it is.
+    expect(plate).toHaveAttribute('alt', '');
+    expect(name.parentElement).toContainElement(plate);
+    expect(plate.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The icon never becomes the background.
+    const banner = container.querySelector<HTMLImageElement>('img.marquee-banner');
+    expect(banner).not.toBeNull();
+    expect(banner!.getAttribute('src')).not.toBe(plate.getAttribute('src'));
+  });
+
+  it('is absent for a generated icon', async () => {
+    const { container, calls } = renderApp(<Home id="asalith-fields" />);
+    await screen.findByRole('heading', { name: 'Asalith Fields' });
+    await vi.waitFor(() => expect(sent(calls, 'instance_art').length).toBeGreaterThan(0));
+    await act(async () => {});
+    expect(container.querySelector('.icon-plate')).toBeNull();
+  });
+
+  it('is absent when the player picked the initials for a pack', async () => {
+    const backend = createMockBackend();
+    await backend.handle('instance_icon_set', { id: 'sky-islands', choice: { kind: 'generated' } });
+    const { container } = renderWithProviders(<Home id="sky-islands" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
+    await screen.findByRole('heading', { name: 'Sky Islands' });
+    // The pack's banner still arrives, so the art has been read.
+    await vi.waitFor(() => expect(container.querySelector('img.marquee-banner')).not.toBeNull());
+    expect(container.querySelector('.icon-plate')).toBeNull();
+  });
 });

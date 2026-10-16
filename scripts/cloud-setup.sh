@@ -39,7 +39,7 @@ if ! command -v rustup >/dev/null 2>&1; then
 fi
 # shellcheck disable=SC1091
 . "$HOME/.cargo/env"
-rustup toolchain install stable --component rustfmt clippy
+rustup toolchain install stable --component rustfmt,clippy
 rustup default stable
 
 # 4. Node 24 and pnpm 11.5.0 (package.json "packageManager").

@@ -29,6 +29,7 @@ import type {
   ContentKind,
   DeepLink,
   ExitInfo,
+  IconChoice,
   InstallPlanView,
   InstallResult,
   Instance,
@@ -132,10 +133,23 @@ function sameFamily(id: string, base: string) {
   return rest !== null && /^\d+$/.test(rest) && Number(rest) >= 2;
 }
 
+/** The icon's mode with a never-chosen icon resolved, like `Instance::icon_mode` in the core. */
+function iconModeOf(instance: Instance): 'auto' | 'generated' | 'custom' {
+  return instance.icon ?? (instance.art === 'custom' ? 'custom' : 'auto');
+}
+
+/** A picked file as the data URL the core would send, or null when the core would refuse it (by name
+ *  here: the mock has no bytes, and a name containing "invalid" stands for a bad file). */
+function uploadUrl(path: string): string | null {
+  const ext = /\.(png|jpe?g|webp)$/i.exec(path)?.[1]?.toLowerCase();
+  if (!ext || /invalid/i.test(path)) return null;
+  return `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${TINY_PNG}`;
+}
+
 /** Move every id-keyed piece of mock state to a renamed instance's new id. */
 function moveId(state: MockState, from: string, to: string) {
   state.order = state.order.map((id) => (id === from ? to : id));
-  for (const map of [state.mods, state.packs, state.custom, state.browse.installed] as Map<string, unknown>[]) {
+  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.browse.installed] as Map<string, unknown>[]) {
     if (map.has(from)) {
       map.set(to, map.get(from));
       map.delete(from);
@@ -231,10 +245,11 @@ function seed(options: MockOptions) {
       game: { minecraft: '1.20.1', loader: { kind: 'forge', version: '47.4.22' } },
       updatePolicy: 'ask',
       optionalChoices: {},
-      java: { path: null, memoryMb: 6144 },
+      java: { path: null, memoryMb: 6144, args: '' },
       server: null,
       artSeed: null,
       art: 'auto',
+      icon: null,
     };
     listing.instances = [...listing.instances, sky];
     const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
@@ -272,8 +287,10 @@ function seed(options: MockOptions) {
     update,
     mods,
     packs,
-    // The player's own picture per instance, as a data URL (the real one lives in .perland/custom/).
+    // The player's own background per instance, as a data URL (the real one is .perland/custom/image.*).
     custom: new Map<string, string>(),
+    // The player's own icon per instance (.perland/custom/icon.*).
+    customIcon: new Map<string, string>(),
     content,
     browse: {
       installed: new Map<string, Set<string>>([['asalith-fields', new Set(['P7dR8mSH'])]]),
@@ -592,16 +609,19 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         game: { minecraft: request.minecraft, loader: request.loader },
         updatePolicy: 'ask',
         optionalChoices: {},
-        java: { path: null, memoryMb: state.settings.defaultMemoryMb },
+        java: { path: null, memoryMb: state.settings.defaultMemoryMb, args: '' },
         server: null,
         artSeed: null,
         art: 'auto',
+        icon: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       return created;
     }
     case 'instance_update': {
       const updated = args.instance as Instance;
+      // Like the core: memory comes from the slider, never from the Java arguments.
+      if (updated.java.args.split(/\s+/).some((token) => token.startsWith('-Xmx'))) fail('java', 'jvm_args_memory', 'Memory is set with the slider, not in the Java arguments');
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
     }
@@ -708,34 +728,61 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       return { found: pack.found, total: pack.manual.length, remaining: pack.manual.slice(pack.found) } satisfies ManualProgress;
     }
     case 'instance_art': {
+      // Icon and background apart, like the core; a round-1 upload with no icon chosen fills both.
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
-      const none: InstanceArtData = { icon: null, banner: null };
-      if (target.art === 'generated') return none;
-      if (target.art === 'custom') {
-        // Sent once, as the icon: the marquee falls back to it (like the core).
-        return { icon: state.custom.get(target.id) ?? null, banner: null } satisfies InstanceArtData;
-      }
-      return state.packs.get(target.id)?.art ?? none;
+      const pack = state.packs.get(target.id)?.art;
+      const iconMode = iconModeOf(target);
+      const icon =
+        iconMode === 'generated'
+          ? null
+          : iconMode === 'custom'
+            ? ((target.icon === null ? state.custom : state.customIcon).get(target.id) ?? null)
+            : (pack?.icon ?? null);
+      const banner =
+        target.art === 'generated' ? null : target.art === 'custom' ? (state.custom.get(target.id) ?? null) : (pack?.banner ?? null);
+      return { icon, banner } satisfies InstanceArtData;
     }
     case 'instance_art_set': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
       if (state.runs.has(target.id)) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: target.id });
       const choice = args.choice as ArtChoice;
       const invalid = () => fail('disk', 'art_file_invalid', "That file can't be used as an instance image");
+      if (choice.kind === 'generated' && (choice.seed.length === 0 || choice.seed.length > 64)) invalid();
+      if (choice.kind === 'pack' && target.source.kind === 'none') fail('pack', 'no_pack', "This instance doesn't come from a pack");
+      const upload = choice.kind === 'upload' ? (uploadUrl(choice.path) ?? invalid()) : null;
+      // A never-chosen icon is pinned first, so the icon never changes with the background.
+      const icon = iconModeOf(target);
+      if (target.icon === null && icon === 'custom') {
+        const legacy = state.custom.get(target.id);
+        if (legacy) state.customIcon.set(target.id, legacy);
+      }
       let updated: Instance;
       if (choice.kind === 'generated') {
-        if (choice.seed.length === 0 || choice.seed.length > 64) invalid();
         state.custom.delete(target.id);
-        updated = { ...target, art: 'generated', artSeed: choice.seed };
+        updated = { ...target, art: 'generated', artSeed: choice.seed, icon };
       } else if (choice.kind === 'pack') {
-        if (target.source.kind === 'none') fail('pack', 'no_pack', "This instance doesn't come from a pack");
         state.custom.delete(target.id);
-        updated = { ...target, art: 'auto' };
+        updated = { ...target, art: 'auto', icon };
       } else {
-        const ext = /\.(png|jpe?g|webp)$/i.exec(choice.path)?.[1]?.toLowerCase();
-        if (!ext || /invalid/i.test(choice.path)) invalid();
-        state.custom.set(target.id, `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${TINY_PNG}`);
-        updated = { ...target, art: 'custom' };
+        state.custom.set(target.id, upload ?? invalid());
+        updated = { ...target, art: 'custom', icon };
+      }
+      state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
+      return updated;
+    }
+    case 'instance_icon_set': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (state.runs.has(target.id)) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: target.id });
+      const choice = args.choice as IconChoice;
+      let updated: Instance;
+      if (choice.kind === 'upload') {
+        const url = uploadUrl(choice.path) ?? fail('disk', 'art_file_invalid', "That file can't be used as an instance image");
+        state.customIcon.set(target.id, url);
+        updated = { ...target, icon: 'custom' };
+      } else {
+        if (choice.kind === 'pack' && target.source.kind === 'none') fail('pack', 'no_pack', "This instance doesn't come from a pack");
+        state.customIcon.delete(target.id);
+        updated = { ...target, icon: choice.kind === 'pack' ? 'auto' : 'generated' };
       }
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
@@ -762,10 +809,11 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         game: { minecraft: '1.20.1', loader: { kind: 'forge', version: '47.4.22' } },
         updatePolicy: 'ask',
         optionalChoices: {},
-        java: { path: null, memoryMb: state.settings.defaultMemoryMb },
+        java: { path: null, memoryMb: state.settings.defaultMemoryMb, args: '' },
         server: null,
         artSeed: null,
         art: 'auto',
+        icon: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });

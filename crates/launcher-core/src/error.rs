@@ -48,7 +48,8 @@ error_codes! {
     InstanceNotFound, InstanceDamaged, InstanceIdInvalid, InstanceBusy, AlreadyRunning,
     NameInvalid, MemoryOutOfRange, ArtFileInvalid,
     // java
-    JavaUnavailable, JavaStartFailed, JavaPathMissing, JavaTestFailed,
+    JavaUnavailable, JavaStartFailed, JavaPathMissing, JavaTestFailed, JvmArgsUnclosedQuote,
+    JvmArgNotOption, JvmArgNotAllowed, JvmArgsMemory, JvmArgsTooLong,
     // launch
     NoGameArguments, GameFilesMissing,
     // loaders and metadata

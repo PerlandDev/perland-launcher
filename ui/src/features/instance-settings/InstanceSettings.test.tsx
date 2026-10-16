@@ -18,7 +18,7 @@ it('saves memory and a tested custom Java', async () => {
   expect(await screen.findByText('Java 17 works')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Save' }));
   const saved = sent(calls, 'instance_update')[0] as { instance: { java: { memoryMb: number; path: string } } };
-  expect(saved.instance.java).toEqual({ memoryMb: 10240, path: 'C:/Users/player/Downloads/lithium-fabric-0.11.2.jar' });
+  expect(saved.instance.java).toEqual({ memoryMb: 10240, path: 'C:/Users/player/Downloads/lithium-fabric-0.11.2.jar', args: '' });
   expect(await screen.findByText('Saved')).toBeInTheDocument();
 });
 
@@ -188,4 +188,44 @@ it('keeps the Server section off plain and pack instances', async () => {
   renderApp(<InstanceSettings id="sky-islands" />);
   await screen.findByRole('radio', { name: 'Automatic' });
   expect(screen.queryByRole('heading', { name: 'Server' })).not.toBeInTheDocument();
+});
+
+it('saves the Java arguments as typed', async () => {
+  const { user, calls } = renderApp(<InstanceSettings id="asalith-fields" />);
+  const field = await screen.findByRole('textbox', { name: 'Java arguments' });
+  expect(field).toHaveValue('');
+  await user.click(field);
+  await user.paste('-XX:+UseG1GC -Dx="a b"');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  const saved = sent(calls, 'instance_update')[0] as { instance: { java: unknown } };
+  expect(saved.instance.java).toEqual({ memoryMb: 4096, path: null, args: '-XX:+UseG1GC -Dx="a b"' });
+  expect(await screen.findByText('Saved')).toBeInTheDocument();
+});
+
+it('shows a stored Java arguments value and saves it unchanged', async () => {
+  const { user, calls, backend } = renderApp(<InstanceSettings id="asalith-fields" />);
+  backend.state.listing.instances[0]!.java.args = '-XX:+UseZGC -Dname="two words"';
+  const field = await screen.findByRole('textbox', { name: 'Java arguments' });
+  expect(field).toHaveValue('-XX:+UseZGC -Dname="two words"');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  const saved = sent(calls, 'instance_update')[0] as { instance: { java: { args: string } } };
+  expect(saved.instance.java.args).toBe('-XX:+UseZGC -Dname="two words"');
+});
+
+it('shows a refused argument under the field', async () => {
+  const { user } = renderApp(<InstanceSettings id="asalith-fields" />);
+  const field = await screen.findByRole('textbox', { name: 'Java arguments' });
+  await user.click(field);
+  await user.paste('-Xmx4G');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  const message = 'Memory is set with the slider, not in the Java arguments.';
+  expect(await screen.findByText(message)).toBeInTheDocument();
+  expect(field).toHaveAttribute('aria-invalid', 'true');
+  expect(field).toHaveAccessibleDescription(message);
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  // Focus moves to the field, so the message isn't left off-screen behind the sticky Save bar.
+  expect(field).toHaveFocus();
+  await user.clear(field);
+  expect(screen.queryByText(message)).not.toBeInTheDocument();
+  expect(field).not.toHaveAttribute('aria-invalid');
 });

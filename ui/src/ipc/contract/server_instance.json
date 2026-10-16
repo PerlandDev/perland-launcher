@@ -17,7 +17,8 @@
   "optionalChoices": {},
   "java": {
     "path": null,
-    "memoryMb": 4096
+    "memoryMb": 4096,
+    "args": ""
   },
   "server": {
     "address": {
@@ -32,5 +33,6 @@
     "gone": false
   },
   "artSeed": null,
-  "art": "auto"
+  "art": "auto",
+  "icon": null
 }
