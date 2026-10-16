@@ -423,11 +423,14 @@ pub async fn server_relink(core: CoreState<'_>, id: String, link: String) -> Res
     logged("server_relink", core.server_relink(&id, &link).await)
 }
 
-/// Called by the close dialog. Stopping waits a few seconds so the kills land before exit.
+/// Called by the close dialog. Stopping waits a few seconds so the kills land before exit;
+/// keeping the games playing counts their time so far, as nothing tracks them after exit.
 #[tauri::command]
 pub async fn quit(app: AppHandle, core: CoreState<'_>, stop_games: bool) -> Res<()> {
     if stop_games {
         core.stop_all(Duration::from_secs(5)).await;
+    } else {
+        core.record_running_playtime().await;
     }
     app.exit(0);
     Ok(())

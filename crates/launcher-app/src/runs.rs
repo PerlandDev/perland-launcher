@@ -247,6 +247,21 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
     }
 
+    /// Count the time of every game still running, for a quit that leaves them playing: the
+    /// next launcher doesn't know these games, so their time would otherwise be lost. Each is
+    /// counted once; a game ending meanwhile adds nothing more.
+    pub async fn record_running_playtime(&self) {
+        let running: Vec<(String, Instant)> = self
+            .playing_since
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .drain()
+            .collect();
+        for (id, started) in running {
+            self.record_playtime(&id, started).await;
+        }
+    }
+
     pub fn has_active_runs(&self) -> bool {
         !self
             .runs
@@ -673,7 +688,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         // No `.await` between `start` returning and recording the killer, so a Stop can't slip
         // in and leave the game running with nobody holding its killer.
-        let started = {
+        {
             let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
             match runs.get_mut(&id) {
                 Some(run) => {
@@ -681,7 +696,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     run.killer = Some(game.killer());
                     run.abort = None;
                     self.emit_state(&id, RunStateKind::Running, None);
-                    self.run_clock()
+                    let started = self.run_clock();
+                    self.playing_since
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .insert(id.clone(), started);
                 }
                 None => {
                     game.killer().kill();
@@ -706,7 +725,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             },
         };
         // Every way out of a running game counts, and before `idle`, so the UI reads the new total.
-        self.record_playtime(&id, started).await;
+        // Unless a quit that left the game playing already counted it.
+        let started = self
+            .playing_since
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&id);
+        if let Some(started) = started {
+            self.record_playtime(&id, started).await;
+        }
         let crashed = info.is_crash();
         self.finish(&id, info, sink, batcher, Some(lock)).await;
         if args.minimize || crashed {
@@ -965,6 +992,24 @@ mod tests {
         host.wait_for_nth("alpha", Idle, 2).await;
         let played = playtime::read(&perland).await;
         assert!((120..130).contains(&played.seconds), "{played:?}");
+    }
+
+    #[tokio::test]
+    async fn quitting_while_games_keep_playing_counts_their_time_once() {
+        let (core, runner, host, _t) = ready(false).await;
+        let perland = core.instances.perland_dir("alpha");
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        core.clock_ahead.store(60, Ordering::SeqCst);
+        core.record_running_playtime().await;
+        let played = playtime::read(&perland).await;
+        assert!((60..70).contains(&played.seconds), "{played:?}");
+        // Had the app stayed open after all, the game's end doesn't count the same time again.
+        core.clock_ahead.store(90, Ordering::SeqCst);
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+        assert_eq!(playtime::read(&perland).await.seconds, played.seconds);
     }
 
     #[tokio::test]

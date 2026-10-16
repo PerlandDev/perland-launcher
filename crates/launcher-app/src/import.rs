@@ -10,8 +10,9 @@ use std::{
 
 use launcher_core::{
     events::TaskId,
+    fsutil::rename_with_retry,
     import,
-    instances::{validate_name, GameSpec, Instance},
+    instances::{rename_io_error, validate_name, GameSpec, Instance},
     sync::Cancel,
     LauncherError, Result,
 };
@@ -58,9 +59,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let name = validate_name(&request.name)?;
         let (cancel, _slot) = self.import_begin()?;
         // The folder is read again here: nothing about it is taken from the UI but its path.
-        let (detected, _) = import::inspect(&request.path, self.config.dirs.root()).await?;
+        let (detected, size_bytes) =
+            import::inspect(&request.path, self.config.dirs.root()).await?;
         let staging_root = self.config.dirs.root().join(STAGING);
+        // Leftovers go first: their space counts as free.
         clear_staging(&staging_root).await?;
+        import::ensure_space(size_bytes, self.import_free_space())?;
         let staging = free_slot(&staging_root).await?;
         let result = self
             .import_staged(&staging, &detected, &cancel, &name, request)
@@ -83,6 +87,19 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         {
             cancel.cancel();
         }
+    }
+
+    /// Free bytes on the data root's volume, where the copy is staged.
+    fn import_free_space(&self) -> u64 {
+        #[cfg(test)]
+        if let Some(free) = *self
+            .import_free_bytes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+        {
+            return free;
+        }
+        import::free_space(self.config.dirs.root())
     }
 
     fn import_begin(&self) -> Result<(Cancel, SlotGuard<'_>)> {
@@ -166,25 +183,34 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     ) -> std::result::Result<Instance, (String, LauncherError)> {
         let id = instance.id.clone();
         let fail = |e: LauncherError| (id.clone(), e);
-        #[cfg(test)]
-        if self
-            .import_fail_move
-            .load(std::sync::atomic::Ordering::SeqCst)
-        {
-            return Err(fail(std::io::Error::other("injected move failure").into()));
-        }
         let game = self.instances.game_dir(&instance.id);
         tokio::fs::remove_dir(&game)
             .await
             .map_err(|e| fail(e.into()))?;
-        tokio::fs::rename(staging, &game)
+        self.import_move(staging, &game)
             .await
-            .map_err(|e| fail(e.into()))?;
+            .map_err(|e| fail(rename_io_error(e, &id)))?;
         if instance.java.memory_mb != memory {
             instance.java.memory_mb = memory;
             instance = self.instances.update(&instance).await.map_err(fail)?;
         }
         Ok(instance)
+    }
+}
+
+impl<R: Runner, H: Host> AppCore<R, H> {
+    /// Move the staged copy in. An antivirus or indexer scanning the fresh copy can hold it for
+    /// a moment on Windows, so a refusal is retried for about two seconds.
+    async fn import_move(&self, staging: &Path, game: &Path) -> std::io::Result<()> {
+        #[cfg(test)]
+        if self
+            .import_fail_move
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            // Still held after every retry (`ERROR_SHARING_VIOLATION`).
+            return Err(std::io::Error::from_raw_os_error(32));
+        }
+        rename_with_retry(staging, game).await
     }
 }
 
@@ -310,6 +336,28 @@ mod tests {
         }
     }
 
+    /// Every file under `dir`, relative, with a hash of its bytes: the picked folder must come
+    /// out of any import exactly as it went in.
+    fn hashes(dir: &Path) -> std::collections::BTreeMap<PathBuf, u64> {
+        use std::hash::{DefaultHasher, Hash, Hasher};
+        fn walk(base: &Path, dir: &Path, out: &mut std::collections::BTreeMap<PathBuf, u64>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    walk(base, &path, out);
+                } else {
+                    let mut hasher = DefaultHasher::new();
+                    std::fs::read(&path).unwrap().hash(&mut hasher);
+                    out.insert(path.strip_prefix(base).unwrap().into(), hasher.finish());
+                }
+            }
+        }
+        let mut out = std::collections::BTreeMap::new();
+        walk(dir, dir, &mut out);
+        assert!(!out.is_empty());
+        out
+    }
+
     fn instance_folders(core: &TestCore) -> usize {
         std::fs::read_dir(core.config.dirs.instances())
             .map(|entries| entries.count())
@@ -400,6 +448,7 @@ mod tests {
         let (core, _, host, tmp) = core(BuildKind::Dev);
         let outside = tempfile::tempdir().unwrap();
         let dir = prism(outside.path());
+        let before = hashes(&dir);
         let weak = Arc::downgrade(&core);
         on_import_progress(&host, move || {
             if let Some(core) = weak.upgrade() {
@@ -416,6 +465,7 @@ mod tests {
         assert!(core.instances_list().await.unwrap().instances.is_empty());
         assert_eq!(instance_folders(&core), 0);
         assert!(staging_is_empty(tmp.path()));
+        assert_eq!(hashes(&dir), before, "the picked folder is untouched");
         *host.on_emit.lock().unwrap() = None;
         core.import_instance(request(&dir, "Imported"))
             .await
@@ -447,16 +497,44 @@ mod tests {
         let (core, _, _, tmp) = core(BuildKind::Dev);
         let outside = tempfile::tempdir().unwrap();
         let dir = prism(outside.path());
+        let before = hashes(&dir);
         core.import_fail_move.store(true, Ordering::SeqCst);
 
-        assert!(core
+        let err = core
             .import_instance(request(&dir, "Imported"))
             .await
-            .is_err());
+            .unwrap_err();
 
+        // Still held after the retries: told like a rename of an instance's folder in use.
+        assert_eq!(err.code, ErrorCode::InstanceFolderInUse);
         assert!(core.instances_list().await.unwrap().instances.is_empty());
         assert_eq!(instance_folders(&core), 0, "no half-made instance");
         assert!(staging_is_empty(tmp.path()));
+        assert_eq!(hashes(&dir), before, "the picked folder is untouched");
+    }
+
+    #[tokio::test]
+    async fn too_little_free_space_is_refused_before_copying() {
+        let (core, _, host, tmp) = core(BuildKind::Dev);
+        let outside = tempfile::tempdir().unwrap();
+        let dir = prism(outside.path());
+        *core.import_free_bytes.lock().unwrap() = Some(1 << 20);
+
+        let err = core
+            .import_instance(request(&dir, "Imported"))
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.code, ErrorCode::NotEnoughSpace);
+        assert_eq!(err.params["free_mb"], "1");
+        assert!(err.params.contains_key("needed_mb"));
+        assert!(progress(&host).is_empty(), "nothing was copied");
+        assert_eq!(instance_folders(&core), 0);
+        assert!(staging_is_empty(tmp.path()));
+        *core.import_free_bytes.lock().unwrap() = None;
+        core.import_instance(request(&dir, "Imported"))
+            .await
+            .expect("the slot is free again");
     }
 
     #[tokio::test]

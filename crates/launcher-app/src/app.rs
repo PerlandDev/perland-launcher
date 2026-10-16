@@ -6,6 +6,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
+    time::Instant,
 };
 
 use launcher_core::{
@@ -110,9 +111,14 @@ pub struct AppCore<R: Runner, H: Host> {
     last_export: Mutex<Option<PathBuf>>,
     /// The running import from another launcher, if any (see `import.rs`): one at a time.
     pub(crate) import_slot: Mutex<Option<Cancel>>,
+    /// Per running game: when it started, until its time is counted (see `runs.rs`).
+    pub(crate) playing_since: Mutex<HashMap<String, Instant>>,
     /// Makes the next import fail while it moves the copied files into the new instance.
     #[cfg(test)]
     pub(crate) import_fail_move: AtomicBool,
+    /// The free space an import sees, in bytes, instead of the disk's.
+    #[cfg(test)]
+    pub(crate) import_free_bytes: Mutex<Option<u64>>,
     /// Seconds the run clock is ahead of the real one, so a test can play a long game at once.
     #[cfg(test)]
     pub(crate) clock_ahead: AtomicU64,
@@ -164,8 +170,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             installing: Mutex::new(HashSet::new()),
             last_export: Mutex::new(None),
             import_slot: Mutex::new(None),
+            playing_since: Mutex::new(HashMap::new()),
             #[cfg(test)]
             import_fail_move: AtomicBool::new(false),
+            #[cfg(test)]
+            import_free_bytes: Mutex::new(None),
             #[cfg(test)]
             clock_ahead: AtomicU64::new(0),
             config,
