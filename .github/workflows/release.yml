@@ -26,6 +26,9 @@ jobs:
   plan:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -52,6 +55,13 @@ jobs:
       - name: The updater public key is set
         run: |
           node -e "const k=require('./src-tauri/tauri.conf.json').plugins?.updater?.pubkey; if(!k||!k.trim()){console.log('::error::Set plugins.updater.pubkey in src-tauri/tauri.conf.json to the updater public key first.');process.exit(1)}"
+      # A publish needs CI green on this exact commit; a dry run only warns.
+      - name: CI passed on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MODE: ${{ inputs.dry_run && 'dry-run' || 'publish' }}
+        run: node scripts/release/cli.mjs ci-check "$GITHUB_SHA" "$MODE"
       - id: version
         env:
           CHANNEL: ${{ inputs.channel }}
@@ -74,6 +84,16 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      # Rust builds much faster on a Dev Drive (ReFS) than on C:, so the Windows job builds in a
+      # copy of the checkout there. DEV_DRIVE_WORKSPACE stays unset on Linux, which builds in place.
+      - name: Dev Drive
+        if: runner.os == 'Windows'
+        uses: samypr100/setup-dev-drive@562171fe8df7401fdf582d766cd3b6ab80d5b1a0 # v4.1.0
+        with:
+          drive-size: 12GB
+          workspace-copy: true
+          env-mapping: |
+            CARGO_HOME,{{ DEV_DRIVE }}/.cargo
       - name: Linux webview build dependencies
         if: runner.os == 'Linux'
         run: |
@@ -85,10 +105,17 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
       - uses: dtolnay/rust-toolchain@stable
+      # Its own key: CI's job is also called build, and sharing its debug cache leaves this job
+      # compiling every dependency in release mode on each run.
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+          workspaces: ${{ env.DEV_DRIVE_WORKSPACE || '.' }}
       - name: Set the release version
         shell: bash
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
         env:
           VERSION: ${{ needs.plan.outputs.version }}
         run: node scripts/release/cli.mjs set-version "$VERSION"
@@ -99,6 +126,7 @@ jobs:
         run: cargo install trusted-signing-cli --locked
       - name: Build and sign the updater artifacts
         shell: bash
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
         env:
           PERLAND_BUILD: ${{ inputs.channel == 'beta' && 'beta' || '' }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -120,9 +148,10 @@ jobs:
           pnpm tauri build "${args[@]}"
       - name: Stage the installers
         shell: bash
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
         env:
           VERSION: ${{ needs.plan.outputs.version }}
-        run: node scripts/release/cli.mjs stage "$VERSION" target/release/bundle dist
+        run: node scripts/release/cli.mjs stage "$VERSION" target/release/bundle "$GITHUB_WORKSPACE/dist"
       - uses: actions/upload-artifact@v4
         with:
           name: bundles-${{ runner.os }}
@@ -155,12 +184,28 @@ jobs:
           merge-multiple: true
       - name: Updater manifest
         run: node scripts/release/cli.mjs manifest "$VERSION" dist "https://github.com/$REPO/releases/download/v$VERSION" latest.json
+      # The release stays a draft until every installer is up, so players never see it half
+      # uploaded. Re-running this job resumes a draft a failed attempt left, and skips a release
+      # that is already out.
       - name: Versioned release
         run: |
+          tag="v$VERSION"
+          title="Perland Launcher $VERSION"
           notes="Closed beta. Download it from https://perland.online/launcher. The installers aren't code-signed yet, so Windows may warn before it runs."
-          flags=(--latest=false)
-          if [ "$CHANNEL" = "beta" ]; then flags+=(--prerelease); else flags=(--latest); fi
-          gh release create "v$VERSION" --repo "$REPO" --target "$SHA" --title "Perland Launcher $VERSION" --notes "$notes" "${flags[@]}" dist/*
+          if state=$(gh release view "$tag" --repo "$REPO" --json isDraft --jq .isDraft 2>&1); then :
+          elif grep -q "release not found" <<<"$state"; then state=none
+          else echo "$state"; exit 1
+          fi
+          if [ "$state" = "false" ]; then
+            echo "$tag is already published."
+            exit 0
+          elif [ "$state" = "none" ]; then
+            gh release create "$tag" --repo "$REPO" --draft --target "$SHA" --title "$title" --notes "$notes" dist/*
+          else
+            gh release upload "$tag" --repo "$REPO" --clobber dist/*
+          fi
+          if [ "$CHANNEL" = "beta" ]; then flags=(--prerelease --latest=false); else flags=(--prerelease=false --latest); fi
+          gh release edit "$tag" --repo "$REPO" --draft=false --target "$SHA" --title "$title" --notes "$notes" "${flags[@]}"
       - name: Channel releases
         run: |
           feed() {

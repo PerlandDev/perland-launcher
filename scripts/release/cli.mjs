@@ -7,6 +7,7 @@ import {
   buildManifest,
   channelName,
   checkSignatureKeys,
+  ciGate,
   findBundle,
   nextVersion,
   PLATFORMS,
@@ -28,6 +29,17 @@ switch (command) {
     const base = /\[workspace\.package\][^[]*?\nversion = "([^"]+)"/.exec(readFileSync(cargoPath, 'utf8'))?.[1];
     const tags = execFileSync('git', ['tag', '--list', 'v*'], { encoding: 'utf8' }).split('\n').filter(Boolean);
     console.log(nextVersion({ base, channel: args[0], tags }));
+    break;
+  }
+  case 'ci-check': {
+    // Needs GH_TOKEN (with actions: read) and GH_REPO.
+    const [sha, mode] = args;
+    const json = execFileSync('gh', ['run', 'list', '--workflow', 'ci.yml', '--commit', sha, '--json', 'status,conclusion', '--limit', '100'], {
+      encoding: 'utf8',
+    });
+    const { level, message } = ciGate(JSON.parse(json), { publish: mode === 'publish' });
+    console.log(level === 'ok' ? message : `::${level}::${message}`);
+    if (level === 'error') process.exitCode = 1;
     break;
   }
   case 'set-version':
