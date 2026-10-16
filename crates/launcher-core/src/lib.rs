@@ -21,6 +21,7 @@ pub mod mods;
 pub mod paths;
 pub mod platform;
 pub mod play;
+pub mod server_list;
 pub mod settings;
 pub mod sources;
 pub mod sync;

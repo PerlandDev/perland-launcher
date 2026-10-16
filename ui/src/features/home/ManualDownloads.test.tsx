@@ -34,7 +34,7 @@ it('enables Continue once every file is found, and plays again', async () => {
   const dialog = await screen.findByRole('dialog', { name: 'Download these manually' });
   await vi.waitFor(() => expect(within(dialog).getByText('Found 2 of 2')).toBeInTheDocument());
   await user.click(within(dialog).getByRole('button', { name: 'Continue' }));
-  expect(sent(calls, 'play')).toEqual([{ id: 'sky-islands', join: true }]);
+  expect(sent(calls, 'play')).toEqual([{ id: 'sky-islands', join: false }]);
 });
 
 it('after an update-only run, Continue updates again instead of playing', async () => {

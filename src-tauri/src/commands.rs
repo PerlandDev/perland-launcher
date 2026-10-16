@@ -153,7 +153,7 @@ pub async fn account_remove(core: CoreState<'_>, uuid: String) -> Res<AccountsFi
 pub async fn play(core: CoreState<'_>, id: String, join: Option<bool>) -> Res<()> {
     logged(
         "play",
-        core.inner().play_with(&id, join.unwrap_or(true)).await,
+        core.inner().play_with(&id, join.unwrap_or(false)).await,
     )
 }
 

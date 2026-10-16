@@ -57,7 +57,7 @@ export const commands = {
   accountAddOffline: (name: string) => invoke<AccountsFile>('account_add_offline', { name }),
   accountSetActive: (uuid: string) => invoke<AccountsFile>('account_set_active', { uuid }),
   accountRemove: (uuid: string) => invoke<AccountsFile>('account_remove', { uuid }),
-  play: (id: string, join = true) => invoke<null>('play', { id, join }),
+  play: (id: string, join = false) => invoke<null>('play', { id, join }),
   stop: (id: string) => invoke<null>('stop', { id }),
   runStates: () => invoke<RunSnapshot[]>('run_states'),
   logTail: (id: string) => invoke<string[]>('log_tail', { id }),

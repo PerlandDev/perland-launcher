@@ -92,7 +92,7 @@ export function InstanceMenu({ instance }: { instance: Instance }) {
   const running = useRun(instance.id).state !== 'idle';
   const serverItems = isServer(instance)
     ? [
-        { label: t('server.playWithoutJoining'), icon: <Play />, onSelect: () => void commands.play(instance.id, false).catch(pushError) },
+        { label: t('server.playAndJoin'), icon: <Play />, onSelect: () => void commands.play(instance.id, true).catch(pushError) },
         {
           label: t('server.useNewInviteLink'),
           icon: <Reload />,

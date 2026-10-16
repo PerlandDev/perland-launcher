@@ -9,10 +9,10 @@
 
 ## 1. Goal
 
-A player clicks **Play with Perland Launcher** on a server's invite page, or pastes the invite link into the launcher. The launcher then creates a server instance that runs exactly the modpack commit the server has deployed. Play installs or updates it and drops the player straight into that server.
+A player clicks **Play with Perland Launcher** on a server's invite page, or pastes the invite link into the launcher. The launcher then creates a server instance that runs exactly the modpack commit the server has deployed. Play installs or updates it and opens the game as usual, with that server at the top of the Multiplayer list (§1.1 decision 9).
 
 Success means:
-- the player goes from link to in-game with no Modrinth App, no Prism and no address copying;
+- the player goes from link to the server with no Modrinth App, no Prism and no address copying;
 - the instance stays in step with the server every time the owner redeploys.
 
 ### 1.1 Owner decisions (2026-10-11)
@@ -29,11 +29,12 @@ Success means:
 4. **Update check:** the Engine adds `pack.commit` to the invite view. One view request then gives status, players and the update stamp.
 5. **Policy:** server instances are always automatic. The 3b "Automatic / Ask me / Don't update" control is hidden for them.
 6. **Dead link** (the invite was disabled or regenerated):
-   - The instance stays playable at its installed version and still joins the last known address.
+   - The instance stays playable at its installed version and still lists (or, with Play and join, joins) the last known address.
    - A quiet plate offers **Use a new link**, which rebinds the instance.
 7. **Entry points:** the invite page and the Panel's invite sheet. Both are hidden behind an Engine flag (`LAUNCHER_DOWNLOAD_URL`) until a public launcher release can actually add an account (Plan 4).
    - **Phones (decided while planning):** a phone can't open `perland://`. On the invite page, the launcher tab is the default-selected tab only on desktop. On phones it is still listed but not the default, and it says to open the page on a computer instead of showing the button.
 8. **Live check:** the Asalith server is hosted on Perland with an invite turned on. Its invite is used for the owner smoke test. The token never goes into docs, PRs or logs.
+9. **Play opens the game as usual (owner feedback, 2026-10-16).** Joining the server straight away felt wrong: Play now starts the game at the title screen, the way Minecraft normally opens, with the server added to its Multiplayer list (`servers.dat`) so the player picks it there. Quick play stays one click away as the instance menu's **Play and join the server**. See §2.2 **Joining**.
 
 ### 1.2 Facts this design rests on (Engine `origin/main` d9fb177)
 
@@ -222,10 +223,16 @@ idle → checking → queued → syncing → preparing → running → idle
   - **Offline, 429 or 5xx:** play the installed version with the existing `update_check_failed` warning.
   - **`invite_gone`:** play the installed version, set `ServerLink.gone`, and the dead-link plate shows.
   - **Never synced and the check fails:** the run ends with that error.
-- **Joining:**
-  - `play` gains an optional `join: bool` argument, default `true`.
-  - The runner passes `instance.server.address` as `LaunchSpec.join` when it is `true` and an address is known.
-  - **No known address:** the run warns `server_address_unknown` and starts at the title screen.
+- **Joining** (decision 9):
+  - Every run of a server instance with a known address first puts it in the game's server list, `<game dir>/servers.dat` (`launcher_core::server_list`):
+    - The file is uncompressed NBT. Every tag the launcher doesn't touch round-trips byte for byte, so the player's own servers stay as they are.
+    - Already listed (same `host:port`; a bare host means port 25565): nothing is written, so a name or position the player chose stays.
+    - Listed but hidden (the game hides quick-play and direct-connect entries): the entry becomes visible at the top.
+    - The server moved: the entry for the address it was last listed with (`.perland/listed-server.json`) is repointed, so it never shows twice.
+    - Otherwise a new entry, named after the server, goes at the top.
+    - A file that isn't valid NBT is never overwritten. The run warns `server_list_failed` and the game still starts.
+  - `play` gains an optional `join: bool` argument, default `false`. With `true` (the instance menu's **Play and join the server**), the runner also passes the address as `LaunchSpec.join`.
+  - **No known address:** the run warns `server_address_unknown`, lists nothing and starts at the title screen.
 - **Policy:** `instance_update` keeps `update_policy` at `Auto` for a `Perland` source, silently, with no error. The UI never offers the control.
 
 **Deep link**
@@ -272,7 +279,8 @@ There are no new categories. Each code gets `errors.<code>.message` in `en.json`
 | `invite_rate_limited` | Network | Too many requests. Try again in a minute. |
 | `server_pack_unavailable` | Pack | The server's modpack isn't available right now. |
 | `server_pack_pending` | Pack | The server is still preparing the modpack. Try again in a minute. |
-| `server_address_unknown` | Game | Couldn't get the server address, so the game starts at the title screen. A warning, not a failure. |
+| `server_address_unknown` | Game | Couldn't get the server address, so it isn't in the game's server list. A warning, not a failure. |
+| `server_list_failed` | Game | Couldn't add the server to the game's server list. Fix: add `{address}` in Multiplayer by hand. A warning, not a failure. |
 
 ### 2.5 Token safety and untrusted input
 
@@ -317,7 +325,7 @@ All styling goes through `/impeccable` in the Arcade Cabinet world: one lit butt
   - **Dead-link plate:** "This invite link stopped working · **Use a new link**".
   - **3b's banner:** for server instances it reads "Server updated · updates when you play", with no **Update** button.
   - **Play** keeps its label.
-- **Instance menu:** Play without joining, Use a new invite link, Copy invite link, Copy server address.
+- **Instance menu:** Play and join the server, Use a new invite link, Copy invite link, Copy server address.
 - **Instance settings:** the Updates control is hidden. A **Server** section shows the invite host, Copy link and Use a new link.
 - **Rail:** the server icon, through 3b's art. A last-known status mark that can't be confused with the lime "Playing" lamp; the status is also in the aria-label.
 - **i18n:** every string in en and es.
@@ -402,7 +410,7 @@ TDD throughout, with tiny local inputs. No fuzz, stress or load runs locally.
 - **launcher-app tests**
   - `join_add` dedupe, and relink.
   - The shared `server_status` cache and 429 backoff.
-  - The runner passes `join`; `join: false` starts at the title screen.
+  - Play lists the server and starts at the title screen; `join: true` also passes the address. The player's servers stay, a second Play adds no copy, a moved server keeps one entry, and a damaged `servers.dat` warns and is never overwritten.
   - A failed check plays the installed version; `invite_gone` sets `gone`.
   - `instance_update` keeps the policy at `Auto`.
   - Deep link `join` parse, and contract fixtures.
@@ -413,8 +421,9 @@ TDD throughout, with tiny local inputs. No fuzz, stress or load runs locally.
   - The menu items.
   - Deep link → route.
   - The `isInviteLink` table.
-- **Nightly CI fuzz:** targets for `InviteLink::parse` and the `join` deep-link parse.
-- **Owner smoke test:** the real Asalith invite: Add, first Play installs and joins, a redeploy triggers an update on the next Play, and a regenerated link shows the dead-link plate and relinks.
+- **launcher-core `server_list` unit tests:** the game's bytes round-trip, every tag type round-trips, damaged files are refused, and the listing rules above.
+- **Nightly CI fuzz:** targets for `InviteLink::parse`, the `join` deep-link parse and `server_list::with_server`.
+- **Owner smoke test:** the real Asalith invite: Add, first Play installs and opens the game with the server at the top of Multiplayer, a redeploy triggers an update on the next Play, and a regenerated link shows the dead-link plate and relinks.
 
 ## 5. Plans and order
 
