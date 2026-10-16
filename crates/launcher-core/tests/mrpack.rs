@@ -223,7 +223,13 @@ fn mrpack_format_problems_are_named() {
             &serde_json::to_vec(&other_game).unwrap()[..],
         )],
     );
-    assert_eq!(read().unwrap_err().code, ErrorCode::PackUnsupported);
+    let err = read().unwrap_err();
+    assert_eq!(err.code, ErrorCode::PackUnsupported);
+    assert_eq!(
+        err.params.get("context").map(String::as_str),
+        Some("mrpack_game")
+    );
+    assert_eq!(err.params.get("game").map(String::as_str), Some("terraria"));
 
     let mut plain_http = file("mods/a.jar", None);
     plain_http["downloads"] = json!(["http://cdn.example.com/a.jar"]);

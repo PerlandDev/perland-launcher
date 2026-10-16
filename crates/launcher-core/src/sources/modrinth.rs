@@ -3,8 +3,8 @@
 use serde::Deserialize;
 
 use super::{
-    check_pack_url, invalid, mrpack, pack_not_found, unsupported, valid_modrinth_id, DesiredState,
-    PackAbout, PackArt, Sources, UpdateCheck,
+    check_pack_url, invalid_because, modrinth_fetch_error, mrpack, unsupported, valid_modrinth_id,
+    DesiredState, PackAbout, PackArt, Sources, UpdateCheck,
 };
 use crate::{
     download::{host_of, redact_url, Hashes},
@@ -81,12 +81,18 @@ fn checked_id(id: &str) -> Result<&str> {
 
 pub async fn project(src: &Sources, id: &str) -> Result<Project> {
     let url = api(src, &format!("project/{}", checked_id(id)?));
-    src.meta.get_json(&url).await.map_err(pack_not_found)
+    src.meta
+        .get_json(&url)
+        .await
+        .map_err(modrinth_fetch_error(&url))
 }
 
 pub async fn version(src: &Sources, id: &str) -> Result<Version> {
     let url = api(src, &format!("version/{}", checked_id(id)?));
-    src.meta.get_json(&url).await.map_err(pack_not_found)
+    src.meta
+        .get_json(&url)
+        .await
+        .map_err(modrinth_fetch_error(&url))
 }
 
 /// A project's versions, optionally only those for one Minecraft version. Always fresh.
@@ -99,7 +105,13 @@ pub async fn versions(
         src,
         &format!("project/{}/version", checked_id(project_id)?),
     ))
-    .map_err(|e| invalid("Modrinth address", e))?;
+    .map_err(|e| {
+        invalid_because(
+            "modrinth_address",
+            "The Modrinth address the launcher uses isn't valid",
+            e,
+        )
+    })?;
     if let Some(mc) = minecraft {
         url.query_pairs_mut()
             .append_pair("game_versions", &format!("[\"{mc}\"]"));
@@ -108,16 +120,16 @@ pub async fn versions(
     let shown = redact_url(url.as_str());
     let response = src.http.get(url).send().await.map_err(|e| {
         LauncherError::network(ErrorCode::HostUnreachable, format!("Couldn't reach {host}"))
-            .with_param("host", &host)
+            .with_host(&host)
             .with_fix("Check your internet connection")
             .with_detail(e.without_url())
     })?;
     let status = response.status();
     if status == reqwest::StatusCode::NOT_FOUND {
-        return Err(pack_not_found(
+        return Err(modrinth_fetch_error(&shown)(
             LauncherError::loader(ErrorCode::MetaNotFound, "not found")
                 .with_param("status", status.as_u16())
-                .with_detail(shown),
+                .with_detail(&shown),
         ));
     }
     if !status.is_success() {
@@ -125,10 +137,12 @@ pub async fn versions(
             ErrorCode::HostTrouble,
             format!("{host} is having trouble ({status})"),
         )
-        .with_param("host", &host)
+        .with_host(&host)
         .with_param("status", status.as_u16()));
     }
-    json_capped(response, &host, MAX_API_BYTES).await
+    json_capped(response, &host, MAX_API_BYTES)
+        .await
+        .map_err(modrinth_fetch_error(&shown))
 }
 
 /// The largest Modrinth API answer read.
@@ -175,7 +189,20 @@ fn mrpack_file(v: &Version) -> Result<&VersionFile> {
         .iter()
         .filter(|f| f.filename.to_ascii_lowercase().ends_with(".mrpack"))
         .max_by_key(|f| f.primary)
-        .ok_or_else(|| unsupported("a Modrinth version without a .mrpack file"))
+        .ok_or_else(|| {
+            unsupported(
+                "modrinth_no_mrpack",
+                "a Modrinth version without a .mrpack file",
+            )
+        })
+}
+
+fn project_type_unsupported(project_type: &str) -> LauncherError {
+    unsupported(
+        "modrinth_project_type",
+        format!("Modrinth {project_type} projects"),
+    )
+    .with_param("project_type", project_type)
 }
 
 fn banner(gallery: &[GalleryImage]) -> Option<String> {
@@ -189,18 +216,22 @@ fn banner(gallery: &[GalleryImage]) -> Option<String> {
 pub async fn resolve(src: &Sources, project_id: &str, version_id: &str) -> Result<DesiredState> {
     let project = project(src, project_id).await?;
     if project.project_type != "modpack" {
-        return Err(unsupported(&format!(
-            "Modrinth {} projects",
-            project.project_type
-        )));
+        return Err(project_type_unsupported(&project.project_type));
     }
     let version = version(src, version_id).await?;
     if version.project_id != project.id {
-        return Err(invalid("Modrinth version", "it belongs to another project"));
+        return Err(invalid_because(
+            "modrinth_wrong_project",
+            "That Modrinth version belongs to another project",
+            format!("{} belongs to {}", version.id, version.project_id),
+        ));
     }
     let file = mrpack_file(&version)?;
     if check_pack_url(&file.url).is_err() {
-        return Err(unsupported("a .mrpack that isn't served over https"));
+        return Err(unsupported(
+            "mrpack_not_https",
+            "a .mrpack that isn't served over https",
+        ));
     }
     let hashes = Hashes {
         sha1: Hashes::from_format("sha1", &file.hashes.sha1).and_then(|h| h.sha1),
@@ -213,7 +244,11 @@ pub async fn resolve(src: &Sources, project_id: &str, version_id: &str) -> Resul
         ..Hashes::default()
     };
     if hashes.cache_key().is_none() {
-        return Err(invalid("Modrinth version", "no usable checksum"));
+        return Err(invalid_because(
+            "no_checksum",
+            "A pack file has no usable checksum",
+            &file.filename,
+        ));
     }
     let path = src
         .cache
@@ -251,10 +286,7 @@ pub async fn open(
 ) -> Result<(SourceRef, DesiredState)> {
     let p = project(src, project_ref).await?;
     if p.project_type != "modpack" {
-        return Err(unsupported(&format!(
-            "Modrinth {} projects",
-            p.project_type
-        )));
+        return Err(project_type_unsupported(&p.project_type));
     }
     let version_id = match version {
         Some(v) => v.to_string(),
@@ -263,7 +295,12 @@ pub async fn open(
             pick_update(&list, "release")
                 .or_else(|| pick_update(&list, "alpha"))
                 .map(|v| v.id.clone())
-                .ok_or_else(|| unsupported("a Modrinth modpack with no versions"))?
+                .ok_or_else(|| {
+                    unsupported(
+                        "modrinth_no_versions",
+                        "a Modrinth modpack with no versions",
+                    )
+                })?
         }
     };
     let desired = resolve(src, &p.id, &version_id).await?;
@@ -353,6 +390,14 @@ mod tests {
         assert_eq!(pick_update(&list, "beta").unwrap().id, "beta-mid");
         assert_eq!(pick_update(&list, "alpha").unwrap().id, "alpha-new");
         assert!(pick_update(&list[..1], "release").is_none());
+    }
+
+    #[test]
+    fn a_version_without_a_mrpack_says_so_by_context() {
+        let err = mrpack_file(&v("x", "release", "2024-01-01T00:00:00Z")).unwrap_err();
+        assert_eq!(err.code, ErrorCode::PackUnsupported);
+        assert_eq!(err.params["context"], "modrinth_no_mrpack");
+        assert!(!err.params.contains_key("what"));
     }
 
     async fn answer(body: &str) -> reqwest::Response {

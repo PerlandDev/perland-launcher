@@ -112,10 +112,11 @@ export function LauncherUpdates({
       </fieldset>
       <div className="note-plate" data-lamp={lampOf(state)}>
         <div className="grid min-w-0 flex-1 gap-2">
-          <p role="status" className={state.state === 'idle' ? 'text-ink-dim' : undefined}>
-            {line}
-          </p>
-          {fix && <p className="text-sm text-ink-dim">{fix}</p>}
+          {/* The live region holds the line and its way forward, so both are heard together. */}
+          <div role="status" className="grid gap-2">
+            <p className={state.state === 'idle' ? 'text-ink-dim' : undefined}>{line}</p>
+            {fix && <p className="text-sm text-ink-dim">{fix}</p>}
+          </div>
           {percent != null && (
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">

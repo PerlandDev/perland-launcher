@@ -70,7 +70,7 @@ error_codes! {
     InviteLinkInvalid, InviteGone, InviteUnsupported, InviteSiteUnreachable, InviteRateLimited,
     ServerPackUnavailable, ServerPackPending, ServerAddressUnknown, ServerListFailed,
     // launcher updates
-    LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
+    LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy, LauncherUpdateInstallFailed,
     // anything unexpected
     Internal,
 }
@@ -137,7 +137,18 @@ impl LauncherError {
         self.params.insert(key.to_string(), value.to_string());
         self
     }
+    /// The `host` param, from [`crate::download::host_of`]. A URL with no host gets English words
+    /// there, which never go in params: the `unknown_host` context words the message without one.
+    pub fn with_host(self, host: impl AsRef<str>) -> Self {
+        match host.as_ref() {
+            UNKNOWN_HOST => self.with_param("context", "unknown_host"),
+            host => self.with_param("host", host),
+        }
+    }
 }
+
+/// What [`crate::download::host_of`] says for a URL with no host (English fallback text only).
+pub(crate) const UNKNOWN_HOST: &str = "the download server";
 
 impl From<std::io::Error> for LauncherError {
     fn from(e: std::io::Error) -> Self {
@@ -153,11 +164,31 @@ mod tests {
     use std::collections::HashSet;
 
     #[test]
+    fn a_url_without_a_host_says_so_by_context() {
+        let named = LauncherError::network(ErrorCode::HostTrouble, "x")
+            .with_host(crate::download::host_of("https://cdn.example.com/a"));
+        assert_eq!(named.params["host"], "cdn.example.com");
+        assert!(!named.params.contains_key("context"));
+
+        let unnamed = LauncherError::network(ErrorCode::HostTrouble, "x")
+            .with_host(crate::download::host_of("nonsense"));
+        assert!(
+            !unnamed.params.contains_key("host"),
+            "no English words in params"
+        );
+        assert_eq!(unnamed.params["context"], "unknown_host");
+    }
+
+    #[test]
     fn launcher_update_codes_exist() {
         for (code, wire) in [
             (ErrorCode::LauncherUpdateFailed, "launcher_update_failed"),
             (ErrorCode::LauncherUpdateInvalid, "launcher_update_invalid"),
             (ErrorCode::LauncherUpdateBusy, "launcher_update_busy"),
+            (
+                ErrorCode::LauncherUpdateInstallFailed,
+                "launcher_update_install_failed",
+            ),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

@@ -6,7 +6,7 @@ use futures_util::{StreamExt, TryStreamExt};
 use serde::{de::DeserializeOwned, Deserialize};
 
 use super::{
-    check_pack_url, curseforge, encode_path, game_from, invalid, pack_not_found,
+    check_pack_url, curseforge, encode_path, game_from, invalid, pack_fetch_error,
     sidecar::parse_sidecar, unsafe_path, unsupported, DesiredState, FileMode, FileSource,
     ManualDownload, OptionalFile, PackAbout, PackFile, Side, SourceConfig, Sources, UpdateCheck,
 };
@@ -120,7 +120,8 @@ pub fn parse_pack(bytes: &[u8]) -> Result<PackToml> {
     let pack: PackToml = toml_from(bytes, "pack.toml")?;
     if let Some(format) = &pack.pack_format {
         if !format.starts_with("packwiz:1.") {
-            return Err(unsupported(&format!("pack format {format}")));
+            return Err(unsupported("pack_format", format!("pack format {format}"))
+                .with_param("format", format));
         }
     }
     Ok(pack)
@@ -137,7 +138,9 @@ pub fn parse_meta(bytes: &[u8], file: &str) -> Result<MetaToml> {
 /// A pack's hash, checked: an unknown format can't be verified, and a malformed value is damage.
 pub fn entry_hashes(format: &str, value: &str, file: &str) -> Result<Hashes> {
     if !Hashes::is_known_format(format) {
-        return Err(unsupported(&format!("{format} checksums")));
+        return Err(
+            unsupported("hash_format", format!("{format} checksums")).with_param("format", format)
+        );
     }
     Hashes::from_format(format, value).ok_or_else(|| invalid(file, "malformed checksum"))
 }
@@ -156,7 +159,11 @@ fn check_file_url(url: &str, file: &str) -> Result<String> {
     if check_pack_url(url).is_ok() {
         Ok(parsed.to_string())
     } else {
-        Err(unsupported(&format!("{} downloads", parsed.scheme())))
+        let scheme = parsed.scheme();
+        Err(
+            unsupported("download_scheme", format!("{scheme} downloads"))
+                .with_param("scheme", scheme),
+        )
     }
 }
 
@@ -203,7 +210,12 @@ pub fn meta_file(
                 }),
             )
         }
-        other => return Err(unsupported(&format!("download mode {other}"))),
+        other => {
+            return Err(
+                unsupported("download_mode", format!("download mode {other}"))
+                    .with_param("mode", other),
+            )
+        }
     };
     Ok(PackFile {
         path,
@@ -277,7 +289,7 @@ pub async fn resolve(src: &Sources, pack_url: &str) -> Result<DesiredState> {
         .meta
         .get_bytes_validated(url.as_str(), |b| parse_pack(b).map(|_| ()))
         .await
-        .map_err(pack_not_found)?;
+        .map_err(pack_fetch_error(url.as_str(), "pack.toml"))?;
     let pack = parse_pack(&pack_bytes)?;
 
     let index_file =
@@ -289,7 +301,8 @@ pub async fn resolve(src: &Sources, pack_url: &str) -> Result<DesiredState> {
     let index_bytes = src
         .meta
         .get_verified_bytes(index_url.as_str(), &index_hashes)
-        .await?;
+        .await
+        .map_err(pack_fetch_error(index_url.as_str(), &index_file))?;
     let index = parse_index(&index_bytes)?;
 
     // Collected first: a closure taking `&IndexEntry` inside the stream makes this future
@@ -339,7 +352,11 @@ async fn index_entry(
     let url = index_url
         .join(&encode_path(&file))
         .map_err(|e| invalid(&file, e))?;
-    let bytes = src.meta.get_verified_bytes(url.as_str(), &hashes).await?;
+    let bytes = src
+        .meta
+        .get_verified_bytes(url.as_str(), &hashes)
+        .await
+        .map_err(pack_fetch_error(url.as_str(), &file))?;
     let meta = parse_meta(&bytes, &file)?;
     meta_file(&src.config, &file, &meta, entry.preserve)
 }
@@ -617,6 +634,44 @@ project-id = 825733
                 .unwrap_err()
                 .code,
             ErrorCode::PackUnsupported
+        );
+    }
+
+    /// The UI words these from a context and raw values; English phrases never go in params.
+    #[test]
+    fn unsupported_packs_say_what_by_context_and_raw_values() {
+        let params = |e: LauncherError| {
+            assert_eq!(e.code, ErrorCode::PackUnsupported);
+            assert!(!e.params.contains_key("what"));
+            e.params
+        };
+        let future = PACK.replace("packwiz:1.1.0", "packwiz:2.0.0");
+        let p = params(parse_pack(future.as_bytes()).unwrap_err());
+        assert_eq!(
+            (p["context"].as_str(), p["format"].as_str()),
+            ("pack_format", "packwiz:2.0.0")
+        );
+
+        let p = params(entry_hashes("crc32", "00", "mods/a.pw.toml").unwrap_err());
+        assert_eq!(
+            (p["context"].as_str(), p["format"].as_str()),
+            ("hash_format", "crc32")
+        );
+
+        let ftp = APPLESKIN.replace("url = \"https://", "url = \"ftp://");
+        let meta = parse_meta(ftp.as_bytes(), "mods/a.pw.toml").unwrap();
+        let p = params(meta_file(&cfg(), "mods/a.pw.toml", &meta, false).unwrap_err());
+        assert_eq!(
+            (p["context"].as_str(), p["scheme"].as_str()),
+            ("download_scheme", "ftp")
+        );
+
+        let mode = COZY.replace("metadata:curseforge", "metadata:ftb");
+        let meta = parse_meta(mode.as_bytes(), "mods/c.pw.toml").unwrap();
+        let p = params(meta_file(&cfg(), "mods/c.pw.toml", &meta, false).unwrap_err());
+        assert_eq!(
+            (p["context"].as_str(), p["mode"].as_str()),
+            ("download_mode", "metadata:ftb")
         );
     }
 

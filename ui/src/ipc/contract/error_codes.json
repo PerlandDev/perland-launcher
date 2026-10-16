@@ -96,5 +96,6 @@
   "launcher_update_failed",
   "launcher_update_invalid",
   "launcher_update_busy",
+  "launcher_update_install_failed",
   "internal"
 ]

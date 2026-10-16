@@ -264,29 +264,60 @@ pub struct Sources {
     pub config: SourceConfig,
 }
 
-/// `MetaClient` raises `MetaNotFound` for any 4xx. Only 404 and 410 mean the pack is gone; a rate
-/// limit or a refusal is the host having trouble, and must not say the pack doesn't exist.
-pub(crate) fn pack_not_found(e: LauncherError) -> LauncherError {
-    if e.code != ErrorCode::MetaNotFound {
-        return e;
+/// A `MetaClient` error from fetching the pack file at `url` (`file` is its name or path in the
+/// pack), in pack terms: `MetaClient`'s own codes talk about version lists.
+/// - `MetaNotFound` is any 4xx. Only 404 and 410 mean the pack is gone; a rate limit or a
+///   refusal is the host having trouble, and must not say the pack doesn't exist.
+/// - A missing saved copy is the host's trouble too, and stays a network failure, so an update
+///   that can't be fetched still falls back to what is installed.
+/// - Data that fails its checksum or can't be taken means the pack file is damaged.
+pub(crate) fn pack_fetch_error(url: &str, file: &str) -> impl Fn(LauncherError) -> LauncherError {
+    let (host, file) = (host_of(url), file.to_string());
+    move |e| {
+        let damaged = invalid(&file, "");
+        fetch_error(e, &host, damaged)
     }
-    let status = e.params.get("status").cloned().unwrap_or_default();
-    if status == "404" || status == "410" {
-        let mut out = LauncherError::pack(ErrorCode::PackNotFound, "That pack wasn't found")
-            .with_fix("Check the link and try again");
-        out.detail = e.detail.or(Some(e.message));
-        return out;
+}
+
+/// [`pack_fetch_error`] for Modrinth's API, whose answers aren't files in the pack.
+pub(crate) fn modrinth_fetch_error(url: &str) -> impl Fn(LauncherError) -> LauncherError {
+    let host = host_of(url);
+    move |e| {
+        let damaged = invalid_because(
+            "modrinth_data",
+            "Modrinth sent pack details the launcher couldn't read",
+            "",
+        )
+        .with_fix("Try again in a few minutes");
+        fetch_error(e, &host, damaged)
     }
-    let host = e.detail.as_deref().map(host_of).unwrap_or_default();
-    let mut out = LauncherError::network(
-        ErrorCode::HostTrouble,
-        format!("{host} is having trouble ({status})"),
-    )
-    .with_param("host", &host)
-    .with_param("status", &status)
-    .with_fix("Try again in a few minutes");
-    out.detail = e.detail;
+}
+
+fn fetch_error(e: LauncherError, host: &str, damaged: LauncherError) -> LauncherError {
+    let detail = e.detail.clone().or_else(|| Some(e.message.clone()));
+    let mut out = match e.code {
+        ErrorCode::MetaNotFound => {
+            let status = e.params.get("status").cloned().unwrap_or_default();
+            if status == "404" || status == "410" {
+                LauncherError::pack(ErrorCode::PackNotFound, "That pack wasn't found")
+                    .with_fix("Check the link and try again")
+            } else {
+                host_trouble(host, &format!("{host} is having trouble ({status})"))
+                    .with_param("status", &status)
+            }
+        }
+        ErrorCode::MetaCacheMissing => host_trouble(host, &e.message),
+        ErrorCode::MetaChecksum | ErrorCode::MetaUnexpected => damaged,
+        _ => return e,
+    };
+    out.detail = detail;
     out
+}
+
+fn host_trouble(host: &str, message: &str) -> LauncherError {
+    LauncherError::network(ErrorCode::HostTrouble, message)
+        .with_host(host)
+        .with_fix("Try again in a few minutes")
 }
 
 pub(crate) fn no_pack() -> LauncherError {
@@ -363,7 +394,13 @@ impl Sources {
 pub fn game_from(versions: &BTreeMap<String, String>) -> Result<(String, Option<LoaderSpec>)> {
     let minecraft = versions
         .get("minecraft")
-        .ok_or_else(|| invalid("versions", "no minecraft version"))?
+        .ok_or_else(|| {
+            invalid_because(
+                "no_minecraft_version",
+                "The pack doesn't say which Minecraft version it needs",
+                "no minecraft version",
+            )
+        })?
         .clone();
     let mut loader = None;
     for (key, version) in versions {
@@ -373,10 +410,14 @@ pub fn game_from(versions: &BTreeMap<String, String>) -> Result<(String, Option<
             "neoforge" => LoaderKind::NeoForge,
             "fabric" | "fabric-loader" => LoaderKind::Fabric,
             "quilt" | "quilt-loader" => LoaderKind::Quilt,
-            other => return Err(unsupported(&format!("the {other} loader"))),
+            other => {
+                return Err(
+                    unsupported("loader", format!("the {other} loader")).with_param("name", other)
+                )
+            }
         };
         if loader.is_some() {
-            return Err(unsupported("more than one loader"));
+            return Err(unsupported("multiple_loaders", "more than one loader"));
         }
         let version = version
             .strip_prefix(&format!("{minecraft}-"))
@@ -387,12 +428,14 @@ pub fn game_from(versions: &BTreeMap<String, String>) -> Result<(String, Option<
     Ok((minecraft, loader))
 }
 
-pub(crate) fn unsupported(what: &str) -> LauncherError {
+/// `context` (an i18next context) picks the UI's sentence; callers add its raw values as params
+/// (never English words). `what` is only for the English fallback.
+pub(crate) fn unsupported(context: &str, what: impl Display) -> LauncherError {
     LauncherError::pack(
         ErrorCode::PackUnsupported,
         format!("This pack uses something the launcher can't handle yet: {what}"),
     )
-    .with_param("what", what)
+    .with_param("context", context)
     .with_fix("Ask the pack's author, or try another pack")
 }
 
@@ -404,6 +447,15 @@ pub(crate) fn invalid(file: &str, detail: impl Display) -> LauncherError {
     .with_param("file", file)
     .with_fix("Check the link, or ask the pack's author")
     .with_detail(detail)
+}
+
+/// [`invalid`] when no single pack file is to blame: `context` (an i18next context) picks the
+/// UI's sentence for what is wrong, and `message` is the English fallback.
+pub(crate) fn invalid_because(context: &str, message: &str, detail: impl Display) -> LauncherError {
+    LauncherError::pack(ErrorCode::PackInvalid, message)
+        .with_param("context", context)
+        .with_fix("Check the link, or ask the pack's author")
+        .with_detail(detail)
 }
 
 pub(crate) fn unsafe_path(path: &str) -> LauncherError {
@@ -519,6 +571,58 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn pack_fetch_errors_become_pack_codes() {
+        let url = "https://packs.example.com/a/index.toml";
+        let map = pack_fetch_error(url, "index.toml");
+        let param = |e: &LauncherError, k: &str| e.params.get(k).cloned();
+
+        let missing = map(LauncherError::network(ErrorCode::MetaCacheMissing, "x"));
+        assert_eq!(missing.code, ErrorCode::HostTrouble);
+        // Still a network failure, so a pack update that can't download falls back.
+        assert_eq!(missing.category, crate::error::ErrorCategory::Network);
+        assert_eq!(
+            param(&missing, "host").as_deref(),
+            Some("packs.example.com")
+        );
+
+        for code in [ErrorCode::MetaChecksum, ErrorCode::MetaUnexpected] {
+            let bad = map(LauncherError::integrity(code, "x").with_detail("why"));
+            assert_eq!(bad.code, ErrorCode::PackInvalid, "{code:?}");
+            assert_eq!(param(&bad, "file").as_deref(), Some("index.toml"));
+            assert_eq!(bad.detail.as_deref(), Some("why"));
+        }
+
+        let gone =
+            map(LauncherError::loader(ErrorCode::MetaNotFound, "x").with_param("status", 410));
+        assert_eq!(gone.code, ErrorCode::PackNotFound);
+        let refused =
+            map(LauncherError::loader(ErrorCode::MetaNotFound, "x").with_param("status", 429));
+        assert_eq!(refused.code, ErrorCode::HostTrouble);
+        assert_eq!(
+            param(&refused, "host").as_deref(),
+            Some("packs.example.com")
+        );
+        assert_eq!(param(&refused, "status").as_deref(), Some("429"));
+
+        let offline = map(LauncherError::network(ErrorCode::Offline, "x"));
+        assert_eq!(
+            offline.code,
+            ErrorCode::Offline,
+            "everything else passes through"
+        );
+
+        let modrinth = modrinth_fetch_error("https://api.modrinth.com/v2/project/x")(
+            LauncherError::loader(ErrorCode::MetaUnexpected, "x"),
+        );
+        assert_eq!(modrinth.code, ErrorCode::PackInvalid);
+        assert_eq!(
+            param(&modrinth, "context").as_deref(),
+            Some("modrinth_data")
+        );
+        assert_eq!(param(&modrinth, "file"), None);
+    }
+
     fn versions(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
         pairs
             .iter()
@@ -555,17 +659,23 @@ mod tests {
             None
         );
         let lite = game_from(&versions(&[("minecraft", "1.12.2"), ("liteloader", "1")]));
-        assert_eq!(lite.unwrap_err().code, ErrorCode::PackUnsupported);
+        let lite = lite.unwrap_err();
+        assert_eq!(lite.code, ErrorCode::PackUnsupported);
+        assert_eq!(lite.params["context"], "loader");
+        assert_eq!(lite.params["name"], "liteloader");
+        assert!(!lite.params.contains_key("what"));
         let two = game_from(&versions(&[
             ("minecraft", "1.20.1"),
             ("forge", "1"),
             ("fabric", "2"),
         ]));
-        assert_eq!(two.unwrap_err().code, ErrorCode::PackUnsupported);
-        assert_eq!(
-            game_from(&versions(&[])).unwrap_err().code,
-            ErrorCode::PackInvalid
-        );
+        let two = two.unwrap_err();
+        assert_eq!(two.code, ErrorCode::PackUnsupported);
+        assert_eq!(two.params["context"], "multiple_loaders");
+        let none = game_from(&versions(&[])).unwrap_err();
+        assert_eq!(none.code, ErrorCode::PackInvalid);
+        assert_eq!(none.params["context"], "no_minecraft_version");
+        assert!(!none.params.contains_key("file"));
     }
 
     fn file(path: &str) -> PackFile {

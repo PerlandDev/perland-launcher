@@ -376,11 +376,24 @@ pub struct Instance {
 
 pub struct InstanceStore {
     dir: PathBuf,
+    /// The object cache (`LauncherDirs::objects`), when `rename` should re-key the instance's
+    /// murmur2-only objects there.
+    objects: Option<PathBuf>,
 }
 
 impl InstanceStore {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+        Self {
+            dir: dir.into(),
+            objects: None,
+        }
+    }
+
+    /// A rename that moves the folder also moves the instance's murmur2-only objects in this
+    /// object cache to its new id (they are kept per instance, see `download::cache`).
+    pub fn with_objects(mut self, objects: impl Into<PathBuf>) -> Self {
+        self.objects = Some(objects.into());
+        self
     }
 
     /// The accessors below (`instance_dir`, `game_dir`, `perland_dir`) join `id` onto the store
@@ -561,7 +574,40 @@ impl InstanceStore {
             let _ = tokio::fs::rename(&new_dir, &old_dir).await;
             return Err(e);
         }
+        self.rescope_objects(id, &instance.id).await;
         Ok(instance)
+    }
+
+    /// After a move from `old_id` to `new_id`: the murmur2-only objects the instance's records
+    /// list are keyed by its id, so they follow it. Best effort; never fails the rename.
+    async fn rescope_objects(&self, old_id: &str, new_id: &str) {
+        use crate::{
+            download::{
+                cache::{CacheScope, ObjectCache},
+                Hashes,
+            },
+            sync::lockfile::{load_pack, Managed},
+        };
+        let Some(objects) = &self.objects else {
+            return;
+        };
+        let perland = self.perland_dir(new_id);
+        let (managed, pack) = (Managed::load(&perland).await, load_pack(&perland).await);
+        let mut hashes: Vec<Hashes> = Vec::new();
+        if let Some(managed) = managed {
+            hashes.extend(managed.files.into_values().map(|f| f.declared));
+        }
+        if let Some(pack) = pack {
+            hashes.extend(pack.files.into_iter().map(|f| f.hashes));
+            hashes.extend(pack.archive);
+        }
+        ObjectCache::new(objects)
+            .rescope(
+                &CacheScope::for_instance(old_id),
+                &CacheScope::for_instance(new_id),
+                &hashes,
+            )
+            .await;
     }
 
     pub async fn delete(&self, id: &str) -> Result<()> {
@@ -966,6 +1012,89 @@ mod tests {
         assert!(store.perland_dir("asalith-fields").is_dir());
         assert_eq!(renamed.art_seed.as_deref(), Some("pack"));
         assert_eq!(store.load("asalith-fields").await.unwrap(), renamed);
+    }
+
+    #[tokio::test]
+    async fn rename_takes_the_instances_murmur2_only_objects_along() {
+        use crate::{
+            download::{
+                cache::{CacheScope, ObjectCache},
+                hash::curseforge_murmur2,
+                Hashes,
+            },
+            paths::LauncherDirs,
+            sources::{DesiredState, FileMode, FileSource, PackAbout, PackFile, Side},
+            sync::lockfile::{save_pack, Managed, ManagedFile},
+        };
+        let m2 = |body: &[u8]| Hashes {
+            murmur2: Some(curseforge_murmur2(body)),
+            ..Default::default()
+        };
+        let pack_file = |hashes: Hashes| PackFile {
+            path: "mods/b.jar".into(),
+            name: "b".into(),
+            source: FileSource::Remote { urls: vec![] },
+            hashes,
+            size: None,
+            side: Side::Both,
+            optional: None,
+            mode: FileMode::Replace,
+            manual: None,
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = LauncherDirs::new(tmp.path());
+        let store = InstanceStore::new(dirs.instances()).with_objects(dirs.objects());
+        store.create("Pack", vanilla("1.21.1")).await.unwrap();
+        let perland = store.perland_dir("pack");
+        let (declared, listed, absent) = (m2(b"declared"), m2(b"listed"), m2(b"absent"));
+        Managed {
+            version: Managed::VERSION,
+            stamp: "s1".into(),
+            pack_version: "1.0.0".into(),
+            choices: BTreeMap::new(),
+            files: BTreeMap::from([(
+                "mods/a.jar".to_string(),
+                ManagedFile {
+                    name: "a".into(),
+                    sha1: String::new(),
+                    size: 8,
+                    mode: FileMode::Replace,
+                    declared: declared.clone(),
+                },
+            )]),
+        }
+        .save(&perland)
+        .await
+        .unwrap();
+        let desired = DesiredState {
+            name: "Tiny".into(),
+            pack_version: "1.0.0".into(),
+            minecraft: "1.21.1".into(),
+            loader: None,
+            files: vec![pack_file(listed.clone()), pack_file(absent.clone())],
+            stamp: "s1".into(),
+            about: PackAbout::default(),
+            archive: None,
+        };
+        save_pack(&perland, &desired).await.unwrap();
+        let cache = ObjectCache::new(dirs.objects());
+        let old = cache.scoped(CacheScope::for_instance("pack"));
+        let mut old_paths = Vec::new();
+        for (body, hashes) in [(&b"declared"[..], &declared), (b"listed", &listed)] {
+            let src = tmp.path().join("src.jar");
+            std::fs::write(&src, body).unwrap();
+            old_paths.push(old.insert_file(&src, hashes).await.unwrap());
+        }
+
+        let renamed = store.rename("pack", "Fields").await.unwrap();
+        assert_eq!(renamed.id, "fields");
+        let new = cache.scoped(CacheScope::for_instance("fields"));
+        assert!(new.get(&declared).await.is_some(), "managed.json's file");
+        assert!(new.get(&listed).await.is_some(), "pack.json's file");
+        assert!(new.get(&absent).await.is_none(), "never cached: skipped");
+        for path in old_paths {
+            assert!(!path.exists(), "{path:?} moved, not copied");
+        }
     }
 
     #[tokio::test]

@@ -84,13 +84,17 @@ impl Default for Limits {
 pub fn parse_index(bytes: &[u8]) -> Result<MrIndex> {
     let index: MrIndex = serde_json::from_slice(bytes).map_err(|e| invalid(INDEX, e))?;
     if index.format_version != 1 {
-        return Err(unsupported(&format!(
-            "mrpack format {}",
-            index.format_version
-        )));
+        return Err(unsupported(
+            "mrpack_format",
+            format!("mrpack format {}", index.format_version),
+        )
+        .with_param("format", index.format_version));
     }
     if index.game != "minecraft" {
-        return Err(unsupported(&format!("packs for {}", index.game)));
+        return Err(
+            unsupported("mrpack_game", format!("packs for {}", index.game))
+                .with_param("game", &index.game),
+        );
     }
     Ok(index)
 }

@@ -53,6 +53,9 @@ pub struct AppConfig {
     pub downloads_dir: Option<PathBuf>,
 }
 
+/// How long after start the cache cleanup waits, so it doesn't compete with the first screen.
+pub const CACHE_CLEANUP_DELAY: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// The names a Java executable has. Anything else is never run.
 const JAVA_NAMES: [&str; 4] = ["java", "javaw", "java.exe", "javaw.exe"];
 
@@ -136,7 +139,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     pub fn new(config: AppConfig, meta: MetaClient, runner: Arc<R>, host: Arc<H>) -> Arc<Self> {
         let root = config.dirs.root().to_path_buf();
         Arc::new(Self {
-            instances: InstanceStore::new(config.dirs.instances()),
+            instances: InstanceStore::new(config.dirs.instances())
+                .with_objects(config.dirs.objects()),
             accounts: tokio::sync::Mutex::new(AccountStore::new(root.join("accounts.json"))),
             settings: tokio::sync::Mutex::new(SettingsStore::new(root.join("settings.json"))),
             order: tokio::sync::Mutex::new(OrderStore::new(config.dirs.instance_order())),
@@ -183,6 +187,36 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .is_empty()
+    }
+
+    /// Clean the object cache (`download::gc`), holding the install slot so no sync writes or
+    /// reads it meanwhile. Skipped (`None`) when an install holds the slot or a game is running:
+    /// the next start tries again.
+    pub async fn collect_cache(&self) -> Option<launcher_core::download::gc::GcReport> {
+        let Ok(_slot) = self.install_slot.clone().try_acquire_owned() else {
+            return None;
+        };
+        if self.has_active_runs() {
+            return None;
+        }
+        match launcher_core::download::gc::collect(&self.config.dirs, std::time::SystemTime::now())
+            .await
+        {
+            Ok(report) => Some(report),
+            Err(e) => {
+                tracing::warn!(code = ?e.code, "object cache cleanup failed");
+                None
+            }
+        }
+    }
+
+    /// [`AppCore::collect_cache`] after `delay` (the app start).
+    pub async fn collect_cache_after(
+        &self,
+        delay: std::time::Duration,
+    ) -> Option<launcher_core::download::gc::GcReport> {
+        tokio::time::sleep(delay).await;
+        self.collect_cache().await
     }
 
     /// A damaged accounts file doesn't fail this: Settings needs it to offer "Open data folder",
@@ -1098,6 +1132,54 @@ pub(crate) mod tests {
         drop(permit);
         core.installing.lock().unwrap().insert("asalith".into());
         assert!(core.update_blocked());
+    }
+
+    #[tokio::test]
+    async fn cache_cleanup_waits_for_installs_and_games() {
+        let (core, _, _, _t) = core(BuildKind::Beta);
+        // An object under the old global murmur2 key goes whatever its age.
+        let legacy = core.config.dirs.objects().join("m2").join("m2-1");
+        std::fs::create_dir_all(legacy.parent().unwrap()).unwrap();
+        std::fs::write(&legacy, b"x").unwrap();
+
+        let permit = core.install_slot.clone().try_acquire_owned().unwrap();
+        assert_eq!(
+            core.collect_cache().await,
+            None,
+            "an install holds the slot"
+        );
+        drop(permit);
+        core.runs.lock().unwrap().insert(
+            "a".into(),
+            Run {
+                phase: RunStateKind::Running,
+                abort: None,
+                killer: None,
+                cancel: Cancel::default(),
+                answer: None,
+                offer: None,
+                update_only: false,
+            },
+        );
+        assert_eq!(core.collect_cache().await, None, "a game is running");
+        assert!(legacy.exists());
+        core.runs.lock().unwrap().clear();
+
+        let report = core.collect_cache().await.expect("nothing in the way");
+        assert_eq!(report.removed, 1);
+        assert!(!legacy.exists());
+        assert_eq!(core.install_slot.available_permits(), 1, "slot given back");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cache_cleanup_at_start_waits_first() {
+        let (core, _, _, _t) = core(BuildKind::Beta);
+        let started = tokio::time::Instant::now();
+        assert!(core
+            .collect_cache_after(CACHE_CLEANUP_DELAY)
+            .await
+            .is_some());
+        assert!(started.elapsed() >= CACHE_CLEANUP_DELAY);
     }
 
     #[tokio::test]

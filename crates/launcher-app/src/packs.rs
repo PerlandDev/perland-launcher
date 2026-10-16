@@ -324,7 +324,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if let Some(dir) = &self.config.downloads_dir {
             let found = state.scanner.scan(dir, &state.remaining).await?;
             if !found.is_empty() {
-                self.runner.import_manual(found.clone()).await?;
+                self.runner
+                    .import_manual(id.to_string(), found.clone())
+                    .await?;
                 state
                     .remaining
                     .retain(|f| !found.iter().any(|(got, _)| got.path == f.path));

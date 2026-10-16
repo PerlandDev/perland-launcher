@@ -39,6 +39,18 @@ describe('translations', () => {
     }
   });
 
+  it('give every error context a plain fallback in both languages', () => {
+    // describeError only looks a context up when the plain key exists, so a lone
+    // `message_<context>` or `fix_<context>` would never show.
+    for (const flat of [flatEn, flatEs]) {
+      const contexts = Object.keys(flat).filter((k) => /^errors\.\w+\.(message|fix)_\w+$/.test(k));
+      expect(contexts.length).toBeGreaterThan(0);
+      for (const key of contexts) {
+        expect(flat[key.replace(/_\w+$/, '')], key).toBeTruthy();
+      }
+    }
+  });
+
   it('never leave a Spanish string identical to a long English one by accident', () => {
     const same = Object.keys(flatEn).filter(
       (k) => flatEn[k] === flatEs[k] && (flatEn[k]?.length ?? 0) > 24 && !k.startsWith('app.'),

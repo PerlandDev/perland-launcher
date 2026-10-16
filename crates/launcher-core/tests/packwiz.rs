@@ -8,7 +8,10 @@ use launcher_core::{
     sources::{packwiz, FileMode, FileSource, Side, UpdateCheck},
     ErrorCode,
 };
-use wiremock::MockServer;
+use wiremock::{
+    matchers::{method, path},
+    Mock, MockServer, ResponseTemplate,
+};
 
 fn tiny(server: &MockServer) -> PackBuilder {
     PackBuilder::new(server, "Tiny", "1.0.0")
@@ -108,7 +111,91 @@ async fn a_wrong_index_hash_is_refused() {
     let err = packwiz::resolve(&sources(&server, tmp.path()), &url)
         .await
         .unwrap_err();
-    assert_eq!(err.code, ErrorCode::MetaChecksum);
+    // A pack error naming the file, not "a version list" from the metadata client.
+    assert_eq!(err.code, ErrorCode::PackInvalid);
+    assert_eq!(
+        err.params.get("file").map(String::as_str),
+        Some("index.toml")
+    );
+    assert!(err.detail.is_some(), "the checksum detail is kept");
+}
+
+/// `at` answers with `response`, ahead of what `PackBuilder::mount` serves there.
+async fn override_path(server: &MockServer, at: &str, response: ResponseTemplate) {
+    Mock::given(method("GET"))
+        .and(path(at))
+        .respond_with(response)
+        .with_priority(1)
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn a_missing_metafile_is_a_missing_pack() {
+    let server = MockServer::start().await;
+    let url = tiny(&server).mount(&server).await;
+    override_path(
+        &server,
+        "/pack/mods/zoom.pw.toml",
+        ResponseTemplate::new(404),
+    )
+    .await;
+    let tmp = tempfile::tempdir().unwrap();
+    let err = packwiz::resolve(&sources(&server, tmp.path()), &url)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::PackNotFound);
+}
+
+#[tokio::test]
+async fn a_refused_index_is_host_trouble() {
+    let server = MockServer::start().await;
+    let url = tiny(&server).mount(&server).await;
+    override_path(&server, "/pack/index.toml", ResponseTemplate::new(403)).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let err = packwiz::resolve(&sources(&server, tmp.path()), &url)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::HostTrouble);
+    assert_eq!(err.params.get("status").map(String::as_str), Some("403"));
+    let host = server.address().ip().to_string();
+    assert_eq!(err.params.get("host"), Some(&host));
+}
+
+#[tokio::test]
+async fn a_metafile_with_a_wrong_hash_names_its_path() {
+    let server = MockServer::start().await;
+    let url = tiny(&server).mount(&server).await;
+    override_path(
+        &server,
+        "/pack/mods/zoom.pw.toml",
+        ResponseTemplate::new(200).set_body_bytes(&b"name = \"tampered\""[..]),
+    )
+    .await;
+    let tmp = tempfile::tempdir().unwrap();
+    let err = packwiz::resolve(&sources(&server, tmp.path()), &url)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::PackInvalid);
+    assert_eq!(
+        err.params.get("file").map(String::as_str),
+        Some("mods/zoom.pw.toml")
+    );
+}
+
+#[tokio::test]
+async fn an_oversized_pack_toml_is_an_invalid_pack() {
+    let server = MockServer::start().await;
+    let tmp = tempfile::tempdir().unwrap();
+    let url = tiny(&server).mount(&server).await;
+    let mut src = sources(&server, tmp.path());
+    src.meta = src.meta.with_limit(16); // pack.toml is larger than this
+    let err = packwiz::resolve(&src, &url).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::PackInvalid);
+    assert_eq!(
+        err.params.get("file").map(String::as_str),
+        Some("pack.toml")
+    );
 }
 
 #[tokio::test]

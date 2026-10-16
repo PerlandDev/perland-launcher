@@ -142,6 +142,14 @@ async fn only_modpacks_open() {
     let src = sources(&server, tmp.path());
     let err = modrinth::open(&src, "sodium", Some("X")).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::PackUnsupported);
+    assert_eq!(
+        err.params.get("context").map(String::as_str),
+        Some("modrinth_project_type")
+    );
+    assert_eq!(
+        err.params.get("project_type").map(String::as_str),
+        Some("mod")
+    );
     let missing = modrinth::open(&src, "nothing-here", None)
         .await
         .unwrap_err();
@@ -209,6 +217,36 @@ async fn a_rate_limit_is_not_a_missing_pack() {
     let err = modrinth::open(&src, "sky", None).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::HostTrouble);
     assert_ne!(err.code, ErrorCode::PackNotFound);
+}
+
+#[tokio::test]
+async fn an_unreadable_modrinth_answer_is_an_invalid_pack() {
+    let server = MockServer::start().await;
+    let tmp = tempfile::tempdir().unwrap();
+    mount_json(&server, "/v2/project/sky", json!({ "unexpected": true })).await;
+    let src = sources(&server, tmp.path());
+    let err = modrinth::open(&src, "sky", None).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::PackInvalid);
+    assert_eq!(
+        err.params.get("context").map(String::as_str),
+        Some("modrinth_data")
+    );
+    assert!(err.detail.is_some());
+
+    // The version list goes around the metadata client, and must say the same.
+    mount_json(
+        &server,
+        "/v2/project/sky2",
+        json!({ "id": "P2", "slug": "sky2", "title": "Sky 2", "project_type": "modpack", "gallery": [] }),
+    )
+    .await;
+    mount_json(&server, "/v2/project/P2/version", json!({ "nope": 1 })).await;
+    let err = modrinth::open(&src, "sky2", None).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::PackInvalid);
+    assert_eq!(
+        err.params.get("context").map(String::as_str),
+        Some("modrinth_data")
+    );
 }
 
 #[tokio::test]

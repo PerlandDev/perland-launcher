@@ -120,15 +120,33 @@ impl Browser for CoreBrowser {
                 .find(|v| v.stable)
                 .or(list.first())
                 .map(|v| v.version.clone())
-                .ok_or_else(|| {
-                    LauncherError::loader(
-                        ErrorCode::LoaderVersionNotFound,
-                        format!("No {} version for Minecraft {minecraft}", loader_tag(kind)),
-                    )
-                    .with_param("loader", loader_tag(kind))
-                    .with_param("loader_version", "latest")
-                    .with_param("version", &minecraft)
-                })
+                .ok_or_else(|| no_loader_version(kind, &minecraft))
         })
+    }
+}
+
+/// No version of the loader at all for `minecraft`: the UI says so with the `latest` context,
+/// since there is no version number to name.
+fn no_loader_version(kind: LoaderKind, minecraft: &str) -> LauncherError {
+    LauncherError::loader(
+        ErrorCode::LoaderVersionNotFound,
+        format!("No {} version for Minecraft {minecraft}", loader_tag(kind)),
+    )
+    .with_param("loader", loader_tag(kind))
+    .with_param("context", "latest")
+    .with_param("version", minecraft)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_loader_version_says_so_by_context() {
+        let e = no_loader_version(LoaderKind::Fabric, "1.21.1");
+        assert_eq!(e.code, ErrorCode::LoaderVersionNotFound);
+        assert_eq!(e.params["context"], "latest");
+        assert_eq!(e.params["version"], "1.21.1");
+        assert!(!e.params.contains_key("loader_version"));
     }
 }
