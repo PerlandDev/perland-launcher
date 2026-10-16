@@ -55,6 +55,30 @@ pub struct NewInstance {
     pub loader: Option<LoaderSpec>,
 }
 
+/// What a folder from another launcher holds, to prefill the import form. `path` is the folder
+/// the player picked (never the resolved game folder); the parts not detected are `None`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportPreview {
+    pub path: PathBuf,
+    pub name: Option<String>,
+    pub minecraft: Option<String>,
+    pub loader: Option<LoaderSpec>,
+    /// Bytes the import copies.
+    pub size_bytes: u64,
+}
+
+/// Import the picked folder as a new instance with this name and game. The folder is inspected
+/// again, so nothing about it is taken from the UI but its path.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRequest {
+    pub path: PathBuf,
+    pub name: String,
+    pub minecraft: String,
+    pub loader: Option<LoaderSpec>,
+}
+
 /// Time played in one instance on this computer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

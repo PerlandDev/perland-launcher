@@ -52,6 +52,7 @@ Packs stay in sync automatically, so a Perland player never manages mod versions
   - pack links, `.mrpack` files and pack sync, with pack art (icon and banner) when a pack ships it
   - Forge and NeoForge install and launch
   - the launcher's own updater and installers (the manual Release workflow)
+  - import a whole instance from another launcher's folder (mods, worlds, settings and map data are copied; the original folder is only read)
 - **Not built (never fake it):** Microsoft sign-in (Plan 4). It appears as a visible, disabled "coming soon" control. Everything else that is not built is absent.
 - **Offline-account gate:** release builds unlock offline accounts only after one licensed Microsoft sign-in. Dev builds allow them freely.
 - **Terminology:** "instance", "Play", "mods", "account", "loader" (Fabric, Quilt, Forge, NeoForge), "Minecraft version", "memory".

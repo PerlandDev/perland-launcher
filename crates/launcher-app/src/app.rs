@@ -108,6 +108,11 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) installing: Mutex<HashSet<String>>,
     /// The file the last diagnostics export wrote (for "Show in folder").
     last_export: Mutex<Option<PathBuf>>,
+    /// The running import from another launcher, if any (see `import.rs`): one at a time.
+    pub(crate) import_slot: Mutex<Option<Cancel>>,
+    /// Makes the next import fail while it moves the copied files into the new instance.
+    #[cfg(test)]
+    pub(crate) import_fail_move: AtomicBool,
     /// Seconds the run clock is ahead of the real one, so a test can play a long game at once.
     #[cfg(test)]
     pub(crate) clock_ahead: AtomicU64,
@@ -158,6 +163,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             plan_seq: AtomicU64::new(0),
             installing: Mutex::new(HashSet::new()),
             last_export: Mutex::new(None),
+            import_slot: Mutex::new(None),
+            #[cfg(test)]
+            import_fail_move: AtomicBool::new(false),
             #[cfg(test)]
             clock_ahead: AtomicU64::new(0),
             config,
@@ -322,14 +330,17 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Ok(listing)
     }
 
-    pub async fn instance_create(&self, request: NewInstance) -> Result<Instance> {
-        // A hand-edited settings file can hold any number; clamp so create + update can't
-        // half-succeed and leave an instance behind.
-        let memory = self
-            .settings_get()
+    /// The memory a new instance gets. A hand-edited settings file can hold any number; clamp
+    /// so create + update can't half-succeed and leave an instance behind.
+    pub(crate) async fn default_memory_mb(&self) -> u32 {
+        self.settings_get()
             .await
             .default_memory_mb
-            .clamp(MIN_MEMORY_MB, MAX_MEMORY_MB);
+            .clamp(MIN_MEMORY_MB, MAX_MEMORY_MB)
+    }
+
+    pub async fn instance_create(&self, request: NewInstance) -> Result<Instance> {
+        let memory = self.default_memory_mb().await;
         let mut instance = self
             .instances
             .create(

@@ -145,6 +145,14 @@ export const contentFile = z.strictObject({
   managed: z.boolean(),
 });
 export const newInstance = z.strictObject({ name: z.string(), minecraft: z.string(), loader: loaderSpec.nullable() });
+export const importPreview = z.strictObject({
+  path: z.string(),
+  name: z.string().nullable(),
+  minecraft: z.string().nullable(),
+  loader: loaderSpec.nullable(),
+  sizeBytes: z.number().int(),
+});
+export const importRequest = z.strictObject({ path: z.string(), name: z.string(), minecraft: z.string(), loader: loaderSpec.nullable() });
 export const openTarget = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('instance'), id: z.string() }),
   z.strictObject({ kind: z.literal('mods'), id: z.string() }),
@@ -370,6 +378,8 @@ export type LoaderVersion = z.infer<typeof loaderVersion>;
 export type LocalMod = z.infer<typeof localMod>;
 export type ContentFile = z.infer<typeof contentFile>;
 export type NewInstance = z.infer<typeof newInstance>;
+export type ImportPreview = z.infer<typeof importPreview>;
+export type ImportRequest = z.infer<typeof importRequest>;
 export type OpenTarget = z.infer<typeof openTarget>;
 export type RunStateKind = z.infer<typeof runStateKind>;
 export type CrashHint = z.infer<typeof crashHint>;

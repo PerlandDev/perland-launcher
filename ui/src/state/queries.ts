@@ -1,7 +1,7 @@
 import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../ipc/commands';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ArtChoice, ContentKind, Focus, IconChoice, ImageKind, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
+import type { ArtChoice, ContentKind, Focus, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { pushError } from './toasts';
@@ -152,6 +152,20 @@ export function useAddPack(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (request: PackAddRequest) => commands.packAdd(request),
+    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    onError: onError(opts),
+  });
+}
+
+/** What a folder from another launcher holds. The form shows the error itself. */
+export function useImportInspect() {
+  return useMutation({ mutationFn: (path: string) => commands.importInspect(path) });
+}
+
+export function useImportInstance(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (request: ImportRequest) => commands.importInstance(request),
     onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
     onError: onError(opts),
   });

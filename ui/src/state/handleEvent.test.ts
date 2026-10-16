@@ -5,6 +5,7 @@ import { exitOf } from '../ipc/mock';
 import { resetActivity, useActivity } from './activity';
 import { contentProgressSnapshot } from './contentProgress';
 import { handleEvent } from './handleEvent';
+import { importProgressSnapshot } from './importProgress';
 import { qk, queryClient } from './queries';
 import { routeSnapshot } from './route';
 import { runStore } from './runStore';
@@ -107,6 +108,12 @@ it('sends install progress to its own store, not the run', () => {
   });
   expect(runStore.run('asalith-fields').progress).toBeNull();
   expect(contentProgressSnapshot('asalith-fields')?.done).toBe(1);
+});
+
+it('sends import progress to its own store, never onto Play', () => {
+  handleEvent({ type: 'progress', instance: null, task: { key: 'import_instance', params: {} }, done: 5, total: 10, bytes: 5 });
+  expect(importProgressSnapshot()).toEqual({ task: { key: 'import_instance', params: {} }, done: 5, total: 10, bytes: 5 });
+  expect(runStore.active()).toEqual([]);
 });
 
 it('opens Join server for a join deep link', async () => {

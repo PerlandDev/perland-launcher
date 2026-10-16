@@ -38,6 +38,8 @@ import type {
   LauncherError,
   LocalMod,
   ManualFile,
+  ImportPreview,
+  ImportRequest,
   ManualProgress,
   NewInstance,
   PackAddRequest,
@@ -121,6 +123,10 @@ const SKY_ART: InstanceArtData = {
 const CASTLE_PICTURE = svg(
   '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" shape-rendering="crispEdges"><rect width="800" height="600" fill="#2b3a67"/><rect y="360" width="800" height="240" fill="#3f6b3a"/><rect y="480" width="800" height="120" fill="#5a4030"/><rect x="120" y="80" width="120" height="300" fill="#8a8f98"/><rect x="100" y="60" width="40" height="40" fill="#8a8f98"/><rect x="160" y="60" width="40" height="40" fill="#8a8f98"/><rect x="220" y="60" width="40" height="40" fill="#8a8f98"/><rect x="160" y="160" width="40" height="60" fill="#181410"/><rect x="240" y="240" width="320" height="140" fill="#6f747d"/><rect x="560" y="200" width="100" height="180" fill="#8a8f98"/><rect x="380" y="300" width="60" height="80" fill="#181410"/><rect x="600" y="80" width="40" height="40" fill="#ffc233"/></svg>',
 );
+
+/** The folder the directory picker returns, and what the mock import finds in it. */
+export const MOCK_IMPORT_PATH = 'C:/Users/player/Games/instances/Skyblock Adventures';
+const IMPORT_SIZE = 1_234_000_000;
 
 /** A 1x1 PNG, the stand-in for a picked image. */
 const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -339,6 +345,8 @@ function seed(options: MockOptions) {
     playtime: new Map<string, number>(Object.entries(options.playtime ?? (options.firstRun ? {} : { 'asalith-fields': 12 * 3600 }))),
     lastPlayed: new Map<string, number>(),
     runs: new Map<string, MockRun>(),
+    // The running import from another launcher: Cancel sets `cancelled`.
+    importRun: null as { cancelled: boolean } | null,
     options,
   };
 }
@@ -701,6 +709,38 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.playtime.delete(String(args.id));
       state.lastPlayed.delete(String(args.id));
       return null;
+    case 'import_inspect':
+      return {
+        path: args.path as string,
+        name: 'Skyblock Adventures',
+        minecraft: '1.20.1',
+        loader: { kind: 'fabric', version: '0.19.4' },
+        sizeBytes: IMPORT_SIZE,
+      } satisfies ImportPreview;
+    case 'import_instance': {
+      if (state.importRun) fail('disk', 'import_busy', 'Another import is still running.');
+      const request = args.request as ImportRequest;
+      if (!request.name.trim()) fail('disk', 'name_invalid', 'Instance names must be 1–64 characters', { max: 64 });
+      const run = { cancelled: false };
+      state.importRun = run;
+      try {
+        // About two seconds of copying, like a big instance on a fast disk.
+        const steps = 20;
+        for (let i = 0; i <= steps; i++) {
+          if (run.cancelled) fail('disk', 'import_cancelled', 'The import was cancelled.');
+          const done = Math.round((IMPORT_SIZE * i) / steps);
+          event({ type: 'progress', instance: null, task: { key: 'import_instance', params: {} }, done, total: IMPORT_SIZE, bytes: done });
+          if (i < steps) await wait(100);
+        }
+        if (run.cancelled) fail('disk', 'import_cancelled', 'The import was cancelled.');
+        return await handle(state, 'instance_create', { request: { name: request.name, minecraft: request.minecraft, loader: request.loader } });
+      } finally {
+        state.importRun = null;
+      }
+    }
+    case 'import_cancel':
+      if (state.importRun) state.importRun.cancelled = true;
+      return null;
     case 'playtime_list':
       return state.listing.instances.map(
         (i): PlaytimeEntry => ({
@@ -1050,7 +1090,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       return { major: 17 };
     case 'plugin:dialog|open': {
       // Mirrors the real dialog: an array when `multiple` is set, otherwise one path.
-      const options = args.options as { multiple?: boolean; filters?: { extensions?: string[] }[] } | undefined;
+      const options = args.options as { multiple?: boolean; directory?: boolean; filters?: { extensions?: string[] }[] } | undefined;
+      if (options?.directory) return MOCK_IMPORT_PATH;
       if (options?.filters?.[0]?.extensions?.includes('mrpack')) return 'C:/Users/player/Downloads/Sky Islands 1.0.4.mrpack';
       if (options?.filters?.[0]?.extensions?.includes('png')) return 'C:/Users/player/Pictures/castle.png';
       const path = 'C:/Users/player/Downloads/lithium-fabric-0.11.2.jar';
@@ -1086,6 +1127,7 @@ export function stopMockRuns() {
       run.answer?.(false);
     }
     state.runs.clear();
+    if (state.importRun) state.importRun.cancelled = true;
   }
   backends.clear();
 }

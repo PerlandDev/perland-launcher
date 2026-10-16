@@ -181,6 +181,7 @@
     "creating": "Creating…",
     "namePlaceholderFallback": "My instance",
     "modeVersion": "Pick a version",
+    "modeImport": "From another launcher",
     "linkLabel": "Pack link",
     "linkPlaceholder": "https://…/pack.toml",
     "linkHint": "Paste a pack.toml link, or modrinth: and a project name.",
@@ -191,6 +192,15 @@
     "fileNone": "No file chosen yet",
     "fileFilter": "Modpacks",
     "packNote": "The pack's mods download the first time you press Play."
+  },
+  "import": {
+    "choose": "Choose folder…",
+    "hint": "In your other launcher, open the instance's folder (usually right-click → Open folder) and pick it here.",
+    "size": "We'll copy {{size}}: your mods, worlds, settings and map data. The original folder isn't changed.",
+    "submit": "Import",
+    "importing": "Importing…",
+    "copying": "Copying… {{done}} of {{total}}",
+    "pickTitle": "Pick the instance's folder"
   },
   "instanceSettings": {
     "title": "Instance settings",

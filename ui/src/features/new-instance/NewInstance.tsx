@@ -7,11 +7,19 @@ import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
 import { Search } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
+import { ImportForm } from './ImportForm';
 import { PackFileForm, PackLinkForm } from './PackSource';
 import { useVersionChoice } from './useVersionChoice';
 import { VersionFields } from './VersionFields';
 
-type Mode = 'version' | 'link' | 'file';
+type Mode = 'version' | 'link' | 'file' | 'import';
+
+const MODE_LABEL = {
+  version: 'newInstance.modeVersion',
+  link: 'newInstance.packLink',
+  file: 'newInstance.mrpack',
+  import: 'newInstance.modeImport',
+} as const;
 
 export function NewInstance({ link }: { link?: string }) {
   const { t } = useTranslation();
@@ -45,10 +53,10 @@ export function NewInstance({ link }: { link?: string }) {
       <fieldset className="mb-8 grid gap-1.5">
         <legend className="sr-only">{t('newInstance.title')}</legend>
         <div className="flex flex-wrap gap-2">
-          {(['version', 'link', 'file'] as const).map((m) => (
+          {(['version', 'link', 'file', 'import'] as const).map((m) => (
             <label key={m} className="seg" data-checked={mode === m ? '' : undefined}>
               <input type="radio" name="new-instance-mode" className="sr-only" checked={mode === m} onChange={() => setMode(m)} />
-              {m === 'version' ? t('newInstance.modeVersion') : m === 'link' ? t('newInstance.packLink') : t('newInstance.mrpack')}
+              {t(MODE_LABEL[m])}
             </label>
           ))}
         </div>
@@ -70,6 +78,7 @@ export function NewInstance({ link }: { link?: string }) {
       )}
       {mode === 'link' && <PackLinkForm initial={link} />}
       {mode === 'file' && <PackFileForm />}
+      {mode === 'import' && <ImportForm />}
     </ScreenFrame>
   );
 }

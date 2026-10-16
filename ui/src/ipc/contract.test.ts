@@ -9,6 +9,8 @@ import errorFx from './contract/error.json';
 import errorCodes from './contract/error_codes.json';
 import events from './contract/events.json';
 import iconChoices from './contract/icon_choices.json';
+import importPreview from './contract/import_preview.json';
+import importRequest from './contract/import_request.json';
 import installPlans from './contract/install_plans.json';
 import installResult from './contract/install_result.json';
 import inviteLinksFx from './contract/invite_links.json';
@@ -53,6 +55,8 @@ const cases: [string, ZodType, unknown][] = [
   ['manual_progress', s.manualProgress, manualProgress],
   ['mc_versions', s.mcVersion.array(), mcVersions],
   ['new_instance', s.newInstance, newInstance],
+  ['import_preview', s.importPreview, importPreview],
+  ['import_request', s.importRequest, importRequest],
   ['open_targets', s.openTarget.array(), openTargets],
   ['pack_add_requests', s.packAddRequest.array(), packAddRequests],
   ['instance_art', s.instanceArtData, instanceArt],

@@ -3,10 +3,10 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, IconChoice, InstallPlanView, InstallResult,
-    InstanceArtData, JavaTest, JoinPreview, ManualProgress, NewInstance, OpenTarget,
-    PackAddRequest, PackContents, PackStatus, PlaytimeEntry, RunSnapshot, SearchRequest,
-    ServerStatusView,
+    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, IconChoice, ImportPreview, ImportRequest,
+    InstallPlanView, InstallResult, InstanceArtData, JavaTest, JoinPreview, ManualProgress,
+    NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus, PlaytimeEntry, RunSnapshot,
+    SearchRequest, ServerStatusView,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -104,6 +104,21 @@ pub async fn instance_reorder(core: CoreState<'_>, ids: Vec<String>) -> Res<Inst
 #[tauri::command]
 pub async fn instance_create(core: CoreState<'_>, request: NewInstance) -> Res<Instance> {
     logged("instance_create", core.instance_create(request).await)
+}
+
+#[tauri::command]
+pub async fn import_inspect(core: CoreState<'_>, path: PathBuf) -> Res<ImportPreview> {
+    logged("import_inspect", core.import_inspect(path).await)
+}
+
+#[tauri::command]
+pub async fn import_instance(core: CoreState<'_>, request: ImportRequest) -> Res<Instance> {
+    logged("import_instance", core.import_instance(request).await)
+}
+
+#[tauri::command]
+pub fn import_cancel(core: CoreState<'_>) {
+    core.import_cancel();
 }
 
 #[tauri::command]
