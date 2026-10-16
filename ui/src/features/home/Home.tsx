@@ -16,6 +16,7 @@ import { formatPlaytime } from '../../ui/playtime';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { DamagedView } from './DamagedView';
 import { EmptyState } from './EmptyState';
+import { useNameFit } from './fitName';
 import { InstanceMenu } from './InstanceMenu';
 import { ServerPanel } from '../servers/ServerPanel';
 import { isPack, isServer, versionLine } from './labels';
@@ -63,6 +64,7 @@ function InstanceView({ instance }: { instance: Instance }) {
   const icon = art.data?.icon ?? null;
   // The second click of a double click lands before the `queued` event; hold it until Play settles.
   const playOnce = useSingleFlight();
+  const nameRef = useNameFit<HTMLHeadingElement>(instance.name);
   return (
     // Home measures its own width (`@container`), not the window's, so the wide rail narrows it honestly.
     <section className="@container relative h-full overflow-hidden" aria-labelledby="instance-name">
@@ -90,10 +92,9 @@ function InstanceView({ instance }: { instance: Instance }) {
         <div className="min-w-0">
           <div className="flex items-end gap-5">
             {icon && <IconPlate src={icon} />}
-            <h1
-              id="instance-name"
-              className="marquee-name min-w-0 font-display text-[clamp(2.5rem,5.2cqi,5.5rem)] leading-[0.95] [overflow-wrap:anywhere]"
-            >
+            {/* Sized in app.css: words stay whole, and one too wide for the row shrinks the type. It fills
+                the row so useNameFit can read the room it has from its own width. */}
+            <h1 ref={nameRef} id="instance-name" className="marquee-name min-w-0 flex-1 font-display leading-[0.95]">
               {instance.name}
             </h1>
           </div>
@@ -105,7 +106,8 @@ function InstanceView({ instance }: { instance: Instance }) {
         </div>
         <div className={`flex items-end gap-3 ${icon ? '@max-[64rem]:justify-self-end' : '@max-[55rem]:justify-self-end'}`}>
           {/* "Mods & packs" is long. Its 1rem pad, the 1rem column gap and the name's 5.2cqi size keep
-              an 8-letter name (CREATIVE, SURVIVAL, MODPACKS) whole down to the side-by-side floor (55rem, or 64rem when the icon plate shows). */}
+              an 8-letter name (CREATIVE, SURVIVAL, MODPACKS) at full size down to the side-by-side floor (55rem,
+              or 64rem when the icon plate shows); a longer word shrinks the type to fit. */}
           <Button size="lg" className="px-4" icon={<Package />} onClick={() => navigate({ name: 'mods', id: instance.id })}>
             {t('home.mods')}
           </Button>
