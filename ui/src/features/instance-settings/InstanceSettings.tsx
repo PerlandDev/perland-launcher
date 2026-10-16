@@ -2,6 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
+import { describeError, isLauncherError } from '../../ipc/errors';
 import { inviteHost } from '../../ipc/inviteLink';
 import type { Instance } from '../../ipc/schema';
 import { useAppInfo, useInstances, useUpdateInstance } from '../../state/queries';
@@ -19,7 +20,7 @@ import { useVersionChoice } from '../new-instance/useVersionChoice';
 import { VersionFields } from '../new-instance/VersionFields';
 
 function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const choice = useVersionChoice(instance.game);
   const pack = isPack(instance);
   const server = isServer(instance);
@@ -32,6 +33,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
   const [javaPath, setJavaPath] = useState<string | null>(instance.java.path);
   // A result belongs to the path it was produced for and only shows while that path is still chosen.
   const [javaResult, setJavaResult] = useState<({ path: string | null } & ({ ok: number } | { error: unknown })) | null>(null);
+  const [javaArgs, setJavaArgs] = useState(instance.java.args);
   const [testing, setTesting] = useState(false);
   const inFlight = useRef(false);
   const update = useUpdateInstance({ inline: true });
@@ -82,6 +84,8 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
       });
   };
   const shownResult = javaResult && javaResult.path === javaPath ? javaResult : null;
+  // A refused argument belongs under its field; every other failure stays on the general card.
+  const argsRefused = update.isError && isLauncherError(update.error) && update.error.code.startsWith('jvm_');
   const ready = (pack || choice.resolved.ready) && (javaMode === 'auto' || javaPath !== null);
   const save = () =>
     update.mutate({
@@ -89,7 +93,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
       name,
       game: pack ? instance.game : { minecraft: choice.resolved.minecraft ?? instance.game.minecraft, loader: choice.resolved.loader },
       updatePolicy: policy,
-      java: { memoryMb, path: javaMode === 'custom' ? javaPath : null, args: instance.java.args },
+      java: { memoryMb, path: javaMode === 'custom' ? javaPath : null, args: javaArgs },
     });
 
   return (
@@ -176,7 +180,21 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
           </div>
         )}
       </fieldset>
-      {update.isError && <ErrorCard error={update.error} />}
+      <Field
+        label={t('instanceSettings.javaArgs')}
+        hint={t('instanceSettings.javaArgsHint')}
+        error={argsRefused ? describeError(i18n, update.error).message : null}
+      >
+        <textarea
+          className="field-input resize-y font-mono text-sm"
+          rows={2}
+          spellCheck={false}
+          autoComplete="off"
+          value={javaArgs}
+          onChange={(e) => edit(setJavaArgs)(e.target.value)}
+        />
+      </Field>
+      {update.isError && !argsRefused && <ErrorCard error={update.error} />}
       <div className="sticky bottom-0 flex items-center justify-end gap-4 bg-ground py-4 shadow-[0_-1px_0_var(--color-line)]">
         <p role="status" className="text-sm text-ink-dim">{update.isSuccess ? t('common.saved') : t('instanceSettings.applyNote')}</p>
         <Button variant="primary" size="lg" disabled={!ready || update.isPending} onClick={save}>

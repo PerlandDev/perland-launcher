@@ -602,6 +602,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     }
     case 'instance_update': {
       const updated = args.instance as Instance;
+      // Like the core: memory comes from the slider, never from the Java arguments.
+      if (updated.java.args.split(/\s+/).some((token) => token.startsWith('-Xmx'))) fail('java', 'jvm_args_memory', 'Memory is set with the slider, not in the Java arguments');
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
     }

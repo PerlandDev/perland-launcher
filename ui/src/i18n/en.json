@@ -198,6 +198,8 @@
     "javaTest": "Test",
     "javaOk": "Java {{major}} works",
     "javaFiles": "Java program",
+    "javaArgs": "Java arguments",
+    "javaArgsHint": "Optional, for advanced players. Separate them with spaces and put quotes around a value with spaces. Memory is set above.",
     "applyNote": "Changes apply the next time you press Play.",
     "updates": "Updates",
     "updatesAuto": "Automatic",

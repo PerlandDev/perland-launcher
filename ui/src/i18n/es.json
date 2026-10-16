@@ -198,6 +198,8 @@
     "javaTest": "Probar",
     "javaOk": "Java {{major}} funciona",
     "javaFiles": "Programa de Java",
+    "javaArgs": "Argumentos de Java",
+    "javaArgsHint": "Opcional, para jugadores avanzados. Sepáralos con espacios y pon comillas a un valor que tenga espacios. La memoria se elige arriba.",
     "applyNote": "Los cambios se aplican la próxima vez que presiones Jugar.",
     "updates": "Actualizaciones",
     "updatesAuto": "Automáticas",
