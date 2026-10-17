@@ -420,3 +420,39 @@ it('never pulls focus back after a move that went nowhere', async () => {
   expect(screen.getByRole('button', { name: 'Sky Isles' })).toBeInTheDocument();
   expect(document.activeElement).toBe(document.body);
 });
+
+it('offers each cabinet its instance menu on a right-click, without selecting it', async () => {
+  const { user } = renderApp(<Rail />);
+  const creative = await screen.findByRole('button', { name: 'Creative Flat' });
+  fireEvent.contextMenu(creative, { button: 2, clientX: 40, clientY: 120 });
+  const menu = screen.getByRole('menu', { name: 'More for Creative Flat' });
+  expect(within(menu).getAllByRole('menuitem')[0]).toHaveFocus();
+  expect(within(menu).getByRole('menuitem', { name: 'Change image…' })).toBeInTheDocument();
+  expect(routeSnapshot()).not.toEqual({ name: 'home', id: 'creative-flat' });
+  await user.click(within(menu).getByRole('menuitem', { name: 'Instance settings' }));
+  expect(routeSnapshot()).toEqual({ name: 'instanceSettings', id: 'creative-flat' });
+});
+
+it('gives a damaged cabinet no instance menu', async () => {
+  renderApp(<Rail />);
+  fireEvent.contextMenu(await screen.findByRole('button', { name: 'old-pack, Needs attention' }), { button: 2 });
+  expect(screen.queryByRole('menu')).toBeNull();
+});
+
+it('puts a ⋯ key on each wide row that opens the same menu as a right-click', async () => {
+  const { user } = renderApp(<Rail />);
+  await screen.findByRole('button', { name: 'Creative Flat' });
+  // Compact cabinets have no room for the key; the right-click and Home's keys stand in.
+  expect(screen.queryByRole('button', { name: 'More for Creative Flat' })).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Show names' }));
+  fireEvent.contextMenu(screen.getByRole('button', { name: 'Creative Flat' }), { button: 2 });
+  const byClick = within(screen.getByRole('menu')).getAllByRole('menuitem').map((i) => i.textContent);
+  await user.keyboard('{Escape}');
+  const more = screen.getByRole('button', { name: 'More for Creative Flat' });
+  expect(more).toHaveAttribute('aria-haspopup', 'menu');
+  await user.click(more);
+  const menu = screen.getByRole('menu', { name: 'More for Creative Flat' });
+  expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(byClick);
+  await user.keyboard('{Escape}');
+  expect(more).toHaveFocus();
+});

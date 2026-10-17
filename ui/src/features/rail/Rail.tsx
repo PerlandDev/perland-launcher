@@ -7,19 +7,22 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
+  type Ref,
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import { InstanceIcon } from '../../art/InstanceIcon';
 import { artSeed } from '../../art/seed';
 import { pixelUpscale } from '../../art/upscale';
-import type { ServerStatus } from '../../ipc/schema';
+import type { Instance, ServerStatus } from '../../ipc/schema';
 import { useInstances, useInstanceArt, useReorderInstances, useSaveSettings, useServerStatus, useSettings } from '../../state/queries';
 import { navigate, rememberInstance, useRoute, instanceOf } from '../../state/route';
 import { RAIL_POLL } from '../../state/serverPoll';
 import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
+import { Menu, type MenuHandle } from '../../ui/Menu';
 import { ArrowBarLeft, ArrowBarRight, Plus, Search, Server, WarningDiamond } from '../../ui/Icon';
 import { sessionKind } from '../browse/session';
+import { useInstanceActions } from '../home/InstanceMenu';
 import { pickId } from '../home/pick';
 import { statusWord } from '../servers/statusWord';
 import { dropIndex, moveItem } from './reorder';
@@ -68,6 +71,31 @@ interface Item {
   server: boolean;
   lastStatus: ServerStatus | null;
   gone: boolean;
+  /** A healthy instance's own record, for its menu; damaged ones have none. */
+  instance: Instance | null;
+}
+
+/** A cabinet's instance menu: the same list as Home's ⋯ key. Wide, a quiet ⋯ key at the row's end opens it;
+ *  compact there is no room for one, so a right-click (or the keyboard's menu key) on the cabinet does. */
+function RailMenu({ instance, wide, entry, ref }: { instance: Instance; wide: boolean; entry: boolean; ref: Ref<MenuHandle> }) {
+  const { t } = useTranslation();
+  const actions = useInstanceActions(instance);
+  return (
+    <>
+      <Menu
+        ref={ref}
+        label={t('rail.more', { name: instance.name })}
+        items={actions.items}
+        compact
+        floating
+        trigger={wide}
+        // Only the row Tab enters the rail at gets a stop of its own; the arrow keys move along the cabinets.
+        triggerTabIndex={entry ? 0 : -1}
+        className="rail-more"
+      />
+      {actions.dialogs}
+    </>
+  );
 }
 
 function RailItem({
@@ -117,58 +145,67 @@ function RailItem({
   const serverWord = item.server ? statusWord(t, serverStatus, live.data?.players ?? null, serverGone) : null;
   const label = [item.name, status, serverWord].filter(Boolean).join(', ');
   const word = [status, serverWord].filter(Boolean).join(' · ');
+  const menu = useRef<MenuHandle>(null);
   return (
-    <button
-      ref={setRef}
-      type="button"
-      className="rail-item"
-      data-selected={selected ? '' : undefined}
-      aria-current={selected ? 'page' : undefined}
-      aria-label={label}
-      title={[item.name, serverWord].filter(Boolean).join(' · ')}
-      tabIndex={entry ? 0 : -1}
-      aria-keyshortcuts={movable ? 'Alt+ArrowUp Alt+ArrowDown' : undefined}
-      data-dragging={lift !== null ? '' : undefined}
-      style={lift !== null ? ({ '--lift': `${lift}px` } as CSSProperties) : undefined}
-      {...grip}
-      onClick={() => {
-        if (!endedDrag()) navigate({ name: 'home', id: item.id });
-      }}
-    >
-      <span className="rail-icon">
-        <span className={item.damaged ? 'opacity-40 grayscale' : undefined}>
-          {icon ? (
-            <img
-              src={icon}
-              alt=""
-              width={40}
-              height={40}
-              className="rail-art"
-              draggable={false}
-              data-upscale={upscaled === icon ? '' : undefined}
-              onLoad={(e) => {
-                const { naturalWidth: width, naturalHeight: height } = e.currentTarget;
-                setUpscaled(pixelUpscale({ width, height }, { width: 40, height: 40 }) ? icon : null);
-              }}
-              onError={() => setFailed(icon)}
-            />
-          ) : (
-            <InstanceIcon name={item.name} seed={item.seed} size={40} />
-          )}
-        </span>
-        {status && !item.damaged && <span className="rail-led" aria-hidden />}
-        {item.server && <span className="rail-server" data-status={serverGone ? 'unknown' : (serverStatus ?? 'unknown')} aria-hidden />}
-        {item.damaged && <WarningDiamond className="rail-warn" aria-hidden />}
-      </span>
-      {wide && (
-        <span className="rail-text">
-          <span className="rail-name" title={item.name}>
-            {item.name}
+    <>
+      <button
+        ref={setRef}
+        type="button"
+        className="rail-item"
+        data-selected={selected ? '' : undefined}
+        aria-current={selected ? 'page' : undefined}
+        aria-label={label}
+        title={[item.name, serverWord].filter(Boolean).join(' · ')}
+        tabIndex={entry ? 0 : -1}
+        aria-keyshortcuts={movable ? 'Alt+ArrowUp Alt+ArrowDown' : undefined}
+        data-dragging={lift !== null ? '' : undefined}
+        style={lift !== null ? ({ '--lift': `${lift}px` } as CSSProperties) : undefined}
+        {...grip}
+        onClick={() => {
+          if (!endedDrag()) navigate({ name: 'home', id: item.id });
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          // The keyboard's menu key fires this too, with no point: then the menu opens beside the cabinet.
+          menu.current?.openAt(event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : event.currentTarget);
+        }}
+      >
+        <span className="rail-icon">
+          <span className={item.damaged ? 'opacity-40 grayscale' : undefined}>
+            {icon ? (
+              <img
+                src={icon}
+                alt=""
+                width={40}
+                height={40}
+                className="rail-art"
+                draggable={false}
+                data-upscale={upscaled === icon ? '' : undefined}
+                onLoad={(e) => {
+                  const { naturalWidth: width, naturalHeight: height } = e.currentTarget;
+                  setUpscaled(pixelUpscale({ width, height }, { width: 40, height: 40 }) ? icon : null);
+                }}
+                onError={() => setFailed(icon)}
+              />
+            ) : (
+              <InstanceIcon name={item.name} seed={item.seed} size={40} />
+            )}
           </span>
-          {word && <span className="rail-word">{word}</span>}
+          {status && !item.damaged && <span className="rail-led" aria-hidden />}
+          {item.server && <span className="rail-server" data-status={serverGone ? 'unknown' : (serverStatus ?? 'unknown')} aria-hidden />}
+          {item.damaged && <WarningDiamond className="rail-warn" aria-hidden />}
         </span>
-      )}
-    </button>
+        {wide && (
+          <span className="rail-text">
+            <span className="rail-name" title={item.name}>
+              {item.name}
+            </span>
+            {word && <span className="rail-word">{word}</span>}
+          </span>
+        )}
+      </button>
+      {item.instance && <RailMenu instance={item.instance} wide={wide} entry={entry} ref={menu} />}
+    </>
   );
 }
 
@@ -209,8 +246,8 @@ export function Rail() {
   const [announcement, setAnnouncement] = useState('');
   const items = useMemo<Item[]>(
     () => [
-      ...(data?.instances ?? []).map((i) => ({ id: i.id, name: i.name, seed: artSeed(i), damaged: false, pack: i.source.kind !== 'none', server: i.source.kind === 'perland', lastStatus: i.server?.lastStatus ?? null, gone: i.server?.gone ?? false })),
-      ...(data?.damaged ?? []).map((d) => ({ id: d.id, name: d.id, seed: d.id, damaged: true, pack: false, server: false, lastStatus: null, gone: false })),
+      ...(data?.instances ?? []).map((i) => ({ id: i.id, name: i.name, seed: artSeed(i), damaged: false, pack: i.source.kind !== 'none', server: i.source.kind === 'perland', lastStatus: i.server?.lastStatus ?? null, gone: i.server?.gone ?? false, instance: i })),
+      ...(data?.damaged ?? []).map((d) => ({ id: d.id, name: d.id, seed: d.id, damaged: true, pack: false, server: false, lastStatus: null, gone: false, instance: null })),
     ],
     [data],
   );

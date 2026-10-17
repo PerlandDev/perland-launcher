@@ -33,6 +33,7 @@
     "restart": "Reiniciar ahora"
   },
   "rail": {
+    "more": "Más opciones para {{name}}",
     "label": "Instancias",
     "newInstance": "Nueva instancia",
     "playing": "Jugando",

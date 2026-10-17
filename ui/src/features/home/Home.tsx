@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Marquee } from '../../art/Marquee';
 import { artSeed } from '../../art/seed';
@@ -11,13 +11,14 @@ import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { Package } from '../../ui/Icon';
+import { Menu, type MenuHandle } from '../../ui/Menu';
 import { PlayButton } from '../../ui/PlayButton';
 import { formatPlaytime } from '../../ui/playtime';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { DamagedView } from './DamagedView';
 import { EmptyState } from './EmptyState';
 import { useNameFit } from './fitName';
-import { InstanceMenu } from './InstanceMenu';
+import { useInstanceActions } from './InstanceMenu';
 import { ServerPanel } from '../servers/ServerPanel';
 import { isPack, isServer, versionLine } from './labels';
 import { ManualDownloads } from './ManualDownloads';
@@ -65,9 +66,22 @@ function InstanceView({ instance }: { instance: Instance }) {
   // The second click of a double click lands before the `queued` event; hold it until Play settles.
   const playOnce = useSingleFlight();
   const nameRef = useNameFit<HTMLHeadingElement>(instance.name);
+  const actions = useInstanceActions(instance);
+  const menu = useRef<MenuHandle>(null);
   return (
     // Home measures its own width (`@container`), not the window's, so the wide rail narrows it honestly.
-    <section className="@container relative h-full overflow-hidden" aria-labelledby="instance-name">
+    <section
+      className="@container relative h-full overflow-hidden"
+      aria-labelledby="instance-name"
+      // A right-click anywhere on the instance opens the ⋯ menu where it was clicked: a shortcut, never the only way.
+      onContextMenu={(event) => {
+        // The dialogs opened from here render inside it; their fields keep the copy-and-paste menu.
+        if (event.target instanceof Element && event.target.closest('dialog')) return;
+        event.preventDefault();
+        // The keyboard's menu key fires this too, with no point: then the menu opens beside the section's corner.
+        menu.current?.openAt(event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : event.currentTarget);
+      }}
+    >
       <Marquee
         seed={artSeed(instance)}
         attract={run.state === 'idle'}
@@ -76,6 +90,16 @@ function InstanceView({ instance }: { instance: Instance }) {
         focus={instance.bannerFocus}
         className="absolute inset-0"
       />
+      {/* The two things a newcomer looks for first, out in the open at the top right, away from Play's corner.
+          They stay raised, never lit, and the ⋯ menu keeps them too, so its list stays whole. */}
+      <div className="absolute top-6 right-10 flex gap-3">
+        <Button icon={actions.image.icon} disabled={actions.image.disabled} onClick={actions.image.onSelect}>
+          {t('image.title')}
+        </Button>
+        <Button icon={actions.settings.icon} onClick={actions.settings.onSelect}>
+          {actions.settings.label}
+        </Button>
+      </div>
       {/* Under 55rem (the wide rail at the 960 px minimum) the name takes its own row and the controls sit
           under it at the right, instead of squeezing the name into a column a few letters wide. The icon
           plate takes 5.75rem of the name's column, and the name grows with the width, so with a plate the
@@ -111,7 +135,7 @@ function InstanceView({ instance }: { instance: Instance }) {
           <Button size="lg" className="px-4" icon={<Package />} onClick={() => navigate({ name: 'mods', id: instance.id })}>
             {t('home.mods')}
           </Button>
-          <InstanceMenu instance={instance} />
+          <Menu ref={menu} label={t('home.more')} items={actions.items} />
           <div className="grid justify-items-end gap-3">
             <PlayButton
               state={run.state}
@@ -129,6 +153,7 @@ function InstanceView({ instance }: { instance: Instance }) {
           </div>
         </div>
       </div>
+      {actions.dialogs}
       {run.state === 'asking' && run.update && <UpdateDialog instance={instance} update={run.update} />}
       {run.state === 'idle' && run.lastExit && run.lastExit.manual.length > 0 && (
         <ManualDownloads instance={instance} files={run.lastExit.manual} updateOnly={run.lastExit.updateOnly} />

@@ -1,87 +1,31 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import type { Instance } from '../../ipc/schema';
-import { qk, useDeleteInstance, useRenameInstance } from '../../state/queries';
+import { qk } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
-import { Button } from '../../ui/Button';
-import { Dialog } from '../../ui/Dialog';
-import { ErrorCard } from '../../ui/ErrorCard';
-import { Field } from '../../ui/Field';
 import { Copy, Folder, Gear, Image, Link, Pencil, Play, Reload, Trash } from '../../ui/Icon';
 import { copyText } from '../../ui/copyText';
-import { Menu } from '../../ui/Menu';
+import type { MenuItem } from '../../ui/Menu';
 import { ImageDialog } from './ImageDialog';
+import { DeleteDialog, RenameDialog } from './InstanceDialogs';
 import { addressText, inviteOf, isPack, isServer } from './labels';
 
-function RenameDialog({ instance, onClose }: { instance: Instance; onClose: () => void }) {
-  const { t } = useTranslation();
-  const [name, setName] = useState(instance.name);
-  const rename = useRenameInstance({ inline: true });
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title={t('home.renameTitle')}
-      actions={
-        <>
-          <Button onClick={onClose}>{t('common.cancel')}</Button>
-          <Button
-            variant="primary"
-            disabled={!name.trim() || rename.isPending}
-            onClick={() => rename.mutate({ id: instance.id, name }, { onSuccess: onClose })}
-          >
-            {t('common.save')}
-          </Button>
-        </>
-      }
-    >
-      <div className="grid gap-4 pt-2">
-        <Field label={t('home.nameLabel')}>
-          <input className="field-input" value={name} maxLength={64} onChange={(e) => setName(e.target.value)} />
-        </Field>
-        {rename.isError && <ErrorCard error={rename.error} />}
-      </div>
-    </Dialog>
-  );
+export interface InstanceActions {
+  /** Every action, in menu order: the ⋯ key, a right-click and the rail all show this one list. */
+  items: MenuItem[];
+  /** The two Home also shows as keys of their own, so a newcomer finds them without opening the menu. */
+  settings: MenuItem;
+  image: MenuItem;
+  /** The dialogs the items open; render them once beside whatever shows the items. */
+  dialogs: ReactNode;
 }
 
-function DeleteDialog({ instance, onClose }: { instance: Instance; onClose: () => void }) {
-  const { t } = useTranslation();
-  const remove = useDeleteInstance();
-  return (
-    <Dialog
-      open
-      onClose={onClose}
-      title={t('home.deleteTitle', { name: instance.name })}
-      actions={
-        <>
-          <Button onClick={onClose}>{t('common.cancel')}</Button>
-          <Button
-            variant="danger"
-            onClick={() =>
-              remove.mutate(instance.id, {
-                onSuccess: () => {
-                  onClose();
-                  navigate({ name: 'home', id: null });
-                },
-              })
-            }
-          >
-            {t('home.deleteConfirm')}
-          </Button>
-        </>
-      }
-    >
-      {t('home.deleteBody')}
-    </Dialog>
-  );
-}
-
-export function InstanceMenu({ instance }: { instance: Instance }) {
+/** The one definition of what can be done to an instance. Add an action here and every place that offers them gets it. */
+export function useInstanceActions(instance: Instance): InstanceActions {
   const { t } = useTranslation();
   const [dialog, setDialog] = useState<'rename' | 'image' | 'delete' | null>(null);
   const qc = useQueryClient();
@@ -90,55 +34,61 @@ export function InstanceMenu({ instance }: { instance: Instance }) {
   const address = instance.server?.address ?? null;
   // A run saves the whole instance when it syncs, so the link changes only while it is idle.
   const running = useRun(instance.id).state !== 'idle';
-  const serverItems = isServer(instance)
+  const serverItems: MenuItem[] = isServer(instance)
     ? [
-        { label: t('server.playAndJoin'), icon: <Play />, onSelect: () => void commands.play(instance.id, true).catch(pushError) },
+        { id: 'playAndJoin', label: t('server.playAndJoin'), icon: <Play />, onSelect: () => void commands.play(instance.id, true).catch(pushError) },
         {
+          id: 'newInviteLink',
           label: t('server.useNewInviteLink'),
           icon: <Reload />,
           disabled: running,
           onSelect: () => navigate({ name: 'joinServer', invite: '', relinkFor: instance.id }),
         },
-        ...(invite ? [{ label: t('server.copyLink'), icon: <Copy />, onSelect: () => void copyText(invite) }] : []),
-        ...(address ? [{ label: t('server.copyAddress'), icon: <Copy />, onSelect: () => void copyText(addressText(address)) }] : []),
+        ...(invite ? [{ id: 'copyLink', label: t('server.copyLink'), icon: <Copy />, onSelect: () => void copyText(invite) }] : []),
+        ...(address ? [{ id: 'copyAddress', label: t('server.copyAddress'), icon: <Copy />, onSelect: () => void copyText(addressText(address)) }] : []),
       ]
     : [];
   // Vanilla and imported instances can become server instances; packs keep their own source.
-  const linkItems = isPack(instance)
+  const linkItems: MenuItem[] = isPack(instance)
     ? []
     : [
         {
+          id: 'linkToServer',
           label: t('server.linkToServer'),
           icon: <Link />,
           disabled: running,
           onSelect: () => navigate({ name: 'joinServer', invite: '', linkFor: instance.id }),
         },
       ];
-  return (
-    <>
-      <Menu
-        label={t('home.more')}
-        items={[
-          ...serverItems,
-          ...linkItems,
-          ...(isPack(instance)
-            ? [{ label: t('home.checkUpdates'), icon: <Reload />, onSelect: () => void qc.invalidateQueries({ queryKey: qk.packStatus(instance.id) }) }]
-            : []),
-          { label: t('home.instanceSettings'), icon: <Gear />, onSelect: () => navigate({ name: 'instanceSettings', id: instance.id }) },
-          { label: t('common.rename'), icon: <Pencil />, onSelect: () => setDialog('rename') },
-          // The core refuses a new picture while a run could save the whole instance over it (R3).
-          { label: t('image.menu'), icon: <Image />, disabled: running, onSelect: () => setDialog('image') },
-          {
-            label: t('common.openFolder'),
-            icon: <Folder />,
-            onSelect: () => void commands.openFolder({ kind: 'instance', id: instance.id }).catch(pushError),
-          },
-          { label: t('common.delete'), icon: <Trash />, danger: true, onSelect: () => setDialog('delete') },
-        ]}
-      />
-      {dialog === 'rename' && <RenameDialog instance={instance} onClose={close} />}
-      {dialog === 'image' && <ImageDialog instance={instance} onClose={close} />}
-      {dialog === 'delete' && <DeleteDialog instance={instance} onClose={close} />}
-    </>
-  );
+  const settings: MenuItem = { id: 'settings', label: t('home.instanceSettings'), icon: <Gear />, onSelect: () => navigate({ name: 'instanceSettings', id: instance.id }) };
+  // The core refuses a new picture while a run could save the whole instance over it (R3).
+  const image: MenuItem = { id: 'image', label: t('image.menu'), icon: <Image />, disabled: running, onSelect: () => setDialog('image') };
+  return {
+    items: [
+      ...serverItems,
+      ...linkItems,
+      ...(isPack(instance)
+        ? [{ id: 'checkUpdates', label: t('home.checkUpdates'), icon: <Reload />, onSelect: () => void qc.invalidateQueries({ queryKey: qk.packStatus(instance.id) }) }]
+        : []),
+      settings,
+      { id: 'rename', label: t('common.rename'), icon: <Pencil />, onSelect: () => setDialog('rename') },
+      image,
+      {
+        id: 'openFolder',
+        label: t('common.openFolder'),
+        icon: <Folder />,
+        onSelect: () => void commands.openFolder({ kind: 'instance', id: instance.id }).catch(pushError),
+      },
+      { id: 'delete', label: t('common.delete'), icon: <Trash />, danger: true, onSelect: () => setDialog('delete') },
+    ],
+    settings,
+    image,
+    dialogs: (
+      <>
+        {dialog === 'rename' && <RenameDialog instance={instance} onClose={close} />}
+        {dialog === 'image' && <ImageDialog instance={instance} onClose={close} />}
+        {dialog === 'delete' && <DeleteDialog instance={instance} onClose={close} />}
+      </>
+    ),
+  };
 }

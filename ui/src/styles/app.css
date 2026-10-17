@@ -1087,6 +1087,12 @@
     top: calc(100% + 0.5rem);
     bottom: auto;
   }
+  /* A right-click's menu, or the rail's: in the window's own layer at a measured spot, so no scroller clips it. */
+  .menu[data-placement='float'] {
+    position: fixed;
+    right: auto;
+    bottom: auto;
+  }
   .menu [role='menuitem'] {
     display: flex;
     width: 100%;
@@ -1330,6 +1336,42 @@
     width: 100%;
     padding-right: 0.75rem;
     text-align: left;
+  }
+  /* A wide row's ⋯ key: a quiet ghost at the row's end, shown while the row is hovered, holds focus, is
+     selected or has its menu open, and always on a touch screen, where there is no hover to find it by. The
+     row keeps its room, so the name truncates before the key and never under it. */
+  .rail-more {
+    position: absolute;
+    top: 50%;
+    right: 0.5rem;
+    translate: 0 -50%;
+  }
+  .rail[data-wide] .rail-list > li:has(.rail-more > .btn) > .rail-item {
+    padding-right: 2.75rem;
+  }
+  .rail-more > .btn {
+    min-width: 2rem;
+    min-height: 2rem;
+    opacity: 0;
+  }
+  .rail-list > li:hover .rail-more > .btn,
+  .rail-list > li:focus-within .rail-more > .btn,
+  .rail-item[data-selected] ~ .rail-more > .btn,
+  .rail-more > .btn[aria-expanded='true'] {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    .rail-more > .btn {
+      opacity: 1;
+    }
+  }
+  /* The row it sits on is already raised when hovered or selected, so its own hover sinks to the panel. */
+  .rail-more > .btn:hover:not(:disabled) {
+    --face: var(--color-panel);
+  }
+  /* A carried row's key stays out of the drag. */
+  .rail-list > li[data-carry] .rail-more {
+    display: none;
   }
   /* The cabinet's screen: the icon and its marks (LED, signal bars, warning) sit in this 3.5rem slot in both widths. */
   .rail-icon {
