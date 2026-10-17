@@ -96,6 +96,7 @@ export function PerlandAccountCard() {
     qc.setQueryData<PerlandStatus>(qk.perland, (old) => (old ? { ...old, account } : old));
     void qc.invalidateQueries({ queryKey: qk.perland });
     qc.removeQueries({ queryKey: qk.yourServers });
+    qc.removeQueries({ queryKey: qk.perlandStats });
     setStep('idle');
     setError(null);
     setCode('');

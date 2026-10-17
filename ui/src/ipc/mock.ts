@@ -80,7 +80,7 @@ export interface MockOptions {
   link?: string;
   /** Seeds the `survival` Perland server and picks how its invite answers. */
   server?: ServerScenario;
-  /** Perland account: `off` closes accounts; `signedOut` (default), `signedIn`, `empty` (signed in, no servers) and `emailOnly`. */
+  /** Perland account: `off` closes accounts; `signedOut` (default), `signedIn`, `empty` (signed in, no servers), `emailOnly`, `linked` (Minecraft linked, with stats) and `noAddon` (stats off). */
   perland?: PerlandScenario;
   /** What the save dialog returns; null means the player cancelled. Defaults to a zip in Downloads. */
   savePath?: string | null;
