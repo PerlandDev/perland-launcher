@@ -1,4 +1,5 @@
 import { open } from '@tauri-apps/plugin-dialog';
+import type { TFunction } from 'i18next';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
@@ -18,8 +19,9 @@ import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { formatBytes } from '../../ui/format';
+import { formatBytes, formatGb } from '../../ui/format';
 import { Meter } from '../../ui/Meter';
+import { formatPlaytime } from '../../ui/playtime';
 import { useVersionChoice } from './useVersionChoice';
 import { VersionFields } from './VersionFields';
 
@@ -179,6 +181,25 @@ function ImportRunning({ running }: { running: RunningImport }) {
   );
 }
 
+/** What the instance keeps of its own settings in the other launcher (#57, #58), one sentence each. */
+function keptNotes(preview: ImportPreview, t: TFunction, lang: string): string[] {
+  const notes: string[] = [];
+  const { memoryMb, memoryWantedMb, javaArgs, playtimeSeconds } = preview;
+  const gb = memoryMb !== null ? formatGb(memoryMb, lang) : '';
+  if (memoryMb !== null && memoryWantedMb !== null) {
+    const wanted = formatGb(memoryWantedMb, lang);
+    notes.push(t(memoryWantedMb > memoryMb ? 'import.memoryTooHigh' : 'import.memoryTooLow', { wanted, gb }));
+    if (javaArgs !== null) notes.push(t('import.keepsArgs'));
+  } else if (memoryMb !== null) {
+    notes.push(t(javaArgs !== null ? 'import.keepsMemoryAndArgs' : 'import.keepsMemory', { gb }));
+  } else if (javaArgs !== null) {
+    notes.push(t('import.keepsArgs'));
+  }
+  const played = playtimeSeconds !== null ? formatPlaytime(playtimeSeconds, t) : '';
+  if (played) notes.push(t('import.keepsPlaytime', { time: played }));
+  return notes;
+}
+
 /** The form prefilled from what the folder holds. Parts that weren't detected get the defaults. */
 function ImportDetails({ preview, onPick, errors }: { preview: ImportPreview; onPick: () => void; errors: ReactNode }) {
   const { t, i18n } = useTranslation();
@@ -208,7 +229,7 @@ function ImportDetails({ preview, onPick, errors }: { preview: ImportPreview; on
     <form onSubmit={submit} className="grid max-w-2xl gap-8">
       <PickRow
         path={preview.path}
-        note={t('import.size', { size: formatBytes(preview.sizeBytes, i18n.language) })}
+        note={[t('import.size', { size: formatBytes(preview.sizeBytes, i18n.language) }), ...keptNotes(preview, t, i18n.language)].join(' ')}
         busy={busy}
         onPick={onPick}
       />

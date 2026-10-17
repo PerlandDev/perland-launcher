@@ -745,6 +745,10 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         minecraft: '1.20.1',
         loader: { kind: 'fabric', version: '0.19.4' },
         sizeBytes: IMPORT_SIZE,
+        memoryMb: 6144,
+        memoryWantedMb: null,
+        javaArgs: '-XX:+UseG1GC',
+        playtimeSeconds: 45_000,
       } satisfies ImportPreview;
     case 'import_instance': {
       if (state.importRun) fail('disk', 'import_busy', 'Another import is still running.');

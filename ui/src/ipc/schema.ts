@@ -298,6 +298,10 @@ export const importPreview = z.strictObject({
   minecraft: z.string().nullable(),
   loader: loaderSpec.nullable(),
   sizeBytes: z.number().int(),
+  memoryMb: z.number().int().nullable(),
+  memoryWantedMb: z.number().int().nullable(),
+  javaArgs: z.string().nullable(),
+  playtimeSeconds: z.number().int().nullable(),
 });
 export const importRequest = z.strictObject({ path: z.string(), name: z.string(), minecraft: z.string(), loader: loaderSpec.nullable() });
 export const openTarget = z.discriminatedUnion('kind', [
