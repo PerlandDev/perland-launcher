@@ -1,14 +1,22 @@
 import { open } from '@tauri-apps/plugin-dialog';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { useTranslation } from 'react-i18next';
 import type { JavaFound } from '../../ipc/schema';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
-import { WarningDiamond } from '../../ui/Icon';
+import { ExternalLink, WarningDiamond } from '../../ui/Icon';
 import { Toggle } from '../../ui/Toggle';
 import type { JavaChoice } from './useJavaChoice';
 
-function JavaOption({ java, checked, onPick, fits }: { java: JavaFound; checked: boolean; onPick: () => void; fits: boolean }) {
+function JavaOption({ java, checked, onPick }: { java: JavaFound; checked: boolean; onPick: () => void }) {
   const { t } = useTranslation();
+  // Temurin is named only where it also fits: a recommended Java the game can't use helps no one.
+  const note =
+    java.recommended && (java.fit === null || java.fit === 'matches')
+      ? t('instanceSettings.javaRecommended')
+      : java.fit === 'matches'
+        ? t('instanceSettings.javaFits')
+        : null;
   return (
     <label className="seg seg-row" data-checked={checked ? '' : undefined}>
       <input type="radio" name="java-install" className="sr-only" checked={checked} onChange={onPick} />
@@ -16,7 +24,7 @@ function JavaOption({ java, checked, onPick, fits }: { java: JavaFound; checked:
         <span>
           {java.vendor ?? 'Java'} {java.version}
           <span className="font-normal text-ink-dim"> · Java {java.major}</span>
-          {fits && <span className="font-normal text-ink-dim"> · {t('instanceSettings.javaFits')}</span>}
+          {note && <span className="font-normal text-ink-dim"> · {note}</span>}
         </span>
         <span className="selectable truncate font-mono text-xs font-normal text-ink-dim">{java.path}</span>
       </span>
@@ -31,6 +39,8 @@ export function JavaPicker({ choice }: { choice: JavaChoice }) {
   const required = overview.data?.required ?? null;
   const installs = overview.data?.installs ?? [];
   const unlisted = path !== null && overview.isSuccess && !installs.some((j) => j.path === path);
+  // Adoptium's Temurin is the suggested alternative to Automatic, offered when none here fits.
+  const suggestTemurin = overview.isSuccess && required !== null && !installs.some((j) => j.recommended && j.fit === 'matches');
 
   const browse = async () => {
     try {
@@ -66,18 +76,31 @@ export function JavaPicker({ choice }: { choice: JavaChoice }) {
             <div role="radiogroup" aria-label={t('instanceSettings.javaOnComputer')} className="grid gap-3 pb-1">
               {unlisted &&
                 (chosen ? (
-                  <JavaOption java={chosen} checked onPick={() => {}} fits={chosen.fit === 'matches'} />
+                  <JavaOption java={chosen} checked onPick={() => {}} />
                 ) : (
                   <p className="selectable truncate font-mono text-sm text-ink-dim">{path}</p>
                 ))}
               {installs.map((java) => (
-                <JavaOption key={java.path} java={java} checked={java.path === path} onPick={() => choice.choose(java.path)} fits={java.fit === 'matches'} />
+                <JavaOption key={java.path} java={java} checked={java.path === path} onPick={() => choice.choose(java.path)} />
               ))}
             </div>
           )}
           <div>
             <Button onClick={() => void browse()}>{t('instanceSettings.javaBrowse')}</Button>
           </div>
+          {suggestTemurin && (
+            <div className="grid gap-3">
+              <p className="text-sm text-ink-dim">{t('instanceSettings.javaSuggestTemurin', { required })}</p>
+              <div>
+                <Button
+                  icon={<ExternalLink />}
+                  onClick={() => void openUrl(`https://adoptium.net/temurin/releases/?version=${required}`).catch(choice.failPick)}
+                >
+                  {t('instanceSettings.javaGetTemurin', { required })}
+                </Button>
+              </div>
+            </div>
+          )}
           {choice.probe?.isFetching && (
             <p role="status" className="text-sm text-ink-dim">
               {t('instanceSettings.javaChecking')}

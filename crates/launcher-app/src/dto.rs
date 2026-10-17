@@ -10,7 +10,7 @@ use launcher_core::{
     },
     instances::{accent_of, Instance, LoaderSpec, ServerAddress, ServerStatus},
     invite::{non_empty, shown_invite, EngineView, InviteLink, InvitePlayers},
-    java::{JavaFit, JavaInstall},
+    java::{JavaFit, JavaInstall, TEMURIN},
     meta::loaders::LoaderKind,
     mods::LocalMod,
     perland::{CreateAllowance, Deletion, Disk, FreeLimits},
@@ -564,12 +564,15 @@ pub struct JavaFound {
     pub version: String,
     pub vendor: Option<String>,
     pub fit: Option<JavaFit>,
+    /// Adoptium's Temurin: suggested as the alternative to Automatic.
+    pub recommended: bool,
 }
 
 impl JavaFound {
     pub fn new(install: JavaInstall, required: Option<u32>) -> Self {
         Self {
             fit: required.map(|r| JavaFit::of(r, install.major)),
+            recommended: install.vendor.as_deref() == Some(TEMURIN),
             path: install.path,
             major: install.major,
             version: install.version,
@@ -579,7 +582,7 @@ impl JavaFound {
 }
 
 /// The Java an instance's game asks for (when it could be looked up) and every Java on this
-/// computer: the ones that match first, then newest first.
+/// computer: the ones that match first, Temurin first among equals, then newest first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JavaOverview {
     pub required: Option<u32>,
@@ -592,7 +595,13 @@ impl JavaOverview {
             .into_iter()
             .map(|i| JavaFound::new(i, required))
             .collect();
-        installs.sort_by_key(|j| (j.fit != Some(JavaFit::Matches), std::cmp::Reverse(j.major)));
+        installs.sort_by_key(|j| {
+            (
+                j.fit != Some(JavaFit::Matches),
+                !j.recommended,
+                std::cmp::Reverse(j.major),
+            )
+        });
         Self { required, installs }
     }
 }
@@ -1013,5 +1022,31 @@ mod tests {
         let unknown = JavaOverview::new(None, installs);
         assert!(unknown.installs.iter().all(|j| j.fit.is_none()));
         assert_eq!(unknown.installs[0].major, 21);
+    }
+
+    #[test]
+    fn temurin_is_the_suggested_alternative_among_equals() {
+        let zulu = JavaInstall {
+            vendor: Some("Azul Zulu".into()),
+            ..install("/zulu17", 17)
+        };
+        let overview = JavaOverview::new(
+            Some(17),
+            vec![zulu, install("/temurin17", 17), install("/temurin21", 21)],
+        );
+        let order: Vec<_> = overview
+            .installs
+            .iter()
+            .map(|j| (j.path.to_str().unwrap(), j.recommended))
+            .collect();
+        // Fit still decides first; Temurin only leads among Javas that fit equally well.
+        assert_eq!(
+            order,
+            vec![
+                ("/temurin17", true),
+                ("/zulu17", false),
+                ("/temurin21", true)
+            ]
+        );
     }
 }

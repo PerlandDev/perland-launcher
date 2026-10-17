@@ -1119,8 +1119,11 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const required = mockRequiredJava(args.minecraft as string);
       return {
         required,
-        installs: MOCK_JAVAS.map((j) => ({ ...j, fit: javaFit(required, j.major) })).sort(
-          (a, b) => Number(a.fit !== 'matches') - Number(b.fit !== 'matches') || b.major - a.major,
+        installs: MOCK_JAVAS.map((j) => ({ ...j, fit: javaFit(required, j.major), recommended: j.vendor === 'Eclipse Temurin' })).sort(
+          (a, b) =>
+            Number(a.fit !== 'matches') - Number(b.fit !== 'matches') ||
+            Number(!a.recommended) - Number(!b.recommended) ||
+            b.major - a.major,
         ),
       };
     }
@@ -1134,6 +1137,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         version: major === 8 ? '1.8.0_421' : `${major}.0.4`,
         vendor: null,
         fit: minecraft ? javaFit(mockRequiredJava(minecraft), major) : null,
+        recommended: false,
       };
     }
     case 'plugin:dialog|open': {

@@ -408,6 +408,7 @@ export const javaFound = z.strictObject({
   version: z.string(),
   vendor: z.string().nullable(),
   fit: javaFit.nullable(),
+  recommended: z.boolean(),
 });
 export const javaOverview = z.strictObject({ required: z.number().int().nullable(), installs: z.array(javaFound) });
 export const playtimeEntry = z.strictObject({ id: z.string(), seconds: z.number().int(), lastPlayed: z.number().int() });

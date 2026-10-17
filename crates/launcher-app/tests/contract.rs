@@ -1050,6 +1050,7 @@ fn contract_fixtures_are_current() {
         version: "17.0.12".into(),
         vendor: Some("Eclipse Temurin".into()),
         fit: Some(JavaFit::Matches),
+        recommended: true,
     };
     check(
         "java_test",
@@ -1061,6 +1062,7 @@ fn contract_fixtures_are_current() {
                 version: "21.0.4".into(),
                 vendor: None,
                 fit: None,
+                recommended: false,
             },
         ],
     );
@@ -1077,6 +1079,7 @@ fn contract_fixtures_are_current() {
                         version: "21.0.4".into(),
                         vendor: Some("Azul Zulu".into()),
                         fit: Some(JavaFit::Newer),
+                        recommended: false,
                     },
                     JavaFound {
                         path: PathBuf::from("C:/Program Files/Java/jre1.8.0_421/bin/javaw.exe"),
@@ -1084,6 +1087,7 @@ fn contract_fixtures_are_current() {
                         version: "1.8.0_421".into(),
                         vendor: Some("Oracle".into()),
                         fit: Some(JavaFit::TooOld),
+                        recommended: false,
                     },
                 ],
             },

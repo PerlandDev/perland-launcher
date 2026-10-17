@@ -240,10 +240,13 @@ pub struct JavaInfo {
     pub vendor: Option<String>,
 }
 
+/// Adoptium's build: the Java the launcher suggests when a player picks their own.
+pub const TEMURIN: &str = "Eclipse Temurin";
+
 /// Names in `java -version` output (or, failing that, the install path), most specific first.
 const VENDORS: &[(&str, &str)] = &[
-    ("temurin", "Eclipse Temurin"),
-    ("adoptium", "Eclipse Temurin"),
+    ("temurin", TEMURIN),
+    ("adoptium", TEMURIN),
     ("zulu", "Azul Zulu"),
     ("corretto", "Amazon Corretto"),
     ("semeru", "IBM Semeru"),

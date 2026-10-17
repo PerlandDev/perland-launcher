@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import type { Instance } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
@@ -51,7 +51,10 @@ it('saves memory and a Java found on this computer', async () => {
   // The one that fits the instance's Minecraft (1.20.1 → Java 17) comes first.
   const options = within(found).getAllByRole('radio');
   expect(options[0]).toHaveAccessibleName(/Eclipse Temurin 17\.0\.12/);
-  expect(within(options[0]!.closest('label')!).getByText(/Right for this version/)).toBeInTheDocument();
+  // Adoptium's Temurin is the suggested alternative; Automatic stays the recommended default.
+  expect(within(options[0]!.closest('label')!).getByText(/Recommended alternative/)).toBeInTheDocument();
+  expect(screen.getByRole('radio', { name: 'Automatic (recommended)' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Get Temurin/ })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   await user.click(options[0]!);
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -106,6 +109,20 @@ it('keeps a stored Java chosen and saves it unchanged without asking again', asy
   await user.click(screen.getByRole('button', { name: 'Save' }));
   const saved = sent(calls, 'instance_update')[0] as { instance: { java: { path: string } } };
   expect(saved.instance.java.path).toBe(TEMURIN_21);
+});
+
+it('suggests Temurin from Adoptium when no Temurin fits the version', async () => {
+  const { user, calls, backend } = renderApp(<InstanceSettings id="asalith-fields" />);
+  const handle = backend.handle;
+  const zulu = { path: 'C:/Program Files/Zulu/zulu-17/bin/javaw.exe', major: 17, version: '17.0.11', vendor: 'Azul Zulu', fit: 'matches', recommended: false };
+  vi.spyOn(backend, 'handle').mockImplementation((cmd, args) =>
+    cmd === 'java_overview' ? Promise.resolve({ required: 17, installs: [zulu] }) : handle(cmd, args),
+  );
+  await chooseCustomJava(user);
+  expect(await screen.findByText('Want your own Java? We suggest Eclipse Temurin 17 from Adoptium.')).toBeInTheDocument();
+  expect(screen.getByText(/Right for this version/)).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Get Temurin 17' }));
+  await waitFor(() => expect(sent(calls, 'plugin:opener|open_url')[0]).toMatchObject({ url: 'https://adoptium.net/temurin/releases/?version=17' }));
 });
 
 it('says so when no Java is found on this computer', async () => {
