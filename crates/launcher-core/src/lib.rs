@@ -22,6 +22,7 @@ pub mod mods;
 pub mod news;
 pub mod news_seen;
 pub mod paths;
+pub mod perland;
 pub mod platform;
 pub mod play;
 pub mod playtime;

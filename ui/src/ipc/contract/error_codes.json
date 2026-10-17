@@ -109,5 +109,16 @@
   "import_inside_launcher",
   "import_busy",
   "import_cancelled",
+  "player_accounts_closed",
+  "sign_in_unavailable",
+  "sign_in_failed",
+  "sign_in_timed_out",
+  "invalid_email",
+  "invalid_code",
+  "too_many_codes",
+  "email_unavailable",
+  "perland_signed_out",
+  "player_servers_closed",
+  "too_many_player_servers",
   "internal"
 ]
