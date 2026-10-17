@@ -13,6 +13,7 @@ import { formatPlaytime } from '../../ui/playtime';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { OFFLINE_NAME } from './offlineName';
+import { PerlandAccountCard } from './PerlandAccountCard';
 
 export function Accounts() {
   const { t } = useTranslation();
@@ -102,6 +103,7 @@ export function Accounts() {
   return (
     <ScreenFrame title={t('accounts.title')}>
       <div className="grid max-w-2xl gap-10">
+        <PerlandAccountCard />
         <div className="grid gap-2">
           <p role="status" className="sr-only">
             {switched ? t('accounts.nowUsing', { name: switched }) : ''}
