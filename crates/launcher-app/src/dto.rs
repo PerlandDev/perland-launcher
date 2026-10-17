@@ -485,7 +485,8 @@ pub struct YourServerCard {
 pub struct FreeServerPage {
     pub limits: FreeLimits,
     /// `reason` is the Engine's word: `email_required`, `free_server_exists`,
-    /// `too_many_free_servers` (with `retryAfter` seconds) or `free_servers_full`.
+    /// `too_many_free_servers` (with `retryAfter` seconds), `free_servers_full`, `host_full`,
+    /// `free_servers_paused` or `free_server_blocked`.
     pub create: CreateAllowance,
     pub server: Option<FreeServerCard>,
 }

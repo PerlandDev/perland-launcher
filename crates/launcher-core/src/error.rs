@@ -82,7 +82,8 @@ error_codes! {
     TooManyPlayerServers, MinecraftLinkClosed,
     // free servers
     EmailRequired, FreeServerExists, TooManyFreeServers, FreeServersFull, InvalidFreeServer,
-    ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk,
+    ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk, HostFull, FreeServersPaused,
+    FreeServerBlocked,
     // anything unexpected
     Internal,
 }
@@ -306,6 +307,9 @@ mod tests {
             (ErrorCode::ModpackUnsupported, "modpack_unsupported"),
             (ErrorCode::ModpackTooHeavy, "modpack_too_heavy"),
             (ErrorCode::FreeServerOverDisk, "free_server_over_disk"),
+            (ErrorCode::HostFull, "host_full"),
+            (ErrorCode::FreeServersPaused, "free_servers_paused"),
+            (ErrorCode::FreeServerBlocked, "free_server_blocked"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

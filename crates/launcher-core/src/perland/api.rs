@@ -241,8 +241,9 @@ pub struct FreeLimits {
 }
 
 /// Whether the player may create a free server now. `reason` is `email_required`,
-/// `free_server_exists`, `too_many_free_servers` (with `retry_after` seconds) or
-/// `free_servers_full`; the launcher keeps it as the Engine says it.
+/// `free_server_exists`, `too_many_free_servers` (with `retry_after` seconds),
+/// `free_servers_full`, `host_full`, `free_servers_paused` or `free_server_blocked`; the launcher
+/// keeps it as the Engine says it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CreateAllowance {
@@ -738,6 +739,9 @@ impl PlayerClient {
             Some("modpack_too_heavy") => {
                 return modpack_too_heavy(&host, param("requiredMemoryMb"), param("limitMemoryMb"))
             }
+            Some("host_full") => return host_full(&host),
+            Some("free_servers_paused") => return free_servers_paused(&host),
+            Some("free_server_blocked") => return free_server_blocked(&host),
             Some("free_server_over_disk") => {
                 return free_server_over_disk(&host, param("usedBytes"), param("limitBytes"))
             }
@@ -878,6 +882,32 @@ fn free_servers_full(host: &str) -> LauncherError {
     LauncherError::network(
         ErrorCode::FreeServersFull,
         "Free servers are full right now. Try again later.",
+    )
+    .with_param("host", host)
+}
+
+/// Perland's machine has no room for another server now. The Engine's `dimension` and `scope`
+/// are for the platform, not for players, so they are not kept.
+fn host_full(host: &str) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::HostFull,
+        "Perland is full right now. Try again in a few minutes.",
+    )
+    .with_param("host", host)
+}
+
+fn free_servers_paused(host: &str) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::FreeServersPaused,
+        "New free servers are paused. Try again later.",
+    )
+    .with_param("host", host)
+}
+
+fn free_server_blocked(host: &str) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::FreeServerBlocked,
+        "You can't create a free server.",
     )
     .with_param("host", host)
 }

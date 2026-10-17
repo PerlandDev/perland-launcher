@@ -846,6 +846,33 @@ async fn create_full() {
 }
 
 #[tokio::test]
+async fn create_host_full() {
+    let e = create_fails(
+        503,
+        "host_full",
+        json!({ "dimension": "memory", "scope": "free" }),
+    )
+    .await;
+    assert_eq!(e.code, ErrorCode::HostFull);
+    assert_eq!(e.category, ErrorCategory::Network);
+    // Which limit was hit is for the platform, not for players.
+    assert_eq!(param(&e, "dimension"), None);
+    assert_eq!(param(&e, "scope"), None);
+}
+
+#[tokio::test]
+async fn create_paused() {
+    let e = create_fails(503, "free_servers_paused", json!({})).await;
+    assert_eq!(e.code, ErrorCode::FreeServersPaused);
+}
+
+#[tokio::test]
+async fn create_blocked() {
+    let e = create_fails(403, "free_server_blocked", json!({})).await;
+    assert_eq!(e.code, ErrorCode::FreeServerBlocked);
+}
+
+#[tokio::test]
 async fn create_invalid() {
     let e = create_fails(400, "invalid_free_server", json!({})).await;
     assert_eq!(e.code, ErrorCode::InvalidFreeServer);
@@ -970,6 +997,24 @@ async fn start_over_disk() {
     assert_eq!(e.code, ErrorCode::FreeServerOverDisk);
     assert_eq!(param(&e, "usedBytes"), Some("11000000000"));
     assert_eq!(param(&e, "limitBytes"), Some("10737418240"));
+}
+
+#[tokio::test]
+async fn start_host_full() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "POST",
+        "/free-server/start",
+        503,
+        failure("host_full", json!({ "dimension": "cpu", "scope": "host" })),
+    )
+    .await;
+    let e = client(&server)
+        .start_free_server(&token())
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::HostFull);
 }
 
 #[tokio::test]
