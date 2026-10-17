@@ -616,6 +616,17 @@
     height: 0.5rem;
     background: var(--color-lime);
   }
+  /* A segment as a full-width row (Instance settings → Java): two lines, the lamp on the first. */
+  .seg-row {
+    display: flex;
+    align-items: flex-start;
+    min-width: 0;
+    padding: 0.625rem 1rem;
+  }
+  .seg-row[data-checked]::before {
+    flex: none;
+    margin-top: 0.4375rem;
+  }
   .seg:has(input:focus-visible) {
     outline: 2px solid var(--color-amber);
     outline-offset: 3px;

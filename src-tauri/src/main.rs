@@ -155,6 +155,7 @@ fn main() {
             commands::content_remove,
             commands::open_folder,
             commands::java_test,
+            commands::java_overview,
             commands::pack_add,
             commands::play_answer,
             commands::pack_update,

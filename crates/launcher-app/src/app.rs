@@ -30,6 +30,7 @@ use launcher_core::{
     news_seen::{NewsSeen, NEWS_SEEN_FILE},
     paths::LauncherDirs,
     perland::{KeyringStore, SecretStore, SessionStore},
+    platform::Platform,
     playtime,
     settings::{Channel, Settings, SettingsStore},
     sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
@@ -42,7 +43,10 @@ use tokio::{
 
 use crate::{
     deep_link::DeepLink,
-    dto::{AppInfo, ContentFile, JavaTest, NewInstance, OpenTarget, PackUpdate, PlaytimeEntry},
+    dto::{
+        AppInfo, ContentFile, JavaFound, JavaOverview, NewInstance, OpenTarget, PackUpdate,
+        PlaytimeEntry,
+    },
     events::{AppEvent, Host, RunStateKind},
     logs::LogStore,
     perland::{PerlandState, SignInSlot, ACCOUNT_MARKER},
@@ -643,8 +647,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Run `<path> -version`, but only for a regular file named like Java: the path comes
-    /// from the webview.
-    pub async fn java_test(&self, path: PathBuf) -> Result<JavaTest> {
+    /// from the webview. With `minecraft`, say how it fits that version.
+    pub async fn java_test(&self, path: PathBuf, minecraft: Option<String>) -> Result<JavaFound> {
         let named_java = path
             .file_name()
             .and_then(|n| n.to_str())
@@ -658,9 +662,32 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .with_fix("Pick the java executable inside a Java installation's bin folder")
             .with_detail(path.display()));
         }
-        Ok(JavaTest {
-            major: java::probe(&path).await?,
-        })
+        let info = java::probe_info(&path).await?;
+        let required = match minecraft {
+            Some(mc) => self.java_required(&mc).await,
+            None => None,
+        };
+        let install = java::JavaInstall {
+            path,
+            major: info.major,
+            version: info.version,
+            vendor: info.vendor,
+        };
+        Ok(JavaFound::new(install, required))
+    }
+
+    /// The Java `minecraft` asks for and every Java on this computer, for the instance settings.
+    pub async fn java_overview(&self, minecraft: String) -> Result<JavaOverview> {
+        let (required, installs) = tokio::join!(
+            self.java_required(&minecraft),
+            java::detect_installed(Platform::current())
+        );
+        Ok(JavaOverview::new(required, installs))
+    }
+
+    /// Unknown (not an error) when the version JSON can't be had, e.g. offline before it was cached.
+    async fn java_required(&self, minecraft: &str) -> Option<u32> {
+        java::required_for(&self.meta, minecraft).await.ok()
     }
 }
 
@@ -1286,7 +1313,7 @@ pub(crate) mod tests {
     async fn java_test_reports_failure() {
         let (core, _, _, tmp) = core(BuildKind::Dev);
         assert_eq!(
-            core.java_test(tmp.path().join("nope"))
+            core.java_test(tmp.path().join("nope"), None)
                 .await
                 .unwrap_err()
                 .code,

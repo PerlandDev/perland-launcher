@@ -5,10 +5,10 @@ use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
     AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, EmailCodeSent, FreeServerCard,
     FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstallPlanView, InstallResult,
-    InstanceArtData, JavaTest, JoinPreview, LinkCodeView, ManualProgress, NewInstance, OpenTarget,
-    PackAddRequest, PackContents, PackStatus, PerlandAccount, PerlandStats, PerlandStatus,
-    PlaytimeEntry, PublicServerPage, RunSnapshot, SearchRequest, ServerNews, ServerStatusView,
-    YourServersPage,
+    InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView, ManualProgress,
+    NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus, PerlandAccount,
+    PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage, RunSnapshot, SearchRequest,
+    ServerNews, ServerStatusView, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -259,8 +259,17 @@ pub async fn open_folder(app: AppHandle, core: CoreState<'_>, target: OpenTarget
 }
 
 #[tauri::command]
-pub async fn java_test(core: CoreState<'_>, path: PathBuf) -> Res<JavaTest> {
-    logged("java_test", core.java_test(path).await)
+pub async fn java_test(
+    core: CoreState<'_>,
+    path: PathBuf,
+    minecraft: Option<String>,
+) -> Res<JavaFound> {
+    logged("java_test", core.java_test(path, minecraft).await)
+}
+
+#[tauri::command]
+pub async fn java_overview(core: CoreState<'_>, minecraft: String) -> Res<JavaOverview> {
+    logged("java_overview", core.java_overview(minecraft).await)
 }
 
 #[tauri::command]

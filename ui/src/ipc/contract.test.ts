@@ -19,6 +19,7 @@ import inviteLinksFx from './contract/invite_links.json';
 import instanceArt from './contract/instance_art.json';
 import instanceFx from './contract/instance.json';
 import instanceListing from './contract/instance_listing.json';
+import javaOverview from './contract/java_overview.json';
 import javaTest from './contract/java_test.json';
 import joinPreviewFx from './contract/join_preview.json';
 import linkCode from './contract/link_code.json';
@@ -58,7 +59,8 @@ const cases: [string, ZodType, unknown][] = [
   ['error', s.launcherError, errorFx],
   ['instance', s.instance, instanceFx],
   ['instance_listing', s.instanceListing, instanceListing],
-  ['java_test', s.javaTest, javaTest],
+  ['java_test', s.javaFound.array(), javaTest],
+  ['java_overview', s.javaOverview.array(), javaOverview],
   ['loader_versions', s.loaderVersion.array(), loaderVersions],
   ['local_mods', s.localMod.array(), localMods],
   ['manual_progress', s.manualProgress, manualProgress],
