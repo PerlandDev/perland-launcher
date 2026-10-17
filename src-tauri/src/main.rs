@@ -148,6 +148,7 @@ fn main() {
             commands::run_states,
             commands::log_tail,
             commands::mods_list,
+            commands::mod_icon,
             commands::mod_set_enabled,
             commands::mods_add,
             commands::mod_remove,

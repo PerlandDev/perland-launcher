@@ -84,6 +84,7 @@ export const commands = {
   runStates: () => invoke<RunSnapshot[]>('run_states'),
   logTail: (id: string) => invoke<string[]>('log_tail', { id }),
   modsList: (id: string) => invoke<LocalMod[]>('mods_list', { id }),
+  modIcon: (id: string, file: string) => invoke<string | null>('mod_icon', { id, file }),
   modSetEnabled: (id: string, file: string, enabled: boolean) =>
     invoke<LocalMod[]>('mod_set_enabled', { id, file, enabled }),
   modsAdd: (id: string, paths: string[]) => invoke<LocalMod[]>('mods_add', { id, paths }),

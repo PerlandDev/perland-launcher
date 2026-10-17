@@ -83,6 +83,19 @@ impl Installed {
     }
 }
 
+/// The icon of the Modrinth project a file with this sha1 belongs to, or `None` when Modrinth
+/// doesn't know the file or its project has no icon.
+pub async fn project_icon_url(api: &Api, sha1: &str) -> Result<Option<String>> {
+    let versions = api.version_files(&[sha1.to_string()]).await?;
+    let Some(version) = versions
+        .into_iter()
+        .find_map(|(hash, v)| hash.eq_ignore_ascii_case(sha1).then_some(v))
+    else {
+        return Ok(None);
+    };
+    Ok(api.project(&version.project_id).await?.icon_url)
+}
+
 /// Every content file in the game folder, as canonical relative paths, sorted.
 pub async fn content_files(game_dir: &Path) -> Result<Vec<String>> {
     let mut out = Vec::new();

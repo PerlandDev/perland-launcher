@@ -2365,6 +2365,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "wiremock",
+ "zip 9.0.4",
 ]
 
 [[package]]

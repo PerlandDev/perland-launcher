@@ -67,6 +67,12 @@ fn path_in(dir: &Path, file_name: &str) -> Result<PathBuf> {
     safe_join(dir, file_name).ok_or_else(|| invalid(file_name))
 }
 
+/// The jar `file_name` names in `mods/`, and its name without `.disabled`.
+pub(crate) fn jar_path(game_dir: &Path, file_name: &str) -> Result<(PathBuf, String)> {
+    let (base, _) = jar_name(file_name).ok_or_else(|| invalid(file_name))?;
+    Ok((path_in(&mods_dir(game_dir), file_name)?, base))
+}
+
 /// Refuse a name already present in either state, so on and off copies never coexist.
 async fn ensure_free(dir: &Path, base: &str) -> Result<()> {
     for candidate in [base.to_string(), format!("{base}{DISABLED}")] {

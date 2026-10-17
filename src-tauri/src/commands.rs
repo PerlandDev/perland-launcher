@@ -201,6 +201,11 @@ pub async fn mods_list(core: CoreState<'_>, id: String) -> Res<Vec<LocalMod>> {
 }
 
 #[tauri::command]
+pub async fn mod_icon(core: CoreState<'_>, id: String, file: String) -> Res<Option<String>> {
+    logged("mod_icon", core.mod_icon(&id, &file).await)
+}
+
+#[tauri::command]
 pub async fn mod_set_enabled(
     core: CoreState<'_>,
     id: String,

@@ -63,6 +63,10 @@ impl LauncherDirs {
     pub fn images(&self) -> PathBuf {
         self.root.join("cache").join("images")
     }
+    /// Icons read from mod jars, by jar fingerprint (see `mod_icons`), pruned by size.
+    pub fn mod_icons(&self) -> PathBuf {
+        self.root.join("cache").join("mod-icons")
+    }
     /// Locked while shared game files are installed, across every launcher process.
     pub fn install_lock(&self) -> PathBuf {
         self.root.join(".install.lock")

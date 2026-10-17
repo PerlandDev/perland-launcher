@@ -247,6 +247,52 @@ async fn version_files_posts_sha1_hashes() {
     );
 }
 
+#[tokio::test]
+async fn project_icon_url_names_a_file_by_sha1_then_asks_its_project() {
+    use launcher_core::browse::identify::project_icon_url;
+    let server = MockServer::start().await;
+    let known = sha1_hex(b"jar");
+    let version = version_json(
+        &server,
+        "v1",
+        "sodium",
+        &["1.20.1"],
+        &["fabric"],
+        "s.jar",
+        b"jar",
+    );
+    Mock::given(method("POST"))
+        .and(path("/v2/version_files"))
+        .and(body_json(
+            json!({ "hashes": [known.clone()], "algorithm": "sha1" }),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ known.clone(): version })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v2/version_files"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+        .mount(&server)
+        .await;
+    let mut project = project_json("sodium", "sodium", "Sodium", "mod");
+    project["icon_url"] = json!("https://cdn.modrinth.com/data/sodium/icon.png");
+    serve_json(&server, "/v2/project/sodium", project).await;
+    let api = api(&server);
+    assert_eq!(
+        project_icon_url(&api, &known).await.unwrap().as_deref(),
+        Some("https://cdn.modrinth.com/data/sodium/icon.png")
+    );
+    assert_eq!(
+        project_icon_url(&api, &sha1_hex(b"mine")).await.unwrap(),
+        None
+    );
+    assert_eq!(
+        hits(&server, "/v2/project/sodium").await,
+        1,
+        "an unknown file asks no project"
+    );
+}
+
 use launcher_core::browse::{
     compat::ContentKind,
     search::{self, SearchQuery, SortIndex},
