@@ -51,7 +51,10 @@ export function eventLabel(post: NewsPostView, now: Date, t: TFunction, locale: 
   if (post.type !== 'event' || start === null) return null;
   if (start <= now.getTime() && !isOver(post, now)) return t('news.now');
   const at = new Date(start);
-  const clock = new Intl.DateTimeFormat(locale, at.getMinutes() === 0 ? { hour: 'numeric' } : { hour: 'numeric', minute: '2-digit' }).format(at);
+  // A 12-hour clock reads "8 PM" on the hour; a 24-hour one needs its minutes to read as a time ("20:00").
+  const cycle = new Intl.DateTimeFormat(locale, { hour: 'numeric' }).resolvedOptions().hourCycle;
+  const bareHour = at.getMinutes() === 0 && (cycle === 'h11' || cycle === 'h12');
+  const clock = new Intl.DateTimeFormat(locale, bareHour ? { hour: 'numeric' } : { hour: 'numeric', minute: '2-digit' }).format(at);
   const days = daysAhead(at, now);
   if (days === 0) return t('news.today', { time: clock });
   if (days === 1) return t('news.tomorrow', { time: clock });

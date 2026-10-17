@@ -110,20 +110,20 @@ describe('eventLabel', () => {
   it('says Today and Tomorrow with the time', () => {
     expect(plain(eventLabel(event('2026-10-17T20:00:00Z'), now, tEn, 'en'))).toBe('Today 8 PM');
     expect(plain(eventLabel(event('2026-10-18T20:30:00Z'), now, tEn, 'en'))).toBe('Tomorrow 8:30 PM');
-    expect(eventLabel(event('2026-10-17T20:00:00Z'), now, tEs, 'es')).toBe('Hoy 20');
-    expect(eventLabel(event('2026-10-18T20:00:00Z'), now, tEs, 'es')).toBe('Mañana 20');
+    expect(eventLabel(event('2026-10-17T20:00:00Z'), now, tEs, 'es')).toBe('Hoy 20:00');
+    expect(eventLabel(event('2026-10-18T20:00:00Z'), now, tEs, 'es')).toBe('Mañana 20:00');
   });
 
   it('names the weekday within 6 days', () => {
     expect(plain(eventLabel(event('2026-10-19T20:00:00Z'), now, tEn, 'en'))).toBe('Mon 8 PM');
     expect(plain(eventLabel(event('2026-10-23T20:00:00Z'), now, tEn, 'en'))).toBe('Fri 8 PM');
-    expect(eventLabel(event('2026-10-19T20:00:00Z'), now, tEs, 'es')).toMatch(/^lun/);
+    expect(eventLabel(event('2026-10-19T20:00:00Z'), now, tEs, 'es')).toMatch(/^lun 20:00$/);
   });
 
   it('gives the date from the seventh day on', () => {
     expect(plain(eventLabel(event('2026-10-24T20:00:00Z'), now, tEn, 'en'))).toBe('Oct 24, 8 PM');
     expect(plain(eventLabel(event('2026-10-30T20:00:00Z'), now, tEn, 'en'))).toBe('Oct 30, 8 PM');
-    expect(eventLabel(event('2026-10-30T20:00:00Z'), now, tEs, 'es')).toMatch(/^30 oct/);
+    expect(eventLabel(event('2026-10-30T20:00:00Z'), now, tEs, 'es')).toMatch(/^30 oct,? 20:00$/);
   });
 
   it('gives the date of an event that is over', () => {
