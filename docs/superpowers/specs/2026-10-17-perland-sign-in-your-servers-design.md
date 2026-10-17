@@ -83,7 +83,7 @@ Players find a server through a friend's link or the public list, play once, and
 - **Feature off:** every player route except `/config` answers 503 `player_accounts_disabled` while accounts are off.
 - **Your servers routes:**
   - `GET /servers` answers `{servers: [YourServerDTO]}` with at most 200 entries. An entry is the public list's `ServerDTO` (the `PublicServer` launcher-core already parses) plus `relation` (`owner|invited|followed`; an unknown value means `followed`), `following` (bool) and `news` (`{latestAt, unseen}`, absent while news is off).
-  - `status` can also be `offline` there; the launcher treats an unknown status like `sleeping`.
+  - `status` can also be `offline` there (the public list never sends it); the launcher keeps it as `Offline` and treats only an unknown status like `sleeping`.
   - The order is owner, invited, followed, each by name. Do not poll faster than once a minute.
   - It answers 503 `player_servers_unavailable` when the Engine has no invite service.
   - `POST /servers/follow {token}` answers `{following: true}` and is idempotent; it is meant to be called on every Play, fire and forget. It answers 404 for a server that is not public now and 409 `too_many_player_servers`.
@@ -101,18 +101,19 @@ Players find a server through a friend's link or the public list, play once, and
 
 | Question | Decision |
 |---|---|
-| Which Engine | The Engine the site's `config.json` names: the one the public list already uses, through `InviteClient::engine_for_site` (`PERLAND_SITE_URL` overrides the site). The stored session remembers the Engine's origin; a token is only ever sent to that origin, and when the site later names another Engine the session counts as signed out (**our call**) |
-| Token storage | The way the launcher-core design stores account secrets: the OS credential store (the `keyring` crate: Windows Credential Manager, macOS Keychain, Linux Secret Service). One entry (service `online.perland.launcher`, user `perland-account`) holds a small JSON `{engine, token, player}`. When the credential store is unavailable (a Linux desktop without Secret Service) the session lives in memory only and the player signs in again next launch, with no notice (**our call**: an "encrypted file" whose key sits next to it protects nothing, and memory-only is the honest fallback) |
-| Secrets in logs | `plt_` tokens, email codes, the PKCE verifier and the authorization code are never logged. Types holding them get a manual `Debug` that prints `<redacted>`. Errors name the Engine's host only. The diagnostics export never includes the credential entry, which is not a file under the root anyway |
+| Which Engine | A sign-in starts against the Engine the public list uses, `InviteClient::engine_for_site` for the site (`PERLAND_SITE_URL` overrides the site). The stored session remembers that Engine's origin, and every player call afterwards goes to the session's origin and nowhere else, whatever `engine_for_site` answers later (it may answer an Engine learned from an instance file). A session whose Engine stopped answering stays until it answers 401 (**our call**: no "the site moved" check, which the cache could not answer reliably) |
+| Token storage | The way the launcher-core design stores account secrets: the OS credential store (the `keyring` crate: Windows Credential Manager, Linux Secret Service; CI builds Windows and Linux only, so other platforms use the memory store). One entry (service `online.perland.launcher`, user `perland-account`) holds the token. A non-secret marker file `<root>/perland-account.json` (`{engine, name, email, discord}`, written atomically) says a session exists and holds the profile for showing it offline; the credential store is read only when the marker exists, and only on the first Perland call, never at start, so a player who never signs in never touches the credential store (on Linux a locked keyring could otherwise prompt). When the credential store is unavailable (a Linux desktop without Secret Service) the session lives in memory only and the player signs in again next launch, with no notice; no marker is written then (**our call**: an "encrypted file" whose key sits next to it protects nothing, and memory-only is the honest fallback) |
+| Secrets in logs | `plt_` tokens, email codes, the PKCE verifier and the authorization code are never logged. Every type holding one (`Pkce`, the loopback `Callback`, the token and email-verify request bodies, `TokenAnswer`, `Session`) gets a manual `Debug` that prints `<redacted>`. Errors name the Engine's host only. The diagnostics export never includes the credential entry, which is not a file under the root anyway |
 | Loopback | Bind `127.0.0.1` on an OS-chosen port (retry if it is below 1024), path `/callback`, accept connections for at most 10 minutes. Each request is read with a 5 s timeout and 8 KiB cap. Any other path gets a 404 and the wait goes on. A `state` mismatch gets a short "this sign-in link is old" page and the wait goes on. A match or an `error` ends it (**our call**) |
 | Browser page | The loopback answers a tiny self-contained HTML page (no scripts, no external assets) in the launcher's language: "You're signed in to Perland. You can close this tab and go back to the launcher." / "Sign-in was canceled." / "Something went wrong. Go back to the launcher and try again." (**our call**) |
 | Opening the browser | The app asks its host to open the authorize URL (a new `Host::open_url`, implemented in src-tauri with `tauri-plugin-opener`, and recorded by `RecordingHost` in tests). The URL is `http(s)` to the Engine only; it is built in core, never taken from the UI (**our call**) |
 | Cancel | One sign-in at a time; starting one cancels the one before. The waiting card has **Cancel**, which drops the listener, and **Open the page again**, which re-opens the same URL |
-| Email language | The launcher's UI language (`es` or else `en`) |
-| Where follow and joined happen | In the app layer, fire and forget, after a successful join: Play on a public card calls `your_servers_follow(invite)`; adding a server from an invite link (the Join server screen, which a `perland://join` link or a pasted link opens) calls `your_servers_joined(invite)`. Signed out, these do nothing. Failures are logged quietly and never shown (**our call**) |
+| Language | The UI passes its current language (`i18n.language`: `es`, else `en`) to `perland_sign_in_discord` (for the loopback pages) and `perland_email_start` (for the email) |
+| Where follow and joined happen | Fire and forget from the UI after the step succeeds; the app commands do the work. Play on a public card calls `your_servers_follow(invite)`. Every successful outcome of the Join server screen (which a `perland://join` link or a pasted link opens) calls `your_servers_joined(invite)`: a new server instance, opening the instance that already joins it (`existing`), moving an instance to the new link (relink, the path after an invite is regenerated) and linking a vanilla or imported instance. Signed out, these do nothing. Failures are logged quietly and never shown. No back-fill at sign-in: a player who joined before signing in gets *Invited* the next time they open the link (**our call**) |
 | Invite to token | `InviteLink::token()`. A follow or joined is sent only when the invite's Engine is the session's Engine (`servers::server_source` gives an instance's Engine; a public card's Engine is the list's). Otherwise it is skipped |
-| Your servers card | The public card component, made to take an optional tag (*Owner*, *Invited*) and an optional menu. Play behaves exactly as on a public card (join, start, open Home), and on a followed server it follows again, harmlessly |
-| Unfollow | A small "more" button on the card opens a menu with **Unfollow** whenever the server is followed: on Your servers cards with `following: true`, and on public cards whose token is a followed entry of Your servers. Unfollow takes effect at once (no confirmation: Play brings the follow back) and refreshes both lists (**our call**) |
+| Your servers card | The public card component, made to take an optional tag (*Owner*, *Invited*) and an optional menu. Play behaves exactly as on a public card (join, start, open Home). It calls follow only on a `followed` entry; Play on an Owner or Invited card never follows, so an owner never gets Unfollow on their own server and an invite never turns into a follow (**our call**) |
+| Offline servers | An owned or invited server can be `offline` (stopped or crashed). Its card reads "Offline" and Play stays enabled: the game opens with the server in its list, and nothing is woken, since joining does not start a stopped server. Starting a free server is #49 (**our call**) |
+| Unfollow | A small "more" button on the card opens a menu with **Unfollow** only for a server whose Your servers entry has `relation: followed`: on that card, and on the public card with the same token. Unfollow takes effect at once (no confirmation: Play brings the follow back) and refreshes both lists (**our call**) |
 | Duplicates | A followed public server shows in both Your servers and the public list. Hiding it from one would make the public list's count and filters lie (**our call**) |
 | Empty Your servers | Signed in with no servers: the slot shows nothing (**our call**: the public list right below is the way to get some) |
 | Signed-out nudge | One line in the Your servers slot, "Sign in with Perland to keep your servers here", with a **Sign in** link to Accounts, shown only while `/config` says accounts are on. It has no dismiss button: it is one line on one screen (**our call**) |
@@ -128,7 +129,7 @@ Players find a server through a friend's link or the public list, play once, and
 ### 6.1 launcher-core
 
 - **`perland/mod.rs`** (new module `perland`):
-  - `PlayerClient::new(http, engine)` over the shared `http::client`, with `request_timeout` 20 s and a 64 KiB body cap; 4 KiB for error bodies. Calls:
+  - `PlayerClient::new(http, engine)` over the shared `http::client`, with `request_timeout` 20 s and a body cap of 64 KiB, except `GET /servers` (up to 200 cards), which gets 1 MiB; 4 KiB for error bodies. Calls:
     - `config()`
     - `token(code, verifier, redirect)`
     - `email_start(email, language)`
@@ -168,18 +169,18 @@ Players find a server through a friend's link or the public list, play once, and
   - Storage goes through `trait SecretStore { load, save, delete }`, which carries one JSON string.
   - `KeyringStore` is the `keyring` crate. Its features are the native stores: `windows-native`, `apple-native`, and `sync-secret-service` with `crypto-rust` on Linux, since `dbus` is already in the lockfile.
   - `MemoryStore` is the fallback and is what tests use.
-  - `SessionStore::open(store)` falls back to memory when the keyring answers that no store is available.
+  - `SessionStore` holds the marker file (`<root>/perland-account.json`, non-secret) and the `SecretStore`. `load()` reads the marker and, only when it exists, the secret; a marker without a secret is cleared. `save()` writes the secret first, then the marker; a secret store that answers it has no backend makes the session memory-only (no marker). `forget()` deletes both.
   - Calls into the keyring run on a blocking thread.
 
 ### 6.2 launcher-app
 
-- **`perland.rs`** adds an `AppCore` section, holding the session in a `tokio::sync::Mutex<Option<Session>>` loaded at start. A new `Runner` method gives the `PlayerClient` for the site's Engine, so tests use a fake.
+- **`perland.rs`** adds an `AppCore` section, holding the session in a `tokio::sync::Mutex<Option<Session>>` loaded lazily on the first Perland command (never at start). A new `Runner` method gives the `PlayerClient` for the site's Engine, so tests use a fake.
 - **Commands**, each with thin wrappers in `src-tauri/src/commands.rs` and registered in `main.rs`:
   - `perland_status() -> PerlandStatus {enabled, methods, account: Option<PerlandAccount>}`:
     - `enabled: false` hides everything;
     - `account` carries `{name, email, discord: bool, newPlayer}` and never the token;
     - `/me` is called at most once a minute; a 401 forgets the session.
-  - `perland_sign_in_discord() -> PerlandAccount`:
+  - `perland_sign_in_discord(language) -> Option<PerlandAccount>`:
     1. config check;
     2. PKCE;
     3. loopback bind;
@@ -191,11 +192,11 @@ Players find a server through a friend's link or the public list, play once, and
 
     The command emits `AppEvent::PerlandSignIn {phase: waiting|exchanging}` so the UI can show "Finish in your browser". A cancel answers `Ok(None)`.
   - `perland_sign_in_reopen()` re-opens the waiting URL. `perland_sign_in_cancel()` cancels the sign-in.
-  - `perland_email_start(email) -> {resendIn}` and `perland_email_verify(email, code) -> PerlandAccount`.
+  - `perland_email_start(email, language) -> {resendIn}` and `perland_email_verify(email, code) -> PerlandAccount`.
   - `perland_sign_out()`.
   - `your_servers() -> Option<YourServersPage {servers: Vec<YourServerCard>}>`:
     - `None` when signed out, accounts are off, or the Engine answers `player_servers_closed`;
-    - a `YourServerCard` is `PublicServerCard` (built exactly as `servers_list` builds it, `instance` included) plus `relation` and `following`;
+    - a `YourServerCard` is `PublicServerCard` (built as `servers_list` builds it, `instance` included, except that `offline` stays `Offline` instead of folding into `Sleeping`) plus `relation` and `following`;
     - a 401 forgets the session and answers `None`.
   - `your_servers_follow(invite)`, `your_servers_unfollow(invite)` and `your_servers_joined(invite)`:
     - `invite` is the canonical invite URL the UI already holds, parsed with `InviteLink::parse`;
@@ -215,7 +216,7 @@ Players find a server through a friend's link or the public list, play once, and
   - `YourServers.tsx` becomes the real slot: a heading "Your servers" and the same grid of cards as the public list. While loading it shows nothing (no skeleton: it may well be empty).
   - When signed out it shows the nudge of §5, only while accounts are on.
   - `PublicServerCard` gains `tag` and `menu` props. The tag is a small label next to the status (*Owner*, *Invited*). The menu is a "more" icon button opening the `InstanceMenu`-style menu with **Unfollow**.
-  - Play on a public card calls `commands.yourServersFollow(card.invite)` after a successful `joinAdd` (fire and forget). The Join server screen calls `yourServersJoined(invite)` after a successful `joinAdd`.
+  - Play on a public card, and on a `followed` Your servers card, calls `commands.yourServersFollow(card.invite)` after a successful `joinAdd` (fire and forget). The Join server screen calls `yourServersJoined(invite)` after each successful outcome (add, existing, relink, link).
 - **State:**
   - zod schemas for the new types;
   - React Query hooks `usePerlandStatus` and `useYourServers` (refetch every 60 s while mounted; `qk.yourServers` invalidated after follow, unfollow and join);
@@ -294,5 +295,5 @@ A canceled Discord sign-in (`error=access_denied`, or the player pressing Cancel
 ## 9. Left to the builder
 
 - Exact component structure and styling, through `/impeccable` and the surface's direction.
-- Exact `keyring` version and the feature set that builds on the CI's Linux, Windows and macOS runners. If a native store crate will not build on one of them, fall back to `MemoryStore` on that platform and say so in the PR.
+- Exact `keyring` version and the feature set that builds on the CI's Linux and Windows runners. If a native store crate will not build on one of them, fall back to `MemoryStore` on that platform and say so in the PR.
 - Wording polish of the strings, keeping each one short and plain.
