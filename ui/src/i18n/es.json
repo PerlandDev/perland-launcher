@@ -487,6 +487,12 @@
       "nudge": "Inicia sesión con Perland para guardar tus servidores aquí.",
       "signIn": "Iniciar sesión"
     },
+    "stats": {
+      "achievements_one": "{{count}} logro",
+      "achievements_other": "{{count}} logros",
+      "played": "{{time}} jugado",
+      "label": "Tus estadísticas en este servidor"
+    },
     "sleeping": "Dormido, Jugar lo despierta",
     "starting": "Iniciando",
     "playing": "{{online}} / {{max}} jugando",

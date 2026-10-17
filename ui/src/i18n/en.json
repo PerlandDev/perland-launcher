@@ -487,6 +487,12 @@
       "nudge": "Sign in with Perland to keep your servers here.",
       "signIn": "Sign in"
     },
+    "stats": {
+      "achievements_one": "{{count}} achievement",
+      "achievements_other": "{{count}} achievements",
+      "played": "{{time}} played",
+      "label": "Your stats on this server"
+    },
     "sleeping": "Sleeping, Play wakes it",
     "starting": "Starting",
     "playing": "{{online}} / {{max}} playing",

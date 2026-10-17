@@ -31,6 +31,10 @@ related_targets: ["ui/src"]
   - *Nothing lit.* Link, Copy command and Get a new code are raised; Unlink and Cancel are ghost. Accounts' one primary stays Add offline account.
   - *The code is a readout.* Bungee 1.5rem in a recessed `well`, tabular, with the countdown ("Expires in 9:41") in `ink-dim` tabular beside it; the command sits in the sentence as a mono `inline-code` chip. The code block lines up with the text column, its buttons on their own row below.
   - *Linked is a fact.* "Linked to **Steve**" with the name in 700 `ink`: no lime lamp or badge.
+- **Server stats (#52), decided 2026-10-17:**
+  - *A fact, not a stat.* On a server card, "12 achievements · 1 day 6 h played" is one plain 0.875rem `ink-dim` tabular line under the news line, the game line's voice: no icon, number styling, lamp or badge. Play stays the card's only key that lights.
+  - *Home counts, the card times.* Home's plate says only "7 achievements": the news line's laminate plate with a 1rem `ink-dim` pixel trophy and `ink` text, never amber or lime. The version line keeps the local time played, so Home never shows two different playtimes.
+  - *Nothing when there's nothing.* Signed out, not linked, the add-on off, or no achievements (and under a minute on the card): no line, no plate.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract
