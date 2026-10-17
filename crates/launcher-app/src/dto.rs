@@ -158,7 +158,7 @@ pub struct SyncSummary {
     pub updated: usize,
     pub removed: usize,
     pub kept_modified: Vec<String>,
-    /// A linked instance's first sync: the old jars moved to `mods-before-link/`.
+    /// The player's files the pack's own took the place of, moved to `mods-before-link/`.
     pub set_aside: Vec<String>,
 }
 

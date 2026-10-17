@@ -10,7 +10,7 @@ Players can now import an instance from another launcher, but it stays a plain i
 
 ## 2. Owner decisions (2026-10-16)
 
-1. **Old mods are set aside, not kept.** On the first sync after linking, every `mods/*.jar` (top level) that the server's pack doesn't install at that path moves out of `mods/`. Two copies of one mod usually crash the game, and an imported instance is full of jars under other file names.
+1. **Old mods are set aside, not kept.** *(Superseded on 2026-10-17 by §4: the player's mods stay.)* On the first sync after linking, every `mods/*.jar` (top level) that the server's pack doesn't install at that path moves out of `mods/`. Two copies of one mod usually crash the game, and an imported instance is full of jars under other file names.
 2. **The player's configs stay.** The pack's override files that already exist are kept as the player's (the planner's existing rule for files sync never wrote), and the plate says "Kept your version of N files".
 3. **Only vanilla and imported instances** (`source.kind == none`) offer **Link to a server**. Server instances keep **Use a new link**; other pack instances (packwiz, Modrinth, `.mrpack`) are refused with `link_has_pack`.
 
@@ -25,10 +25,7 @@ Players can now import an instance from another launcher, but it stays a plain i
 
 ### 3.2 The adopt marker (core)
 
-- `launcher_core::sync::mark_adopt(perland_dir)` writes `.perland/adopt`. `server_link` calls it.
-- `sync_inner` sets mods aside only when the marker exists **and** there is no `managed.json` (a never-synced instance). It removes the marker after `managed.json` is written.
-- A marker keeps the rule explicit: a pack instance that lost its `managed.json`, or one the player added jars to before its first Play, never loses mods.
-- `SyncReport` gains `set_aside: Vec<String>` (the game-folder paths moved), and the app's `SyncSummary` gains `setAside`. The plate after the first Play adds "Moved N old mods to mods-before-link".
+Removed by the 2026-10-17 amendment (§4): sync no longer treats a linked instance's first sync differently, so there is no marker. `SyncReport.set_aside` and the plate's "Moved N old mods to mods-before-link" stay.
 
 ### 3.3 App command
 
@@ -45,7 +42,7 @@ Players can now import an instance from another launcher, but it stays a plain i
 - **Instance menu:** **Link to a server** on vanilla and imported instances, opening Join server in link mode (`route.linkFor`). It is disabled while a run exists.
 - **Join server, link mode:** title "Link to a server", the invite field, the server card, and the button **Link**. Below the card:
   - when the server's Minecraft version or loader differs from the instance's, a warning: "This server plays Minecraft 1.21.1 with Fabric. Linking moves this instance to that version; back up your worlds first.";
-  - always, a note: "On the next Play, mods that the server doesn't use move to the mods-before-link folder. Your worlds and settings stay."
+  - always, a note: "Your mods, worlds and settings stay. If you have another version of a mod the server uses, yours moves to the mods-before-link folder." (amended, §4)
 - **Instance settings:** the same **Link to a server** action, in the section the Updates control would use for packs.
 
 ### 3.5 Error code
@@ -53,3 +50,13 @@ Players can now import an instance from another launcher, but it stays a plain i
 | Code | en | es |
 |---|---|---|
 | `link_has_pack` | This instance already gets its mods from a modpack. Fix: Link a vanilla or imported instance, or join the server as a new instance. | Esta instancia ya recibe sus mods de un modpack. Fix: Vincula una instancia vanilla o importada, o únete al servidor como una instancia nueva. |
+
+## 4. Amendment 2026-10-17: the player's mods stay (#64)
+
+Owner decision 1 above set aside every jar the pack doesn't install. A player who linked an imported instance lost three mods of their own from `mods/` that way (#64), and expected them under **What you added**. The rule is now:
+
+- **Only files sync placed are ever removed.** A jar sync never placed (not in `managed.json`, not at a path the pack installs) is the player's and stays in `mods/`, where the mod list shows it as an addition. This holds for every sync: the first one after linking, one after **Use a new link**, and ordinary updates.
+- **Another version of a pack mod: the pack's version wins.** A player's loose jar in `mods/` that declares a mod id one of the pack's jars declares (`fabric.mod.json` `id`, `quilt.mod.json` `quilt_loader.id`, `META-INF/mods.toml` or `META-INF/neoforge.mods.toml` `[[mods]] modId`) moves to `mods-before-link/`. A jar whose metadata can't be read is never matched, so it stays.
+- **A player's file at a path the pack writes** moves to `mods-before-link/` (a non-mod file under its own folders there), not to `.perland/trash/`, which is purged after 7 days. A file sync placed that the player changed still goes to the trash, as before.
+- Nothing moves until every file is staged and the loader is installed, as before.
+

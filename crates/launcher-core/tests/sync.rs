@@ -655,7 +655,7 @@ async fn update_keeps_additions_and_preserved_configs() {
 }
 
 #[tokio::test]
-async fn a_player_file_where_the_pack_now_puts_one_goes_to_the_trash() {
+async fn a_player_file_where_the_pack_now_puts_one_is_set_aside() {
     let env = Env::new().await;
     let url = v1(&env.server).mount(&env.server).await;
     let (instance, _) = env
@@ -683,8 +683,14 @@ async fn a_player_file_where_the_pack_now_puts_one_goes_to_the_trash() {
         std::fs::read(env.game_file(&instance.id, "mods/jei.jar")).unwrap(),
         b"pack jei"
     );
-    let kept = trashed(&env, &instance.id, "mods/jei.jar").expect("kept in the trash");
-    assert_eq!(std::fs::read(kept).unwrap(), b"player's jei");
+    assert!(
+        trashed(&env, &instance.id, "mods/jei.jar").is_none(),
+        "the trash is purged; the launcher never placed this file"
+    );
+    assert_eq!(
+        std::fs::read(env.game_file(&instance.id, "mods-before-link/jei.jar")).unwrap(),
+        b"player's jei"
+    );
 }
 
 #[tokio::test]
@@ -1408,101 +1414,239 @@ async fn a_changed_offered_stamp_resolves_again() {
     );
 }
 
+/// A Fabric mod jar: `fabric.mod.json` with `id`, and `body` so two versions differ.
+fn fabric_jar(id: &str, body: &[u8]) -> Vec<u8> {
+    let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let opts = zip::write::SimpleFileOptions::default();
+    w.start_file("fabric.mod.json", opts).unwrap();
+    std::io::Write::write_all(&mut w, json!({ "id": id }).to_string().as_bytes()).unwrap();
+    w.start_file("body", opts).unwrap();
+    std::io::Write::write_all(&mut w, body).unwrap();
+    w.finish().unwrap().into_inner()
+}
+
+/// The pack of a server the player links to: `zoom.jar` is the mod `zoom`.
+fn server_pack(server: &MockServer) -> PackBuilder {
+    PackBuilder::new(server, "Tiny", "1.0.0")
+        .url_mod("appleskin", "appleskin.jar", b"apple v1", "both", None)
+        .url_mod(
+            "zoom",
+            "zoom.jar",
+            &fabric_jar("zoom", b"1.0"),
+            "client",
+            None,
+        )
+        .file("config/a.toml", b"a = 1", true)
+}
+
 /// A linked instance's game folder as another launcher left it: one pack mod already there
-/// under the pack's name, two old jars under other names, and things that aren't loose jars.
+/// under the pack's name, the player's own mods (one of them another version of the pack's
+/// zoom), and things that aren't loose jars.
 fn imported_mods(env: &Env, id: &str) {
     let game = env.store.game_dir(id);
     std::fs::create_dir_all(game.join("mods/sub")).unwrap();
     std::fs::create_dir_all(game.join("mods-before-link")).unwrap();
     std::fs::write(game.join("mods/appleskin.jar"), b"apple v1").unwrap();
-    std::fs::write(game.join("mods/zoom-0.9.jar"), b"old zoom").unwrap();
-    std::fs::write(game.join("mods/mine.JAR"), b"my own mod").unwrap();
+    std::fs::write(game.join("mods/zoom-0.9.JAR"), fabric_jar("zoom", b"0.9")).unwrap();
+    std::fs::write(game.join("mods/minimap.jar"), fabric_jar("minimap", b"1")).unwrap();
+    std::fs::write(
+        game.join("mods/sodium-0.5.jar"),
+        fabric_jar("sodium", b"0.5"),
+    )
+    .unwrap();
+    std::fs::write(game.join("mods/mine.jar"), b"not a zip").unwrap();
     std::fs::write(game.join("mods/off.jar.disabled"), b"off").unwrap();
     std::fs::write(game.join("mods/notes.txt"), b"notes").unwrap();
     std::fs::write(game.join("mods/sub/nested.jar"), b"nested").unwrap();
-    std::fs::write(game.join("mods-before-link/mine.JAR"), b"from before").unwrap();
+    std::fs::write(game.join("mods-before-link/zoom-0.9.JAR"), b"from before").unwrap();
 }
 
-#[tokio::test]
-async fn a_linked_instance_sets_old_mods_aside_on_its_first_sync() {
-    let env = Env::new().await;
-    let url = v1(&env.server).mount(&env.server).await;
+/// Link an imported instance to `pack`: what `server_link` leaves behind is an instance with a
+/// source and no lockfile.
+async fn linked(env: &Env, pack: PackBuilder) -> (Instance, DesiredState) {
+    let url = pack.mount(&env.server).await;
     let (instance, desired) = env.instance(&url).await;
-    imported_mods(&env, &instance.id);
-    let perland = env.store.perland_dir(&instance.id);
-    launcher_core::sync::mark_adopt(&perland).await.unwrap();
+    imported_mods(env, &instance.id);
+    (instance, desired)
+}
+
+/// #64: linking an imported instance must never take the player's own mods away.
+#[tokio::test]
+async fn linking_keeps_the_players_own_mods_as_additions() {
+    let env = Env::new().await;
+    let (instance, desired) = linked(&env, server_pack(&env.server)).await;
 
     let report = done(env.sync(&instance.id, &desired).await.unwrap());
 
-    assert_eq!(report.set_aside, vec!["mods/mine.JAR", "mods/zoom-0.9.jar"]);
     let game = env.store.game_dir(&instance.id);
-    assert!(!game.join("mods/zoom-0.9.jar").exists());
-    assert!(!game.join("mods/mine.JAR").exists());
-    assert_eq!(
-        std::fs::read(game.join("mods-before-link/zoom-0.9.jar")).unwrap(),
-        b"old zoom"
-    );
-    assert_eq!(
-        std::fs::read(game.join("mods-before-link/mine.JAR")).unwrap(),
-        b"from before",
-        "a name already taken there is never overwritten"
-    );
-    assert_eq!(
-        std::fs::read(game.join("mods-before-link/mine-2.JAR")).unwrap(),
-        b"my own mod"
-    );
-    assert_eq!(
-        std::fs::read(game.join("mods/appleskin.jar")).unwrap(),
-        b"apple v1"
-    );
-    assert!(game.join("mods/zoom.jar").exists(), "the pack's own copy");
     for stays in [
+        "mods/minimap.jar",
+        "mods/sodium-0.5.jar",
+        "mods/mine.jar",
         "mods/off.jar.disabled",
         "mods/notes.txt",
         "mods/sub/nested.jar",
     ] {
-        assert!(game.join(stays).exists(), "{stays} isn't a loose jar");
+        assert!(game.join(stays).exists(), "{stays} is the player's");
     }
-    assert!(!perland.join("adopt").exists(), "the marker is spent");
-    assert!(Managed::load(&perland).await.is_some());
+    assert!(game.join("mods/zoom.jar").exists(), "the pack's own copy");
+    let managed = Managed::load(&env.store.perland_dir(&instance.id)).await;
+    assert_eq!(
+        additions(&game, managed.as_ref()).await.unwrap(),
+        vec![
+            "mine.jar",
+            "minimap.jar",
+            "off.jar.disabled",
+            "sodium-0.5.jar"
+        ],
+        "they show under What you added"
+    );
+    assert_eq!(report.set_aside, vec!["mods/zoom-0.9.JAR"]);
+}
 
-    // Later syncs never set anything aside, even with new jars.
-    std::fs::write(game.join("mods/later.jar"), b"later").unwrap();
+#[tokio::test]
+async fn another_version_of_a_pack_mod_is_set_aside_never_deleted() {
+    let env = Env::new().await;
+    let (instance, desired) = linked(&env, server_pack(&env.server)).await;
+
+    let report = done(env.sync(&instance.id, &desired).await.unwrap());
+
+    assert_eq!(report.set_aside, vec!["mods/zoom-0.9.JAR"]);
+    let game = env.store.game_dir(&instance.id);
+    assert!(
+        !game.join("mods/zoom-0.9.JAR").exists(),
+        "the pack's version wins"
+    );
+    assert_eq!(
+        std::fs::read(game.join("mods-before-link/zoom-0.9.JAR")).unwrap(),
+        b"from before",
+        "a name already taken there is never overwritten"
+    );
+    assert_eq!(
+        std::fs::read(game.join("mods-before-link/zoom-0.9-2.JAR")).unwrap(),
+        fabric_jar("zoom", b"0.9")
+    );
+    assert_eq!(
+        std::fs::read(game.join("mods/appleskin.jar")).unwrap(),
+        b"apple v1",
+        "a jar that already is the pack's stays"
+    );
+
+    // Nothing changed: the next sync moves nothing.
+    std::fs::write(game.join("mods/later.jar"), fabric_jar("later", b"1")).unwrap();
     let again = done(env.sync(&instance.id, &desired).await.unwrap());
     assert!(again.set_aside.is_empty());
     assert!(game.join("mods/later.jar").exists());
 }
 
 #[tokio::test]
-async fn without_the_marker_a_first_sync_keeps_the_players_jars() {
+async fn a_players_file_at_a_pack_path_is_set_aside_not_trashed() {
     let env = Env::new().await;
-    let url = v1(&env.server).mount(&env.server).await;
+    let url = server_pack(&env.server).mount(&env.server).await;
     let (instance, desired) = env.instance(&url).await;
-    imported_mods(&env, &instance.id);
+    let game = env.store.game_dir(&instance.id);
+    std::fs::create_dir_all(game.join("mods")).unwrap();
+    std::fs::write(game.join("mods/zoom.jar"), b"the player's zoom").unwrap();
 
     let report = done(env.sync(&instance.id, &desired).await.unwrap());
 
-    assert!(report.set_aside.is_empty());
-    assert!(env.game_file(&instance.id, "mods/zoom-0.9.jar").exists());
-    assert!(env.game_file(&instance.id, "mods/mine.JAR").exists());
+    assert_eq!(report.set_aside, vec!["mods/zoom.jar"]);
+    assert_eq!(
+        std::fs::read(game.join("mods/zoom.jar")).unwrap(),
+        fabric_jar("zoom", b"1.0")
+    );
+    assert_eq!(
+        std::fs::read(game.join("mods-before-link/zoom.jar")).unwrap(),
+        b"the player's zoom",
+        "the launcher never placed it, so it is never purged with the trash"
+    );
 }
 
 #[tokio::test]
-async fn a_failed_first_sync_keeps_the_mods_and_the_marker() {
+async fn an_update_keeps_the_players_mods_and_trashes_only_its_own() {
     let env = Env::new().await;
-    let url = v1(&env.server).mount(&env.server).await;
-    let (mut instance, desired) = env.instance(&url).await;
+    let instance = synced(&env, server_pack(&env.server)).await;
+    let game = env.store.game_dir(&instance.id);
+    std::fs::write(game.join("mods/minimap.jar"), fabric_jar("minimap", b"1")).unwrap();
+    std::fs::write(
+        game.join("mods/sodium-0.5.jar"),
+        fabric_jar("sodium", b"0.5"),
+    )
+    .unwrap();
+    std::fs::write(game.join("mods/mine.jar"), b"not a zip").unwrap();
+
+    // 1.1.0 drops zoom and appleskin and adds sodium, a mod the player already has.
+    env.server.reset().await;
+    PackBuilder::new(&env.server, "Tiny", "1.1.0")
+        .url_mod(
+            "sodium",
+            "sodium.jar",
+            &fabric_jar("sodium", b"0.6"),
+            "both",
+            None,
+        )
+        .file("config/a.toml", b"a = 1", true)
+        .mount(&env.server)
+        .await;
+    let update = update_for(&env, &instance).await;
+    let report = done(env.sync(&instance.id, &update.desired).await.unwrap());
+
+    assert!(!game.join("mods/zoom.jar").exists(), "the pack placed it");
+    assert!(
+        !game.join("mods/appleskin.jar").exists(),
+        "the pack placed it"
+    );
+    assert!(game.join("mods/sodium.jar").exists());
+    assert!(game.join("mods/minimap.jar").exists());
+    assert!(game.join("mods/mine.jar").exists());
+    assert_eq!(report.set_aside, vec!["mods/sodium-0.5.jar"]);
+    assert_eq!(
+        std::fs::read(game.join("mods-before-link/sodium-0.5.jar")).unwrap(),
+        fabric_jar("sodium", b"0.5")
+    );
+}
+
+#[tokio::test]
+async fn a_failed_first_sync_moves_nothing() {
+    let env = Env::new().await;
+    let (mut instance, desired) = linked(&env, server_pack(&env.server)).await;
     // Another game version, so the sync installs one, and that install fails.
     instance.game.minecraft = "1.19.2".into();
     env.store.save(&instance).await.unwrap();
-    imported_mods(&env, &instance.id);
-    let perland = env.store.perland_dir(&instance.id);
-    launcher_core::sync::mark_adopt(&perland).await.unwrap();
     env.game.fail.store(true, Ordering::SeqCst);
 
     env.sync(&instance.id, &desired).await.unwrap_err();
 
-    assert!(env.game_file(&instance.id, "mods/zoom-0.9.jar").exists());
-    assert!(env.game_file(&instance.id, "mods/mine.JAR").exists());
-    assert!(perland.join("adopt").exists(), "the next Play tries again");
+    assert!(env.game_file(&instance.id, "mods/zoom-0.9.JAR").exists());
+    assert!(env.game_file(&instance.id, "mods/minimap.jar").exists());
+}
+
+#[tokio::test]
+async fn a_pack_jar_the_player_overwrote_is_set_aside_on_update() {
+    let env = Env::new().await;
+    let instance = synced(&env, server_pack(&env.server)).await;
+    let game = env.store.game_dir(&instance.id);
+    // The player drops their own build over the jar sync placed.
+    std::fs::write(game.join("mods/zoom.jar"), b"the player's zoom").unwrap();
+
+    env.server.reset().await;
+    PackBuilder::new(&env.server, "Tiny", "1.1.0")
+        .url_mod(
+            "zoom",
+            "zoom.jar",
+            &fabric_jar("zoom", b"1.1"),
+            "client",
+            None,
+        )
+        .mount(&env.server)
+        .await;
+    let update = update_for(&env, &instance).await;
+    let report = done(env.sync(&instance.id, &update.desired).await.unwrap());
+
+    assert_eq!(report.set_aside, vec!["mods/zoom.jar"]);
+    assert_eq!(
+        std::fs::read(game.join("mods-before-link/zoom.jar")).unwrap(),
+        b"the player's zoom"
+    );
+    assert!(trashed(&env, &instance.id, "mods/zoom.jar").is_none());
 }

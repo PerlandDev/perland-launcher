@@ -442,7 +442,7 @@
     "linkTitle": "Vincular a un servidor",
     "link": "Vincular",
     "linking": "Vinculando…",
-    "linkNote": "Cuando presiones Jugar, los mods que el servidor no usa se moverán a la carpeta mods-before-link. Tus mundos y ajustes se quedan.",
+    "linkNote": "Tus mods, mundos y ajustes se quedan. Si tienes otra versión de un mod que usa el servidor, la tuya se moverá a la carpeta mods-before-link.",
     "linkVersion": "Este servidor usa Minecraft {{version}} con {{loader}}. Al vincularla, esta instancia cambiará a esa versión, así que primero haz una copia de tus mundos.",
     "linkVersionVanilla": "Este servidor usa Minecraft {{version}} sin mods. Al vincularla, esta instancia cambiará a esa versión, así que primero haz una copia de tus mundos."
   },

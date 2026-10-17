@@ -442,7 +442,7 @@
     "linkTitle": "Link to a server",
     "link": "Link",
     "linking": "Linking…",
-    "linkNote": "When you press Play, mods the server doesn't use move to the mods-before-link folder. Your worlds and settings stay.",
+    "linkNote": "Your mods, worlds and settings stay. If you have another version of a mod the server uses, yours moves to the mods-before-link folder.",
     "linkVersion": "This server plays Minecraft {{version}} with {{loader}}. Linking moves this instance to that version, so back up your worlds first.",
     "linkVersionVanilla": "This server plays vanilla Minecraft {{version}}. Linking moves this instance to that version, so back up your worlds first."
   },
