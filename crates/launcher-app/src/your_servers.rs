@@ -46,11 +46,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let Some(session) = self.perland_session().await else {
             return Ok(None);
         };
-        let fetched = self
-            .runner
-            .player()
-            .servers(session.engine.clone(), session.token.clone())
-            .await;
+        let player = self.runner.player();
+        // The free server shows as its own card (built from its own view), so its entry here
+        // is left out. That view is read alongside; whatever it answers, the list stands.
+        let (fetched, free) = tokio::join!(
+            player.servers(session.engine.clone(), session.token.clone()),
+            player.free_server(session.engine.clone(), session.token.clone()),
+        );
+        let free = free.ok().flatten().and_then(|state| state.server);
         let entries = match fetched {
             Ok(entries) => entries,
             Err(e) if e.code == ErrorCode::PerlandSignedOut => {
@@ -68,19 +71,36 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             Err(e) => return Err(e),
         };
         let joined = self.joined_invites().await?;
+        let free_invite = free
+            .as_ref()
+            .and_then(|f| f.invite_url.as_deref())
+            .and_then(|url| InviteLink::parse(url).ok())
+            .map(|link| link.canonical());
         let servers = entries
             .iter()
-            .map(|entry| {
+            .filter_map(|entry| {
                 let server = &entry.server;
                 let invite = self.runner.public_invite(server).map(|l| l.canonical());
+                let is_free = entry.relation == Relation::Owner
+                    && free.as_ref().is_some_and(|f| match &free_invite {
+                        Some(free_invite) => invite.as_ref() == Some(free_invite),
+                        None => server.name.trim() == f.name.trim(),
+                    });
+                if is_free {
+                    return None;
+                }
                 let instance = instance_of(&joined, invite.as_deref());
                 let address =
                     ServerAddress::from_view(&server.address, &session.engine).map(|a| a.display());
-                YourServerCard {
-                    card: card(server, invite, address, instance, true),
+                let mut card = card(server, invite, address, instance, true);
+                // The list can't say which Modrinth pack a server runs; an instance that
+                // already joins it can play it all the same.
+                card.joinable |= card.instance.is_some();
+                Some(YourServerCard {
+                    card,
                     relation: relation_name(entry.relation).into(),
                     following: entry.following,
-                }
+                })
             })
             .collect();
         Ok(Some(YourServersPage { servers }))
@@ -158,7 +178,7 @@ mod tests {
 
     use crate::{
         app::tests::{core, TestCore},
-        testing::{invite, player_token, serve, server_view, FakeRunner},
+        testing::{free_state, free_view, invite, player_token, serve, server_view, FakeRunner},
     };
 
     use super::*;
@@ -297,6 +317,100 @@ mod tests {
         let call = &runner.player.calls_to("servers")[0];
         assert_eq!(call.engine, Url::parse("https://api.example.com").unwrap());
         assert_eq!(call.args, [player_token('s')]);
+    }
+
+    #[tokio::test]
+    async fn your_servers_hides_the_free_owner_entry() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        serve_servers(
+            &runner,
+            vec![
+                entry('A', "online", Relation::Owner, false),
+                entry('F', "online", Relation::Owner, false),
+                entry('B', "online", Relation::Invited, false),
+            ],
+        );
+        *runner.player.free.lock().unwrap() = Ok(Some(free_state(Some(free_view("online")))));
+        let page = core.your_servers().await.unwrap().unwrap();
+        let tokens: Vec<_> = page.servers.iter().map(|c| c.card.token.clone()).collect();
+        assert_eq!(
+            tokens,
+            [token('A'), token('B')],
+            "the free server shows once, as its own card"
+        );
+        assert_eq!(runner.player.calls_to("free_server").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn your_servers_hides_by_name_without_invite() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        let mut other = entry('C', "online", Relation::Owner, false);
+        other.server.name = "Creative".into();
+        serve_servers(
+            &runner,
+            vec![
+                entry('A', "online", Relation::Owner, false),
+                entry('B', "online", Relation::Invited, false),
+                other,
+            ],
+        );
+        let mut free = free_view("creating");
+        free.invite_url = None;
+        *runner.player.free.lock().unwrap() = Ok(Some(free_state(Some(free))));
+        let page = core.your_servers().await.unwrap().unwrap();
+        let tokens: Vec<_> = page.servers.iter().map(|c| c.card.token.clone()).collect();
+        assert_eq!(
+            tokens,
+            [token('B'), token('C')],
+            "only the owner entry named like the free server"
+        );
+    }
+
+    #[tokio::test]
+    async fn free_server_errors_leave_the_list_alone() {
+        for answer in [
+            Err(LauncherError::network(ErrorCode::HostTrouble, "trouble")),
+            Err(LauncherError::auth(
+                ErrorCode::PerlandSignedOut,
+                "signed out",
+            )),
+            Ok(None),
+        ] {
+            let (core, runner, _host, _t) = core(BuildKind::Dev);
+            sign_in(&core, "https://api.example.com");
+            serve_servers(&runner, vec![entry('F', "online", Relation::Owner, false)]);
+            *runner.player.free.lock().unwrap() = answer;
+            let page = core.your_servers().await.unwrap().unwrap();
+            assert_eq!(page.servers.len(), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn card_with_instance_is_joinable() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        serve(&runner, &invite('A'), Ok(server_view("s")));
+        let joined = core.join_add(&invite('A')).await.unwrap();
+        // The list doesn't say which modpack a modded server runs.
+        let bare = |c: char| {
+            let mut e = entry(c, "online", Relation::Followed, true);
+            e.server.modded = true;
+            e.server.game.loader = Some("fabric".into());
+            e
+        };
+        serve_servers(&runner, vec![bare('A'), bare('B')]);
+        let page = core.your_servers().await.unwrap().unwrap();
+        assert_eq!(
+            page.servers[0].card.instance.as_deref(),
+            Some(joined.id.as_str())
+        );
+        assert!(
+            page.servers[0].card.joinable,
+            "Play plays the instance it has"
+        );
+        assert!(!page.servers[1].card.joinable);
     }
 
     #[tokio::test]

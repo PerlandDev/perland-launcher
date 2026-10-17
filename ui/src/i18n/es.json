@@ -504,6 +504,7 @@
     "empty": "Aún no hay servidores públicos.",
     "loadMore": "Cargar más",
     "vanilla": "Vanilla",
+    "latestVersion": "(última versión)",
     "sort": "Ordenar por",
     "sorts": { "players": "Más jugadores", "newest": "Más nuevos", "name": "Nombre A–Z" },
     "any": "Cualquiera",
@@ -528,6 +529,94 @@
       "roleplay": "Rol"
     },
     "language": { "en": "English", "es": "Español" }
+  },
+  "freeServer": {
+    "entry": {
+      "lead_one": "Tu propio servidor gratis, para hasta {{count}} jugador.",
+      "lead_other": "Tu propio servidor gratis, para hasta {{count}} jugadores.",
+      "create": "Crear un servidor para tus amigos"
+    },
+    "reason": {
+      "emailRequired": "Los servidores gratis necesitan un correo verificado en tu cuenta. Verifica tu correo en Discord, luego cierra sesión y vuelve a iniciarla.",
+      "exists": "Otra cuenta con tu correo ya tiene un servidor gratis.",
+      "running": "Ya se está creando un servidor.",
+      "retry": "Podrás crear otro servidor en {{time}}.",
+      "full": "Los servidores gratis están llenos ahora. Inténtalo más tarde.",
+      "other": "No puedes crear un servidor ahora."
+    },
+    "time": {
+      "minutes_one": "{{count}} minuto",
+      "minutes_other": "{{count}} minutos",
+      "hours_one": "{{count}} hora",
+      "hours_other": "{{count}} horas",
+      "days_one": "{{count}} día",
+      "days_other": "{{count}} días"
+    },
+    "limits": {
+      "players_one": "Hasta {{count}} jugador.",
+      "players_other": "Hasta {{count}} jugadores.",
+      "memory": "{{vanilla}} GB de memoria para vanilla, {{modded}} GB con mods.",
+      "sleep": "Se duerme cuando nadie juega y despierta cuando alguien entra.",
+      "unused_one": "Se borra tras {{count}} día sin jugadores.",
+      "unused_other": "Se borra tras {{count}} días sin jugadores."
+    },
+    "pick": {
+      "title": "Crear un servidor para tus amigos",
+      "what": "Qué jugar",
+      "vanilla": "Vanilla",
+      "vanillaHint": "El Minecraft más nuevo.",
+      "modpack": "Un modpack",
+      "pack": "Modpack",
+      "packHint": "Uno de tus modpacks de Explorar. Tus amigos lo reciben al entrar.",
+      "noPacks": "Primero instala un modpack desde Explorar.",
+      "browse": "Ir a Explorar",
+      "name": "Nombre del servidor",
+      "nameHint": "Tus amigos lo ven en la página de invitación.",
+      "nameInvalid": "Usa solo letras, números, - y _, hasta 32.",
+      "refused": "No se pudo crear el servidor con estas opciones. Prueba con otro nombre u otro modpack.",
+      "create": "Crear"
+    },
+    "creating": {
+      "title": "Creando tu servidor…",
+      "hint": "Puede tardar un minuto o dos. Puedes cerrar esto; el servidor aparece en Tus servidores cuando esté listo.",
+      "lost": "Seguimos creando tu servidor…",
+      "lostHint": "La respuesta tardó demasiado, así que el launcher lo está revisando.",
+      "gaveUp": "Tu servidor todavía se está preparando.",
+      "gaveUpBody": "Aparecerá en Tus servidores."
+    },
+    "ready": {
+      "title": "Tu servidor está listo",
+      "share": "Envía este enlace a tus amigos para que entren.",
+      "link": "Enlace de invitación",
+      "copyLink": "Copiar enlace",
+      "linkCopied": "Enlace copiado",
+      "addressHint": "Tus amigos entran desde Minecraft con esta dirección.",
+      "address": "Dirección",
+      "copyAddress": "Copiar dirección",
+      "addressCopied": "Dirección copiada",
+      "playNow": "Jugar ahora",
+      "starting": "Iniciando…"
+    },
+    "unsupported": {
+      "not_found": "Este modpack ya no está en Modrinth.",
+      "not_modpack": "Esto no es un modpack.",
+      "loader": "Los servidores gratis no pueden usar el loader de este modpack.",
+      "too_large": "Este modpack es demasiado grande para un servidor gratis."
+    },
+    "card": {
+      "creating": "Se está creando…",
+      "deleting": "Se está eliminando…",
+      "deletes": "Se eliminará el {{date}} si nadie juega.",
+      "outOfSpace": "Se quedó sin espacio y seguirá apagado."
+    },
+    "delete": {
+      "action": "Eliminar servidor",
+      "title": "¿Eliminar {{name}}?",
+      "body": "El mundo también se elimina. Después puedes crear un servidor nuevo.",
+      "confirm": "Eliminar servidor",
+      "deleting": "Eliminando…",
+      "notDeleted": "Tu servidor todavía se está preparando, así que aún no se puede eliminar. Vuelve a intentarlo en un minuto."
+    }
   },
   "news": {
     "label": "Novedades",
@@ -666,6 +755,14 @@
     "perland_signed_out": { "message": "Se cerró tu sesión de Perland." },
     "player_servers_closed": { "message": "Tus servidores no están disponibles en este momento." },
     "too_many_player_servers": { "message": "Tienes demasiados servidores guardados. Deja de seguir algunos primero." },
+    "email_required": { "message": "Los servidores gratis necesitan un correo verificado en tu cuenta." },
+    "free_server_exists": { "message": "Ya tienes un servidor gratis." },
+    "too_many_free_servers": { "message": "Todavía no puedes crear otro servidor." },
+    "free_servers_full": { "message": "Los servidores gratis están llenos por ahora. Inténtalo más tarde." },
+    "invalid_free_server": { "message": "Revisa el nombre del servidor: solo letras, números, - y _, hasta 32." },
+    "modpack_unsupported": { "message": "Este modpack no puede funcionar en un servidor gratis." },
+    "modpack_too_heavy": { "message": "Este modpack necesita {{required}} GB; los servidores gratis tienen {{limit}} GB." },
+    "free_server_over_disk": { "message": "Tu servidor se quedó sin espacio, así que sigue apagado." },
     "minecraft_link_closed": { "message": "La vinculación no está disponible en este momento." },
     "launcher_update_failed": { "message": "No se pudo buscar actualizaciones del launcher.", "fix": "Puedes seguir jugando. Lo intenta de nuevo la próxima vez que abras el launcher." },
     "launcher_update_invalid": { "message": "La actualización del launcher no pasó la verificación de seguridad, así que no se instaló.", "fix": "Vuelve a intentarlo más tarde. Si sigue pasando, avísanos." },

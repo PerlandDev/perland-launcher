@@ -3,7 +3,7 @@ import i18n from '../i18n';
 import { commands } from '../ipc/commands';
 import { isLauncherError } from '../ipc/errors';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ArtChoice, ContentKind, Focus, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
+import type { ArtChoice, ContentKind, Focus, FreeServerKind, FreeServerPage, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { endImport, importWatched } from './importProgress';
@@ -47,6 +47,7 @@ export const qk = {
   perland: ['perland'] as const,
   perlandStats: ['perlandStats'] as const,
   yourServers: ['yourServers'] as const,
+  freeServer: ['freeServer'] as const,
   serverIcon: (token: string, iconVersion: string) => ['serverIcon', token, iconVersion] as const,
   news: (invite: string) => ['news', invite] as const,
   newsAll: (invite: string) => ['newsAll', invite] as const,
@@ -126,6 +127,19 @@ export const useInstanceStats = (id: string): ServerStats | undefined => usePerl
  *  invalidate `qk.yourServers` after a follow, an unfollow or a join. */
 export const useYourServers = (enabled: boolean) =>
   useQuery({ queryKey: qk.yourServers, queryFn: commands.yourServers, enabled, refetchInterval: 60_000 });
+/** How often the free-server page is read: every 30 s, every 15 s while the server is being created, started or deleted. */
+export const freeServerInterval = (page: FreeServerPage | null | undefined): number => {
+  const status = page?.server?.freeStatus;
+  return status === 'creating' || status === 'starting' || status === 'deleting' ? 15_000 : 30_000;
+};
+/** The free-server page (null while signed out or when the feature is off). Reads only when `enabled` (signed in, Servers open). */
+export const useFreeServer = (enabled: boolean) =>
+  useQuery({
+    queryKey: qk.freeServer,
+    queryFn: commands.freeServer,
+    enabled,
+    refetchInterval: (query) => freeServerInterval(query.state.data),
+  });
 /** A card's icon (a data URL), or null. A new `iconVersion` is a new key; it is only asked for when there is one. */
 export const useServerIcon = (token: string, iconVersion: string | null) =>
   useQuery({
@@ -238,6 +252,39 @@ export function useUnfollow() {
     onError: pushError,
     onSettled: () => qc.invalidateQueries({ queryKey: qk.yourServers }),
   });
+}
+
+/** What a free-server change touches: its own page, and Your servers (its card and the owner entry). */
+const invalidateFree = (qc: QueryClient) =>
+  Promise.all([qc.invalidateQueries({ queryKey: qk.freeServer }), qc.invalidateQueries({ queryKey: qk.yourServers })]);
+
+export interface FreeServerRequest {
+  name: string;
+  kind: FreeServerKind;
+  modrinthVersionId: string | null;
+  language: string;
+}
+/** Creates the free server (the call can take a couple of minutes). The dialog shows the error itself, so pass `inline`. */
+export function useFreeServerCreate(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (r: FreeServerRequest) => commands.freeServerCreate(r.name, r.kind, r.modrinthVersionId, r.language),
+    onError: onError(opts),
+    onSettled: () => invalidateFree(qc),
+  });
+}
+export function useFreeServerStart(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: commands.freeServerStart, onError: onError(opts), onSettled: () => invalidateFree(qc) });
+}
+export function useFreeServerDelete(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: commands.freeServerDelete, onError: onError(opts), onSettled: () => invalidateFree(qc) });
+}
+/** Starts and joins the free server and answers the instance id. The caller starts the run with `commands.play(id, true)` right after. */
+export function useFreeServerPlay(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: commands.freeServerPlay, onError: onError(opts), onSettled: () => invalidateFree(qc) });
 }
 
 export function useSaveSettings(opts: Opts = {}) {

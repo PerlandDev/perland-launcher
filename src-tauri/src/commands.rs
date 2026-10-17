@@ -3,11 +3,12 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, EmailCodeSent, IconChoice, ImportPreview,
-    ImportRequest, InstallPlanView, InstallResult, InstanceArtData, JavaTest, JoinPreview,
-    LinkCodeView, ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents,
-    PackStatus, PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage,
-    RunSnapshot, SearchRequest, ServerNews, ServerStatusView, YourServersPage,
+    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, EmailCodeSent, FreeServerCard,
+    FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstallPlanView, InstallResult,
+    InstanceArtData, JavaTest, JoinPreview, LinkCodeView, ManualProgress, NewInstance, OpenTarget,
+    PackAddRequest, PackContents, PackStatus, PerlandAccount, PerlandStats, PerlandStatus,
+    PlaytimeEntry, PublicServerPage, RunSnapshot, SearchRequest, ServerNews, ServerStatusView,
+    YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -585,6 +586,41 @@ pub async fn your_servers_unfollow(core: CoreState<'_>, invite: String) -> Res<(
 pub async fn your_servers_joined(core: CoreState<'_>, invite: String) -> Res<()> {
     core.your_servers_joined(&invite).await;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn free_server(core: CoreState<'_>) -> Res<Option<FreeServerPage>> {
+    logged("free_server", core.free_server().await)
+}
+
+#[tauri::command]
+pub async fn free_server_create(
+    core: CoreState<'_>,
+    name: String,
+    kind: String,
+    modrinth_version_id: Option<String>,
+    language: String,
+) -> Res<FreeServerCard> {
+    logged(
+        "free_server_create",
+        core.free_server_create(&name, &kind, modrinth_version_id, &language)
+            .await,
+    )
+}
+
+#[tauri::command]
+pub async fn free_server_start(core: CoreState<'_>) -> Res<FreeServerCard> {
+    logged("free_server_start", core.free_server_start().await)
+}
+
+#[tauri::command]
+pub async fn free_server_delete(core: CoreState<'_>) -> Res<bool> {
+    logged("free_server_delete", core.free_server_delete().await)
+}
+
+#[tauri::command]
+pub async fn free_server_play(core: CoreState<'_>) -> Res<String> {
+    logged("free_server_play", core.free_server_play().await)
 }
 
 /// Called by the close dialog. Stopping waits a few seconds so the kills land before exit;

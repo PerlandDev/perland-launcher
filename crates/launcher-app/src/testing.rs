@@ -27,16 +27,17 @@ use launcher_core::{
     events::{Event, EventSink, TaskId},
     instances::{GameSpec, Instance, InstanceStore, ServerAddress, SourceRef, UpdatePolicy},
     invite::{
-        EngineView, InviteAddress, InviteGame, InviteLink, InvitePack, InvitePlayers, InviteTeam,
-        InviteView, Url,
+        EngineView, InviteAddress, InviteGame, InviteLink, InviteModrinth, InvitePack,
+        InvitePlayers, InviteTeam, InviteView, Url,
     },
     launch::GameExit,
     locks::InstanceLock,
     meta::loaders::LoaderKind,
     news::NewsPage,
     perland::{
-        DiscordAccount, EmailStarted, LinkCode, Player, PlayerConfig, PlayerStats, SignInMethod,
-        TokenAnswer, YourServer,
+        CreateAllowance, CreateFreeServer, DiscordAccount, Disk, EmailStarted, FreeLimits,
+        FreeServer, FreeServerState, LinkCode, MemoryLimits, Player, PlayerConfig, PlayerStats,
+        SignInMethod, TokenAnswer, YourServer,
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
@@ -924,6 +925,14 @@ pub(crate) struct FakePlayer {
     pub servers: Mutex<Result<Vec<YourServer>>>,
     /// What `follow`, `unfollow` and `joined` answer.
     pub relation: Mutex<Result<()>>,
+    /// What `free_server` answers. Default: the feature is off (`None`).
+    pub free: Mutex<Result<Option<FreeServerState>>>,
+    /// What `create_free_server` answers. Default: `free_view("starting")`.
+    pub created: Mutex<Result<FreeServer>>,
+    /// What `start_free_server` answers. Default: `free_view("starting")`.
+    pub started: Mutex<Result<FreeServer>>,
+    /// What `delete_free_server` answers. Default: deleted.
+    pub deleted: Mutex<Result<bool>>,
     /// Default: `ABCD-EFGH`, for 600 s.
     pub link_code: Mutex<Result<LinkCode>>,
     pub unlink: Mutex<Result<()>>,
@@ -955,6 +964,10 @@ impl FakePlayer {
             sign_out: Mutex::new(Ok(())),
             servers: Mutex::new(Ok(vec![])),
             relation: Mutex::new(Ok(())),
+            free: Mutex::new(Ok(None)),
+            created: Mutex::new(Ok(free_view("starting"))),
+            started: Mutex::new(Ok(free_view("starting"))),
+            deleted: Mutex::new(Ok(true)),
             link_code: Mutex::new(Ok(LinkCode {
                 code: "ABCD-EFGH".into(),
                 expires_in: 600,
@@ -1092,6 +1105,119 @@ impl PlayerApi for FakePlayer {
     }
     fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>> {
         self.record("stats", engine, &[&token], &self.stats)
+    }
+    fn free_server(
+        &self,
+        engine: Url,
+        token: String,
+    ) -> BoxFuture<Result<Option<FreeServerState>>> {
+        self.record("free_server", engine, &[&token], &self.free)
+    }
+    fn create_free_server(
+        &self,
+        engine: Url,
+        token: String,
+        request: CreateFreeServer,
+    ) -> BoxFuture<Result<FreeServer>> {
+        let version = request.modrinth_version_id.unwrap_or_default();
+        self.record(
+            "create_free_server",
+            engine,
+            &[
+                &token,
+                &request.name,
+                &request.kind,
+                &version,
+                &request.language,
+            ],
+            &self.created,
+        )
+    }
+    fn start_free_server(&self, engine: Url, token: String) -> BoxFuture<Result<FreeServer>> {
+        self.record("start_free_server", engine, &[&token], &self.started)
+    }
+    fn delete_free_server(&self, engine: Url, token: String) -> BoxFuture<Result<bool>> {
+        self.record("delete_free_server", engine, &[&token], &self.deleted)
+    }
+}
+
+/// The player's free server `Survival` (vanilla 1.21.1) with `status`, its invite
+/// `invite('F')`, at play.example.com:25570.
+pub(crate) fn free_view(status: &str) -> FreeServer {
+    FreeServer {
+        name: "Survival".into(),
+        kind: "vanilla".into(),
+        // A vanilla create sends no version, so the Engine runs (and answers) `LATEST`.
+        game: InviteGame {
+            kind: "vanilla".into(),
+            version: Some("LATEST".into()),
+            ..InviteGame::default()
+        },
+        memory_mb: 2048,
+        max_players: 10,
+        status: status.into(),
+        players: Some(InvitePlayers {
+            online: 1,
+            max: Some(10),
+        }),
+        address: Some("play.example.com:25570".into()),
+        invite_url: Some(invite('F')),
+        join_url: Some(format!(
+            "perland://join?invite=https%3A%2F%2Fplay.example.com%2F{}",
+            "F".repeat(43)
+        )),
+        created_at: "2026-10-17T00:00:00Z".into(),
+        last_played_at: Some("2026-10-17T01:00:00Z".into()),
+        deletion: None,
+        disk: Disk {
+            used_bytes: 1_000,
+            limit_bytes: 10_000,
+            checked_at: None,
+            over: false,
+        },
+        ..FreeServer::default()
+    }
+}
+
+/// A modpack free server as the Engine sends it: the loader in `game.type` only.
+pub(crate) fn free_modrinth_view(status: &str) -> FreeServer {
+    FreeServer {
+        kind: "modrinth".into(),
+        game: InviteGame {
+            kind: "fabric".into(),
+            version: Some("1.20.1".into()),
+            ..InviteGame::default()
+        },
+        modrinth: Some(InviteModrinth {
+            project_id: "1KVo5zza".into(),
+            version_id: "Yp8wLY1P".into(),
+        }),
+        memory_mb: 6144,
+        ..free_view(status)
+    }
+}
+
+/// A free-server state that allows a create and holds `server`.
+pub(crate) fn free_state(server: Option<FreeServer>) -> FreeServerState {
+    FreeServerState {
+        limits: FreeLimits {
+            max_players: 10,
+            memory_mb: MemoryLimits {
+                vanilla: 2048,
+                modded: 6144,
+            },
+            disk_bytes: 10_000,
+            sleep_minutes: 15,
+            unused_days: 30,
+            warning_days: 7,
+            creates_per_week: 3,
+        },
+        create: CreateAllowance {
+            allowed: server.is_none(),
+            reason: server.as_ref().map(|_| "free_server_exists".into()),
+            retry_after: None,
+        },
+        server,
     }
 }
 

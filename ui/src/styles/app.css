@@ -2467,6 +2467,22 @@
   .server-tile-facts .invite-only > svg {
     margin-top: 0.0625rem;
   }
+  /* A warning line on the owner's free server (deletion soon, out of space): a 600-weight sentence led by the coral
+     warning diamond, as on the Join screen. Never amber, never a card of its own. */
+  .server-tile-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .server-tile-note > svg {
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    margin-top: 0.125rem;
+    color: var(--color-coral);
+  }
   .server-tile-address {
     display: flex;
     flex-wrap: wrap;
@@ -2715,5 +2731,39 @@
     align-items: center;
     gap: 0.5rem 1rem;
     padding: 0.75rem 0 calc(0.25rem + 4px);
+  }
+
+  /* Create a server for friends (#49): the free server's place in Your servers is the flat empty slot holding one line and a
+     raised key (never lit: the cards' Play is the only amber, and only under the pointer). */
+  .free-entry {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+  }
+  .free-entry > p {
+    max-width: 65ch;
+  }
+  /* A link or address to copy inside the create dialog: sunk as a well, the text in mono and selectable, Copy at its end. */
+  .copy-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  }
+  .copy-row-text {
+    min-width: 0;
+    flex: 1;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--color-ink);
+    user-select: text;
+  }
+  .copy-row .btn {
+    flex: none;
+    min-height: 2rem;
+    padding-inline: 0.5rem;
   }
 }

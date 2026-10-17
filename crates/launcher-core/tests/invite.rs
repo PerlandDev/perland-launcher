@@ -1477,3 +1477,186 @@ async fn a_stop_during_the_wait_is_heard_before_the_next_poll() {
     assert!(started.elapsed() < Duration::from_secs(1));
     assert_eq!(hits(&server, &route("")).await, 1, "no poll after the Stop");
 }
+
+/// A modpack free server: no Engine pack, the Modrinth version it runs instead.
+fn modrinth_view(version_id: &str) -> Value {
+    json!({
+        "kind": "stack", "name": "survival", "motd": "Mods",
+        "address": { "host": "play.example.com", "port": 25566, "display": "play.example.com:25566" },
+        "game": { "type": "fabric", "version": "1.20.1", "loader": "fabric" },
+        "status": "online", "whitelisted": false, "note": "Be nice.", "language": "en",
+        "pack": null, "modrinth": { "projectId": "P1", "versionId": version_id },
+        "team": { "displayName": "", "accent": "" }
+    })
+}
+
+/// Modrinth's project P1 (a modpack) and its version `id`, whose `.mrpack` is served here.
+async fn mount_modrinth(server: &MockServer, dir: &Path, id: &str) {
+    let bytes = mrpack(dir, id);
+    let sha1 = launcher_core::download::hash::sha1_hex(&bytes);
+    Mock::given(method("GET"))
+        .and(path(format!("/files/{id}.mrpack")))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(bytes.clone()))
+        .mount(server)
+        .await;
+    let project = json!({
+        "id": "P1", "slug": "sky", "title": "Sky Islands", "description": "Float",
+        "project_type": "modpack", "icon_url": "https://cdn.example.com/icon.png", "gallery": []
+    });
+    let version = json!({
+        "id": id, "project_id": "P1", "name": id, "version_number": format!("{id}-num"),
+        "version_type": "release", "game_versions": ["1.20.1"],
+        "date_published": "2026-10-01T00:00:00Z",
+        "files": [{
+            "url": format!("{}/files/{id}.mrpack", server.uri()), "filename": format!("{id}.mrpack"),
+            "primary": true, "size": bytes.len(), "hashes": { "sha1": sha1, "sha512": null }
+        }]
+    });
+    for (at, body) in [
+        ("/v2/project/P1".to_string(), project),
+        (format!("/v2/version/{id}"), version),
+    ] {
+        Mock::given(method("GET"))
+            .and(path(at))
+            .respond_with(ResponseTemplate::new(200).set_body_json(body))
+            .mount(server)
+            .await;
+    }
+}
+
+#[tokio::test]
+async fn modrinth_stamp_matches_after_resolve() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modrinth_view("R1")).await;
+    mount_modrinth(&server, tmp.path(), "R1").await;
+    let src = sources(&server, tmp.path());
+
+    // Add takes it (a modded stack with a Modrinth version is joinable), downloading nothing.
+    let input = PackInput::parse(&invite_url(&server)).unwrap();
+    let (source, shell) = src.open(&input).await.unwrap();
+    assert!(matches!(source, SourceRef::Perland { .. }));
+    assert_eq!(shell.minecraft, "1.20.1");
+    assert_eq!(hits(&server, "/files/R1.mrpack").await, 0);
+
+    let desired = src.resolve(&source).await.unwrap();
+    let view: launcher_core::invite::InviteView =
+        serde_json::from_value(modrinth_view("R1")).unwrap();
+    assert_eq!(perland::stamp_of(&view).as_deref(), Some("modrinth:R1"));
+    assert_eq!(desired.stamp, "modrinth:R1");
+    // The server's name and about, as for an Engine pack; the version is Modrinth's.
+    assert_eq!(desired.name, "survival");
+    assert_eq!(desired.pack_version, "R1-num");
+    assert_eq!(desired.about.description.as_deref(), Some("Be nice."));
+    assert_eq!(desired.about.policy, Some(UpdatePolicy::Auto));
+    assert!(desired
+        .about
+        .art
+        .icon
+        .as_deref()
+        .unwrap()
+        .ends_with(&route("/icon")));
+    assert_eq!(desired.loader.as_ref().unwrap().kind, LoaderKind::Fabric);
+    let paths: Vec<_> = desired.files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, vec!["config/server.txt"]);
+    assert_eq!(hits(&server, &route("/pack")).await, 0, "no Engine pack");
+
+    assert_eq!(src.check(&source, &desired).await, UpdateCheck::UpToDate);
+}
+
+#[tokio::test]
+async fn modrinth_version_change_is_an_update() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, modrinth_view("R2")).await;
+    match sources(&server, tmp.path())
+        .check(&source(&server), &installed("modrinth:R1"))
+        .await
+    {
+        UpdateCheck::Available {
+            stamp, source: s, ..
+        } => {
+            assert_eq!(stamp, "modrinth:R2");
+            assert!(matches!(s, SourceRef::Perland { .. }));
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+/// Mojang's version manifest, as the mock serves it: only `latest` matters here.
+async fn mount_manifest(server: &MockServer, release: &str) {
+    Mock::given(method("GET"))
+        .and(path("/mojang/version_manifest_v2.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "latest": { "release": release, "snapshot": "26.9-snapshot-1" },
+            "versions": []
+        })))
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn a_latest_server_joins_mojangs_latest_release_and_follows_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    // itzg's `VERSION: LATEST`, passed through by the Engine; any case.
+    mount_view(&server, vanilla_view("latest")).await;
+    mount_manifest(&server, "1.21.4").await;
+    let src = sources(&server, tmp.path());
+
+    let input = PackInput::parse(&invite_url(&server)).unwrap();
+    let (source, shell) = src.open(&input).await.unwrap();
+    assert_eq!(shell.minecraft, "1.21.4");
+    assert_eq!(shell.pack_version, "1.21.4");
+
+    let desired = src.resolve(&source).await.unwrap();
+    assert_eq!(desired.stamp, "vanilla:1.21.4");
+    assert_eq!(
+        (desired.minecraft.as_str(), desired.pack_version.as_str()),
+        ("1.21.4", "1.21.4")
+    );
+    assert_eq!(src.check(&source, &desired).await, UpdateCheck::UpToDate);
+
+    // Mojang ships 1.21.5 and itzg moves the server to it: the player moves too.
+    server.reset().await;
+    mount_config(&server).await;
+    mount_view(&server, vanilla_view("LATEST")).await;
+    mount_manifest(&server, "1.21.5").await;
+    match sources(&server, tmp.path()).check(&source, &desired).await {
+        UpdateCheck::Available { stamp, version, .. } => assert_eq!(
+            (stamp.as_str(), version.as_str()),
+            ("vanilla:1.21.5", "1.21.5")
+        ),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_latest_server_without_the_manifest_fails_as_the_manifest_does() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, vanilla_view("LATEST")).await;
+    Mock::given(method("GET"))
+        .and(path("/mojang/version_manifest_v2.json"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let src = sources(&server, tmp.path());
+    let input = PackInput::parse(&invite_url(&server)).unwrap();
+    let e = src.open(&input).await.unwrap_err();
+    let meta = launcher_core::meta::MetaClient::new(
+        launcher_core::http::client("test").unwrap(),
+        tmp.path().join("other-meta"),
+    );
+    let direct = meta
+        .get_json::<serde_json::Value>(&format!("{}/mojang/version_manifest_v2.json", server.uri()))
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, direct.code);
+    assert_ne!(e.code, ErrorCode::MinecraftVersionNotFound);
+    assert_token_free("latest manifest", &e);
+}

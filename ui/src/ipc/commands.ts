@@ -32,6 +32,9 @@ import type {
   PackAddRequest,
   PackContents,
   PackStatus,
+  FreeServerCard,
+  FreeServerKind,
+  FreeServerPage,
   PerlandAccount,
   PerlandStats,
   PerlandStatus,
@@ -135,6 +138,15 @@ export const commands = {
   yourServersFollow: (invite: string) => invoke<null>('your_servers_follow', { invite }),
   yourServersUnfollow: (invite: string) => invoke<null>('your_servers_unfollow', { invite }),
   yourServersJoined: (invite: string) => invoke<null>('your_servers_joined', { invite }),
+  /** The free-server page (limits, whether the player may create one, theirs), or null while signed out or when it's off. */
+  freeServer: () => invoke<FreeServerPage | null>('free_server'),
+  /** Takes up to 150 s. A timeout or a network failure may still have created it: read `freeServer` after. */
+  freeServerCreate: (name: string, kind: FreeServerKind, modrinthVersionId: string | null, language: string) =>
+    invoke<FreeServerCard>('free_server_create', { name, kind, modrinthVersionId, language }),
+  freeServerStart: () => invoke<FreeServerCard>('free_server_start'),
+  freeServerDelete: () => invoke<boolean>('free_server_delete'),
+  /** Starts the server if it's off and joins it; answers the instance id. The caller starts the run (`play(id, true)`). */
+  freeServerPlay: () => invoke<string>('free_server_play'),
   quit: (stopGames: boolean) => invoke<null>('quit', { stopGames }),
   browseSearch: (request: SearchRequest) => invoke<SearchPage>('browse_search', { request }),
   browseCategories: (kind: ContentKind) => invoke<string[]>('browse_categories', { kind }),

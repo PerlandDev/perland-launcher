@@ -2,10 +2,10 @@
 //! bearer token goes in a header, never in a URL; request bodies hold the PKCE verifier, the
 //! authorization code and the email code, so none of them is ever printed.
 
-use std::fmt;
+use std::{fmt, time::Duration};
 
 use reqwest::{Method, Url};
-use serde::{de::DeserializeOwned, Deserialize, Deserializer};
+use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
@@ -13,7 +13,8 @@ use crate::{
     http::read_capped,
     invite::{
         client::{host_of, host_trouble, rate_limited, request_failed, unexpected},
-        InviteTiming,
+        view::modrinth_ref,
+        InviteGame, InviteModrinth, InvitePlayers, InviteTiming,
     },
     public_list::PublicServer,
 };
@@ -26,6 +27,10 @@ const SERVERS_CAP: usize = 1 << 20;
 const STATS_CAP: usize = 4 << 20;
 /// The longest error body read, in bytes.
 const ERROR_CAP: usize = 4 << 10;
+/// Creating a free server: the Engine builds the stack while the request is open.
+const CREATE_TIMEOUT: Duration = Duration::from_secs(150);
+/// The Engine's own name for Modrinth, for a refusal that blames it.
+const MODRINTH_HOST: &str = "modrinth.com";
 
 /// A way to sign in. Unknown methods are dropped, so an Engine ahead of the launcher doesn't
 /// offer a button the launcher can't run.
@@ -213,6 +218,130 @@ pub struct YourServer {
     pub following: bool,
 }
 
+/// The memory of each kind of free server, in MB.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct MemoryLimits {
+    pub vanilla: u32,
+    pub modded: u32,
+}
+
+/// What every free server has.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FreeLimits {
+    pub max_players: u32,
+    pub memory_mb: MemoryLimits,
+    pub disk_bytes: u64,
+    /// 0 when the Engine's plan never stops idle servers.
+    pub sleep_minutes: u32,
+    pub unused_days: u32,
+    pub warning_days: u32,
+    pub creates_per_week: u32,
+}
+
+/// Whether the player may create a free server now. `reason` is `email_required`,
+/// `free_server_exists`, `too_many_free_servers` (with `retry_after` seconds) or
+/// `free_servers_full`; the launcher keeps it as the Engine says it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CreateAllowance {
+    pub allowed: bool,
+    pub reason: Option<String>,
+    pub retry_after: Option<u64>,
+}
+
+/// When an unused server is deleted. `warned`: the owner has been told.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Deletion {
+    pub deletes_at: String,
+    pub warned: bool,
+}
+
+/// The last measure of the server's data folder.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Disk {
+    pub used_bytes: u64,
+    pub limit_bytes: u64,
+    pub checked_at: Option<String>,
+    pub over: bool,
+}
+
+/// The player's free server. `status` is `online`, `starting`, `sleeping`, `offline`,
+/// `stopped` (over the disk limit only), `creating` or `deleting`; an unknown one is kept.
+#[derive(Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FreeServer {
+    pub name: String,
+    /// `vanilla` or `modrinth`.
+    pub kind: String,
+    pub game: InviteGame,
+    #[serde(deserialize_with = "modrinth_ref")]
+    pub modrinth: Option<InviteModrinth>,
+    pub memory_mb: u32,
+    pub max_players: u32,
+    pub status: String,
+    pub players: Option<InvitePlayers>,
+    /// What a player types to connect; absent without the Engine's `PUBLIC_GAME_HOST`.
+    pub address: Option<String>,
+    /// Absent without the Engine's `INVITE_BASE_URL`.
+    pub invite_url: Option<String>,
+    pub join_url: Option<String>,
+    pub created_at: String,
+    pub last_played_at: Option<String>,
+    pub deletion: Option<Deletion>,
+    pub disk: Disk,
+}
+
+// Manual Debug: the invite and join URLs hold the invite token.
+impl fmt::Debug for FreeServer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FreeServer")
+            .field("name", &self.name)
+            .field("kind", &self.kind)
+            .field("status", &self.status)
+            .finish_non_exhaustive()
+    }
+}
+
+/// `GET /free-server`.
+#[derive(Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FreeServerState {
+    pub limits: FreeLimits,
+    pub create: CreateAllowance,
+    pub server: Option<FreeServer>,
+}
+
+// Manual Debug: the server's links hold the invite token.
+impl fmt::Debug for FreeServerState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FreeServerState")
+            .field("server", &self.server)
+            .finish_non_exhaustive()
+    }
+}
+
+/// `POST /free-server`. `modrinth_version_id` is for `kind: "modrinth"` only; `language` is
+/// `es`, else `en`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateFreeServer {
+    pub name: String,
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modrinth_version_id: Option<String>,
+    pub language: String,
+}
+
+#[derive(Deserialize)]
+struct DeletedData {
+    #[serde(default)]
+    deleted: bool,
+}
+
 #[derive(Deserialize)]
 struct Envelope<T> {
     data: Option<T>,
@@ -374,6 +503,74 @@ impl PlayerClient {
             .await
     }
 
+    /// `GET /free-server`. An Engine without free servers (503 `free_servers_disabled`, or a
+    /// 404) is `None`, so nothing of them shows.
+    pub async fn free_server(&self, token: &str) -> Result<Option<FreeServerState>> {
+        let reply = self
+            .send(Method::GET, "/free-server", Some(token), None, BODY_CAP)
+            .await?;
+        if reply.status == 404
+            || Self::failure(&reply).code.as_deref() == Some("free_servers_disabled")
+        {
+            return Ok(None);
+        }
+        self.ok(&reply, Route::Plain)?;
+        self.data(&reply).map(Some)
+    }
+
+    /// `POST /free-server`. The Engine builds the server while the request is open, so this
+    /// one waits up to 150 s.
+    pub async fn create_free_server(
+        &self,
+        token: &str,
+        server: &CreateFreeServer,
+    ) -> Result<FreeServer> {
+        let body = serde_json::to_value(server).expect("a plain struct is JSON");
+        let reply = self
+            .send_within(
+                CREATE_TIMEOUT,
+                Method::POST,
+                "/free-server",
+                Some(token),
+                Some(&body),
+                BODY_CAP,
+            )
+            .await?;
+        // A reverse proxy that gives up on the long create answers its own 502 or 504, with
+        // no Engine code. The Engine finishes the create anyway, so the answer is lost: the
+        // dialog then waits for the server to show (spec §5 "Lost create answer").
+        if matches!(reply.status, 502 | 504) && Self::failure(&reply).code.is_none() {
+            return Err(answer_lost(&self.host(), reply.status));
+        }
+        self.ok(&reply, Route::Plain)?;
+        self.data(&reply)
+    }
+
+    /// `POST /free-server/start`: start or wake the server. A server over its disk limit stays
+    /// stopped (`free_server_over_disk`).
+    pub async fn start_free_server(&self, token: &str) -> Result<FreeServer> {
+        let reply = self
+            .send(
+                Method::POST,
+                "/free-server/start",
+                Some(token),
+                None,
+                BODY_CAP,
+            )
+            .await?;
+        self.ok(&reply, Route::Plain)?;
+        self.data(&reply)
+    }
+
+    /// `DELETE /free-server`: `false` when there was nothing to delete.
+    pub async fn delete_free_server(&self, token: &str) -> Result<bool> {
+        let reply = self
+            .send(Method::DELETE, "/free-server", Some(token), None, BODY_CAP)
+            .await?;
+        self.ok(&reply, Route::Plain)?;
+        Ok(self.data::<DeletedData>(&reply)?.deleted)
+    }
+
     /// `POST /minecraft/link-code`: a fresh code to type in the game.
     pub async fn link_code(&self, token: &str) -> Result<LinkCode> {
         let reply = self
@@ -443,11 +640,25 @@ impl PlayerClient {
         body: Option<&Value>,
         cap: usize,
     ) -> Result<Reply> {
+        self.send_within(self.timeout, method, route, token, body, cap)
+            .await
+    }
+
+    /// `send` with its own timeout.
+    async fn send_within(
+        &self,
+        timeout: Duration,
+        method: Method,
+        route: &str,
+        token: Option<&str>,
+        body: Option<&Value>,
+        cap: usize,
+    ) -> Result<Reply> {
         let host = self.host();
         let mut request = self
             .http
             .request(method, self.route(route))
-            .timeout(self.timeout);
+            .timeout(timeout);
         if let Some(token) = token {
             request = request.bearer_auth(token);
         }
@@ -516,6 +727,21 @@ impl PlayerClient {
             Some("email_unavailable") => return email_unavailable(&host),
             Some("player_servers_unavailable") => return servers_closed(&host),
             Some("too_many_player_servers") => return too_many_player_servers(&host),
+            Some("email_required") => return email_required(&host),
+            Some("free_server_exists") => return free_server_exists(&host),
+            Some("too_many_free_servers") => {
+                return too_many_free_servers(&host, param("retryAfter"))
+            }
+            Some("free_servers_full" | "quota_exceeded") => return free_servers_full(&host),
+            Some("invalid_free_server") => return invalid_free_server(&host),
+            Some("modpack_unsupported") => return modpack_unsupported(&host, param("reason")),
+            Some("modpack_too_heavy") => {
+                return modpack_too_heavy(&host, param("requiredMemoryMb"), param("limitMemoryMb"))
+            }
+            Some("free_server_over_disk") => {
+                return free_server_over_disk(&host, param("usedBytes"), param("limitBytes"))
+            }
+            Some("modrinth_unavailable") => return host_trouble(MODRINTH_HOST, reply.status),
             Some("server_addon_disabled") => return minecraft_link_closed(&host),
             _ => {}
         }
@@ -527,6 +753,15 @@ impl PlayerClient {
             s => host_trouble(&host, s),
         }
     }
+}
+
+fn answer_lost(host: &str, status: u16) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::ConnectionDropped,
+        format!("The answer from {host} was lost ({status}). Your server may still be on its way."),
+    )
+    .with_param("host", host)
+    .with_param("status", status.to_string())
 }
 
 fn accounts_closed(host: &str) -> LauncherError {
@@ -611,6 +846,92 @@ fn too_many_player_servers(host: &str) -> LauncherError {
     .with_param("host", host)
 }
 
+fn email_required(host: &str) -> LauncherError {
+    LauncherError::auth(
+        ErrorCode::EmailRequired,
+        "Free servers need a verified email on your account.",
+    )
+    .with_param("host", host)
+}
+
+fn free_server_exists(host: &str) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::FreeServerExists,
+        "You already have a free server.",
+    )
+    .with_param("host", host)
+}
+
+fn too_many_free_servers(host: &str, retry_after: Option<String>) -> LauncherError {
+    let e = LauncherError::network(
+        ErrorCode::TooManyFreeServers,
+        "You can't create another server yet.",
+    )
+    .with_param("host", host);
+    match retry_after {
+        Some(seconds) => e.with_param("retryAfter", seconds),
+        None => e,
+    }
+}
+
+fn free_servers_full(host: &str) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::FreeServersFull,
+        "Free servers are full right now. Try again later.",
+    )
+    .with_param("host", host)
+}
+
+fn invalid_free_server(host: &str) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::InvalidFreeServer,
+        "Check the server name: letters, numbers, - and _ only, up to 32.",
+    )
+    .with_param("host", host)
+}
+
+fn modpack_unsupported(host: &str, reason: Option<String>) -> LauncherError {
+    let e = LauncherError::pack(
+        ErrorCode::ModpackUnsupported,
+        "This modpack can't run on a free server.",
+    )
+    .with_param("host", host);
+    match reason {
+        Some(reason) => e.with_param("reason", reason),
+        None => e,
+    }
+}
+
+fn modpack_too_heavy(host: &str, required: Option<String>, limit: Option<String>) -> LauncherError {
+    let mut e = LauncherError::pack(
+        ErrorCode::ModpackTooHeavy,
+        "This modpack needs more memory than a free server has.",
+    )
+    .with_param("host", host);
+    if let Some(required) = required {
+        e = e.with_param("requiredMemoryMb", required);
+    }
+    if let Some(limit) = limit {
+        e = e.with_param("limitMemoryMb", limit);
+    }
+    e
+}
+
+fn free_server_over_disk(host: &str, used: Option<String>, limit: Option<String>) -> LauncherError {
+    let mut e = LauncherError::network(
+        ErrorCode::FreeServerOverDisk,
+        "Your server is out of space, so it stays off.",
+    )
+    .with_param("host", host);
+    if let Some(used) = used {
+        e = e.with_param("usedBytes", used);
+    }
+    if let Some(limit) = limit {
+        e = e.with_param("limitBytes", limit);
+    }
+    e
+}
+
 fn minecraft_link_closed(host: &str) -> LauncherError {
     LauncherError::network(
         ErrorCode::MinecraftLinkClosed,
@@ -629,6 +950,61 @@ mod tests {
         assert_eq!(relation, Relation::Followed);
         let relation: Relation = serde_json::from_value(json!("owner")).unwrap();
         assert_eq!(relation, Relation::Owner);
+    }
+
+    #[test]
+    fn create_waits_longer_than_other_calls() {
+        assert_eq!(CREATE_TIMEOUT, Duration::from_secs(150));
+        assert!(CREATE_TIMEOUT > InviteTiming::default().request_timeout);
+    }
+
+    #[test]
+    fn create_body_omits_missing_version_id() {
+        let body = serde_json::to_value(CreateFreeServer {
+            name: "a".into(),
+            kind: "vanilla".into(),
+            modrinth_version_id: None,
+            language: "en".into(),
+        })
+        .unwrap();
+        assert_eq!(
+            body,
+            json!({ "name": "a", "kind": "vanilla", "language": "en" })
+        );
+    }
+
+    #[test]
+    fn free_server_debug_holds_no_invite_token() {
+        let token = "b4sE64url_-b4sE64url_-b4sE64url_-b4sE64url_";
+        let server: FreeServer = serde_json::from_value(json!({
+            "name": "Aventura", "kind": "vanilla", "status": "sleeping",
+            "inviteUrl": format!("https://play.example.com/{token}"),
+            "joinUrl": format!("perland://join?invite=https%3A%2F%2Fplay.example.com%2F{token}")
+        }))
+        .unwrap();
+        let state = FreeServerState {
+            server: Some(server.clone()),
+            ..FreeServerState::default()
+        };
+        for text in [
+            format!("{server:?}"),
+            format!("{state:?}"),
+            format!("{state:#?}"),
+        ] {
+            assert!(!text.contains(token), "{text}");
+            assert!(
+                text.contains("Aventura") && text.contains("sleeping"),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn free_server_drops_an_invalid_modrinth_pair() {
+        let s: FreeServer =
+            serde_json::from_value(json!({ "modrinth": { "projectId": "a/b", "versionId": "x" } }))
+                .unwrap();
+        assert!(s.modrinth.is_none());
     }
 
     #[test]

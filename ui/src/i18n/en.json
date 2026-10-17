@@ -504,6 +504,7 @@
     "empty": "No public servers yet.",
     "loadMore": "Load more",
     "vanilla": "Vanilla",
+    "latestVersion": "(latest)",
     "sort": "Sort by",
     "sorts": { "players": "Most players", "newest": "Newest", "name": "Name A–Z" },
     "any": "Any",
@@ -528,6 +529,94 @@
       "roleplay": "Roleplay"
     },
     "language": { "en": "English", "es": "Español" }
+  },
+  "freeServer": {
+    "entry": {
+      "lead_one": "Your own free server, for up to {{count}} player.",
+      "lead_other": "Your own free server, for up to {{count}} players.",
+      "create": "Create a server for friends"
+    },
+    "reason": {
+      "emailRequired": "Free servers need a verified email on your account. Verify your email on Discord, then sign out and sign in again.",
+      "exists": "Another account with your email already has a free server.",
+      "running": "A server is being created right now.",
+      "retry": "You can create another server in {{time}}.",
+      "full": "Free servers are full right now. Try again later.",
+      "other": "You can't create a server right now."
+    },
+    "time": {
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes",
+      "hours_one": "{{count}} hour",
+      "hours_other": "{{count}} hours",
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days"
+    },
+    "limits": {
+      "players_one": "Up to {{count}} player.",
+      "players_other": "Up to {{count}} players.",
+      "memory": "{{vanilla}} GB of memory for vanilla, {{modded}} GB with mods.",
+      "sleep": "Sleeps when nobody plays and wakes when someone joins.",
+      "unused_one": "Deleted after {{count}} day without players.",
+      "unused_other": "Deleted after {{count}} days without players."
+    },
+    "pick": {
+      "title": "Create a server for friends",
+      "what": "What to play",
+      "vanilla": "Vanilla",
+      "vanillaHint": "The newest Minecraft.",
+      "modpack": "A modpack",
+      "pack": "Modpack",
+      "packHint": "One of your modpacks from Browse. Friends get it when they join.",
+      "noPacks": "Install a modpack from Browse first.",
+      "browse": "Go to Browse",
+      "name": "Server name",
+      "nameHint": "Friends see it on the invite page.",
+      "nameInvalid": "Use letters, numbers, - and _ only, up to 32.",
+      "refused": "The server couldn't be created with these choices. Try another name or modpack.",
+      "create": "Create"
+    },
+    "creating": {
+      "title": "Creating your server…",
+      "hint": "This can take a minute or two. You can close this; the server shows in Your servers when it's ready.",
+      "lost": "Still creating your server…",
+      "lostHint": "The answer took too long, so the launcher is checking on it.",
+      "gaveUp": "Your server is still being set up.",
+      "gaveUpBody": "It will show in Your servers."
+    },
+    "ready": {
+      "title": "Your server is ready",
+      "share": "Send this link to your friends so they can join.",
+      "link": "Invite link",
+      "copyLink": "Copy link",
+      "linkCopied": "Link copied",
+      "addressHint": "Friends join from Minecraft with this address.",
+      "address": "Address",
+      "copyAddress": "Copy address",
+      "addressCopied": "Address copied",
+      "playNow": "Play now",
+      "starting": "Starting…"
+    },
+    "unsupported": {
+      "not_found": "This modpack isn't on Modrinth anymore.",
+      "not_modpack": "This isn't a modpack.",
+      "loader": "Free servers can't run this modpack's loader.",
+      "too_large": "This modpack is too large for a free server."
+    },
+    "card": {
+      "creating": "Being created…",
+      "deleting": "Being deleted…",
+      "deletes": "Deleted on {{date}} unless someone plays.",
+      "outOfSpace": "It's out of space and stays off."
+    },
+    "delete": {
+      "action": "Delete server",
+      "title": "Delete {{name}}?",
+      "body": "The world is deleted too. You can create a new server afterwards.",
+      "confirm": "Delete server",
+      "deleting": "Deleting…",
+      "notDeleted": "Your server is still being set up, so it can't be deleted yet. Try again in a minute."
+    }
   },
   "news": {
     "label": "News",
@@ -666,6 +755,14 @@
     "perland_signed_out": { "message": "You were signed out of Perland." },
     "player_servers_closed": { "message": "Your servers aren't available right now." },
     "too_many_player_servers": { "message": "You have too many servers saved. Unfollow some first." },
+    "email_required": { "message": "Free servers need a verified email on your account." },
+    "free_server_exists": { "message": "You already have a free server." },
+    "too_many_free_servers": { "message": "You can't create another server yet." },
+    "free_servers_full": { "message": "Free servers are full right now. Try again later." },
+    "invalid_free_server": { "message": "Check the server name: letters, numbers, - and _ only, up to 32." },
+    "modpack_unsupported": { "message": "This modpack can't run on a free server." },
+    "modpack_too_heavy": { "message": "This modpack needs {{required}} GB; free servers have {{limit}} GB." },
+    "free_server_over_disk": { "message": "Your server is out of space, so it stays off." },
     "minecraft_link_closed": { "message": "Linking isn't available right now." },
     "launcher_update_failed": { "message": "Couldn't check for launcher updates.", "fix": "You can keep playing. It tries again next time you open the launcher." },
     "launcher_update_invalid": { "message": "The launcher update didn't pass its safety check, so it wasn't installed.", "fix": "Try again later. If it keeps happening, let us know." },

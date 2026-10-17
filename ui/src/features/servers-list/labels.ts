@@ -21,12 +21,18 @@ export function listStatusWord(t: TFunction, card: Pick<PublicServerCard, 'statu
   }
 }
 
-/** One line for the game: the modpack's name and version, else the loader or Vanilla and the Minecraft version. */
+/** One line for the game: the modpack's name and version, else the loader or Vanilla and the Minecraft version. A server on
+ *  `LATEST` (itzg's newest release, any case) says so in words. */
 export function gameLine(t: TFunction, card: Pick<PublicServerCard, 'pack' | 'game'>): string {
   if (card.pack) return [card.pack.name, card.pack.version].filter(Boolean).join(' ');
   const loader = card.game.loader;
   const name = !loader ? t('servers.vanilla') : LOADERS.includes(loader) ? loaderName(loader as LoaderKind) : loader;
-  return [name, card.game.version].filter(Boolean).join(' ');
+  return [name, versionWord(t, card.game.version)].filter(Boolean).join(' ');
+}
+
+/** A Minecraft version as players read it: `LATEST` (itzg's newest release, any case) in words, anything else as it is. */
+export function versionWord(t: TFunction, version: string | null | undefined): string | null | undefined {
+  return version?.toLowerCase() === 'latest' ? t('servers.latestVersion') : version;
 }
 
 /** A category id ("modded-tech") in the player's words; an id the launcher doesn't know shows as itself. */

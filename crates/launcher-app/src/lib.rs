@@ -6,6 +6,7 @@ pub mod browser;
 pub mod deep_link;
 pub mod dto;
 pub mod events;
+mod free_servers;
 mod import;
 #[cfg(test)]
 mod live_tests;

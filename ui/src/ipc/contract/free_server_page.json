@@ -1,0 +1,82 @@
+[
+  {
+    "limits": {
+      "maxPlayers": 10,
+      "memoryMb": {
+        "vanilla": 2048,
+        "modded": 6144
+      },
+      "diskBytes": 10737418240,
+      "sleepMinutes": 15,
+      "unusedDays": 30,
+      "warningDays": 7,
+      "createsPerWeek": 3
+    },
+    "create": {
+      "allowed": false,
+      "reason": "free_server_exists",
+      "retryAfter": null
+    },
+    "server": {
+      "token": "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+      "invite": "https://play.example.com/FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+      "joinable": true,
+      "address": "play.example.com:25570",
+      "name": "Steve",
+      "iconVersion": null,
+      "game": {
+        "version": "1.20.1",
+        "loader": "fabric",
+        "loaderVersion": null
+      },
+      "modded": true,
+      "status": "starting",
+      "players": {
+        "online": 0,
+        "max": 10
+      },
+      "whitelisted": false,
+      "pack": null,
+      "categories": [],
+      "language": "",
+      "region": null,
+      "instance": "steve",
+      "kind": "modrinth",
+      "memoryMb": 6144,
+      "maxPlayers": 10,
+      "freeStatus": "starting",
+      "deletion": {
+        "deletesAt": "2026-11-16T00:00:00Z",
+        "warned": true
+      },
+      "disk": {
+        "usedBytes": 1073741824,
+        "limitBytes": 10737418240,
+        "checkedAt": "2026-10-17T12:00:00Z",
+        "over": false
+      },
+      "inviteUrl": "https://play.example.com/FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+      "joinUrl": "perland://join?invite=https%3A%2F%2Fplay.example.com%2FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+    }
+  },
+  {
+    "limits": {
+      "maxPlayers": 10,
+      "memoryMb": {
+        "vanilla": 2048,
+        "modded": 6144
+      },
+      "diskBytes": 10737418240,
+      "sleepMinutes": 15,
+      "unusedDays": 30,
+      "warningDays": 7,
+      "createsPerWeek": 3
+    },
+    "create": {
+      "allowed": true,
+      "reason": null,
+      "retryAfter": null
+    },
+    "server": null
+  }
+]

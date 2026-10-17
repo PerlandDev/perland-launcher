@@ -18,6 +18,20 @@ export function isLauncherError(value: unknown): value is LauncherError {
   );
 }
 
+/** Whole GB for a message, from the MB the core sends as text, rounded with `round`. */
+function gb(mb: string | undefined, round: (n: number) => number): string | undefined {
+  const n = Number(mb);
+  return mb !== undefined && Number.isFinite(n) ? String(round(n / 1024)) : undefined;
+}
+
+/** The core's params, plus the GB a memory message reads (`required`, `limit`): what is needed rounds up and what there is
+ *  rounds down, so a message never understates the need or overstates the limit. */
+function messageParams(params: Record<string, string>): Record<string, string> {
+  const required = gb(params.requiredMemoryMb, Math.ceil);
+  const limit = gb(params.limitMemoryMb, Math.floor);
+  return { ...params, ...(required && { required }), ...(limit && { limit }) };
+}
+
 /** A failure in the player's language: translated by code, or the core's English as a fallback. */
 export function describeError(i18n: I18n, error: unknown): ErrorText {
   if (!isLauncherError(error)) {
@@ -28,10 +42,11 @@ export function describeError(i18n: I18n, error: unknown): ErrorText {
     };
   }
   const key = `errors.${error.code}`;
+  const params = messageParams(error.params);
   const known = i18n.exists(`${key}.message`);
-  const message = known ? i18n.t(`${key}.message`, error.params) : error.message;
+  const message = known ? i18n.t(`${key}.message`, params) : error.message;
   // A translated message never pairs with an untranslated fix: no mixed-language cards.
-  const fix = i18n.exists(`${key}.fix`) ? i18n.t(`${key}.fix`, error.params) : known ? null : error.fix;
+  const fix = i18n.exists(`${key}.fix`) ? i18n.t(`${key}.fix`, params) : known ? null : error.fix;
   return { message, fix, detail: error.detail };
 }
 

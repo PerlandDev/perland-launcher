@@ -12,6 +12,7 @@ use launcher_core::{
     invite::{non_empty, shown_invite, EngineView, InviteLink, InvitePlayers},
     meta::loaders::LoaderKind,
     mods::LocalMod,
+    perland::{CreateAllowance, Deletion, Disk, FreeLimits},
     public_list::Facets,
     sync::{ManualFile, PendingUpdate, SyncReport},
     LauncherError,
@@ -464,6 +465,53 @@ pub struct YourServerCard {
     pub following: bool,
 }
 
+/// The player's free server (spec "Create a server for friends" §5 and §6.2): the limits every
+/// free server has, whether they may create one now, and theirs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FreeServerPage {
+    pub limits: FreeLimits,
+    /// `reason` is the Engine's word: `email_required`, `free_server_exists`,
+    /// `too_many_free_servers` (with `retryAfter` seconds) or `free_servers_full`.
+    pub create: CreateAllowance,
+    pub server: Option<FreeServerCard>,
+}
+
+/// The owner's free server as a card, built from the free-server view. `status` folds what the
+/// card's pill doesn't know (`creating`, `deleting`, `stopped`) and `freeStatus` keeps the
+/// Engine's word. `joinable` needs an invite, a status other than `creating`, `deleting` and
+/// `stopped`, and a disk within its limit.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FreeServerCard {
+    #[serde(flatten)]
+    pub card: PublicServerCard,
+    /// `vanilla` or `modrinth`.
+    pub kind: String,
+    pub memory_mb: u32,
+    pub max_players: u32,
+    /// `online`, `starting`, `sleeping`, `offline`, `stopped`, `creating`, `deleting`, or a
+    /// newer Engine's word.
+    pub free_status: String,
+    /// When an unused server is deleted; `warned` once the owner was told.
+    pub deletion: Option<Deletion>,
+    pub disk: Disk,
+    /// The invite link to share (holds the invite's credential).
+    pub invite_url: Option<String>,
+    /// `perland://join?invite=…`, for friends who have the launcher.
+    pub join_url: Option<String>,
+}
+
+// Manual Debug: the invite URLs hold the invite's credential.
+impl fmt::Debug for FreeServerCard {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FreeServerCard")
+            .field("name", &self.card.name)
+            .field("free_status", &self.free_status)
+            .finish_non_exhaustive()
+    }
+}
+
 /// One page of a server's news, newest first, and the marker of what the player has seen.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -627,6 +675,9 @@ pub struct PerlandStatus {
 pub struct PerlandAccount {
     /// The display name, else the email, else `""` (the UI then says "Perland player").
     pub name: String,
+    /// The display name the player picked, never the email; `""` without one (email-only
+    /// players). Prefills a free server's name.
+    pub display_name: String,
     pub email: Option<String>,
     /// Whether a Discord account is linked.
     pub discord: bool,

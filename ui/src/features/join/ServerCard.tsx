@@ -4,6 +4,7 @@ import { PlotIcon } from '../../art/PlotIcon';
 import type { JoinPreview } from '../../ipc/schema';
 import { Motd } from '../servers/MotdText';
 import { StatusPill } from '../servers/StatusPill';
+import { versionWord } from '../servers-list/labels';
 import { useServerIconSize } from './iconScale';
 
 /** What the invite says about the server. Nothing here is lit: the screen's button is. */
@@ -13,7 +14,7 @@ export function ServerCard({ preview }: { preview: JoinPreview }) {
   const [failed, setFailed] = useState<string | null>(null);
   const icon = preview.icon && preview.icon !== failed ? preview.icon : null;
   const size = useServerIconSize();
-  const version = preview.game.version;
+  const version = versionWord(t, preview.game.version);
   const pack = preview.pack;
   return (
     <article className="panel grid gap-5 p-6" aria-labelledby="server-name">

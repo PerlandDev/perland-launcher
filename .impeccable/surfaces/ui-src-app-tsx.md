@@ -26,6 +26,10 @@ related_targets: ["ui/src"]
   - *A line, not a feed.* One quiet flat key under the card's head and under Home's status plates; Play stays the only lit button and the card's Play still lights on card hover only.
   - *Unseen is info.* The new mark is the blue square lamp of the update plate, never amber, with "New" in the accessible name and on the post in the dialog.
   - *Nothing when there's nothing.* News off, no posts, offline or rate limited render no line, no empty box and no error; only the dialog's Show more may say it failed.
+- **Create a server for friends (#49), decided 2026-10-17:**
+  - *The entry is a slot, not a banner.* The flat empty slot with one line and a raised key; the reason line takes the same slot when creating isn't possible. Nothing lit.
+  - *Three steps, one dialog.* The heading names the step; no stepper or numbers. Each step has one lit button (Create, then Play now); the link sits in a well with a ghost Copy.
+  - *The owner card is the same tile.* Warnings are coral-diamond sentences under the head, not a banner; the status words replace the readout's word; Delete server is a danger item in the card's ⋯ menu behind the standard confirm. Play stays the only amber.
 - **Minecraft link (#52), decided 2026-10-17:**
   - *A row, not a screen.* A second `panel` under the profile in the signed-in Perland card, built like it: a 40px `raised` plate (a pixel link icon in `ink-dim`), the 700-weight title over one `ink-dim` line, and the action at right. Absent when signed out or the stats add-on is off.
   - *Nothing lit.* Link, Copy command and Get a new code are raised; Unlink and Cancel are ghost. Accounts' one primary stays Add offline account.

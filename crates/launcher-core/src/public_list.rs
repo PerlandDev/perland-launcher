@@ -20,7 +20,9 @@ use crate::{
             check_engine_url, host_of, host_trouble, rate_limited, request_failed,
             server_list_closed, unexpected,
         },
-        invite_route, InviteAddress, InviteClient, InviteGame, InviteLink, InvitePack,
+        invite_route,
+        view::modrinth_ref,
+        InviteAddress, InviteClient, InviteGame, InviteLink, InviteModrinth, InvitePack,
         InvitePlayers, Url,
     },
     sources::perland::joinable_game,
@@ -139,6 +141,10 @@ pub struct PublicServer {
     pub players: Option<InvitePlayers>,
     pub whitelisted: bool,
     pub pack: Option<InvitePack>,
+    /// The Modrinth modpack version the server runs. Read when present: today's Engine
+    /// doesn't send it in the list.
+    #[serde(deserialize_with = "modrinth_ref")]
+    pub modrinth: Option<InviteModrinth>,
     pub categories: Vec<String>,
     pub language: String,
     pub region: Option<String>,
@@ -166,7 +172,11 @@ impl PublicServer {
 
     /// Can Play join it? The same rule an invite link is held to.
     pub fn joinable(&self) -> bool {
-        joinable_game("stack", &self.game, self.pack.is_some())
+        joinable_game(
+            "stack",
+            &self.game,
+            self.pack.is_some() || self.modrinth.is_some(),
+        )
     }
 }
 
@@ -346,6 +356,32 @@ impl PublicListClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_server_reads_modrinth() {
+        let server: PublicServer = serde_json::from_value(serde_json::json!({
+            "token": "A".repeat(43), "name": "pack", "modded": true,
+            "game": { "type": "fabric", "version": "1.20.1", "loader": "fabric" },
+            "modrinth": { "projectId": "1KVo5zza", "versionId": "Yp8wLY1P" }
+        }))
+        .unwrap();
+        assert_eq!(
+            server.modrinth,
+            Some(InviteModrinth {
+                project_id: "1KVo5zza".into(),
+                version_id: "Yp8wLY1P".into(),
+            })
+        );
+        assert!(server.joinable());
+        let bad: PublicServer = serde_json::from_value(serde_json::json!({
+            "token": "A".repeat(43), "name": "pack", "modded": true,
+            "game": { "type": "fabric", "version": "1.20.1", "loader": "fabric" },
+            "modrinth": { "projectId": "1KVo5zza", "versionId": "no/pe" }
+        }))
+        .unwrap();
+        assert_eq!(bad.modrinth, None);
+        assert!(!bad.joinable());
+    }
 
     #[test]
     fn default_query_sends_the_page_only() {

@@ -43,6 +43,34 @@ describe('describeError', () => {
     );
   });
 
+  it('rounds the need up and the limit down for MB that are not whole GB', () => {
+    const heavy = {
+      category: 'pack',
+      code: 'modpack_too_heavy',
+      message: 'x',
+      fix: null,
+      detail: null,
+      params: { requiredMemoryMb: '8500', limitMemoryMb: '6100' },
+    } as const;
+    expect(describeError(i18n, heavy).message).toBe('This modpack needs 9 GB; free servers have 5 GB.');
+  });
+
+  it('fills a too-heavy modpack message with whole GB from the MB params', async () => {
+    const heavy = {
+      category: 'pack',
+      code: 'modpack_too_heavy',
+      message: 'x',
+      fix: null,
+      detail: null,
+      params: { requiredMemoryMb: '8192', limitMemoryMb: '6144' },
+    } as const;
+    expect(describeError(i18n, heavy).message).toBe('This modpack needs 8 GB; free servers have 6 GB.');
+    await i18n.changeLanguage('es');
+    expect(describeError(i18n, heavy).message).toBe(
+      'Este modpack necesita 8 GB; los servidores gratis tienen 6 GB.',
+    );
+  });
+
   it('wraps anything that is not a LauncherError', () => {
     expect(isLauncherError(new Error('x'))).toBe(false);
     const text = describeError(i18n, new Error('boom'));

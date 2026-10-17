@@ -42,7 +42,7 @@ interface Listing {
   instances: Instance[];
 }
 
-const STEVE: PerlandAccount = { name: 'Steve', email: 'steve@example.com', discord: true, newPlayer: false, minecraft: null };
+const STEVE: PerlandAccount = { name: 'Steve', displayName: 'Steve', email: 'steve@example.com', discord: true, newPlayer: false, minecraft: null };
 
 /** The tokens of the servers Your servers has that the public list doesn't. */
 const OWNER = 'O';
@@ -114,9 +114,9 @@ export const NOT_PERLAND = Symbol('not a Perland command');
 const RELATIONS = ['owner', 'invited', 'followed'] as const;
 
 /** Your servers in the Engine's order (owner, invited, followed; each by name), with `instance` filled in like the public list does. */
-function page(perland: MockPerland, listing: Listing): YourServersPage {
+function page(perland: MockPerland, listing: Listing, hide: (card: YourServerCard) => boolean): YourServersPage {
   const rank = (c: YourServerCard) => RELATIONS.indexOf(c.relation);
-  const servers = [...perland.servers].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+  const servers = perland.servers.filter((c) => !hide(c)).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
   return { servers: servers.map((c) => ({ ...structuredClone(c), instance: joinedInstance(c, listing) })) };
 }
 
@@ -166,6 +166,8 @@ export async function handlePerland(
   cmd: string,
   args: Record<string, unknown>,
   emit: (event: AppEvent) => void,
+  /** Entries Your servers leaves out: the Engine's list repeats the player's free server, and the app shows it from its own view. */
+  hide: (card: YourServerCard) => boolean = () => false,
 ): Promise<unknown> {
   const on = perland.scenario !== 'off';
   switch (cmd) {
@@ -201,7 +203,7 @@ export async function handlePerland(
         perland.attemptsLeft = Math.max(0, perland.attemptsLeft - 1);
         fail('auth', 'invalid_code', "That code isn't right.", { attemptsLeft: String(perland.attemptsLeft) });
       }
-      perland.account = { name: email, email, discord: false, newPlayer: true, minecraft: null };
+      perland.account = { name: email, displayName: '', email, discord: false, newPlayer: true, minecraft: null };
       return perland.account;
     }
     case 'perland_sign_out':
@@ -227,7 +229,7 @@ export async function handlePerland(
     case 'perland_stats':
       return on ? stats(perland, listing) : null;
     case 'your_servers':
-      return on && perland.account ? page(perland, listing) : null;
+      return on && perland.account ? page(perland, listing, hide) : null;
     case 'your_servers_follow': {
       if (!on || !perland.account) return null;
       const known = publicCard(args.invite);

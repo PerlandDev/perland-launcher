@@ -6,8 +6,10 @@ pub mod pkce;
 pub mod session;
 
 pub use api::{
-    DiscordAccount, EmailStarted, LinkCode, MinecraftAccount, Player, PlayerClient, PlayerConfig,
-    PlayerStats, Relation, ServerStats, SignInMethod, StatsInvite, TokenAnswer, YourServer,
+    CreateAllowance, CreateFreeServer, Deletion, DiscordAccount, Disk, EmailStarted, FreeLimits,
+    FreeServer, FreeServerState, LinkCode, MemoryLimits, MinecraftAccount, Player, PlayerClient,
+    PlayerConfig, PlayerStats, Relation, ServerStats, SignInMethod, StatsInvite, TokenAnswer,
+    YourServer,
 };
 pub use loopback::{Callback, Language, Loopback};
 pub use pkce::{authorize_url, Pkce};

@@ -10,13 +10,13 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AppInfo, ArtChoice, Build, ContentFile, EmailCodeSent, IconChoice, ImportPreview,
-        ImportRequest, InstanceArtData, JavaTest, JoinPreview, LinkCodeView, ManualProgress,
-        NameListView, NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice,
-        PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount,
-        PerlandSignInPhase, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard,
-        PublicServerPage, RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers,
-        ServerStatsView, ServerStatusView, ServerTeam, SyncSummary, YourServerCard,
+        AppInfo, ArtChoice, Build, ContentFile, EmailCodeSent, FreeServerCard, FreeServerPage,
+        IconChoice, ImportPreview, ImportRequest, InstanceArtData, JavaTest, JoinPreview,
+        LinkCodeView, ManualProgress, NameListView, NewInstance, NewsChangesView, NewsPostView,
+        OpenTarget, OptionalChoice, PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate,
+        PerlandAccount, PerlandSignInPhase, PerlandStats, PerlandStatus, PlaytimeEntry,
+        PublicServerCard, PublicServerPage, RunSnapshot, ServerGame, ServerNews, ServerPack,
+        ServerPlayers, ServerStatsView, ServerStatusView, ServerTeam, SyncSummary, YourServerCard,
         YourServersPage,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
@@ -43,6 +43,7 @@ use launcher_core::{
         loaders::LoaderKind,
     },
     mods::LocalMod,
+    perland::{CreateAllowance, Deletion, Disk, FreeLimits, MemoryLimits},
     public_list::{Facets, ListQuery, ListSort},
     settings::{IconShape, Lang, Settings, Theme, UiFont},
     sync::ManualFile,
@@ -204,6 +205,89 @@ fn your_servers_page() -> YourServersPage {
             },
         ],
     }
+}
+
+/// Signed in with a modpack server that is starting and was warned about its deletion, and
+/// allowed to create one without a server.
+fn free_server_pages() -> Vec<FreeServerPage> {
+    let limits = FreeLimits {
+        max_players: 10,
+        memory_mb: MemoryLimits {
+            vanilla: 2048,
+            modded: 6144,
+        },
+        disk_bytes: 10_737_418_240,
+        sleep_minutes: 15,
+        unused_days: 30,
+        warning_days: 7,
+        creates_per_week: 3,
+    };
+    let card = PublicServerCard {
+        token: "F".repeat(43),
+        invite: Some(format!("https://play.example.com/{}", "F".repeat(43))),
+        joinable: true,
+        address: Some("play.example.com:25570".into()),
+        name: "Steve".into(),
+        icon_version: None,
+        game: ServerGame {
+            version: Some("1.20.1".into()),
+            loader: Some("fabric".into()),
+            loader_version: None,
+        },
+        modded: true,
+        status: ServerStatus::Starting,
+        players: Some(ServerPlayers {
+            online: 0,
+            max: Some(10),
+        }),
+        whitelisted: false,
+        pack: None,
+        categories: vec![],
+        language: "".into(),
+        region: None,
+        instance: Some("steve".into()),
+    };
+    vec![
+        FreeServerPage {
+            limits,
+            create: CreateAllowance {
+                allowed: false,
+                reason: Some("free_server_exists".into()),
+                retry_after: None,
+            },
+            server: Some(FreeServerCard {
+                card,
+                kind: "modrinth".into(),
+                memory_mb: 6144,
+                max_players: 10,
+                free_status: "starting".into(),
+                deletion: Some(Deletion {
+                    deletes_at: "2026-11-16T00:00:00Z".into(),
+                    warned: true,
+                }),
+                disk: Disk {
+                    used_bytes: 1_073_741_824,
+                    limit_bytes: 10_737_418_240,
+                    checked_at: Some("2026-10-17T12:00:00Z".into()),
+                    over: false,
+                },
+                invite_url: Some(format!("https://play.example.com/{}", "F".repeat(43))),
+                join_url: Some(format!(
+                    "perland://join?invite=https%3A%2F%2Fplay.example.com%2F{}",
+                    "F".repeat(43)
+                )),
+            }),
+        },
+        FreeServerPage {
+            limits,
+            create: CreateAllowance {
+                allowed: true,
+                reason: None,
+                retry_after: None,
+            },
+            server: None,
+        },
+    ]
 }
 
 fn public_server_page() -> PublicServerPage {
@@ -831,6 +915,7 @@ fn contract_fixtures_are_current() {
                 methods: vec!["discord".into(), "email".into()],
                 account: Some(PerlandAccount {
                     name: "Steve".into(),
+                    display_name: "Steve".into(),
                     email: Some("steve@example.com".into()),
                     discord: true,
                     new_player: true,
@@ -842,6 +927,7 @@ fn contract_fixtures_are_current() {
                 methods: vec!["email".into()],
                 account: Some(PerlandAccount {
                     name: "alex@example.com".into(),
+                    display_name: "".into(),
                     email: Some("alex@example.com".into()),
                     discord: false,
                     new_player: false,
@@ -1117,6 +1203,7 @@ fn contract_fixtures_are_current() {
     check("server_instance", server_instance());
     check("public_server_page", public_server_page());
     check("your_servers_page", your_servers_page());
+    check("free_server_page", free_server_pages());
     check("server_news", server_news());
     check(
         "join_preview",

@@ -36,6 +36,7 @@ pub fn sources(server: &MockServer, root: &Path) -> Sources {
             modrinth_api: format!("{}/v2", server.uri()),
             curseforge_cdn: server.uri(),
             curseforge_site: "https://www.curseforge.com".into(),
+            mojang_manifest: format!("{}/mojang/version_manifest_v2.json", server.uri()),
         },
     }
 }

@@ -7,6 +7,7 @@ import { inviteCanonical, isInviteLink } from '../../ipc/inviteLink';
 import type { Instance, JoinPreview, LauncherError } from '../../ipc/schema';
 import { recordYourServer, useInstances, useJoinAdd, useJoinPreview, useServerLink, useServerRelink } from '../../state/queries';
 import { navigate } from '../../state/route';
+import { versionWord } from '../servers-list/labels';
 import { Button } from '../../ui/Button';
 import { copyText } from '../../ui/copyText';
 import { ErrorCard } from '../../ui/ErrorCard';
@@ -72,7 +73,7 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
   const address = isLauncherError(preview.error) && preview.error.code === 'invite_unsupported' ? preview.error.params.address : undefined;
   const busy = add.isPending || relink.isPending || linkTo.isPending;
   const gameMove =
-    data && linking && data.game.version && changesGame(linking, data) ? { version: data.game.version, loader: serverLoader(data) } : null;
+    data && linking && data.game.version && changesGame(linking, data) ? { version: versionWord(t, data.game.version), loader: serverLoader(data) } : null;
 
   const check = (event: FormEvent) => {
     event.preventDefault();

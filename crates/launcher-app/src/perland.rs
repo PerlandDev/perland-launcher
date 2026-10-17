@@ -12,9 +12,9 @@ use launcher_core::{
     http::HttpClient,
     invite::{InviteClient, InviteLink, Url},
     perland::{
-        authorize_url, Callback, EmailStarted, Language, LinkCode, Loopback, Pkce, Player,
-        PlayerClient, PlayerConfig, PlayerStats, Profile, Session, SignInMethod, TokenAnswer,
-        YourServer,
+        authorize_url, Callback, CreateFreeServer, EmailStarted, FreeServer, FreeServerState,
+        Language, LinkCode, Loopback, Pkce, Player, PlayerClient, PlayerConfig, PlayerStats,
+        Profile, Session, SignInMethod, TokenAnswer, YourServer,
     },
     ErrorCode, LauncherError, Result,
 };
@@ -69,6 +69,17 @@ pub trait PlayerApi: Send + Sync + 'static {
     fn follow(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>>;
     fn unfollow(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>>;
     fn joined(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>>;
+    /// The player's free server and what they may do; `None` while the feature is off.
+    fn free_server(&self, engine: Url, token: String)
+        -> BoxFuture<Result<Option<FreeServerState>>>;
+    fn create_free_server(
+        &self,
+        engine: Url,
+        token: String,
+        request: CreateFreeServer,
+    ) -> BoxFuture<Result<FreeServer>>;
+    fn start_free_server(&self, engine: Url, token: String) -> BoxFuture<Result<FreeServer>>;
+    fn delete_free_server(&self, engine: Url, token: String) -> BoxFuture<Result<bool>>;
     fn link_code(&self, engine: Url, token: String) -> BoxFuture<Result<LinkCode>>;
     fn unlink(&self, engine: Url, token: String) -> BoxFuture<Result<()>>;
     fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>>;
@@ -175,6 +186,35 @@ impl PlayerApi for CorePlayer {
         Box::pin(async move { client?.joined(&token, &invite_token).await })
     }
 
+    fn free_server(
+        &self,
+        engine: Url,
+        token: String,
+    ) -> BoxFuture<Result<Option<FreeServerState>>> {
+        let client = self.client(engine);
+        Box::pin(async move { client?.free_server(&token).await })
+    }
+
+    fn create_free_server(
+        &self,
+        engine: Url,
+        token: String,
+        request: CreateFreeServer,
+    ) -> BoxFuture<Result<FreeServer>> {
+        let client = self.client(engine);
+        Box::pin(async move { client?.create_free_server(&token, &request).await })
+    }
+
+    fn start_free_server(&self, engine: Url, token: String) -> BoxFuture<Result<FreeServer>> {
+        let client = self.client(engine);
+        Box::pin(async move { client?.start_free_server(&token).await })
+    }
+
+    fn delete_free_server(&self, engine: Url, token: String) -> BoxFuture<Result<bool>> {
+        let client = self.client(engine);
+        Box::pin(async move { client?.delete_free_server(&token).await })
+    }
+
     fn link_code(&self, engine: Url, token: String) -> BoxFuture<Result<LinkCode>> {
         let client = self.client(engine);
         Box::pin(async move { client?.link_code(&token).await })
@@ -242,16 +282,27 @@ fn method_name(method: SignInMethod) -> &'static str {
     }
 }
 
-fn language_tag(language: &str) -> &'static str {
+pub(crate) fn language_tag(language: &str) -> &'static str {
     match Language::parse(language) {
         Language::Es => "es",
         Language::En => "en",
     }
 }
 
+/// The name the player picked (Discord-based), or `""`: `Profile.name` falls back to the email,
+/// and an email must never become a server name on a public page.
+fn display_name(profile: &Profile) -> String {
+    if profile.email.as_deref() == Some(profile.name.as_str()) {
+        String::new()
+    } else {
+        profile.name.clone()
+    }
+}
+
 fn account(profile: &Profile, new_player: bool) -> PerlandAccount {
     PerlandAccount {
         name: profile.name.clone(),
+        display_name: display_name(profile),
         email: profile.email.clone(),
         discord: profile.discord,
         new_player,
@@ -288,7 +339,7 @@ impl PerlandStatus {
 }
 
 /// The Engine's host, for error params (never a URL).
-fn host_of(engine: &Url) -> &str {
+pub(crate) fn host_of(engine: &Url) -> &str {
     engine.host_str().unwrap_or("the server")
 }
 
@@ -868,6 +919,7 @@ mod tests {
             account,
             PerlandAccount {
                 name: "Steve".into(),
+                display_name: "Steve".into(),
                 email: Some("steve@example.com".into()),
                 discord: true,
                 new_player: true,
@@ -889,6 +941,33 @@ mod tests {
             "the status shows the new account without asking /me again"
         );
         assert!(runner.player.calls_to("me").is_empty());
+    }
+
+    #[test]
+    fn display_name_is_never_the_email() {
+        let profile = |name: &str, email: Option<&str>| Profile {
+            name: name.into(),
+            email: email.map(Into::into),
+            discord: false,
+            minecraft: None,
+        };
+        let shown = |p: Profile| account(&p, false).display_name;
+        assert_eq!(shown(profile("Alex", Some("alex@example.com"))), "Alex");
+        assert_eq!(shown(profile("Alex", None)), "Alex");
+        assert_eq!(
+            shown(profile("alex@example.com", Some("alex@example.com"))),
+            "",
+            "an email-only player has no display name"
+        );
+        assert_eq!(shown(profile("", None)), "");
+        let full = account(
+            &profile("alex@example.com", Some("alex@example.com")),
+            false,
+        );
+        assert_eq!(
+            full.name, "alex@example.com",
+            "the account card still names them"
+        );
     }
 
     #[tokio::test]

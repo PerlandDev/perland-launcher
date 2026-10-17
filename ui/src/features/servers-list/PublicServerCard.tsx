@@ -11,8 +11,8 @@ import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { copyText } from '../../ui/copyText';
 import { useOnScreen } from '../../ui/useOnScreen';
-import { Check, Copy, MinusBox } from '../../ui/Icon';
-import { Menu } from '../../ui/Menu';
+import { Check, Copy, MinusBox, WarningDiamond } from '../../ui/Icon';
+import { Menu, type MenuItem } from '../../ui/Menu';
 import { cardIconSize, useServerIconSize } from '../join/iconScale';
 import { NewsLine } from '../news/NewsLine';
 import { InviteOnly } from '../servers/InviteOnly';
@@ -23,17 +23,27 @@ import { ServerStatsLine } from './ServerStatsLine';
 /** One public server: icon, name, game line, status in words, its latest news, the player's stats there, and Play. Play is
  *  raised at rest and lights only while its card is under the pointer or holds focus, so a grid of cards is never a wall of
  *  amber. Your servers uses it too: `tag` labels an Owner or Invited server, `menu` gives a followed one Unfollow, and
- *  `follow` (on by default, as on the public list) makes Play follow the server once it is added. */
+ *  `follow` (on by default, as on the public list) makes Play follow the server once it is added. The owner's free server adds
+ *  `notes` (warning lines), `menuItems` (after Unfollow), `statusWord` (in place of the list's word) and `onPlay` (in place
+ *  of the join). */
 export function PublicServerCard({
   card,
   tag,
   menu,
   follow = true,
+  notes,
+  menuItems,
+  statusWord,
+  onPlay,
 }: {
   card: Card;
   tag?: 'owner' | 'invited';
   menu?: { onUnfollow(): void };
   follow?: boolean;
+  notes?: string[];
+  menuItems?: MenuItem[];
+  statusWord?: string;
+  onPlay?: () => Promise<void>;
 }) {
   const { t } = useTranslation();
   const nameId = useId();
@@ -42,7 +52,7 @@ export function PublicServerCard({
   const [failed, setFailed] = useState<string | null>(null);
   const src = icon.data && icon.data !== failed ? icon.data : null;
   const size = useServerIconSize(cardIconSize);
-  const play = usePlay(card, follow);
+  const play = usePlay(card, follow, onPlay);
   const joinable = card.joinable && card.invite !== null;
   // News is asked for only while the card is on screen: the Engine allows 60 reads a minute per player, and a page holds up to 50 cards.
   const ref = useRef<HTMLElement>(null);
@@ -59,9 +69,14 @@ export function PublicServerCard({
     if (document.activeElement !== null && document.activeElement !== document.body) return;
     (playRef.current && !playRef.current.disabled ? playRef.current : nameRef.current)?.focus();
   }, [hasMenu]);
+  const hasItems = menu !== undefined || (menuItems?.length ?? 0) > 0;
+  const onUnfollow = () => {
+    unfollowing.current = true;
+    menu?.onUnfollow();
+  };
   return (
     <article ref={ref} className="server-tile" aria-labelledby={nameId}>
-      <div className="server-tile-head" data-menu={menu ? '' : undefined}>
+      <div className="server-tile-head" data-menu={hasItems ? '' : undefined}>
         <span className="server-icon">
           {src ? (
             <img src={src} alt="" style={{ width: size, height: size }} draggable={false} onError={() => setFailed(src)} />
@@ -75,27 +90,24 @@ export function PublicServerCard({
           </h3>
           <p className="tabular text-sm text-ink-dim">{gameLine(t, card)}</p>
           <span className="server-tile-status">
-            <StatusPill status={card.status} players={card.players} gone={false} word={listStatusWord(t, card)} live={false} />
+            <StatusPill status={card.status} players={card.players} gone={false} word={statusWord ?? listStatusWord(t, card)} live={false} />
             {tag && <span className="tag">{t(`servers.yours.${tag}`)}</span>}
           </span>
         </div>
-        {menu && (
+        {hasItems && (
           <Menu
             compact
             label={t('servers.yours.more', { name: card.name })}
-            items={[
-              {
-                label: t('servers.yours.unfollow'),
-                icon: <MinusBox />,
-                onSelect: () => {
-                  unfollowing.current = true;
-                  menu.onUnfollow();
-                },
-              },
-            ]}
+            items={[...(menu ? [{ label: t('servers.yours.unfollow'), icon: <MinusBox />, onSelect: onUnfollow }] : []), ...(menuItems ?? [])]}
           />
         )}
       </div>
+      {notes?.map((note) => (
+        <p key={note} className="server-tile-note">
+          <WarningDiamond aria-hidden />
+          {note}
+        </p>
+      ))}
       <NewsLine invite={card.invite} name={card.name} visible={onScreen} />
       <ServerStatsLine token={card.token} />
       {(card.whitelisted || (!joinable && card.address)) && (
@@ -120,8 +132,8 @@ export function PublicServerCard({
 }
 
 /** Play: add the server (or find the instance that already joins it), start the game with join, open its Home. With `follow`,
- *  a successful add also follows the server, quietly. */
-function usePlay(card: Card, follow: boolean) {
+ *  a successful add also follows the server, quietly. With `onPlay`, Play runs that instead (it handles its own errors). */
+function usePlay(card: Card, follow: boolean, onPlay?: () => Promise<void>) {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
@@ -133,7 +145,17 @@ function usePlay(card: Card, follow: boolean) {
     };
   }, []);
   const run = () => {
-    if (running.current || !card.invite) return;
+    if (running.current) return;
+    if (onPlay) {
+      running.current = true;
+      setBusy(true);
+      void onPlay().finally(() => {
+        running.current = false;
+        if (mounted.current) setBusy(false);
+      });
+      return;
+    }
+    if (!card.invite) return;
     const invite = card.invite;
     running.current = true;
     setBusy(true);

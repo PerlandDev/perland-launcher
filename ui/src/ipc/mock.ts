@@ -18,6 +18,7 @@ import versionsFx from './contract/versions.json';
 import { fitFor, fitsVersion, pickDefault } from '../features/browse/compat';
 import { APP_EVENT } from './events';
 import { inviteCanonical } from './inviteLink';
+import { handleFree, modrinthInstances, NOT_FREE, repeatsFreeServer, seedFree, type FreeScenario } from './mockFree';
 import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario } from './mockPerland';
 import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
 import type {
@@ -82,6 +83,9 @@ export interface MockOptions {
   server?: ServerScenario;
   /** Perland account: `off` closes accounts; `signedOut` (default), `signedIn`, `empty` (signed in, no servers), `emailOnly`, `linked` (Minecraft linked, with stats) and `noAddon` (stats off). */
   perland?: PerlandScenario;
+  /** Free server (only while `perland` is signed in): `none` (default, may create), `has`, `warned`, `overDisk`, `creating`, `exists`,
+   *  `emailRequired`, `rateLimited`, `full` or `off`. Setting it, or signing in, adds a Cozy Pack and a Mega Pack (too heavy) Modrinth instance. */
+  free?: FreeScenario;
   /** What the save dialog returns; null means the player cancelled. Defaults to a zip in Downloads. */
   savePath?: string | null;
   /** The rail starts wide, with names. */
@@ -326,10 +330,16 @@ function seed(options: MockOptions) {
     listing.instances = [...listing.instances, castle];
     custom.set(castle.id, CASTLE_PICTURE);
   }
+  // The create dialog picks a Modrinth modpack instance; only a free-server preview or a signed-in player has them.
+  const perland = seedPerland(options.perland);
+  if (!options.firstRun && options.free !== 'off' && (options.free !== undefined || perland.account !== null)) {
+    listing.instances = [...listing.instances, ...modrinthInstances()];
+  }
   const servers = seedServers(options.server, listing);
   return {
     listing,
-    perland: seedPerland(options.perland),
+    perland,
+    free: seedFree(options.free),
     // The player's own order, like instance-order.json. Existing instances start A-Z, so a new one lands above them.
     order: [...listing.instances].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map((i) => i.id),
     servers,
@@ -1127,9 +1137,13 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'plugin:window|is_maximized':
       return false;
     default: {
-      const perlandServed = await handlePerland(state.perland, state.listing, cmd, args, event);
+      const extra = [...state.perland.servers, ...(state.free.server ? [state.free.server] : [])];
+      const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite }, extra) as Instance;
+      const freeServed = await handleFree(state.free, state.perland.account, state.listing, cmd, args, join);
+      if (freeServed !== NOT_FREE) return freeServed;
+      const perlandServed = await handlePerland(state.perland, state.listing, cmd, args, event, (c) => repeatsFreeServer(state.free, c));
       if (perlandServed !== NOT_PERLAND) return perlandServed;
-      const served = handleServer(state.servers, state.listing, cmd, args, state.perland.servers);
+      const served = handleServer(state.servers, state.listing, cmd, args, extra);
       if (served !== NOT_MINE) return served;
       if (cmd.startsWith('plugin:')) return null;
       return fail('game', 'internal', `mock has no command ${cmd}`);
