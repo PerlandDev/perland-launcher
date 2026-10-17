@@ -92,11 +92,13 @@ The screen keeps a slot above the list for **Your servers** (#48, a later sessio
 | Play | `join_add(invite)` (it returns the instance that already joins this server, compared by canonical invite), then `play(id, join = true)`, then the UI opens that instance's Home, where the meter shows the run. One code path with join links; no new join command. **Our call** |
 | Which link Play uses | `inviteUrl` when the Engine sends one, else `<Perland site>/<token>`: the site is the invite host by definition. Rust computes it into the DTO's `invite`, so the UI never builds URLs. **Our call** |
 | The sleeping state on a card | Status word "Sleeping, Play wakes it", with the hollow LED. `starting` reads "Starting". Play is the same button in every state |
-| Waking | A new run phase **`waking`** ("Starting the server…") between sync and the game. It is entered when Play joins (`join = true`) and the view read at that point says `sleeping` or `starting`. The launcher sends one handshake and Login Start with the active account's name to the server's address (§6.3), then polls the view until it says `online`. **Our call** on placing it after sync: a first install can outlast the waker's 10 minutes, so waking before it could let the server fall asleep again before the game connects |
-| Waking without joining | A plain Play of a sleeping server instance (title screen, the server in the Multiplayer list) sends the same knock without waiting, so the server is starting by the time the player picks it. The game still opens at once. **Our call** |
-| Giving up on a wake | Still `sleeping` 30 s after the knock (a whitelisted name, or the knock failed): the run goes on and the game connects, so the player sees the server's own message. `starting` for more than 4 minutes: the same. A failed knock or view read is a `server_wake_failed` warning in the drawer, never an error that ends the run. **Our call** |
+| Waking | A new run phase **`waking`** ("Starting the server…") **after `preparing`**, just before the game starts. A first install of Minecraft, the loader and Java happens in `preparing` and can outlast the waker's 10 minutes, so waking any earlier could let the server fall asleep again before the game connects. The run releases the install slot before it waits, so other instances' installs and the launcher's own update are never held up (builder check). It runs only when Play joins (`join = true`), in five steps:<br>1. **Ping:** the launcher sends a Minecraft status ping to the server's address. The ping wakes nothing.<br>2. **The waker answers** (its version name is `Sleeping`): the launcher sends one handshake and Login Start with the active account's name (§6.1) and reads the kick that comes back.<br>3. **Woken:** the phase turns `waking`, and the launcher pings every 2 s until the real server answers (a version name that isn't `Sleeping`).<br>4. **Nothing answers but the view says `starting`:** the same wait, without the knock.<br>5. **Anything else:** straight to the game.<br>The Engine's view is never polled for this: it is cached for 15 s and reads `sleeping` while the server is still waking (builder check). **Our call** |
+| Reading the waker's kick | The waker's reply says what happened: the fixed `§cYou are not whitelisted on this server.` means not whitelisted, a reply containing `cannot start right now` means the team has no room, and any other reply means woken. With not whitelisted or no room the launcher doesn't wait: the game connects and the player reads the server's own message. **Our call** |
+| Waking without joining | A plain Play of a server instance whose last status was `sleeping` (title screen, the server in the Multiplayer list) sends the same ping and knock in the background without waiting, so the server is starting by the time the player picks it. The game opens at once. **Our call** |
+| Giving up on a wake | The real server hasn't answered 5 minutes after the knock: the run goes on and the game connects. A failed ping, knock or wait is a `server_wake_failed` warning in the drawer, never an error that ends the run. A Stop during `waking` ends the run as cancelled. **Our call** |
+| Modded servers without a modpack | The Engine lists them (`modded: true`, `game.loader` set, `pack: null`), but the launcher can't join them yet (`perland::supported`). Hiding them would make the Engine's `total` and paging wrong, so their card shows with Play disabled. In its place sits the line "Join from Minecraft: play.perland.online:25566" and a Copy button, the address being what `supported`'s own message names. Rust computes `joinable` with the same rule `supported` uses (one shared function), and the game line is the loader and version ("Fabric 1.21.1"). **Our call** (builder check) |
 | No account | The list, the cards and the filters need no Perland account. Play needs a launcher account (offline today), as every Play does: without one, the existing `no_account` error with its "Open Accounts" fix |
-| Feature off on the Engine | `404` from the list → `server_list_closed`. The screen shows a calm empty state, "The server list isn't open yet. Check back soon.", with no error styling. **Our call** |
+| Feature off, or an older Engine | Launcher betas ship soon after merge, while the Engine's list ships switched off (owner, relayed 2026-10-17). So a `404` (feature off, or an Engine without the route) and a `503` (the Engine can't serve it) both map to `server_list_closed`. The screen then shows a calm empty state, "The server list isn't open yet. Check back soon.", with no error styling, no Retry and no toast. So does a `config.json` without an `engineUrl`. Only a player-side problem (offline) or a passing one (429, other 5xx) shows the error card with Retry. A test covers each case at the core and in the UI. **Owner's requirement; the mapping is our call** |
 | Room for Your servers | The screen's body is a stack of sections: an empty `YourServers` slot (renders nothing) above **Public servers**. #48 fills the slot without moving the list. **Our call** on the structure |
 
 ## 6. Design
@@ -125,7 +127,7 @@ The screen keeps a slot above the list for **Your servers** (#48, a later sessio
 
 | Answer | Code |
 |---|---|
-| 404 on the list | `server_list_closed` (new) |
+| 404 or 503 on the list | `server_list_closed` (new) |
 | 429 | `invite_rate_limited` (existing: "Too many requests. Try again in a minute.") |
 | 5xx | `host_trouble` |
 | no answer | `offline` |
@@ -135,13 +137,26 @@ The screen keeps a slot above the list for **Your servers** (#48, a later sessio
 
 **`server_wake` module (new, `crates/launcher-core/src/server_wake.rs`)**
 
-- `knock(address: &ServerAddress, name: &str) -> Result<()>` sends two packets and returns:
-  - **The connection:** TCP to `host:port` with a 5 s connect and write deadline.
-  - **Handshake** (packet 0x00): protocol `767` (any value works; the waker only answers it), the host string, the port, and next state `2`.
-  - **Login Start** (packet 0x00): the name, at most 16 characters (offline names already are), followed by the 16-byte UUID the newer protocol carries (zeros; the waker reads only the name).
-  - It then reads at most 4 KiB for at most 2 s and ignores what it gets (the waker's kick), and closes.
-  - Errors are `server_wake_failed` (new, category network, `host` param).
-- VarInt and string encoding live in this module. The unit tests check the bytes against a hand-built handshake and against a fake waker on a local `TcpListener` that parses the packets the way the Engine's `internal/waker` does.
+Every connection is TCP to `host:port` with a 5 s connect deadline and a 5 s deadline for the whole exchange.
+
+- **`ping(address) -> Ping`**: `Waker`, `Server` or `NoAnswer`.
+  - It sends a Handshake (packet 0x00: protocol 767, the host, the port, next state 1) and a Status Request (0x00), then reads the Status Response (0x00, one string of at most 32 KiB).
+  - **`Waker`:** the response's JSON says `version.name == "Sleeping"`.
+  - **`Server`:** any other valid response.
+  - **`NoAnswer`:** a refused or timed-out connection, or anything unreadable.
+  - It never errors, and a ping never wakes a server.
+- **`knock(address, name) -> Result<Knock>`**:
+  - It sends the Handshake with next state 2 and a Login Start: the name, at most 16 characters (offline names already are), then the 16 zero bytes of the UUID newer protocols carry. The waker reads only the name.
+  - It reads the Login Disconnect (0x00, a JSON chat string, at most 32 KiB) and closes.
+  - `Knock` is `Woken`, `NotWhitelisted` (the text is exactly `§cYou are not whitelisted on this server.`) or `NoRoom` (the text contains `cannot start right now`).
+  - A connection that fails, or no answer, is `server_wake_failed` (new, category network, `host` param).
+- **`wait_until_up(address, cancel, every, for)`**: pings until `Server`, and returns `Up`, `TimedOut` or `Cancelled`.
+- **Encoding:** VarInt and string encoding live in this module.
+- **Unit tests:**
+  - the bytes against a hand-built handshake;
+  - a fake waker on a local `TcpListener` that parses the packets the way the Engine's `internal/waker` does and answers status and kick;
+  - a fake real server;
+  - a closed port.
 
 ### 6.2 launcher-app
 
@@ -149,7 +164,7 @@ The screen keeps a slot above the list for **Your servers** (#48, a later sessio
 
 | Command | Returns | Notes |
 |---|---|---|
-| `servers_list(query)` | `PublicServerPage` | `{ servers: PublicServerCard[], total, facets }`. Each card: `{ token, invite: string \| null, name, iconVersion, game: {version, loader}, modded, status, players, whitelisted, pack: {name, version, modCount} \| null, categories, language, region, instance: string \| null }`. `instance` is the id of the instance that already joins this server, matched by canonical invite. Nothing is written |
+| `servers_list(query)` | `PublicServerPage` | `{ servers: PublicServerCard[], total, facets }`. Each card: `{ token, invite: string \| null, joinable: bool, address: string \| null (display form), name, iconVersion, game: {version, loader}, modded, status, players, whitelisted, pack: {name, version, modCount} \| null, categories, language, region, instance: string \| null }`. `instance` is the id of the instance that already joins this server, matched by canonical invite. Nothing is written |
 | `servers_icon(token, iconVersion)` | `string \| null` | A `data:image/png;base64,…` URL, or null. The UI fetches it per card through React Query (stale forever, keyed by token and version) |
 
 Both go in `crates/launcher-app/src/public_servers.rs`. The `Runner` trait gains `public_page` and `public_icon` so the app tests use fakes, as `invite_view` does.
@@ -157,19 +172,19 @@ Both go in `crates/launcher-app/src/public_servers.rs`. The `Runner` trait gains
 **The waking phase (`runs.rs`)**
 
 - `RunStateKind` gains `Waking` (serialized `waking`).
-- In `run`, after the address is known and the server is listed in `servers.dat`, and before `Preparing`, a server instance with a known address takes these steps:
-  1. **Read the status:** read the view through `invite_view` (the shared 15 s copy). The run's own update check may have just read it.
-  2. **`sleeping` with `join = true`:** set the phase to `Waking` and `knock` with the session's name.
-     - Poll `view_fresh` every 3 s until `online`.
-     - Stop after 30 s if it stays `sleeping`, or after 4 minutes of `starting`.
-     - Stop at once on a Stop (the run's cancel token, which then ends the run as cancelled, like a Stop during sync).
-  3. **`starting` with `join = true`:** the same, without the knock.
-  4. **`sleeping` with `join = false`:** spawn the knock and don't wait.
-  5. **Anything else**, or a failed view read: go straight on.
-- The knock goes through `Runner::knock` so tests use a fake.
-- A failed knock or poll emits `AppEvent::Warning { code: server_wake_failed }` and the run continues.
-- A new status read updates the `ServerLink` with `update_server(id, true, …)`, as `server_status` does.
-- **The UI:** the meter's phase label for `waking` is "Starting the server…"; the meter shows no blocks (an indeterminate state, like `checking`).
+- **Order:** in `drive`, after `prepare` succeeds and the install slot's permit is dropped, and before `start`, a server instance with a known address takes the steps in §5 (Waking):
+  - **`join = true`:**
+    1. `ping`.
+    2. **`Waker`:** `knock` with the session's name.
+       - **`Woken`:** set the phase to `Waking` and `wait_until_up` (every 2 s, for 5 minutes).
+       - **`NotWhitelisted` or `NoRoom`:** go straight on.
+    3. **`NoAnswer`** when the instance's last saved status is `starting`: set `Waking` and wait.
+    4. **Otherwise:** go straight on.
+  - **`join = false`:** when the last saved status is `sleeping`, spawn `ping` and `knock` on their own task, and start the game without waiting.
+- **Stop during `waking`** cancels the wait and ends the run as cancelled (the same `ExitInfo` as a Stop during sync). `set_phase` refuses `Waking` once the run is `stopping`, as it does for `Preparing`.
+- **Tests:** `ping`, `knock` and `wait_until_up` go through the `Runner` trait (`server_ping`, `server_knock`, `server_wait`), so the app tests use fakes.
+- **Failures:** a failed knock or wait emits `AppEvent::Warning` with `server_wake_failed`, and the run continues.
+- **The UI:** the meter's phase label for `waking` is "Starting the server…". The meter shows no blocks (an indeterminate state, like `checking`).
 
 **Contract fixtures:** new fixtures for `servers_list` (`public_server_page.json`), `servers_icon`, and the `waking` run state. They are written by `UPDATE_CONTRACT=1 cargo test -p launcher-app --test contract` and never edited by hand.
 
@@ -255,10 +270,23 @@ The mock applies the query the way the Engine does and returns one page. `joinAd
     - 404 → `server_list_closed`, 429, 5xx, oversize and invalid bodies;
     - the icon (PNG check, 404 → None, cache);
     - `invite_for` with and without `inviteUrl`.
-  - unit tests in `server_wake.rs`: the packet bytes, a fake waker that reads the name, a refused connection → `server_wake_failed`.
+  - unit tests in `server_wake.rs`:
+    - the packet bytes;
+    - a fake waker: ping `Waker`, the knock outcomes;
+    - a fake real server: ping `Server`;
+    - a refused connection: ping `NoAnswer`, knock `server_wake_failed`;
+    - `wait_until_up` up, timeout and cancel.
+  - the closed-list mapping: 404, 503 and a `config.json` without `engineUrl` all give `server_list_closed`.
 - **launcher-app:**
   - `servers_list` maps cards and finds the existing instance;
-  - the run enters `waking` for a sleeping server with join, knocks with the account's name, polls until online, gives up after the sleeping window, ends cancelled on Stop, warns and continues on a failed knock, and doesn't wait without join;
+  - the run enters `waking` after `preparing`, with the install slot released, for a waker that answers with join;
+  - it knocks with the account's name and waits until up;
+  - it skips the wait on not whitelisted or no room;
+  - it waits without a knock on a `starting` server that doesn't answer;
+  - it times out and starts the game;
+  - it ends cancelled on Stop;
+  - it warns and continues on a failed knock;
+  - it only knocks in the background without join;
   - the contract fixtures.
 - **UI** (Vitest + Testing Library):
   - the rail button routes;
@@ -267,7 +295,8 @@ The mock applies the query the way the Engine does and returns one page. `joinAd
   - Region is hidden with one region;
   - Play calls `joinAdd`, then `play(id, true)`, then navigates;
   - an existing instance is reused;
-  - the closed and empty states;
+  - the closed state for `server_list_closed` (no error card, no toast) and the empty states;
+  - a card that isn't joinable shows the address and a disabled Play;
   - the `waking` phase label.
 - **Local test inputs stay tiny.** No fuzzing, stress or load tests run locally (CLAUDE.md).
 
