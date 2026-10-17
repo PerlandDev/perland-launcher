@@ -331,6 +331,23 @@ pub async fn instance_art_set(core: CoreState<'_>, id: String, choice: ArtChoice
 }
 
 #[tauri::command]
+pub async fn instance_screenshots(core: CoreState<'_>, id: String) -> Res<Vec<String>> {
+    logged("instance_screenshots", core.instance_screenshots(&id).await)
+}
+
+#[tauri::command]
+pub async fn instance_screenshot(
+    core: CoreState<'_>,
+    id: String,
+    name: String,
+) -> Res<Option<String>> {
+    logged(
+        "instance_screenshot",
+        core.instance_screenshot(&id, &name).await,
+    )
+}
+
+#[tauri::command]
 pub async fn instance_icon_set(
     core: CoreState<'_>,
     id: String,

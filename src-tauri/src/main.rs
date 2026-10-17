@@ -166,6 +166,8 @@ fn main() {
             commands::manual_import,
             commands::instance_art,
             commands::instance_art_set,
+            commands::instance_screenshots,
+            commands::instance_screenshot,
             commands::instance_icon_set,
             commands::instance_banner_focus_set,
             commands::deep_link_take,

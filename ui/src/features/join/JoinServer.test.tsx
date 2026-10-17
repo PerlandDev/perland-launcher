@@ -1,7 +1,7 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
-import { MOCK_INVITE } from '../../ipc/mockServers';
+import { MOCK_INVITE, inviteOf } from '../../ipc/mockServers';
 import type { Instance } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
 import { toastsSnapshot } from '../../state/toasts';
@@ -160,6 +160,31 @@ describe('JoinServer', () => {
     expect(sent(calls, 'server_link')).toEqual([{ id: 'asalith-fields', link: OTHER }]);
     expect(sent(calls, 'join_add')).toEqual([]);
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'asalith-fields' }));
+  });
+
+  it("suggests the player's own servers that play the instance's version, owned first", async () => {
+    const { user, calls } = renderApp(<JoinServer invite="" linkFor="castle-keep" />, { pictureBackground: true, perland: 'signedIn' });
+    const list = await screen.findByRole('list', { name: 'From your servers' });
+    const names = within(list)
+      .getAllByRole('button')
+      .map((b) => b.querySelector('.link-suggestion-name')?.textContent);
+    // Pure Vanilla is followed too, but plays 1.20.1.
+    expect(names).toEqual(['My world', 'Friends', 'Quiet Cove']);
+    await user.click(within(list).getByRole('button', { name: /^My world/ }));
+    expect(screen.getByRole('textbox', { name: 'Invite link' })).toHaveValue(inviteOf('O'));
+    expect(await screen.findByRole('button', { name: 'Link' })).toBeInTheDocument();
+    expect(sent(calls, 'join_preview').at(-1)).toEqual({ link: inviteOf('O') });
+  });
+
+  it('suggests nothing signed out, or when no server plays the same game', async () => {
+    const out = renderApp(<JoinServer invite="" linkFor="castle-keep" />, { pictureBackground: true });
+    expect(await screen.findByRole('heading', { name: 'Link to a server' })).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'From your servers' })).not.toBeInTheDocument();
+    out.unmount();
+    // Fabric 1.20.1: Pure Vanilla has the version, not the loader.
+    const { calls } = renderApp(<JoinServer invite="" linkFor="asalith-fields" />, { perland: 'signedIn' });
+    await vi.waitFor(() => expect(sent(calls, 'your_servers').length).toBeGreaterThan(0));
+    expect(screen.queryByRole('list', { name: 'From your servers' })).not.toBeInTheDocument();
   });
 
   it('warns when linking moves the instance to another game version', async () => {

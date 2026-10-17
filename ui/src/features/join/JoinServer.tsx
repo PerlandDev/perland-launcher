@@ -7,7 +7,8 @@ import { inviteCanonical, isInviteLink } from '../../ipc/inviteLink';
 import type { Instance, JoinPreview, LauncherError } from '../../ipc/schema';
 import { recordYourServer, useInstances, useJoinAdd, useJoinPreview, useServerLink, useServerRelink } from '../../state/queries';
 import { navigate } from '../../state/route';
-import { versionWord } from '../servers-list/labels';
+import { gameLine, versionWord } from '../servers-list/labels';
+import { useLinkSuggestions } from '../servers-list/yours';
 import { Button } from '../../ui/Button';
 import { copyText } from '../../ui/copyText';
 import { ErrorCard } from '../../ui/ErrorCard';
@@ -66,6 +67,8 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
   const target = relinkFor ? (listing.data?.instances.find((i) => i.id === relinkFor) ?? null) : null;
   const linking = linkFor ? (listing.data?.instances.find((i) => i.id === linkFor) ?? null) : null;
   const asking = relinkFor !== undefined || linkFor !== undefined || !valid;
+  // Linking or relinking, a signed-in player can pick one of their own servers instead of pasting its link.
+  const suggestions = useLinkSuggestions(target ?? linking);
   const data = preview.data;
   const oldName = target?.server?.name ?? target?.name ?? '';
   // The saved name was cut to the core's limit; the preview's is whole. Compare them cut alike.
@@ -75,12 +78,19 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
   const gameMove =
     data && linking && data.game.version && changesGame(linking, data) ? { version: versionWord(t, data.game.version), loader: serverLoader(data) } : null;
 
-  const check = (event: FormEvent) => {
-    event.preventDefault();
+  const checkLink = (next: string) => {
     add.reset();
     relink.reset();
     linkTo.reset();
-    setLink(draft.trim());
+    setLink(next);
+  };
+  const check = (event: FormEvent) => {
+    event.preventDefault();
+    checkLink(draft.trim());
+  };
+  const suggest = (invite: string) => {
+    setDraft(invite);
+    checkLink(invite);
   };
   // Every way this screen succeeds (a new instance, the one that already joins, a relink, a link) tells Your servers the
   // player joined, quietly: signed out it does nothing, and it never holds up opening Home.
@@ -133,6 +143,28 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
               {t('join.check')}
             </Button>
           </form>
+        )}
+        {asking && (relinkFor || linkFor) && suggestions.length > 0 && (
+          <div className="grid gap-2">
+            <h2 id="link-suggestions" className="text-sm font-semibold">
+              {t('join.suggestions')}
+            </h2>
+            <ul aria-labelledby="link-suggestions" className="flex flex-wrap gap-3">
+              {suggestions.map((card) => (
+                <li key={card.token}>
+                  <Button
+                    disabled={busy}
+                    aria-pressed={card.invite !== null && inviteCanonical(card.invite) === inviteCanonical(link)}
+                    onClick={() => card.invite && suggest(card.invite)}
+                  >
+                    <span className="link-suggestion-name font-semibold">{card.name}</span>
+                    <span className="text-sm text-ink-dim">{gameLine(t, card)}</span>
+                    {card.relation !== 'followed' && <span className="text-sm text-ink-dim">· {t(`servers.yours.${card.relation}`)}</span>}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
         {link && !valid && <ErrorCard error={notAnInvite} />}
         {preview.isError && (

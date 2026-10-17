@@ -139,6 +139,29 @@ async fn remove_custom(dir: &Path, stem: &str) {
     let _ = tokio::fs::remove_dir(dir).await;
 }
 
+/// Where the game saves screenshots, inside the game folder.
+const SCREENSHOTS_DIR: &str = "screenshots";
+/// "Change image…" offers this many of the newest screenshots.
+const MAX_SCREENSHOTS: usize = 24;
+
+/// `name` as a screenshot's path, if it is a plain file name: never a path that leaves the
+/// screenshots folder.
+fn screenshot_path(game: &Path, name: &str) -> Option<std::path::PathBuf> {
+    let plain = !name.is_empty()
+        && !name.starts_with('.')
+        && !name.contains(['/', '\\', ':', '\0'])
+        && Path::new(name).file_name() == Some(std::ffi::OsStr::new(name));
+    plain.then(|| game.join(SCREENSHOTS_DIR).join(name))
+}
+
+/// Whether a file name looks like a picture "Change image…" can use, by its extension only.
+fn picture_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    [".png", ".jpg", ".jpeg", ".webp"]
+        .iter()
+        .any(|ext| lower.ends_with(ext))
+}
+
 fn link_invalid() -> LauncherError {
     LauncherError::pack(
         ErrorCode::PackLinkInvalid,
@@ -397,6 +420,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let custom = self.instances.perland_dir(id).join(CUSTOM_DIR);
         let upload = match &choice {
             ArtChoice::Upload { path } => Some(read_upload(path).await?),
+            ArtChoice::Screenshot { name } => {
+                let path = screenshot_path(&self.instances.game_dir(id), name)
+                    .ok_or_else(|| art_file_invalid().with_detail("not a screenshot's name"))?;
+                Some(read_upload(&path).await?)
+            }
             _ => None,
         };
         // Loaded after the upload is read, right before writing: a rename that moved the folder
@@ -417,7 +445,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 }
                 instance.art = ArtMode::Auto;
             }
-            ArtChoice::Upload { .. } => instance.art = ArtMode::Custom,
+            ArtChoice::Upload { .. } | ArtChoice::Screenshot { .. } => {
+                instance.art = ArtMode::Custom
+            }
         }
         // A new picture starts from the default position.
         instance.banner_focus = None;
@@ -437,6 +467,52 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         write_custom(&custom, CUSTOM_STEM, &bytes, ext).await?;
         self.instances.save(&instance).await?;
         Ok(instance)
+    }
+
+    /// "Change image…", the screenshots: the file names of the newest pictures in the game's
+    /// screenshots folder, newest first. Chosen by name and size only, so a long folder lists
+    /// quickly; each picture is checked when it is read.
+    pub async fn instance_screenshots(&self, id: &str) -> Result<Vec<String>> {
+        self.instances.load(id).await?;
+        let dir = self.instances.game_dir(id).join(SCREENSHOTS_DIR);
+        let Ok(mut entries) = tokio::fs::read_dir(&dir).await else {
+            return Ok(Vec::new());
+        };
+        let mut found = Vec::new();
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let Ok(name) = entry.file_name().into_string() else {
+                continue;
+            };
+            let Ok(meta) = entry.metadata().await else {
+                continue;
+            };
+            if !picture_name(&name) || !meta.is_file() || meta.len() > MAX_ART_BYTES as u64 {
+                continue;
+            }
+            let modified = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+            found.push((modified, name));
+        }
+        found.sort_by(|a, b| b.cmp(a));
+        Ok(found
+            .into_iter()
+            .take(MAX_SCREENSHOTS)
+            .map(|(_, name)| name)
+            .collect())
+    }
+
+    /// One screenshot as a `data:` URL, or `None` when it is gone or isn't a usable picture.
+    pub async fn instance_screenshot(&self, id: &str, name: &str) -> Result<Option<String>> {
+        self.instances.load(id).await?;
+        let Some(path) = screenshot_path(&self.instances.game_dir(id), name) else {
+            return Ok(None);
+        };
+        Ok(read_upload(&path).await.ok().map(|(bytes, ext)| {
+            let mime = ART
+                .iter()
+                .find(|(e, _)| *e == ext)
+                .map_or("image/png", |(_, m)| m);
+            format!("data:{mime};base64,{}", STANDARD.encode(&bytes))
+        }))
     }
 
     /// "Change image…", the background's position: which part of a picture background stays in
@@ -554,6 +630,7 @@ mod tests {
         ErrorCode, LauncherError,
     };
 
+    use super::MAX_SCREENSHOTS;
     use crate::{
         app::{tests::core, ManualState},
         deep_link::DeepLink,
@@ -1343,6 +1420,130 @@ mod tests {
     fn png_url(bytes: &[u8]) -> String {
         use base64::{engine::general_purpose::STANDARD, Engine};
         format!("data:image/png;base64,{}", STANDARD.encode(bytes))
+    }
+
+    /// A screenshot the game saved, `age` seconds old.
+    fn screenshot(
+        core: &crate::app::tests::TestCore,
+        id: &str,
+        name: &str,
+        bytes: &[u8],
+        age: u64,
+    ) {
+        let dir = core.instances.game_dir(id).join("screenshots");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, bytes).unwrap();
+        let when = std::time::SystemTime::now() - std::time::Duration::from_secs(age);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(when)
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn screenshots_list_the_images_newest_first() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        assert!(core.instance_screenshots(&id).await.unwrap().is_empty());
+        screenshot(&core, &id, "old.png", PNG_A, 300);
+        screenshot(&core, &id, "new.png", PNG_B, 10);
+        screenshot(&core, &id, "mid.webp", WEBP, 100);
+        screenshot(&core, &id, "notes.txt", b"hello", 0);
+        screenshot(&core, &id, "fake.png", b"<html>not a png</html>", 0);
+        std::fs::create_dir_all(core.instances.game_dir(&id).join("screenshots/dir.png")).unwrap();
+        assert_eq!(
+            core.instance_screenshots(&id).await.unwrap(),
+            ["fake.png", "new.png", "mid.webp", "old.png"],
+            "by name and size only: a fake is caught when it is read"
+        );
+        assert_eq!(
+            core.instance_screenshot(&id, "new.png").await.unwrap(),
+            Some(png_url(PNG_B))
+        );
+        assert_eq!(
+            core.instance_screenshot(&id, "fake.png").await.unwrap(),
+            None
+        );
+        assert_eq!(
+            core.instance_screenshot(&id, "gone.png").await.unwrap(),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn screenshots_keep_to_the_newest_few() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        for n in 0..MAX_SCREENSHOTS + 3 {
+            screenshot(&core, &id, &format!("{n:02}.png"), PNG, n as u64);
+        }
+        let names = core.instance_screenshots(&id).await.unwrap();
+        assert_eq!(names.len(), MAX_SCREENSHOTS);
+        assert_eq!(names[0], "00.png");
+    }
+
+    #[tokio::test]
+    async fn a_screenshot_becomes_the_background() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        screenshot(&core, &id, "2026-10-17_12.00.00.png", PNG_A, 0);
+        let set = core
+            .instance_art_set(
+                &id,
+                ArtChoice::Screenshot {
+                    name: "2026-10-17_12.00.00.png".into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(set.art, ArtMode::Custom);
+        assert_eq!(
+            core.instance_art(&id).await.unwrap().banner,
+            Some(png_url(PNG_A))
+        );
+        // A copy: the game's own screenshot can go and the background stays.
+        std::fs::remove_file(
+            core.instances
+                .game_dir(&id)
+                .join("screenshots/2026-10-17_12.00.00.png"),
+        )
+        .unwrap();
+        assert_eq!(
+            core.instance_art(&id).await.unwrap().banner,
+            Some(png_url(PNG_A))
+        );
+    }
+
+    #[tokio::test]
+    async fn a_screenshot_name_never_leaves_the_folder() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        screenshot(&core, &id, "real.png", PNG, 0);
+        std::fs::write(core.instances.game_dir(&id).join("outside.png"), PNG).unwrap();
+        for name in [
+            "../outside.png",
+            "..\\outside.png",
+            "",
+            ".",
+            "..",
+            "/etc/passwd",
+            "C:x.png",
+        ] {
+            let err = core
+                .instance_art_set(&id, ArtChoice::Screenshot { name: name.into() })
+                .await
+                .unwrap_err();
+            assert_eq!(err.code, ErrorCode::ArtFileInvalid, "{name}");
+            assert_eq!(
+                core.instance_screenshot(&id, name).await.unwrap(),
+                None,
+                "{name}"
+            );
+        }
+        assert_eq!(core.instances.load(&id).await.unwrap().art, ArtMode::Auto);
     }
 
     const PNG_A: &[u8] = b"\x89PNG\r\n\x1a\n\0A";

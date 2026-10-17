@@ -184,6 +184,29 @@ function iconModeOf(instance: Instance): 'auto' | 'generated' | 'custom' {
 
 /** A picked file as the data URL the core would send, or null when the core would refuse it (by name
  *  here: the mock has no bytes, and a name containing "invalid" stands for a bad file). */
+const MOCK_SCREENSHOTS = [
+  '2026-10-17_19.42.03.png',
+  '2026-10-17_19.40.55.png',
+  '2026-10-17_18.12.30.png',
+  '2026-10-16_22.15.48.png',
+  '2026-10-16_21.30.02.png',
+  '2026-10-16_21.20.17.png',
+  '2026-10-16_21.04.11.png',
+  '2026-10-15_17.58.09.png',
+];
+
+/** A stand-in screenshot: a block landscape, its sky and ground picked by its place in the list. */
+function screenshotPicture(name: string): string | null {
+  const at = MOCK_SCREENSHOTS.indexOf(name);
+  if (at < 0) return null;
+  const skies = ['#7cc4ff', '#f2a65a', '#2b3a67', '#9ad0c2', '#d9775b', '#5b6fb5', '#c9e3f5', '#3d2f5a'];
+  const grounds = ['#3f8f4f', '#6b8f3f', '#1f3b2f', '#e8d9a8', '#8f6b3f', '#f4f7fb', '#3f8f4f', '#4a3f6b'];
+  const hill = 300 + (at % 3) * 60;
+  return svg(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 16 9" shape-rendering="crispEdges"><rect width="16" height="9" fill="${skies[at]}"/><rect x="${(at * 3) % 13}" y="1" width="2" height="2" fill="#fff4c2"/><rect y="${hill / 100}" width="16" height="9" fill="${grounds[at]}"/><rect x="${(at * 5) % 11}" y="${hill / 100 - 2}" width="5" height="2" fill="${grounds[at]}"/><rect y="7.5" width="16" height="2" fill="#6b4a2b"/></svg>`,
+  );
+}
+
 function uploadUrl(path: string): string | null {
   const ext = /\.(png|jpe?g|webp)$/i.exec(path)?.[1]?.toLowerCase();
   if (!ext || /invalid/i.test(path)) return null;
@@ -193,7 +216,7 @@ function uploadUrl(path: string): string | null {
 /** Move every id-keyed piece of mock state to a renamed instance's new id. */
 function moveId(state: MockState, from: string, to: string) {
   state.order = state.order.map((id) => (id === from ? to : id));
-  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.browse.installed, state.playtime, state.lastPlayed] as Map<string, unknown>[]) {
+  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.screenshots, state.browse.installed, state.playtime, state.lastPlayed] as Map<string, unknown>[]) {
     if (map.has(from)) {
       map.set(to, map.get(from));
       map.delete(from);
@@ -363,6 +386,8 @@ function seed(options: MockOptions) {
     custom,
     // The player's own icon per instance (.perland/custom/icon.*).
     customIcon: new Map<string, string>(),
+    // Each instance's screenshots by file name, newest first (the real ones are minecraft/screenshots/*).
+    screenshots: new Map<string, string[]>(options.firstRun ? [] : [['asalith-fields', MOCK_SCREENSHOTS]]),
     content,
     browse: {
       installed: new Map<string, Set<string>>([['asalith-fields', new Set(['P7dR8mSH'])]]),
@@ -896,7 +921,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const invalid = () => fail('disk', 'art_file_invalid', "That file can't be used as an instance image");
       if (choice.kind === 'generated' && (choice.seed.length === 0 || choice.seed.length > 64)) invalid();
       if (choice.kind === 'pack' && target.source.kind === 'none') fail('pack', 'no_pack', "This instance doesn't come from a pack");
-      const upload = choice.kind === 'upload' ? (uploadUrl(choice.path) ?? invalid()) : null;
+      const shot = choice.kind === 'screenshot' && state.screenshots.get(target.id)?.includes(choice.name) ? screenshotPicture(choice.name) : null;
+      const upload = choice.kind === 'upload' ? (uploadUrl(choice.path) ?? invalid()) : choice.kind === 'screenshot' ? (shot ?? invalid()) : null;
       // A never-chosen icon is pinned first, so the icon never changes with the background.
       const icon = iconModeOf(target);
       if (target.icon === null && icon === 'custom') {
@@ -916,6 +942,15 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       }
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
+    }
+    case 'instance_screenshots': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      return state.screenshots.get(target.id) ?? [];
+    }
+    case 'instance_screenshot': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      const name = String(args.name);
+      return state.screenshots.get(target.id)?.includes(name) ? screenshotPicture(name) : null;
     }
     case 'instance_icon_set': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
