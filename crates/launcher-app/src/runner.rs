@@ -18,6 +18,8 @@ use launcher_core::{
     Result,
 };
 
+use crate::perland::{CorePlayer, PlayerApi};
+
 /// How often a woken server is pinged while the run waits for it.
 pub const WAKE_EVERY: Duration = Duration::from_secs(2);
 /// How long a run waits for a woken server before the game connects anyway.
@@ -120,6 +122,8 @@ pub trait Runner: Send + Sync + 'static {
     fn server_knock(&self, address: ServerAddress, name: String) -> BoxFuture<Result<Knock>>;
     /// Ping every [`WAKE_EVERY`] until the real server answers, for at most [`WAKE_LIMIT`].
     fn server_wait(&self, address: ServerAddress, cancel: Cancel) -> BoxFuture<WaitEnd>;
+    /// The Engine's player routes (Sign in with Perland, Your servers).
+    fn player(&self) -> Arc<dyn PlayerApi>;
 }
 
 pub struct CoreRunner {
@@ -129,6 +133,7 @@ pub struct CoreRunner {
     browser: Arc<dyn crate::browser::Browser>,
     public: PublicListClient,
     news: NewsClient,
+    player: Arc<CorePlayer>,
 }
 
 impl CoreRunner {
@@ -143,11 +148,10 @@ impl CoreRunner {
             installer.meta.clone(),
         ));
         let news = NewsClient::new(syncer.sources.invites.clone());
-        let public = PublicListClient::new(
-            syncer.sources.invites.clone(),
-            public_list::site_url(public_list::DEFAULT_SITE)
-                .expect("the default site is a valid Perland site"),
-        );
+        let site = public_list::site_url(public_list::DEFAULT_SITE)
+            .expect("the default site is a valid Perland site");
+        let public = PublicListClient::new(syncer.sources.invites.clone(), site.clone());
+        let player = Self::player_for(&syncer, &launcher_version, site);
         Self {
             installer,
             syncer: Arc::new(syncer),
@@ -155,12 +159,23 @@ impl CoreRunner {
             browser,
             public,
             news,
+            player,
         }
+    }
+    /// The player routes go through a client that never follows a redirect (one would replay a
+    /// code or verifier body to another host), to the Engine `site` names.
+    fn player_for(syncer: &Syncer, launcher_version: &str, site: Url) -> Arc<CorePlayer> {
+        Arc::new(CorePlayer::new(
+            launcher_core::http::client_without_redirects(launcher_version),
+            syncer.sources.invites.clone(),
+            site,
+        ))
     }
     /// Read the public server list from another Perland site (a staging build, or a developer's
     /// own). `site` should come from [`public_list::site_url`].
     pub fn with_site(mut self, site: Url) -> Self {
-        self.public = PublicListClient::new(self.syncer.sources.invites.clone(), site);
+        self.public = PublicListClient::new(self.syncer.sources.invites.clone(), site.clone());
+        self.player = Self::player_for(&self.syncer, &self.launcher_version, site);
         self
     }
     pub fn installer(&self) -> &Arc<Installer> {
@@ -315,6 +330,10 @@ impl Runner for CoreRunner {
         Box::pin(async move {
             server_wake::wait_until_up(&address, &cancel, WAKE_EVERY, WAKE_LIMIT).await
         })
+    }
+
+    fn player(&self) -> Arc<dyn PlayerApi> {
+        self.player.clone()
     }
 }
 

@@ -444,6 +444,26 @@ impl fmt::Debug for PublicServerCard {
     }
 }
 
+/// The signed-in player's servers: the ones they own, were invited to, or follow.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YourServersPage {
+    pub servers: Vec<YourServerCard>,
+}
+
+/// A server of Your servers: the public list's card, whose `status` may also be `offline`,
+/// plus how the player relates to it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YourServerCard {
+    #[serde(flatten)]
+    pub card: PublicServerCard,
+    /// `owner`, `invited` or `followed`.
+    pub relation: String,
+    /// Whether the player follows it (an owner or invitee can too).
+    pub following: bool,
+}
+
 /// One page of a server's news, newest first, and the marker of what the player has seen.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -588,6 +608,45 @@ pub struct InstallResult {
     /// The instance the files went into (a new one for a "New instance" plan).
     pub instance: Instance,
     pub added: Vec<String>,
+}
+
+/// The Perland account card: whether the Engine has player accounts on, the ways to sign in it
+/// offers (`discord`, `email`), and the signed-in player. Never carries the token.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerlandStatus {
+    /// False hides the card and everything Perland-account related.
+    pub enabled: bool,
+    pub methods: Vec<String>,
+    pub account: Option<PerlandAccount>,
+}
+
+/// The signed-in Perland player, as the launcher shows them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerlandAccount {
+    /// The display name, else the email, else `""` (the UI then says "Perland player").
+    pub name: String,
+    pub email: Option<String>,
+    /// Whether a Discord account is linked.
+    pub discord: bool,
+    /// The sign-in that made this session created the player.
+    pub new_player: bool,
+}
+
+/// An email code is on its way: seconds until another may be asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmailCodeSent {
+    pub resend_in: u64,
+}
+
+/// Where a Discord sign-in is: waiting for the browser, or redeeming the code it brought back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PerlandSignInPhase {
+    Waiting,
+    Exchanging,
 }
 
 #[cfg(test)]

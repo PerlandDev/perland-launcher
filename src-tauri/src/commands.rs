@@ -3,10 +3,11 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, IconChoice, ImportPreview, ImportRequest,
-    InstallPlanView, InstallResult, InstanceArtData, JavaTest, JoinPreview, ManualProgress,
-    NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus, PlaytimeEntry,
-    PublicServerPage, RunSnapshot, SearchRequest, ServerNews, ServerStatusView,
+    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, EmailCodeSent, IconChoice, ImportPreview,
+    ImportRequest, InstallPlanView, InstallResult, InstanceArtData, JavaTest, JoinPreview,
+    ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus,
+    PerlandAccount, PerlandStatus, PlaytimeEntry, PublicServerPage, RunSnapshot, SearchRequest,
+    ServerNews, ServerStatusView, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -481,6 +482,89 @@ pub async fn server_relink(core: CoreState<'_>, id: String, link: String) -> Res
 #[tauri::command]
 pub async fn server_link(core: CoreState<'_>, id: String, link: String) -> Res<Instance> {
     logged("server_link", core.server_link(&id, &link).await)
+}
+
+#[tauri::command]
+pub async fn perland_status(core: CoreState<'_>) -> Res<PerlandStatus> {
+    logged("perland_status", core.perland_status().await)
+}
+
+#[tauri::command]
+pub async fn perland_sign_in_discord(
+    core: CoreState<'_>,
+    language: String,
+) -> Res<Option<PerlandAccount>> {
+    logged(
+        "perland_sign_in_discord",
+        core.perland_sign_in_discord(&language).await,
+    )
+}
+
+#[tauri::command]
+pub async fn perland_sign_in_reopen(core: CoreState<'_>) -> Res<()> {
+    logged("perland_sign_in_reopen", core.perland_sign_in_reopen())
+}
+
+#[tauri::command]
+pub async fn perland_sign_in_cancel(core: CoreState<'_>) -> Res<()> {
+    core.perland_sign_in_cancel();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn perland_email_start(
+    core: CoreState<'_>,
+    email: String,
+    language: String,
+) -> Res<EmailCodeSent> {
+    logged(
+        "perland_email_start",
+        core.perland_email_start(&email, &language).await,
+    )
+}
+
+#[tauri::command]
+pub async fn perland_email_verify(
+    core: CoreState<'_>,
+    email: String,
+    code: String,
+) -> Res<PerlandAccount> {
+    logged(
+        "perland_email_verify",
+        core.perland_email_verify(&email, &code).await,
+    )
+}
+
+#[tauri::command]
+pub async fn perland_sign_out(core: CoreState<'_>) -> Res<()> {
+    logged("perland_sign_out", core.perland_sign_out().await)
+}
+
+#[tauri::command]
+pub async fn your_servers(core: CoreState<'_>) -> Res<Option<YourServersPage>> {
+    logged("your_servers", core.your_servers().await)
+}
+
+/// Fire and forget: never fails.
+#[tauri::command]
+pub async fn your_servers_follow(core: CoreState<'_>, invite: String) -> Res<()> {
+    core.your_servers_follow(&invite).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn your_servers_unfollow(core: CoreState<'_>, invite: String) -> Res<()> {
+    logged(
+        "your_servers_unfollow",
+        core.your_servers_unfollow(&invite).await,
+    )
+}
+
+/// Fire and forget: never fails.
+#[tauri::command]
+pub async fn your_servers_joined(core: CoreState<'_>, invite: String) -> Res<()> {
+    core.your_servers_joined(&invite).await;
+    Ok(())
 }
 
 /// Called by the close dialog. Stopping waits a few seconds so the kills land before exit;

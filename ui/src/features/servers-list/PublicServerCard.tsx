@@ -5,13 +5,14 @@ import { PlotIcon } from '../../art/PlotIcon';
 import { commands } from '../../ipc/commands';
 import { isLauncherError } from '../../ipc/errors';
 import type { PublicServerCard as Card } from '../../ipc/schema';
-import { qk, useServerIcon } from '../../state/queries';
+import { qk, recordYourServer, useServerIcon } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { copyText } from '../../ui/copyText';
 import { useOnScreen } from '../../ui/useOnScreen';
-import { Check, Copy } from '../../ui/Icon';
+import { Check, Copy, MinusBox } from '../../ui/Icon';
+import { Menu } from '../../ui/Menu';
 import { cardIconSize, useServerIconSize } from '../join/iconScale';
 import { NewsLine } from '../news/NewsLine';
 import { InviteOnly } from '../servers/InviteOnly';
@@ -19,8 +20,20 @@ import { StatusPill } from '../servers/StatusPill';
 import { gameLine, listStatusWord } from './labels';
 
 /** One public server: icon, name, game line, status in words, its latest news, and Play. Play is raised at rest and lights
- *  only while its card is under the pointer or holds focus, so a grid of cards is never a wall of amber. */
-export function PublicServerCard({ card }: { card: Card }) {
+ *  only while its card is under the pointer or holds focus, so a grid of cards is never a wall of amber. Your servers uses
+ *  it too: `tag` labels an Owner or Invited server, `menu` gives a followed one Unfollow, and `follow` (on by default, as
+ *  on the public list) makes Play follow the server once it is added. */
+export function PublicServerCard({
+  card,
+  tag,
+  menu,
+  follow = true,
+}: {
+  card: Card;
+  tag?: 'owner' | 'invited';
+  menu?: { onUnfollow(): void };
+  follow?: boolean;
+}) {
   const { t } = useTranslation();
   const nameId = useId();
   const icon = useServerIcon(card.token, card.iconVersion);
@@ -28,14 +41,26 @@ export function PublicServerCard({ card }: { card: Card }) {
   const [failed, setFailed] = useState<string | null>(null);
   const src = icon.data && icon.data !== failed ? icon.data : null;
   const size = useServerIconSize(cardIconSize);
-  const play = usePlay(card);
+  const play = usePlay(card, follow);
   const joinable = card.joinable && card.invite !== null;
   // News is asked for only while the card is on screen: the Engine allows 60 reads a minute per player, and a page holds up to 50 cards.
   const ref = useRef<HTMLElement>(null);
   const onScreen = useOnScreen(ref);
+  // An Unfollow from this card's menu removes the menu once it goes through (the card stays, on the public list), and
+  // focus would fall to the page: it goes to Play, or the name when Play is off. Never taken from where the player moved it.
+  const playRef = useRef<HTMLButtonElement>(null);
+  const nameRef = useRef<HTMLHeadingElement>(null);
+  const unfollowing = useRef(false);
+  const hasMenu = menu !== undefined;
+  useEffect(() => {
+    if (hasMenu || !unfollowing.current) return;
+    unfollowing.current = false;
+    if (document.activeElement !== null && document.activeElement !== document.body) return;
+    (playRef.current && !playRef.current.disabled ? playRef.current : nameRef.current)?.focus();
+  }, [hasMenu]);
   return (
     <article ref={ref} className="server-tile" aria-labelledby={nameId}>
-      <div className="server-tile-head">
+      <div className="server-tile-head" data-menu={menu ? '' : undefined}>
         <span className="server-icon">
           {src ? (
             <img src={src} alt="" style={{ width: size, height: size }} draggable={false} onError={() => setFailed(src)} />
@@ -44,14 +69,31 @@ export function PublicServerCard({ card }: { card: Card }) {
           )}
         </span>
         <div className="grid min-w-0 content-start gap-1">
-          <h3 id={nameId} className="server-tile-name">
+          <h3 ref={nameRef} id={nameId} tabIndex={-1} className="server-tile-name">
             {card.name}
           </h3>
           <p className="tabular text-sm text-ink-dim">{gameLine(t, card)}</p>
-          <span className="mt-1.5">
+          <span className="server-tile-status">
             <StatusPill status={card.status} players={card.players} gone={false} word={listStatusWord(t, card)} live={false} />
+            {tag && <span className="tag">{t(`servers.yours.${tag}`)}</span>}
           </span>
         </div>
+        {menu && (
+          <Menu
+            compact
+            label={t('servers.yours.more', { name: card.name })}
+            items={[
+              {
+                label: t('servers.yours.unfollow'),
+                icon: <MinusBox />,
+                onSelect: () => {
+                  unfollowing.current = true;
+                  menu.onUnfollow();
+                },
+              },
+            ]}
+          />
+        )}
       </div>
       <NewsLine invite={card.invite} name={card.name} visible={onScreen} />
       {(card.whitelisted || (!joinable && card.address)) && (
@@ -61,6 +103,7 @@ export function PublicServerCard({ card }: { card: Card }) {
         </div>
       )}
       <Button
+        ref={playRef}
         size="lg"
         className="server-tile-play"
         aria-describedby={nameId}
@@ -74,8 +117,9 @@ export function PublicServerCard({ card }: { card: Card }) {
   );
 }
 
-/** Play: add the server (or find the instance that already joins it), start the game with join, open its Home. */
-function usePlay(card: Card) {
+/** Play: add the server (or find the instance that already joins it), start the game with join, open its Home. With `follow`,
+ *  a successful add also follows the server, quietly. */
+function usePlay(card: Card, follow: boolean) {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
@@ -97,6 +141,7 @@ function usePlay(card: Card) {
         // Always asked, even when the card names an instance: it answers the one that joins the server
         // now, so an instance deleted since the list loaded is never played.
         id = (await commands.joinAdd(invite)).id;
+        if (follow) recordYourServer(qc, () => commands.yourServersFollow(invite));
         if (id !== card.instance) await qc.invalidateQueries({ queryKey: qk.instances });
         await commands.play(id, true);
         navigate({ name: 'home', id });

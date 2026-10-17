@@ -22,6 +22,12 @@ it('sends the argument names Rust expects', async () => {
   await commands.catalogLoaders('quilt', '1.20.1');
   await commands.instanceArt('pack');
   await commands.instanceArtSet('pack', { kind: 'generated', seed: 'dunes' });
+  await commands.perlandSignInDiscord('es');
+  await commands.perlandEmailStart('a@b.c', 'en');
+  await commands.perlandEmailVerify('a@b.c', '123456');
+  await commands.yourServersFollow('inv');
+  await commands.yourServersUnfollow('inv');
+  await commands.yourServersJoined('inv');
   expect(calls).toEqual([
     ['play', { id: 'pack', join: false }],
     ['play', { id: 'pack', join: true }],
@@ -36,6 +42,12 @@ it('sends the argument names Rust expects', async () => {
     ['catalog_loaders', { kind: 'quilt', mc: '1.20.1' }],
     ['instance_art', { id: 'pack' }],
     ['instance_art_set', { id: 'pack', choice: { kind: 'generated', seed: 'dunes' } }],
+    ['perland_sign_in_discord', { language: 'es' }],
+    ['perland_email_start', { email: 'a@b.c', language: 'en' }],
+    ['perland_email_verify', { email: 'a@b.c', code: '123456' }],
+    ['your_servers_follow', { invite: 'inv' }],
+    ['your_servers_unfollow', { invite: 'inv' }],
+    ['your_servers_joined', { invite: 'inv' }],
   ]);
 });
 

@@ -76,6 +76,10 @@ error_codes! {
     LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
     // importing from another launcher
     ImportNotInstance, ImportInsideLauncher, ImportBusy, ImportCancelled,
+    // Perland account
+    PlayerAccountsClosed, SignInUnavailable, SignInFailed, SignInTimedOut, InvalidEmail,
+    InvalidCode, TooManyCodes, EmailUnavailable, PerlandSignedOut, PlayerServersClosed,
+    TooManyPlayerServers,
     // anything unexpected
     Internal,
 }
@@ -261,6 +265,26 @@ mod tests {
             (ErrorCode::ServerListClosed, "server_list_closed"),
             (ErrorCode::ServerWakeFailed, "server_wake_failed"),
             (ErrorCode::LinkHasPack, "link_has_pack"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
+    fn perland_account_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::PlayerAccountsClosed, "player_accounts_closed"),
+            (ErrorCode::SignInUnavailable, "sign_in_unavailable"),
+            (ErrorCode::SignInFailed, "sign_in_failed"),
+            (ErrorCode::SignInTimedOut, "sign_in_timed_out"),
+            (ErrorCode::InvalidEmail, "invalid_email"),
+            (ErrorCode::InvalidCode, "invalid_code"),
+            (ErrorCode::TooManyCodes, "too_many_codes"),
+            (ErrorCode::EmailUnavailable, "email_unavailable"),
+            (ErrorCode::PerlandSignedOut, "perland_signed_out"),
+            (ErrorCode::PlayerServersClosed, "player_servers_closed"),
+            (ErrorCode::TooManyPlayerServers, "too_many_player_servers"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

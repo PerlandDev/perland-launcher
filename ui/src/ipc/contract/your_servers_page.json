@@ -1,0 +1,76 @@
+{
+  "servers": [
+    {
+      "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "invite": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "joinable": true,
+      "address": "play.example.com:25566",
+      "name": "My world",
+      "iconVersion": null,
+      "game": {
+        "version": "1.21.1",
+        "loader": null,
+        "loaderVersion": null
+      },
+      "modded": false,
+      "status": "offline",
+      "players": null,
+      "whitelisted": false,
+      "pack": null,
+      "categories": [],
+      "language": "en",
+      "region": null,
+      "instance": null,
+      "relation": "owner",
+      "following": false
+    },
+    {
+      "token": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "invite": "https://play.example.com/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "joinable": true,
+      "address": "play.example.com:25566",
+      "name": "Friends",
+      "iconVersion": null,
+      "game": {
+        "version": "1.21.1",
+        "loader": null,
+        "loaderVersion": null
+      },
+      "modded": false,
+      "status": "online",
+      "players": null,
+      "whitelisted": false,
+      "pack": null,
+      "categories": [],
+      "language": "en",
+      "region": null,
+      "instance": null,
+      "relation": "invited",
+      "following": true
+    },
+    {
+      "token": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+      "invite": "https://play.example.com/CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+      "joinable": true,
+      "address": "play.example.com:25566",
+      "name": "Survival",
+      "iconVersion": null,
+      "game": {
+        "version": "1.21.1",
+        "loader": null,
+        "loaderVersion": null
+      },
+      "modded": false,
+      "status": "sleeping",
+      "players": null,
+      "whitelisted": false,
+      "pack": null,
+      "categories": [],
+      "language": "en",
+      "region": null,
+      "instance": "survival",
+      "relation": "followed",
+      "following": true
+    }
+  ]
+}

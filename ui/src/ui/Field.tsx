@@ -7,11 +7,14 @@ export function Field({
   label,
   hint,
   error,
+  alert = false,
   children,
 }: {
   label: string;
   hint?: string | null;
   error?: string | null;
+  /** Announce the error the moment it appears, for an error that comes back from a request rather than from typing. */
+  alert?: boolean;
   children: ReactElement<InputProps>;
 }) {
   const id = useId();
@@ -28,7 +31,7 @@ export function Field({
         'aria-invalid': error ? true : undefined,
       })}
       {note && (
-        <p id={noteId} className={error ? 'text-sm text-coral' : 'text-sm text-ink-dim'}>
+        <p id={noteId} role={error && alert ? 'alert' : undefined} className={error ? 'text-sm text-coral' : 'text-sm text-ink-dim'}>
           {note}
         </p>
       )}

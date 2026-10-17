@@ -1,0 +1,40 @@
+[
+  {
+    "enabled": true,
+    "methods": [
+      "discord",
+      "email"
+    ],
+    "account": null
+  },
+  {
+    "enabled": true,
+    "methods": [
+      "discord",
+      "email"
+    ],
+    "account": {
+      "name": "Steve",
+      "email": "steve@example.com",
+      "discord": true,
+      "newPlayer": true
+    }
+  },
+  {
+    "enabled": true,
+    "methods": [
+      "email"
+    ],
+    "account": {
+      "name": "alex@example.com",
+      "email": "alex@example.com",
+      "discord": false,
+      "newPlayer": false
+    }
+  },
+  {
+    "enabled": false,
+    "methods": [],
+    "account": null
+  }
+]

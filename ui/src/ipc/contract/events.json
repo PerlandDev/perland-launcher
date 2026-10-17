@@ -230,6 +230,14 @@
     "type": "deep_link"
   },
   {
+    "type": "perland_sign_in",
+    "phase": "waiting"
+  },
+  {
+    "type": "perland_sign_in",
+    "phase": "exchanging"
+  },
+  {
     "type": "update",
     "state": {
       "state": "ready",

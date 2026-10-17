@@ -13,6 +13,7 @@ pub mod logged;
 pub mod logs;
 mod news;
 mod packs;
+pub mod perland;
 mod public_servers;
 pub mod runner;
 mod runs;
@@ -20,8 +21,10 @@ mod servers;
 #[cfg(test)]
 pub(crate) mod testing;
 pub mod updates;
+mod your_servers;
 
 pub use app::{AppConfig, AppCore};
 pub use browser::{Browser, CoreBrowser};
 pub use events::{AppEvent, ExitInfo, Host, RunStateKind};
+pub use perland::{CorePlayer, PlayerApi};
 pub use runner::{CoreRunner, Kill, Runner, RunningGame};

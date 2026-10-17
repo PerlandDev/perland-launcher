@@ -99,6 +99,7 @@ mod tests {
         }
         fn minimize(&self) {}
         fn restore(&self) {}
+        fn open_url(&self, _url: &str) {}
     }
 
     #[tokio::test(start_paused = true)]

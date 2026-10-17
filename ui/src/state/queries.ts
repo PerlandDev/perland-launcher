@@ -44,6 +44,8 @@ export const qk = {
   joinPreview: (invite: string) => ['join', 'preview', invite] as const,
   serverStatus: (id: string) => ['server', 'status', id] as const,
   servers: (query: ListQuery) => ['servers', query] as const,
+  perland: ['perland'] as const,
+  yourServers: ['yourServers'] as const,
   serverIcon: (token: string, iconVersion: string) => ['serverIcon', token, iconVersion] as const,
   news: (invite: string) => ['news', invite] as const,
   newsAll: (invite: string) => ['newsAll', invite] as const,
@@ -97,6 +99,12 @@ export const useServersList = (query: ListQuery) =>
     },
     refetchInterval: 30_000,
   });
+/** Whether player accounts are on, the ways to sign in, and who is signed in. Changed by the sign-in commands, which set it. */
+export const usePerlandStatus = () => useQuery({ queryKey: qk.perland, queryFn: commands.perlandStatus });
+/** The player's servers (null while signed out). Reads only when `enabled` (signed in) and refetches every minute while mounted;
+ *  invalidate `qk.yourServers` after a follow, an unfollow or a join. */
+export const useYourServers = (enabled: boolean) =>
+  useQuery({ queryKey: qk.yourServers, queryFn: commands.yourServers, enabled, refetchInterval: 60_000 });
 /** A card's icon (a data URL), or null. A new `iconVersion` is a new key; it is only asked for when there is one. */
 export const useServerIcon = (token: string, iconVersion: string | null) =>
   useQuery({
@@ -193,6 +201,23 @@ interface Opts {
 const onError = (opts: Opts) => (error: unknown) => {
   if (!opts.inline) pushError(error);
 };
+
+/** Follow or joined: fire and forget. It never reports or waits (signed out it does nothing), and Your servers reads again after it. */
+export function recordYourServer(qc: QueryClient, call: () => Promise<unknown>) {
+  void call()
+    .catch(() => {})
+    .finally(() => void qc.invalidateQueries({ queryKey: qk.yourServers }));
+}
+
+/** Unfollow, the one Your servers call that reports: its error is a toast. Your servers reads again either way. */
+export function useUnfollow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (invite: string) => commands.yourServersUnfollow(invite),
+    onError: pushError,
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.yourServers }),
+  });
+}
 
 export function useSaveSettings(opts: Opts = {}) {
   const qc = useQueryClient();

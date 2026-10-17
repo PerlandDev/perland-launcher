@@ -29,6 +29,7 @@ use launcher_core::{
     mods::{self, LocalMod},
     news_seen::{NewsSeen, NEWS_SEEN_FILE},
     paths::LauncherDirs,
+    perland::{KeyringStore, SecretStore, SessionStore},
     playtime,
     settings::{Channel, Settings, SettingsStore},
     sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
@@ -44,6 +45,7 @@ use crate::{
     dto::{AppInfo, ContentFile, JavaTest, NewInstance, OpenTarget, PackUpdate, PlaytimeEntry},
     events::{AppEvent, Host, RunStateKind},
     logs::LogStore,
+    perland::{PerlandState, SignInSlot, ACCOUNT_MARKER},
     runner::{Kill, Runner},
 };
 
@@ -119,6 +121,13 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) import_slot: Mutex<Option<Cancel>>,
     /// Per running game: when it started, until its time is counted (see `runs.rs`).
     pub(crate) playing_since: Mutex<HashMap<String, Instant>>,
+    /// The Perland account (see `perland.rs`), read from `perland_store` on first use.
+    pub(crate) perland: tokio::sync::Mutex<PerlandState>,
+    /// The marker file plus the credential store. Only `perland.rs` touches it, and only
+    /// after a Perland command, never at start.
+    pub(crate) perland_store: Arc<SessionStore>,
+    /// The Discord sign-in waiting for the browser, if any.
+    pub(crate) perland_sign_in: Mutex<SignInSlot>,
     /// Makes the next import fail while it moves the copied files into the new instance.
     #[cfg(test)]
     pub(crate) import_fail_move: AtomicBool,
@@ -155,6 +164,18 @@ fn valid_id(id: &str) -> Result<()> {
 
 impl<R: Runner, H: Host> AppCore<R, H> {
     pub fn new(config: AppConfig, meta: MetaClient, runner: Arc<R>, host: Arc<H>) -> Arc<Self> {
+        Self::with_secret_store(config, meta, runner, host, Arc::new(KeyringStore::new()))
+    }
+
+    /// Like `new`, with the Perland token kept in `secret` instead of the OS credential store.
+    /// Building it reads nothing: the store is first read by a Perland command.
+    pub fn with_secret_store(
+        config: AppConfig,
+        meta: MetaClient,
+        runner: Arc<R>,
+        host: Arc<H>,
+        secret: Arc<dyn SecretStore>,
+    ) -> Arc<Self> {
         let root = config.dirs.root().to_path_buf();
         Arc::new(Self {
             instances: InstanceStore::new(config.dirs.instances()),
@@ -178,6 +199,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             last_export: Mutex::new(None),
             import_slot: Mutex::new(None),
             playing_since: Mutex::new(HashMap::new()),
+            perland: tokio::sync::Mutex::new(PerlandState::default()),
+            perland_store: Arc::new(SessionStore::new(root.join(ACCOUNT_MARKER), secret)),
+            perland_sign_in: Mutex::new(SignInSlot::default()),
             #[cfg(test)]
             import_fail_move: AtomicBool::new(false),
             #[cfg(test)]
@@ -659,13 +683,29 @@ pub(crate) mod tests {
         Arc<RecordingHost>,
         tempfile::TempDir,
     ) {
+        core_with_secrets(
+            build,
+            Arc::new(launcher_core::perland::MemoryStore::default()),
+        )
+    }
+
+    /// `core`, with the Perland token kept in `secret`.
+    pub(crate) fn core_with_secrets(
+        build: BuildKind,
+        secret: Arc<dyn SecretStore>,
+    ) -> (
+        Arc<TestCore>,
+        Arc<FakeRunner>,
+        Arc<RecordingHost>,
+        tempfile::TempDir,
+    ) {
         let tmp = tempfile::tempdir().unwrap();
         let dirs = LauncherDirs::new(tmp.path());
         let runner = FakeRunner::new();
         *runner.instances_dir.lock().unwrap() = Some(dirs.instances());
         let host = RecordingHost::new();
         let meta = MetaClient::new(launcher_core::http::client("test").unwrap(), dirs.meta());
-        let core = AppCore::new(
+        let core = AppCore::with_secret_store(
             AppConfig {
                 dirs,
                 build,
@@ -676,6 +716,7 @@ pub(crate) mod tests {
             meta,
             runner.clone(),
             host.clone(),
+            secret,
         );
         (core, runner, host, tmp)
     }

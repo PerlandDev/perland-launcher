@@ -114,6 +114,25 @@ export const publicServerPage = z.strictObject({
   total: z.number().int(),
   facets: serverFacets,
 });
+/** Where a Your servers entry comes from. */
+export const yourServerRelation = z.enum(['owner', 'invited', 'followed']);
+/** A Your servers entry: the public list's card (offline stays `offline` here) plus how the player relates to it. */
+export const yourServerCard = publicServerCard.extend({ relation: yourServerRelation, following: z.boolean() });
+export const yourServersPage = z.strictObject({ servers: z.array(yourServerCard) });
+/** The signed-in player. `email` is null for a Discord-only account; `newPlayer` is true on the sign-in that made it. */
+export const perlandAccount = z.strictObject({
+  name: z.string(),
+  email: z.string().nullable(),
+  discord: z.boolean(),
+  newPlayer: z.boolean(),
+});
+/** `enabled` is false while the Engine has player accounts closed; `methods` are the ways to sign in it offers. */
+export const perlandStatus = z.strictObject({
+  enabled: z.boolean(),
+  methods: z.array(z.string()),
+  account: perlandAccount.nullable(),
+});
+export const emailCodeSent = z.strictObject({ resendIn: z.number().int() });
 const newsNameList = z.strictObject({ count: z.number().int(), names: z.array(z.string()) });
 export const newsChangesView = z.strictObject({ added: newsNameList, removed: newsNameList, updated: newsNameList });
 export const newsPostView = z.strictObject({
@@ -292,6 +311,7 @@ export const appEvent = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('warning'), instance: z.string().nullable(), error: launcherError }),
   z.strictObject({ type: z.literal('deep_link') }),
   z.strictObject({ type: z.literal('update'), state: updateState }),
+  z.strictObject({ type: z.literal('perland_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
 ]);
 export const runSnapshot = z.strictObject({ instance: z.string(), state: runStateKind, update: packUpdate.nullable() });
 export const packStatus = z.strictObject({
@@ -431,6 +451,12 @@ export type ListQuery = z.infer<typeof listQuery>;
 export type PublicServerCard = z.infer<typeof publicServerCard>;
 export type ServerFacets = z.infer<typeof serverFacets>;
 export type PublicServerPage = z.infer<typeof publicServerPage>;
+export type YourServerRelation = z.infer<typeof yourServerRelation>;
+export type YourServerCard = z.infer<typeof yourServerCard>;
+export type YourServersPage = z.infer<typeof yourServersPage>;
+export type PerlandAccount = z.infer<typeof perlandAccount>;
+export type PerlandStatus = z.infer<typeof perlandStatus>;
+export type EmailCodeSent = z.infer<typeof emailCodeSent>;
 export type NewsChangesView = z.infer<typeof newsChangesView>;
 export type NewsPostView = z.infer<typeof newsPostView>;
 export type ServerNews = z.infer<typeof serverNews>;
