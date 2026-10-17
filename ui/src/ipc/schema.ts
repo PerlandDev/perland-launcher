@@ -134,6 +134,54 @@ export const perlandStatus = z.strictObject({
   methods: z.array(z.string()),
   account: perlandAccount.nullable(),
 });
+/** What every free server has (the Engine's limits; 0 `sleepMinutes` means idle servers never stop). */
+export const freeLimits = z.strictObject({
+  maxPlayers: z.number().int(),
+  memoryMb: z.strictObject({ vanilla: z.number().int(), modded: z.number().int() }),
+  diskBytes: z.number(),
+  sleepMinutes: z.number().int(),
+  unusedDays: z.number().int(),
+  warningDays: z.number().int(),
+  createsPerWeek: z.number().int(),
+});
+/** Whether the player may create a free server now. `reason` is the Engine's word (`email_required`, `free_server_exists`,
+ *  `too_many_free_servers` with `retryAfter` seconds, `free_servers_full`) and is null while `allowed`. */
+export const createAllowance = z.strictObject({
+  allowed: z.boolean(),
+  reason: z.string().nullable(),
+  retryAfter: z.number().int().nullable(),
+});
+export const freeDeletion = z.strictObject({ deletesAt: z.string(), warned: z.boolean() });
+export const freeDisk = z.strictObject({
+  usedBytes: z.number(),
+  limitBytes: z.number(),
+  checkedAt: z.string().nullable(),
+  over: z.boolean(),
+});
+/** The kinds of free server a player can create. */
+export const freeServerKind = z.enum(['vanilla', 'modrinth']);
+/** The Engine's words for a free server's state. The card's `status` folds `creating`/`deleting` into `sleeping` and `stopped`
+ *  into `offline`, so take the words from `freeStatus`. A newer Engine may add one: `freeServerCard.freeStatus` stays a string. */
+export const freeStatus = z.enum(['online', 'starting', 'sleeping', 'offline', 'stopped', 'creating', 'deleting']);
+/** The owner's free server as a card: the public list's card fields plus the free-server extras. */
+export const freeServerCard = publicServerCard.extend({
+  kind: z.string(),
+  memoryMb: z.number().int(),
+  maxPlayers: z.number().int(),
+  freeStatus: z.string(),
+  deletion: freeDeletion.nullable(),
+  disk: freeDisk,
+  /** The invite link to share. It holds the invite's credential: never log it. */
+  inviteUrl: z.string().nullable(),
+  /** `perland://join?invite=…`, for friends who have the launcher. */
+  joinUrl: z.string().nullable(),
+});
+/** `free_server`: null while signed out or when free servers are off. */
+export const freeServerPage = z.strictObject({
+  limits: freeLimits,
+  create: createAllowance,
+  server: freeServerCard.nullable(),
+});
 export const emailCodeSent = z.strictObject({ resendIn: z.number().int() });
 const newsNameList = z.strictObject({ count: z.number().int(), names: z.array(z.string()) });
 export const newsChangesView = z.strictObject({ added: newsNameList, removed: newsNameList, updated: newsNameList });
@@ -456,6 +504,14 @@ export type PublicServerPage = z.infer<typeof publicServerPage>;
 export type YourServerRelation = z.infer<typeof yourServerRelation>;
 export type YourServerCard = z.infer<typeof yourServerCard>;
 export type YourServersPage = z.infer<typeof yourServersPage>;
+export type FreeLimits = z.infer<typeof freeLimits>;
+export type CreateAllowance = z.infer<typeof createAllowance>;
+export type FreeDeletion = z.infer<typeof freeDeletion>;
+export type FreeDisk = z.infer<typeof freeDisk>;
+export type FreeServerKind = z.infer<typeof freeServerKind>;
+export type FreeStatus = z.infer<typeof freeStatus>;
+export type FreeServerCard = z.infer<typeof freeServerCard>;
+export type FreeServerPage = z.infer<typeof freeServerPage>;
 export type PerlandAccount = z.infer<typeof perlandAccount>;
 export type PerlandStatus = z.infer<typeof perlandStatus>;
 export type EmailCodeSent = z.infer<typeof emailCodeSent>;

@@ -9,6 +9,7 @@ import emailCodeSent from './contract/email_code_sent.json';
 import errorFx from './contract/error.json';
 import errorCodes from './contract/error_codes.json';
 import events from './contract/events.json';
+import freeServerPage from './contract/free_server_page.json';
 import iconChoices from './contract/icon_choices.json';
 import importPreview from './contract/import_preview.json';
 import importRequest from './contract/import_request.json';
@@ -81,6 +82,7 @@ const cases: [string, ZodType, unknown][] = [
   ['perland_status', s.perlandStatus.array(), perlandStatus],
   ['email_code_sent', s.emailCodeSent, emailCodeSent],
   ['your_servers_page', s.yourServersPage, yourServersPage],
+  ['free_server_page', s.freeServerPage.array(), freeServerPage],
   ['deep_links', s.deepLink.array(), deepLinksFx],
   ['invite_links', s.inviteLinkCase.array(), inviteLinksFx],
   ['update_states', s.updateState.array(), updateStates],
