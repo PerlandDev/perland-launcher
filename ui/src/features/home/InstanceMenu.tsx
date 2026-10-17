@@ -7,11 +7,11 @@ import { qk } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
-import { AvatarSquare, Copy, Folder, Gear, Image, Images, Link, Pencil, Play, Reload, Trash } from '../../ui/Icon';
+import { Copy, Folder, Gear, Image, Link, Pencil, Play, Reload, Trash } from '../../ui/Icon';
 import { copyText } from '../../ui/copyText';
 import type { MenuItem } from '../../ui/Menu';
 import { ManageServerLink } from '../servers/ManageServerLink';
-import { ImageDialog, type ImagePart } from './ImageDialog';
+import { ImageDialog } from './ImageDialog';
 import { DeleteDialog, RenameDialog } from './InstanceDialogs';
 import { addressText, inviteOf, isPack, isServer } from './labels';
 
@@ -29,8 +29,6 @@ export interface InstanceActions {
 export function useInstanceActions(instance: Instance): InstanceActions {
   const { t } = useTranslation();
   const [dialog, setDialog] = useState<'rename' | 'image' | 'delete' | 'manage' | null>(null);
-  // Which part of the picture the image dialog shows: both, or only the icon or the background.
-  const [part, setPart] = useState<ImagePart>('both');
   const qc = useQueryClient();
   const close = () => setDialog(null);
   const invite = inviteOf(instance);
@@ -58,17 +56,8 @@ export function useInstanceActions(instance: Instance): InstanceActions {
         },
       ];
   const settings: MenuItem = { id: 'settings', label: t('home.instanceSettings'), icon: <Gear />, onSelect: () => navigate({ name: 'instanceSettings', id: instance.id }) };
-  const openImage = (shown: ImagePart) => {
-    setPart(shown);
-    setDialog('image');
-  };
   // The core refuses a new picture while a run could save the whole instance over it (R3).
-  const image: MenuItem = { id: 'image', label: t('image.menu'), icon: <Images />, disabled: running, onSelect: () => openImage('both') };
-  // The icon and the background each have a way straight in too, for a player who only wants to change one.
-  const imageParts: MenuItem[] = [
-    { id: 'icon', label: t('image.menuIcon'), icon: <AvatarSquare />, disabled: running, onSelect: () => openImage('icon') },
-    { id: 'background', label: t('image.menuBackground'), icon: <Image />, disabled: running, onSelect: () => openImage('background') },
-  ];
+  const image: MenuItem = { id: 'image', label: t('image.menu'), icon: <Image />, disabled: running, onSelect: () => setDialog('image') };
   return {
     items: [
       ...serverItems,
@@ -79,7 +68,6 @@ export function useInstanceActions(instance: Instance): InstanceActions {
       settings,
       { id: 'rename', label: t('common.rename'), icon: <Pencil />, onSelect: () => setDialog('rename') },
       image,
-      ...imageParts,
       {
         id: 'openFolder',
         label: t('common.openFolder'),
@@ -93,7 +81,7 @@ export function useInstanceActions(instance: Instance): InstanceActions {
     dialogs: (
       <>
         {dialog === 'rename' && <RenameDialog instance={instance} onClose={close} />}
-        {dialog === 'image' && <ImageDialog instance={instance} part={part} onClose={close} />}
+        {dialog === 'image' && <ImageDialog instance={instance} onClose={close} />}
         {dialog === 'delete' && <DeleteDialog instance={instance} onClose={close} />}
         {dialog === 'manage' && <ManageServerLink instance={instance} onClose={close} />}
       </>
