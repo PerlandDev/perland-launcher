@@ -34,7 +34,7 @@ use crate::{
     dto::{PackUpdate, RunSnapshot, SyncSummary},
     events::{AppEvent, ExitInfo, Host, ProgressThrottle, RunStateKind, PROGRESS_INTERVAL},
     logs::spawn_batcher,
-    runner::Runner,
+    runner::{Runner, WAKE_LIMIT},
     servers::{apply_view, server_source},
 };
 
@@ -829,6 +829,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 });
                 true
             }
+            // The start failed: the game connects and the player reads the server's message.
+            WaitEnd::BackToSleep => {
+                self.host.emit(AppEvent::Warning {
+                    instance: Some(id.to_string()),
+                    error: wake_failed(address)
+                        .with_detail("the server went back to sleep instead of starting"),
+                });
+                true
+            }
         }
     }
 
@@ -895,11 +904,17 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 }
 
-/// The woken server still didn't answer after the wait.
-fn wake_timed_out(address: &ServerAddress) -> LauncherError {
+fn wake_failed(address: &ServerAddress) -> LauncherError {
     LauncherError::network(ErrorCode::ServerWakeFailed, "Couldn't wake the server")
         .with_param("host", &address.host)
-        .with_detail("the server didn't answer within 5 minutes of the wake")
+}
+
+/// The woken server still didn't answer after the wait.
+fn wake_timed_out(address: &ServerAddress) -> LauncherError {
+    wake_failed(address).with_detail(format!(
+        "the server didn't answer within {} minutes of the wake",
+        WAKE_LIMIT.as_secs() / 60
+    ))
 }
 
 fn failed(error: LauncherError) -> ExitInfo {
@@ -1901,6 +1916,38 @@ mod tests {
         assert!(host.warnings().contains(&ErrorCode::ServerWakeFailed));
         core.stop(&id).unwrap();
         host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn a_server_back_to_sleep_warns_and_starts_the_game() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server_with(&core, &runner, ServerStatus::Sleeping).await;
+        *runner.ping_answer.lock().unwrap() = Ping::Waker;
+        *runner.wait_answer.lock().unwrap() = WaitEnd::BackToSleep;
+        core.play_with(&id, true).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(
+            host.states(&id),
+            vec![Checking, Queued, Syncing, Preparing, Waking, Running],
+            "the game connects and the player reads the server's own message"
+        );
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        assert!(host.warnings().contains(&ErrorCode::ServerWakeFailed));
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[test]
+    fn the_wake_timeout_names_the_wait_limit() {
+        let error = super::wake_timed_out(&ServerAddress {
+            host: "play.example".into(),
+            port: 25565,
+        });
+        assert!(error
+            .detail
+            .as_deref()
+            .is_some_and(|d| d.contains("within 5 minutes")));
     }
 
     #[tokio::test]

@@ -176,7 +176,7 @@
 
 - [ ] **Step 2: Run them to see them fail.** Run `cargo test -p launcher-core server_wake`. Expected: compile failure.
 
-- [ ] **Step 3: Implement.** Write packets with `tokio::net::TcpStream` under `tokio::time::timeout` (5 s connect, 5 s exchange). The Login Start is VarInt id 0, the name as a string, then 16 zero bytes. A response string is read up to 32 KiB. The kick's JSON is parsed for `text` (fall back to the raw string). `wait_until_up` loops `ping`, sleeping `every` with `tokio::select!` on `cancel.cancelled()`, until `Server`, the limit or the cancel.
+- [ ] **Step 3: Implement.** Write packets with `tokio::net::TcpStream` under `tokio::time::timeout` (5 s connect, 5 s exchange). The Login Start is VarInt id 0, the name as a string, then 16 zero bytes. A response string is read up to 32767 × 3 bytes (the protocol's 32767 characters in UTF-8). The kick's JSON is parsed for `text` (fall back to the raw string). `wait_until_up` loops `ping`, sleeping `every` with `tokio::select!` on `cancel.cancelled()`, until `Server`, the limit or the cancel.
 
 - [ ] **Step 4: Add the messages.** Add `errors.server_wake_failed.message` in en and es, then regenerate the contract as in Task 1.
 

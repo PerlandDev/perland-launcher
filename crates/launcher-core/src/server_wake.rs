@@ -25,8 +25,9 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const EXCHANGE_TIMEOUT: Duration = Duration::from_secs(5);
 /// The protocol number the handshake claims (Minecraft 1.21.1). The waker echoes it back.
 const PROTOCOL: i32 = 767;
-/// The longest response string read.
-const MAX_STRING: usize = 32 * 1024;
+/// The longest response string read: the protocol's bound of 32767 characters, at up to 3
+/// bytes each in UTF-8. A modded server's status (favicon, mod list, MOTD) passes 32 KiB.
+const MAX_STRING_BYTES: usize = 32767 * 3;
 
 /// The version name the waker's status answer carries.
 const SLEEPING: &str = "Sleeping";
@@ -63,6 +64,8 @@ pub enum WaitEnd {
     Up,
     TimedOut,
     Cancelled,
+    /// A waker holds the port again after the server had let go of it: the start failed.
+    BackToSleep,
 }
 
 fn push_varint(buf: &mut Vec<u8>, v: i32) {
@@ -148,7 +151,7 @@ async fn read_reply<R: AsyncRead + Unpin>(r: &mut R) -> std::io::Result<Reply> {
     }
     let (n, n_len) = read_varint(r).await?;
     let n = usize::try_from(n).map_err(|_| bad("negative string length"))?;
-    if n > MAX_STRING {
+    if n > MAX_STRING_BYTES {
         return Ok(Reply::TooLong);
     }
     if n_len + n > rest {
@@ -259,6 +262,10 @@ pub async fn knock(address: &ServerAddress, name: &str) -> Result<Knock> {
 }
 
 /// Pings every `every` until a running server answers, `limit` passes, or `cancel` fires.
+///
+/// A waker answering after the port went quiet means the server stopped starting and fell
+/// back to sleep (its start failed, e.g. for lack of room), so the wait ends there. A waker
+/// seen before any silence is the one that was knocked, still on its way out.
 pub async fn wait_until_up(
     address: &ServerAddress,
     cancel: &Cancel,
@@ -266,6 +273,7 @@ pub async fn wait_until_up(
     limit: Duration,
 ) -> WaitEnd {
     let deadline = Instant::now() + limit;
+    let mut went_quiet = false;
     loop {
         if cancel.is_cancelled() {
             return WaitEnd::Cancelled;
@@ -274,7 +282,9 @@ pub async fn wait_until_up(
             _ = cancel.cancelled() => return WaitEnd::Cancelled,
             answer = timeout_at(deadline, ping(address)) => match answer {
                 Ok(Ping::Server) => return WaitEnd::Up,
-                Ok(_) => {}
+                Ok(Ping::NoAnswer) => went_quiet = true,
+                Ok(Ping::Waker) if went_quiet => return WaitEnd::BackToSleep,
+                Ok(Ping::Waker) => {}
                 Err(_) => return WaitEnd::TimedOut,
             },
         }
@@ -329,6 +339,10 @@ mod tests {
         Garbage,
         /// Status string over the read limit.
         Oversize,
+        /// A valid status whose MOTD makes it larger than 32 KiB, as a modded server's can be.
+        Large,
+        /// Closes the connection without answering.
+        Drop,
     }
 
     struct Running {
@@ -388,13 +402,20 @@ mod tests {
                 let Ok((0, _)) = read_packet(&mut s).await else {
                     return;
                 };
+                if let Fake::Drop = fake {
+                    return;
+                }
                 let name = match fake {
                     Fake::Waker(_) => "Sleeping",
                     _ => "Paper 1.21.1",
                 };
                 let json = match fake {
                     Fake::Garbage => "not json at all".to_string(),
-                    Fake::Oversize => "x".repeat(MAX_STRING + 1),
+                    Fake::Oversize => "x".repeat(MAX_STRING_BYTES + 1),
+                    Fake::Large => format!(
+                        r#"{{"version":{{"name":"{name}","protocol":767}},"description":{{"text":"{}"}}}}"#,
+                        "x".repeat(40 * 1024)
+                    ),
                     _ => format!(
                         r#"{{"version":{{"name":"{name}","protocol":767}},"players":{{"max":20,"online":0}},"description":{{"text":"hi"}}}}"#
                     ),
@@ -439,6 +460,25 @@ mod tests {
         }
     }
 
+    /// Answers the `n`th connection like `steps[n]`, and every later one like the last step.
+    async fn scripted(steps: Vec<Fake>) -> ServerAddress {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let names = Arc::new(Mutex::new(Vec::new()));
+        tokio::spawn(async move {
+            let mut n = 0;
+            loop {
+                let Ok((s, _)) = listener.accept().await else {
+                    return;
+                };
+                let step = steps[n.min(steps.len() - 1)].clone();
+                n += 1;
+                tokio::spawn(serve(s, step, names.clone()));
+            }
+        });
+        address_of(port)
+    }
+
     async fn fake(f: Fake) -> Running {
         run(TcpListener::bind("127.0.0.1:0").await.unwrap(), f).await
     }
@@ -476,6 +516,12 @@ mod tests {
     async fn ping_oversize_status_is_no_answer() {
         let s = fake(Fake::Oversize).await;
         assert_eq!(ping(&s.address).await, Ping::NoAnswer);
+    }
+
+    #[tokio::test]
+    async fn ping_reads_a_status_over_32_kib() {
+        let s = fake(Fake::Large).await;
+        assert_eq!(ping(&s.address).await, Ping::Server);
     }
 
     #[tokio::test]
@@ -570,6 +616,28 @@ mod tests {
         )
         .await;
         assert_eq!(end, WaitEnd::TimedOut);
+    }
+
+    #[tokio::test]
+    async fn wait_until_up_ends_when_the_server_sleeps_again() {
+        // The waker left (the server was starting), then a waker holds the port again: the
+        // start failed, so waiting longer won't help.
+        let address = scripted(vec![
+            Fake::Waker(String::new()),
+            Fake::Drop,
+            Fake::Waker(String::new()),
+        ])
+        .await;
+        let started = Instant::now();
+        let end = wait_until_up(
+            &address,
+            &Cancel::default(),
+            Duration::from_millis(10),
+            Duration::from_secs(5),
+        )
+        .await;
+        assert_eq!(end, WaitEnd::BackToSleep);
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[tokio::test]
