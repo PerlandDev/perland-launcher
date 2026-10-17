@@ -177,6 +177,8 @@ fn main() {
             commands::browse_install,
             commands::open_link,
             commands::join_preview,
+            commands::servers_list,
+            commands::servers_icon,
             commands::join_add,
             commands::server_status,
             commands::server_relink,
@@ -216,6 +218,17 @@ fn root_from_env() -> Option<PathBuf> {
         .or_else(LauncherDirs::default_root)
 }
 
+/// `PERLAND_SITE_URL`: the Perland site the public server list is read from. An unusable value
+/// is ignored, and only that fact is logged: the value could be anything.
+fn site_override(raw: Option<&str>) -> Option<launcher_core::invite::Url> {
+    let raw = raw?;
+    let site = launcher_core::public_list::site_url(raw);
+    if site.is_none() {
+        tracing::warn!("PERLAND_SITE_URL isn't an https site (or http on this computer); ignored");
+    }
+    site
+}
+
 fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> {
     let root = root_from_env().ok_or("couldn't find a data folder")?;
     let dirs = LauncherDirs::new(root);
@@ -236,7 +249,11 @@ fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> 
         launcher_core::browse::BrowseConfig::default(),
     );
     let syncer = launcher_core::sync::Syncer::for_installer(installer.clone(), http);
-    let runner = Arc::new(CoreRunner::new(installer, syncer, version.clone(), browse));
+    let mut runner = CoreRunner::new(installer, syncer, version.clone(), browse);
+    if let Some(site) = site_override(std::env::var("PERLAND_SITE_URL").ok().as_deref()) {
+        runner = runner.with_site(site);
+    }
+    let runner = Arc::new(runner);
     let config = AppConfig {
         dirs,
         build: BuildKind::current(),

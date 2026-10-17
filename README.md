@@ -19,6 +19,8 @@ cargo clippy --workspace --all-targets -- -D warnings
     pnpm --filter ui dev:mock      # UI in a browser with a mocked backend
     pnpm tauri dev                 # the real app (PowerShell: $env:PERLAND_LAUNCHER_ROOT="$PWD\target\pl-dev")
 
+Set `PERLAND_SITE_URL` (an https origin, or http on this computer) to read the public server list from another Perland site than `https://play.perland.online`, such as a staging one.
+
 ### Cloud (Linux)
 
 `scripts/cloud-setup.sh` installs everything CI uses (WebKit build deps, Rust stable with rustfmt/clippy, Node 24, pnpm 11.5.0, Java 21, `gh`) on Ubuntu and warms the caches. Use it as the setup script of a cloud environment; its header lists the network access and the optional `GH_TOKEN` secret it expects. Windows-only checks (installer, SmartScreen, signing, the real app window) still happen on Windows.

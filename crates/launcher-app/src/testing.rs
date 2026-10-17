@@ -33,6 +33,7 @@ use launcher_core::{
     launch::GameExit,
     locks::InstanceLock,
     meta::loaders::LoaderKind,
+    public_list::{FetchedPage, ListQuery, PublicServer},
     sources::{
         DesiredState, FileMode, FileSource, OptionalFile, PackAbout, PackFile, PackInput, Side,
         UpdateCheck,
@@ -429,6 +430,12 @@ pub(crate) struct FakeRunner {
     pub engine_hints: Mutex<Vec<Option<String>>>,
     /// What `invite_icon` answers.
     pub icon: Mutex<Option<Vec<u8>>>,
+    /// What `public_page` answers (none: `server_list_closed`).
+    pub public_page: Mutex<Option<Result<FetchedPage>>>,
+    /// The queries `public_page` was asked.
+    pub public_queries: Mutex<Vec<ListQuery>>,
+    /// Whether `public_invite` finds a link (it builds `play.example.com/<token>`).
+    pub public_invites: Mutex<bool>,
     /// The server each `start` was told to join.
     pub started_joins: Mutex<Vec<Option<ServerAddress>>>,
     /// What `check_update` reports per instance id (none: up to date).
@@ -459,6 +466,9 @@ impl FakeRunner {
             view_reads: AtomicUsize::new(0),
             engine_hints: Mutex::new(Vec::new()),
             icon: Mutex::new(None),
+            public_page: Mutex::new(None),
+            public_queries: Mutex::new(Vec::new()),
+            public_invites: Mutex::new(true),
             started_joins: Mutex::new(Vec::new()),
             update_checks: Mutex::new(HashMap::new()),
         })
@@ -695,6 +705,29 @@ impl Runner for FakeRunner {
     fn invite_icon(&self, _link: InviteLink) -> BoxFuture<Option<Vec<u8>>> {
         let icon = self.icon.lock().unwrap().clone();
         Box::pin(async move { icon })
+    }
+
+    fn public_page(&self, query: ListQuery) -> BoxFuture<Result<FetchedPage>> {
+        self.public_queries.lock().unwrap().push(query);
+        let answer = self.public_page.lock().unwrap().clone().unwrap_or_else(|| {
+            Err(LauncherError::pack(
+                ErrorCode::ServerListClosed,
+                "The server list isn't open yet",
+            ))
+        });
+        Box::pin(async move { answer })
+    }
+
+    fn public_icon(&self, _token: String, _icon_version: String) -> BoxFuture<Option<Vec<u8>>> {
+        let icon = self.icon.lock().unwrap().clone();
+        Box::pin(async move { icon })
+    }
+
+    fn public_invite(&self, server: &PublicServer) -> Option<InviteLink> {
+        if !*self.public_invites.lock().unwrap() {
+            return None;
+        }
+        InviteLink::parse(&format!("https://play.example.com/{}", server.token)).ok()
     }
 
     fn browser(&self) -> Arc<dyn Browser> {

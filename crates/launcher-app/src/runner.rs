@@ -6,10 +6,11 @@ use launcher_core::{
     events::EventSink,
     install::Installer,
     instances::{Instance, InstanceStore, ServerAddress},
-    invite::{EngineView, InviteLink},
+    invite::{EngineView, InviteLink, Url},
     launch::{GameExit, GameKiller, GameProcess},
     locks::InstanceLock,
     play::{self, Prepared, StartSpec},
+    public_list::{self, FetchedPage, ListQuery, PublicListClient, PublicServer},
     sources::{PackInput, UpdateCheck},
     sync::{Cancel, Ensured, ManualFile, PendingUpdate, Syncer},
     Result,
@@ -86,6 +87,12 @@ pub trait Runner: Send + Sync + 'static {
     ) -> BoxFuture<Result<EngineView>>;
     /// The invite's icon PNG, or `None`.
     fn invite_icon(&self, link: InviteLink) -> BoxFuture<Option<Vec<u8>>>;
+    /// One page of Perland's public server list, and the Engine it came from.
+    fn public_page(&self, query: ListQuery) -> BoxFuture<Result<FetchedPage>>;
+    /// A listed server's icon PNG, or `None`.
+    fn public_icon(&self, token: String, icon_version: String) -> BoxFuture<Option<Vec<u8>>>;
+    /// The invite Play joins for a listed server.
+    fn public_invite(&self, server: &PublicServer) -> Option<InviteLink>;
 }
 
 pub struct CoreRunner {
@@ -93,6 +100,7 @@ pub struct CoreRunner {
     syncer: Arc<Syncer>,
     launcher_version: String,
     browser: Arc<dyn crate::browser::Browser>,
+    public: PublicListClient,
 }
 
 impl CoreRunner {
@@ -106,12 +114,24 @@ impl CoreRunner {
             browse,
             installer.meta.clone(),
         ));
+        let public = PublicListClient::new(
+            syncer.sources.invites.clone(),
+            public_list::site_url(public_list::DEFAULT_SITE)
+                .expect("the default site is a valid Perland site"),
+        );
         Self {
             installer,
             syncer: Arc::new(syncer),
             launcher_version,
             browser,
+            public,
         }
+    }
+    /// Read the public server list from another Perland site (a staging build, or a developer's
+    /// own). `site` should come from [`public_list::site_url`].
+    pub fn with_site(mut self, site: Url) -> Self {
+        self.public = PublicListClient::new(self.syncer.sources.invites.clone(), site);
+        self
     }
     pub fn installer(&self) -> &Arc<Installer> {
         &self.installer
@@ -217,6 +237,20 @@ impl Runner for CoreRunner {
     fn invite_icon(&self, link: InviteLink) -> BoxFuture<Option<Vec<u8>>> {
         let invites = self.syncer.sources.invites.clone();
         Box::pin(async move { invites.icon(&link).await })
+    }
+
+    fn public_page(&self, query: ListQuery) -> BoxFuture<Result<FetchedPage>> {
+        let public = self.public.clone();
+        Box::pin(async move { public.page(&query).await })
+    }
+
+    fn public_icon(&self, token: String, icon_version: String) -> BoxFuture<Option<Vec<u8>>> {
+        let public = self.public.clone();
+        Box::pin(async move { public.icon(&token, &icon_version).await })
+    }
+
+    fn public_invite(&self, server: &PublicServer) -> Option<InviteLink> {
+        self.public.invite_for(server)
     }
 }
 
