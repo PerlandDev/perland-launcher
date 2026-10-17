@@ -37,7 +37,8 @@ export function YourServers() {
     if (document.activeElement !== null && document.activeElement !== document.body) return;
     (heading.current ?? document.getElementById(PUBLIC_HEADING))?.focus();
   }, [servers, unfollowed]);
-  // The free server went through its Delete: its card (and the dialog that held focus) is gone, so focus goes to the heading.
+  // The player confirmed the free server's Delete (cleared when nothing was deleted): once its card (and the dialog that held
+  // focus) is gone, focus goes to the heading. Set at Confirm, so it holds however the delete and the page's refetch interleave.
   const deleted = useRef(false);
   const own = free?.server ?? null;
   useEffect(() => {
@@ -70,7 +71,7 @@ export function YourServers() {
         <ul className="servers-grid">
           {own && (
             <li key="free-server" className="grid">
-              <FreeServerCard server={own} onDeleted={() => (deleted.current = true)} />
+              <FreeServerCard server={own} onDeleting={(going) => (deleted.current = going)} />
             </li>
           )}
           {others.map((card) => (

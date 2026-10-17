@@ -484,6 +484,7 @@
     "empty": "No public servers yet.",
     "loadMore": "Load more",
     "vanilla": "Vanilla",
+    "latestVersion": "latest",
     "sort": "Sort by",
     "sorts": { "players": "Most players", "newest": "Newest", "name": "Name A–Z" },
     "any": "Any",
@@ -552,6 +553,7 @@
       "name": "Server name",
       "nameHint": "Friends see it on the invite page.",
       "nameInvalid": "Use letters, numbers, - and _ only, up to 32.",
+      "refused": "The server couldn't be created with these choices. Try another name or modpack.",
       "create": "Create"
     },
     "creating": {
@@ -592,7 +594,8 @@
       "title": "Delete {{name}}?",
       "body": "The world is deleted too. You can create a new server afterwards.",
       "confirm": "Delete server",
-      "deleting": "Deleting…"
+      "deleting": "Deleting…",
+      "notDeleted": "Your server is still being set up, so it can't be deleted yet. Try again in a minute."
     }
   },
   "news": {

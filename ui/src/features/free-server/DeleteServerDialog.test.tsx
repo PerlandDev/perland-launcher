@@ -31,6 +31,29 @@ describe('DeleteServerDialog', () => {
     expect(await within(section).findByRole('button', { name: 'Create a server for friends' })).toBeInTheDocument();
   });
 
+  it('after a delete the Your servers heading takes focus', async () => {
+    const { user } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has' });
+    const dialog = await openDelete(user);
+    await user.click(within(dialog).getByRole('button', { name: 'Delete server' }));
+    const heading = within(await yours()).getByRole('heading', { name: 'Your servers' });
+    await vi.waitFor(() => expect(heading).toHaveFocus());
+  });
+
+  it('a delete the Engine did not do keeps the dialog open with a line', async () => {
+    const backend = createMockBackend({ perland: 'signedIn', free: 'has' });
+    const { user } = renderWithProviders(<ServersScreen />, {
+      ipc: (cmd, args) => (cmd === 'free_server_delete' ? Promise.resolve(false) : backend.handle(cmd, args)),
+    });
+    const dialog = await openDelete(user);
+    const confirm = within(dialog).getByRole('button', { name: 'Delete server' });
+    await user.click(confirm);
+    expect(await within(dialog).findByText("Your server is still being set up, so it can't be deleted yet. Try again in a minute.")).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Delete Weekend SMP?' })).toBeInTheDocument();
+    // Focus stays in the dialog, on what the player pressed.
+    expect(within(dialog).getByRole('button', { name: 'Delete server' })).toHaveFocus();
+    expect(within(await yours()).getByRole('heading', { name: 'Weekend SMP' })).toBeInTheDocument();
+  });
+
   it('cancel deletes nothing', async () => {
     const { user, calls } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has' });
     const dialog = await openDelete(user);

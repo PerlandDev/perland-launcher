@@ -1,5 +1,6 @@
 import { act, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import i18n from '../../i18n';
 import { createMockBackend, type MockOptions } from '../../ipc/mock';
 import { MOCK_FREE_CREATE_MS, MOCK_FREE_INVITE, MOCK_FREE_LIMITS } from '../../ipc/mockFree';
 import type { FreeServerPage, InstanceListing } from '../../ipc/schema';
@@ -11,7 +12,10 @@ import { ServersScreen } from '../servers-list/ServersScreen';
 
 const ENTRY = 'Create a server for friends';
 
-afterEach(() => vi.useRealTimers());
+afterEach(async () => {
+  vi.useRealTimers();
+  await i18n.changeLanguage('en');
+});
 
 /** The open dialog. */
 const dialog = () => screen.findByRole('dialog');
@@ -256,6 +260,49 @@ describe('CreateServerDialog', () => {
     await advance(5 * 60_000 + 5_100);
     await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(toastsSnapshot().map((toast) => toast.notice?.title)).toContain('Your server is still being set up.');
+  });
+
+  it('a language change while waiting keeps the 5-minute window', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const app = renderWith((cmd) =>
+      cmd === 'free_server_create'
+        ? Promise.reject({ category: 'network', code: 'free_server_exists', message: 'x', fix: null, detail: null, params: {} })
+        : undefined,
+    );
+    const { user } = app;
+    await user.click(await screen.findByRole('button', { name: ENTRY }));
+    const box = await dialog();
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    expect(await within(box).findByRole('heading', { name: 'Still creating your server…' })).toBeInTheDocument();
+    await advance(4 * 60_000);
+    await act(async () => {
+      await i18n.changeLanguage('es');
+    });
+    // One minute later the window that started at Create is over, language or not.
+    await advance(60_000 + 5_100);
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('an invalid_free_server for a fine name is a line, not a name error', async () => {
+    const app = renderWith((cmd) =>
+      cmd === 'free_server_create'
+        ? Promise.reject({
+            category: 'network',
+            code: 'invalid_free_server',
+            message: 'Check the server name: letters, numbers, - and _ only, up to 32.',
+            fix: null,
+            detail: null,
+            params: { host: 'engine' },
+          })
+        : undefined,
+    );
+    const { user } = app;
+    await user.click(await screen.findByRole('button', { name: ENTRY }));
+    const box = await dialog();
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    expect(await within(box).findByRole('alert')).toHaveTextContent("The server couldn't be created with these choices.");
+    expect(within(box).getByLabelText('Server name')).not.toHaveAttribute('aria-invalid');
+    expect(within(box).queryByText('Use letters, numbers, - and _ only, up to 32.')).toBeNull();
   });
 
   it('copy_link', async () => {

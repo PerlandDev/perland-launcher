@@ -27,8 +27,8 @@ use launcher_core::{
     events::{Event, EventSink, TaskId},
     instances::{GameSpec, Instance, InstanceStore, ServerAddress, SourceRef, UpdatePolicy},
     invite::{
-        EngineView, InviteAddress, InviteGame, InviteLink, InvitePack, InvitePlayers, InviteTeam,
-        InviteView, Url,
+        EngineView, InviteAddress, InviteGame, InviteLink, InviteModrinth, InvitePack,
+        InvitePlayers, InviteTeam, InviteView, Url,
     },
     launch::GameExit,
     locks::InstanceLock,
@@ -1126,9 +1126,10 @@ pub(crate) fn free_view(status: &str) -> FreeServer {
     FreeServer {
         name: "Survival".into(),
         kind: "vanilla".into(),
+        // A vanilla create sends no version, so the Engine runs (and answers) `LATEST`.
         game: InviteGame {
             kind: "vanilla".into(),
-            version: Some("1.21.1".into()),
+            version: Some("LATEST".into()),
             ..InviteGame::default()
         },
         memory_mb: 2048,
@@ -1154,6 +1155,24 @@ pub(crate) fn free_view(status: &str) -> FreeServer {
             over: false,
         },
         ..FreeServer::default()
+    }
+}
+
+/// A modpack free server as the Engine sends it: the loader in `game.type` only.
+pub(crate) fn free_modrinth_view(status: &str) -> FreeServer {
+    FreeServer {
+        kind: "modrinth".into(),
+        game: InviteGame {
+            kind: "fabric".into(),
+            version: Some("1.20.1".into()),
+            ..InviteGame::default()
+        },
+        modrinth: Some(InviteModrinth {
+            project_id: "1KVo5zza".into(),
+            version_id: "Yp8wLY1P".into(),
+        }),
+        memory_mb: 6144,
+        ..free_view(status)
     }
 }
 

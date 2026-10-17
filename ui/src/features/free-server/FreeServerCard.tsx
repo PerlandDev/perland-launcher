@@ -13,7 +13,7 @@ const UNPLAYABLE: readonly string[] = ['creating', 'deleting', 'stopped'];
 
 /** The player's own free server, first in Your servers: the public card tagged Owner, with its warning lines, its own status
  *  words while it is created or deleted, Play through `free_server_play` and Delete server in its menu. */
-export function FreeServerCard({ server, onDeleted }: { server: FreeServer; onDeleted?: () => void }) {
+export function FreeServerCard({ server, onDeleting }: { server: FreeServer; onDeleting?: (going: boolean) => void }) {
   const { t, i18n } = useTranslation();
   const [deleting, setDeleting] = useState(false);
   const play = usePlayFreeServer();
@@ -38,7 +38,7 @@ export function FreeServerCard({ server, onDeleted }: { server: FreeServer; onDe
         onPlay={play.run}
         menuItems={[{ label: t('freeServer.delete.action'), icon: <Trash />, danger: true, disabled: busy, onSelect: () => setDeleting(true) }]}
       />
-      {deleting && <DeleteServerDialog name={server.name} onClose={() => setDeleting(false)} onDeleted={onDeleted} />}
+      {deleting && <DeleteServerDialog name={server.name} onClose={() => setDeleting(false)} onDeleting={onDeleting} />}
     </>
   );
 }

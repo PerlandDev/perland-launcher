@@ -240,6 +240,8 @@ pub struct SourceConfig {
     pub modrinth_api: String,
     pub curseforge_cdn: String,
     pub curseforge_site: String,
+    /// Mojang's version manifest, read for `latest.release` when a server runs `LATEST`.
+    pub mojang_manifest: String,
 }
 
 impl Default for SourceConfig {
@@ -248,6 +250,7 @@ impl Default for SourceConfig {
             modrinth_api: "https://api.modrinth.com/v2".into(),
             curseforge_cdn: "https://mediafilez.forgecdn.net".into(),
             curseforge_site: "https://www.curseforge.com".into(),
+            mojang_manifest: crate::meta::mojang::VERSION_MANIFEST_URL.into(),
         }
     }
 }

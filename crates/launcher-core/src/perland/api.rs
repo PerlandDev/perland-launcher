@@ -205,7 +205,7 @@ pub struct Disk {
 
 /// The player's free server. `status` is `online`, `starting`, `sleeping`, `offline`,
 /// `stopped` (over the disk limit only), `creating` or `deleting`; an unknown one is kept.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct FreeServer {
     pub name: String,
@@ -229,13 +229,33 @@ pub struct FreeServer {
     pub disk: Disk,
 }
 
+// Manual Debug: the invite and join URLs hold the invite token.
+impl fmt::Debug for FreeServer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FreeServer")
+            .field("name", &self.name)
+            .field("kind", &self.kind)
+            .field("status", &self.status)
+            .finish_non_exhaustive()
+    }
+}
+
 /// `GET /free-server`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct FreeServerState {
     pub limits: FreeLimits,
     pub create: CreateAllowance,
     pub server: Option<FreeServer>,
+}
+
+// Manual Debug: the server's links hold the invite token.
+impl fmt::Debug for FreeServerState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FreeServerState")
+            .field("server", &self.server)
+            .finish_non_exhaustive()
+    }
 }
 
 /// `POST /free-server`. `modrinth_version_id` is for `kind: "modrinth"` only; `language` is
@@ -450,6 +470,12 @@ impl PlayerClient {
                 BODY_CAP,
             )
             .await?;
+        // A reverse proxy that gives up on the long create answers its own 502 or 504, with
+        // no Engine code. The Engine finishes the create anyway, so the answer is lost: the
+        // dialog then waits for the server to show (spec §5 "Lost create answer").
+        if matches!(reply.status, 502 | 504) && Self::failure(&reply).code.is_none() {
+            return Err(answer_lost(&self.host(), reply.status));
+        }
         self.ok(&reply, Route::Plain)?;
         self.data(&reply)
     }
@@ -613,6 +639,15 @@ impl PlayerClient {
             s => host_trouble(&host, s),
         }
     }
+}
+
+fn answer_lost(host: &str, status: u16) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::ConnectionDropped,
+        format!("The answer from {host} was lost ({status}). Your server may still be on its way."),
+    )
+    .with_param("host", host)
+    .with_param("status", status.to_string())
 }
 
 fn accounts_closed(host: &str) -> LauncherError {
@@ -814,6 +849,32 @@ mod tests {
             body,
             json!({ "name": "a", "kind": "vanilla", "language": "en" })
         );
+    }
+
+    #[test]
+    fn free_server_debug_holds_no_invite_token() {
+        let token = "b4sE64url_-b4sE64url_-b4sE64url_-b4sE64url_";
+        let server: FreeServer = serde_json::from_value(json!({
+            "name": "Aventura", "kind": "vanilla", "status": "sleeping",
+            "inviteUrl": format!("https://play.example.com/{token}"),
+            "joinUrl": format!("perland://join?invite=https%3A%2F%2Fplay.example.com%2F{token}")
+        }))
+        .unwrap();
+        let state = FreeServerState {
+            server: Some(server.clone()),
+            ..FreeServerState::default()
+        };
+        for text in [
+            format!("{server:?}"),
+            format!("{state:?}"),
+            format!("{state:#?}"),
+        ] {
+            assert!(!text.contains(token), "{text}");
+            assert!(
+                text.contains("Aventura") && text.contains("sleeping"),
+                "{text}"
+            );
+        }
     }
 
     #[test]

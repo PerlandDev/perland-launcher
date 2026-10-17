@@ -68,7 +68,7 @@ export function CreateServerDialog({ limits, onClose }: { limits: FreeLimits; on
         onError: (error) => {
           // The Engine may have made it anyway: wait for it to show rather than say it failed.
           if (maybeCreated(error)) return setStep({ kind: 'creating', lost: true });
-          const shown = refusalOf(t, i18n, error);
+          const shown = refusalOf(t, i18n, error, name);
           setNameError(shown.name);
           setRefusal(shown.line);
           setStep({ kind: 'pick' });
@@ -224,10 +224,10 @@ export function CreateServerDialog({ limits, onClose }: { limits: FreeLimits; on
 function useLostPoll(active: boolean, onReady: (server: FreeServerCard) => void, onClose: () => void) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  // The latest callbacks, so the poll runs once per lost answer.
-  const done = useRef({ onClose, onReady });
+  // The latest callbacks and `t`, so the poll runs once per lost answer: a language change keeps its window.
+  const done = useRef({ onClose, onReady, t });
   useEffect(() => {
-    done.current = { onClose, onReady };
+    done.current = { onClose, onReady, t };
   });
   useEffect(() => {
     if (!active) return;
@@ -240,6 +240,7 @@ function useLostPoll(active: boolean, onReady: (server: FreeServerCard) => void,
     const timer = setInterval(() => {
       if (Date.now() - started >= LOST_GIVE_UP_MS) {
         stop();
+        const { t } = done.current;
         pushNotice({
           title: t('freeServer.creating.gaveUp'),
           body: t('freeServer.creating.gaveUpBody'),
@@ -262,7 +263,7 @@ function useLostPoll(active: boolean, onReady: (server: FreeServerCard) => void,
         .catch(() => {});
     }, LOST_POLL_MS);
     return stop;
-  }, [active, qc, t]);
+  }, [active, qc]);
 }
 
 /** A recessed row holding `text` (selectable, in mono) and a Copy key that swaps to a check and `copied` for 2 s. */
@@ -292,12 +293,13 @@ function CopyRow({ text, label, copy, copied }: { text: string; label: string; c
   );
 }
 
-/** A refusal in words: a bad name goes on the name field, everything else is one line under the form. */
-function refusalOf(t: TFunction, i18n: I18n, error: unknown): { name: string | null; line: string | null } {
+/** A refusal in words: a bad name goes on the name field, everything else is one line under the form. `invalid_free_server`
+ *  names no field, so it goes on the name only when the name itself breaks the rule. */
+function refusalOf(t: TFunction, i18n: I18n, error: unknown, name: string): { name: string | null; line: string | null } {
   if (!isLauncherError(error)) return { name: null, line: describeError(i18n, error).message };
   switch (error.code) {
     case 'invalid_free_server':
-      return { name: t('freeServer.pick.nameInvalid'), line: null };
+      return isServerName(name) ? { name: null, line: t('freeServer.pick.refused') } : { name: t('freeServer.pick.nameInvalid'), line: null };
     case 'modpack_unsupported': {
       const key = `freeServer.unsupported.${error.params.reason ?? ''}`;
       return {

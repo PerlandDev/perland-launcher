@@ -1584,3 +1584,79 @@ async fn modrinth_version_change_is_an_update() {
         other => panic!("{other:?}"),
     }
 }
+
+/// Mojang's version manifest, as the mock serves it: only `latest` matters here.
+async fn mount_manifest(server: &MockServer, release: &str) {
+    Mock::given(method("GET"))
+        .and(path("/mojang/version_manifest_v2.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "latest": { "release": release, "snapshot": "26.9-snapshot-1" },
+            "versions": []
+        })))
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn a_latest_server_joins_mojangs_latest_release_and_follows_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    // itzg's `VERSION: LATEST`, passed through by the Engine; any case.
+    mount_view(&server, vanilla_view("latest")).await;
+    mount_manifest(&server, "1.21.4").await;
+    let src = sources(&server, tmp.path());
+
+    let input = PackInput::parse(&invite_url(&server)).unwrap();
+    let (source, shell) = src.open(&input).await.unwrap();
+    assert_eq!(shell.minecraft, "1.21.4");
+    assert_eq!(shell.pack_version, "1.21.4");
+
+    let desired = src.resolve(&source).await.unwrap();
+    assert_eq!(desired.stamp, "vanilla:1.21.4");
+    assert_eq!(
+        (desired.minecraft.as_str(), desired.pack_version.as_str()),
+        ("1.21.4", "1.21.4")
+    );
+    assert_eq!(src.check(&source, &desired).await, UpdateCheck::UpToDate);
+
+    // Mojang ships 1.21.5 and itzg moves the server to it: the player moves too.
+    server.reset().await;
+    mount_config(&server).await;
+    mount_view(&server, vanilla_view("LATEST")).await;
+    mount_manifest(&server, "1.21.5").await;
+    match sources(&server, tmp.path()).check(&source, &desired).await {
+        UpdateCheck::Available { stamp, version, .. } => assert_eq!(
+            (stamp.as_str(), version.as_str()),
+            ("vanilla:1.21.5", "1.21.5")
+        ),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_latest_server_without_the_manifest_fails_as_the_manifest_does() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, vanilla_view("LATEST")).await;
+    Mock::given(method("GET"))
+        .and(path("/mojang/version_manifest_v2.json"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let src = sources(&server, tmp.path());
+    let input = PackInput::parse(&invite_url(&server)).unwrap();
+    let e = src.open(&input).await.unwrap_err();
+    let meta = launcher_core::meta::MetaClient::new(
+        launcher_core::http::client("test").unwrap(),
+        tmp.path().join("other-meta"),
+    );
+    let direct = meta
+        .get_json::<serde_json::Value>(&format!("{}/mojang/version_manifest_v2.json", server.uri()))
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, direct.code);
+    assert_ne!(e.code, ErrorCode::MinecraftVersionNotFound);
+    assert_token_free("latest manifest", &e);
+}

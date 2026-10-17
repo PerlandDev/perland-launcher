@@ -548,7 +548,7 @@ async fn errors_name_host_only() {
 fn free_view() -> Value {
     json!({
         "name": "Aventura", "kind": "modrinth",
-        "game": { "type": "FABRIC", "version": "1.21.4", "loader": "fabric" },
+        "game": { "type": "fabric", "version": "1.21.4" },
         "modrinth": { "projectId": "1KVo5zza", "versionId": "Yp8wLY1P" },
         "memoryMb": 6144, "maxPlayers": 10, "status": "sleeping",
         "players": { "online": 0, "max": 10 },
@@ -629,7 +629,11 @@ async fn free_server_reads_state() {
     let s = state.server.unwrap();
     assert_eq!(s.name, "Aventura");
     assert_eq!(s.kind, "modrinth");
-    assert_eq!(s.game.kind, "FABRIC");
+    assert_eq!(s.game.kind, "fabric");
+    assert_eq!(
+        s.game.loader, None,
+        "the Engine names the loader in `type` only"
+    );
     assert_eq!(s.game.version.as_deref(), Some("1.21.4"));
     let m = s.modrinth.unwrap();
     assert_eq!(
@@ -865,6 +869,49 @@ async fn create_modrinth_unavailable_is_host_trouble() {
     let e = create_fails(502, "modrinth_unavailable", json!({})).await;
     assert_eq!(e.code, ErrorCode::HostTrouble);
     assert_eq!(param(&e, "host"), Some("modrinth.com"));
+}
+
+#[tokio::test]
+async fn create_gateway_timeout_is_a_lost_answer() {
+    // A reverse proxy gives up on the long create with its own page: the Engine may still
+    // finish the server, so the answer is lost, not a refusal.
+    for status in [502, 504] {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path(route("/free-server")))
+            .respond_with(
+                ResponseTemplate::new(status).set_body_string("<html>Gateway Timeout</html>"),
+            )
+            .mount(&server)
+            .await;
+        let e = client(&server)
+            .create_free_server(&token(), &create_body())
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::ConnectionDropped, "{status}");
+        let host = Url::parse(&server.uri())
+            .unwrap()
+            .host_str()
+            .unwrap()
+            .to_string();
+        assert_eq!(param(&e, "host"), Some(host.as_str()), "{status}");
+        assert!(!format!("{e:?}").contains(&token()));
+    }
+    // Other calls keep the status as the host's trouble.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(route("/free-server/start")))
+        .respond_with(ResponseTemplate::new(504).set_body_string("<html>Gateway Timeout</html>"))
+        .mount(&server)
+        .await;
+    let e = client(&server)
+        .start_free_server(&token())
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::HostTrouble);
+    // The Engine's own 502 for Modrinth stays a refusal.
+    let e = create_fails(502, "modrinth_unavailable", json!({})).await;
+    assert_eq!(e.code, ErrorCode::HostTrouble);
 }
 
 #[tokio::test]

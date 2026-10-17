@@ -29,6 +29,7 @@ use crate::{
         invite_route, non_empty, EngineView, InviteGame, InviteLink, InviteModrinth, InviteView,
         Url, PACK_READY, PACK_UNAVAILABLE,
     },
+    meta::mojang::VersionManifest,
     sync::{sync_cancelled, Cancel},
 };
 
@@ -39,6 +40,22 @@ pub const MODRINTH_PREFIX: &str = "modrinth:";
 
 fn game_version(view: &InviteView) -> Option<&str> {
     non_empty(&view.game.version)
+}
+
+/// itzg's `VERSION: LATEST`, which the Engine passes through: Mojang's newest release.
+fn is_latest(version: &str) -> bool {
+    version.eq_ignore_ascii_case("latest")
+}
+
+/// The Minecraft version `version` names: itself, or for `LATEST` the latest release in
+/// Mojang's manifest, so the instance installs a real version and follows new releases as
+/// itzg moves the server. A manifest that can't be read fails as it does for an install.
+async fn concrete_version(src: &Sources, version: &str) -> Result<String> {
+    if !is_latest(version) {
+        return Ok(version.to_string());
+    }
+    let manifest: VersionManifest = src.meta.get_json(&src.config.mojang_manifest).await?;
+    Ok(manifest.latest.release)
 }
 
 /// What the update check compares: the pinned commit, `modrinth:<version id>`, or
@@ -216,18 +233,24 @@ async fn open_inner(src: &Sources, link: &InviteLink) -> Result<(SourceRef, Desi
     let ev = src.invites.view(link).await?;
     supported(link, &ev)?;
     let view = &ev.view;
-    let minecraft = view
+    let named = view
         .pack
         .as_ref()
         .map(|p| p.minecraft.trim())
         .filter(|m| !m.is_empty())
         .or_else(|| game_version(view))
-        .filter(|m| valid_version(m))
-        .ok_or_else(unusable_version)?
-        .to_string();
+        .ok_or_else(unusable_version)?;
+    let minecraft = concrete_version(src, named).await?;
+    if !valid_version(&minecraft) {
+        return Err(unusable_version());
+    }
+    let pack_version = match version_of(view) {
+        v if is_latest(&v) => minecraft.clone(),
+        v => v,
+    };
     let desired = DesiredState {
         name: display_name(view),
-        pack_version: version_of(view),
+        pack_version,
         loader: loader_from(view, &minecraft)?,
         minecraft,
         files: Vec::new(),
@@ -277,7 +300,7 @@ async fn resolve_inner(
     let Some(pack) = ev.view.pack.clone() else {
         return match ev.view.modrinth.clone() {
             Some(m) => from_modrinth(src, link, &ev, &m, cancel).await,
-            None => vanilla(link, &ev),
+            None => vanilla(src, link, &ev).await,
         };
     };
     if cancel.is_cancelled() {
@@ -325,11 +348,13 @@ async fn from_modrinth(
 
 /// A stack without a modpack: vanilla at the server's Minecraft version. When the server moves
 /// to a new version, the stamp changes and sync installs it.
-fn vanilla(link: &InviteLink, ev: &EngineView) -> Result<DesiredState> {
-    let version = game_version(&ev.view)
-        .filter(|v| valid_version(v))
-        .ok_or_else(unusable_version)?
-        .to_string();
+/// A server on `LATEST` stamps the release it resolves to.
+async fn vanilla(src: &Sources, link: &InviteLink, ev: &EngineView) -> Result<DesiredState> {
+    let named = game_version(&ev.view).ok_or_else(unusable_version)?;
+    let version = concrete_version(src, named).await?;
+    if !valid_version(&version) {
+        return Err(unusable_version());
+    }
     Ok(DesiredState {
         name: display_name(&ev.view),
         pack_version: version.clone(),
@@ -564,7 +589,15 @@ async fn check_inner(
 ) -> Result<UpdateCheck> {
     let ev = src.invites.view(link).await?;
     supported(link, &ev)?;
-    let stamp = match stamp_of(&ev.view) {
+    let (stamp, version) = match (&ev.view.pack, &ev.view.modrinth, game_version(&ev.view)) {
+        // A server on `LATEST` is compared at the release it resolves to now.
+        (None, None, Some(named)) if is_latest(named) => {
+            let v = concrete_version(src, named).await?;
+            (Some(format!("{VANILLA_PREFIX}{v}")), v)
+        }
+        _ => (stamp_of(&ev.view), version_of(&ev.view)),
+    };
+    let stamp = match stamp {
         Some(stamp) => stamp,
         None => {
             // An Engine without `pack.commit`: ask whether the pack's ETag moved on.
@@ -581,7 +614,7 @@ async fn check_inner(
     Ok(UpdateCheck::Available {
         source: source_of(link, &ev),
         stamp,
-        version: version_of(&ev.view),
+        version,
     })
 }
 

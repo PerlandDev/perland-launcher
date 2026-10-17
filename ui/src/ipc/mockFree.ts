@@ -93,7 +93,9 @@ function cardOf(view: View): FreeServerCard {
     address: view.invited ? `${HOST}:25590` : null,
     name: view.name,
     iconVersion: null,
-    game: { version: '1.20.1', loader: modded ? 'fabric' : null, loaderVersion: modded ? '0.16.14' : null },
+    // The Engine's view sends `game {type, version}` only: the app takes a modpack's loader from `type`, and a vanilla
+    // create (no version sent) runs and answers `LATEST`.
+    game: { version: modded ? '1.20.1' : 'LATEST', loader: modded ? 'fabric' : null, loaderVersion: null },
     modded,
     status: status as PublicServerCard['status'],
     players: view.freeStatus === 'online' ? { online: 0, max: MOCK_FREE_LIMITS.maxPlayers } : null,

@@ -484,6 +484,7 @@
     "empty": "Aún no hay servidores públicos.",
     "loadMore": "Cargar más",
     "vanilla": "Vanilla",
+    "latestVersion": "última",
     "sort": "Ordenar por",
     "sorts": { "players": "Más jugadores", "newest": "Más nuevos", "name": "Nombre A–Z" },
     "any": "Cualquiera",
@@ -552,6 +553,7 @@
       "name": "Nombre del servidor",
       "nameHint": "Tus amigos lo ven en la página de invitación.",
       "nameInvalid": "Usa solo letras, números, - y _, hasta 32.",
+      "refused": "No se pudo crear el servidor con estas opciones. Prueba con otro nombre u otro modpack.",
       "create": "Crear"
     },
     "creating": {
@@ -592,7 +594,8 @@
       "title": "¿Eliminar {{name}}?",
       "body": "El mundo también se elimina. Después puedes crear un servidor nuevo.",
       "confirm": "Eliminar servidor",
-      "deleting": "Eliminando…"
+      "deleting": "Eliminando…",
+      "notDeleted": "Tu servidor todavía se está preparando, así que aún no se puede eliminar. Vuelve a intentarlo en un minuto."
     }
   },
   "news": {

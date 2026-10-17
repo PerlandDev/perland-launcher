@@ -231,7 +231,7 @@ fn free_server_pages() -> Vec<FreeServerPage> {
         game: ServerGame {
             version: Some("1.20.1".into()),
             loader: Some("fabric".into()),
-            loader_version: Some("0.16.14".into()),
+            loader_version: None,
         },
         modded: true,
         status: ServerStatus::Starting,

@@ -27,7 +27,7 @@
       "game": {
         "version": "1.20.1",
         "loader": "fabric",
-        "loaderVersion": "0.16.14"
+        "loaderVersion": null
       },
       "modded": true,
       "status": "starting",

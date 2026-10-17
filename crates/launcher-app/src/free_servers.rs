@@ -51,6 +51,11 @@ fn unplayable_status(status: &str) -> bool {
     matches!(status, "creating" | "deleting" | "stopped")
 }
 
+/// The mod loaders a free server's `game.type` can name.
+fn modded_type(game_type: &str) -> bool {
+    matches!(game_type, "fabric" | "forge" | "neoforge" | "quilt")
+}
+
 /// What a player types (`host`, `host:port`, `[v6]:port`) as `host:port`; `None` when it isn't
 /// a valid address.
 fn parse_address(raw: &str) -> Option<ServerAddress> {
@@ -87,7 +92,14 @@ pub(crate) fn free_card(server: &FreeServer, joined: &[(String, String)]) -> Fre
     let joinable = invite.is_some() && !unplayable_status(&server.status) && !server.disk.over;
     let instance = instance_of(joined, invite.as_deref());
     let owned = |s: &Option<String>| non_empty(s).map(str::to_string);
-    let loader = owned(&server.game.loader).filter(|l| !l.eq_ignore_ascii_case("vanilla"));
+    // The Engine names a modpack server's loader in `game.type` only.
+    let game_type = server.game.kind.trim().to_ascii_lowercase();
+    let type_loader = (modded_type(&game_type) || (server.kind == "modrinth"))
+        .then_some(game_type)
+        .filter(|t| !t.is_empty());
+    let loader = owned(&server.game.loader)
+        .or(type_loader)
+        .filter(|l| !l.eq_ignore_ascii_case("vanilla"));
     FreeServerCard {
         card: PublicServerCard {
             token: link
@@ -188,9 +200,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         answer
     }
 
-    /// The free-server view as a card, with the instance that already joins it.
-    async fn free_card_of(&self, server: &FreeServer) -> Result<FreeServerCard> {
-        Ok(free_card(server, &self.joined_invites().await?))
+    /// The free-server view as a card, with the instance that already joins it. The Engine
+    /// already answered, so instances that can't be read leave the card without one rather
+    /// than fail the call.
+    async fn free_card_of(&self, server: &FreeServer) -> FreeServerCard {
+        let joined = match self.joined_invites().await {
+            Ok(joined) => joined,
+            Err(e) => {
+                tracing::warn!(code = ?e.code, "free server card without its instance");
+                Vec::new()
+            }
+        };
+        free_card(server, &joined)
     }
 
     /// The player's free server and what they may do, or `None` when signed out, when the
@@ -217,7 +238,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             Err(e) => return Err(e),
         };
         let server = match &state.server {
-            Some(server) => Some(self.free_card_of(server).await?),
+            Some(server) => Some(self.free_card_of(server).await),
             None => None,
         };
         Ok(Some(FreeServerPage {
@@ -261,7 +282,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let created = self
             .free_call(&session, |e, t| player.create_free_server(e, t, request))
             .await?;
-        self.free_card_of(&created).await
+        Ok(self.free_card_of(&created).await)
     }
 
     /// Start or wake the player's free server.
@@ -271,7 +292,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let started = self
             .free_call(&session, |e, t| player.start_free_server(e, t))
             .await?;
-        self.free_card_of(&started).await
+        Ok(self.free_card_of(&started).await)
     }
 
     /// Delete the player's free server and its world. True when the Engine deleted one.
@@ -334,7 +355,10 @@ mod tests {
     use crate::{
         app::tests::{core, TestCore},
         servers::server_source,
-        testing::{free_state, free_view, invite, player_token, serve, server_view, FakeRunner},
+        testing::{
+            free_modrinth_view, free_state, free_view, invite, player_token, serve, server_view,
+            FakeRunner,
+        },
     };
 
     fn token(c: char) -> String {
@@ -548,7 +572,12 @@ mod tests {
         assert_eq!(card.status, ServerStatus::Online);
         assert_eq!(card.name, "Survival");
         assert_eq!(card.address.as_deref(), Some("play.example.com:25570"));
-        assert_eq!(card.game.version.as_deref(), Some("1.21.1"));
+        assert_eq!(
+            card.game.version.as_deref(),
+            Some("LATEST"),
+            "the UI says it in words"
+        );
+        assert_eq!(card.game.loader, None);
         assert!(!card.modded);
         assert_eq!(card.players.as_ref().unwrap().online, 1);
         assert_eq!(card.instance, None);
@@ -582,6 +611,23 @@ mod tests {
         assert!(card.joinable, "Play starts it");
         assert_eq!(card.instance.as_deref(), Some(joined.id.as_str()));
         assert_eq!(card.address.as_deref(), Some("play.example.com:25565"));
+    }
+
+    #[tokio::test]
+    async fn a_modpack_card_names_its_loader() {
+        // The Engine names a modpack server's loader in `game.type` only.
+        let card = card_for(free_modrinth_view("sleeping")).await.card;
+        assert_eq!(card.game.loader.as_deref(), Some("fabric"));
+        assert_eq!(card.game.version.as_deref(), Some("1.20.1"));
+        assert!(card.modded);
+        // A loader in `type` names it on any kind; `vanilla` never does.
+        let mut forge = free_view("online");
+        forge.game.kind = "Forge".into();
+        assert_eq!(
+            card_for(forge).await.card.game.loader.as_deref(),
+            Some("forge")
+        );
+        assert_eq!(card_for(free_view("online")).await.card.game.loader, None);
     }
 
     #[tokio::test]
@@ -651,6 +697,27 @@ mod tests {
             core.free_server_start().await.unwrap_err().code,
             ErrorCode::FreeServerOverDisk
         );
+    }
+
+    #[tokio::test]
+    async fn create_and_start_answer_when_the_instances_cant_be_read() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        // The instances folder is a file: listing it fails.
+        let dir = launcher_core::paths::LauncherDirs::new(tmp.path()).instances();
+        std::fs::create_dir_all(dir.parent().unwrap()).unwrap();
+        std::fs::write(&dir, b"not a folder").unwrap();
+        assert!(core.joined_invites().await.is_err());
+        let created = core
+            .free_server_create("Survival", "vanilla", None, "en")
+            .await
+            .expect("the Engine created it");
+        assert_eq!(created.card.instance, None);
+        let started = core
+            .free_server_start()
+            .await
+            .expect("the Engine started it");
+        assert_eq!(started.card.instance, None);
     }
 
     /// The saved status of the instance `id`.

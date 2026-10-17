@@ -3,7 +3,7 @@ import en from '../../i18n/en.json';
 import es from '../../i18n/es.json';
 import i18n from '../../i18n';
 import { MOCK_FREE_LIMITS } from '../../ipc/mockFree';
-import { isServerName, limitsText, prefillName, reasonLine, retryText } from './freeServer';
+import { isServerName, limitsText, maybeCreated, prefillName, reasonLine, retryText } from './freeServer';
 
 const t = i18n.t.bind(i18n);
 afterEach(() => i18n.changeLanguage('en'));
@@ -14,7 +14,21 @@ const keysOf = (value: unknown, prefix = ''): string[] =>
     ? Object.entries(value).flatMap(([k, v]) => keysOf(v, prefix ? `${prefix}.${k}` : k))
     : [prefix];
 
+const error = (code: string, params: Record<string, string> = {}) => ({ category: 'network', code, message: 'x', fix: null, detail: null, params });
+
 describe('freeServer', () => {
+  it('maybe_created_after_a_lost_answer_only', () => {
+    // Core turns a proxy's 502 or 504 on the long create into `connection_dropped`: the Engine may still finish it.
+    expect(maybeCreated(error('connection_dropped', { host: 'api.example.com', status: '504' }))).toBe(true);
+    expect(maybeCreated(error('offline', { host: 'api.example.com' }))).toBe(true);
+    expect(maybeCreated(error('free_server_exists'))).toBe(true);
+    expect(maybeCreated(error('too_many_free_servers', { retryAfter: '5' }))).toBe(true);
+    expect(maybeCreated(error('too_many_free_servers', { retryAfter: '600' }))).toBe(false);
+    // Modrinth failing is the Engine's real refusal, and so is any other trouble with an answer.
+    expect(maybeCreated(error('host_trouble', { host: 'modrinth.com', status: '502' }))).toBe(false);
+    expect(maybeCreated(error('host_trouble', { host: 'api.example.com', status: '500' }))).toBe(false);
+  });
+
   it('prefill_never_uses_the_email', () => {
     // An email-only player has no display name: the email never becomes the name.
     expect(prefillName('')).toBe('my-server');
