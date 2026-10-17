@@ -31,6 +31,23 @@ pub async fn write_atomic(path: &Path, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// [`write_atomic`] for blocking callers (no runtime needed).
+pub fn write_atomic_blocking(path: &Path, data: &[u8]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let n = TMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(format!(".{}.{n}.tmp", std::process::id()));
+    let tmp = PathBuf::from(tmp);
+    let written = std::fs::write(&tmp, data).and_then(|()| std::fs::rename(&tmp, path));
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    Ok(())
+}
+
 /// True when the OS refused because something holds the file or folder: a permission refusal,
 /// or on Windows `ERROR_ACCESS_DENIED` (5) or `ERROR_SHARING_VIOLATION` (32). An antivirus or
 /// indexer often holds a just-written folder for a moment.

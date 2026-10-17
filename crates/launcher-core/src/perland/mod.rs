@@ -3,6 +3,7 @@
 pub mod api;
 pub mod loopback;
 pub mod pkce;
+pub mod session;
 
 pub use api::{
     DiscordAccount, EmailStarted, Player, PlayerClient, PlayerConfig, Relation, SignInMethod,
@@ -10,3 +11,6 @@ pub use api::{
 };
 pub use loopback::{Callback, Language, Loopback};
 pub use pkce::{authorize_url, Pkce};
+pub use session::{
+    KeyringStore, MemoryStore, Profile, SecretError, SecretStore, Session, SessionStore,
+};
