@@ -2532,13 +2532,21 @@
     height: 1rem;
     color: var(--color-ink-dim);
   }
+  /* The title and its time: only the title is cut, so the time stays in view. */
   .news-line-text {
+    display: flex;
+    min-width: 0;
+  }
+  .news-line-title {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .news-line-when {
+    flex: none;
+    /* pre keeps the space before the dot, which a flex item's line start would drop. */
+    white-space: pre;
     color: var(--color-ink-dim);
     font-variant-numeric: tabular-nums;
   }

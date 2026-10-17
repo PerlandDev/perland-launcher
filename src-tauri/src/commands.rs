@@ -432,10 +432,17 @@ pub async fn server_news(
     before: Option<String>,
     limit: u8,
 ) -> Res<Option<ServerNews>> {
-    logged(
-        "server_news",
-        core.server_news(&invite, before, limit).await,
-    )
+    // Show more's errors show in the dialog and are logged. The line's first page polls on every
+    // card and renders nothing on an error, so its failures stay at debug.
+    let later = before.is_some();
+    let result = core.server_news(&invite, before, limit).await;
+    if later {
+        return logged("server_news", result);
+    }
+    if let Err(error) = &result {
+        launcher_core::logging::log_quiet("server_news", error);
+    }
+    result
 }
 
 #[tauri::command]

@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import en from '../../i18n/en.json';
 import es from '../../i18n/es.json';
 import type { NewsChangesView, NewsPostView } from '../../ipc/schema';
-import { EVENT_DEFAULT_MS, eventLabel, isNew, isOver, latestLine, modpackSummary, newestCreatedAt } from './newsRules';
+import { EVENT_DEFAULT_MS, eventLabel, isNew, isOver, latestLine, lineLabel, modpackSummary, newestCreatedAt, parseNewsTime, trimFraction } from './newsRules';
 
 let tEn: TFunction;
 let tEs: TFunction;
@@ -140,6 +140,49 @@ describe('eventLabel', () => {
 
   it('gives the date of an event that is over', () => {
     expect(plain(eventLabel(event('2026-10-10T20:00:00Z'), now, tEn, 'en'))).toBe('Oct 10, 8 PM');
+  });
+
+  it('gives the date of an event that ended today, never "Today"', () => {
+    // 8 AM to 9 AM, read at noon: "Today 8 AM" would read as still to come.
+    const ended = event('2026-10-17T08:00:00Z', { endsAt: '2026-10-17T09:00:00Z' });
+    expect(plain(eventLabel(ended, now, tEn, 'en'))).toBe('Oct 17, 8 AM');
+    expect(eventLabel(ended, now, tEs, 'es')).toMatch(/^17 oct,? 8:00$/);
+  });
+});
+
+describe('lineLabel', () => {
+  it('gives an event that is not over its time', () => {
+    expect(plain(lineLabel(event('2026-10-17T20:00:00Z'), now, tEn, 'en'))).toBe('Today 8 PM');
+    expect(lineLabel(event('2026-10-17T11:00:00Z'), now, tEn, 'en')).toBe('Now');
+  });
+
+  it('gives an event that is over no time at all', () => {
+    expect(lineLabel(event('2026-10-17T08:00:00Z', { endsAt: '2026-10-17T09:00:00Z' }), now, tEn, 'en')).toBeNull();
+    expect(lineLabel(event('2026-10-10T20:00:00Z'), now, tEn, 'en')).toBeNull();
+  });
+
+  it('is null for a post that is not an event', () => {
+    expect(lineLabel(post(), now, tEn, 'en')).toBeNull();
+  });
+});
+
+describe('parseNewsTime', () => {
+  it('trims a fraction longer than milliseconds to three digits', () => {
+    expect(trimFraction('2026-10-17T18:00:00.123456Z')).toBe('2026-10-17T18:00:00.123Z');
+    expect(trimFraction('2026-10-17T18:00:00.123456789+02:00')).toBe('2026-10-17T18:00:00.123+02:00');
+    expect(trimFraction('2026-10-17T18:00:00.5Z')).toBe('2026-10-17T18:00:00.5Z');
+    expect(trimFraction('2026-10-17T18:00:00Z')).toBe('2026-10-17T18:00:00Z');
+  });
+
+  it('reads Engine times with six-digit fractions', () => {
+    expect(parseNewsTime('2026-10-17T18:00:00.123456Z')).toBe(Date.UTC(2026, 9, 17, 18, 0, 0, 123));
+    expect(parseNewsTime('2026-10-17T18:00:00Z')).toBe(Date.UTC(2026, 9, 17, 18));
+  });
+
+  it('is null for nothing or for text that is not a time', () => {
+    expect(parseNewsTime(null)).toBeNull();
+    expect(parseNewsTime('')).toBeNull();
+    expect(parseNewsTime('soon')).toBeNull();
   });
 });
 

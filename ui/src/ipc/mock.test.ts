@@ -581,6 +581,15 @@ describe('mock server news', () => {
     expect(isNew(after.posts, after.seen, new Date())).toBe(false);
   });
 
+  it('gives the seeded instance more than one page of news', async () => {
+    const first = (await news(MOCK_INVITE, {}, { server: 'online' }))!;
+    expect(first.posts).toHaveLength(20);
+    expect(first.nextBefore).toBe('20');
+    const second = (await news(MOCK_INVITE, { before: first.nextBefore }, { server: 'online' }))!;
+    expect(second.posts).toHaveLength(4);
+    expect(second.nextBefore).toBeNull();
+  });
+
   it('pages with nextBefore', async () => {
     const backend = createMockBackend({ server: 'online' });
     const first = (await backend.handle('server_news', { invite: MOCK_INVITE, before: null, limit: 2 })) as ServerNews;

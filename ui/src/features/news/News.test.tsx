@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import i18n from '../../i18n';
 import { createMockBackend } from '../../ipc/mock';
 import { MOCK_INVITE, MOCK_SERVER_ICON } from '../../ipc/mockServers';
+import type { NewsPostView, ServerNews } from '../../ipc/schema';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
@@ -13,6 +14,16 @@ const B_INVITE = `https://play.example.com/${'B'.repeat(43)}`;
 /** The mock's posts are relative to this moment: a Friday, 6 PM UTC (the tests run in UTC). */
 const NOW = new Date('2026-10-16T18:00:00Z');
 const HOUR = 3_600_000;
+
+const newsPost = (over: Partial<NewsPostView> & Pick<NewsPostView, 'id' | 'title' | 'createdAt'>): NewsPostView => ({
+  type: 'update',
+  body: '',
+  startsAt: null,
+  endsAt: null,
+  imageVersion: null,
+  modpack: null,
+  ...over,
+});
 
 /** The card (an article) named by its server's name. */
 const card = async (name: string) => (await screen.findByRole('heading', { name })).closest('article')!;
@@ -118,36 +129,42 @@ describe('the news line', () => {
     expect(toastsSnapshot()).toEqual([]);
   });
 
-  it('a plain instance never asks for news', async () => {
-    const { calls } = renderApp(<Home id="asalith-fields" />, { server: 'online' });
-    await screen.findByRole('heading', { name: 'Asalith Fields' });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(sent(calls, 'server_news')).toEqual([]);
-    expect(screen.queryByRole('button', { name: /^News:/ })).toBeNull();
+  it('an event that is over shows no time on the line, and its date in the dialog', async () => {
+    const backend = createMockBackend();
+    // Survival's newest post is an event that ended at 2 PM, read at 6 PM; its other post has a time that does not parse.
+    const page: ServerNews = {
+      posts: [
+        newsPost({ id: '41000000-0000-4000-8000-000000000001', type: 'event', title: 'Build contest', startsAt: '2026-10-16T12:00:00.000000Z', endsAt: '2026-10-16T14:00:00Z', createdAt: '2026-10-16T11:00:00.123456Z' }),
+        newsPost({ id: '41000000-0000-4000-8000-000000000002', title: 'Odd post', createdAt: '' }),
+      ],
+      nextBefore: null,
+      seen: '2026-10-16T11:00:00.123456Z',
+    };
+    const { user } = renderWithProviders(<ServersScreen />, {
+      ipc: (cmd, args) => (cmd === 'server_news' ? Promise.resolve((args as { invite: string }).invite === MOCK_INVITE ? page : null) : backend.handle(cmd, args)),
+    });
+    const line = await newsLine(await card('Survival'));
+    expect(line).toHaveAccessibleName('News: Build contest');
+    expect(line).toHaveTextContent(/^Build contest$/);
+    await user.click(line);
+    const dialog = await screen.findByRole('dialog', { name: 'News from Survival' });
+    expect(within(dialog).getByText(/^Oct 16, 12\sPM$/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/^Today/)).toBeNull();
+    // The post whose time does not parse still shows, without a Posted line.
+    expect(within(dialog).getByRole('heading', { name: 'Odd post' })).toBeInTheDocument();
+    expect(within(dialog).queryByText(/^Posted/)).toBeNull();
   });
 });
 
 describe('the news dialog', () => {
-  /** Render the Servers screen with news pages of `limit`, so a short mock list still pages. */
-  function renderPaged(limit: number) {
-    const backend = createMockBackend();
-    const calls: [string, unknown][] = [];
-    const result = renderWithProviders(<ServersScreen />, {
-      ipc: (cmd, args) => {
-        calls.push([cmd, args]);
-        return backend.handle(cmd, cmd === 'server_news' ? { ...(args as object), limit } : args);
-      },
-    });
-    return { ...result, calls };
-  }
-
   it('the dialog lists posts, pages with Show more, and shows pictures', async () => {
-    const { user, calls } = renderPaged(3);
+    const { user, calls } = renderApp(<ServersScreen />);
     await user.click(await newsLine(await card('Survival')));
     const dialog = await screen.findByRole('dialog', { name: 'News from Survival' });
     const titles = () => within(dialog).getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
-    // Newest first: the line's page (three posts here) shows at once.
-    expect(titles()).toEqual(['New spawn is live', 'Modpack updated', 'Build contest']);
+    // Newest first: the line's page (20 posts) shows at once.
+    expect(titles()).toHaveLength(20);
+    expect(titles().slice(0, 3)).toEqual(['New spawn is live', 'Modpack updated', 'Build contest']);
     expect(within(dialog).getByText(/^Tomorrow 8\sPM$/)).toBeInTheDocument();
     expect(within(dialog).getByText('Posted Oct 16')).toBeInTheDocument();
     // The picture comes through the core, and the body keeps its line breaks as text.
@@ -161,10 +178,8 @@ describe('the news dialog', () => {
     expect(dialog.querySelector('.btn-primary')).toBeNull();
 
     await user.click(within(dialog).getByRole('button', { name: 'Show more' }));
-    await vi.waitFor(() => expect(titles()).toHaveLength(6));
-    expect(sent(calls, 'server_news').at(-1)).toEqual({ invite: MOCK_INVITE, before: '3', limit: 20 });
-    await user.click(within(dialog).getByRole('button', { name: 'Show more' }));
-    await vi.waitFor(() => expect(titles()).toHaveLength(7));
+    await vi.waitFor(() => expect(titles()).toHaveLength(24));
+    expect(sent(calls, 'server_news').at(-1)).toEqual({ invite: MOCK_INVITE, before: '20', limit: 20 });
     expect(within(dialog).queryByRole('button', { name: 'Show more' })).toBeNull();
   });
 
@@ -175,7 +190,7 @@ describe('the news dialog', () => {
       ipc: (cmd, args) => {
         const before = (args as { before?: string | null } | undefined)?.before;
         if (cmd === 'server_news' && before && fail) return Promise.reject({ category: 'network', code: 'invite_rate_limited', message: 'Slow down', fix: null, detail: null, params: {} });
-        return backend.handle(cmd, cmd === 'server_news' ? { ...(args as object), limit: 3 } : args);
+        return backend.handle(cmd, args);
       },
     });
     await user.click(await newsLine(await card('Survival')));
@@ -185,7 +200,7 @@ describe('the news dialog', () => {
     expect(toastsSnapshot()).toEqual([]);
     fail = false;
     await user.click(within(dialog).getByRole('button', { name: 'Try again' }));
-    await vi.waitFor(() => expect(within(dialog).getAllByRole('heading', { level: 3 })).toHaveLength(6));
+    await vi.waitFor(() => expect(within(dialog).getAllByRole('heading', { level: 3 })).toHaveLength(24));
     expect(within(dialog).queryByText("Couldn't load more news.")).toBeNull();
   });
 

@@ -32,11 +32,11 @@ impl NewsSeen {
         }
     }
 
-    /// The marker stored for `canonical`, as it was given. A missing or damaged file, or a
-    /// stored value that is not a time, reads as none.
+    /// The marker stored for `canonical`, as it was given. A missing, damaged or unreadable
+    /// file, or a stored value that is not a time, reads as none.
     pub async fn seen(&self, canonical: &str) -> Option<String> {
         let _guard = self.lock.lock().await;
-        let map = self.read().await;
+        let map = self.read().await.unwrap_or_default();
         map.get(canonical)
             .filter(|v| rfc3339_millis(v).is_some())
             .cloned()
@@ -44,13 +44,14 @@ impl NewsSeen {
 
     /// Remember `newest_created_at` (the Engine's `createdAt` of the newest post seen) for
     /// `canonical`. The marker only moves forward: an older or equal time, or one that is not
-    /// RFC3339, changes nothing and writes nothing.
+    /// RFC3339, changes nothing and writes nothing. A file that cannot be read (held by an
+    /// antivirus, say) is an error and is left as it is, so its other markers are not lost.
     pub async fn mark_seen(&self, canonical: &str, newest_created_at: &str) -> Result<()> {
         let Some(new_ms) = rfc3339_millis(newest_created_at) else {
             return Ok(());
         };
         let _guard = self.lock.lock().await;
-        let mut map = self.read().await;
+        let mut map = self.read().await?;
         if let Some(old_ms) = map.get(canonical).and_then(|v| rfc3339_millis(v)) {
             if new_ms <= old_ms {
                 return Ok(());
@@ -75,11 +76,18 @@ impl NewsSeen {
         write_atomic(&self.path, &bytes).await
     }
 
-    async fn read(&self) -> BTreeMap<String, String> {
-        match tokio::fs::read(&self.path).await {
-            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
-            Err(_) => BTreeMap::new(),
-        }
+    async fn read(&self) -> std::io::Result<BTreeMap<String, String>> {
+        parse(tokio::fs::read(&self.path).await)
+    }
+}
+
+/// The markers in a read of the file: none for a missing file or one that isn't the JSON
+/// expected, and the read's error for any other failure.
+fn parse(read: std::io::Result<Vec<u8>>) -> std::io::Result<BTreeMap<String, String>> {
+    match read {
+        Ok(bytes) => Ok(serde_json::from_slice(&bytes).unwrap_or_default()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeMap::new()),
+        Err(e) => Err(e),
     }
 }
 
@@ -344,6 +352,36 @@ mod tests {
         s.mark_seen("k", "2026-10-16T18:00:00Z").await.unwrap();
         let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(v["k"], "2026-10-16T18:00:00Z");
+    }
+
+    #[test]
+    fn only_a_missing_file_or_bad_json_reads_as_empty() {
+        use std::io::{Error, ErrorKind};
+        assert!(parse(Err(Error::from(ErrorKind::NotFound)))
+            .unwrap()
+            .is_empty());
+        assert!(parse(Ok(b"{nope".to_vec())).unwrap().is_empty());
+        assert_eq!(parse(Ok(br#"{"k":"v"}"#.to_vec())).unwrap()["k"], "v");
+        // Held by an antivirus, say: not empty, or the next write would wipe every marker.
+        assert!(parse(Err(Error::from(ErrorKind::PermissionDenied))).is_err());
+    }
+
+    #[tokio::test]
+    async fn a_file_that_cannot_be_read_is_not_overwritten() {
+        let (d, s) = store(MAX_SEEN);
+        let path = d.path().join(NEWS_SEEN_FILE);
+        // A folder where the file goes reads with an error other than "not found".
+        std::fs::create_dir(&path).unwrap();
+        std::fs::write(path.join("keep"), "x").unwrap();
+        assert_eq!(s.seen("k").await, None);
+        let err = s.mark_seen("k", "2026-10-16T18:00:00Z").await.unwrap_err();
+        assert_eq!(err.code, crate::error::ErrorCode::DiskIo);
+        assert!(path.is_dir());
+        let names: Vec<_> = std::fs::read_dir(d.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, [std::ffi::OsString::from(NEWS_SEEN_FILE)]);
     }
 
     #[tokio::test]

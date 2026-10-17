@@ -170,8 +170,10 @@ impl NewsClient {
     }
 
     /// One page of a server's news, newest first. `limit` is clamped to 1-50. `before` is the
-    /// previous page's `next_before`; it is sent only when it is ASCII digits, but a `before`
-    /// that is set always makes this a later page (never remembered, and told about a limit).
+    /// previous page's `next_before`, and a `before` that is set makes this a later page (never
+    /// remembered, and told about a limit). A `before` that is not ASCII digits names no page
+    /// the Engine can give, so it is `Ok(None)` without a request: asking without it would hand
+    /// back page one again, and the dialog would list its posts twice.
     ///
     /// `Ok(None)` is "no news here": a 404, a 503, or a first page asked while the Engine is
     /// being left alone after a 429. A later page in that time is `invite_rate_limited`.
@@ -184,6 +186,9 @@ impl NewsClient {
         let limit = limit.clamp(MIN_LIMIT, MAX_LIMIT);
         let later = before.is_some();
         let sent = before.filter(|b| !b.is_empty() && b.bytes().all(|c| c.is_ascii_digit()));
+        if later && sent.is_none() {
+            return Ok(None);
+        }
         let slot = self.slot(&link.canonical());
         let mut memo = slot.lock().await;
         if !later {

@@ -7,7 +7,7 @@ import { qk, useNewsImage, useServerNewsPages } from '../../state/queries';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { Calendar } from '../../ui/Icon';
-import { eventLabel, isNew, modpackSummary, newestCreatedAt } from './newsRules';
+import { eventLabel, isNew, modpackSummary, newestCreatedAt, parseNewsTime } from './newsRules';
 
 /** Names a modpack part lists before "and N more". */
 const NAMES_SHOWN = 10;
@@ -80,15 +80,19 @@ export function NewsDialog({ invite, name, open, onClose }: { invite: string; na
 function NewsPost({ invite, post, now, fresh }: { invite: string; post: NewsPostView; now: Date; fresh: boolean }) {
   const { t, i18n } = useTranslation();
   const event = eventLabel(post, now, t, i18n.language);
-  const when = event ?? t('news.posted', { date: new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(new Date(post.createdAt)) });
+  const created = parseNewsTime(post.createdAt);
+  // A post whose time does not parse goes without its Posted line.
+  const when = event ?? (created === null ? null : t('news.posted', { date: new Intl.DateTimeFormat(i18n.language, { month: 'short', day: 'numeric' }).format(created) }));
   return (
     <article className="news-post">
       <h3 className="news-post-title">{post.type === 'modpack' ? t('news.modpack.title') : post.title}</h3>
-      <p className="news-post-when">
-        {event && <Calendar aria-hidden />}
-        <span>{when}</span>
-        {fresh && <span className="news-post-new">{t('news.new')}</span>}
-      </p>
+      {(when || fresh) && (
+        <p className="news-post-when">
+          {event && <Calendar aria-hidden />}
+          {when && <span>{when}</span>}
+          {fresh && <span className="news-post-new">{t('news.new')}</span>}
+        </p>
+      )}
       <NewsPicture invite={invite} post={post} />
       {post.type === 'modpack' ? (
         <ModpackChanges changes={post.modpack} />

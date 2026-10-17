@@ -6,11 +6,21 @@ export const EVENT_DEFAULT_MS = 3 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FIRST_VISIT_MS = 7 * DAY_MS;
 
-const time = (iso: string | null): number | null => {
+/** An RFC3339 time with its fraction cut to milliseconds: the Engine sends six digits (`.123456Z`), which
+ *  older WebKitGTK `Date.parse` may refuse. Anything else passes unchanged. */
+export function trimFraction(iso: string): string {
+  return iso.replace(/(\.\d{3})\d+(?=(?:Z|[+-]\d{2}:?\d{2})$)/i, '$1');
+}
+
+/** A news time (`createdAt`, `startsAt`, `endsAt`, the seen marker) in milliseconds, or null when absent or unreadable.
+ *  Every news time the UI reads goes through here. */
+export function parseNewsTime(iso: string | null): number | null {
   if (iso === null) return null;
-  const ms = Date.parse(iso);
+  const ms = Date.parse(trimFraction(iso.trim()));
   return Number.isNaN(ms) ? null : ms;
-};
+}
+
+const time = parseNewsTime;
 
 /** Has this event ended? It ends at `endsAt`, else three hours after it starts. A post that is not an event never ends. */
 export function isOver(post: NewsPostView, now: Date): boolean {
@@ -49,22 +59,30 @@ function daysAhead(at: Date, now: Date): number {
   return Math.round((day(at) - day(now)) / DAY_MS);
 }
 
-/** An event's time in words: "Now", "Today 8 PM", "Tomorrow 8 PM", "Sat 8 PM", "Oct 30, 8 PM". Null for a post that is not an event.
+/** An event's time in words: "Now", "Today 8 PM", "Tomorrow 8 PM", "Sat 8 PM", "Oct 30, 8 PM"; an event that is over always
+ *  gives its date. Null for a post that is not an event.
  *  Runs on the computer's time zone, through `Intl.DateTimeFormat` in the UI language. */
 export function eventLabel(post: NewsPostView, now: Date, t: TFunction, locale: string): string | null {
   const start = time(post.startsAt);
   if (post.type !== 'event' || start === null) return null;
-  if (start <= now.getTime() && !isOver(post, now)) return t('news.now');
+  const over = isOver(post, now);
+  if (start <= now.getTime() && !over) return t('news.now');
   const at = new Date(start);
   // A 12-hour clock reads "8 PM" on the hour; a 24-hour one needs its minutes to read as a time ("20:00").
   const cycle = new Intl.DateTimeFormat(locale, { hour: 'numeric' }).resolvedOptions().hourCycle;
   const bareHour = at.getMinutes() === 0 && (cycle === 'h11' || cycle === 'h12');
   const clock = new Intl.DateTimeFormat(locale, bareHour ? { hour: 'numeric' } : { hour: 'numeric', minute: '2-digit' }).format(at);
-  const days = daysAhead(at, now);
+  // An event that is over gives its date: "Today 8 PM" under a finished event would read as still to come.
+  const days = over ? Infinity : daysAhead(at, now);
   if (days === 0) return t('news.today', { time: clock });
   if (days === 1) return t('news.tomorrow', { time: clock });
   if (days >= 2 && days <= 6) return `${new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(at)} ${clock}`;
   return `${new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(at)}, ${clock}`;
+}
+
+/** The time the line shows beside a post: an event's, until it is over. Null for an event that is over and for any other post. */
+export function lineLabel(post: NewsPostView, now: Date, t: TFunction, locale: string): string | null {
+  return isOver(post, now) ? null : eventLabel(post, now, t, locale);
 }
 
 /** "3 mods added, 1 removed", with the parts that are 0 left out; "The modpack changed." when there is nothing to count. */

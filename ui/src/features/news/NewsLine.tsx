@@ -6,7 +6,7 @@ import type { ServerNews } from '../../ipc/schema';
 import { qk, useServerNews } from '../../state/queries';
 import { Megaphone } from '../../ui/Icon';
 import { NewsDialog } from './NewsDialog';
-import { eventLabel, isNew, latestLine, modpackSummary } from './newsRules';
+import { isNew, latestLine, lineLabel, modpackSummary } from './newsRules';
 
 /** The server's latest news in one quiet line: a megaphone, the post (an event with its time), and a blue
  *  square for news the player hasn't opened yet. Pressing it opens all the news. With no news, news off,
@@ -22,7 +22,7 @@ export function NewsLine({ invite, name, visible, onArt = false }: { invite: str
   if (!invite || !data || data.posts.length === 0) return null;
   const now = new Date();
   const post = latestLine(data.posts, now)!;
-  const when = eventLabel(post, now, t, i18n.language);
+  const when = lineLabel(post, now, t, i18n.language);
   const text = post.type === 'modpack' ? t('news.modpack.line', { summary: modpackSummary(post.modpack, t) }) : post.title;
   const line = when ? `${text} · ${when}` : text;
   const fresh = isNew(data.posts, data.seen, now);
@@ -46,8 +46,9 @@ export function NewsLine({ invite, name, visible, onArt = false }: { invite: str
         onClick={openNews}
       >
         <Megaphone aria-hidden className="news-line-icon" />
+        {/* Only the title is cut on a long line: the time beside it is what a player can act on. */}
         <span className="news-line-text">
-          {text}
+          <span className="news-line-title">{text}</span>
           {when && <span className="news-line-when"> · {when}</span>}
         </span>
         {fresh && <span className="news-lamp" title={t('news.new')} />}

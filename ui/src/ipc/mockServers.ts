@@ -184,10 +184,11 @@ export const MOCK_PUBLIC_SERVERS: PublicServerCard[] = [
   },
 ];
 
-
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const MOCK_NEWS_IMAGE_VERSION = 'v1';
+/** Mock server A's older recaps: with its 7 other posts, 24 in all, so a 20-post page leaves 4 for Show more. */
+const OLD_RECAPS = 17;
 
 /** An id that looks like the Engine's UUIDs, one per server letter and post number. */
 const newsId = (letter: string, n: number) => `${(letter.charCodeAt(0).toString(16) + '00000000').slice(0, 8)}-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -238,6 +239,10 @@ function newsPosts(letter: string, at: number): NewsPostView[] {
         modpack(5, '1.0.3', at - 8 * DAY, false),
         post(6, { type: 'update', title: 'Weekend recap', body: 'Thanks for playing!', createdAt: iso(at - 12 * DAY) }),
         post(7, { type: 'update', title: 'Server moved to a faster machine', createdAt: iso(at - 20 * DAY) }),
+        // Older weekly recaps, so the dialog's 20-post pages end in Show more.
+        ...Array.from({ length: OLD_RECAPS }, (_, i) =>
+          post(8 + i, { type: 'update', title: 'Weekend recap', body: `Week ${OLD_RECAPS - i} is in the books.`, createdAt: iso(at - (27 + 7 * i) * DAY) }),
+        ),
       ];
     case 'B':
       return [

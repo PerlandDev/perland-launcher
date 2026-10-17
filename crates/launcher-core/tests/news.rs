@@ -202,9 +202,9 @@ async fn limit_and_before_pass_through() {
     client.page(&link, 20, Some("41")).await.unwrap();
     client.page(&link, 0, Some("42")).await.unwrap();
     client.page(&link, 99, Some("43")).await.unwrap();
-    // Not digits: not sent. Not a first page either, so it is not shared with the others.
-    client.page(&link, 20, Some("4x")).await.unwrap();
-    client.page(&link, 20, Some("")).await.unwrap();
+    // Not digits: no later page to ask for (asking without it would hand back page one again).
+    assert!(client.page(&link, 20, Some("4x")).await.unwrap().is_none());
+    assert!(client.page(&link, 20, Some("")).await.unwrap().is_none());
     let hits = requests_to(&server, NEWS).await;
     let queries: Vec<_> = hits.iter().map(|r| r.url.query().unwrap_or("")).collect();
     assert_eq!(
@@ -213,8 +213,6 @@ async fn limit_and_before_pass_through() {
             "limit=20&before=41",
             "limit=1&before=42",
             "limit=50&before=43",
-            "limit=20",
-            "limit=20",
         ]
     );
 }
@@ -297,7 +295,8 @@ async fn a_page_is_shared_for_a_minute() {
     assert_eq!(requests_to(&server, NEWS).await.len(), 3);
 
     // After the memo time the Engine is asked again.
-    let quick = NewsClient::new(invites()).with_timing(Duration::from_millis(50), MINUTE);
+    // Wide windows: a loaded runner may pause the task between calls.
+    let quick = NewsClient::new(invites()).with_timing(Duration::from_millis(500), MINUTE);
     let other = MockServer::start().await;
     mount_config(&other).await;
     mount_news(&other, minimal_page()).await;
@@ -305,7 +304,7 @@ async fn a_page_is_shared_for_a_minute() {
     quick.page(&other_link, 20, None).await.unwrap();
     quick.page(&other_link, 20, None).await.unwrap();
     assert_eq!(requests_to(&other, NEWS).await.len(), 1);
-    tokio::time::sleep(Duration::from_millis(80)).await;
+    tokio::time::sleep(Duration::from_millis(650)).await;
     quick.page(&other_link, 20, None).await.unwrap();
     assert_eq!(requests_to(&other, NEWS).await.len(), 2);
 }
@@ -327,7 +326,12 @@ async fn a_rate_limit_backs_off_quietly() {
     let server = MockServer::start().await;
     mount_config(&server).await;
     mount_status(&server, 429, "slow down").await;
-    let client = NewsClient::new(invites()).with_timing(MINUTE, Duration::from_millis(80));
+    // Ready before the 429, so the back-off window spans in-memory calls only.
+    let elsewhere = MockServer::start().await;
+    mount_config(&elsewhere).await;
+    mount_news(&elsewhere, minimal_page()).await;
+    let other_link = self::link(&elsewhere);
+    let client = NewsClient::new(invites()).with_timing(MINUTE, Duration::from_millis(500));
     let link = link(&server);
 
     assert!(client.page(&link, 20, None).await.unwrap().is_none());
@@ -340,15 +344,11 @@ async fn a_rate_limit_backs_off_quietly() {
     assert_eq!(requests_to(&server, NEWS).await.len(), 1);
 
     // The back-off covers every server of the client, not just this one.
-    let elsewhere = MockServer::start().await;
-    mount_config(&elsewhere).await;
-    mount_news(&elsewhere, minimal_page()).await;
-    let other_link = self::link(&elsewhere);
     assert!(client.page(&other_link, 20, None).await.unwrap().is_none());
     assert!(requests_to(&elsewhere, NEWS).await.is_empty());
 
     // After it, the Engine is asked again.
-    tokio::time::sleep(Duration::from_millis(120)).await;
+    tokio::time::sleep(Duration::from_millis(650)).await;
     assert!(client.page(&other_link, 20, None).await.unwrap().is_some());
     assert_eq!(requests_to(&elsewhere, NEWS).await.len(), 1);
 }
