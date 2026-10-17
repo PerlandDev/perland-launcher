@@ -65,12 +65,51 @@ describe('YourServers', () => {
   });
 
   it('menu_only_on_followed', async () => {
-    renderApp(<ServersScreen />, { perland: 'signedIn' });
+    // Without a panel, owned servers have nothing for a menu.
+    renderApp(<ServersScreen />, { perland: 'signedIn', panel: false });
     const section = await yours();
     expect(within(await cardIn(section, 'My world')).queryByRole('button', { name: /^More for/ })).toBeNull();
     expect(within(await cardIn(section, 'Friends')).queryByRole('button', { name: /^More for/ })).toBeNull();
     expect(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'More for Quiet Cove' })).toBeInTheDocument();
     expect(within(await cardIn(section, 'Pure Vanilla')).getByRole('button', { name: 'More for Pure Vanilla' })).toBeInTheDocument();
+  });
+
+  it('owned servers offer Manage in Perland', async () => {
+    const { user, calls } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has' });
+    const section = await yours();
+    await user.click(within(await cardIn(section, 'My world')).getByRole('button', { name: 'More for My world' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Manage in Perland' }));
+    expect(sent(calls, 'perland_manage')).toEqual([{ stack: 'My world' }]);
+    // The free server is the player's too.
+    await user.click(within(await cardIn(section, 'Weekend SMP')).getByRole('button', { name: 'More for Weekend SMP' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Manage in Perland' }));
+    expect(sent(calls, 'perland_manage')).toEqual([{ stack: 'My world' }, { stack: 'Weekend SMP' }]);
+    // Invited and followed servers are someone else's.
+    expect(within(await cardIn(section, 'Friends')).queryByRole('button', { name: /^More for/ })).toBeNull();
+    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'More for Quiet Cove' }));
+    expect(screen.queryByRole('menuitem', { name: 'Manage in Perland' })).toBeNull();
+  });
+
+  it('no Manage in Perland without a panel', async () => {
+    const { user } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has', panel: false });
+    const section = await yours();
+    expect(within(await cardIn(section, 'My world')).queryByRole('button', { name: /^More for/ })).toBeNull();
+    await user.click(within(await cardIn(section, 'Weekend SMP')).getByRole('button', { name: 'More for Weekend SMP' }));
+    expect(screen.getByRole('menuitem', { name: 'Delete server' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Manage in Perland' })).toBeNull();
+  });
+
+  it('a refused Manage in Perland is a toast', async () => {
+    const backend = createMockBackend({ perland: 'signedIn' });
+    const { user } = renderWithProviders(<ServersScreen />, {
+      ipc: (cmd, args) =>
+        cmd === 'perland_manage'
+          ? Promise.reject({ category: 'pack', code: 'link_refused', message: 'x', fix: null, detail: null, params: {} })
+          : backend.handle(cmd, args),
+    });
+    await user.click(within(await cardIn(await yours(), 'My world')).getByRole('button', { name: 'More for My world' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Manage in Perland' }));
+    await vi.waitFor(() => expect(toastsSnapshot()).toHaveLength(1));
   });
 
   it('unfollow_removes_the_card', async () => {
@@ -208,11 +247,13 @@ describe('YourServers', () => {
   it('shows Your servers in Spanish', async () => {
     const { default: i18n } = await import('../../i18n');
     await i18n.changeLanguage('es');
-    renderApp(<ServersScreen />, { perland: 'signedIn' });
+    const { user } = renderApp(<ServersScreen />, { perland: 'signedIn' });
     const section = await screen.findByRole('region', { name: 'Tus servidores' });
     expect(within(await cardIn(section, 'My world')).getByText('Dueño')).toBeInTheDocument();
     expect(within(await cardIn(section, 'Friends')).getByText('Invitado')).toBeInTheDocument();
     expect(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'Más opciones para Quiet Cove' })).toBeInTheDocument();
+    await user.click(within(await cardIn(section, 'My world')).getByRole('button', { name: 'Más opciones para My world' }));
+    expect(screen.getByRole('menuitem', { name: 'Administrar en Perland' })).toBeInTheDocument();
   });
 
   it('nudges in Spanish', async () => {

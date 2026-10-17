@@ -1,8 +1,13 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { createElement, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { commands } from '../../ipc/commands';
 import { inviteCanonical } from '../../ipc/inviteLink';
 import type { Instance, YourServerCard } from '../../ipc/schema';
-import { qk, usePerlandStatus, useYourServers } from '../../state/queries';
+import { qk, useAppInfo, usePerlandStatus, useYourServers } from '../../state/queries';
+import { pushError } from '../../state/toasts';
+import { ExternalLink } from '../../ui/Icon';
+import type { MenuItem } from '../../ui/Menu';
 import { inviteOf } from '../home/labels';
 
 function useYourList() {
@@ -32,6 +37,17 @@ export function useFollowed(): Map<string, string> {
   const followed = new Map<string, string>();
   for (const s of (signedIn ? list.data?.servers : undefined) ?? []) if (s.relation === 'followed' && s.invite) followed.set(s.token, s.invite);
   return followed;
+}
+
+/** Manage in Perland for a server the player owns, by its stack name: the menu item that opens the panel's page for it in the
+ *  browser. None while no panel is configured. */
+export function useManageItem(): (name: string) => MenuItem[] {
+  const { t } = useTranslation();
+  const panel = useAppInfo().data?.panel === true;
+  return (name) =>
+    panel
+      ? [{ id: 'manage', label: t('servers.yours.manage'), icon: createElement(ExternalLink), onSelect: () => void commands.perlandManage(name).catch(pushError) }]
+      : [];
 }
 
 const RELATION_ORDER = { owner: 0, invited: 1, followed: 2 } as const;

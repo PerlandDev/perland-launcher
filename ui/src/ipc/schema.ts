@@ -277,6 +277,8 @@ export const appInfo = z.strictObject({
   offlineAllowed: z.boolean(),
   systemMemoryMb: z.number().int(),
   dataDir: z.string(),
+  /** A Perland panel is configured: the servers the player owns offer Manage in Perland. */
+  panel: z.boolean(),
 });
 
 export const mcVersion = z.strictObject({

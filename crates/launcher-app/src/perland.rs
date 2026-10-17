@@ -678,6 +678,19 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Ok(())
     }
 
+    /// Manage in Perland: the panel's page for `stack`, a server the player owns, in the
+    /// browser. Refused without a configured panel (the UI then offers no button) or a name.
+    pub fn perland_manage(&self, stack: &str) -> Result<()> {
+        let refused = || LauncherError::pack(ErrorCode::LinkRefused, "That link can't be opened");
+        let panel = self.config.panel.as_ref().ok_or_else(refused)?;
+        if stack.trim().is_empty() {
+            return Err(refused());
+        }
+        self.host
+            .open_url(launcher_core::perland::manage_url(panel, stack).as_str());
+        Ok(())
+    }
+
     /// Stop waiting for the browser: the sign-in answers `Ok(None)`.
     pub fn perland_sign_in_cancel(&self) {
         let current = self
@@ -766,7 +779,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        app::tests::{core, core_with_secrets, TestCore},
+        app::tests::{core, core_with_panel, core_with_secrets, TestCore},
         testing::player_token,
     };
 
@@ -1074,6 +1087,28 @@ mod tests {
         );
         core.perland_sign_in_reopen().unwrap();
         assert_eq!(host.opened.lock().unwrap().len(), 2, "nothing waits now");
+    }
+
+    #[test]
+    fn manage_opens_the_stack_page_in_the_panel() {
+        let (core, _, host, _tmp) = core_with_panel("https://panel.example.com/");
+        core.perland_manage("my world").unwrap();
+        assert_eq!(
+            *host.opened.lock().unwrap(),
+            ["https://panel.example.com/stacks/my%20world"]
+        );
+    }
+
+    #[test]
+    fn manage_without_a_panel_or_a_name_opens_nothing() {
+        let (without, _, host, _t1) = core(BuildKind::Dev);
+        let e = without.perland_manage("survival").unwrap_err();
+        assert_eq!(e.code, ErrorCode::LinkRefused);
+        let (with, _, panel_host, _t2) = core_with_panel("https://panel.example.com");
+        let e = with.perland_manage("  ").unwrap_err();
+        assert_eq!(e.code, ErrorCode::LinkRefused);
+        assert!(host.opened.lock().unwrap().is_empty());
+        assert!(panel_host.opened.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

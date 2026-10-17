@@ -6,10 +6,10 @@ import { navigate } from '../../state/route';
 import { FreeServerCard } from '../free-server/FreeServerCard';
 import { FreeServerEntry } from '../free-server/FreeServerEntry';
 import { PublicServerCard } from './PublicServerCard';
-import { useYours } from './yours';
+import { useManageItem, useYours } from './yours';
 
 /** The slot above Public servers: the free-server entry while free servers are on, then the player's own servers (their free
- *  server first, then Owner, Invited and followed), each with the public card's Play. Nothing while it loads or holds neither; signed out, one quiet line pointing to Accounts, only while accounts are on. */
+ *  server first, then Owner, Invited and followed), each with the public card's Play, and Manage in Perland on the ones they own while a panel is configured. Nothing while it loads or holds neither; signed out, one quiet line pointing to Accounts, only while accounts are on. */
 export function YourServers() {
   const { t } = useTranslation();
   const { status, servers } = useYours();
@@ -17,6 +17,7 @@ export function YourServers() {
   // create dialog, which must outlive the entry once the server exists).
   const free = useFreeServer(status?.account != null).data;
   const unfollow = useUnfollow();
+  const manage = useManageItem();
   const heading = useRef<HTMLHeadingElement>(null);
   // The token of a card whose Unfollow went through, until the card leaves; `unfollowed` re-runs the check below.
   const leaving = useRef<string | null>(null);
@@ -81,6 +82,7 @@ export function YourServers() {
                 tag={tagOf(card)}
                 follow={card.relation === 'followed'}
                 menu={card.relation === 'followed' && card.invite ? { onUnfollow: () => onUnfollow(card) } : undefined}
+                menuItems={card.relation === 'owner' ? manage(card.name) : undefined}
               />
             </li>
           ))}

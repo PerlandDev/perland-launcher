@@ -48,6 +48,8 @@ pub struct AppInfo {
     pub offline_allowed: bool,
     pub system_memory_mb: u64,
     pub data_dir: String,
+    /// A Perland panel is configured: the servers the player owns offer Manage in Perland.
+    pub panel: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -942,6 +944,7 @@ mod tests {
             offline_allowed: true,
             system_memory_mb: 16384,
             data_dir: "C:/x".into(),
+            panel: false,
         };
         let json = serde_json::to_value(&info).unwrap();
         assert_eq!(json["offlineAllowed"], true);

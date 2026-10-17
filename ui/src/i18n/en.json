@@ -518,6 +518,7 @@
       "owner": "Owner",
       "invited": "Invited",
       "unfollow": "Unfollow",
+      "manage": "Manage in Perland",
       "more": "More for {{name}}",
       "nudge": "Sign in with Perland to keep your servers here.",
       "signIn": "Sign in"

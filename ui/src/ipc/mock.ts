@@ -100,6 +100,8 @@ export interface MockOptions {
   playtime?: Record<string, number>;
   /** Adds Castle Keep, an instance with the player's own background picture (dev:mock turns it on). */
   pictureBackground?: boolean;
+  /** A Perland panel is configured (default), so owned servers offer Manage in Perland. */
+  panel?: boolean;
 }
 
 interface MockRun {
@@ -289,6 +291,7 @@ function seed(options: MockOptions) {
     ...(clone(appInfoFx) as AppInfo),
     build: options.release ? 'release' : options.beta ? 'beta' : 'dev',
     offlineAllowed: !options.release,
+    panel: options.panel ?? true,
   };
   const update: UpdateState = options.update ?? { state: options.release || options.beta ? 'idle' : 'off' };
   const mods = new Map<string, LocalMod[]>([['asalith-fields', clone(localModsFx) as LocalMod[]]]);
@@ -1088,6 +1091,10 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     }
     case 'open_link':
       state.browse.opened.push(args.url as string);
+      return null;
+    case 'perland_manage':
+      if (!state.appInfo.panel) fail('pack', 'link_refused', "That link can't be opened");
+      state.browse.opened.push(`https://panel.example.com/stacks/${encodeURIComponent(args.stack as string)}`);
       return null;
     case 'deep_link_take': {
       const link = state.pendingLink;

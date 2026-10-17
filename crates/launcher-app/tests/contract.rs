@@ -661,6 +661,7 @@ fn contract_fixtures_are_current() {
             offline_allowed: true,
             system_memory_mb: 16384,
             data_dir: "C:/Users/player/AppData/Roaming/PerlandLauncher".into(),
+            panel: true,
         },
     );
     check(
