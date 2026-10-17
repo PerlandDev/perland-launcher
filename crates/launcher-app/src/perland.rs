@@ -12,8 +12,9 @@ use launcher_core::{
     http::HttpClient,
     invite::{InviteClient, InviteLink, Url},
     perland::{
-        authorize_url, Callback, EmailStarted, Language, Loopback, Pkce, Player, PlayerClient,
-        PlayerConfig, Profile, Session, SignInMethod, TokenAnswer, YourServer,
+        authorize_url, Callback, EmailStarted, Language, LinkCode, Loopback, Pkce, Player,
+        PlayerClient, PlayerConfig, PlayerStats, Profile, Session, SignInMethod, TokenAnswer,
+        YourServer,
     },
     ErrorCode, LauncherError, Result,
 };
@@ -68,6 +69,9 @@ pub trait PlayerApi: Send + Sync + 'static {
     fn follow(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>>;
     fn unfollow(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>>;
     fn joined(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>>;
+    fn link_code(&self, engine: Url, token: String) -> BoxFuture<Result<LinkCode>>;
+    fn unlink(&self, engine: Url, token: String) -> BoxFuture<Result<()>>;
+    fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>>;
 }
 
 /// `PlayerApi` over `launcher_core::perland::PlayerClient`.
@@ -170,6 +174,21 @@ impl PlayerApi for CorePlayer {
         let client = self.client(engine);
         Box::pin(async move { client?.joined(&token, &invite_token).await })
     }
+
+    fn link_code(&self, engine: Url, token: String) -> BoxFuture<Result<LinkCode>> {
+        let client = self.client(engine);
+        Box::pin(async move { client?.link_code(&token).await })
+    }
+
+    fn unlink(&self, engine: Url, token: String) -> BoxFuture<Result<()>> {
+        let client = self.client(engine);
+        Box::pin(async move { client?.unlink(&token).await })
+    }
+
+    fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>> {
+        let client = self.client(engine);
+        Box::pin(async move { client?.stats(&token).await })
+    }
 }
 
 /// What the app knows about the Perland account. Every write to the session store happens
@@ -236,6 +255,7 @@ fn account(profile: &Profile, new_player: bool) -> PerlandAccount {
         email: profile.email.clone(),
         discord: profile.discord,
         new_player,
+        minecraft: profile.minecraft.clone(),
     }
 }
 
@@ -326,11 +346,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Keep a fresher profile for the session holding `token`, so the offline view is current.
-    async fn refresh_profile(&self, token: &str, profile: Profile) {
+    pub(crate) async fn refresh_profile(&self, token: &str, profile: Profile) {
+        self.edit_profile(token, |saved| *saved = profile).await
+    }
+
+    /// Change the profile of the session holding `token`, and save it when it changed.
+    pub(crate) async fn edit_profile(&self, token: &str, edit: impl FnOnce(&mut Profile)) {
         let mut state = self.perland.lock().await;
         let Some(session) = state.session.as_mut().filter(|s| s.token == token) else {
             return;
         };
+        let mut profile = session.profile.clone();
+        edit(&mut profile);
         if session.profile == profile {
             return;
         }
@@ -358,6 +385,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 ),
             }
         });
+    }
+
+    /// Count a `/me` the session holding `token` just got as `perland_status`'s once-a-minute
+    /// one.
+    pub(crate) async fn mark_checked(&self, token: &str) {
+        let mut state = self.perland.lock().await;
+        if state.session.as_ref().is_some_and(|s| s.token == token) {
+            state.checked = Some(Instant::now());
+        }
     }
 
     /// Make `answer` the session, saved for the next launch when the store takes it.
@@ -695,6 +731,7 @@ mod tests {
                 name: "Alex".into(),
                 email: Some("alex@example.com".into()),
                 discord: false,
+                minecraft: None,
             },
         }
     }
@@ -834,6 +871,7 @@ mod tests {
                 email: Some("steve@example.com".into()),
                 discord: true,
                 new_player: true,
+                minecraft: None,
             }
         );
         let site = engine("https://api.example.com");

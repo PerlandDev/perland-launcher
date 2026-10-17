@@ -1,14 +1,15 @@
 // Mock Perland account for `pnpm --filter ui dev:mock` and the tests: the sign-in methods, the
 // Discord and email flows, and the player's Your servers set. Fake tokens and addresses only.
 import { inviteCanonical } from './inviteLink';
-import { inviteOf, joinedInstance, MOCK_PUBLIC_SERVERS } from './mockServers';
-import type { AppEvent, Instance, LauncherError, PerlandAccount, PerlandStatus, PublicServerCard, YourServerCard, YourServersPage } from './schema';
+import { inviteOf, joinedInstance, MOCK_INVITE, MOCK_PUBLIC_SERVERS } from './mockServers';
+import type { AppEvent, Instance, LauncherError, PerlandAccount, PerlandStats, PerlandStatus, PublicServerCard, YourServerCard, YourServersPage } from './schema';
 
 /** `?perland=`: `off` closes accounts; `signedOut` (the default) offers Discord and email; `signedIn` has a player with
- *  one owner, one invited and two followed servers; `empty` is signed in with none; `emailOnly` offers only email. */
-export type PerlandScenario = 'off' | 'signedOut' | 'signedIn' | 'empty' | 'emailOnly';
+ *  one owner, one invited and two followed servers, not linked to Minecraft; `empty` is signed in with none; `emailOnly` offers
+ *  only email; `linked` is `signedIn` already linked as Steve, with stats; `noAddon` is `signedIn` with the Engine's stats add-on off. */
+export type PerlandScenario = 'off' | 'signedOut' | 'signedIn' | 'empty' | 'emailOnly' | 'linked' | 'noAddon';
 
-const SCENARIOS: readonly string[] = ['off', 'signedOut', 'signedIn', 'empty', 'emailOnly'];
+const SCENARIOS: readonly string[] = ['off', 'signedOut', 'signedIn', 'empty', 'emailOnly', 'linked', 'noAddon'];
 /** The `?perland=` preview param, or undefined for anything else (dev:mock only). */
 export const perlandScenario = (name: string | null): PerlandScenario | undefined =>
   name !== null && SCENARIOS.includes(name) ? (name as PerlandScenario) : undefined;
@@ -17,6 +18,11 @@ export const perlandScenario = (name: string | null): PerlandScenario | undefine
 export const MOCK_EMAIL_CODE = '123456';
 /** How long the mock Discord sign-in waits on "Finish in your browser". */
 export const MOCK_DISCORD_WAIT_MS = 1500;
+/** The Minecraft link code the mock hands out. */
+export const MOCK_LINK_CODE = 'ABCD-EFGH';
+/** The link poll that finds the code typed in game: the first ones answer null. */
+export const MOCK_LINK_POLLS = 3;
+const LINK_EXPIRES_IN = 600;
 const ATTEMPTS = 5;
 const RESEND_IN = 60;
 
@@ -26,6 +32,8 @@ export interface MockPerland {
   servers: YourServerCard[];
   /** Wrong codes left before the current code is used up. */
   attemptsLeft: number;
+  /** Link polls answered since the last code. */
+  linkPolls: number;
   /** Ends the Discord step waiting in the browser, as the player's Cancel does. */
   cancel: (() => void) | null;
 }
@@ -34,7 +42,7 @@ interface Listing {
   instances: Instance[];
 }
 
-const STEVE: PerlandAccount = { name: 'Steve', email: 'steve@example.com', discord: true, newPlayer: false };
+const STEVE: PerlandAccount = { name: 'Steve', email: 'steve@example.com', discord: true, newPlayer: false, minecraft: null };
 
 /** The tokens of the servers Your servers has that the public list doesn't. */
 const OWNER = 'O';
@@ -79,12 +87,13 @@ function seedServers(): YourServerCard[] {
 }
 
 export function seedPerland(scenario: PerlandScenario = 'signedOut'): MockPerland {
-  const signedIn = scenario === 'signedIn' || scenario === 'empty';
+  const signedIn = scenario === 'signedIn' || scenario === 'empty' || scenario === 'linked' || scenario === 'noAddon';
   return {
     scenario,
-    account: signedIn ? { ...STEVE } : null,
+    account: signedIn ? { ...STEVE, minecraft: scenario === 'linked' ? 'Steve' : null } : null,
     servers: scenario === 'empty' ? [] : seedServers(),
     attemptsLeft: ATTEMPTS,
+    linkPolls: 0,
     cancel: null,
   };
 }
@@ -94,6 +103,8 @@ function fail(category: LauncherError['category'], code: string, message: string
 }
 
 const closed = (): never => fail('network', 'player_accounts_closed', "Perland accounts aren't open yet.");
+/** What a call that needs a session answers without one, as the real backend does. */
+const signedOut = (): never => fail('auth', 'perland_signed_out', 'You were signed out of Perland.');
 
 const methodsOf = (scenario: PerlandScenario): string[] =>
   scenario === 'off' ? [] : scenario === 'emailOnly' ? ['email'] : ['discord', 'email'];
@@ -107,6 +118,21 @@ function page(perland: MockPerland, listing: Listing): YourServersPage {
   const rank = (c: YourServerCard) => RELATIONS.indexOf(c.relation);
   const servers = [...perland.servers].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
   return { servers: servers.map((c) => ({ ...structuredClone(c), instance: joinedInstance(c, listing) })) };
+}
+
+/** The linked player's numbers: the owner's server, the shared followed one, and the mock server instance's. */
+function stats(perland: MockPerland, listing: Listing): PerlandStats | null {
+  if (!perland.account || perland.scenario === 'noAddon') return null;
+  if (!perland.account.minecraft) return { servers: [] };
+  const shared = MOCK_PUBLIC_SERVERS.find((c) => c.token.startsWith(SHARED)) as PublicServerCard;
+  const mockServer = MOCK_PUBLIC_SERVERS.find((c) => c.invite === MOCK_INVITE) as PublicServerCard;
+  return {
+    servers: [
+      { token: OWNER.repeat(43), instance: null, name: 'My world', playtimeSeconds: 108000, advancements: 12 },
+      { token: shared.token, instance: joinedInstance(shared, listing), name: shared.name, playtimeSeconds: 2400, advancements: 3 },
+      { token: mockServer.token, instance: joinedInstance(mockServer, listing), name: mockServer.name, playtimeSeconds: 14400, advancements: 7 },
+    ],
+  };
 }
 
 const find = (perland: MockPerland, invite: unknown) => {
@@ -175,12 +201,31 @@ export async function handlePerland(
         perland.attemptsLeft = Math.max(0, perland.attemptsLeft - 1);
         fail('auth', 'invalid_code', "That code isn't right.", { attemptsLeft: String(perland.attemptsLeft) });
       }
-      perland.account = { name: email, email, discord: false, newPlayer: true };
+      perland.account = { name: email, email, discord: false, newPlayer: true, minecraft: null };
       return perland.account;
     }
     case 'perland_sign_out':
       perland.account = null;
       return null;
+    case 'perland_link_code':
+      if (!on || !perland.account) signedOut();
+      perland.linkPolls = 0;
+      return { code: MOCK_LINK_CODE, expiresIn: LINK_EXPIRES_IN };
+    case 'perland_link_poll': {
+      const account = on ? perland.account : null;
+      if (!account) return signedOut();
+      if (account.minecraft !== null) return account.minecraft;
+      perland.linkPolls += 1;
+      if (perland.linkPolls < MOCK_LINK_POLLS) return null;
+      perland.account = { ...account, minecraft: 'Steve' };
+      return 'Steve';
+    }
+    case 'perland_unlink':
+      if (perland.account) perland.account = { ...perland.account, minecraft: null };
+      perland.linkPolls = 0;
+      return null;
+    case 'perland_stats':
+      return on ? stats(perland, listing) : null;
     case 'your_servers':
       return on && perland.account ? page(perland, listing) : null;
     case 'your_servers_follow': {

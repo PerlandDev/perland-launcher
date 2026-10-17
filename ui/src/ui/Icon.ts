@@ -32,6 +32,7 @@ export {
   Square,
   Terminal,
   Trash,
+  Trophy,
   Unlink,
   Upload,
   User,

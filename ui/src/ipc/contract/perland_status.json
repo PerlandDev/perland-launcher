@@ -17,7 +17,8 @@
       "name": "Steve",
       "email": "steve@example.com",
       "discord": true,
-      "newPlayer": true
+      "newPlayer": true,
+      "minecraft": "Steve"
     }
   },
   {
@@ -29,7 +30,8 @@
       "name": "alex@example.com",
       "email": "alex@example.com",
       "discord": false,
-      "newPlayer": false
+      "newPlayer": false,
+      "minecraft": null
     }
   },
   {

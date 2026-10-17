@@ -20,6 +20,7 @@ import instanceFx from './contract/instance.json';
 import instanceListing from './contract/instance_listing.json';
 import javaTest from './contract/java_test.json';
 import joinPreviewFx from './contract/join_preview.json';
+import linkCode from './contract/link_code.json';
 import listQueries from './contract/list_queries.json';
 import loaderVersions from './contract/loader_versions.json';
 import localMods from './contract/local_mods.json';
@@ -30,6 +31,7 @@ import openTargets from './contract/open_targets.json';
 import packAddRequests from './contract/pack_add_requests.json';
 import packContents from './contract/pack_contents.json';
 import packStatus from './contract/pack_status.json';
+import perlandStats from './contract/perland_stats.json';
 import perlandStatus from './contract/perland_status.json';
 import planRequests from './contract/plan_requests.json';
 import playtimeFx from './contract/playtime.json';
@@ -79,6 +81,8 @@ const cases: [string, ZodType, unknown][] = [
   ['public_server_page', s.publicServerPage, publicServerPage],
   ['server_news', s.serverNews, serverNews],
   ['perland_status', s.perlandStatus.array(), perlandStatus],
+  ['link_code', s.linkCode, linkCode],
+  ['perland_stats', s.perlandStats.nullable().array(), perlandStats],
   ['email_code_sent', s.emailCodeSent, emailCodeSent],
   ['your_servers_page', s.yourServersPage, yourServersPage],
   ['deep_links', s.deepLink.array(), deepLinksFx],

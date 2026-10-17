@@ -632,6 +632,57 @@ pub struct PerlandAccount {
     pub discord: bool,
     /// The sign-in that made this session created the player.
     pub new_player: bool,
+    /// The linked Minecraft account's name, as it was when linked.
+    pub minecraft: Option<String>,
+}
+
+/// A Minecraft link code, typed in the game as `/perland link <code>`, and its lifetime in
+/// seconds.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkCodeView {
+    pub code: String,
+    pub expires_in: u64,
+}
+
+// Manual Debug: the code links an account to whoever types it first.
+impl fmt::Debug for LinkCodeView {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LinkCodeView")
+            .field("expires_in", &self.expires_in)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The signed-in player's totals on the servers whose invite is on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerlandStats {
+    pub servers: Vec<ServerStatsView>,
+}
+
+/// A player's totals on one server. `token` is the server's invite credential, which matches it
+/// to a card (`PublicServerCard.token`); `instance` is the instance that joins it, if any.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerStatsView {
+    pub token: String,
+    pub instance: Option<String>,
+    pub name: String,
+    pub playtime_seconds: u64,
+    pub advancements: u32,
+}
+
+// Manual Debug: the token is a credential.
+impl fmt::Debug for ServerStatsView {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ServerStatsView")
+            .field("instance", &self.instance)
+            .field("name", &self.name)
+            .field("playtime_seconds", &self.playtime_seconds)
+            .field("advancements", &self.advancements)
+            .finish_non_exhaustive()
+    }
 }
 
 /// An email code is on its way: seconds until another may be asked for.
@@ -821,5 +872,26 @@ mod tests {
         assert_eq!(json["reason"]["of"], "Sodium");
         assert_eq!(json["fileName"], "fabric-api.jar");
         assert!(json.get("url").is_none() && json.get("hashes").is_none());
+    }
+
+    #[test]
+    fn link_code_and_server_stats_debug_hide_their_secrets() {
+        let code = LinkCodeView {
+            code: "ABCD-EFGH".into(),
+            expires_in: 600,
+        };
+        let shown = format!("{code:?}");
+        assert!(!shown.contains("ABCD") && shown.contains("600"));
+        let stats = PerlandStats {
+            servers: vec![ServerStatsView {
+                token: "t".repeat(43),
+                instance: Some("asalith".into()),
+                name: "Asalith".into(),
+                playtime_seconds: 60,
+                advancements: 1,
+            }],
+        };
+        let shown = format!("{stats:?}");
+        assert!(!shown.contains(&"t".repeat(43)) && shown.contains("Asalith"));
     }
 }

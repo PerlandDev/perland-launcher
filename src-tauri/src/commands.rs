@@ -5,9 +5,9 @@ use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
     AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, EmailCodeSent, IconChoice, ImportPreview,
     ImportRequest, InstallPlanView, InstallResult, InstanceArtData, JavaTest, JoinPreview,
-    ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus,
-    PerlandAccount, PerlandStatus, PlaytimeEntry, PublicServerPage, RunSnapshot, SearchRequest,
-    ServerNews, ServerStatusView, YourServersPage,
+    LinkCodeView, ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents,
+    PackStatus, PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage,
+    RunSnapshot, SearchRequest, ServerNews, ServerStatusView, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -538,6 +538,26 @@ pub async fn perland_email_verify(
 #[tauri::command]
 pub async fn perland_sign_out(core: CoreState<'_>) -> Res<()> {
     logged("perland_sign_out", core.perland_sign_out().await)
+}
+
+#[tauri::command]
+pub async fn perland_link_code(core: CoreState<'_>) -> Res<LinkCodeView> {
+    logged("perland_link_code", core.perland_link_code().await)
+}
+
+#[tauri::command]
+pub async fn perland_link_poll(core: CoreState<'_>) -> Res<Option<String>> {
+    logged("perland_link_poll", core.perland_link_poll().await)
+}
+
+#[tauri::command]
+pub async fn perland_unlink(core: CoreState<'_>) -> Res<()> {
+    logged("perland_unlink", core.perland_unlink().await)
+}
+
+#[tauri::command]
+pub async fn perland_stats(core: CoreState<'_>) -> Res<Option<PerlandStats>> {
+    logged("perland_stats", core.perland_stats().await)
 }
 
 #[tauri::command]

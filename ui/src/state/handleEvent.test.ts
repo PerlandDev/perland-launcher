@@ -72,6 +72,8 @@ it('an ended run refreshes the instance and its pack queries', () => {
   expect(keys).toContainEqual(qk.contentFiles('sky', 'shader'));
   // The game's time is on disk before `idle` goes out.
   expect(keys).toContainEqual(qk.playtime);
+  // Playing earns advancements and time that the linked account's stats count.
+  expect(keys).toContainEqual(qk.perlandStats);
   spy.mockRestore();
 });
 

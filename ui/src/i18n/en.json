@@ -324,7 +324,21 @@
     "signOut": "Sign out",
     "player": "Perland player",
     "signedIn": "Signed in to Perland as {{name}}.",
-    "signedOut": "Signed out of Perland."
+    "signedOut": "Signed out of Perland.",
+    "minecraft": {
+      "title": "Minecraft account",
+      "pitch": "Link your Minecraft account to see your achievements on each server.",
+      "link": "Link Minecraft account",
+      "instructions": "Type {{command}} on a Perland server.",
+      "copy": "Copy command",
+      "copied": "Command copied",
+      "expiresIn": "Expires in {{time}}",
+      "expired": "The code expired.",
+      "newCode": "Get a new code",
+      "linked": "Linked to {{name}}",
+      "unlink": "Unlink",
+      "linkedAnnounce": "Your Minecraft account {{name}} is linked."
+    }
   },
   "settings": {
     "title": "Settings",
@@ -472,6 +486,12 @@
       "more": "More for {{name}}",
       "nudge": "Sign in with Perland to keep your servers here.",
       "signIn": "Sign in"
+    },
+    "stats": {
+      "achievements_one": "{{count}} achievement",
+      "achievements_other": "{{count}} achievements",
+      "played": "{{time}} played",
+      "label": "Your stats on this server:"
     },
     "sleeping": "Sleeping, Play wakes it",
     "starting": "Starting",
@@ -646,6 +666,7 @@
     "perland_signed_out": { "message": "You were signed out of Perland." },
     "player_servers_closed": { "message": "Your servers aren't available right now." },
     "too_many_player_servers": { "message": "You have too many servers saved. Unfollow some first." },
+    "minecraft_link_closed": { "message": "Linking isn't available right now." },
     "launcher_update_failed": { "message": "Couldn't check for launcher updates.", "fix": "You can keep playing. It tries again next time you open the launcher." },
     "launcher_update_invalid": { "message": "The launcher update didn't pass its safety check, so it wasn't installed.", "fix": "Try again later. If it keeps happening, let us know." },
     "launcher_update_busy": { "message": "Wait for games and installs to finish before restarting to update.", "fix": "The update also installs when you close the launcher." },

@@ -56,6 +56,13 @@ describe('YourServers', () => {
     expect(screen.queryByText(NUDGE)).toBeNull();
   });
 
+  it('shows the stats line only on a card with stats', async () => {
+    renderApp(<ServersScreen />, { perland: 'linked' });
+    const section = await yours();
+    expect(await within(await cardIn(section, 'My world')).findByText(/^12 achievements · .+ played$/)).toBeInTheDocument();
+    expect(within(await cardIn(section, 'Friends')).queryByText(/achievement/)).toBeNull();
+  });
+
   it('menu_only_on_followed', async () => {
     renderApp(<ServersScreen />, { perland: 'signedIn' });
     const section = await yours();

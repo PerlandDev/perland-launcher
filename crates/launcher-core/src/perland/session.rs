@@ -33,6 +33,8 @@ pub struct Profile {
     pub email: Option<String>,
     /// Whether a Discord account is linked.
     pub discord: bool,
+    /// The linked Minecraft name, if an account is linked.
+    pub minecraft: Option<String>,
 }
 
 impl Profile {
@@ -46,6 +48,7 @@ impl Profile {
             name,
             email: player.email.clone(),
             discord: player.discord.is_some(),
+            minecraft: player.minecraft.as_ref().map(|m| m.name.clone()),
         }
     }
 }
@@ -225,6 +228,9 @@ struct Marker {
     name: String,
     email: Option<String>,
     discord: bool,
+    /// Absent in a marker written before the Minecraft link existed.
+    #[serde(default)]
+    minecraft: Option<String>,
 }
 
 impl Marker {
@@ -234,6 +240,7 @@ impl Marker {
             name: session.profile.name.clone(),
             email: session.profile.email.clone(),
             discord: session.profile.discord,
+            minecraft: session.profile.minecraft.clone(),
         }
     }
 }
@@ -291,6 +298,7 @@ impl SessionStore {
                     name: marker.name,
                     email: marker.email,
                     discord: marker.discord,
+                    minecraft: marker.minecraft,
                 },
             }),
             Ok(None) => {
@@ -386,7 +394,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::perland::api::DiscordAccount;
+    use crate::perland::api::{DiscordAccount, MinecraftAccount};
 
     const TOKEN: &str = "plt_0123456789abcdef0123456789abcdef";
 
@@ -398,6 +406,7 @@ mod tests {
                 name: "Eve".into(),
                 email: Some("eve@example.com".into()),
                 discord: true,
+                minecraft: None,
             },
         }
     }
@@ -574,7 +583,8 @@ mod tests {
         assert_eq!(json["name"], "Eve");
         assert_eq!(json["email"], "eve@example.com");
         assert_eq!(json["discord"], true);
-        assert_eq!(json.as_object().unwrap().len(), 4);
+        assert_eq!(json["minecraft"], serde_json::Value::Null);
+        assert_eq!(json.as_object().unwrap().len(), 5);
     }
 
     #[test]
@@ -600,6 +610,52 @@ mod tests {
         assert_eq!((p.name.as_str(), p.discord), ("eve@example.com", false));
         player.email = None;
         assert_eq!(Profile::from_player(&player).name, "");
+    }
+
+    #[test]
+    fn profile_carries_minecraft_name() {
+        let player = Player {
+            minecraft: Some(MinecraftAccount {
+                uuid: "u".into(),
+                name: "Moi".into(),
+                linked_at: "t".into(),
+            }),
+            ..Player::default()
+        };
+        assert_eq!(
+            Profile::from_player(&player).minecraft.as_deref(),
+            Some("Moi")
+        );
+        assert_eq!(Profile::from_player(&Player::default()).minecraft, None);
+    }
+
+    #[test]
+    fn marker_without_minecraft_still_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        // The marker #48 wrote, before the Minecraft link existed.
+        std::fs::write(
+            marker_in(&dir),
+            br#"{"engine":"https://api.example.com/","name":"Steve","email":null,"discord":true}"#,
+        )
+        .unwrap();
+        let secret = Arc::new(MemoryStore::default());
+        secret.save(TOKEN).unwrap();
+        let loaded = SessionStore::new(marker_in(&dir), secret).load().unwrap();
+        assert_eq!(loaded.profile.name, "Steve");
+        assert_eq!(loaded.profile.minecraft, None);
+    }
+
+    #[test]
+    fn marker_round_trips_minecraft() {
+        let dir = tempfile::tempdir().unwrap();
+        let secret = Arc::new(MemoryStore::default());
+        let mut linked = session();
+        linked.profile.minecraft = Some("Moi".into());
+        SessionStore::new(marker_in(&dir), secret.clone())
+            .save(&linked)
+            .unwrap();
+        let again = SessionStore::new(marker_in(&dir), secret).load().unwrap();
+        assert_eq!(again.profile.minecraft.as_deref(), Some("Moi"));
     }
 
     #[test]

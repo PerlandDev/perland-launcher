@@ -26,3 +26,9 @@ export function formatGb(mb: number, lang: string): string {
 export function formatCompact(n: number, lang: string): string {
   return new Intl.NumberFormat(lang, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
 }
+
+/** Seconds left as a clock: 600 → "10:00", 65 → "1:05". */
+export function formatCountdown(seconds: number): string {
+  const whole = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+}

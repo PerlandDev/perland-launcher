@@ -1,0 +1,21 @@
+[
+  {
+    "servers": [
+      {
+        "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "instance": "asalith-fields",
+        "name": "Asalith",
+        "playtimeSeconds": 45000,
+        "advancements": 12
+      },
+      {
+        "token": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+        "instance": null,
+        "name": "Skyblock",
+        "playtimeSeconds": 0,
+        "advancements": 0
+      }
+    ]
+  },
+  null
+]

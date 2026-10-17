@@ -20,6 +20,7 @@ import type {
   InstanceListing,
   JavaTest,
   JoinPreview,
+  LinkCode,
   ListQuery,
   LoaderKind,
   LoaderVersion,
@@ -32,6 +33,7 @@ import type {
   PackContents,
   PackStatus,
   PerlandAccount,
+  PerlandStats,
   PerlandStatus,
   PlaytimeEntry,
   ProjectDetail,
@@ -120,6 +122,13 @@ export const commands = {
   perlandEmailStart: (email: string, language: string) => invoke<EmailCodeSent>('perland_email_start', { email, language }),
   perlandEmailVerify: (email: string, code: string) => invoke<PerlandAccount>('perland_email_verify', { email, code }),
   perlandSignOut: () => invoke<null>('perland_sign_out'),
+  /** A fresh code for the player to type in game, and how long it lasts. */
+  perlandLinkCode: () => invoke<LinkCode>('perland_link_code'),
+  /** The linked Minecraft name once the player has typed the code, else null. */
+  perlandLinkPoll: () => invoke<string | null>('perland_link_poll'),
+  perlandUnlink: () => invoke<null>('perland_unlink'),
+  /** The linked player's numbers per server, or null while the Engine's add-on is off. */
+  perlandStats: () => invoke<PerlandStats | null>('perland_stats'),
   /** The player's servers, or null while signed out or when accounts are off. */
   yourServers: () => invoke<YourServersPage | null>('your_servers'),
   /** `invite` is the canonical invite URL of the card or Join screen. Follow and joined never fail. */

@@ -3,7 +3,7 @@ import i18n from '../i18n';
 import { commands } from '../ipc/commands';
 import { isLauncherError } from '../ipc/errors';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ArtChoice, ContentKind, Focus, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
+import type { ArtChoice, ContentKind, Focus, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { endImport, importWatched } from './importProgress';
@@ -45,6 +45,7 @@ export const qk = {
   serverStatus: (id: string) => ['server', 'status', id] as const,
   servers: (query: ListQuery) => ['servers', query] as const,
   perland: ['perland'] as const,
+  perlandStats: ['perlandStats'] as const,
   yourServers: ['yourServers'] as const,
   serverIcon: (token: string, iconVersion: string) => ['serverIcon', token, iconVersion] as const,
   news: (invite: string) => ['news', invite] as const,
@@ -101,6 +102,26 @@ export const useServersList = (query: ListQuery) =>
   });
 /** Whether player accounts are on, the ways to sign in, and who is signed in. Changed by the sign-in commands, which set it. */
 export const usePerlandStatus = () => useQuery({ queryKey: qk.perland, queryFn: commands.perlandStatus });
+/** Stands in for the linked name in the stats' key while signed out. A Minecraft name has no hyphen, so it never clashes. */
+const SIGNED_OUT = 'signed-out';
+/** The linked player's numbers per server; null while not linked or with the Engine's add-on off, and no data at all (undefined)
+ *  until the status says who is signed in. The linked name is in the key, so a link made or removed elsewhere (seen through
+ *  `perland_status`) reads again; while signed out the key is one that is never read, so a sign-out the status sees first leaves no
+ *  numbers behind. `qk.perlandStats` still matches every key as a prefix. Its error is never toasted: the numbers are a bonus. */
+export function usePerlandStats() {
+  const account = usePerlandStatus().data?.account;
+  return useQuery({
+    queryKey: [...qk.perlandStats, account ? account.minecraft : SIGNED_OUT],
+    queryFn: commands.perlandStats,
+    enabled: Boolean(account),
+    staleTime: Infinity,
+  });
+}
+/** The stats of the server with `token`, or undefined while there are none. */
+export const useServerStats = (token: string): ServerStats | undefined =>
+  usePerlandStats().data?.servers.find((s) => s.token === token);
+/** The stats of the server that the instance `id` joins, or undefined. */
+export const useInstanceStats = (id: string): ServerStats | undefined => usePerlandStats().data?.servers.find((s) => s.instance === id);
 /** The player's servers (null while signed out). Reads only when `enabled` (signed in) and refetches every minute while mounted;
  *  invalidate `qk.yourServers` after a follow, an unfollow or a join. */
 export const useYourServers = (enabled: boolean) =>
