@@ -10,7 +10,7 @@ import { Sentinel } from '../../ui/Sentinel';
 import { PublicServerCard } from './PublicServerCard';
 import { ServerFilters } from './ServerFilters';
 import { isFiltered, NO_FILTERS, rememberServerFilters, sessionServerFilters, type ListFilters } from './session';
-import { YourServers } from './YourServers';
+import { PUBLIC_HEADING, YourServers } from './YourServers';
 import { useFollowed } from './yours';
 
 /** How many placeholder cards stand in while the first page loads. */
@@ -115,7 +115,7 @@ function PublicServers() {
 
   return (
     <section className="grid gap-4" aria-labelledby="public-servers">
-      <h2 id="public-servers" className="text-[1.125rem] leading-tight font-bold">
+      <h2 id={PUBLIC_HEADING} tabIndex={-1} className="text-[1.125rem] leading-tight font-bold">
         {t('servers.public')}
       </h2>
       {!closed && <ServerFilters filters={filters} facets={facets} onChange={update} />}

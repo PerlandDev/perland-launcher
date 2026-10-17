@@ -75,6 +75,35 @@ describe('YourServers', () => {
     expect(within(section).getByRole('heading', { name: 'My world' })).toBeInTheDocument();
   });
 
+  it('unfollow keeps focus on Your servers', async () => {
+    const { user } = renderApp(<ServersScreen />, { perland: 'signedIn' });
+    const section = await yours();
+    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'More for Quiet Cove' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Unfollow' }));
+    await vi.waitFor(() => expect(within(section).queryByRole('heading', { name: 'Quiet Cove' })).toBeNull());
+    await vi.waitFor(() => expect(document.activeElement).toBe(within(section).getByRole('heading', { name: 'Your servers' })));
+  });
+
+  it('unfollowing the last card moves focus to Public servers', async () => {
+    const { user, backend } = renderApp(<ServersScreen />, { perland: 'signedIn' });
+    backend.state.perland.servers = backend.state.perland.servers.filter((s) => s.name === 'Quiet Cove');
+    const section = await yours();
+    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'More for Quiet Cove' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Unfollow' }));
+    await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'Your servers' })).toBeNull());
+    const list = await publicList();
+    await vi.waitFor(() => expect(document.activeElement).toBe(within(list).getByRole('heading', { name: 'Public servers' })));
+  });
+
+  it('unfollow on a public card moves focus to its Play', async () => {
+    const { user } = renderApp(<ServersScreen />, { perland: 'signedIn' });
+    const pure = await cardIn(await publicList(), 'Pure Vanilla');
+    await user.click(await within(pure).findByRole('button', { name: 'More for Pure Vanilla' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Unfollow' }));
+    await vi.waitFor(() => expect(within(pure).queryByRole('button', { name: 'More for Pure Vanilla' })).toBeNull());
+    await vi.waitFor(() => expect(document.activeElement).toBe(within(pure).getByRole('button', { name: 'Play' })));
+  });
+
   it('a failed unfollow is a toast', async () => {
     const backend = createMockBackend({ perland: 'signedIn' });
     const { user } = renderWithProviders(<ServersScreen />, {
@@ -149,6 +178,25 @@ describe('YourServers', () => {
     expect(within(mine).getByRole('button', { name: 'Play' })).toBeEnabled();
   });
 
+  it('a session the Engine ended reads as signed out', async () => {
+    const backend = createMockBackend({ perland: 'signedIn' });
+    const statuses: unknown[] = [];
+    renderWithProviders(<ServersScreen />, {
+      ipc: async (cmd, args) => {
+        if (cmd === 'your_servers') {
+          // A 401 on /servers: the backend forgets the session and answers null.
+          await backend.handle('perland_sign_out', {});
+          return null;
+        }
+        if (cmd === 'perland_status') statuses.push(cmd);
+        return backend.handle(cmd, args);
+      },
+    });
+    expect(await screen.findByText(NUDGE)).toBeInTheDocument();
+    expect(statuses).toHaveLength(2);
+    expect(screen.queryByRole('region', { name: 'Your servers' })).toBeNull();
+  });
+
   it('shows Your servers in Spanish', async () => {
     const { default: i18n } = await import('../../i18n');
     await i18n.changeLanguage('es');
@@ -157,5 +205,12 @@ describe('YourServers', () => {
     expect(within(await cardIn(section, 'My world')).getByText('Dueño')).toBeInTheDocument();
     expect(within(await cardIn(section, 'Friends')).getByText('Invitado')).toBeInTheDocument();
     expect(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'Más opciones para Quiet Cove' })).toBeInTheDocument();
+  });
+
+  it('nudges in Spanish', async () => {
+    const { default: i18n } = await import('../../i18n');
+    await i18n.changeLanguage('es');
+    renderApp(<ServersScreen />, { perland: 'signedOut' });
+    expect(await screen.findByText('Inicia sesión con Perland para guardar tus servidores aquí.')).toBeInTheDocument();
   });
 });

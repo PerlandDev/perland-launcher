@@ -64,7 +64,7 @@ describe('PerlandAccountCard', () => {
     const { user, calls, qc } = renderApp(<PerlandAccountCard />, { perland: 'signedOut' });
     seedYourServers(qc);
     await user.click(await screen.findByRole('button', { name: 'Continue with Discord' }));
-    expect(await screen.findByText('Finish signing in in your browser')).toBeInTheDocument();
+    expect(await screen.findByText('Finish signing in with your browser')).toBeInTheDocument();
     expect(sent(calls, 'perland_sign_in_discord')).toEqual([{ language: 'en' }]);
 
     await user.click(screen.getByRole('button', { name: 'Open the page again' }));
@@ -79,7 +79,7 @@ describe('PerlandAccountCard', () => {
   it('cancel_returns_to_signed_out', async () => {
     const { user, calls } = renderApp(<PerlandAccountCard />, { perland: 'signedOut' });
     await user.click(await screen.findByRole('button', { name: 'Continue with Discord' }));
-    await screen.findByText('Finish signing in in your browser');
+    await screen.findByText('Finish signing in with your browser');
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(await screen.findByRole('button', { name: 'Continue with Discord' })).toBeInTheDocument();
     expect(sent(calls, 'perland_sign_in_cancel')).toHaveLength(1);
@@ -97,6 +97,20 @@ describe('PerlandAccountCard', () => {
     await user.click(await screen.findByRole('button', { name: 'Continue with Discord' }));
     expect(await within(card()).findByRole('alert')).toHaveTextContent('Sign-in took too long. Try again.');
     expect(within(card()).getByRole('button', { name: 'Continue with Discord' })).toBeInTheDocument();
+  });
+
+  it('says a timed-out sign-in in Spanish', async () => {
+    const { default: i18n } = await import('../../i18n');
+    await i18n.changeLanguage('es');
+    const { user, backend } = renderApp(<PerlandAccountCard />, { perland: 'signedOut' });
+    const handle = backend.handle;
+    vi.spyOn(backend, 'handle').mockImplementation((cmd, args) =>
+      cmd === 'perland_sign_in_discord'
+        ? Promise.reject({ category: 'network', code: 'sign_in_timed_out', message: 'late', fix: null, detail: null, params: {} })
+        : handle(cmd, args),
+    );
+    await user.click(await screen.findByRole('button', { name: 'Continuar con Discord' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('El inicio de sesión tardó demasiado. Inténtalo de nuevo.');
   });
 
   it('email_wrong_then_right_code, with Send a new code waiting', async () => {

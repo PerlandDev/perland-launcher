@@ -209,7 +209,7 @@ Players find a server through a friend's link or the public list, play once, and
 - **Accounts** (`ui/src/features/accounts/`): a new `PerlandAccountCard` above or beside the Minecraft list, following the surface's direction and `DESIGN.md`. States:
   1. **Hidden** while `enabled` is false.
   2. **Signed out:** a short line ("Your servers and free servers go with you.") and one button per method in `methods`.
-  3. **Waiting for the browser:** "Finish signing in in your browser", with **Open the page again** and **Cancel**.
+  3. **Waiting for the browser:** "Finish signing in with your browser", with **Open the page again** and **Cancel**.
   4. **Email:** the email field, then the code field (6 digits; spaces allowed), **Send a new code** enabled after `resendIn`, and inline errors (wrong code with attempts left, ask for a new code, check the address, wait N seconds, email couldn't be sent).
   5. **Signed in:** initial tile, name, the email or "Discord", and **Sign out**.
 - **Servers** (`ui/src/features/servers-list/`):

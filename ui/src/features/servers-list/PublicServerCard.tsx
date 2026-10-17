@@ -46,6 +46,18 @@ export function PublicServerCard({
   // News is asked for only while the card is on screen: the Engine allows 60 reads a minute per player, and a page holds up to 50 cards.
   const ref = useRef<HTMLElement>(null);
   const onScreen = useOnScreen(ref);
+  // An Unfollow from this card's menu removes the menu once it goes through (the card stays, on the public list), and
+  // focus would fall to the page: it goes to Play, or the name when Play is off. Never taken from where the player moved it.
+  const playRef = useRef<HTMLButtonElement>(null);
+  const nameRef = useRef<HTMLHeadingElement>(null);
+  const unfollowing = useRef(false);
+  const hasMenu = menu !== undefined;
+  useEffect(() => {
+    if (hasMenu || !unfollowing.current) return;
+    unfollowing.current = false;
+    if (document.activeElement !== null && document.activeElement !== document.body) return;
+    (playRef.current && !playRef.current.disabled ? playRef.current : nameRef.current)?.focus();
+  }, [hasMenu]);
   return (
     <article ref={ref} className="server-tile" aria-labelledby={nameId}>
       <div className="server-tile-head" data-menu={menu ? '' : undefined}>
@@ -57,7 +69,7 @@ export function PublicServerCard({
           )}
         </span>
         <div className="grid min-w-0 content-start gap-1">
-          <h3 id={nameId} className="server-tile-name">
+          <h3 ref={nameRef} id={nameId} tabIndex={-1} className="server-tile-name">
             {card.name}
           </h3>
           <p className="tabular text-sm text-ink-dim">{gameLine(t, card)}</p>
@@ -70,7 +82,16 @@ export function PublicServerCard({
           <Menu
             compact
             label={t('servers.yours.more', { name: card.name })}
-            items={[{ label: t('servers.yours.unfollow'), icon: <MinusBox />, onSelect: menu.onUnfollow }]}
+            items={[
+              {
+                label: t('servers.yours.unfollow'),
+                icon: <MinusBox />,
+                onSelect: () => {
+                  unfollowing.current = true;
+                  menu.onUnfollow();
+                },
+              },
+            ]}
           />
         )}
       </div>
@@ -82,6 +103,7 @@ export function PublicServerCard({
         </div>
       )}
       <Button
+        ref={playRef}
         size="lg"
         className="server-tile-play"
         aria-describedby={nameId}

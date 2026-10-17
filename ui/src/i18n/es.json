@@ -470,7 +470,7 @@
       "invited": "Invitado",
       "unfollow": "Dejar de seguir",
       "more": "Más opciones para {{name}}",
-      "nudge": "Inicia sesión con Perland para tener tus servidores aquí.",
+      "nudge": "Inicia sesión con Perland para guardar tus servidores aquí.",
       "signIn": "Iniciar sesión"
     },
     "sleeping": "Dormido, Jugar lo despierta",
@@ -638,7 +638,7 @@
     "player_accounts_closed": { "message": "Las cuentas de Perland aún no están abiertas." },
     "sign_in_unavailable": { "message": "Esa forma de iniciar sesión no está disponible." },
     "sign_in_failed": { "message": "No pudimos iniciar tu sesión. Inténtalo de nuevo." },
-    "sign_in_timed_out": { "message": "Iniciar sesión tardó demasiado. Inténtalo de nuevo." },
+    "sign_in_timed_out": { "message": "El inicio de sesión tardó demasiado. Inténtalo de nuevo." },
     "invalid_email": { "message": "Revisa el correo electrónico." },
     "invalid_code": { "message": "Ese código no es correcto." },
     "too_many_codes": { "message": "Espera {{retryAfter}} segundos antes de pedir otro código." },
