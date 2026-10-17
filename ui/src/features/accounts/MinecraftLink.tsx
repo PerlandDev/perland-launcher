@@ -35,12 +35,17 @@ function fill(sentence: string, piece: ReactNode) {
   );
 }
 
-/** The status says who is linked: set it now, so the row changes before the status and the stats read again. */
+/** The status says who is linked: set it now, so the row changes before the status reads again. The new name is a new stats key,
+ *  which does the read; the stats already cached are only marked stale, so none is read again under the old name and filled with
+ *  the new answer. */
 function setLinkedName(qc: QueryClient, name: string | null) {
   qc.setQueryData<PerlandStatus>(qk.perland, (old) => (old?.account ? { ...old, account: { ...old.account, minecraft: name } } : old));
   void qc.invalidateQueries({ queryKey: qk.perland });
-  void qc.invalidateQueries({ queryKey: qk.perlandStats });
+  void qc.invalidateQueries({ queryKey: qk.perlandStats, refetchType: 'none' });
 }
+
+/** Whether `failure` says the session is gone (signed out elsewhere, or a 401). */
+const isSignedOut = (failure: unknown) => isLauncherError(failure) && failure.code === 'perland_signed_out';
 
 /** The Minecraft account row inside the signed-in Perland card: link it with a code typed on a Perland server, or
  *  who is linked and Unlink. It renders nothing unless signed in with the Engine's stats add-on on. */
@@ -68,10 +73,11 @@ export function MinecraftLink() {
   const knownAvailable = !account ? false : stats.data === undefined ? available : stats.data !== null;
   if (knownAvailable !== available) setAvailable(knownAvailable);
   // Linked, however the news arrived (the poll, or the status reading it first): the code is spent, so a later Unlink
-  // starts again from the pitch.
+  // starts again from the pitch. The poll announces its own link; this one is the status's.
   if (linkedName !== null && (step !== 'idle' || code !== null)) {
     setStep('idle');
     setCode(null);
+    setAnnounce(t('perland.minecraft.linkedAnnounce', { name: linkedName }));
   }
   const view = !available || !account ? null : linkedName !== null ? 'linked' : step;
 
@@ -111,7 +117,7 @@ export function MinecraftLink() {
           if (!alive) return;
           // Signed out elsewhere: the code is gone with the session, and the card reads the status again.
           // Anything else (offline, a slow Engine) waits for the next tick.
-          if (isLauncherError(failure) && failure.code === 'perland_signed_out') {
+          if (isSignedOut(failure)) {
             stop();
             setStep('idle');
             setCode(null);
@@ -158,6 +164,8 @@ export function MinecraftLink() {
       setStep('code');
     } catch (failure) {
       setError(failure);
+      // Signed out elsewhere: the card reads the status again, as the poll does.
+      if (isSignedOut(failure)) void qc.invalidateQueries({ queryKey: qk.perland });
     } finally {
       setBusy(false);
     }
@@ -178,6 +186,7 @@ export function MinecraftLink() {
       setLinkedName(qc, null);
     } catch (failure) {
       setError(failure);
+      if (isSignedOut(failure)) void qc.invalidateQueries({ queryKey: qk.perland });
     } finally {
       setBusy(false);
     }

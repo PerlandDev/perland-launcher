@@ -17,7 +17,7 @@ function setup(perland: MockOptions['perland']) {
   });
   const qc = createQueryClient();
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-  return { calls, wrapper, qc };
+  return { calls, wrapper, qc, backend };
 }
 
 afterEach(() => clearMocks());
@@ -70,6 +70,18 @@ it('finds one server by token and by instance id', async () => {
   await waitFor(() => expect(result.current.byToken?.advancements).toBe(12));
   expect(result.current.shared?.playtimeSeconds).toBe(2400);
   expect(result.current.byInstance).toBeUndefined();
+});
+
+it('has no stats once the status reads a sign-out', async () => {
+  const { wrapper, qc, backend, calls } = setup('signedIn');
+  const { result } = renderHook(() => usePerlandStats(), { wrapper });
+  await waitFor(() => expect(result.current.data).toEqual({ servers: [] }));
+  // Signed out on the Engine: the status reads it, nothing else is told.
+  backend.state.perland.account = null;
+  await qc.invalidateQueries({ queryKey: qk.perland });
+  await waitFor(() => expect(qc.getQueryData<{ account: unknown }>(qk.perland)?.account).toBeNull());
+  expect(result.current.data).toBeUndefined();
+  expect(statsCalls(calls)).toHaveLength(1);
 });
 
 it('keeps quiet when stats fail', async () => {

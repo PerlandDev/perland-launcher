@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MOCK_LINK_CODE, MOCK_LINK_POLLS } from '../../ipc/mockPerland';
 import { qk } from '../../state/queries';
 import { renderApp, sent } from '../../test/backend';
+import { ServerStatsLine } from '../servers-list/ServerStatsLine';
 import { MinecraftLink } from './MinecraftLink';
 import { PerlandAccountCard } from './PerlandAccountCard';
 
@@ -12,6 +13,10 @@ const row = () => screen.getByRole('region', { name: 'Minecraft account' });
 const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 
 const refusal = (code: string, message = 'nope') => ({ category: 'network', code, message, fix: null, detail: null, params: {} });
+/** The owner's server, which the mock's linked stats give 12 achievements. */
+const OWNER_TOKEN = 'O'.repeat(43);
+/** Let every answer in flight settle. */
+const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 50)));
 
 /** Answer `cmd` with `answer` instead of the mock's own. */
 function stub(backend: ReturnType<typeof renderApp>['backend'], cmd: string, answer: () => Promise<unknown>) {
@@ -90,7 +95,7 @@ describe('MinecraftLink', () => {
     expect(screen.getByRole('button', { name: 'Unlink' })).toHaveFocus();
     expect(screen.queryByText(MOCK_LINK_CODE)).not.toBeInTheDocument();
     expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.perland });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.perlandStats });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.perlandStats, refetchType: 'none' });
 
     // Linked: no more polling.
     await advance(9000);
@@ -157,6 +162,7 @@ describe('MinecraftLink', () => {
     await act(() => qc.invalidateQueries({ queryKey: qk.perland }));
     expect(await within(row()).findByText(/Linked to/)).toHaveTextContent('Linked to Steve');
     expect(screen.queryByText(MOCK_LINK_CODE)).not.toBeInTheDocument();
+    expect(screen.getByText('Your Minecraft account Steve is linked.')).toHaveAttribute('aria-live', 'polite');
 
     await user.click(screen.getByRole('button', { name: 'Unlink' }));
     expect(await screen.findByRole('button', { name: 'Link Minecraft account' })).toHaveFocus();
@@ -176,7 +182,60 @@ describe('MinecraftLink', () => {
     expect(link).toHaveFocus();
     expect(sent(calls, 'perland_unlink')).toHaveLength(1);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.perland });
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.perlandStats });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.perlandStats, refetchType: 'none' });
+  });
+
+  it('a sign-out the status sees after a link leaves no stats on the card', async () => {
+    const { user, qc, backend } = renderApp(
+      <>
+        <MinecraftLink />
+        <ServerStatsLine token={OWNER_TOKEN} />
+      </>,
+      { perland: 'signedIn' },
+    );
+    await showCode(user);
+    for (let i = 0; i < MOCK_LINK_POLLS; i++) await advance(3000);
+    expect(await screen.findByText(/12 achievements/)).toBeInTheDocument();
+    // The session ends on the Engine and the status reads it, without the card's own sign-out.
+    backend.state.perland.account = null;
+    await act(() => qc.invalidateQueries({ queryKey: qk.perland }));
+    await settle();
+    expect(screen.queryByText(/\d+ achievement/)).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Minecraft account' })).not.toBeInTheDocument();
+  });
+
+  it('right after Unlink, the card shows no numbers from the linked stats', async () => {
+    const { user, backend } = renderApp(
+      <>
+        <MinecraftLink />
+        <ServerStatsLine token={OWNER_TOKEN} />
+      </>,
+      { perland: 'signedIn' },
+    );
+    await showCode(user);
+    for (let i = 0; i < MOCK_LINK_POLLS; i++) await advance(3000);
+    expect(await screen.findByText(/12 achievements/)).toBeInTheDocument();
+    // The stats read after Unlink is slow: until it answers, the card shows what the cache holds for "not linked".
+    stub(backend, 'perland_stats', () => new Promise(() => {}));
+    await user.click(screen.getByRole('button', { name: 'Unlink' }));
+    await screen.findByRole('button', { name: 'Link Minecraft account' });
+    expect(screen.queryByText(/\d+ achievement/)).toBeNull();
+    await settle();
+    expect(screen.queryByText(/\d+ achievement/)).toBeNull();
+  });
+
+  it.each(['Link Minecraft account', 'Unlink'])('a sign-out refusal from %s reads the status again', async (name) => {
+    const { user, qc, backend } = renderApp(<MinecraftLink />, { perland: name === 'Unlink' ? 'linked' : 'signedIn' });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    const refuse = () => {
+      backend.state.perland.account = null;
+      return Promise.reject({ ...refusal('perland_signed_out'), category: 'auth' });
+    };
+    stub(backend, name === 'Unlink' ? 'perland_unlink' : 'perland_link_code', refuse);
+    await user.click(await screen.findByRole('button', { name }));
+    await vi.waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.perland }));
+    await settle();
+    expect(screen.queryByRole('region', { name: 'Minecraft account' })).not.toBeInTheDocument();
   });
 
   it('link code refusal shows inline', async () => {

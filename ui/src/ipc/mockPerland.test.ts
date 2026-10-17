@@ -185,6 +185,14 @@ describe('mock Minecraft link and stats', () => {
     expect(await stats(backend())).toBeNull();
   });
 
+  it('refuses the link code and the poll while signed out, like the Engine', async () => {
+    for (const b of [backend('signedOut'), backend('off')]) {
+      const signedOut = { category: 'auth', code: 'perland_signed_out' };
+      await expect(b.handle('perland_link_code')).rejects.toMatchObject(signedOut);
+      await expect(b.handle('perland_link_poll')).rejects.toMatchObject(signedOut);
+    }
+  });
+
   it('links on the third poll, then shows the name on the account', async () => {
     const b = backend('signedIn');
     const code = (await b.handle('perland_link_code')) as LinkCode;

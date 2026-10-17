@@ -107,7 +107,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             Err(e) if e.code == ErrorCode::PerlandSignedOut => return Ok(None),
             Err(e) => return Err(e),
         };
-        let instances = self.instances_by_invite_token(&session.engine).await?;
+        let instances = self.instances_by_invite_token(&session.engine).await;
         let servers = stats
             .servers
             .into_iter()
@@ -126,10 +126,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Each server instance's invite token and its id, for the instances whose invite belongs
-    /// to `engine`: a token only names a server on its own Engine.
-    async fn instances_by_invite_token(&self, engine: &Url) -> Result<HashMap<String, String>> {
+    /// to `engine`: a token only names a server on its own Engine. Empty when the instances
+    /// can't be listed: the numbers still show, just without their instances.
+    async fn instances_by_invite_token(&self, engine: &Url) -> HashMap<String, String> {
         let mut found = HashMap::new();
-        for instance in self.instances.list().await? {
+        let listed = match self.instances.list().await {
+            Ok(listed) => listed,
+            Err(e) => {
+                tracing::warn!(code = ?e.code, "couldn't list the instances for the server stats");
+                return found;
+            }
+        };
+        for instance in listed {
             let Some((link, saved)) = server_source(&instance) else {
                 continue;
             };
@@ -137,7 +145,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 found.entry(link.token().to_string()).or_insert(instance.id);
             }
         }
-        Ok(found)
+        found
     }
 }
 
@@ -284,6 +292,26 @@ mod tests {
             })),
         );
         let stats = core.perland_stats().await.unwrap().expect("stats");
+        assert_eq!(stats.servers[0].instance, None);
+    }
+
+    #[tokio::test]
+    async fn stats_without_the_instance_list_still_answer_without_instances() {
+        let (core, runner, _host, tmp) = core(BuildKind::Dev);
+        sign_in(&core, ENGINE, Some("Moi"));
+        // The instances folder can't be read: a file sits where it should be.
+        let dir = launcher_core::paths::LauncherDirs::new(tmp.path()).instances();
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::write(&dir, b"not a folder").unwrap();
+        serve_stats(
+            &runner,
+            Ok(Some(PlayerStats {
+                minecraft: Some(moi()),
+                servers: vec![server("Asalith", Some('A'), 60, 1)],
+            })),
+        );
+        let stats = core.perland_stats().await.unwrap().expect("stats");
+        assert_eq!(stats.servers.len(), 1);
         assert_eq!(stats.servers[0].instance, None);
     }
 

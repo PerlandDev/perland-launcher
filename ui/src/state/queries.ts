@@ -102,15 +102,18 @@ export const useServersList = (query: ListQuery) =>
   });
 /** Whether player accounts are on, the ways to sign in, and who is signed in. Changed by the sign-in commands, which set it. */
 export const usePerlandStatus = () => useQuery({ queryKey: qk.perland, queryFn: commands.perlandStatus });
-/** The linked player's numbers per server; null while signed out, not linked or with the Engine's add-on off. The linked name is in the
- *  key, so a link made or removed elsewhere (seen through `perland_status`) reads again; `qk.perlandStats` still matches it as a prefix.
- *  Its error is never toasted: the numbers are a bonus. */
+/** Stands in for the linked name in the stats' key while signed out. A Minecraft name has no hyphen, so it never clashes. */
+const SIGNED_OUT = 'signed-out';
+/** The linked player's numbers per server; null while not linked or with the Engine's add-on off, and no data at all (undefined)
+ *  until the status says who is signed in. The linked name is in the key, so a link made or removed elsewhere (seen through
+ *  `perland_status`) reads again; while signed out the key is one that is never read, so a sign-out the status sees first leaves no
+ *  numbers behind. `qk.perlandStats` still matches every key as a prefix. Its error is never toasted: the numbers are a bonus. */
 export function usePerlandStats() {
-  const status = usePerlandStatus();
+  const account = usePerlandStatus().data?.account;
   return useQuery({
-    queryKey: [...qk.perlandStats, status.data?.account?.minecraft ?? null],
+    queryKey: [...qk.perlandStats, account ? account.minecraft : SIGNED_OUT],
     queryFn: commands.perlandStats,
-    enabled: Boolean(status.data?.account),
+    enabled: Boolean(account),
     staleTime: Infinity,
   });
 }

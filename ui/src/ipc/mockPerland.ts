@@ -103,6 +103,8 @@ function fail(category: LauncherError['category'], code: string, message: string
 }
 
 const closed = (): never => fail('network', 'player_accounts_closed', "Perland accounts aren't open yet.");
+/** What a call that needs a session answers without one, as the real backend does. */
+const signedOut = (): never => fail('auth', 'perland_signed_out', 'You were signed out of Perland.');
 
 const methodsOf = (scenario: PerlandScenario): string[] =>
   scenario === 'off' ? [] : scenario === 'emailOnly' ? ['email'] : ['discord', 'email'];
@@ -206,16 +208,17 @@ export async function handlePerland(
       perland.account = null;
       return null;
     case 'perland_link_code':
-      if (!on || !perland.account) closed();
+      if (!on || !perland.account) signedOut();
       perland.linkPolls = 0;
       return { code: MOCK_LINK_CODE, expiresIn: LINK_EXPIRES_IN };
     case 'perland_link_poll': {
-      if (!on || !perland.account) return null;
-      if (perland.account.minecraft === null) {
-        perland.linkPolls += 1;
-        if (perland.linkPolls >= MOCK_LINK_POLLS) perland.account = { ...perland.account, minecraft: 'Steve' };
-      }
-      return perland.account.minecraft;
+      const account = on ? perland.account : null;
+      if (!account) return signedOut();
+      if (account.minecraft !== null) return account.minecraft;
+      perland.linkPolls += 1;
+      if (perland.linkPolls < MOCK_LINK_POLLS) return null;
+      perland.account = { ...account, minecraft: 'Steve' };
+      return 'Steve';
     }
     case 'perland_unlink':
       if (perland.account) perland.account = { ...perland.account, minecraft: null };
