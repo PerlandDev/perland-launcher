@@ -1,5 +1,7 @@
 //! Perland server invites as a pack source (join-by-link spec §2.1).
 //! - A modded stack resolves to the invite's `.mrpack`, built from the commit the server runs.
+//! - A stack that runs a Modrinth modpack version (`modrinth`, with `pack: null`) resolves to
+//!   that version through Modrinth, and stays a server instance.
 //! - A stack without a modpack resolves to vanilla at the server's Minecraft version.
 //! - Networks, and modded stacks without a modpack, are refused (`invite_unsupported`).
 //!
@@ -12,7 +14,9 @@ use std::{
 
 use sha1::Digest;
 
-use super::{game_from, invalid, mrpack, DesiredState, PackAbout, PackArt, Sources, UpdateCheck};
+use super::{
+    game_from, invalid, modrinth, mrpack, DesiredState, PackAbout, PackArt, Sources, UpdateCheck,
+};
 use crate::{
     download::{hash::sha1_hex, DownloadRequest, Hashes},
     error::{ErrorCode, LauncherError, Result},
@@ -22,25 +26,28 @@ use crate::{
         client::{
             gone, host_of, host_trouble, offline, rate_limited, request_failed, status_error,
         },
-        invite_route, non_empty, EngineView, InviteGame, InviteLink, InviteView, Url, PACK_READY,
-        PACK_UNAVAILABLE,
+        invite_route, non_empty, EngineView, InviteGame, InviteLink, InviteModrinth, InviteView,
+        Url, PACK_READY, PACK_UNAVAILABLE,
     },
     sync::{sync_cancelled, Cancel},
 };
 
 /// The stamp of a stack without a modpack: `vanilla:<minecraft version>`.
 pub const VANILLA_PREFIX: &str = "vanilla:";
+/// The stamp of a stack that runs a Modrinth modpack version: `modrinth:<version id>`.
+pub const MODRINTH_PREFIX: &str = "modrinth:";
 
 fn game_version(view: &InviteView) -> Option<&str> {
     non_empty(&view.game.version)
 }
 
-/// What the update check compares: the pinned commit, or `vanilla:<version>`. `None` for a
-/// modded stack on an Engine that doesn't send the commit yet.
+/// What the update check compares: the pinned commit, `modrinth:<version id>`, or
+/// `vanilla:<version>`. `None` for a modded stack on an Engine that doesn't send the commit yet.
 pub fn stamp_of(view: &InviteView) -> Option<String> {
-    match &view.pack {
-        Some(pack) => non_empty(&pack.commit).map(str::to_string),
-        None => game_version(view).map(|v| format!("{VANILLA_PREFIX}{v}")),
+    match (&view.pack, &view.modrinth) {
+        (Some(pack), _) => non_empty(&pack.commit).map(str::to_string),
+        (None, Some(m)) => Some(format!("{MODRINTH_PREFIX}{}", m.version_id)),
+        (None, None) => game_version(view).map(|v| format!("{VANILLA_PREFIX}{v}")),
     }
 }
 
@@ -64,7 +71,8 @@ pub fn supported(link: &InviteLink, ev: &EngineView) -> Result<()> {
 
 /// Can the launcher join a server like this? Not a network; not a modded stack without a
 /// modpack (its mods can't be installed, and vanilla wouldn't get in); and a stack needs a
-/// modpack or a Minecraft version. `vanilla` names no loader, as in `loader_from`.
+/// modpack or a Minecraft version. `vanilla` names no loader, as in `loader_from`. `has_pack`
+/// is an Engine pack or a Modrinth version.
 pub fn joinable_game(kind: &str, game: &InviteGame, has_pack: bool) -> bool {
     let modded_without_pack =
         !has_pack && non_empty(&game.loader).is_some_and(|l| !l.eq_ignore_ascii_case("vanilla"));
@@ -73,7 +81,11 @@ pub fn joinable_game(kind: &str, game: &InviteGame, has_pack: bool) -> bool {
 
 fn refused(ev: &EngineView) -> Result<()> {
     let view = &ev.view;
-    if joinable_game(&view.kind, &view.game, view.pack.is_some()) {
+    if joinable_game(
+        &view.kind,
+        &view.game,
+        view.pack.is_some() || view.modrinth.is_some(),
+    ) {
         return Ok(());
     }
     let address = ServerAddress::from_view(&view.address, &ev.engine)
@@ -263,7 +275,10 @@ async fn resolve_inner(
     supported(link, &ev)?;
     let ev = wait_for_pack(src, link, ev, sink, cancel).await?;
     let Some(pack) = ev.view.pack.clone() else {
-        return vanilla(link, &ev);
+        return match ev.view.modrinth.clone() {
+            Some(m) => from_modrinth(src, link, &ev, &m, cancel).await,
+            None => vanilla(link, &ev),
+        };
     };
     if cancel.is_cancelled() {
         return Err(sync_cancelled());
@@ -282,6 +297,29 @@ async fn resolve_inner(
         desired.pack_version = version.to_string();
     }
     desired.about = about(link, &ev);
+    Ok(desired)
+}
+
+/// A stack that runs a Modrinth modpack version: that version, installed from Modrinth, with
+/// the server's name and about as for an Engine pack. The stamp follows the version id, so a
+/// new version on the server updates players.
+async fn from_modrinth(
+    src: &Sources,
+    link: &InviteLink,
+    ev: &EngineView,
+    m: &InviteModrinth,
+    cancel: &Cancel,
+) -> Result<DesiredState> {
+    if cancel.is_cancelled() {
+        return Err(sync_cancelled());
+    }
+    let mut desired = modrinth::resolve(src, &m.project_id, &m.version_id).await?;
+    let name = display_name(&ev.view);
+    if !name.is_empty() {
+        desired.name = name;
+    }
+    desired.about = about(link, ev);
+    desired.stamp = format!("{MODRINTH_PREFIX}{}", m.version_id);
     Ok(desired)
 }
 
@@ -552,6 +590,44 @@ mod tests {
     use super::*;
 
     const TOKEN: &str = "b4sE64url_-b4sE64url_-b4sE64url_-b4sE64url_";
+
+    fn modded(modrinth: Option<(&str, &str)>) -> EngineView {
+        EngineView {
+            engine: Url::parse("https://api.example.com").unwrap(),
+            view: InviteView {
+                kind: "stack".into(),
+                game: InviteGame {
+                    kind: "fabric".into(),
+                    version: Some("1.20.1".into()),
+                    loader: Some("fabric".into()),
+                    loader_version: None,
+                },
+                modrinth: modrinth.map(|(project, version)| InviteModrinth {
+                    project_id: project.into(),
+                    version_id: version.into(),
+                }),
+                ..InviteView::default()
+            },
+        }
+    }
+
+    #[test]
+    fn modded_with_modrinth_is_joinable() {
+        assert!(refused(&modded(Some(("1KVo5zza", "Yp8wLY1P")))).is_ok());
+        let e = refused(&modded(None)).unwrap_err();
+        assert_eq!(e.code, ErrorCode::InviteUnsupported);
+    }
+
+    #[test]
+    fn stamp_of_modrinth() {
+        let ev = modded(Some(("1KVo5zza", "Yp8wLY1P")));
+        assert_eq!(stamp_of(&ev.view).as_deref(), Some("modrinth:Yp8wLY1P"));
+        // Without either, a stack is vanilla at its version.
+        assert_eq!(
+            stamp_of(&modded(None).view).as_deref(),
+            Some("vanilla:1.20.1")
+        );
+    }
 
     #[test]
     fn scrub_takes_the_token_out_of_every_field() {

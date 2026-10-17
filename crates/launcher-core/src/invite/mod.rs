@@ -9,8 +9,8 @@ pub use client::{
 };
 pub use link::{invite_link_cases, shown_invite, InviteLink, InviteLinkCase, TOKEN_LEN};
 pub use view::{
-    non_empty, InviteAddress, InviteGame, InviteLauncher, InvitePack, InvitePlayers, InviteTeam,
-    InviteView, PACK_PENDING, PACK_READY, PACK_UNAVAILABLE,
+    non_empty, InviteAddress, InviteGame, InviteLauncher, InviteModrinth, InvitePack,
+    InvitePlayers, InviteTeam, InviteView, PACK_PENDING, PACK_READY, PACK_UNAVAILABLE,
 };
 
 /// Engine and invite URLs, re-exported so the app can name them without depending on reqwest.
