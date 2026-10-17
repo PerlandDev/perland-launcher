@@ -572,6 +572,12 @@ pub async fn perland_email_verify(
     )
 }
 
+/// Opened from Rust, like `open_link`, so the webview's opener scope stays as narrow as it was.
+#[tauri::command]
+pub async fn perland_manage(core: CoreState<'_>, stack: String) -> Res<()> {
+    logged("perland_manage", core.perland_manage(&stack))
+}
+
 #[tauri::command]
 pub async fn perland_sign_out(core: CoreState<'_>) -> Res<()> {
     logged("perland_sign_out", core.perland_sign_out().await)

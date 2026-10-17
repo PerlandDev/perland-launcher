@@ -195,6 +195,7 @@ fn main() {
             commands::perland_sign_in_discord,
             commands::perland_sign_in_reopen,
             commands::perland_sign_in_cancel,
+            commands::perland_manage,
             commands::perland_email_start,
             commands::perland_email_verify,
             commands::perland_sign_out,
@@ -257,6 +258,20 @@ fn site_override(raw: Option<&str>) -> Option<launcher_core::invite::Url> {
     site
 }
 
+/// `PERLAND_PANEL_URL`: the Perland panel, where Manage in Perland opens a server the player
+/// owns. Read when the app starts, else as it was when the app was built (the Release workflow
+/// passes the repository variable); unset or unusable, the launcher offers no Manage in Perland.
+fn panel_url(run: Option<&str>, built: Option<&str>) -> Option<launcher_core::invite::Url> {
+    let raw = run.or(built).filter(|raw| !raw.trim().is_empty())?;
+    let panel = launcher_core::perland::panel_url(raw);
+    if panel.is_none() {
+        tracing::warn!(
+            "PERLAND_PANEL_URL isn't an https address (or http on this computer); ignored"
+        );
+    }
+    panel
+}
+
 fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> {
     let root = root_from_env().ok_or("couldn't find a data folder")?;
     let dirs = LauncherDirs::new(root);
@@ -288,6 +303,10 @@ fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> 
         launcher_version: version,
         system_memory_mb: host::system_memory_mb(),
         downloads_dir: launcher_core::sync::manual::downloads_dir(),
+        panel: panel_url(
+            std::env::var("PERLAND_PANEL_URL").ok().as_deref(),
+            option_env!("PERLAND_PANEL_URL"),
+        ),
     };
     Ok(AppCore::new(config, meta, runner, host))
 }

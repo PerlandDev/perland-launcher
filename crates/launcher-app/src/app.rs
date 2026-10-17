@@ -62,6 +62,9 @@ pub struct AppConfig {
     pub system_memory_mb: u64,
     /// Where the player's browser saves files (manual CurseForge downloads).
     pub downloads_dir: Option<PathBuf>,
+    /// The Perland panel (`launcher_core::perland::panel_url`), where the player manages the
+    /// servers they own. Without one, Manage in Perland isn't offered.
+    pub panel: Option<launcher_core::invite::Url>,
 }
 
 /// The names a Java executable has. Anything else is never run.
@@ -276,6 +279,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             ),
             system_memory_mb: self.config.system_memory_mb,
             data_dir: self.config.dirs.root().display().to_string(),
+            panel: self.config.panel.is_some(),
         })
     }
 
@@ -759,6 +763,35 @@ pub(crate) mod tests {
         Arc<RecordingHost>,
         tempfile::TempDir,
     ) {
+        core_with(build, secret, None)
+    }
+
+    /// `core`, with the Perland panel at `panel`.
+    pub(crate) fn core_with_panel(
+        panel: &str,
+    ) -> (
+        Arc<TestCore>,
+        Arc<FakeRunner>,
+        Arc<RecordingHost>,
+        tempfile::TempDir,
+    ) {
+        core_with(
+            BuildKind::Dev,
+            Arc::new(launcher_core::perland::MemoryStore::default()),
+            launcher_core::perland::panel_url(panel),
+        )
+    }
+
+    fn core_with(
+        build: BuildKind,
+        secret: Arc<dyn SecretStore>,
+        panel: Option<launcher_core::invite::Url>,
+    ) -> (
+        Arc<TestCore>,
+        Arc<FakeRunner>,
+        Arc<RecordingHost>,
+        tempfile::TempDir,
+    ) {
         let tmp = tempfile::tempdir().unwrap();
         let dirs = LauncherDirs::new(tmp.path());
         let runner = FakeRunner::new();
@@ -772,6 +805,7 @@ pub(crate) mod tests {
                 launcher_version: "0.1.0".into(),
                 system_memory_mb: 16384,
                 downloads_dir: Some(tmp.path().join("Downloads")),
+                panel,
             },
             meta,
             runner.clone(),
@@ -787,6 +821,14 @@ pub(crate) mod tests {
             minecraft: "1.20.1".into(),
             loader: None,
         }
+    }
+
+    #[tokio::test]
+    async fn app_info_says_whether_a_panel_is_configured() {
+        let (without, _, _, _t1) = core(BuildKind::Dev);
+        assert!(!without.app_info().await.unwrap().panel);
+        let (with, _, _, _t2) = core_with_panel("https://panel.example.com");
+        assert!(with.app_info().await.unwrap().panel);
     }
 
     #[tokio::test]

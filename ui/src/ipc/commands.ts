@@ -131,6 +131,8 @@ export const commands = {
   perlandEmailStart: (email: string, language: string) => invoke<EmailCodeSent>('perland_email_start', { email, language }),
   perlandEmailVerify: (email: string, code: string) => invoke<PerlandAccount>('perland_email_verify', { email, code }),
   perlandSignOut: () => invoke<null>('perland_sign_out'),
+  /** Manage in Perland: the panel's page for a server the player owns, in the browser. */
+  perlandManage: (stack: string) => invoke<null>('perland_manage', { stack }),
   /** A fresh code for the player to type in game, and how long it lasts. */
   perlandLinkCode: () => invoke<LinkCode>('perland_link_code'),
   /** The linked Minecraft name once the player has typed the code, else null. */

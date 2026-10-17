@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { FreeServerCard as FreeServer, PublicServerCard as Card } from '../../ipc/schema';
 import { Trash } from '../../ui/Icon';
 import { PublicServerCard } from '../servers-list/PublicServerCard';
+import { useManageItem } from '../servers-list/yours';
 import { DeleteServerDialog } from './DeleteServerDialog';
 import { usePlayFreeServer } from './usePlayFreeServer';
 
@@ -12,11 +13,12 @@ const LIST_STATUSES: readonly string[] = ['online', 'starting', 'sleeping', 'off
 const UNPLAYABLE: readonly string[] = ['creating', 'deleting', 'stopped'];
 
 /** The player's own free server, first in Your servers: the public card tagged Owner, with its warning lines, its own status
- *  words while it is created or deleted, Play through `free_server_play` and Delete server in its menu. */
+ *  words while it is created or deleted, Play through `free_server_play`, and Manage in Perland (with a panel) and Delete server in its menu. */
 export function FreeServerCard({ server, onDeleting }: { server: FreeServer; onDeleting?: (going: boolean) => void }) {
   const { t, i18n } = useTranslation();
   const [deleting, setDeleting] = useState(false);
   const play = usePlayFreeServer();
+  const manage = useManageItem();
   const busy = server.freeStatus === 'creating' || server.freeStatus === 'deleting';
   const unplayable = UNPLAYABLE.includes(server.freeStatus) || server.disk.over;
   // The card takes its pill, Play and address from the Engine's own word. A word the app doesn't know keeps the card's status.
@@ -36,7 +38,10 @@ export function FreeServerCard({ server, onDeleting }: { server: FreeServer; onD
         notes={notes(t, i18n.language, server)}
         statusWord={statusWord(t, server.freeStatus)}
         onPlay={play.run}
-        menuItems={[{ label: t('freeServer.delete.action'), icon: <Trash />, danger: true, disabled: busy, onSelect: () => setDeleting(true) }]}
+        menuItems={[
+          ...manage(server.name),
+          { label: t('freeServer.delete.action'), icon: <Trash />, danger: true, disabled: busy, onSelect: () => setDeleting(true) },
+        ]}
       />
       {deleting && <DeleteServerDialog name={server.name} onClose={() => setDeleting(false)} onDeleting={onDeleting} />}
     </>

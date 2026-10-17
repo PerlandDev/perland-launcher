@@ -71,6 +71,7 @@ fn launcher(root: &Path, timing: InviteTiming) -> (Arc<LiveCore>, Arc<RecordingH
             launcher_version: "0.1.0".into(),
             system_memory_mb: 16384,
             downloads_dir: None,
+            panel: None,
         },
         meta,
         runner,
