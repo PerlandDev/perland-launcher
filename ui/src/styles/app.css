@@ -975,17 +975,6 @@
     align-items: start;
     gap: 1.5rem;
   }
-  /* Change icon… and Change background… show one group: a single column in a dialog sized to it. The
-     background keeps the width its column has beside the icon. */
-  .dialog:has(.art-sections[data-part='icon']) {
-    width: min(24rem, calc(100vw - 4rem));
-  }
-  .dialog:has(.art-sections[data-part='background']) {
-    width: min(33rem, calc(100vw - 4rem));
-  }
-  .art-sections:is([data-part='icon'], [data-part='background']) {
-    grid-template-columns: minmax(0, 1fr);
-  }
   .art-keys-stack {
     grid-template-columns: minmax(0, 1fr);
   }

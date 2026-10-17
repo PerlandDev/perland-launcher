@@ -2,7 +2,6 @@
 export {
   ArrowBarLeft,
   ArrowBarRight,
-  AvatarSquare,
   Calendar,
   Check,
   ChevronDown,
@@ -13,7 +12,6 @@ export {
   Folder,
   Gear,
   Image,
-  Images,
   InfoBox,
   Languages,
   Link,

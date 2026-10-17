@@ -113,6 +113,14 @@ describe('Change image', () => {
     expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('is the one menu entry for both the icon and the background', async () => {
+    const { user } = renderApp(<Home id="asalith-fields" />);
+    await screen.findByRole('heading', { name: 'Asalith Fields' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    const labels = within(screen.getByRole('menu')).getAllByRole('menuitem').map((i) => i.textContent);
+    expect(labels.filter((l) => l?.startsWith('Change'))).toEqual(['Change image…']);
+  });
+
   it("can't be opened while the game runs", async () => {
     const { user } = renderApp(<Home id="asalith-fields" />);
     await screen.findByRole('heading', { name: 'Asalith Fields' });
@@ -473,52 +481,5 @@ describe('Change image: the icon', () => {
     expect(sent(calls, 'instance_icon_set')).toEqual([]);
     await user.keyboard(' ');
     expect(sent(calls, 'instance_icon_set')).toEqual([{ id: 'sky-islands', choice: { kind: 'generated' } }]);
-  });
-});
-
-describe('Change icon and Change background', () => {
-  async function openFromMenu(user: ReturnType<typeof renderApp>['user'], name: string, item: string) {
-    await screen.findByRole('heading', { name });
-    await user.click(screen.getByRole('button', { name: 'More options' }));
-    await user.click(screen.getByRole('menuitem', { name: item }));
-  }
-
-  it('offers the icon, the background and both together in the menu', async () => {
-    const { user } = renderApp(<Home id="asalith-fields" />);
-    await screen.findByRole('heading', { name: 'Asalith Fields' });
-    await user.click(screen.getByRole('button', { name: 'More options' }));
-    const labels = within(screen.getByRole('menu')).getAllByRole('menuitem').map((i) => i.textContent);
-    const at = labels.indexOf('Change image…');
-    expect(labels.slice(at, at + 3)).toEqual(['Change image…', 'Change icon…', 'Change background…']);
-  });
-
-  it('opens the icon on its own and saves a pick from it', async () => {
-    const { user, calls } = renderApp(<Home id="sky-islands" />);
-    await openFromMenu(user, 'Sky Islands', 'Change icon…');
-    const dialog = screen.getByRole('dialog', { name: 'Change icon' });
-    expect(within(dialog).queryByRole('radiogroup', { name: 'Background' })).not.toBeInTheDocument();
-    await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Letters' }));
-    expect(sent(calls, 'instance_icon_set')).toEqual([{ id: 'sky-islands', choice: { kind: 'generated' } }]);
-    expect(sent(calls, 'instance_art_set')).toEqual([]);
-  });
-
-  it('opens the background on its own, with Position for a picture', async () => {
-    const { user, calls } = renderApp(<Home id="sky-islands" />);
-    await openFromMenu(user, 'Sky Islands', 'Change background…');
-    const dialog = screen.getByRole('dialog', { name: 'Change background' });
-    expect(within(dialog).queryByRole('radiogroup', { name: 'Icon' })).not.toBeInTheDocument();
-    // The pack art is the background, so it can be positioned here too.
-    expect(await within(dialog).findByRole('group', { name: 'Position' })).toBeInTheDocument();
-    await user.click(group(dialog, 'Background').getByRole('radio', { name: 'Landscape 2' }));
-    expect(sent(calls, 'instance_art_set')).toEqual([{ id: 'sky-islands', choice: { kind: 'generated', seed: 'sky-islands~2' } }]);
-    expect(sent(calls, 'instance_icon_set')).toEqual([]);
-  });
-
-  it('keeps all three off while the instance runs', async () => {
-    const { user } = renderApp(<Home id="creative-flat" />);
-    await screen.findByRole('heading', { name: 'Creative Flat' });
-    act(() => runStore.apply({ type: 'run_state', instance: 'creative-flat', state: 'running', exit: null, update: null }));
-    await user.click(screen.getByRole('button', { name: 'More options' }));
-    for (const name of ['Change image…', 'Change icon…', 'Change background…']) expect(screen.getByRole('menuitem', { name })).toBeDisabled();
   });
 });
