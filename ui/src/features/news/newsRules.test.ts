@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import en from '../../i18n/en.json';
 import es from '../../i18n/es.json';
 import type { NewsChangesView, NewsPostView } from '../../ipc/schema';
-import { EVENT_DEFAULT_MS, eventLabel, isNew, isOver, latestLine, modpackSummary } from './newsRules';
+import { EVENT_DEFAULT_MS, eventLabel, isNew, isOver, latestLine, modpackSummary, newestCreatedAt } from './newsRules';
 
 let tEn: TFunction;
 let tEs: TFunction;
@@ -71,6 +71,18 @@ describe('latestLine', () => {
 
   it('is null without posts', () => {
     expect(latestLine([], now)).toBeNull();
+  });
+});
+
+describe('newestCreatedAt', () => {
+  it('compares times, not strings', () => {
+    // As strings "…:00Z" sorts after "…:00.5Z", though it is half a second earlier.
+    const posts = [post({ createdAt: '2026-10-16T10:00:00Z' }), post({ createdAt: '2026-10-16T10:00:00.5Z' })];
+    expect(newestCreatedAt(posts)).toBe('2026-10-16T10:00:00.5Z');
+    expect(newestCreatedAt([...posts].reverse())).toBe('2026-10-16T10:00:00.5Z');
+  });
+  it('is null without posts', () => {
+    expect(newestCreatedAt([])).toBeNull();
   });
 });
 

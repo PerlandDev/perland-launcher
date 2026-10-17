@@ -22,6 +22,11 @@ export function isOver(post: NewsPostView, now: Date): boolean {
 
 const newestFirst = (a: NewsPostView, b: NewsPostView) => (time(b.createdAt) ?? 0) - (time(a.createdAt) ?? 0);
 
+/** The newest post's `createdAt`, compared as times (RFC3339 strings with different fractions don't sort as text), or null. */
+export function newestCreatedAt(posts: NewsPostView[]): string | null {
+  return [...posts].sort(newestFirst)[0]?.createdAt ?? null;
+}
+
 /** The post the line shows: the newest event that isn't over (what a player can still act on), else the newest post. */
 export function latestLine(posts: NewsPostView[], now: Date): NewsPostView | null {
   const byNewest = [...posts].sort(newestFirst);

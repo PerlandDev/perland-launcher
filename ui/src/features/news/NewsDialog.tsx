@@ -7,7 +7,7 @@ import { qk, useNewsImage, useServerNewsPages } from '../../state/queries';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { Calendar } from '../../ui/Icon';
-import { eventLabel, isNew, modpackSummary } from './newsRules';
+import { eventLabel, isNew, modpackSummary, newestCreatedAt } from './newsRules';
 
 /** Names a modpack part lists before "and N more". */
 const NAMES_SHOWN = 10;
@@ -23,7 +23,7 @@ export function NewsDialog({ invite, name, open, onClose }: { invite: string; na
   const first = loaded[0] ?? null;
   // The marker the dialog opened with, so posts stay marked New while it is open.
   const seen = first?.seen ?? null;
-  const newest = first?.posts.reduce<string | null>((max, post) => (max === null || post.createdAt > max ? post.createdAt : max), null) ?? null;
+  const newest = first ? newestCreatedAt(first.posts) : null;
 
   // Once per open: the marker moves to the newest post shown, and the line reads again so its dot clears.
   const marked = useRef<string | null>(null);

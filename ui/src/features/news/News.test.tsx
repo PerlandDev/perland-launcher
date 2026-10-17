@@ -58,6 +58,8 @@ describe('the news line', () => {
 
     await user.click(line);
     const dialog = await screen.findByRole('dialog', { name: 'News from Survival' });
+    // The dialog lives outside the card, so the card's hover and focus rules (which light its Play) never match through it.
+    expect(survival).not.toContainElement(dialog);
     // The marker moves to the newest post the dialog shows (two hours before now).
     await vi.waitFor(() => expect(sent(calls, 'server_news_opened')).toEqual([{ invite: MOCK_INVITE, newest: new Date(NOW.getTime() - 2 * HOUR).toISOString() }]));
     await user.click(within(dialog).getByRole('button', { name: 'Close' }));
@@ -114,6 +116,14 @@ describe('the news line', () => {
     expect(screen.queryByRole('button', { name: /^News:/ })).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(toastsSnapshot()).toEqual([]);
+  });
+
+  it('a plain instance never asks for news', async () => {
+    const { calls } = renderApp(<Home id="asalith-fields" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Asalith Fields' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(sent(calls, 'server_news')).toEqual([]);
+    expect(screen.queryByRole('button', { name: /^News:/ })).toBeNull();
   });
 });
 
@@ -207,15 +217,27 @@ describe('news on Home', () => {
     const { user } = renderApp(<Home id="survival" />, { server: 'online' });
     const line = await screen.findByRole('button', { name: /^News: Build contest · Tomorrow 8\sPM, new$/ });
     await user.click(line);
-    expect(await screen.findByRole('dialog', { name: 'News from Survival' })).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: 'News from Survival' });
+    expect(line.closest('.server-tile')).toBeNull();
+    expect(dialog.parentElement).toBe(document.body);
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('Home shows no line with news off, and none on a plain instance', async () => {
+  it('Home shows no line with news off', async () => {
     const { calls } = renderApp(<Home id="survival" />, { server: 'news-off' });
     await screen.findByRole('heading', { name: 'Survival' });
     await vi.waitFor(() => expect(sent(calls, 'server_news')).toHaveLength(1));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(screen.queryByRole('button', { name: /^News:/ })).toBeNull();
     expect(toastsSnapshot()).toEqual([]);
+  });
+
+  it('a plain instance never asks for news', async () => {
+    const { calls } = renderApp(<Home id="asalith-fields" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Asalith Fields' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(sent(calls, 'server_news')).toEqual([]);
+    expect(screen.queryByRole('button', { name: /^News:/ })).toBeNull();
   });
 });
