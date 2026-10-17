@@ -67,6 +67,13 @@ export function MinecraftLink() {
   const [available, setAvailable] = useState(false);
   const knownAvailable = !account ? false : stats.data === undefined ? available : stats.data !== null;
   if (knownAvailable !== available) setAvailable(knownAvailable);
+  // Linked, however the news arrived (the poll, or the status reading it first): the code is spent, so a later Unlink
+  // starts again from the pitch.
+  if (linkedName !== null && (step !== 'idle' || code !== null)) {
+    setStep('idle');
+    setCode(null);
+  }
+  const view = !available || !account ? null : linkedName !== null ? 'linked' : step;
 
   useEffect(() => {
     mounted.current = true;
@@ -76,9 +83,9 @@ export function MinecraftLink() {
     };
   }, []);
 
-  // While the code shows, ask every 3 s whether it was typed in game. An answer that lands after it stopped counts for nothing.
+  // While the code shows (never while the row is hidden), ask every 3 s whether it was typed in game. An answer that lands after it stopped counts for nothing.
   useEffect(() => {
-    if (step !== 'code' || linkedName !== null) return;
+    if (view !== 'code') return;
     let alive = true;
     let asking = false;
     const stop = () => {
@@ -114,11 +121,11 @@ export function MinecraftLink() {
       );
     }, POLL_MS);
     return stop;
-  }, [step, linkedName, qc, t]);
+  }, [view, qc, t]);
 
   // The countdown: one tick a second while the code shows, until it runs out.
   useEffect(() => {
-    if (step !== 'code' || code === null) return;
+    if (view !== 'code' || code === null) return;
     const endsAt = code.arrivedAt + code.expiresIn * 1000;
     const timer = setInterval(() => {
       const at = Date.now();
@@ -126,9 +133,8 @@ export function MinecraftLink() {
       if (at >= endsAt) setStep('expired');
     }, 1000);
     return () => clearInterval(timer);
-  }, [step, code]);
+  }, [view, code]);
 
-  const view = !available || !account ? null : linkedName !== null ? 'linked' : step;
   const shownView = useRef(view);
   // Moving to another state puts the player on its first control; opening Accounts focuses nothing.
   useEffect(() => {

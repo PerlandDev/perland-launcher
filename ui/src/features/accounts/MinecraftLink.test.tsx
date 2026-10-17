@@ -41,6 +41,15 @@ describe('MinecraftLink', () => {
     expect(screen.queryByRole('button', { name: 'Link Minecraft account' })).not.toBeInTheDocument();
   });
 
+  it('hidden when stats fails', async () => {
+    const { calls, backend } = renderApp(<MinecraftLink />, { perland: 'signedIn' });
+    stub(backend, 'perland_stats', () => Promise.reject(refusal('engine_unreachable')));
+    await vi.waitFor(() => expect(sent(calls, 'perland_stats')).toHaveLength(1));
+    await act(async () => {});
+    expect(screen.queryByText('Minecraft account')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('hidden when signed out', async () => {
     const { calls } = renderApp(<MinecraftLink />, { perland: 'signedOut' });
     await vi.waitFor(() => expect(sent(calls, 'perland_status')).toHaveLength(1));
@@ -136,6 +145,24 @@ describe('MinecraftLink', () => {
     await act(async () => answer('Steve'));
     expect(screen.getByRole('button', { name: 'Link Minecraft account' })).toBeInTheDocument();
     expect(screen.queryByText(/Linked to/)).not.toBeInTheDocument();
+  });
+
+  it('a link the status reads first ends the code, and Unlink starts from the pitch', async () => {
+    const { user, qc, backend } = renderApp(<MinecraftLink />, { perland: 'signedIn' });
+    stub(backend, 'perland_link_poll', () => Promise.resolve(null));
+    await showCode(user);
+    // Typed in game and picked up by the status before the next poll answers.
+    const account = backend.state.perland.account;
+    if (account) backend.state.perland.account = { ...account, minecraft: 'Steve' };
+    await act(() => qc.invalidateQueries({ queryKey: qk.perland }));
+    expect(await within(row()).findByText(/Linked to/)).toHaveTextContent('Linked to Steve');
+    expect(screen.queryByText(MOCK_LINK_CODE)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Unlink' }));
+    expect(await screen.findByRole('button', { name: 'Link Minecraft account' })).toHaveFocus();
+    expect(screen.getByText('Link your Minecraft account to see your achievements on each server.')).toBeInTheDocument();
+    expect(screen.queryByText(MOCK_LINK_CODE)).not.toBeInTheDocument();
+    expect(screen.queryByText('The code expired.')).not.toBeInTheDocument();
   });
 
   it('unlink shows the link button again', async () => {
