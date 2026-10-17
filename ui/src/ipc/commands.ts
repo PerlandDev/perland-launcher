@@ -7,6 +7,7 @@ import type {
   ContentFile,
   ContentKind,
   DeepLink,
+  EmailCodeSent,
   Focus,
   IconChoice,
   ImageKind,
@@ -30,6 +31,8 @@ import type {
   PackAddRequest,
   PackContents,
   PackStatus,
+  PerlandAccount,
+  PerlandStatus,
   PlaytimeEntry,
   ProjectDetail,
   PublicServerPage,
@@ -41,6 +44,7 @@ import type {
   Settings,
   UpdateState,
   VersionInfo,
+  YourServersPage,
 } from './schema';
 
 /** The only place the UI calls into Rust. A failed call rejects with a `LauncherError` object. */
@@ -108,6 +112,20 @@ export const commands = {
     invoke<string | null>('news_image', { invite, postId, imageVersion }),
   serverRelink: (id: string, link: string) => invoke<Instance>('server_relink', { id, link }),
   serverLink: (id: string, link: string) => invoke<Instance>('server_link', { id, link }),
+  perlandStatus: () => invoke<PerlandStatus>('perland_status'),
+  /** Opens the browser and waits for the player to finish; null when they canceled or said no. */
+  perlandSignInDiscord: (language: string) => invoke<PerlandAccount | null>('perland_sign_in_discord', { language }),
+  perlandSignInReopen: () => invoke<null>('perland_sign_in_reopen'),
+  perlandSignInCancel: () => invoke<null>('perland_sign_in_cancel'),
+  perlandEmailStart: (email: string, language: string) => invoke<EmailCodeSent>('perland_email_start', { email, language }),
+  perlandEmailVerify: (email: string, code: string) => invoke<PerlandAccount>('perland_email_verify', { email, code }),
+  perlandSignOut: () => invoke<null>('perland_sign_out'),
+  /** The player's servers, or null while signed out or when accounts are off. */
+  yourServers: () => invoke<YourServersPage | null>('your_servers'),
+  /** `invite` is the canonical invite URL of the card or Join screen. Follow and joined never fail. */
+  yourServersFollow: (invite: string) => invoke<null>('your_servers_follow', { invite }),
+  yourServersUnfollow: (invite: string) => invoke<null>('your_servers_unfollow', { invite }),
+  yourServersJoined: (invite: string) => invoke<null>('your_servers_joined', { invite }),
   quit: (stopGames: boolean) => invoke<null>('quit', { stopGames }),
   browseSearch: (request: SearchRequest) => invoke<SearchPage>('browse_search', { request }),
   browseCategories: (kind: ContentKind) => invoke<string[]>('browse_categories', { kind }),

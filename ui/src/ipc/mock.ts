@@ -18,6 +18,7 @@ import versionsFx from './contract/versions.json';
 import { fitFor, fitsVersion, pickDefault } from '../features/browse/compat';
 import { APP_EVENT } from './events';
 import { inviteCanonical } from './inviteLink';
+import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario } from './mockPerland';
 import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
 import type {
   AccountsFile,
@@ -79,6 +80,8 @@ export interface MockOptions {
   link?: string;
   /** Seeds the `survival` Perland server and picks how its invite answers. */
   server?: ServerScenario;
+  /** Perland account: `off` closes accounts; `signedOut` (default), `signedIn`, `empty` (signed in, no servers) and `emailOnly`. */
+  perland?: PerlandScenario;
   /** What the save dialog returns; null means the player cancelled. Defaults to a zip in Downloads. */
   savePath?: string | null;
   /** The rail starts wide, with names. */
@@ -326,6 +329,7 @@ function seed(options: MockOptions) {
   const servers = seedServers(options.server, listing);
   return {
     listing,
+    perland: seedPerland(options.perland),
     // The player's own order, like instance-order.json. Existing instances start A-Z, so a new one lands above them.
     order: [...listing.instances].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map((i) => i.id),
     servers,
@@ -1123,6 +1127,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'plugin:window|is_maximized':
       return false;
     default: {
+      const perlandServed = await handlePerland(state.perland, state.listing, cmd, args, event);
+      if (perlandServed !== NOT_PERLAND) return perlandServed;
       const served = handleServer(state.servers, state.listing, cmd, args);
       if (served !== NOT_MINE) return served;
       if (cmd.startsWith('plugin:')) return null;

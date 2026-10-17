@@ -30,8 +30,9 @@ export const MOCK_SERVER_ICON =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABdElEQVR42u2YPW7CQBCF5xqhI6IykpsoFFSR6FxwgDRcIXUOkCLHQjQoXCAnoIaCdpCRiIiz4B+88YzfK54sQLPr+fxmvIOMBqkiSwiAAP5vs8Nu6weAxZtlCRBA++VHB8ADSB8n2lS5re6JtyDxngAUAP3+vCm3AKqUUlnyTSGIyye/X/3WHRDEVfLFxG+AaBVAl93eBAATDihLvgChcwBtuSY6gOl4qpbVFEDV9QnADYCaTZAA+gLgD4QKB6E6a7sAEIRwRXXXdQOgCoQma7oCEEMEkD2/KLIIgAAIgAAIABrA8ONLkUUA71mib7NE8+s8fdDLz5fX/LfQ997jpI9J1YmTvj/hsjhBsnsoTtabRC0rNgzzAGI7Q1Br/xwnqLX/4wC0934xTpAPQVcd0OYmunwyLYlN3DwA5EPQqQeg1v45jtMg/DSorwvtQmamwa4AmJkGkQ9BwR6ABoPTIKdBToOcBhW5EQryX+JBB3AaBINxBGzHqnIKs/OSAAAAAElFTkSuQmCC';
 export const NOT_MINE = Symbol('not a server command');
 
-const HOST = 'play.example.com';
-const inviteOf = (letter: string) => `https://${HOST}/${letter.repeat(43)}`;
+export const HOST = 'play.example.com';
+/** The canonical invite of a mock server: its letter, 43 times. */
+export const inviteOf = (letter: string) => `https://${HOST}/${letter.repeat(43)}`;
 const loaderOf = (loader: string | null, version: string | null) => ({ version: null as string | null, loader, loaderVersion: version });
 
 /** The public list's mock servers, oldest first (Newest sorts from the end). Tokens are fake: one letter, 43 times.
@@ -310,10 +311,13 @@ export function wakesOnPlay(instance: Instance): boolean {
   return card?.status === 'sleeping' || card?.status === 'starting';
 }
 
+/** The id of the instance that joins `card`'s server, or null. */
+export const joinedInstance = (card: { invite: string | null }, listing: { instances: Instance[] }): string | null =>
+  listing.instances.find((i) => i.source.kind === 'perland' && card.invite !== null && inviteCanonical(i.source.invite) === inviteCanonical(card.invite))?.id ?? null;
+
 /** One page of the public list for `query`, the way the Engine answers: filters, sort, 50 a page. Facets cover the whole set. */
 function publicPage(query: ListQuery, listing: Listing): PublicServerPage {
-  const joined = (card: PublicServerCard) =>
-    listing.instances.find((i) => i.source.kind === 'perland' && card.invite !== null && inviteCanonical(i.source.invite) === inviteCanonical(card.invite))?.id ?? null;
+  const joined = (card: PublicServerCard) => joinedInstance(card, listing);
   const players = (c: PublicServerCard) => c.players?.online ?? 0;
   const matching = MOCK_PUBLIC_SERVERS.map((card, index) => ({ card, index }))
     .filter(

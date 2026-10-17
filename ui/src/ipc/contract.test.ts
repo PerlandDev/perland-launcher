@@ -5,6 +5,7 @@ import artChoices from './contract/art_choices.json';
 import appInfo from './contract/app_info.json';
 import contentFiles from './contract/content_files.json';
 import deepLinksFx from './contract/deep_links.json';
+import emailCodeSent from './contract/email_code_sent.json';
 import errorFx from './contract/error.json';
 import errorCodes from './contract/error_codes.json';
 import events from './contract/events.json';
@@ -29,6 +30,7 @@ import openTargets from './contract/open_targets.json';
 import packAddRequests from './contract/pack_add_requests.json';
 import packContents from './contract/pack_contents.json';
 import packStatus from './contract/pack_status.json';
+import perlandStatus from './contract/perland_status.json';
 import planRequests from './contract/plan_requests.json';
 import playtimeFx from './contract/playtime.json';
 import projectDetail from './contract/project_detail.json';
@@ -42,6 +44,7 @@ import serverStatusFx from './contract/server_status.json';
 import settingsFx from './contract/settings.json';
 import updateStates from './contract/update_states.json';
 import versions from './contract/versions.json';
+import yourServersPage from './contract/your_servers_page.json';
 import { decodeEvent } from './events';
 import * as s from './schema';
 
@@ -75,6 +78,9 @@ const cases: [string, ZodType, unknown][] = [
   ['server_status', s.serverStatusView.array(), serverStatusFx],
   ['public_server_page', s.publicServerPage, publicServerPage],
   ['server_news', s.serverNews, serverNews],
+  ['perland_status', s.perlandStatus.array(), perlandStatus],
+  ['email_code_sent', s.emailCodeSent, emailCodeSent],
+  ['your_servers_page', s.yourServersPage, yourServersPage],
   ['deep_links', s.deepLink.array(), deepLinksFx],
   ['invite_links', s.inviteLinkCase.array(), inviteLinksFx],
   ['update_states', s.updateState.array(), updateStates],
