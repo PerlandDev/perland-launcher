@@ -2271,9 +2271,11 @@ dependencies = [
 name = "launcher-core"
 version = "0.2.0"
 dependencies = [
+ "base64 0.22.1",
  "dirs",
  "fs4",
  "futures-util",
+ "getrandom 0.3.4",
  "hex",
  "md-5",
  "percent-encoding",
