@@ -117,6 +117,7 @@ export const commands = {
     invoke<string | null>('news_image', { invite, postId, imageVersion }),
   serverRelink: (id: string, link: string) => invoke<Instance>('server_relink', { id, link }),
   serverLink: (id: string, link: string) => invoke<Instance>('server_link', { id, link }),
+  serverUnlink: (id: string) => invoke<Instance>('server_unlink', { id }),
   perlandStatus: () => invoke<PerlandStatus>('perland_status'),
   /** Opens the browser and waits for the player to finish; null when they canceled or said no. */
   perlandSignInDiscord: (language: string) => invoke<PerlandAccount | null>('perland_sign_in_discord', { language }),

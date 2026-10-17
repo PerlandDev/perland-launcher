@@ -274,7 +274,7 @@ describe('server instances', () => {
     renderApp(<Home id="survival" />, { server: 'whitelisted' });
     expect(await screen.findByRole('status', { name: 'Server status: Online · 3/20' })).toBeInTheDocument();
     expect(screen.getByText('play.example.com:25566')).toBeInTheDocument();
-    expect(screen.getByText('Invite only: ask the owner to add Steve')).toBeInTheDocument();
+    expect(screen.getByText('Invite only: ask the owner to add you (Steve)')).toBeInTheDocument();
   });
 
   it.each([
@@ -365,8 +365,74 @@ describe('server instances', () => {
     await user.click(screen.getByRole('menuitem', { name: 'Copy server address' }));
     expect(await navigator.clipboard.readText()).toBe('play.example.com:25566');
     await open();
-    await user.click(screen.getByRole('menuitem', { name: 'Use a new invite link' }));
+    expect(screen.queryByRole('menuitem', { name: 'Use a new invite link' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: 'Manage server link' }));
+    expect(await screen.findByRole('dialog', { name: 'Server link' })).toBeInTheDocument();
+  });
+
+  it('show the linked server, its invite and address in Manage server link, and change the link from there', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Survival' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Manage server link' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Server link' });
+    // The same preview as joining: the server's name, status and what it plays.
+    expect(await within(sheet).findByRole('article', { name: 'survival' })).toBeInTheDocument();
+    expect(within(sheet).getByText(`https://play.example.com/${'A'.repeat(43)}`)).toBeInTheDocument();
+    expect(within(sheet).getByText('play.example.com:25566')).toBeInTheDocument();
+    await user.click(within(sheet).getByRole('button', { name: 'Copy invite link' }));
+    expect(await navigator.clipboard.readText()).toBe(`https://play.example.com/${'A'.repeat(43)}`);
+    await user.click(within(sheet).getByRole('button', { name: 'Copy server address' }));
+    expect(await navigator.clipboard.readText()).toBe('play.example.com:25566');
+    await user.click(within(sheet).getByRole('button', { name: 'Change link' }));
     expect(routeSnapshot()).toEqual({ name: 'joinServer', invite: '', relinkFor: 'survival' });
+  });
+
+  it('keep the saved invite and address in Manage server link when the link stopped working', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'gone' });
+    await screen.findByText(/This invite link stopped working/);
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Manage server link' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Server link' });
+    expect(await within(sheet).findByText(/This invite link doesn't work anymore/)).toBeInTheDocument();
+    expect(within(sheet).getByText('play.example.com:25566')).toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: 'Change link' })).toBeEnabled();
+    expect(within(sheet).getByRole('button', { name: 'Unlink' })).toBeEnabled();
+  });
+
+  it('unlink only after saying what stays, and leave an ordinary instance', async () => {
+    const { user, calls } = renderApp(<Home id="survival" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Survival' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Manage server link' }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Server link' })).getByRole('button', { name: 'Unlink' }));
+    const confirm = await screen.findByRole('dialog', { name: 'Unlink Survival from its server?' });
+    expect(within(confirm).getByText(/keeps its worlds, mods and settings/)).toBeInTheDocument();
+    await user.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+    expect(sent(calls, 'server_unlink')).toEqual([]);
+    // Cancel goes back to the sheet, not past it.
+    const sheet = await screen.findByRole('dialog', { name: 'Server link' });
+    await user.click(within(sheet).getByRole('button', { name: 'Unlink' }));
+    await user.click(within(await screen.findByRole('dialog', { name: 'Unlink Survival from its server?' })).getByRole('button', { name: 'Unlink' }));
+    expect(sent(calls, 'server_unlink')).toEqual([{ id: 'survival' }]);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole('status', { name: /Server status/ })).not.toBeInTheDocument());
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.getByRole('menuitem', { name: 'Link to a server' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Manage server link' })).not.toBeInTheDocument();
+  });
+
+  it('keep a running server linked: Change link and Unlink wait for the game to stop', async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online' });
+    await screen.findByRole('heading', { name: 'Survival' });
+    act(() => runStore.apply({ type: 'run_state', instance: 'survival', state: 'running', exit: null, update: null }));
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Manage server link' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Server link' });
+    expect(within(sheet).getByRole('button', { name: 'Change link' })).toBeDisabled();
+    expect(within(sheet).getByRole('button', { name: 'Unlink' })).toBeDisabled();
+    expect(within(sheet).getByText('Stop the game to change or remove the link.')).toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: 'Copy invite link' })).toBeEnabled();
   });
 
   it('toast when the menu cannot copy', async () => {
@@ -385,7 +451,7 @@ describe('server instances', () => {
     await user.click(screen.getByRole('button', { name: 'More options' }));
     expect(screen.getByRole('menuitem', { name: 'Instance settings' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Play and join the server' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: 'Use a new invite link' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Manage server link' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Copy invite link' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Copy server address' })).not.toBeInTheDocument();
   });
@@ -423,7 +489,6 @@ describe('server instances', () => {
     act(() => runStore.apply({ type: 'run_state', instance: 'survival', state: 'running', exit: null, update: null }));
     expect(screen.getByRole('button', { name: 'Use a new link' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'More options' }));
-    expect(screen.getByRole('menuitem', { name: 'Use a new invite link' })).toBeDisabled();
     expect(screen.getByRole('menuitem', { name: 'Copy invite link' })).toBeEnabled();
     await user.keyboard('{Escape}');
     act(() => runStore.apply({ type: 'run_state', instance: 'survival', state: 'idle', exit: null, update: null }));

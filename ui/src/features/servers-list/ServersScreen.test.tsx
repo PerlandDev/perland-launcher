@@ -59,7 +59,7 @@ describe('ServersScreen', () => {
 
   it('a whitelisted server shows Invite only', async () => {
     renderApp(<ServersScreen />);
-    expect(await within(await card('The Whitelist Club')).findByText('Invite only: ask the owner to add Steve')).toBeInTheDocument();
+    expect(await within(await card('The Whitelist Club')).findByText('Invite only: ask the owner to add you (Steve)')).toBeInTheDocument();
     expect(within(await card('Survival')).queryByText(/Invite only/)).toBeNull();
   });
 

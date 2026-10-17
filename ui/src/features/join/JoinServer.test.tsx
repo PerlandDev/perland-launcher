@@ -50,7 +50,7 @@ describe('JoinServer', () => {
 
   it('says when the server is invite only, naming the active account', async () => {
     renderApp(<JoinServer invite={OTHER} />, { server: 'whitelisted' });
-    expect(await screen.findByText('Invite only: ask the owner to add Steve')).toBeInTheDocument();
+    expect(await screen.findByText('Invite only: ask the owner to add you (Steve)')).toBeInTheDocument();
   });
 
   it('shows a vanilla server without a pack line', async () => {

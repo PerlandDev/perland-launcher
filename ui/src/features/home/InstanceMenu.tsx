@@ -14,6 +14,7 @@ import { Field } from '../../ui/Field';
 import { Copy, Folder, Gear, Image, Link, Pencil, Play, Reload, Trash } from '../../ui/Icon';
 import { copyText } from '../../ui/copyText';
 import { Menu } from '../../ui/Menu';
+import { ManageServerLink } from '../servers/ManageServerLink';
 import { ImageDialog } from './ImageDialog';
 import { addressText, inviteOf, isPack, isServer } from './labels';
 
@@ -83,22 +84,17 @@ function DeleteDialog({ instance, onClose }: { instance: Instance; onClose: () =
 
 export function InstanceMenu({ instance }: { instance: Instance }) {
   const { t } = useTranslation();
-  const [dialog, setDialog] = useState<'rename' | 'image' | 'delete' | null>(null);
+  const [dialog, setDialog] = useState<'rename' | 'image' | 'delete' | 'manage' | null>(null);
   const qc = useQueryClient();
   const close = () => setDialog(null);
   const invite = inviteOf(instance);
   const address = instance.server?.address ?? null;
-  // A run saves the whole instance when it syncs, so the link changes only while it is idle.
+  // A run saves the whole instance when it syncs, so linking waits until it is idle.
   const running = useRun(instance.id).state !== 'idle';
   const serverItems = isServer(instance)
     ? [
         { label: t('server.playAndJoin'), icon: <Play />, onSelect: () => void commands.play(instance.id, true).catch(pushError) },
-        {
-          label: t('server.useNewInviteLink'),
-          icon: <Reload />,
-          disabled: running,
-          onSelect: () => navigate({ name: 'joinServer', invite: '', relinkFor: instance.id }),
-        },
+        { label: t('server.manage.menu'), icon: <Link />, onSelect: () => setDialog('manage') },
         ...(invite ? [{ label: t('server.copyLink'), icon: <Copy />, onSelect: () => void copyText(invite) }] : []),
         ...(address ? [{ label: t('server.copyAddress'), icon: <Copy />, onSelect: () => void copyText(addressText(address)) }] : []),
       ]
@@ -139,6 +135,7 @@ export function InstanceMenu({ instance }: { instance: Instance }) {
       {dialog === 'rename' && <RenameDialog instance={instance} onClose={close} />}
       {dialog === 'image' && <ImageDialog instance={instance} onClose={close} />}
       {dialog === 'delete' && <DeleteDialog instance={instance} onClose={close} />}
+      {dialog === 'manage' && <ManageServerLink instance={instance} onClose={close} />}
     </>
   );
 }

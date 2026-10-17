@@ -546,6 +546,13 @@ export function handleServer(
       listing.instances = listing.instances.map((i) => (i.id === linked.id ? linked : i));
       return linked;
     }
+    case 'server_unlink': {
+      const target = listing.instances.find((i) => i.id === args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (target.source.kind !== 'perland') fail('pack', 'no_pack', "This instance doesn't come from a server invite");
+      const plain: Instance = { ...target, source: { kind: 'none' }, server: null };
+      listing.instances = listing.instances.map((i) => (i.id === plain.id ? plain : i));
+      return plain;
+    }
     case 'server_relink': {
       const target = listing.instances.find((i) => i.id === args.id) ?? fail('disk', 'instance_not_found', 'gone');
       const canonical = inviteCanonical(String(args.link ?? '')) ?? fail('pack', 'invite_link_invalid', "That isn't a Perland invite link");

@@ -52,6 +52,19 @@ pub async fn mark_adopt(perland_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Unlinking: forget which pack the instance followed, so it is an ordinary one again. Only
+/// the launcher's own records go (what the pack installed, its version, the link marker);
+/// every file in the game folder stays, and a later link sets old jars aside as a first one.
+pub async fn forget_pack(perland_dir: &Path) -> Result<()> {
+    for name in [lockfile::MANAGED_FILE, lockfile::PACK_FILE, ADOPT_MARKER] {
+        match tokio::fs::remove_file(perland_dir.join(name)).await {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 /// Installs a Minecraft and loader version. The real one is `Installer`; tests use a fake.
 pub trait GameInstall: Send + Sync {
     fn install_game<'a>(
@@ -945,6 +958,29 @@ mod tests {
             mode,
             manual: None,
         }
+    }
+
+    #[tokio::test]
+    async fn forgetting_the_pack_drops_only_its_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let perland = dir.path();
+        // Nothing to forget yet is fine.
+        forget_pack(perland).await.unwrap();
+        mark_adopt(perland).await.unwrap();
+        for name in [
+            lockfile::MANAGED_FILE,
+            lockfile::PACK_FILE,
+            "playtime.json",
+            "lock",
+        ] {
+            std::fs::write(perland.join(name), b"{}").unwrap();
+        }
+        forget_pack(perland).await.unwrap();
+        assert!(Managed::load(perland).await.is_none());
+        assert!(load_pack(perland).await.is_none());
+        assert!(!perland.join(ADOPT_MARKER).exists());
+        assert!(perland.join("playtime.json").exists(), "playtime stays");
+        assert!(perland.join("lock").exists());
     }
 
     #[tokio::test]

@@ -14,6 +14,7 @@ it('sends the argument names Rust expects', async () => {
   await commands.joinAdd('l');
   await commands.serverStatus('pack');
   await commands.serverRelink('pack', 'l');
+  await commands.serverUnlink('pack');
   const query = { sort: 'players', modded: null, minecraft: null, hasRoom: false, category: null, language: null, region: null, offset: 0 } as const;
   await commands.serversList(query);
   await commands.serversIcon('t', 'v1');
@@ -39,6 +40,7 @@ it('sends the argument names Rust expects', async () => {
     ['join_add', { link: 'l' }],
     ['server_status', { id: 'pack' }],
     ['server_relink', { id: 'pack', link: 'l' }],
+    ['server_unlink', { id: 'pack' }],
     ['servers_list', { query }],
     ['servers_icon', { token: 't', iconVersion: 'v1' }],
     ['mod_set_enabled', { id: 'pack', file: 'a.jar', enabled: false }],

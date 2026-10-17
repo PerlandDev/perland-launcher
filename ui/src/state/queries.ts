@@ -362,6 +362,22 @@ export function useServerRelink(id: string, opts: Opts = {}) {
   });
 }
 
+/** Unlink: the instance keeps its files and stops following its server. */
+export function useServerUnlink(id: string, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => commands.serverUnlink(id),
+    onSuccess: (instance) => {
+      qc.setQueryData<InstanceListing>(qk.instances, (old) =>
+        old ? { ...old, instances: old.instances.map((i) => (i.id === instance.id ? instance : i)) } : old,
+      );
+      for (const queryKey of [qk.instances, qk.packStatus(id)]) void qc.invalidateQueries({ queryKey });
+      qc.removeQueries({ queryKey: qk.serverStatus(id) });
+    },
+    onError: onError(opts),
+  });
+}
+
 export function useServerLink(id: string, opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({

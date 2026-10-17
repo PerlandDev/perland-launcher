@@ -5,19 +5,20 @@ import type { JoinPreview } from '../../ipc/schema';
 import { Motd } from '../servers/MotdText';
 import { StatusPill } from '../servers/StatusPill';
 import { versionWord } from '../servers-list/labels';
-import { useServerIconSize } from './iconScale';
+import { cardIconSize, useServerIconSize } from './iconScale';
 
-/** What the invite says about the server. Nothing here is lit: the screen's button is. */
-export function ServerCard({ preview }: { preview: JoinPreview }) {
+/** What the invite says about the server. Nothing here is lit: the screen's button is. `bare` sets it straight on a
+ *  dialog's panel (no panel of its own) with the tile's smaller icon, so the dialog's actions fit at 960 × 600. */
+export function ServerCard({ preview, bare = false }: { preview: JoinPreview; bare?: boolean }) {
   const { t } = useTranslation();
   // An icon that fails to decode gives the card the generated plot icon, as on the rail.
   const [failed, setFailed] = useState<string | null>(null);
   const icon = preview.icon && preview.icon !== failed ? preview.icon : null;
-  const size = useServerIconSize();
+  const size = useServerIconSize(bare ? cardIconSize : undefined);
   const version = versionWord(t, preview.game.version);
   const pack = preview.pack;
   return (
-    <article className="panel grid gap-5 p-6" aria-labelledby="server-name">
+    <article className={bare ? 'grid gap-4' : 'panel grid gap-5 p-6'} aria-labelledby="server-name">
       <div className="flex items-center gap-6">
         {/* A server icon is 64 × 64: sized to a whole number of device pixels per icon pixel. */}
         <span className="server-icon">

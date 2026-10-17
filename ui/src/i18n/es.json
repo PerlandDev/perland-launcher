@@ -429,7 +429,7 @@
     "open": "Abrir",
     "useLink": "Usar este enlace",
     "mismatch": "Este enlace es de {{new}}, no de {{old}}.",
-    "inviteOnly": "Solo con invitación: pídele al dueño que agregue a {{name}}",
+    "inviteOnly": "Solo con invitación: pídele al dueño que te agregue ({{name}})",
     "inviteOnlyNoAccount": "Solo con invitación: pídele al dueño que te agregue",
     "versionLabel": "Versión",
     "versionLine": "Minecraft {{version}}",
@@ -463,7 +463,6 @@
     "useNewLink": "Usar un enlace nuevo",
     "updated": "Servidor actualizado · se actualiza cuando juegues",
     "playAndJoin": "Jugar y entrar al servidor",
-    "useNewInviteLink": "Usar un nuevo enlace de invitación",
     "copyLink": "Copiar enlace de invitación",
     "settingsTitle": "Servidor",
     "settingsHost": "Invitación de {{host}}",
@@ -471,7 +470,21 @@
     "relinkRunning": "Detén el juego para usar un enlace nuevo.",
     "linkToServer": "Vincular a un servidor",
     "linkSettingsBody": "Vincula esta instancia a un servidor de Perland y se actualizará junto con el servidor.",
-    "linkRunning": "Cierra el juego para vincular esta instancia."
+    "linkRunning": "Cierra el juego para vincular esta instancia.",
+    "manage": {
+      "menu": "Gestionar enlace de servidor",
+      "title": "Enlace del servidor",
+      "checking": "Revisando el servidor…",
+      "invite": "Enlace de invitación",
+      "inviteCopied": "Enlace de invitación copiado",
+      "change": "Cambiar enlace",
+      "unlink": "Desvincular",
+      "unlinking": "Desvinculando…",
+      "running": "Detén el juego para cambiar o quitar el enlace.",
+      "unlinkTitle": "¿Desvincular {{name}} de su servidor?",
+      "unlinkBody": "{{name}} conserva sus mundos, mods y ajustes, pero deja de seguir a {{server}}: Jugar ya no la actualizará desde el servidor. Puedes volver a vincularla a un servidor cuando quieras.",
+      "unlinked": "{{name}} ya no sigue a ningún servidor"
+    }
   },
   "servers": {
     "open": "Servidores",
