@@ -97,7 +97,8 @@
     "noAccount": "Add an account to play",
     "checking": "Checking for updates…",
     "asking": "Update ready",
-    "syncing": "Updating…"
+    "syncing": "Updating…",
+    "waking": "Starting the server…"
   },
   "manual": {
     "title": "Download these manually",

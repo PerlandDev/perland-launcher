@@ -641,6 +641,12 @@ fn contract_fixtures_are_current() {
             },
             AppEvent::RunState {
                 instance: "asalith-fields".into(),
+                state: RunStateKind::Waking,
+                exit: None,
+                update: None,
+            },
+            AppEvent::RunState {
+                instance: "asalith-fields".into(),
                 state: RunStateKind::Idle,
                 exit: Some(ExitInfo {
                     code: Some(0),

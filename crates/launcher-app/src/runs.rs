@@ -1,8 +1,9 @@
 //! Play and Stop: the run state machine. A pack instance's run is `checking` while it looks for
 //! an update, `asking` while the player decides on one, `queued` until it holds the install
-//! slot, `syncing` while its files change, `preparing` while installing, `running` while the
-//! game is up, and `stopping` after a Stop that waits on a sync or a kill. A never-synced or
-//! pinned pack starts at `queued`; a vanilla instance goes `queued`, `preparing`, `running`.
+//! slot, `syncing` while its files change, `preparing` while installing, `waking` while a
+//! sleeping server it joins starts (the slot already let go), `running` while the game is up,
+//! and `stopping` after a Stop that waits on a sync or a kill. A never-synced or pinned pack
+//! starts at `queued`; a vanilla instance goes `queued`, `preparing`, `running`.
 //! A run leaves the map (idle) with exactly one final `run_state` event carrying how it ended.
 use std::{
     sync::{Arc, Mutex},
@@ -13,9 +14,10 @@ use launcher_core::{
     accounts::{Provider, Session},
     events::{Event, EventSink},
     fsutil::write_atomic,
-    instances::{unix_now, Instance, ServerAddress, SourceRef, UpdatePolicy},
+    instances::{unix_now, Instance, ServerAddress, ServerStatus, SourceRef, UpdatePolicy},
     locks::InstanceLock,
     playtime, server_list,
+    server_wake::{Knock, Ping, WaitEnd},
     sync::{
         lockfile::PACK_FILE, manual::Scanner, Cancel, Ensured, ManualFile, PendingUpdate,
         SyncOutcome,
@@ -195,7 +197,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             RunStateKind::Checking
             | RunStateKind::Asking
             | RunStateKind::Queued
-            | RunStateKind::Preparing => {
+            | RunStateKind::Preparing
+            | RunStateKind::Waking => {
                 let update_only = run.update_only;
                 if let Some(abort) = run.abort.take() {
                     abort.abort();
@@ -648,7 +651,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if let Some(address) = &address {
             self.list_server(&id, &instance, address).await;
         }
-        let join = address.filter(|_| args.join);
+        let last_status = instance.server.as_ref().and_then(|s| s.last_status);
+        let join = address.clone().filter(|_| args.join);
         // A Stop that came after the sync returned (while the instance reloaded) left the run
         // `stopping`: end it here rather than start a game nobody wants.
         if !self.set_phase(&id, RunStateKind::Preparing) {
@@ -671,7 +675,26 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 return self.finish(&id, info, sink, batcher, Some(lock)).await;
             }
         };
+        // Released before any wait, so a wake never holds up another install.
         drop(permit);
+        if let Some(address) = &address {
+            let name = args.session.username.clone();
+            if args.join {
+                if !self
+                    .wake_for_join(&id, address, last_status, &name, &cancel)
+                    .await
+                {
+                    let info = ExitInfo {
+                        cancelled: true,
+                        synced,
+                        ..ExitInfo::default()
+                    };
+                    return self.finish(&id, info, sink, batcher, Some(lock)).await;
+                }
+            } else if last_status == Some(ServerStatus::Sleeping) {
+                self.wake_in_background(&id, address.clone(), name);
+            }
+        }
         let game = match self
             .runner
             .start(instance, prepared, args.session, join, sink.clone())
@@ -741,6 +764,78 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
     }
 
+    /// Before the game joins the server: wake it if it sleeps, and wait until it's up (spec
+    /// §5 "Waking"). The Engine's view isn't asked, since it lags behind a wake. Anything that
+    /// goes wrong is a warning and the game joins anyway. False when the run was stopped.
+    async fn wake_for_join(
+        &self,
+        id: &str,
+        address: &ServerAddress,
+        last: Option<ServerStatus>,
+        name: &str,
+        cancel: &Cancel,
+    ) -> bool {
+        let wait = match self.runner.server_ping(address.clone()).await {
+            Ping::Waker => match self
+                .runner
+                .server_knock(address.clone(), name.to_string())
+                .await
+            {
+                Ok(Knock::Woken) => true,
+                // The game connects and the player reads the server's own message.
+                Ok(Knock::NotWhitelisted | Knock::NoRoom) => false,
+                Err(error) => {
+                    self.host.emit(AppEvent::Warning {
+                        instance: Some(id.to_string()),
+                        error,
+                    });
+                    false
+                }
+            },
+            // Already starting, so no knock: only the wait.
+            Ping::NoAnswer => last == Some(ServerStatus::Starting),
+            Ping::Server => false,
+        };
+        if !wait {
+            return true;
+        }
+        if !self.set_phase(id, RunStateKind::Waking) {
+            return false;
+        }
+        match self
+            .runner
+            .server_wait(address.clone(), cancel.clone())
+            .await
+        {
+            WaitEnd::Up => true,
+            WaitEnd::Cancelled => false,
+            WaitEnd::TimedOut => {
+                self.host.emit(AppEvent::Warning {
+                    instance: Some(id.to_string()),
+                    error: wake_timed_out(address),
+                });
+                true
+            }
+        }
+    }
+
+    /// A plain Play of a sleeping server: wake it on the side, so it's starting by the time the
+    /// player picks it in the Multiplayer list. Nothing waits for it, and a failure is only
+    /// logged: the player hasn't asked to join yet.
+    fn wake_in_background(&self, id: &str, address: ServerAddress, name: String) {
+        let ping = self.runner.server_ping(address.clone());
+        let runner = Arc::clone(&self.runner);
+        let id = id.to_string();
+        tokio::spawn(async move {
+            if ping.await != Ping::Waker {
+                return;
+            }
+            if let Err(error) = runner.server_knock(address, name).await {
+                tracing::info!(instance = id.as_str(), %error, "couldn't wake the server");
+            }
+        });
+    }
+
     /// Add the time since `started` to the instance's playtime. A failed write loses only this
     /// run's count, so it is logged and nothing more.
     async fn record_playtime(&self, id: &str, started: Instant) {
@@ -787,6 +882,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 }
 
+/// The woken server still didn't answer after the wait.
+fn wake_timed_out(address: &ServerAddress) -> LauncherError {
+    LauncherError::network(ErrorCode::ServerWakeFailed, "Couldn't wake the server")
+        .with_param("host", &address.host)
+        .with_detail("the server didn't answer within 5 minutes of the wake")
+}
+
 fn failed(error: LauncherError) -> ExitInfo {
     ExitInfo {
         error: Some(error),
@@ -801,10 +903,11 @@ mod tests {
     use launcher_core::{
         accounts::BuildKind,
         browse::compat::ContentKind,
-        instances::{GameSpec, ServerAddress, UpdatePolicy},
+        instances::{GameSpec, ServerAddress, ServerStatus, UpdatePolicy},
         launch::CrashHint,
         locks::InstanceLock,
         playtime, server_list,
+        server_wake::{Knock, Ping, WaitEnd},
         settings::Settings,
         sync::{lockfile, plan::Changes, Ensured, SyncOutcome, SyncReport},
         ErrorCode, LauncherError,
@@ -1652,6 +1755,237 @@ mod tests {
         assert!(!host.warnings().contains(&ErrorCode::ServerAddressUnknown));
         core.stop(&id).unwrap();
         host.wait_for(&id, Idle).await;
+    }
+
+    /// A server instance whose saved status is `status`.
+    async fn server_with(core: &TestCore, runner: &FakeRunner, status: ServerStatus) -> String {
+        let id = server(core, runner).await;
+        core.update_server(&id, false, |s| {
+            s.as_mut().unwrap().last_status = Some(status)
+        })
+        .await
+        .unwrap();
+        id
+    }
+
+    async fn notified(notify: &tokio::sync::Notify) {
+        tokio::time::timeout(Duration::from_secs(5), notify.notified())
+            .await
+            .expect("notified within 5 s");
+    }
+
+    fn steve_knock() -> Vec<(ServerAddress, String)> {
+        vec![(address().unwrap(), "Steve".into())]
+    }
+
+    #[tokio::test]
+    async fn waking_follows_preparing_and_releases_the_install_slot() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server_with(&core, &runner, ServerStatus::Sleeping).await;
+        *runner.ping_answer.lock().unwrap() = Ping::Waker;
+        runner.hold_wait.store(true, Ordering::SeqCst);
+        core.play_with(&id, true).await.unwrap();
+        runner.open_gate(1);
+        notified(&runner.waiting).await;
+        // The wait doesn't hold the install slot: another instance gets to install meanwhile.
+        core.play("alpha").await.unwrap();
+        host.wait_for("alpha", Preparing).await;
+        assert!(runner.started_joins.lock().unwrap().is_empty());
+        runner.open_wait_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(
+            host.states(&id),
+            vec![Checking, Queued, Syncing, Preparing, Waking, Running]
+        );
+        assert_eq!(*runner.knocks.lock().unwrap(), steve_knock());
+        assert_eq!(*runner.waits.lock().unwrap(), vec![address().unwrap()]);
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        core.stop("alpha").unwrap();
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+        host.wait_for("alpha", Idle).await;
+    }
+
+    async fn a_refusal_skips_the_wait(answer: Knock) {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server_with(&core, &runner, ServerStatus::Sleeping).await;
+        *runner.ping_answer.lock().unwrap() = Ping::Waker;
+        *runner.knock_answer.lock().unwrap() = Ok(answer);
+        core.play_with(&id, true).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(
+            host.states(&id),
+            vec![Checking, Queued, Syncing, Preparing, Running],
+            "the game connects and the player reads the server's message"
+        );
+        assert_eq!(*runner.knocks.lock().unwrap(), steve_knock());
+        assert!(runner.waits.lock().unwrap().is_empty());
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        assert!(!host.warnings().contains(&ErrorCode::ServerWakeFailed));
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn waking_skips_the_wait_when_not_whitelisted() {
+        a_refusal_skips_the_wait(Knock::NotWhitelisted).await;
+    }
+
+    #[tokio::test]
+    async fn waking_skips_the_wait_on_no_room() {
+        a_refusal_skips_the_wait(Knock::NoRoom).await;
+    }
+
+    #[tokio::test]
+    async fn a_starting_server_that_doesn_t_answer_is_waited_for() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server_with(&core, &runner, ServerStatus::Starting).await;
+        *runner.ping_answer.lock().unwrap() = Ping::NoAnswer;
+        core.play_with(&id, true).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(
+            host.states(&id),
+            vec![Checking, Queued, Syncing, Preparing, Waking, Running]
+        );
+        assert_eq!(*runner.pings.lock().unwrap(), vec![address().unwrap()]);
+        assert!(runner.knocks.lock().unwrap().is_empty(), "no knock");
+        assert_eq!(*runner.waits.lock().unwrap(), vec![address().unwrap()]);
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn an_online_server_that_doesn_t_answer_is_joined_at_once() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server_with(&core, &runner, ServerStatus::Online).await;
+        core.play_with(&id, true).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert!(!host.states(&id).contains(&Waking));
+        assert!(runner.knocks.lock().unwrap().is_empty());
+        assert!(runner.waits.lock().unwrap().is_empty());
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn waking_times_out_and_starts_the_game() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server_with(&core, &runner, ServerStatus::Sleeping).await;
+        *runner.ping_answer.lock().unwrap() = Ping::Waker;
+        *runner.wait_answer.lock().unwrap() = WaitEnd::TimedOut;
+        core.play_with(&id, true).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(
+            host.states(&id),
+            vec![Checking, Queued, Syncing, Preparing, Waking, Running]
+        );
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        assert!(host.warnings().contains(&ErrorCode::ServerWakeFailed));
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn stop_during_waking_cancels_the_run() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server_with(&core, &runner, ServerStatus::Sleeping).await;
+        *runner.ping_answer.lock().unwrap() = Ping::Waker;
+        runner.hold_wait.store(true, Ordering::SeqCst);
+        core.play_with(&id, true).await.unwrap();
+        runner.open_gate(1);
+        notified(&runner.waiting).await;
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+        assert_eq!(
+            host.states(&id),
+            vec![Checking, Queued, Syncing, Preparing, Waking, Idle]
+        );
+        assert!(host.last_exit(&id).unwrap().cancelled);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(runner.started_joins.lock().unwrap().is_empty());
+        // The instance is free again.
+        runner.hold_wait.store(false, Ordering::SeqCst);
+        core.play_with(&id, true).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        core.stop(&id).unwrap();
+        host.wait_for_nth(&id, Idle, 2).await;
+    }
+
+    #[tokio::test]
+    async fn a_failed_knock_warns_and_starts_the_game() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server_with(&core, &runner, ServerStatus::Sleeping).await;
+        *runner.ping_answer.lock().unwrap() = Ping::Waker;
+        *runner.knock_answer.lock().unwrap() = Err(LauncherError::network(
+            ErrorCode::ServerWakeFailed,
+            "Couldn't wake the server",
+        ));
+        core.play_with(&id, true).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert!(host.warnings().contains(&ErrorCode::ServerWakeFailed));
+        assert!(!host.states(&id).contains(&Waking));
+        assert!(runner.waits.lock().unwrap().is_empty());
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn plain_play_of_a_sleeping_server_knocks_without_waiting() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server_with(&core, &runner, ServerStatus::Sleeping).await;
+        *runner.ping_answer.lock().unwrap() = Ping::Waker;
+        // The knock never returns: the game must not wait for it.
+        runner.hold_knock.store(true, Ordering::SeqCst);
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        notified(&runner.knocked).await;
+        assert_eq!(*runner.knocks.lock().unwrap(), steve_knock());
+        assert_eq!(
+            host.states(&id),
+            vec![Checking, Queued, Syncing, Preparing, Running]
+        );
+        assert!(runner.waits.lock().unwrap().is_empty());
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![None]);
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn plain_play_of_an_online_server_wakes_nothing() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server_with(&core, &runner, ServerStatus::Online).await;
+        *runner.ping_answer.lock().unwrap() = Ping::Waker;
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(runner.pings.lock().unwrap().is_empty());
+        assert!(runner.knocks.lock().unwrap().is_empty());
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn plain_instances_never_wake() {
+        let (core, runner, host, _t) = ready(true).await;
+        *runner.ping_answer.lock().unwrap() = Ping::Waker;
+        core.play_with("alpha", true).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        assert!(runner.pings.lock().unwrap().is_empty());
+        assert!(runner.knocks.lock().unwrap().is_empty());
+        assert!(runner.waits.lock().unwrap().is_empty());
+        core.stop("alpha").unwrap();
+        host.wait_for("alpha", Idle).await;
     }
 
     #[tokio::test]

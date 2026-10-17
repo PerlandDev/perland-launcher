@@ -97,7 +97,8 @@
     "noAccount": "Agrega una cuenta para jugar",
     "checking": "Buscando actualizaciones…",
     "asking": "¡Actualización lista!",
-    "syncing": "Actualizando…"
+    "syncing": "Actualizando…",
+    "waking": "Iniciando el servidor…"
   },
   "manual": {
     "title": "Descarga estos a mano",

@@ -168,7 +168,7 @@ export const openTarget = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('downloads') }),
 ]);
 
-export const runStateKind = z.enum(['idle', 'checking', 'asking', 'queued', 'syncing', 'preparing', 'running', 'stopping']);
+export const runStateKind = z.enum(['idle', 'checking', 'asking', 'queued', 'syncing', 'preparing', 'waking', 'running', 'stopping']);
 export const crashHint = z.enum(['out_of_memory']);
 export const hashes = z.strictObject({
   sha1: z.string().nullable(),

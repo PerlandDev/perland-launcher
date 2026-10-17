@@ -1,5 +1,5 @@
 //! The seam between the app's run state machine and actually installing and starting a game.
-use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc};
+use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc, time::Duration};
 
 use launcher_core::{
     accounts::Session,
@@ -11,10 +11,16 @@ use launcher_core::{
     locks::InstanceLock,
     play::{self, Prepared, StartSpec},
     public_list::{self, FetchedPage, ListQuery, PublicListClient, PublicServer},
+    server_wake::{self, Knock, Ping, WaitEnd},
     sources::{PackInput, UpdateCheck},
     sync::{Cancel, Ensured, ManualFile, PendingUpdate, Syncer},
     Result,
 };
+
+/// How often a woken server is pinged while the run waits for it.
+pub const WAKE_EVERY: Duration = Duration::from_secs(2);
+/// How long a run waits for a woken server before the game connects anyway.
+pub const WAKE_LIMIT: Duration = Duration::from_secs(5 * 60);
 
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
@@ -93,6 +99,12 @@ pub trait Runner: Send + Sync + 'static {
     fn public_icon(&self, token: String, icon_version: String) -> BoxFuture<Option<Vec<u8>>>;
     /// The invite Play joins for a listed server.
     fn public_invite(&self, server: &PublicServer) -> Option<InviteLink>;
+    /// Who answers a status ping at `address`. A ping never wakes a server.
+    fn server_ping(&self, address: ServerAddress) -> BoxFuture<Ping>;
+    /// Join as `name` so a sleeping server's waker starts the server; its kick says how it went.
+    fn server_knock(&self, address: ServerAddress, name: String) -> BoxFuture<Result<Knock>>;
+    /// Ping every [`WAKE_EVERY`] until the real server answers, for at most [`WAKE_LIMIT`].
+    fn server_wait(&self, address: ServerAddress, cancel: Cancel) -> BoxFuture<WaitEnd>;
 }
 
 pub struct CoreRunner {
@@ -251,6 +263,20 @@ impl Runner for CoreRunner {
 
     fn public_invite(&self, server: &PublicServer) -> Option<InviteLink> {
         self.public.invite_for(server)
+    }
+
+    fn server_ping(&self, address: ServerAddress) -> BoxFuture<Ping> {
+        Box::pin(async move { server_wake::ping(&address).await })
+    }
+
+    fn server_knock(&self, address: ServerAddress, name: String) -> BoxFuture<Result<Knock>> {
+        Box::pin(async move { server_wake::knock(&address, &name).await })
+    }
+
+    fn server_wait(&self, address: ServerAddress, cancel: Cancel) -> BoxFuture<WaitEnd> {
+        Box::pin(async move {
+            server_wake::wait_until_up(&address, &cancel, WAKE_EVERY, WAKE_LIMIT).await
+        })
     }
 }
 
