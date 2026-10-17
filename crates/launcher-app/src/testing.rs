@@ -923,6 +923,8 @@ pub(crate) struct FakePlayer {
     /// What `follow`, `unfollow` and `joined` answer.
     pub relation: Mutex<Result<()>>,
     pub calls: Mutex<Vec<PlayerCall>>,
+    /// Routes whose calls wait for a permit of their gate (see `hold`).
+    holds: Mutex<HashMap<&'static str, Arc<Semaphore>>>,
 }
 
 impl FakePlayer {
@@ -947,7 +949,28 @@ impl FakePlayer {
             servers: Mutex::new(Ok(vec![])),
             relation: Mutex::new(Ok(())),
             calls: Mutex::new(Vec::new()),
+            holds: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// From now on each call to `route` is recorded at once but answers only after a permit
+    /// of the returned gate (`add_permits`).
+    pub fn hold(&self, route: &'static str) -> Arc<Semaphore> {
+        let gate = Arc::new(Semaphore::new(0));
+        self.holds.lock().unwrap().insert(route, gate.clone());
+        gate
+    }
+
+    /// Wait until `route` was called `n` times (panics after 5 s).
+    pub async fn wait_for_calls(&self, route: &str, n: usize) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while self.calls_to(route).len() < n {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "{route} was never called {n} times"
+            );
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
     }
 
     /// The calls made to `route`.
@@ -974,7 +997,13 @@ impl FakePlayer {
             args: args.iter().map(|a| a.to_string()).collect(),
         });
         let answer = answer.lock().unwrap().clone();
-        Box::pin(async move { answer })
+        let gate = self.holds.lock().unwrap().get(route).cloned();
+        Box::pin(async move {
+            if let Some(gate) = gate {
+                gate.acquire().await.expect("gate is never closed").forget();
+            }
+            answer
+        })
     }
 }
 

@@ -40,7 +40,7 @@ pub const SIGN_OUT_LIMIT: Duration = Duration::from_secs(5);
 pub trait PlayerApi: Send + Sync + 'static {
     /// The Engine the public list's site names: where a sign-in starts.
     fn site_engine(&self) -> BoxFuture<Result<Url>>;
-    /// The Engine an invite's site names.
+    /// The Engine an invite's site names, found the way the invite flow finds it.
     fn engine_for(&self, link: InviteLink) -> BoxFuture<Result<Url>>;
     fn config(&self, engine: Url) -> BoxFuture<Result<PlayerConfig>>;
     fn token(
@@ -102,12 +102,7 @@ impl PlayerApi for CorePlayer {
 
     fn engine_for(&self, link: InviteLink) -> BoxFuture<Result<Url>> {
         let invites = self.invites.clone();
-        Box::pin(async move {
-            match Url::parse(&link.origin()) {
-                Ok(site) => invites.engine_for_site(&site).await,
-                Err(_) => invites.engine_for(&link).await,
-            }
-        })
+        Box::pin(async move { invites.engine_for(&link).await })
     }
 
     fn config(&self, engine: Url) -> BoxFuture<Result<PlayerConfig>> {
@@ -201,8 +196,8 @@ pub(crate) struct SignInSlot {
 
 struct SignInAttempt {
     id: u64,
-    /// The authorize URL, for "Open the page again".
-    url: String,
+    /// The authorize URL, for "Open the page again"; `None` until the browser opens.
+    url: Option<String>,
     cancel: watch::Sender<bool>,
 }
 
@@ -308,7 +303,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         state.checked = None;
         state.new_player = false;
         let store = self.perland_store.clone();
-        let _ = tokio::task::spawn_blocking(move || store.forget()).await;
+        // `forget` logs its own store failures (by kind, never the secret).
+        if let Err(e) = tokio::task::spawn_blocking(move || store.forget()).await {
+            let kind = if e.is_panic() {
+                "panicked"
+            } else {
+                "was canceled"
+            };
+            tracing::warn!("forgetting the Perland sign-in {kind}");
+        }
     }
 
     /// Forget the session if it is still the one holding `token` (a 401 answered it).
@@ -430,9 +433,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Sign in through Discord in the player's browser. `Ok(None)` when the player canceled
     /// (on Discord's page, with Cancel, or by starting another sign-in).
     pub async fn perland_sign_in_discord(&self, language: &str) -> Result<Option<PerlandAccount>> {
+        // Take the slot first, so a Cancel (or another sign-in) before the browser opens counts.
+        let (guard, cancel) = self.start_sign_in();
         let player = self.runner.player();
-        let engine = player.site_engine().await?;
-        let config = player.config(engine.clone()).await?;
+        // A sign-in canceled while it got ready answers no error, whatever these said.
+        let engine = player.site_engine().await;
+        if *cancel.borrow() {
+            return Ok(None);
+        }
+        let engine = engine?;
+        let config = player.config(engine.clone()).await;
+        if *cancel.borrow() {
+            return Ok(None);
+        }
+        let config = config?;
         if !config.enabled {
             return Err(accounts_closed(&engine));
         }
@@ -451,7 +465,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         })?;
         let redirect = loopback.redirect_uri();
         let url = authorize_url(&engine, &redirect, &pkce).to_string();
-        let (_guard, cancel) = self.start_sign_in(url.clone());
+        if !self.set_sign_in_url(&guard, &url) || *cancel.borrow() {
+            return Ok(None);
+        }
         self.host.open_url(&url);
         self.host.emit(AppEvent::PerlandSignIn {
             phase: PerlandSignInPhase::Waiting,
@@ -493,7 +509,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Take the sign-in slot for a new Discord sign-in, canceling the one before.
-    fn start_sign_in(&self, url: String) -> (AttemptGuard<'_>, watch::Receiver<bool>) {
+    fn start_sign_in(&self) -> (AttemptGuard<'_>, watch::Receiver<bool>) {
         let (cancel, canceled) = watch::channel(false);
         let mut slot = self
             .perland_sign_in
@@ -504,7 +520,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
         slot.next += 1;
         let id = slot.next;
-        slot.current = Some(SignInAttempt { id, url, cancel });
+        slot.current = Some(SignInAttempt {
+            id,
+            url: None,
+            cancel,
+        });
         let guard = AttemptGuard {
             slot: &self.perland_sign_in,
             id,
@@ -512,7 +532,24 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         (guard, canceled)
     }
 
-    /// Open the waiting sign-in's page again. Nothing waits: nothing to open.
+    /// Record the authorize URL for "Open the page again". False when the attempt no longer
+    /// holds the slot (it was canceled or replaced).
+    fn set_sign_in_url(&self, guard: &AttemptGuard<'_>, url: &str) -> bool {
+        let mut slot = self
+            .perland_sign_in
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        match slot.current.as_mut().filter(|a| a.id == guard.id) {
+            Some(attempt) => {
+                attempt.url = Some(url.to_string());
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Open the waiting sign-in's page again. Nothing waits, or its page isn't open yet:
+    /// nothing to open.
     pub fn perland_sign_in_reopen(&self) -> Result<()> {
         let url = self
             .perland_sign_in
@@ -520,7 +557,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .unwrap_or_else(|e| e.into_inner())
             .current
             .as_ref()
-            .map(|a| a.url.clone());
+            .and_then(|a| a.url.clone());
         if let Some(url) = url {
             self.host.open_url(&url);
         }
@@ -559,6 +596,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// Redeem the emailed code (spaces allowed) at the Engine that sent it.
     pub async fn perland_email_verify(&self, email: &str, code: &str) -> Result<PerlandAccount> {
+        // One sign-in at a time: this one wins over a Discord one waiting for the browser.
+        self.perland_sign_in_cancel();
         let player = self.runner.player();
         let saved = self.perland.lock().await.email_engine.clone();
         let engine = match saved {
@@ -572,9 +611,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Ok(self.adopt(engine, answer).await)
     }
 
-    /// Sign out: tell the Engine (at most 5 s, whatever it answers), then forget the session.
+    /// Sign out: stop a waiting sign-in, tell the Engine (at most 5 s, whatever it answers),
+    /// then forget the session, unless a sign-in finished meanwhile and replaced it.
     pub async fn perland_sign_out(&self) -> Result<()> {
+        self.perland_sign_in_cancel();
         let session = self.perland_session().await;
+        let token = session.as_ref().map(|s| s.token.clone());
         if let Some(session) = session {
             let call = self
                 .runner
@@ -587,7 +629,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
         }
         let mut state = self.perland.lock().await;
-        self.forget_session(&mut state).await;
+        if state.session.as_ref().map(|s| &s.token) == token.as_ref() {
+            self.forget_session(&mut state).await;
+        } else {
+            tracing::info!("a sign-in finished during the sign-out; it stays");
+        }
         Ok(())
     }
 }
@@ -667,6 +713,16 @@ mod tests {
             .send()
             .await
             .unwrap();
+    }
+
+    /// The sign-in's answer, within 5 s.
+    async fn finish(
+        task: tokio::task::JoinHandle<Result<Option<PerlandAccount>>>,
+    ) -> Result<Option<PerlandAccount>> {
+        tokio::time::timeout(std::time::Duration::from_secs(5), task)
+            .await
+            .expect("the sign-in ended")
+            .unwrap()
     }
 
     fn sign_in(core: &Arc<TestCore>) -> tokio::task::JoinHandle<Result<Option<PerlandAccount>>> {
@@ -930,5 +986,132 @@ mod tests {
             .unwrap()
             .iter()
             .all(|c| c.engine == a));
+    }
+
+    #[tokio::test]
+    async fn cancel_before_the_browser_opens_is_none() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        let gate = runner.player.hold("config");
+        let task = sign_in(&core);
+        runner.player.wait_for_calls("config", 1).await;
+        core.perland_sign_in_cancel();
+        gate.add_permits(1);
+        assert_eq!(finish(task).await.unwrap(), None);
+        assert!(host.opened.lock().unwrap().is_empty(), "no browser opened");
+        core.perland_sign_in_reopen().unwrap();
+        assert!(host.opened.lock().unwrap().is_empty(), "nothing to reopen");
+    }
+
+    #[tokio::test]
+    async fn cancel_before_the_browser_wins_over_a_failed_config() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        *runner.player.config.lock().unwrap() = Err(LauncherError::network(
+            ErrorCode::Offline,
+            "Couldn't reach api.example.com",
+        ));
+        let gate = runner.player.hold("config");
+        let task = sign_in(&core);
+        runner.player.wait_for_calls("config", 1).await;
+        core.perland_sign_in_cancel();
+        gate.add_permits(1);
+        assert_eq!(finish(task).await.unwrap(), None);
+        assert!(host.opened.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_second_sign_in_before_the_browser_cancels_the_first() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        let gate = runner.player.hold("config");
+        let first = sign_in(&core);
+        runner.player.wait_for_calls("config", 1).await;
+        let second = sign_in(&core);
+        runner.player.wait_for_calls("config", 2).await;
+        gate.add_permits(2);
+        assert_eq!(finish(first).await.unwrap(), None);
+        host.wait_for_opened(1).await;
+        core.perland_sign_in_cancel();
+        assert_eq!(finish(second).await.unwrap(), None);
+        assert_eq!(
+            host.opened.lock().unwrap().len(),
+            1,
+            "only the second opened"
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_out_cancels_a_waiting_sign_in() {
+        let (core, _runner, host, _t) = core(BuildKind::Dev);
+        let task = sign_in(&core);
+        host.wait_for_opened(1).await;
+        core.perland_sign_out().await.unwrap();
+        assert_eq!(finish(task).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn sign_out_keeps_a_sign_in_that_finished_meanwhile() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        core.perland_store
+            .save(&saved_session("https://api.example.com"))
+            .unwrap();
+        let gate = runner.player.hold("sign_out");
+        let out = {
+            let core = core.clone();
+            tokio::spawn(async move { core.perland_sign_out().await })
+        };
+        runner.player.wait_for_calls("sign_out", 1).await;
+        core.perland_email_start("steve@example.com", "en")
+            .await
+            .unwrap();
+        core.perland_email_verify("steve@example.com", "123456")
+            .await
+            .unwrap();
+        gate.add_permits(1);
+        out.await.unwrap().unwrap();
+        assert_eq!(
+            core.perland_session().await.map(|s| s.token),
+            Some(player_token('x')),
+            "the new sign-in stays"
+        );
+        assert_eq!(core.perland_store.load().unwrap().token, player_token('x'));
+    }
+
+    #[tokio::test]
+    async fn email_verify_cancels_a_waiting_discord_sign_in() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        let task = sign_in(&core);
+        host.wait_for_opened(1).await;
+        core.perland_email_verify("steve@example.com", "123456")
+            .await
+            .unwrap();
+        assert_eq!(finish(task).await.unwrap(), None);
+        assert!(runner.player.calls_to("token").is_empty());
+        assert_eq!(core.perland_store.load().unwrap().token, player_token('x'));
+    }
+
+    #[tokio::test]
+    async fn engine_for_an_invite_uses_the_invite_lookup() {
+        use wiremock::{
+            matchers::{method, path},
+            Mock, MockServer, ResponseTemplate,
+        };
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/config.json"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .mount(&server)
+            .await;
+        let http = launcher_core::http::client("test").unwrap();
+        let player = CorePlayer::new(
+            Ok(http.clone()),
+            InviteClient::new(http),
+            engine("https://perland.example.com"),
+        );
+        let link = InviteLink::parse(&format!("{}/{}", server.uri(), "x".repeat(43))).unwrap();
+        let error = player.engine_for(link).await.unwrap_err();
+        assert_eq!(
+            error.code,
+            ErrorCode::InviteSiteUnreachable,
+            "an invite site without an Engine is an unreachable invite site, not a closed list"
+        );
     }
 }
