@@ -20,6 +20,7 @@ pub mod logging;
 pub mod meta;
 pub mod mods;
 pub mod news;
+pub mod news_seen;
 pub mod paths;
 pub mod platform;
 pub mod play;
