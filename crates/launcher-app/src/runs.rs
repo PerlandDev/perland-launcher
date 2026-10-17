@@ -166,6 +166,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 answer: None,
                 offer: None,
                 update_only,
+                synced: None,
             },
         );
         Ok(())
@@ -200,6 +201,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             | RunStateKind::Preparing
             | RunStateKind::Waking => {
                 let update_only = run.update_only;
+                let synced = run.synced.take();
                 if let Some(abort) = run.abort.take() {
                     abort.abort();
                 }
@@ -210,6 +212,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     Some(ExitInfo {
                         cancelled: true,
                         update_only,
+                        synced,
                         ..ExitInfo::default()
                     }),
                 );
@@ -681,7 +684,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             let name = args.session.username.clone();
             if args.join {
                 if !self
-                    .wake_for_join(&id, address, last_status, &name, &cancel)
+                    .wake_for_join(&id, address, last_status, &name, &synced, &cancel)
                     .await
                 {
                     let info = ExitInfo {
@@ -773,6 +776,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         address: &ServerAddress,
         last: Option<ServerStatus>,
         name: &str,
+        synced: &Option<SyncSummary>,
         cancel: &Cancel,
     ) -> bool {
         let wait = match self.runner.server_ping(address.clone()).await {
@@ -798,6 +802,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         if !wait {
             return true;
+        }
+        // A Stop while waking aborts the run, so it reports the sync from here.
+        if let Some(run) = self
+            .runs
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(id)
+        {
+            run.synced = synced.clone();
         }
         if !self.set_phase(id, RunStateKind::Waking) {
             return false;
@@ -1915,6 +1928,42 @@ mod tests {
         host.wait_for(&id, Running).await;
         core.stop(&id).unwrap();
         host.wait_for_nth(&id, Idle, 2).await;
+    }
+
+    #[tokio::test]
+    async fn stop_during_waking_keeps_the_sync_summary() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server_with(&core, &runner, ServerStatus::Sleeping).await;
+        runner.sync_results.lock().unwrap().push_back(Ok(Ensured {
+            outcome: SyncOutcome::Done(SyncReport {
+                up_to_date: false,
+                changes: Changes {
+                    from_version: Some("1.0.4".into()),
+                    to_version: "1.0.5".into(),
+                    added: vec!["JEI".into()],
+                    updated: vec![],
+                    removed: vec![],
+                },
+                kept_modified: vec![],
+                game_changed: false,
+                set_aside: vec![],
+            }),
+            warning: None,
+        }));
+        *runner.ping_answer.lock().unwrap() = Ping::Waker;
+        runner.hold_wait.store(true, Ordering::SeqCst);
+        core.play_with(&id, true).await.unwrap();
+        runner.open_gate(1);
+        notified(&runner.waiting).await;
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+        let exit = host.last_exit(&id).unwrap();
+        assert!(exit.cancelled);
+        let synced = exit
+            .synced
+            .expect("the update the run took is still reported");
+        assert_eq!((synced.to_version.as_str(), synced.added), ("1.0.5", 1));
+        assert!(runner.started_joins.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

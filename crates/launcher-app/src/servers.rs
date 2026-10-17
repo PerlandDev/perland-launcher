@@ -678,6 +678,7 @@ mod tests {
                 answer: None,
                 offer: None,
                 update_only: false,
+                synced: None,
             },
         );
     }

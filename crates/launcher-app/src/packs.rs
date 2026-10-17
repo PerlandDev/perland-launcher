@@ -1316,6 +1316,7 @@ mod tests {
                 answer: None,
                 offer: None,
                 update_only: false,
+                synced: None,
             },
         );
         let upload = ArtChoice::Upload { path: file };
@@ -1570,6 +1571,7 @@ mod tests {
                 answer: None,
                 offer: None,
                 update_only: false,
+                synced: None,
             },
         );
         let upload = IconChoice::Upload {
@@ -1662,6 +1664,7 @@ mod tests {
                 answer: None,
                 offer: None,
                 update_only: false,
+                synced: None,
             },
         );
         let focus = Some(Focus { x: 20, y: 80 });
