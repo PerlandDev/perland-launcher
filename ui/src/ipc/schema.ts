@@ -122,6 +122,8 @@ export const yourServersPage = z.strictObject({ servers: z.array(yourServerCard)
 /** The signed-in player. `email` is null for a Discord-only account; `newPlayer` is true on the sign-in that made it. */
 export const perlandAccount = z.strictObject({
   name: z.string(),
+  /** The name the player picked, never the email; '' without one. Prefills a free server's name. */
+  displayName: z.string(),
   email: z.string().nullable(),
   discord: z.boolean(),
   newPlayer: z.boolean(),

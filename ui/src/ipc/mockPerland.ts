@@ -34,7 +34,7 @@ interface Listing {
   instances: Instance[];
 }
 
-const STEVE: PerlandAccount = { name: 'Steve', email: 'steve@example.com', discord: true, newPlayer: false };
+const STEVE: PerlandAccount = { name: 'Steve', displayName: 'Steve', email: 'steve@example.com', discord: true, newPlayer: false };
 
 /** The tokens of the servers Your servers has that the public list doesn't. */
 const OWNER = 'O';
@@ -175,7 +175,7 @@ export async function handlePerland(
         perland.attemptsLeft = Math.max(0, perland.attemptsLeft - 1);
         fail('auth', 'invalid_code', "That code isn't right.", { attemptsLeft: String(perland.attemptsLeft) });
       }
-      perland.account = { name: email, email, discord: false, newPlayer: true };
+      perland.account = { name: email, displayName: '', email, discord: false, newPlayer: true };
       return perland.account;
     }
     case 'perland_sign_out':

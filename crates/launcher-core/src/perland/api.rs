@@ -153,7 +153,7 @@ pub struct YourServer {
 }
 
 /// The memory of each kind of free server, in MB.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct MemoryLimits {
     pub vanilla: u32,
@@ -161,7 +161,7 @@ pub struct MemoryLimits {
 }
 
 /// What every free server has.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct FreeLimits {
     pub max_players: u32,
@@ -177,7 +177,7 @@ pub struct FreeLimits {
 /// Whether the player may create a free server now. `reason` is `email_required`,
 /// `free_server_exists`, `too_many_free_servers` (with `retry_after` seconds) or
 /// `free_servers_full`; the launcher keeps it as the Engine says it.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct CreateAllowance {
     pub allowed: bool,
@@ -186,7 +186,7 @@ pub struct CreateAllowance {
 }
 
 /// When an unused server is deleted. `warned`: the owner has been told.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Deletion {
     pub deletes_at: String,
@@ -194,7 +194,7 @@ pub struct Deletion {
 }
 
 /// The last measure of the server's data folder.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Disk {
     pub used_bytes: u64,
