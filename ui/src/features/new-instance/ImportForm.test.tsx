@@ -11,6 +11,8 @@ import { renderWithProviders } from '../../test/render';
 import { ImportForm } from './ImportForm';
 
 const TOTAL = 1_234_000_000;
+/** A preview of a folder whose launcher kept no settings of the instance's own. */
+const NOTHING_KEPT = { memoryMb: null, memoryWantedMb: null, javaArgs: null, playtimeSeconds: null };
 
 const notInstance: LauncherError = {
   category: 'disk',
@@ -73,7 +75,10 @@ it('reads the picked folder and prefills the form from it', async () => {
   expect(screen.getByRole('radio', { name: 'Fabric' })).toBeChecked();
   expect(await screen.findByRole('combobox', { name: 'Loader version' })).toHaveValue('0.19.4');
   expect(
-    screen.getByText("We'll copy 1.2 GB: your mods, worlds, settings and map data. The original folder isn't changed."),
+    screen.getByText(
+      "We'll copy 1.2 GB: your mods, worlds, settings and map data. The original folder isn't changed. " +
+        'It keeps its memory (6 GB) and its Java arguments. Its 12 h 30 min played count toward your time played.',
+    ),
   ).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled();
 });
@@ -129,7 +134,7 @@ it('names the import after the folder around a bare .minecraft when nothing was 
   const path = 'C:\\Users\\p\\Profiles\\Survival\\.minecraft';
   const { user, calls, settle } = renderImport({
     'plugin:dialog|open': () => path,
-    import_inspect: () => ({ path, name: null, minecraft: null, loader: null, sizeBytes: 1000 }),
+    import_inspect: () => ({ path, name: null, minecraft: null, loader: null, sizeBytes: 1000, ...NOTHING_KEPT }),
   });
   const name = await choose(user);
   expect(name).toHaveValue('');
@@ -297,7 +302,7 @@ it('cuts a long folder name or detected name to the 64 characters a name can hav
   const path = `/home/p/instances/${long}`;
   const first = renderImport({
     'plugin:dialog|open': () => path,
-    import_inspect: () => ({ path, name: null, minecraft: null, loader: null, sizeBytes: 1000 }),
+    import_inspect: () => ({ path, name: null, minecraft: null, loader: null, sizeBytes: 1000, ...NOTHING_KEPT }),
   });
   const name = await choose(first.user);
   expect(name).toHaveAttribute('placeholder', 'A'.repeat(64));
@@ -309,7 +314,45 @@ it('cuts a long folder name or detected name to the 64 characters a name can hav
 
   const second = renderImport({
     'plugin:dialog|open': () => path,
-    import_inspect: () => ({ path, name: 'B'.repeat(70), minecraft: null, loader: null, sizeBytes: 1000 }),
+    import_inspect: () => ({ path, name: 'B'.repeat(70), minecraft: null, loader: null, sizeBytes: 1000, ...NOTHING_KEPT }),
   });
   expect(await choose(second.user)).toHaveValue('B'.repeat(64));
+});
+
+it('says which of its own settings the instance keeps', async () => {
+  const preview = { path: MOCK_IMPORT_PATH, name: 'Asalith Fields', minecraft: '1.20.1', loader: null, sizeBytes: 1000 };
+  const { user } = renderImport({
+    import_inspect: () => ({
+      ...preview,
+      memoryMb: 10240,
+      memoryWantedMb: null,
+      javaArgs: '-XX:+UseG1GC',
+      playtimeSeconds: 7_500,
+    }),
+  });
+  await choose(user);
+  expect(
+    screen.getByText(
+      "We'll copy 1 KB: your mods, worlds, settings and map data. The original folder isn't changed. " +
+        'It keeps its memory (10 GB) and its Java arguments. Its 2 h 5 min played count toward your time played.',
+    ),
+  ).toBeInTheDocument();
+});
+
+it('says when the memory it had is more than the launcher allows', async () => {
+  const { user } = renderImport({
+    import_inspect: () => ({
+      path: MOCK_IMPORT_PATH,
+      name: 'Big',
+      minecraft: '1.20.1',
+      loader: null,
+      sizeBytes: 1000,
+      memoryMb: 65_536,
+      memoryWantedMb: 100_000,
+      javaArgs: null,
+      playtimeSeconds: null,
+    }),
+  });
+  await choose(user);
+  expect(screen.getByText(/It had 97\.7 GB of memory, more than the launcher allows, so it gets 64 GB\./)).toBeInTheDocument();
 });

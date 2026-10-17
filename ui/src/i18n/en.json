@@ -205,7 +205,13 @@
     "copying": "Copying… {{done}} of {{total}}",
     "pickTitle": "Pick the instance's folder",
     "reading": "Reading the folder…",
-    "done": "{{name}} is ready"
+    "done": "{{name}} is ready",
+    "keepsMemoryAndArgs": "It keeps its memory ({{gb}} GB) and its Java arguments.",
+    "keepsMemory": "It keeps its memory ({{gb}} GB).",
+    "keepsArgs": "It keeps its Java arguments.",
+    "memoryTooHigh": "It had {{wanted}} GB of memory, more than the launcher allows, so it gets {{gb}} GB.",
+    "memoryTooLow": "It had {{wanted}} GB of memory, less than the launcher needs, so it gets {{gb}} GB.",
+    "keepsPlaytime": "Its {{time}} played count toward your time played."
   },
   "instanceSettings": {
     "title": "Instance settings",

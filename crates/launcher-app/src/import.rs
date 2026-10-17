@@ -12,7 +12,12 @@ use launcher_core::{
     events::TaskId,
     fsutil::rename_with_retry,
     import,
-    instances::{rename_io_error, validate_name, GameSpec, Instance},
+    instances::{
+        rename_io_error, validate_name, GameSpec, Instance, JavaSettings, MAX_MEMORY_MB,
+        MIN_MEMORY_MB,
+    },
+    launch::jvm_args,
+    playtime,
     sync::Cancel,
     LauncherError, Result,
 };
@@ -43,13 +48,59 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// What the picked folder holds, to prefill the import form. `path` comes back as picked.
     pub async fn import_inspect(&self, path: PathBuf) -> Result<ImportPreview> {
         let (detected, size_bytes) = import::inspect(&path, self.config.dirs.root()).await?;
+        let carried = self.import_carried(&detected).await;
         Ok(ImportPreview {
             path,
             name: detected.name,
             minecraft: detected.minecraft,
             loader: detected.loader,
             size_bytes,
+            memory_mb: carried.memory.map(|(mb, _)| mb),
+            memory_wanted_mb: carried
+                .memory
+                .and_then(|(mb, wanted)| (mb != wanted).then_some(wanted)),
+            java_args: carried.java_args,
+            playtime_seconds: carried.playtime.map(|p| p.seconds),
         })
+    }
+
+    /// What the new instance takes from the other launcher's settings for it (#57, #58).
+    async fn import_carried(&self, detected: &import::Detected) -> Carried {
+        let kept = &detected.kept;
+        let memory = kept
+            .memory_mb
+            .map(|wanted| (wanted.clamp(MIN_MEMORY_MB, MAX_MEMORY_MB), wanted));
+        let java_args = kept
+            .java_args
+            .as_deref()
+            .map(jvm_args::imported_list)
+            .filter(|args| !args.is_empty());
+        let playtime = match kept.playtime {
+            Some(played) if !self.import_counts_playtime_of(&detected.game_dir).await => {
+                Some(played)
+            }
+            _ => None,
+        };
+        Carried {
+            memory,
+            java_args,
+            playtime,
+        }
+    }
+
+    /// Whether an instance already counts the time played imported from `game_dir`, so a
+    /// second import of the same folder doesn't count it twice.
+    async fn import_counts_playtime_of(&self, game_dir: &Path) -> bool {
+        let Ok(instances) = self.instances.list().await else {
+            return false;
+        };
+        for instance in instances {
+            let played = playtime::read(&self.instances.perland_dir(&instance.id)).await;
+            if played.imported_from.as_deref() == Some(game_dir) {
+                return true;
+            }
+        }
+        false
     }
 
     /// Copy the picked folder's game files into a new plain instance. One import at a time; a
@@ -152,7 +203,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if cancel.is_cancelled() {
             return Err(import::cancelled());
         }
-        let memory = self.default_memory_mb().await;
+        let carried = self.import_carried(detected).await;
+        let memory = match carried.memory {
+            Some((mb, _)) => mb,
+            None => self.default_memory_mb().await,
+        };
         let instance = self
             .instances
             .create(
@@ -163,8 +218,26 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 },
             )
             .await?;
-        match self.import_place(instance, staging, memory).await {
-            Ok(instance) => Ok(instance),
+        let java = JavaSettings {
+            memory_mb: memory,
+            args: carried.java_args.unwrap_or_default(),
+            ..instance.java.clone()
+        };
+        match self.import_place(instance, staging, java).await {
+            Ok(instance) => {
+                if let Some(played) = carried.playtime {
+                    let perland = self.instances.perland_dir(&instance.id);
+                    let (seconds, last) = (played.seconds, played.last_played);
+                    // Like a run's count: losing it is never worth failing the import.
+                    if let Err(error) =
+                        playtime::import(&perland, seconds, last, &detected.game_dir).await
+                    {
+                        let id = instance.id.as_str();
+                        tracing::warn!(instance = id, %error, "couldn't save the time played");
+                    }
+                }
+                Ok(instance)
+            }
             Err(failed) => {
                 let (id, e) = *failed;
                 // No half-made instance: it goes with everything moved into it.
@@ -174,14 +247,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
     }
 
-    /// Swap the new instance's empty game folder for the staged copy, and give it the default
-    /// memory. On failure, the error comes back with the instance id to remove (boxed: the pair
-    /// is large for a `Result`'s Err).
+    /// Swap the new instance's empty game folder for the staged copy, and give it its Java
+    /// settings (memory and arguments). On failure, the error comes back with the instance id
+    /// to remove (boxed: the pair is large for a `Result`'s Err).
     async fn import_place(
         &self,
         mut instance: Instance,
         staging: &Path,
-        memory: u32,
+        java: JavaSettings,
     ) -> std::result::Result<Instance, Box<(String, LauncherError)>> {
         let id = instance.id.clone();
         let fail = |e: LauncherError| Box::new((id.clone(), e));
@@ -192,8 +265,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.import_move(staging, &game)
             .await
             .map_err(|e| fail(rename_io_error(e, &id)))?;
-        if instance.java.memory_mb != memory {
-            instance.java.memory_mb = memory;
+        if instance.java != java {
+            instance.java = java;
             instance = self.instances.update(&instance).await.map_err(fail)?;
         }
         Ok(instance)
@@ -214,6 +287,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
         rename_with_retry(staging, game).await
     }
+}
+
+/// The other launcher's settings an import brings, checked against this launcher's limits.
+struct Carried {
+    /// (memory set, memory the other launcher had), in MB.
+    memory: Option<(u32, u32)>,
+    java_args: Option<String>,
+    playtime: Option<import::Played>,
 }
 
 /// Remove what a crashed import left in `import-staging/`. Only its folders: a file there is
@@ -389,7 +470,105 @@ mod tests {
                 minecraft: Some("1.20.1".into()),
                 loader: fabric(),
                 size_bytes: 5,
+                memory_mb: None,
+                memory_wanted_mb: None,
+                java_args: None,
+                playtime_seconds: None,
             }
+        );
+    }
+
+    /// [`prism`] with its own memory, Java arguments and time played, as Prism writes them.
+    fn prism_with_settings(outside: &Path, max_mem: u32) -> PathBuf {
+        let dir = prism(outside);
+        put(
+            &dir,
+            "instance.cfg",
+            &format!(
+                "[General]\nname=My Pack\nOverrideMemory=true\nMinMemAlloc=512\nMaxMemAlloc={max_mem}\n\
+                 OverrideJavaArgs=true\nJvmArgs=\"-Xmx2G -XX:+UseG1GC -javaagent:/p/a.jar -Dfml.readTimeout=180\"\n\
+                 totalTimePlayed=7200\nlastLaunchTime=1700000000000\nlastTimePlayed=60\n"
+            ),
+        );
+        dir
+    }
+
+    #[tokio::test]
+    async fn inspect_previews_what_the_instance_keeps() {
+        let (core, _, _, _tmp) = core(BuildKind::Dev);
+        let outside = tempfile::tempdir().unwrap();
+        let dir = prism_with_settings(outside.path(), 10240);
+        let preview = core.import_inspect(dir.clone()).await.unwrap();
+        assert_eq!(preview.memory_mb, Some(10240));
+        assert_eq!(preview.memory_wanted_mb, None);
+        assert_eq!(
+            preview.java_args.as_deref(),
+            Some("-XX:+UseG1GC -Dfml.readTimeout=180")
+        );
+        assert_eq!(preview.playtime_seconds, Some(7200));
+
+        let dir = prism_with_settings(&outside.path().join("big"), 100_000);
+        let preview = core.import_inspect(dir).await.unwrap();
+        assert_eq!(
+            preview.memory_mb,
+            Some(launcher_core::instances::MAX_MEMORY_MB)
+        );
+        assert_eq!(preview.memory_wanted_mb, Some(100_000));
+    }
+
+    #[tokio::test]
+    async fn import_keeps_memory_java_args_and_playtime() {
+        let (core, _, _, _tmp) = core(BuildKind::Dev);
+        let outside = tempfile::tempdir().unwrap();
+        let dir = prism_with_settings(outside.path(), 10240);
+
+        let instance = core
+            .import_instance(request(&dir, "Imported"))
+            .await
+            .unwrap();
+
+        assert_eq!(instance.java.memory_mb, 10240);
+        assert_eq!(instance.java.args, "-XX:+UseG1GC -Dfml.readTimeout=180");
+        assert_eq!(core.instances.load(&instance.id).await.unwrap(), instance);
+        let played = core.playtime_list().await.unwrap();
+        assert_eq!(played.len(), 1);
+        assert_eq!(played[0].seconds, 7200);
+        assert_eq!(played[0].last_played, 1_700_000_060);
+    }
+
+    #[tokio::test]
+    async fn importing_the_same_folder_again_does_not_count_its_playtime_twice() {
+        let (core, _, _, _tmp) = core(BuildKind::Dev);
+        let outside = tempfile::tempdir().unwrap();
+        let dir = prism_with_settings(outside.path(), 10240);
+        let first = core.import_instance(request(&dir, "First")).await.unwrap();
+
+        // Picked by its inner folder this time: still the same instance.
+        let preview = core.import_inspect(dir.join(".minecraft")).await.unwrap();
+        assert_eq!(preview.playtime_seconds, None);
+        let second = core
+            .import_instance(request(&dir.join(".minecraft"), "Second"))
+            .await
+            .unwrap();
+        assert_eq!(second.java.memory_mb, 10240, "settings still come along");
+        let total: u64 = core
+            .playtime_list()
+            .await
+            .unwrap()
+            .iter()
+            .map(|p| p.seconds)
+            .sum();
+        assert_eq!(total, 7200);
+
+        // Once the first copy is gone, a new import brings the time again.
+        core.instance_delete(&first.id).await.unwrap();
+        core.instance_delete(&second.id).await.unwrap();
+        let third = core.import_instance(request(&dir, "Third")).await.unwrap();
+        let played = core.playtime_list().await.unwrap();
+        assert_eq!(played.len(), 1);
+        assert_eq!(
+            (played[0].id.as_str(), played[0].seconds),
+            (third.id.as_str(), 7200)
         );
     }
 

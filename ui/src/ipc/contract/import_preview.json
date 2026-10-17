@@ -6,5 +6,9 @@
     "kind": "fabric",
     "version": "0.16.14"
   },
-  "sizeBytes": 1234000000
+  "sizeBytes": 1234000000,
+  "memoryMb": 10240,
+  "memoryWantedMb": null,
+  "javaArgs": "-XX:+UseG1GC -Dfml.readTimeout=180",
+  "playtimeSeconds": 45000
 }

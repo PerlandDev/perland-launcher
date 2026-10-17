@@ -995,6 +995,10 @@ fn contract_fixtures_are_current() {
                 version: "0.16.14".into(),
             }),
             size_bytes: 1_234_000_000,
+            memory_mb: Some(10_240),
+            memory_wanted_mb: None,
+            java_args: Some("-XX:+UseG1GC -Dfml.readTimeout=180".into()),
+            playtime_seconds: Some(45_000),
         },
     );
     check(

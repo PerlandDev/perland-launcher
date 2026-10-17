@@ -15,7 +15,7 @@ use crate::{
     sync::Cancel,
 };
 
-pub use detect::Detected;
+pub use detect::{Detected, Kept, Played};
 
 /// Top-level entries of a game folder that are never copied. The launcher installs its own
 /// `assets`, `libraries`, `versions` and Java `runtime`; the rest are caches or another
@@ -475,6 +475,148 @@ mod tests {
         assert_eq!(d.loader, loader(LoaderKind::Forge, "43.2.0"));
         assert_eq!(d.game_dir, dir.canonicalize().unwrap());
         assert!(d.skip_root_meta);
+    }
+
+    fn strs(v: &[&str]) -> Option<Vec<String>> {
+        Some(v.iter().map(|s| s.to_string()).collect())
+    }
+
+    #[tokio::test]
+    async fn prism_keeps_the_instance_own_memory_java_args_and_playtime() {
+        let fx = Fixture::new();
+        let dir = prism(&fx, PRISM_FABRIC);
+        // As Prism writes it (Qt's INI format): quoted when the value holds `=`, inner quotes
+        // escaped. Memory in MiB, total time in seconds, last launch in milliseconds, last
+        // time played in seconds.
+        put(
+            &dir,
+            "instance.cfg",
+            r#"[General]
+InstanceType=OneSix
+name=Asalith Fields
+OverrideMemory=true
+MinMemAlloc=12288
+MaxMemAlloc=10240
+OverrideJavaArgs=true
+JvmArgs="-XX:+UseG1GC -Dfml.readTimeout=180 \"-Dname=My Pack\""
+totalTimePlayed=7265
+lastLaunchTime=1700000000000
+lastTimePlayed=65
+"#,
+        );
+        let (d, _) = fx.inspect(&dir).await.unwrap();
+        assert_eq!(d.name.as_deref(), Some("Asalith Fields"));
+        assert_eq!(
+            d.kept,
+            Kept {
+                // Prism starts the game with the larger of the two as the maximum.
+                memory_mb: Some(12288),
+                java_args: strs(&["-XX:+UseG1GC", "-Dfml.readTimeout=180", "-Dname=My Pack"]),
+                playtime: Some(Played {
+                    seconds: 7265,
+                    last_played: 1_700_000_065,
+                }),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn prism_values_without_their_override_follow_prism_global_settings() {
+        let fx = Fixture::new();
+        let dir = prism(&fx, PRISM_FABRIC);
+        put(
+            &dir,
+            "instance.cfg",
+            "name=P\nOverrideMemory=false\nMaxMemAlloc=8192\nOverrideJavaArgs=false\nJvmArgs=-XX:+UseZGC\ntotalTimePlayed=0\n",
+        );
+        let (d, _) = fx.inspect(&dir).await.unwrap();
+        assert_eq!(d.kept, Kept::default());
+    }
+
+    #[tokio::test]
+    async fn curseforge_keeps_overridden_memory_and_java_args() {
+        for (overrides, expected) in [
+            (
+                r#""isMemoryOverride":true,"allocatedMemory":12288,"javaArgsOverride":"-XX:+UseZGC -Dx=1""#,
+                Kept {
+                    memory_mb: Some(12288),
+                    java_args: strs(&["-XX:+UseZGC", "-Dx=1"]),
+                    playtime: None,
+                },
+            ),
+            (
+                r#""isMemoryOverride":false,"allocatedMemory":4096,"javaArgsOverride":null"#,
+                Kept::default(),
+            ),
+        ] {
+            let fx = Fixture::new();
+            let dir = fx.dir("curseforge/Instances/CF");
+            // The CurseForge app can start the file with a byte order mark.
+            put(
+                &dir,
+                "minecraftinstance.json",
+                &format!("\u{feff}{{\"name\":\"CF\",\"gameVersion\":\"1.20.1\",\"playedCount\":81,\"lastPlayed\":\"2021-12-17T06:56:36.0592864Z\",{overrides}}}"),
+            );
+            let (d, _) = fx.inspect(&dir).await.unwrap();
+            assert_eq!(d.name.as_deref(), Some("CF"), "{overrides}");
+            assert_eq!(d.kept, expected, "{overrides}");
+        }
+    }
+
+    #[tokio::test]
+    async fn modrinth_keeps_memory_java_args_and_playtime() {
+        let fx = Fixture::new();
+        let dir = fx.dir("modrinth/profiles/MR");
+        put(
+            &dir,
+            "profile.json",
+            r#"{"metadata":{"name":"MR","game_version":"1.21.1","loader":"vanilla",
+                "last_played":"2024-01-02T03:04:05.123456Z",
+                "submitted_time_played":3500,"recent_time_played":100},
+               "memory":{"maximum":6144},
+               "java":{"extra_arguments":["-XX:+UseZGC","-Dname=My Pack"]}}"#,
+        );
+        let (d, _) = fx.inspect(&dir).await.unwrap();
+        assert_eq!(
+            d.kept,
+            Kept {
+                memory_mb: Some(6144),
+                java_args: strs(&["-XX:+UseZGC", "-Dname=My Pack"]),
+                playtime: Some(Played {
+                    seconds: 3600,
+                    last_played: 1_704_164_645,
+                }),
+            }
+        );
+        // Global settings: nothing of the instance's own.
+        put(
+            &dir,
+            "profile.json",
+            r#"{"metadata":{"name":"MR","game_version":"1.21.1","loader":"vanilla"}}"#,
+        );
+        assert_eq!(fx.inspect(&dir).await.unwrap().0.kept, Kept::default());
+    }
+
+    #[tokio::test]
+    async fn atlauncher_keeps_memory_and_java_args() {
+        let fx = Fixture::new();
+        let dir = fx.dir("atlauncher/instances/AT");
+        put(
+            &dir,
+            "instance.json",
+            r#"{"id":"1.19.2","launcher":{"name":"AT","maximumMemory":8192,"requiredMemory":4096,
+                "javaArguments":"-XX:+UseG1GC -Dx=1","lastPlayed":1700000000000,"numPlays":3}}"#,
+        );
+        let (d, _) = fx.inspect(&dir).await.unwrap();
+        assert_eq!(
+            d.kept,
+            Kept {
+                memory_mb: Some(8192),
+                java_args: strs(&["-XX:+UseG1GC", "-Dx=1"]),
+                // ATLauncher counts launches, not time.
+                playtime: None,
+            }
+        );
     }
 
     #[tokio::test]
