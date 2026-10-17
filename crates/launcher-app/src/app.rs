@@ -9,6 +9,7 @@ use std::{
     time::Instant,
 };
 
+use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
     accounts::{AccountStore, AccountsFile, BuildKind},
     browse::compat::ContentKind,
@@ -26,6 +27,7 @@ use launcher_core::{
         loaders::LoaderKind,
         MetaClient,
     },
+    mod_icons,
     mods::{self, LocalMod},
     news_seen::{NewsSeen, NEWS_SEEN_FILE},
     paths::LauncherDirs,
@@ -527,6 +529,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         mods::list(&self.game_dir(id).await?).await
     }
 
+    /// A mod's own icon as a `data:image/png` URL (the CSP allows no file URLs), or `None` for the
+    /// placeholder.
+    pub async fn mod_icon(&self, id: &str, file: &str) -> Result<Option<String>> {
+        let dir = self.game_dir(id).await?;
+        let icon = mod_icons::icon(&dir, &self.config.dirs.mod_icons(), file).await?;
+        Ok(icon.map(|png| format!("data:image/png;base64,{}", STANDARD.encode(png))))
+    }
+
     pub async fn mod_set_enabled(
         &self,
         id: &str,
@@ -887,6 +897,26 @@ pub(crate) mod tests {
             .await
             .unwrap();
         assert!(list.is_empty());
+    }
+
+    #[tokio::test]
+    async fn mod_icon_is_a_png_data_url_from_the_jar() {
+        use std::io::Write;
+        let (core, _, _, tmp) = core(BuildKind::Dev);
+        let inst = core.instance_create(vanilla("Icons")).await.unwrap();
+        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let opts = zip::write::SimpleFileOptions::default();
+        w.start_file("fabric.mod.json", opts).unwrap();
+        w.write_all(br#"{"icon":"icon.png"}"#).unwrap();
+        w.start_file("icon.png", opts).unwrap();
+        w.write_all(b"\x89PNG\r\n\x1a\n").unwrap();
+        let src = tmp.path().join("sodium.jar");
+        std::fs::write(&src, w.finish().unwrap().into_inner()).unwrap();
+        core.mods_add(&inst.id, vec![src]).await.unwrap();
+        let icon = core.mod_icon(&inst.id, "sodium.jar").await.unwrap();
+        assert_eq!(icon.as_deref(), Some("data:image/png;base64,iVBORw0KGgo="));
+        assert!(tmp.path().join("cache/mod-icons").is_dir());
+        assert_eq!(core.mod_icon(&inst.id, "gone.jar").await.unwrap(), None);
     }
 
     fn put_pack(core: &TestCore, id: &str, folder: &str, name: &str) {

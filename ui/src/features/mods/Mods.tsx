@@ -13,16 +13,19 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { formatBytes } from '../../ui/format';
-import { Folder, Package, Plus, Search, Trash } from '../../ui/Icon';
+import { Folder, Plus, Search, Trash } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Toggle } from '../../ui/Toggle';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { ContentTabs } from './ContentTabs';
+import { ModIcon } from './ModIcon';
 import { PackList } from './PackList';
 
 const displayName = (fileName: string) => fileName.replace(/\.disabled$/, '').replace(/\.jar$/i, '');
 const isJar = (path: string) => /\.jar$/i.test(path);
 const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
+/** A pack mod's jar in `mods/`, or `null` when its path is anywhere else. */
+const packJar = (path: string) => /^mods\/[^/\\]+$/.test(path) ? path.slice('mods/'.length) : null;
 
 type Notice = { kind: 'busy' } | { kind: 'skipped'; names: string[] };
 
@@ -218,9 +221,7 @@ function ModList({ id }: { id: string }) {
               <ul>
                 {contents.data.managed.map((mod) => (
                   <li key={mod.path} className="content-row">
-                    <span className="content-icon" aria-hidden>
-                      <Package />
-                    </span>
+                    <ModIcon id={id} file={packJar(mod.path)} off={mod.optional ? !mod.optional.enabled : false} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">{mod.name}</p>
                       {mod.optional?.description && <p className="text-sm text-ink-dim">{mod.optional.description}</p>}
@@ -259,9 +260,7 @@ function ModList({ id }: { id: string }) {
               const name = displayName(mod.fileName);
               return (
                 <li key={(nameCount.get(name) ?? 0) > 1 ? mod.fileName : name} className="content-row">
-                  <span className="content-icon" aria-hidden>
-                    <Package />
-                  </span>
+                  <ModIcon id={id} file={mod.fileName} version={mod.size} off={!mod.enabled} />
                   <div className="min-w-0 flex-1">
                     <p className={`truncate font-semibold ${mod.enabled ? '' : 'text-ink-dim'}`}>{name}</p>
                     <p className="tabular text-sm text-ink-dim">{formatBytes(mod.size, i18n.language)}</p>

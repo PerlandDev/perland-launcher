@@ -132,6 +132,16 @@ const SKY_ART: InstanceArtData = {
   ),
 };
 
+/** A mod's own icon: a small block for most mods, none (the placeholder) for those named with a z. */
+function mockModIcon(file: string): string | null {
+  if (/z/i.test(file)) return null;
+  let hue = 0;
+  for (const c of file) hue = (hue * 31 + c.charCodeAt(0)) % 360;
+  return svg(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect width="16" height="16" fill="hsl(${hue} 45% 35%)"/><rect x="4" y="4" width="8" height="8" fill="hsl(${hue} 60% 65%)"/></svg>`,
+  );
+}
+
 /** A player's uploaded background: a 4:3 picture taller than the marquee, so its position matters. */
 const CASTLE_PICTURE = svg(
   '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" shape-rendering="crispEdges"><rect width="800" height="600" fill="#2b3a67"/><rect y="360" width="800" height="240" fill="#3f6b3a"/><rect y="480" width="800" height="120" fill="#5a4030"/><rect x="120" y="80" width="120" height="300" fill="#8a8f98"/><rect x="100" y="60" width="40" height="40" fill="#8a8f98"/><rect x="160" y="60" width="40" height="40" fill="#8a8f98"/><rect x="220" y="60" width="40" height="40" fill="#8a8f98"/><rect x="160" y="160" width="40" height="60" fill="#181410"/><rect x="240" y="240" width="320" height="140" fill="#6f747d"/><rect x="560" y="200" width="100" height="180" fill="#8a8f98"/><rect x="380" y="300" width="60" height="80" fill="#181410"/><rect x="600" y="80" width="40" height="40" fill="#ffc233"/></svg>',
@@ -1086,6 +1096,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       return [];
     case 'mods_list':
       return state.mods.get(String(args.id)) ?? [];
+    case 'mod_icon':
+      return mockModIcon(String(args.file));
     case 'mod_set_enabled': {
       const file = String(args.file);
       const base = file.replace(/\.disabled$/, '');

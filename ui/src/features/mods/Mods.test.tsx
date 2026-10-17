@@ -1,5 +1,5 @@
 import { Webview } from '@tauri-apps/api/webview';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
 import { routeSnapshot } from '../../state/route';
@@ -426,4 +426,70 @@ it('points vanilla players to modpacks from the loader note, and not on a modded
   renderApp(<Mods id="asalith-fields" />);
   await screen.findByText('sodium-fabric-0.5.8+mc1.20.1');
   expect(screen.queryByRole('button', { name: 'Browse modpacks' })).not.toBeInTheDocument();
+});
+
+describe('mod icons', () => {
+  const rowOf = (name: string) => screen.getByText(name).closest('li') as HTMLElement;
+  const iconOf = (name: string) => rowOf(name).querySelector('.content-icon img');
+
+  it("shows each mod's own icon, and the package glyph for a mod without one", async () => {
+    const { calls } = renderApp(<Mods id="asalith-fields" />);
+    await screen.findByText(sodium);
+    await waitFor(() => expect(iconOf(sodium)).toHaveAttribute('src', expect.stringMatching(/^data:image\//)));
+    expect(iconOf('fabric-api-0.92.2+1.20.1')).not.toBeNull();
+    // The mock has no icon for a mod named with a z: it keeps the glyph.
+    await waitFor(() => expect(sent(calls, 'mod_icon')).toContainEqual({ id: 'asalith-fields', file: 'zoomify-2.11.2.jar.disabled' }));
+    expect(iconOf('zoomify-2.11.2')).toBeNull();
+    expect(rowOf('zoomify-2.11.2').querySelector('.content-icon svg')).not.toBeNull();
+  });
+
+  it('falls back to the glyph when an icon fails to decode', async () => {
+    renderApp(<Mods id="asalith-fields" />);
+    await screen.findByText(sodium);
+    const img = await waitFor(() => {
+      const found = iconOf(sodium);
+      expect(found).not.toBeNull();
+      return found as HTMLImageElement;
+    });
+    fireEvent.error(img);
+    expect(iconOf(sodium)).toBeNull();
+    expect(rowOf(sodium).querySelector('.content-icon svg')).not.toBeNull();
+  });
+
+  it('asks for an icon only once its row is on screen', async () => {
+    const observers: { callback: IntersectionObserverCallback; el?: Element }[] = [];
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        entry: (typeof observers)[number];
+        constructor(callback: IntersectionObserverCallback) {
+          this.entry = { callback };
+          observers.push(this.entry);
+        }
+        observe(el: Element) {
+          this.entry.el = el;
+        }
+        disconnect() {}
+      },
+    );
+    try {
+      const { calls } = renderApp(<Mods id="asalith-fields" />);
+      await screen.findByText(sodium);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(sent(calls, 'mod_icon')).toEqual([]);
+      const row = observers.find((o) => o.el && rowOf(sodium).contains(o.el));
+      expect(row).toBeDefined();
+      act(() => row!.callback([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver));
+      await waitFor(() => expect(sent(calls, 'mod_icon')).toEqual([{ id: 'asalith-fields', file: `${sodium}.jar` }]));
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("shows a pack's own mods with their icons too", async () => {
+    const { calls } = renderApp(<Mods id="sky-islands" />);
+    expect(await screen.findByRole('heading', { name: 'From the pack' })).toBeInTheDocument();
+    await waitFor(() => expect(iconOf('Create')).not.toBeNull());
+    expect(sent(calls, 'mod_icon')).toContainEqual({ id: 'sky-islands', file: 'create.jar' });
+  });
 });

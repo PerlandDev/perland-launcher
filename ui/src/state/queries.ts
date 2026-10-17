@@ -41,6 +41,8 @@ export const qk = {
   browseVersions: (id: string) => ['browse', 'versions', id] as const,
   browseInstalled: (id: string) => ['browse', 'installed', id] as const,
   browseImage: (url: string, kind: ImageKind) => ['browse', 'image', kind, url] as const,
+  // Apart from qk.mods, so a change to the list doesn't ask every row's icon again.
+  modIcon: (id: string, file: string, version: number) => ['modIcon', id, file, version] as const,
   joinPreview: (invite: string) => ['join', 'preview', invite] as const,
   serverStatus: (id: string) => ['server', 'status', id] as const,
   servers: (query: ListQuery) => ['servers', query] as const,
@@ -78,6 +80,14 @@ export const useLoaderVersions = (kind: LoaderKind | null, mc: string | null) =>
     staleTime: TEN_MINUTES,
   });
 export const useMods = (id: string) => useQuery({ queryKey: qk.mods(id), queryFn: () => commands.modsList(id) });
+/** A mod's own icon (`null`: it has none). `version` (the jar's size) asks again when a jar is replaced. */
+export const useModIcon = (id: string, file: string | null, version: number | undefined, enabled: boolean) =>
+  useQuery({
+    queryKey: qk.modIcon(id, file ?? '', version ?? 0),
+    queryFn: () => commands.modIcon(id, file as string),
+    enabled: enabled && file !== null,
+    staleTime: Infinity,
+  });
 export const useContentFiles = (id: string, kind: ContentKind) =>
   useQuery({ queryKey: qk.contentFiles(id, kind), queryFn: () => commands.contentList(id, kind) });
 export const usePackStatus = (id: string, enabled: boolean) =>

@@ -18,6 +18,7 @@ pub mod launch;
 pub mod locks;
 pub mod logging;
 pub mod meta;
+pub mod mod_icons;
 pub mod mods;
 pub mod news;
 pub mod news_seen;
