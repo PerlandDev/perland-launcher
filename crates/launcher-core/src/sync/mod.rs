@@ -3,6 +3,7 @@
 pub(crate) mod apply;
 pub mod lockfile;
 pub mod manual;
+mod mod_ids;
 pub mod plan;
 
 use std::{
@@ -34,23 +35,14 @@ use crate::{
     },
 };
 use lockfile::{load_pack, save_pack, Managed, ManagedFile};
-use plan::{Changes, Planned};
+use plan::{Changes, OnDisk, Planned};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// In `.perland/`: the instance was just linked to a server, and its first sync sets the jars
-/// the pack doesn't install aside (link-instance spec §3.2).
-const ADOPT_MARKER: &str = "adopt";
-/// In the game folder: where a linked instance's old jars go. Never purged; they're the
+/// In the game folder: where sync moves the player's files the pack's own take the place of
+/// (another version of a pack mod, a file at a path the pack writes). Never purged; they're the
 /// player's.
 pub const SET_ASIDE_DIR: &str = "mods-before-link";
-
-/// Mark a never-synced instance as linked: its first sync sets old jars aside.
-pub async fn mark_adopt(perland_dir: &Path) -> Result<()> {
-    tokio::fs::create_dir_all(perland_dir).await?;
-    tokio::fs::write(perland_dir.join(ADOPT_MARKER), b"").await?;
-    Ok(())
-}
 
 /// Installs a Minecraft and loader version. The real one is `Installer`; tests use a fake.
 pub trait GameInstall: Send + Sync {
@@ -95,7 +87,8 @@ pub struct SyncReport {
     /// Override files the player changed, kept instead of updated ("Kept your version of …").
     pub kept_modified: Vec<String>,
     pub game_changed: bool,
-    /// A linked instance's first sync: the jars it moved to `SET_ASIDE_DIR` (old paths).
+    /// The player's files sync moved to `SET_ASIDE_DIR` (old paths), sorted: jars that are
+    /// another version of a pack mod, and files at paths the pack writes that sync never placed.
     pub set_aside: Vec<String>,
 }
 
@@ -628,14 +621,9 @@ impl Syncer {
         });
         let disk = apply::survey(&game_dir, &wanted, managed.as_ref(), progress).await?;
         let plan = plan::plan(&wanted, managed.as_ref(), &disk);
-        // Only a never-synced instance: once sync has written a lockfile, every jar it doesn't
-        // know is the player's addition.
-        let adopt = perland.join(ADOPT_MARKER);
-        let set_aside = if managed.is_none() && adopt.exists() {
-            apply::unwanted_jars(&game_dir, &wanted).await?
-        } else {
-            Vec::new()
-        };
+        // Jars sync never placed are the player's: they stay, unless one is another version of a
+        // mod the pack installs (decided once the pack's jars are staged, below).
+        let players = apply::players_jars(&game_dir, &wanted, managed.as_ref()).await?;
         let changes = plan::changes_except(
             &wanted,
             managed.as_ref(),
@@ -697,6 +685,25 @@ impl Syncer {
             self.game.install_game(&new_game, sink).await?;
         }
 
+        // Two copies of one mod usually crash the game: the pack's version wins, and the
+        // player's moves aside.
+        let same_mods = if players.is_empty() {
+            Vec::new()
+        } else {
+            let pack_jars: Vec<PathBuf> = wanted
+                .iter()
+                .filter(|f| apply::is_loose_jar(&f.path))
+                .map(|f| match staged.contains_key(&f.path) {
+                    true => staging.join(&f.path),
+                    false => game_dir.join(&f.path),
+                })
+                .collect();
+            let game_dir = game_dir.clone();
+            tokio::task::spawn_blocking(move || mod_ids::same_mods(&game_dir, &players, &pack_jars))
+                .await
+                .map_err(join_error)?
+        };
+
         // Every byte of the new version is in the cache now. Recording it before the swap means a
         // swap that stops halfway resumes toward it, even offline, instead of toward the old
         // version (whose leftovers would sit next to the new files as "additions").
@@ -705,9 +712,26 @@ impl Syncer {
         }
         save_pack(&perland, desired).await?;
         let trash_dir = apply::trash_folder(&perland, now);
+        let mut set_aside = Vec::new();
         for p in &plan.write {
             if p.replaces {
-                apply::move_to_trash(&game_dir, &trash_dir, &p.file.path).await?;
+                // Only a file still as sync placed it goes to the trash (purged later); anything
+                // else there is the player's, and is kept aside.
+                let placed = match (
+                    managed.as_ref().and_then(|m| m.files.get(&p.file.path)),
+                    disk.get(&p.file.path),
+                ) {
+                    (Some(entry), Some(OnDisk::Different { sha1, .. })) => {
+                        !entry.sha1.is_empty() && entry.sha1.eq_ignore_ascii_case(sha1)
+                    }
+                    _ => false,
+                };
+                if placed {
+                    apply::move_to_trash(&game_dir, &trash_dir, &p.file.path).await?;
+                } else {
+                    apply::move_aside(&game_dir, &p.file.path).await?;
+                    set_aside.push(p.file.path.clone());
+                }
             }
             apply::place(&staging.join(&p.file.path), &game_dir.join(&p.file.path)).await?;
         }
@@ -723,9 +747,11 @@ impl Syncer {
                 apply::move_to_trash(&game_dir, &trash_dir, alias).await?;
             }
         }
-        for path in &set_aside {
-            apply::move_aside(&game_dir, path).await?;
+        for path in same_mods {
+            apply::move_aside(&game_dir, &path).await?;
+            set_aside.push(path);
         }
+        set_aside.sort();
 
         if game_changed {
             // Reload: a rename or settings change made meanwhile must not be reverted.
@@ -769,7 +795,6 @@ impl Syncer {
         }
         .save(&perland)
         .await?;
-        let _ = tokio::fs::remove_file(&adopt).await;
         let _ = tokio::fs::remove_dir_all(&staging).await;
         self.forget_update(id);
         Ok(SyncOutcome::Done(SyncReport {
