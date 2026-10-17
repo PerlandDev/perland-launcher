@@ -2695,6 +2695,21 @@
     background: var(--color-blue);
   }
 
+  /* Manage server link: the server card's width, and only the body scrolls, so Change link and Unlink stay in view. */
+  .dialog[open]:has(.manage-link) {
+    display: flex;
+    flex-direction: column;
+    width: min(36rem, calc(100vw - 4rem));
+    overflow: hidden;
+  }
+  .dialog[open]:has(.manage-link) > div:has(> .manage-link) {
+    min-height: 0;
+    overflow-y: auto;
+    /* Room for the focus ring, which the scroller would clip. */
+    margin-inline: -4px;
+    padding: 4px;
+  }
+
   /* The dialog widens for pictures, and only its list scrolls, so Close stays in view. */
   .dialog[open]:has(.news-list) {
     display: flex;

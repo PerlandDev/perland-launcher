@@ -232,6 +232,25 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.instances.save(&instance).await?;
         Ok(instance)
     }
+
+    /// "Unlink": the instance stops following its server and is an ordinary one again. Every
+    /// file stays (worlds, mods, configs); only the link and the pack's records go, so Play no
+    /// longer syncs and the player can remove what the pack installed.
+    /// Refused while the instance has a run: its sync saves the whole instance.
+    pub async fn server_unlink(&self, id: &str) -> Result<Instance> {
+        if self.is_busy(id) {
+            return Err(busy(id));
+        }
+        let mut instance = self.instances.load(id).await?;
+        server_source(&instance).ok_or_else(not_a_server)?;
+        // The records first: if the save below fails, the instance stays linked and its next
+        // sync only writes them again.
+        launcher_core::sync::forget_pack(&self.instances.perland_dir(id)).await?;
+        instance.source = SourceRef::None;
+        instance.server = None;
+        self.instances.save(&instance).await?;
+        Ok(instance)
+    }
 }
 
 #[cfg(test)]
@@ -476,6 +495,98 @@ mod tests {
         assert_eq!(moved.update_policy, UpdatePolicy::Auto);
         assert!(world.is_file(), "the files stay; the next Play syncs");
         assert_eq!(core.instances.load(&id).await.unwrap(), moved);
+    }
+
+    #[tokio::test]
+    async fn unlinking_makes_an_ordinary_instance_and_keeps_every_file() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let linked = core.join_add(&invite('A')).await.unwrap();
+        let id = linked.id.clone();
+        let game = core.instances.game_dir(&id);
+        for file in [
+            "saves/home/level.dat",
+            "mods/pack.jar",
+            "mods/mine.jar",
+            "config/pack.toml",
+            "resourcepacks/Faithful.zip",
+        ] {
+            std::fs::create_dir_all(game.join(file).parent().unwrap()).unwrap();
+            std::fs::write(game.join(file), b"kept").unwrap();
+        }
+        let perland = core.instances.perland_dir(&id);
+        crate::testing::managed_for(&["mods/pack.jar", "resourcepacks/Faithful.zip"])
+            .save(&perland)
+            .await
+            .unwrap();
+        std::fs::write(perland.join("pack.json"), b"{}").unwrap();
+
+        let plain = core.server_unlink(&id).await.unwrap();
+
+        assert_eq!(plain.source, SourceRef::None);
+        assert_eq!(plain.server, None);
+        assert_eq!(plain.name, linked.name, "the player's name stays");
+        assert_eq!(plain.game, linked.game, "the game stays as it is");
+        for file in [
+            "saves/home/level.dat",
+            "mods/pack.jar",
+            "mods/mine.jar",
+            "config/pack.toml",
+            "resourcepacks/Faithful.zip",
+        ] {
+            assert!(game.join(file).is_file(), "{file} stays");
+        }
+        assert_eq!(core.instances.load(&id).await.unwrap(), plain);
+        // The pack no longer owns anything: the player can remove what it installed.
+        let packs = core
+            .content_list(
+                &id,
+                launcher_core::browse::compat::ContentKind::ResourcePack,
+            )
+            .await
+            .unwrap();
+        assert!(packs.iter().all(|f| !f.managed));
+        assert!(!perland.join("pack.json").exists(), "no update checks");
+        assert_eq!(
+            core.instance_for_invite(&InviteLink::parse(&invite('A')).unwrap())
+                .await
+                .unwrap(),
+            None,
+            "Join server adds a new instance again"
+        );
+        assert_eq!(
+            core.server_status(&id).await.unwrap_err().code,
+            ErrorCode::NoPack
+        );
+        // Instance settings opened before the unlink can't bring the link back.
+        assert_eq!(
+            core.instance_update(linked).await.unwrap().source,
+            SourceRef::None
+        );
+        // And it can be linked again, as any ordinary instance.
+        let again = core.server_link(&id, &invite('A')).await.unwrap();
+        assert!(matches!(again.source, SourceRef::Perland { .. }));
+    }
+
+    #[tokio::test]
+    async fn only_server_instances_unlink_and_never_while_running() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let ordinary = plain(&core).await;
+        assert_eq!(
+            core.server_unlink(&ordinary.id).await.unwrap_err().code,
+            ErrorCode::NoPack
+        );
+        let id = core.join_add(&invite('A')).await.unwrap().id;
+        hold(&core, &id);
+        let before = instance_json(&core, &id);
+        assert_eq!(
+            core.server_unlink(&id).await.unwrap_err().code,
+            ErrorCode::InstanceBusy
+        );
+        assert_eq!(instance_json(&core, &id), before);
+        core.runs.lock().unwrap().clear();
+        core.server_unlink(&id).await.unwrap();
     }
 
     async fn plain(core: &crate::app::tests::TestCore) -> launcher_core::instances::Instance {

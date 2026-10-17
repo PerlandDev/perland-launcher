@@ -43,6 +43,9 @@ related_targets: ["ui/src"]
   - *One list.* Home's ⋯ key, a right-click on Home or a rail cabinet, and the wide rail's ⋯ key all show the same list; nothing lives only behind a right-click.
   - *The first two in the open.* Change image and Instance settings are raised keys at Home's top right, never lit; Play stays the only amber.
   - *Quiet on the rail.* Wide rows get a ghost ⋯ on hover, focus or selection (always on touch); compact cabinets keep only the right-click, since Home's keys cover them.
+- **Manage server link (#63), decided 2026-10-17:**
+  - *One dialog, nothing lit.* The join card set bare on the dialog's panel, the invite and the address as well copy rows, a ghost Unlink and raised Change link and Close. Play keeps the room's amber.
+  - *Unlink says what stays.* The standard confirm with the coral Unlink; its body names what is kept (worlds, mods, settings) before what stops.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract

@@ -44,6 +44,19 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 /// player's.
 pub const SET_ASIDE_DIR: &str = "mods-before-link";
 
+/// Unlinking: forget which pack the instance followed, so it is an ordinary one again. Only
+/// the launcher's own records go (what the pack installed, and its version); every file in the
+/// game folder stays and becomes the player's, which a later link keeps like any of theirs.
+pub async fn forget_pack(perland_dir: &Path) -> Result<()> {
+    for name in [lockfile::MANAGED_FILE, lockfile::PACK_FILE] {
+        match tokio::fs::remove_file(perland_dir.join(name)).await {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 /// Installs a Minecraft and loader version. The real one is `Installer`; tests use a fake.
 pub trait GameInstall: Send + Sync {
     fn install_game<'a>(
@@ -970,6 +983,27 @@ mod tests {
             mode,
             manual: None,
         }
+    }
+
+    #[tokio::test]
+    async fn forgetting_the_pack_drops_only_its_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let perland = dir.path();
+        // Nothing to forget yet is fine.
+        forget_pack(perland).await.unwrap();
+        for name in [
+            lockfile::MANAGED_FILE,
+            lockfile::PACK_FILE,
+            "playtime.json",
+            "lock",
+        ] {
+            std::fs::write(perland.join(name), b"{}").unwrap();
+        }
+        forget_pack(perland).await.unwrap();
+        assert!(Managed::load(perland).await.is_none());
+        assert!(load_pack(perland).await.is_none());
+        assert!(perland.join("playtime.json").exists(), "playtime stays");
+        assert!(perland.join("lock").exists());
     }
 
     #[tokio::test]

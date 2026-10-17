@@ -445,7 +445,7 @@
     "open": "Open",
     "useLink": "Use this link",
     "mismatch": "This link is for {{new}}, not {{old}}.",
-    "inviteOnly": "Invite only: ask the owner to add {{name}}",
+    "inviteOnly": "Invite only: ask the owner to add you ({{name}})",
     "inviteOnlyNoAccount": "Invite only: ask the owner to add you",
     "versionLabel": "Version",
     "versionLine": "Minecraft {{version}}",
@@ -479,7 +479,6 @@
     "useNewLink": "Use a new link",
     "updated": "Server updated · updates when you play",
     "playAndJoin": "Play and join the server",
-    "useNewInviteLink": "Use a new invite link",
     "copyLink": "Copy invite link",
     "settingsTitle": "Server",
     "settingsHost": "Invite from {{host}}",
@@ -487,7 +486,21 @@
     "relinkRunning": "Stop the game to use a new link.",
     "linkToServer": "Link to a server",
     "linkSettingsBody": "Link this instance to a Perland server and it updates with the server.",
-    "linkRunning": "Stop the game to link this instance."
+    "linkRunning": "Stop the game to link this instance.",
+    "manage": {
+      "menu": "Manage server link",
+      "title": "Server link",
+      "checking": "Checking the server…",
+      "invite": "Invite link",
+      "inviteCopied": "Invite link copied",
+      "change": "Change link",
+      "unlink": "Unlink",
+      "unlinking": "Unlinking…",
+      "running": "Stop the game to change or remove the link.",
+      "unlinkTitle": "Unlink {{name}} from its server?",
+      "unlinkBody": "{{name}} keeps its worlds, mods and settings, but stops following {{server}}: Play won't update it from the server anymore. You can link it to a server again later.",
+      "unlinked": "{{name}} no longer follows a server"
+    }
   },
   "servers": {
     "open": "Servers",

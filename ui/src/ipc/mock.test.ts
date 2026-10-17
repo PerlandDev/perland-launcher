@@ -346,6 +346,15 @@ describe('scripted runs', () => {
     expect(moved.source).toMatchObject({ kind: 'perland', invite: other });
   });
 
+  it('unlinks a server instance into an ordinary one, and refuses any other', async () => {
+    const { handle, state } = createMockBackend({ server: 'online' });
+    const plain = (await handle('server_unlink', { id: 'survival' })) as Instance;
+    expect(plain.source).toEqual({ kind: 'none' });
+    expect(plain.server).toBeNull();
+    expect(state.listing.instances.find((i) => i.id === 'survival')).toEqual(plain);
+    await expect(handle('server_unlink', { id: 'survival' })).rejects.toMatchObject({ code: 'no_pack' });
+  });
+
   it('hands an invite link over as a join deep link, and any other link as a pack', async () => {
     const join = createMockBackend({ link: ` ${MOCK_INVITE}/ ` });
     expect(await join.handle('deep_link_take')).toEqual({ kind: 'join', invite: MOCK_INVITE });

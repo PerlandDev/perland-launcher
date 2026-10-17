@@ -500,6 +500,11 @@ pub async fn server_link(core: CoreState<'_>, id: String, link: String) -> Res<I
 }
 
 #[tauri::command]
+pub async fn server_unlink(core: CoreState<'_>, id: String) -> Res<Instance> {
+    logged("server_unlink", core.server_unlink(&id).await)
+}
+
+#[tauri::command]
 pub async fn perland_status(core: CoreState<'_>) -> Res<PerlandStatus> {
     logged("perland_status", core.perland_status().await)
 }
