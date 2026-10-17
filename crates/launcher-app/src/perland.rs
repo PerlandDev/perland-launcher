@@ -315,7 +315,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Forget the session if it is still the one holding `token` (a 401 answered it).
-    async fn drop_session(&self, token: &str) {
+    pub(crate) async fn drop_session(&self, token: &str) {
         let mut state = self.perland.lock().await;
         if state.session.as_ref().is_some_and(|s| s.token == token) {
             tracing::info!("the Perland session ended on the Engine; signed out");

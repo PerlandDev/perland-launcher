@@ -7,7 +7,7 @@ use launcher_app::dto::{
     ImportRequest, InstallPlanView, InstallResult, InstanceArtData, JavaTest, JoinPreview,
     ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus,
     PerlandAccount, PerlandStatus, PlaytimeEntry, PublicServerPage, RunSnapshot, SearchRequest,
-    ServerNews, ServerStatusView,
+    ServerNews, ServerStatusView, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -538,6 +538,33 @@ pub async fn perland_email_verify(
 #[tauri::command]
 pub async fn perland_sign_out(core: CoreState<'_>) -> Res<()> {
     logged("perland_sign_out", core.perland_sign_out().await)
+}
+
+#[tauri::command]
+pub async fn your_servers(core: CoreState<'_>) -> Res<Option<YourServersPage>> {
+    logged("your_servers", core.your_servers().await)
+}
+
+/// Fire and forget: never fails.
+#[tauri::command]
+pub async fn your_servers_follow(core: CoreState<'_>, invite: String) -> Res<()> {
+    core.your_servers_follow(&invite).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn your_servers_unfollow(core: CoreState<'_>, invite: String) -> Res<()> {
+    logged(
+        "your_servers_unfollow",
+        core.your_servers_unfollow(&invite).await,
+    )
+}
+
+/// Fire and forget: never fails.
+#[tauri::command]
+pub async fn your_servers_joined(core: CoreState<'_>, invite: String) -> Res<()> {
+    core.your_servers_joined(&invite).await;
+    Ok(())
 }
 
 /// Called by the close dialog. Stopping waits a few seconds so the kills land before exit;

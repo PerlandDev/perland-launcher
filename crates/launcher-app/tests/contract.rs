@@ -16,6 +16,7 @@ use launcher_app::{
         PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase,
         PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage, RunSnapshot, ServerGame,
         ServerNews, ServerPack, ServerPlayers, ServerStatusView, ServerTeam, SyncSummary,
+        YourServerCard, YourServersPage,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -154,6 +155,53 @@ fn sample_address() -> ServerAddress {
     ServerAddress {
         host: "play.example.com".into(),
         port: 25566,
+    }
+}
+
+/// One owner server that is offline, one invited, one followed and already joined.
+fn your_servers_page() -> YourServersPage {
+    let invite = |c: char| format!("https://play.example.com/{}", c.to_string().repeat(43));
+    let card =
+        |c: char, name: &str, status: ServerStatus, instance: Option<&str>| PublicServerCard {
+            token: c.to_string().repeat(43),
+            invite: Some(invite(c)),
+            joinable: true,
+            address: Some("play.example.com:25566".into()),
+            name: name.into(),
+            icon_version: None,
+            game: ServerGame {
+                version: Some("1.21.1".into()),
+                loader: None,
+                loader_version: None,
+            },
+            modded: false,
+            status,
+            players: None,
+            whitelisted: false,
+            pack: None,
+            categories: vec![],
+            language: "en".into(),
+            region: None,
+            instance: instance.map(Into::into),
+        };
+    YourServersPage {
+        servers: vec![
+            YourServerCard {
+                card: card('A', "My world", ServerStatus::Offline, None),
+                relation: "owner".into(),
+                following: false,
+            },
+            YourServerCard {
+                card: card('B', "Friends", ServerStatus::Online, None),
+                relation: "invited".into(),
+                following: true,
+            },
+            YourServerCard {
+                card: card('C', "Survival", ServerStatus::Sleeping, Some("survival")),
+                relation: "followed".into(),
+                following: true,
+            },
+        ],
     }
 }
 
@@ -1034,6 +1082,7 @@ fn contract_fixtures_are_current() {
     );
     check("server_instance", server_instance());
     check("public_server_page", public_server_page());
+    check("your_servers_page", your_servers_page());
     check("server_news", server_news());
     check(
         "join_preview",

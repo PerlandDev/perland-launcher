@@ -3,7 +3,7 @@
 //! to the window, never to a log.
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
-    instances::ServerAddress,
+    instances::{ServerAddress, ServerStatus},
     invite::non_empty,
     public_list::{ListQuery, PublicServer},
     Result,
@@ -26,32 +26,32 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// `instance` the instance that already joins it (compared by canonical invite).
     pub async fn servers_list(&self, query: ListQuery) -> Result<PublicServerPage> {
         let fetched = self.runner.public_page(query).await?;
-        // One look at the instances for the whole page: each server instance's canonical invite.
-        let joined: Vec<(String, String)> = self
-            .instances
-            .list()
-            .await?
-            .into_iter()
-            .filter_map(|i| server_source(&i).map(|(saved, _)| (saved.canonical(), i.id)))
-            .collect();
+        let joined = self.joined_invites().await?;
         let mut servers = Vec::with_capacity(fetched.page.servers.len());
         for server in &fetched.page.servers {
             let invite = self.runner.public_invite(server).map(|l| l.canonical());
-            let instance = invite.as_ref().and_then(|invite| {
-                joined
-                    .iter()
-                    .find(|(saved, _)| saved == invite)
-                    .map(|(_, id)| id.clone())
-            });
+            let instance = instance_of(&joined, invite.as_deref());
             let address =
                 ServerAddress::from_view(&server.address, &fetched.engine).map(|a| a.display());
-            servers.push(card(server, invite, address, instance));
+            servers.push(card(server, invite, address, instance, false));
         }
         Ok(PublicServerPage {
             servers,
             total: fetched.page.total,
             facets: fetched.page.facets,
         })
+    }
+
+    /// One look at the instances for a whole page: each server instance's canonical invite and
+    /// its id.
+    pub(crate) async fn joined_invites(&self) -> Result<Vec<(String, String)>> {
+        Ok(self
+            .instances
+            .list()
+            .await?
+            .into_iter()
+            .filter_map(|i| server_source(&i).map(|(saved, _)| (saved.canonical(), i.id)))
+            .collect())
     }
 
     /// A server's icon as a `data:image/png` URL, or `None`.
@@ -63,13 +63,29 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 }
 
-/// A listed server as a card.
-fn card(
+/// The instance among `joined` that already joins `invite`.
+pub(crate) fn instance_of(joined: &[(String, String)], invite: Option<&str>) -> Option<String> {
+    let invite = invite?;
+    joined
+        .iter()
+        .find(|(saved, _)| saved == invite)
+        .map(|(_, id)| id.clone())
+}
+
+/// A listed server as a card. The public list folds anything but online and starting into
+/// sleeping; Your servers (`keep_offline`) keeps `offline`, since an owned or invited server
+/// can be stopped.
+pub(crate) fn card(
     server: &PublicServer,
     invite: Option<String>,
     address: Option<String>,
     instance: Option<String>,
+    keep_offline: bool,
 ) -> PublicServerCard {
+    let status = match ServerStatus::parse(&server.status) {
+        Some(ServerStatus::Offline) if keep_offline => ServerStatus::Offline,
+        _ => server.status(),
+    };
     PublicServerCard {
         token: server.token.clone(),
         joinable: server.joinable() && invite.is_some(),
@@ -83,7 +99,7 @@ fn card(
             loader_version: owned(&server.game.loader_version),
         },
         modded: server.modded,
-        status: server.status(),
+        status,
         players: server.players.as_ref().map(ServerPlayers::from),
         whitelisted: server.whitelisted,
         pack: server.pack.as_ref().map(|p| ServerPack {

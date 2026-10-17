@@ -444,6 +444,26 @@ impl fmt::Debug for PublicServerCard {
     }
 }
 
+/// The signed-in player's servers: the ones they own, were invited to, or follow.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YourServersPage {
+    pub servers: Vec<YourServerCard>,
+}
+
+/// A server of Your servers: the public list's card, whose `status` may also be `offline`,
+/// plus how the player relates to it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct YourServerCard {
+    #[serde(flatten)]
+    pub card: PublicServerCard,
+    /// `owner`, `invited` or `followed`.
+    pub relation: String,
+    /// Whether the player follows it (an owner or invitee can too).
+    pub following: bool,
+}
+
 /// One page of a server's news, newest first, and the marker of what the player has seen.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
