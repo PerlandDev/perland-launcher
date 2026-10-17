@@ -26,6 +26,11 @@ related_targets: ["ui/src"]
   - *A line, not a feed.* One quiet flat key under the card's head and under Home's status plates; Play stays the only lit button and the card's Play still lights on card hover only.
   - *Unseen is info.* The new mark is the blue square lamp of the update plate, never amber, with "New" in the accessible name and on the post in the dialog.
   - *Nothing when there's nothing.* News off, no posts, offline or rate limited render no line, no empty box and no error; only the dialog's Show more may say it failed.
+- **Minecraft link (#52), decided 2026-10-17:**
+  - *A row, not a screen.* A second `panel` under the profile in the signed-in Perland card, built like it: a 40px `raised` plate (a pixel link icon in `ink-dim`), the 700-weight title over one `ink-dim` line, and the action at right. Absent when signed out or the stats add-on is off.
+  - *Nothing lit.* Link, Copy command and Get a new code are raised; Unlink and Cancel are ghost. Accounts' one primary stays Add offline account.
+  - *The code is a readout.* Bungee 1.5rem in a recessed `well`, tabular, with the countdown ("Expires in 9:41") in `ink-dim` tabular beside it; the command sits in the sentence as a mono `inline-code` chip. The code block lines up with the text column, its buttons on their own row below.
+  - *Linked is a fact.* "Linked to **Steve**" with the name in 700 `ink`: no lime lamp or badge.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract

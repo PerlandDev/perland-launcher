@@ -182,6 +182,16 @@
     corner-shape: notch;
     box-shadow: inset 0 0 0 1px var(--color-line);
   }
+  /* Something to type, inside a sentence (a command): mono on a ground chip with a seam ring, like inline code. */
+  .inline-code {
+    padding: 0.0625rem 0.3125rem;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--color-ground);
+    border-radius: 3px;
+    corner-shape: notch;
+    box-shadow: inset 0 0 0 1px var(--color-line);
+  }
   .badge {
     display: inline-flex;
     align-items: center;

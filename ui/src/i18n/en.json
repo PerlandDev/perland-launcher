@@ -324,7 +324,21 @@
     "signOut": "Sign out",
     "player": "Perland player",
     "signedIn": "Signed in to Perland as {{name}}.",
-    "signedOut": "Signed out of Perland."
+    "signedOut": "Signed out of Perland.",
+    "minecraft": {
+      "title": "Minecraft account",
+      "pitch": "Link your Minecraft account to see your achievements on each server.",
+      "link": "Link Minecraft account",
+      "instructions": "Type {{command}} on a Perland server.",
+      "copy": "Copy command",
+      "copied": "Command copied",
+      "expiresIn": "Expires in {{time}}",
+      "expired": "The code expired.",
+      "newCode": "Get a new code",
+      "linked": "Linked to {{name}}",
+      "unlink": "Unlink",
+      "linkedAnnounce": "Your Minecraft account {{name}} is linked."
+    }
   },
   "settings": {
     "title": "Settings",

@@ -11,6 +11,7 @@ import { qk, usePerlandStatus } from '../../state/queries';
 import { Button } from '../../ui/Button';
 import { Field } from '../../ui/Field';
 import { WarningDiamond } from '../../ui/Icon';
+import { MinecraftLink } from './MinecraftLink';
 
 /** Where the card is: signed out (`idle`), waiting on the browser, or the two email steps. */
 type Step = 'idle' | 'discord' | 'email' | 'code';
@@ -233,6 +234,7 @@ export function PerlandAccountCard() {
           </Button>
         </div>
         {errorLine}
+        <MinecraftLink />
       </div>
     );
   } else if (step === 'discord') {

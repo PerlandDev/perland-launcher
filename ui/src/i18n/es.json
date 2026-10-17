@@ -324,7 +324,21 @@
     "signOut": "Cerrar sesión",
     "player": "Jugador de Perland",
     "signedIn": "Iniciaste sesión en Perland como {{name}}.",
-    "signedOut": "Cerraste tu sesión de Perland."
+    "signedOut": "Cerraste tu sesión de Perland.",
+    "minecraft": {
+      "title": "Cuenta de Minecraft",
+      "pitch": "Vincula tu cuenta de Minecraft para ver tus logros en cada servidor.",
+      "link": "Vincular cuenta de Minecraft",
+      "instructions": "Escribe {{command}} en un servidor de Perland.",
+      "copy": "Copiar comando",
+      "copied": "Comando copiado",
+      "expiresIn": "Vence en {{time}}",
+      "expired": "El código venció.",
+      "newCode": "Obtener un código nuevo",
+      "linked": "Vinculada a {{name}}",
+      "unlink": "Desvincular",
+      "linkedAnnounce": "Tu cuenta de Minecraft {{name}} quedó vinculada."
+    }
   },
   "settings": {
     "title": "Configuración",
