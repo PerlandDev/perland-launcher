@@ -4,6 +4,7 @@ import { createMockBackend } from '../../ipc/mock';
 import { MOCK_INVITE } from '../../ipc/mockServers';
 import type { Instance } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
+import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
 import { JoinServer } from './JoinServer';
@@ -199,6 +200,54 @@ describe('JoinServer', () => {
     const { user, calls } = renderApp(<JoinServer invite={MOCK_INVITE} linkFor="asalith-fields" />, { server: 'online' });
     await user.click(await screen.findByRole('button', { name: 'Link' }));
     expect(sent(calls, 'server_link')).toEqual([{ id: 'asalith-fields', link: MOCK_INVITE }]);
+  });
+
+  it('join_screen_records_joined_on_add', async () => {
+    const { user, calls } = renderApp(<JoinServer invite={OTHER} />, { server: 'online', perland: 'signedIn' });
+    await user.click(await screen.findByRole('button', { name: 'Add server' }));
+    await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival-2' }));
+    expect(sent(calls, 'your_servers_joined')).toEqual([{ invite: OTHER }]);
+  });
+
+  it('join_screen_records_joined_on_existing', async () => {
+    const { user, calls } = renderApp(<JoinServer invite={MOCK_INVITE} />, { server: 'online', perland: 'signedIn' });
+    await user.click(await screen.findByRole('button', { name: 'Open' }));
+    expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival' });
+    expect(sent(calls, 'your_servers_joined')).toEqual([{ invite: MOCK_INVITE }]);
+  });
+
+  it('records joined with the canonical link on relink and link', async () => {
+    const relink = renderApp(<JoinServer invite="" relinkFor="survival" />, { server: 'vanilla', perland: 'signedIn' });
+    await relink.user.type(await screen.findByRole('textbox', { name: 'Invite link' }), `https://PLAY.example.com/${'B'.repeat(43)}/`);
+    await relink.user.click(screen.getByRole('button', { name: 'Check link' }));
+    await relink.user.click(await screen.findByRole('button', { name: 'Use this link' }));
+    await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival' }));
+    expect(sent(relink.calls, 'your_servers_joined')).toEqual([{ invite: OTHER }]);
+    relink.unmount();
+
+    const link = renderApp(<JoinServer invite="" linkFor="asalith-fields" />, { server: 'online', perland: 'signedIn' });
+    await link.user.type(await screen.findByRole('textbox', { name: 'Invite link' }), OTHER);
+    await link.user.click(screen.getByRole('button', { name: 'Check link' }));
+    await link.user.click(await screen.findByRole('button', { name: 'Link' }));
+    await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'asalith-fields' }));
+    expect(sent(link.calls, 'your_servers_joined')).toEqual([{ invite: OTHER }]);
+  });
+
+  it('a failed joined call is never shown', async () => {
+    const backend = createMockBackend({ server: 'online', perland: 'signedIn' });
+    const calls: [string, unknown][] = [];
+    const { user } = renderWithProviders(<JoinServer invite={OTHER} />, {
+      ipc: (cmd, args) => {
+        calls.push([cmd, args]);
+        return cmd === 'your_servers_joined'
+          ? Promise.reject({ category: 'network', code: 'host_unreachable', message: 'x', fix: null, detail: null, params: { host: 'play.example.com' } })
+          : backend.handle(cmd, args);
+      },
+    });
+    await user.click(await screen.findByRole('button', { name: 'Add server' }));
+    await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival-2' }));
+    expect(sent(calls, 'your_servers_joined')).toHaveLength(1);
+    expect(toastsSnapshot()).toEqual([]);
   });
 
   it('locks the primary button while the add is in flight, so a double click adds once', async () => {

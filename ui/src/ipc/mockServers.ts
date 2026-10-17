@@ -459,8 +459,15 @@ function perlandOf(instance: Instance): string | null {
   return instance.source.kind === 'perland' ? inviteCanonical(instance.source.invite) : null;
 }
 
-/** Answer a server command, or `NOT_MINE`. */
-export function handleServer(servers: MockServers | null, listing: Listing, cmd: string, args: Record<string, unknown>): unknown {
+/** Answer a server command, or `NOT_MINE`. `extra` are cards the public list doesn't have (the player's own Your servers),
+ *  which join like its cards. */
+export function handleServer(
+  servers: MockServers | null,
+  listing: Listing,
+  cmd: string,
+  args: Record<string, unknown>,
+  extra: readonly PublicServerCard[] = [],
+): unknown {
   switch (cmd) {
     case 'servers_list':
       if (servers?.scenario === 'closed') fail('network', 'server_list_closed', "The server list isn't open yet. Check back soon.", { host: HOST });
@@ -487,7 +494,7 @@ export function handleServer(servers: MockServers | null, listing: Listing, cmd:
     case 'join_add': {
       const canonical = inviteCanonical(String(args.link ?? '')) ?? fail('pack', 'invite_link_invalid', "That isn't a Perland invite link");
       // Without an invite scenario, a card of the public list joins on its own; with one, the scenario answers every invite.
-      const card = servers ? undefined : cardOf(canonical);
+      const card = servers ? undefined : (cardOf(canonical) ?? extra.find((c) => c.invite !== null && inviteCanonical(c.invite) === canonical));
       if (card) {
         const existing = listing.instances.find((i) => perlandOf(i) === canonical) ?? null;
         if (cmd === 'join_preview') return cardPreview(card, existing?.id ?? null);

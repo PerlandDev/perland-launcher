@@ -13,7 +13,8 @@ export interface MenuItem {
 
 const ENABLED_ITEM = '[role="menuitem"]:not(:disabled)';
 
-export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
+/** `compact` is a card's quiet ghost key that opens the menu below it; the default is a large raised key opening above. */
+export function Menu({ label, items, compact = false }: { label: string; items: MenuItem[]; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -55,7 +56,8 @@ export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
       <Button
         ref={trigger}
         size="icon"
-        className="btn-lg"
+        variant={compact ? 'ghost' : 'secondary'}
+        className={compact ? undefined : 'btn-lg'}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -63,7 +65,7 @@ export function Menu({ label, items }: { label: string; items: MenuItem[] }) {
         onClick={() => setOpen((v) => !v)}
       />
       {open && (
-        <div ref={list} role="menu" aria-label={label} className="menu" onKeyDown={onKeyDown}>
+        <div ref={list} role="menu" aria-label={label} className="menu" data-placement={compact ? 'down' : undefined} onKeyDown={onKeyDown}>
           {items.map((item) => (
             <button
               key={item.label}

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isLauncherError } from '../../ipc/errors';
 import type { ServerFacets } from '../../ipc/schema';
-import { useServersList } from '../../state/queries';
+import { useServersList, useUnfollow } from '../../state/queries';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { ScreenFrame } from '../../ui/ScreenFrame';
@@ -11,6 +11,7 @@ import { PublicServerCard } from './PublicServerCard';
 import { ServerFilters } from './ServerFilters';
 import { isFiltered, NO_FILTERS, rememberServerFilters, sessionServerFilters, type ListFilters } from './session';
 import { YourServers } from './YourServers';
+import { useFollowed } from './yours';
 
 /** How many placeholder cards stand in while the first page loads. */
 const SKELETONS = 4;
@@ -34,6 +35,10 @@ function PublicServers() {
   const [filters, setFilters] = useState<ListFilters>(sessionServerFilters);
   useEffect(() => rememberServerFilters(filters), [filters]);
   const update = (patch: Partial<ListFilters>) => setFilters((f) => ({ ...f, ...patch }));
+  // A server the player follows keeps its public card here too (hiding it would make the count and filters lie), with Unfollow.
+  const followed = useFollowed();
+  const unfollow = useUnfollow();
+  const menuFor = (invite: string | undefined) => (invite ? { onUnfollow: () => unfollow.mutate(invite) } : undefined);
 
   const list = useServersList({ ...filters, offset: 0 });
   const pages = list.data?.pages ?? [];
@@ -86,7 +91,7 @@ function PublicServers() {
         <ul className="servers-grid">
           {servers.map((card) => (
             <li key={card.token} className="grid">
-              <PublicServerCard card={card} />
+              <PublicServerCard card={card} menu={menuFor(followed.get(card.token))} />
             </li>
           ))}
         </ul>

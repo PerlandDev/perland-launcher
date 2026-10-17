@@ -464,6 +464,15 @@
     "title": "Servidores",
     "subtitle": "Encuentra un servidor de Perland y presiona Jugar.",
     "public": "Servidores públicos",
+    "yours": {
+      "title": "Tus servidores",
+      "owner": "Dueño",
+      "invited": "Invitado",
+      "unfollow": "Dejar de seguir",
+      "more": "Más opciones para {{name}}",
+      "nudge": "Inicia sesión con Perland para tener tus servidores aquí.",
+      "signIn": "Iniciar sesión"
+    },
     "sleeping": "Dormido, Jugar lo despierta",
     "starting": "Iniciando",
     "playing": "{{online}} / {{max}} jugando",

@@ -1129,7 +1129,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     default: {
       const perlandServed = await handlePerland(state.perland, state.listing, cmd, args, event);
       if (perlandServed !== NOT_PERLAND) return perlandServed;
-      const served = handleServer(state.servers, state.listing, cmd, args);
+      const served = handleServer(state.servers, state.listing, cmd, args, state.perland.servers);
       if (served !== NOT_MINE) return served;
       if (cmd.startsWith('plugin:')) return null;
       return fail('game', 'internal', `mock has no command ${cmd}`);

@@ -202,6 +202,23 @@ const onError = (opts: Opts) => (error: unknown) => {
   if (!opts.inline) pushError(error);
 };
 
+/** Follow or joined: fire and forget. It never reports or waits (signed out it does nothing), and Your servers reads again after it. */
+export function recordYourServer(qc: QueryClient, call: () => Promise<unknown>) {
+  void call()
+    .catch(() => {})
+    .finally(() => void qc.invalidateQueries({ queryKey: qk.yourServers }));
+}
+
+/** Unfollow, the one Your servers call that reports: its error is a toast. Your servers reads again either way. */
+export function useUnfollow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (invite: string) => commands.yourServersUnfollow(invite),
+    onError: pushError,
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.yourServers }),
+  });
+}
+
 export function useSaveSettings(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({

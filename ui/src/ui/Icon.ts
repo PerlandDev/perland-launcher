@@ -19,6 +19,7 @@ export {
   Megaphone,
   MemoryStick,
   Minus,
+  MinusBox,
   MoreHorizontal,
   Package,
   Pencil,

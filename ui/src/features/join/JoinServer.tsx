@@ -1,9 +1,11 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { commands } from '../../ipc/commands';
 import { isLauncherError } from '../../ipc/errors';
 import { inviteCanonical, isInviteLink } from '../../ipc/inviteLink';
 import type { Instance, JoinPreview, LauncherError } from '../../ipc/schema';
-import { useInstances, useJoinAdd, useJoinPreview, useServerLink, useServerRelink } from '../../state/queries';
+import { recordYourServer, useInstances, useJoinAdd, useJoinPreview, useServerLink, useServerRelink } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { copyText } from '../../ui/copyText';
@@ -50,6 +52,7 @@ function changesGame(instance: Instance, preview: JoinPreview): boolean {
  *  vanilla or imported instance to it). Nothing is written until the button. */
 export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; relinkFor?: string; linkFor?: string }) {
   const { t } = useTranslation();
+  const qc = useQueryClient();
   const listing = useInstances();
   const [draft, setDraft] = useState(invite);
   const [link, setLink] = useState(invite.trim());
@@ -78,12 +81,22 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
     linkTo.reset();
     setLink(draft.trim());
   };
+  // Every way this screen succeeds (a new instance, the one that already joins, a relink, a link) tells Your servers the
+  // player joined, quietly: signed out it does nothing, and it never holds up opening Home.
+  const joined = () => {
+    const invite = inviteCanonical(link) ?? link;
+    recordYourServer(qc, () => commands.yourServersJoined(invite));
+  };
+  const open = (id: string) => {
+    joined();
+    navigate({ name: 'home', id });
+  };
   const go = () => {
     if (!data || busy) return;
-    if (relinkFor) relink.mutate(link, { onSuccess: () => navigate({ name: 'home', id: relinkFor }) });
-    else if (linkFor) linkTo.mutate(link, { onSuccess: () => navigate({ name: 'home', id: linkFor }) });
-    else if (data.existing) navigate({ name: 'home', id: data.existing });
-    else add.mutate(link, { onSuccess: (instance) => navigate({ name: 'home', id: instance.id }) });
+    if (relinkFor) relink.mutate(link, { onSuccess: () => open(relinkFor) });
+    else if (linkFor) linkTo.mutate(link, { onSuccess: () => open(linkFor) });
+    else if (data.existing) open(data.existing);
+    else add.mutate(link, { onSuccess: (instance) => open(instance.id) });
   };
   const label = relinkFor
     ? t('join.useLink')
