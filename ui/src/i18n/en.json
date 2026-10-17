@@ -509,6 +509,79 @@
     },
     "language": { "en": "English", "es": "Español" }
   },
+  "freeServer": {
+    "entry": {
+      "lead_one": "Your own free server, for up to {{count}} player.",
+      "lead_other": "Your own free server, for up to {{count}} players.",
+      "create": "Create a server for friends"
+    },
+    "reason": {
+      "emailRequired": "Free servers need a verified email on your account. Verify your email on Discord, then sign out and sign in again.",
+      "exists": "Another account with your email already has a free server.",
+      "running": "A server is being created right now.",
+      "retry": "You can create another server in {{time}}.",
+      "full": "Free servers are full right now. Try again later.",
+      "other": "You can't create a server right now."
+    },
+    "time": {
+      "minutes_one": "{{count}} minute",
+      "minutes_other": "{{count}} minutes",
+      "hours_one": "{{count}} hour",
+      "hours_other": "{{count}} hours",
+      "days_one": "{{count}} day",
+      "days_other": "{{count}} days"
+    },
+    "limits": {
+      "players_one": "Up to {{count}} player.",
+      "players_other": "Up to {{count}} players.",
+      "memory": "{{vanilla}} GB of memory for vanilla, {{modded}} GB with mods.",
+      "sleep": "Sleeps when nobody plays and wakes when someone joins.",
+      "unused_one": "Deleted after {{count}} day without players.",
+      "unused_other": "Deleted after {{count}} days without players."
+    },
+    "pick": {
+      "title": "Create a server for friends",
+      "what": "What to play",
+      "vanilla": "Vanilla",
+      "vanillaHint": "The newest Minecraft.",
+      "modpack": "A modpack",
+      "pack": "Modpack",
+      "packHint": "One of your modpacks from Browse. Friends get it when they join.",
+      "noPacks": "Install a modpack from Browse first.",
+      "browse": "Go to Browse",
+      "name": "Server name",
+      "nameHint": "Friends see it on the invite page.",
+      "nameInvalid": "Use letters, numbers, - and _ only, up to 32.",
+      "create": "Create"
+    },
+    "creating": {
+      "title": "Creating your server…",
+      "hint": "This can take a minute or two. You can close this; the server shows in Your servers when it's ready.",
+      "lost": "Still creating your server…",
+      "lostHint": "The answer took too long, so the launcher is checking on it.",
+      "gaveUp": "Your server is still being set up.",
+      "gaveUpBody": "It will show in Your servers."
+    },
+    "ready": {
+      "title": "Your server is ready",
+      "share": "Send this link to your friends so they can join.",
+      "link": "Invite link",
+      "copyLink": "Copy link",
+      "linkCopied": "Link copied",
+      "addressHint": "Friends join from Minecraft with this address.",
+      "address": "Address",
+      "copyAddress": "Copy address",
+      "addressCopied": "Address copied",
+      "playNow": "Play now",
+      "starting": "Starting…"
+    },
+    "unsupported": {
+      "not_found": "This modpack isn't on Modrinth anymore.",
+      "not_modpack": "This isn't a modpack.",
+      "loader": "Free servers can't run this modpack's loader.",
+      "too_large": "This modpack is too large for a free server."
+    }
+  },
   "news": {
     "label": "News",
     "title": "News from {{name}}",

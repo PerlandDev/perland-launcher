@@ -18,16 +18,17 @@ export function isLauncherError(value: unknown): value is LauncherError {
   );
 }
 
-/** Whole GB for a message, from the MB the core sends as text. Rounds up, so "needs" is never too low. */
-function gb(mb: string | undefined): string | undefined {
+/** Whole GB for a message, from the MB the core sends as text, rounded with `round`. */
+function gb(mb: string | undefined, round: (n: number) => number): string | undefined {
   const n = Number(mb);
-  return mb !== undefined && Number.isFinite(n) ? String(Math.ceil(n / 1024)) : undefined;
+  return mb !== undefined && Number.isFinite(n) ? String(round(n / 1024)) : undefined;
 }
 
-/** The core's params, plus the GB a memory message reads (`required`, `limit`). */
+/** The core's params, plus the GB a memory message reads (`required`, `limit`): what is needed rounds up and what there is
+ *  rounds down, so a message never understates the need or overstates the limit. */
 function messageParams(params: Record<string, string>): Record<string, string> {
-  const required = gb(params.requiredMemoryMb);
-  const limit = gb(params.limitMemoryMb);
+  const required = gb(params.requiredMemoryMb, Math.ceil);
+  const limit = gb(params.limitMemoryMb, Math.floor);
   return { ...params, ...(required && { required }), ...(limit && { limit }) };
 }
 

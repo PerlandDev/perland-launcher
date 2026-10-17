@@ -37,7 +37,8 @@ describe('YourServers', () => {
   });
 
   it('nothing_when_signed_in_and_empty', async () => {
-    const { calls } = renderApp(<ServersScreen />, { perland: 'empty' });
+    // Free servers off: with them on, the section stays for the free-server entry.
+    const { calls } = renderApp(<ServersScreen />, { perland: 'empty', free: 'off' });
     await cardIn(await publicList(), 'Survival');
     await vi.waitFor(() => expect(sent(calls, 'your_servers')).toHaveLength(1));
     expect(screen.queryByRole('region', { name: 'Your servers' })).toBeNull();
@@ -85,7 +86,7 @@ describe('YourServers', () => {
   });
 
   it('unfollowing the last card moves focus to Public servers', async () => {
-    const { user, backend } = renderApp(<ServersScreen />, { perland: 'signedIn' });
+    const { user, backend } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'off' });
     backend.state.perland.servers = backend.state.perland.servers.filter((s) => s.name === 'Quiet Cove');
     const section = await yours();
     await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'More for Quiet Cove' }));

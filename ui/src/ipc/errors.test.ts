@@ -43,6 +43,18 @@ describe('describeError', () => {
     );
   });
 
+  it('rounds the need up and the limit down for MB that are not whole GB', () => {
+    const heavy = {
+      category: 'pack',
+      code: 'modpack_too_heavy',
+      message: 'x',
+      fix: null,
+      detail: null,
+      params: { requiredMemoryMb: '8500', limitMemoryMb: '6100' },
+    } as const;
+    expect(describeError(i18n, heavy).message).toBe('This modpack needs 9 GB; free servers have 5 GB.');
+  });
+
   it('fills a too-heavy modpack message with whole GB from the MB params', async () => {
     const heavy = {
       category: 'pack',

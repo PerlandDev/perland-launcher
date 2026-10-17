@@ -26,6 +26,9 @@ related_targets: ["ui/src"]
   - *A line, not a feed.* One quiet flat key under the card's head and under Home's status plates; Play stays the only lit button and the card's Play still lights on card hover only.
   - *Unseen is info.* The new mark is the blue square lamp of the update plate, never amber, with "New" in the accessible name and on the post in the dialog.
   - *Nothing when there's nothing.* News off, no posts, offline or rate limited render no line, no empty box and no error; only the dialog's Show more may say it failed.
+- **Create a server for friends (#49), decided 2026-10-17:**
+  - *The entry is a slot, not a banner.* The flat empty slot with one line and a raised key; the reason line takes the same slot when creating isn't possible. Nothing lit.
+  - *Three steps, one dialog.* The heading names the step; no stepper or numbers. Each step has one lit button (Create, then Play now); the link sits in a well with a ghost Copy.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract

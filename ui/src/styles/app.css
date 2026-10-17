@@ -2684,4 +2684,38 @@
     gap: 0.5rem 1rem;
     padding: 0.75rem 0 calc(0.25rem + 4px);
   }
+
+  /* Create a server for friends (#49): the free server's place in Your servers is the flat empty slot holding one line and a
+     raised key (never lit: the cards' Play is the only amber, and only under the pointer). */
+  .free-entry {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+  }
+  .free-entry > p {
+    max-width: 65ch;
+  }
+  /* A link or address to copy inside the create dialog: sunk as a well, the text in mono and selectable, Copy at its end. */
+  .copy-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  }
+  .copy-row-text {
+    min-width: 0;
+    flex: 1;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--color-ink);
+    user-select: text;
+  }
+  .copy-row .btn {
+    flex: none;
+    min-height: 2rem;
+    padding-inline: 0.5rem;
+  }
 }
