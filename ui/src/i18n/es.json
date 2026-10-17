@@ -477,7 +477,9 @@
   },
   "news": {
     "label": "Novedades",
+    "title": "Novedades de {{name}}",
     "lineLabel": "Novedades: {{line}}",
+    "lineLabelNew": "Novedades: {{line}}, nuevo",
     "new": "Nuevo",
     "now": "Ahora",
     "today": "Hoy {{time}}",
@@ -496,7 +498,11 @@
       "updated_one": "{{count}} actualizado",
       "updated_other": "{{count}} actualizados",
       "changed": "El modpack cambió.",
-      "andMore": "y {{count}} más"
+      "andMore": "y {{count}} más",
+      "line": "Modpack actualizado: {{summary}}",
+      "addedList": "Agregados",
+      "removedList": "Quitados",
+      "updatedList": "Actualizados"
     }
   },
   "errors": {

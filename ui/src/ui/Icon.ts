@@ -2,6 +2,7 @@
 export {
   ArrowBarLeft,
   ArrowBarRight,
+  Calendar,
   Check,
   ChevronDown,
   Close,
@@ -15,6 +16,7 @@ export {
   Languages,
   Link,
   Lock,
+  Megaphone,
   MemoryStick,
   Minus,
   MoreHorizontal,

@@ -10,13 +10,15 @@ import { navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { copyText } from '../../ui/copyText';
+import { useOnScreen } from '../../ui/useOnScreen';
 import { Check, Copy } from '../../ui/Icon';
 import { cardIconSize, useServerIconSize } from '../join/iconScale';
+import { NewsLine } from '../news/NewsLine';
 import { InviteOnly } from '../servers/InviteOnly';
 import { StatusPill } from '../servers/StatusPill';
 import { gameLine, listStatusWord } from './labels';
 
-/** One public server: icon, name, game line, status in words, and Play. Play is raised at rest and lights
+/** One public server: icon, name, game line, status in words, its latest news, and Play. Play is raised at rest and lights
  *  only while its card is under the pointer or holds focus, so a grid of cards is never a wall of amber. */
 export function PublicServerCard({ card }: { card: Card }) {
   const { t } = useTranslation();
@@ -28,8 +30,11 @@ export function PublicServerCard({ card }: { card: Card }) {
   const size = useServerIconSize(cardIconSize);
   const play = usePlay(card);
   const joinable = card.joinable && card.invite !== null;
+  // News is asked for only while the card is on screen: the Engine allows 60 reads a minute per player, and a page holds up to 50 cards.
+  const ref = useRef<HTMLElement>(null);
+  const onScreen = useOnScreen(ref);
   return (
-    <article className="server-tile" aria-labelledby={nameId}>
+    <article ref={ref} className="server-tile" aria-labelledby={nameId}>
       <div className="server-tile-head">
         <span className="server-icon">
           {src ? (
@@ -48,6 +53,7 @@ export function PublicServerCard({ card }: { card: Card }) {
           </span>
         </div>
       </div>
+      <NewsLine invite={card.invite} name={card.name} visible={onScreen} />
       {(card.whitelisted || (!joinable && card.address)) && (
         <div className="server-tile-facts">
           {card.whitelisted && <InviteOnly />}
