@@ -12,6 +12,7 @@ mod import;
 mod live_tests;
 pub mod logged;
 pub mod logs;
+mod minecraft_link;
 mod news;
 mod packs;
 pub mod perland;

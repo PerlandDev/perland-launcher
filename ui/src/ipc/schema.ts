@@ -127,6 +127,8 @@ export const perlandAccount = z.strictObject({
   email: z.string().nullable(),
   discord: z.boolean(),
   newPlayer: z.boolean(),
+  /** The linked Minecraft name, or null while no Minecraft account is linked. */
+  minecraft: z.string().nullable(),
 });
 /** `enabled` is false while the Engine has player accounts closed; `methods` are the ways to sign in it offers. */
 export const perlandStatus = z.strictObject({
@@ -182,6 +184,17 @@ export const freeServerPage = z.strictObject({
   create: createAllowance,
   server: freeServerCard.nullable(),
 });
+/** The code to type in game (`/perland link`), and the seconds it stays good. */
+export const linkCode = z.strictObject({ code: z.string(), expiresIn: z.number() });
+/** One server's numbers for the linked player; `instance` is the launcher instance that joins it, if there is one. */
+export const serverStats = z.strictObject({
+  token: z.string(),
+  instance: z.string().nullable(),
+  name: z.string(),
+  playtimeSeconds: z.number(),
+  advancements: z.number(),
+});
+export const perlandStats = z.strictObject({ servers: z.array(serverStats) });
 export const emailCodeSent = z.strictObject({ resendIn: z.number().int() });
 const newsNameList = z.strictObject({ count: z.number().int(), names: z.array(z.string()) });
 export const newsChangesView = z.strictObject({ added: newsNameList, removed: newsNameList, updated: newsNameList });
@@ -514,6 +527,9 @@ export type FreeServerCard = z.infer<typeof freeServerCard>;
 export type FreeServerPage = z.infer<typeof freeServerPage>;
 export type PerlandAccount = z.infer<typeof perlandAccount>;
 export type PerlandStatus = z.infer<typeof perlandStatus>;
+export type LinkCode = z.infer<typeof linkCode>;
+export type ServerStats = z.infer<typeof serverStats>;
+export type PerlandStats = z.infer<typeof perlandStats>;
 export type EmailCodeSent = z.infer<typeof emailCodeSent>;
 export type NewsChangesView = z.infer<typeof newsChangesView>;
 export type NewsPostView = z.infer<typeof newsPostView>;

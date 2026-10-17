@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { formatBytes, formatCompact, formatCount, formatGb } from './format';
+import { formatBytes, formatCompact, formatCount, formatCountdown, formatGb } from './format';
 
 it('formats sizes for players', () => {
   expect(formatBytes(312_000_000, 'en')).toBe('312 MB');
@@ -14,4 +14,11 @@ it('formats sizes for players', () => {
 it('abbreviates big counts', () => {
   expect(formatCompact(81_000_000, 'en')).toBe('81M');
   expect(formatCompact(1_250, 'en')).toBe('1.3K');
+});
+
+it('counts down in minutes and seconds', () => {
+  expect(formatCountdown(600)).toBe('10:00');
+  expect(formatCountdown(599)).toBe('9:59');
+  expect(formatCountdown(65)).toBe('1:05');
+  expect(formatCountdown(0)).toBe('0:00');
 });

@@ -18,12 +18,14 @@ import { NewsLine } from '../news/NewsLine';
 import { InviteOnly } from '../servers/InviteOnly';
 import { StatusPill } from '../servers/StatusPill';
 import { gameLine, listStatusWord } from './labels';
+import { ServerStatsLine } from './ServerStatsLine';
 
-/** One public server: icon, name, game line, status in words, its latest news, and Play. Play is raised at rest and lights
- *  only while its card is under the pointer or holds focus, so a grid of cards is never a wall of amber. Your servers uses
- *  it too: `tag` labels an Owner or Invited server, `menu` gives a followed one Unfollow, and `follow` (on by default, as
- *  on the public list) makes Play follow the server once it is added. The owner's free server adds `notes` (warning lines),
- *  `menuItems` (after Unfollow), `statusWord` (in place of the list's word) and `onPlay` (in place of the join). */
+/** One public server: icon, name, game line, status in words, its latest news, the player's stats there, and Play. Play is
+ *  raised at rest and lights only while its card is under the pointer or holds focus, so a grid of cards is never a wall of
+ *  amber. Your servers uses it too: `tag` labels an Owner or Invited server, `menu` gives a followed one Unfollow, and
+ *  `follow` (on by default, as on the public list) makes Play follow the server once it is added. The owner's free server adds
+ *  `notes` (warning lines), `menuItems` (after Unfollow), `statusWord` (in place of the list's word) and `onPlay` (in place
+ *  of the join). */
 export function PublicServerCard({
   card,
   tag,
@@ -107,6 +109,7 @@ export function PublicServerCard({
         </p>
       ))}
       <NewsLine invite={card.invite} name={card.name} visible={onScreen} />
+      <ServerStatsLine token={card.token} />
       {(card.whitelisted || (!joinable && card.address)) && (
         <div className="server-tile-facts">
           {card.whitelisted && <InviteOnly />}

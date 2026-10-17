@@ -43,6 +43,7 @@ export function handleEvent(event: AppEvent) {
       qk.contentFiles(id, 'shader'),
       qk.serverStatus(id),
       qk.playtime,
+      qk.perlandStats,
     ];
     for (const queryKey of keys) {
       void queryClient.invalidateQueries({ queryKey });

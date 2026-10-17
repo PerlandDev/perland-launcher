@@ -36,8 +36,8 @@ use launcher_core::{
     news::NewsPage,
     perland::{
         CreateAllowance, CreateFreeServer, DiscordAccount, Disk, EmailStarted, FreeLimits,
-        FreeServer, FreeServerState, MemoryLimits, Player, PlayerConfig, SignInMethod, TokenAnswer,
-        YourServer,
+        FreeServer, FreeServerState, LinkCode, MemoryLimits, Player, PlayerConfig, PlayerStats,
+        SignInMethod, TokenAnswer, YourServer,
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
@@ -897,6 +897,7 @@ pub(crate) fn sample_player() -> Player {
             username: "steve".into(),
             global_name: Some("Steve".into()),
         }),
+        minecraft: None,
         created_at: "2026-10-17T00:00:00Z".into(),
     }
 }
@@ -932,6 +933,11 @@ pub(crate) struct FakePlayer {
     pub started: Mutex<Result<FreeServer>>,
     /// What `delete_free_server` answers. Default: deleted.
     pub deleted: Mutex<Result<bool>>,
+    /// Default: `ABCD-EFGH`, for 600 s.
+    pub link_code: Mutex<Result<LinkCode>>,
+    pub unlink: Mutex<Result<()>>,
+    /// Default: no Minecraft account linked, no servers.
+    pub stats: Mutex<Result<Option<PlayerStats>>>,
     pub calls: Mutex<Vec<PlayerCall>>,
     /// Routes whose calls wait for a permit of their gate (see `hold`).
     holds: Mutex<HashMap<&'static str, Arc<Semaphore>>>,
@@ -962,6 +968,12 @@ impl FakePlayer {
             created: Mutex::new(Ok(free_view("starting"))),
             started: Mutex::new(Ok(free_view("starting"))),
             deleted: Mutex::new(Ok(true)),
+            link_code: Mutex::new(Ok(LinkCode {
+                code: "ABCD-EFGH".into(),
+                expires_in: 600,
+            })),
+            unlink: Mutex::new(Ok(())),
+            stats: Mutex::new(Ok(Some(PlayerStats::default()))),
             calls: Mutex::new(Vec::new()),
             holds: Mutex::new(HashMap::new()),
         })
@@ -1084,6 +1096,15 @@ impl PlayerApi for FakePlayer {
     }
     fn joined(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>> {
         self.record("joined", engine, &[&token, &invite_token], &self.relation)
+    }
+    fn link_code(&self, engine: Url, token: String) -> BoxFuture<Result<LinkCode>> {
+        self.record("link_code", engine, &[&token], &self.link_code)
+    }
+    fn unlink(&self, engine: Url, token: String) -> BoxFuture<Result<()>> {
+        self.record("unlink", engine, &[&token], &self.unlink)
+    }
+    fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>> {
+        self.record("stats", engine, &[&token], &self.stats)
     }
     fn free_server(
         &self,

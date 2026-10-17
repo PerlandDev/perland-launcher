@@ -285,6 +285,35 @@ describe('server instances', () => {
     expect(await screen.findByRole('status', { name: `Server status: ${word}` })).toBeInTheDocument();
   });
 
+  it("show the player's achievements on the server as a plate", async () => {
+    renderApp(<Home id="survival" />, { server: 'online', perland: 'linked' });
+    expect(await screen.findByText('7 achievements')).toBeInTheDocument();
+  });
+
+  it('show no achievements plate without achievements', async () => {
+    const { backend, calls } = renderApp(<Home id="survival" />, { server: 'online', perland: 'linked' });
+    const handle = backend.handle;
+    vi.spyOn(backend, 'handle').mockImplementation(async (cmd, args) => {
+      const answer = await handle(cmd, args);
+      if (cmd !== 'perland_stats' || !answer) return answer;
+      const stats = answer as { servers: { advancements: number }[] };
+      return { servers: stats.servers.map((s) => ({ ...s, advancements: 0 })) };
+    });
+    await screen.findByRole('status', { name: 'Server status: Online · 3/20' });
+    await vi.waitFor(() => expect(sent(calls, 'perland_stats')).toHaveLength(1));
+    await act(async () => {});
+    expect(screen.queryByText(/achievement/)).toBeNull();
+  });
+
+  it('keep the local time played in the version line and show no server playtime', async () => {
+    renderApp(<Home id="survival" />, { server: 'online', perland: 'linked', playtime: { survival: 2 * 3600 } });
+    expect(await screen.findByText('7 achievements')).toBeInTheDocument();
+    expect(screen.getByText(/· 2 h played$/)).toBeInTheDocument();
+    // The server's own 4 h never shows on Home.
+    expect(screen.queryByText(/4 h/)).toBeNull();
+    expect(screen.getAllByText(/played/)).toHaveLength(1);
+  });
+
   it('copy the address', async () => {
     const { user } = renderApp(<Home id="survival" />, { server: 'online' });
     await user.click(await screen.findByRole('button', { name: 'Copy server address' }));

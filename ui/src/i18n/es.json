@@ -324,7 +324,21 @@
     "signOut": "Cerrar sesión",
     "player": "Jugador de Perland",
     "signedIn": "Iniciaste sesión en Perland como {{name}}.",
-    "signedOut": "Cerraste tu sesión de Perland."
+    "signedOut": "Cerraste tu sesión de Perland.",
+    "minecraft": {
+      "title": "Cuenta de Minecraft",
+      "pitch": "Vincula tu cuenta de Minecraft para ver tus logros en cada servidor.",
+      "link": "Vincular cuenta de Minecraft",
+      "instructions": "Escribe {{command}} en un servidor de Perland.",
+      "copy": "Copiar comando",
+      "copied": "Comando copiado",
+      "expiresIn": "Vence en {{time}}",
+      "expired": "El código venció.",
+      "newCode": "Obtener un código nuevo",
+      "linked": "Vinculada a {{name}}",
+      "unlink": "Desvincular",
+      "linkedAnnounce": "Tu cuenta de Minecraft {{name}} quedó vinculada."
+    }
   },
   "settings": {
     "title": "Configuración",
@@ -472,6 +486,12 @@
       "more": "Más opciones para {{name}}",
       "nudge": "Inicia sesión con Perland para guardar tus servidores aquí.",
       "signIn": "Iniciar sesión"
+    },
+    "stats": {
+      "achievements_one": "{{count}} logro",
+      "achievements_other": "{{count}} logros",
+      "played": "{{time}} de juego",
+      "label": "Tus estadísticas en este servidor:"
     },
     "sleeping": "Dormido, Jugar lo despierta",
     "starting": "Iniciando",
@@ -743,6 +763,7 @@
     "modpack_unsupported": { "message": "Este modpack no puede funcionar en un servidor gratis." },
     "modpack_too_heavy": { "message": "Este modpack necesita {{required}} GB; los servidores gratis tienen {{limit}} GB." },
     "free_server_over_disk": { "message": "Tu servidor se quedó sin espacio, así que sigue apagado." },
+    "minecraft_link_closed": { "message": "La vinculación no está disponible en este momento." },
     "launcher_update_failed": { "message": "No se pudo buscar actualizaciones del launcher.", "fix": "Puedes seguir jugando. Lo intenta de nuevo la próxima vez que abras el launcher." },
     "launcher_update_invalid": { "message": "La actualización del launcher no pasó la verificación de seguridad, así que no se instaló.", "fix": "Vuelve a intentarlo más tarde. Si sigue pasando, avísanos." },
     "launcher_update_busy": { "message": "Espera a que terminen los juegos y las instalaciones antes de reiniciar para actualizar.", "fix": "La actualización también se instala cuando cierras el launcher." },

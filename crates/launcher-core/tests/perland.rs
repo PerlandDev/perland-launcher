@@ -1,7 +1,7 @@
 //! The Perland player API against a wiremock Engine. Fake tokens only.
 use launcher_core::{
     invite::Url,
-    perland::{CreateFreeServer, PlayerClient, PlayerConfig, Relation, SignInMethod},
+    perland::{CreateFreeServer, LinkCode, PlayerClient, PlayerConfig, Relation, SignInMethod},
     ErrorCategory, ErrorCode, LauncherError,
 };
 use serde_json::{json, Value};
@@ -1005,4 +1005,146 @@ async fn free_server_errors_name_host_only() {
     let e = create_fails(409, "free_server_exists", json!({})).await;
     let shown = format!("{e:?}");
     assert!(!shown.contains("plt_"), "{shown}");
+}
+
+fn bearer() -> String {
+    format!("Bearer {}", token())
+}
+
+#[tokio::test]
+async fn link_code_success() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(route("/minecraft/link-code")))
+        .and(header("authorization", bearer().as_str()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(envelope(
+            json!({ "code": "ABCD-EFGH", "expiresAt": "2026-10-17T12:10:00Z", "expiresIn": 600 }),
+        )))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let code = client(&server).link_code(&token()).await.unwrap();
+    assert_eq!(
+        code,
+        LinkCode {
+            code: "ABCD-EFGH".into(),
+            expires_in: 600
+        }
+    );
+}
+
+#[tokio::test]
+async fn link_code_addon_off_is_minecraft_link_closed() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "POST",
+        "/minecraft/link-code",
+        503,
+        failure("server_addon_disabled", json!({})),
+    )
+    .await;
+    let e = client(&server).link_code(&token()).await.unwrap_err();
+    assert_eq!(e.code, ErrorCode::MinecraftLinkClosed);
+    assert_eq!(e.category, ErrorCategory::Network);
+}
+
+#[tokio::test]
+async fn unlink_success() {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path(route("/minecraft")))
+        .and(header("authorization", bearer().as_str()))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(envelope(json!({ "unlinked": true }))),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    client(&server).unlink(&token()).await.unwrap();
+}
+
+#[tokio::test]
+async fn stats_success() {
+    let server = MockServer::start().await;
+    let invite = invite_token();
+    Mock::given(method("GET"))
+        .and(path(route("/stats")))
+        .and(header("authorization", bearer().as_str()))
+        .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
+            "minecraft": {
+                "uuid": "069a79f4-44e9-4726-a5be-fca90e38aaf5",
+                "name": "Moi",
+                "linkedAt": "2026-10-17T12:00:00Z"
+            },
+            "servers": [
+                {
+                    "name": "asalith",
+                    "invite": { "token": invite, "url": format!("https://play.example.com/{invite}") },
+                    "playtimeSeconds": 7200,
+                    "advancements": 12,
+                    "advancementIds": ["minecraft:story/root"],
+                    "firstSeenAt": "2026-10-01T00:00:00Z",
+                    "lastSeenAt": "2026-10-17T00:00:00Z"
+                },
+                { "name": "private", "playtimeSeconds": 60, "advancements": 0, "advancementIds": [] }
+            ]
+        }))))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let stats = client(&server).stats(&token()).await.unwrap().unwrap();
+    assert_eq!(stats.minecraft.unwrap().name, "Moi");
+    assert_eq!(stats.servers.len(), 2);
+    let first = &stats.servers[0];
+    assert_eq!(first.name, "asalith");
+    assert_eq!(first.invite.as_ref().unwrap().token, invite);
+    assert_eq!(first.playtime_seconds, 7200);
+    assert_eq!(first.advancements, 12);
+    assert!(stats.servers[1].invite.is_none());
+}
+
+#[tokio::test]
+async fn stats_without_a_link_has_no_minecraft() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "GET",
+        "/stats",
+        200,
+        envelope(json!({ "minecraft": null, "servers": [] })),
+    )
+    .await;
+    let stats = client(&server).stats(&token()).await.unwrap().unwrap();
+    assert!(stats.minecraft.is_none());
+    assert!(stats.servers.is_empty());
+}
+
+#[tokio::test]
+async fn stats_off_is_none() {
+    for (status, body) in [
+        (503, failure("server_addon_disabled", json!({}))),
+        (503, failure("player_accounts_disabled", json!({}))),
+        (404, json!({ "error": "not found" })),
+    ] {
+        let server = MockServer::start().await;
+        answer(&server, "GET", "/stats", status, body).await;
+        assert!(client(&server).stats(&token()).await.unwrap().is_none());
+    }
+}
+
+#[tokio::test]
+async fn stats_other_503_is_an_error() {
+    let server = MockServer::start().await;
+    answer(&server, "GET", "/stats", 503, json!({})).await;
+    let e = client(&server).stats(&token()).await.unwrap_err();
+    assert_eq!(e.code, ErrorCode::HostTrouble);
+}
+
+#[tokio::test]
+async fn stats_401_is_signed_out() {
+    let server = MockServer::start().await;
+    answer(&server, "GET", "/stats", 401, json!({})).await;
+    let e = client(&server).stats(&token()).await.unwrap_err();
+    assert_eq!(e.code, ErrorCode::PerlandSignedOut);
 }

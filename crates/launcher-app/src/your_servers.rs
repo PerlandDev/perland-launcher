@@ -196,6 +196,7 @@ mod tests {
                     name: "Steve".into(),
                     email: None,
                     discord: true,
+                    minecraft: None,
                 },
             })
             .unwrap();

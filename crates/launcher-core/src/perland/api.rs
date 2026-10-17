@@ -23,6 +23,8 @@ use crate::{
 const BODY_CAP: usize = 64 << 10;
 /// Your servers: up to 200 cards.
 const SERVERS_CAP: usize = 1 << 20;
+/// Per-server stats: 200 servers with up to 2000 advancement IDs each can pass 1 MiB.
+const STATS_CAP: usize = 4 << 20;
 /// The longest error body read, in bytes.
 const ERROR_CAP: usize = 4 << 10;
 /// Creating a free server: the Engine builds the stack while the request is open.
@@ -90,7 +92,71 @@ pub struct Player {
     pub display_name: String,
     pub email: Option<String>,
     pub discord: Option<DiscordAccount>,
+    pub minecraft: Option<MinecraftAccount>,
     pub created_at: String,
+}
+
+/// The Minecraft account a player linked with a code.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct MinecraftAccount {
+    /// The Mojang UUID, dashed.
+    pub uuid: String,
+    /// The name the account had when it was linked.
+    pub name: String,
+    pub linked_at: String,
+}
+
+/// A Minecraft link code, typed in the game as `/perland link <code>`. Shown once.
+#[derive(Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkCode {
+    pub code: String,
+    /// The code's lifetime in seconds.
+    #[serde(default)]
+    pub expires_in: u64,
+}
+
+// Manual Debug: the code links an account to whoever types it first.
+impl fmt::Debug for LinkCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LinkCode")
+            .field("expires_in", &self.expires_in)
+            .finish_non_exhaustive()
+    }
+}
+
+/// A server's invite token, which is what joining by invite needs.
+#[derive(Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct StatsInvite {
+    pub token: String,
+}
+
+// Manual Debug: keep invite tokens out of logs.
+impl fmt::Debug for StatsInvite {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StatsInvite").finish_non_exhaustive()
+    }
+}
+
+/// A player's totals on one server.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ServerStats {
+    pub name: String,
+    /// Absent while the server's invite is off.
+    pub invite: Option<StatsInvite>,
+    pub playtime_seconds: u64,
+    pub advancements: u32,
+}
+
+/// The signed-in player's stats on every server.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PlayerStats {
+    /// `None` while no Minecraft account is linked.
+    pub minecraft: Option<MinecraftAccount>,
+    pub servers: Vec<ServerStats>,
 }
 
 /// A sign-in's result. `token` is the credential.
@@ -505,6 +571,53 @@ impl PlayerClient {
         Ok(self.data::<DeletedData>(&reply)?.deleted)
     }
 
+    /// `POST /minecraft/link-code`: a fresh code to type in the game.
+    pub async fn link_code(&self, token: &str) -> Result<LinkCode> {
+        let reply = self
+            .send(
+                Method::POST,
+                "/minecraft/link-code",
+                Some(token),
+                None,
+                BODY_CAP,
+            )
+            .await?;
+        self.ok(&reply, Route::Plain)?;
+        self.data(&reply)
+    }
+
+    /// `DELETE /minecraft`: unlink the Minecraft account. The answer says whether there was
+    /// one, and either way it is unlinked now.
+    pub async fn unlink(&self, token: &str) -> Result<()> {
+        let reply = self
+            .send(Method::DELETE, "/minecraft", Some(token), None, BODY_CAP)
+            .await?;
+        self.ok(&reply, Route::Plain)
+    }
+
+    /// `GET /stats`: the player's totals per server. `None` when the Engine doesn't have them
+    /// (404), or has accounts or the server add-on off (503).
+    pub async fn stats(&self, token: &str) -> Result<Option<PlayerStats>> {
+        let reply = self
+            .send(Method::GET, "/stats", Some(token), None, STATS_CAP)
+            .await?;
+        match reply.status {
+            404 => return Ok(None),
+            503 => {
+                let failure = Self::failure(&reply);
+                if matches!(
+                    failure.code.as_deref(),
+                    Some("server_addon_disabled" | "player_accounts_disabled")
+                ) {
+                    return Ok(None);
+                }
+            }
+            _ => {}
+        }
+        self.ok(&reply, Route::Plain)?;
+        self.data(&reply).map(Some)
+    }
+
     async fn server_write(&self, route: &str, token: &str, invite_token: &str) -> Result<()> {
         let body = json!({ "token": invite_token });
         let reply = self
@@ -629,6 +742,7 @@ impl PlayerClient {
                 return free_server_over_disk(&host, param("usedBytes"), param("limitBytes"))
             }
             Some("modrinth_unavailable") => return host_trouble(MODRINTH_HOST, reply.status),
+            Some("server_addon_disabled") => return minecraft_link_closed(&host),
             _ => {}
         }
         match reply.status {
@@ -818,6 +932,14 @@ fn free_server_over_disk(host: &str, used: Option<String>, limit: Option<String>
     e
 }
 
+fn minecraft_link_closed(host: &str) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::MinecraftLinkClosed,
+        "Linking isn't available right now.",
+    )
+    .with_param("host", host)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -903,5 +1025,37 @@ mod tests {
         .unwrap();
         let shown = format!("{answer:?}");
         assert!(!shown.contains("plt_"), "{shown}");
+    }
+
+    #[test]
+    fn player_minecraft_parses_and_is_optional() {
+        let player: Player = serde_json::from_value(json!({ "id": "p" })).unwrap();
+        assert_eq!(player.minecraft, None);
+        let player: Player = serde_json::from_value(json!({
+            "id": "p",
+            "minecraft": { "name": "Moi", "uuid": "u", "linkedAt": "t" }
+        }))
+        .unwrap();
+        let minecraft = player.minecraft.unwrap();
+        assert_eq!(minecraft.name, "Moi");
+        assert_eq!(minecraft.uuid, "u");
+        assert_eq!(minecraft.linked_at, "t");
+    }
+
+    #[test]
+    fn link_code_debug_hides_code() {
+        let code: LinkCode =
+            serde_json::from_value(json!({ "code": "ABCD-EFGH", "expiresIn": 600 })).unwrap();
+        let shown = format!("{code:?}");
+        assert!(!shown.contains("ABCD"), "{shown}");
+        assert!(shown.contains("600"), "{shown}");
+    }
+
+    #[test]
+    fn stats_invite_debug_hides_token() {
+        let token = "A".repeat(43);
+        let invite: StatsInvite = serde_json::from_value(json!({ "token": token })).unwrap();
+        let shown = format!("{invite:?}");
+        assert!(!shown.contains("AAAA"), "{shown}");
     }
 }

@@ -120,6 +120,7 @@
   "perland_signed_out",
   "player_servers_closed",
   "too_many_player_servers",
+  "minecraft_link_closed",
   "email_required",
   "free_server_exists",
   "too_many_free_servers",

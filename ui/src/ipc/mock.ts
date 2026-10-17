@@ -81,7 +81,7 @@ export interface MockOptions {
   link?: string;
   /** Seeds the `survival` Perland server and picks how its invite answers. */
   server?: ServerScenario;
-  /** Perland account: `off` closes accounts; `signedOut` (default), `signedIn`, `empty` (signed in, no servers) and `emailOnly`. */
+  /** Perland account: `off` closes accounts; `signedOut` (default), `signedIn`, `empty` (signed in, no servers), `emailOnly`, `linked` (Minecraft linked, with stats) and `noAddon` (stats off). */
   perland?: PerlandScenario;
   /** Free server (only while `perland` is signed in): `none` (default, may create), `has`, `warned`, `overDisk`, `creating`, `exists`,
    *  `emailRequired`, `rateLimited`, `full` or `off`. Setting it, or signing in, adds a Cozy Pack and a Mega Pack (too heavy) Modrinth instance. */
