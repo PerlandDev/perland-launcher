@@ -27,6 +27,7 @@ use launcher_core::{
         MetaClient,
     },
     mods::{self, LocalMod},
+    news_seen::{NewsSeen, NEWS_SEEN_FILE},
     paths::LauncherDirs,
     playtime,
     settings::{Channel, Settings, SettingsStore},
@@ -95,6 +96,8 @@ pub struct AppCore<R: Runner, H: Host> {
     settings_warned: AtomicBool,
     accounts_warned: AtomicBool,
     meta: MetaClient,
+    /// The newest news post seen per server (`<data root>/news-seen.json`).
+    pub(crate) news_seen: NewsSeen,
     pub(crate) runner: Arc<R>,
     pub(crate) host: Arc<H>,
     /// One install at a time, so two installs never write the same shared files at once.
@@ -161,6 +164,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             settings_warned: AtomicBool::new(false),
             accounts_warned: AtomicBool::new(false),
             meta,
+            news_seen: NewsSeen::new(root.join(NEWS_SEEN_FILE)),
             runner,
             host,
             install_slot: Arc::new(Semaphore::new(1)),

@@ -36,6 +36,7 @@ import type {
   RunSnapshot,
   SearchPage,
   SearchRequest,
+  ServerNews,
   ServerStatusView,
   Settings,
   UpdateState,
@@ -100,6 +101,11 @@ export const commands = {
   serverStatus: (id: string) => invoke<ServerStatusView>('server_status', { id }),
   serversList: (query: ListQuery) => invoke<PublicServerPage>('servers_list', { query }),
   serversIcon: (token: string, iconVersion: string) => invoke<string | null>('servers_icon', { token, iconVersion }),
+  serverNews: (invite: string, before: string | null, limit: number) =>
+    invoke<ServerNews | null>('server_news', { invite, before, limit }),
+  serverNewsOpened: (invite: string, newest: string) => invoke<null>('server_news_opened', { invite, newest }),
+  newsImage: (invite: string, postId: string, imageVersion: string) =>
+    invoke<string | null>('news_image', { invite, postId, imageVersion }),
   serverRelink: (id: string, link: string) => invoke<Instance>('server_relink', { id, link }),
   serverLink: (id: string, link: string) => invoke<Instance>('server_link', { id, link }),
   quit: (stopGames: boolean) => invoke<null>('quit', { stopGames }),

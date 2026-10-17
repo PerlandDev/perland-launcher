@@ -45,6 +45,9 @@ export const qk = {
   serverStatus: (id: string) => ['server', 'status', id] as const,
   servers: (query: ListQuery) => ['servers', query] as const,
   serverIcon: (token: string, iconVersion: string) => ['serverIcon', token, iconVersion] as const,
+  news: (invite: string) => ['news', invite] as const,
+  newsAll: (invite: string) => ['newsAll', invite] as const,
+  newsImage: (invite: string, postId: string, imageVersion: string) => ['newsImage', invite, postId, imageVersion] as const,
 };
 
 const TEN_MINUTES = 10 * 60_000;
@@ -105,6 +108,39 @@ export const useServerIcon = (token: string, iconVersion: string | null) =>
 
 export const BROWSE_PAGE = 20;
 const FIVE_MINUTES = 5 * 60_000;
+
+/** A page of server news, for the line on a card or on Home and for the dialog. */
+export const NEWS_PAGE = 20;
+/** The newest page of a server's news, or null when it has none. Errors render nothing: news is a bonus, never a blocker.
+ *  `enabled` is true while the card is on screen or Home is open. Read for 5 minutes. */
+export const useServerNews = (invite: string | null, enabled: boolean) =>
+  useQuery({
+    queryKey: qk.news(invite ?? ''),
+    queryFn: () => commands.serverNews(invite as string, null, NEWS_PAGE),
+    enabled: invite !== null && enabled,
+    staleTime: FIVE_MINUTES,
+    refetchInterval: FIVE_MINUTES,
+    retry: false,
+  });
+/** The news dialog's pages, 20 a page, each continuing from the last page's `nextBefore`. Reads only while `open`. */
+export const useServerNewsPages = (invite: string | null, open: boolean) =>
+  useInfiniteQuery({
+    queryKey: qk.newsAll(invite ?? ''),
+    queryFn: ({ pageParam }) => commands.serverNews(invite as string, pageParam, NEWS_PAGE),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last?.nextBefore ?? undefined,
+    enabled: invite !== null && open,
+    staleTime: FIVE_MINUTES,
+    retry: false,
+  });
+/** A post's picture (a data URL), or null. A new `imageVersion` is a new key; it is only asked for when there is one. */
+export const useNewsImage = (invite: string, postId: string, imageVersion: string | null) =>
+  useQuery({
+    queryKey: qk.newsImage(invite, postId, imageVersion ?? ''),
+    queryFn: () => commands.newsImage(invite, postId, imageVersion as string),
+    staleTime: Infinity,
+    enabled: !!imageVersion,
+  });
 
 export const useBrowseSearch = (request: Omit<SearchRequest, 'offset'>) =>
   useInfiniteQuery({

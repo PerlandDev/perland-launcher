@@ -18,5 +18,7 @@ export default defineConfig({
     // themes.test.ts reads app.css as raw text; every other stylesheet stays out of tests.
     css: { include: [/styles\/app\.css/] },
     restoreMocks: true,
+    // Event times read in the computer's zone: every test runs in UTC, whatever TZ the shell exports.
+    env: { TZ: 'UTC' },
   },
 });

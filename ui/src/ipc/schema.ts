@@ -114,6 +114,25 @@ export const publicServerPage = z.strictObject({
   total: z.number().int(),
   facets: serverFacets,
 });
+const newsNameList = z.strictObject({ count: z.number().int(), names: z.array(z.string()) });
+export const newsChangesView = z.strictObject({ added: newsNameList, removed: newsNameList, updated: newsNameList });
+export const newsPostView = z.strictObject({
+  id: z.string(),
+  type: z.enum(['update', 'event', 'modpack']),
+  title: z.string(),
+  /** Plain text: render it as text, never as HTML or Markdown. */
+  body: z.string(),
+  startsAt: z.string().nullable(),
+  endsAt: z.string().nullable(),
+  imageVersion: z.string().nullable(),
+  modpack: newsChangesView.nullable(),
+  createdAt: z.string(),
+});
+export const serverNews = z.strictObject({
+  posts: z.array(newsPostView),
+  nextBefore: z.string().nullable(),
+  seen: z.string().nullable(),
+});
 export const serverStatusView = z.strictObject({
   status: serverStatus.nullable(),
   players: serverPlayers.nullable(),
@@ -412,6 +431,9 @@ export type ListQuery = z.infer<typeof listQuery>;
 export type PublicServerCard = z.infer<typeof publicServerCard>;
 export type ServerFacets = z.infer<typeof serverFacets>;
 export type PublicServerPage = z.infer<typeof publicServerPage>;
+export type NewsChangesView = z.infer<typeof newsChangesView>;
+export type NewsPostView = z.infer<typeof newsPostView>;
+export type ServerNews = z.infer<typeof serverNews>;
 export type JoinPreview = z.infer<typeof joinPreview>;
 export type ServerStatusView = z.infer<typeof serverStatusView>;
 export type DeepLink = z.infer<typeof deepLink>;

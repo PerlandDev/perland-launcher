@@ -475,6 +475,36 @@
     },
     "language": { "en": "English", "es": "Español" }
   },
+  "news": {
+    "label": "Novedades",
+    "title": "Novedades de {{name}}",
+    "lineLabel": "Novedades: {{line}}",
+    "lineLabelNew": "Novedades: {{line}}, nuevo",
+    "new": "Nuevo",
+    "now": "Ahora",
+    "today": "Hoy {{time}}",
+    "tomorrow": "Mañana {{time}}",
+    "posted": "Publicado el {{date}}",
+    "showMore": "Ver más",
+    "close": "Cerrar",
+    "loadFailed": "No se pudieron cargar más novedades.",
+    "retry": "Reintentar",
+    "modpack": {
+      "title": "Modpack actualizado",
+      "added_one": "{{count}} mod agregado",
+      "added_other": "{{count}} mods agregados",
+      "removed_one": "{{count}} quitado",
+      "removed_other": "{{count}} quitados",
+      "updated_one": "{{count}} actualizado",
+      "updated_other": "{{count}} actualizados",
+      "changed": "El modpack cambió.",
+      "andMore": "y {{count}} más",
+      "line": "Modpack actualizado: {{summary}}",
+      "addedList": "Agregados",
+      "removedList": "Quitados",
+      "updatedList": "Actualizados"
+    }
+  },
   "errors": {
     "offline_name_invalid": { "message": "Los nombres deben tener de 3 a 16 letras, números o guiones bajos." },
     "accounts_damaged": { "message": "Tu archivo de cuentas está dañado.", "fix": "Borra accounts.json de la carpeta de datos y vuelve a agregar tus cuentas." },

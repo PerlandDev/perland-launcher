@@ -1,7 +1,8 @@
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { isNew, latestLine } from '../features/news/newsRules';
 import { createMockBackend, installMock, stopMockRuns } from './mock';
-import { MOCK_INVITE, MOCK_PUBLIC_SERVERS } from './mockServers';
+import { MOCK_INVITE, MOCK_PUBLIC_SERVERS, MOCK_SERVER_ICON } from './mockServers';
 import type {
   AccountsFile,
   InstallPlanView,
@@ -14,6 +15,7 @@ import type {
   PackContents,
   PackStatus,
   PublicServerPage,
+  ServerNews,
   RunSnapshot,
   SearchPage,
   ServerStatusView,
@@ -544,5 +546,78 @@ describe('mock browse backend', () => {
     const { handle } = createMockBackend();
     const created = (await handle('pack_add', { request: { kind: 'link', url: 'modrinth:1KVo5zza@1KVo5zza-v1' } })) as Instance;
     expect(created.name).toBe('Fabulously Optimized');
+  });
+});
+
+describe('mock server news', () => {
+  afterEach(() => stopMockRuns());
+
+  const news = async (invite: string, over: { before?: string | null; limit?: number } = {}, options: Parameters<typeof createMockBackend>[0] = {}) =>
+    (await createMockBackend(options).handle('server_news', { invite, before: null, limit: 20, ...over })) as ServerNews | null;
+
+  it('gives the seeded instance an upcoming event, an update with a picture, a modpack post and a body with markup', async () => {
+    const page = (await news(MOCK_INVITE, {}, { server: 'online' }))!;
+    const now = new Date();
+    expect(page.posts.map((p) => p.type)).toEqual(expect.arrayContaining(['event', 'update', 'modpack']));
+    const e = page.posts.find((p) => p.type === 'event')!;
+    expect(e.title).toBe('Build contest');
+    expect(new Date(e.startsAt!).getTime()).toBeGreaterThan(now.getTime());
+    expect(page.posts.some((p) => p.imageVersion !== null)).toBe(true);
+    expect(page.posts.some((p) => (p.modpack?.added.count ?? 0) > 0)).toBe(true);
+    expect(page.posts.some((p) => p.body === '<b>bold</b>')).toBe(true);
+    expect(latestLine(page.posts, now)?.id).toBe(e.id);
+  });
+
+  it('shows the dot for the seeded instance until its news was opened', async () => {
+    const backend = createMockBackend({ server: 'online' });
+    const ask = async () => (await backend.handle('server_news', { invite: MOCK_INVITE, before: null, limit: 20 })) as ServerNews;
+    const first = await ask();
+    expect(first.seen).not.toBeNull();
+    expect(isNew(first.posts, first.seen, new Date())).toBe(true);
+    const newest = first.posts.map((p) => p.createdAt).sort().at(-1)!;
+    expect(await backend.handle('server_news_opened', { invite: MOCK_INVITE, newest })).toBeNull();
+    const after = await ask();
+    expect(after.seen).toBe(newest);
+    expect(isNew(after.posts, after.seen, new Date())).toBe(false);
+  });
+
+  it('gives the seeded instance more than one page of news', async () => {
+    const first = (await news(MOCK_INVITE, {}, { server: 'online' }))!;
+    expect(first.posts).toHaveLength(20);
+    expect(first.nextBefore).toBe('20');
+    const second = (await news(MOCK_INVITE, { before: first.nextBefore }, { server: 'online' }))!;
+    expect(second.posts).toHaveLength(4);
+    expect(second.nextBefore).toBeNull();
+  });
+
+  it('pages with nextBefore', async () => {
+    const backend = createMockBackend({ server: 'online' });
+    const first = (await backend.handle('server_news', { invite: MOCK_INVITE, before: null, limit: 2 })) as ServerNews;
+    expect(first.posts).toHaveLength(2);
+    expect(first.nextBefore).not.toBeNull();
+    const second = (await backend.handle('server_news', { invite: MOCK_INVITE, before: first.nextBefore, limit: 50 })) as ServerNews;
+    expect(second.posts.length).toBeGreaterThan(0);
+    expect(second.nextBefore).toBeNull();
+    expect(new Set([...first.posts, ...second.posts].map((p) => p.id)).size).toBe(first.posts.length + second.posts.length);
+  });
+
+  it('answers the public cards, and one card has none', async () => {
+    const withInvite = MOCK_PUBLIC_SERVERS.filter((c) => c.invite !== null);
+    const pages = await Promise.all(withInvite.map((c) => news(c.invite!)));
+    expect(pages.filter((p) => p && p.posts.length > 0).length).toBeGreaterThanOrEqual(withInvite.length - 2);
+    expect(pages.some((p) => p?.posts.length === 0)).toBe(true);
+  });
+
+  it('answers null for the news-off scenario and for a link it does not know', async () => {
+    expect(await news(MOCK_INVITE, {}, { server: 'news-off' })).toBeNull();
+    expect(await news(`https://play.example.com/${'Z'.repeat(43)}`)).toBeNull();
+  });
+
+  it('serves a post picture only for its own version', async () => {
+    const backend = createMockBackend({ server: 'online' });
+    const page = (await backend.handle('server_news', { invite: MOCK_INVITE, before: null, limit: 20 })) as ServerNews;
+    const withImage = page.posts.find((p) => p.imageVersion !== null)!;
+    expect(await backend.handle('news_image', { invite: MOCK_INVITE, postId: withImage.id, imageVersion: withImage.imageVersion })).toBe(MOCK_SERVER_ICON);
+    expect(await backend.handle('news_image', { invite: MOCK_INVITE, postId: withImage.id, imageVersion: 'old' })).toBeNull();
   });
 });

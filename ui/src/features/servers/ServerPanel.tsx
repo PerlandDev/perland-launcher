@@ -1,6 +1,7 @@
 import type { Instance } from '../../ipc/schema';
 import { useServerStatus } from '../../state/queries';
 import { SELECTED_POLL } from '../../state/serverPoll';
+import { NewsLine } from '../news/NewsLine';
 import { AddressLine } from './AddressLine';
 import { DeadLinkPlate } from './DeadLinkPlate';
 import { InviteOnly } from './InviteOnly';
@@ -20,6 +21,8 @@ export function ServerPanel({ instance }: { instance: Instance }) {
         <StatusPill status={live ? live.status : (saved?.lastStatus ?? null)} players={live?.players ?? null} gone={gone} />
         <AddressLine address={live?.address ?? saved?.address ?? null} />
       </div>
+      {/* Home is open, so its news reads now; the line is absent without news. */}
+      <NewsLine invite={instance.source.kind === 'perland' ? instance.source.invite : null} name={instance.name} visible onArt />
       {whitelisted && <InviteOnly onArt />}
       {gone && <DeadLinkPlate id={instance.id} />}
     </div>

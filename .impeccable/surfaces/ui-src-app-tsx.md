@@ -22,6 +22,10 @@ related_targets: ["ui/src"]
   - *Play lights per card.* Each card's Play is raised at rest and turns amber only while its card is hovered or focused; the grid never shows two lit buttons.
   - *Filters are keys, not a form.* Sort and the filters are small select keys and a pressed-key toggle in one wrapping row, so at 960 × 600 the first row of cards stays in view; a set filter sinks with the lime lamp.
   - *Closed is calm.* An Engine with the list off reads "isn't open yet" in the flat empty slot: no coral, no alert, no Retry.
+- **Server news (#51), decided 2026-10-17:**
+  - *A line, not a feed.* One quiet flat key under the card's head and under Home's status plates; Play stays the only lit button and the card's Play still lights on card hover only.
+  - *Unseen is info.* The new mark is the blue square lamp of the update plate, never amber, with "New" in the accessible name and on the post in the dialog.
+  - *Nothing when there's nothing.* News off, no posts, offline or rate limited render no line, no empty box and no error; only the dialog's Show more may say it failed.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract

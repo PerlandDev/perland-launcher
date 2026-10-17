@@ -123,6 +123,19 @@ pub fn log_error(command: &str, error: &LauncherError) {
     );
 }
 
+/// An error a command hands back but nobody has to act on, such as the news line's poll while
+/// offline or while an Engine answers 502: at debug, so a poll every few minutes per card does not
+/// fill the log.
+pub fn log_quiet(command: &str, error: &LauncherError) {
+    tracing::debug!(
+        command,
+        code = ?error.code,
+        detail = error.detail.as_deref().unwrap_or(""),
+        "{}",
+        error.message
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -239,6 +252,30 @@ mod tests {
         let text = std::fs::read_to_string(only_file(tmp.path())).unwrap();
         assert!(!text.contains("ImportCancelled"), "{text}");
         assert!(text.contains("ImportNotInstance"), "{text}");
+    }
+
+    #[test]
+    fn a_quiet_error_logs_at_debug_only() {
+        let error = LauncherError::network(ErrorCode::Offline, "You're offline");
+        for (level, shown) in [(tracing::Level::INFO, false), (tracing::Level::DEBUG, true)] {
+            let tmp = tempfile::tempdir().unwrap();
+            let file = RedactingFile::new(tmp.path(), Redactor::new()).unwrap();
+            let subscriber = tracing_subscriber::fmt()
+                .with_ansi(false)
+                .with_max_level(level)
+                .with_writer(file)
+                .finish();
+            tracing::subscriber::with_default(subscriber, || log_quiet("server_news", &error));
+            let text = std::fs::read_dir(tmp.path())
+                .unwrap()
+                .map(|e| std::fs::read_to_string(e.unwrap().path()).unwrap())
+                .collect::<String>();
+            assert_eq!(text.contains("Offline"), shown, "{level}: {text}");
+            assert!(!text.contains("WARN"), "{text}");
+            if shown {
+                assert!(text.contains("DEBUG"), "{text}");
+            }
+        }
     }
 
     #[test]

@@ -4,7 +4,7 @@ import joinPreviewFx from './contract/join_preview.json';
 import serverInstanceFx from './contract/server_instance.json';
 import serverStatusFx from './contract/server_status.json';
 import { inviteCanonical } from './inviteLink';
-import type { Instance, JoinPreview, LauncherError, ListQuery, LoaderKind, PublicServerCard, PublicServerPage, ServerStatusView } from './schema';
+import type { Instance, JoinPreview, LauncherError, ListQuery, LoaderKind, NewsPostView, PublicServerCard, PublicServerPage, ServerNews, ServerStatusView } from './schema';
 
 export type ServerScenario =
   | 'online'
@@ -17,7 +17,9 @@ export type ServerScenario =
   | 'network'
   | 'modded-no-pack'
   /** The public server list isn't open yet: `servers_list` answers `server_list_closed`. */
-  | 'closed';
+  | 'closed'
+  /** The Engine has the news turned off: `server_news` answers null for every server. */
+  | 'news-off';
 
 /** The invite the seeded server instance has. */
 export const MOCK_INVITE = `https://play.example.com/${'A'.repeat(43)}`;
@@ -181,6 +183,113 @@ export const MOCK_PUBLIC_SERVERS: PublicServerCard[] = [
     instance: null,
   },
 ];
+
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+const MOCK_NEWS_IMAGE_VERSION = 'v1';
+/** Mock server A's older recaps: with its 7 other posts, 24 in all, so a 20-post page leaves 4 for Show more. */
+const OLD_RECAPS = 17;
+
+/** An id that looks like the Engine's UUIDs, one per server letter and post number. */
+const newsId = (letter: string, n: number) => `${(letter.charCodeAt(0).toString(16) + '00000000').slice(0, 8)}-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+/** The posts a mock server has, relative to `at`, newest first. A: the seeded instance's, with every kind of post; C: none. */
+function newsPosts(letter: string, at: number): NewsPostView[] {
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const post = (n: number, over: Partial<NewsPostView> & Pick<NewsPostView, 'type' | 'title' | 'createdAt'>): NewsPostView => ({
+    id: newsId(letter, n),
+    body: '',
+    startsAt: null,
+    endsAt: null,
+    imageVersion: null,
+    modpack: null,
+    ...over,
+  });
+  const contest = (n: number, startsAt: number, createdAt: number) =>
+    post(n, {
+      type: 'event',
+      title: 'Build contest',
+      body: 'Bring your best build.\nThe theme is castles.',
+      startsAt: iso(startsAt),
+      endsAt: iso(startsAt + 2 * HOUR),
+      createdAt: iso(createdAt),
+    });
+  const picture = (n: number, createdAt: number) =>
+    post(n, { type: 'update', title: 'New spawn is live', body: 'Come and see it.\nThe old spawn stays as a museum.', imageVersion: MOCK_NEWS_IMAGE_VERSION, createdAt: iso(createdAt) });
+  const modpack = (n: number, version: string, createdAt: number, changes: boolean) =>
+    post(n, {
+      type: 'modpack',
+      title: `Modpack ${version}`,
+      createdAt: iso(createdAt),
+      modpack: changes
+        ? {
+            added: { count: 3, names: ['Sodium', 'Iris Shaders', 'Lithium'] },
+            removed: { count: 1, names: ['Zoomify'] },
+            updated: { count: 2, names: ['Fabric API', 'Mod Menu'] },
+          }
+        : null,
+    });
+  switch (letter) {
+    case 'A':
+      return [
+        picture(1, at - 2 * HOUR),
+        modpack(2, '1.0.4', at - 1 * DAY, true),
+        contest(3, at + 26 * HOUR, at - 3 * DAY),
+        post(4, { type: 'update', title: 'Rules reminder', body: '<b>bold</b>', createdAt: iso(at - 5 * DAY) }),
+        modpack(5, '1.0.3', at - 8 * DAY, false),
+        post(6, { type: 'update', title: 'Weekend recap', body: 'Thanks for playing!', createdAt: iso(at - 12 * DAY) }),
+        post(7, { type: 'update', title: 'Server moved to a faster machine', createdAt: iso(at - 20 * DAY) }),
+        // Older weekly recaps, so the dialog's 20-post pages end in Show more.
+        ...Array.from({ length: OLD_RECAPS }, (_, i) =>
+          post(8 + i, { type: 'update', title: 'Weekend recap', body: `Week ${OLD_RECAPS - i} is in the books.`, createdAt: iso(at - (27 + 7 * i) * DAY) }),
+        ),
+      ];
+    case 'B':
+      return [
+        post(1, { type: 'event', title: 'Plot party', startsAt: iso(at - 30 * 60_000), createdAt: iso(at - 1 * DAY) }),
+        picture(2, at - 4 * DAY),
+      ];
+    case 'D':
+      return [post(1, { type: 'update', title: 'Islands reset on Friday', body: 'Back up what you want to keep.', createdAt: iso(at - 9 * DAY) })];
+    case 'E':
+      return [contest(1, at + 3 * DAY, at - 2 * DAY)];
+    case 'F':
+      return [post(1, { type: 'update', title: 'Season 4 starts', createdAt: iso(at - 6 * HOUR) }), contest(2, at - 6 * DAY, at - 8 * DAY)];
+    case 'H':
+      return [
+        post(1, { type: 'update', title: 'Nueva aventura', body: 'Hay un jefe nuevo.\nBusca la torre.', createdAt: iso(at - 3 * DAY) }),
+        modpack(2, '2.1.0', at - 4 * DAY, true),
+      ];
+    default:
+      return [];
+  }
+}
+
+/** Per mock backend: the moment its posts are relative to, and the seen markers (the seeded instance starts with an old one, so its dot shows). */
+const newsStates = new WeakMap<object, { at: number; seen: Map<string, string> }>();
+
+function newsState(listing: object) {
+  let state = newsStates.get(listing);
+  if (!state) {
+    const at = Math.floor(Date.now() / 1000) * 1000;
+    state = { at, seen: new Map([[inviteCanonical(MOCK_INVITE) as string, new Date(at - 3 * DAY).toISOString()]]) };
+    newsStates.set(listing, state);
+  }
+  return state;
+}
+
+/** One page of a mock server's news, the way the Engine answers: newest first, `before` is an offset, 1 to 50 a page. */
+function serverNews(listing: object, args: Record<string, unknown>): ServerNews | null {
+  const canonical = inviteCanonical(String(args.invite ?? ''));
+  const card = cardOf(canonical);
+  if (!card || !canonical) return null;
+  const state = newsState(listing);
+  const all = newsPosts(card.token[0] ?? '', state.at).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const limit = Math.min(50, Math.max(1, Number(args.limit) || 20));
+  const offset = typeof args.before === 'string' && /^\d+$/.test(args.before) ? Number(args.before) : 0;
+  const end = offset + limit;
+  return { posts: all.slice(offset, end), nextBefore: end < all.length ? String(end) : null, seen: state.seen.get(canonical) ?? null };
+}
 
 const PAGE = 50;
 
@@ -355,6 +464,20 @@ export function handleServer(servers: MockServers | null, listing: Listing, cmd:
     case 'servers_icon': {
       const card = MOCK_PUBLIC_SERVERS.find((c) => c.token === args.token);
       return card?.iconVersion && card.iconVersion === args.iconVersion ? MOCK_SERVER_ICON : null;
+    }
+    case 'server_news':
+      return servers?.scenario === 'news-off' ? null : clone(serverNews(listing, args));
+    case 'server_news_opened': {
+      const canonical = inviteCanonical(String(args.invite ?? ''));
+      const marks = newsState(listing).seen;
+      const newest = String(args.newest ?? '');
+      if (canonical && (!marks.has(canonical) || newest > (marks.get(canonical) as string))) marks.set(canonical, newest);
+      return null;
+    }
+    case 'news_image': {
+      const page = serverNews(listing, { invite: args.invite, limit: 50 });
+      const known = page?.posts.some((p) => p.id === args.postId && p.imageVersion === args.imageVersion);
+      return known ? MOCK_SERVER_ICON : null;
     }
     case 'join_preview':
     case 'join_add': {

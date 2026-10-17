@@ -11,10 +11,11 @@ use launcher_app::{
     deep_link::DeepLink,
     dto::{
         AppInfo, ArtChoice, Build, ContentFile, IconChoice, ImportPreview, ImportRequest,
-        InstanceArtData, JavaTest, JoinPreview, ManualProgress, NewInstance, OpenTarget,
-        OptionalChoice, PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate,
-        PlaytimeEntry, PublicServerCard, PublicServerPage, RunSnapshot, ServerGame, ServerPack,
-        ServerPlayers, ServerStatusView, ServerTeam, SyncSummary,
+        InstanceArtData, JavaTest, JoinPreview, ManualProgress, NameListView, NewInstance,
+        NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents,
+        PackMod, PackStatus, PackUpdate, PlaytimeEntry, PublicServerCard, PublicServerPage,
+        RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers, ServerStatusView,
+        ServerTeam, SyncSummary,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -245,6 +246,61 @@ fn public_server_page() -> PublicServerPage {
             minecraft_versions: vec!["1.21.1".into(), "1.20.1".into()],
             regions: vec!["eu".into()],
         },
+    }
+}
+
+fn server_news() -> ServerNews {
+    let names = |count: u32, names: &[&str]| NameListView {
+        count,
+        names: names.iter().map(|n| n.to_string()).collect(),
+    };
+    let post = |id: &str, kind: &str, title: &str, created_at: &str| NewsPostView {
+        id: id.into(),
+        kind: kind.into(),
+        title: title.into(),
+        body: "A line\nAnother line".into(),
+        starts_at: None,
+        ends_at: None,
+        image_version: None,
+        modpack: None,
+        created_at: created_at.into(),
+    };
+    let mut event = post(
+        "3f2b8c1e-5d4a-4e6b-9c7d-1a2b3c4d5e6f",
+        "event",
+        "Build battle",
+        "2026-10-16T10:00:00Z",
+    );
+    event.starts_at = Some("2026-10-18T18:00:00Z".into());
+    event.ends_at = Some("2026-10-18T20:00:00Z".into());
+    let mut update = post(
+        "7c1d9e2a-8b3f-4a5c-b6d7-2e3f4a5b6c7d",
+        "update",
+        "New spawn",
+        "2026-10-15T09:30:00Z",
+    );
+    update.image_version = Some("v3".into());
+    let mut pack = post(
+        "9a8b7c6d-5e4f-4321-8765-4c3b2a1f0e9d",
+        "modpack",
+        "Modpack 1.0.4",
+        "2026-10-14T12:00:00Z",
+    );
+    pack.modpack = Some(NewsChangesView {
+        added: names(3, &["Sodium", "Iris", "Lithium"]),
+        removed: names(1, &["Zoomify"]),
+        updated: names(0, &[]),
+    });
+    let bare_pack = post(
+        "1b2c3d4e-5f60-4718-8293-a4b5c6d7e8f9",
+        "modpack",
+        "Modpack 1.0.3",
+        "2026-10-13T12:00:00Z",
+    );
+    ServerNews {
+        posts: vec![event, update, pack, bare_pack],
+        next_before: Some("41".into()),
+        seen: Some("2026-10-15T00:00:00Z".into()),
     }
 }
 
@@ -936,6 +992,7 @@ fn contract_fixtures_are_current() {
     );
     check("server_instance", server_instance());
     check("public_server_page", public_server_page());
+    check("server_news", server_news());
     check(
         "join_preview",
         vec![

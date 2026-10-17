@@ -444,6 +444,49 @@ impl fmt::Debug for PublicServerCard {
     }
 }
 
+/// One page of a server's news, newest first, and the marker of what the player has seen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerNews {
+    pub posts: Vec<NewsPostView>,
+    /// Pass it back as `before` for the next page; absent on the last.
+    pub next_before: Option<String>,
+    /// The `createdAt` of the newest post the player has seen on this server, if any.
+    pub seen: Option<String>,
+}
+
+/// A news post. Times are the Engine's RFC3339 text; `body` is plain text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewsPostView {
+    pub id: String,
+    /// `update`, `event` or `modpack`; anything else the Engine sends is an `update`.
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub title: String,
+    pub body: String,
+    pub starts_at: Option<String>,
+    pub ends_at: Option<String>,
+    pub image_version: Option<String>,
+    /// A modpack post's changes; none when the Engine could not read the pack.
+    pub modpack: Option<NewsChangesView>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NewsChangesView {
+    pub added: NameListView,
+    pub removed: NameListView,
+    pub updated: NameListView,
+}
+
+/// Some mods: how many, and the first few by name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NameListView {
+    pub count: u32,
+    pub names: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct JavaTest {
     pub major: u32,

@@ -6,7 +6,7 @@ use launcher_app::dto::{
     AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, IconChoice, ImportPreview, ImportRequest,
     InstallPlanView, InstallResult, InstanceArtData, JavaTest, JoinPreview, ManualProgress,
     NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus, PlaytimeEntry,
-    PublicServerPage, RunSnapshot, SearchRequest, ServerStatusView,
+    PublicServerPage, RunSnapshot, SearchRequest, ServerNews, ServerStatusView,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -423,6 +423,44 @@ pub async fn servers_icon(
     icon_version: String,
 ) -> Res<Option<String>> {
     Ok(core.servers_icon(&token, &icon_version).await)
+}
+
+#[tauri::command]
+pub async fn server_news(
+    core: CoreState<'_>,
+    invite: String,
+    before: Option<String>,
+    limit: u8,
+) -> Res<Option<ServerNews>> {
+    // Show more's errors show in the dialog and are logged. The line's first page polls on every
+    // card and renders nothing on an error, so its failures stay at debug.
+    let later = before.is_some();
+    let result = core.server_news(&invite, before, limit).await;
+    if later {
+        return logged("server_news", result);
+    }
+    if let Err(error) = &result {
+        launcher_core::logging::log_quiet("server_news", error);
+    }
+    result
+}
+
+#[tauri::command]
+pub async fn server_news_opened(core: CoreState<'_>, invite: String, newest: String) -> Res<()> {
+    logged(
+        "server_news_opened",
+        core.server_news_opened(&invite, &newest).await,
+    )
+}
+
+#[tauri::command]
+pub async fn news_image(
+    core: CoreState<'_>,
+    invite: String,
+    post_id: String,
+    image_version: String,
+) -> Res<Option<String>> {
+    Ok(core.news_image(&invite, &post_id, &image_version).await)
 }
 
 #[tauri::command]
