@@ -166,8 +166,8 @@ Players find a server through a friend's link or the public list, play once, and
   - It answers the pages of §5 with `Connection: close` and `Cache-Control: no-store`.
   - A deadline is `sign_in_timed_out`; a cancel returns `Canceled`, which the app turns into no error.
 - **`perland/session.rs`:** `Session {engine, token, player}` with a manual Debug.
-  - Storage goes through `trait SecretStore { load, save, delete }`, which carries one JSON string.
-  - `KeyringStore` is the `keyring` crate. Its features are the native stores: `windows-native`, `apple-native`, and `sync-secret-service` with `crypto-rust` on Linux, since `dbus` is already in the lockfile.
+  - Storage goes through `trait SecretStore { load, save, delete }`, which carries the token string only (the profile lives in the marker file).
+  - `KeyringStore` is the `keyring` crate. Its features are the native stores: `windows-native` on Windows, and `sync-secret-service` with `crypto-rust` on Linux, since `dbus` is already in the lockfile. Other targets get a stub that answers `NoBackend`.
   - `MemoryStore` is the fallback and is what tests use.
   - `SessionStore` holds the marker file (`<root>/perland-account.json`, non-secret) and the `SecretStore`. `load()` reads the marker and, only when it exists, the secret; a marker without a secret is cleared. `save()` writes the secret first, then the marker; a secret store that answers it has no backend makes the session memory-only (no marker). `forget()` deletes both.
   - Calls into the keyring run on a blocking thread.
