@@ -413,6 +413,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn an_invite_whose_engine_cant_be_found_sends_nothing() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        *runner.player.site.lock().unwrap() = Err(LauncherError::network(
+            ErrorCode::InviteSiteUnreachable,
+            "Couldn't reach the invite's site",
+        ));
+        core.your_servers_follow(&invite('A')).await;
+        core.your_servers_joined(&invite('A')).await;
+        let err = core.your_servers_unfollow(&invite('A')).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::InviteSiteUnreachable);
+        assert!(runner.player.calls.lock().unwrap().is_empty());
+        assert!(core.perland_session().await.is_some(), "the session stays");
+    }
+
+    #[tokio::test]
+    async fn unfollow_signed_out_is_ok_and_sends_nothing() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        core.your_servers_unfollow(&invite('A')).await.unwrap();
+        assert!(runner.player.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn joined_sends_invite_token() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         sign_in(&core, "https://api.example.com");

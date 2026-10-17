@@ -17,8 +17,14 @@ use crate::error::{ErrorCode, LauncherError, Result};
 
 /// The longest request head read, in bytes.
 const HEAD_CAP: usize = 8 << 10;
-/// How long one connection may take to send its request line.
+/// How long one connection may take to send its request head.
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long an answered connection is read for what the browser still sends.
+const DRAIN_TIMEOUT: Duration = Duration::from_secs(1);
+/// The most an answered connection is read for, in bytes.
+const DRAIN_CAP: usize = 64 << 10;
+/// How long to pause after the listener fails to accept, so a lasting failure doesn't spin.
+const ACCEPT_BACKOFF: Duration = Duration::from_millis(75);
 /// The longest `error` value kept from the callback, in characters.
 const ERROR_CAP: usize = 64;
 
@@ -140,12 +146,14 @@ impl Loopback {
                         return Ok(callback);
                     }
                 }
-                accepted = listener.accept() => {
-                    if let Ok((stream, _)) = accepted {
+                accepted = listener.accept() => match accepted {
+                    Ok((stream, _)) => {
                         let state = state.to_string();
                         connections.spawn(serve(stream, state, language));
                     }
-                }
+                    // Out of file descriptors, say: wait a little rather than spin.
+                    Err(_) => tokio::time::sleep(ACCEPT_BACKOFF).await,
+                },
             }
         }
     }
@@ -165,11 +173,23 @@ enum Request {
     TooLarge,
 }
 
-/// Reads up to the end of the request line (or `HEAD_CAP` bytes) and returns what arrived.
+/// Where the request head ends (just past its blank line), if it does.
+fn head_end(buf: &[u8]) -> Option<usize> {
+    let crlf = buf.windows(4).position(|w| w == b"\r\n\r\n").map(|i| i + 4);
+    let lf = buf.windows(2).position(|w| w == b"\n\n").map(|i| i + 2);
+    match (crlf, lf) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    }
+}
+
+/// Reads the whole request head, up to its blank line (or `HEAD_CAP` bytes, or the end of the
+/// stream), so the answer never leaves request bytes unread: closing with some would reset the
+/// connection, and the browser could show an error instead of the page.
 async fn read_head<R: AsyncRead + Unpin>(stream: &mut R) -> std::io::Result<Vec<u8>> {
-    let mut buf = Vec::with_capacity(512);
+    let mut buf = Vec::with_capacity(1024);
     let mut chunk = [0u8; 1024];
-    while buf.len() <= HEAD_CAP && !buf.contains(&b'\n') {
+    while buf.len() <= HEAD_CAP && head_end(&buf).is_none() {
         let n = stream.read(&mut chunk).await?;
         if n == 0 {
             break;
@@ -180,13 +200,12 @@ async fn read_head<R: AsyncRead + Unpin>(stream: &mut R) -> std::io::Result<Vec<
 }
 
 fn parse_request(head: &[u8]) -> Request {
-    let line_end = head.iter().position(|b| *b == b'\n');
-    match line_end {
+    match head_end(head) {
         None if head.len() > HEAD_CAP => return Request::TooLarge,
         Some(end) if end > HEAD_CAP => return Request::TooLarge,
         _ => {}
     }
-    let end = line_end.unwrap_or(head.len());
+    let end = head.iter().position(|b| *b == b'\n').unwrap_or(head.len());
     let Ok(line) = std::str::from_utf8(&head[..end]) else {
         return Request::Malformed;
     };
@@ -353,7 +372,26 @@ async fn serve(mut stream: TcpStream, state: String, language: Language) -> Opti
     };
     let _ = stream.write_all(&bytes).await;
     let _ = stream.shutdown().await;
+    // Whatever the browser still sends (a head over the cap) is read and dropped until it
+    // closes, briefly, apart from the wait, so the answer is not lost to a reset.
+    tokio::spawn(drain(stream));
     outcome
+}
+
+/// Reads and drops what is left on a connection already answered, until the peer closes it,
+/// `DRAIN_CAP` bytes or `DRAIN_TIMEOUT`.
+async fn drain(mut stream: TcpStream) {
+    let mut chunk = [0u8; 1024];
+    let mut left = DRAIN_CAP;
+    let _ = timeout(DRAIN_TIMEOUT, async {
+        while left > 0 {
+            match stream.read(&mut chunk).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => left = left.saturating_sub(n),
+            }
+        }
+    })
+    .await;
 }
 
 #[cfg(test)]
@@ -422,14 +460,36 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_head_stops_at_the_end_of_the_line() {
-        let (mut client, mut server) = tokio::io::duplex(1024);
-        client
-            .write_all(b"GET /callback HTTP/1.1\r\nrest")
-            .await
-            .unwrap();
+    async fn read_head_reads_the_whole_head() {
+        let mut sent = b"GET /callback?code=a&state=b HTTP/1.1\r\nHost: x\r\n".to_vec();
+        for n in 0..20 {
+            sent.extend_from_slice(format!("X-{n}: {}\r\n", "a".repeat(200)).as_bytes());
+        }
+        sent.extend_from_slice(b"\r\n");
+        assert!(sent.len() > 4 << 10);
+        let (mut client, mut server) = tokio::io::duplex(64 << 10);
+        client.write_all(&sent).await.unwrap();
         let head = read_head(&mut server).await.unwrap();
-        assert!(head.starts_with(b"GET /callback HTTP/1.1\r\n"));
+        assert_eq!(
+            head, sent,
+            "every byte of the head is read before answering"
+        );
+        assert!(matches!(parse_request(&head), Request::Callback { .. }));
+    }
+
+    #[test]
+    fn head_end_finds_the_blank_line() {
+        assert_eq!(head_end(b"GET / HTTP/1.1\r\nA: b\r\n\r\nrest"), Some(24));
+        assert_eq!(head_end(b"GET / HTTP/1.1\n\n"), Some(16));
+        assert_eq!(head_end(b"GET / HTTP/1.1\r\nA: b\r\n"), None);
+    }
+
+    #[test]
+    fn a_complete_head_over_the_cap_is_too_large() {
+        let mut head = b"GET /callback?code=a&state=b HTTP/1.1\r\n".to_vec();
+        head.extend(std::iter::repeat_n(b'a', HEAD_CAP));
+        head.extend_from_slice(b"\r\n\r\n");
+        assert_eq!(parse_request(&head), Request::TooLarge);
     }
 
     #[test]

@@ -249,8 +249,10 @@ impl PerlandStatus {
         }
     }
 
+    /// Signed out, accounts that are on but offer no way in (none, or none the launcher
+    /// knows) are off too: a "Sign in" with nothing behind it would be a dead end.
     fn signed_out(config: &PlayerConfig) -> Self {
-        if !config.enabled {
+        if !config.enabled || config.methods.is_empty() {
             return Self::off();
         }
         Self {
@@ -339,6 +341,25 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
     }
 
+    /// End a session nobody keeps (a sign-in canceled after its exchange, or one a newer
+    /// sign-in replaced), so it doesn't hold one of the player's sessions on the Engine for
+    /// months. In the background, at most `SIGN_OUT_LIMIT`, whatever the Engine answers: it
+    /// never holds up the caller.
+    fn discard_token(&self, engine: Url, token: String) {
+        let call = self.runner.player().sign_out(engine, token);
+        tokio::spawn(async move {
+            match tokio::time::timeout(SIGN_OUT_LIMIT, call).await {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => {
+                    tracing::info!(code = ?e.code, "the Engine didn't take a discarded sign-in's sign-out")
+                }
+                Err(_) => tracing::info!(
+                    "the Engine didn't answer a discarded sign-in's sign-out in time"
+                ),
+            }
+        });
+    }
+
     /// Make `answer` the session, saved for the next launch when the store takes it.
     async fn adopt(&self, engine: Url, answer: TokenAnswer) -> PerlandAccount {
         let session = Session {
@@ -347,6 +368,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             profile: Profile::from_player(&answer.player),
         };
         let mut state = self.perland_state().await;
+        // A session this one replaces is still live on its Engine: end it there.
+        if let Some(old) = state.session.take().filter(|s| s.token != session.token) {
+            self.discard_token(old.engine, old.token);
+        }
         let (store, saved) = (self.perland_store.clone(), session.clone());
         match tokio::task::spawn_blocking(move || store.save(&saved)).await {
             Ok(Ok(())) => {}
@@ -501,8 +526,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let answer = player
             .token(engine.clone(), code, pkce.verifier.clone(), redirect)
             .await?;
-        // Canceled while the code was redeemed: the player moved on, so keep nothing.
+        // Canceled while the code was redeemed: the player moved on, so keep nothing, and end
+        // the session the Engine just made.
         if *cancel.borrow() {
+            self.discard_token(engine, answer.token);
             return Ok(None);
         }
         Ok(Some(self.adopt(engine, answer).await))
@@ -752,6 +779,40 @@ mod tests {
         assert!(status.enabled);
         assert_eq!(status.methods, ["discord", "email"]);
         assert_eq!(status.account, None);
+    }
+
+    #[tokio::test]
+    async fn status_off_when_signed_out_and_no_method_is_offered() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        *runner.player.config.lock().unwrap() = Ok(PlayerConfig {
+            enabled: true,
+            methods: vec![],
+        });
+        assert_eq!(
+            core.perland_status().await.unwrap(),
+            PerlandStatus {
+                enabled: false,
+                methods: vec![],
+                account: None
+            },
+            "no way to sign in: no nudge, no card without a button"
+        );
+    }
+
+    #[tokio::test]
+    async fn status_keeps_the_account_when_no_method_is_offered() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        core.perland_store
+            .save(&saved_session("https://api.example.com"))
+            .unwrap();
+        *runner.player.config.lock().unwrap() = Ok(PlayerConfig {
+            enabled: true,
+            methods: vec![],
+        });
+        let status = core.perland_status().await.unwrap();
+        assert!(status.enabled);
+        assert!(status.methods.is_empty());
+        assert_eq!(status.account.expect("still signed in").name, "Steve");
     }
 
     #[tokio::test]
@@ -1065,7 +1126,8 @@ mod tests {
         core.perland_email_verify("steve@example.com", "123456")
             .await
             .unwrap();
-        gate.add_permits(1);
+        // The sign-out, and the replaced session's own one from the new sign-in.
+        gate.add_permits(2);
         out.await.unwrap().unwrap();
         assert_eq!(
             core.perland_session().await.map(|s| s.token),
@@ -1086,6 +1148,61 @@ mod tests {
         assert_eq!(finish(task).await.unwrap(), None);
         assert!(runner.player.calls_to("token").is_empty());
         assert_eq!(core.perland_store.load().unwrap().token, player_token('x'));
+    }
+
+    #[tokio::test]
+    async fn cancel_during_the_exchange_signs_the_discarded_token_out() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        let gate = runner.player.hold("token");
+        let task = sign_in(&core);
+        let opened = host.wait_for_opened(1).await;
+        come_back(&opened[0], "code=c").await;
+        runner.player.wait_for_calls("token", 1).await;
+        core.perland_sign_in_cancel();
+        gate.add_permits(1);
+        assert_eq!(finish(task).await.unwrap(), None);
+        assert!(core.perland_store.load().is_none(), "nothing kept");
+        runner.player.wait_for_calls("sign_out", 1).await;
+        let call = &runner.player.calls_to("sign_out")[0];
+        assert_eq!(call.engine, engine("https://api.example.com"));
+        assert_eq!(call.args, [player_token('x')], "the token nobody keeps");
+    }
+
+    #[tokio::test]
+    async fn a_sign_in_over_a_session_signs_the_old_token_out_without_waiting() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        core.perland_store
+            .save(&saved_session("https://engine-a.example.com"))
+            .unwrap();
+        core.perland_session().await.expect("signed in");
+        // The Engine never answers the sign-out: the new sign-in still finishes at once.
+        let _gate = runner.player.hold("sign_out");
+        let account = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            core.perland_email_verify("steve@example.com", "123456"),
+        )
+        .await
+        .expect("the sign-in doesn't wait for the old sign-out")
+        .unwrap();
+        assert_eq!(account.name, "Steve");
+        assert_eq!(core.perland_store.load().unwrap().token, player_token('x'));
+        runner.player.wait_for_calls("sign_out", 1).await;
+        let call = &runner.player.calls_to("sign_out")[0];
+        assert_eq!(call.engine, engine("https://engine-a.example.com"));
+        assert_eq!(call.args, [player_token('s')]);
+    }
+
+    #[tokio::test]
+    async fn a_sign_in_with_the_same_token_signs_nothing_out() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        let mut same = saved_session("https://api.example.com");
+        same.token = player_token('x');
+        core.perland_store.save(&same).unwrap();
+        core.perland_email_verify("steve@example.com", "123456")
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(runner.player.calls_to("sign_out").is_empty());
     }
 
     #[tokio::test]

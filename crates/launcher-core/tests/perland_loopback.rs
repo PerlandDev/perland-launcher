@@ -149,3 +149,99 @@ async fn a_silent_connection_does_not_block_the_real_callback() {
         .unwrap();
     assert!(matches!(wait.await.unwrap().unwrap(), Callback::Code(_)));
 }
+
+/// The `host:port` the listener holds.
+fn addr_of(lb: &Loopback) -> String {
+    lb.redirect_uri()
+        .trim_start_matches("http://")
+        .trim_end_matches("/callback")
+        .to_string()
+}
+
+/// Sends `head` on a raw connection, waits a moment like a slow browser, then reads the whole
+/// answer. A reset (the listener closing with request bytes unread) is an error here.
+async fn raw_request(addr: &str, head: &[u8]) -> std::io::Result<String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let mut stream = tokio::net::TcpStream::connect(addr).await?;
+    stream.write_all(head).await?;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    let mut answer = Vec::new();
+    stream.read_to_end(&mut answer).await?;
+    Ok(String::from_utf8_lossy(&answer).into_owned())
+}
+
+/// A request head with `size` bytes of headers after the request line.
+fn long_head(state: &str, size: usize) -> Vec<u8> {
+    let mut head = format!("GET /callback?state={state}&code=ok HTTP/1.1\r\nHost: 127.0.0.1\r\n");
+    let mut sent = 0;
+    let mut n = 0;
+    while sent < size {
+        let line = format!("X-Filler-{n}: {}\r\n", "a".repeat(200));
+        sent += line.len();
+        head.push_str(&line);
+        n += 1;
+    }
+    head.push_str("\r\n");
+    head.into_bytes()
+}
+
+#[tokio::test]
+async fn a_head_over_1_kib_still_gets_the_whole_page() {
+    let lb = Loopback::bind().unwrap();
+    let addr = addr_of(&lb);
+    let (_tx, rx) = watch::channel(false);
+    let wait = tokio::spawn(lb.wait("s", Language::En, LONG, rx));
+    let answer = raw_request(&addr, &long_head("s", 4 << 10))
+        .await
+        .expect("no reset");
+    assert!(answer.starts_with("HTTP/1.1 200 OK"), "{answer}");
+    assert!(answer.contains("signed in to Perland"));
+    assert!(answer.ends_with("</html>"));
+    assert!(matches!(wait.await.unwrap().unwrap(), Callback::Code(_)));
+}
+
+#[tokio::test]
+async fn a_head_over_the_cap_is_refused() {
+    let lb = Loopback::bind().unwrap();
+    let addr = addr_of(&lb);
+    let (_tx, rx) = watch::channel(false);
+    let wait = tokio::spawn(lb.wait("s", Language::En, LONG, rx));
+    let answer = raw_request(&addr, &long_head("s", 12 << 10))
+        .await
+        .expect("no reset");
+    assert!(
+        answer.starts_with("HTTP/1.1 431"),
+        "{}",
+        &answer[..answer.len().min(80)]
+    );
+    assert!(
+        !wait.is_finished(),
+        "a refused request doesn't end the wait"
+    );
+    wait.abort();
+}
+
+#[tokio::test]
+async fn the_answer_waits_for_the_end_of_the_head() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let lb = Loopback::bind().unwrap();
+    let addr = addr_of(&lb);
+    let (_tx, rx) = watch::channel(false);
+    let wait = tokio::spawn(lb.wait("s", Language::En, LONG, rx));
+    let mut stream = tokio::net::TcpStream::connect(&addr).await.unwrap();
+    stream
+        .write_all(b"GET /callback?state=s&code=ok HTTP/1.1\r\nHost: 127.0.0.1\r\n")
+        .await
+        .unwrap();
+    let mut byte = [0u8; 1];
+    let early = tokio::time::timeout(Duration::from_millis(200), stream.read(&mut byte)).await;
+    assert!(early.is_err(), "nothing is answered before the head ends");
+    stream
+        .write_all(b"Accept: text/html\r\n\r\n")
+        .await
+        .unwrap();
+    let mut answer = Vec::new();
+    stream.read_to_end(&mut answer).await.expect("no reset");
+    assert!(String::from_utf8_lossy(&answer).contains("signed in to Perland"));
+    assert!(matches!(wait.await.unwrap().unwrap(), Callback::Code(_)));
+}
