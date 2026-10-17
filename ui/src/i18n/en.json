@@ -33,6 +33,7 @@
     "restart": "Restart now"
   },
   "rail": {
+    "more": "More for {{name}}",
     "label": "Instances",
     "newInstance": "New instance",
     "playing": "Playing",
