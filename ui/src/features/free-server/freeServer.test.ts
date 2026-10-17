@@ -79,6 +79,9 @@ describe('freeServer', () => {
     expect(reasonLine(t, blocked('too_many_free_servers', 3), false)).toBe('A server is being created right now.');
     expect(reasonLine(t, blocked('too_many_free_servers', 7200), false)).toBe('You can create another server in 2 hours.');
     expect(reasonLine(t, blocked('free_servers_full'), false)).toBe('Free servers are full right now. Try again later.');
+    expect(reasonLine(t, blocked('host_full'), false)).toBe('Perland is full right now. Try again in a few minutes.');
+    expect(reasonLine(t, blocked('free_servers_paused'), false)).toBe('New free servers are paused. Try again later.');
+    expect(reasonLine(t, blocked('free_server_blocked'), false)).toBe("You can't create a free server.");
     expect(reasonLine(t, blocked('something_new'), false)).toBe("You can't create a server right now.");
   });
 

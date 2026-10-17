@@ -69,6 +69,9 @@ describe('mock free server page', () => {
     ['emailRequired', { allowed: false, reason: 'email_required', retryAfter: null }],
     ['rateLimited', { allowed: false, reason: 'too_many_free_servers', retryAfter: 7200 }],
     ['full', { allowed: false, reason: 'free_servers_full', retryAfter: null }],
+    ['hostFull', { allowed: false, reason: 'host_full', retryAfter: null }],
+    ['paused', { allowed: false, reason: 'free_servers_paused', retryAfter: null }],
+    ['blocked', { allowed: false, reason: 'free_server_blocked', retryAfter: null }],
     ['exists', { allowed: false, reason: 'free_server_exists', retryAfter: null }],
   ] as const)('%s: create is refused with its reason and there is no server', async (scenario, create) => {
     const p = (await page(backend(scenario))) as FreeServerPage;
@@ -118,6 +121,9 @@ describe('mock free server create', () => {
     ['emailRequired', 'email_required'],
     ['rateLimited', 'too_many_free_servers'],
     ['full', 'free_servers_full'],
+    ['hostFull', 'host_full'],
+    ['paused', 'free_servers_paused'],
+    ['blocked', 'free_server_blocked'],
     ['exists', 'free_server_exists'],
     ['has', 'free_server_exists'],
   ] as const)('%s refuses with %s', async (scenario, code) => {

@@ -129,5 +129,8 @@
   "modpack_unsupported",
   "modpack_too_heavy",
   "free_server_over_disk",
+  "host_full",
+  "free_servers_paused",
+  "free_server_blocked",
   "internal"
 ]

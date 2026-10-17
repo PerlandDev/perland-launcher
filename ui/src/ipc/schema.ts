@@ -147,7 +147,8 @@ export const freeLimits = z.strictObject({
   createsPerWeek: z.number().int(),
 });
 /** Whether the player may create a free server now. `reason` is the Engine's word (`email_required`, `free_server_exists`,
- *  `too_many_free_servers` with `retryAfter` seconds, `free_servers_full`) and is null while `allowed`. */
+ *  `too_many_free_servers` with `retryAfter` seconds, `free_servers_full`, `host_full`, `free_servers_paused`, `free_server_blocked`)
+ *  and is null while `allowed`. */
 export const createAllowance = z.strictObject({
   allowed: z.boolean(),
   reason: z.string().nullable(),

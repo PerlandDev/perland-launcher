@@ -66,6 +66,12 @@ export function reasonLine(t: TFunction, create: CreateAllowance, hasServer: boo
       return create.retryAfter === null ? t('freeServer.reason.other') : retryText(t, create.retryAfter);
     case 'free_servers_full':
       return t('freeServer.reason.full');
+    case 'host_full':
+      return t('freeServer.reason.hostFull');
+    case 'free_servers_paused':
+      return t('freeServer.reason.paused');
+    case 'free_server_blocked':
+      return t('freeServer.reason.blocked');
     default:
       return t('freeServer.reason.other');
   }

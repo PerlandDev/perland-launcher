@@ -583,6 +583,9 @@
       "running": "Ya se está creando un servidor.",
       "retry": "Podrás crear otro servidor en {{time}}.",
       "full": "Los servidores gratis están llenos ahora. Inténtalo más tarde.",
+      "hostFull": "Perland está lleno por ahora. Inténtalo de nuevo en unos minutos.",
+      "paused": "Los servidores gratis nuevos están en pausa. Inténtalo más tarde.",
+      "blocked": "No puedes crear un servidor gratis.",
       "other": "No puedes crear un servidor ahora."
     },
     "time": {
@@ -804,6 +807,9 @@
     "modpack_unsupported": { "message": "Este modpack no puede funcionar en un servidor gratis." },
     "modpack_too_heavy": { "message": "Este modpack necesita {{required}} GB; los servidores gratis tienen {{limit}} GB." },
     "free_server_over_disk": { "message": "Tu servidor se quedó sin espacio, así que sigue apagado." },
+    "host_full": { "message": "Perland está lleno por ahora. Inténtalo de nuevo en unos minutos." },
+    "free_servers_paused": { "message": "Los servidores gratis nuevos están en pausa. Inténtalo más tarde." },
+    "free_server_blocked": { "message": "No puedes crear un servidor gratis." },
     "minecraft_link_closed": { "message": "La vinculación no está disponible en este momento." },
     "launcher_update_failed": { "message": "No se pudo buscar actualizaciones del launcher.", "fix": "Puedes seguir jugando. Lo intenta de nuevo la próxima vez que abras el launcher." },
     "launcher_update_invalid": { "message": "La actualización del launcher no pasó la verificación de seguridad, así que no se instaló.", "fix": "Vuelve a intentarlo más tarde. Si sigue pasando, avísanos." },

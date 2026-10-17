@@ -6,10 +6,15 @@ import type { CreateAllowance, FreeLimits, FreeServerCard, FreeServerPage, Insta
 
 /** `?free=`: `off` (the Engine has free servers off), `none` (the default, may create), `has` (a sleeping server), `warned`
  *  (it will be deleted soon, and the player was told), `overDisk` (stopped, out of space), `emailRequired`, `rateLimited`,
- *  `full`, `creating` (being created, no invite yet) and `exists` (another account with the player's email has one). */
-export type FreeScenario = 'off' | 'none' | 'has' | 'warned' | 'overDisk' | 'emailRequired' | 'rateLimited' | 'full' | 'creating' | 'exists';
+ *  `full`, `hostFull` (Perland's machine is full), `paused` (new free servers are paused), `blocked` (this player can't create
+ *  one), `creating` (being created, no invite yet) and `exists` (another account with the player's email has one). */
+export type FreeScenario =
+  | 'off' | 'none' | 'has' | 'warned' | 'overDisk' | 'emailRequired' | 'rateLimited' | 'full' | 'hostFull' | 'paused' | 'blocked'
+  | 'creating' | 'exists';
 
-const SCENARIOS: readonly string[] = ['off', 'none', 'has', 'warned', 'overDisk', 'emailRequired', 'rateLimited', 'full', 'creating', 'exists'];
+const SCENARIOS: readonly string[] = [
+  'off', 'none', 'has', 'warned', 'overDisk', 'emailRequired', 'rateLimited', 'full', 'hostFull', 'paused', 'blocked', 'creating', 'exists',
+];
 /** The `?free=` preview param, or undefined for anything else (dev:mock only). */
 export const freeScenario = (name: string | null): FreeScenario | undefined =>
   name !== null && SCENARIOS.includes(name) ? (name as FreeScenario) : undefined;
@@ -132,6 +137,9 @@ const BLOCKED: Partial<Record<FreeScenario, CreateAllowance>> = {
   emailRequired: { allowed: false, reason: 'email_required', retryAfter: null },
   rateLimited: { allowed: false, reason: 'too_many_free_servers', retryAfter: 7200 },
   full: { allowed: false, reason: 'free_servers_full', retryAfter: null },
+  hostFull: { allowed: false, reason: 'host_full', retryAfter: null },
+  paused: { allowed: false, reason: 'free_servers_paused', retryAfter: null },
+  blocked: { allowed: false, reason: 'free_server_blocked', retryAfter: null },
   exists: { allowed: false, reason: 'free_server_exists', retryAfter: null },
 };
 
@@ -155,6 +163,12 @@ const refuse = (free: MockFree): never => {
       return fail('network', 'too_many_free_servers', 'You have created too many free servers lately.', { retryAfter: String(a.retryAfter ?? 0) });
     case 'free_servers_full':
       return fail('network', 'free_servers_full', 'Free servers are full right now.');
+    case 'host_full':
+      return fail('network', 'host_full', 'Perland is full right now. Try again in a few minutes.');
+    case 'free_servers_paused':
+      return fail('network', 'free_servers_paused', 'New free servers are paused. Try again later.');
+    case 'free_server_blocked':
+      return fail('network', 'free_server_blocked', "You can't create a free server.");
     default:
       return fail('network', 'free_server_exists', 'You already have a free server.');
   }
