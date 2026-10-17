@@ -5,7 +5,7 @@
 - **Builds on:**
   - `docs/superpowers/specs/2026-10-17-perland-sign-in-your-servers-design.md` (#48): the launcher's Perland sign-in, the loopback Discord flow and Your servers.
   - In PerlandEngine: `docs/superpowers/specs/2026-10-16-player-accounts-design.md` (player accounts, #429; its "Later" note on the operator link is what this design settles) and `docs/superpowers/specs/2026-10-17-your-servers-design.md` (`owned()` in `internal/playerservers`).
-- **Status:** brainstormed with the owner on 2026-10-17. The owner decided: people log in to the launcher with their existing Perland account, and one person has one Perland account, never a second one for the launcher. Everything else marked **our call** was settled while writing this.
+- **Status:** brainstormed with the owner on 2026-10-17. The owner decided: people log in to the launcher with their existing Perland account, and one person has one Perland account, never a second one for the launcher. Everything else marked **our call** was settled while writing this or after a builder review against both codebases.
 
 ## 1. Why
 
@@ -18,7 +18,7 @@ The cause is that Perland has two kinds of account with no direct tie between th
 - The launcher's *Perland account* card offers **Continue with GitHub** next to *Continue with Discord* and *Continue with email*.
 - It opens the system browser at the same GitHub page the Panel uses. The player approves and comes back signed in, as with Discord. The launcher never sees a password, a GitHub token or an operator credential.
 - Once signed in, every server of every team the person belongs to in the Panel shows in Your servers tagged **Owner**. This needs no Discord integration and no linking step in the Panel.
-- One person, one player account. Signing in with GitHub finds the player account the person already has (through their Panel Discord link or their email) and adds GitHub to it, so followed servers, the free server and the Minecraft link carry over. From then on, Discord, email and GitHub all sign in to that same account.
+- One person, one player account. Signing in with GitHub finds the player account the person already has (through their Panel Discord link while the Discord integration runs, or their verified GitHub email) and adds GitHub to it, so followed servers, the free server and the Minecraft link carry over. From then on, Discord, email and GitHub all sign in to that same account.
 - Someone with a GitHub account but no Panel account can use the button too. They get an ordinary player account, just as with Discord.
 
 ## 3. Goals, non-goals, anti-goals
@@ -45,7 +45,8 @@ The cause is that Perland has two kinds of account with no direct tie between th
 
 - **GitHub App sign-in (Engine, `internal/authapi/github.go`).** `OAuthCallback` decodes the sealed state, exchanges the code with the Engine's own PKCE verifier (`st.Verifier`), reads the profile (`github.UserProfile{ID, Login, Email, EmailVerified}`) and then hands the result to a handler chosen by the state's purpose. Other packages already register their own purposes through `authapi.Config.Purposes` (`cmd/server/main.go`). So the player flow needs **no new GitHub App callback URL**: it is one more purpose on the existing callback.
 - **Player Discord sign-in (Engine, `internal/players/discord.go`).** `GET /api/v1/player/discord/authorize` checks the loopback redirect, the launcher's S256 challenge and state, seals them into the OAuth state (`PurposePlayerSignIn`), and the callback resolves the player, parks a one-time code and redirects to the loopback with `code` and `state`. `POST /token` redeems the code with the verifier (`RedeemCode`). The state is single-use (`usedStates`).
-- **Operator identities (Engine).** `oauth_identities` rows with `provider = 'github'` and `provider_id` = the GitHub numeric user ID tie a GitHub account to a `users` row. `users.email` is unique and comes from a verified GitHub email (sign-in refuses an unverified one, `github_email_unverified`).
+- **Operator identities (Engine).** `oauth_identities` rows with `provider = 'github'` and `provider_id` = the GitHub numeric user ID tie a GitHub account to a `users` row. `users.email` is **not** a verified address: an admin can type it (`management.Service.CreateUser`), GitHub sign-up stores an unverified one (`provisionGitHubUser`), and password users who linked GitHub keep theirs. The Your servers spec refused it as a key for the same reason, and so does this design.
+- **`discord_links`** is trusted only while the Discord integration runs, as in the Your servers spec: without the integration an operator cannot unlink Discord, so an old link must not keep granting anything.
 - **Launcher (`crates/launcher-core/src/perland/`, `crates/launcher-app/src/perland.rs`).** `loopback.rs` and `pkce.rs` run the browser flow; `perland_sign_in_discord` drives it for Discord; `PlayerConfig.methods` ignores methods it does not know, so an older launcher simply never shows GitHub.
 
 ## 5. Engine design
@@ -58,21 +59,22 @@ New columns on `players` (auto-migrated like the rest of the table):
 |---|---|---|
 | `github_user_id` | `bigint` null, unique | GitHub's numeric user ID. The tie to an operator is through this, never through a stored `users.id`, so a GitHub account that becomes an operator later is matched at once (**our call**) |
 | `github_login` | text, not null, default `''` | Snapshot from the last GitHub sign-in |
-| `github_avatar_url` | text, not null, default `''` | Snapshot, as above |
+| `github_avatar_url` | text, not null, default `''` | Snapshot, as above. `github.UserProfile` (`internal/github/client.go`) has no avatar today: add `AvatarURL` to it and to `CurrentUser`. The operator sign-in shares that type and ignores the new field |
 
 `DisplayName()` becomes: Discord global name, else Discord username, else GitHub login, else `""` (**our call**).
 
 ### 5.2 Routes
 
 - **`GET /api/v1/player/config`**: `methods` lists `discord`, `github`, `email` in that order, `github` only when the GitHub App is configured (`authapi.Config.GitHub != nil`) (**our call** on the order: Discord stays first for the players who are most of the audience).
-- **`GET /api/v1/player/github/authorize`**: same query and same checks as `/discord/authorize` (`redirect_uri` loopback or a configured web redirect, `code_challenge`, `code_challenge_method=S256`, `state`), same rate limit. It seals a new purpose `PurposePlayerGitHubSignIn` (`"player-github-signin"`) holding the redirect, the launcher's challenge, its state and a fresh Engine-side GitHub PKCE verifier, then 302s to the GitHub App's authorize URL. `ErrMethodUnavailable` (503, the same code and `data.method: github` that `/discord/authorize` answers) when the App is not configured.
-- **Callback:** the existing `GET /api/v1/auth/oauth/github/callback`. `players` registers a `PurposeHandler` for `PurposePlayerGitHubSignIn` in `cmd/server/main.go`. The handler resolves the player (§5.3), parks a code exactly as `DiscordCallback` does, and redirects to the loopback with `code` and `state`. It does not call `saveGrant` and drops `done.Grant`.
+- **`GET /api/v1/player/github/authorize`**: same query and same checks as `/discord/authorize` (`code_challenge`, `code_challenge_method=S256`, `state`), same rate limit, except that `redirect_uri` must be a loopback address: web redirects are not offered for GitHub, and `/config` gets no `webGitHub` flag (**our call**: no web page asks for it, so it would be unused surface; it can be added like `webDiscord` later). It seals a new purpose `PurposePlayerGitHubSignIn` (`"player-github-signin"`) holding the redirect, the launcher's challenge, its state and a fresh Engine-side GitHub PKCE verifier, then 302s to the GitHub App's authorize URL. `ErrMethodUnavailable` (503, the same code and `data.method: github` that `/discord/authorize` answers) when the App is not configured.
+- **Callback:** the existing `GET /api/v1/auth/oauth/github/callback`. `players` registers a `PurposeHandler` for `PurposePlayerGitHubSignIn` in `cmd/server/main.go`. The handler resolves the player (§5.3), parks a code exactly as `DiscordCallback` does, and redirects to the loopback with `code` and `state`. It does not call `saveGrant`. Once the profile is read, it revokes that one user token (GitHub's `DELETE /applications/{client_id}/token`, best effort: a failure is logged, never shown) so launcher sign-ins never pile up tokens next to the operator's stored Panel grant (**our call**; the builder checks GitHub's current per-user token limits for App user tokens and keeps the revoke either way).
 - **Failures before the handler.** Today `OAuthCallback` sends every failure that happens before the purpose handler runs (GitHub's `error`, a failed code exchange, an unreadable profile) to the Panel's `/login`. For the player purpose these must instead redirect to the state's loopback URI with `error` and the client's `state`, or the launcher would wait until its timeout:
   - `error=access_denied` when GitHub reports the person declined;
   - `error=github_unavailable` when GitHub did not answer or the profile could not be read;
   - `error=server_error` for anything else.
 
-  The single-use check (`usedStates`) and the allowed-redirect check run first, as in `DiscordCallback`. A state that fails them gets the Engine's error page, never a redirect.
+  The single-use check (`usedStates`) and the allowed-redirect check run first, as in `DiscordCallback`. A state that fails them gets the Engine's error page, never a redirect. A state that is expired or cannot be decoded fails before its purpose is known and still goes to `/login`, as today; the launcher's 10-minute deadline matches the state's lifetime, so this happens only at the boundary and the launcher reports its own timeout.
+- **Wiring (`cmd/server`).** Today `players.Service` gets its state codec from the Discord config only, and `authapi.RegisterAuthRoutes` (which takes `Purposes`) runs before `startPlayers`. The players service gets a codec of its own whenever player accounts are on (built from `PERLAND_ENCRYPTION_KEY` like the others, or the one authapi uses), and the purpose handler is registered so that it reaches the players service built later (reordered startup or a late-bound closure; builder's choice).
 - **`POST /api/v1/player/token`**: unchanged (it redeems any parked code).
 - **`GET /api/v1/player/me`**: `PlayerDTO` gains `github?{id, login, avatarUrl}`, present when the player has GitHub.
 
@@ -81,19 +83,17 @@ New columns on `players` (auto-migrated like the rest of the table):
 Given the GitHub profile `g` (`ID`, `Login`, `Email`, `EmailVerified`), in a `withRetry` like the Discord resolution:
 
 1. **Already linked:** a player with `github_user_id = g.ID`. Refresh the snapshot; if the player has no email and `g.Email` is verified and free, set it. Done.
-2. **Through the Panel:** find the operator user whose `oauth_identities` row is `(github, g.ID)` and who is not disabled. If there is one:
-   1. a player whose `discord_user_id` is that user's `discord_links.discord_user_id`;
-   2. else a player whose email equals that user's `users.email` (lower-cased).
+2. **Through the Panel's Discord link** (only while the Discord integration runs): find the operator user whose `oauth_identities` row is `(github, g.ID)` and who is not disabled, and that user's `discord_links.discord_user_id`. A player with that `discord_user_id` and no `github_user_id` gets GitHub added (snapshot, and `g.Email` if the player has no email and it is verified and free). Done.
+3. **Through GitHub's verified email:** if `g.EmailVerified`, a player whose email equals `g.Email` (lower-cased) and who has no `github_user_id`. GitHub is added. Done.
+4. **New player:** `github_user_id`, snapshot, and `g.Email` when verified and no player holds it. When step 2 found a Panel Discord link that no player holds, the new player also gets that `discord_user_id` (snapshot fields empty until their first Discord sign-in fills them), so a later Discord sign-in reaches this account instead of creating a second one. Logged as `player account created`, method `github`.
 
-   The first match that has no `github_user_id` yet gets GitHub added (snapshot, and email if missing and free). Done.
-3. **Through GitHub's own email:** if `g.EmailVerified`, a player whose email equals `g.Email` (lower-cased) and who has no `github_user_id`. GitHub is added. Done.
-4. **New player:** `github_user_id`, snapshot, and `g.Email` when verified and no player holds it. Logged as `player account created`, method `github`.
+`users.email` is never used to match (see §4).
 
 Rules:
 - A candidate that already holds a *different* `github_user_id` is skipped, never overwritten, and resolution moves to the next step (**our call**).
-- When steps 2.1 and 2.2 would find two different players, 2.1 (Discord) wins and the other account stays as it is. Two existing player accounts are never merged (**our call**: merging follows, free servers and Minecraft links has its own conflicts and no one has asked for it).
-- Every email used for a match is verified on both sides: player emails are verified by code or by Discord, `users.email` by the operator's GitHub sign-in, and `g.Email` only when `g.EmailVerified`.
-- Discord and email sign-ins keep their resolution exactly as today. A later Discord or email sign-in reaches the GitHub-linked player through its Discord ID or email, which is what makes it one account.
+- When steps 2 and 3 would find two different players, step 2 (Discord) wins and the other account stays as it is. Two existing player accounts are never merged (**our call**: merging follows, free servers and Minecraft links has its own conflicts and no one has asked for it).
+- Every email used for a match is verified on both sides: player emails are verified by code or by Discord, and `g.Email` is used only when `g.EmailVerified`.
+- Discord and email sign-ins keep their resolution exactly as today. A later Discord or email sign-in reaches the GitHub-linked player through its Discord ID (set in step 2 or step 4) or its verified email, which is what keeps it one account. One gap is accepted: someone who signs in with GitHub first, has no Panel Discord link (or the integration is off) and later signs in with a Discord account whose email differs gets a second player. Closing it needs Discord resolution to look through the Panel, which has the same stale-link problem; it is left for the "Link GitHub" / account-linking work (**our call**).
 
 ### 5.4 Owned servers
 
@@ -105,7 +105,7 @@ Rules:
 
 ### 5.5 Tests (Engine)
 
-- `players`: each resolution step, the skip-on-different-GitHub rule, the Discord-wins tie, an unverified `g.Email` never matching, the retry on a unique conflict, the state being single-use, and failures before the handler reaching the loopback with the right `error`.
+- `players`: each resolution step; step 2 skipped while Discord is off; step 4 copying a free Panel Discord ID and not one a player holds; `users.email` never matching; the skip-on-different-GitHub rule; the Discord-wins tie; an unverified `g.Email` never matching; the retry on a unique conflict; the state being single-use; the token revoke (a failing revoke still signs in); a web `redirect_uri` refused; failures before the handler reaching the loopback with the right `error`.
 - `playerservers`: `OwnedInvitesByGitHub` against the store suite (disabled user, other provider, member role, disabled invite); `owned` with GitHub only, Discord only, both overlapping, and Discord off.
 - `playersapi`: config lists `github` only with the App configured; `/github/authorize` validation mirrors Discord's; `/me` carries `github`.
 - `authapi`: the new purpose is supported; the player purpose never redirects to `/login`.
