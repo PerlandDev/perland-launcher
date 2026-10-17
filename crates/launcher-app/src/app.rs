@@ -12,7 +12,7 @@ use std::{
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
     accounts::{AccountStore, AccountsFile, BuildKind},
-    browse::compat::ContentKind,
+    browse::{compat::ContentKind, images::ImageKind},
     content,
     diagnostics::{self, SystemInfo},
     fsutil::path_key,
@@ -529,12 +529,35 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         mods::list(&self.game_dir(id).await?).await
     }
 
-    /// A mod's own icon as a `data:image/png` URL (the CSP allows no file URLs), or `None` for the
-    /// placeholder.
+    /// A mod's icon as a `data:` URL (the CSP allows no file URLs), or `None` for the placeholder:
+    /// the jar's own, else its Modrinth project's when Modrinth knows the jar.
     pub async fn mod_icon(&self, id: &str, file: &str) -> Result<Option<String>> {
         let dir = self.game_dir(id).await?;
-        let icon = mod_icons::icon(&dir, &self.config.dirs.mod_icons(), file).await?;
-        Ok(icon.map(|png| format!("data:image/png;base64,{}", STANDARD.encode(png))))
+        let cache = self.config.dirs.mod_icons();
+        if let Some(png) = mod_icons::icon(&dir, &cache, file).await? {
+            return Ok(Some(format!(
+                "data:image/png;base64,{}",
+                STANDARD.encode(png)
+            )));
+        }
+        let browser = self.runner.browser();
+        let lookup = |sha1| browser.project_icon_url(sha1);
+        // Offline, rate limited or refused: the placeholder now, and asked again next time.
+        let url = match mod_icons::project_icon_url(&dir, &cache, file, lookup).await {
+            Ok(Some(url)) => url,
+            Ok(None) => return Ok(None),
+            Err(error) => {
+                tracing::debug!(code = ?error.code, "no Modrinth icon for a mod");
+                return Ok(None);
+            }
+        };
+        Ok(browser.image(url, ImageKind::Icon).await.ok().map(|image| {
+            format!(
+                "data:{};base64,{}",
+                image.mime,
+                STANDARD.encode(image.bytes)
+            )
+        }))
     }
 
     pub async fn mod_set_enabled(
@@ -917,6 +940,56 @@ pub(crate) mod tests {
         assert_eq!(icon.as_deref(), Some("data:image/png;base64,iVBORw0KGgo="));
         assert!(tmp.path().join("cache/mod-icons").is_dir());
         assert_eq!(core.mod_icon(&inst.id, "gone.jar").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn a_jar_without_an_icon_gets_its_modrinth_projects_icon() {
+        use launcher_core::{browse::images::Image, download::hash::sha1_hex};
+        let (core, runner, _, tmp) = core(BuildKind::Dev);
+        let inst = core.instance_create(vanilla("Icons")).await.unwrap();
+        let (known, unknown) = (tmp.path().join("known.jar"), tmp.path().join("mine.jar"));
+        std::fs::write(&known, b"known jar").unwrap();
+        std::fs::write(&unknown, b"my own jar").unwrap();
+        core.mods_add(&inst.id, vec![known, unknown]).await.unwrap();
+        runner.browser.icon_urls.lock().unwrap().insert(
+            sha1_hex(b"known jar"),
+            "https://cdn.modrinth.com/data/k/icon.webp".into(),
+        );
+        *runner.browser.image.lock().unwrap() = Some(Image {
+            bytes: b"RIFF".to_vec(),
+            mime: "image/webp",
+        });
+        for _ in 0..2 {
+            let icon = core.mod_icon(&inst.id, "known.jar").await.unwrap();
+            assert_eq!(icon.as_deref(), Some("data:image/webp;base64,UklGRg=="));
+            assert_eq!(core.mod_icon(&inst.id, "mine.jar").await.unwrap(), None);
+        }
+        assert_eq!(
+            runner.browser.icon_lookups.lock().unwrap().len(),
+            2,
+            "each jar is looked up once"
+        );
+        // An icon the image cache refuses is the placeholder, not an error.
+        *runner.browser.image.lock().unwrap() = None;
+        assert_eq!(core.mod_icon(&inst.id, "known.jar").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn a_failed_modrinth_lookup_is_the_placeholder() {
+        let (core, runner, _, tmp) = core(BuildKind::Dev);
+        let inst = core.instance_create(vanilla("Icons")).await.unwrap();
+        let src = tmp.path().join("a.jar");
+        std::fs::write(&src, b"jar").unwrap();
+        core.mods_add(&inst.id, vec![src]).await.unwrap();
+        runner
+            .browser
+            .icon_lookup_fails
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(core.mod_icon(&inst.id, "a.jar").await.unwrap(), None);
+        assert_eq!(
+            core.mod_icon(&inst.id, "../a.jar").await.unwrap_err().code,
+            ErrorCode::ModNameInvalid
+        );
     }
 
     fn put_pack(core: &TestCore, id: &str, folder: &str, name: &str) {

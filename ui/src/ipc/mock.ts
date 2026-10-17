@@ -132,7 +132,7 @@ const SKY_ART: InstanceArtData = {
   ),
 };
 
-/** A mod's own icon: a small block for most mods, none (the placeholder) for those named with a z. */
+/** A mod's icon (its jar's or its Modrinth project's): a small block for most mods, none (the placeholder) for those named with a z. */
 function mockModIcon(file: string): string | null {
   if (/z/i.test(file)) return null;
   let hue = 0;

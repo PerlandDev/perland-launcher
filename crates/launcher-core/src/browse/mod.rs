@@ -103,6 +103,11 @@ impl Browse {
         identify::identify(&self.api, game_dir, managed, &mut hashes).await
     }
 
+    /// The Modrinth project icon for a file with this sha1 (see [`identify::project_icon_url`]).
+    pub async fn project_icon_url(&self, sha1: &str) -> Result<Option<String>> {
+        identify::project_icon_url(&self.api, sha1).await
+    }
+
     pub async fn plan(
         &self,
         request: &PlanRequest,

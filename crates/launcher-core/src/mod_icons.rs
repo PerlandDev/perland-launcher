@@ -1,15 +1,17 @@
 //! A mod's own icon, read from its jar: Fabric's `fabric.mod.json` `icon`, Quilt's
 //! `quilt.mod.json` `quilt_loader.metadata.icon`, or Forge's and NeoForge's `logoFile`. PNG only,
 //! under a size cap, never outside the jar. Each answer (an icon, or none) is cached on disk by the
-//! jar's fingerprint, so the mod list reopens a jar only when it changes.
+//! jar's fingerprint, so the mod list reopens a jar only when it changes. A jar without one can
+//! still have its Modrinth project's icon: the project is looked up once per jar, by its sha1.
 use std::{
+    future::Future,
     io::{Read, Seek},
     path::{Path, PathBuf},
     time::SystemTime,
 };
 
 use crate::{
-    download::hash::sha256_hex,
+    download::hash::{sha1_file, sha256_hex},
     error::Result,
     fsutil::{normalize_rel, write_atomic},
     mods,
@@ -24,6 +26,9 @@ pub const MAX_CACHE_BYTES: u64 = 32 << 20;
 const PNG: &[u8] = b"\x89PNG\r\n\x1a\n";
 /// Cached "this jar has no icon", so a jar without one isn't reopened either.
 const NONE_EXT: &str = "none";
+/// Cached Modrinth answer for a jar: its project's icon URL, or empty for none.
+const MODRINTH_EXT: &str = "modrinth";
+const MAX_URL_BYTES: u64 = 4 << 10;
 
 /// The icon PNG inside a mod jar, or `None` when it has none or it isn't a usable PNG. A jar built
 /// for several loaders is asked as each in turn.
@@ -98,12 +103,9 @@ fn pick(icon: &serde_json::Value) -> Option<String> {
 /// A mod's icon from the instance's `mods/` folder, through the cache in `cache_dir`. `None` when
 /// the jar has none, isn't there anymore, or can't be read.
 pub async fn icon(game_dir: &Path, cache_dir: &Path, file_name: &str) -> Result<Option<Vec<u8>>> {
-    let (jar, base) = mods::jar_path(game_dir, file_name)?;
-    let meta = match tokio::fs::metadata(&jar).await {
-        Ok(meta) if meta.is_file() => meta,
-        _ => return Ok(None),
+    let Some((jar, key)) = locate(game_dir, file_name).await? else {
+        return Ok(None);
     };
-    let key = fingerprint(&base, &meta);
     let found = cache_dir.join(format!("{key}.png"));
     let missing = cache_dir.join(format!("{key}.{NONE_EXT}"));
     if let Some(bytes) = read_cached(&found).await {
@@ -128,6 +130,61 @@ pub async fn icon(game_dir: &Path, cache_dir: &Path, file_name: &str) -> Result<
         prune(cache_dir, MAX_CACHE_BYTES).await;
     }
     Ok(icon)
+}
+
+/// The icon URL of the Modrinth project the jar belongs to, from `lookup` (given the jar's sha1)
+/// once per jar and from the cache after that. `None` when the jar is gone or Modrinth knows no
+/// icon for it. A failed lookup is not remembered, so it is asked again next time.
+pub async fn project_icon_url<F, Fut>(
+    game_dir: &Path,
+    cache_dir: &Path,
+    file_name: &str,
+    lookup: F,
+) -> Result<Option<String>>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: Future<Output = Result<Option<String>>>,
+{
+    let Some((jar, key)) = locate(game_dir, file_name).await? else {
+        return Ok(None);
+    };
+    let answer = cache_dir.join(format!("{key}.{MODRINTH_EXT}"));
+    if let Some(known) = read_url(&answer).await {
+        return Ok(known);
+    }
+    let sha1 = tokio::task::spawn_blocking(move || sha1_file(&jar))
+        .await
+        .map_err(std::io::Error::other)??;
+    let url = lookup(sha1).await?;
+    if write_atomic(&answer, url.as_deref().unwrap_or("").as_bytes())
+        .await
+        .is_ok()
+    {
+        prune(cache_dir, MAX_CACHE_BYTES).await;
+    }
+    Ok(url)
+}
+
+/// A remembered Modrinth answer: `Some(None)` for "no icon", `None` when there is none to read.
+async fn read_url(path: &Path) -> Option<Option<String>> {
+    let meta = tokio::fs::metadata(path).await.ok()?;
+    if !meta.is_file() || meta.len() > MAX_URL_BYTES {
+        return None;
+    }
+    let text = String::from_utf8(tokio::fs::read(path).await.ok()?).ok()?;
+    Some((!text.is_empty()).then_some(text))
+}
+
+/// The jar `file_name` names and its cache key, or `None` when it isn't there.
+async fn locate(game_dir: &Path, file_name: &str) -> Result<Option<(PathBuf, String)>> {
+    let (jar, base) = mods::jar_path(game_dir, file_name)?;
+    Ok(match tokio::fs::metadata(&jar).await {
+        Ok(meta) if meta.is_file() => {
+            let key = fingerprint(&base, &meta);
+            Some((jar, key))
+        }
+        _ => None,
+    })
 }
 
 /// Names the jar as it is now, without reading it all: its name (on or off alike), size and
@@ -431,5 +488,70 @@ mod tests {
         assert!(!tmp.path().join("old.png").exists());
         assert!(tmp.path().join("mid.png").exists());
         assert!(tmp.path().join("new.png").exists());
+    }
+
+    #[tokio::test]
+    async fn the_projects_icon_url_is_looked_up_once_per_jar() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (game, cache) = (tmp.path().join("game"), tmp.path().join("cache"));
+        put_jar(&game, "a.jar", b"jar bytes");
+        put_jar(&game, "b.jar", b"other bytes");
+        let asked = std::sync::Mutex::new(Vec::new());
+        let lookup = |answer: Option<&'static str>| {
+            let asked = &asked;
+            move |sha1: String| async move {
+                asked.lock().unwrap().push(sha1);
+                Ok(answer.map(str::to_string))
+            }
+        };
+        let url = "https://cdn.modrinth.com/data/a/icon.png";
+        for _ in 0..2 {
+            let got = project_icon_url(&game, &cache, "a.jar", lookup(Some(url))).await;
+            assert_eq!(got.unwrap().as_deref(), Some(url));
+            let none = project_icon_url(&game, &cache, "b.jar", lookup(None)).await;
+            assert_eq!(none.unwrap(), None);
+        }
+        assert_eq!(
+            *asked.lock().unwrap(),
+            vec![
+                crate::download::hash::sha1_hex(b"jar bytes"),
+                crate::download::hash::sha1_hex(b"other bytes")
+            ],
+            "each answer, none included, is remembered"
+        );
+        // Turned off, the jar keeps its answer.
+        std::fs::rename(game.join("mods/a.jar"), game.join("mods/a.jar.disabled")).unwrap();
+        let got = project_icon_url(&game, &cache, "a.jar.disabled", lookup(None)).await;
+        assert_eq!(got.unwrap().as_deref(), Some(url));
+        assert_eq!(asked.lock().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn a_failed_lookup_is_asked_again_next_time() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (game, cache) = (tmp.path().join("game"), tmp.path().join("cache"));
+        put_jar(&game, "a.jar", b"jar");
+        let offline = |_: String| async { Err(crate::browse::api::not_found()) };
+        assert!(project_icon_url(&game, &cache, "a.jar", offline)
+            .await
+            .is_err());
+        let online = |_: String| async { Ok(Some("https://cdn.modrinth.com/i.png".to_string())) };
+        let got = project_icon_url(&game, &cache, "a.jar", online)
+            .await
+            .unwrap();
+        assert_eq!(got.as_deref(), Some("https://cdn.modrinth.com/i.png"));
+    }
+
+    #[tokio::test]
+    async fn a_missing_jar_is_never_looked_up() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (game, cache) = (tmp.path().join("game"), tmp.path().join("cache"));
+        let never = |_: String| async { panic!("looked up a missing jar") };
+        assert_eq!(
+            project_icon_url(&game, &cache, "gone.jar", never)
+                .await
+                .unwrap(),
+            None
+        );
     }
 }
