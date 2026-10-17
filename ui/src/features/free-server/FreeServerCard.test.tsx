@@ -22,7 +22,7 @@ describe('FreeServerCard', () => {
     expect(within(card).getByText('Owner')).toBeInTheDocument();
     expect(within(card).getByText('Sleeping, Play wakes it')).toBeInTheDocument();
     // A vanilla free server runs `LATEST`, said in words.
-    expect(within(card).getByText('Vanilla latest')).toBeInTheDocument();
+    expect(within(card).getByText('Vanilla (latest)')).toBeInTheDocument();
     const items = within(section).getAllByRole('listitem');
     expect(items[0]).toContainElement(card);
     // Drawn once.

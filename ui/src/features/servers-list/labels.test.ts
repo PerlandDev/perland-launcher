@@ -10,10 +10,10 @@ const game = (version: string | null, loader: string | null = null) => ({ pack: 
 describe('gameLine', () => {
   it('says_latest_in_words', () => {
     // A server on itzg's `LATEST` (any case) runs the newest release: the token is not a version to show.
-    expect(gameLine(t, game('LATEST'))).toBe('Vanilla latest');
-    expect(gameLine(t, game('latest', 'fabric'))).toBe('Fabric latest');
+    expect(gameLine(t, game('LATEST'))).toBe('Vanilla (latest)');
+    expect(gameLine(t, game('latest', 'fabric'))).toBe('Fabric (latest)');
     expect(gameLine(t, game('1.21.4'))).toBe('Vanilla 1.21.4');
     i18n.changeLanguage('es');
-    expect(gameLine(t, game('LATEST'))).toBe('Vanilla última');
+    expect(gameLine(t, game('LATEST'))).toBe('Vanilla (última versión)');
   });
 });

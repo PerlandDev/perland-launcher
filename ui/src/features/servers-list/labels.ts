@@ -27,8 +27,12 @@ export function gameLine(t: TFunction, card: Pick<PublicServerCard, 'pack' | 'ga
   if (card.pack) return [card.pack.name, card.pack.version].filter(Boolean).join(' ');
   const loader = card.game.loader;
   const name = !loader ? t('servers.vanilla') : LOADERS.includes(loader) ? loaderName(loader as LoaderKind) : loader;
-  const version = card.game.version?.toLowerCase() === 'latest' ? t('servers.latestVersion') : card.game.version;
-  return [name, version].filter(Boolean).join(' ');
+  return [name, versionWord(t, card.game.version)].filter(Boolean).join(' ');
+}
+
+/** A Minecraft version as players read it: `LATEST` (itzg's newest release, any case) in words, anything else as it is. */
+export function versionWord(t: TFunction, version: string | null | undefined): string | null | undefined {
+  return version?.toLowerCase() === 'latest' ? t('servers.latestVersion') : version;
 }
 
 /** A category id ("modded-tech") in the player's words; an id the launcher doesn't know shows as itself. */

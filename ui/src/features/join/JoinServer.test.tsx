@@ -196,6 +196,37 @@ describe('JoinServer', () => {
     expect(screen.queryByText(/back up your worlds/)).not.toBeInTheDocument();
   });
 
+  it('names a server on LATEST in words, never the raw token', async () => {
+    const backend = createMockBackend({ server: 'vanilla' });
+    renderWithProviders(<JoinServer invite={OTHER} />, {
+      ipc: async (cmd, args) => {
+        const answer = await backend.handle(cmd, args);
+        if (cmd !== 'join_preview') return answer;
+        const preview = answer as { game: object };
+        return { ...preview, game: { ...preview.game, version: 'LATEST', loader: null } };
+      },
+    });
+    expect(await screen.findByText('Vanilla Minecraft (latest)')).toBeInTheDocument();
+    expect(screen.queryByText(/LATEST/)).not.toBeInTheDocument();
+  });
+
+  it('warns in words when linking to a server on LATEST', async () => {
+    const backend = createMockBackend({ server: 'vanilla' });
+    const { user } = renderWithProviders(<JoinServer invite="" linkFor="asalith-fields" />, {
+      ipc: async (cmd, args) => {
+        const answer = await backend.handle(cmd, args);
+        if (cmd !== 'join_preview') return answer;
+        const preview = answer as { game: object };
+        return { ...preview, game: { ...preview.game, version: 'latest', loader: null } };
+      },
+    });
+    await user.type(await screen.findByRole('textbox', { name: 'Invite link' }), OTHER);
+    await user.click(screen.getByRole('button', { name: 'Check link' }));
+    expect(
+      await screen.findByText('This server plays vanilla Minecraft (latest). Linking moves this instance to that version, so back up your worlds first.'),
+    ).toBeInTheDocument();
+  });
+
   it('links even when another instance already joins that server', async () => {
     const { user, calls } = renderApp(<JoinServer invite={MOCK_INVITE} linkFor="asalith-fields" />, { server: 'online' });
     await user.click(await screen.findByRole('button', { name: 'Link' }));

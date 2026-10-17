@@ -484,7 +484,7 @@
     "empty": "Aún no hay servidores públicos.",
     "loadMore": "Cargar más",
     "vanilla": "Vanilla",
-    "latestVersion": "última",
+    "latestVersion": "(última versión)",
     "sort": "Ordenar por",
     "sorts": { "players": "Más jugadores", "newest": "Más nuevos", "name": "Nombre A–Z" },
     "any": "Cualquiera",

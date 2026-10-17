@@ -484,7 +484,7 @@
     "empty": "No public servers yet.",
     "loadMore": "Load more",
     "vanilla": "Vanilla",
-    "latestVersion": "latest",
+    "latestVersion": "(latest)",
     "sort": "Sort by",
     "sorts": { "players": "Most players", "newest": "Newest", "name": "Name A–Z" },
     "any": "Any",

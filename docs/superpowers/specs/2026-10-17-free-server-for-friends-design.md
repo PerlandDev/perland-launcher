@@ -123,7 +123,7 @@ Players want their own small server for friends, and setting up hosting is out o
 | Question | Decision |
 |---|---|
 | Where the modpack comes from | **The player's own instances installed from Modrinth** (`source.kind === "modrinth"`), the version they have installed. This is the simplest choice that matches the Engine's contract, which takes a Modrinth version id. When they have none, the step says "Install a modpack from Browse first", with a link to Browse (**our call**) |
-| Vanilla version | None sent, so the Engine uses the newest Minecraft (**our call**) |
+| Vanilla version | None sent, so the Engine uses the newest Minecraft and reports it as `LATEST`. The launcher reads `LATEST` (any case) as the Mojang manifest's latest release when it joins and checks for updates, and shows it as "(latest)". Right after a Mojang release a player can be one version ahead of a server that has not restarted yet (**our call**) |
 | Server name | Prefilled from the Perland account's Discord-based `displayName` only, never from the email (a kid's email must not land on a public invite page): spaces become `-`, characters outside `[A-Za-z0-9_-]` are removed, and it is cut to 32; when nothing is left (email-only players), `my-server`. Editable, checked against the Engine's rule before sending. The name shows to friends on the invite page (**our call**) |
 | Language | The UI language (`es`, else `en`): the invite page opens in it and the warning email uses it |
 | Where the flow lives | A dialog opened from Your servers: three steps in one dialog, with Back on step 1 only (**our call**: no new route) |
