@@ -11,12 +11,13 @@ use launcher_app::{
     deep_link::DeepLink,
     dto::{
         AppInfo, ArtChoice, Build, ContentFile, EmailCodeSent, IconChoice, ImportPreview,
-        ImportRequest, InstanceArtData, JavaTest, JoinPreview, ManualProgress, NameListView,
-        NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest,
-        PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase,
-        PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage, RunSnapshot, ServerGame,
-        ServerNews, ServerPack, ServerPlayers, ServerStatusView, ServerTeam, SyncSummary,
-        YourServerCard, YourServersPage,
+        ImportRequest, InstanceArtData, JavaTest, JoinPreview, LinkCodeView, ManualProgress,
+        NameListView, NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice,
+        PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount,
+        PerlandSignInPhase, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard,
+        PublicServerPage, RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers,
+        ServerStatsView, ServerStatusView, ServerTeam, SyncSummary, YourServerCard,
+        YourServersPage,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -833,6 +834,7 @@ fn contract_fixtures_are_current() {
                     email: Some("steve@example.com".into()),
                     discord: true,
                     new_player: true,
+                    minecraft: Some("Steve".into()),
                 }),
             },
             PerlandStatus {
@@ -843,6 +845,7 @@ fn contract_fixtures_are_current() {
                     email: Some("alex@example.com".into()),
                     discord: false,
                     new_player: false,
+                    minecraft: None,
                 }),
             },
             PerlandStatus {
@@ -853,6 +856,37 @@ fn contract_fixtures_are_current() {
         ],
     );
     check("email_code_sent", EmailCodeSent { resend_in: 60 });
+    check(
+        "link_code",
+        LinkCodeView {
+            code: "ABCD-EFGH".into(),
+            expires_in: 600,
+        },
+    );
+    check(
+        "perland_stats",
+        vec![
+            Some(PerlandStats {
+                servers: vec![
+                    ServerStatsView {
+                        token: "A".repeat(43),
+                        instance: Some("asalith-fields".into()),
+                        name: "Asalith".into(),
+                        playtime_seconds: 45_000,
+                        advancements: 12,
+                    },
+                    ServerStatsView {
+                        token: "B".repeat(43),
+                        instance: None,
+                        name: "Skyblock".into(),
+                        playtime_seconds: 0,
+                        advancements: 0,
+                    },
+                ],
+            }),
+            None,
+        ],
+    );
     check(
         "new_instance",
         NewInstance {

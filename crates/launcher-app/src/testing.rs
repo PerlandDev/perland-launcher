@@ -35,7 +35,8 @@ use launcher_core::{
     meta::loaders::LoaderKind,
     news::NewsPage,
     perland::{
-        DiscordAccount, EmailStarted, Player, PlayerConfig, SignInMethod, TokenAnswer, YourServer,
+        DiscordAccount, EmailStarted, LinkCode, Player, PlayerConfig, PlayerStats, SignInMethod,
+        TokenAnswer, YourServer,
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
@@ -923,6 +924,11 @@ pub(crate) struct FakePlayer {
     pub servers: Mutex<Result<Vec<YourServer>>>,
     /// What `follow`, `unfollow` and `joined` answer.
     pub relation: Mutex<Result<()>>,
+    /// Default: `ABCD-EFGH`, for 600 s.
+    pub link_code: Mutex<Result<LinkCode>>,
+    pub unlink: Mutex<Result<()>>,
+    /// Default: no Minecraft account linked, no servers.
+    pub stats: Mutex<Result<Option<PlayerStats>>>,
     pub calls: Mutex<Vec<PlayerCall>>,
     /// Routes whose calls wait for a permit of their gate (see `hold`).
     holds: Mutex<HashMap<&'static str, Arc<Semaphore>>>,
@@ -949,6 +955,12 @@ impl FakePlayer {
             sign_out: Mutex::new(Ok(())),
             servers: Mutex::new(Ok(vec![])),
             relation: Mutex::new(Ok(())),
+            link_code: Mutex::new(Ok(LinkCode {
+                code: "ABCD-EFGH".into(),
+                expires_in: 600,
+            })),
+            unlink: Mutex::new(Ok(())),
+            stats: Mutex::new(Ok(Some(PlayerStats::default()))),
             calls: Mutex::new(Vec::new()),
             holds: Mutex::new(HashMap::new()),
         })
@@ -1071,6 +1083,15 @@ impl PlayerApi for FakePlayer {
     }
     fn joined(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>> {
         self.record("joined", engine, &[&token, &invite_token], &self.relation)
+    }
+    fn link_code(&self, engine: Url, token: String) -> BoxFuture<Result<LinkCode>> {
+        self.record("link_code", engine, &[&token], &self.link_code)
+    }
+    fn unlink(&self, engine: Url, token: String) -> BoxFuture<Result<()>> {
+        self.record("unlink", engine, &[&token], &self.unlink)
+    }
+    fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>> {
+        self.record("stats", engine, &[&token], &self.stats)
     }
 }
 
