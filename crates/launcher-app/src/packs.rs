@@ -940,7 +940,7 @@ mod tests {
         std::fs::create_dir_all(&folder).unwrap();
         for bad in [tool.clone(), folder] {
             assert_eq!(
-                core.java_test(bad).await.unwrap_err().code,
+                core.java_test(bad, None).await.unwrap_err().code,
                 ErrorCode::JavaTestFailed
             );
         }

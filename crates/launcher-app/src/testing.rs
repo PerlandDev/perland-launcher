@@ -1285,6 +1285,12 @@ pub(crate) struct FakeBrowser {
     pub hold_install: AtomicBool,
     install_gate: Arc<Semaphore>,
     pub image: Mutex<Option<Image>>,
+    /// Modrinth project icon URLs by jar sha1, for `project_icon_url`.
+    pub icon_urls: Mutex<HashMap<String, String>>,
+    /// Each `project_icon_url` call's sha1.
+    pub icon_lookups: Mutex<Vec<String>>,
+    /// While set, `project_icon_url` fails as if offline.
+    pub icon_lookup_fails: AtomicBool,
 }
 
 impl FakeBrowser {
@@ -1300,6 +1306,9 @@ impl FakeBrowser {
             hold_install: AtomicBool::new(false),
             install_gate: Arc::new(Semaphore::new(0)),
             image: Mutex::new(None),
+            icon_urls: Mutex::new(HashMap::new()),
+            icon_lookups: Mutex::new(Vec::new()),
+            icon_lookup_fails: AtomicBool::new(false),
         })
     }
 
@@ -1399,6 +1408,15 @@ impl Browser for FakeBrowser {
     }
     fn loader_version(&self, _kind: LoaderKind, _minecraft: String) -> BoxFuture<Result<String>> {
         Box::pin(async { Ok("0.16.14".to_string()) })
+    }
+    fn project_icon_url(&self, sha1: String) -> BoxFuture<Result<Option<String>>> {
+        self.icon_lookups.lock().unwrap().push(sha1.clone());
+        let answer = if self.icon_lookup_fails.load(Ordering::SeqCst) {
+            Err(LauncherError::network(ErrorCode::Offline, "offline"))
+        } else {
+            Ok(self.icon_urls.lock().unwrap().get(&sha1).cloned())
+        };
+        Box::pin(async move { answer })
     }
 }
 

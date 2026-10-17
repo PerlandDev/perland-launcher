@@ -18,7 +18,8 @@ import type {
   Instance,
   InstanceArtData,
   InstanceListing,
-  JavaTest,
+  JavaFound,
+  JavaOverview,
   JoinPreview,
   LinkCode,
   ListQuery,
@@ -83,6 +84,7 @@ export const commands = {
   runStates: () => invoke<RunSnapshot[]>('run_states'),
   logTail: (id: string) => invoke<string[]>('log_tail', { id }),
   modsList: (id: string) => invoke<LocalMod[]>('mods_list', { id }),
+  modIcon: (id: string, file: string) => invoke<string | null>('mod_icon', { id, file }),
   modSetEnabled: (id: string, file: string, enabled: boolean) =>
     invoke<LocalMod[]>('mod_set_enabled', { id, file, enabled }),
   modsAdd: (id: string, paths: string[]) => invoke<LocalMod[]>('mods_add', { id, paths }),
@@ -91,7 +93,8 @@ export const commands = {
   contentRemove: (id: string, kind: ContentKind, file: string) =>
     invoke<ContentFile[]>('content_remove', { id, kind, file }),
   openFolder: (target: OpenTarget) => invoke<null>('open_folder', { target }),
-  javaTest: (path: string) => invoke<JavaTest>('java_test', { path }),
+  javaTest: (path: string, minecraft: string | null) => invoke<JavaFound>('java_test', { path, minecraft }),
+  javaOverview: (minecraft: string) => invoke<JavaOverview>('java_overview', { minecraft }),
   packAdd: (request: PackAddRequest) => invoke<Instance>('pack_add', { request }),
   playAnswer: (id: string, update: boolean) => invoke<null>('play_answer', { id, update }),
   packUpdate: (id: string) => invoke<null>('pack_update', { id }),

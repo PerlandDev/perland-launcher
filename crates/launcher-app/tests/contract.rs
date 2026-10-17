@@ -11,13 +11,13 @@ use launcher_app::{
     deep_link::DeepLink,
     dto::{
         AppInfo, ArtChoice, Build, ContentFile, EmailCodeSent, FreeServerCard, FreeServerPage,
-        IconChoice, ImportPreview, ImportRequest, InstanceArtData, JavaTest, JoinPreview,
-        LinkCodeView, ManualProgress, NameListView, NewInstance, NewsChangesView, NewsPostView,
-        OpenTarget, OptionalChoice, PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate,
-        PerlandAccount, PerlandSignInPhase, PerlandStats, PerlandStatus, PlaytimeEntry,
-        PublicServerCard, PublicServerPage, RunSnapshot, ServerGame, ServerNews, ServerPack,
-        ServerPlayers, ServerStatsView, ServerStatusView, ServerTeam, SyncSummary, YourServerCard,
-        YourServersPage,
+        IconChoice, ImportPreview, ImportRequest, InstanceArtData, JavaFound, JavaOverview,
+        JoinPreview, LinkCodeView, ManualProgress, NameListView, NewInstance, NewsChangesView,
+        NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents, PackMod,
+        PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase, PerlandStats, PerlandStatus,
+        PlaytimeEntry, PublicServerCard, PublicServerPage, RunSnapshot, ServerGame, ServerNews,
+        ServerPack, ServerPlayers, ServerStatsView, ServerStatusView, ServerTeam, SyncSummary,
+        YourServerCard, YourServersPage,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -37,6 +37,7 @@ use launcher_core::{
         JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdatePolicy,
     },
     invite::invite_link_cases,
+    java::JavaFit,
     launch::CrashHint,
     meta::{
         catalog::{LoaderVersion, McKind, McVersion},
@@ -1045,7 +1046,61 @@ fn contract_fixtures_are_current() {
             },
         ],
     );
-    check("java_test", JavaTest { major: 17 });
+    let temurin = JavaFound {
+        path: PathBuf::from(
+            "C:/Program Files/Eclipse Adoptium/jdk-17.0.12.7-hotspot/bin/javaw.exe",
+        ),
+        major: 17,
+        version: "17.0.12".into(),
+        vendor: Some("Eclipse Temurin".into()),
+        fit: Some(JavaFit::Matches),
+        recommended: true,
+    };
+    check(
+        "java_test",
+        vec![
+            temurin.clone(),
+            JavaFound {
+                path: PathBuf::from("/usr/lib/jvm/java-21/bin/java"),
+                major: 21,
+                version: "21.0.4".into(),
+                vendor: None,
+                fit: None,
+                recommended: false,
+            },
+        ],
+    );
+    check(
+        "java_overview",
+        vec![
+            JavaOverview {
+                required: Some(17),
+                installs: vec![
+                    temurin,
+                    JavaFound {
+                        path: PathBuf::from("C:/Program Files/Zulu/zulu-21/bin/javaw.exe"),
+                        major: 21,
+                        version: "21.0.4".into(),
+                        vendor: Some("Azul Zulu".into()),
+                        fit: Some(JavaFit::Newer),
+                        recommended: false,
+                    },
+                    JavaFound {
+                        path: PathBuf::from("C:/Program Files/Java/jre1.8.0_421/bin/javaw.exe"),
+                        major: 8,
+                        version: "1.8.0_421".into(),
+                        vendor: Some("Oracle".into()),
+                        fit: Some(JavaFit::TooOld),
+                        recommended: false,
+                    },
+                ],
+            },
+            JavaOverview {
+                required: None,
+                installs: vec![],
+            },
+        ],
+    );
     check(
         "pack_status",
         vec![

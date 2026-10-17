@@ -44,6 +44,8 @@ pub trait Browser: Send + Sync + 'static {
     ) -> BoxFuture<Result<Vec<String>>>;
     /// The loader version a new instance gets: the newest stable one, else the newest.
     fn loader_version(&self, kind: LoaderKind, minecraft: String) -> BoxFuture<Result<String>>;
+    /// The icon URL of the Modrinth project a file with this sha1 belongs to.
+    fn project_icon_url(&self, sha1: String) -> BoxFuture<Result<Option<String>>>;
 }
 
 pub struct CoreBrowser {
@@ -130,5 +132,9 @@ impl Browser for CoreBrowser {
                     .with_param("version", &minecraft)
                 })
         })
+    }
+    fn project_icon_url(&self, sha1: String) -> BoxFuture<Result<Option<String>>> {
+        let b = self.browse.clone();
+        Box::pin(async move { b.project_icon_url(&sha1).await })
     }
 }

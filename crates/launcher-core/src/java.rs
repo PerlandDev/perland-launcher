@@ -8,7 +8,7 @@ use std::{
 };
 
 use futures_util::StreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     download::{DownloadRequest, Downloader, Hashes},
@@ -17,7 +17,7 @@ use crate::{
     fsutil::{safe_join, write_atomic},
     meta::{
         loaders::valid_component,
-        mojang::{Artifact, VersionJson},
+        mojang::{Artifact, VersionJson, VersionManifest, VERSION_MANIFEST_URL},
         MetaClient,
     },
     platform::{Os, Platform},
@@ -230,8 +230,62 @@ pub fn parse_java_version(output: &str) -> Option<u32> {
     }
 }
 
-/// Run `<path> -version` and return its major version. Backs the "Test" button for a custom Java.
+/// What `java -version` says about a Java.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JavaInfo {
+    pub major: u32,
+    /// The version exactly as Java prints it: `"21.0.4"`, `"1.8.0_402"`.
+    pub version: String,
+    /// Who built it, when the output or the install folder says.
+    pub vendor: Option<String>,
+}
+
+/// Adoptium's build: the Java the launcher suggests when a player picks their own.
+pub const TEMURIN: &str = "Eclipse Temurin";
+
+/// Names in `java -version` output (or, failing that, the install path), most specific first.
+const VENDORS: &[(&str, &str)] = &[
+    ("temurin", TEMURIN),
+    ("adoptium", TEMURIN),
+    ("zulu", "Azul Zulu"),
+    ("corretto", "Amazon Corretto"),
+    ("semeru", "IBM Semeru"),
+    ("graalvm", "GraalVM"),
+    ("liberica", "BellSoft Liberica"),
+    ("bellsoft", "BellSoft Liberica"),
+    ("jbr", "JetBrains Runtime"),
+    ("microsoft", "Microsoft"),
+    ("java(tm)", "Oracle"),
+];
+
+fn vendor_in(text: &str) -> Option<&'static str> {
+    let text = text.to_ascii_lowercase();
+    VENDORS
+        .iter()
+        .find(|(needle, _)| text.contains(needle))
+        .map(|(_, name)| *name)
+}
+
+/// Major version, version and vendor from `java -version` output and the binary's path.
+pub fn parse_java_info(output: &str, path: &Path) -> Option<JavaInfo> {
+    let major = parse_java_version(output)?;
+    let start = output.find('"')? + 1;
+    let version = output[start..].split('"').next()?.to_string();
+    let vendor = vendor_in(output).or_else(|| vendor_in(&path.to_string_lossy()));
+    Some(JavaInfo {
+        major,
+        version,
+        vendor: vendor.map(str::to_string),
+    })
+}
+
+/// Run `<path> -version` and return its major version.
 pub async fn probe(path: &Path) -> Result<u32> {
+    probe_info(path).await.map(|info| info.major)
+}
+
+/// Run `<path> -version` and read what it says about itself. Backs choosing a Java.
+pub async fn probe_info(path: &Path) -> Result<JavaInfo> {
     let failed = || {
         LauncherError::java(
             ErrorCode::JavaTestFailed,
@@ -258,7 +312,47 @@ pub async fn probe(path: &Path) -> Result<u32> {
         String::from_utf8_lossy(&output.stderr),
         String::from_utf8_lossy(&output.stdout)
     );
-    parse_java_version(&text).ok_or_else(failed)
+    parse_java_info(&text, path).ok_or_else(failed)
+}
+
+/// How a chosen Java compares with the major version the game asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JavaFit {
+    Matches,
+    /// Older than the game needs: it won't start.
+    TooOld,
+    /// Newer than the game asks for: it may start, but mods (older Forge above all) can break.
+    Newer,
+}
+
+impl JavaFit {
+    pub fn of(required: u32, major: u32) -> Self {
+        match major.cmp(&required) {
+            std::cmp::Ordering::Equal => Self::Matches,
+            std::cmp::Ordering::Less => Self::TooOld,
+            std::cmp::Ordering::Greater => Self::Newer,
+        }
+    }
+}
+
+/// The Java major version Minecraft `mc` asks for, from its version JSON. Works offline once cached.
+pub async fn required_for(meta: &MetaClient, mc: &str) -> Result<u32> {
+    required_for_at(meta, VERSION_MANIFEST_URL, mc).await
+}
+
+pub async fn required_for_at(meta: &MetaClient, manifest_url: &str, mc: &str) -> Result<u32> {
+    let manifest: VersionManifest = meta.get_json(manifest_url).await?;
+    let entry = manifest.find(mc).ok_or_else(|| {
+        LauncherError::loader(
+            ErrorCode::MinecraftVersionNotFound,
+            format!("Minecraft {mc} doesn't exist"),
+        )
+        .with_param("version", mc)
+        .with_fix("Check the version number")
+    })?;
+    let version: VersionJson = meta.get_verified_json(&entry.url, &entry.sha1).await?;
+    Ok(required_major(&version))
 }
 
 /// The Java major version a version asks for; versions without `javaVersion` predate Java 9.
@@ -313,6 +407,8 @@ pub fn installed_fallback(
 pub struct JavaInstall {
     pub path: PathBuf,
     pub major: u32,
+    pub version: String,
+    pub vendor: Option<String>,
 }
 
 /// Folders under Program Files that hold one folder per installed Java.
@@ -386,10 +482,12 @@ pub async fn detect_installed(platform: Platform) -> Vec<JavaInstall> {
     .unwrap_or_default();
     let mut found: Vec<JavaInstall> = futures_util::stream::iter(candidates)
         .map(|path| async move {
-            probe(&path)
-                .await
-                .ok()
-                .map(|major| JavaInstall { path, major })
+            probe_info(&path).await.ok().map(|info| JavaInstall {
+                path,
+                major: info.major,
+                version: info.version,
+                vendor: info.vendor,
+            })
         })
         .buffered(4)
         .filter_map(|j| async move { j })
@@ -624,10 +722,14 @@ mod tests {
             JavaInstall {
                 path: "/j21/bin/java".into(),
                 major: 21,
+                version: "21.0.4".into(),
+                vendor: None,
             },
             JavaInstall {
                 path: "/j17/bin/java".into(),
                 major: 17,
+                version: "17.0.12".into(),
+                vendor: None,
             },
         ];
         let unavailable = || LauncherError::java(ErrorCode::JavaUnavailable, "none");
@@ -641,6 +743,67 @@ mod tests {
                 .code,
             ErrorCode::JavaUnavailable
         );
+    }
+
+    #[test]
+    fn reads_vendor_and_version_from_java_output() {
+        let temurin = "openjdk version \"21.0.4\" 2024-07-16 LTS\nOpenJDK Runtime Environment Temurin-21.0.4+7 (build 21.0.4+7-LTS)\n";
+        let info = parse_java_info(temurin, Path::new("/usr/bin/java")).unwrap();
+        assert_eq!(info.major, 21);
+        assert_eq!(info.version, "21.0.4");
+        assert_eq!(info.vendor.as_deref(), Some("Eclipse Temurin"));
+        let cases = [
+            (
+                "OpenJDK Runtime Environment Zulu17.50+19-CA (build 17.0.11+9-LTS)",
+                "Azul Zulu",
+            ),
+            (
+                "OpenJDK Runtime Environment Corretto-17.0.12.7.1 (build 17.0.12+7-LTS)",
+                "Amazon Corretto",
+            ),
+            (
+                "OpenJDK Runtime Environment Microsoft-9889606 (build 21.0.4+7-LTS)",
+                "Microsoft",
+            ),
+            (
+                "IBM Semeru Runtime Open Edition 17.0.12.0 (build 17.0.12+7)",
+                "IBM Semeru",
+            ),
+            (
+                "Java(TM) SE Runtime Environment (build 1.8.0_202-b08)",
+                "Oracle",
+            ),
+            (
+                "OpenJDK Runtime Environment GraalVM CE 21.0.2+13.1",
+                "GraalVM",
+            ),
+        ];
+        for (line, vendor) in cases {
+            let out = format!("java version \"17.0.1\"\n{line}\n");
+            let info = parse_java_info(&out, Path::new("/opt/x/bin/java")).unwrap();
+            assert_eq!(info.vendor.as_deref(), Some(vendor), "{line}");
+        }
+        let plain =
+            "openjdk version \"1.8.0_402\"\nOpenJDK Runtime Environment (build 1.8.0_402-b06)\n";
+        let info = parse_java_info(plain, Path::new("/usr/lib/jvm/java-8/bin/java")).unwrap();
+        assert_eq!((info.major, info.version.as_str()), (8, "1.8.0_402"));
+        assert_eq!(info.vendor, None);
+        // Liberica says nothing about itself; its install folder does.
+        let liberica = parse_java_info(
+            plain,
+            Path::new("C:/Program Files/BellSoft/LibericaJDK-8/bin/javaw.exe"),
+        )
+        .unwrap();
+        assert_eq!(liberica.vendor.as_deref(), Some("BellSoft Liberica"));
+        assert_eq!(parse_java_info("not java", Path::new("/x")), None);
+    }
+
+    #[test]
+    fn fit_compares_the_chosen_java_with_what_the_game_needs() {
+        assert_eq!(JavaFit::of(17, 17), JavaFit::Matches);
+        assert_eq!(JavaFit::of(21, 17), JavaFit::TooOld);
+        assert_eq!(JavaFit::of(17, 21), JavaFit::Newer);
+        assert_eq!(JavaFit::of(8, 21), JavaFit::Newer);
     }
 
     #[test]

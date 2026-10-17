@@ -132,6 +132,16 @@ const SKY_ART: InstanceArtData = {
   ),
 };
 
+/** A mod's icon (its jar's or its Modrinth project's): a small block for most mods, none (the placeholder) for those named with a z. */
+function mockModIcon(file: string): string | null {
+  if (/z/i.test(file)) return null;
+  let hue = 0;
+  for (const c of file) hue = (hue * 31 + c.charCodeAt(0)) % 360;
+  return svg(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect width="16" height="16" fill="hsl(${hue} 45% 35%)"/><rect x="4" y="4" width="8" height="8" fill="hsl(${hue} 60% 65%)"/></svg>`,
+  );
+}
+
 /** A player's uploaded background: a 4:3 picture taller than the marquee, so its position matters. */
 const CASTLE_PICTURE = svg(
   '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" shape-rendering="crispEdges"><rect width="800" height="600" fill="#2b3a67"/><rect y="360" width="800" height="240" fill="#3f6b3a"/><rect y="480" width="800" height="120" fill="#5a4030"/><rect x="120" y="80" width="120" height="300" fill="#8a8f98"/><rect x="100" y="60" width="40" height="40" fill="#8a8f98"/><rect x="160" y="60" width="40" height="40" fill="#8a8f98"/><rect x="220" y="60" width="40" height="40" fill="#8a8f98"/><rect x="160" y="160" width="40" height="60" fill="#181410"/><rect x="240" y="240" width="320" height="140" fill="#6f747d"/><rect x="560" y="200" width="100" height="180" fill="#8a8f98"/><rect x="380" y="300" width="60" height="80" fill="#181410"/><rect x="600" y="80" width="40" height="40" fill="#ffc233"/></svg>',
@@ -1090,6 +1100,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       return [];
     case 'mods_list':
       return state.mods.get(String(args.id)) ?? [];
+    case 'mod_icon':
+      return mockModIcon(String(args.file));
     case 'mod_set_enabled': {
       const file = String(args.file);
       const base = file.replace(/\.disabled$/, '');
@@ -1119,8 +1131,31 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'open_folder':
     case 'quit':
       return null;
-    case 'java_test':
-      return { major: 17 };
+    case 'java_overview': {
+      const required = mockRequiredJava(args.minecraft as string);
+      return {
+        required,
+        installs: MOCK_JAVAS.map((j) => ({ ...j, fit: javaFit(required, j.major), recommended: j.vendor === 'Eclipse Temurin' })).sort(
+          (a, b) =>
+            Number(a.fit !== 'matches') - Number(b.fit !== 'matches') ||
+            Number(!a.recommended) - Number(!b.recommended) ||
+            b.major - a.major,
+        ),
+      };
+    }
+    case 'java_test': {
+      const path = args.path as string;
+      const major = /21/.test(path) ? 21 : /(^|\D)8(\D|$)|1\.8/.test(path) ? 8 : 17;
+      const minecraft = args.minecraft as string | null;
+      return {
+        path,
+        major,
+        version: major === 8 ? '1.8.0_421' : `${major}.0.4`,
+        vendor: null,
+        fit: minecraft ? javaFit(mockRequiredJava(minecraft), major) : null,
+        recommended: false,
+      };
+    }
     case 'plugin:dialog|open': {
       // Mirrors the real dialog: an array when `multiple` is set, otherwise one path.
       const options = args.options as { multiple?: boolean; directory?: boolean; filters?: { extensions?: string[] }[] } | undefined;
@@ -1207,4 +1242,24 @@ export function mockUpdateState(name: string | null): UpdateState | undefined {
     default:
       return undefined;
   }
+}
+
+/** Javas "found" on the mock computer, as the real detection reports them. */
+const MOCK_JAVAS = [
+  { path: 'C:/Program Files/Eclipse Adoptium/jdk-21.0.4.7-hotspot/bin/javaw.exe', major: 21, version: '21.0.4', vendor: 'Eclipse Temurin' },
+  { path: 'C:/Program Files/Eclipse Adoptium/jdk-17.0.12.7-hotspot/bin/javaw.exe', major: 17, version: '17.0.12', vendor: 'Eclipse Temurin' },
+  { path: 'C:/Program Files/Java/jre1.8.0_421/bin/javaw.exe', major: 8, version: '1.8.0_421', vendor: 'Oracle' },
+];
+
+/** Roughly what Mojang's version JSONs say; the real launcher reads them. */
+function mockRequiredJava(minecraft: string): number {
+  const [major = 0, minor = 0, patch = 0] = minecraft.split('.').map((n) => parseInt(n, 10) || 0);
+  if (major > 1) return 25;
+  if (minor > 20 || (minor === 20 && patch >= 5)) return 21;
+  if (minor >= 18) return 17;
+  return minor === 17 ? 16 : 8;
+}
+
+function javaFit(required: number, major: number): 'matches' | 'too_old' | 'newer' {
+  return major === required ? 'matches' : major < required ? 'too_old' : 'newer';
 }

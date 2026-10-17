@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { Marquee } from '../../art/Marquee';
 import { describe, expect, it, vi } from 'vitest';
 import packStatusFx from '../../ipc/contract/pack_status.json';
@@ -105,6 +105,36 @@ describe('Home', () => {
     const dialog = screen.getByRole('dialog', { name: 'Delete “old-pack”?' });
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
     expect(sent(calls, 'instance_delete')).toEqual([{ id: 'old-pack' }]);
+  });
+
+  it('shows instance settings and the image as keys, with no menu to open', async () => {
+    const { user } = renderApp(<Home id="creative-flat" />);
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    await user.click(screen.getByRole('button', { name: 'Change image' }));
+    expect(screen.getByRole('dialog', { name: 'Change image' })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Instance settings' }));
+    expect(routeSnapshot()).toEqual({ name: 'instanceSettings', id: 'creative-flat' });
+  });
+
+  it('keeps the image key off while the instance runs', async () => {
+    renderApp(<Home id="creative-flat" />);
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    act(() => runStore.apply({ type: 'run_state', instance: 'creative-flat', state: 'running', exit: null, update: null }));
+    expect(screen.getByRole('button', { name: 'Change image' })).toBeDisabled();
+  });
+
+  it('opens the same menu on a right-click as from the ⋯ key', async () => {
+    const { user } = renderApp(<Home id="creative-flat" />);
+    const name = await screen.findByRole('heading', { name: 'Creative Flat' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    const byKey = within(screen.getByRole('menu')).getAllByRole('menuitem').map((i) => i.textContent);
+    await user.keyboard('{Escape}');
+    fireEvent.contextMenu(name, { button: 2, clientX: 200, clientY: 300 });
+    const menu = screen.getByRole('menu', { name: 'More options' });
+    expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(byKey);
+    await user.click(within(menu).getByRole('menuitem', { name: 'Rename' }));
+    expect(screen.getByRole('dialog', { name: 'Rename instance' })).toBeInTheDocument();
   });
 
   it('renames from the menu', async () => {

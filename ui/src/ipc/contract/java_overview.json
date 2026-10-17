@@ -1,0 +1,35 @@
+[
+  {
+    "required": 17,
+    "installs": [
+      {
+        "path": "C:/Program Files/Eclipse Adoptium/jdk-17.0.12.7-hotspot/bin/javaw.exe",
+        "major": 17,
+        "version": "17.0.12",
+        "vendor": "Eclipse Temurin",
+        "fit": "matches",
+        "recommended": true
+      },
+      {
+        "path": "C:/Program Files/Zulu/zulu-21/bin/javaw.exe",
+        "major": 21,
+        "version": "21.0.4",
+        "vendor": "Azul Zulu",
+        "fit": "newer",
+        "recommended": false
+      },
+      {
+        "path": "C:/Program Files/Java/jre1.8.0_421/bin/javaw.exe",
+        "major": 8,
+        "version": "1.8.0_421",
+        "vendor": "Oracle",
+        "fit": "too_old",
+        "recommended": false
+      }
+    ]
+  },
+  {
+    "required": null,
+    "installs": []
+  }
+]
