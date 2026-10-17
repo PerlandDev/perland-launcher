@@ -31,6 +31,7 @@ import packStatus from './contract/pack_status.json';
 import planRequests from './contract/plan_requests.json';
 import playtimeFx from './contract/playtime.json';
 import projectDetail from './contract/project_detail.json';
+import publicServerPage from './contract/public_server_page.json';
 import runSnapshots from './contract/run_snapshots.json';
 import searchPage from './contract/search_page.json';
 import searchRequests from './contract/search_requests.json';
@@ -70,6 +71,7 @@ const cases: [string, ZodType, unknown][] = [
   ['server_instance', s.instance, serverInstanceFx],
   ['join_preview', s.joinPreview.array(), joinPreviewFx],
   ['server_status', s.serverStatusView.array(), serverStatusFx],
+  ['public_server_page', s.publicServerPage, publicServerPage],
   ['deep_links', s.deepLink.array(), deepLinksFx],
   ['invite_links', s.inviteLinkCase.array(), inviteLinksFx],
   ['update_states', s.updateState.array(), updateStates],

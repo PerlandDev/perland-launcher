@@ -4,7 +4,7 @@ import joinPreviewFx from './contract/join_preview.json';
 import serverInstanceFx from './contract/server_instance.json';
 import serverStatusFx from './contract/server_status.json';
 import { inviteCanonical } from './inviteLink';
-import type { Instance, JoinPreview, LauncherError, ServerStatusView } from './schema';
+import type { Instance, JoinPreview, LauncherError, ListQuery, LoaderKind, PublicServerCard, PublicServerPage, ServerStatusView } from './schema';
 
 export type ServerScenario =
   | 'online'
@@ -15,7 +15,9 @@ export type ServerScenario =
   | 'whitelisted'
   | 'gone'
   | 'network'
-  | 'modded-no-pack';
+  | 'modded-no-pack'
+  /** The public server list isn't open yet: `servers_list` answers `server_list_closed`. */
+  | 'closed';
 
 /** The invite the seeded server instance has. */
 export const MOCK_INVITE = `https://play.example.com/${'A'.repeat(43)}`;
@@ -25,6 +27,256 @@ export const MOCK_SERVER_ID = 'survival';
 export const MOCK_SERVER_ICON =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAABdElEQVR42u2YPW7CQBCF5xqhI6IykpsoFFSR6FxwgDRcIXUOkCLHQjQoXCAnoIaCdpCRiIiz4B+88YzfK54sQLPr+fxmvIOMBqkiSwiAAP5vs8Nu6weAxZtlCRBA++VHB8ADSB8n2lS5re6JtyDxngAUAP3+vCm3AKqUUlnyTSGIyye/X/3WHRDEVfLFxG+AaBVAl93eBAATDihLvgChcwBtuSY6gOl4qpbVFEDV9QnADYCaTZAA+gLgD4QKB6E6a7sAEIRwRXXXdQOgCoQma7oCEEMEkD2/KLIIgAAIgAAIABrA8ONLkUUA71mib7NE8+s8fdDLz5fX/LfQ997jpI9J1YmTvj/hsjhBsnsoTtabRC0rNgzzAGI7Q1Br/xwnqLX/4wC0934xTpAPQVcd0OYmunwyLYlN3DwA5EPQqQeg1v45jtMg/DSorwvtQmamwa4AmJkGkQ9BwR6ABoPTIKdBToOcBhW5EQryX+JBB3AaBINxBGzHqnIKs/OSAAAAAElFTkSuQmCC';
 export const NOT_MINE = Symbol('not a server command');
+
+const HOST = 'play.example.com';
+const inviteOf = (letter: string) => `https://${HOST}/${letter.repeat(43)}`;
+const loaderOf = (loader: string | null, version: string | null) => ({ version: null as string | null, loader, loaderVersion: version });
+
+/** The public list's mock servers, oldest first (Newest sorts from the end). Tokens are fake: one letter, 43 times.
+ *  They cover online with players, full, sleeping, starting, whitelisted, vanilla, modded without a pack
+ *  (not joinable), two Minecraft versions, both languages and three regions. */
+export const MOCK_PUBLIC_SERVERS: PublicServerCard[] = [
+  {
+    token: 'A'.repeat(43),
+    invite: inviteOf('A'),
+    joinable: true,
+    address: `${HOST}:25566`,
+    name: 'Survival',
+    iconVersion: '1a2b3c4d5e6f7a8b',
+    game: { ...loaderOf('fabric', '0.16.14'), version: '1.20.1' },
+    modded: true,
+    status: 'online',
+    players: { online: 7, max: 20 },
+    whitelisted: false,
+    pack: { name: 'Survival Pack', version: '1.0.4', modCount: 142, state: 'ready' },
+    categories: ['survival', 'modded'],
+    language: 'en',
+    region: 'eu',
+    instance: null,
+  },
+  {
+    token: 'B'.repeat(43),
+    invite: inviteOf('B'),
+    joinable: true,
+    address: `${HOST}:25567`,
+    name: 'Creative Plots',
+    iconVersion: '2b3c4d5e6f7a8b9c',
+    game: { ...loaderOf(null, null), version: '1.21.1' },
+    modded: false,
+    status: 'online',
+    players: { online: 20, max: 20 },
+    whitelisted: false,
+    pack: null,
+    categories: ['creative'],
+    language: 'es',
+    region: 'latam',
+    instance: null,
+  },
+  {
+    token: 'C'.repeat(43),
+    invite: inviteOf('C'),
+    joinable: true,
+    address: `${HOST}:25568`,
+    name: 'Sleepy Hollow',
+    iconVersion: null,
+    game: { ...loaderOf(null, null), version: '1.21.1' },
+    modded: false,
+    status: 'sleeping',
+    players: null,
+    whitelisted: false,
+    pack: null,
+    categories: ['smp', 'roleplay'],
+    language: 'en',
+    region: 'us',
+    instance: null,
+  },
+  {
+    token: 'D'.repeat(43),
+    invite: inviteOf('D'),
+    joinable: true,
+    address: `${HOST}:25569`,
+    name: 'Skyblock Dawn',
+    iconVersion: '4d5e6f7a8b9c0d1e',
+    game: { ...loaderOf(null, null), version: '1.20.1' },
+    modded: false,
+    status: 'starting',
+    players: null,
+    whitelisted: false,
+    pack: null,
+    categories: ['skyblock'],
+    language: 'en',
+    region: 'eu',
+    instance: null,
+  },
+  {
+    token: 'E'.repeat(43),
+    invite: inviteOf('E'),
+    joinable: true,
+    address: `${HOST}:25570`,
+    name: 'The Whitelist Club',
+    iconVersion: null,
+    game: { ...loaderOf(null, null), version: '1.21.1' },
+    modded: false,
+    status: 'online',
+    players: { online: 3, max: 10 },
+    whitelisted: true,
+    pack: null,
+    categories: ['smp'],
+    language: 'en',
+    region: 'eu',
+    instance: null,
+  },
+  {
+    token: 'F'.repeat(43),
+    invite: inviteOf('F'),
+    joinable: true,
+    address: `${HOST}:25571`,
+    name: 'Pure Vanilla',
+    iconVersion: '6f7a8b9c0d1e2f3a',
+    game: { ...loaderOf(null, null), version: '1.20.1' },
+    modded: false,
+    status: 'online',
+    players: { online: 12, max: 50 },
+    whitelisted: false,
+    pack: null,
+    categories: ['survival', 'pvp'],
+    language: 'en',
+    region: 'us',
+    instance: null,
+  },
+  {
+    token: 'G'.repeat(43),
+    invite: null,
+    joinable: false,
+    address: `${HOST}:25572`,
+    name: 'Tech Forge',
+    iconVersion: null,
+    game: { ...loaderOf('forge', '47.3.0'), version: '1.20.1' },
+    modded: true,
+    status: 'online',
+    players: { online: 5, max: 30 },
+    whitelisted: false,
+    pack: null,
+    categories: ['modded'],
+    language: 'en',
+    region: 'eu',
+    instance: null,
+  },
+  {
+    token: 'H'.repeat(43),
+    invite: inviteOf('H'),
+    joinable: true,
+    address: `${HOST}:25573`,
+    name: 'Aventura Épica',
+    iconVersion: '8b9c0d1e2f3a4b5c',
+    game: { ...loaderOf('fabric', '0.16.14'), version: '1.21.1' },
+    modded: true,
+    status: 'online',
+    players: { online: 2, max: 30 },
+    whitelisted: false,
+    pack: { name: 'Aventura Pack', version: '2.1.0', modCount: 64, state: 'ready' },
+    categories: ['adventure', 'magic'],
+    language: 'es',
+    region: 'latam',
+    instance: null,
+  },
+];
+
+const PAGE = 50;
+
+const byVersionDesc = (a: string, b: string) => b.localeCompare(a, 'en', { numeric: true });
+const uniqueSorted = (values: (string | null)[], compare?: (a: string, b: string) => number) =>
+  [...new Set(values.filter((v): v is string => v !== null))].sort(compare);
+
+const hasRoom = (card: PublicServerCard) => !card.players || card.players.max === null || card.players.online < card.players.max;
+
+/** The card for a canonical invite. */
+const cardOf = (canonical: string | null) =>
+  canonical === null ? undefined : MOCK_PUBLIC_SERVERS.find((c) => c.invite !== null && inviteCanonical(c.invite) === canonical);
+
+/** Does Play on this instance wake its server first? Only a Perland server that was asleep or starting. */
+export function wakesOnPlay(instance: Instance): boolean {
+  if (instance.source.kind !== 'perland') return false;
+  const card = cardOf(inviteCanonical(instance.source.invite));
+  return card?.status === 'sleeping' || card?.status === 'starting';
+}
+
+/** One page of the public list for `query`, the way the Engine answers: filters, sort, 50 a page. Facets cover the whole set. */
+function publicPage(query: ListQuery, listing: Listing): PublicServerPage {
+  const joined = (card: PublicServerCard) =>
+    listing.instances.find((i) => i.source.kind === 'perland' && card.invite !== null && inviteCanonical(i.source.invite) === inviteCanonical(card.invite))?.id ?? null;
+  const players = (c: PublicServerCard) => c.players?.online ?? 0;
+  const matching = MOCK_PUBLIC_SERVERS.map((card, index) => ({ card, index }))
+    .filter(
+      ({ card }) =>
+        (query.modded === null || card.modded === query.modded) &&
+        (!query.minecraft || card.game.version === query.minecraft) &&
+        (!query.hasRoom || hasRoom(card)) &&
+        (!query.category || card.categories.includes(query.category)) &&
+        (!query.language || card.language === query.language) &&
+        (!query.region || card.region === query.region),
+    )
+    .sort((a, b) =>
+      query.sort === 'newest'
+        ? b.index - a.index
+        : query.sort === 'name'
+          ? a.card.name.localeCompare(b.card.name)
+          : players(b.card) - players(a.card) || a.card.name.localeCompare(b.card.name),
+    );
+  return {
+    servers: matching.slice(query.offset, query.offset + PAGE).map(({ card }) => ({ ...clone(card), instance: joined(card) })),
+    total: matching.length,
+    facets: {
+      categories: uniqueSorted(MOCK_PUBLIC_SERVERS.flatMap((c) => c.categories)),
+      languages: uniqueSorted(MOCK_PUBLIC_SERVERS.map((c) => c.language)),
+      minecraftVersions: uniqueSorted(
+        MOCK_PUBLIC_SERVERS.map((c) => c.game.version),
+        byVersionDesc,
+      ),
+      regions: uniqueSorted(MOCK_PUBLIC_SERVERS.map((c) => c.region)),
+    },
+  };
+}
+
+function addressOf(card: PublicServerCard): { host: string; port: number } | null {
+  const at = card.address?.lastIndexOf(':') ?? -1;
+  if (!card.address || at < 0) return null;
+  return { host: card.address.slice(0, at), port: Number(card.address.slice(at + 1)) };
+}
+
+/** The server instance Add makes from a public card. */
+function instanceFromCard(card: PublicServerCard, id: string, canonical: string): Instance {
+  const base = clone(serverInstanceFx) as Instance;
+  return {
+    ...base,
+    id,
+    name: card.name,
+    source: { kind: 'perland', invite: canonical, engine: 'https://api.example.com/' },
+    game: {
+      minecraft: card.game.version ?? '1.21.1',
+      loader: card.game.loader ? { kind: card.game.loader as LoaderKind, version: card.game.loaderVersion ?? '' } : null,
+    },
+    server: { address: addressOf(card), name: card.name, accent: null, whitelisted: card.whitelisted, lastStatus: card.status, lastSeen: null, gone: false },
+  };
+}
+
+function cardPreview(card: PublicServerCard, existing: string | null): JoinPreview {
+  return {
+    host: HOST,
+    name: card.name,
+    motd: card.name,
+    kind: 'stack',
+    status: card.status,
+    players: card.players,
+    game: card.game,
+    pack: card.pack,
+    whitelisted: card.whitelisted,
+    team: null,
+    address: addressOf(card),
+    icon: card.iconVersion ? MOCK_SERVER_ICON : null,
+    existing,
+  };
+}
 
 export interface MockServers {
   scenario: ServerScenario;
@@ -47,6 +299,7 @@ function sorted(instances: Instance[]): Instance[] {
 /** Add the `survival` server instance for `scenario`. */
 export function seedServers(scenario: ServerScenario | undefined, listing: Listing): MockServers | null {
   if (!scenario) return null;
+  if (scenario === 'closed') return { scenario };
   const instance = clone(serverInstanceFx) as Instance;
   if (instance.server) {
     instance.server.gone = scenario === 'gone';
@@ -96,9 +349,30 @@ function perlandOf(instance: Instance): string | null {
 /** Answer a server command, or `NOT_MINE`. */
 export function handleServer(servers: MockServers | null, listing: Listing, cmd: string, args: Record<string, unknown>): unknown {
   switch (cmd) {
+    case 'servers_list':
+      if (servers?.scenario === 'closed') fail('network', 'server_list_closed', "The server list isn't open yet. Check back soon.", { host: HOST });
+      return publicPage(args.query as ListQuery, listing);
+    case 'servers_icon': {
+      const card = MOCK_PUBLIC_SERVERS.find((c) => c.token === args.token);
+      return card?.iconVersion && card.iconVersion === args.iconVersion ? MOCK_SERVER_ICON : null;
+    }
     case 'join_preview':
     case 'join_add': {
       const canonical = inviteCanonical(String(args.link ?? '')) ?? fail('pack', 'invite_link_invalid', "That isn't a Perland invite link");
+      // Without an invite scenario, a card of the public list joins on its own; with one, the scenario answers every invite.
+      const card = servers ? undefined : cardOf(canonical);
+      if (card) {
+        const existing = listing.instances.find((i) => perlandOf(i) === canonical) ?? null;
+        if (cmd === 'join_preview') return cardPreview(card, existing?.id ?? null);
+        if (existing) return existing;
+        const taken = new Set(listing.instances.map((i) => i.id));
+        const slug = card.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        let id = slug;
+        for (let n = 2; taken.has(id); n++) id = `${slug}-${n}`;
+        const created = instanceFromCard(card, id, canonical);
+        listing.instances = sorted([...listing.instances, created]);
+        return created;
+      }
       if (!servers || servers.scenario === 'gone') fail('pack', 'invite_gone', "This invite link doesn't work anymore.");
       if (servers.scenario === 'network' || servers.scenario === 'modded-no-pack') {
         const address = 'play.example.com:25577';

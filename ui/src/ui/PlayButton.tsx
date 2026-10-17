@@ -20,7 +20,7 @@ export function PlayButton({ state, progress, disabled, disabledReason, onPlay, 
   const reasonId = useId();
   const lang = i18n.language;
 
-  const waiting = state === 'checking' || state === 'asking' || state === 'queued' || state === 'syncing' || state === 'preparing';
+  const waiting = state === 'checking' || state === 'asking' || state === 'queued' || state === 'syncing' || state === 'preparing' || state === 'waking';
   if (waiting) {
     const label =
       state === 'checking'
@@ -31,20 +31,22 @@ export function PlayButton({ state, progress, disabled, disabledReason, onPlay, 
           ? t('play.asking')
           : state === 'queued'
             ? t('play.queued')
-            : progress
-              ? taskLabel(i18n, progress.task)
-              : state === 'syncing'
-                ? t('play.syncing')
-                : t('play.preparing');
+            : state === 'waking'
+              ? t('play.waking')
+              : progress
+                ? taskLabel(i18n, progress.task)
+                : state === 'syncing'
+                  ? t('play.syncing')
+                  : t('play.preparing');
     const fraction = progress && progress.total > 0 ? progress.done / progress.total : 0;
-    // Syncing and preparing fill the meter; the other waits show it empty.
+    // Syncing and preparing fill the meter; the other waits (waking too) show it empty.
     const look = state === 'syncing' || state === 'preparing' ? 'preparing' : 'queued';
     return (
       <button type="button" className="play" data-state={look} onClick={onStop} aria-label={t('play.cancelLabel', { label })}>
         {/* The phase gets the face's full width (Spanish phases run long); Cancel rides the readout row,
-            which every wait state keeps, so the face holds one height from checking to preparing. */}
+            which every wait state keeps, so the face holds one height from checking to waking. */}
         <span className="truncate">{label}</span>
-        <Meter value={fraction} label={label} decorative scan={state === 'checking'} />
+        <Meter value={fraction} label={label} decorative scan={state === 'checking' || state === 'waking'} />
         <span className="play-sub flex items-baseline gap-2 text-sm">
           {/* The MB figure is the honest part of the readout: only the file counts may truncate.
               Four-digit totals (a first install's assets) drop to "done/total"; the drawer keeps the sentence. */}

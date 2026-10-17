@@ -41,6 +41,13 @@ it('marks a running instance', async () => {
   expect(screen.getByRole('button', { name: 'Asalith Fields, Playing' })).toBeInTheDocument();
 });
 
+it('marks an instance that is waking its server as getting ready', async () => {
+  renderApp(<Rail />);
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'waking', exit: null, update: null }));
+  expect(screen.getByRole('button', { name: 'Asalith Fields, Getting ready' })).toBeInTheDocument();
+});
+
 it("uses a pack's icon", async () => {
   renderApp(<Rail />);
   const sky = await screen.findByRole('button', { name: 'Sky Islands' });

@@ -38,7 +38,7 @@ export function useInstallFlow() {
     const more = view.items.length - 1;
     const instance = result.instance.name;
     const state = runStore.run(id).state;
-    const playing = state === 'preparing' || state === 'running' || state === 'stopping';
+    const playing = state === 'preparing' || state === 'waking' || state === 'running' || state === 'stopping';
     pushNotice({
       title: more > 0 ? t('install.addedMore', { count: more, name, instance }) : t('install.added', { name, instance }),
       body: playing
