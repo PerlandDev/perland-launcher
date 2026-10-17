@@ -491,7 +491,7 @@
       "achievements_one": "{{count}} achievement",
       "achievements_other": "{{count}} achievements",
       "played": "{{time}} played",
-      "label": "Your stats on this server"
+      "label": "Your stats on this server:"
     },
     "sleeping": "Sleeping, Play wakes it",
     "starting": "Starting",

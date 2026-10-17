@@ -26,7 +26,7 @@ export function ServerStatsLine({ token }: { token: string }) {
   if (!text) return null;
   return (
     <p className="tabular text-sm text-ink-dim">
-      <span className="sr-only">{t('servers.stats.label')}: </span>
+      <span className="sr-only">{t('servers.stats.label')} </span>
       <span>{text}</span>
     </p>
   );

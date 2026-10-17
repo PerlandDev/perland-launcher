@@ -9,23 +9,28 @@ import { formatPlaytime } from '../../ui/playtime';
 import { ServerStatsLine, statsText } from './ServerStatsLine';
 
 let t: TFunction;
+let tEs: TFunction;
 
 beforeAll(async () => {
-  const i18n = createInstance();
-  await i18n.init({ resources: { en: { translation: en }, es: { translation: es } }, lng: 'en', fallbackLng: 'en' });
-  t = i18n.t;
+  const make = async (lng: string) => {
+    const i18n = createInstance();
+    await i18n.init({ resources: { en: { translation: en }, es: { translation: es } }, lng, fallbackLng: 'en' });
+    return i18n.t;
+  };
+  t = await make('en');
+  tEs = await make('es');
 });
 
+/** The owner's server in the `linked` mock scenario: 12 achievements, 108000 s. */
+const OWNER_TOKEN = 'O'.repeat(43);
+
 const stats = (advancements: number, playtimeSeconds: number): ServerStats => ({
-  token: 'O'.repeat(43),
+  token: OWNER_TOKEN,
   instance: null,
   name: 'My world',
   advancements,
   playtimeSeconds,
 });
-
-/** The owner's server in the `linked` mock scenario: 12 achievements, 108000 s. */
-const OWNER_TOKEN = 'O'.repeat(43);
 
 describe('statsText', () => {
   it('joins the achievements and the time played', () => {
@@ -43,6 +48,11 @@ describe('statsText', () => {
   it('says only the time played without achievements', () => {
     expect(statsText(t, stats(0, 3600))).toBe(`${formatPlaytime(3600, t)} played`);
     expect(statsText(t, stats(0, 3600))).toBe('1 h played');
+  });
+
+  it('reads in Spanish', () => {
+    expect(statsText(tEs, stats(12, 108000))).toBe(`12 logros · ${formatPlaytime(108000, tEs)} de juego`);
+    expect(statsText(tEs, stats(1, 0))).toBe('1 logro');
   });
 });
 

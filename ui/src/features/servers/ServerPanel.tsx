@@ -41,7 +41,7 @@ function AchievementsPlate({ id }: { id: string }) {
   return (
     <p className="stats-plate marquee-plate">
       <Trophy aria-hidden />
-      <span className="sr-only">{t('servers.stats.label')}: </span>
+      <span className="sr-only">{t('servers.stats.label')} </span>
       <span>{t('servers.stats.achievements', { count: stats.advancements })}</span>
     </p>
   );

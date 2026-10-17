@@ -490,8 +490,8 @@
     "stats": {
       "achievements_one": "{{count}} logro",
       "achievements_other": "{{count}} logros",
-      "played": "{{time}} jugado",
-      "label": "Tus estadísticas en este servidor"
+      "played": "{{time}} de juego",
+      "label": "Tus estadísticas en este servidor:"
     },
     "sleeping": "Dormido, Jugar lo despierta",
     "starting": "Iniciando",
