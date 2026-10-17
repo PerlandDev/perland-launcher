@@ -305,7 +305,9 @@ describe('Change image: the icon', () => {
     expect(within(dialog).getByRole('radiogroup', { name: 'Background' })).toBe(groups[1]);
     const icons = group(dialog, 'Icon').getAllByRole('radio');
     expect(icons).toHaveLength(2);
-    expect(icons[0]).toHaveAccessibleName('Initials');
+    expect(icons[0]).toHaveAccessibleName('Letters');
+    // The second line says where the letters come from.
+    expect(icons[0]).toHaveAccessibleDescription("Made from the instance's name.");
     expect(icons[1]).toHaveAccessibleName('Upload your own…');
     // The landscapes are backgrounds only.
     expect(group(dialog, 'Icon').queryByRole('radio', { name: /^Landscape/ })).not.toBeInTheDocument();
@@ -316,10 +318,10 @@ describe('Change image: the icon', () => {
     const dialog = await openPicker(user, 'Sky Islands');
     const icons = group(dialog, 'Icon');
     expect(icons.getByRole('radio', { name: 'Pack icon' })).toHaveAttribute('aria-checked', 'true');
-    await user.click(icons.getByRole('radio', { name: 'Initials' }));
+    await user.click(icons.getByRole('radio', { name: 'Letters' }));
     expect(sent(calls, 'instance_icon_set')).toEqual([{ id: 'sky-islands', choice: { kind: 'generated' } }]);
     expect(sent(calls, 'instance_art_set')).toEqual([]);
-    expect(await group(dialog, 'Icon').findByRole('radio', { name: 'Initials' })).toHaveAttribute('aria-checked', 'true');
+    expect(await group(dialog, 'Icon').findByRole('radio', { name: 'Letters' })).toHaveAttribute('aria-checked', 'true');
     expect(group(dialog, 'Icon').getByRole('radio', { name: 'Pack icon' })).toHaveAttribute('aria-checked', 'false');
     // The background is still the pack's art.
     expect(group(dialog, 'Background').getByRole('radio', { name: 'Pack art' })).toHaveAttribute('aria-checked', 'true');
@@ -353,11 +355,11 @@ describe('Change image: the icon', () => {
   });
 
   it.each<[string, Partial<Instance>, string, string]>([
-    ['a never-chosen icon on a plain instance', { icon: null, art: 'auto' }, 'asalith-fields', 'Initials'],
+    ['a never-chosen icon on a plain instance', { icon: null, art: 'auto' }, 'asalith-fields', 'Letters'],
     ['a never-chosen icon on a pack', { icon: null, art: 'auto' }, 'sky-islands', 'Pack icon'],
     ['a round-1 upload, which is still the icon', { icon: null, art: 'custom' }, 'asalith-fields', 'Upload your own…'],
-    ['the initials on a pack', { icon: 'generated' }, 'sky-islands', 'Initials'],
-    ['auto on a plain instance', { icon: 'auto', art: 'generated' }, 'asalith-fields', 'Initials'],
+    ['the initials on a pack', { icon: 'generated' }, 'sky-islands', 'Letters'],
+    ['auto on a plain instance', { icon: 'auto', art: 'generated' }, 'asalith-fields', 'Letters'],
     ['an uploaded icon over generated art', { icon: 'custom', art: 'generated' }, 'asalith-fields', 'Upload your own…'],
   ])('lights the current icon for %s', async (_, patch, id, lit) => {
     const backend = createMockBackend();
@@ -378,9 +380,9 @@ describe('Change image: the icon', () => {
     const { user } = renderWithProviders(<Home id="sky-islands" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
     const dialog = await openPicker(user, 'Sky Islands');
     const icons = group(dialog, 'Icon');
-    expect(await icons.findByRole('radio', { name: 'Initials' })).toHaveAttribute('aria-checked', 'true');
+    expect(await icons.findByRole('radio', { name: 'Letters' })).toHaveAttribute('aria-checked', 'true');
     expect(icons.getByRole('radio', { name: 'Pack icon' })).toHaveAttribute('aria-checked', 'false');
-    expect(icons.getAllByRole('radio').filter((r) => r.tabIndex === 0)).toEqual([icons.getByRole('radio', { name: 'Initials' })]);
+    expect(icons.getAllByRole('radio').filter((r) => r.tabIndex === 0)).toEqual([icons.getByRole('radio', { name: 'Letters' })]);
   });
 
   it('shows a refused icon as a translated error', async () => {
@@ -393,7 +395,7 @@ describe('Change image: the icon', () => {
     await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Upload your own…' }));
     expect(await within(dialog).findByRole('alert')).toHaveTextContent("That file can't be used as an instance image.");
     expect(sent(calls, 'instance_icon_set')).toHaveLength(1);
-    expect(group(dialog, 'Icon').getByRole('radio', { name: 'Initials' })).toHaveAttribute('aria-checked', 'true');
+    expect(group(dialog, 'Icon').getByRole('radio', { name: 'Letters' })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('holds both groups while either save is on its way', async () => {
@@ -405,7 +407,7 @@ describe('Change image: the icon', () => {
       return new Promise((resolve) => (release = () => resolve(handle(cmd, args))));
     });
     const dialog = await openPicker(user, 'Sky Islands');
-    await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Initials' }));
+    await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Letters' }));
     for (const radio of within(dialog).getAllByRole('radio')) expect(radio).toHaveAttribute('aria-disabled', 'true');
     // A background picked meanwhile would race the icon's save to instance.json, so it waits.
     await user.click(group(dialog, 'Background').getByRole('radio', { name: 'Landscape 2' }));
@@ -426,7 +428,7 @@ describe('Change image: the icon', () => {
     });
     const dialog = await openPicker(user, 'Sky Islands');
     await user.click(group(dialog, 'Background').getByRole('radio', { name: 'Landscape 2' }));
-    await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Initials' }));
+    await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Letters' }));
     await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Upload your own…' }));
     expect(sent(calls, 'instance_icon_set')).toEqual([]);
     expect(sent(calls, 'plugin:dialog|open')).toEqual([]);
@@ -442,7 +444,7 @@ describe('Change image: the icon', () => {
     expect(icons.getAllByRole('radio').filter((r) => r.tabIndex === 0)).toEqual([icons.getByRole('radio', { name: 'Pack icon' })]);
     icons.getByRole('radio', { name: 'Pack icon' }).focus();
     await user.keyboard('{ArrowLeft}');
-    expect(icons.getByRole('radio', { name: 'Initials' })).toHaveFocus();
+    expect(icons.getByRole('radio', { name: 'Letters' })).toHaveFocus();
     // Moving never saves: an upload key would open the file picker.
     expect(sent(calls, 'instance_icon_set')).toEqual([]);
     await user.keyboard(' ');
@@ -471,7 +473,7 @@ describe('Change icon and Change background', () => {
     await openFromMenu(user, 'Sky Islands', 'Change icon…');
     const dialog = screen.getByRole('dialog', { name: 'Change icon' });
     expect(within(dialog).queryByRole('radiogroup', { name: 'Background' })).not.toBeInTheDocument();
-    await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Initials' }));
+    await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Letters' }));
     expect(sent(calls, 'instance_icon_set')).toEqual([{ id: 'sky-islands', choice: { kind: 'generated' } }]);
     expect(sent(calls, 'instance_art_set')).toEqual([]);
   });

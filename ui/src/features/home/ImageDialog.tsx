@@ -228,6 +228,7 @@ export function ImageDialog({ instance, part = 'both', onClose }: { instance: In
               <div className="art-keys art-keys-stack">
                 <PictureKey
                   label={t('image.generatedIcon')}
+                  hint={t('image.generatedIconHint')}
                   glyph={<InstanceIcon name={instance.name} seed={artSeed(instance)} size={SLOT} />}
                   fill
                   picture={null}
