@@ -944,8 +944,8 @@
     font-size: 0.8125rem;
     font-weight: 400;
     line-height: 1.25;
-    /* Its copy is tied with no-break spaces, so at half the dialog it breaks only once: the kinds,
-       then "up to 5 MB" ("hasta 5 MB"), never mid-list. */
+    /* Its copy is tied with no-break spaces, so at half the dialog it breaks only between the kinds
+       and what suits the slot, never mid-list. */
   }
   .art-key-slot svg {
     width: 1.25rem;

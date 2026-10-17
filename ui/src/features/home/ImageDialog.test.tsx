@@ -97,7 +97,7 @@ describe('Change image', () => {
     await user.click(group(dialog, 'Background').getByRole('radio', { name: 'Upload your own…' }));
     const alert = await within(dialog).findByRole('alert');
     expect(alert).toHaveTextContent("That file can't be used as an instance image.");
-    expect(alert).toHaveTextContent('Pick a PNG, JPEG or WebP image under 5 MB.');
+    expect(alert).toHaveTextContent('Pick a PNG, JPEG or WebP image.');
     expect(sent(calls, 'instance_art_set')).toHaveLength(1);
     // Nothing changed, so Landscape 1 is still the current one.
     expect(group(dialog, 'Background').getByRole('radio', { name: 'Landscape 1' })).toHaveAttribute('aria-checked', 'true');
@@ -130,9 +130,9 @@ describe('Change image', () => {
 });
 
 it.each([
-  ['en', 'Upload your own…', 'Upload your own…', 'PNG, JPEG or WebP, up to 5 MB. Square works best.', 'PNG, JPEG or WebP, up to 5 MB. Best at 1920 × 1080 or larger.'],
+  ['en', 'Upload your own…', 'Upload your own…', 'PNG, JPEG or WebP. Square works best.', 'PNG, JPEG or WebP. Best at 1920 × 1080 or larger.'],
   // "Tuyo" for the icon (el ícono), "tuya" for the background (la imagen).
-  ['es', 'Sube el tuyo…', 'Sube la tuya…', 'PNG, JPEG o WebP, hasta 5 MB. Ideal: cuadrada.', 'PNG, JPEG o WebP, hasta 5 MB. Ideal: 1920 × 1080 o más.'],
+  ['es', 'Sube el tuyo…', 'Sube la tuya…', 'PNG, JPEG o WebP. Ideal: cuadrada.', 'PNG, JPEG o WebP. Ideal: 1920 × 1080 o más.'],
 ])('states what an upload may be before picking (%s)', async (lang, iconUpload, upload, iconHint, backgroundHint) => {
   await act(() => i18n.changeLanguage(lang));
   const { user } = renderApp(<Home id="asalith-fields" />);
@@ -153,9 +153,8 @@ it.each([
     const hint = key.querySelector('.art-key-hint')!.textContent!;
     expect(hint.replaceAll(' ', ' ')).toBe(copy);
     expect(key).toHaveAccessibleDescription(hint);
-    // Tied with no-break spaces, so the kinds and the size limit never break inside.
-    expect(hint).toContain(tied(lang === 'en' ? 'PNG, JPEG or WebP,' : 'PNG, JPEG o WebP,'));
-    expect(hint).toContain(tied(lang === 'en' ? 'up to 5 MB.' : 'hasta 5 MB.'));
+    // Tied with no-break spaces, so the list of kinds never breaks inside.
+    expect(hint).toContain(tied(lang === 'en' ? 'PNG, JPEG or WebP.' : 'PNG, JPEG o WebP.'));
   }
   expect(keys[1]!.querySelector('.art-key-hint')!.textContent).toContain(tied('1920 × 1080'));
 });

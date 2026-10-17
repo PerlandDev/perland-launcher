@@ -7,6 +7,7 @@ use launcher_core::{
     fsutil::{path_key, write_atomic},
     instances::{ArtMode, Focus, IconMode, Instance, SourceRef},
     mods,
+    picture::{self, BACKGROUND_FIT, MAX_SOURCE_BYTES, THUMBNAIL_FIT},
     sources::{
         art::{sniff, MAX_ART_BYTES},
         PackInput, UpdateCheck,
@@ -76,31 +77,41 @@ fn art_file_invalid() -> LauncherError {
         ErrorCode::ArtFileInvalid,
         "That file can't be used as an instance image",
     )
-    .with_fix("Pick a PNG, JPEG or WebP image under 5 MB.")
+    .with_fix("Pick a PNG, JPEG or WebP image.")
 }
 
 /// The picked file's bytes and real type (by signature, not by name), if it is a PNG, JPEG or
-/// WebP within the size limit.
-async fn read_upload(path: &Path) -> Result<(Vec<u8>, &'static str)> {
+/// WebP. Read whole only up to `MAX_SOURCE_BYTES`.
+async fn read_picture(path: &Path) -> Result<(Vec<u8>, &'static str)> {
     let meta = tokio::fs::metadata(path)
         .await
         .map_err(|e| art_file_invalid().with_detail(e))?;
     if !meta.is_file() {
         return Err(art_file_invalid().with_detail("not a file"));
     }
-    if meta.len() > MAX_ART_BYTES as u64 {
+    if meta.len() > MAX_SOURCE_BYTES {
         return Err(art_file_invalid().with_detail("the file is too big"));
     }
     let bytes = tokio::fs::read(path)
         .await
         .map_err(|e| art_file_invalid().with_detail(e))?;
-    if bytes.len() > MAX_ART_BYTES {
-        return Err(art_file_invalid().with_detail("the file is too big"));
-    }
     match sniff(&bytes) {
         Some(ext) if CUSTOM_EXTS.contains(&ext) => Ok((bytes, ext)),
         _ => Err(art_file_invalid().with_detail("not a PNG, JPEG or WebP image")),
     }
+}
+
+/// `read_picture`, then a picture bigger than the art limit (a 4K screenshot) scaled down to
+/// what the launcher draws, so it is kept instead of refused.
+async fn read_upload(path: &Path) -> Result<(Vec<u8>, &'static str)> {
+    let (bytes, ext) = read_picture(path).await?;
+    tokio::task::spawn_blocking(move || picture::fit(bytes, ext, MAX_ART_BYTES, BACKGROUND_FIT))
+        .await
+        .ok()
+        .flatten()
+        .ok_or_else(|| {
+            art_file_invalid().with_detail("the picture couldn't be read or scaled down")
+        })
 }
 
 /// Create `dir` (somewhere under `instance`) without ever creating `instance` itself: if the
@@ -486,7 +497,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             let Ok(meta) = entry.metadata().await else {
                 continue;
             };
-            if !picture_name(&name) || !meta.is_file() || meta.len() > MAX_ART_BYTES as u64 {
+            if !picture_name(&name) || !meta.is_file() || meta.len() > MAX_SOURCE_BYTES {
                 continue;
             }
             let modified = meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH);
@@ -500,19 +511,22 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .collect())
     }
 
-    /// One screenshot as a `data:` URL, or `None` when it is gone or isn't a usable picture.
+    /// One screenshot's thumbnail as a JPEG `data:` URL, or `None` when it is gone or isn't a
+    /// usable picture. A thumbnail, so a page of 4K screenshots stays light.
     pub async fn instance_screenshot(&self, id: &str, name: &str) -> Result<Option<String>> {
         self.instances.load(id).await?;
         let Some(path) = screenshot_path(&self.instances.game_dir(id), name) else {
             return Ok(None);
         };
-        Ok(read_upload(&path).await.ok().map(|(bytes, ext)| {
-            let mime = ART
-                .iter()
-                .find(|(e, _)| *e == ext)
-                .map_or("image/png", |(_, m)| m);
-            format!("data:{mime};base64,{}", STANDARD.encode(&bytes))
-        }))
+        let Ok((bytes, _)) = read_picture(&path).await else {
+            return Ok(None);
+        };
+        let thumbnail =
+            tokio::task::spawn_blocking(move || picture::thumbnail(&bytes, THUMBNAIL_FIT))
+                .await
+                .ok()
+                .flatten();
+        Ok(thumbnail.map(|jpeg| format!("data:image/jpeg;base64,{}", STANDARD.encode(jpeg))))
     }
 
     /// "Change image…", the background's position: which part of a picture background stays in
@@ -641,6 +655,7 @@ mod tests {
             serve, server_view,
         },
     };
+    use launcher_core::picture::MAX_SOURCE_BYTES;
 
     #[tokio::test]
     async fn pack_add_hands_invite_links_to_join_add() {
@@ -1263,7 +1278,7 @@ mod tests {
         .unwrap();
         let sparse = tmp.path().join("huge.png");
         let file = std::fs::File::create(&sparse).unwrap();
-        file.set_len(MAX_ART_BYTES as u64 + 1).unwrap();
+        file.set_len(MAX_SOURCE_BYTES + 1).unwrap();
         drop(file);
         let folder = tmp.path().join("folder.png");
         std::fs::create_dir(&folder).unwrap();
@@ -1284,10 +1299,7 @@ mod tests {
                 .await
                 .unwrap_err();
             assert_eq!(err.code, ErrorCode::ArtFileInvalid, "{bad:?}");
-            assert_eq!(
-                err.fix.as_deref(),
-                Some("Pick a PNG, JPEG or WebP image under 5 MB.")
-            );
+            assert_eq!(err.fix.as_deref(), Some("Pick a PNG, JPEG or WebP image."));
             // The previous picture and the mode are untouched.
             assert_eq!(core.instances.load(&id).await.unwrap().art, ArtMode::Custom);
             assert_eq!(custom_files(&core, &id), ["image.png"]);
@@ -1434,13 +1446,26 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(name);
         std::fs::write(&path, bytes).unwrap();
+        set_age(&path, age);
+    }
+
+    /// Make `path` look `age` seconds old.
+    fn set_age(path: &std::path::Path, age: u64) {
         let when = std::time::SystemTime::now() - std::time::Duration::from_secs(age);
         std::fs::File::options()
             .write(true)
-            .open(&path)
+            .open(path)
             .unwrap()
             .set_modified(when)
             .unwrap();
+    }
+
+    /// A real 1×1 PNG, for what has to decode.
+    fn tiny_png() -> Vec<u8> {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        STANDARD
+            .decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+            .unwrap()
     }
 
     #[tokio::test]
@@ -1449,19 +1474,38 @@ mod tests {
         let id = pack_instance(&core, "Sky", None).await.id;
         assert!(core.instance_screenshots(&id).await.unwrap().is_empty());
         screenshot(&core, &id, "old.png", PNG_A, 300);
-        screenshot(&core, &id, "new.png", PNG_B, 10);
+        screenshot(&core, &id, "new.png", &tiny_png(), 10);
         screenshot(&core, &id, "mid.webp", WEBP, 100);
         screenshot(&core, &id, "notes.txt", b"hello", 0);
         screenshot(&core, &id, "fake.png", b"<html>not a png</html>", 0);
         std::fs::create_dir_all(core.instances.game_dir(&id).join("screenshots/dir.png")).unwrap();
+        // Bigger than a background may be, but a 4K screenshot is: it is scaled down when picked.
+        let big = core.instances.game_dir(&id).join("screenshots/big.png");
+        std::fs::File::create(&big)
+            .unwrap()
+            .set_len(MAX_ART_BYTES as u64 + 1)
+            .unwrap();
+        set_age(&big, 200);
+        let huge = core.instances.game_dir(&id).join("screenshots/huge.png");
+        std::fs::File::create(&huge)
+            .unwrap()
+            .set_len(MAX_SOURCE_BYTES + 1)
+            .unwrap();
         assert_eq!(
             core.instance_screenshots(&id).await.unwrap(),
-            ["fake.png", "new.png", "mid.webp", "old.png"],
+            ["fake.png", "new.png", "mid.webp", "big.png", "old.png"],
             "by name and size only: a fake is caught when it is read"
         );
+        // A small thumbnail, not the whole picture.
+        assert!(core
+            .instance_screenshot(&id, "new.png")
+            .await
+            .unwrap()
+            .unwrap()
+            .starts_with("data:image/jpeg;base64,"));
         assert_eq!(
-            core.instance_screenshot(&id, "new.png").await.unwrap(),
-            Some(png_url(PNG_B))
+            core.instance_screenshot(&id, "big.png").await.unwrap(),
+            None
         );
         assert_eq!(
             core.instance_screenshot(&id, "fake.png").await.unwrap(),
@@ -1720,10 +1764,7 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::ArtFileInvalid);
-        assert_eq!(
-            err.fix.as_deref(),
-            Some("Pick a PNG, JPEG or WebP image under 5 MB.")
-        );
+        assert_eq!(err.fix.as_deref(), Some("Pick a PNG, JPEG or WebP image."));
         assert_eq!(
             core.instances.load(&id).await.unwrap().icon,
             Some(IconMode::Generated)
