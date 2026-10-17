@@ -14,6 +14,9 @@ import { resetRoute } from '../state/route';
 import { runStore } from '../state/runStore';
 import { clearToasts } from '../state/toasts';
 
+// Dates (event times) read in the computer's zone; pin it so the tests don't depend on where they run.
+(globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env.TZ ??= 'UTC';
+
 void i18n.changeLanguage('en');
 
 // jsdom may lack <dialog> methods; the app relies on showModal/close.

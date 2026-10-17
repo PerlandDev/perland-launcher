@@ -475,6 +475,30 @@
     },
     "language": { "en": "English", "es": "Español" }
   },
+  "news": {
+    "label": "News",
+    "lineLabel": "News: {{line}}",
+    "new": "New",
+    "now": "Now",
+    "today": "Today {{time}}",
+    "tomorrow": "Tomorrow {{time}}",
+    "posted": "Posted {{date}}",
+    "showMore": "Show more",
+    "close": "Close",
+    "loadFailed": "Couldn't load more news.",
+    "retry": "Try again",
+    "modpack": {
+      "title": "Modpack updated",
+      "added_one": "{{count}} mod added",
+      "added_other": "{{count}} mods added",
+      "removed_one": "{{count}} removed",
+      "removed_other": "{{count}} removed",
+      "updated_one": "{{count}} updated",
+      "updated_other": "{{count}} updated",
+      "changed": "The modpack changed.",
+      "andMore": "and {{count}} more"
+    }
+  },
   "errors": {
     "offline_name_invalid": { "message": "Player names must be 3–16 letters, numbers or underscores." },
     "accounts_damaged": { "message": "Your accounts file is damaged.", "fix": "Remove accounts.json from the data folder and add your accounts again." },
