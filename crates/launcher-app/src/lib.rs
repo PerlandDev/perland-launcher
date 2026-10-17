@@ -11,6 +11,7 @@ mod import;
 mod live_tests;
 pub mod logged;
 pub mod logs;
+mod news;
 mod packs;
 mod public_servers;
 pub mod runner;

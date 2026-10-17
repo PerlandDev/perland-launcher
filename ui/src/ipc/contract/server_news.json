@@ -1,0 +1,69 @@
+{
+  "posts": [
+    {
+      "id": "3f2b8c1e-5d4a-4e6b-9c7d-1a2b3c4d5e6f",
+      "type": "event",
+      "title": "Build battle",
+      "body": "A line\nAnother line",
+      "startsAt": "2026-10-18T18:00:00Z",
+      "endsAt": "2026-10-18T20:00:00Z",
+      "imageVersion": null,
+      "modpack": null,
+      "createdAt": "2026-10-16T10:00:00Z"
+    },
+    {
+      "id": "7c1d9e2a-8b3f-4a5c-b6d7-2e3f4a5b6c7d",
+      "type": "update",
+      "title": "New spawn",
+      "body": "A line\nAnother line",
+      "startsAt": null,
+      "endsAt": null,
+      "imageVersion": "v3",
+      "modpack": null,
+      "createdAt": "2026-10-15T09:30:00Z"
+    },
+    {
+      "id": "9a8b7c6d-5e4f-4321-8765-4c3b2a1f0e9d",
+      "type": "modpack",
+      "title": "Modpack 1.0.4",
+      "body": "A line\nAnother line",
+      "startsAt": null,
+      "endsAt": null,
+      "imageVersion": null,
+      "modpack": {
+        "added": {
+          "count": 3,
+          "names": [
+            "Sodium",
+            "Iris",
+            "Lithium"
+          ]
+        },
+        "removed": {
+          "count": 1,
+          "names": [
+            "Zoomify"
+          ]
+        },
+        "updated": {
+          "count": 0,
+          "names": []
+        }
+      },
+      "createdAt": "2026-10-14T12:00:00Z"
+    },
+    {
+      "id": "1b2c3d4e-5f60-4718-8293-a4b5c6d7e8f9",
+      "type": "modpack",
+      "title": "Modpack 1.0.3",
+      "body": "A line\nAnother line",
+      "startsAt": null,
+      "endsAt": null,
+      "imageVersion": null,
+      "modpack": null,
+      "createdAt": "2026-10-13T12:00:00Z"
+    }
+  ],
+  "nextBefore": "41",
+  "seen": "2026-10-15T00:00:00Z"
+}

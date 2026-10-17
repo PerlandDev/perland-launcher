@@ -6,7 +6,7 @@ use launcher_app::dto::{
     AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, IconChoice, ImportPreview, ImportRequest,
     InstallPlanView, InstallResult, InstanceArtData, JavaTest, JoinPreview, ManualProgress,
     NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus, PlaytimeEntry,
-    PublicServerPage, RunSnapshot, SearchRequest, ServerStatusView,
+    PublicServerPage, RunSnapshot, SearchRequest, ServerNews, ServerStatusView,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -423,6 +423,37 @@ pub async fn servers_icon(
     icon_version: String,
 ) -> Res<Option<String>> {
     Ok(core.servers_icon(&token, &icon_version).await)
+}
+
+#[tauri::command]
+pub async fn server_news(
+    core: CoreState<'_>,
+    invite: String,
+    before: Option<String>,
+    limit: u8,
+) -> Res<Option<ServerNews>> {
+    logged(
+        "server_news",
+        core.server_news(&invite, before, limit).await,
+    )
+}
+
+#[tauri::command]
+pub async fn server_news_opened(core: CoreState<'_>, invite: String, newest: String) -> Res<()> {
+    logged(
+        "server_news_opened",
+        core.server_news_opened(&invite, &newest).await,
+    )
+}
+
+#[tauri::command]
+pub async fn news_image(
+    core: CoreState<'_>,
+    invite: String,
+    post_id: String,
+    image_version: String,
+) -> Res<Option<String>> {
+    Ok(core.news_image(&invite, &post_id, &image_version).await)
 }
 
 #[tauri::command]

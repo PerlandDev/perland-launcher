@@ -33,6 +33,7 @@ use launcher_core::{
     launch::GameExit,
     locks::InstanceLock,
     meta::loaders::LoaderKind,
+    news::NewsPage,
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
     sources::{
@@ -437,6 +438,14 @@ pub(crate) struct FakeRunner {
     pub public_queries: Mutex<Vec<ListQuery>>,
     /// Whether `public_invite` finds a link (it builds `play.example.com/<token>`).
     pub public_invites: Mutex<bool>,
+    /// What `news_page` answers (none: no news here).
+    pub news_page: Mutex<Option<Result<Option<NewsPage>>>>,
+    /// Each (canonical invite, limit, before) `news_page` was asked.
+    pub news_calls: Mutex<Vec<(String, u8, Option<String>)>>,
+    /// What `news_image` answers.
+    pub news_image: Mutex<Option<Vec<u8>>>,
+    /// Each (canonical invite, post id, image version) `news_image` was asked.
+    pub news_image_calls: Mutex<Vec<(String, String, String)>>,
     /// The server each `start` was told to join.
     pub started_joins: Mutex<Vec<Option<ServerAddress>>>,
     /// What `check_update` reports per instance id (none: up to date).
@@ -488,6 +497,10 @@ impl FakeRunner {
             public_page: Mutex::new(None),
             public_queries: Mutex::new(Vec::new()),
             public_invites: Mutex::new(true),
+            news_page: Mutex::new(None),
+            news_calls: Mutex::new(Vec::new()),
+            news_image: Mutex::new(None),
+            news_image_calls: Mutex::new(Vec::new()),
             started_joins: Mutex::new(Vec::new()),
             update_checks: Mutex::new(HashMap::new()),
             ping_answer: Mutex::new(Ping::NoAnswer),
@@ -763,6 +776,34 @@ impl Runner for FakeRunner {
             return None;
         }
         InviteLink::parse(&format!("https://play.example.com/{}", server.token)).ok()
+    }
+
+    fn news_page(
+        &self,
+        link: InviteLink,
+        limit: u8,
+        before: Option<String>,
+    ) -> BoxFuture<Result<Option<NewsPage>>> {
+        self.news_calls
+            .lock()
+            .unwrap()
+            .push((link.canonical(), limit, before));
+        let answer = self.news_page.lock().unwrap().clone().unwrap_or(Ok(None));
+        Box::pin(async move { answer })
+    }
+
+    fn news_image(
+        &self,
+        link: InviteLink,
+        post_id: String,
+        image_version: String,
+    ) -> BoxFuture<Option<Vec<u8>>> {
+        self.news_image_calls
+            .lock()
+            .unwrap()
+            .push((link.canonical(), post_id, image_version));
+        let image = self.news_image.lock().unwrap().clone();
+        Box::pin(async move { image })
     }
 
     fn browser(&self) -> Arc<dyn Browser> {

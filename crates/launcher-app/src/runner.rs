@@ -9,6 +9,7 @@ use launcher_core::{
     invite::{EngineView, InviteLink, Url},
     launch::{GameExit, GameKiller, GameProcess},
     locks::InstanceLock,
+    news::{NewsClient, NewsPage},
     play::{self, Prepared, StartSpec},
     public_list::{self, FetchedPage, ListQuery, PublicListClient, PublicServer},
     server_wake::{self, Knock, Ping, WaitEnd},
@@ -99,6 +100,20 @@ pub trait Runner: Send + Sync + 'static {
     fn public_icon(&self, token: String, icon_version: String) -> BoxFuture<Option<Vec<u8>>>;
     /// The invite Play joins for a listed server.
     fn public_invite(&self, server: &PublicServer) -> Option<InviteLink>;
+    /// One page of a server's news, or `None` ("no news here"). See `NewsClient::page`.
+    fn news_page(
+        &self,
+        link: InviteLink,
+        limit: u8,
+        before: Option<String>,
+    ) -> BoxFuture<Result<Option<NewsPage>>>;
+    /// A news post's picture (PNG or JPEG bytes), or `None`.
+    fn news_image(
+        &self,
+        link: InviteLink,
+        post_id: String,
+        image_version: String,
+    ) -> BoxFuture<Option<Vec<u8>>>;
     /// Who answers a status ping at `address`. A ping never wakes a server.
     fn server_ping(&self, address: ServerAddress) -> BoxFuture<Ping>;
     /// Join as `name` so a sleeping server's waker starts the server; its kick says how it went.
@@ -113,6 +128,7 @@ pub struct CoreRunner {
     launcher_version: String,
     browser: Arc<dyn crate::browser::Browser>,
     public: PublicListClient,
+    news: NewsClient,
 }
 
 impl CoreRunner {
@@ -126,6 +142,7 @@ impl CoreRunner {
             browse,
             installer.meta.clone(),
         ));
+        let news = NewsClient::new(syncer.sources.invites.clone());
         let public = PublicListClient::new(
             syncer.sources.invites.clone(),
             public_list::site_url(public_list::DEFAULT_SITE)
@@ -137,6 +154,7 @@ impl CoreRunner {
             launcher_version,
             browser,
             public,
+            news,
         }
     }
     /// Read the public server list from another Perland site (a staging build, or a developer's
@@ -263,6 +281,26 @@ impl Runner for CoreRunner {
 
     fn public_invite(&self, server: &PublicServer) -> Option<InviteLink> {
         self.public.invite_for(server)
+    }
+
+    fn news_page(
+        &self,
+        link: InviteLink,
+        limit: u8,
+        before: Option<String>,
+    ) -> BoxFuture<Result<Option<NewsPage>>> {
+        let news = self.news.clone();
+        Box::pin(async move { news.page(&link, limit, before.as_deref()).await })
+    }
+
+    fn news_image(
+        &self,
+        link: InviteLink,
+        post_id: String,
+        image_version: String,
+    ) -> BoxFuture<Option<Vec<u8>>> {
+        let news = self.news.clone();
+        Box::pin(async move { news.image(&link, &post_id, &image_version).await })
     }
 
     fn server_ping(&self, address: ServerAddress) -> BoxFuture<Ping> {
