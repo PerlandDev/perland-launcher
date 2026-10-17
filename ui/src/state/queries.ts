@@ -34,6 +34,8 @@ export const qk = {
   packStatus: (id: string) => ['pack', 'status', id] as const,
   packContents: (id: string) => ['pack', 'contents', id] as const,
   instanceArt: (id: string) => ['instance', 'art', id] as const,
+  instanceScreenshots: (id: string) => ['instance', 'screenshots', id] as const,
+  instanceScreenshot: (id: string, name: string) => ['instance', 'screenshots', id, name] as const,
   manual: (id: string) => ['pack', 'manual', id] as const,
   browseSearch: (request: Omit<SearchRequest, 'offset'>) => ['browse', 'search', request] as const,
   browseCategories: (kind: ContentKind) => ['browse', 'categories', kind] as const,
@@ -96,6 +98,12 @@ export const usePackContents = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packContents(id), queryFn: () => commands.packContents(id), enabled });
 export const useInstanceArt = (id: string) =>
   useQuery({ queryKey: qk.instanceArt(id), queryFn: () => commands.instanceArt(id), staleTime: Infinity });
+/** The instance's newest screenshots by name, read each time "Change image…" opens (the game adds more while it runs). */
+export const useInstanceScreenshots = (id: string) =>
+  useQuery({ queryKey: qk.instanceScreenshots(id), queryFn: () => commands.instanceScreenshots(id), staleTime: 0 });
+/** One screenshot as a data: URL, read only when its tile shows. A file never changes under its name. */
+export const useInstanceScreenshot = (id: string, name: string) =>
+  useQuery({ queryKey: qk.instanceScreenshot(id, name), queryFn: () => commands.instanceScreenshot(id, name), staleTime: Infinity });
 
 /** The public list's page size, fixed by the Engine. */
 export const SERVERS_PAGE = 50;

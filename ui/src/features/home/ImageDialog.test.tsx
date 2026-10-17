@@ -62,6 +62,31 @@ describe('Change image', () => {
     expect(await group(dialog, 'Background').findByRole('radio', { name: 'Upload your own…' })).toHaveAttribute('aria-checked', 'true');
   });
 
+  it("picks one of the instance's screenshots and lights it", async () => {
+    const { user, calls } = renderApp(<Home id="asalith-fields" />);
+    const dialog = await openPicker(user, 'Asalith Fields');
+    const background = group(dialog, 'Background');
+    // The newest six first; the rest wait behind Show all.
+    expect(await background.findAllByRole('radio', { name: /^Screenshot / })).toHaveLength(6);
+    await user.click(background.getByRole('button', { name: 'Show all 8' }));
+    expect(background.getAllByRole('radio', { name: /^Screenshot / })).toHaveLength(8);
+    await user.click(background.getByRole('radio', { name: 'Screenshot 2026-10-16_21.04.11' }));
+    expect(sent(calls, 'instance_art_set')).toEqual([{ id: 'asalith-fields', choice: { kind: 'screenshot', name: '2026-10-16_21.04.11.png' } }]);
+    expect(await background.findByRole('radio', { name: 'Screenshot 2026-10-16_21.04.11' })).toHaveAttribute('aria-checked', 'true');
+    // One lamp: the screenshot, not Upload, though both are a picture of the player's.
+    expect(background.getByRole('radio', { name: 'Upload your own…' })).toHaveAttribute('aria-checked', 'false');
+    expect(background.getByRole('radio', { name: 'Landscape 1' })).toHaveAttribute('aria-checked', 'false');
+    // A screenshot is a picture like any other, so Position is offered for it.
+    expect(within(dialog).getByRole('group', { name: 'Position' })).toBeInTheDocument();
+  });
+
+  it('says where screenshots come from when there are none', async () => {
+    const { user } = renderApp(<Home id="sky-islands" />);
+    const dialog = await openPicker(user, 'Sky Islands');
+    expect(await within(dialog).findByText('Screenshots you take in the game (F2) show up here.')).toBeInTheDocument();
+    expect(group(dialog, 'Background').queryByRole('radio', { name: /^Screenshot / })).not.toBeInTheDocument();
+  });
+
   it('shows a refused image as a translated error', async () => {
     const { user, calls, backend } = renderApp(<Home id="asalith-fields" />);
     const handle = backend.handle;

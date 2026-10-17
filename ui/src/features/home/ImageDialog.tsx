@@ -7,7 +7,16 @@ import { Marquee } from '../../art/Marquee';
 import { artSeed, presetSeeds } from '../../art/seed';
 import { pixelUpscale } from '../../art/upscale';
 import type { ArtChoice, Focus, IconChoice, Instance, InstanceListing } from '../../ipc/schema';
-import { qk, useInstanceArt, usePreviewBannerFocus, useSetBannerFocus, useSetInstanceArt, useSetInstanceIcon } from '../../state/queries';
+import {
+  qk,
+  useInstanceArt,
+  useInstanceScreenshot,
+  useInstanceScreenshots,
+  usePreviewBannerFocus,
+  useSetBannerFocus,
+  useSetInstanceArt,
+  useSetInstanceIcon,
+} from '../../state/queries';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
@@ -37,7 +46,60 @@ function currentIcon(instance: Instance, packIcon: string | null | undefined): '
   return 'generated';
 }
 
-const STEPS: Partial<Record<string, number>> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+/** Screenshots shown before Show all. */
+const FIRST_SCREENSHOTS = 6;
+
+/** A screenshot's name as the player reads it: the game names them by date, so the name without its extension. */
+function screenshotLabel(name: string): string {
+  return name.replace(/\.(png|jpe?g|webp)$/i, '');
+}
+
+/** One of the instance's screenshots, read only once its tile shows. A screenshot that can't be used (not a
+ *  real picture, or gone since the list was read) leaves no tile. */
+function ScreenshotTile({
+  id,
+  name,
+  current,
+  tabbable,
+  busy,
+  onChoose,
+}: {
+  id: string;
+  name: string;
+  current: boolean;
+  tabbable: boolean;
+  busy: boolean;
+  onChoose: () => void;
+}) {
+  const { t } = useTranslation();
+  const picture = useInstanceScreenshot(id, name);
+  const [failed, setFailed] = useState(false);
+  if (picture.data === null || failed) return null;
+  return (
+    <button
+      type="button"
+      role="radio"
+      className="art-tile"
+      aria-label={t('image.screenshot', { name: screenshotLabel(name) })}
+      aria-checked={current}
+      aria-disabled={busy || undefined}
+      aria-busy={picture.isPending || undefined}
+      tabIndex={tabbable ? 0 : -1}
+      onClick={onChoose}
+    >
+      {picture.data && (
+        <img src={picture.data} alt="" draggable={false} className="absolute inset-0 h-full w-full object-cover" onError={() => setFailed(true)} />
+      )}
+    </button>
+  );
+}
+
+const STEPS: Partial<Record<string, number>> = {
+  ArrowRight: 1,
+  ArrowDown: 1,
+  ArrowLeft: -1,
+  ArrowUp: -1,
+};
 
 /** A labelled group of choices, one tab stop: arrow keys, Home and End move between them, and Space or
  *  Enter picks. Moving never picks, because every pick saves at once and an Upload key opens the file picker. */
@@ -136,8 +198,8 @@ function PictureKey({
 }
 
 /** "Change image…": two groups in one dialog. Icon: the initials, the pack's icon (packs only) or an
- *  uploaded picture. Background: six generated landscapes, the pack's art (packs only) or an uploaded
- *  picture. A choice applies at once; the lit key follows it, and the rail and marquee behind the dialog
+ *  uploaded picture. Background: six generated landscapes, the pack's art (packs only), an uploaded
+ *  picture or one of the instance's screenshots. A choice applies at once; the lit key follows it, and the rail and marquee behind the dialog
  *  change with it. While either saves, both groups wait: two saves at once would race on instance.json. */
 export function ImageDialog({ instance, onClose }: { instance: Instance; onClose: () => void }) {
   const { t } = useTranslation();
@@ -146,11 +208,19 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
   const setFocus = useSetBannerFocus({ inline: true });
   const previewFocus = usePreviewBannerFocus();
   const art = useInstanceArt(instance.id);
+  const screenshots = useInstanceScreenshots(instance.id);
+  const [allScreenshots, setAllScreenshots] = useState(false);
+  // The screenshot picked here, while it is still the background. The core keeps it as the player's own picture,
+  // so the dialog opened again lights Upload for it.
+  const [shot, setShot] = useState<string | null>(null);
   const [pickError, setPickError] = useState<unknown>(null);
   const qc = useQueryClient();
   // When a new background lands or a position is refused, Position starts again from what is saved now. The
   // cache has it before this dialog's `instance` does.
-  const [restart, setRestart] = useState<{ n: number; focus: Focus | null } | null>(null);
+  const [restart, setRestart] = useState<{
+    n: number;
+    focus: Focus | null;
+  } | null>(null);
   const restartFocus = () =>
     setRestart((last) => ({
       n: (last?.n ?? 0) + 1,
@@ -166,6 +236,9 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
   const iconPicture = art.data?.icon ?? null;
   const bannerPicture = art.data?.banner ?? null;
   const landscapeLit = typeof background === 'object' && presetSeeds(instance).includes(background.seed);
+  const shotLit = background === 'upload' && shot !== null && (screenshots.data ?? []).includes(shot);
+  const uploadLit = background === 'upload' && !shotLit;
+  const shownShots = allScreenshots ? (screenshots.data ?? []) : (screenshots.data ?? []).slice(0, FIRST_SCREENSHOTS);
 
   /** Clear what the last pick left behind, so only this pick's error can show. */
   const fresh = () => {
@@ -179,7 +252,15 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
     fresh();
     // A new background starts from the default position, so a position still waiting to be saved goes.
     focusPicker.current?.cancel();
-    setArt.mutate({ id: instance.id, choice }, { onSuccess: restartFocus });
+    setArt.mutate(
+      { id: instance.id, choice },
+      {
+        onSuccess: () => {
+          setShot(choice.kind === 'screenshot' ? choice.name : null);
+          restartFocus();
+        },
+      },
+    );
   };
   const chooseIcon = (choice: IconChoice) => {
     if (busy) return;
@@ -289,12 +370,43 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
                   hint={t('image.uploadHintBackground')}
                   glyph={<Upload />}
                   picture={bannerPicture}
-                  current={background === 'upload'}
-                  tabbable={background === 'upload'}
+                  current={uploadLit}
+                  tabbable={uploadLit}
                   busy={busy}
                   onChoose={() => void upload((path) => chooseBackground({ kind: 'upload', path }))}
                 />
               </div>
+              {screenshots.data && (
+                <div className="grid gap-2">
+                  <h4 className="art-section-label">{t('image.screenshots')}</h4>
+                  {screenshots.data.length === 0 ? (
+                    <p className="text-sm text-ink-dim">{t('image.noScreenshots')}</p>
+                  ) : (
+                    <>
+                      <div className="art-tiles">
+                        {shownShots.map((name) => (
+                          <ScreenshotTile
+                            key={name}
+                            id={instance.id}
+                            name={name}
+                            current={shotLit && shot === name}
+                            tabbable={shotLit && shot === name}
+                            busy={busy}
+                            onChoose={() => chooseBackground({ kind: 'screenshot', name })}
+                          />
+                        ))}
+                      </div>
+                      {!allScreenshots && screenshots.data.length > FIRST_SCREENSHOTS && (
+                        <Button variant="ghost" className="justify-self-start" onClick={() => setAllScreenshots(true)}>
+                          {t('image.moreScreenshots', {
+                            count: screenshots.data.length,
+                          })}
+                        </Button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </ChoiceGroup>
             {/* Only a picture is cropped by the marquee; a landscape is drawn to fit. */}
             {bannerPicture && (background === 'upload' || background === 'pack') && (

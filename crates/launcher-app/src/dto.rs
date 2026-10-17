@@ -240,13 +240,14 @@ pub struct InstanceArtData {
 }
 
 /// What the player picked in "Change image…": one of the generated landscapes (by seed), the
-/// pack's own art, or a file of their own.
+/// pack's own art, a file of their own, or one of the instance's screenshots (by file name).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ArtChoice {
     Generated { seed: String },
     Pack,
     Upload { path: PathBuf },
+    Screenshot { name: String },
 }
 
 /// What the player picked for the icon in "Change image…": the generated monogram, the pack's

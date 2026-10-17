@@ -395,6 +395,7 @@ export const artChoice = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('generated'), seed: z.string() }),
   z.strictObject({ kind: z.literal('pack') }),
   z.strictObject({ kind: z.literal('upload'), path: z.string() }),
+  z.strictObject({ kind: z.literal('screenshot'), name: z.string() }),
 ]);
 export const iconChoice = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('generated') }),
