@@ -3,6 +3,9 @@ use std::time::Duration;
 
 use crate::error::{ErrorCode, LauncherError, Result};
 
+/// The HTTP client type, re-exported so the app can hold one without depending on reqwest.
+pub type HttpClient = reqwest::Client;
+
 /// The descriptive `User-Agent` sent with every request.
 pub fn user_agent(launcher_version: &str) -> String {
     format!("PerlandLauncher/{launcher_version} (+https://github.com/PerlandDev/perland-launcher)")

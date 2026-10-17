@@ -1,6 +1,7 @@
 //! The real window behind `launcher_app::Host`.
 use launcher_app::{AppEvent, Host};
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_opener::OpenerExt;
 
 pub const APP_EVENT: &str = "launcher://event";
 
@@ -30,6 +31,18 @@ impl Host for TauriHost {
             let _ = window.unminimize();
             let _ = window.show();
             let _ = window.set_focus();
+        }
+    }
+
+    /// The app only passes http(s) URLs to a Perland Engine it built itself; anything else is
+    /// refused here too. The error isn't logged: it may quote the URL.
+    fn open_url(&self, url: &str) {
+        if !(url.starts_with("https://") || url.starts_with("http://")) {
+            tracing::warn!("refused to open a URL that isn't http(s)");
+            return;
+        }
+        if self.app.opener().open_url(url, None::<&str>).is_err() {
+            tracing::warn!("couldn't open the browser");
         }
     }
 }

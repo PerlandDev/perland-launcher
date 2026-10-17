@@ -292,6 +292,7 @@ export const appEvent = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('warning'), instance: z.string().nullable(), error: launcherError }),
   z.strictObject({ type: z.literal('deep_link') }),
   z.strictObject({ type: z.literal('update'), state: updateState }),
+  z.strictObject({ type: z.literal('perland_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
 ]);
 export const runSnapshot = z.strictObject({ instance: z.string(), state: runStateKind, update: packUpdate.nullable() });
 export const packStatus = z.strictObject({

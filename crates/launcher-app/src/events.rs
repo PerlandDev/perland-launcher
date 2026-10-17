@@ -7,7 +7,7 @@ use std::{
 use launcher_core::{events::TaskId, launch::CrashHint, sync::ManualFile, LauncherError};
 use serde::Serialize;
 
-use crate::dto::{PackUpdate, SyncSummary};
+use crate::dto::{PackUpdate, PerlandSignInPhase, SyncSummary};
 
 /// Progress for one task reaches the UI at most this often (first and last updates always do).
 pub const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
@@ -90,6 +90,9 @@ pub enum AppEvent {
     DeepLink,
     /// The launcher's own update moved on (see `updates.rs`).
     Update { state: crate::updates::UpdateState },
+    /// A Discord sign-in moved on: the browser is open (`waiting`), or the code it brought back
+    /// is being redeemed (`exchanging`).
+    PerlandSignIn { phase: PerlandSignInPhase },
 }
 
 /// The window the app runs in. Tauri implements it; tests record what it was asked to do.
@@ -97,6 +100,9 @@ pub trait Host: Send + Sync + 'static {
     fn emit(&self, event: AppEvent);
     fn minimize(&self);
     fn restore(&self);
+    /// Open `url` in the player's browser. Only ever an http(s) URL to a Perland Engine that the
+    /// app built itself, never one from the window.
+    fn open_url(&self, url: &str);
 }
 
 /// Drops progress updates that arrive faster than the UI can usefully show them.
@@ -159,6 +165,13 @@ mod tests {
         assert_eq!(
             serde_json::to_value(AppEvent::DeepLink).unwrap(),
             serde_json::json!({ "type": "deep_link" })
+        );
+        assert_eq!(
+            serde_json::to_value(AppEvent::PerlandSignIn {
+                phase: PerlandSignInPhase::Exchanging
+            })
+            .unwrap(),
+            serde_json::json!({ "type": "perland_sign_in", "phase": "exchanging" })
         );
     }
 

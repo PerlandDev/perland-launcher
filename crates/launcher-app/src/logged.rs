@@ -17,6 +17,9 @@ impl<H: Host> Host for LoggedHost<H> {
     fn restore(&self) {
         self.0.restore()
     }
+    fn open_url(&self, url: &str) {
+        self.0.open_url(url)
+    }
 }
 
 pub fn log_event(event: &AppEvent) {

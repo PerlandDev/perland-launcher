@@ -34,6 +34,9 @@ use launcher_core::{
     locks::InstanceLock,
     meta::loaders::LoaderKind,
     news::NewsPage,
+    perland::{
+        DiscordAccount, EmailStarted, Player, PlayerConfig, SignInMethod, TokenAnswer, YourServer,
+    },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
     sources::{
@@ -54,6 +57,7 @@ use crate::{
     browser::Browser,
     dto::{NewInstance, PackUpdate},
     events::{AppEvent, ExitInfo, Host, RunStateKind},
+    perland::PlayerApi,
     runner::{BoxFuture, Kill, Runner, RunningGame},
 };
 
@@ -249,6 +253,8 @@ pub(crate) struct RecordingHost {
     pub idle_delay: Mutex<Option<Duration>>,
     /// Called with every event as it is emitted (before it is recorded).
     pub on_emit: Mutex<Option<EmitHook>>,
+    /// Every URL the app asked the browser to open.
+    pub opened: Mutex<Vec<String>>,
 }
 
 pub(crate) type EmitHook = Arc<dyn Fn(&AppEvent) + Send + Sync>;
@@ -351,6 +357,23 @@ impl RecordingHost {
         }
     }
 
+    /// Wait until the app has opened `n` URLs, and return them (panics after 5 s).
+    pub async fn wait_for_opened(&self, n: usize) -> Vec<String> {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let opened = self.opened.lock().unwrap().clone();
+            if opened.len() >= n {
+                return opened;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "only {} URLs were opened",
+                opened.len()
+            );
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    }
+
     /// Wait until `id` has reported `state` (panics after 5 s).
     pub async fn wait_for(&self, id: &str, state: RunStateKind) {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
@@ -391,6 +414,9 @@ impl Host for RecordingHost {
     }
     fn restore(&self) {
         self.restored.fetch_add(1, Ordering::SeqCst);
+    }
+    fn open_url(&self, url: &str) {
+        self.opened.lock().unwrap().push(url.to_string());
     }
 }
 
@@ -468,6 +494,7 @@ pub(crate) struct FakeRunner {
     wait_gate: Arc<Semaphore>,
     /// Signalled once a held `server_wait` is parked.
     pub waiting: Arc<Notify>,
+    pub player: Arc<FakePlayer>,
 }
 
 impl FakeRunner {
@@ -514,6 +541,7 @@ impl FakeRunner {
             hold_wait: AtomicBool::new(false),
             wait_gate: Arc::new(Semaphore::new(0)),
             waiting: Arc::new(Notify::new()),
+            player: FakePlayer::new(),
         })
     }
 
@@ -844,6 +872,175 @@ impl Runner for FakeRunner {
             }
             answer
         })
+    }
+
+    fn player(&self) -> Arc<dyn PlayerApi> {
+        self.player.clone()
+    }
+}
+
+/// A fake player token: `plt_` and 43 × `c`.
+pub(crate) fn player_token(c: char) -> String {
+    format!("plt_{}", c.to_string().repeat(43))
+}
+
+/// Steve, signed in with Discord and an email.
+pub(crate) fn sample_player() -> Player {
+    Player {
+        id: "p1".into(),
+        display_name: "Steve".into(),
+        email: Some("steve@example.com".into()),
+        discord: Some(DiscordAccount {
+            id: "d1".into(),
+            username: "steve".into(),
+            global_name: Some("Steve".into()),
+        }),
+        created_at: "2026-10-17T00:00:00Z".into(),
+    }
+}
+
+/// One call `FakePlayer` saw: the route, the Engine it went to and its arguments.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PlayerCall {
+    pub route: &'static str,
+    pub engine: Url,
+    pub args: Vec<String>,
+}
+
+/// The player routes, answered from what the test scripted. Each call is recorded.
+pub(crate) struct FakePlayer {
+    /// What `site_engine` (and `engine_for`) answers. Default `https://api.example.com`.
+    pub site: Mutex<Result<Url>>,
+    /// Default: accounts on, Discord and email.
+    pub config: Mutex<Result<PlayerConfig>>,
+    /// What `token` and `email_verify` answer. Default: Steve, `player_token('x')`, new.
+    pub token_answer: Mutex<Result<TokenAnswer>>,
+    pub email_started: Mutex<Result<EmailStarted>>,
+    /// Default: Steve.
+    pub me: Mutex<Result<Player>>,
+    pub sign_out: Mutex<Result<()>>,
+    pub servers: Mutex<Result<Vec<YourServer>>>,
+    /// What `follow`, `unfollow` and `joined` answer.
+    pub relation: Mutex<Result<()>>,
+    pub calls: Mutex<Vec<PlayerCall>>,
+}
+
+impl FakePlayer {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            site: Mutex::new(Ok(Url::parse("https://api.example.com").unwrap())),
+            config: Mutex::new(Ok(PlayerConfig {
+                enabled: true,
+                methods: vec![SignInMethod::Discord, SignInMethod::Email],
+            })),
+            token_answer: Mutex::new(Ok(TokenAnswer {
+                token: player_token('x'),
+                player: sample_player(),
+                new_player: true,
+            })),
+            email_started: Mutex::new(Ok(EmailStarted {
+                expires_in: 600,
+                resend_in: 60,
+            })),
+            me: Mutex::new(Ok(sample_player())),
+            sign_out: Mutex::new(Ok(())),
+            servers: Mutex::new(Ok(vec![])),
+            relation: Mutex::new(Ok(())),
+            calls: Mutex::new(Vec::new()),
+        })
+    }
+
+    /// The calls made to `route`.
+    pub fn calls_to(&self, route: &str) -> Vec<PlayerCall> {
+        self.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.route == route)
+            .cloned()
+            .collect()
+    }
+
+    fn record<T: Clone + Send + 'static>(
+        &self,
+        route: &'static str,
+        engine: Url,
+        args: &[&str],
+        answer: &Mutex<Result<T>>,
+    ) -> BoxFuture<Result<T>> {
+        self.calls.lock().unwrap().push(PlayerCall {
+            route,
+            engine,
+            args: args.iter().map(|a| a.to_string()).collect(),
+        });
+        let answer = answer.lock().unwrap().clone();
+        Box::pin(async move { answer })
+    }
+}
+
+impl PlayerApi for FakePlayer {
+    fn site_engine(&self) -> BoxFuture<Result<Url>> {
+        let site = self.site.lock().unwrap().clone();
+        Box::pin(async move { site })
+    }
+    fn engine_for(&self, _link: InviteLink) -> BoxFuture<Result<Url>> {
+        self.site_engine()
+    }
+    fn config(&self, engine: Url) -> BoxFuture<Result<PlayerConfig>> {
+        self.record("config", engine, &[], &self.config)
+    }
+    fn token(
+        &self,
+        engine: Url,
+        code: String,
+        verifier: String,
+        redirect: String,
+    ) -> BoxFuture<Result<TokenAnswer>> {
+        self.record(
+            "token",
+            engine,
+            &[&code, &verifier, &redirect],
+            &self.token_answer,
+        )
+    }
+    fn email_start(
+        &self,
+        engine: Url,
+        email: String,
+        language: String,
+    ) -> BoxFuture<Result<EmailStarted>> {
+        self.record(
+            "email_start",
+            engine,
+            &[&email, &language],
+            &self.email_started,
+        )
+    }
+    fn email_verify(
+        &self,
+        engine: Url,
+        email: String,
+        code: String,
+    ) -> BoxFuture<Result<TokenAnswer>> {
+        self.record("email_verify", engine, &[&email, &code], &self.token_answer)
+    }
+    fn me(&self, engine: Url, token: String) -> BoxFuture<Result<Player>> {
+        self.record("me", engine, &[&token], &self.me)
+    }
+    fn sign_out(&self, engine: Url, token: String) -> BoxFuture<Result<()>> {
+        self.record("sign_out", engine, &[&token], &self.sign_out)
+    }
+    fn servers(&self, engine: Url, token: String) -> BoxFuture<Result<Vec<YourServer>>> {
+        self.record("servers", engine, &[&token], &self.servers)
+    }
+    fn follow(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>> {
+        self.record("follow", engine, &[&token, &invite_token], &self.relation)
+    }
+    fn unfollow(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>> {
+        self.record("unfollow", engine, &[&token, &invite_token], &self.relation)
+    }
+    fn joined(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>> {
+        self.record("joined", engine, &[&token, &invite_token], &self.relation)
     }
 }
 

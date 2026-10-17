@@ -10,12 +10,12 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AppInfo, ArtChoice, Build, ContentFile, IconChoice, ImportPreview, ImportRequest,
-        InstanceArtData, JavaTest, JoinPreview, ManualProgress, NameListView, NewInstance,
-        NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents,
-        PackMod, PackStatus, PackUpdate, PlaytimeEntry, PublicServerCard, PublicServerPage,
-        RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers, ServerStatusView,
-        ServerTeam, SyncSummary,
+        AppInfo, ArtChoice, Build, ContentFile, EmailCodeSent, IconChoice, ImportPreview,
+        ImportRequest, InstanceArtData, JavaTest, JoinPreview, ManualProgress, NameListView,
+        NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest,
+        PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase,
+        PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage, RunSnapshot, ServerGame,
+        ServerNews, ServerPack, ServerPlayers, ServerStatusView, ServerTeam, SyncSummary,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -746,6 +746,12 @@ fn contract_fixtures_are_current() {
                 update: None,
             },
             AppEvent::DeepLink,
+            AppEvent::PerlandSignIn {
+                phase: PerlandSignInPhase::Waiting,
+            },
+            AppEvent::PerlandSignIn {
+                phase: PerlandSignInPhase::Exchanging,
+            },
             AppEvent::Update {
                 state: UpdateState::Ready {
                     version: "0.2.0-beta.2".into(),
@@ -763,6 +769,42 @@ fn contract_fixtures_are_current() {
     );
     check("error", sample_error());
     check("error_codes", ErrorCode::ALL);
+    check(
+        "perland_status",
+        vec![
+            PerlandStatus {
+                enabled: true,
+                methods: vec!["discord".into(), "email".into()],
+                account: None,
+            },
+            PerlandStatus {
+                enabled: true,
+                methods: vec!["discord".into(), "email".into()],
+                account: Some(PerlandAccount {
+                    name: "Steve".into(),
+                    email: Some("steve@example.com".into()),
+                    discord: true,
+                    new_player: true,
+                }),
+            },
+            PerlandStatus {
+                enabled: true,
+                methods: vec!["email".into()],
+                account: Some(PerlandAccount {
+                    name: "alex@example.com".into(),
+                    email: Some("alex@example.com".into()),
+                    discord: false,
+                    new_player: false,
+                }),
+            },
+            PerlandStatus {
+                enabled: false,
+                methods: vec![],
+                account: None,
+            },
+        ],
+    );
+    check("email_code_sent", EmailCodeSent { resend_in: 60 });
     check(
         "new_instance",
         NewInstance {
