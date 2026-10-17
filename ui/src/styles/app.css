@@ -2435,6 +2435,22 @@
   .server-tile-facts .invite-only > svg {
     margin-top: 0.0625rem;
   }
+  /* A warning line on the owner's free server (deletion soon, out of space): a 600-weight sentence led by the coral
+     warning diamond, as on the Join screen. Never amber, never a card of its own. */
+  .server-tile-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .server-tile-note > svg {
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    margin-top: 0.125rem;
+    color: var(--color-coral);
+  }
   .server-tile-address {
     display: flex;
     flex-wrap: wrap;

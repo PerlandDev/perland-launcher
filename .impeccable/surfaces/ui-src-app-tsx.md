@@ -29,6 +29,7 @@ related_targets: ["ui/src"]
 - **Create a server for friends (#49), decided 2026-10-17:**
   - *The entry is a slot, not a banner.* The flat empty slot with one line and a raised key; the reason line takes the same slot when creating isn't possible. Nothing lit.
   - *Three steps, one dialog.* The heading names the step; no stepper or numbers. Each step has one lit button (Create, then Play now); the link sits in a well with a ghost Copy.
+  - *The owner card is the same tile.* Warnings are coral-diamond sentences under the head, not a banner; the status words replace the readout's word; Delete server is a danger item in the card's ⋯ menu behind the standard confirm. Play stays the only amber.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract

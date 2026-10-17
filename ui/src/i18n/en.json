@@ -580,6 +580,19 @@
       "not_modpack": "This isn't a modpack.",
       "loader": "Free servers can't run this modpack's loader.",
       "too_large": "This modpack is too large for a free server."
+    },
+    "card": {
+      "creating": "Being created…",
+      "deleting": "Being deleted…",
+      "deletes": "Deleted on {{date}} unless someone plays.",
+      "outOfSpace": "It's out of space and stays off."
+    },
+    "delete": {
+      "action": "Delete server",
+      "title": "Delete {{name}}?",
+      "body": "The world is deleted too. You can create a new server afterwards.",
+      "confirm": "Delete server",
+      "deleting": "Deleting…"
     }
   },
   "news": {

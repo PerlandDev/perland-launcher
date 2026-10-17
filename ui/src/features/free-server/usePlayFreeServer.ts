@@ -21,11 +21,12 @@ export function usePlayFreeServer(onStarted?: () => void) {
       mounted.current = false;
     };
   }, []);
-  const run = () => {
-    if (running.current) return;
+  /** Resolves once the attempt is over (it never rejects: errors are toasts). */
+  const run = (): Promise<void> => {
+    if (running.current) return Promise.resolve();
     running.current = true;
     setBusy(true);
-    void (async () => {
+    return (async () => {
       let id: string | null = null;
       try {
         id = await freePlay.mutateAsync();

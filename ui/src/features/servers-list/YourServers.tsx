@@ -3,12 +3,13 @@ import { useTranslation } from 'react-i18next';
 import type { YourServerCard } from '../../ipc/schema';
 import { useFreeServer, useUnfollow } from '../../state/queries';
 import { navigate } from '../../state/route';
+import { FreeServerCard } from '../free-server/FreeServerCard';
 import { FreeServerEntry } from '../free-server/FreeServerEntry';
 import { PublicServerCard } from './PublicServerCard';
 import { useYours } from './yours';
 
-/** The slot above Public servers: the free-server entry while free servers are on, then the player's own servers (Owner,
- *  Invited, then followed), each with the public card's Play. Nothing while it loads or holds neither; signed out, one quiet line pointing to Accounts, only while accounts are on. */
+/** The slot above Public servers: the free-server entry while free servers are on, then the player's own servers (their free
+ *  server first, then Owner, Invited and followed), each with the public card's Play. Nothing while it loads or holds neither; signed out, one quiet line pointing to Accounts, only while accounts are on. */
 export function YourServers() {
   const { t } = useTranslation();
   const { status, servers } = useYours();
@@ -36,6 +37,15 @@ export function YourServers() {
     if (document.activeElement !== null && document.activeElement !== document.body) return;
     (heading.current ?? document.getElementById(PUBLIC_HEADING))?.focus();
   }, [servers, unfollowed]);
+  // The free server went through its Delete: its card (and the dialog that held focus) is gone, so focus goes to the heading.
+  const deleted = useRef(false);
+  const own = free?.server ?? null;
+  useEffect(() => {
+    if (!deleted.current || own) return;
+    deleted.current = false;
+    if (document.activeElement !== null && document.activeElement !== document.body) return;
+    heading.current?.focus();
+  }, [own]);
   if (!status?.enabled) return null;
   if (!status.account) {
     return (
@@ -48,15 +58,22 @@ export function YourServers() {
     );
   }
   if (!servers?.length && !free) return null;
+  // The app already leaves the free server out of /servers; the same card is still never drawn twice.
+  const others = (servers ?? []).filter((card) => !own || own.token === '' || card.token !== own.token);
   return (
     <section className="grid gap-4" aria-labelledby="your-servers">
       <h2 ref={heading} id="your-servers" tabIndex={-1} className="text-[1.125rem] leading-tight font-bold">
         {t('servers.yours.title')}
       </h2>
       {free && <FreeServerEntry page={free} />}
-      {servers && servers.length > 0 && (
+      {(own || others.length > 0) && (
         <ul className="servers-grid">
-          {servers.map((card) => (
+          {own && (
+            <li key="free-server" className="grid">
+              <FreeServerCard server={own} onDeleted={() => (deleted.current = true)} />
+            </li>
+          )}
+          {others.map((card) => (
             <li key={card.token} className="grid">
               <PublicServerCard
                 card={card}

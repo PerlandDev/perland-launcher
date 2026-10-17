@@ -580,6 +580,19 @@
       "not_modpack": "Esto no es un modpack.",
       "loader": "Los servidores gratis no pueden usar el loader de este modpack.",
       "too_large": "Este modpack es demasiado grande para un servidor gratis."
+    },
+    "card": {
+      "creating": "Se está creando…",
+      "deleting": "Se está eliminando…",
+      "deletes": "Se eliminará el {{date}} si nadie juega.",
+      "outOfSpace": "Se quedó sin espacio y seguirá apagado."
+    },
+    "delete": {
+      "action": "Eliminar servidor",
+      "title": "¿Eliminar {{name}}?",
+      "body": "El mundo también se elimina. Después puedes crear un servidor nuevo.",
+      "confirm": "Eliminar servidor",
+      "deleting": "Eliminando…"
     }
   },
   "news": {
