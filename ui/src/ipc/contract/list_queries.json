@@ -1,0 +1,22 @@
+[
+  {
+    "sort": "players",
+    "modded": null,
+    "minecraft": null,
+    "hasRoom": false,
+    "category": null,
+    "language": null,
+    "region": null,
+    "offset": 0
+  },
+  {
+    "sort": "newest",
+    "modded": true,
+    "minecraft": "1.20.1",
+    "hasRoom": true,
+    "category": "survival",
+    "language": "es",
+    "region": "sa",
+    "offset": 50
+  }
+]

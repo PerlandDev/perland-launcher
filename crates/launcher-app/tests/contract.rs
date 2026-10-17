@@ -40,7 +40,7 @@ use launcher_core::{
         loaders::LoaderKind,
     },
     mods::LocalMod,
-    public_list::Facets,
+    public_list::{Facets, ListQuery, ListSort},
     settings::{IconShape, Lang, Settings, Theme, UiFont},
     sync::ManualFile,
     ErrorCode, LauncherError,
@@ -900,6 +900,22 @@ fn contract_fixtures_are_current() {
             sort: SortIndex::Relevance,
             offset: 0,
         }],
+    );
+    check(
+        "list_queries",
+        vec![
+            ListQuery::default(),
+            ListQuery {
+                sort: ListSort::Newest,
+                modded: Some(true),
+                minecraft: Some("1.20.1".into()),
+                has_room: true,
+                category: Some("survival".into()),
+                language: Some("es".into()),
+                region: Some("sa".into()),
+                offset: 50,
+            },
+        ],
     );
     check(
         "plan_requests",

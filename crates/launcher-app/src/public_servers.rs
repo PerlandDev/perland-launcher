@@ -14,6 +14,7 @@ use crate::{
     dto::{PublicServerCard, PublicServerPage, ServerGame, ServerPack, ServerPlayers},
     events::Host,
     runner::Runner,
+    servers::server_source,
 };
 
 fn owned(s: &Option<String>) -> Option<String> {
@@ -25,14 +26,23 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// `instance` the instance that already joins it (compared by canonical invite).
     pub async fn servers_list(&self, query: ListQuery) -> Result<PublicServerPage> {
         let fetched = self.runner.public_page(query).await?;
+        // One look at the instances for the whole page: each server instance's canonical invite.
+        let joined: Vec<(String, String)> = self
+            .instances
+            .list()
+            .await?
+            .into_iter()
+            .filter_map(|i| server_source(&i).map(|(saved, _)| (saved.canonical(), i.id)))
+            .collect();
         let mut servers = Vec::with_capacity(fetched.page.servers.len());
         for server in &fetched.page.servers {
-            let link = self.runner.public_invite(server);
-            let instance = match &link {
-                Some(link) => self.instance_for_invite(link).await?.map(|i| i.id),
-                None => None,
-            };
-            let invite = link.as_ref().map(|l| l.canonical());
+            let invite = self.runner.public_invite(server).map(|l| l.canonical());
+            let instance = invite.as_ref().and_then(|invite| {
+                joined
+                    .iter()
+                    .find(|(saved, _)| saved == invite)
+                    .map(|(_, id)| id.clone())
+            });
             let address =
                 ServerAddress::from_view(&server.address, &fetched.engine).map(|a| a.display());
             servers.push(card(server, invite, address, instance));

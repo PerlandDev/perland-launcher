@@ -19,6 +19,7 @@ import instanceFx from './contract/instance.json';
 import instanceListing from './contract/instance_listing.json';
 import javaTest from './contract/java_test.json';
 import joinPreviewFx from './contract/join_preview.json';
+import listQueries from './contract/list_queries.json';
 import loaderVersions from './contract/loader_versions.json';
 import localMods from './contract/local_mods.json';
 import manualProgress from './contract/manual_progress.json';
@@ -82,6 +83,7 @@ const cases: [string, ZodType, unknown][] = [
   ['install_plans', s.installPlanView.array(), installPlans],
   ['install_result', s.installResult, installResult],
   ['search_requests', s.searchRequest.array(), searchRequests],
+  ['list_queries', s.listQuery.array(), listQueries],
   ['plan_requests', s.browsePlanRequest.array(), planRequests],
 ];
 
