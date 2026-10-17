@@ -12,6 +12,7 @@ mod live_tests;
 pub mod logged;
 pub mod logs;
 mod packs;
+mod public_servers;
 pub mod runner;
 mod runs;
 mod servers;

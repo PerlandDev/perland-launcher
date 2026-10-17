@@ -24,6 +24,8 @@ pub enum RunStateKind {
     /// Bringing the pack's files in line.
     Syncing,
     Preparing,
+    /// Waiting for a sleeping server to start before the game joins it.
+    Waking,
     Running,
     Stopping,
 }

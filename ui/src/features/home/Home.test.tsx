@@ -164,6 +164,16 @@ describe('Home', () => {
     expect(sent(calls, 'stop')).toEqual([{ id: 'sky-islands' }]);
   });
 
+  it('labels the waking phase on the Play button, with no blocks in the meter', async () => {
+    const { user, calls } = renderApp(<Home id="sky-islands" />);
+    await screen.findByRole('heading', { name: 'Sky Islands' });
+    act(() => runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'waking', exit: null, update: null }));
+    const button = screen.getByRole('button', { name: 'Cancel: Starting the server…' });
+    expect(button).toHaveAttribute('data-state', 'queued');
+    await user.click(button);
+    expect(sent(calls, 'stop')).toEqual([{ id: 'sky-islands' }]);
+  });
+
   it('shows checking and installing on the Play button', async () => {
     renderApp(<Home id="sky-islands" />);
     await screen.findByRole('heading', { name: 'Sky Islands' });

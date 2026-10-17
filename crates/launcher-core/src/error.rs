@@ -70,7 +70,8 @@ error_codes! {
     // server invites (join by link)
     InviteLinkInvalid, InviteGone, InviteUnsupported, InviteSiteUnreachable, InviteRateLimited,
     LinkHasPack,
-    ServerPackUnavailable, ServerPackPending, ServerAddressUnknown, ServerListFailed,
+    ServerPackUnavailable, ServerPackPending, ServerAddressUnknown, ServerListFailed, ServerListClosed,
+    ServerWakeFailed,
     // launcher updates
     LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
     // importing from another launcher
@@ -257,6 +258,8 @@ mod tests {
             (ErrorCode::ServerPackPending, "server_pack_pending"),
             (ErrorCode::ServerAddressUnknown, "server_address_unknown"),
             (ErrorCode::ServerListFailed, "server_list_failed"),
+            (ErrorCode::ServerListClosed, "server_list_closed"),
+            (ErrorCode::ServerWakeFailed, "server_wake_failed"),
             (ErrorCode::LinkHasPack, "link_has_pack"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);

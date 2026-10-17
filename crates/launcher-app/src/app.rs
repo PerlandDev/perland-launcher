@@ -73,6 +73,9 @@ pub(crate) struct Run {
     pub(crate) offer: Option<PackUpdate>,
     /// The banner's Update (no game): a Stop still reports the run as update-only.
     pub(crate) update_only: bool,
+    /// What this run's sync changed, set before a wait that a Stop aborts (`waking`), so the
+    /// cancelled run still reports it.
+    pub(crate) synced: Option<crate::dto::SyncSummary>,
 }
 
 /// Files the last sync couldn't download, while the player fetches them by hand.

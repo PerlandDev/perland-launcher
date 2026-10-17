@@ -1,0 +1,104 @@
+{
+  "servers": [
+    {
+      "token": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "invite": "https://play.example.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "joinable": true,
+      "address": "play.example.com:25566",
+      "name": "Survival",
+      "iconVersion": "1a2b3c4d5e6f7a8b",
+      "game": {
+        "version": "1.20.1",
+        "loader": "fabric",
+        "loaderVersion": "0.16.14"
+      },
+      "modded": true,
+      "status": "online",
+      "players": {
+        "online": 7,
+        "max": 20
+      },
+      "whitelisted": false,
+      "pack": {
+        "name": "Survival Pack",
+        "version": "1.0.4",
+        "modCount": 142,
+        "state": "ready"
+      },
+      "categories": [
+        "survival",
+        "modded"
+      ],
+      "language": "en",
+      "region": "eu",
+      "instance": "survival"
+    },
+    {
+      "token": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "invite": "https://play.example.com/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      "joinable": true,
+      "address": "play.example.com:25567",
+      "name": "Creative",
+      "iconVersion": null,
+      "game": {
+        "version": "1.21.1",
+        "loader": null,
+        "loaderVersion": null
+      },
+      "modded": false,
+      "status": "sleeping",
+      "players": null,
+      "whitelisted": true,
+      "pack": null,
+      "categories": [
+        "creative"
+      ],
+      "language": "es",
+      "region": null,
+      "instance": null
+    },
+    {
+      "token": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+      "invite": "https://play.example.com/CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
+      "joinable": false,
+      "address": "play.example.com:25568",
+      "name": "Tech",
+      "iconVersion": "9f8e7d6c5b4a3921",
+      "game": {
+        "version": "1.20.1",
+        "loader": "fabric",
+        "loaderVersion": null
+      },
+      "modded": true,
+      "status": "starting",
+      "players": {
+        "online": 0,
+        "max": null
+      },
+      "whitelisted": false,
+      "pack": null,
+      "categories": [],
+      "language": "en",
+      "region": null,
+      "instance": null
+    }
+  ],
+  "total": 3,
+  "facets": {
+    "categories": [
+      "creative",
+      "survival"
+    ],
+    "languages": [
+      "en",
+      "es"
+    ],
+    "minecraftVersions": [
+      "1.21.1",
+      "1.20.1"
+    ],
+    "regions": [
+      "eu"
+    ]
+  }
+}

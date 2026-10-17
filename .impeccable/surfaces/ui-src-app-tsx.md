@@ -17,6 +17,11 @@ related_targets: ["ui/src"]
   - *The rail's server mark is not a lamp.* It is three pixel signal bars in a ground socket at the cabinet's top-right, never lime. The bar count carries the state (online 3 ink, starting 2 blue, sleeping 1 dim, offline 0 plus a coral flatline, unknown 0), and the hover title adds the word. The lime Playing LED stays a solid square at bottom-right, so shape, corner and hue all differ.
   - *One lit button per view.* Home: Play only; the server plates' actions (Copy, Use a new link) are ghost or raised. Join server: "Check link" is lit only until a server card shows, then the action row's Add server / Open / Use this link is the only amber. Instance settings: Save.
   - *Status in words.* The LED (lime OK, blue starting, coral offline, hollow sleeping/unknown) always rides its word.
+- **Servers screen (public server list, #50), decided 2026-10-17:**
+  - *Cards, not rows.* The spec asks for a card grid, so this is the one place servers are boxed: flat `panel` tiles, nothing lit at rest.
+  - *Play lights per card.* Each card's Play is raised at rest and turns amber only while its card is hovered or focused; the grid never shows two lit buttons.
+  - *Filters are keys, not a form.* Sort and the filters are small select keys and a pressed-key toggle in one wrapping row, so at 960 × 600 the first row of cards stays in view; a set filter sinks with the lime lamp.
+  - *Closed is calm.* An Engine with the list off reads "isn't open yet" in the flat empty slot: no coral, no alert, no Retry.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract

@@ -18,7 +18,7 @@ import versionsFx from './contract/versions.json';
 import { fitFor, fitsVersion, pickDefault } from '../features/browse/compat';
 import { APP_EVENT } from './events';
 import { inviteCanonical } from './inviteLink';
-import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, type ServerScenario } from './mockServers';
+import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
 import type {
   AccountsFile,
   ArtChoice,
@@ -516,6 +516,14 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
       bytes: done * 7_800_000,
     });
     await wait(40);
+  }
+  if (wakesOnPlay(instance)) {
+    // A sleeping server: the game waits for its waker to start it, after the install.
+    setState(state, id, 'waking');
+    for (let n = 0; n < 6; n++) {
+      await wait(250);
+      if (run.cancelled) return;
+    }
   }
   setState(state, id, 'running');
   const started = Date.now();
@@ -1029,7 +1037,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const id = String(args.id);
       const run = state.runs.get(id);
       if (!run) return null;
-      if (['checking', 'asking', 'queued', 'preparing'].includes(run.state)) {
+      if (['checking', 'asking', 'queued', 'preparing', 'waking'].includes(run.state)) {
         run.cancelled = true;
         run.answer?.(false);
         state.runs.delete(id);

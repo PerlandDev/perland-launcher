@@ -12,6 +12,7 @@ use launcher_core::{
     invite::{non_empty, shown_invite, EngineView, InviteLink, InvitePlayers},
     meta::loaders::LoaderKind,
     mods::LocalMod,
+    public_list::Facets,
     sync::{ManualFile, PendingUpdate, SyncReport},
     LauncherError,
 };
@@ -393,6 +394,53 @@ impl JoinPreview {
             icon,
             existing,
         }
+    }
+}
+
+/// One page of Perland's public server list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicServerPage {
+    pub servers: Vec<PublicServerCard>,
+    /// How many servers the Engine lists for these filters, over all pages.
+    pub total: u32,
+    pub facets: Facets,
+}
+
+/// A listed server. `token` is its invite's credential: it reaches the window (it keys the icon
+/// request) and nothing else.
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicServerCard {
+    pub token: String,
+    /// The canonical invite Play joins, if the server has one.
+    pub invite: Option<String>,
+    /// Can Play join it? False for a modded server without a modpack.
+    pub joinable: bool,
+    /// `host:port`, the form players type.
+    pub address: Option<String>,
+    pub name: String,
+    /// Present only when the server has an icon.
+    pub icon_version: Option<String>,
+    pub game: ServerGame,
+    pub modded: bool,
+    pub status: ServerStatus,
+    pub players: Option<ServerPlayers>,
+    pub whitelisted: bool,
+    pub pack: Option<ServerPack>,
+    pub categories: Vec<String>,
+    pub language: String,
+    pub region: Option<String>,
+    /// The instance that already joins this server, if any.
+    pub instance: Option<String>,
+}
+
+// Manual Debug: the token is a credential.
+impl fmt::Debug for PublicServerCard {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PublicServerCard")
+            .field("name", &self.name)
+            .finish_non_exhaustive()
     }
 }
 

@@ -5,8 +5,8 @@ use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
     AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, IconChoice, ImportPreview, ImportRequest,
     InstallPlanView, InstallResult, InstanceArtData, JavaTest, JoinPreview, ManualProgress,
-    NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus, PlaytimeEntry, RunSnapshot,
-    SearchRequest, ServerStatusView,
+    NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus, PlaytimeEntry,
+    PublicServerPage, RunSnapshot, SearchRequest, ServerStatusView,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -406,6 +406,23 @@ pub fn open_link(app: AppHandle, url: String) -> Res<()> {
 #[tauri::command]
 pub async fn join_preview(core: CoreState<'_>, link: String) -> Res<JoinPreview> {
     logged("join_preview", core.join_preview(&link).await)
+}
+
+#[tauri::command]
+pub async fn servers_list(
+    core: CoreState<'_>,
+    query: launcher_core::public_list::ListQuery,
+) -> Res<PublicServerPage> {
+    logged("servers_list", core.servers_list(query).await)
+}
+
+#[tauri::command]
+pub async fn servers_icon(
+    core: CoreState<'_>,
+    token: String,
+    icon_version: String,
+) -> Res<Option<String>> {
+    Ok(core.servers_icon(&token, &icon_version).await)
 }
 
 #[tauri::command]

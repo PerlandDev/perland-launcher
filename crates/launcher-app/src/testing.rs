@@ -33,6 +33,8 @@ use launcher_core::{
     launch::GameExit,
     locks::InstanceLock,
     meta::loaders::LoaderKind,
+    public_list::{FetchedPage, ListQuery, PublicServer},
+    server_wake::{Knock, Ping, WaitEnd},
     sources::{
         DesiredState, FileMode, FileSource, OptionalFile, PackAbout, PackFile, PackInput, Side,
         UpdateCheck,
@@ -44,7 +46,7 @@ use launcher_core::{
     },
     ErrorCode, LauncherError, Result,
 };
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::{oneshot, Notify, Semaphore};
 
 use crate::{
     app::AppCore,
@@ -429,10 +431,34 @@ pub(crate) struct FakeRunner {
     pub engine_hints: Mutex<Vec<Option<String>>>,
     /// What `invite_icon` answers.
     pub icon: Mutex<Option<Vec<u8>>>,
+    /// What `public_page` answers (none: `server_list_closed`).
+    pub public_page: Mutex<Option<Result<FetchedPage>>>,
+    /// The queries `public_page` was asked.
+    pub public_queries: Mutex<Vec<ListQuery>>,
+    /// Whether `public_invite` finds a link (it builds `play.example.com/<token>`).
+    pub public_invites: Mutex<bool>,
     /// The server each `start` was told to join.
     pub started_joins: Mutex<Vec<Option<ServerAddress>>>,
     /// What `check_update` reports per instance id (none: up to date).
     pub update_checks: Mutex<HashMap<String, UpdateCheck>>,
+    /// What `server_ping` answers (default: nobody), and each address it was asked.
+    pub ping_answer: Mutex<Ping>,
+    pub pings: Mutex<Vec<ServerAddress>>,
+    /// What `server_knock` answers (default: woken), and each (address, name) it was asked.
+    pub knock_answer: Mutex<Result<Knock>>,
+    pub knocks: Mutex<Vec<(ServerAddress, String)>>,
+    /// Signalled by each `server_knock` call.
+    pub knocked: Notify,
+    /// While set, `server_knock` never returns.
+    pub hold_knock: AtomicBool,
+    /// What `server_wait` answers (default: up), and each address it waited on.
+    pub wait_answer: Mutex<WaitEnd>,
+    pub waits: Mutex<Vec<ServerAddress>>,
+    /// While set, `server_wait` waits for a permit from `open_wait_gate` (or a cancel).
+    pub hold_wait: AtomicBool,
+    wait_gate: Arc<Semaphore>,
+    /// Signalled once a held `server_wait` is parked.
+    pub waiting: Arc<Notify>,
 }
 
 impl FakeRunner {
@@ -459,9 +485,28 @@ impl FakeRunner {
             view_reads: AtomicUsize::new(0),
             engine_hints: Mutex::new(Vec::new()),
             icon: Mutex::new(None),
+            public_page: Mutex::new(None),
+            public_queries: Mutex::new(Vec::new()),
+            public_invites: Mutex::new(true),
             started_joins: Mutex::new(Vec::new()),
             update_checks: Mutex::new(HashMap::new()),
+            ping_answer: Mutex::new(Ping::NoAnswer),
+            pings: Mutex::new(Vec::new()),
+            knock_answer: Mutex::new(Ok(Knock::Woken)),
+            knocks: Mutex::new(Vec::new()),
+            knocked: Notify::new(),
+            hold_knock: AtomicBool::new(false),
+            wait_answer: Mutex::new(WaitEnd::Up),
+            waits: Mutex::new(Vec::new()),
+            hold_wait: AtomicBool::new(false),
+            wait_gate: Arc::new(Semaphore::new(0)),
+            waiting: Arc::new(Notify::new()),
         })
+    }
+
+    /// Let `n` held waits finish (see `hold_wait`).
+    pub fn open_wait_gate(&self, n: usize) {
+        self.wait_gate.add_permits(n);
     }
 
     /// Let `n` held syncs finish (see `hold_sync`).
@@ -697,8 +742,67 @@ impl Runner for FakeRunner {
         Box::pin(async move { icon })
     }
 
+    fn public_page(&self, query: ListQuery) -> BoxFuture<Result<FetchedPage>> {
+        self.public_queries.lock().unwrap().push(query);
+        let answer = self.public_page.lock().unwrap().clone().unwrap_or_else(|| {
+            Err(LauncherError::pack(
+                ErrorCode::ServerListClosed,
+                "The server list isn't open yet",
+            ))
+        });
+        Box::pin(async move { answer })
+    }
+
+    fn public_icon(&self, _token: String, _icon_version: String) -> BoxFuture<Option<Vec<u8>>> {
+        let icon = self.icon.lock().unwrap().clone();
+        Box::pin(async move { icon })
+    }
+
+    fn public_invite(&self, server: &PublicServer) -> Option<InviteLink> {
+        if !*self.public_invites.lock().unwrap() {
+            return None;
+        }
+        InviteLink::parse(&format!("https://play.example.com/{}", server.token)).ok()
+    }
+
     fn browser(&self) -> Arc<dyn Browser> {
         self.browser.clone()
+    }
+
+    fn server_ping(&self, address: ServerAddress) -> BoxFuture<Ping> {
+        self.pings.lock().unwrap().push(address);
+        let answer = *self.ping_answer.lock().unwrap();
+        Box::pin(async move { answer })
+    }
+
+    fn server_knock(&self, address: ServerAddress, name: String) -> BoxFuture<Result<Knock>> {
+        self.knocks.lock().unwrap().push((address, name));
+        self.knocked.notify_one();
+        let answer = self.knock_answer.lock().unwrap().clone();
+        let hold = self.hold_knock.load(Ordering::SeqCst);
+        Box::pin(async move {
+            if hold {
+                std::future::pending::<()>().await;
+            }
+            answer
+        })
+    }
+
+    fn server_wait(&self, address: ServerAddress, cancel: Cancel) -> BoxFuture<WaitEnd> {
+        self.waits.lock().unwrap().push(address);
+        let answer = *self.wait_answer.lock().unwrap();
+        let hold = self.hold_wait.load(Ordering::SeqCst);
+        let (gate, waiting) = (self.wait_gate.clone(), self.waiting.clone());
+        Box::pin(async move {
+            if hold {
+                waiting.notify_one();
+                tokio::select! {
+                    permit = gate.acquire() => permit.expect("gate is never closed").forget(),
+                    _ = cancel.cancelled() => return WaitEnd::Cancelled,
+                }
+            }
+            answer
+        })
     }
 }
 

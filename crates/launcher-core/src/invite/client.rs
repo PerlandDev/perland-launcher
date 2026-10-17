@@ -139,6 +139,16 @@ fn site_unreachable(host: &str, why: &str) -> LauncherError {
     .with_detail(why)
 }
 
+/// The public list isn't served: the feature is off, the Engine predates it, or its site names
+/// no Engine. A calm state, not a failure.
+pub(crate) fn server_list_closed(host: &str) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::ServerListClosed,
+        "The server list isn't open yet. Check back soon.",
+    )
+    .with_param("host", host)
+}
+
 pub(crate) fn gone(host: &str) -> LauncherError {
     LauncherError::pack(
         ErrorCode::InviteGone,
@@ -166,7 +176,7 @@ pub(crate) fn host_trouble(host: &str, status: impl Display) -> LauncherError {
     .with_fix("Try again in a few minutes")
 }
 
-fn unexpected(host: &str, why: &str) -> LauncherError {
+pub(crate) fn unexpected(host: &str, why: &str) -> LauncherError {
     LauncherError::loader(
         ErrorCode::MetaUnexpected,
         format!("Unexpected data from {host}"),
@@ -264,11 +274,24 @@ impl InviteClient {
     }
 
     fn forget_engine(&self, link: &InviteLink) {
+        self.forget_origin(&link.origin());
+    }
+
+    pub(crate) fn forget_origin(&self, origin: &str) {
         self.state
             .engines
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .remove(&link.origin());
+            .remove(origin);
+    }
+
+    fn known_origin(&self, origin: &str) -> Option<(Url, Learned)> {
+        self.state
+            .engines
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(origin)
+            .cloned()
     }
 
     /// The Engine behind `link`'s invite site: `<origin>/config.json` → `engineUrl`, cached
@@ -277,26 +300,37 @@ impl InviteClient {
         Ok(self.known_engine(link).await?.0)
     }
 
-    async fn known_engine(&self, link: &InviteLink) -> Result<(Url, Learned)> {
-        let known = self
-            .state
-            .engines
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(&link.origin())
-            .cloned();
-        match known {
-            Some(known) => Ok(known),
-            None => Ok((self.ask_site(link).await?, Learned::Site)),
+    /// The Engine behind a Perland site (`site` is an origin): the same cache and rules as
+    /// `engine_for`, except that a `config.json` that answers but names no Engine is
+    /// `server_list_closed`, not an unreachable invite site.
+    pub async fn engine_for_site(&self, site: &Url) -> Result<Url> {
+        let origin = site.origin().ascii_serialization();
+        match self.known_origin(&origin) {
+            Some((engine, _)) => Ok(engine),
+            None => {
+                let host = site.host_str().unwrap_or("the site");
+                self.ask_site(&origin, host, true).await
+            }
         }
     }
 
-    /// `<origin>/config.json` now, remembered as the site's own answer.
-    async fn ask_site(&self, link: &InviteLink) -> Result<Url> {
-        let host = link.host();
+    async fn known_engine(&self, link: &InviteLink) -> Result<(Url, Learned)> {
+        match self.known_origin(&link.origin()) {
+            Some(known) => Ok(known),
+            None => Ok((self.ask_origin(link).await?, Learned::Site)),
+        }
+    }
+
+    async fn ask_origin(&self, link: &InviteLink) -> Result<Url> {
+        self.ask_site(&link.origin(), link.host(), false).await
+    }
+
+    /// `<origin>/config.json` now, remembered as the site's own answer. `host` is for errors
+    /// only. With `list`, a config naming no usable Engine is `server_list_closed`.
+    async fn ask_site(&self, origin: &str, host: &str, list: bool) -> Result<Url> {
         let response = self
             .http
-            .get(format!("{}/config.json", link.origin()))
+            .get(format!("{origin}/config.json"))
             .timeout(self.timing.request_timeout)
             .send()
             .await
@@ -319,16 +353,18 @@ impl InviteClient {
             .ok_or_else(|| site_unreachable(host, "config.json is too large"))?;
         let config: SiteConfig = serde_json::from_slice(&body)
             .map_err(|_| site_unreachable(host, "config.json isn't valid JSON"))?;
-        let engine = config
-            .engine_url
-            .as_deref()
-            .and_then(check_engine_url)
-            .ok_or_else(|| site_unreachable(host, "config.json has no https engineUrl"))?;
+        let engine = match config.engine_url.as_deref().and_then(check_engine_url) {
+            Some(engine) => engine,
+            None if list => return Err(server_list_closed(host)),
+            None => {
+                return Err(site_unreachable(host, "config.json has no https engineUrl"));
+            }
+        };
         self.state
             .engines
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(link.origin(), (engine.clone(), Learned::Site));
+            .insert(origin.to_string(), (engine.clone(), Learned::Site));
         Ok(engine)
     }
 
@@ -353,7 +389,7 @@ impl InviteClient {
                 if learned == Learned::Saved
                     && matches!(e.code, ErrorCode::Offline | ErrorCode::InviteGone) =>
             {
-                match self.ask_site(link).await {
+                match self.ask_origin(link).await {
                     Ok(moved) if moved != engine => self.view_at(&moved, link, fresh).await,
                     // The same Engine, or no answer: the first error stands.
                     _ => Err(e),

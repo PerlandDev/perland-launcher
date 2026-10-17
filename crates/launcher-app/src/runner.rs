@@ -1,19 +1,26 @@
 //! The seam between the app's run state machine and actually installing and starting a game.
-use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc};
+use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc, time::Duration};
 
 use launcher_core::{
     accounts::Session,
     events::EventSink,
     install::Installer,
     instances::{Instance, InstanceStore, ServerAddress},
-    invite::{EngineView, InviteLink},
+    invite::{EngineView, InviteLink, Url},
     launch::{GameExit, GameKiller, GameProcess},
     locks::InstanceLock,
     play::{self, Prepared, StartSpec},
+    public_list::{self, FetchedPage, ListQuery, PublicListClient, PublicServer},
+    server_wake::{self, Knock, Ping, WaitEnd},
     sources::{PackInput, UpdateCheck},
     sync::{Cancel, Ensured, ManualFile, PendingUpdate, Syncer},
     Result,
 };
+
+/// How often a woken server is pinged while the run waits for it.
+pub const WAKE_EVERY: Duration = Duration::from_secs(2);
+/// How long a run waits for a woken server before the game connects anyway.
+pub const WAKE_LIMIT: Duration = Duration::from_secs(5 * 60);
 
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
@@ -86,6 +93,18 @@ pub trait Runner: Send + Sync + 'static {
     ) -> BoxFuture<Result<EngineView>>;
     /// The invite's icon PNG, or `None`.
     fn invite_icon(&self, link: InviteLink) -> BoxFuture<Option<Vec<u8>>>;
+    /// One page of Perland's public server list, and the Engine it came from.
+    fn public_page(&self, query: ListQuery) -> BoxFuture<Result<FetchedPage>>;
+    /// A listed server's icon PNG, or `None`.
+    fn public_icon(&self, token: String, icon_version: String) -> BoxFuture<Option<Vec<u8>>>;
+    /// The invite Play joins for a listed server.
+    fn public_invite(&self, server: &PublicServer) -> Option<InviteLink>;
+    /// Who answers a status ping at `address`. A ping never wakes a server.
+    fn server_ping(&self, address: ServerAddress) -> BoxFuture<Ping>;
+    /// Join as `name` so a sleeping server's waker starts the server; its kick says how it went.
+    fn server_knock(&self, address: ServerAddress, name: String) -> BoxFuture<Result<Knock>>;
+    /// Ping every [`WAKE_EVERY`] until the real server answers, for at most [`WAKE_LIMIT`].
+    fn server_wait(&self, address: ServerAddress, cancel: Cancel) -> BoxFuture<WaitEnd>;
 }
 
 pub struct CoreRunner {
@@ -93,6 +112,7 @@ pub struct CoreRunner {
     syncer: Arc<Syncer>,
     launcher_version: String,
     browser: Arc<dyn crate::browser::Browser>,
+    public: PublicListClient,
 }
 
 impl CoreRunner {
@@ -106,12 +126,24 @@ impl CoreRunner {
             browse,
             installer.meta.clone(),
         ));
+        let public = PublicListClient::new(
+            syncer.sources.invites.clone(),
+            public_list::site_url(public_list::DEFAULT_SITE)
+                .expect("the default site is a valid Perland site"),
+        );
         Self {
             installer,
             syncer: Arc::new(syncer),
             launcher_version,
             browser,
+            public,
         }
+    }
+    /// Read the public server list from another Perland site (a staging build, or a developer's
+    /// own). `site` should come from [`public_list::site_url`].
+    pub fn with_site(mut self, site: Url) -> Self {
+        self.public = PublicListClient::new(self.syncer.sources.invites.clone(), site);
+        self
     }
     pub fn installer(&self) -> &Arc<Installer> {
         &self.installer
@@ -217,6 +249,34 @@ impl Runner for CoreRunner {
     fn invite_icon(&self, link: InviteLink) -> BoxFuture<Option<Vec<u8>>> {
         let invites = self.syncer.sources.invites.clone();
         Box::pin(async move { invites.icon(&link).await })
+    }
+
+    fn public_page(&self, query: ListQuery) -> BoxFuture<Result<FetchedPage>> {
+        let public = self.public.clone();
+        Box::pin(async move { public.page(&query).await })
+    }
+
+    fn public_icon(&self, token: String, icon_version: String) -> BoxFuture<Option<Vec<u8>>> {
+        let public = self.public.clone();
+        Box::pin(async move { public.icon(&token, &icon_version).await })
+    }
+
+    fn public_invite(&self, server: &PublicServer) -> Option<InviteLink> {
+        self.public.invite_for(server)
+    }
+
+    fn server_ping(&self, address: ServerAddress) -> BoxFuture<Ping> {
+        Box::pin(async move { server_wake::ping(&address).await })
+    }
+
+    fn server_knock(&self, address: ServerAddress, name: String) -> BoxFuture<Result<Knock>> {
+        Box::pin(async move { server_wake::knock(&address, &name).await })
+    }
+
+    fn server_wait(&self, address: ServerAddress, cancel: Cancel) -> BoxFuture<WaitEnd> {
+        Box::pin(async move {
+            server_wake::wait_until_up(&address, &cancel, WAKE_EVERY, WAKE_LIMIT).await
+        })
     }
 }
 

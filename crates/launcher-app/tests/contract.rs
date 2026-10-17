@@ -13,8 +13,8 @@ use launcher_app::{
         AppInfo, ArtChoice, Build, ContentFile, IconChoice, ImportPreview, ImportRequest,
         InstanceArtData, JavaTest, JoinPreview, ManualProgress, NewInstance, OpenTarget,
         OptionalChoice, PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate,
-        PlaytimeEntry, RunSnapshot, ServerGame, ServerPack, ServerPlayers, ServerStatusView,
-        ServerTeam, SyncSummary,
+        PlaytimeEntry, PublicServerCard, PublicServerPage, RunSnapshot, ServerGame, ServerPack,
+        ServerPlayers, ServerStatusView, ServerTeam, SyncSummary,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -40,6 +40,7 @@ use launcher_core::{
         loaders::LoaderKind,
     },
     mods::LocalMod,
+    public_list::{Facets, ListQuery, ListSort},
     settings::{IconShape, Lang, Settings, Theme, UiFont},
     sync::ManualFile,
     ErrorCode, LauncherError,
@@ -152,6 +153,98 @@ fn sample_address() -> ServerAddress {
     ServerAddress {
         host: "play.example.com".into(),
         port: 25566,
+    }
+}
+
+fn public_server_page() -> PublicServerPage {
+    let invite = |c: char| format!("https://play.example.com/{}", c.to_string().repeat(43));
+    PublicServerPage {
+        servers: vec![
+            PublicServerCard {
+                token: "A".repeat(43),
+                invite: Some(invite('A')),
+                joinable: true,
+                address: Some("play.example.com:25566".into()),
+                name: "Survival".into(),
+                icon_version: Some("1a2b3c4d5e6f7a8b".into()),
+                game: ServerGame {
+                    version: Some("1.20.1".into()),
+                    loader: Some("fabric".into()),
+                    loader_version: Some("0.16.14".into()),
+                },
+                modded: true,
+                status: ServerStatus::Online,
+                players: Some(ServerPlayers {
+                    online: 7,
+                    max: Some(20),
+                }),
+                whitelisted: false,
+                pack: Some(ServerPack {
+                    name: "Survival Pack".into(),
+                    version: Some("1.0.4".into()),
+                    mod_count: 142,
+                    state: "ready".into(),
+                }),
+                categories: vec!["survival".into(), "modded".into()],
+                language: "en".into(),
+                region: Some("eu".into()),
+                instance: Some("survival".into()),
+            },
+            PublicServerCard {
+                token: "B".repeat(43),
+                invite: Some(invite('B')),
+                joinable: true,
+                address: Some("play.example.com:25567".into()),
+                name: "Creative".into(),
+                icon_version: None,
+                game: ServerGame {
+                    version: Some("1.21.1".into()),
+                    loader: None,
+                    loader_version: None,
+                },
+                modded: false,
+                status: ServerStatus::Sleeping,
+                players: None,
+                whitelisted: true,
+                pack: None,
+                categories: vec!["creative".into()],
+                language: "es".into(),
+                region: None,
+                instance: None,
+            },
+            PublicServerCard {
+                token: "C".repeat(43),
+                invite: Some(invite('C')),
+                joinable: false,
+                address: Some("play.example.com:25568".into()),
+                name: "Tech".into(),
+                icon_version: Some("9f8e7d6c5b4a3921".into()),
+                game: ServerGame {
+                    version: Some("1.20.1".into()),
+                    loader: Some("fabric".into()),
+                    loader_version: None,
+                },
+                modded: true,
+                status: ServerStatus::Starting,
+                players: Some(ServerPlayers {
+                    online: 0,
+                    max: None,
+                }),
+                whitelisted: false,
+                pack: None,
+                categories: vec![],
+                language: "en".into(),
+                region: None,
+                instance: None,
+            },
+        ],
+        total: 3,
+        facets: Facets {
+            categories: vec!["creative".into(), "survival".into()],
+            languages: vec!["en".into(), "es".into()],
+            minecraft_versions: vec!["1.21.1".into(), "1.20.1".into()],
+            regions: vec!["eu".into()],
+        },
     }
 }
 
@@ -548,6 +641,12 @@ fn contract_fixtures_are_current() {
             },
             AppEvent::RunState {
                 instance: "asalith-fields".into(),
+                state: RunStateKind::Waking,
+                exit: None,
+                update: None,
+            },
+            AppEvent::RunState {
+                instance: "asalith-fields".into(),
                 state: RunStateKind::Idle,
                 exit: Some(ExitInfo {
                     code: Some(0),
@@ -803,6 +902,22 @@ fn contract_fixtures_are_current() {
         }],
     );
     check(
+        "list_queries",
+        vec![
+            ListQuery::default(),
+            ListQuery {
+                sort: ListSort::Newest,
+                modded: Some(true),
+                minecraft: Some("1.20.1".into()),
+                has_room: true,
+                category: Some("survival".into()),
+                language: Some("es".into()),
+                region: Some("sa".into()),
+                offset: 50,
+            },
+        ],
+    );
+    check(
         "plan_requests",
         vec![
             BrowsePlanRequest {
@@ -820,6 +935,7 @@ fn contract_fixtures_are_current() {
         ],
     );
     check("server_instance", server_instance());
+    check("public_server_page", public_server_page());
     check(
         "join_preview",
         vec![

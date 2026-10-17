@@ -19,6 +19,7 @@ import instanceFx from './contract/instance.json';
 import instanceListing from './contract/instance_listing.json';
 import javaTest from './contract/java_test.json';
 import joinPreviewFx from './contract/join_preview.json';
+import listQueries from './contract/list_queries.json';
 import loaderVersions from './contract/loader_versions.json';
 import localMods from './contract/local_mods.json';
 import manualProgress from './contract/manual_progress.json';
@@ -31,6 +32,7 @@ import packStatus from './contract/pack_status.json';
 import planRequests from './contract/plan_requests.json';
 import playtimeFx from './contract/playtime.json';
 import projectDetail from './contract/project_detail.json';
+import publicServerPage from './contract/public_server_page.json';
 import runSnapshots from './contract/run_snapshots.json';
 import searchPage from './contract/search_page.json';
 import searchRequests from './contract/search_requests.json';
@@ -70,6 +72,7 @@ const cases: [string, ZodType, unknown][] = [
   ['server_instance', s.instance, serverInstanceFx],
   ['join_preview', s.joinPreview.array(), joinPreviewFx],
   ['server_status', s.serverStatusView.array(), serverStatusFx],
+  ['public_server_page', s.publicServerPage, publicServerPage],
   ['deep_links', s.deepLink.array(), deepLinksFx],
   ['invite_links', s.inviteLinkCase.array(), inviteLinksFx],
   ['update_states', s.updateState.array(), updateStates],
@@ -80,6 +83,7 @@ const cases: [string, ZodType, unknown][] = [
   ['install_plans', s.installPlanView.array(), installPlans],
   ['install_result', s.installResult, installResult],
   ['search_requests', s.searchRequest.array(), searchRequests],
+  ['list_queries', s.listQuery.array(), listQueries],
   ['plan_requests', s.browsePlanRequest.array(), planRequests],
 ];
 

@@ -139,6 +139,13 @@
   {
     "type": "run_state",
     "instance": "asalith-fields",
+    "state": "waking",
+    "exit": null,
+    "update": null
+  },
+  {
+    "type": "run_state",
+    "instance": "asalith-fields",
     "state": "idle",
     "exit": {
       "code": 0,

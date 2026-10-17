@@ -9,6 +9,7 @@ import { ErrorCard } from '../../ui/ErrorCard';
 import { formatCount } from '../../ui/format';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Select } from '../../ui/Select';
+import { Sentinel } from '../../ui/Sentinel';
 import { useDebounced } from '../../ui/useDebounced';
 import { loaderName } from '../home/labels';
 import { categoryLabel, gameLabel } from './labels';
@@ -28,20 +29,6 @@ export function Browse({ route }: { route: BrowseRoute }) {
   if (route.project) return <ProjectPage key={route.project} route={route} project={route.project} />;
   // A new kind or scope starts from that kind's remembered filters.
   return <BrowseList key={`${route.kind}:${route.instance ?? ''}`} route={route} />;
-}
-
-function Sentinel({ onVisible }: { onVisible: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) onVisible();
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [onVisible]);
-  return <div ref={ref} aria-hidden className="h-px" />;
 }
 
 /** The wait the core asked for; anything unusable falls back to 10 s so the countdown still ends. */

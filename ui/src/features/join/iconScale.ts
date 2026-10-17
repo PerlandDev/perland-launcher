@@ -8,11 +8,18 @@ export function serverIconSize(dpr: number): number {
   return (64 * k) / dpr;
 }
 
+/** A list card's server icon: the whole number of device pixels per icon pixel that lands nearest 64 CSS px
+ *  (64 at 1 and 2 dppx, 51.2 at 1.25, 85.3 at 1.5), so a grid of cards stays compact and every pixel even. */
+export function cardIconSize(dpr: number): number {
+  const k = Math.max(1, Math.round(dpr));
+  return (64 * k) / dpr;
+}
+
 const currentDpr = () => (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1);
 
-/** `serverIconSize` for this screen, recomputed when the window moves to a screen with another scale
+/** `size` (the Join card's `serverIconSize` by default) for this screen, recomputed when the window moves to a screen with another scale
  *  or the OS scale changes. */
-export function useServerIconSize(): number {
+export function useServerIconSize(size: (dpr: number) => number = serverIconSize): number {
   const [dpr, setDpr] = useState(currentDpr);
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return;
@@ -21,5 +28,5 @@ export function useServerIconSize(): number {
     query.addEventListener('change', onChange);
     return () => query.removeEventListener('change', onChange);
   }, [dpr]);
-  return serverIconSize(dpr);
+  return size(dpr);
 }

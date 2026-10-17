@@ -55,7 +55,8 @@ async fn caches_and_revalidates_with_etag() {
 
 #[tokio::test]
 async fn offline_uses_cached_copy() {
-    let server = MockServer::start().await;
+    // Exclusive server: it really shuts down on drop (pooled ones keep listening).
+    let server = MockServer::builder().start().await;
     serve_with_etag(&server).await;
     let dir = tempfile::tempdir().unwrap();
     let meta = MetaClient::new(http(), dir.path());
@@ -99,7 +100,8 @@ async fn verified_cache_hit_needs_no_network() {
 
 #[tokio::test]
 async fn invalid_200_does_not_overwrite_good_cache() {
-    let server = MockServer::start().await;
+    // Exclusive server: it really shuts down on drop (pooled ones keep listening).
+    let server = MockServer::builder().start().await;
     serve_with_etag(&server).await;
     Mock::given(method("GET"))
         .and(path("/m.json"))

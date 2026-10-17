@@ -1,7 +1,7 @@
 import { clearMocks, mockIPC } from '@tauri-apps/api/mocks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockBackend, installMock, stopMockRuns } from './mock';
-import { MOCK_INVITE } from './mockServers';
+import { MOCK_INVITE, MOCK_PUBLIC_SERVERS } from './mockServers';
 import type {
   AccountsFile,
   InstallPlanView,
@@ -13,6 +13,7 @@ import type {
   ManualProgress,
   PackContents,
   PackStatus,
+  PublicServerPage,
   RunSnapshot,
   SearchPage,
   ServerStatusView,
@@ -366,6 +367,143 @@ describe('scripted runs', () => {
       clearMocks();
       vi.useRealTimers();
     }
+  });
+});
+
+describe('mock public server list', () => {
+  afterEach(() => stopMockRuns());
+
+  const query = (over: Record<string, unknown> = {}) => ({
+    query: { sort: 'players', modded: null, minecraft: null, hasRoom: false, category: null, language: null, region: null, offset: 0, ...over },
+  });
+  const list = async (over: Record<string, unknown> = {}) =>
+    (await createMockBackend().handle('servers_list', query(over))) as PublicServerPage;
+
+  it('has eight cards with fake tokens that cover every state', () => {
+    expect(MOCK_PUBLIC_SERVERS).toHaveLength(8);
+    for (const card of MOCK_PUBLIC_SERVERS) expect(card.token).toMatch(/^([A-Za-z])\1{42}$/);
+    const has = (f: (c: (typeof MOCK_PUBLIC_SERVERS)[number]) => boolean) => MOCK_PUBLIC_SERVERS.some(f);
+    expect(has((c) => c.status === 'online' && (c.players?.online ?? 0) > 0)).toBe(true);
+    expect(has((c) => c.players !== null && c.players.online === c.players.max)).toBe(true);
+    expect(has((c) => c.status === 'sleeping')).toBe(true);
+    expect(has((c) => c.status === 'starting')).toBe(true);
+    expect(has((c) => c.whitelisted)).toBe(true);
+    expect(has((c) => !c.modded)).toBe(true);
+    expect(has((c) => !c.joinable && c.address !== null)).toBe(true);
+    expect(new Set(MOCK_PUBLIC_SERVERS.map((c) => c.game.version)).size).toBeGreaterThanOrEqual(2);
+    expect(new Set(MOCK_PUBLIC_SERVERS.map((c) => c.language))).toEqual(new Set(['en', 'es']));
+  });
+
+  it('sorts by players, name and newest', async () => {
+    const online = (page: PublicServerPage) => page.servers.map((s) => s.players?.online ?? 0);
+    const byPlayers = online(await list({ sort: 'players' }));
+    expect(byPlayers).toEqual([...byPlayers].sort((a, b) => b - a));
+    const names = (await list({ sort: 'name' })).servers.map((s) => s.name);
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+    const newest = (await list({ sort: 'newest' })).servers.map((s) => s.name);
+    expect(newest).not.toEqual(names);
+    expect([...newest].sort()).toEqual([...names].sort());
+  });
+
+  it('applies modded, minecraft, hasRoom, category, language and region', async () => {
+    const modded = await list({ modded: true });
+    expect(modded.servers.length).toBeGreaterThan(0);
+    expect(modded.servers.every((s) => s.modded)).toBe(true);
+    expect((await list({ modded: false })).servers.every((s) => !s.modded)).toBe(true);
+    const mc = MOCK_PUBLIC_SERVERS[0]!.game.version!;
+    const versioned = await list({ minecraft: mc });
+    expect(versioned.servers.length).toBeGreaterThan(0);
+    expect(versioned.servers.every((s) => s.game.version === mc)).toBe(true);
+    const room = await list({ hasRoom: true });
+    expect(room.servers.length).toBeLessThan(MOCK_PUBLIC_SERVERS.length);
+    expect(room.servers.every((s) => !s.players || s.players.max === null || s.players.online < s.players.max)).toBe(true);
+    const creative = await list({ category: 'creative' });
+    expect(creative.servers.length).toBeGreaterThan(0);
+    expect(creative.servers.every((s) => s.categories.includes('creative'))).toBe(true);
+    const es = await list({ language: 'es' });
+    expect(es.servers.length).toBeGreaterThan(0);
+    expect(es.servers.every((s) => s.language === 'es')).toBe(true);
+    const eu = await list({ region: 'eu' });
+    expect(eu.servers.every((s) => s.region === 'eu')).toBe(true);
+    const both = await list({ modded: false, language: 'es' });
+    expect(both.total).toBe(both.servers.length);
+  });
+
+  it('keeps facets over the whole set and total over the filtered one', async () => {
+    const all = await list();
+    expect(all.total).toBe(8);
+    const filtered = await list({ language: 'es' });
+    expect(filtered.total).toBeLessThan(8);
+    expect(filtered.facets).toEqual(all.facets);
+    expect(all.facets.languages).toEqual(['en', 'es']);
+    expect(all.facets.minecraftVersions.length).toBeGreaterThanOrEqual(2);
+    expect(all.facets.categories).toContain('creative');
+    const past = await list({ offset: 50 });
+    expect(past.servers).toEqual([]);
+    expect(past.total).toBe(8);
+  });
+
+  it('marks the card whose invite an instance already joins', async () => {
+    const { handle } = createMockBackend({ server: 'online' });
+    const page = (await handle('servers_list', query())) as PublicServerPage;
+    expect(page.servers.find((s) => s.invite === MOCK_INVITE)?.instance).toBe('survival');
+    expect(page.servers.filter((s) => s.instance !== null)).toHaveLength(1);
+  });
+
+  it('answers a server icon only for a card with an icon version', async () => {
+    const { handle } = createMockBackend();
+    const withIcon = MOCK_PUBLIC_SERVERS.find((c) => c.iconVersion)!;
+    expect(await handle('servers_icon', { token: withIcon.token, iconVersion: withIcon.iconVersion })).toMatch(/^data:image\//);
+    expect(await handle('servers_icon', { token: 'Z'.repeat(43), iconVersion: 'x' })).toBeNull();
+  });
+
+  it('answers server_list_closed under the closed scenario', async () => {
+    const closed = createMockBackend({ server: 'closed' });
+    await expect(closed.handle('servers_list', query())).rejects.toMatchObject({ category: 'network', code: 'server_list_closed' });
+  });
+
+  async function runPhases(card: (typeof MOCK_PUBLIC_SERVERS)[number]) {
+    vi.useFakeTimers();
+    try {
+      const backend = installMock();
+      const added = (await backend.handle('join_add', { link: card.invite })) as Instance;
+      expect(added.source).toMatchObject({ kind: 'perland' });
+      expect(added.name).toBe(card.name);
+      await backend.handle('play', { id: added.id, join: true });
+      const seen: string[] = [];
+      for (let i = 0; i < 400; i++) {
+        await vi.advanceTimersByTimeAsync(50);
+        const state = backend.state.runs.get(added.id)?.state;
+        if (state && seen.at(-1) !== state) seen.push(state);
+        if (state === 'running') break;
+      }
+      return { seen, id: added.id, backend };
+    } finally {
+      stopMockRuns();
+      clearMocks();
+      vi.useRealTimers();
+    }
+  }
+
+  it('wakes a sleeping server between preparing and running', async () => {
+    const sleeping = MOCK_PUBLIC_SERVERS.find((c) => c.status === 'sleeping')!;
+    const { seen } = await runPhases(sleeping);
+    expect(seen.slice(-3)).toEqual(['preparing', 'waking', 'running']);
+  });
+
+  it('runs an online server without waking it', async () => {
+    const online = MOCK_PUBLIC_SERVERS.find((c) => c.status === 'online' && c.joinable)!;
+    const { seen } = await runPhases(online);
+    expect(seen).not.toContain('waking');
+    expect(seen.at(-1)).toBe('running');
+  });
+
+  it('refuses to add a card that cannot be joined', async () => {
+    const closed = MOCK_PUBLIC_SERVERS.find((c) => !c.joinable)!;
+    expect(closed.invite).toBeNull();
+    await expect(createMockBackend().handle('join_add', { link: `https://play.example.com/${'Q'.repeat(43)}` })).rejects.toMatchObject({
+      code: 'invite_gone',
+    });
   });
 });
 

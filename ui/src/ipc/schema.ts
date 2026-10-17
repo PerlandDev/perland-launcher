@@ -73,6 +73,47 @@ export const joinPreview = z.strictObject({
   icon: z.string().nullable(),
   existing: z.string().nullable(),
 });
+export const listSort = z.enum(['players', 'newest', 'name']);
+/** The public server list's query. `sort` and `hasRoom` always travel; every filter is optional. */
+export const listQuery = z.strictObject({
+  sort: listSort,
+  modded: z.boolean().nullable(),
+  minecraft: z.string().nullable(),
+  hasRoom: z.boolean(),
+  category: z.string().nullable(),
+  language: z.string().nullable(),
+  region: z.string().nullable(),
+  offset: z.number().int(),
+});
+export const publicServerCard = z.strictObject({
+  token: z.string(),
+  invite: z.string().nullable(),
+  joinable: z.boolean(),
+  address: z.string().nullable(),
+  name: z.string(),
+  iconVersion: z.string().nullable(),
+  game: serverGame,
+  modded: z.boolean(),
+  status: serverStatus,
+  players: serverPlayers.nullable(),
+  whitelisted: z.boolean(),
+  pack: serverPack.nullable(),
+  categories: z.array(z.string()),
+  language: z.string(),
+  region: z.string().nullable(),
+  instance: z.string().nullable(),
+});
+export const serverFacets = z.strictObject({
+  categories: z.array(z.string()),
+  languages: z.array(z.string()),
+  minecraftVersions: z.array(z.string()),
+  regions: z.array(z.string()),
+});
+export const publicServerPage = z.strictObject({
+  servers: z.array(publicServerCard),
+  total: z.number().int(),
+  facets: serverFacets,
+});
 export const serverStatusView = z.strictObject({
   status: serverStatus.nullable(),
   players: serverPlayers.nullable(),
@@ -168,7 +209,7 @@ export const openTarget = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('downloads') }),
 ]);
 
-export const runStateKind = z.enum(['idle', 'checking', 'asking', 'queued', 'syncing', 'preparing', 'running', 'stopping']);
+export const runStateKind = z.enum(['idle', 'checking', 'asking', 'queued', 'syncing', 'preparing', 'waking', 'running', 'stopping']);
 export const crashHint = z.enum(['out_of_memory']);
 export const hashes = z.strictObject({
   sha1: z.string().nullable(),
@@ -366,6 +407,11 @@ export type ServerStatus = z.infer<typeof serverStatus>;
 export type ServerAddress = z.infer<typeof serverAddress>;
 export type ServerLink = z.infer<typeof serverLink>;
 export type ServerPlayers = z.infer<typeof serverPlayers>;
+export type ListSort = z.infer<typeof listSort>;
+export type ListQuery = z.infer<typeof listQuery>;
+export type PublicServerCard = z.infer<typeof publicServerCard>;
+export type ServerFacets = z.infer<typeof serverFacets>;
+export type PublicServerPage = z.infer<typeof publicServerPage>;
 export type JoinPreview = z.infer<typeof joinPreview>;
 export type ServerStatusView = z.infer<typeof serverStatusView>;
 export type DeepLink = z.infer<typeof deepLink>;

@@ -3,7 +3,7 @@ import i18n from '../i18n';
 import { commands } from '../ipc/commands';
 import { isLauncherError } from '../ipc/errors';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ArtChoice, ContentKind, Focus, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
+import type { ArtChoice, ContentKind, Focus, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PackAddRequest, SearchRequest, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { endImport, importWatched } from './importProgress';
@@ -43,6 +43,8 @@ export const qk = {
   browseImage: (url: string, kind: ImageKind) => ['browse', 'image', kind, url] as const,
   joinPreview: (invite: string) => ['join', 'preview', invite] as const,
   serverStatus: (id: string) => ['server', 'status', id] as const,
+  servers: (query: ListQuery) => ['servers', query] as const,
+  serverIcon: (token: string, iconVersion: string) => ['serverIcon', token, iconVersion] as const,
 };
 
 const TEN_MINUTES = 10 * 60_000;
@@ -77,6 +79,29 @@ export const usePackContents = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packContents(id), queryFn: () => commands.packContents(id), enabled });
 export const useInstanceArt = (id: string) =>
   useQuery({ queryKey: qk.instanceArt(id), queryFn: () => commands.instanceArt(id), staleTime: Infinity });
+
+/** The public list's page size, fixed by the Engine. */
+export const SERVERS_PAGE = 50;
+/** The public server list for `query` (its `offset` is the page param). It refetches every 30 s. */
+export const useServersList = (query: ListQuery) =>
+  useInfiniteQuery({
+    queryKey: qk.servers(query),
+    queryFn: ({ pageParam }) => commands.serversList({ ...query, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (_last, pages) => {
+      const next = pages.length * SERVERS_PAGE;
+      return next < (pages.at(-1)?.total ?? 0) ? next : undefined;
+    },
+    refetchInterval: 30_000,
+  });
+/** A card's icon (a data URL), or null. A new `iconVersion` is a new key; it is only asked for when there is one. */
+export const useServerIcon = (token: string, iconVersion: string | null) =>
+  useQuery({
+    queryKey: qk.serverIcon(token, iconVersion ?? ''),
+    queryFn: () => commands.serversIcon(token, iconVersion as string),
+    staleTime: Infinity,
+    enabled: !!iconVersion,
+  });
 
 export const BROWSE_PAGE = 20;
 const FIVE_MINUTES = 5 * 60_000;

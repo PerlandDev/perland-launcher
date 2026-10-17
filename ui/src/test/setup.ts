@@ -5,6 +5,7 @@ import { afterEach } from 'vitest';
 import i18n from '../i18n';
 import { stopMockRuns } from '../ipc/mock';
 import { resetBrowseSession } from '../features/browse/session';
+import { resetServersSession } from '../features/servers-list/session';
 import { resetActivity } from '../state/activity';
 import { resetAppearance } from '../state/appearance';
 import { resetContentProgress } from '../state/contentProgress';
@@ -46,6 +47,7 @@ afterEach(async () => {
   clearToasts();
   resetActivity();
   resetBrowseSession();
+  resetServersSession();
   resetContentProgress();
   resetImport();
   resetAppearance();
