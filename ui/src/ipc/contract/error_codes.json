@@ -120,5 +120,13 @@
   "perland_signed_out",
   "player_servers_closed",
   "too_many_player_servers",
+  "email_required",
+  "free_server_exists",
+  "too_many_free_servers",
+  "free_servers_full",
+  "invalid_free_server",
+  "modpack_unsupported",
+  "modpack_too_heavy",
+  "free_server_over_disk",
   "internal"
 ]

@@ -1,8 +1,8 @@
 //! The Perland player API against a wiremock Engine. Fake tokens only.
 use launcher_core::{
     invite::Url,
-    perland::{PlayerClient, PlayerConfig, Relation, SignInMethod},
-    ErrorCode, LauncherError,
+    perland::{CreateFreeServer, PlayerClient, PlayerConfig, Relation, SignInMethod},
+    ErrorCategory, ErrorCode, LauncherError,
 };
 use serde_json::{json, Value};
 use wiremock::{
@@ -543,4 +543,419 @@ async fn errors_name_host_only() {
     let e = c.me(&token()).await.unwrap_err();
     assert_eq!(e.code, ErrorCode::HostTrouble);
     assert!(e.message.contains(&host), "{}", e.message);
+}
+
+fn free_view() -> Value {
+    json!({
+        "name": "Aventura", "kind": "modrinth",
+        "game": { "type": "FABRIC", "version": "1.21.4", "loader": "fabric" },
+        "modrinth": { "projectId": "1KVo5zza", "versionId": "Yp8wLY1P" },
+        "memoryMb": 6144, "maxPlayers": 10, "status": "sleeping",
+        "players": { "online": 0, "max": 10 },
+        "address": "play.example.com:25570",
+        "inviteUrl": "https://play.example.com/AAAA", "joinUrl": "perland://join?invite=x",
+        "createdAt": "2026-10-17T10:00:00Z", "lastPlayedAt": "2026-10-17T11:00:00Z",
+        "deletion": { "deletesAt": "2026-11-14T11:00:00Z", "warned": true },
+        "disk": { "usedBytes": 1024, "limitBytes": 10737418240u64, "checkedAt": "2026-10-17T11:05:00Z", "over": false }
+    })
+}
+
+fn free_state(server: Value) -> Value {
+    json!({
+        "limits": {
+            "maxPlayers": 10, "memoryMb": { "vanilla": 3072, "modded": 6144 },
+            "diskBytes": 10737418240u64, "sleepMinutes": 15, "unusedDays": 30,
+            "warningDays": 7, "createsPerWeek": 3
+        },
+        "create": { "allowed": false, "reason": "free_server_exists" },
+        "server": server
+    })
+}
+
+fn create_body() -> CreateFreeServer {
+    CreateFreeServer {
+        name: "Aventura".into(),
+        kind: "modrinth".into(),
+        modrinth_version_id: Some("Yp8wLY1P".into()),
+        language: "es".into(),
+    }
+}
+
+async fn create_fails(status: u16, code: &str, extra: Value) -> LauncherError {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "POST",
+        "/free-server",
+        status,
+        failure(code, extra),
+    )
+    .await;
+    client(&server)
+        .create_free_server(&token(), &create_body())
+        .await
+        .unwrap_err()
+}
+
+#[tokio::test]
+async fn free_server_reads_state() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(route("/free-server")))
+        .and(header(
+            "authorization",
+            format!("Bearer {}", token()).as_str(),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(envelope(free_state(free_view()))))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let state = client(&server)
+        .free_server(&token())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(state.limits.max_players, 10);
+    assert_eq!(state.limits.memory_mb.vanilla, 3072);
+    assert_eq!(state.limits.memory_mb.modded, 6144);
+    assert_eq!(state.limits.disk_bytes, 10_737_418_240);
+    assert_eq!(state.limits.sleep_minutes, 15);
+    assert_eq!(state.limits.unused_days, 30);
+    assert_eq!(state.limits.warning_days, 7);
+    assert_eq!(state.limits.creates_per_week, 3);
+    assert!(!state.create.allowed);
+    assert_eq!(state.create.reason.as_deref(), Some("free_server_exists"));
+    assert_eq!(state.create.retry_after, None);
+    let s = state.server.unwrap();
+    assert_eq!(s.name, "Aventura");
+    assert_eq!(s.kind, "modrinth");
+    assert_eq!(s.game.kind, "FABRIC");
+    assert_eq!(s.game.version.as_deref(), Some("1.21.4"));
+    let m = s.modrinth.unwrap();
+    assert_eq!(
+        (m.project_id.as_str(), m.version_id.as_str()),
+        ("1KVo5zza", "Yp8wLY1P")
+    );
+    assert_eq!((s.memory_mb, s.max_players), (6144, 10));
+    assert_eq!(s.status, "sleeping");
+    assert_eq!(s.players.unwrap().online, 0);
+    assert_eq!(s.address.as_deref(), Some("play.example.com:25570"));
+    assert_eq!(
+        s.invite_url.as_deref(),
+        Some("https://play.example.com/AAAA")
+    );
+    assert_eq!(s.join_url.as_deref(), Some("perland://join?invite=x"));
+    assert_eq!(s.created_at, "2026-10-17T10:00:00Z");
+    assert_eq!(s.last_played_at.as_deref(), Some("2026-10-17T11:00:00Z"));
+    let d = s.deletion.unwrap();
+    assert_eq!(d.deletes_at, "2026-11-14T11:00:00Z");
+    assert!(d.warned);
+    assert_eq!(s.disk.used_bytes, 1024);
+    assert_eq!(s.disk.limit_bytes, 10_737_418_240);
+    assert_eq!(s.disk.checked_at.as_deref(), Some("2026-10-17T11:05:00Z"));
+    assert!(!s.disk.over);
+}
+
+#[tokio::test]
+async fn free_server_without_server_or_deletion() {
+    let server = MockServer::start().await;
+    let mut view = free_view();
+    view["deletion"] = Value::Null;
+    view["modrinth"] = Value::Null;
+    let mut state = free_state(Value::Null);
+    state["create"] =
+        json!({ "allowed": false, "reason": "too_many_free_servers", "retryAfter": 172800 });
+    answer(&server, "GET", "/free-server", 200, envelope(state)).await;
+    let state = client(&server)
+        .free_server(&token())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(state.server.is_none());
+    assert_eq!(state.create.retry_after, Some(172_800));
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "GET",
+        "/free-server",
+        200,
+        envelope(free_state(view)),
+    )
+    .await;
+    let s = client(&server)
+        .free_server(&token())
+        .await
+        .unwrap()
+        .unwrap()
+        .server
+        .unwrap();
+    assert!(s.deletion.is_none());
+    assert!(s.modrinth.is_none());
+}
+
+#[tokio::test]
+async fn free_server_disabled_is_none() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "GET",
+        "/free-server",
+        503,
+        failure("free_servers_disabled", json!({})),
+    )
+    .await;
+    assert!(client(&server)
+        .free_server(&token())
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn free_server_404_is_none() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "GET",
+        "/free-server",
+        404,
+        json!({ "error": "not found" }),
+    )
+    .await;
+    assert!(client(&server)
+        .free_server(&token())
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn free_server_401_is_signed_out() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "GET",
+        "/free-server",
+        401,
+        json!({ "error": "no" }),
+    )
+    .await;
+    let e = client(&server).free_server(&token()).await.unwrap_err();
+    assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+}
+
+#[tokio::test]
+async fn create_posts_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(route("/free-server")))
+        .and(header(
+            "authorization",
+            format!("Bearer {}", token()).as_str(),
+        ))
+        .and(body_json(json!({
+            "name": "Aventura", "kind": "modrinth",
+            "modrinthVersionId": "Yp8wLY1P", "language": "es"
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(envelope(free_view())))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let view = client(&server)
+        .create_free_server(&token(), &create_body())
+        .await
+        .unwrap();
+    assert_eq!(view.name, "Aventura");
+    assert_eq!(view.status, "sleeping");
+}
+
+#[tokio::test]
+async fn create_vanilla_omits_version_id() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(route("/free-server")))
+        .and(body_json(
+            json!({ "name": "Friends", "kind": "vanilla", "language": "en" }),
+        ))
+        .respond_with(ResponseTemplate::new(201).set_body_json(envelope(free_view())))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let body = CreateFreeServer {
+        name: "Friends".into(),
+        kind: "vanilla".into(),
+        modrinth_version_id: None,
+        language: "en".into(),
+    };
+    client(&server)
+        .create_free_server(&token(), &body)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn create_too_heavy_carries_memory() {
+    let e = create_fails(
+        400,
+        "modpack_too_heavy",
+        json!({ "requiredMemoryMb": 8192, "limitMemoryMb": 6144, "serverMods": 120 }),
+    )
+    .await;
+    assert_eq!(e.code, ErrorCode::ModpackTooHeavy);
+    assert_eq!(e.category, ErrorCategory::Pack);
+    assert_eq!(param(&e, "requiredMemoryMb"), Some("8192"));
+    assert_eq!(param(&e, "limitMemoryMb"), Some("6144"));
+}
+
+#[tokio::test]
+async fn create_unsupported_carries_reason() {
+    let e = create_fails(400, "modpack_unsupported", json!({ "reason": "loader" })).await;
+    assert_eq!(e.code, ErrorCode::ModpackUnsupported);
+    assert_eq!(e.category, ErrorCategory::Pack);
+    assert_eq!(param(&e, "reason"), Some("loader"));
+}
+
+#[tokio::test]
+async fn create_rate_limited_carries_retry_after() {
+    let e = create_fails(
+        429,
+        "too_many_free_servers",
+        json!({ "retryAfter": 172800 }),
+    )
+    .await;
+    assert_eq!(e.code, ErrorCode::TooManyFreeServers);
+    assert_eq!(e.category, ErrorCategory::Network);
+    assert_eq!(param(&e, "retryAfter"), Some("172800"));
+}
+
+#[tokio::test]
+async fn create_exists() {
+    let e = create_fails(409, "free_server_exists", json!({})).await;
+    assert_eq!(e.code, ErrorCode::FreeServerExists);
+    assert_eq!(e.category, ErrorCategory::Network);
+}
+
+#[tokio::test]
+async fn create_full() {
+    let e = create_fails(503, "free_servers_full", json!({})).await;
+    assert_eq!(e.code, ErrorCode::FreeServersFull);
+}
+
+#[tokio::test]
+async fn create_invalid() {
+    let e = create_fails(400, "invalid_free_server", json!({})).await;
+    assert_eq!(e.code, ErrorCode::InvalidFreeServer);
+}
+
+#[tokio::test]
+async fn create_email_required() {
+    let e = create_fails(403, "email_required", json!({})).await;
+    assert_eq!(e.code, ErrorCode::EmailRequired);
+    assert_eq!(e.category, ErrorCategory::Auth);
+}
+
+#[tokio::test]
+async fn create_quota_is_full() {
+    let e = create_fails(402, "quota_exceeded", json!({})).await;
+    assert_eq!(e.code, ErrorCode::FreeServersFull);
+}
+
+#[tokio::test]
+async fn create_modrinth_unavailable_is_host_trouble() {
+    let e = create_fails(502, "modrinth_unavailable", json!({})).await;
+    assert_eq!(e.code, ErrorCode::HostTrouble);
+    assert_eq!(param(&e, "host"), Some("modrinth.com"));
+}
+
+#[tokio::test]
+async fn create_401_is_signed_out() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "POST",
+        "/free-server",
+        401,
+        json!({ "error": "no" }),
+    )
+    .await;
+    let e = client(&server)
+        .create_free_server(&token(), &create_body())
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+}
+
+#[tokio::test]
+async fn start_answers_view() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(route("/free-server/start")))
+        .and(header(
+            "authorization",
+            format!("Bearer {}", token()).as_str(),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(envelope(free_view())))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let view = client(&server).start_free_server(&token()).await.unwrap();
+    assert_eq!(view.name, "Aventura");
+}
+
+#[tokio::test]
+async fn start_over_disk() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "POST",
+        "/free-server/start",
+        409,
+        failure(
+            "free_server_over_disk",
+            json!({ "usedBytes": 11000000000u64, "limitBytes": 10737418240u64 }),
+        ),
+    )
+    .await;
+    let e = client(&server)
+        .start_free_server(&token())
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::FreeServerOverDisk);
+    assert_eq!(param(&e, "usedBytes"), Some("11000000000"));
+    assert_eq!(param(&e, "limitBytes"), Some("10737418240"));
+}
+
+#[tokio::test]
+async fn delete_answers_flag() {
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path(route("/free-server")))
+        .and(header(
+            "authorization",
+            format!("Bearer {}", token()).as_str(),
+        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(envelope(json!({ "deleted": true }))),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    assert!(client(&server).delete_free_server(&token()).await.unwrap());
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "DELETE",
+        "/free-server",
+        200,
+        envelope(json!({ "deleted": false })),
+    )
+    .await;
+    assert!(!client(&server).delete_free_server(&token()).await.unwrap());
+}
+
+#[tokio::test]
+async fn free_server_errors_name_host_only() {
+    let e = create_fails(409, "free_server_exists", json!({})).await;
+    let shown = format!("{e:?}");
+    assert!(!shown.contains("plt_"), "{shown}");
 }

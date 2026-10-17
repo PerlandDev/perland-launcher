@@ -80,6 +80,9 @@ error_codes! {
     PlayerAccountsClosed, SignInUnavailable, SignInFailed, SignInTimedOut, InvalidEmail,
     InvalidCode, TooManyCodes, EmailUnavailable, PerlandSignedOut, PlayerServersClosed,
     TooManyPlayerServers,
+    // free servers
+    EmailRequired, FreeServerExists, TooManyFreeServers, FreeServersFull, InvalidFreeServer,
+    ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk,
     // anything unexpected
     Internal,
 }
@@ -285,6 +288,23 @@ mod tests {
             (ErrorCode::PerlandSignedOut, "perland_signed_out"),
             (ErrorCode::PlayerServersClosed, "player_servers_closed"),
             (ErrorCode::TooManyPlayerServers, "too_many_player_servers"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
+    fn free_server_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::EmailRequired, "email_required"),
+            (ErrorCode::FreeServerExists, "free_server_exists"),
+            (ErrorCode::TooManyFreeServers, "too_many_free_servers"),
+            (ErrorCode::FreeServersFull, "free_servers_full"),
+            (ErrorCode::InvalidFreeServer, "invalid_free_server"),
+            (ErrorCode::ModpackUnsupported, "modpack_unsupported"),
+            (ErrorCode::ModpackTooHeavy, "modpack_too_heavy"),
+            (ErrorCode::FreeServerOverDisk, "free_server_over_disk"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

@@ -6,8 +6,9 @@ pub mod pkce;
 pub mod session;
 
 pub use api::{
-    DiscordAccount, EmailStarted, Player, PlayerClient, PlayerConfig, Relation, SignInMethod,
-    TokenAnswer, YourServer,
+    CreateAllowance, CreateFreeServer, Deletion, DiscordAccount, Disk, EmailStarted, FreeLimits,
+    FreeServer, FreeServerState, MemoryLimits, Player, PlayerClient, PlayerConfig, Relation,
+    SignInMethod, TokenAnswer, YourServer,
 };
 pub use loopback::{Callback, Language, Loopback};
 pub use pkce::{authorize_url, Pkce};
