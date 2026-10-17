@@ -895,6 +895,7 @@ pub(crate) fn sample_player() -> Player {
             username: "steve".into(),
             global_name: Some("Steve".into()),
         }),
+        minecraft: None,
         created_at: "2026-10-17T00:00:00Z".into(),
     }
 }

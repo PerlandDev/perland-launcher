@@ -695,6 +695,7 @@ mod tests {
                 name: "Alex".into(),
                 email: Some("alex@example.com".into()),
                 discord: false,
+                minecraft: None,
             },
         }
     }
