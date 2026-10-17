@@ -1172,6 +1172,9 @@ fn contract_fixtures_are_current() {
             ArtChoice::Upload {
                 path: PathBuf::from("C:/Users/player/Pictures/my island.png"),
             },
+            ArtChoice::Screenshot {
+                name: "2026-10-17_12.34.56.png".into(),
+            },
         ],
     );
     check(

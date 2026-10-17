@@ -82,6 +82,10 @@
     "uploadIcon": "Upload your own…",
     "uploadHintBackground": "PNG,\u00a0JPEG\u00a0or\u00a0WebP, up\u00a0to\u00a05\u00a0MB. Best\u00a0at\u00a01920\u00a0×\u00a01080 or\u00a0larger.",
     "uploadHintIcon": "PNG,\u00a0JPEG\u00a0or\u00a0WebP, up\u00a0to\u00a05\u00a0MB. Square\u00a0works\u00a0best.",
+    "screenshots": "From your screenshots",
+    "screenshot": "Screenshot {{name}}",
+    "noScreenshots": "Screenshots you take in the game (F2) show up here.",
+    "moreScreenshots": "Show all {{count}}",
     "position": "Position",
     "positionHint": "Drag to choose which part of the picture stays in view.",
     "positionX": "Left to right",
@@ -467,7 +471,8 @@
     "linking": "Linking…",
     "linkNote": "Your mods, worlds and settings stay. If you have another version of a mod the server uses, yours moves to the mods-before-link folder.",
     "linkVersion": "This server plays Minecraft {{version}} with {{loader}}. Linking moves this instance to that version, so back up your worlds first.",
-    "linkVersionVanilla": "This server plays vanilla Minecraft {{version}}. Linking moves this instance to that version, so back up your worlds first."
+    "linkVersionVanilla": "This server plays vanilla Minecraft {{version}}. Linking moves this instance to that version, so back up your worlds first.",
+    "suggestions": "From your servers"
   },
   "server": {
     "online": "Online",

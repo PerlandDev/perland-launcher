@@ -82,6 +82,10 @@
     "uploadIcon": "Sube el tuyo…",
     "uploadHintBackground": "PNG,\u00a0JPEG\u00a0o\u00a0WebP, hasta\u00a05\u00a0MB. Ideal:\u00a01920\u00a0×\u00a01080 o\u00a0más.",
     "uploadHintIcon": "PNG,\u00a0JPEG\u00a0o\u00a0WebP, hasta\u00a05\u00a0MB. Ideal:\u00a0cuadrada.",
+    "screenshots": "De tus capturas",
+    "screenshot": "Captura {{name}}",
+    "noScreenshots": "Las capturas que tomes en el juego (F2) aparecen aquí.",
+    "moreScreenshots": "Ver las {{count}}",
     "position": "Posición",
     "positionHint": "Arrastra para elegir qué parte de la imagen se ve.",
     "positionX": "De izquierda a derecha",
@@ -467,7 +471,8 @@
     "linking": "Vinculando…",
     "linkNote": "Tus mods, mundos y ajustes se quedan. Si tienes otra versión de un mod que usa el servidor, la tuya se moverá a la carpeta mods-before-link.",
     "linkVersion": "Este servidor usa Minecraft {{version}} con {{loader}}. Al vincularla, esta instancia cambiará a esa versión, así que primero haz una copia de tus mundos.",
-    "linkVersionVanilla": "Este servidor usa Minecraft {{version}} sin mods. Al vincularla, esta instancia cambiará a esa versión, así que primero haz una copia de tus mundos."
+    "linkVersionVanilla": "Este servidor usa Minecraft {{version}} sin mods. Al vincularla, esta instancia cambiará a esa versión, así que primero haz una copia de tus mundos.",
+    "suggestions": "De tus servidores"
   },
   "server": {
     "online": "En línea",

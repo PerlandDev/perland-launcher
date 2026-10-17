@@ -9,5 +9,9 @@
   {
     "kind": "upload",
     "path": "C:/Users/player/Pictures/my island.png"
+  },
+  {
+    "kind": "screenshot",
+    "name": "2026-10-17_12.34.56.png"
   }
 ]
