@@ -1,26 +1,10 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import type { Instance } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { InstanceSettings } from './InstanceSettings';
-
-it('saves memory and a tested custom Java', async () => {
-  const { user, calls } = renderApp(<InstanceSettings id="asalith-fields" />);
-  const slider = await screen.findByRole('slider', { name: 'Memory' });
-  fireEvent.change(slider, { target: { value: '10240' } });
-  expect(screen.getByText('10 GB')).toBeInTheDocument();
-  expect(screen.getByText(/more than half of this computer's memory/)).toBeInTheDocument();
-  await user.click(screen.getByRole('radio', { name: 'A Java installation I choose' }));
-  await user.click(screen.getByRole('button', { name: 'Choose…' }));
-  await user.click(screen.getByRole('button', { name: 'Test' }));
-  expect(await screen.findByText('Java 17 works')).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Save' }));
-  const saved = sent(calls, 'instance_update')[0] as { instance: { java: { memoryMb: number; path: string } } };
-  expect(saved.instance.java).toEqual({ memoryMb: 10240, path: 'C:/Users/player/Downloads/lithium-fabric-0.11.2.jar', args: '' });
-  expect(await screen.findByText('Saved')).toBeInTheDocument();
-});
 
 it('keeps the current loader and its version, even when the list no longer offers it', async () => {
   renderApp(<InstanceSettings id="asalith-fields" />);
@@ -45,51 +29,94 @@ const failure = { category: 'game', code: 'java_test_failed', message: 'nope', f
 async function chooseCustomJava(user: ReturnType<typeof renderApp>['user']) {
   await screen.findByRole('slider', { name: 'Memory' });
   await user.click(screen.getByRole('radio', { name: 'A Java installation I choose' }));
-  await user.click(screen.getByRole('button', { name: 'Choose…' }));
 }
 
-it('shows why a Java test failed', async () => {
+const TEMURIN_17 = 'C:/Program Files/Eclipse Adoptium/jdk-17.0.12.7-hotspot/bin/javaw.exe';
+const TEMURIN_21 = 'C:/Program Files/Eclipse Adoptium/jdk-21.0.4.7-hotspot/bin/javaw.exe';
+
+it('says which Java Automatic uses for this Minecraft version', async () => {
+  renderApp(<InstanceSettings id="asalith-fields" />);
+  expect(await screen.findByRole('radio', { name: 'Automatic (recommended)' })).toBeChecked();
+  expect(await screen.findByText("Java 17 · Automatic (Mojang's official Java, managed by Perland)")).toBeInTheDocument();
+});
+
+it('saves memory and a Java found on this computer', async () => {
+  const { user, calls } = renderApp(<InstanceSettings id="asalith-fields" />);
+  const slider = await screen.findByRole('slider', { name: 'Memory' });
+  fireEvent.change(slider, { target: { value: '10240' } });
+  expect(screen.getByText('10 GB')).toBeInTheDocument();
+  expect(screen.getByText(/more than half of this computer's memory/)).toBeInTheDocument();
+  await chooseCustomJava(user);
+  const found = await screen.findByRole('radiogroup', { name: 'Java on this computer' });
+  // The one that fits the instance's Minecraft (1.20.1 → Java 17) comes first.
+  const options = within(found).getAllByRole('radio');
+  expect(options[0]).toHaveAccessibleName(/Eclipse Temurin 17\.0\.12/);
+  expect(within(options[0]!.closest('label')!).getByText(/Right for this version/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await user.click(options[0]!);
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  const saved = sent(calls, 'instance_update')[0] as { instance: { java: unknown } };
+  expect(saved.instance.java).toEqual({ memoryMb: 10240, path: TEMURIN_17, args: '' });
+  expect(await screen.findByText('Saved')).toHaveAttribute('role', 'status');
+});
+
+it('warns when the chosen Java does not match, and saves only after "use it anyway"', async () => {
+  const { user, calls } = renderApp(<InstanceSettings id="asalith-fields" />);
+  await chooseCustomJava(user);
+  await user.click(await screen.findByRole('radio', { name: /Oracle 1\.8\.0_421/ }));
+  expect(screen.getByRole('alert')).toHaveTextContent("Minecraft 1.20.1 needs Java 17. Java 8 is too old, so the game won't start.");
+  const save = screen.getByRole('button', { name: 'Save' });
+  expect(save).toBeDisabled();
+  await user.click(screen.getByRole('radio', { name: /Eclipse Temurin 21\.0\.4/ }));
+  expect(screen.getByRole('alert')).toHaveTextContent('Minecraft 1.20.1 is made for Java 17. Java 21 is newer and may not work, especially with mods.');
+  await user.click(screen.getByRole('switch', { name: 'Use this Java anyway' }));
+  expect(save).toBeEnabled();
+  await user.click(save);
+  const saved = sent(calls, 'instance_update')[0] as { instance: { java: { path: string } } };
+  expect(saved.instance.java.path).toBe(TEMURIN_21);
+});
+
+it('checks a Java the player browses to and judges it against the version', async () => {
+  const { user, calls, backend } = renderApp(<InstanceSettings id="asalith-fields" />);
+  const handle = backend.handle;
+  vi.spyOn(backend, 'handle').mockImplementation((cmd, args) => (cmd === 'plugin:dialog|open' ? Promise.resolve('D:/jdks/jdk-21/bin/javaw.exe') : handle(cmd, args)));
+  await chooseCustomJava(user);
+  await user.click(screen.getByRole('button', { name: 'Browse…' }));
+  expect(await screen.findByRole('radio', { name: /Java 21\.0\.4.*D:\/jdks/ })).toBeChecked();
+  expect(sent(calls, 'java_test')[0]).toEqual({ path: 'D:/jdks/jdk-21/bin/javaw.exe', minecraft: '1.20.1' });
+  expect(await screen.findByRole('alert')).toHaveTextContent('Java 21 is newer');
+});
+
+it('shows why a browsed Java failed its check and will not save it', async () => {
   const { user, backend } = renderApp(<InstanceSettings id="asalith-fields" />);
   const handle = backend.handle;
   vi.spyOn(backend, 'handle').mockImplementation((cmd, args) => (cmd === 'java_test' ? Promise.reject(failure) : handle(cmd, args)));
   await chooseCustomJava(user);
-  await user.click(screen.getByRole('button', { name: 'Test' }));
+  await user.click(screen.getByRole('button', { name: 'Browse…' }));
   expect(await screen.findByRole('alert')).toHaveTextContent("That doesn't look like a working Java.");
-  expect(screen.queryByText('Java 17 works')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 
-it('sends one Java test for a double click while the first is running', async () => {
+it('keeps a stored Java chosen and saves it unchanged without asking again', async () => {
   const { user, calls, backend } = renderApp(<InstanceSettings id="asalith-fields" />);
-  const handle = backend.handle;
-  let finish = () => {};
-  vi.spyOn(backend, 'handle').mockImplementation((cmd, args) =>
-    cmd === 'java_test' ? new Promise((resolve) => (finish = () => resolve({ major: 17 }))) : handle(cmd, args),
-  );
-  await chooseCustomJava(user);
-  await user.dblClick(screen.getByRole('button', { name: 'Test' }));
-  expect(sent(calls, 'java_test')).toHaveLength(1);
-  await act(async () => finish());
-  expect(await screen.findByText('Java 17 works')).toBeInTheDocument();
+  backend.state.listing.instances[0]!.java.path = TEMURIN_21;
+  expect(await screen.findByRole('radio', { name: /Eclipse Temurin 21\.0\.4/ })).toBeChecked();
+  expect(screen.getByRole('switch', { name: 'Use this Java anyway' })).toBeChecked();
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  const saved = sent(calls, 'instance_update')[0] as { instance: { java: { path: string } } };
+  expect(saved.instance.java.path).toBe(TEMURIN_21);
 });
 
-it('never shows a result next to a different, untested Java path', async () => {
+it('says so when no Java is found on this computer', async () => {
   const { user, backend } = renderApp(<InstanceSettings id="asalith-fields" />);
   const handle = backend.handle;
-  let finish = () => {};
-  let picks = 0;
-  vi.spyOn(backend, 'handle').mockImplementation((cmd, args) => {
-    if (cmd === 'java_test') return new Promise((resolve) => (finish = () => resolve({ major: 17 })));
-    if (cmd === 'plugin:dialog|open' && ++picks === 2) return Promise.resolve('C:/other/java.exe');
-    return handle(cmd, args);
-  });
+  vi.spyOn(backend, 'handle').mockImplementation((cmd, args) =>
+    cmd === 'java_overview' ? Promise.resolve({ required: 17, installs: [] }) : handle(cmd, args),
+  );
   await chooseCustomJava(user);
-  await user.click(screen.getByRole('button', { name: 'Test' }));
-  expect(screen.getByRole('button', { name: 'Testing…' })).toBeDisabled();
-  await user.click(screen.getByRole('button', { name: 'Choose…' }));
-  expect(await screen.findByText('C:/other/java.exe')).toBeInTheDocument();
-  await act(async () => finish());
-  expect(screen.queryByText('Java 17 works')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Test' })).toBeEnabled();
+  expect(await screen.findByText("We didn't find Java on this computer. Use Browse… to pick one.")).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 
 it('shows a failure to open the file dialog instead of leaving it unhandled', async () => {
@@ -97,16 +124,8 @@ it('shows a failure to open the file dialog instead of leaving it unhandled', as
   const handle = backend.handle;
   vi.spyOn(backend, 'handle').mockImplementation((cmd, args) => (cmd === 'plugin:dialog|open' ? Promise.reject(new Error('no dialog')) : handle(cmd, args)));
   await chooseCustomJava(user);
+  await user.click(screen.getByRole('button', { name: 'Browse…' }));
   expect(await screen.findByRole('alert')).toBeInTheDocument();
-});
-
-it('announces the Java result and the save as status messages', async () => {
-  const { user } = renderApp(<InstanceSettings id="asalith-fields" />);
-  await chooseCustomJava(user);
-  await user.click(screen.getByRole('button', { name: 'Test' }));
-  expect(await screen.findByText('Java 17 works')).toHaveAttribute('role', 'status');
-  await user.click(screen.getByRole('button', { name: 'Save' }));
-  expect(await screen.findByText('Saved')).toHaveAttribute('role', 'status');
 });
 
 it('clears "Saved" and a failed save as soon as the form changes again', async () => {
@@ -122,13 +141,6 @@ it('clears "Saved" and a failed save as soon as the form changes again', async (
   expect(await screen.findByRole('alert')).toBeInTheDocument();
   fireEvent.change(screen.getByRole('slider', { name: 'Memory' }), { target: { value: '2048' } });
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-});
-
-it('will not save custom Java mode without a chosen file', async () => {
-  const { user } = renderApp(<InstanceSettings id="asalith-fields" />);
-  await screen.findByRole('slider', { name: 'Memory' });
-  await user.click(screen.getByRole('radio', { name: 'A Java installation I choose' }));
-  expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
 });
 
 it('saves an untouched instance with its game exactly as it was, loader version included', async () => {

@@ -10,6 +10,7 @@ use launcher_core::{
     },
     instances::{accent_of, Instance, LoaderSpec, ServerAddress, ServerStatus},
     invite::{non_empty, shown_invite, EngineView, InviteLink, InvitePlayers},
+    java::{JavaFit, JavaInstall},
     meta::loaders::LoaderKind,
     mods::LocalMod,
     perland::{CreateAllowance, Deletion, Disk, FreeLimits},
@@ -555,9 +556,45 @@ pub struct NameListView {
     pub names: Vec<String>,
 }
 
+/// A Java the player can choose, and how it fits the game (unknown when the version's needs are).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct JavaTest {
+pub struct JavaFound {
+    pub path: PathBuf,
     pub major: u32,
+    pub version: String,
+    pub vendor: Option<String>,
+    pub fit: Option<JavaFit>,
+}
+
+impl JavaFound {
+    pub fn new(install: JavaInstall, required: Option<u32>) -> Self {
+        Self {
+            fit: required.map(|r| JavaFit::of(r, install.major)),
+            path: install.path,
+            major: install.major,
+            version: install.version,
+            vendor: install.vendor,
+        }
+    }
+}
+
+/// The Java an instance's game asks for (when it could be looked up) and every Java on this
+/// computer: the ones that match first, then newest first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct JavaOverview {
+    pub required: Option<u32>,
+    pub installs: Vec<JavaFound>,
+}
+
+impl JavaOverview {
+    pub fn new(required: Option<u32>, installs: Vec<JavaInstall>) -> Self {
+        let mut installs: Vec<JavaFound> = installs
+            .into_iter()
+            .map(|i| JavaFound::new(i, required))
+            .collect();
+        installs.sort_by_key(|j| (j.fit != Some(JavaFit::Matches), std::cmp::Reverse(j.major)));
+        Self { required, installs }
+    }
 }
 
 /// Browse's search box and filters. With `instance`, its game decides `minecraft` and `loader`.
@@ -944,5 +981,37 @@ mod tests {
         };
         let shown = format!("{stats:?}");
         assert!(!shown.contains(&"t".repeat(43)) && shown.contains("Asalith"));
+    }
+
+    fn install(path: &str, major: u32) -> JavaInstall {
+        JavaInstall {
+            path: path.into(),
+            major,
+            version: format!("{major}.0.1"),
+            vendor: Some("Eclipse Temurin".into()),
+        }
+    }
+
+    #[test]
+    fn javas_that_fit_the_game_come_first() {
+        let installs = vec![install("/j21", 21), install("/j17", 17), install("/j8", 8)];
+        let overview = JavaOverview::new(Some(17), installs.clone());
+        let order: Vec<_> = overview.installs.iter().map(|j| (j.major, j.fit)).collect();
+        assert_eq!(
+            order,
+            vec![
+                (17, Some(JavaFit::Matches)),
+                (21, Some(JavaFit::Newer)),
+                (8, Some(JavaFit::TooOld)),
+            ]
+        );
+        assert_eq!(
+            overview.installs[0].vendor.as_deref(),
+            Some("Eclipse Temurin")
+        );
+        // Without knowing what the game needs, nothing is judged and newest stays first.
+        let unknown = JavaOverview::new(None, installs);
+        assert!(unknown.installs.iter().all(|j| j.fit.is_none()));
+        assert_eq!(unknown.installs[0].major, 21);
     }
 }

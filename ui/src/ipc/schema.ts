@@ -401,7 +401,15 @@ export const packAddRequest = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('link'), url: z.string() }),
   z.strictObject({ kind: z.literal('file'), path: z.string() }),
 ]);
-export const javaTest = z.strictObject({ major: z.number().int() });
+export const javaFit = z.enum(['matches', 'too_old', 'newer']);
+export const javaFound = z.strictObject({
+  path: z.string(),
+  major: z.number().int(),
+  version: z.string(),
+  vendor: z.string().nullable(),
+  fit: javaFit.nullable(),
+});
+export const javaOverview = z.strictObject({ required: z.number().int().nullable(), installs: z.array(javaFound) });
 export const playtimeEntry = z.strictObject({ id: z.string(), seconds: z.number().int(), lastPlayed: z.number().int() });
 
 export const contentKind = z.enum(['modpack', 'mod', 'resource_pack', 'shader']);
@@ -567,7 +575,8 @@ export type ExitInfo = z.infer<typeof exitInfo>;
 export type TaskId = z.infer<typeof taskId>;
 export type AppEvent = z.infer<typeof appEvent>;
 export type RunSnapshot = z.infer<typeof runSnapshot>;
-export type JavaTest = z.infer<typeof javaTest>;
+export type JavaFound = z.infer<typeof javaFound>;
+export type JavaOverview = z.infer<typeof javaOverview>;
 export type PlaytimeEntry = z.infer<typeof playtimeEntry>;
 export type PackStatus = z.infer<typeof packStatus>;
 export type OptionalChoice = z.infer<typeof optionalChoice>;

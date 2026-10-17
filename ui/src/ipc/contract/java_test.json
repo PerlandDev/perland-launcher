@@ -1,3 +1,16 @@
-{
-  "major": 17
-}
+[
+  {
+    "path": "C:/Program Files/Eclipse Adoptium/jdk-17.0.12.7-hotspot/bin/javaw.exe",
+    "major": 17,
+    "version": "17.0.12",
+    "vendor": "Eclipse Temurin",
+    "fit": "matches"
+  },
+  {
+    "path": "/usr/lib/jvm/java-21/bin/java",
+    "major": 21,
+    "version": "21.0.4",
+    "vendor": null,
+    "fit": null
+  }
+]

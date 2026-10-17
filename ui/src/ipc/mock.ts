@@ -1115,8 +1115,27 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'open_folder':
     case 'quit':
       return null;
-    case 'java_test':
-      return { major: 17 };
+    case 'java_overview': {
+      const required = mockRequiredJava(args.minecraft as string);
+      return {
+        required,
+        installs: MOCK_JAVAS.map((j) => ({ ...j, fit: javaFit(required, j.major) })).sort(
+          (a, b) => Number(a.fit !== 'matches') - Number(b.fit !== 'matches') || b.major - a.major,
+        ),
+      };
+    }
+    case 'java_test': {
+      const path = args.path as string;
+      const major = /21/.test(path) ? 21 : /(^|\D)8(\D|$)|1\.8/.test(path) ? 8 : 17;
+      const minecraft = args.minecraft as string | null;
+      return {
+        path,
+        major,
+        version: major === 8 ? '1.8.0_421' : `${major}.0.4`,
+        vendor: null,
+        fit: minecraft ? javaFit(mockRequiredJava(minecraft), major) : null,
+      };
+    }
     case 'plugin:dialog|open': {
       // Mirrors the real dialog: an array when `multiple` is set, otherwise one path.
       const options = args.options as { multiple?: boolean; directory?: boolean; filters?: { extensions?: string[] }[] } | undefined;
@@ -1203,4 +1222,24 @@ export function mockUpdateState(name: string | null): UpdateState | undefined {
     default:
       return undefined;
   }
+}
+
+/** Javas "found" on the mock computer, as the real detection reports them. */
+const MOCK_JAVAS = [
+  { path: 'C:/Program Files/Eclipse Adoptium/jdk-21.0.4.7-hotspot/bin/javaw.exe', major: 21, version: '21.0.4', vendor: 'Eclipse Temurin' },
+  { path: 'C:/Program Files/Eclipse Adoptium/jdk-17.0.12.7-hotspot/bin/javaw.exe', major: 17, version: '17.0.12', vendor: 'Eclipse Temurin' },
+  { path: 'C:/Program Files/Java/jre1.8.0_421/bin/javaw.exe', major: 8, version: '1.8.0_421', vendor: 'Oracle' },
+];
+
+/** Roughly what Mojang's version JSONs say; the real launcher reads them. */
+function mockRequiredJava(minecraft: string): number {
+  const [major = 0, minor = 0, patch = 0] = minecraft.split('.').map((n) => parseInt(n, 10) || 0);
+  if (major > 1) return 25;
+  if (minor > 20 || (minor === 20 && patch >= 5)) return 21;
+  if (minor >= 18) return 17;
+  return minor === 17 ? 16 : 8;
+}
+
+function javaFit(required: number, major: number): 'matches' | 'too_old' | 'newer' {
+  return major === required ? 'matches' : major < required ? 'too_old' : 'newer';
 }

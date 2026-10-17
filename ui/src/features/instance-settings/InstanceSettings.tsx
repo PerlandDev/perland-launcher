@@ -1,7 +1,5 @@
-import { open } from '@tauri-apps/plugin-dialog';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { commands } from '../../ipc/commands';
 import { describeError, isLauncherError } from '../../ipc/errors';
 import { inviteHost } from '../../ipc/inviteLink';
 import type { Instance } from '../../ipc/schema';
@@ -11,13 +9,15 @@ import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { Check, Copy } from '../../ui/Icon';
+import { Copy } from '../../ui/Icon';
 import { copyText } from '../../ui/copyText';
 import { MemorySlider } from '../../ui/MemorySlider';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { inviteOf, isPack, isServer, versionLine } from '../home/labels';
 import { useVersionChoice } from '../new-instance/useVersionChoice';
 import { VersionFields } from '../new-instance/VersionFields';
+import { JavaPicker } from './JavaPicker';
+import { useJavaChoice } from './useJavaChoice';
 
 function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) {
   const { t, i18n } = useTranslation();
@@ -29,13 +29,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
   const [policy, setPolicy] = useState(instance.updatePolicy);
   const [name, setName] = useState(instance.name);
   const [memoryMb, setMemoryMb] = useState(instance.java.memoryMb);
-  const [javaMode, setJavaMode] = useState<'auto' | 'custom'>(instance.java.path ? 'custom' : 'auto');
-  const [javaPath, setJavaPath] = useState<string | null>(instance.java.path);
-  // A result belongs to the path it was produced for and only shows while that path is still chosen.
-  const [javaResult, setJavaResult] = useState<({ path: string | null } & ({ ok: number } | { error: unknown })) | null>(null);
   const [javaArgs, setJavaArgs] = useState(instance.java.args);
-  const [testing, setTesting] = useState(false);
-  const inFlight = useRef(false);
   const argsField = useRef<HTMLTextAreaElement>(null);
   const update = useUpdateInstance({ inline: true });
 
@@ -55,47 +49,20 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
     setLoader: edit(choice.setLoader),
     setLoaderVersion: edit(choice.setLoaderVersion),
   };
+  const minecraft = pack ? instance.game.minecraft : (choice.resolved.minecraft ?? instance.game.minecraft);
+  const java = useJavaChoice(instance, minecraft, touched);
 
-  const pickJava = async () => {
-    try {
-      const chosen = await open({ multiple: false, directory: false, title: t('instanceSettings.javaFiles') });
-      if (typeof chosen === 'string') {
-        touched();
-        setJavaPath(chosen);
-        setJavaResult(null);
-      }
-    } catch (error: unknown) {
-      setJavaResult({ path: javaPath, error });
-    }
-  };
-  const testJava = () => {
-    if (!javaPath || inFlight.current) return;
-    const path = javaPath;
-    inFlight.current = true;
-    setTesting(true);
-    void commands
-      .javaTest(path)
-      .then(
-        (r) => setJavaResult({ path, ok: r.major }),
-        (error: unknown) => setJavaResult({ path, error }),
-      )
-      .finally(() => {
-        inFlight.current = false;
-        setTesting(false);
-      });
-  };
-  const shownResult = javaResult && javaResult.path === javaPath ? javaResult : null;
   // A refused argument belongs under its field; every other failure stays on the general card.
   const argsRefused = update.isError && isLauncherError(update.error) && update.error.code.startsWith('jvm_');
-  const ready = (pack || choice.resolved.ready) && (javaMode === 'auto' || javaPath !== null);
+  const ready = (pack || choice.resolved.ready) && java.ready;
   const save = () =>
     update.mutate(
       {
         ...instance,
         name,
-        game: pack ? instance.game : { minecraft: choice.resolved.minecraft ?? instance.game.minecraft, loader: choice.resolved.loader },
+        game: pack ? instance.game : { minecraft, loader: choice.resolved.loader },
         updatePolicy: policy,
-        java: { memoryMb, path: javaMode === 'custom' ? javaPath : null, args: javaArgs },
+        java: { memoryMb, path: java.value, args: javaArgs },
       },
       {
         // The Save bar is sticky, so a refusal under the field can sit off-screen; focusing it scrolls it into view.
@@ -182,35 +149,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
         </section>
       )}
       <MemorySlider label={t('instanceSettings.memory')} valueMb={memoryMb} onChange={edit(setMemoryMb)} systemMb={systemMb} />
-      <fieldset className="grid gap-3">
-        <legend className="mb-1.5 text-lg font-bold">{t('instanceSettings.java')}</legend>
-        <div className="flex flex-wrap gap-2">
-          {(['auto', 'custom'] as const).map((mode) => (
-            <label key={mode} className="seg" data-checked={javaMode === mode ? '' : undefined}>
-              <input type="radio" name="java" className="sr-only" checked={javaMode === mode} onChange={() => edit(setJavaMode)(mode)} />
-              {mode === 'auto' ? t('instanceSettings.javaAuto') : t('instanceSettings.javaCustom')}
-            </label>
-          ))}
-        </div>
-        {javaMode === 'custom' && (
-          <div className="grid gap-3">
-            <p className="selectable truncate font-mono text-sm text-ink-dim">{javaPath ?? t('instanceSettings.javaNone')}</p>
-            <div className="flex gap-3">
-              <Button onClick={() => void pickJava()}>{t('instanceSettings.javaPick')}</Button>
-              <Button disabled={!javaPath || testing} onClick={testJava}>
-                {testing ? t('instanceSettings.javaTesting') : t('instanceSettings.javaTest')}
-              </Button>
-            </div>
-            {shownResult && 'ok' in shownResult && (
-              <p role="status" className="flex items-center gap-2 text-lime">
-                <Check className="h-5 w-5" aria-hidden />
-                {t('instanceSettings.javaOk', { major: shownResult.ok })}
-              </p>
-            )}
-            {shownResult && 'error' in shownResult && <ErrorCard error={shownResult.error} />}
-          </div>
-        )}
-      </fieldset>
+      <JavaPicker choice={java} />
       <Field
         label={t('instanceSettings.javaArgs')}
         hint={t('instanceSettings.javaArgsHint')}
