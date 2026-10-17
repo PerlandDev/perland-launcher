@@ -23,6 +23,7 @@ pub mod paths;
 pub mod platform;
 pub mod play;
 pub mod playtime;
+pub mod public_list;
 pub mod server_list;
 pub mod settings;
 pub mod sources;

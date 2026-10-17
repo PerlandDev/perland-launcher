@@ -22,7 +22,7 @@ use crate::{
         client::{
             gone, host_of, host_trouble, offline, rate_limited, request_failed, status_error,
         },
-        invite_route, non_empty, EngineView, InviteLink, InviteView, Url, PACK_READY,
+        invite_route, non_empty, EngineView, InviteGame, InviteLink, InviteView, Url, PACK_READY,
         PACK_UNAVAILABLE,
     },
     sync::{sync_cancelled, Cancel},
@@ -62,15 +62,18 @@ pub fn supported(link: &InviteLink, ev: &EngineView) -> Result<()> {
     refused(ev).map_err(|e| scrub(e, link.token()))
 }
 
+/// Can the launcher join a server like this? Not a network; not a modded stack without a
+/// modpack (its mods can't be installed, and vanilla wouldn't get in); and a stack needs a
+/// modpack or a Minecraft version. `vanilla` names no loader, as in `loader_from`.
+pub fn joinable_game(kind: &str, game: &InviteGame, has_pack: bool) -> bool {
+    let modded_without_pack =
+        !has_pack && non_empty(&game.loader).is_some_and(|l| !l.eq_ignore_ascii_case("vanilla"));
+    kind != "network" && !modded_without_pack && (has_pack || non_empty(&game.version).is_some())
+}
+
 fn refused(ev: &EngineView) -> Result<()> {
     let view = &ev.view;
-    // `vanilla` names no loader, as in `loader_from`.
-    let modded_without_pack = view.pack.is_none()
-        && non_empty(&view.game.loader).is_some_and(|l| !l.eq_ignore_ascii_case("vanilla"));
-    if !view.is_network()
-        && !modded_without_pack
-        && (view.pack.is_some() || game_version(view).is_some())
-    {
+    if joinable_game(&view.kind, &view.game, view.pack.is_some()) {
         return Ok(());
     }
     let address = ServerAddress::from_view(&view.address, &ev.engine)

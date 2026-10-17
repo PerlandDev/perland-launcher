@@ -100,6 +100,7 @@
   "server_pack_pending",
   "server_address_unknown",
   "server_list_failed",
+  "server_list_closed",
   "launcher_update_failed",
   "launcher_update_invalid",
   "launcher_update_busy",

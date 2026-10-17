@@ -527,6 +527,7 @@
     "server_pack_pending": { "message": "The server is still preparing the modpack. Try again in a minute." },
     "server_address_unknown": { "message": "Couldn't get the server address, so it isn't in the game's server list." },
     "server_list_failed": { "message": "Couldn't add the server to the game's server list.", "fix": "Add {{address}} in Multiplayer by hand." },
+    "server_list_closed": { "message": "The server list isn't open yet. Check back soon." },
     "launcher_update_failed": { "message": "Couldn't check for launcher updates.", "fix": "You can keep playing. It tries again next time you open the launcher." },
     "launcher_update_invalid": { "message": "The launcher update didn't pass its safety check, so it wasn't installed.", "fix": "Try again later. If it keeps happening, let us know." },
     "launcher_update_busy": { "message": "Wait for games and installs to finish before restarting to update.", "fix": "The update also installs when you close the launcher." },
