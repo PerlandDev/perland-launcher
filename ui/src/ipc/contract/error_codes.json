@@ -101,6 +101,7 @@
   "server_address_unknown",
   "server_list_failed",
   "server_list_closed",
+  "server_wake_failed",
   "launcher_update_failed",
   "launcher_update_invalid",
   "launcher_update_busy",
