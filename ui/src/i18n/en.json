@@ -453,7 +453,7 @@
     "sort": "Sort by",
     "sorts": { "players": "Most players", "newest": "Newest", "name": "Name A–Z" },
     "any": "Any",
-    "modded": "With mods",
+    "modded": "Mods",
     "withMods": "With mods",
     "withoutMods": "Without mods",
     "minecraft": "Minecraft version",

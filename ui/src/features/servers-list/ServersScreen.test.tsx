@@ -2,7 +2,8 @@ import { screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import App from '../../App';
 import { createMockBackend } from '../../ipc/mock';
-import type { ListQuery, PublicServerPage } from '../../ipc/schema';
+import { MOCK_PUBLIC_SERVERS } from '../../ipc/mockServers';
+import type { InstanceListing, ListQuery, PublicServerPage } from '../../ipc/schema';
 import { navigate, routeSnapshot } from '../../state/route';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
@@ -65,7 +66,7 @@ describe('ServersScreen', () => {
   it('filters send their query', async () => {
     const { user, calls } = renderApp(<ServersScreen />);
     await card('Survival');
-    await user.selectOptions(screen.getByLabelText('With mods'), 'Without mods');
+    await user.selectOptions(screen.getByLabelText('Mods'), 'Without mods');
     await vi.waitFor(() => expect((sent(calls, 'servers_list').at(-1) as { query: ListQuery }).query.modded).toBe(false));
     expect(await card('Creative Plots')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Survival' })).toBeNull();
@@ -102,11 +103,15 @@ describe('ServersScreen', () => {
 
   it('Play reuses the instance that already joins the server', async () => {
     // The seeded `survival` instance joins the Survival card's invite.
-    const { user, calls } = renderApp(<ServersScreen />, { server: 'online' });
+    const { user, calls, backend } = renderApp(<ServersScreen />, { server: 'online' });
+    const ids = async () => ((await backend.handle('instances_list', {})) as InstanceListing).instances.map((i) => i.id);
+    const before = await ids();
     await user.click(within(await card('Survival')).getByRole('button', { name: 'Play' }));
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival' }));
-    expect(sent(calls, 'join_add')).toEqual([]);
+    // join_add is always asked (it answers the instance that already joins), so a stale id is never played.
+    expect(sent(calls, 'join_add')).toEqual([{ link: MOCK_PUBLIC_SERVERS.find((c) => c.name === 'Survival')!.invite }]);
     expect(sent(calls, 'play')).toEqual([{ id: 'survival', join: true }]);
+    expect(await ids()).toEqual(before);
   });
 
   it('a server already running opens its Home instead of a toast', async () => {

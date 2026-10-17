@@ -2443,12 +2443,13 @@
     font-weight: 650;
     letter-spacing: 0;
   }
-  .server-tile:is(:hover, :focus-within) .server-tile-play:not(:disabled) {
+  /* Keyboard focus lights Play, a click's leftover focus doesn't: two cards never light at once. */
+  .server-tile:is(:hover, :has(:focus-visible)) .server-tile-play:not(:disabled) {
     --face: var(--color-amber);
     --face-ink: var(--color-ground);
     --base: var(--color-dirt);
   }
-  .server-tile:is(:hover, :focus-within) .server-tile-play:hover:not(:disabled, [aria-disabled='true']) {
+  .server-tile:is(:hover, :has(:focus-visible)) .server-tile-play:hover:not(:disabled, [aria-disabled='true']) {
     --face: var(--color-amber-hi);
   }
 

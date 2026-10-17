@@ -86,12 +86,12 @@ function usePlay(card: Card) {
     running.current = true;
     setBusy(true);
     void (async () => {
-      let id = card.instance;
+      let id: string | null = null;
       try {
-        if (!id) {
-          id = (await commands.joinAdd(invite)).id;
-          await qc.invalidateQueries({ queryKey: qk.instances });
-        }
+        // Always asked, even when the card names an instance: it answers the one that joins the server
+        // now, so an instance deleted since the list loaded is never played.
+        id = (await commands.joinAdd(invite)).id;
+        if (id !== card.instance) await qc.invalidateQueries({ queryKey: qk.instances });
         await commands.play(id, true);
         navigate({ name: 'home', id });
       } catch (error) {
