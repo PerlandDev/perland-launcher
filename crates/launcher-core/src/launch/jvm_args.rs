@@ -85,7 +85,78 @@ pub fn parse(raw: &str) -> Result<Vec<String>> {
     Ok(args)
 }
 
-fn split(raw: &str) -> Result<Vec<String>> {
+/// Options brought from another launcher that this one leaves out on top of what [`parse`]
+/// refuses: the starting heap (it can exceed the memory slider's maximum and stop the game) and
+/// Java agents (they point at files in the other launcher's folders).
+const IMPORT_DROPPED: &[&str] = &[
+    "-Xms",
+    "-XX:InitialHeapSize=",
+    "-XX:MinHeapSize=",
+    "-javaagent:",
+    "-agentlib:",
+    "-agentpath:",
+];
+
+/// Another launcher's Java arguments for an instance, typed as one string: the ones this
+/// launcher accepts, as a string [`parse`] takes. Empty when there are none or `raw` can't be
+/// read (an unclosed quote).
+pub fn imported(raw: &str) -> String {
+    split(raw)
+        .map(|args| imported_list(&args))
+        .unwrap_or_default()
+}
+
+/// [`imported`] for arguments the other launcher already keeps one by one. Each argument
+/// [`parse`] would refuse is dropped, with the value that follows it, and so are the ones in
+/// [`IMPORT_DROPPED`]. Empty when what is left still isn't accepted (too long, say).
+pub fn imported_list(args: &[String]) -> String {
+    let mut kept: Vec<&str> = Vec::new();
+    // Whether the last kept argument is a module option still waiting for its value.
+    let mut takes_value = false;
+    for arg in args {
+        if !arg.starts_with('-') {
+            if takes_value {
+                kept.push(arg);
+            }
+            takes_value = false;
+            continue;
+        }
+        let dropped = IMPORT_DROPPED.iter().any(|p| arg.starts_with(p)) || check(arg).is_err();
+        takes_value = !dropped && TAKES_VALUE.contains(&arg.as_str());
+        if !dropped {
+            kept.push(arg);
+        }
+    }
+    let joined = kept
+        .iter()
+        .map(|arg| quoted(arg))
+        .collect::<Option<Vec<_>>>()
+        .map(|args| args.join(" "))
+        .unwrap_or_default();
+    match parse(&joined) {
+        Ok(_) => joined,
+        Err(_) => String::new(),
+    }
+}
+
+/// `arg` as [`split`] reads it back: as is when plain, else in the quote it doesn't contain.
+/// `None` when it holds both quotes and something that needs quoting.
+fn quoted(arg: &str) -> Option<String> {
+    let plain = !arg.is_empty()
+        && !arg
+            .chars()
+            .any(|c| c.is_whitespace() || c == '"' || c == '\'');
+    if plain {
+        return Some(arg.to_string());
+    }
+    ['"', '\'']
+        .into_iter()
+        .find(|q| !arg.contains(*q))
+        .map(|q| format!("{q}{arg}{q}"))
+}
+
+/// Split `raw` into arguments the way [`parse`] does, without checking them.
+pub fn split(raw: &str) -> Result<Vec<String>> {
     let mut args = Vec::new();
     let mut current = String::new();
     let mut quote: Option<char> = None;
@@ -310,5 +381,40 @@ mod tests {
             ErrorCode::JvmArgsTooLong
         );
         assert!(parse(&format!("-D{}", "é".repeat(MAX_JVM_ARGS_CHARS - 2))).is_ok());
+    }
+
+    #[test]
+    fn imported_keeps_what_parse_accepts() {
+        let kept = imported(
+            "-XX:+UseG1GC -Dfml.readTimeout=180 --add-opens java.base/java.lang=ALL-UNNAMED",
+        );
+        assert_eq!(
+            kept,
+            "-XX:+UseG1GC -Dfml.readTimeout=180 --add-opens java.base/java.lang=ALL-UNNAMED"
+        );
+        assert!(parse(&kept).is_ok());
+    }
+
+    #[test]
+    fn imported_drops_memory_launcher_owned_and_agent_args() {
+        let kept = imported(
+            "-Xmx8G -Xms4G -XX:InitialHeapSize=2g -XX:MinHeapSize=1g -cp a.jar:b.jar -javaagent:/x/agent.jar \
+             -agentlib:jdwp=transport=dt_socket -agentpath:/x.so -XX:+UseZGC stray -jar x.jar -version",
+        );
+        assert_eq!(kept, "-XX:+UseZGC");
+    }
+
+    #[test]
+    fn imported_requotes_values_with_spaces() {
+        let kept = imported(r#"-Dname="My Pack" '-Dq=say "hi"'"#);
+        assert_eq!(kept, r#""-Dname=My Pack" '-Dq=say "hi"'"#);
+        assert_eq!(parse(&kept).unwrap(), ["-Dname=My Pack", r#"-Dq=say "hi""#]);
+    }
+
+    #[test]
+    fn imported_gives_up_on_what_it_cannot_read() {
+        assert_eq!(imported("-Dx=\"unclosed"), "");
+        assert_eq!(imported(&"-Dx ".repeat(MAX_JVM_ARGS_CHARS)), "");
+        assert_eq!(imported("  "), "");
     }
 }

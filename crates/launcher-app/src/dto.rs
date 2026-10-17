@@ -68,6 +68,17 @@ pub struct ImportPreview {
     pub loader: Option<LoaderSpec>,
     /// Bytes the import copies.
     pub size_bytes: u64,
+    /// The memory the instance gets, in MB, when the other launcher kept one of its own.
+    pub memory_mb: Option<u32>,
+    /// What the other launcher had, when it was outside what this launcher allows and
+    /// `memory_mb` is the nearest allowed amount instead.
+    pub memory_wanted_mb: Option<u32>,
+    /// The Java arguments the instance gets: the other launcher's own for it, less the ones
+    /// this launcher sets itself. `None` when none are left.
+    pub java_args: Option<String>,
+    /// Time played the other launcher counted, added to the instance's. `None` when there is
+    /// none, or another instance already counts this folder's.
+    pub playtime_seconds: Option<u64>,
 }
 
 /// Import the picked folder as a new instance with this name and game. The folder is inspected
@@ -158,7 +169,7 @@ pub struct SyncSummary {
     pub updated: usize,
     pub removed: usize,
     pub kept_modified: Vec<String>,
-    /// A linked instance's first sync: the old jars moved to `mods-before-link/`.
+    /// The player's files the pack's own took the place of, moved to `mods-before-link/`.
     pub set_aside: Vec<String>,
 }
 

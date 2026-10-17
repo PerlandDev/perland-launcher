@@ -205,7 +205,13 @@
     "copying": "Copiando… {{done}} de {{total}}",
     "pickTitle": "Elige la carpeta de la instancia",
     "reading": "Leyendo la carpeta…",
-    "done": "{{name}} está lista"
+    "done": "{{name}} está lista",
+    "keepsMemoryAndArgs": "Conserva su memoria ({{gb}} GB) y sus argumentos de Java.",
+    "keepsMemory": "Conserva su memoria ({{gb}} GB).",
+    "keepsArgs": "Conserva sus argumentos de Java.",
+    "memoryTooHigh": "Tenía {{wanted}} GB de memoria, más de lo que permite el launcher, así que tendrá {{gb}} GB.",
+    "memoryTooLow": "Tenía {{wanted}} GB de memoria, menos de lo que necesita el launcher, así que tendrá {{gb}} GB.",
+    "keepsPlaytime": "Sus {{time}} de juego se suman a tu tiempo jugado."
   },
   "instanceSettings": {
     "title": "Configuración de la instancia",
@@ -442,7 +448,7 @@
     "linkTitle": "Vincular a un servidor",
     "link": "Vincular",
     "linking": "Vinculando…",
-    "linkNote": "Cuando presiones Jugar, los mods que el servidor no usa se moverán a la carpeta mods-before-link. Tus mundos y ajustes se quedan.",
+    "linkNote": "Tus mods, mundos y ajustes se quedan. Si tienes otra versión de un mod que usa el servidor, la tuya se moverá a la carpeta mods-before-link.",
     "linkVersion": "Este servidor usa Minecraft {{version}} con {{loader}}. Al vincularla, esta instancia cambiará a esa versión, así que primero haz una copia de tus mundos.",
     "linkVersionVanilla": "Este servidor usa Minecraft {{version}} sin mods. Al vincularla, esta instancia cambiará a esa versión, así que primero haz una copia de tus mundos."
   },

@@ -151,7 +151,7 @@ describe('JoinServer', () => {
     await user.click(screen.getByRole('button', { name: 'Check link' }));
     expect(
       await screen.findByText(
-        "When you press Play, mods the server doesn't use move to the mods-before-link folder. Your worlds and settings stay.",
+        'Your mods, worlds and settings stay. If you have another version of a mod the server uses, yours moves to the mods-before-link folder.',
       ),
     ).toBeInTheDocument();
     // Same game version and loader: nothing to warn about.

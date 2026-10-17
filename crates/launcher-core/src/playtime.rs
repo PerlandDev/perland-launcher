@@ -1,5 +1,6 @@
 //! Time played per instance, kept in `<instance>/.perland/playtime.json` so it moves with a
-//! rename and goes with a delete. Counted on this computer only.
+//! rename and goes with a delete. Counted on this computer only, plus what another launcher had
+//! counted for an imported instance.
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -8,13 +9,17 @@ use crate::{error::Result, fsutil::write_atomic};
 
 const FILE: &str = "playtime.json";
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Playtime {
     /// Whole seconds the game was running, summed over every run.
     pub seconds: u64,
     /// Seconds since the Unix epoch when the last run ended (0: never played).
     pub last_played: u64,
+    /// The other launcher's game folder whose time played started this count, when the
+    /// instance was imported. An import of the same folder later doesn't count it again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported_from: Option<PathBuf>,
 }
 
 fn path(perland_dir: &Path) -> PathBuf {
@@ -36,10 +41,37 @@ pub async fn add(perland_dir: &Path, seconds: u64, now: u64) -> Result<Playtime>
     let new = Playtime {
         seconds: old.seconds.saturating_add(seconds),
         last_played: now,
+        imported_from: old.imported_from,
     };
-    let bytes = serde_json::to_vec_pretty(&new).map_err(std::io::Error::other)?;
-    write_atomic(&path(perland_dir), &bytes).await?;
+    write(perland_dir, &new).await?;
     Ok(new)
+}
+
+/// Start a new instance's count with the `seconds` another launcher counted in the game folder
+/// `from`, last played at `last_played` (Unix seconds, 0: unknown). Only when the instance has
+/// no record yet: false, and nothing written, when it has one.
+pub async fn import(
+    perland_dir: &Path,
+    seconds: u64,
+    last_played: u64,
+    from: &Path,
+) -> Result<bool> {
+    if tokio::fs::try_exists(path(perland_dir)).await? {
+        return Ok(false);
+    }
+    let new = Playtime {
+        seconds,
+        last_played,
+        imported_from: Some(from.to_path_buf()),
+    };
+    write(perland_dir, &new).await?;
+    Ok(true)
+}
+
+async fn write(perland_dir: &Path, played: &Playtime) -> Result<()> {
+    let bytes = serde_json::to_vec_pretty(played).map_err(std::io::Error::other)?;
+    write_atomic(&path(perland_dir), &bytes).await?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -61,6 +93,7 @@ mod tests {
         let expected = Playtime {
             seconds: 90,
             last_played: 200,
+            imported_from: None,
         };
         assert_eq!(total, expected);
         assert_eq!(read(&dir).await, expected);
@@ -74,5 +107,32 @@ mod tests {
         std::fs::write(tmp.path().join(FILE), b"nope").unwrap();
         assert_eq!(read(tmp.path()).await, Playtime::default());
         assert_eq!(add(tmp.path(), 5, 1).await.unwrap().seconds, 5);
+    }
+
+    #[tokio::test]
+    async fn imported_time_starts_the_count_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join(".perland");
+        let from = Path::new("/prism/instances/Pack/.minecraft");
+        assert!(import(&dir, 3600, 1_700_000_000, from).await.unwrap());
+        assert!(
+            !import(&dir, 3600, 1_700_000_000, from).await.unwrap(),
+            "never twice"
+        );
+        let played = add(&dir, 60, 1_800_000_000).await.unwrap();
+        assert_eq!(played.seconds, 3660);
+        assert_eq!(played.last_played, 1_800_000_000);
+        assert_eq!(played.imported_from.as_deref(), Some(from));
+        assert_eq!(read(&dir).await, played);
+    }
+
+    #[tokio::test]
+    async fn records_without_an_import_read_as_before() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join(FILE), br#"{"seconds": 5, "lastPlayed": 1}"#).unwrap();
+        assert_eq!(read(tmp.path()).await.imported_from, None);
+        add(tmp.path(), 1, 2).await.unwrap();
+        let raw = std::fs::read_to_string(tmp.path().join(FILE)).unwrap();
+        assert!(!raw.contains("importedFrom"), "{raw}");
     }
 }

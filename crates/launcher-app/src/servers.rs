@@ -176,8 +176,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// "Link to a server": make a vanilla or imported instance a server instance. Its files
-    /// stay; the next Play syncs to the server's pack and sets the jars the pack doesn't
-    /// install aside (link-instance spec §3). Refused while the instance has a run.
+    /// stay; the next Play syncs to the server's pack, which keeps the player's own mods
+    /// (link-instance spec §3, amended for #64). Refused while the instance has a run.
     pub async fn server_link(&self, id: &str, link: &str) -> Result<Instance> {
         if self.is_busy(id) {
             return Err(busy(id));
@@ -196,8 +196,6 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if instance.source != SourceRef::None {
             return Err(has_pack());
         }
-        // The marker first: on its own it does nothing to an instance without a pack.
-        launcher_core::sync::mark_adopt(&self.instances.perland_dir(id)).await?;
         instance.source = SourceRef::Perland {
             invite: link.canonical(),
             engine: ev.engine.to_string(),
@@ -568,7 +566,6 @@ mod tests {
         // And it can be linked again, as any ordinary instance.
         let again = core.server_link(&id, &invite('A')).await.unwrap();
         assert!(matches!(again.source, SourceRef::Perland { .. }));
-        assert!(perland.join("adopt").exists());
     }
 
     #[tokio::test]
@@ -627,13 +624,6 @@ mod tests {
             "the first Play changes the version"
         );
         assert!(world.is_file());
-        assert!(
-            core.instances
-                .perland_dir(&before.id)
-                .join("adopt")
-                .exists(),
-            "the first sync sets old mods aside"
-        );
         assert_eq!(core.instances.load(&before.id).await.unwrap(), linked);
         assert_eq!(
             core.instance_for_invite(&InviteLink::parse(&invite('A')).unwrap())
@@ -663,7 +653,6 @@ mod tests {
                 ErrorCode::LinkHasPack
             );
             assert_eq!(instance_json(&core, id), before);
-            assert!(!core.instances.perland_dir(id).join("adopt").exists());
         }
     }
 
@@ -700,11 +689,6 @@ mod tests {
             ErrorCode::InstanceBusy
         );
         assert_eq!(instance_json(&core, &target.id), before);
-        assert!(!core
-            .instances
-            .perland_dir(&target.id)
-            .join("adopt")
-            .exists());
     }
 
     #[tokio::test]
