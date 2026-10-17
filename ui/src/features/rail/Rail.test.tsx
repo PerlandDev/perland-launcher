@@ -72,6 +72,19 @@ it("falls back to the generated icon when a pack's icon fails to decode", async 
   expect(sky.querySelector('svg')).not.toBeNull();
 });
 
+it('opens Servers from the rail, above Browse, and marks it while open', async () => {
+  const { user } = renderApp(<Rail />);
+  const servers = await screen.findByRole('button', { name: 'Servers' });
+  const browse = screen.getByRole('button', { name: 'Browse' });
+  expect(servers.compareDocumentPosition(browse) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(servers).not.toHaveAttribute('aria-current');
+  await user.click(servers);
+  expect(routeSnapshot()).toEqual({ name: 'servers' });
+  expect(servers).toHaveAttribute('aria-current', 'page');
+  // Servers isn't an instance's screen, so no cabinet is selected.
+  expect(screen.getByRole('button', { name: 'Asalith Fields' })).not.toHaveAttribute('aria-current');
+});
+
 it('opens Browse from the rail', async () => {
   const { user } = renderApp(<Rail />);
   await user.click(await screen.findByRole('button', { name: 'Browse' }));

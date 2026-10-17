@@ -11,6 +11,7 @@ import { JoinServer } from './features/join/JoinServer';
 import { Mods } from './features/mods/Mods';
 import { NewInstance } from './features/new-instance/NewInstance';
 import { Rail } from './features/rail/Rail';
+import { ServersScreen } from './features/servers-list/ServersScreen';
 import { Settings } from './features/settings/Settings';
 import { TitleBar } from './features/titlebar/TitleBar';
 import { applyLanguage } from './i18n';
@@ -45,6 +46,8 @@ function Screen({ route }: { route: Route }) {
           linkFor={route.linkFor}
         />
       );
+    case 'servers':
+      return <ServersScreen />;
     case 'accounts':
       return <Accounts />;
     case 'settings':

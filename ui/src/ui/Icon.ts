@@ -24,6 +24,7 @@ export {
   Plus,
   Reload,
   Search,
+  Server,
   SettingsCog,
   Square,
   Terminal,

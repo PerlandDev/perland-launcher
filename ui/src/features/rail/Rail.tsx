@@ -18,7 +18,7 @@ import { navigate, rememberInstance, useRoute, instanceOf } from '../../state/ro
 import { RAIL_POLL } from '../../state/serverPoll';
 import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
-import { ArrowBarLeft, ArrowBarRight, Plus, Search, WarningDiamond } from '../../ui/Icon';
+import { ArrowBarLeft, ArrowBarRight, Plus, Search, Server, WarningDiamond } from '../../ui/Icon';
 import { sessionKind } from '../browse/session';
 import { pickId } from '../home/pick';
 import { statusWord } from '../servers/statusWord';
@@ -407,6 +407,17 @@ export function Rail() {
       <p className="sr-only" aria-live="polite">
         {announcement}
       </p>
+      <Button
+        size={wide ? 'md' : 'icon'}
+        className="btn-lg rail-browse rail-foot"
+        aria-label={t('servers.open')}
+        title={t('servers.open')}
+        aria-current={route.name === 'servers' ? 'page' : undefined}
+        icon={<Server />}
+        onClick={() => navigate({ name: 'servers' })}
+      >
+        {wide && t('servers.open')}
+      </Button>
       <Button
         size={wide ? 'md' : 'icon'}
         className="btn-lg rail-browse rail-foot"
