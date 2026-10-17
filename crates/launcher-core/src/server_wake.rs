@@ -132,8 +132,8 @@ fn bad(why: &'static str) -> std::io::Error {
 enum Reply {
     /// A packet with this id whose payload starts with a string.
     Text(i32, String),
-    /// Same, but the string is longer than we read: something answered, but we can't use it.
-    TooLong(i32),
+    /// Same, but the string is longer than we read, so it is unreadable.
+    TooLong,
     /// A packet with an empty payload.
     Other,
 }
@@ -149,7 +149,7 @@ async fn read_reply<R: AsyncRead + Unpin>(r: &mut R) -> std::io::Result<Reply> {
     let (n, n_len) = read_varint(r).await?;
     let n = usize::try_from(n).map_err(|_| bad("negative string length"))?;
     if n > MAX_STRING {
-        return Ok(Reply::TooLong(id));
+        return Ok(Reply::TooLong);
     }
     if n_len + n > rest {
         return Err(bad("string runs past its packet"));
@@ -189,19 +189,17 @@ async fn status_exchange(address: &ServerAddress) -> std::io::Result<Reply> {
 /// Asks who holds the address: a sleeping server's waker, a running server, or nobody.
 pub async fn ping(address: &ServerAddress) -> Ping {
     match status_exchange(address).await {
-        Ok(Reply::Text(0, json)) => {
-            let sleeping = serde_json::from_str::<serde_json::Value>(&json)
-                .ok()
-                .and_then(|v| v["version"]["name"].as_str().map(|n| n == SLEEPING))
-                .unwrap_or(false);
-            if sleeping {
-                Ping::Waker
-            } else {
-                Ping::Server
+        Ok(Reply::Text(0, json)) => match serde_json::from_str::<serde_json::Value>(&json) {
+            Ok(v) if v.is_object() => {
+                if v["version"]["name"].as_str() == Some(SLEEPING) {
+                    Ping::Waker
+                } else {
+                    Ping::Server
+                }
             }
-        }
-        // A status packet too big to read still came from a server.
-        Ok(Reply::TooLong(0)) => Ping::Server,
+            // Not a status object: unreadable.
+            _ => Ping::NoAnswer,
+        },
         _ => Ping::NoAnswer,
     }
 }
@@ -327,6 +325,10 @@ mod tests {
         Waker(String),
         /// Status says `Paper 1.21.1`.
         Server,
+        /// Status string that isn't JSON.
+        Garbage,
+        /// Status string over the read limit.
+        Oversize,
     }
 
     struct Running {
@@ -388,11 +390,15 @@ mod tests {
                 };
                 let name = match fake {
                     Fake::Waker(_) => "Sleeping",
-                    Fake::Server => "Paper 1.21.1",
+                    _ => "Paper 1.21.1",
                 };
-                let json = format!(
-                    r#"{{"version":{{"name":"{name}","protocol":767}},"players":{{"max":20,"online":0}},"description":{{"text":"hi"}}}}"#
-                );
+                let json = match fake {
+                    Fake::Garbage => "not json at all".to_string(),
+                    Fake::Oversize => "x".repeat(MAX_STRING + 1),
+                    _ => format!(
+                        r#"{{"version":{{"name":"{name}","protocol":767}},"players":{{"max":20,"online":0}},"description":{{"text":"hi"}}}}"#
+                    ),
+                };
                 let mut p = Vec::new();
                 push_string(&mut p, &json);
                 let _ = s.write_all(&frame(0x00, &p)).await;
@@ -458,6 +464,34 @@ mod tests {
     async fn ping_sees_a_server() {
         let s = fake(Fake::Server).await;
         assert_eq!(ping(&s.address).await, Ping::Server);
+    }
+
+    #[tokio::test]
+    async fn ping_garbage_json_is_no_answer() {
+        let s = fake(Fake::Garbage).await;
+        assert_eq!(ping(&s.address).await, Ping::NoAnswer);
+    }
+
+    #[tokio::test]
+    async fn ping_oversize_status_is_no_answer() {
+        let s = fake(Fake::Oversize).await;
+        assert_eq!(ping(&s.address).await, Ping::NoAnswer);
+    }
+
+    #[tokio::test]
+    async fn ping_json_without_a_version_is_a_server() {
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = l.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut s, _) = l.accept().await.unwrap();
+            let _ = read_packet(&mut s).await;
+            let _ = read_packet(&mut s).await;
+            let mut p = Vec::new();
+            push_string(&mut p, "{}");
+            let _ = s.write_all(&frame(0x00, &p)).await;
+            let _ = s.shutdown().await;
+        });
+        assert_eq!(ping(&address_of(port)).await, Ping::Server);
     }
 
     #[tokio::test]
