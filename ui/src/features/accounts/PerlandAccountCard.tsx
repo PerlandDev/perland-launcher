@@ -34,6 +34,7 @@ export function PerlandAccountCard() {
   /** Bumped by every sign-in start and by Cancel, so a sign-in that was left behind can't land later. */
   const attempt = useRef(0);
   const firstControl = useRef<HTMLElement | null>(null);
+  const cancelButton = useRef<HTMLButtonElement | null>(null);
   const language = detectLang(i18n.language);
 
   // The browser step reports its phase: waiting on the player, then the launcher finishing the sign-in.
@@ -73,6 +74,18 @@ export function PerlandAccountCard() {
     shownView.current = view;
     if (before !== null && view !== null && before !== view) firstControl.current?.focus();
   }, [view]);
+
+  // An error from the email or code step puts the player back on the field it is about, so they can fix it.
+  useEffect(() => {
+    if (error !== null && (step === 'email' || step === 'code')) firstControl.current?.focus();
+  }, [error, step]);
+
+  // Exchanging drops "Open the page again"; if it had focus, Cancel takes it rather than the page.
+  useEffect(() => {
+    if (step !== 'discord' || phase !== 'exchanging') return;
+    const active = document.activeElement;
+    if (active === null || active === document.body) cancelButton.current?.focus();
+  }, [step, phase]);
 
   if (!data?.enabled) return null;
 
@@ -200,22 +213,25 @@ export function PerlandAccountCard() {
     const name = shownName(account);
     const second = account.email && account.email !== name ? account.email : account.discord ? t('perland.viaDiscord') : null;
     body = (
-      <div className="panel flex items-center gap-4 px-4 py-3">
-        <span
-          aria-hidden
-          className="stepped flex h-10 w-10 flex-none items-center justify-center bg-raised font-display text-lg text-ink"
-        >
-          {graphemes(initials(name))[0] ?? 'P'}
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-bold" title={name}>
-            {name}
-          </p>
-          {second && <p className="truncate text-sm text-ink-dim">{second}</p>}
+      <div className="grid gap-3">
+        <div className="panel flex items-center gap-4 px-4 py-3">
+          <span
+            aria-hidden
+            className="stepped flex h-10 w-10 flex-none items-center justify-center bg-raised font-display text-lg text-ink"
+          >
+            {graphemes(initials(name))[0] ?? 'P'}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-bold" title={name}>
+              {name}
+            </p>
+            {second && <p className="truncate text-sm text-ink-dim">{second}</p>}
+          </div>
+          <Button ref={(el) => void (firstControl.current = el)} aria-disabled={pending} onClick={() => void signOut()}>
+            {t('perland.signOut')}
+          </Button>
         </div>
-        <Button ref={(el) => void (firstControl.current = el)} aria-disabled={pending} onClick={() => void signOut()}>
-          {t('perland.signOut')}
-        </Button>
+        {errorLine}
       </div>
     );
   } else if (step === 'discord') {
@@ -230,7 +246,7 @@ export function PerlandAccountCard() {
               {t('perland.reopen')}
             </Button>
           )}
-          <Button variant="ghost" onClick={cancelDiscord}>
+          <Button ref={cancelButton} variant="ghost" onClick={cancelDiscord}>
             {t('common.cancel')}
           </Button>
         </div>
@@ -239,7 +255,7 @@ export function PerlandAccountCard() {
   } else if (step === 'email') {
     body = (
       <form onSubmit={submitEmail} className="panel grid gap-4 p-5" noValidate>
-        <Field label={t('perland.emailLabel')} error={errorMessage}>
+        <Field label={t('perland.emailLabel')} error={errorMessage} alert>
           <input
             ref={(el) => void (firstControl.current = el)}
             className="field-input"
@@ -264,7 +280,7 @@ export function PerlandAccountCard() {
     body = (
       <form onSubmit={(e) => void submitCode(e)} className="panel grid gap-4 p-5">
         <p className="text-ink-dim">{t('perland.codeSent', { email })}</p>
-        <Field label={t('perland.codeLabel')} error={errorMessage}>
+        <Field label={t('perland.codeLabel')} error={errorMessage} alert>
           <input
             ref={(el) => void (firstControl.current = el)}
             className="field-input tabular max-w-48 tracking-widest"

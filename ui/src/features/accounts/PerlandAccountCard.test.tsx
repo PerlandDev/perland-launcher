@@ -1,8 +1,10 @@
-import { screen, within } from '@testing-library/react';
+import { emit } from '@tauri-apps/api/event';
+import { act, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import i18n from '../../i18n';
 import en from '../../i18n/en.json';
 import es from '../../i18n/es.json';
+import { APP_EVENT } from '../../ipc/events';
 import { MOCK_EMAIL_CODE } from '../../ipc/mockPerland';
 import { qk } from '../../state/queries';
 import { renderApp, sent } from '../../test/backend';
@@ -106,6 +108,9 @@ describe('PerlandAccountCard', () => {
 
     await tryCode(user, '000000');
     expect(await screen.findByText("That code isn't right. 4 tries left.")).toBeInTheDocument();
+    // Announced, and the player is back on the code to fix it.
+    expect(screen.getByRole('alert')).toHaveTextContent("That code isn't right. 4 tries left.");
+    expect(screen.getByRole('textbox', { name: 'Code' })).toHaveFocus();
 
     // Spaces are fine: the launcher strips them.
     const spaced = `${MOCK_EMAIL_CODE.slice(0, 3)} ${MOCK_EMAIL_CODE.slice(3)}`;
@@ -139,6 +144,8 @@ describe('PerlandAccountCard', () => {
     await user.click(screen.getByRole('button', { name: 'Send code' }));
     expect(await screen.findByText('Check the email address.')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Email' })).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).toHaveTextContent('Check the email address.');
+    expect(screen.getByRole('textbox', { name: 'Email' })).toHaveFocus();
   });
 
   it('sign_out_returns_to_signed_out', async () => {
@@ -149,6 +156,35 @@ describe('PerlandAccountCard', () => {
     expect(await screen.findByRole('button', { name: 'Continue with Discord' })).toBeInTheDocument();
     expect(sent(calls, 'perland_sign_out')).toHaveLength(1);
     expect(qc.getQueryData(qk.yourServers)).toBeUndefined();
+  });
+
+  it('shows a failed sign-out in the signed-in card', async () => {
+    const { user, backend } = renderApp(<PerlandAccountCard />, { perland: 'signedIn' });
+    const handle = backend.handle;
+    vi.spyOn(backend, 'handle').mockImplementation((cmd, args) =>
+      cmd === 'perland_sign_out'
+        ? Promise.reject({ category: 'network', code: 'sign_in_failed', message: 'nope', fix: null, detail: null, params: {} })
+        : handle(cmd, args),
+    );
+    await user.click(await screen.findByRole('button', { name: 'Sign out' }));
+    expect(await within(card()).findByRole('alert')).toHaveTextContent("Couldn't sign you in. Try again.");
+    expect(screen.getByText('Steve')).toBeInTheDocument();
+  });
+
+  it('keeps focus on Cancel when Open the page again goes away', async () => {
+    const { user, backend } = renderApp(<PerlandAccountCard />, { perland: 'signedOut' });
+    const handle = backend.handle;
+    // The browser step never ends here: the test moves it to exchanging by hand.
+    vi.spyOn(backend, 'handle').mockImplementation((cmd, args) =>
+      cmd === 'perland_sign_in_discord' ? new Promise(() => {}) : handle(cmd, args),
+    );
+    await user.click(await screen.findByRole('button', { name: 'Continue with Discord' }));
+    const reopen = await screen.findByRole('button', { name: 'Open the page again' });
+    expect(reopen).toHaveFocus();
+    await act(() => emit(APP_EVENT, { type: 'perland_sign_in', phase: 'exchanging' }));
+    expect(await screen.findByText('Signing you in…')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open the page again' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
   });
 
   it('spanish_strings_exist: every perland.* key is in es', () => {
