@@ -167,6 +167,9 @@
   "safety_backup_failed",
   "apply_failed",
   "compose_not_editable",
+  "team_server_too_big",
+  "server_name_taken",
+  "invalid_team_server",
   "share_path_invalid",
   "share_too_large",
   "internal"

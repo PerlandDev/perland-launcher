@@ -68,6 +68,8 @@ export interface MockManage {
   team: Server;
   /** The free server's own Manage state, once it exists. */
   free: Server | null;
+  /** Servers made on a team from the create dialogs, newest last. */
+  created: Server[];
   console: { ref: ManageRef; timer: ReturnType<typeof setInterval> } | null;
   /** Where Manage in Perland opened the panel. */
   opened: { tenantId: string; stack: string | null }[];
@@ -112,6 +114,7 @@ export function seedManage(scenario: ManageScenario = 'running', emit: (event: A
     scenario,
     team: server(scenario, { tenantId: MOCK_TEAM_TENANT, stack: MOCK_TEAM_SERVER }, 'Builders', false, 25600),
     free: null,
+    created: [],
     console: null,
     opened: [],
     emit,
@@ -150,7 +153,7 @@ function settle(s: Server) {
 }
 
 function every(manage: MockManage): Server[] {
-  const all = [...(manage.free ? [manage.free] : []), ...(manage.scenario === 'none' ? [] : [manage.team])];
+  const all = [...(manage.free ? [manage.free] : []), ...(manage.scenario === 'none' ? [] : [manage.team]), ...manage.created];
   all.forEach(settle);
   return all;
 }
@@ -173,6 +176,18 @@ export function managedForYourServers(manage: MockManage, account: PerlandAccoun
     .filter((s) => !s.free)
     .map(view);
 }
+
+/** A server made on a team (the create dialogs): running, or stopped when the team had no room to run it. */
+export function addTeamServer(manage: MockManage, ref: ManageRef, teamName: string, started: boolean): string {
+  const s = server(started ? 'running' : 'stopped', ref, teamName, false, 25610 + manage.created.length);
+  if (started) s.online = [];
+  manage.created.push(s);
+  return s.address;
+}
+
+/** Whether a team already has a server named `stack`. */
+export const teamHasServer = (manage: MockManage, tenantId: string, stack: string) =>
+  [manage.team, ...manage.created].some((s) => s.ref.tenantId === tenantId && s.ref.stack.toLowerCase() === stack.toLowerCase());
 
 function start(s: Server) {
   s.state = 'starting';

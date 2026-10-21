@@ -1,0 +1,22 @@
+[
+  {
+    "tenantId": "t-2",
+    "name": "Amigos",
+    "type": "fabric",
+    "version": "1.20.1",
+    "loaderVersion": "0.16.14",
+    "memoryGb": 4,
+    "settings": {
+      "gameMode": "creative"
+    }
+  },
+  {
+    "tenantId": "t-2",
+    "name": "Amigos",
+    "type": "vanilla",
+    "version": "1.21.1",
+    "loaderVersion": null,
+    "memoryGb": 2,
+    "settings": null
+  }
+]

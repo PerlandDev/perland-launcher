@@ -98,6 +98,8 @@ error_codes! {
     VersionChangeNeedsConfirmation, DataLossNeedsConfirmation, MojangUnavailable, TooManyStreams,
     TooManyDiagnoses, ManagedBySource, ServerNotFound, ManageForbidden, SafetyBackupFailed,
     ApplyFailed, ComposeNotEditable,
+    // creating a server on a team
+    TeamServerTooBig, ServerNameTaken, InvalidTeamServer,
     // sharing an instance
     SharePathInvalid, ShareTooLarge,
     // anything unexpected
@@ -362,6 +364,18 @@ mod tests {
             (ErrorCode::FreeServersPaused, "free_servers_paused"),
             (ErrorCode::FreeServerBlocked, "free_server_blocked"),
             (ErrorCode::VersionsUnavailable, "versions_unavailable"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
+    fn team_create_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::TeamServerTooBig, "team_server_too_big"),
+            (ErrorCode::ServerNameTaken, "server_name_taken"),
+            (ErrorCode::InvalidTeamServer, "invalid_team_server"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

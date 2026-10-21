@@ -94,7 +94,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Instance `id`, refused when it belongs to a server.
-    async fn friends_instance(&self, id: &str) -> Result<Instance> {
+    pub(crate) async fn friends_instance(&self, id: &str) -> Result<Instance> {
         let instance = self.instances.load(id).await?;
         if matches!(instance.source, SourceRef::Perland { .. }) || instance.server.is_some() {
             return Err(linked_to_a_server());

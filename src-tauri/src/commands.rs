@@ -912,6 +912,58 @@ pub async fn friends_create(
 }
 
 #[tauri::command]
+pub async fn creatable_teams(core: CoreState<'_>) -> Res<Vec<launcher_app::dto::CreatableTeam>> {
+    logged("creatable_teams", core.creatable_teams().await)
+}
+
+#[tauri::command]
+pub async fn team_room(core: CoreState<'_>, tenant_id: String) -> Res<launcher_app::dto::TeamRoom> {
+    logged("team_room", core.team_room(&tenant_id).await)
+}
+
+#[tauri::command]
+pub async fn team_versions(
+    core: CoreState<'_>,
+    tenant_id: String,
+    server_type: String,
+    minecraft: Option<String>,
+) -> Res<Vec<launcher_core::perland::EngineVersion>> {
+    logged(
+        "team_versions",
+        core.team_versions(&tenant_id, &server_type, minecraft)
+            .await,
+    )
+}
+
+#[tauri::command]
+pub async fn team_create(
+    core: CoreState<'_>,
+    request: launcher_app::dto::TeamCreateRequest,
+) -> Res<launcher_app::dto::TeamServerCreated> {
+    logged("team_create", core.team_create(request).await)
+}
+
+#[tauri::command]
+pub async fn team_check(
+    core: CoreState<'_>,
+    tenant_id: String,
+    id: String,
+) -> Res<launcher_app::dto::FriendsCheck> {
+    logged("team_check", core.team_check(&tenant_id, &id).await)
+}
+
+#[tauri::command]
+pub async fn team_create_from_instance(
+    core: CoreState<'_>,
+    request: launcher_app::dto::TeamInstanceRequest,
+) -> Res<launcher_app::dto::TeamServerCreated> {
+    logged(
+        "team_create_from_instance",
+        core.team_create_from_instance(request).await,
+    )
+}
+
+#[tauri::command]
 pub async fn share_preview(
     core: CoreState<'_>,
     id: String,

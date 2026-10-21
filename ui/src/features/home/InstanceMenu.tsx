@@ -2,8 +2,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { commands } from "../../ipc/commands";
-import type { FreeLimits, Instance } from "../../ipc/schema";
-import { qk, useFreeServer, usePerlandStatus } from "../../state/queries";
+import type { CreatableTeam, FreeLimits, Instance } from "../../ipc/schema";
+import {
+  qk,
+  useCreatableTeams,
+  useFreeServer,
+  usePerlandStatus,
+} from "../../state/queries";
 import { navigate } from "../../state/route";
 import { useRun } from "../../state/runStore";
 import { pushError } from "../../state/toasts";
@@ -47,7 +52,14 @@ export interface InstanceActions {
 export function useInstanceActions(instance: Instance): InstanceActions {
   const { t } = useTranslation();
   const [dialog, setDialog] = useState<
-    "rename" | "image" | "delete" | "manage" | "goBack" | "share" | "friends" | null
+    | "rename"
+    | "image"
+    | "delete"
+    | "manage"
+    | "goBack"
+    | "share"
+    | "friends"
+    | null
   >(null);
   const qc = useQueryClient();
   const close = () => setDialog(null);
@@ -73,8 +85,14 @@ export function useInstanceActions(instance: Instance): InstanceActions {
       : path === "modrinth" || free.limits.pack !== null)
       ? free.limits
       : null;
+  // Or a server on any team the player owns or is a member of (spec 2026-10-21 §6.3): the same item, the dialog asks Where.
+  const teams = useCreatableTeams(signedIn && !linked).data ?? [];
+  const friendsTeams = signedIn && !linked ? teams : [];
   // Kept from when the dialog opened: once the server exists the item goes, but the dialog stays for its ready step.
-  const [openLimits, setOpenLimits] = useState<FreeLimits | null>(null);
+  const [openFriends, setOpenFriends] = useState<{
+    limits: FreeLimits | null;
+    teams: CreatableTeam[];
+  } | null>(null);
   const serverItems: MenuItem[] = isServer(instance)
     ? [
         {
@@ -221,7 +239,7 @@ export function useInstanceActions(instance: Instance): InstanceActions {
               onSelect: () => setDialog("share"),
             },
           ]),
-      ...(friendsLimits
+      ...(friendsLimits || friendsTeams.length > 0
         ? [
             {
               id: "friends",
@@ -229,7 +247,7 @@ export function useInstanceActions(instance: Instance): InstanceActions {
               icon: <Users />,
               disabled: running,
               onSelect: () => {
-                setOpenLimits(friendsLimits);
+                setOpenFriends({ limits: friendsLimits, teams: friendsTeams });
                 setDialog("friends");
               },
             },
@@ -274,10 +292,11 @@ export function useInstanceActions(instance: Instance): InstanceActions {
         {dialog === "share" && (
           <ShareDialog instance={instance} onClose={close} />
         )}
-        {dialog === "friends" && openLimits && (
+        {dialog === "friends" && openFriends && (
           <FriendsServerDialog
             instance={instance}
-            limits={openLimits}
+            limits={openFriends.limits}
+            teams={openFriends.teams}
             onClose={close}
           />
         )}

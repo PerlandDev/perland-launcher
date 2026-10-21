@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { FreeLimits, FreeServerKind } from '../../ipc/schema';
+import type { CreatableTeam, FreeLimits, FreeServerKind } from '../../ipc/schema';
 import { useFreeServerCreate, useInstances, usePerlandStatus } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
@@ -11,22 +11,44 @@ import { VersionFields } from '../new-instance/VersionFields';
 import { engineLanguage, isServerName, limitsText, maybeCreated, prefillName } from './freeServer';
 import { ServerOptions } from './ServerOptions';
 import { isOptionField, useServerOptions } from './optionRules';
-import { refusalOf, serverStep, useLostPoll, type Step } from './steps';
+import { NO_FREE_LIMITS, refusalOf, serverStep, useLostPoll, type DialogStep } from './steps';
+import { teamReadyStep } from './teamSteps';
+import { TeamServerForm } from './TeamServerForm';
+import { FREE_WHERE, WhereField } from './WhereField';
 import { usePlayFreeServer } from './usePlayFreeServer';
 
 const FORM_ID = 'free-server-pick';
+const TEAM_FORM_ID = 'team-server-pick';
 
-/** Create a server for friends, in three steps: pick (vanilla on a Minecraft version or a modpack, the name and, closed by
- *  default, the Options, under the limits), creating, and share (the invite link with Copy, and Play now). A refusal brings the player back to the first step with the reason inline
- *  and what they typed kept. Mount it only while it is open: closing unmounts it, so it starts over. */
-export function CreateServerDialog({ limits, onClose }: { limits: FreeLimits; onClose: () => void }) {
+
+
+/** Create a server (spec 2026-10-21 §6.3). With teams, Where comes first: the player's free server (with `limits`, while they
+ *  can make it) or one of their teams. The free server in three steps: pick (vanilla on a Minecraft version or a modpack, the
+ *  name and, closed by default, the Options, under the limits), creating, and share (the invite link with Copy, and Play now).
+ *  A team server: its form (`TeamServerForm`), creating, and ready, which leads to Manage. A refusal brings the player back to
+ *  the first step with the reason inline and what they typed kept. Mount it only while it is open: closing unmounts it, so it
+ *  starts over. */
+export function CreateServerDialog({
+  limits: freeLimits,
+  teams = [],
+  onClose,
+}: {
+  limits: FreeLimits | null;
+  teams?: CreatableTeam[];
+  onClose: () => void;
+}) {
+  const limits = freeLimits ?? NO_FREE_LIMITS;
   const { t, i18n } = useTranslation();
   const status = usePerlandStatus();
   const instances = useInstances();
   const packs = (instances.data?.instances ?? []).flatMap((i) =>
     i.source.kind === 'modrinth' ? [{ id: i.id, name: i.name, versionId: i.source.versionId }] : [],
   );
-  const [step, setStep] = useState<Step>({ kind: 'pick' });
+  const [step, setStep] = useState<DialogStep>({ kind: 'pick' });
+  const [where, setWhere] = useState(freeLimits ? FREE_WHERE : (teams[0]?.tenantId ?? FREE_WHERE));
+  const team = teams.find((t) => t.tenantId === where) ?? null;
+  const [teamCanCreate, setTeamCanCreate] = useState(false);
+  const onTeamCanCreate = useCallback((can: boolean) => setTeamCanCreate(can), []);
   const [kind, setKind] = useState<FreeServerKind>('vanilla');
   const [versionId, setVersionId] = useState<string | null>(null);
   const [name, setName] = useState(() => prefillName(status.data?.account?.displayName ?? ''));
@@ -97,10 +119,56 @@ export function CreateServerDialog({ limits, onClose }: { limits: FreeLimits; on
   let title: string;
   let actions: ReactNode;
   let content: ReactNode;
-  if (step.kind !== 'pick') {
+  const whereField = (
+    <WhereField
+      free={freeLimits !== null}
+      teams={teams}
+      value={where}
+      onChange={(next) => {
+        setWhere(next);
+        setRefusal(null);
+      }}
+    />
+  );
+  const teamForm = team && (
+    <TeamServerForm
+      key={team.tenantId}
+      formId={TEAM_FORM_ID}
+      tenantId={team.tenantId}
+      instance={null}
+      hidden={step.kind !== 'pick'}
+      onCreating={() => setStep({ kind: 'creating', lost: false })}
+      onCreated={(server) => setStep({ kind: 'teamReady', server })}
+      onRefused={() => setStep({ kind: 'pick' })}
+      onCanCreate={onTeamCanCreate}
+      lead={whereField}
+    />
+  );
+  if (step.kind === 'teamReady') {
+    ({ title, actions, content } = teamReadyStep(
+      t,
+      step.server,
+      () => {
+        onClose();
+        navigate({ name: 'manage', tenantId: step.server.tenantId, stack: step.server.stack });
+      },
+      onClose,
+    ));
+  } else if (step.kind !== 'pick') {
     ({ title, actions, content } = serverStep(t, step, play, onClose));
+  } else if (team) {
+    title = t('teamServer.title');
+    actions = (
+      <>
+        <Button onClick={onClose}>{t('common.cancel')}</Button>
+        <Button type="submit" form={TEAM_FORM_ID} variant="primary" disabled={!teamCanCreate}>
+          {t('freeServer.pick.create')}
+        </Button>
+      </>
+    );
+    content = null;
   } else {
-    title = t('freeServer.pick.title');
+    title = t(teams.length > 0 ? 'teamServer.title' : 'freeServer.pick.title');
     actions = (
       <>
         <Button onClick={onClose}>{t('common.cancel')}</Button>
@@ -111,6 +179,7 @@ export function CreateServerDialog({ limits, onClose }: { limits: FreeLimits; on
     );
     content = (
       <form id={FORM_ID} className="grid gap-5" onSubmit={submit} noValidate>
+        {whereField}
         <p className="text-sm">{limitsText(t, limits)}</p>
         <fieldset className="grid gap-1.5">
           <legend className="mb-1.5 text-sm font-semibold">{t('freeServer.pick.what')}</legend>
@@ -191,6 +260,7 @@ export function CreateServerDialog({ limits, onClose }: { limits: FreeLimits; on
       {/* While picking, only the body scrolls (Options open runs past 600 px), so Create stays in view. */}
       <div ref={body} tabIndex={-1} className={`grid gap-3 pt-1 outline-none${step.kind === 'pick' ? ' share-sheet' : ''}`}>
         {content}
+        {teamForm}
       </div>
     </Dialog>
   );

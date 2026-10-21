@@ -774,6 +774,69 @@
       "notDeleted": "Tu servidor todavía se está preparando, así que aún no se puede eliminar. Vuelve a intentarlo en un minuto."
     }
   },
+  "teamServer": {
+    "entry": {
+      "lead": "Crea un servidor para ti y tus amigos, en tu propio servidor gratis o en uno de tus equipos.",
+      "leadTeams": "Crea un servidor en uno de tus equipos.",
+      "create": "Crear un servidor"
+    },
+    "title": "Crear un servidor",
+    "where": "Dónde",
+    "free": "Tu servidor gratis",
+    "type": "Tipo de servidor",
+    "types": {
+      "vanilla": "Vanilla",
+      "paper": "Paper",
+      "fabric": "Fabric",
+      "forge": "Forge",
+      "neoforge": "NeoForge",
+      "quilt": "Quilt"
+    },
+    "loaderVersion": "Versión del loader",
+    "stable": "{{version}}",
+    "recommended": "{{version}} (recomendada)",
+    "beta": "{{version}} (beta)",
+    "noVersions": "Este tipo de servidor no tiene versiones para elegir por ahora.",
+    "noLoader": "Todavía no hay loader para Minecraft {{version}}. Elige otra versión.",
+    "memory": "Memoria",
+    "memoryGb": "{{count}} GB",
+    "memoryHint": "Con más memoria aguanta más mods y más jugadores.",
+    "nameHint": "Solo letras, números, - y _, hasta 32. Tu equipo lo ve en Administrar.",
+    "vanillaIntro": "Usa Minecraft {{version}}, igual que esta instancia. Tus amigos entran con esa versión.",
+    "loaderIntro": "Usa Minecraft {{version}} con {{loader}} {{loaderVersion}}, igual que esta instancia.",
+    "modrinthIntro": "Usa {{pack}} tal como está publicado en Modrinth. Los mods que agregaste tú se quedan en tu computadora.",
+    "packIntro": "El servidor usa estos mods y ajustes. Tus amigos reciben los mismos al entrar.",
+    "memoryLine": "Necesita {{need}} GB de memoria.",
+    "needsMemory": "Tus mods necesitan {{need}} GB de memoria. Elige al menos eso.",
+    "notOnModrinth_one": "Los servidores solo usan mods de Modrinth. {{count}} de tus mods no está ahí: {{names}}.",
+    "notOnModrinth_other": "Los servidores solo usan mods de Modrinth. {{count}} de tus mods no están ahí: {{names}}.",
+    "oldVersion": "Los servidores no pueden usar Minecraft {{version}}.",
+    "locked": "El plan de tu equipo no incluye esto.",
+    "upgrade": "Mejorar plan",
+    "refused": "No se pudo crear el servidor con estas opciones. Prueba con otro nombre u otra versión.",
+    "versionRefused": "No se puede usar esta versión. Elige otra.",
+    "packRefused": "Este modpack no puede volverse un servidor. Vuelve a instalarlo desde Explorar.",
+    "tooBig": "El plan de tu equipo no tiene espacio para un servidor de este tamaño.",
+    "tooHeavy": "Este modpack necesita {{need}} GB de memoria. Elige al menos eso.",
+    "nameTaken": "Tu equipo ya tiene un servidor con ese nombre.",
+    "packTooBig": "Tus ajustes son demasiado grandes para un servidor.",
+    "optionRefused": "El servidor no puede usar esta opción. Elige otra.",
+    "unsupported": {
+      "not_found": "Este modpack ya no está en Modrinth.",
+      "not_modpack": "Esto no es un modpack.",
+      "loader": "Los servidores no pueden usar el loader de este modpack.",
+      "too_large": "Este modpack es demasiado grande para subirlo.",
+      "unsafe": "Este modpack tiene archivos que un servidor no acepta.",
+      "not_on_modrinth": "Los servidores solo usan mods de Modrinth."
+    },
+    "ready": {
+      "title": "Tu servidor está listo",
+      "hint": "Abre Administrar para encenderlo, cambiar sus ajustes y agregar jugadores.",
+      "noRoom": "Tu servidor está listo, pero tu equipo no tiene espacio para encenderlo ahora. Apaga otro servidor para encenderlo.",
+      "hostFull": "Tu servidor está listo, pero Perland está lleno por ahora. Enciéndelo en unos minutos.",
+      "manage": "Administrar"
+    }
+  },
   "news": {
     "label": "Novedades",
     "title": "Novedades de {{name}}",
@@ -805,6 +868,9 @@
     }
   },
   "errors": {
+    "team_server_too_big": { "message": "El plan de tu equipo no tiene espacio para un servidor de este tamaño." },
+    "server_name_taken": { "message": "Tu equipo ya tiene un servidor con ese nombre." },
+    "invalid_team_server": { "message": "No se pudo crear el servidor con estas opciones." },
     "offline_name_invalid": { "message": "Los nombres deben tener de 3 a 16 letras, números o guiones bajos." },
     "accounts_damaged": { "message": "Tu archivo de cuentas está dañado.", "fix": "Borra accounts.json de la carpeta de datos y vuelve a agregar tus cuentas." },
     "offline_locked": { "message": "Las cuentas sin conexión se desbloquean después de iniciar sesión una vez con una cuenta de Microsoft que tenga Minecraft.", "fix": "El inicio de sesión con Microsoft llegará pronto." },

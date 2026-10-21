@@ -64,6 +64,13 @@ import type {
   ShareChoice,
   SharePreview,
   FriendsCheck,
+  CreatableTeam,
+  TeamCreateRequest,
+  TeamInstanceRequest,
+  TeamRoom,
+  TeamServerCreated,
+  TeamServerType,
+  TeamVersion,
   UpdateState,
   VersionInfo,
   YourServersPage,
@@ -83,6 +90,17 @@ export const commands = {
   /** The path follows the instance: vanilla on its version, a Modrinth modpack by its version id, else the server pack. */
   friendsCreate: (id: string, name: string, settings: FreeServerSettings | null, language: string) =>
     invoke<FreeServerCard>('friends_create', { id, name, settings, language }),
+  /** The teams the player may create a server on (owner or member, not the free team). Empty while signed out. */
+  creatableTeams: () => invoke<CreatableTeam[]>('creatable_teams'),
+  teamRoom: (tenantId: string) => invoke<TeamRoom>('team_room', { tenantId }),
+  /** The Minecraft versions a type runs on the team's Engine; with `minecraft`, that version's loader versions. */
+  teamVersions: (tenantId: string, serverType: TeamServerType, minecraft: string | null) =>
+    invoke<TeamVersion[]>('team_versions', { tenantId, serverType, minecraft }),
+  teamCreate: (request: TeamCreateRequest) => invoke<TeamServerCreated>('team_create', { request }),
+  /** `friends_check` for a team: against the most memory the team can give the server. */
+  teamCheck: (tenantId: string, id: string) => invoke<FriendsCheck>('team_check', { tenantId, id }),
+  teamCreateFromInstance: (request: TeamInstanceRequest) =>
+    invoke<TeamServerCreated>('team_create_from_instance', { request }),
   sharePreview: (id: string) => invoke<SharePreview>('share_preview', { id }),
   shareExport: (id: string, choice: ShareChoice, path: string) => invoke<string>('share_export', { id, choice, path }),
   shareReveal: () => invoke<null>('share_reveal'),

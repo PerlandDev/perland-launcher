@@ -1,24 +1,28 @@
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
-import type { FreeLimits, Instance } from '../../ipc/schema';
+import type { CreatableTeam, FreeLimits, Instance } from '../../ipc/schema';
 import { useFriendsCreate, useMcVersions, usePerlandStatus } from '../../state/queries';
+import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
 import { ServerOptions } from './ServerOptions';
+import { ServerPackRows } from './ServerPackRows';
 import { isOptionField, useServerOptions } from './optionRules';
-import { refusalOf, serverStep, useLostPoll, type Step } from './steps';
-import { engineLanguage, friendsPath, isOldVersion, isServerName, limitsText, maybeCreated, prefillName } from './freeServer';
+import { NO_FREE_LIMITS, refusalOf, serverStep, useLostPoll, type DialogStep } from './steps';
+import { teamReadyStep } from './teamSteps';
+import { TeamServerForm } from './TeamServerForm';
+import { FREE_WHERE, WhereField } from './WhereField';
+import { engineLanguage, friendsPath, gbText, isOldVersion, isServerName, limitsText, maybeCreated, prefillName } from './freeServer';
 import { usePlayFreeServer } from './usePlayFreeServer';
 
 const FORM_ID = 'friends-server';
+const TEAM_FORM_ID = 'friends-team-server';
 
-/** Memory in GB with at most one decimal, as the player reads it ("2.5"). */
-const gb = (mb: number, language: string) => new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(mb / 1024);
 
 /** Play this with friends (specs 2026-10-21): the player's free server made from this instance, the way friends_create makes
  *  it. Vanilla runs the instance's Minecraft version (said, not picked; an old alpha or beta can't be a server). A Modrinth
@@ -27,14 +31,23 @@ const gb = (mb: number, language: string) => new Intl.NumberFormat(language, { m
  *  Engine takes them, and the create dialog's creating and ready steps. Mount it only while it is open. */
 export function FriendsServerDialog({
   instance,
-  limits,
+  limits: freeLimits,
+  teams = [],
   onClose,
 }: {
   instance: Instance;
-  limits: FreeLimits;
+  /** The free server's limits while the player can make it from this instance; null: teams only. */
+  limits: FreeLimits | null;
+  /** The teams the player may create on: Where comes first when there are any. */
+  teams?: CreatableTeam[];
   onClose: () => void;
 }) {
   const { t, i18n } = useTranslation();
+  const limits = freeLimits ?? NO_FREE_LIMITS;
+  const [where, setWhere] = useState(freeLimits ? FREE_WHERE : (teams[0]?.tenantId ?? FREE_WHERE));
+  const team = teams.find((x) => x.tenantId === where) ?? null;
+  const [teamCanCreate, setTeamCanCreate] = useState(false);
+  const onTeamCanCreate = useCallback((can: boolean) => setTeamCanCreate(can), []);
   const status = usePerlandStatus();
   const path = friendsPath(instance);
   const minecraft = instance.game.minecraft;
@@ -44,12 +57,12 @@ export function FriendsServerDialog({
     queryFn: () => commands.friendsCheck(instance.id),
     gcTime: 0,
     retry: false,
-    enabled: path === 'pack',
+    enabled: path === 'pack' && freeLimits !== null && team === null,
   });
   const versions = useMcVersions(path === 'vanilla');
   const old = path === 'vanilla' && isOldVersion(minecraft, versions.data);
   const options = useServerOptions(limits);
-  const [step, setStep] = useState<Step>({ kind: 'pick' });
+  const [step, setStep] = useState<DialogStep>({ kind: 'pick' });
   const [name, setName] = useState(() => prefillName(status.data?.account?.displayName ?? ''));
   const [nameError, setNameError] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -68,8 +81,8 @@ export function FriendsServerDialog({
         })
       : data.requiredMb > data.limitMb
         ? t('friends.tooHeavy', {
-            need: gb(data.requiredMb, i18n.language),
-            have: gb(data.limitMb, i18n.language),
+            need: gbText(data.requiredMb, i18n.language),
+            have: gbText(data.limitMb, i18n.language),
           })
         : running
           ? t('friends.running')
@@ -123,8 +136,32 @@ export function FriendsServerDialog({
   let title: string;
   let actions: ReactNode;
   let content: ReactNode;
-  if (step.kind !== 'pick') {
+  const whereField = <WhereField free={freeLimits !== null} teams={teams} value={where} onChange={setWhere} />;
+  if (step.kind === 'teamReady') {
+    ({ title, actions, content } = teamReadyStep(
+      t,
+      step.server,
+      () => {
+        onClose();
+        navigate({ name: 'manage', tenantId: step.server.tenantId, stack: step.server.stack });
+      },
+      onClose,
+    ));
+  } else if (step.kind !== 'pick') {
     ({ title, actions, content } = serverStep(t, step, play, onClose));
+  } else if (team) {
+    title = t('friends.title', { name: instance.name });
+    actions = (
+      <>
+        <Button variant="ghost" onClick={onClose}>
+          {t('common.cancel')}
+        </Button>
+        <Button type="submit" form={TEAM_FORM_ID} variant="primary" disabled={!teamCanCreate}>
+          {t('freeServer.pick.create')}
+        </Button>
+      </>
+    );
+    content = null;
   } else {
     title = t('friends.title', { name: instance.name });
     actions = (
@@ -147,6 +184,7 @@ export function FriendsServerDialog({
     );
     content = (
       <form id={FORM_ID} className="grid gap-4" onSubmit={submit} noValidate>
+        {whereField}
         {path === 'pack' && <p>{t('friends.intro')}</p>}
         {path === 'vanilla' &&
           (old ? (
@@ -170,32 +208,10 @@ export function FriendsServerDialog({
           <ErrorCard error={check.error} actions={<Button onClick={() => void check.refetch()}>{t('common.retry')}</Button>} />
         )}
         {data && (
-          <section aria-labelledby="friends-what" className="grid gap-1">
-            <h3 id="friends-what" className="text-sm font-semibold text-ink">
-              {t('friends.whatGoes')}
-            </h3>
-            <ul>
-              <li className="content-row">
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-ink">{t('friends.mods')}</p>
-                  <p className="tabular text-sm text-ink-dim">{t('friends.modsCount', { count: data.mods })}</p>
-                  <p className="tabular text-sm text-ink">
-                    {t('friends.memory', {
-                      need: gb(data.requiredMb, i18n.language),
-                      have: gb(data.limitMb, i18n.language),
-                    })}
-                  </p>
-                </div>
-              </li>
-              <li className="content-row">
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-ink">{t('friends.settings')}</p>
-                  <p className="tabular text-sm text-ink-dim">{t('friends.settingsCount', { count: data.settings })}</p>
-                </div>
-              </li>
-            </ul>
-            <p className="text-sm text-ink-dim">{t('friends.stays')}</p>
-          </section>
+          <ServerPackRows
+            data={data}
+            memoryLine={t('friends.memory', { need: gbText(data.requiredMb, i18n.language), have: gbText(data.limitMb, i18n.language) })}
+          />
         )}
         {ready && <p className="text-sm">{limitsText(t, limits)}</p>}
         {ready && (
@@ -226,6 +242,20 @@ export function FriendsServerDialog({
     <Dialog open onClose={onClose} title={title} actions={actions}>
       <div ref={body} tabIndex={-1} className={`grid gap-3 pt-1 outline-none${step.kind === 'pick' ? ' share-sheet' : ''}`}>
         {content}
+        {team && (
+          <TeamServerForm
+            key={team.tenantId}
+            formId={TEAM_FORM_ID}
+            tenantId={team.tenantId}
+            instance={instance}
+            hidden={step.kind !== 'pick'}
+            onCreating={() => setStep({ kind: 'creating', lost: false })}
+            onCreated={(server) => setStep({ kind: 'teamReady', server })}
+            onRefused={() => setStep({ kind: 'pick' })}
+            onCanCreate={onTeamCanCreate}
+            lead={whereField}
+          />
+        )}
       </div>
     </Dialog>
   );

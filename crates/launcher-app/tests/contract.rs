@@ -8,6 +8,9 @@ use launcher_app::dto::{
     ManageConsoleReply, ManageDetail, ManageDiagnosis, ManagePlayers, ManageRef, ManageSaved,
     ManageSettings, ManagedServer, PlanItemView, PlanTargetRequest, PlanTargetView, SearchRequest,
 };
+use launcher_app::dto::{
+    CreatableTeam, TeamCreateRequest, TeamInstanceRequest, TeamRoom, TeamServerCreated,
+};
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
@@ -48,8 +51,8 @@ use launcher_core::{
     },
     mods::LocalMod,
     perland::{
-        CreateAllowance, Deletion, Disk, FreeLimits, FreeServerSettings, FreeSettingsLimits,
-        MemoryLimits, PackLimits,
+        CreateAllowance, Deletion, Disk, EngineVersion, FreeLimits, FreeServerSettings,
+        FreeSettingsLimits, MemoryLimits, PackLimits,
     },
     public_list::{Facets, ListQuery, ListSort},
     restore::{Change, PointKind},
@@ -1622,6 +1625,7 @@ with friends"
     );
     check("invite_links", invite_link_cases());
     check_manage();
+    check_team_create();
     check(
         "update_states",
         vec![
@@ -1803,6 +1807,96 @@ fn check_manage() {
             ManageConsoleReply {
                 ok: false,
                 output: "Unknown command".into(),
+            },
+        ],
+    );
+}
+
+/// Create a server on a team: the teams, a team's room, a version list, both requests and the
+/// answers (started, and made without room to run).
+fn check_team_create() {
+    check(
+        "creatable_teams",
+        vec![CreatableTeam {
+            tenant_id: "t-2".into(),
+            name: "Builders".into(),
+        }],
+    );
+    check(
+        "team_room",
+        TeamRoom {
+            memory_gb: vec![1, 2, 3, 4, 5, 6],
+            default_gb: 4,
+            cpu: 1.5,
+        },
+    );
+    check(
+        "team_versions",
+        vec![
+            EngineVersion {
+                id: "47.3.0".into(),
+                stable: true,
+                recommended: true,
+            },
+            EngineVersion {
+                id: "1.21.2-rc1".into(),
+                stable: false,
+                recommended: false,
+            },
+        ],
+    );
+    check(
+        "team_create_requests",
+        vec![
+            TeamCreateRequest {
+                tenant_id: "t-2".into(),
+                name: "Amigos".into(),
+                r#type: "fabric".into(),
+                version: "1.20.1".into(),
+                loader_version: Some("0.16.14".into()),
+                memory_gb: 4,
+                settings: Some(FreeServerSettings {
+                    game_mode: Some("creative".into()),
+                    ..FreeServerSettings::default()
+                }),
+            },
+            TeamCreateRequest {
+                tenant_id: "t-2".into(),
+                name: "Amigos".into(),
+                r#type: "vanilla".into(),
+                version: "1.21.1".into(),
+                loader_version: None,
+                memory_gb: 2,
+                settings: None,
+            },
+        ],
+    );
+    check(
+        "team_instance_requests",
+        vec![TeamInstanceRequest {
+            tenant_id: "t-2".into(),
+            id: "asalith-fields".into(),
+            name: "Amigos".into(),
+            memory_gb: 6,
+            settings: None,
+        }],
+    );
+    check(
+        "team_server_created",
+        vec![
+            TeamServerCreated {
+                tenant_id: "t-2".into(),
+                stack: "Amigos".into(),
+                started: true,
+                not_started_reason: None,
+                address: Some("play.example.com:25571".into()),
+            },
+            TeamServerCreated {
+                tenant_id: "t-2".into(),
+                stack: "Amigos".into(),
+                started: false,
+                not_started_reason: Some("quota_exceeded".into()),
+                address: None,
             },
         ],
     );

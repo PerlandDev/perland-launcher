@@ -3,7 +3,7 @@ import i18n from '../i18n';
 import { commands } from '../ipc/commands';
 import { isLauncherError } from '../ipc/errors';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ArtChoice, ManageListChange, ManageSettingsSave, ManageState, ContentKind, Focus, FreeServerKind, FreeServerPage, FreeServerSettings, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PerlandStatus, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
+import type { TeamCreateRequest, TeamInstanceRequest, TeamServerType, ArtChoice, ManageListChange, ManageSettingsSave, ManageState, ContentKind, Focus, FreeServerKind, FreeServerPage, FreeServerSettings, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PerlandStatus, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { endImport, importWatched } from './importProgress';
@@ -80,6 +80,9 @@ export const qk = {
   manageDiagnosis: (tenantId: string, stack: string) => ['manage', tenantId, stack, 'diagnosis'] as const,
   managePlayers: (tenantId: string, stack: string) => ['manage', tenantId, stack, 'players'] as const,
   manageSettings: (tenantId: string, stack: string) => ['manage', tenantId, stack, 'settings'] as const,
+  creatableTeams: ['teams', 'creatable'] as const,
+  teamRoom: (tenantId: string) => ['teams', tenantId, 'room'] as const,
+  teamVersions: (tenantId: string, type: TeamServerType, minecraft: string | null) => ['teams', tenantId, 'versions', type, minecraft ?? ''] as const,
 };
 
 const TEN_MINUTES = 10 * 60_000;
@@ -196,6 +199,37 @@ export const useFreeServer = (enabled: boolean) =>
     enabled,
     refetchInterval: (query) => freeServerInterval(query.state.data),
   });
+/** The teams the player may create a server on (owner or member, not the free team). Reads only when `enabled` (signed in). */
+export const useCreatableTeams = (enabled: boolean) =>
+  useQuery({ queryKey: qk.creatableTeams, queryFn: commands.creatableTeams, enabled, staleTime: 60_000 });
+/** How big a server a team can make now; read fresh each time a form opens on it. */
+export const useTeamRoom = (tenantId: string) =>
+  useQuery({ queryKey: qk.teamRoom(tenantId), queryFn: () => commands.teamRoom(tenantId), staleTime: 0 });
+/** A team's version list for a server type, or with `minecraft` that version's loader versions. Off while `enabled` is false. */
+export const useTeamVersions = (tenantId: string, type: TeamServerType, minecraft: string | null, enabled = true) =>
+  useQuery({
+    queryKey: qk.teamVersions(tenantId, type, minecraft),
+    queryFn: () => commands.teamVersions(tenantId, type, minecraft),
+    enabled,
+    staleTime: TEN_MINUTES,
+  });
+/** What a team server is made of touches the servers the player runs: Your servers (its managed list). */
+const invalidateTeams = (qc: QueryClient) =>
+  Promise.all([qc.invalidateQueries({ queryKey: qk.yourServers }), qc.invalidateQueries({ queryKey: ['teams'] })]);
+/** Creates a server on a team from a type and a version. The dialog shows the error itself, so pass `inline`. */
+export function useTeamCreate(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (r: TeamCreateRequest) => commands.teamCreate(r), onError: onError(opts), onSettled: () => invalidateTeams(qc) });
+}
+/** Creates a server on a team from one of the player's instances. */
+export function useTeamCreateFromInstance(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (r: TeamInstanceRequest) => commands.teamCreateFromInstance(r),
+    onError: onError(opts),
+    onSettled: () => invalidateTeams(qc),
+  });
+}
 /** A card's icon (a data URL), or null. A new `iconVersion` is a new key; it is only asked for when there is one. */
 export const useServerIcon = (token: string, iconVersion: string | null) =>
   useQuery({

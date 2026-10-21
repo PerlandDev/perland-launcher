@@ -15,9 +15,10 @@ use launcher_core::{
     http::HttpClient,
     invite::Url,
     perland::{
-        self, Apply, AuthClient, BanList, ConsoleReply, Diagnosis, Handoff, JwtSource, Lifecycle,
-        ListKind, Membership, NameList, NameResult, Online, Session, SessionJwt, SettingsDoc,
-        SettingsSaved, StackClient, StackDetail, StackIdle, StackItem,
+        self, Apply, AuthClient, BanList, ConsoleReply, CreateServer, CreatedServer, Diagnosis,
+        EngineVersion, Handoff, JwtSource, Lifecycle, ListKind, Membership, NameList, NameResult,
+        Online, Session, SessionJwt, SettingsDoc, SettingsSaved, StackClient, StackDetail,
+        StackIdle, StackItem, TeamUsage,
     },
     ErrorCode, LauncherError, Result,
 };
@@ -133,6 +134,31 @@ pub trait StackApi: Send + Sync + 'static {
         command: String,
         confirm: bool,
     ) -> BoxFuture<Result<ConsoleReply>>;
+    /// A new server on the JWT's team.
+    fn create_server(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        server: CreateServer,
+    ) -> BoxFuture<Result<CreatedServer>>;
+    /// A new server on the JWT's team from an uploaded `.mrpack`.
+    fn create_server_from_pack(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        server: CreateServer,
+        pack: Vec<u8>,
+    ) -> BoxFuture<Result<CreatedServer>>;
+    /// What the JWT's team has left and its plan's limits.
+    fn usage(&self, engine: Url, jwt: SessionJwt) -> BoxFuture<Result<TeamUsage>>;
+    /// The Minecraft versions `server_type` runs, or with `minecraft` its loader versions.
+    fn versions(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        server_type: String,
+        minecraft: Option<String>,
+    ) -> BoxFuture<Result<Vec<EngineVersion>>>;
     /// Follows `stack`'s log until `stop` turns true or the Engine refuses for good: each batch
     /// of cleaned lines goes to `sink`, and `connected` is sent once the first connect opened
     /// the stream (a refusal before that is the answer).
@@ -315,6 +341,47 @@ impl StackApi for CoreStack {
         Box::pin(async move { client?.console(&jwt, &stack, &command, confirm).await })
     }
 
+    fn create_server(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        server: CreateServer,
+    ) -> BoxFuture<Result<CreatedServer>> {
+        let client = self.stacks(engine);
+        Box::pin(async move { client?.create_server(&jwt, &server).await })
+    }
+
+    fn create_server_from_pack(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        server: CreateServer,
+        pack: Vec<u8>,
+    ) -> BoxFuture<Result<CreatedServer>> {
+        let client = self.stacks(engine);
+        Box::pin(async move { client?.create_server_from_pack(&jwt, &server, pack).await })
+    }
+
+    fn usage(&self, engine: Url, jwt: SessionJwt) -> BoxFuture<Result<TeamUsage>> {
+        let client = self.stacks(engine);
+        Box::pin(async move { client?.usage(&jwt).await })
+    }
+
+    fn versions(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        server_type: String,
+        minecraft: Option<String>,
+    ) -> BoxFuture<Result<Vec<EngineVersion>>> {
+        let client = self.stacks(engine);
+        Box::pin(async move {
+            client?
+                .versions(&jwt, &server_type, minecraft.as_deref())
+                .await
+        })
+    }
+
     fn follow_logs(
         &self,
         engine: Url,
@@ -442,7 +509,7 @@ pub(crate) fn manage_state(status: &str, health: &str, idle: Option<&StackIdle>)
     }
 }
 
-fn is_free(team: &Membership) -> bool {
+pub(crate) fn is_free(team: &Membership) -> bool {
     team.plan.as_deref() == Some(FREE_PLAN) || team.tenant_name.starts_with(FREE_TEAM_PREFIX)
 }
 
@@ -662,7 +729,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// The teams the player belongs to, with the base JWT; a 401 retries once with a fresh one.
-    async fn memberships(&self) -> Result<Vec<Membership>> {
+    pub(crate) async fn memberships(&self) -> Result<Vec<Membership>> {
         let api = self.runner.stack();
         let (session, jwt) = self.fresh_jwt(None).await?;
         match api.memberships(session.engine, jwt).await {

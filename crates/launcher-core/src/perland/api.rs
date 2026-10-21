@@ -32,7 +32,7 @@ const STATS_CAP: usize = 4 << 20;
 /// Creating a free server: the Engine builds the stack while the request is open.
 pub(super) const CREATE_TIMEOUT: Duration = Duration::from_secs(150);
 /// The Engine's own name for Modrinth, for a refusal that blames it.
-const MODRINTH_HOST: &str = "modrinth.com";
+pub(super) const MODRINTH_HOST: &str = "modrinth.com";
 
 /// A way to sign in. Unknown methods are dropped, so an Engine ahead of the launcher doesn't
 /// offer a button the launcher can't run.
@@ -861,7 +861,7 @@ impl PlayerClient {
     }
 }
 
-fn answer_lost(host: &str, status: u16) -> LauncherError {
+pub(super) fn answer_lost(host: &str, status: u16) -> LauncherError {
     LauncherError::network(
         ErrorCode::ConnectionDropped,
         format!("The answer from {host} was lost ({status}). Your server may still be on its way."),
@@ -1017,7 +1017,7 @@ fn free_servers_paused(host: &str) -> LauncherError {
 
 /// The Engine couldn't read Mojang's version list to check a free server's version (502).
 /// Nothing was made, so the dialog says so rather than waiting for a server.
-fn versions_unavailable(host: &str) -> LauncherError {
+pub(super) fn versions_unavailable(host: &str) -> LauncherError {
     LauncherError::network(
         ErrorCode::VersionsUnavailable,
         "Perland couldn't check the Minecraft versions right now. Try again in a moment.",
