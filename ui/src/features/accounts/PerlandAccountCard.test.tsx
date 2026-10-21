@@ -94,8 +94,18 @@ describe('PerlandAccountCard', () => {
     expect(sent(calls, 'perland_sign_in_discord')).toEqual([]);
     await user.click(screen.getByRole('button', { name: 'Open the page again' }));
     expect(sent(calls, 'perland_sign_in_reopen')).toHaveLength(1);
-    expect(await screen.findByText('Steve', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(await screen.findByText('octocat', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(screen.getByText('GitHub')).toBeInTheDocument();
     expect(qc.getQueryData(qk.yourServers)).toBeUndefined();
+  });
+
+  it('a GitHub account shows its login and GitHub as the method', async () => {
+    renderApp(<PerlandAccountCard />, { perland: 'github' });
+    const card = await screen.findByRole('region', { name: 'Perland account' });
+    expect(await within(card).findByText('octocat')).toBeInTheDocument();
+    expect(within(card).getByText('GitHub')).toBeInTheDocument();
+    expect(within(card).queryByText('Perland player')).not.toBeInTheDocument();
+    expect(within(card).queryByText('Discord')).not.toBeInTheDocument();
   });
 
   it('github sign-in can be canceled', async () => {

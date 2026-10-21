@@ -231,6 +231,7 @@ fn main() {
             commands::manage_console_open,
             commands::manage_console_close,
             commands::manage_open_panel,
+            commands::perland_open_account,
             commands::update_status,
             commands::update_check,
             commands::update_restart,

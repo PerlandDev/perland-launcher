@@ -1243,6 +1243,10 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'open_link':
       state.browse.opened.push(args.url as string);
       return null;
+    case 'perland_open_account':
+      if (!state.appInfo.panel) fail('pack', 'link_refused', "That link can't be opened");
+      state.browse.opened.push('https://panel.example.com/account');
+      return null;
     case 'perland_manage':
       if (!state.appInfo.panel) fail('pack', 'link_refused', "That link can't be opened");
       state.browse.opened.push(`https://panel.example.com/stacks/${encodeURIComponent(args.stack as string)}`);

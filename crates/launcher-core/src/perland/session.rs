@@ -28,19 +28,25 @@ pub const KEYRING_USER: &str = "perland-account";
 /// What the launcher shows about the signed-in player, with no secret in it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Profile {
-    /// The display name, else the email, else `""`.
+    /// The display name, else the GitHub login, else the email, else `""`.
     pub name: String,
     pub email: Option<String>,
     /// Whether a Discord account is linked.
     pub discord: bool,
+    /// Whether the Perland account has a GitHub identity.
+    pub github: bool,
     /// The linked Minecraft name, if an account is linked.
     pub minecraft: Option<String>,
 }
 
 impl Profile {
     pub fn from_player(player: &Player) -> Self {
+        // An Engine older than PerlandEngine#514 leaves `displayName` empty for a GitHub account.
+        let login = player.github.as_ref().map(|g| g.login.as_str());
         let name = if !player.display_name.is_empty() {
             player.display_name.clone()
+        } else if let Some(login) = login.filter(|l| !l.is_empty()) {
+            login.to_string()
         } else {
             player.email.clone().unwrap_or_default()
         };
@@ -48,6 +54,7 @@ impl Profile {
             name,
             email: player.email.clone(),
             discord: player.discord.is_some(),
+            github: player.github.is_some(),
             minecraft: player.minecraft.as_ref().map(|m| m.name.clone()),
         }
     }
@@ -228,6 +235,9 @@ struct Marker {
     name: String,
     email: Option<String>,
     discord: bool,
+    /// Absent in a marker written before the launcher read the GitHub account.
+    #[serde(default)]
+    github: bool,
     /// Absent in a marker written before the Minecraft link existed.
     #[serde(default)]
     minecraft: Option<String>,
@@ -240,6 +250,7 @@ impl Marker {
             name: session.profile.name.clone(),
             email: session.profile.email.clone(),
             discord: session.profile.discord,
+            github: session.profile.github,
             minecraft: session.profile.minecraft.clone(),
         }
     }
@@ -298,6 +309,7 @@ impl SessionStore {
                     name: marker.name,
                     email: marker.email,
                     discord: marker.discord,
+                    github: marker.github,
                     minecraft: marker.minecraft,
                 },
             }),
@@ -394,7 +406,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::perland::api::{DiscordAccount, MinecraftAccount};
+    use crate::perland::api::{DiscordAccount, GitHubAccount, MinecraftAccount};
 
     const TOKEN: &str = "plt_0123456789abcdef0123456789abcdef";
 
@@ -406,6 +418,7 @@ mod tests {
                 name: "Eve".into(),
                 email: Some("eve@example.com".into()),
                 discord: true,
+                github: false,
                 minecraft: None,
             },
         }
@@ -584,7 +597,8 @@ mod tests {
         assert_eq!(json["email"], "eve@example.com");
         assert_eq!(json["discord"], true);
         assert_eq!(json["minecraft"], serde_json::Value::Null);
-        assert_eq!(json.as_object().unwrap().len(), 5);
+        assert_eq!(json["github"], false);
+        assert_eq!(json.as_object().unwrap().len(), 6);
     }
 
     #[test]
@@ -643,6 +657,46 @@ mod tests {
         let loaded = SessionStore::new(marker_in(&dir), secret).load().unwrap();
         assert_eq!(loaded.profile.name, "Steve");
         assert_eq!(loaded.profile.minecraft, None);
+        assert!(!loaded.profile.github);
+    }
+
+    #[test]
+    fn marker_round_trips_github() {
+        let dir = tempfile::tempdir().unwrap();
+        let secret = Arc::new(MemoryStore::default());
+        let mut github = session();
+        github.profile.github = true;
+        SessionStore::new(marker_in(&dir), secret.clone())
+            .save(&github)
+            .unwrap();
+        let again = SessionStore::new(marker_in(&dir), secret).load().unwrap();
+        assert!(again.profile.github);
+    }
+
+    #[test]
+    fn profile_from_player_names_a_github_account_by_its_login() {
+        let mut player = Player {
+            email: Some("octo@example.com".into()),
+            github: Some(GitHubAccount {
+                login: "octocat".into(),
+                avatar_url: String::new(),
+            }),
+            ..Player::default()
+        };
+        // An Engine from before `displayName` fell back to the login.
+        let p = Profile::from_player(&player);
+        assert_eq!(
+            (p.name.as_str(), p.github, p.discord),
+            ("octocat", true, false)
+        );
+        // The Engine's own name wins.
+        player.display_name = "Octo".into();
+        assert_eq!(Profile::from_player(&player).name, "Octo");
+        // An Engine without `github` keeps today's answer.
+        player.display_name = String::new();
+        player.github = None;
+        let p = Profile::from_player(&player);
+        assert_eq!((p.name.as_str(), p.github), ("octo@example.com", false));
     }
 
     #[test]

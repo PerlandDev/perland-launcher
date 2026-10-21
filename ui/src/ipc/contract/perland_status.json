@@ -19,6 +19,7 @@
       "displayName": "Steve",
       "email": "steve@example.com",
       "discord": true,
+      "github": false,
       "newPlayer": true,
       "minecraft": "Steve"
     }
@@ -33,6 +34,7 @@
       "displayName": "",
       "email": "alex@example.com",
       "discord": false,
+      "github": false,
       "newPlayer": false,
       "minecraft": null
     }

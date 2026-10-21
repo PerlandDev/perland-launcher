@@ -375,6 +375,7 @@
     "triesLeft_other": "{{message}} Te quedan {{count}} intentos.",
     "codeUsedUp": "Ese código ya no sirve. Pide un código nuevo.",
     "viaDiscord": "Discord",
+    "viaGithub": "GitHub",
     "signOut": "Cerrar sesión",
     "player": "Jugador de Perland",
     "signedIn": "Iniciaste sesión en Perland como {{name}}.",
@@ -542,6 +543,7 @@
     "mismatch": "Este enlace es de {{new}}, no de {{old}}.",
     "inviteOnly": "Solo con invitación: pídele al dueño que te agregue ({{name}})",
     "inviteOnlyNoAccount": "Solo con invitación: pídele al dueño que te agregue",
+    "inviteOnlyOwner": "Solo con invitación: solo entran los jugadores que agregues",
     "versionLabel": "Versión",
     "versionLine": "Minecraft {{version}}",
     "vanilla": "Minecraft {{version}} sin mods",
@@ -661,10 +663,11 @@
     "entry": {
       "lead_one": "Tu propio servidor gratis, para hasta {{count}} jugador.",
       "lead_other": "Tu propio servidor gratis, para hasta {{count}} jugadores.",
-      "create": "Crear un servidor para tus amigos"
+      "create": "Crear un servidor para tus amigos",
+      "addEmail": "Agregar un correo"
     },
     "reason": {
-      "emailRequired": "Los servidores gratis necesitan un correo verificado en tu cuenta. Verifica tu correo en Discord, luego cierra sesión y vuelve a iniciarla.",
+      "emailRequired": "Los servidores gratis necesitan un correo verificado en tu cuenta de Perland. Agrega uno y vuelve a intentarlo.",
       "exists": "Otra cuenta con tu correo ya tiene un servidor gratis.",
       "running": "Ya se está creando un servidor.",
       "retry": "Podrás crear otro servidor en {{time}}.",

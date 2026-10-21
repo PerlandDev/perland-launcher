@@ -375,6 +375,7 @@
     "triesLeft_other": "{{message}} {{count}} tries left.",
     "codeUsedUp": "That code can't be used anymore. Ask for a new code.",
     "viaDiscord": "Discord",
+    "viaGithub": "GitHub",
     "signOut": "Sign out",
     "player": "Perland player",
     "signedIn": "Signed in to Perland as {{name}}.",
@@ -542,6 +543,7 @@
     "mismatch": "This link is for {{new}}, not {{old}}.",
     "inviteOnly": "Invite only: ask the owner to add you ({{name}})",
     "inviteOnlyNoAccount": "Invite only: ask the owner to add you",
+    "inviteOnlyOwner": "Invite only: only players you add can join",
     "versionLabel": "Version",
     "versionLine": "Minecraft {{version}}",
     "vanilla": "Vanilla Minecraft {{version}}",
@@ -661,10 +663,11 @@
     "entry": {
       "lead_one": "Your own free server, for up to {{count}} player.",
       "lead_other": "Your own free server, for up to {{count}} players.",
-      "create": "Create a server for friends"
+      "create": "Create a server for friends",
+      "addEmail": "Add an email"
     },
     "reason": {
-      "emailRequired": "Free servers need a verified email on your account. Verify your email on Discord, then sign out and sign in again.",
+      "emailRequired": "Free servers need a verified email on your Perland account. Add one, then try again.",
       "exists": "Another account with your email already has a free server.",
       "running": "A server is being created right now.",
       "retry": "You can create another server in {{time}}.",

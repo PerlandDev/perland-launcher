@@ -331,6 +331,30 @@ async fn me_sends_bearer_and_parses() {
 }
 
 #[tokio::test]
+async fn me_parses_the_github_account() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(route("/me")))
+        .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
+            "id": "p2",
+            "displayName": "octocat",
+            "github": { "login": "octocat", "avatarUrl": "https://avatars.githubusercontent.com/u/583231?v=4" },
+            "createdAt": "2026-10-21T15:00:00Z"
+        }))))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let me = client(&server).me(&token()).await.unwrap();
+    let github = me.github.unwrap();
+    assert_eq!(github.login, "octocat");
+    assert_eq!(
+        github.avatar_url,
+        "https://avatars.githubusercontent.com/u/583231?v=4"
+    );
+    assert_eq!(me.discord, None);
+}
+
+#[tokio::test]
 async fn me_401_is_signed_out() {
     let server = MockServer::start().await;
     answer(

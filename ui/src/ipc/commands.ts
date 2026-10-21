@@ -209,6 +209,7 @@ export const commands = {
   manageConsoleClose: (tenantId: string, stack: string) => invoke<null>('manage_console_close', { tenantId, stack }),
   /** The panel in the browser at a server's page, or the team's upgrade page with `stack` null. */
   manageOpenPanel: (tenantId: string, stack: string | null) => invoke<null>('manage_open_panel', { tenantId, stack }),
+  perlandOpenAccount: () => invoke<null>('perland_open_account'),
   quit: (stopGames: boolean) => invoke<null>('quit', { stopGames }),
   browseSearch: (request: SearchRequest) => invoke<SearchPage>('browse_search', { request }),
   browseCategories: (kind: ContentKind) => invoke<string[]>('browse_categories', { kind }),

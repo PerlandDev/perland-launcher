@@ -46,6 +46,16 @@ describe('YourServers', () => {
     expect(screen.queryByText(NUDGE)).toBeNull();
   });
 
+  it('an owner is never told to ask the owner', async () => {
+    renderApp(<ServersScreen />, { perland: 'signedIn' });
+    const section = await yours();
+    const own = await cardIn(section, 'My world');
+    expect(within(own).getByText('Invite only: only players you add can join')).toBeInTheDocument();
+    expect(within(own).queryByText(/ask the owner/)).toBeNull();
+    // An invited player still gets the advice.
+    expect(within(await cardIn(section, 'Friends')).getByText(/^Invite only: ask the owner to add you/)).toBeInTheDocument();
+  });
+
   it('shows_tags_owner_and_invited', async () => {
     renderApp(<ServersScreen />, { perland: 'signedIn' });
     const section = await yours();

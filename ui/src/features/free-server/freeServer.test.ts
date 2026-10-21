@@ -71,7 +71,7 @@ describe('freeServer', () => {
     });
     expect(reasonLine(t, { allowed: true, reason: null, retryAfter: null }, false)).toBeNull();
     expect(reasonLine(t, blocked('email_required'), false)).toBe(
-      'Free servers need a verified email on your account. Verify your email on Discord, then sign out and sign in again.',
+      'Free servers need a verified email on your Perland account. Add one, then try again.',
     );
     expect(reasonLine(t, blocked('free_server_exists'), false)).toBe('Another account with your email already has a free server.');
     // The player's own server shows as its card: no line.

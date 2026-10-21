@@ -157,6 +157,8 @@ export const perlandAccount = z.strictObject({
   displayName: z.string(),
   email: z.string().nullable(),
   discord: z.boolean(),
+  /** The Perland account has a GitHub identity. */
+  github: z.boolean(),
   newPlayer: z.boolean(),
   /** The linked Minecraft name, or null while no Minecraft account is linked. */
   minecraft: z.string().nullable(),
