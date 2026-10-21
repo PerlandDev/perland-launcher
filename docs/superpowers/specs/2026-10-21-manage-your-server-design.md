@@ -27,11 +27,14 @@ rest.
     again**.
   - **Players:** who is online (Kick), and three short lists with add and remove: Whitelist,
     Admins (operators), Bans. Plain labels ("Make admin", "Remove admin", "Kick", "Ban",
-    "Unban"), never command names. A whitelist on/off switch.
+    "Unban"), never command names. Whether the whitelist is on is a setting (below); the Players
+    section links to it.
   - **Console:** the live server log and a box to type a command. `stop`, `restart` and the
     like ask first (the engine's `confirm`). No filters, search or tooling.
-  - **Settings:** only server-list name (MOTD), game mode, difficulty, max players, PvP and the
-    Minecraft version, saved with the engine's restart choice worded simply ("Restart now to
+  - **Settings:** only server-list name (MOTD), game mode, difficulty, max players, PvP,
+    whitelist on or off (`enableWhitelist`) and the Minecraft version (hidden for a server made
+    from a modpack, whose pack decides it; the engine refuses it there with 409
+    `managed_by_source`), saved with the engine's restart choice worded simply ("Restart now to
     apply" / "Apply at next restart"), and the engine's world-safety confirmations when the
     version changes. A field the plan locks shows locked with Upgrade.
   - **More in Perland:** opens the panel already signed in (the engine's handoff), at the
@@ -39,6 +42,10 @@ rest.
 - Viewers and invited or following players keep today's join card.
 - Signed-in sessions move from the player-only routes to a normal Perland session, without the
   player signing in again.
+- **Sign in with GitHub** joins Discord and the email code on the sign-in card: it opens
+  `<panel>/launcher/sign-in?redirect_uri=&code_challenge=&code_challenge_method=S256&state=` in
+  the system browser with the same loopback listener and PKCE as Discord, and redeems the code
+  at the same `POST /api/v1/player/token`. Shown only when the launcher knows the panel's URL.
 
 ## 3. Goals, non-goals, anti-goals
 
@@ -63,7 +70,8 @@ changes, 30 s otherwise, and only while the screen is open).
   a session JWT for the user; `GET /api/v1/auth/memberships` lists teams (`plan`, `role`);
   `POST /api/v1/auth/select-tenant {tenantId}` re-issues a JWT for that team with `role` and
   `scp`. JWTs last 12 h. `POST /api/v1/auth/handoff` gives a one-time code for the panel's
-  `/login/handoff?code=&next=`. Your servers' owner entries carry `manage: {tenantId, stack}`.
+  `/login/handoff?code=&next=`; the handoff takes `{tenantId}` so the panel opens the server's
+  team. Your servers' owner entries carry `manage: {tenantId, stack}`.
 - Server routes (JWT in `X-User-Token`, existing): `GET /api/v1/stacks/get-all`, `GET
   /stacks/details/{name}?stats=false`, `POST /stacks/{start|stop|restart}/{name}` (stop and
   restart take `{broadcast?}`), `GET /stacks/{name}/diagnosis`, `GET /stacks/{name}/logs?tail=`
@@ -104,7 +112,7 @@ changes, 30 s otherwise, and only while the screen is open).
   `manage_diagnosis`, `manage_players` and the list changes, `manage_settings_get/put`,
   `manage_console(command, confirm)`, `manage_console_open/close` (starts and stops the log
   stream, emitting `AppEvent::ServerLog {tenantId, stack, lines}` batched every 100 ms, at most
-  200 lines), `manage_open_panel(next)` (handoff, then the system browser). Each through a
+  200 lines), `manage_open_panel(tenantId, next)` (handoff for that team, then the system browser). Each through a
   `StackApi` trait with a `FakeStack` for tests, like `PlayerApi`.
 - Your servers dedupes an owner card against a managed server by `manage {tenantId, stack}`.
 - DTOs in `dto.rs`, contract samples, `UPDATE_CONTRACT=1 cargo test -p launcher-app --test
