@@ -846,6 +846,7 @@ impl PlayerClient {
             Some("host_full") => return host_full(&host),
             Some("free_servers_paused") => return free_servers_paused(&host),
             Some("free_server_blocked") => return free_server_blocked(&host),
+            Some("versions_unavailable") => return versions_unavailable(&host),
             Some("free_server_over_disk") => {
                 return free_server_over_disk(&host, param("usedBytes"), param("limitBytes"))
             }
@@ -1010,6 +1011,16 @@ fn free_servers_paused(host: &str) -> LauncherError {
     LauncherError::network(
         ErrorCode::FreeServersPaused,
         "New free servers are paused. Try again later.",
+    )
+    .with_param("host", host)
+}
+
+/// The Engine couldn't read Mojang's version list to check a free server's version (502).
+/// Nothing was made, so the dialog says so rather than waiting for a server.
+fn versions_unavailable(host: &str) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::VersionsUnavailable,
+        "Perland couldn't check the Minecraft versions right now. Try again in a moment.",
     )
     .with_param("host", host)
 }

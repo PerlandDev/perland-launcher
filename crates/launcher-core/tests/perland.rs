@@ -978,6 +978,19 @@ async fn create_paused() {
 }
 
 #[tokio::test]
+async fn create_versions_unavailable() {
+    // The Engine couldn't read Mojang's version list to check the version: nothing was made, so
+    // this is its own refusal, not a lost answer and not "can't reach Perland".
+    let e = create_fails(502, "versions_unavailable", json!({})).await;
+    assert_eq!(e.code, ErrorCode::VersionsUnavailable);
+    assert_eq!(e.category, ErrorCategory::Network);
+    assert_eq!(
+        e.message,
+        "Perland couldn't check the Minecraft versions right now. Try again in a moment."
+    );
+}
+
+#[tokio::test]
 async fn create_blocked() {
     let e = create_fails(403, "free_server_blocked", json!({})).await;
     assert_eq!(e.code, ErrorCode::FreeServerBlocked);

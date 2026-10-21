@@ -97,9 +97,14 @@ export type FriendsPath = 'vanilla' | 'modrinth' | 'pack';
 export const friendsPath = (instance: Instance): FriendsPath =>
   instance.game.loader === null ? 'vanilla' : instance.source.kind === 'modrinth' ? 'modrinth' : 'pack';
 
-/** Whether a free server can't run Minecraft `id`: an old alpha or beta, as the version list marks them (`old_*`), or, before
- *  the list is read, by the shape of those ids (`b1.7.3`, `a1.2.6`, `c0.30`, `rd-…`, `inf-…`). */
+/** The Engine's compose-safe rule for a Minecraft version id. */
+const VERSION_RULE = /^[A-Za-z0-9._-]{1,32}$/;
+
+/** Whether a free server can't run Minecraft `id`: one the Engine's version rule refuses (`1.14 Pre-Release 1`), an old
+ *  alpha or beta, as the version list marks them (`old_*`), or, before the list is read, by the shape of those ids
+ *  (`b1.7.3`, `a1.2.6`, `c0.30`, `rd-…`, `inf-…`). */
 export function isOldVersion(id: string, versions: McVersion[] | undefined): boolean {
+  if (!VERSION_RULE.test(id)) return true;
   const known = versions?.find((v) => v.id === id);
   if (known) return known.kind.startsWith('old_');
   return /^(?:[abc]\d|rd-|inf-)/.test(id);

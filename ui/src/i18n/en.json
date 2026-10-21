@@ -939,6 +939,7 @@
     "host_full": { "message": "Perland is full right now. Try again in a few minutes." },
     "free_servers_paused": { "message": "New free servers are paused. Try again later." },
     "free_server_blocked": { "message": "You can't create a free server." },
+    "versions_unavailable": { "message": "Perland couldn't check the Minecraft versions right now. Try again in a moment." },
     "server_not_running": { "message": "The server isn't running. Start it first." },
     "server_console_unavailable": { "message": "The server can't take commands right now. Try again in a minute." },
     "too_many_commands": { "message": "Too many commands at once. Wait a few seconds and try again." },

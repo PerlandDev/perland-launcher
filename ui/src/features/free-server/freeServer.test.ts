@@ -139,4 +139,14 @@ describe('friendsPath and isOldVersion', () => {
     for (const id of ['b1.7.3', 'a1.2.6', 'rd-132211', 'inf-20100618']) expect(isOldVersion(id, undefined)).toBe(true);
     for (const id of ['1.21.1', '26.4-snapshot-3', '24w14a']) expect(isOldVersion(id, undefined)).toBe(false);
   });
+
+  it('counts an id the Engine would refuse as not runnable, listed or not', () => {
+    const list = [{ id: '1.14 Pre-Release 1', kind: 'snapshot', releaseTime: '' }] as McVersion[];
+    expect(isOldVersion('1.14 Pre-Release 1', list)).toBe(true);
+    expect(isOldVersion('1.14 Pre-Release 1', undefined)).toBe(true);
+    expect(isOldVersion('x'.repeat(33), undefined)).toBe(true);
+    expect(isOldVersion('', undefined)).toBe(true);
+    expect(isOldVersion('1.21.1_custom-2', undefined)).toBe(false);
+    expect(isOldVersion('x'.repeat(32), undefined)).toBe(false);
+  });
 });

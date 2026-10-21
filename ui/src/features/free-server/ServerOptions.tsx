@@ -5,7 +5,7 @@ import { ChevronDown } from '../../ui/Icon';
 import { SwitchRow } from '../../ui/SwitchRow';
 import { DIFFICULTIES, GAME_MODES, modeLabel, oneLine, type Difficulty, type ServerOptionsModel } from './optionRules';
 
-// The Options disclosure of the free-server dialogs; its state and rules are in serverOptions.ts.
+// The Options disclosure of the free-server dialogs; its state and rules are in optionRules.ts.
 
 /** The disclosure and, open, the fields. Renders nothing when the Engine doesn't take settings. */
 export function ServerOptions({ options }: { options: ServerOptionsModel }) {
