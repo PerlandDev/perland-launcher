@@ -108,6 +108,7 @@ function cardOf(view: View): FreeServerCard {
     joinable: invite !== null && !unplayable && !over,
     address: view.invited ? `${HOST}:25590` : null,
     name: view.name,
+    displayName: view.name,
     iconVersion: null,
     // The Engine's view sends `game {type, version}` only: the app takes a modpack's loader from `type`, and a vanilla
     // create (no version sent) runs and answers `LATEST`.

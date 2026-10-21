@@ -102,7 +102,7 @@ export function PublicServerCard({
         </span>
         <div className="grid min-w-0 content-start gap-1">
           <h3 ref={nameRef} id={nameId} tabIndex={-1} className="server-tile-name">
-            {card.name}
+            {card.displayName || card.name}
           </h3>
           <p className="tabular text-sm text-ink-dim">{gameLine(t, card)}</p>
           <span className="server-tile-status">
@@ -113,7 +113,7 @@ export function PublicServerCard({
         {hasItems && (
           <Menu
             compact
-            label={t('servers.yours.more', { name: card.name })}
+            label={t('servers.yours.more', { name: card.displayName || card.name })}
             items={[...(menu ? [{ label: t('servers.yours.unfollow'), icon: <MinusBox />, onSelect: onUnfollow }] : []), ...(menuItems ?? [])]}
           />
         )}
@@ -124,7 +124,7 @@ export function PublicServerCard({
           {note}
         </p>
       ))}
-      <NewsLine invite={card.invite} name={card.name} visible={onScreen} />
+      <NewsLine invite={card.invite} name={card.displayName || card.name} visible={onScreen} />
       <ServerStatsLine token={card.token} />
       {(card.whitelisted || (!joinable && card.address)) && (
         <div className="server-tile-facts">

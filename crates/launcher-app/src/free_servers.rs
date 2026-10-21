@@ -114,6 +114,7 @@ pub(crate) fn free_card(server: &FreeServer, joined: &[(String, String)]) -> Fre
                 .and_then(parse_address)
                 .map(|a| a.display()),
             name: server.name.trim().to_string(),
+            display_name: server.name.trim().to_string(),
             icon_version: None,
             game: ServerGame {
                 version: owned(&server.game.version),
