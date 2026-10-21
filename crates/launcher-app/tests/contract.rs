@@ -17,7 +17,7 @@ use launcher_app::{
         PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase,
         PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage,
         RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers, ServerStatsView,
-        ServerStatusView, ServerTeam, SyncSummary, YourServerCard, YourServersPage,
+        ServerStatusView, ServerTeam, SharePreview, SyncSummary, YourServerCard, YourServersPage,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -47,6 +47,7 @@ use launcher_core::{
     perland::{CreateAllowance, Deletion, Disk, FreeLimits, MemoryLimits},
     public_list::{Facets, ListQuery, ListSort},
     settings::{IconShape, Lang, Settings, Theme, UiFont},
+    share::{Category, CategoryCount, ShareChoice},
     sync::ManualFile,
     ErrorCode, LauncherError,
 };
@@ -1003,6 +1004,55 @@ fn contract_fixtures_are_current() {
                 kind: LoaderKind::Fabric,
                 version: "0.19.5".into(),
             }),
+        },
+    );
+    check(
+        "share_preview",
+        SharePreview {
+            name: "Sky Friends".into(),
+            file_name: "Sky Friends.mrpack".into(),
+            counts: vec![
+                CategoryCount {
+                    category: Category::Mods,
+                    files: 12,
+                    linked: 10,
+                    embedded_bytes: 2_400_000,
+                },
+                CategoryCount {
+                    category: Category::Settings,
+                    files: 48,
+                    linked: 0,
+                    embedded_bytes: 310_000,
+                },
+                CategoryCount {
+                    category: Category::ResourcePacks,
+                    files: 2,
+                    linked: 1,
+                    embedded_bytes: 8_000_000,
+                },
+                CategoryCount {
+                    category: Category::ShaderPacks,
+                    files: 1,
+                    linked: 1,
+                    embedded_bytes: 0,
+                },
+                CategoryCount {
+                    category: Category::Worlds,
+                    files: 2,
+                    linked: 0,
+                    embedded_bytes: 340_000_000,
+                },
+            ],
+        },
+    );
+    check(
+        "share_choice",
+        ShareChoice {
+            mods: true,
+            settings: true,
+            resource_packs: true,
+            shader_packs: false,
+            worlds: false,
         },
     );
     check(

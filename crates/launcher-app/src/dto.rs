@@ -52,6 +52,17 @@ pub struct AppInfo {
     pub panel: bool,
 }
 
+/// What the Share dialog shows (see `share.rs`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharePreview {
+    pub name: String,
+    /// The suggested file name, `<name>.mrpack`.
+    pub file_name: String,
+    /// Only the choices that have anything, in the dialog's order.
+    pub counts: Vec<launcher_core::share::CategoryCount>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewInstance {

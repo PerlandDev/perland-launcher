@@ -1296,6 +1296,12 @@ pub(crate) struct FakeBrowser {
     pub icon_lookups: Mutex<Vec<String>>,
     /// While set, `project_icon_url` fails as if offline.
     pub icon_lookup_fails: AtomicBool,
+    /// What `share_lookup` knows, by sha1.
+    pub share_linked: Mutex<HashMap<String, launcher_core::share::Linked>>,
+    /// Each `share_lookup` call's sha1s.
+    pub share_lookups: Mutex<Vec<Vec<String>>>,
+    /// While set, `share_lookup` fails as if offline.
+    pub share_lookup_fails: AtomicBool,
 }
 
 impl FakeBrowser {
@@ -1314,6 +1320,9 @@ impl FakeBrowser {
             icon_urls: Mutex::new(HashMap::new()),
             icon_lookups: Mutex::new(Vec::new()),
             icon_lookup_fails: AtomicBool::new(false),
+            share_linked: Mutex::new(HashMap::new()),
+            share_lookups: Mutex::new(Vec::new()),
+            share_lookup_fails: AtomicBool::new(false),
         })
     }
 
@@ -1420,6 +1429,22 @@ impl Browser for FakeBrowser {
             Err(LauncherError::network(ErrorCode::Offline, "offline"))
         } else {
             Ok(self.icon_urls.lock().unwrap().get(&sha1).cloned())
+        };
+        Box::pin(async move { answer })
+    }
+    fn share_lookup(
+        &self,
+        sha1s: Vec<String>,
+    ) -> BoxFuture<Result<HashMap<String, launcher_core::share::Linked>>> {
+        self.share_lookups.lock().unwrap().push(sha1s.clone());
+        let answer = if self.share_lookup_fails.load(Ordering::SeqCst) {
+            Err(LauncherError::network(ErrorCode::Offline, "offline"))
+        } else {
+            let known = self.share_linked.lock().unwrap();
+            Ok(sha1s
+                .iter()
+                .filter_map(|s| known.get(s).map(|l| (s.clone(), l.clone())))
+                .collect())
         };
         Box::pin(async move { answer })
     }

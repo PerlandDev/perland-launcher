@@ -37,6 +37,7 @@ export {
   Search,
   Server,
   SettingsCog,
+  Share,
   Shield,
   Skull,
   Square,

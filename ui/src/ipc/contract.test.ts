@@ -47,6 +47,8 @@ import serverInstanceFx from './contract/server_instance.json';
 import serverNews from './contract/server_news.json';
 import serverStatusFx from './contract/server_status.json';
 import settingsFx from './contract/settings.json';
+import shareChoiceFx from './contract/share_choice.json';
+import sharePreviewFx from './contract/share_preview.json';
 import updateStates from './contract/update_states.json';
 import versions from './contract/versions.json';
 import yourServersPage from './contract/your_servers_page.json';
@@ -68,6 +70,8 @@ const cases: [string, ZodType, unknown][] = [
   ['mc_versions', s.mcVersion.array(), mcVersions],
   ['new_instance', s.newInstance, newInstance],
   ['import_preview', s.importPreview, importPreview],
+  ['share_preview', s.sharePreview, sharePreviewFx],
+  ['share_choice', s.shareChoice, shareChoiceFx],
   ['import_request', s.importRequest, importRequest],
   ['open_targets', s.openTarget.array(), openTargets],
   ['pack_add_requests', s.packAddRequest.array(), packAddRequests],

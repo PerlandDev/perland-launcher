@@ -2710,6 +2710,23 @@
     padding: 4px;
   }
 
+  /* Share: only the body scrolls, so Save file stays in view at 960 × 600; the choices sit a little tighter than file rows. */
+  .dialog[open]:has(.share-sheet) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .dialog[open]:has(.share-sheet) > div:has(> .share-sheet) {
+    min-height: 0;
+    overflow-y: auto;
+    /* Room for the focus ring, which the scroller would clip. */
+    margin-inline: -4px;
+    padding: 4px;
+  }
+  .share-sheet .content-row {
+    padding-block: 0.5rem;
+  }
+
   /* The dialog widens for pictures, and only its list scrolls, so Close stays in view. */
   .dialog[open]:has(.news-list) {
     display: flex;

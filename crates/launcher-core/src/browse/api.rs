@@ -388,6 +388,20 @@ impl Api {
         .await
     }
 
+    /// Several projects in one call. Ids Modrinth couldn't have are left out of the request.
+    pub async fn projects(&self, ids: &[String]) -> Result<Vec<ApiProject>> {
+        let ids: Vec<&str> = ids
+            .iter()
+            .map(String::as_str)
+            .filter(|id| valid_modrinth_id(id))
+            .collect();
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids = serde_json::to_string(&ids).expect("strings");
+        self.get(self.url("projects", &[("ids", ids)])?).await
+    }
+
     pub async fn search(&self, query: &[(&str, String)]) -> Result<ApiSearch> {
         self.get(self.url("search", query)?).await
     }
