@@ -144,6 +144,8 @@ fn main() {
             commands::account_set_active,
             commands::account_remove,
             commands::play,
+            commands::continue_target,
+            commands::play_continue,
             commands::play_repair,
             commands::stop,
             commands::run_states,
@@ -218,6 +220,9 @@ fn main() {
             commands::update_restart,
             commands::diagnostics_export,
             commands::diagnostics_reveal,
+            commands::share_preview,
+            commands::share_export,
+            commands::share_reveal,
             commands::quit,
         ])
         .build(tauri::generate_context!())

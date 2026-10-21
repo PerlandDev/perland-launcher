@@ -7,10 +7,11 @@ import { qk } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
-import { Copy, Folder, Gear, Image, Link, Pencil, Play, Reload, Trash } from '../../ui/Icon';
+import { Copy, Folder, Gear, Image, Link, Pencil, Play, Reload, Share, Trash } from '../../ui/Icon';
 import { copyText } from '../../ui/copyText';
 import type { MenuItem } from '../../ui/Menu';
 import { ManageServerLink } from '../servers/ManageServerLink';
+import { ShareDialog } from '../share/ShareDialog';
 import { ImageDialog } from './ImageDialog';
 import { DeleteDialog, RenameDialog } from './InstanceDialogs';
 import { addressText, inviteOf, isPack, isServer } from './labels';
@@ -28,7 +29,7 @@ export interface InstanceActions {
 /** The one definition of what can be done to an instance. Add an action here and every place that offers them gets it. */
 export function useInstanceActions(instance: Instance): InstanceActions {
   const { t } = useTranslation();
-  const [dialog, setDialog] = useState<'rename' | 'image' | 'delete' | 'manage' | null>(null);
+  const [dialog, setDialog] = useState<'rename' | 'image' | 'delete' | 'manage' | 'share' | null>(null);
   const qc = useQueryClient();
   const close = () => setDialog(null);
   const invite = inviteOf(instance);
@@ -68,6 +69,10 @@ export function useInstanceActions(instance: Instance): InstanceActions {
       settings,
       { id: 'rename', label: t('common.rename'), icon: <Pencil />, onSelect: () => setDialog('rename') },
       image,
+      // A server instance is shared by its invite link, which Copy invite link already offers.
+      ...(isServer(instance)
+        ? []
+        : [{ id: 'share', label: t('share.menu'), icon: <Share />, disabled: running, onSelect: () => setDialog('share') }]),
       {
         id: 'openFolder',
         label: t('common.openFolder'),
@@ -84,6 +89,7 @@ export function useInstanceActions(instance: Instance): InstanceActions {
         {dialog === 'image' && <ImageDialog instance={instance} onClose={close} />}
         {dialog === 'delete' && <DeleteDialog instance={instance} onClose={close} />}
         {dialog === 'manage' && <ManageServerLink instance={instance} onClose={close} />}
+        {dialog === 'share' && <ShareDialog instance={instance} onClose={close} />}
       </>
     ),
   };

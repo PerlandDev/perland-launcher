@@ -3,12 +3,12 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, EmailCodeSent, FreeServerCard,
-    FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstallPlanView, InstallResult,
-    InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView, ManualProgress,
-    NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus, PerlandAccount,
-    PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage, RunSnapshot, SearchRequest,
-    ServerNews, ServerStatusView, YourServersPage,
+    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, ContinueTarget, EmailCodeSent,
+    FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstallPlanView,
+    InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
+    ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus,
+    PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage, RunSnapshot,
+    SearchRequest, ServerNews, ServerStatusView, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -178,6 +178,16 @@ pub async fn play(core: CoreState<'_>, id: String, join: Option<bool>) -> Res<()
         "play",
         core.inner().play_with(&id, join.unwrap_or(false)).await,
     )
+}
+
+#[tauri::command]
+pub async fn continue_target(core: CoreState<'_>, id: String) -> Res<Option<ContinueTarget>> {
+    logged("continue_target", core.continue_target(&id).await)
+}
+
+#[tauri::command]
+pub async fn play_continue(core: CoreState<'_>, id: String) -> Res<()> {
+    logged("play_continue", core.inner().play_continue(&id).await)
 }
 
 #[tauri::command]
@@ -691,6 +701,34 @@ pub async fn diagnostics_export(core: CoreState<'_>, path: PathBuf) -> Res<Strin
             .await,
     )
     .map(|p| p.display().to_string())
+}
+
+#[tauri::command]
+pub async fn share_preview(
+    core: CoreState<'_>,
+    id: String,
+) -> Res<launcher_app::dto::SharePreview> {
+    logged("share_preview", core.share_preview(&id).await)
+}
+
+#[tauri::command]
+pub async fn share_export(
+    core: CoreState<'_>,
+    id: String,
+    choice: launcher_core::share::ShareChoice,
+    path: PathBuf,
+) -> Res<String> {
+    logged("share_export", core.share_export(&id, choice, path).await)
+        .map(|p| p.display().to_string())
+}
+
+/// Reveals the file the last share wrote. The path never comes from the webview.
+#[tauri::command]
+pub fn share_reveal(app: AppHandle, core: CoreState<'_>) -> Res<()> {
+    if let Some(path) = core.share_last() {
+        let _ = app.opener().reveal_item_in_dir(path);
+    }
+    Ok(())
 }
 
 /// Reveals the file the last export wrote. The path never comes from the webview.

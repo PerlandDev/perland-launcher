@@ -53,6 +53,7 @@ import type {
   PlanItemView,
   PlanSkip,
   PlaytimeEntry,
+  ContinueTarget,
   ProjectDetail,
   RunStateKind,
   SearchHit,
@@ -88,7 +89,9 @@ export interface MockOptions {
   /** Free server (only while `perland` is signed in): `none` (default, may create), `has`, `warned`, `overDisk`, `creating`, `exists`,
    *  `emailRequired`, `rateLimited`, `full` or `off`. Setting it, or signing in, adds a Cozy Pack and a Mega Pack (too heavy) Modrinth instance. */
   free?: FreeScenario;
-  /** What the save dialog returns; null means the player cancelled. Defaults to a zip in Downloads. */
+  /** What Share… finds: `some` (default: two mods not on Modrinth), `all` (every mod on Modrinth) or `error` (Modrinth unreachable). */
+  share?: 'some' | 'all' | 'error';
+  /** What the save dialog returns; null means the player cancelled. Defaults to the suggested name in Downloads. */
   savePath?: string | null;
   /** The rail starts wide, with names. */
   railExpanded?: boolean;
@@ -100,6 +103,8 @@ export interface MockOptions {
   font?: UiFont;
   /** Seconds played per instance id. Defaults to 12 h in Asalith Fields (none on first run). */
   playtime?: Record<string, number>;
+  /** Where Continue takes the player, per instance id. Defaults to the Asalith Fields server and a Creative Flat world. */
+  continueTargets?: Record<string, ContinueTarget>;
   /** Adds Castle Keep, an instance with the player's own background picture (dev:mock turns it on). */
   pictureBackground?: boolean;
   /** A Perland panel is configured (default), so owned servers offer Manage in Perland. */
@@ -220,7 +225,7 @@ function uploadUrl(path: string): string | null {
 /** Move every id-keyed piece of mock state to a renamed instance's new id. */
 function moveId(state: MockState, from: string, to: string) {
   state.order = state.order.map((id) => (id === from ? to : id));
-  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.screenshots, state.browse.installed, state.playtime, state.lastPlayed] as Map<string, unknown>[]) {
+  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.screenshots, state.browse.installed, state.playtime, state.lastPlayed, state.continueTargets] as Map<string, unknown>[]) {
     if (map.has(from)) {
       map.set(to, map.get(from));
       map.delete(from);
@@ -404,6 +409,15 @@ function seed(options: MockOptions) {
     // Seconds played per instance (the real one is .perland/playtime.json), and when each last ended.
     playtime: new Map<string, number>(Object.entries(options.playtime ?? (options.firstRun ? {} : { 'asalith-fields': 12 * 3600 }))),
     lastPlayed: new Map<string, number>(),
+    // Where each instance's game was last (the real one is .perland/last-place.json).
+    continueTargets: new Map<string, ContinueTarget>(
+      Object.entries(
+        options.continueTargets ??
+          (options.firstRun
+            ? {}
+            : { 'asalith-fields': { kind: 'server', name: 'Asalith Fields' }, 'creative-flat': { kind: 'world', name: 'Castle build' } }),
+      ),
+    ),
     runs: new Map<string, MockRun>(),
     // Instances whose game already crashed once for `options.crash`.
     crashed: new Set<string>(),
@@ -421,6 +435,8 @@ function addPlaytime(state: MockState, id: string, run: MockRun) {
   const seconds = Math.floor((Date.now() - run.startedAt) / 1000);
   state.playtime.set(id, (state.playtime.get(id) ?? 0) + seconds);
   state.lastPlayed.set(id, Math.floor(Date.now() / 1000));
+  // The core remembers where a game was; a mock game that never said so leaves a world to continue in.
+  if (!state.continueTargets.has(id)) state.continueTargets.set(id, { kind: 'world', name: 'New World' });
 }
 
 function event(e: AppEvent) {
@@ -781,6 +797,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.listing.instances = state.listing.instances.filter((i) => i.id !== args.id);
       state.listing.damaged = state.listing.damaged.filter((d) => d.id !== args.id);
       state.playtime.delete(String(args.id));
+      state.continueTargets.delete(String(args.id));
       state.lastPlayed.delete(String(args.id));
       return null;
     case 'import_inspect':
@@ -871,8 +888,12 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       void scriptRun(state, target);
       return null;
     }
-    case 'play_repair': {
+    case 'continue_target':
+      return state.continueTargets.get(String(args.id)) ?? null;
+    case 'play_repair':
+    case 'play_continue': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (!state.accounts.active) fail('auth', 'no_account', 'Add an account before playing');
       if (state.runs.has(target.id)) fail('game', 'already_running', 'already running');
       void scriptRun(state, target);
       return null;
@@ -1182,6 +1203,26 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.content.set(key, left);
       return clone(left);
     }
+    case 'share_preview': {
+      if (state.options.share === 'error') fail('network', 'host_unreachable', "Couldn't reach api.modrinth.com", { host: 'api.modrinth.com' });
+      const name = (find(args.id) ?? fail('disk', 'instance_not_found', 'gone')).name;
+      const embedded = state.options.share === 'all' ? 0 : 2;
+      return {
+        name,
+        fileName: `${name.replace(/[<>:"/\\|?*]/g, '-')}.mrpack`,
+        counts: [
+          { category: 'mods', files: 14, linked: 14 - embedded, embeddedBytes: embedded * 1_350_000 },
+          { category: 'settings', files: 52, linked: 0, embeddedBytes: 420_000 },
+          { category: 'resourcePacks', files: 2, linked: 1, embeddedBytes: 6_800_000 },
+          { category: 'shaderPacks', files: 1, linked: 1, embeddedBytes: 0 },
+          { category: 'worlds', files: 2, linked: 0, embeddedBytes: 340_000_000 },
+        ],
+      };
+    }
+    case 'share_export':
+      if (state.runs.has(String(args.id))) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: args.id });
+      return (args as { path: string }).path;
+    case 'share_reveal':
     case 'diagnostics_reveal':
     case 'open_folder':
     case 'quit':
@@ -1223,7 +1264,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'diagnostics_export':
       return (args as { path: string }).path;
     case 'plugin:dialog|save':
-      return state.options.savePath === undefined ? 'C:/Users/player/Downloads/perland-diagnostics.zip' : state.options.savePath;
+      if (state.options.savePath !== undefined) return state.options.savePath;
+      return (args.options as { defaultPath?: string } | undefined)?.defaultPath ?? 'C:/Users/player/Downloads/perland-diagnostics.zip';
     case 'plugin:path|resolve_directory':
       return 'C:/Users/player/Downloads';
     case 'plugin:path|join':

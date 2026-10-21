@@ -46,6 +46,7 @@ async function bootstrap() {
       theme: themeParam.success ? themeParam.data : undefined,
       font: fontParam.success ? fontParam.data : undefined,
       pictureBackground: !params.has('noPicture'),
+      share: (['some', 'all', 'error'] as const).find((v) => v === params.get('share')),
     });
   }
   // Whatever fails here, the window still opens; the failure shows up as a toast.

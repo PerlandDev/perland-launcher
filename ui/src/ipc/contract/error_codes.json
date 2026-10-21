@@ -112,6 +112,7 @@
   "server_list_failed",
   "server_list_closed",
   "server_wake_failed",
+  "world_continue_unsupported",
   "launcher_update_failed",
   "launcher_update_invalid",
   "launcher_update_busy",
@@ -142,5 +143,7 @@
   "host_full",
   "free_servers_paused",
   "free_server_blocked",
+  "share_path_invalid",
+  "share_too_large",
   "internal"
 ]

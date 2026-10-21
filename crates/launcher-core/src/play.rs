@@ -85,6 +85,8 @@ pub struct StartSpec<'a> {
     pub launcher_version: &'a str,
     /// The server to join, if any (a server instance played with "join").
     pub join: Option<&'a ServerAddress>,
+    /// The world to open, if any (Continue on a world).
+    pub world: Option<&'a str>,
 }
 
 pub fn command(spec: &StartSpec) -> Result<LaunchCommand> {
@@ -101,6 +103,7 @@ pub fn command(spec: &StartSpec) -> Result<LaunchCommand> {
         platform: spec.platform,
         launcher_version: spec.launcher_version,
         join: spec.join,
+        world: spec.world,
     })
 }
 
@@ -231,6 +234,7 @@ mod tests {
             platform: Platform::current(),
             launcher_version: "0.1.0",
             join: None,
+            world: None,
         };
         let err = start(&spec, crate::events::noop_sink())
             .await
@@ -277,6 +281,7 @@ mod tests {
             platform: Platform::current(),
             launcher_version: "0.1.0",
             join: None,
+            world: None,
         };
         let err = command(&spec).expect_err("the quote is never closed");
         assert_eq!(err.code, ErrorCode::JvmArgsUnclosedQuote);
@@ -316,6 +321,7 @@ mod tests {
             platform: Platform::current(),
             launcher_version: "0.1.0",
             join: None,
+            world: None,
         };
         assert_eq!(java_major(&spec).await, Some(17));
     }
@@ -360,6 +366,7 @@ mod tests {
             platform: Platform::current(),
             launcher_version: "0.1.0",
             join: None,
+            world: None,
         };
         let line = redactor_for(&spec).redact(&format!("[Server] joined via {invite}"));
         assert!(!line.contains(&token), "{line}");

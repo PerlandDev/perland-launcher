@@ -3,6 +3,7 @@
 pub mod app;
 pub mod browse;
 pub mod browser;
+mod continue_play;
 mod crash_fixes;
 pub mod deep_link;
 pub mod dto;
@@ -21,6 +22,7 @@ mod public_servers;
 pub mod runner;
 mod runs;
 mod servers;
+mod share;
 #[cfg(test)]
 pub(crate) mod testing;
 pub mod updates;

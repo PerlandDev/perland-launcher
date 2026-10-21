@@ -673,3 +673,42 @@ describe('the instance name', () => {
     }
   });
 });
+
+describe('Continue', () => {
+  it('takes the player back to where they were, beside Play', async () => {
+    const { user, calls } = renderApp(<Home id="asalith-fields" />);
+    const key = await screen.findByRole('button', { name: 'Continue: Asalith Fields' });
+    await user.click(key);
+    expect(sent(calls, 'play_continue')).toEqual([{ id: 'asalith-fields' }]);
+    expect(sent(calls, 'play')).toEqual([]);
+  });
+
+  it('names a world', async () => {
+    renderApp(<Home id="creative-flat" />);
+    expect(await screen.findByRole('button', { name: 'Continue: Castle build' })).toBeInTheDocument();
+  });
+
+  it('is absent when there is nowhere to continue', async () => {
+    const { calls } = renderApp(<Home id="asalith-fields" />, { continueTargets: {} });
+    await screen.findByRole('heading', { name: 'Asalith Fields' });
+    await waitFor(() => expect(sent(calls, 'continue_target')).toHaveLength(1));
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: /^Continue/ })).toBeNull();
+  });
+
+  it('steps aside while the instance runs', async () => {
+    renderApp(<Home id="asalith-fields" />);
+    await screen.findByRole('button', { name: 'Continue: Asalith Fields' });
+    act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
+    expect(screen.queryByRole('button', { name: /^Continue/ })).toBeNull();
+    act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'idle', exit: null, update: null }));
+  });
+
+  it('is unavailable without an account, like Play', async () => {
+    const { backend } = renderApp(<Home id="asalith-fields" />);
+    backend.state.accounts.active = null;
+    const key = await screen.findByRole('button', { name: 'Continue: Asalith Fields' });
+    expect(key).toBeDisabled();
+    expect(key).toHaveAttribute('title', 'Add an account to play');
+  });
+});
