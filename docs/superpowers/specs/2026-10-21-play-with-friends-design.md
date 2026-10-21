@@ -1,7 +1,7 @@
 # Perland Launcher + Engine: Play This With Friends, Design
 
 - **Date:** 2026-10-21
-- **Issue:** PerlandDev/perland-launcher#83 (part D2). The Engine part is tracked in its own PerlandEngine issue, linked from #83.
+- **Issue:** PerlandDev/perland-launcher#83 (part D2). Engine: PerlandDev/PerlandEngine#497.
 - **Builds on:**
   - `docs/superpowers/specs/2026-10-21-share-instance-mrpack-design.md` (D1, the `.mrpack` writer, `launcher_core::share`).
   - `docs/superpowers/specs/2026-10-17-free-server-for-friends-design.md` (the free-server flow, its contract and UI).
