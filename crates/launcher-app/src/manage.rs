@@ -1620,6 +1620,11 @@ mod tests {
         assert!(!diagnosis.failed && diagnosis.cause.is_none());
     }
 
+    /// Held by the tests that reach the failed-handoff log line. Its callsite interest is cached
+    /// process-wide: a test registering it while `open_panel_never_logs_the_code` rebuilds the
+    /// cache under its own subscriber can leave it off for that subscriber.
+    static PANEL_LOG: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     #[tokio::test]
     async fn open_panel_uses_the_handoff() {
         let (core, runner, host, _t) = core_with_panel("https://panel.example.com/");
@@ -1674,6 +1679,7 @@ mod tests {
 
     #[tokio::test]
     async fn open_panel_without_handoff_opens_the_page() {
+        let _log = PANEL_LOG.lock().await;
         let (core, runner, host, _t) = core_with_panel("https://panel.example.com/");
         sign_in(&core);
         let fake = stack(&runner);
@@ -1749,6 +1755,7 @@ mod tests {
 
     #[tokio::test]
     async fn open_panel_never_logs_the_code() {
+        let _log = PANEL_LOG.lock().await;
         let buf = Buf::default();
         let writer = buf.clone();
         let subscriber = tracing_subscriber::fmt()
