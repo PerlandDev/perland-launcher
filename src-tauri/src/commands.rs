@@ -3,12 +3,12 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, EmailCodeSent, FreeServerCard,
-    FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstallPlanView, InstallResult,
-    InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView, ManualProgress,
-    NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus, PerlandAccount,
-    PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage, RestorePointDto, RunSnapshot,
-    SearchRequest, ServerNews, ServerStatusView, YourServersPage,
+    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, ContinueTarget, EmailCodeSent,
+    FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstallPlanView,
+    InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
+    ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus,
+    PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage, RestorePointDto,
+    RunSnapshot, SearchRequest, ServerNews, ServerStatusView, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -178,6 +178,16 @@ pub async fn play(core: CoreState<'_>, id: String, join: Option<bool>) -> Res<()
         "play",
         core.inner().play_with(&id, join.unwrap_or(false)).await,
     )
+}
+
+#[tauri::command]
+pub async fn continue_target(core: CoreState<'_>, id: String) -> Res<Option<ContinueTarget>> {
+    logged("continue_target", core.continue_target(&id).await)
+}
+
+#[tauri::command]
+pub async fn play_continue(core: CoreState<'_>, id: String) -> Res<()> {
+    logged("play_continue", core.inner().play_continue(&id).await)
 }
 
 #[tauri::command]

@@ -10,14 +10,15 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AppInfo, ArtChoice, Build, ContentFile, EmailCodeSent, FreeServerCard, FreeServerPage,
-        IconChoice, ImportPreview, ImportRequest, InstanceArtData, JavaFound, JavaOverview,
-        JoinPreview, LinkCodeView, ManualProgress, NameListView, NewInstance, NewsChangesView,
-        NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents, PackMod,
-        PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase, PerlandStats, PerlandStatus,
-        PlaytimeEntry, PublicServerCard, PublicServerPage, RestorePointDto, RunSnapshot,
-        ServerGame, ServerNews, ServerPack, ServerPlayers, ServerStatsView, ServerStatusView,
-        ServerTeam, SyncSummary, YourServerCard, YourServersPage,
+        AppInfo, ArtChoice, Build, ContentFile, ContinueKind, ContinueTarget, EmailCodeSent,
+        FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstanceArtData,
+        JavaFound, JavaOverview, JoinPreview, LinkCodeView, ManualProgress, NameListView,
+        NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest,
+        PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase,
+        PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage,
+        RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers,
+        ServerStatsView, ServerStatusView, ServerTeam, SyncSummary, YourServerCard,
+        YourServersPage,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -663,6 +664,20 @@ fn contract_fixtures_are_current() {
                 .with_detail("expected value at line 1 column 1"),
             }],
         },
+    );
+    check(
+        "continue_target",
+        vec![
+            Some(ContinueTarget {
+                kind: ContinueKind::Server,
+                name: "Asalith Fields".into(),
+            }),
+            Some(ContinueTarget {
+                kind: ContinueKind::World,
+                name: "Mundo de Ana".into(),
+            }),
+            None,
+        ],
     );
     check(
         "playtime",

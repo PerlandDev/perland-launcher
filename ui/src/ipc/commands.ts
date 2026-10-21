@@ -40,6 +40,7 @@ import type {
   PerlandStats,
   PerlandStatus,
   PlaytimeEntry,
+  ContinueTarget,
   ProjectDetail,
   PublicServerPage,
   RestorePoint,
@@ -81,6 +82,10 @@ export const commands = {
   accountSetActive: (uuid: string) => invoke<AccountsFile>('account_set_active', { uuid }),
   accountRemove: (uuid: string) => invoke<AccountsFile>('account_remove', { uuid }),
   play: (id: string, join = false) => invoke<null>('play', { id, join }),
+  /** Where Continue would take the player in this instance, or null (no Continue key). */
+  continueTarget: (id: string) => invoke<ContinueTarget | null>('continue_target', { id }),
+  /** Play straight into that world or server; a plain Play when it no longer holds. */
+  playContinue: (id: string) => invoke<null>('play_continue', { id }),
   stop: (id: string) => invoke<null>('stop', { id }),
   runStates: () => invoke<RunSnapshot[]>('run_states'),
   logTail: (id: string) => invoke<string[]>('log_tail', { id }),

@@ -27,6 +27,7 @@ export const qk = {
   instances: ['instances'] as const,
   accounts: ['accounts'] as const,
   playtime: ['playtime'] as const,
+  continueTarget: (id: string) => ['continue', id] as const,
   mcVersions: ['catalog', 'minecraft'] as const,
   loaders: (kind: LoaderKind, mc: string) => ['catalog', 'loaders', kind, mc] as const,
   mods: (id: string) => ['mods', id] as const,
@@ -68,6 +69,8 @@ export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: co
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
 /** Time played per instance on this computer. Refreshed when a run ends and when an instance moves or goes. */
 export const usePlaytime = () => useQuery({ queryKey: qk.playtime, queryFn: commands.playtimeList });
+/** Where Continue takes the player in instance `id`. Refreshed when a run ends. */
+export const useContinueTarget = (id: string) => useQuery({ queryKey: qk.continueTarget(id), queryFn: () => commands.continueTarget(id) });
 /** The active account's name, or null while loading or when there is none. */
 export function useActiveAccountName(): string | null {
   const { data } = useAccounts();

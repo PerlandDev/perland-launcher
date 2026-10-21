@@ -74,6 +74,8 @@ error_codes! {
     ServerWakeFailed,
     // restore points
     RestorePointGone, RestoreFailed,
+    // continue where you left off
+    WorldContinueUnsupported,
     // launcher updates
     LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
     // importing from another launcher

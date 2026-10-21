@@ -37,6 +37,7 @@ import perlandStats from './contract/perland_stats.json';
 import perlandStatus from './contract/perland_status.json';
 import planRequests from './contract/plan_requests.json';
 import playtimeFx from './contract/playtime.json';
+import continueTargetFx from './contract/continue_target.json';
 import projectDetail from './contract/project_detail.json';
 import publicServerPage from './contract/public_server_page.json';
 import restorePoints from './contract/restore_points.json';
@@ -77,6 +78,7 @@ const cases: [string, ZodType, unknown][] = [
   ['pack_contents', s.packContents, packContents],
   ['pack_status', s.packStatus.array(), packStatus],
   ['playtime', s.playtimeEntry.array(), playtimeFx],
+  ['continue_target', s.continueTarget.nullable().array(), continueTargetFx],
   ['run_snapshots', s.runSnapshot.array(), runSnapshots],
   ['settings', s.settings, settingsFx],
   ['server_instance', s.instance, serverInstanceFx],

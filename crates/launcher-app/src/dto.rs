@@ -106,6 +106,22 @@ pub struct PlaytimeEntry {
     pub last_played: u64,
 }
 
+/// Where Home's Continue takes the player: a world or a server, by the name they know it by.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContinueTarget {
+    pub kind: ContinueKind,
+    /// The world's folder, the server's name in the Multiplayer list, or the Perland server's.
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContinueKind {
+    World,
+    Server,
+}
+
 /// Folders the UI may ask to open. Never a raw path, so the webview can't open arbitrary places.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

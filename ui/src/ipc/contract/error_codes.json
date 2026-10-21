@@ -104,6 +104,7 @@
   "server_wake_failed",
   "restore_point_gone",
   "restore_failed",
+  "world_continue_unsupported",
   "launcher_update_failed",
   "launcher_update_invalid",
   "launcher_update_busy",

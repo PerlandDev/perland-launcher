@@ -293,6 +293,7 @@ async fn launch_instance(
         platform,
         launcher_version: env!("CARGO_PKG_VERSION"),
         join: None,
+        world: None,
     };
 
     if dry_run {
