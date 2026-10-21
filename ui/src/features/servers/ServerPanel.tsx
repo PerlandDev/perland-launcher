@@ -3,6 +3,7 @@ import type { Instance } from '../../ipc/schema';
 import { useInstanceStats, useServerStatus } from '../../state/queries';
 import { Trophy } from '../../ui/Icon';
 import { SELECTED_POLL } from '../../state/serverPoll';
+import { useAchievementsDialog } from '../medals/useAchievementsDialog';
 import { NewsLine } from '../news/NewsLine';
 import { AddressLine } from './AddressLine';
 import { DeadLinkPlate } from './DeadLinkPlate';
@@ -32,17 +33,36 @@ export function ServerPanel({ instance }: { instance: Instance }) {
   );
 }
 
-/** The player's achievements on this server, on a laminate plate. Only the count: Home's version line already holds the
- *  time played on this computer, so the server's own playtime stays on the card. Absent without achievements. */
+/** The player's achievements on this server, on a laminate plate that opens them. Only the count: Home's version line
+ *  already holds the time played on this computer, so the server's own playtime stays on the card. Absent without
+ *  achievements. */
 function AchievementsPlate({ id }: { id: string }) {
   const { t } = useTranslation();
   const stats = useInstanceStats(id);
+  const { show, dialog } = useAchievementsDialog(stats);
   if (!stats || stats.advancements === 0) return null;
+  const count = t('servers.stats.achievements', { count: stats.advancements });
+  if (stats.advancementIds.length === 0) {
+    return (
+      <p className="stats-plate marquee-plate">
+        <Trophy aria-hidden />
+        <span className="sr-only">{t('servers.stats.label')} </span>
+        <span>{count}</span>
+      </p>
+    );
+  }
   return (
-    <p className="stats-plate marquee-plate">
-      <Trophy aria-hidden />
-      <span className="sr-only">{t('servers.stats.label')} </span>
-      <span>{t('servers.stats.achievements', { count: stats.advancements })}</span>
-    </p>
+    <>
+      <button
+        type="button"
+        className="stats-plate marquee-plate"
+        aria-label={`${t('servers.stats.label')} ${count}. ${t('achievements.open', { server: stats.name })}`}
+        onClick={show}
+      >
+        <Trophy aria-hidden />
+        <span>{count}</span>
+      </button>
+      {dialog}
+    </>
   );
 }

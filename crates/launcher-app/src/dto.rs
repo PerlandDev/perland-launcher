@@ -799,6 +799,8 @@ pub struct ServerStatsView {
     pub name: String,
     pub playtime_seconds: u64,
     pub advancements: u32,
+    /// The completed advancements' IDs (`minecraft:story/mine_stone`), sorted.
+    pub advancement_ids: Vec<String>,
 }
 
 // Manual Debug: the token is a credential.
@@ -809,6 +811,7 @@ impl fmt::Debug for ServerStatsView {
             .field("name", &self.name)
             .field("playtime_seconds", &self.playtime_seconds)
             .field("advancements", &self.advancements)
+            .field("advancement_ids", &self.advancement_ids.len())
             .finish_non_exhaustive()
     }
 }
@@ -1018,6 +1021,7 @@ mod tests {
                 name: "Asalith".into(),
                 playtime_seconds: 60,
                 advancements: 1,
+                advancement_ids: vec!["minecraft:story/root".into()],
             }],
         };
         let shown = format!("{stats:?}");
