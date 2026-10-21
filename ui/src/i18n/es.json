@@ -10,6 +10,7 @@
     "rename": "Cambiar nombre",
     "openFolder": "Abrir carpeta",
     "back": "Volver",
+    "backTitle": "{{label}} (Alt+←)",
     "comingSoon": "Muy pronto",
     "details": "Detalles",
     "hideDetails": "Ocultar detalles",

@@ -1,5 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
+import { routeSnapshot } from '../../state/route';
 import { renderApp, sent } from '../../test/backend';
 import { Accounts } from './Accounts';
 
@@ -292,4 +293,10 @@ it('leaves the total out before a minute is played', async () => {
   await waitFor(() => expect(sent(calls, 'playtime_list')).toHaveLength(1));
   await act(async () => {});
   expect(screen.queryByText(/Time played/)).toBeNull();
+});
+
+it('goes back to Home', async () => {
+  const { user } = renderApp(<Accounts />);
+  await user.click(await screen.findByRole('button', { name: 'Back' }));
+  expect(routeSnapshot()).toEqual({ name: 'home', id: null });
 });

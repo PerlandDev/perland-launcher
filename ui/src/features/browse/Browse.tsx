@@ -193,7 +193,7 @@ function BrowseList({ route }: { route: BrowseRoute }) {
   // Back returns to the instance's tab for what is being browsed; Mods is the default tab.
   const backTab = route.kind === 'resource_pack' || route.kind === 'shader' ? route.kind : undefined;
   return (
-    <ScreenFrame title={t('browse.title')} wide onBack={scope ? () => navigate({ name: 'mods', id: scope.id, tab: backTab }) : undefined}>
+    <ScreenFrame title={t('browse.title')} wide onBack={() => navigate(scope ? { name: 'mods', id: scope.id, tab: backTab } : { name: 'home', id: null })}>
       <div className="grid gap-3">
         {scope && (
           <div className="browse-scope">
