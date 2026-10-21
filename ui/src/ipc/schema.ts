@@ -295,6 +295,30 @@ export const contentFile = z.strictObject({
   managed: z.boolean(),
 });
 export const newInstance = z.strictObject({ name: z.string(), minecraft: z.string(), loader: loaderSpec.nullable() });
+export const shareCategory = z.enum(['mods', 'settings', 'resourcePacks', 'shaderPacks', 'worlds']);
+
+/** One Share choice's numbers: files (world folders for worlds), how many link to Modrinth, and the bytes the file carries. */
+export const categoryCount = z.strictObject({
+  category: shareCategory,
+  files: z.number().int(),
+  linked: z.number().int(),
+  embeddedBytes: z.number().int(),
+});
+
+export const sharePreview = z.strictObject({
+  name: z.string(),
+  fileName: z.string(),
+  counts: categoryCount.array(),
+});
+
+export const shareChoice = z.strictObject({
+  mods: z.boolean(),
+  settings: z.boolean(),
+  resourcePacks: z.boolean(),
+  shaderPacks: z.boolean(),
+  worlds: z.boolean(),
+});
+
 export const importPreview = z.strictObject({
   path: z.string(),
   name: z.string().nullable(),
@@ -572,6 +596,10 @@ export type LocalMod = z.infer<typeof localMod>;
 export type ContentFile = z.infer<typeof contentFile>;
 export type NewInstance = z.infer<typeof newInstance>;
 export type ImportPreview = z.infer<typeof importPreview>;
+export type ShareCategory = z.infer<typeof shareCategory>;
+export type CategoryCount = z.infer<typeof categoryCount>;
+export type SharePreview = z.infer<typeof sharePreview>;
+export type ShareChoice = z.infer<typeof shareChoice>;
 export type ImportRequest = z.infer<typeof importRequest>;
 export type OpenTarget = z.infer<typeof openTarget>;
 export type RunStateKind = z.infer<typeof runStateKind>;

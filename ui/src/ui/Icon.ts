@@ -29,6 +29,7 @@ export {
   Search,
   Server,
   SettingsCog,
+  Share,
   Square,
   Terminal,
   Trash,

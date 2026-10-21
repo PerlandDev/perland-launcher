@@ -46,6 +46,10 @@ related_targets: ["ui/src"]
 - **Manage server link (#63), decided 2026-10-17:**
   - *One dialog, nothing lit.* The join card set bare on the dialog's panel, the invite and the address as well copy rows, a ghost Unlink and raised Change link and Close. Play keeps the room's amber.
   - *Unlink says what stays.* The standard confirm with the coral Unlink; its body names what is kept (worlds, mods, settings) before what stops.
+- **Share an instance (#83), decided 2026-10-21:**
+  - *Choices are rows, not a form.* The mods page's file rows with a toggle each; the name is the toggle's name. Worlds start off.
+  - *Embedded is a fact.* What isn't on Modrinth is a plain sentence in the Mods row, seen before saving; never coral, never a warning.
+  - *One lit key.* Save file… is the dialog's only amber; only the body scrolls, so it and the size beside it stay in view at 960 × 600.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract
