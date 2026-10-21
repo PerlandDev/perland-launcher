@@ -78,6 +78,8 @@ Files older than the launch belong to an earlier run and are ignored (a stale cr
 
 Anything else: no cause; the card is today's generic card.
 
+Rules 8 to 10 skip a line logged below error level (`[thread/WARN]`, `[thread/INFO]`): Mixin and the loaders log a non-required mixin's failure, or a jar they skip, as a warning and carry on, so blaming that mod for a crash with another cause would put a wrong "Turn off" on the card (**our call**, after review). A damaged jar is named by its file and gets Turn off only when it is an enabled jar in `mods/`.
+
 Patterns are written from what the loaders really print (Fabric Loader 0.14–0.16 `ModResolutionException` text, Quilt's equivalent, FML 47/NeoForge 20.x `ModSorter`/`ModLoadingIssue`, HotSpot `hs_err` headers, Mixin 0.8). **Wrong-loader jars:** a Forge mod in a Fabric instance (or the reverse) is ignored by the loader without an error, so there is nothing to read; when it does break something it surfaces as rule 5 or 8.
 
 ## 6. Naming the mods (our call)
