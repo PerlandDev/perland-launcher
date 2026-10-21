@@ -44,17 +44,27 @@ fn relation_name(relation: Relation) -> &'static str {
 }
 
 /// Which managed server is the free server named `free_name`: one of that name in a free team,
-/// else in any team. Names are unique in a team ignoring case.
+/// else the only one of that name in any team. Two of that name outside a free team is
+/// ambiguous, and then none is (another team's server must never get the free card's Manage).
+/// Names are unique in a team ignoring case.
 fn free_managed(free_name: &str, managed: &[Option<ManagedServer>]) -> Option<usize> {
     let name = free_name.trim();
-    let named = |m: &ManagedServer| !name.is_empty() && m.stack.trim().eq_ignore_ascii_case(name);
-    let find = |free_only: bool| {
-        managed.iter().position(|m| {
-            m.as_ref()
-                .is_some_and(|m| (!free_only || m.free) && named(m))
-        })
-    };
-    find(true).or_else(|| find(false))
+    if name.is_empty() {
+        return None;
+    }
+    let named: Vec<(usize, &ManagedServer)> = managed
+        .iter()
+        .enumerate()
+        .filter_map(|(i, m)| m.as_ref().map(|m| (i, m)))
+        .filter(|(_, m)| m.stack.trim().eq_ignore_ascii_case(name))
+        .collect();
+    if let Some((i, _)) = named.iter().find(|(_, m)| m.free) {
+        return Some(*i);
+    }
+    match named.as_slice() {
+        [(i, _)] => Some(*i),
+        _ => None,
+    }
 }
 
 /// Take the managed server an owner card is: by the `manage` the Engine sent, else (an Engine
@@ -627,6 +637,36 @@ mod tests {
             ],
             "the free team's server is the free card's, the other Survival is listed"
         );
+    }
+
+    #[tokio::test]
+    async fn free_fallback_needs_a_unique_name() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        serve_servers(
+            &runner,
+            vec![entry('B', "online", Relation::Followed, true)],
+        );
+        *runner.player.free.lock().unwrap() = Ok(Some(free_state(Some(free_view("online")))));
+        // No free team: two other teams each have a server named like the free one.
+        manages(
+            &runner,
+            &[
+                ("t-a", "alpha", vec![item("Survival", None)]),
+                ("t-b", "bravo", vec![item("survival", None)]),
+            ],
+        );
+        let page = core.your_servers().await.unwrap().unwrap();
+        assert_eq!(
+            managed_names(&page),
+            [
+                ("t-a".into(), "Survival".into()),
+                ("t-b".into(), "survival".into()),
+            ],
+            "an ambiguous name is nobody's free server"
+        );
+        let free = core.free_server().await.unwrap().unwrap().server.unwrap();
+        assert_eq!(free.manage, None);
     }
 
     #[tokio::test]
