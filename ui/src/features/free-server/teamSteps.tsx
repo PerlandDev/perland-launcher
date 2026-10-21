@@ -56,8 +56,6 @@ export function teamRefusalOf(t: TFunction, i18n: I18n, error: unknown): TeamRef
       const key = `teamServer.unsupported.${error.params.reason ?? ''}`;
       return line(i18n.exists(key) ? t(key) : t('teamServer.packRefused'));
     }
-    case 'free_server_mods_not_on_modrinth':
-      return line(t('teamServer.unsupported.not_on_modrinth'));
     case 'share_too_large':
       return line(t('teamServer.packTooBig'));
     default:

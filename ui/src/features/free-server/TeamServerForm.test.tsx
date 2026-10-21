@@ -54,6 +54,7 @@ describe('Create a server with teams', () => {
       'Builders',
       'Night Shift',
       'Starter Club',
+      'Weekend Crew',
     ]);
     expect(within(where).getByRole('radio', { name: 'Your free server' })).toBeChecked();
     expect(sent(calls, 'creatable_teams')).toHaveLength(1);
@@ -106,7 +107,7 @@ describe('Create a server with teams', () => {
         },
       },
     ]);
-    expect(screen.getByText('Open Manage to start it, change its settings and add players.')).toBeInTheDocument();
+    expect(within(box).getByText('Your server is running. Open Manage to change its settings and add players.')).toBeInTheDocument();
     await user.click(within(box).getByRole('button', { name: 'Manage' }));
     expect(routeSnapshot()).toEqual({ name: 'manage', tenantId: MOCK_TEAM_TENANT, stack: 'Forge-Fun' });
   });
@@ -142,6 +143,37 @@ describe('Create a server with teams', () => {
     // Another type is a way out: the lock goes with the change.
     await user.click(within(box).getByRole('radio', { name: 'Vanilla' }));
     expect(within(box).queryByText("Your team's plan doesn't include this.")).toBeNull();
+  });
+
+  it('says plainly when the team can make no more servers, and blocks Create', async () => {
+    const { box, calls } = await onTeam(await open(), 'Weekend Crew');
+    expect(within(box).getByText("Your team's plan has no room for another server.")).toBeInTheDocument();
+    expect(within(box).getByRole('button', { name: 'Create' })).toBeDisabled();
+    expect(sent(calls, 'team_create')).toEqual([]);
+  });
+
+  it('reads a size refusal as the server count when the team has no servers left', async () => {
+    const backend = createMockBackend(TEAMS);
+    let rooms = 0;
+    const ipc: IpcHandler = (cmd, args) => {
+      if (cmd === 'team_room') {
+        rooms += 1;
+        return { memoryGb: [1, 2, 3, 4], defaultGb: 4, cpu: 2, serversLeft: rooms === 1 ? 1 : 0 };
+      }
+      if (cmd === 'team_create') {
+        return Promise.reject({ category: 'network', code: 'team_server_too_big', message: 'x', fix: null, detail: null, params: {} });
+      }
+      return backend.handle(cmd, args);
+    };
+    const { user } = renderWithProviders(<ServersScreen />, { ipc });
+    await user.click(await screen.findByRole('button', { name: 'Create a server' }));
+    const box = await screen.findByRole('dialog', { name: 'Create a server' });
+    await user.click(within(box).getByRole('radio', { name: 'Builders' }));
+    await within(box).findByRole('combobox', { name: 'Memory' });
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    expect(await within(box).findByText("Your team's plan has no room for another server.")).toBeInTheDocument();
+    expect(within(box).queryByText("Your team's plan has no room for a server this size.")).toBeNull();
+    expect(within(box).getByRole('combobox', { name: 'Memory' })).not.toHaveAttribute('aria-invalid');
   });
 
   it('puts a refusal under its field, in a team\'s words', async () => {
@@ -196,6 +228,7 @@ describe('Play this with friends on a team', () => {
     const { box, user, calls } = await friends(TEAMS);
     await user.click(within(box).getByRole('radio', { name: 'Builders' }));
     expect(await within(box).findByText('Needs 2.5 GB of memory.')).toBeInTheDocument();
+    expect(within(box).getByText('The server runs these mods and settings.')).toBeInTheDocument();
     expect(formText(box)).not.toMatch(/free/i);
     const memory = within(box).getByRole('combobox', { name: 'Memory' });
     await user.selectOptions(memory, '2');
@@ -208,6 +241,25 @@ describe('Play this with friends on a team', () => {
       { request: { tenantId: MOCK_TEAM_TENANT, id: 'asalith-fields', name: 'Asalith-Fields', memoryGb: 3, settings: null } },
     ]);
     expect(sent(calls, 'friends_create')).toEqual([]);
+  });
+
+  it('drops the free server\'s refusal when Where changes', async () => {
+    const backend = createMockBackend(TEAMS);
+    const ipc: IpcHandler = (cmd, args) =>
+      cmd === 'friends_create'
+        ? Promise.reject({ category: 'network', code: 'host_full', message: 'x', fix: null, detail: null, params: {} })
+        : backend.handle(cmd, args);
+    const { user } = renderWithProviders(<Home id="creative-flat" />, { ipc });
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Play this with friends…' }));
+    const box = screen.getByRole('dialog', { name: 'Play Creative Flat with friends' });
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    const line = 'Perland is full right now. Try again in a few minutes.';
+    expect(await within(box).findByText(line)).toBeInTheDocument();
+    await user.click(within(box).getByRole('radio', { name: 'Builders' }));
+    await user.click(within(box).getByRole('radio', { name: 'Your free server' }));
+    expect(within(box).queryByText(line)).toBeNull();
   });
 
   it('says a vanilla instance runs its version on the team with no room', async () => {

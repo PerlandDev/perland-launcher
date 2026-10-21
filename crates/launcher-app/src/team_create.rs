@@ -95,6 +95,10 @@ pub(crate) fn room_of(usage: &TeamUsage) -> TeamRoom {
         memory_gb: (1..=max).collect(),
         default_gb: DEFAULT_GB.min(max),
         cpu,
+        servers_left: usage
+            .available
+            .servers
+            .map(|n| u32::try_from(n.max(0)).unwrap_or(u32::MAX)),
     }
 }
 
@@ -139,11 +143,13 @@ fn too_heavy(host: &str, required: u32, limit: u32) -> LauncherError {
     .with_param("limitMemoryMb", limit.to_string())
 }
 
+/// As the Engine's /create-server/pack answers it: `modpack_unsupported`, reason `not_on_modrinth`.
 fn not_on_modrinth(names: &[String]) -> LauncherError {
     LauncherError::pack(
-        ErrorCode::FreeServerModsNotOnModrinth,
+        ErrorCode::ModpackUnsupported,
         "Servers only run mods from Modrinth.",
     )
+    .with_param("reason", "not_on_modrinth")
     .with_detail(names.join(", "))
 }
 
@@ -388,12 +394,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
         let limit_mb = request.memory_gb * 1024;
         if check.required_mb > limit_mb {
-            let session = self.free_session().await?;
-            return Err(too_heavy(
-                host_of(&session.engine),
-                check.required_mb,
-                limit_mb,
-            ));
+            let host = self
+                .perland_session()
+                .await
+                .map(|s| host_of(&s.engine).to_string())
+                .unwrap_or_default();
+            return Err(too_heavy(&host, check.required_mb, limit_mb));
         }
         // Inside `.perland/`, which no scan reads, and removed once read.
         let out = self
@@ -520,6 +526,17 @@ mod tests {
         assert_eq!(room.memory_gb, [1, 2, 3]);
         assert_eq!(room.default_gb, 3);
         assert_eq!(room.cpu, 1.2);
+    }
+
+    #[test]
+    fn room_keeps_how_many_more_servers_the_team_may_make() {
+        assert_eq!(room_of(&usage(Some(6000), Some(3.0))).servers_left, Some(2));
+        let mut full = usage(Some(6000), Some(3.0));
+        full.available.servers = Some(0);
+        assert_eq!(room_of(&full).servers_left, Some(0));
+        full.available.servers = Some(-1);
+        assert_eq!(room_of(&full).servers_left, Some(0));
+        assert_eq!(room_of(&TeamUsage::default()).servers_left, None);
     }
 
     #[test]
@@ -907,7 +924,12 @@ mod tests {
             .team_create_from_instance(from(&id, 4))
             .await
             .unwrap_err();
-        assert_eq!(e.code, ErrorCode::FreeServerModsNotOnModrinth);
+        // As the Engine answers it on /create-server/pack.
+        assert_eq!(e.code, ErrorCode::ModpackUnsupported);
+        assert_eq!(
+            e.params.get("reason").map(String::as_str),
+            Some("not_on_modrinth")
+        );
         assert!(!e.message.to_lowercase().contains("free"), "{}", e.message);
         assert!(stack(&runner).created.lock().unwrap().is_empty());
     }

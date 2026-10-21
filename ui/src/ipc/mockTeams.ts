@@ -16,7 +16,8 @@ import type {
   TeamVersion,
 } from './schema';
 
-/** `?teams=`: `some` (the default: Builders with room, Night Shift with none, Starter Club whose plan has no modded servers)
+/** `?teams=`: `some` (the default: Builders with room, Night Shift with none, Starter Club whose plan has no modded servers,
+ *  Weekend Crew at its server count)
  *  or `none` (the player is on no team, so the entry is today's). */
 export type TeamsScenario = 'some' | 'none';
 export const teamsScenario = (name: string | null): TeamsScenario | undefined => (name === 'some' || name === 'none' ? name : undefined);
@@ -25,6 +26,8 @@ export const teamsScenario = (name: string | null): TeamsScenario | undefined =>
 export const MOCK_FULL_TENANT = 't-night';
 /** A team whose plan doesn't include modded servers: a Fabric, Forge, NeoForge or Quilt create is `plan_feature_locked`. */
 export const MOCK_STARTER_TENANT = 't-starter';
+/** A team at its plan's server count: the form says so and Create is off; a create anyway is 402 `quota_exceeded`. */
+export const MOCK_COUNT_TENANT = 't-weekend';
 /** How long a mock create takes. */
 export const MOCK_TEAM_CREATE_MS = 800;
 
@@ -36,16 +39,18 @@ interface MockTeam extends CreatableTeam {
   vanillaOnly: boolean;
 }
 
-const room = (max: number, cpu = 2): TeamRoom => ({
+const room = (max: number, cpu = 2, serversLeft = 2): TeamRoom => ({
   memoryGb: Array.from({ length: max }, (_, i) => i + 1),
   defaultGb: Math.min(4, max),
   cpu,
+  serversLeft,
 });
 
 const TEAMS: MockTeam[] = [
   { tenantId: MOCK_TEAM_TENANT, name: 'Builders', room: room(6), full: false, vanillaOnly: false },
   { tenantId: MOCK_FULL_TENANT, name: 'Night Shift', room: room(8), full: true, vanillaOnly: false },
   { tenantId: MOCK_STARTER_TENANT, name: 'Starter Club', room: room(2, 1), full: false, vanillaOnly: true },
+  { tenantId: MOCK_COUNT_TENANT, name: 'Weekend Crew', room: room(4, 2, 0), full: false, vanillaOnly: false },
 ];
 
 const v = (id: string, stable = true, recommended = false): TeamVersion => ({ id, stable, recommended });
@@ -92,6 +97,7 @@ async function create(
     fail('network', 'invalid_team_server', "Check the server's options.", { field: 'settings.maxPlayers' });
   }
   await wait(MOCK_TEAM_CREATE_MS);
+  if (team.room.serversLeft === 0) fail('network', 'team_server_too_big', "Your team's plan has no room for a server this size.");
   if (team.vanillaOnly && type !== null && type !== 'vanilla' && type !== 'paper') {
     fail('network', 'plan_feature_locked', "Your plan doesn't include this.", { field: 'type' });
   }

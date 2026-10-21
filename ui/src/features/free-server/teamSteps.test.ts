@@ -21,7 +21,7 @@ describe('teamRefusalOf', () => {
       of('invalid_team_server', { field: 'settings.gameMode' }),
       of('modpack_too_heavy', { requiredMemoryMb: '6144', limitMemoryMb: '4096' }),
       of('modpack_unsupported', { reason: 'loader' }),
-      of('free_server_mods_not_on_modrinth'),
+      of('modpack_unsupported', { reason: 'not_on_modrinth' }),
       of('share_too_large'),
     ];
     for (const c of cases) expect(c.text).not.toMatch(/free/i);

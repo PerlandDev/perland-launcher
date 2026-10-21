@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
+import { isLauncherError } from '../../ipc/errors';
 import type { Instance, TeamServerCreated, TeamServerType } from '../../ipc/schema';
 import { useMcVersions, usePerlandStatus, useTeamCreate, useTeamCreateFromInstance, useTeamRoom, useTeamVersions } from '../../state/queries';
 import { useRun } from '../../state/runStore';
@@ -100,8 +101,11 @@ export function TeamServerForm({
   const firstGb = room.data ? (choices.find((g) => g >= Math.max(needGb, room.data.defaultGb)) ?? choices.at(-1) ?? null) : null;
   const memoryGb = memory ?? firstGb;
 
-  const blocked =
-    data && !plain
+  // The team can make no more servers: said plainly, before anything is sent.
+  const noServers = room.data?.serversLeft === 0;
+  const blocked = noServers
+    ? t('teamServer.noServers')
+    : data && !plain
       ? data.notOnModrinth.length > 0
         ? t('teamServer.notOnModrinth', { count: data.notOnModrinth.length, names: data.notOnModrinth.join(', ') })
         : memoryGb !== null && needGb > memoryGb
@@ -143,8 +147,19 @@ export function TeamServerForm({
     const settings = options.settings();
     const handlers = {
       onSuccess: onCreated,
-      onError: (error: unknown) => {
+      onError: async (error: unknown) => {
         const refused = teamRefusalOf(t, i18n, error);
+        // The Engine's 402 is the same for the size and the server count: the room read again tells them apart.
+        if (isLauncherError(error) && error.code === 'team_server_too_big') {
+          // At its count, the form's own line says so (and turns Create off): nothing under Memory.
+          const fresh = await room.refetch();
+          if (fresh.data?.serversLeft === 0) {
+            options.clearErrors();
+            setErrors({});
+            setRefusal(null);
+            return onRefused();
+          }
+        }
         options.clearErrors();
         const field = refused.field;
         const optionField = field !== null && isOptionField(field);

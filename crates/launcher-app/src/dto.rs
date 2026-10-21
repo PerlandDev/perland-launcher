@@ -1038,6 +1038,8 @@ pub struct TeamRoom {
     pub memory_gb: Vec<u32>,
     pub default_gb: u32,
     pub cpu: f64,
+    /// How many more servers the team's plan lets it make; `None` when the Engine didn't say.
+    pub servers_left: Option<u32>,
 }
 
 /// A server to create on a team. `version` is the Minecraft version; `loader_version` only for a

@@ -136,7 +136,17 @@ export function FriendsServerDialog({
   let title: string;
   let actions: ReactNode;
   let content: ReactNode;
-  const whereField = <WhereField free={freeLimits !== null} teams={teams} value={where} onChange={setWhere} />;
+  const whereField = (
+    <WhereField
+      free={freeLimits !== null}
+      teams={teams}
+      value={where}
+      onChange={(next) => {
+        setWhere(next);
+        setRefusal(null);
+      }}
+    />
+  );
   if (step.kind === 'teamReady') {
     ({ title, actions, content } = teamReadyStep(
       t,

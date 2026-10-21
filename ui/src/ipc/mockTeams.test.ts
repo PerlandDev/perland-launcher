@@ -10,7 +10,7 @@ const request = (tenantId: string, name = 'Amigos') => ({
 
 describe('mock teams', () => {
   it('lists teams only while signed in with teams on', async () => {
-    expect(await createMockBackend({ perland: 'signedIn', teams: 'some' }).handle('creatable_teams')).toHaveLength(3);
+    expect(await createMockBackend({ perland: 'signedIn', teams: 'some' }).handle('creatable_teams')).toHaveLength(4);
     expect(await createMockBackend({ perland: 'signedIn' }).handle('creatable_teams')).toEqual([]);
     expect(await createMockBackend({ teams: 'some' }).handle('creatable_teams')).toEqual([]);
   });

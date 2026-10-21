@@ -1828,6 +1828,7 @@ fn check_team_create() {
             memory_gb: vec![1, 2, 3, 4, 5, 6],
             default_gb: 4,
             cpu: 1.5,
+            servers_left: Some(2),
         },
     );
     check(

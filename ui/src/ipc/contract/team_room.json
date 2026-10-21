@@ -8,5 +8,6 @@
     6
   ],
   "defaultGb": 4,
-  "cpu": 1.5
+  "cpu": 1.5,
+  "serversLeft": 2
 }

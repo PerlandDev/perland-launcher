@@ -495,6 +495,8 @@ export const teamRoom = z.strictObject({
   memoryGb: z.number().int().array(),
   defaultGb: z.number().int(),
   cpu: z.number(),
+  /** How many more servers the team's plan lets it make; null when the Engine didn't say. */
+  serversLeft: z.number().int().nullable(),
 });
 /** The server types a team server can be. */
 export const teamServerType = z.enum(['vanilla', 'paper', 'fabric', 'forge', 'neoforge', 'quilt']);
