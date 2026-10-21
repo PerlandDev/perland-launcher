@@ -13,6 +13,7 @@ import { Check, Trash, User } from '../../ui/Icon';
 import { formatPlaytime } from '../../ui/playtime';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useSingleFlight } from '../../ui/useSingleFlight';
+import { Medals } from '../medals/Medals';
 import { OFFLINE_NAME } from './offlineName';
 import { PerlandAccountCard } from './PerlandAccountCard';
 
@@ -153,6 +154,8 @@ export function Accounts() {
           </ul>
           {totalPlayed && <p className="mt-1 text-sm text-ink-dim">{t('accounts.totalPlayed', { time: totalPlayed })}</p>}
         </div>
+
+        <Medals />
 
         <section className="grid gap-4" aria-labelledby="add-heading">
           <h2 id="add-heading" ref={addHeading} tabIndex={-1} className="text-lg font-bold outline-none">

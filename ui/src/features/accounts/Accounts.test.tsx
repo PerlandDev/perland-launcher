@@ -292,7 +292,7 @@ it('leaves the total out before a minute is played', async () => {
   await screen.findByText('Steve');
   await waitFor(() => expect(sent(calls, 'playtime_list')).toHaveLength(1));
   await act(async () => {});
-  expect(screen.queryByText(/Time played/)).toBeNull();
+  expect(screen.queryByText(/Time played on this computer/)).toBeNull();
 });
 
 it('goes back to Home', async () => {

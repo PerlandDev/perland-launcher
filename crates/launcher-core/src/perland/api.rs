@@ -148,7 +148,13 @@ pub struct ServerStats {
     pub invite: Option<StatsInvite>,
     pub playtime_seconds: u64,
     pub advancements: u32,
+    /// The completed advancements that have a display (no recipes), sorted. At most
+    /// [`MAX_ADVANCEMENT_IDS`] are kept.
+    pub advancement_ids: Vec<String>,
 }
+
+/// The most advancement IDs kept per server: the Engine sends at most this many.
+pub const MAX_ADVANCEMENT_IDS: usize = 2000;
 
 /// The signed-in player's stats on every server.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
@@ -157,6 +163,15 @@ pub struct PlayerStats {
     /// `None` while no Minecraft account is linked.
     pub minecraft: Option<MinecraftAccount>,
     pub servers: Vec<ServerStats>,
+}
+
+impl PlayerStats {
+    /// Keep at most [`MAX_ADVANCEMENT_IDS`] per server, whatever an Engine sends.
+    fn cap_ids(&mut self) {
+        for server in &mut self.servers {
+            server.advancement_ids.truncate(MAX_ADVANCEMENT_IDS);
+        }
+    }
 }
 
 /// A sign-in's result. `token` is the credential.
@@ -616,7 +631,9 @@ impl PlayerClient {
             _ => {}
         }
         self.ok(&reply, Route::Plain)?;
-        self.data(&reply).map(Some)
+        let mut stats: PlayerStats = self.data(&reply)?;
+        stats.cap_ids();
+        Ok(Some(stats))
     }
 
     async fn server_write(&self, route: &str, token: &str, invite_token: &str) -> Result<()> {
@@ -1079,6 +1096,30 @@ mod tests {
         let shown = format!("{code:?}");
         assert!(!shown.contains("ABCD"), "{shown}");
         assert!(shown.contains("600"), "{shown}");
+    }
+
+    #[test]
+    fn server_stats_ids_default_to_empty() {
+        let stats: ServerStats =
+            serde_json::from_value(json!({ "name": "a", "advancements": 0 })).unwrap();
+        assert!(stats.advancement_ids.is_empty());
+    }
+
+    #[test]
+    fn server_stats_ids_are_capped() {
+        let ids: Vec<String> = (0..MAX_ADVANCEMENT_IDS + 3)
+            .map(|i| format!("m:{i}"))
+            .collect();
+        let mut stats = PlayerStats {
+            minecraft: None,
+            servers: vec![ServerStats {
+                advancement_ids: ids,
+                ..ServerStats::default()
+            }],
+        };
+        stats.cap_ids();
+        assert_eq!(stats.servers[0].advancement_ids.len(), MAX_ADVANCEMENT_IDS);
+        assert_eq!(stats.servers[0].advancement_ids[0], "m:0");
     }
 
     #[test]

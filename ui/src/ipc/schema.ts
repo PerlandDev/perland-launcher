@@ -194,6 +194,8 @@ export const serverStats = z.strictObject({
   name: z.string(),
   playtimeSeconds: z.number(),
   advancements: z.number(),
+  /** The completed advancements' IDs (`minecraft:story/mine_stone`), sorted. */
+  advancementIds: z.array(z.string()),
 });
 export const perlandStats = z.strictObject({ servers: z.array(serverStats) });
 export const emailCodeSent = z.strictObject({ resendIn: z.number().int() });

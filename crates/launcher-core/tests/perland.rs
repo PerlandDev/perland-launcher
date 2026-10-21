@@ -1146,7 +1146,9 @@ async fn stats_success() {
     assert_eq!(first.invite.as_ref().unwrap().token, invite);
     assert_eq!(first.playtime_seconds, 7200);
     assert_eq!(first.advancements, 12);
+    assert_eq!(first.advancement_ids, ["minecraft:story/root"]);
     assert!(stats.servers[1].invite.is_none());
+    assert!(stats.servers[1].advancement_ids.is_empty());
 }
 
 #[tokio::test]
