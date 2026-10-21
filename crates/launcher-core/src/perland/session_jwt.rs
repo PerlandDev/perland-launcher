@@ -90,6 +90,12 @@ impl JwtCache {
         self.slots.lock().unwrap().remove(tenant);
     }
 
+    /// Drops the base JWT, e.g. after the Engine refused a JWT minted from it. Scoped JWTs
+    /// stay until they are refused themselves.
+    pub fn forget_base(&self) {
+        self.forget(BASE_KEY);
+    }
+
     /// Drops every JWT: sign-out, or a new session.
     pub fn clear(&self) {
         self.slots.lock().unwrap().clear();
@@ -285,6 +291,17 @@ mod tests {
         cache.jwt_for(&source, "t1", NOW).await.unwrap();
         cache.jwt_for(&source, "t2", NOW).await.unwrap();
         assert_eq!(source.counts().1, 3);
+    }
+
+    #[tokio::test]
+    async fn forget_base_keeps_the_teams() {
+        let (cache, source) = (JwtCache::default(), FakeSource::new(NOW + 3600));
+        cache.jwt_for(&source, "t1", NOW).await.unwrap();
+        cache.forget_base();
+        cache.jwt_for(&source, "t1", NOW).await.unwrap();
+        assert_eq!(source.counts(), (1, 1), "t1's JWT is still cached");
+        cache.jwt_for(&source, "t2", NOW).await.unwrap();
+        assert_eq!(source.counts(), (2, 2), "a new team mints a new base");
     }
 
     #[tokio::test]

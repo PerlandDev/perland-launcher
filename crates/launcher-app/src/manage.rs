@@ -301,7 +301,10 @@ struct SessionSource {
     api: Arc<dyn StackApi>,
     engine: Url,
     device: String,
+    /// `player-session` refused the device token.
     signed_out: AtomicBool,
+    /// `player-session` was asked: the base JWT is new, so replacing it again won't help.
+    minted_base: AtomicBool,
 }
 
 impl SessionSource {
@@ -311,6 +314,7 @@ impl SessionSource {
             engine: session.engine.clone(),
             device: session.token.clone(),
             signed_out: AtomicBool::new(false),
+            minted_base: AtomicBool::new(false),
         }
     }
 }
@@ -319,6 +323,7 @@ impl JwtSource for SessionSource {
     fn player_session(&self) -> launcher_core::sync::BoxFuture<'_, Result<SessionJwt>> {
         // Asked only when awaited: the cache builds this future even when its JWT is fresh.
         Box::pin(async move {
+            self.minted_base.store(true, Ordering::SeqCst);
             let answer = self
                 .api
                 .player_session(self.engine.clone(), self.device.clone())
@@ -401,14 +406,26 @@ fn param_text(value: &Value) -> String {
 
 impl<R: Runner, H: Host> AppCore<R, H> {
     /// A fresh JWT: scoped to `tenant`, or the base one with `None`. Through the cache; a
-    /// refused `player-session` signs the player out.
+    /// refused `player-session` signs the player out. A cached base JWT that `select-tenant`
+    /// refuses is replaced once (the Engine may have ended it while the device session lives);
+    /// a base minted for this call is not.
     async fn fresh_jwt(&self, tenant: Option<&str>) -> Result<(Session, SessionJwt)> {
         let session = self.perland_session().await.ok_or_else(signed_out)?;
-        let source = SessionSource::new(self.runner.stack(), &session);
-        let jwt = match tenant {
+        let api = self.runner.stack();
+        let mut source = SessionSource::new(api.clone(), &session);
+        let mut jwt = match tenant {
             Some(tenant) => self.jwts.jwt_for(&source, tenant, now_secs()).await,
             None => self.jwts.base(&source, now_secs()).await,
         };
+        if let (Some(tenant), Err(e)) = (tenant, &jwt) {
+            let stale_base =
+                e.code == ErrorCode::PerlandSignedOut && !source.minted_base.load(Ordering::SeqCst);
+            if stale_base {
+                self.jwts.forget_base();
+                source = SessionSource::new(api, &session);
+                jwt = self.jwts.jwt_for(&source, tenant, now_secs()).await;
+            }
+        }
         match jwt {
             Ok(jwt) => {
                 // A sign-out or a new sign-in while the JWT was minted: it may be the old
@@ -435,7 +452,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Run `call` with the session's Engine and a JWT for `tenant`. A 401 drops that JWT and
-    /// retries once with a fresh one; a second 401 is returned as is (the device session may
+    /// the base one and retries once with fresh ones; a second 401 is returned as is (the device session may
     /// still be fine).
     pub(crate) async fn with_jwt<T>(
         &self,
@@ -445,7 +462,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let (session, jwt) = self.manage_jwt(tenant).await?;
         match call(session.engine, jwt).await {
             Err(e) if e.code == ErrorCode::PerlandSignedOut => {
+                // The base JWT it was minted from may be what the Engine ended: replace both.
                 self.jwts.forget(tenant);
+                self.jwts.forget_base();
                 let (session, jwt) = self.manage_jwt(tenant).await?;
                 call(session.engine, jwt).await
             }
@@ -571,7 +590,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             "stop" => Lifecycle::Stop,
             "restart" => Lifecycle::Restart,
             _ => {
-                return Err(LauncherError::network(
+                return Err(LauncherError::game(
                     ErrorCode::Internal,
                     "That isn't something a server can do.",
                 ))
@@ -914,6 +933,69 @@ mod tests {
         let e = core.manage_action("t1", "s", "start").await.unwrap_err();
         assert_eq!(e.code, ErrorCode::PerlandSignedOut);
         assert!(core.perland_session().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_refused_base_jwt_is_replaced_on_retry() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        core.manage_action("t1", "s", "start").await.unwrap();
+        let old_base = fake.calls_to("select_tenant")[0].jwt.clone();
+        // The cached base JWT is refused when a new team's JWT is minted from it.
+        fake.fail_next("select_tenant", unauthorized());
+        core.manage_action("t2", "s", "start").await.unwrap();
+        let selects = fake.calls_to("select_tenant");
+        assert_eq!(selects.len(), 3);
+        assert_eq!(selects[1].jwt, old_base, "first tried with the cached base");
+        assert_ne!(selects[2].jwt, old_base, "then with a fresh one");
+        assert_eq!(fake.calls_to("player_session").len(), 2);
+        assert!(core.perland_session().await.is_some());
+
+        // A route's 401 replaces the base JWT too, not only the team's.
+        fake.fail_next("lifecycle", unauthorized());
+        core.manage_action("t2", "s", "stop").await.unwrap();
+        assert_eq!(fake.calls_to("player_session").len(), 3);
+        let selects = fake.calls_to("select_tenant");
+        assert_eq!(selects.len(), 4);
+        assert_ne!(selects[3].jwt, selects[2].jwt, "minted from the new base");
+    }
+
+    #[tokio::test]
+    async fn a_refused_base_jwt_is_replaced_once_only() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        core.manage_action("t1", "s", "start").await.unwrap();
+        for _ in 0..3 {
+            fake.fail_next("select_tenant", unauthorized());
+        }
+        let e = core.manage_action("t2", "s", "start").await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+        assert_eq!(fake.calls_to("select_tenant").len(), 3, "t1, then t2 twice");
+        assert_eq!(fake.calls_to("player_session").len(), 2, "one replacement");
+        assert!(
+            core.perland_session().await.is_some(),
+            "the device session stays"
+        );
+
+        // A base JWT minted for this very call is not replaced again.
+        let (fresh, runner, _host, _t2) = crate::app::tests::core(BuildKind::Dev);
+        sign_in(&fresh);
+        let fake = stack(&runner);
+        fake.fail_next("select_tenant", unauthorized());
+        let e = fresh.manage_action("t1", "s", "start").await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+        assert_eq!(fake.calls_to("select_tenant").len(), 1);
+        assert_eq!(fake.calls_to("player_session").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn an_unknown_action_is_an_app_refusal() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let e = core.manage_action("t1", "s", "delete").await.unwrap_err();
+        assert_eq!(e.category, launcher_core::ErrorCategory::Game);
     }
 
     #[tokio::test]
