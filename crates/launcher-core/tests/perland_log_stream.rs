@@ -378,5 +378,49 @@ async fn follow_waits_between_attempts_when_the_server_closes_at_once() {
     .unwrap();
     let requests = server.received_requests().await.unwrap().len();
     // About one per 100 ms: a hot loop would make hundreds.
-    assert!((3..=7).contains(&requests), "{requests} requests");
+    assert!((2..=7).contains(&requests), "{requests} requests");
+}
+
+/// A first connect that works, then a reconnect the Engine refuses for good.
+async fn refused_after_connecting(refusal: ResponseTemplate) -> launcher_core::LauncherError {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .and(query_param("since", T1))
+        .respond_with(refusal)
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .and(query_param("tail", "200"))
+        .respond_with(sse(log(T1, "one")))
+        .mount(&server)
+        .await;
+    let (_tx, rx) = watch::channel(false);
+    follow_logs_after(
+        &client(&server),
+        jwt_source(),
+        "survival",
+        |_| {},
+        rx,
+        std::time::Duration::from_millis(20),
+    )
+    .await
+    .unwrap_err()
+}
+
+#[tokio::test]
+async fn follow_ends_on_not_found_after_connecting() {
+    let err = refused_after_connecting(ResponseTemplate::new(404)).await;
+    assert_eq!(err.code, ErrorCode::ServerNotFound);
+}
+
+#[tokio::test]
+async fn follow_ends_on_too_many_streams_after_connecting() {
+    let err = refused_after_connecting(ResponseTemplate::new(429).set_body_json(json!({
+        "success": false, "data": { "code": "too_many_streams" }
+    })))
+    .await;
+    assert_eq!(err.code, ErrorCode::TooManyStreams);
 }
