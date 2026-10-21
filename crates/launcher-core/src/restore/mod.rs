@@ -16,7 +16,7 @@ pub mod point;
 pub mod snapshot;
 
 pub use go_back::{go_back, recover, WentBack};
-pub use point::{before_change, held_size, note_change, read, run_ended, seal, ChangeCtx};
+pub use point::{before_change, discard, held_size, note_change, read, run_ended, seal, ChangeCtx};
 
 /// A point older than this (30 days) is deleted when it is read or a new one is made.
 pub const MAX_AGE_SECS: u64 = 30 * 24 * 60 * 60;
@@ -84,7 +84,10 @@ pub struct PointMeta {
 
 /// Whether the top-level folder `top` may be part of a point.
 pub fn in_scope(top: &str) -> bool {
-    !top.is_empty() && !top.starts_with('.') && !DENYLIST.contains(&top)
+    // Windows and macOS folders are case-insensitive, so `Saves/` is the real saves folder.
+    !top.is_empty()
+        && !top.starts_with('.')
+        && !DENYLIST.contains(&top.to_ascii_lowercase().as_str())
 }
 
 /// The top-level folder of `rel` (a path relative to the game folder), or `None` for a file
@@ -115,6 +118,13 @@ mod tests {
         }
         for top in ["mods", "config", "kubejs"] {
             assert!(in_scope(top), "{top}");
+        }
+    }
+
+    #[test]
+    fn in_scope_refuses_the_denylist_in_any_case() {
+        for top in ["Saves", "SCREENSHOTS", "Logs", "Crash-Reports"] {
+            assert!(!in_scope(top), "{top}");
         }
     }
 

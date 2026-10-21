@@ -275,33 +275,41 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         // Going back held the instance at its version; once the source is back there too,
         // there is nothing left to differ (spec §5.8).
         let installed_version = installed.map(|d| d.pack_version);
+        let mut hold_lifted = false;
         if let Some(hold) = &held {
             let caught_up = update.is_none()
                 && check_error.is_none()
                 && installed_version.as_deref() == Some(hold.version.as_str());
             if caught_up {
-                self.lift_hold(id).await;
+                hold_lifted = self.lift_hold(id).await;
             }
         }
         Ok(PackStatus {
             installed_version,
             update,
             check_error,
+            hold_lifted,
         })
     }
 
     /// Clear the instance's update hold. Lockless like the banner's poll, so the instance is
     /// reloaded first and left alone while a run rewrites it; the next poll tries again.
-    async fn lift_hold(&self, id: &str) {
+    /// `true` when the hold was lifted and saved.
+    async fn lift_hold(&self, id: &str) -> bool {
         if self.is_busy(id) {
-            return;
+            return false;
         }
         let Ok(mut instance) = self.instances.load(id).await else {
-            return;
+            return false;
         };
-        if instance.update_hold.take().is_some() {
-            if let Err(error) = self.instances.save(&instance).await {
+        if instance.update_hold.take().is_none() {
+            return false;
+        }
+        match self.instances.save(&instance).await {
+            Ok(()) => true,
+            Err(error) => {
                 tracing::warn!(instance = id, %error, "couldn't lift the update hold");
+                false
             }
         }
     }

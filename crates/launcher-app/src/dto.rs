@@ -229,6 +229,8 @@ pub struct PackStatus {
     pub installed_version: Option<String>,
     pub update: Option<PackUpdate>,
     pub check_error: Option<LauncherError>,
+    /// This read lifted the instance's update hold: the UI's copy of the instance is stale.
+    pub hold_lifted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

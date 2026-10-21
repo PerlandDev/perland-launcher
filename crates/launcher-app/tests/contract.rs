@@ -1186,6 +1186,7 @@ fn contract_fixtures_are_current() {
                 installed_version: Some("1.0.3".into()),
                 update: Some(sample_update()),
                 check_error: None,
+                hold_lifted: false,
             },
             PackStatus {
                 installed_version: Some("1.0.3".into()),
@@ -1197,6 +1198,7 @@ fn contract_fixtures_are_current() {
                     )
                     .with_fix("You can still play the version you have"),
                 ),
+                hold_lifted: true,
             },
         ],
     );

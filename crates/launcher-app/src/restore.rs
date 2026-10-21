@@ -65,7 +65,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// Put the instance back to its restore point. Refused while it runs, installs or another
     /// process holds it. An instance that checks for updates is held at the restored version
-    /// (spec §5.8). Returns the new point (how it was before going back), or `None` when that
+    /// when going back undoes a pack update, and a hold it has already stays (spec §5.8). Returns the new point (how it was before going back), or `None` when that
     /// one couldn't be kept.
     pub async fn restore_go_back(&self, id: &str) -> Result<Option<RestorePointDto>> {
         let instance = self.instances.load(id).await?;
@@ -77,16 +77,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
         let lock = lock_or_busy(&self.instances.perland_dir(id), id)?;
         let now = now_secs();
-        let hold = if self.checks_for_updates(&instance).await {
-            restore::read(&self.instances, id, now)
-                .await
-                .and_then(|point| point.pack_version)
-                .map(|version| UpdateHold {
-                    since: now,
-                    version,
-                })
-        } else {
-            None
+        // An existing hold stays (while held, the instance doesn't check for updates). A new
+        // one only when going back undoes a pack update: Browse installs alone leave the
+        // instance on the server's pack.
+        let hold = match instance.update_hold.clone() {
+            Some(hold) => Some(hold),
+            None if self.checks_for_updates(&instance).await => self.new_hold(id, now).await,
+            None => None,
         };
         let went = restore::go_back(&self.instances, id, hold, now).await?;
         drop(lock);
@@ -100,6 +97,31 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             return Ok(None);
         }
         self.restore_point(id).await
+    }
+
+    /// The hold for going back to the point, when it undoes a pack update: at the point's pack
+    /// version, or the installed pack's when the point has none.
+    async fn new_hold(&self, id: &str, now: u64) -> Option<UpdateHold> {
+        let point = restore::read(&self.instances, id, now).await?;
+        if !point
+            .changes
+            .iter()
+            .any(|c| matches!(c, restore::Change::PackUpdate { .. }))
+        {
+            return None;
+        }
+        let version = match point.pack_version {
+            Some(version) => version,
+            None => {
+                launcher_core::sync::lockfile::load_pack(&self.instances.perland_dir(id))
+                    .await?
+                    .pack_version
+            }
+        };
+        Some(UpdateHold {
+            since: now,
+            version,
+        })
     }
 
     /// "Update again": take the pack's update like the banner's Update, lifting the hold.
@@ -266,6 +288,90 @@ mod tests {
         assert!(saved.update_hold.is_some());
     }
 
+    /// A point of Browse installs only, on a pack instance.
+    async fn browsed(core: &TestCore, id: &str) {
+        let game = core.instances.game_dir(id);
+        std::fs::create_dir_all(game.join("mods")).unwrap();
+        std::fs::write(game.join("mods/a.jar"), b"a").unwrap();
+        managed_for(&["mods/a.jar"])
+            .save(&core.instances.perland_dir(id))
+            .await
+            .unwrap();
+        restore::before_change(
+            &core.instances,
+            id,
+            &["mods".to_string()],
+            Change::Installed {
+                name: "Sodium".into(),
+            },
+            ChangeCtx {
+                during_run: false,
+                now: now(),
+            },
+        )
+        .await;
+        std::fs::write(game.join("mods/sodium.jar"), b"s").unwrap();
+    }
+
+    #[tokio::test]
+    async fn going_back_keeps_an_existing_hold() {
+        let (core, _, _, _t) = ready().await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        let held = UpdateHold {
+            since: 7,
+            version: "1.0.3".into(),
+        };
+        let mut instance = core.instances.load(&id).await.unwrap();
+        instance.update_hold = Some(held.clone());
+        core.instances.save(&instance).await.unwrap();
+        browsed(&core, &id).await;
+
+        core.restore_go_back(&id).await.unwrap();
+        assert!(!core
+            .instances
+            .game_dir(&id)
+            .join("mods/sodium.jar")
+            .exists());
+        assert_eq!(
+            core.instances.load(&id).await.unwrap().update_hold,
+            Some(held)
+        );
+    }
+
+    #[tokio::test]
+    async fn going_back_over_browse_installs_only_sets_no_hold() {
+        let (core, _, _, _t) = ready().await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        browsed(&core, &id).await;
+        core.restore_go_back(&id).await.unwrap();
+        assert!(!core
+            .instances
+            .game_dir(&id)
+            .join("mods/sodium.jar")
+            .exists());
+        assert_eq!(core.instances.load(&id).await.unwrap().update_hold, None);
+    }
+
+    #[tokio::test]
+    async fn a_point_without_a_pack_version_holds_at_the_installed_pack() {
+        let (core, _, _, _t) = ready().await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        updated(&core, &id).await;
+        // As if the point had been taken with no `managed.json`.
+        let meta_path = core
+            .instances
+            .perland_dir(&id)
+            .join("restore/point/point.json");
+        let mut meta: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&meta_path).unwrap()).unwrap();
+        meta["packVersion"] = serde_json::Value::Null;
+        std::fs::write(&meta_path, serde_json::to_vec(&meta).unwrap()).unwrap();
+
+        core.restore_go_back(&id).await.unwrap();
+        let hold = core.instances.load(&id).await.unwrap().update_hold;
+        assert_eq!(hold.expect("held").version, "1.0.3");
+    }
+
     #[tokio::test]
     async fn go_back_on_plain_instance_sets_no_hold() {
         let (core, _, _, _t) = ready().await;
@@ -408,7 +514,7 @@ mod tests {
             .lock()
             .unwrap()
             .insert(id.clone(), Ok(Some(pending("1.0.3", "1.0.4"))));
-        core.pack_status(&id).await.unwrap();
+        assert!(!core.pack_status(&id).await.unwrap().hold_lifted);
         assert!(core
             .instances
             .load(&id)
@@ -418,8 +524,15 @@ mod tests {
             .is_some());
         // The source went back to 1.0.3 too: nothing left to differ.
         runner.updates.lock().unwrap().remove(&id);
-        core.pack_status(&id).await.unwrap();
+        assert!(
+            core.pack_status(&id).await.unwrap().hold_lifted,
+            "the UI learns it"
+        );
         assert_eq!(core.instances.load(&id).await.unwrap().update_hold, None);
+        assert!(
+            !core.pack_status(&id).await.unwrap().hold_lifted,
+            "nothing to lift"
+        );
         // Installed differs from the held version: the hold stays.
         hold("1.0.2").await;
         core.pack_status(&id).await.unwrap();

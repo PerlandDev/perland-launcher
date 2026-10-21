@@ -79,8 +79,8 @@ async fn before_change_capped(
         .into_iter()
         .collect();
     if let Err(e) = take(store, id, &tops, change, &ctx, cap).await {
-        let restore = restore_dir(&store.perland_dir(id));
-        clear_scratch(&restore).await;
+        // The change goes ahead uncovered: an older point would restore a mix, so it goes too.
+        discard(store, id).await;
         tracing::warn!(folders = ?tops, "no restore point for this change: {e}");
     }
 }
@@ -385,6 +385,20 @@ async fn read_meta(restore: &Path, now: u64) -> Option<PointMeta> {
     Some(meta)
 }
 
+/// Remove the instance's point and any leftovers of building one. Best effort. For a change
+/// that goes ahead without a point, or a change of source, which an older point would undo
+/// only in part.
+pub async fn discard(store: &InstanceStore, id: &str) {
+    let restore = restore_dir(&store.perland_dir(id));
+    clear_scratch(&restore).await;
+    match tokio::fs::remove_dir_all(point_dir(&restore)).await {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            tracing::warn!("couldn't remove the restore point: {e}");
+        }
+        _ => {}
+    }
+}
+
 /// Append `change` without snapshotting anything (a resumed sync).
 pub async fn note_change(store: &InstanceStore, id: &str, change: Change, now: u64) {
     let restore = restore_dir(&store.perland_dir(id));
@@ -674,6 +688,55 @@ mod tests {
 
         assert!(fx.read().await.is_none());
         assert!(!fx.restore().join("new").exists());
+    }
+
+    /// The change goes ahead without a point, so the sealed one before it would restore a mix.
+    #[tokio::test]
+    async fn failing_to_replace_a_sealed_point_drops_it() {
+        let fx = Fixture::new().await;
+        fx.put("config/big.toml", b"0123456789");
+        before_change_capped(
+            &fx.store,
+            &fx.id,
+            &["mods".to_string()],
+            installed("Sodium"),
+            ChangeCtx {
+                during_run: false,
+                now: T0,
+            },
+            4,
+        )
+        .await;
+        assert!(fx.read().await.is_some());
+        seal(&fx.store, &fx.id).await;
+
+        before_change_capped(
+            &fx.store,
+            &fx.id,
+            &["config".to_string()],
+            installed("Lithium"),
+            ChangeCtx {
+                during_run: false,
+                now: T0 + 1,
+            },
+            4,
+        )
+        .await;
+        assert!(fx.read().await.is_none());
+        assert!(!fx.restore().join("point").exists());
+        assert!(!fx.restore().join("new").exists());
+    }
+
+    #[tokio::test]
+    async fn discard_removes_the_point_and_leftovers() {
+        let fx = Fixture::new().await;
+        fx.put("mods/old.jar", b"old");
+        fx.change(&["mods"], "Sodium", false, T0).await;
+        std::fs::create_dir_all(fx.restore().join("new-config")).unwrap();
+        crate::restore::discard(&fx.store, &fx.id).await;
+        assert!(fx.read().await.is_none());
+        assert!(!fx.restore().join("point").exists());
+        assert!(!fx.restore().join("new-config").exists());
     }
 
     #[tokio::test]

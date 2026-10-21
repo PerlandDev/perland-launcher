@@ -1769,3 +1769,36 @@ async fn a_missing_pack_json_is_not_a_resume() {
     let meta = point(&env, &instance.id).await.expect("a point");
     assert!(meta.files.iter().any(|f| f.path == "mods/create-1.jar"));
 }
+
+/// A first sync (no `managed.json`, as when linking an existing instance) takes no point, so an
+/// older one would undo only part of it: it goes.
+#[tokio::test]
+async fn a_first_sync_drops_an_older_point() {
+    let env = Env::new().await;
+    let url = v1_create(&env).mount(&env.server).await;
+    let (instance, _) = env
+        .syncer
+        .add_pack(&env.store, &PackInput::Packwiz { url })
+        .await
+        .unwrap();
+    let mods = env.store.game_dir(&instance.id).join("mods");
+    std::fs::create_dir_all(&mods).unwrap();
+    std::fs::write(mods.join("mine.jar"), b"mine").unwrap();
+    launcher_core::restore::before_change(
+        &env.store,
+        &instance.id,
+        &["mods".to_string()],
+        launcher_core::restore::Change::Installed {
+            name: "Mine".into(),
+        },
+        launcher_core::restore::ChangeCtx {
+            during_run: false,
+            now: now_secs(),
+        },
+    )
+    .await;
+    assert!(point(&env, &instance.id).await.is_some());
+
+    done(ensure(&env, &instance.id).await.unwrap().outcome);
+    assert!(point(&env, &instance.id).await.is_none());
+}

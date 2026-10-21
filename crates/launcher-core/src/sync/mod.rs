@@ -777,9 +777,20 @@ impl Syncer {
         if cancel.is_cancelled() {
             return Err(sync_cancelled());
         }
-        if let Some(m) = &managed {
-            self.keep_restore_point(store, id, m, desired, &plan, now)
-                .await;
+        match &managed {
+            Some(m) => {
+                self.keep_restore_point(store, id, m, desired, &plan, now)
+                    .await
+            }
+            // A first sync (or linking an existing instance) takes no point, and an older one
+            // would undo only part of it.
+            None if !(plan.write.is_empty()
+                && plan.trash.is_empty()
+                && plan.case_aliases.is_empty()) =>
+            {
+                restore::discard(store, id).await
+            }
+            None => {}
         }
         save_pack(&perland, desired).await?;
         let trash_dir = apply::trash_folder(&perland, now);

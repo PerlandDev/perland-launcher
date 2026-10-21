@@ -12,6 +12,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use super::{
+    in_scope,
     point::{
         self, build_point_capped, clear_scratch, is_over_cap, load_meta, point_dir, recover_old,
         swap_in,
@@ -135,9 +136,16 @@ async fn run(
     let meta = point::read(store, id, now)
         .await
         .ok_or_else(errors::point_gone)?;
+    // Never a denied folder, even if an older point names one (in another case, say).
+    let scope: Vec<String> = meta
+        .scope
+        .iter()
+        .filter(|top| in_scope(top))
+        .cloned()
+        .collect();
     // A linked folder (symlink or junction) was never snapshotted: leave it alone.
     let mut tops = Vec::new();
-    for top in &meta.scope {
+    for top in &scope {
         let linked = tokio::fs::symlink_metadata(game_dir.join(top))
             .await
             .is_ok_and(|m| m.file_type().is_symlink());
@@ -153,7 +161,7 @@ async fn run(
         let undo = build_point_capped(
             store,
             id,
-            &meta.scope,
+            &scope,
             PointKind::BeforeGoingBack,
             now,
             &restore.join("new"),
@@ -309,6 +317,10 @@ async fn finish(
 
     // 5. Swap each folder not swapped yet.
     for (i, top) in journal.tops.iter().enumerate() {
+        // A second guard: a denied folder is never swapped, whatever the journal says.
+        if !in_scope(top) {
+            continue;
+        }
         let (current, staged) = (game_dir.join(top), game_dir.join(staged_name(top)));
         let had = journal.had.get(top).copied().unwrap_or(false);
         let pending = if had {
@@ -838,6 +850,41 @@ mod tests {
     async fn recover_without_anything_to_do_is_ok() {
         let fx = Fixture::new().await;
         recover(&fx.store, &fx.id).await.unwrap();
+    }
+
+    /// A point (or journal) naming a denied folder in another case, as one taken before the
+    /// case-insensitive check, never touches that folder.
+    #[tokio::test]
+    async fn go_back_leaves_a_denied_folder_in_the_scope_alone() {
+        let fx = Fixture::updated().await;
+        fx.put("Saves/w/level.dat", b"world");
+        let path = point_dir(&fx.restore()).join("point.json");
+        let mut meta: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        meta["scope"].as_array_mut().unwrap().push("Saves".into());
+        std::fs::write(&path, serde_json::to_vec(&meta).unwrap()).unwrap();
+
+        fx.go_back(None).await.unwrap();
+        assert_eq!(fx.text("Saves/w/level.dat"), "world");
+        fx.assert_before().await;
+    }
+
+    #[tokio::test]
+    async fn recovery_leaves_a_denied_folder_in_the_journal_alone() {
+        let fx = Fixture::updated().await;
+        fx.put("SCREENSHOTS/a.png", b"png");
+        go_back_stopping(&fx.store, &fx.id, None, T0 + 10, StopAfter::Journal)
+            .await
+            .unwrap();
+        let path = fx.restore().join(JOURNAL_FILE);
+        let mut journal: Journal = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        journal.tops.push("SCREENSHOTS".into());
+        journal.had.insert("SCREENSHOTS".into(), false);
+        std::fs::write(&path, serde_json::to_vec(&journal).unwrap()).unwrap();
+
+        recover(&fx.store, &fx.id).await.unwrap();
+        assert_eq!(fx.text("SCREENSHOTS/a.png"), "png");
+        fx.assert_before().await;
     }
 
     #[tokio::test]
