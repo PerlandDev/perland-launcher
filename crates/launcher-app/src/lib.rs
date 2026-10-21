@@ -13,6 +13,7 @@ mod live_tests;
 pub mod logged;
 pub mod logs;
 pub mod manage;
+mod manage_console;
 mod minecraft_link;
 mod news;
 mod packs;

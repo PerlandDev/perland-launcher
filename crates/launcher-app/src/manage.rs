@@ -22,6 +22,7 @@ use launcher_core::{
     ErrorCode, LauncherError, Result,
 };
 use serde_json::Value;
+use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::{
     app::AppCore,
@@ -38,6 +39,11 @@ use crate::{
 const FREE_PLAN: &str = "player-free";
 /// The name the Engine gives a player's free team.
 const FREE_TEAM_PREFIX: &str = "player-";
+
+/// Asks for a JWT for the log stream: `true` right after the Engine refused the last one, so a
+/// cached one is dropped first.
+pub type LogJwt =
+    Arc<dyn Fn(bool) -> launcher_core::sync::BoxFuture<'static, Result<SessionJwt>> + Send + Sync>;
 
 /// The Engine's auth and server routes for Manage. Every call names the Engine it goes to (the
 /// session's) and the credential it carries. The real one is `CoreStack`; tests use `FakeStack`.
@@ -127,6 +133,18 @@ pub trait StackApi: Send + Sync + 'static {
         command: String,
         confirm: bool,
     ) -> BoxFuture<Result<ConsoleReply>>;
+    /// Follows `stack`'s log until `stop` turns true or the Engine refuses for good: each batch
+    /// of cleaned lines goes to `sink`, and `connected` is sent once the first connect opened
+    /// the stream (a refusal before that is the answer).
+    fn follow_logs(
+        &self,
+        engine: Url,
+        jwt: LogJwt,
+        stack: String,
+        sink: mpsc::UnboundedSender<Vec<String>>,
+        connected: oneshot::Sender<()>,
+        stop: watch::Receiver<bool>,
+    ) -> BoxFuture<Result<()>>;
 }
 
 /// `StackApi` over `launcher_core::perland::{AuthClient, StackClient}`.
@@ -296,6 +314,34 @@ impl StackApi for CoreStack {
         let client = self.stacks(engine);
         Box::pin(async move { client?.console(&jwt, &stack, &command, confirm).await })
     }
+
+    fn follow_logs(
+        &self,
+        engine: Url,
+        jwt: LogJwt,
+        stack: String,
+        sink: mpsc::UnboundedSender<Vec<String>>,
+        connected: oneshot::Sender<()>,
+        stop: watch::Receiver<bool>,
+    ) -> BoxFuture<Result<()>> {
+        let client = self.stacks(engine);
+        Box::pin(async move {
+            perland::follow_logs_with(
+                &client?,
+                move |refused| jwt(refused),
+                &stack,
+                move |lines| {
+                    let _ = sink.send(lines.into_iter().map(|l| l.text).collect());
+                },
+                move || {
+                    let _ = connected.send(());
+                },
+                stop,
+                perland::log_stream::RECONNECT_AFTER,
+            )
+            .await
+        })
+    }
 }
 
 /// Fresh JWTs for `JwtCache`, from the session's Engine and device token. It notes whether
@@ -363,7 +409,7 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-fn signed_out() -> LauncherError {
+pub(crate) fn signed_out() -> LauncherError {
     LauncherError::auth(
         ErrorCode::PerlandSignedOut,
         "You were signed out of Perland.",

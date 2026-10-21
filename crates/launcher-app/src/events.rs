@@ -93,6 +93,18 @@ pub enum AppEvent {
     /// A Discord sign-in moved on: the browser is open (`waiting`), or the code it brought back
     /// is being redeemed (`exchanging`).
     PerlandSignIn { phase: PerlandSignInPhase },
+    /// New lines of a managed server's console log (`manage_console_open`), oldest first,
+    /// cleaned of color codes.
+    #[serde(rename_all = "camelCase")]
+    ServerLog {
+        tenant_id: String,
+        stack: String,
+        lines: Vec<String>,
+    },
+    /// That live log stopped on its own after it had opened (the Engine refused a reconnect,
+    /// the server went away): the console says so and offers to reconnect.
+    #[serde(rename_all = "camelCase")]
+    ServerLogEnded { tenant_id: String, stack: String },
 }
 
 /// The window the app runs in. Tauri implements it; tests record what it was asked to do.

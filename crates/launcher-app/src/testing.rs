@@ -54,7 +54,7 @@ use launcher_core::{
     },
     ErrorCode, LauncherError, Result,
 };
-use tokio::sync::{oneshot, Notify, Semaphore};
+use tokio::sync::{mpsc, oneshot, watch, Notify, Semaphore};
 
 use crate::{
     app::AppCore,
@@ -1193,6 +1193,10 @@ pub(crate) struct FakeStack {
     pub settings: Mutex<Result<SettingsDoc>>,
     pub put_settings: Mutex<Result<SettingsSaved>>,
     pub console: Mutex<Result<ConsoleReply>>,
+    /// The next `follow_logs` answers this instead of connecting.
+    pub logs_refusal: Mutex<Option<LauncherError>>,
+    /// Every log stream that connected, oldest first.
+    pub log_streams: Mutex<Vec<FakeLogStream>>,
     /// Errors the next calls to a route answer, in order, before its scripted answer.
     fail_next: Mutex<HashMap<&'static str, VecDeque<LauncherError>>>,
     /// Every JWT minted by `select_tenant`, with its team.
@@ -1220,6 +1224,8 @@ impl FakeStack {
             settings: Mutex::new(Ok(SettingsDoc::default())),
             put_settings: Mutex::new(Ok(SettingsSaved::default())),
             console: Mutex::new(Ok(ConsoleReply::default())),
+            logs_refusal: Mutex::new(None),
+            log_streams: Mutex::new(Vec::new()),
             fail_next: Mutex::new(HashMap::new()),
             minted: Mutex::new(HashMap::new()),
             count: AtomicUsize::new(0),
@@ -1262,6 +1268,22 @@ impl FakeStack {
             .into_iter()
             .filter(|c| c.tenant.as_deref() == Some(tenant))
             .collect()
+    }
+
+    /// Feeds `lines` to log stream `n` (in the order streams connected).
+    pub fn log_lines(&self, n: usize, lines: &[&str]) {
+        let streams = self.log_streams.lock().unwrap();
+        let _ = streams[n]
+            .sink
+            .send(lines.iter().map(|l| l.to_string()).collect());
+    }
+
+    /// Ends log stream `n` with `error`, as a refused reconnect would.
+    pub fn end_log_stream(&self, n: usize, error: LauncherError) {
+        let end = self.log_streams.lock().unwrap()[n].end.take();
+        if let Some(end) = end {
+            let _ = end.send(error);
+        }
     }
 
     fn mint(&self) -> SessionJwt {
@@ -1497,6 +1519,55 @@ impl StackApi for FakeStack {
             &self.console,
         )
     }
+    fn follow_logs(
+        &self,
+        engine: Url,
+        jwt: crate::manage::LogJwt,
+        stack: String,
+        sink: mpsc::UnboundedSender<Vec<String>>,
+        connected: oneshot::Sender<()>,
+        stop: watch::Receiver<bool>,
+    ) -> BoxFuture<Result<()>> {
+        let refusal = match self.note("follow_logs", engine, None, &[&stack]) {
+            Some(e) => Some(e),
+            None => self.logs_refusal.lock().unwrap().take(),
+        };
+        let (end_tx, end_rx) = oneshot::channel();
+        if refusal.is_none() {
+            self.log_streams.lock().unwrap().push(FakeLogStream {
+                stack,
+                sink,
+                end: Some(end_tx),
+                stop: stop.clone(),
+            });
+        }
+        let mut stop = stop;
+        Box::pin(async move {
+            jwt(false).await?;
+            if let Some(e) = refusal {
+                return Err(e);
+            }
+            let _ = connected.send(());
+            let ended = async move {
+                match end_rx.await {
+                    Ok(e) => e,
+                    Err(_) => std::future::pending().await,
+                }
+            };
+            tokio::select! {
+                _ = stop.wait_for(|s| *s) => Ok(()),
+                e = ended => Err(e),
+            }
+        })
+    }
+}
+
+/// A log stream `FakeStack::follow_logs` opened: the test feeds and ends it.
+pub(crate) struct FakeLogStream {
+    pub stack: String,
+    pub sink: mpsc::UnboundedSender<Vec<String>>,
+    end: Option<oneshot::Sender<LauncherError>>,
+    pub stop: watch::Receiver<bool>,
 }
 
 /// The player's free server `Survival` (vanilla 1.21.1) with `status`, its invite

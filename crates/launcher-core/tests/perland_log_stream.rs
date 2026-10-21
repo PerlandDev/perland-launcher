@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use launcher_core::{
     invite::Url,
-    perland::{follow_logs, follow_logs_after, LogLine, SessionJwt, StackClient},
+    perland::{follow_logs, follow_logs_after, follow_logs_with, LogLine, SessionJwt, StackClient},
     ErrorCode,
 };
 use serde_json::json;
@@ -423,4 +423,86 @@ async fn follow_ends_on_too_many_streams_after_connecting() {
     })))
     .await;
     assert_eq!(err.code, ErrorCode::TooManyStreams);
+}
+
+#[tokio::test]
+async fn follow_with_reports_the_first_connect_and_asks_for_a_new_jwt_after_401() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .and(header("x-user-token", "old"))
+        .respond_with(ResponseTemplate::new(401))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .and(header("x-user-token", "fresh"))
+        .respond_with(sse(log(T1, "Hi")))
+        .mount(&server)
+        .await;
+    let refused: Arc<Mutex<Vec<bool>>> = Arc::default();
+    let r = refused.clone();
+    let jwt = move |was_refused: bool| {
+        r.lock().unwrap().push(was_refused);
+        let token = if was_refused { "fresh" } else { "old" };
+        Box::pin(async move { Ok(SessionJwt::new(token)) })
+            as launcher_core::sync::BoxFuture<'static, launcher_core::Result<SessionJwt>>
+    };
+    let connects = Arc::new(Mutex::new(0));
+    let c = connects.clone();
+    let seen_before_lines = Arc::new(Mutex::new(None));
+    let s = seen_before_lines.clone();
+    let probe = connects.clone();
+    let (tx, rx) = watch::channel(false);
+    follow_logs_with(
+        &client(&server),
+        jwt,
+        "survival",
+        move |_| {
+            *s.lock().unwrap() = Some(*probe.lock().unwrap());
+            tx.send(true).unwrap();
+        },
+        move || *c.lock().unwrap() += 1,
+        rx,
+        std::time::Duration::from_millis(20),
+    )
+    .await
+    .unwrap();
+    assert_eq!(*connects.lock().unwrap(), 1);
+    assert_eq!(
+        *seen_before_lines.lock().unwrap(),
+        Some(1),
+        "connected before the lines"
+    );
+    assert_eq!(*refused.lock().unwrap(), [false, true]);
+}
+
+#[tokio::test]
+async fn follow_with_never_reports_a_refused_first_connect() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let connected = Arc::new(Mutex::new(false));
+    let c = connected.clone();
+    let (_tx, rx) = watch::channel(false);
+    let err = follow_logs_with(
+        &client(&server),
+        |_| {
+            Box::pin(async { Ok(SessionJwt::new(JWT)) })
+                as launcher_core::sync::BoxFuture<'static, launcher_core::Result<SessionJwt>>
+        },
+        "survival",
+        |_| {},
+        move || *c.lock().unwrap() = true,
+        rx,
+        std::time::Duration::from_millis(20),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.code, ErrorCode::ServerNotFound);
+    assert!(!*connected.lock().unwrap());
 }

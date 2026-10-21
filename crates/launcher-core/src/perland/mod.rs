@@ -19,7 +19,8 @@ pub use api::{
 };
 pub use auth::{AuthClient, Handoff, Membership, SessionJwt};
 pub use log_stream::{
-    follow_logs, follow_logs_after, strip_formatting, LogLine, SseEvent, SseParser,
+    follow_logs, follow_logs_after, follow_logs_with, strip_formatting, LogLine, SseEvent,
+    SseParser,
 };
 pub use loopback::{Callback, Language, Loopback};
 pub use panel::{handoff_url, manage_url, panel_page, panel_url, server_path, upgrade_path};

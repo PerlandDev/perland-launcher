@@ -187,10 +187,36 @@ pub async fn follow_logs_after(
     client: &StackClient,
     jwt: impl Fn() -> BoxFuture<'static, Result<SessionJwt>>,
     stack: &str,
+    on_lines: impl FnMut(Vec<LogLine>) + Send,
+    stop: watch::Receiver<bool>,
+    reconnect_after: Duration,
+) -> Result<()> {
+    follow_logs_with(
+        client,
+        move |_| jwt(),
+        stack,
+        on_lines,
+        || {},
+        stop,
+        reconnect_after,
+    )
+    .await
+}
+
+/// `follow_logs_after` for a caller that keeps its own JWTs: `jwt(true)` is asked right after
+/// the Engine refused the last token (a 401), so a cached one can be dropped, and `jwt(false)`
+/// otherwise. `on_connected` runs once, when the first connect opened the stream, so a caller
+/// can tell a refused start (returned) from a stream that ended later.
+pub async fn follow_logs_with(
+    client: &StackClient,
+    jwt: impl Fn(bool) -> BoxFuture<'static, Result<SessionJwt>>,
+    stack: &str,
     mut on_lines: impl FnMut(Vec<LogLine>) + Send,
+    on_connected: impl FnOnce() + Send,
     mut stop: watch::Receiver<bool>,
     reconnect_after: Duration,
 ) -> Result<()> {
+    let mut on_connected = Some(on_connected);
     // Docker's RFC3339Nano trims trailing zeros from the fraction (even all of it), so
     // timestamps are compared as `time_key`s, padded to one width.
     // `last` is the raw timestamp sent back as `since`; `last_key` is its normalized form.
@@ -208,6 +234,9 @@ pub async fn follow_logs_after(
         match opened {
             Ok(response) => {
                 connected = true;
+                if let Some(on_connected) = on_connected.take() {
+                    on_connected();
+                }
                 let mut body = response.bytes_stream();
                 let mut parser = SseParser::default();
                 'read: loop {
@@ -264,14 +293,14 @@ pub async fn follow_logs_after(
 /// Opens the stream; a 401 gets one new token.
 async fn open(
     client: &StackClient,
-    jwt: &impl Fn() -> BoxFuture<'static, Result<SessionJwt>>,
+    jwt: &impl Fn(bool) -> BoxFuture<'static, Result<SessionJwt>>,
     stack: &str,
     since: Option<&str>,
 ) -> std::result::Result<reqwest::Response, StreamRefusal> {
-    let token = jwt().await.map_err(StreamRefusal::Refused)?;
+    let token = jwt(false).await.map_err(StreamRefusal::Refused)?;
     match client.stream_logs_request(&token, stack, since).await {
         Err(StreamRefusal::Refused(e)) if e.code == crate::ErrorCode::PerlandSignedOut => {
-            let token = jwt().await.map_err(StreamRefusal::Refused)?;
+            let token = jwt(true).await.map_err(StreamRefusal::Refused)?;
             client.stream_logs_request(&token, stack, since).await
         }
         other => other,
