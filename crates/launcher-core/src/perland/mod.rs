@@ -1,6 +1,7 @@
 //! Perland player accounts: the Engine's `/api/v1/player` routes. A player token is a
 //! credential: nothing here prints one, and every error names the Engine's host only.
 pub mod api;
+pub mod auth;
 pub mod loopback;
 pub mod panel;
 pub mod pkce;
@@ -12,6 +13,7 @@ pub use api::{
     PlayerConfig, PlayerStats, Relation, ServerStats, SignInMethod, StatsInvite, TokenAnswer,
     YourServer,
 };
+pub use auth::{AuthClient, Handoff, Membership, SessionJwt};
 pub use loopback::{Callback, Language, Loopback};
 pub use panel::{manage_url, panel_url};
 pub use pkce::{authorize_url, Pkce};

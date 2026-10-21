@@ -768,7 +768,7 @@ fn answer_lost(host: &str, status: u16) -> LauncherError {
     .with_param("status", status.to_string())
 }
 
-fn accounts_closed(host: &str) -> LauncherError {
+pub(super) fn accounts_closed(host: &str) -> LauncherError {
     LauncherError::network(
         ErrorCode::PlayerAccountsClosed,
         "Perland accounts aren't open yet.",
@@ -826,7 +826,7 @@ fn email_unavailable(host: &str) -> LauncherError {
     .with_param("host", host)
 }
 
-fn signed_out(host: &str) -> LauncherError {
+pub(super) fn signed_out(host: &str) -> LauncherError {
     LauncherError::auth(
         ErrorCode::PerlandSignedOut,
         "You were signed out of Perland.",
