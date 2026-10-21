@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
+import { routeSnapshot } from '../../state/route';
 import { toastsSnapshot } from '../../state/toasts';
 import { createMockBackend } from '../../ipc/mock';
 import { renderApp, sent } from '../../test/backend';
@@ -242,4 +243,16 @@ it('shows it when a link cannot be opened', async () => {
 it('labels a beta build in About', async () => {
   renderApp(<Settings />, { beta: true });
   expect(await screen.findByText(/Version .* · Beta build/)).toBeInTheDocument();
+});
+
+it('goes back to Home', async () => {
+  const { user } = renderApp(<Settings />);
+  await user.click(await screen.findByRole('button', { name: 'Back' }));
+  expect(routeSnapshot()).toEqual({ name: 'home', id: null });
+});
+
+it('keeps the way back while the settings fail to load', async () => {
+  const { user } = renderFailing('settings_get');
+  await user.click(await screen.findByRole('button', { name: 'Back' }));
+  expect(routeSnapshot()).toEqual({ name: 'home', id: null });
 });

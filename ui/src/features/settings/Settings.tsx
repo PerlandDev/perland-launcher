@@ -6,6 +6,7 @@ import { commands } from '../../ipc/commands';
 import type { Lang } from '../../ipc/schema';
 import { applyAppearance, FONTS, THEMES, type Appearance } from '../../state/appearance';
 import { useAppInfo, useSettings } from '../../state/queries';
+import { navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
@@ -30,6 +31,7 @@ export function Settings() {
   const openOnce = useSingleFlight();
   const retryOnce = useSingleFlight();
   const data = draft ?? settings.data;
+  const home = () => navigate({ name: 'home', id: null });
 
   /** A look applies to the whole app at once, before the save comes back. */
   const look = (patch: Partial<Appearance>) => {
@@ -47,18 +49,19 @@ export function Settings() {
           void Promise.all([settings.isError && settings.refetch(), appInfo.isError && appInfo.refetch()]).finally(done),
       );
     return (
-      <ScreenFrame title={t('settings.title')}>
+      <ScreenFrame title={t('settings.title')} onBack={home}>
         <div className="max-w-2xl">
           <ErrorCard error={settings.error ?? appInfo.error} actions={<Button onClick={retry}>{t('common.retry')}</Button>} />
         </div>
       </ScreenFrame>
     );
   }
-  if (!data || !appInfo.data) return <ScreenFrame title={t('settings.title')}>{null}</ScreenFrame>;
+  if (!data || !appInfo.data) return <ScreenFrame title={t('settings.title')} onBack={home}>{null}</ScreenFrame>;
 
   return (
     <ScreenFrame
       title={t('settings.title')}
+      onBack={home}
       // A live region, so a screen reader hears that a change went through.
       actions={
         <p role="status" className="text-sm text-ink-dim">

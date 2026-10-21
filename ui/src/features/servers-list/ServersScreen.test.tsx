@@ -39,6 +39,12 @@ describe('ServersScreen', () => {
     expect(screen.getByRole('heading', { name: 'Public servers' })).toBeInTheDocument();
   });
 
+  it('goes back to Home', async () => {
+    const { user } = renderApp(<ServersScreen />);
+    await user.click(await screen.findByRole('button', { name: 'Back' }));
+    expect(routeSnapshot()).toEqual({ name: 'home', id: null });
+  });
+
   it('cards show name, game line, players and Play', async () => {
     renderApp(<ServersScreen />);
     const survival = await card('Survival');
