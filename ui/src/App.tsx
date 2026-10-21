@@ -8,6 +8,7 @@ import { FirstRun } from './features/first-run/FirstRun';
 import { Home } from './features/home/Home';
 import { InstanceSettings } from './features/instance-settings/InstanceSettings';
 import { JoinServer } from './features/join/JoinServer';
+import { ManageScreen } from './features/manage/ManageScreen';
 import { Mods } from './features/mods/Mods';
 import { NewInstance } from './features/new-instance/NewInstance';
 import { Rail } from './features/rail/Rail';
@@ -48,6 +49,8 @@ function Screen({ route }: { route: Route }) {
       );
     case 'servers':
       return <ServersScreen />;
+    case 'manage':
+      return <ManageScreen key={`${route.tenantId}/${route.stack}`} tenantId={route.tenantId} stack={route.stack} />;
     case 'accounts':
       return <Accounts />;
     case 'settings':

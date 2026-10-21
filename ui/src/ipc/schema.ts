@@ -119,9 +119,37 @@ export const publicServerPage = z.strictObject({
 });
 /** Where a Your servers entry comes from. */
 export const yourServerRelation = z.enum(['owner', 'invited', 'followed']);
+/** A server a Manage call is about: its team and its name there. */
+export const manageRef = z.strictObject({ tenantId: z.string(), stack: z.string() });
+/** A server's state in Manage. A newer word reads as `unknown`. */
+export const manageState = z
+  .enum(['running', 'asleep', 'starting', 'stopping', 'stopped', 'unknown'])
+  .catch('unknown');
+/** A server the player owns or helps run (`managed_servers`, and Your servers' `managed`). */
+export const managedServer = z.strictObject({
+  tenantId: z.string(),
+  /** The team's display name. */
+  teamName: z.string(),
+  stack: z.string(),
+  /** What the card shows. */
+  name: z.string(),
+  state: manageState,
+  address: z.string().nullable(),
+  /** The player's own free server. */
+  free: z.boolean(),
+});
 /** A Your servers entry: the public list's card (offline stays `offline` here) plus how the player relates to it. */
-export const yourServerCard = publicServerCard.extend({ relation: yourServerRelation, following: z.boolean() });
-export const yourServersPage = z.strictObject({ servers: z.array(yourServerCard) });
+export const yourServerCard = publicServerCard.extend({
+  relation: yourServerRelation,
+  following: z.boolean(),
+  /** The server the player can manage this card as, when they can. */
+  manage: manageRef.nullable(),
+});
+export const yourServersPage = z.strictObject({
+  servers: z.array(yourServerCard),
+  /** Servers the player owns or helps run that no card above shows. */
+  managed: z.array(managedServer),
+});
 /** The signed-in player. `email` is null for a Discord-only account; `newPlayer` is true on the sign-in that made it. */
 export const perlandAccount = z.strictObject({
   name: z.string(),
@@ -183,6 +211,8 @@ export const freeServerCard = publicServerCard.extend({
   inviteUrl: z.string().nullable(),
   /** `perland://join?invite=…`, for friends who have the launcher. */
   joinUrl: z.string().nullable(),
+  /** The server in Manage, when the player's managed servers name it. */
+  manage: manageRef.nullable(),
 });
 /** `free_server`: null while signed out or when free servers are off. */
 export const freeServerPage = z.strictObject({
@@ -190,6 +220,94 @@ export const freeServerPage = z.strictObject({
   create: createAllowance,
   server: freeServerCard.nullable(),
 });
+/** `manage_detail`: one server's state and who is on. */
+export const manageDetail = z.strictObject({
+  tenantId: z.string(),
+  stack: z.string(),
+  state: manageState,
+  address: z.string().nullable(),
+  /** Players on now and the most allowed; only while running, and when the server said. */
+  online: z.number().int().nullable(),
+  max: z.number().int().nullable(),
+  players: z.array(z.string()),
+  /** Saved changes wait for a restart. */
+  pendingRestart: z.boolean(),
+  version: z.string(),
+  /** When an idle server is stopped, if it is going to be. */
+  stopsAt: z.string().nullable(),
+});
+/** Why a server's last run went wrong: the UI words it by `code` with `params`. */
+export const manageCause = z.strictObject({
+  code: z.string(),
+  known: z.boolean(),
+  /** The plugin or mod it is about. */
+  subject: z.string().nullable(),
+  params: z.record(z.string(), z.string()),
+});
+export const manageDiagnosis = z.strictObject({
+  failed: z.boolean(),
+  oomKilled: z.boolean(),
+  cause: manageCause.nullable(),
+});
+export const manageBan = z.strictObject({ name: z.string(), reason: z.string().nullable() });
+/** `manage_players`: who is on and the lists; `unreadable` when one couldn't be read and shows empty. */
+export const managePlayers = z.strictObject({
+  running: z.boolean(),
+  online: z.array(z.string()),
+  whitelist: z.array(z.string()),
+  admins: z.array(z.string()),
+  bans: z.array(manageBan),
+  unreadable: z.boolean(),
+});
+/** The list a change is about: `online` only removes (a kick). */
+export const manageList = z.enum(['whitelist', 'admins', 'bans', 'online']);
+/** Names to add to a list or take off it (1 to 50). */
+export const manageListChange = z.strictObject({ list: manageList, add: z.boolean(), names: z.array(z.string()) });
+/** What a change did to one name; `status` is the Engine's word. */
+export const manageChangeResult = z.strictObject({
+  name: z.string(),
+  status: z.string(),
+  message: z.string().nullable(),
+});
+/** `manage_settings`: what a player edits in Manage. */
+export const manageSettings = z.strictObject({
+  revision: z.string(),
+  motd: z.string(),
+  /** The MOTD holds colour codes the launcher's editor would lose. */
+  motdReadOnly: z.boolean(),
+  mode: z.string(),
+  difficulty: z.string(),
+  maxPlayers: z.number().int().nullable(),
+  pvp: z.boolean(),
+  enableWhitelist: z.boolean(),
+  version: z.string(),
+  /** A modpack decides the version. */
+  versionLocked: z.boolean(),
+  pendingRestart: z.boolean(),
+});
+/** A settings save: `motd` and `version` null leave them as they are. */
+export const manageSettingsSave = z.strictObject({
+  revision: z.string(),
+  motd: z.string().nullable(),
+  mode: z.string(),
+  difficulty: z.string(),
+  maxPlayers: z.number().int().nullable(),
+  pvp: z.boolean(),
+  enableWhitelist: z.boolean(),
+  version: z.string().nullable(),
+  apply: z.enum(['now', 'next_restart']),
+  confirmVersionChange: z.boolean().optional(),
+  acknowledgeDataLoss: z.boolean().optional(),
+});
+export const manageSaved = z.strictObject({
+  settings: manageSettings,
+  /** The running server was recreated with the changes. */
+  restarted: z.boolean(),
+  /** The changes wait for the next start or restart. */
+  pending: z.boolean(),
+});
+/** A console command's answer, without colour codes. */
+export const manageConsoleReply = z.strictObject({ ok: z.boolean(), output: z.string() });
 /** The code to type in game (`/perland link`), and the seconds it stays good. */
 export const linkCode = z.strictObject({ code: z.string(), expiresIn: z.number() });
 /** One server's numbers for the linked player; `instance` is the launcher instance that joins it, if there is one. */
@@ -449,6 +567,10 @@ export const appEvent = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('deep_link') }),
   z.strictObject({ type: z.literal('update'), state: updateState }),
   z.strictObject({ type: z.literal('perland_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
+  /** New lines of the server console being followed in Manage, without colour codes. */
+  z.strictObject({ type: z.literal('server_log'), tenantId: z.string(), stack: z.string(), lines: z.array(z.string()) }),
+  /** That console log stopped on its own: offer to reconnect. */
+  z.strictObject({ type: z.literal('server_log_ended'), tenantId: z.string(), stack: z.string() }),
 ]);
 export const runSnapshot = z.strictObject({ instance: z.string(), state: runStateKind, update: packUpdate.nullable() });
 export const packStatus = z.strictObject({
@@ -604,6 +726,21 @@ export type PublicServerPage = z.infer<typeof publicServerPage>;
 export type YourServerRelation = z.infer<typeof yourServerRelation>;
 export type YourServerCard = z.infer<typeof yourServerCard>;
 export type YourServersPage = z.infer<typeof yourServersPage>;
+export type ManageRef = z.infer<typeof manageRef>;
+export type ManageState = z.infer<typeof manageState>;
+export type ManagedServer = z.infer<typeof managedServer>;
+export type ManageDetail = z.infer<typeof manageDetail>;
+export type ManageCause = z.infer<typeof manageCause>;
+export type ManageDiagnosis = z.infer<typeof manageDiagnosis>;
+export type ManageBan = z.infer<typeof manageBan>;
+export type ManagePlayers = z.infer<typeof managePlayers>;
+export type ManageList = z.infer<typeof manageList>;
+export type ManageListChange = z.infer<typeof manageListChange>;
+export type ManageChangeResult = z.infer<typeof manageChangeResult>;
+export type ManageSettings = z.infer<typeof manageSettings>;
+export type ManageSettingsSave = z.infer<typeof manageSettingsSave>;
+export type ManageSaved = z.infer<typeof manageSaved>;
+export type ManageConsoleReply = z.infer<typeof manageConsoleReply>;
 export type FreeLimits = z.infer<typeof freeLimits>;
 export type CreateAllowance = z.infer<typeof createAllowance>;
 export type FreeDeletion = z.infer<typeof freeDeletion>;

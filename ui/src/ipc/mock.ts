@@ -19,6 +19,7 @@ import { fitFor, fitsVersion, pickDefault } from '../features/browse/compat';
 import { APP_EVENT } from './events';
 import { inviteCanonical } from './inviteLink';
 import { handleFree, modrinthInstances, NOT_FREE, repeatsFreeServer, seedFree, type FreeScenario } from './mockFree';
+import { closeConsole, freeManageRef, handleManage, managedForYourServers, NOT_MANAGE, seedManage, type ManageScenario } from './mockManage';
 import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario } from './mockPerland';
 import { mockCrash, type CrashScenario } from './mockCrash';
 import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
@@ -92,6 +93,9 @@ export interface MockOptions {
   /** Free server (only while `perland` is signed in): `none` (default, may create), `has`, `warned`, `overDisk`, `creating`, `exists`,
    *  `emailRequired`, `rateLimited`, `full` or `off`. Setting it, or signing in, adds a Cozy Pack and a Mega Pack (too heavy) Modrinth instance. */
   free?: FreeScenario;
+  /** Manage (only while `perland` is signed in): the state every managed server starts in, `running` by default; `none`
+   *  manages nothing. The servers are the free server (when there is one) and the team server "Team survival". */
+  manage?: ManageScenario;
   /** What Share… finds: `some` (default: two mods not on Modrinth), `all` (every mod on Modrinth) or `error` (Modrinth unreachable). */
   share?: 'some' | 'all' | 'error';
   /** What Play this with friends finds: `ok` (default: every mod on Modrinth, fits), `missing` (two mods aren't on Modrinth) or
@@ -382,7 +386,7 @@ function seed(options: MockOptions) {
     custom.set(castle.id, CASTLE_PICTURE);
   }
   // The create dialog picks a Modrinth modpack instance; only a free-server preview or a signed-in player has them.
-  const perland = seedPerland(options.perland);
+  const perland = seedPerland(options.perland, options.panel !== false);
   if (!options.firstRun && options.free !== 'off' && (options.free !== undefined || perland.account !== null)) {
     listing.instances = [...listing.instances, ...modrinthInstances()];
   }
@@ -421,6 +425,8 @@ function seed(options: MockOptions) {
     listing,
     perland,
     free: seedFree(options.free),
+    // `empty` is a player with no servers at all, so none to manage either.
+    manage: seedManage(options.manage ?? (options.perland === 'empty' ? 'none' : undefined), event),
     // The player's own order, like instance-order.json. Existing instances start A-Z, so a new one lands above them.
     order: [...listing.instances].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map((i) => i.id),
     servers,
@@ -1411,10 +1417,22 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     default: {
       const extra = [...state.perland.servers, ...(state.free.server ? [state.free.server] : [])];
       const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite }, extra) as Instance;
-      const freeServed = await handleFree(state.free, state.perland.account, state.listing, cmd, args, join);
+      const freeServed = await handleFree(state.free, state.perland.account, state.listing, cmd, args, join, (card) =>
+        freeManageRef(state.manage, card),
+      );
       if (freeServed !== NOT_FREE) return freeServed;
-      const perlandServed = await handlePerland(state.perland, state.listing, cmd, args, event, (c) => repeatsFreeServer(state.free, c));
+      const perlandServed = await handlePerland(
+        state.perland,
+        state.listing,
+        cmd,
+        args,
+        event,
+        (c) => repeatsFreeServer(state.free, c),
+        () => managedForYourServers(state.manage, state.perland.account, state.free.server),
+      );
       if (perlandServed !== NOT_PERLAND) return perlandServed;
+      const manageServed = handleManage(state.manage, state.perland.account, state.free.server, cmd, args);
+      if (manageServed !== NOT_MANAGE) return manageServed;
       const served = handleServer(state.servers, state.listing, cmd, args, extra);
       if (served !== NOT_MINE) return served;
       if (cmd.startsWith('plugin:')) return null;
@@ -1435,6 +1453,7 @@ export function stopMockRuns() {
     }
     state.runs.clear();
     if (state.importRun) state.importRun.cancelled = true;
+    closeConsole(state.manage);
   }
   backends.clear();
 }

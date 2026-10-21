@@ -1,0 +1,24 @@
+{
+  "running": true,
+  "online": [
+    "Steve"
+  ],
+  "whitelist": [
+    "Steve",
+    "Alex"
+  ],
+  "admins": [
+    "Steve"
+  ],
+  "bans": [
+    {
+      "name": "Griefer",
+      "reason": "Broke the spawn"
+    },
+    {
+      "name": "Spammer",
+      "reason": null
+    }
+  ],
+  "unreadable": false
+}

@@ -87,11 +87,17 @@ error_codes! {
     // Perland account
     PlayerAccountsClosed, SignInUnavailable, SignInFailed, SignInTimedOut, InvalidEmail,
     InvalidCode, TooManyCodes, EmailUnavailable, PerlandSignedOut, PlayerServersClosed,
-    TooManyPlayerServers, MinecraftLinkClosed,
+    TooManyPlayerServers, MinecraftLinkClosed, AccountDisabled,
     // free servers
     EmailRequired, FreeServerExists, TooManyFreeServers, FreeServersFull, InvalidFreeServer,
     ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk, HostFull, FreeServersPaused,
     FreeServerBlocked, FreeServerModsNotOnModrinth,
+    // managing a server
+    ServerNotRunning, ServerConsoleUnavailable, TooManyCommands, ServerConsoleTimeout,
+    CommandNeedsConfirmation, TeamQuotaFull, PlanFeatureLocked, SettingsChanged,
+    VersionChangeNeedsConfirmation, DataLossNeedsConfirmation, MojangUnavailable, TooManyStreams,
+    TooManyDiagnoses, ManagedBySource, ServerNotFound, ManageForbidden, SafetyBackupFailed,
+    ApplyFailed, ComposeNotEditable,
     // sharing an instance
     SharePathInvalid, ShareTooLarge,
     // anything unexpected
@@ -355,6 +361,47 @@ mod tests {
             (ErrorCode::HostFull, "host_full"),
             (ErrorCode::FreeServersPaused, "free_servers_paused"),
             (ErrorCode::FreeServerBlocked, "free_server_blocked"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
+    fn managing_a_server_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::ServerNotRunning, "server_not_running"),
+            (
+                ErrorCode::ServerConsoleUnavailable,
+                "server_console_unavailable",
+            ),
+            (ErrorCode::TooManyCommands, "too_many_commands"),
+            (ErrorCode::ServerConsoleTimeout, "server_console_timeout"),
+            (
+                ErrorCode::CommandNeedsConfirmation,
+                "command_needs_confirmation",
+            ),
+            (ErrorCode::TeamQuotaFull, "team_quota_full"),
+            (ErrorCode::PlanFeatureLocked, "plan_feature_locked"),
+            (ErrorCode::SettingsChanged, "settings_changed"),
+            (
+                ErrorCode::VersionChangeNeedsConfirmation,
+                "version_change_needs_confirmation",
+            ),
+            (
+                ErrorCode::DataLossNeedsConfirmation,
+                "data_loss_needs_confirmation",
+            ),
+            (ErrorCode::MojangUnavailable, "mojang_unavailable"),
+            (ErrorCode::TooManyStreams, "too_many_streams"),
+            (ErrorCode::TooManyDiagnoses, "too_many_diagnoses"),
+            (ErrorCode::ManagedBySource, "managed_by_source"),
+            (ErrorCode::ServerNotFound, "server_not_found"),
+            (ErrorCode::ManageForbidden, "manage_forbidden"),
+            (ErrorCode::SafetyBackupFailed, "safety_backup_failed"),
+            (ErrorCode::ApplyFailed, "apply_failed"),
+            (ErrorCode::ComposeNotEditable, "compose_not_editable"),
+            (ErrorCode::AccountDisabled, "account_disabled"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

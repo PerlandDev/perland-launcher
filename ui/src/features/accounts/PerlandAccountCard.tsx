@@ -13,11 +13,14 @@ import { Field } from '../../ui/Field';
 import { WarningDiamond } from '../../ui/Icon';
 import { MinecraftLink } from './MinecraftLink';
 
-/** Where the card is: signed out (`idle`), waiting on the browser, or the two email steps. */
-type Step = 'idle' | 'discord' | 'email' | 'code';
-const METHODS = ['discord', 'email'] as const;
+/** Where the card is: signed out (`idle`), waiting on the browser (Discord or GitHub), or the two email steps. */
+type Step = 'idle' | 'browser' | 'email' | 'code';
+/** The ways to sign in, in the card's order; each shows only while the Engine offers it. */
+const METHODS = ['discord', 'github', 'email'] as const;
+/** The ways that finish in the browser, with the same waiting, reopen and cancel steps. */
+type BrowserMethod = 'discord' | 'github';
 
-/** The Perland account on Accounts: sign in with Discord or an email code, or who is signed in and Sign out.
+/** The Perland account on Accounts: sign in with Discord, GitHub (while the Engine offers it) or an email code, or who is signed in and Sign out.
  *  It renders nothing while the Engine has player accounts closed, so a player who never signs in sees no change. */
 export function PerlandAccountCard() {
   const { t, i18n } = useTranslation();
@@ -83,7 +86,7 @@ export function PerlandAccountCard() {
 
   // Exchanging drops "Open the page again"; if it had focus, Cancel takes it rather than the page.
   useEffect(() => {
-    if (step !== 'discord' || phase !== 'exchanging') return;
+    if (step !== 'browser' || phase !== 'exchanging') return;
     const active = document.activeElement;
     if (active === null || active === document.body) cancelButton.current?.focus();
   }, [step, phase]);
@@ -104,12 +107,12 @@ export function PerlandAccountCard() {
     setAnnounce(account ? t('perland.signedIn', { name: shownName(account) }) : t('perland.signedOut'));
   };
 
-  const startDiscord = () => {
+  const startBrowser = (method: BrowserMethod) => {
     const mine = ++attempt.current;
     setError(null);
     setPhase('waiting');
-    setStep('discord');
-    commands.perlandSignInDiscord(language).then(
+    setStep('browser');
+    (method === 'github' ? commands.perlandSignInGithub(language) : commands.perlandSignInDiscord(language)).then(
       (account) => {
         if (mine !== attempt.current) return;
         if (account) switched(account);
@@ -123,7 +126,10 @@ export function PerlandAccountCard() {
     );
   };
 
-  const cancelDiscord = () => {
+  const startDiscord = () => startBrowser('discord');
+  const startGithub = () => startBrowser('github');
+
+  const cancelBrowser = () => {
     attempt.current++;
     setStep('idle');
     // A sign-in that finished just as the player pressed Cancel still counts: read the status again.
@@ -237,7 +243,7 @@ export function PerlandAccountCard() {
         <MinecraftLink />
       </div>
     );
-  } else if (step === 'discord') {
+  } else if (step === 'browser') {
     body = (
       <div className="panel grid gap-4 p-5">
         <p aria-live="polite" className="font-semibold">
@@ -249,7 +255,7 @@ export function PerlandAccountCard() {
               {t('perland.reopen')}
             </Button>
           )}
-          <Button ref={cancelButton} variant="ghost" onClick={cancelDiscord}>
+          <Button ref={cancelButton} variant="ghost" onClick={cancelBrowser}>
             {t('common.cancel')}
           </Button>
         </div>
@@ -317,9 +323,9 @@ export function PerlandAccountCard() {
             <Button
               key={method}
               ref={i === 0 ? (el) => void (firstControl.current = el) : undefined}
-              onClick={method === 'discord' ? startDiscord : () => go('email')}
+              onClick={method === 'email' ? () => go('email') : method === 'github' ? startGithub : startDiscord}
             >
-              {method === 'discord' ? t('perland.discord') : t('perland.email')}
+              {t(`perland.${method}`)}
             </Button>
           ))}
         </div>

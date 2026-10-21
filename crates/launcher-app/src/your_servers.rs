@@ -3,13 +3,17 @@
 //! goes to the session's Engine, and an invite token is sent only when the invite's own Engine
 //! is that one. Nothing here logs a token or an invite.
 use launcher_core::{
-    instances::ServerAddress, invite::InviteLink, perland::Relation, ErrorCode, Result,
+    instances::ServerAddress,
+    invite::InviteLink,
+    perland::{FreeServer, Relation},
+    ErrorCode, Result,
 };
 
 use crate::{
     app::AppCore,
-    dto::{YourServerCard, YourServersPage},
+    dto::{ManageRef, ManagedServer, YourServerCard, YourServersPage},
     events::Host,
+    free_servers::parse_address,
     public_servers::{card, instance_of},
     runner::Runner,
 };
@@ -39,7 +43,83 @@ fn relation_name(relation: Relation) -> &'static str {
     }
 }
 
+/// Which managed server is the free server named `free_name`: one of that name in a free team,
+/// else the only one of that name in any team. Two of that name outside a free team is
+/// ambiguous, and then none is (another team's server must never get the free card's Manage).
+/// Names are unique in a team ignoring case.
+fn free_managed(free_name: &str, managed: &[Option<ManagedServer>]) -> Option<usize> {
+    let name = free_name.trim();
+    if name.is_empty() {
+        return None;
+    }
+    let named: Vec<(usize, &ManagedServer)> = managed
+        .iter()
+        .enumerate()
+        .filter_map(|(i, m)| m.as_ref().map(|m| (i, m)))
+        .filter(|(_, m)| m.stack.trim().eq_ignore_ascii_case(name))
+        .collect();
+    if let Some((i, _)) = named.iter().find(|(_, m)| m.free) {
+        return Some(*i);
+    }
+    match named.as_slice() {
+        [(i, _)] => Some(*i),
+        _ => None,
+    }
+}
+
+/// Take the managed server an owner card is: by the `manage` the Engine sent, else (an Engine
+/// without it) by the address players type.
+fn take_managed(
+    pool: &mut [Option<ManagedServer>],
+    manage: Option<(&str, &str)>,
+    address: Option<&str>,
+) -> Option<ManageRef> {
+    let index = match manage {
+        Some((tenant, stack)) => pool.iter().position(|m| {
+            m.as_ref().is_some_and(|m| {
+                m.tenant_id == tenant && m.stack.trim().eq_ignore_ascii_case(stack.trim())
+            })
+        }),
+        None => {
+            let address = address?.trim().to_ascii_lowercase();
+            pool.iter().position(|m| {
+                m.as_ref()
+                    .and_then(|m| m.address.as_deref())
+                    .and_then(parse_address)
+                    .is_some_and(|a| a.display().to_ascii_lowercase() == address)
+            })
+        }
+    }?;
+    pool[index].take().map(|m| ManageRef {
+        tenant_id: m.tenant_id,
+        stack: m.stack,
+    })
+}
+
 impl<R: Runner, H: Host> AppCore<R, H> {
+    /// The servers the player manages, or none when they can't be read: Your servers and the
+    /// free server's card must stand as they would without them.
+    async fn managed_or_none(&self) -> Vec<ManagedServer> {
+        match self.managed_servers().await {
+            Ok(managed) => managed,
+            Err(e) => {
+                tracing::info!(code = ?e.code, "Your servers without the managed servers");
+                Vec::new()
+            }
+        }
+    }
+
+    /// The free server `free` in Manage, when the player's managed servers name it. The same
+    /// rule Your servers uses to keep it out of its own list.
+    pub(crate) async fn free_manage_ref(&self, free: &FreeServer) -> Option<ManageRef> {
+        let mut pool: Vec<_> = self.managed_or_none().await.into_iter().map(Some).collect();
+        let index = free_managed(&free.name, &pool)?;
+        pool[index].take().map(|m| ManageRef {
+            tenant_id: m.tenant_id,
+            stack: m.stack,
+        })
+    }
+
     /// The player's servers, or `None` when signed out, when the Engine has the feature or
     /// accounts closed, and after a 401 (which also signs the player out).
     pub async fn your_servers(&self) -> Result<Option<YourServersPage>> {
@@ -48,10 +128,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         let player = self.runner.player();
         // The free server shows as its own card (built from its own view), so its entry here
-        // is left out. That view is read alongside; whatever it answers, the list stands.
-        let (fetched, free) = tokio::join!(
+        // is left out. That view is read alongside; whatever it answers, the list stands. So are
+        // the servers the player manages: matched to cards, the rest listed apart.
+        let (fetched, free, managed) = tokio::join!(
             player.servers(session.engine.clone(), session.token.clone()),
             player.free_server(session.engine.clone(), session.token.clone()),
+            self.managed_or_none(),
         );
         let free = free.ok().flatten().and_then(|state| state.server);
         let entries = match fetched {
@@ -71,12 +153,17 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             Err(e) => return Err(e),
         };
         let joined = self.joined_invites().await?;
+        let mut pool: Vec<_> = managed.into_iter().map(Some).collect();
+        // The free server's own card carries its Manage; it is no other card's.
+        if let Some(index) = free.as_ref().and_then(|f| free_managed(&f.name, &pool)) {
+            pool[index] = None;
+        }
         let free_invite = free
             .as_ref()
             .and_then(|f| f.invite_url.as_deref())
             .and_then(|url| InviteLink::parse(url).ok())
             .map(|link| link.canonical());
-        let servers = entries
+        let servers: Vec<YourServerCard> = entries
             .iter()
             .filter_map(|entry| {
                 let server = &entry.server;
@@ -96,14 +183,30 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 // The list can't say which Modrinth pack a server runs; an instance that
                 // already joins it can play it all the same.
                 card.joinable |= card.instance.is_some();
+                let manage = (entry.relation == Relation::Owner)
+                    .then(|| {
+                        take_managed(
+                            &mut pool,
+                            entry
+                                .manage
+                                .as_ref()
+                                .map(|m| (m.tenant_id.as_str(), m.stack.as_str())),
+                            card.address.as_deref(),
+                        )
+                    })
+                    .flatten();
                 Some(YourServerCard {
                     card,
                     relation: relation_name(entry.relation).into(),
                     following: entry.following,
+                    manage,
                 })
             })
             .collect();
-        Ok(Some(YourServersPage { servers }))
+        Ok(Some(YourServersPage {
+            servers,
+            managed: pool.into_iter().flatten().collect(),
+        }))
     }
 
     /// Tell the Engine the player follows the server `invite` names. Never fails.
@@ -171,7 +274,7 @@ mod tests {
         instances::ServerStatus,
         invite::Url,
         invite::{InviteAddress, InviteGame},
-        perland::{Profile, Relation, Session, YourServer},
+        perland::{ManageRefCore, Membership, Profile, Relation, Session, StackItem, YourServer},
         public_list::PublicServer,
         LauncherError,
     };
@@ -227,7 +330,59 @@ mod tests {
             server: listed(c, status),
             relation,
             following,
+            manage: None,
         }
+    }
+
+    fn owned(c: char, manage: Option<(&str, &str)>) -> YourServer {
+        let mut e = entry(c, "online", Relation::Owner, false);
+        e.manage = manage.map(|(tenant_id, stack)| ManageRefCore {
+            tenant_id: tenant_id.into(),
+            stack: stack.into(),
+        });
+        e
+    }
+
+    fn team(id: &str, name: &str) -> Membership {
+        Membership {
+            tenant_id: id.into(),
+            tenant_name: name.into(),
+            display_name: name.into(),
+            role: "owner".into(),
+            plan: None,
+        }
+    }
+
+    fn item(name: &str, address: Option<&str>) -> StackItem {
+        StackItem {
+            stack_name: name.into(),
+            status: "running".into(),
+            address: address.map(str::to_string),
+            ..StackItem::default()
+        }
+    }
+
+    /// The player manages `servers`, per team.
+    fn manages(runner: &FakeRunner, servers: &[(&str, &str, Vec<StackItem>)]) {
+        *runner.stack.memberships.lock().unwrap() =
+            Ok(servers.iter().map(|(id, name, _)| team(id, name)).collect());
+        for (id, _, items) in servers {
+            runner.stack.serve_all(id, Ok(items.clone()));
+        }
+    }
+
+    fn manage_ref(tenant_id: &str, stack: &str) -> Option<crate::dto::ManageRef> {
+        Some(crate::dto::ManageRef {
+            tenant_id: tenant_id.into(),
+            stack: stack.into(),
+        })
+    }
+
+    fn managed_names(page: &YourServersPage) -> Vec<(String, String)> {
+        page.managed
+            .iter()
+            .map(|m| (m.tenant_id.clone(), m.stack.clone()))
+            .collect()
     }
 
     fn serve_servers(runner: &FakeRunner, servers: Vec<YourServer>) {
@@ -384,6 +539,159 @@ mod tests {
             *runner.player.free.lock().unwrap() = answer;
             let page = core.your_servers().await.unwrap().unwrap();
             assert_eq!(page.servers.len(), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn owner_card_with_manage_is_deduped() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        serve_servers(
+            &runner,
+            vec![
+                owned('A', Some(("t-a", "Survival"))),
+                owned('C', Some(("t-x", "gone"))),
+            ],
+        );
+        manages(
+            &runner,
+            &[(
+                "t-a",
+                "alpha",
+                vec![
+                    item("survival", Some("elsewhere.example.com")),
+                    item("Other", None),
+                ],
+            )],
+        );
+        let page = core.your_servers().await.unwrap().unwrap();
+        assert_eq!(page.servers[0].manage, manage_ref("t-a", "survival"));
+        assert_eq!(
+            page.servers[1].manage, None,
+            "a server the player can't manage now gets no button"
+        );
+        assert_eq!(managed_names(&page), [("t-a".into(), "Other".into())]);
+    }
+
+    #[tokio::test]
+    async fn owner_card_without_manage_matches_by_address() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        serve_servers(
+            &runner,
+            vec![
+                entry('B', "online", Relation::Invited, false),
+                owned('A', None),
+            ],
+        );
+        manages(
+            &runner,
+            &[(
+                "t-a",
+                "alpha",
+                vec![item("Survival", Some("PLAY.example.com:25566"))],
+            )],
+        );
+        let page = core.your_servers().await.unwrap().unwrap();
+        assert_eq!(page.servers[0].manage, None, "only an owner entry matches");
+        assert_eq!(page.servers[1].manage, manage_ref("t-a", "Survival"));
+        assert!(page.managed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn unmatched_managed_servers_are_listed() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        serve_servers(
+            &runner,
+            vec![
+                entry('B', "online", Relation::Followed, true),
+                entry('F', "online", Relation::Owner, false),
+            ],
+        );
+        *runner.player.free.lock().unwrap() = Ok(Some(free_state(Some(free_view("online")))));
+        manages(
+            &runner,
+            &[
+                ("t-b", "bravo", vec![item("zeta", None), item("Beta", None)]),
+                (
+                    "t-f",
+                    "player-abc",
+                    vec![item("Survival", Some("play.example.com:25570"))],
+                ),
+                ("t-o", "other", vec![item("Survival", None)]),
+            ],
+        );
+        let page = core.your_servers().await.unwrap().unwrap();
+        assert_eq!(
+            page.servers.len(),
+            1,
+            "the free entry still shows as its own card"
+        );
+        assert_eq!(
+            managed_names(&page),
+            [
+                ("t-b".into(), "Beta".into()),
+                ("t-b".into(), "zeta".into()),
+                ("t-o".into(), "Survival".into()),
+            ],
+            "the free team's server is the free card's, the other Survival is listed"
+        );
+    }
+
+    #[tokio::test]
+    async fn free_fallback_needs_a_unique_name() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        serve_servers(
+            &runner,
+            vec![entry('B', "online", Relation::Followed, true)],
+        );
+        *runner.player.free.lock().unwrap() = Ok(Some(free_state(Some(free_view("online")))));
+        // No free team: two other teams each have a server named like the free one.
+        manages(
+            &runner,
+            &[
+                ("t-a", "alpha", vec![item("Survival", None)]),
+                ("t-b", "bravo", vec![item("survival", None)]),
+            ],
+        );
+        let page = core.your_servers().await.unwrap().unwrap();
+        assert_eq!(
+            managed_names(&page),
+            [
+                ("t-a".into(), "Survival".into()),
+                ("t-b".into(), "survival".into()),
+            ],
+            "an ambiguous name is nobody's free server"
+        );
+        let free = core.free_server().await.unwrap().unwrap().server.unwrap();
+        assert_eq!(free.manage, None);
+    }
+
+    #[tokio::test]
+    async fn managed_failure_keeps_your_servers() {
+        for failure in ["player_session", "memberships"] {
+            let (core, runner, _host, _t) = core(BuildKind::Dev);
+            sign_in(&core, "https://api.example.com");
+            serve_servers(
+                &runner,
+                vec![
+                    owned('A', Some(("t-a", "Survival"))),
+                    entry('B', "online", Relation::Invited, false),
+                ],
+            );
+            manages(&runner, &[("t-a", "alpha", vec![item("Survival", None)])]);
+            let trouble = LauncherError::network(ErrorCode::HostTrouble, "trouble");
+            match failure {
+                "player_session" => *runner.stack.player_session.lock().unwrap() = Err(trouble),
+                _ => *runner.stack.memberships.lock().unwrap() = Err(trouble),
+            }
+            let page = core.your_servers().await.unwrap().unwrap();
+            assert_eq!(page.servers.len(), 2, "{failure}");
+            assert!(page.servers.iter().all(|c| c.manage.is_none()), "{failure}");
+            assert!(page.managed.is_empty(), "{failure}");
+            assert!(core.perland_session().await.is_some(), "{failure}");
         }
     }
 

@@ -58,7 +58,7 @@ fn modded_type(game_type: &str) -> bool {
 
 /// What a player types (`host`, `host:port`, `[v6]:port`) as `host:port`; `None` when it isn't
 /// a valid address.
-fn parse_address(raw: &str) -> Option<ServerAddress> {
+pub(crate) fn parse_address(raw: &str) -> Option<ServerAddress> {
     let raw = raw.trim();
     let (host, port) = if let Some(rest) = raw.strip_prefix('[') {
         let (host, after) = rest.split_once(']')?;
@@ -139,6 +139,7 @@ pub(crate) fn free_card(server: &FreeServer, joined: &[(String, String)]) -> Fre
         disk: server.disk.clone(),
         invite_url: server.invite_url.clone(),
         join_url: server.join_url.clone(),
+        manage: None,
     }
 }
 
@@ -239,7 +240,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             Err(e) => return Err(e),
         };
         let server = match &state.server {
-            Some(server) => Some(self.free_card_of(server).await),
+            Some(server) => {
+                let (mut card, manage) =
+                    tokio::join!(self.free_card_of(server), self.free_manage_ref(server));
+                card.manage = manage;
+                Some(card)
+            }
             None => None,
         };
         Ok(Some(FreeServerPage {
@@ -613,6 +619,57 @@ mod tests {
         assert!(card.joinable, "Play starts it");
         assert_eq!(card.instance.as_deref(), Some(joined.id.as_str()));
         assert_eq!(card.address.as_deref(), Some("play.example.com:25565"));
+    }
+
+    #[tokio::test]
+    async fn free_server_card_gets_manage() {
+        let (core1, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core1, "https://api.example.com");
+        serve_free(&runner, Some(free_view("online")));
+        let team = |id: &str, name: &str| launcher_core::perland::Membership {
+            tenant_id: id.into(),
+            tenant_name: name.into(),
+            display_name: name.into(),
+            role: "owner".into(),
+            plan: None,
+        };
+        let item = |name: &str| launcher_core::perland::StackItem {
+            stack_name: name.into(),
+            status: "running".into(),
+            ..Default::default()
+        };
+        // Another team's server of the same name comes first by team name; the free team wins.
+        *runner.stack.memberships.lock().unwrap() =
+            Ok(vec![team("t-a", "alpha"), team("t-f", "player-abc")]);
+        runner.stack.serve_all("t-a", Ok(vec![item("Survival")]));
+        runner.stack.serve_all("t-f", Ok(vec![item("survival")]));
+        let card = core1.free_server().await.unwrap().unwrap().server.unwrap();
+        assert_eq!(
+            card.manage,
+            Some(crate::dto::ManageRef {
+                tenant_id: "t-f".into(),
+                stack: "survival".into(),
+            })
+        );
+
+        // Not in a free team: any team's server of that name.
+        let (core2, runner2, _h, _t2) = core(BuildKind::Dev);
+        sign_in(&core2, "https://api.example.com");
+        serve_free(&runner2, Some(free_view("online")));
+        *runner2.stack.memberships.lock().unwrap() = Ok(vec![team("t-a", "alpha")]);
+        runner2.stack.serve_all("t-a", Ok(vec![item("Survival")]));
+        let card = core2.free_server().await.unwrap().unwrap().server.unwrap();
+        assert_eq!(card.manage.map(|m| m.tenant_id), Some("t-a".into()));
+
+        // Managed servers that can't be read: the card stands without it.
+        let (core3, runner3, _h3, _t3) = core(BuildKind::Dev);
+        sign_in(&core3, "https://api.example.com");
+        serve_free(&runner3, Some(free_view("online")));
+        *runner3.stack.player_session.lock().unwrap() =
+            Err(LauncherError::network(ErrorCode::HostTrouble, "trouble"));
+        let card = core3.free_server().await.unwrap().unwrap().server.unwrap();
+        assert_eq!(card.manage, None);
+        assert_eq!(card.card.name, "Survival");
     }
 
     #[tokio::test]

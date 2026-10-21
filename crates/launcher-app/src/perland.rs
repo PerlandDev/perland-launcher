@@ -12,9 +12,9 @@ use launcher_core::{
     http::HttpClient,
     invite::{InviteClient, InviteLink, Url},
     perland::{
-        authorize_url, Callback, CreateFreeServer, EmailStarted, FreeServer, FreeServerState,
-        Language, LinkCode, Loopback, Pkce, Player, PlayerClient, PlayerConfig, PlayerStats,
-        Profile, Session, SignInMethod, TokenAnswer, YourServer,
+        authorize_url, launcher_sign_in_url, Callback, CreateFreeServer, EmailStarted, FreeServer,
+        FreeServerState, Language, LinkCode, Loopback, Pkce, Player, PlayerClient, PlayerConfig,
+        PlayerStats, Profile, Session, SignInMethod, TokenAnswer, YourServer,
     },
     ErrorCode, LauncherError, Result,
 };
@@ -304,6 +304,7 @@ fn method_name(method: SignInMethod) -> &'static str {
     match method {
         SignInMethod::Discord => "discord",
         SignInMethod::Email => "email",
+        SignInMethod::GitHub => "github",
     }
 }
 
@@ -346,21 +347,29 @@ impl PerlandStatus {
     }
 
     /// Signed out, accounts that are on but offer no way in (none, or none the launcher
-    /// knows) are off too: a "Sign in" with nothing behind it would be a dead end.
-    fn signed_out(config: &PlayerConfig) -> Self {
-        if !config.enabled || config.methods.is_empty() {
+    /// knows) are off too: a "Sign in" with nothing behind it would be a dead end. `panel`:
+    /// whether the launcher knows a panel, which GitHub's sign-in page lives on.
+    fn signed_out(config: &PlayerConfig, panel: bool) -> Self {
+        let methods = offered(config, panel);
+        if !config.enabled || methods.is_empty() {
             return Self::off();
         }
         Self {
             enabled: true,
-            methods: config
-                .methods
-                .iter()
-                .map(|m| method_name(*m).into())
-                .collect(),
+            methods: methods.iter().map(|m| method_name(*m).into()).collect(),
             account: None,
         }
     }
+}
+
+/// The ways in this launcher can run: the Engine's, less GitHub without a panel to open.
+fn offered(config: &PlayerConfig, panel: bool) -> Vec<SignInMethod> {
+    config
+        .methods
+        .iter()
+        .copied()
+        .filter(|m| panel || *m != SignInMethod::GitHub)
+        .collect()
 }
 
 /// The Engine's host, for error params (never a URL).
@@ -398,6 +407,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Forget the session, in memory and in the store. The caller holds the state.
     async fn forget_session(&self, state: &mut PerlandState) {
         state.session = None;
+        self.jwts.clear();
+        // The console's stream follows a server of this session's player.
+        self.stop_console();
         state.checked = None;
         state.new_player = false;
         let store = self.perland_store.clone();
@@ -493,6 +505,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
         let shown = account(&session.profile, answer.new_player);
         state.session = Some(session);
+        // JWTs minted from the session this one replaced are not this player's to use, nor
+        // is a console stream it opened.
+        self.jwts.clear();
+        self.stop_console();
         state.checked = Some(Instant::now());
         state.new_player = answer.new_player;
         state.email_engine = None;
@@ -523,7 +539,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 Err(e) => Err(e),
             };
             return Ok(match config {
-                Ok(config) => PerlandStatus::signed_out(&config),
+                Ok(config) => PerlandStatus::signed_out(&config, self.config.panel.is_some()),
                 Err(e) => {
                     tracing::info!(code = ?e.code, "couldn't read Perland's sign-in config");
                     PerlandStatus::off()
@@ -532,7 +548,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         let methods = match player.config(session.engine.clone()).await {
             Ok(config) if !config.enabled => return Ok(PerlandStatus::off()),
-            Ok(config) => PerlandStatus::signed_out(&config).methods,
+            Ok(config) => PerlandStatus::signed_out(&config, self.config.panel.is_some()).methods,
             Err(e) => {
                 tracing::info!(code = ?e.code, "couldn't read Perland's sign-in config");
                 vec![]
@@ -570,6 +586,25 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Sign in through Discord in the player's browser. `Ok(None)` when the player canceled
     /// (on Discord's page, with Cancel, or by starting another sign-in).
     pub async fn perland_sign_in_discord(&self, language: &str) -> Result<Option<PerlandAccount>> {
+        self.sign_in_in_browser(SignInMethod::Discord, language)
+            .await
+    }
+
+    /// Sign in with GitHub on the panel's launcher sign-in page, in the player's browser: the
+    /// same loopback, PKCE and `POST /player/token` as Discord. Refused unless a panel is set
+    /// and the Engine offers it.
+    pub async fn perland_sign_in_github(&self, language: &str) -> Result<Option<PerlandAccount>> {
+        self.sign_in_in_browser(SignInMethod::GitHub, language)
+            .await
+    }
+
+    /// A sign-in whose page opens in the browser and comes back to the loopback with a code.
+    /// `method` is Discord (the Engine's authorize page) or GitHub (the panel's page).
+    async fn sign_in_in_browser(
+        &self,
+        method: SignInMethod,
+        language: &str,
+    ) -> Result<Option<PerlandAccount>> {
         // Take the slot first, so a Cancel (or another sign-in) before the browser opens counts.
         let (guard, cancel) = self.start_sign_in();
         let player = self.runner.player();
@@ -587,13 +622,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if !config.enabled {
             return Err(accounts_closed(&engine));
         }
-        if !config.methods.contains(&SignInMethod::Discord) {
+        let panel = self.config.panel.as_ref();
+        if !offered(&config, panel.is_some()).contains(&method) {
             return Err(LauncherError::network(
                 ErrorCode::SignInUnavailable,
                 "That way of signing in isn't available.",
             )
             .with_param("host", host_of(&engine))
-            .with_param("method", "discord"));
+            .with_param("method", method_name(method)));
         }
         let pkce = Pkce::new();
         let loopback = Loopback::bind().map_err(|e| {
@@ -601,7 +637,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 .with_detail(e)
         })?;
         let redirect = loopback.redirect_uri();
-        let url = authorize_url(&engine, &redirect, &pkce).to_string();
+        let url = match (method, panel) {
+            (SignInMethod::GitHub, Some(panel)) => launcher_sign_in_url(panel, &redirect, &pkce),
+            _ => authorize_url(&engine, &redirect, &pkce),
+        }
+        .to_string();
         if !self.set_sign_in_url(&guard, &url) || *cancel.borrow() {
             return Ok(None);
         }
@@ -1112,6 +1152,116 @@ mod tests {
         );
         core.perland_sign_in_reopen().unwrap();
         assert_eq!(host.opened.lock().unwrap().len(), 2, "nothing waits now");
+    }
+
+    #[tokio::test]
+    async fn github_offered_only_with_a_panel_and_the_engine_saying_so() {
+        let all = vec![
+            SignInMethod::Discord,
+            SignInMethod::Email,
+            SignInMethod::GitHub,
+        ];
+        let without = vec![SignInMethod::Discord, SignInMethod::Email];
+        for (panel, methods, want) in [
+            (true, all.clone(), vec!["discord", "email", "github"]),
+            (false, all.clone(), vec!["discord", "email"]),
+            (true, without.clone(), vec!["discord", "email"]),
+            (false, without.clone(), vec!["discord", "email"]),
+        ] {
+            let fresh = || {
+                let made = if panel {
+                    core_with_panel("https://panel.example.com")
+                } else {
+                    core(BuildKind::Dev)
+                };
+                *made.1.player.config.lock().unwrap() = Ok(PlayerConfig {
+                    enabled: true,
+                    methods: methods.clone(),
+                });
+                made
+            };
+            let (core, _runner, _host, _t) = fresh();
+            assert_eq!(
+                core.perland_status().await.unwrap().methods,
+                want,
+                "signed out, panel {panel}, {methods:?}"
+            );
+            let (signed_in, _r, _h, _t2) = fresh();
+            signed_in
+                .perland_store
+                .save(&saved_session("https://api.example.com"))
+                .unwrap();
+            assert_eq!(
+                signed_in.perland_status().await.unwrap().methods,
+                want,
+                "signed in, panel {panel}, {methods:?}"
+            );
+            if !want.contains(&"github") {
+                let e = core.perland_sign_in_github("en").await.unwrap_err();
+                assert_eq!(e.code, ErrorCode::SignInUnavailable);
+                assert_eq!(e.params.get("method").map(String::as_str), Some("github"));
+            }
+        }
+        // GitHub alone without a panel is no way in at all.
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        *runner.player.config.lock().unwrap() = Ok(PlayerConfig {
+            enabled: true,
+            methods: vec![SignInMethod::GitHub],
+        });
+        assert!(!core.perland_status().await.unwrap().enabled);
+    }
+
+    #[tokio::test]
+    async fn github_sign_in_opens_the_panel_page_and_redeems_at_player_token() {
+        let (core, runner, host, _t) = core_with_panel("https://panel.example.com/base/");
+        *runner.player.config.lock().unwrap() = Ok(PlayerConfig {
+            enabled: true,
+            methods: vec![SignInMethod::Discord, SignInMethod::GitHub],
+        });
+        let task = {
+            let core = core.clone();
+            tokio::spawn(async move { core.perland_sign_in_github("es").await })
+        };
+        let opened = host.wait_for_opened(1).await;
+        let url = &opened[0];
+        assert!(
+            url.starts_with("https://panel.example.com/base/launcher/sign-in?redirect_uri="),
+            "{url}"
+        );
+        assert_eq!(query(url, "code_challenge_method"), "S256");
+        core.perland_sign_in_reopen().unwrap();
+        assert_eq!(host.opened.lock().unwrap()[1], *url, "the same page again");
+        come_back(url, "code=g").await;
+        let account = finish(task).await.unwrap().expect("signed in");
+        assert_eq!(account.name, "Steve");
+        let token = &runner.player.calls_to("token")[0];
+        assert_eq!(
+            token.engine,
+            engine("https://api.example.com"),
+            "redeemed at the Engine, never the panel"
+        );
+        assert_eq!(token.args[0], "g");
+        let challenge = Pkce::from_verifier(&token.args[1], "").challenge;
+        assert_eq!(challenge, query(url, "code_challenge"));
+        assert_eq!(token.args[2], query(url, "redirect_uri"));
+        assert_eq!(core.perland_store.load().unwrap().token, player_token('x'));
+    }
+
+    #[tokio::test]
+    async fn github_sign_in_cancel_is_none() {
+        let (core, runner, host, _t) = core_with_panel("https://panel.example.com");
+        *runner.player.config.lock().unwrap() = Ok(PlayerConfig {
+            enabled: true,
+            methods: vec![SignInMethod::GitHub],
+        });
+        let task = {
+            let core = core.clone();
+            tokio::spawn(async move { core.perland_sign_in_github("en").await })
+        };
+        host.wait_for_opened(1).await;
+        core.perland_sign_in_cancel();
+        assert_eq!(finish(task).await.unwrap(), None);
+        assert!(runner.player.calls_to("token").is_empty());
     }
 
     #[test]

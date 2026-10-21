@@ -1,0 +1,77 @@
+[
+  {
+    "tenantId": "t-1",
+    "stack": "my-world",
+    "state": "running",
+    "address": "play.example.com:25566",
+    "online": 2,
+    "max": 10,
+    "players": [
+      "Steve",
+      "Alex"
+    ],
+    "pendingRestart": true,
+    "version": "1.21.1",
+    "stopsAt": "2026-10-21T12:15:00Z"
+  },
+  {
+    "tenantId": "t-1",
+    "stack": "my-world",
+    "state": "asleep",
+    "address": "play.example.com:25566",
+    "online": null,
+    "max": null,
+    "players": [],
+    "pendingRestart": false,
+    "version": "1.21.1",
+    "stopsAt": null
+  },
+  {
+    "tenantId": "t-1",
+    "stack": "my-world",
+    "state": "starting",
+    "address": "play.example.com:25566",
+    "online": null,
+    "max": null,
+    "players": [],
+    "pendingRestart": false,
+    "version": "1.21.1",
+    "stopsAt": null
+  },
+  {
+    "tenantId": "t-1",
+    "stack": "my-world",
+    "state": "stopping",
+    "address": "play.example.com:25566",
+    "online": null,
+    "max": null,
+    "players": [],
+    "pendingRestart": false,
+    "version": "1.21.1",
+    "stopsAt": null
+  },
+  {
+    "tenantId": "t-1",
+    "stack": "my-world",
+    "state": "stopped",
+    "address": "play.example.com:25566",
+    "online": null,
+    "max": null,
+    "players": [],
+    "pendingRestart": false,
+    "version": "1.21.1",
+    "stopsAt": null
+  },
+  {
+    "tenantId": "t-1",
+    "stack": "my-world",
+    "state": "unknown",
+    "address": "play.example.com:25566",
+    "online": null,
+    "max": null,
+    "players": [],
+    "pendingRestart": false,
+    "version": "1.21.1",
+    "stopsAt": null
+  }
+]

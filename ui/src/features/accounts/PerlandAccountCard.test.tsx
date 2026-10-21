@@ -76,6 +76,37 @@ describe('PerlandAccountCard', () => {
     expect(qc.getQueryData(qk.yourServers)).toBeUndefined();
   });
 
+  it('github shows only when offered', async () => {
+    // The mock offers GitHub only while a panel is configured.
+    renderApp(<PerlandAccountCard />, { perland: 'signedOut', panel: false });
+    await screen.findByRole('button', { name: 'Continue with Discord' });
+    expect(screen.queryByRole('button', { name: 'Continue with GitHub' })).not.toBeInTheDocument();
+  });
+
+  it('github sign-in calls perland_sign_in_github', async () => {
+    const { user, calls, qc } = renderApp(<PerlandAccountCard />, { perland: 'signedOut' });
+    seedYourServers(qc);
+    const buttons = within(await screen.findByRole('region', { name: 'Perland account' })).getAllByRole('button');
+    expect(buttons.map((b) => b.textContent)).toEqual(['Continue with Discord', 'Continue with GitHub', 'Continue with email']);
+    await user.click(screen.getByRole('button', { name: 'Continue with GitHub' }));
+    expect(await screen.findByText('Finish signing in with your browser')).toBeInTheDocument();
+    expect(sent(calls, 'perland_sign_in_github')).toEqual([{ language: 'en' }]);
+    expect(sent(calls, 'perland_sign_in_discord')).toEqual([]);
+    await user.click(screen.getByRole('button', { name: 'Open the page again' }));
+    expect(sent(calls, 'perland_sign_in_reopen')).toHaveLength(1);
+    expect(await screen.findByText('Steve', {}, { timeout: 4000 })).toBeInTheDocument();
+    expect(qc.getQueryData(qk.yourServers)).toBeUndefined();
+  });
+
+  it('github sign-in can be canceled', async () => {
+    const { user, calls } = renderApp(<PerlandAccountCard />, { perland: 'signedOut' });
+    await user.click(await screen.findByRole('button', { name: 'Continue with GitHub' }));
+    await screen.findByText('Finish signing in with your browser');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(await screen.findByRole('button', { name: 'Continue with GitHub' })).toBeInTheDocument();
+    expect(sent(calls, 'perland_sign_in_cancel')).toHaveLength(1);
+  });
+
   it('cancel_returns_to_signed_out', async () => {
     const { user, calls } = renderApp(<PerlandAccountCard />, { perland: 'signedOut' });
     await user.click(await screen.findByRole('button', { name: 'Continue with Discord' }));

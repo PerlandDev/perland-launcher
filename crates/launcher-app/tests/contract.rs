@@ -4,8 +4,9 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
 use launcher_app::dto::{
-    BrowsePlanRequest, InstallPlanView, InstallResult, PlanItemView, PlanTargetRequest,
-    PlanTargetView, SearchRequest,
+    BrowsePlanRequest, InstallPlanView, InstallResult, ManageBan, ManageCause, ManageChangeResult,
+    ManageConsoleReply, ManageDetail, ManageDiagnosis, ManagePlayers, ManageRef, ManageSaved,
+    ManageSettings, ManagedServer, PlanItemView, PlanTargetRequest, PlanTargetView, SearchRequest,
 };
 use launcher_app::{
     deep_link::DeepLink,
@@ -200,18 +201,33 @@ fn your_servers_page() -> YourServersPage {
                 card: card('A', "My world", ServerStatus::Offline, None),
                 relation: "owner".into(),
                 following: false,
+                manage: Some(ManageRef {
+                    tenant_id: "t-1".into(),
+                    stack: "my-world".into(),
+                }),
             },
             YourServerCard {
                 card: card('B', "Friends", ServerStatus::Online, None),
                 relation: "invited".into(),
                 following: true,
+                manage: None,
             },
             YourServerCard {
                 card: card('C', "Survival", ServerStatus::Sleeping, Some("survival")),
                 relation: "followed".into(),
                 following: true,
+                manage: None,
             },
         ],
+        managed: vec![ManagedServer {
+            tenant_id: "t-2".into(),
+            team_name: "Builders".into(),
+            stack: "creative".into(),
+            name: "creative".into(),
+            state: "asleep".into(),
+            address: Some("play.example.com:25580".into()),
+            free: false,
+        }],
     }
 }
 
@@ -288,6 +304,10 @@ fn free_server_pages() -> Vec<FreeServerPage> {
                     "perland://join?invite=https%3A%2F%2Fplay.example.com%2F{}",
                     "F".repeat(43)
                 )),
+                manage: Some(ManageRef {
+                    tenant_id: "t-f".into(),
+                    stack: "Steve".into(),
+                }),
             }),
         },
         FreeServerPage {
@@ -1018,6 +1038,18 @@ fn contract_fixtures_are_current() {
                 )
                 .with_fix("Check free disk space. The game keeps running."),
             },
+            AppEvent::ServerLog {
+                tenant_id: "t-1".into(),
+                stack: "my-world".into(),
+                lines: vec![
+                    "[12:00:01] [Server thread/INFO]: Steve joined the game".into(),
+                    "[12:00:04] [Server thread/INFO]: <Steve> hello".into(),
+                ],
+            },
+            AppEvent::ServerLogEnded {
+                tenant_id: "t-1".into(),
+                stack: "my-world".into(),
+            },
         ],
     );
     check("error", sample_error());
@@ -1027,7 +1059,7 @@ fn contract_fixtures_are_current() {
         vec![
             PerlandStatus {
                 enabled: true,
-                methods: vec!["discord".into(), "email".into()],
+                methods: vec!["discord".into(), "email".into(), "github".into()],
                 account: None,
             },
             PerlandStatus {
@@ -1550,6 +1582,7 @@ with friends"
         ],
     );
     check("invite_links", invite_link_cases());
+    check_manage();
     check(
         "update_states",
         vec![
@@ -1568,6 +1601,169 @@ with friends"
                     "Couldn't check for launcher updates",
                 )
                 .with_fix("You can keep playing. It tries again next time you open the launcher"),
+            },
+        ],
+    );
+}
+
+fn manage_settings() -> ManageSettings {
+    ManageSettings {
+        revision: "rev-7".into(),
+        motd: "Welcome to My world".into(),
+        motd_read_only: false,
+        mode: "survival".into(),
+        difficulty: "normal".into(),
+        max_players: Some(10),
+        pvp: true,
+        enable_whitelist: false,
+        version: "1.21.1".into(),
+        version_locked: false,
+        pending_restart: false,
+    }
+}
+
+/// Manage: the servers, one detail per state word, the diagnosis, players, settings, a save,
+/// a change's results and a console reply.
+fn check_manage() {
+    check(
+        "managed_servers",
+        vec![
+            ManagedServer {
+                tenant_id: "t-f".into(),
+                team_name: "Perland".into(),
+                stack: "Steve".into(),
+                name: "Steve".into(),
+                state: "running".into(),
+                address: Some("play.example.com:25570".into()),
+                free: true,
+            },
+            ManagedServer {
+                tenant_id: "t-2".into(),
+                team_name: "Builders".into(),
+                stack: "creative".into(),
+                name: "creative".into(),
+                state: "stopped".into(),
+                address: None,
+                free: false,
+            },
+        ],
+    );
+    let detail = |state: &str| {
+        let running = state == "running";
+        ManageDetail {
+            tenant_id: "t-1".into(),
+            stack: "my-world".into(),
+            state: state.into(),
+            address: Some("play.example.com:25566".into()),
+            online: running.then_some(2),
+            max: running.then_some(10),
+            players: if running {
+                vec!["Steve".into(), "Alex".into()]
+            } else {
+                vec![]
+            },
+            pending_restart: running,
+            version: "1.21.1".into(),
+            stops_at: running.then(|| "2026-10-21T12:15:00Z".into()),
+        }
+    };
+    check(
+        "manage_detail",
+        [
+            "running", "asleep", "starting", "stopping", "stopped", "unknown",
+        ]
+        .into_iter()
+        .map(detail)
+        .collect::<Vec<_>>(),
+    );
+    check(
+        "manage_diagnosis",
+        vec![
+            ManageDiagnosis {
+                failed: true,
+                oom_killed: true,
+                cause: Some(ManageCause {
+                    code: "out_of_memory".into(),
+                    known: true,
+                    subject: None,
+                    params: BTreeMap::new(),
+                }),
+            },
+            ManageDiagnosis {
+                failed: true,
+                oom_killed: false,
+                cause: Some(ManageCause {
+                    code: "plugin_load_failed".into(),
+                    known: true,
+                    subject: Some("EssentialsX".into()),
+                    params: BTreeMap::from([("minecraft".into(), "1.21.1".into())]),
+                }),
+            },
+            ManageDiagnosis {
+                failed: false,
+                oom_killed: false,
+                cause: None,
+            },
+        ],
+    );
+    check(
+        "manage_players",
+        ManagePlayers {
+            running: true,
+            online: vec!["Steve".into()],
+            whitelist: vec!["Steve".into(), "Alex".into()],
+            admins: vec!["Steve".into()],
+            bans: vec![
+                ManageBan {
+                    name: "Griefer".into(),
+                    reason: Some("Broke the spawn".into()),
+                },
+                ManageBan {
+                    name: "Spammer".into(),
+                    reason: None,
+                },
+            ],
+            unreadable: false,
+        },
+    );
+    check(
+        "manage_change_results",
+        vec![
+            ManageChangeResult {
+                name: "Alex".into(),
+                status: "added".into(),
+                message: None,
+            },
+            ManageChangeResult {
+                name: "Nobody".into(),
+                status: "not_found".into(),
+                message: Some("No player has that name".into()),
+            },
+        ],
+    );
+    check("manage_settings", manage_settings());
+    check(
+        "manage_saved",
+        ManageSaved {
+            settings: ManageSettings {
+                revision: "rev-8".into(),
+                pending_restart: true,
+                ..manage_settings()
+            },
+            restarted: false,
+            pending: true,
+        },
+    );
+    check(
+        "manage_console_reply",
+        vec![
+            ManageConsoleReply {
+                ok: true,
+                output: "There are 1 of a max of 10 players online: Steve".into(),
+            },
+            ManageConsoleReply {
+                ok: false,
+                output: "Unknown command".into(),
             },
         ],
     );

@@ -10,6 +10,7 @@ import { resetActivity } from '../state/activity';
 import { resetAppearance } from '../state/appearance';
 import { resetContentProgress } from '../state/contentProgress';
 import { resetImport } from '../state/importProgress';
+import { manageLog } from '../state/manageLog';
 import { resetRoute } from '../state/route';
 import { runStore } from '../state/runStore';
 import { clearToasts } from '../state/toasts';
@@ -54,6 +55,7 @@ afterEach(async () => {
   resetServersSession();
   resetContentProgress();
   resetImport();
+  manageLog.reset();
   resetAppearance();
   await i18n.changeLanguage('en');
 });

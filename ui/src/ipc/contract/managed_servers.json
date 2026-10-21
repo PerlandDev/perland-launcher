@@ -1,0 +1,20 @@
+[
+  {
+    "tenantId": "t-f",
+    "teamName": "Perland",
+    "stack": "Steve",
+    "name": "Steve",
+    "state": "running",
+    "address": "play.example.com:25570",
+    "free": true
+  },
+  {
+    "tenantId": "t-2",
+    "teamName": "Builders",
+    "stack": "creative",
+    "name": "creative",
+    "state": "stopped",
+    "address": null,
+    "free": false
+  }
+]

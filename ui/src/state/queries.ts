@@ -1,20 +1,38 @@
-import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { hashKey, QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import i18n from '../i18n';
 import { commands } from '../ipc/commands';
 import { isLauncherError } from '../ipc/errors';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ArtChoice, ContentKind, Focus, FreeServerKind, FreeServerPage, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
+import type { ArtChoice, ManageListChange, ManageSettingsSave, ManageState, ContentKind, Focus, FreeServerKind, FreeServerPage, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PerlandStatus, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { endImport, importWatched } from './importProgress';
+import { manageLog } from './manageLog';
 import { pushError, pushNotice } from './toasts';
 
 export function createQueryClient() {
-  return new QueryClient({
+  const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, refetchOnWindowFocus: false, staleTime: 30_000 },
       mutations: { retry: false },
     },
+  });
+  forgetConsolesOnAccountChange(client);
+  return client;
+}
+
+/** The consoles followed in Manage belong to the signed-in Perland player: a sign-out or another player's sign-in (seen
+ *  through `perland_status`) drops their lines. A refresh of the same account keeps them. */
+function forgetConsolesOnAccountChange(client: QueryClient) {
+  // undefined until the status is first read: nothing was shown for anyone yet.
+  let who: string | null | undefined;
+  client.getQueryCache().subscribe((event) => {
+    if (event.type !== 'updated' || event.query.queryHash !== hashKey(qk.perland)) return;
+    const status = event.query.state.data as PerlandStatus | undefined;
+    if (status === undefined) return;
+    const now = status.account ? `${status.account.name}\n${status.account.email ?? ''}` : null;
+    if (who !== undefined && who !== now) manageLog.reset();
+    who = now;
   });
 }
 
@@ -58,6 +76,10 @@ export const qk = {
   news: (invite: string) => ['news', invite] as const,
   newsAll: (invite: string) => ['newsAll', invite] as const,
   newsImage: (invite: string, postId: string, imageVersion: string) => ['newsImage', invite, postId, imageVersion] as const,
+  manageDetail: (tenantId: string, stack: string) => ['manage', tenantId, stack, 'detail'] as const,
+  manageDiagnosis: (tenantId: string, stack: string) => ['manage', tenantId, stack, 'diagnosis'] as const,
+  managePlayers: (tenantId: string, stack: string) => ['manage', tenantId, stack, 'players'] as const,
+  manageSettings: (tenantId: string, stack: string) => ['manage', tenantId, stack, 'settings'] as const,
 };
 
 const TEN_MINUTES = 10 * 60_000;
@@ -660,4 +682,79 @@ export function useModMutations(id: string, opts: Opts = {}) {
     add: useMutation({ mutationFn: (paths: string[]) => commands.modsAdd(id, paths), onSuccess, onError: failed }),
     remove: useMutation({ mutationFn: (file: string) => commands.modRemove(id, file), onSuccess: onRemoved, onError: failed }),
   };
+}
+
+/** States that change on their own soon: the detail is asked every 5 s while one lasts, else every 30 s. */
+const MOVING: readonly ManageState[] = ['starting', 'stopping'];
+
+/** A managed server's state and who is on. Mounted only by the Manage screen, so it polls only while that is open. */
+export const useManageDetail = (tenantId: string, stack: string) =>
+  useQuery({
+    queryKey: qk.manageDetail(tenantId, stack),
+    queryFn: () => commands.manageDetail(tenantId, stack),
+    // The overview and the tabs all read it: a tab opening doesn't ask again inside the fast poll's 5 s.
+    staleTime: 4000,
+    refetchInterval: (q) => (q.state.data && MOVING.includes(q.state.data.state) ? 5000 : 30000),
+  });
+/** Why the last run failed: asked once while the server is stopped; an action asks again. */
+export const useManageDiagnosis = (tenantId: string, stack: string, enabled: boolean) =>
+  useQuery({
+    queryKey: qk.manageDiagnosis(tenantId, stack),
+    queryFn: () => commands.manageDiagnosis(tenantId, stack),
+    staleTime: Infinity,
+    enabled,
+  });
+export const useManagePlayers = (tenantId: string, stack: string) =>
+  useQuery({ queryKey: qk.managePlayers(tenantId, stack), queryFn: () => commands.managePlayers(tenantId, stack), staleTime: 0 });
+export const useManageSettings = (tenantId: string, stack: string) =>
+  useQuery({ queryKey: qk.manageSettings(tenantId, stack), queryFn: () => commands.manageSettings(tenantId, stack), staleTime: 0 });
+
+/** Everything an action can change: the state, the players and why it failed. */
+function invalidateManaged(qc: QueryClient, tenantId: string, stack: string) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: qk.manageDetail(tenantId, stack) }),
+    qc.invalidateQueries({ queryKey: qk.managePlayers(tenantId, stack) }),
+    qc.invalidateQueries({ queryKey: qk.manageDiagnosis(tenantId, stack) }),
+    qc.invalidateQueries({ queryKey: qk.yourServers }),
+  ]);
+}
+
+/** Start, stop or restart. The screen shows a refusal itself, so pass `inline`. */
+export function useManageAction(tenantId: string, stack: string, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (action: 'start' | 'stop' | 'restart') => commands.manageAction(tenantId, stack, action),
+    onError: onError(opts),
+    onSettled: () => invalidateManaged(qc, tenantId, stack),
+  });
+}
+export function useManagePlayersChange(tenantId: string, stack: string, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (change: ManageListChange) => commands.managePlayersChange(tenantId, stack, change),
+    onError: onError(opts),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.managePlayers(tenantId, stack) }),
+  });
+}
+export function useManageSettingsSave(tenantId: string, stack: string, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (save: ManageSettingsSave) => commands.manageSettingsSave(tenantId, stack, save),
+    onError: onError(opts),
+    onSuccess: (saved) => qc.setQueryData(qk.manageSettings(tenantId, stack), saved.settings),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.manageDetail(tenantId, stack) }),
+  });
+}
+/** One console command; `confirm` answers the Engine's question about a command that stops the server. */
+export function useManageConsole(tenantId: string, stack: string, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ command, confirm }: { command: string; confirm: boolean }) => commands.manageConsole(tenantId, stack, command, confirm),
+    onError: onError(opts),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.manageDetail(tenantId, stack) }),
+  });
+}
+/** Opens the Perland panel, already signed in, at the server's page (or the plans page with no server). */
+export function openManagePanel(tenantId: string, stack: string | null) {
+  return commands.manageOpenPanel(tenantId, stack).catch(pushError);
 }
