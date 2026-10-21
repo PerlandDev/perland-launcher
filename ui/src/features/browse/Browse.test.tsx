@@ -131,3 +131,9 @@ it('falls back to 10 s when the wait is unreadable', async () => {
   });
   expect(await screen.findByText('Too many searches. Trying again in 10 s')).toBeInTheDocument();
 });
+
+it('goes back to Home when it was opened from the rail', async () => {
+  const { user } = renderApp(<Browse route={{ name: 'browse', kind: 'mod' }} />);
+  await user.click(await screen.findByRole('button', { name: 'Back' }));
+  expect(routeSnapshot()).toEqual({ name: 'home', id: null });
+});
