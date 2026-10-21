@@ -177,6 +177,7 @@ fn your_servers_page() -> YourServersPage {
             joinable: true,
             address: Some("play.example.com:25566".into()),
             name: name.into(),
+            display_name: name.into(),
             icon_version: None,
             game: ServerGame {
                 version: Some("1.21.1".into()),
@@ -235,6 +236,7 @@ fn free_server_pages() -> Vec<FreeServerPage> {
         joinable: true,
         address: Some("play.example.com:25570".into()),
         name: "Steve".into(),
+        display_name: "Steve".into(),
         icon_version: None,
         game: ServerGame {
             version: Some("1.20.1".into()),
@@ -307,6 +309,7 @@ fn public_server_page() -> PublicServerPage {
                 joinable: true,
                 address: Some("play.example.com:25566".into()),
                 name: "Survival".into(),
+                display_name: "Survival con los panas".into(),
                 icon_version: Some("1a2b3c4d5e6f7a8b".into()),
                 game: ServerGame {
                     version: Some("1.20.1".into()),
@@ -337,6 +340,7 @@ fn public_server_page() -> PublicServerPage {
                 joinable: true,
                 address: Some("play.example.com:25567".into()),
                 name: "Creative".into(),
+                display_name: "Creative".into(),
                 icon_version: None,
                 game: ServerGame {
                     version: Some("1.21.1".into()),
@@ -359,6 +363,7 @@ fn public_server_page() -> PublicServerPage {
                 joinable: false,
                 address: Some("play.example.com:25568".into()),
                 name: "Tech".into(),
+                display_name: "Tech".into(),
                 icon_version: Some("9f8e7d6c5b4a3921".into()),
                 game: ServerGame {
                     version: Some("1.20.1".into()),

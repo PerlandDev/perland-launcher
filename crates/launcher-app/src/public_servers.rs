@@ -4,7 +4,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
     instances::{ServerAddress, ServerStatus},
-    invite::non_empty,
+    invite::{non_empty, shown_name},
     public_list::{ListQuery, PublicServer},
     Result,
 };
@@ -92,6 +92,7 @@ pub(crate) fn card(
         invite,
         address,
         name: server.name.trim().to_string(),
+        display_name: shown_name(&server.name, server.display_name.as_deref()),
         icon_version: owned(&server.icon_version),
         game: ServerGame {
             version: owned(&server.game.version),

@@ -145,6 +145,7 @@ describe('PublicServerCard', () => {
     joinable: true,
     address: 'play.example.com:25590',
     name: 'Plain',
+    displayName: 'Plain',
     iconVersion: null,
     game: { version: '1.21.1', loader: null, loaderVersion: null },
     modded: false,
@@ -171,5 +172,14 @@ describe('PublicServerCard', () => {
     const play = within(article).getByRole('button', { name: 'Play' });
     expect(play).toBeEnabled();
     expect(within(article).getAllByRole('button')).toHaveLength(1);
+  });
+
+  it('public_card_shows_the_display_name', async () => {
+    const backend = createMockBackend({});
+    renderWithProviders(<PublicServerCard card={{ ...card, name: 'survival_del_viernes', displayName: 'Survival con los panas' }} />, {
+      ipc: (cmd, args) => backend.handle(cmd, args),
+    });
+    expect(await screen.findByRole('heading', { name: 'Survival con los panas' })).toBeInTheDocument();
+    expect(screen.queryByText('survival_del_viernes')).toBeNull();
   });
 });

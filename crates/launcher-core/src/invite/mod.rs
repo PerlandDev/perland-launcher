@@ -9,7 +9,7 @@ pub use client::{
 };
 pub use link::{invite_link_cases, shown_invite, InviteLink, InviteLinkCase, TOKEN_LEN};
 pub use view::{
-    non_empty, InviteAddress, InviteGame, InviteLauncher, InviteModrinth, InvitePack,
+    non_empty, shown_name, InviteAddress, InviteGame, InviteLauncher, InviteModrinth, InvitePack,
     InvitePlayers, InviteTeam, InviteView, PACK_PENDING, PACK_READY, PACK_UNAVAILABLE,
 };
 
