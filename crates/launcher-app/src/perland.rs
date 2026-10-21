@@ -225,7 +225,7 @@ impl PlayerApi for CorePlayer {
         let client = self.client(engine);
         Box::pin(async move {
             client?
-                .create_free_server_from_pack(&token, &name, &language, pack)
+                .create_free_server_from_pack(&token, &name, &language, pack, None)
                 .await
         })
     }

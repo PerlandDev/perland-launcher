@@ -47,7 +47,9 @@ use launcher_core::{
         loaders::LoaderKind,
     },
     mods::LocalMod,
-    perland::{CreateAllowance, Deletion, Disk, FreeLimits, MemoryLimits, PackLimits},
+    perland::{
+        CreateAllowance, Deletion, Disk, FreeLimits, FreeSettingsLimits, MemoryLimits, PackLimits,
+    },
     public_list::{Facets, ListQuery, ListSort},
     restore::{Change, PointKind},
     settings::{IconShape, Lang, Settings, Theme, UiFont},
@@ -248,6 +250,16 @@ fn free_server_pages() -> Vec<FreeServerPage> {
         pack: Some(PackLimits {
             max_bytes: 64 << 20,
         }),
+        settings: Some(FreeSettingsLimits {
+            game_modes: ["survival", "creative", "adventure", "hardcore"]
+                .map(String::from)
+                .to_vec(),
+            difficulties: ["peaceful", "easy", "normal", "hard"]
+                .map(String::from)
+                .to_vec(),
+            seed_max_bytes: 64,
+            motd_max_bytes: 64,
+        }),
     };
     let card = PublicServerCard {
         token: "F".repeat(43),
@@ -277,7 +289,7 @@ fn free_server_pages() -> Vec<FreeServerPage> {
     };
     vec![
         FreeServerPage {
-            limits,
+            limits: limits.clone(),
             create: CreateAllowance {
                 allowed: false,
                 reason: Some("free_server_exists".into()),
@@ -310,8 +322,13 @@ fn free_server_pages() -> Vec<FreeServerPage> {
                 }),
             }),
         },
+        // An older Engine: no pack uploads, no settings.
         FreeServerPage {
-            limits,
+            limits: FreeLimits {
+                pack: None,
+                settings: None,
+                ..limits
+            },
             create: CreateAllowance {
                 allowed: true,
                 reason: None,

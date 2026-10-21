@@ -281,7 +281,7 @@ pub struct MemoryLimits {
 }
 
 /// What every free server has.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct FreeLimits {
     pub max_players: u32,
@@ -294,6 +294,42 @@ pub struct FreeLimits {
     pub creates_per_week: u32,
     /// Present only when the Engine takes a pack the player uploads.
     pub pack: Option<PackLimits>,
+    /// Present only when the Engine checks the version and takes `settings` at create; an
+    /// older Engine ignores both, so a client offers neither without it.
+    pub settings: Option<FreeSettingsLimits>,
+}
+
+/// The settings a free server takes at create (`limits.settings`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FreeSettingsLimits {
+    pub game_modes: Vec<String>,
+    pub difficulties: Vec<String>,
+    pub seed_max_bytes: u32,
+    pub motd_max_bytes: u32,
+}
+
+/// The basic settings a free server is created with. Each one left out keeps the Engine's
+/// default, and an untouched form sends none, so the server is exactly what it was before
+/// settings existed. `game_mode` is `survival`, `creative`, `adventure` or `hardcore`;
+/// `difficulty` is `peaceful`, `easy`, `normal` or `hard`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FreeServerSettings {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub difficulty: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_players: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pvp: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub whitelist: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motd: Option<String>,
 }
 
 /// What a pack upload may be.
@@ -388,8 +424,10 @@ impl fmt::Debug for FreeServerState {
     }
 }
 
-/// `POST /free-server`. `modrinth_version_id` is for `kind: "modrinth"` only; `language` is
-/// `es`, else `en`.
+/// `POST /free-server`. `modrinth_version_id` is for `kind: "modrinth"` only; `version` is the
+/// Minecraft version of a vanilla server (left out: the Engine's `LATEST`); `language` is `es`,
+/// else `en`. `version` and `settings` are sent only when given, so without them the body is
+/// what an Engine without settings takes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateFreeServer {
@@ -397,6 +435,10 @@ pub struct CreateFreeServer {
     pub kind: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub modrinth_version_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings: Option<FreeServerSettings>,
     pub language: String,
 }
 
@@ -585,25 +627,30 @@ impl PlayerClient {
     }
 
     /// `POST /free-server/pack`: the free server made from a `.mrpack` the player built, sent
-    /// as multipart with its SHA-256. Waits like `create_free_server`, and a lost answer is the
-    /// same error.
+    /// as multipart with its SHA-256, and `settings` as a JSON form field when given. Waits like
+    /// `create_free_server`, and a lost answer is the same error.
     pub async fn create_free_server_from_pack(
         &self,
         token: &str,
         name: &str,
         language: &str,
         pack: Vec<u8>,
+        settings: Option<FreeServerSettings>,
     ) -> Result<FreeServer> {
         let sha256 = crate::download::hash::sha256_hex(&pack);
         let part = Part::bytes(pack)
             .file_name("pack.mrpack")
             .mime_str("application/x-modrinth-modpack+zip")
             .expect("a valid mime type");
-        let form = Form::new()
+        let mut form = Form::new()
             .text("name", name.to_string())
             .text("language", language.to_string())
-            .text("sha256", sha256)
-            .part("pack", part);
+            .text("sha256", sha256);
+        if let Some(settings) = settings {
+            let json = serde_json::to_string(&settings).expect("a plain struct is JSON");
+            form = form.text("settings", json);
+        }
+        let form = form.part("pack", part);
         let host = self.host();
         let reply = self
             .wire
@@ -791,7 +838,7 @@ impl PlayerClient {
                 return too_many_free_servers(&host, param("retryAfter"))
             }
             Some("free_servers_full" | "quota_exceeded") => return free_servers_full(&host),
-            Some("invalid_free_server") => return invalid_free_server(&host),
+            Some("invalid_free_server") => return invalid_free_server(&host, param("field")),
             Some("modpack_unsupported") => return modpack_unsupported(&host, param("reason")),
             Some("modpack_too_heavy") => {
                 return modpack_too_heavy(&host, param("requiredMemoryMb"), param("limitMemoryMb"))
@@ -975,12 +1022,18 @@ fn free_server_blocked(host: &str) -> LauncherError {
     .with_param("host", host)
 }
 
-fn invalid_free_server(host: &str) -> LauncherError {
-    LauncherError::network(
+/// `field` is the Engine's `data.field` (`name`, `version`, `settings.difficulty`, ...), so the
+/// UI can put the line under that field.
+fn invalid_free_server(host: &str, field: Option<String>) -> LauncherError {
+    let e = LauncherError::network(
         ErrorCode::InvalidFreeServer,
         "Check the server name: letters, numbers, - and _ only, up to 32.",
     )
-    .with_param("host", host)
+    .with_param("host", host);
+    match field {
+        Some(field) => e.with_param("field", field),
+        None => e,
+    }
 }
 
 fn modpack_unsupported(host: &str, reason: Option<String>) -> LauncherError {
@@ -1061,6 +1114,8 @@ mod tests {
             name: "a".into(),
             kind: "vanilla".into(),
             modrinth_version_id: None,
+            version: None,
+            settings: None,
             language: "en".into(),
         })
         .unwrap();

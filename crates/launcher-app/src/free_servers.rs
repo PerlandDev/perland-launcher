@@ -282,6 +282,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             name: name.to_string(),
             kind: kind.to_string(),
             modrinth_version_id,
+            version: None,
+            settings: None,
             language: language_tag(language).to_string(),
         };
         let session = self.free_session().await?;

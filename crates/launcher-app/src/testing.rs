@@ -1682,6 +1682,7 @@ pub(crate) fn free_state(server: Option<FreeServer>) -> FreeServerState {
             warning_days: 7,
             creates_per_week: 3,
             pack: None,
+            settings: None,
         },
         create: CreateAllowance {
             allowed: server.is_none(),
