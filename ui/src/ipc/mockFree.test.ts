@@ -3,6 +3,7 @@ import { createMockBackend, stopMockRuns } from './mock';
 import type { MockOptions } from './mock';
 import { freeScenario, MOCK_FREE_CREATE_MS, MOCK_FREE_INVITE } from './mockFree';
 import { inviteCanonical } from './inviteLink';
+import { MOCK_INVITE } from './mockServers';
 import * as s from './schema';
 import type { FreeServerCard, FreeServerPage, Instance, YourServersPage } from './schema';
 
@@ -139,6 +140,64 @@ describe('mock free server create', () => {
 
   it('refuses while signed out', async () => {
     await expect(create(backend('none', 'signedOut'))).rejects.toMatchObject({ code: 'perland_signed_out' });
+  });
+
+  it('runs a vanilla server on the version sent, and LATEST without one', async () => {
+    vi.useFakeTimers();
+    const pending = create(backend(), { version: '1.21.4', settings: { pvp: false } }) as Promise<FreeServerCard>;
+    await vi.advanceTimersByTimeAsync(MOCK_FREE_CREATE_MS);
+    expect((await pending).game.version).toBe('1.21.4');
+    const latest = create(backend(), { version: null, settings: null }) as Promise<FreeServerCard>;
+    await vi.advanceTimersByTimeAsync(MOCK_FREE_CREATE_MS);
+    expect((await latest).game.version).toBe('LATEST');
+  });
+
+  it('names the refused field for a bad version or setting', async () => {
+    const b = backend();
+    await expect(create(b, { version: '1.21 1' })).rejects.toMatchObject({ code: 'invalid_free_server', params: { field: 'version' } });
+    for (const [settings, field] of [
+      [{ gameMode: 'spectator' }, 'settings.gameMode'],
+      [{ gameMode: 'hardcore', difficulty: 'easy' }, 'settings.difficulty'],
+      [{ maxPlayers: 0 }, 'settings.maxPlayers'],
+      [{ maxPlayers: 11 }, 'settings.maxPlayers'],
+      [{ seed: 's'.repeat(65) }, 'settings.seed'],
+      [{ motd: '§6gold' }, 'settings.motd'],
+    ] as const) {
+      await expect(create(b, { settings })).rejects.toMatchObject({ code: 'invalid_free_server', params: { field } });
+    }
+    expect((await page(b))?.server).toBeNull();
+  });
+
+  it('friends_create follows the instance: a Modrinth modpack by its version id', async () => {
+    vi.useFakeTimers();
+    const pending = backend().handle('friends_create', { id: 'cozy-pack', name: 'Cozy', settings: null, language: 'en' }) as Promise<FreeServerCard>;
+    await vi.advanceTimersByTimeAsync(MOCK_FREE_CREATE_MS);
+    expect(await pending).toMatchObject({ kind: 'modrinth', modded: true });
+  });
+
+  it('friends_create makes a vanilla server on the instance version, on an Engine that checks it', async () => {
+    vi.useFakeTimers();
+    const pending = backend().handle('friends_create', { id: 'creative-flat', name: 'Flat', settings: { pvp: false }, language: 'en' }) as Promise<FreeServerCard>;
+    await vi.advanceTimersByTimeAsync(MOCK_FREE_CREATE_MS);
+    expect(await pending).toMatchObject({ kind: 'vanilla', modded: false, game: { version: '26.3' } });
+    const older = createMockBackend({ perland: 'signedIn', free: 'none', freeEngine: 'older' });
+    expect((await older.handle('free_server') as FreeServerPage).limits.settings).toBeNull();
+    await expect(older.handle('friends_create', { id: 'creative-flat', name: 'Flat', settings: null, language: 'en' })).rejects.toMatchObject({
+      code: 'invalid_free_server',
+    });
+    expect((await older.handle('free_server') as FreeServerPage).server).toBeNull();
+  });
+
+  it('friends_create refuses an instance linked to a server', async () => {
+    const b = createMockBackend({ perland: 'signedIn', free: 'none', server: 'online' });
+    await b.handle('server_link', { id: 'creative-flat', link: MOCK_INVITE });
+    await expect(b.handle('friends_create', { id: 'creative-flat', name: 'Flat', settings: null, language: 'en' })).rejects.toMatchObject({
+      code: 'invalid_free_server',
+    });
+    await expect(b.handle('friends_create', { id: 'survival', name: 'Flat', settings: null, language: 'en' })).rejects.toMatchObject({
+      code: 'invalid_free_server',
+    });
+    expect((await page(b))?.server).toBeNull();
   });
 });
 

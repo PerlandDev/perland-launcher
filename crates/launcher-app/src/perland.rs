@@ -13,8 +13,9 @@ use launcher_core::{
     invite::{InviteClient, InviteLink, Url},
     perland::{
         authorize_url, launcher_sign_in_url, Callback, CreateFreeServer, EmailStarted, FreeServer,
-        FreeServerState, Language, LinkCode, Loopback, Pkce, Player, PlayerClient, PlayerConfig,
-        PlayerStats, Profile, Session, SignInMethod, TokenAnswer, YourServer,
+        FreeServerSettings, FreeServerState, Language, LinkCode, Loopback, Pkce, Player,
+        PlayerClient, PlayerConfig, PlayerStats, Profile, Session, SignInMethod, TokenAnswer,
+        YourServer,
     },
     ErrorCode, LauncherError, Result,
 };
@@ -86,6 +87,7 @@ pub trait PlayerApi: Send + Sync + 'static {
         name: String,
         language: String,
         pack: Vec<u8>,
+        settings: Option<FreeServerSettings>,
     ) -> BoxFuture<Result<FreeServer>>;
     fn start_free_server(&self, engine: Url, token: String) -> BoxFuture<Result<FreeServer>>;
     fn delete_free_server(&self, engine: Url, token: String) -> BoxFuture<Result<bool>>;
@@ -221,11 +223,12 @@ impl PlayerApi for CorePlayer {
         name: String,
         language: String,
         pack: Vec<u8>,
+        settings: Option<FreeServerSettings>,
     ) -> BoxFuture<Result<FreeServer>> {
         let client = self.client(engine);
         Box::pin(async move {
             client?
-                .create_free_server_from_pack(&token, &name, &language, pack)
+                .create_free_server_from_pack(&token, &name, &language, pack, settings)
                 .await
         })
     }

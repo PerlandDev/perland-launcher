@@ -43,6 +43,130 @@ const advance = (ms: number) =>
     await vi.advanceTimersByTimeAsync(ms);
   });
 
+/** Waits for the version list: the select shows the newest release. */
+const vanillaReady = async (box: HTMLElement) =>
+  expect(await within(box).findByRole('combobox', { name: 'Minecraft version' })).toHaveValue('26.3');
+
+const refusedWith = (params: Record<string, string>) =>
+  Promise.reject({ category: 'network', code: 'invalid_free_server', message: 'x', fix: null, detail: null, params });
+
+describe('CreateServerDialog version and options', () => {
+  it('picks the newest release, snapshots on request, and sends the version picked', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { user, box, calls } = await open();
+    await vanillaReady(box);
+    const version = within(box).getByRole('combobox', { name: 'Minecraft version' });
+    expect(within(version).queryByRole('option', { name: '26.4-snapshot-3' })).toBeNull();
+    // Old alphas and betas are never offered.
+    expect(within(version).queryByRole('option', { name: 'b1.7.3' })).toBeNull();
+    await user.click(within(box).getByRole('switch', { name: 'Show snapshots' }));
+    await user.selectOptions(version, '26.4-snapshot-3');
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    await advance(MOCK_FREE_CREATE_MS + 100);
+    expect(await within(box).findByRole('heading', { name: 'Your server is ready' })).toBeInTheDocument();
+    expect(sent(calls, 'free_server_create')).toMatchObject([{ kind: 'vanilla', version: '26.4-snapshot-3', settings: null }]);
+  });
+
+  it('sends no version while the list has not loaded', async () => {
+    const app = renderWith((cmd) => (cmd === 'catalog_minecraft' ? new Promise(() => {}) : undefined));
+    await app.user.click(await screen.findByRole('button', { name: ENTRY }));
+    const box = await dialog();
+    expect(within(box).getByRole('combobox', { name: 'Minecraft version' })).toBeDisabled();
+    await app.user.click(within(box).getByRole('button', { name: 'Create' }));
+    await vi.waitFor(() => expect(sent(app.calls, 'free_server_create')).toHaveLength(1));
+    expect(sent(app.calls, 'free_server_create')[0]).toMatchObject({ kind: 'vanilla', version: null, settings: null });
+  });
+
+  it('shows neither the picker nor Options on an Engine without settings, as before', async () => {
+    const { user, box, calls } = await open({ perland: 'signedIn', free: 'none', freeEngine: 'older' });
+    expect(within(box).getByText('The newest Minecraft.')).toBeInTheDocument();
+    expect(within(box).queryByRole('combobox', { name: 'Minecraft version' })).toBeNull();
+    expect(within(box).queryByRole('button', { name: /^Options/ })).toBeNull();
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    await vi.waitFor(() => expect(sent(calls, 'free_server_create')).toHaveLength(1));
+    expect(sent(calls, 'free_server_create')[0]).toEqual({
+      name: 'Steve',
+      kind: 'vanilla',
+      version: null,
+      modrinthVersionId: null,
+      settings: null,
+      language: 'en',
+    });
+  });
+
+  it('keeps Options closed until asked, and sends only what changed', async () => {
+    const { user, box, calls } = await open();
+    await vanillaReady(box);
+    const toggle = within(box).getByRole('button', { name: /^Options/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(box).queryByRole('radio', { name: 'Creative' })).toBeNull();
+    await user.click(toggle);
+    await user.click(within(box).getByRole('radio', { name: 'Hardcore' }));
+    await user.click(within(box).getByRole('switch', { name: 'Whitelist' }));
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    await vi.waitFor(() => expect(sent(calls, 'free_server_create')).toHaveLength(1));
+    expect(sent(calls, 'free_server_create')[0]).toMatchObject({ version: '26.3', settings: { gameMode: 'hardcore', whitelist: true } });
+  });
+
+  it('a modpack has no version picker but keeps Options', async () => {
+    const { user, box } = await open();
+    await user.click(within(box).getByRole('radio', { name: 'A modpack' }));
+    await within(box).findByRole('combobox', { name: 'Modpack' });
+    expect(within(box).queryByRole('combobox', { name: 'Minecraft version' })).toBeNull();
+    expect(within(box).getByRole('button', { name: /^Options/ })).toBeInTheDocument();
+  });
+
+  it('refuses a bad max players before sending', async () => {
+    const { user, box, calls } = await open();
+    await vanillaReady(box);
+    await user.click(within(box).getByRole('button', { name: /^Options/ }));
+    const max = within(box).getByRole('spinbutton', { name: 'Max players' });
+    await user.clear(max);
+    await user.type(max, '11');
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    expect(max).toHaveAttribute('aria-invalid', 'true');
+    expect(within(box).getByText('Pick a number from 1 to 10.')).toBeInTheDocument();
+    expect(sent(calls, 'free_server_create')).toEqual([]);
+  });
+
+  it('puts a refusal that names a field under that field', async () => {
+    let field = 'version';
+    const app = renderWith((cmd) => (cmd === 'free_server_create' ? refusedWith({ host: 'engine', field }) : undefined));
+    await app.user.click(await screen.findByRole('button', { name: ENTRY }));
+    const box = await dialog();
+    await vanillaReady(box);
+    await app.user.click(within(box).getByRole('button', { name: 'Create' }));
+    expect(await within(box).findByRole('alert')).toHaveTextContent("Free servers can't run this version. Pick another one.");
+    const version = within(box).getByRole('combobox', { name: 'Minecraft version' });
+    expect(version).toHaveAttribute('aria-invalid', 'true');
+    expect(version).toHaveAccessibleDescription("Free servers can't run this version. Pick another one.");
+
+    // An option: Options opens to show it, under its field.
+    field = 'settings.motd';
+    await app.user.click(within(box).getByRole('button', { name: 'Create' }));
+    const motd = await within(box).findByRole('textbox', { name: 'Server list message' });
+    expect(motd).toHaveAttribute('aria-invalid', 'true');
+    expect(within(motd.parentElement!).getByText('Use a shorter message, without §.')).toBeInTheDocument();
+    expect(within(box).queryByText("Free servers can't run this version. Pick another one.")).toBeNull();
+
+    // The name, named by the Engine or by the app's own check.
+    field = 'name';
+    await app.user.click(within(box).getByRole('button', { name: 'Create' }));
+    expect(await within(box).findByText('Use letters, numbers, - and _ only, up to 32.')).toBeInTheDocument();
+    expect(within(box).getByLabelText('Server name')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('an option the form has no place for is a line, not lost', async () => {
+    const app = renderWith((cmd) => (cmd === 'free_server_create' ? refusedWith({ host: 'engine', field: 'settings.hardcore' }) : undefined));
+    await app.user.click(await screen.findByRole('button', { name: ENTRY }));
+    const box = await dialog();
+    await vanillaReady(box);
+    await app.user.click(within(box).getByRole('button', { name: 'Create' }));
+    expect(await within(box).findByRole('alert')).toHaveTextContent("Free servers can't use this option. Pick another one.");
+    expect(within(box).getByRole('button', { name: /^Options/ })).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
 describe('CreateServerDialog', () => {
   it('shows the limits and the prefilled name', async () => {
     const { box } = await open();
@@ -77,6 +201,7 @@ describe('CreateServerDialog', () => {
   it('vanilla_create_reaches_share', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { user, box, calls } = await open();
+    await vanillaReady(box);
     await user.click(within(box).getByRole('button', { name: 'Create' }));
     expect(
       await within(box).findByRole('heading', {
@@ -90,7 +215,9 @@ describe('CreateServerDialog', () => {
       {
         name: 'Steve',
         kind: 'vanilla',
+        version: '26.3',
         modrinthVersionId: null,
+        settings: null,
         language: 'en',
       },
     ]);
@@ -125,7 +252,9 @@ describe('CreateServerDialog', () => {
       {
         name: 'Steve',
         kind: 'modrinth',
+        version: null,
         modrinthVersionId: 'kL2pYz4w',
+        settings: null,
         language: 'en',
       },
     ]);

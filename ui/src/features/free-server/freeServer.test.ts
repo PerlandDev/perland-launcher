@@ -3,7 +3,8 @@ import en from '../../i18n/en.json';
 import es from '../../i18n/es.json';
 import i18n from '../../i18n';
 import { MOCK_FREE_LIMITS } from '../../ipc/mockFree';
-import { isServerName, limitsText, maybeCreated, prefillName, reasonLine, retryText } from './freeServer';
+import type { Instance, McVersion } from '../../ipc/schema';
+import { friendsPath, isOldVersion, isServerName, limitsText, maybeCreated, prefillName, reasonLine, retryText } from './freeServer';
 
 const t = i18n.t.bind(i18n);
 afterEach(() => i18n.changeLanguage('en'));
@@ -111,5 +112,41 @@ describe('freeServer', () => {
     expect(limitsText(t, MOCK_FREE_LIMITS)).toBe(
       'Hasta 10 jugadores. 2 GB de memoria para vanilla, 6 GB con mods. Se duerme cuando nadie juega y despierta cuando alguien entra. Se borra tras 30 días sin jugadores.',
     );
+  });
+});
+
+describe('friendsPath and isOldVersion', () => {
+  const instance = (loader: Instance['game']['loader'], source: Instance['source']) => ({ game: { minecraft: '1.20.1', loader }, source }) as Instance;
+  const fabric = { kind: 'fabric', version: '0.16.14' } as const;
+
+  it('follows the app: no loader is vanilla first, then a Modrinth modpack, else the pack upload', () => {
+    expect(friendsPath(instance(null, { kind: 'none' }))).toBe('vanilla');
+    expect(friendsPath(instance(null, { kind: 'modrinth', projectId: 'p', versionId: 'v' }))).toBe('vanilla');
+    expect(friendsPath(instance(fabric, { kind: 'modrinth', projectId: 'p', versionId: 'v' }))).toBe('modrinth');
+    expect(friendsPath(instance(fabric, { kind: 'none' }))).toBe('pack');
+    expect(friendsPath(instance(fabric, { kind: 'packwiz', url: 'https://x' }))).toBe('pack');
+  });
+
+  it('knows old alphas and betas from the list, or by their ids before it loads', () => {
+    const list: McVersion[] = [
+      { id: '26.3', kind: 'release', releaseTime: '' },
+      { id: 'b1.7.3', kind: 'old_beta', releaseTime: '' },
+      { id: 'c0.30_01c', kind: 'old_alpha', releaseTime: '' },
+    ] as McVersion[];
+    expect(isOldVersion('26.3', list)).toBe(false);
+    expect(isOldVersion('b1.7.3', list)).toBe(true);
+    expect(isOldVersion('c0.30_01c', list)).toBe(true);
+    for (const id of ['b1.7.3', 'a1.2.6', 'rd-132211', 'inf-20100618']) expect(isOldVersion(id, undefined)).toBe(true);
+    for (const id of ['1.21.1', '26.4-snapshot-3', '24w14a']) expect(isOldVersion(id, undefined)).toBe(false);
+  });
+
+  it('counts an id the Engine would refuse as not runnable, listed or not', () => {
+    const list = [{ id: '1.14 Pre-Release 1', kind: 'snapshot', releaseTime: '' }] as McVersion[];
+    expect(isOldVersion('1.14 Pre-Release 1', list)).toBe(true);
+    expect(isOldVersion('1.14 Pre-Release 1', undefined)).toBe(true);
+    expect(isOldVersion('x'.repeat(33), undefined)).toBe(true);
+    expect(isOldVersion('', undefined)).toBe(true);
+    expect(isOldVersion('1.21.1_custom-2', undefined)).toBe(false);
+    expect(isOldVersion('x'.repeat(32), undefined)).toBe(false);
   });
 });

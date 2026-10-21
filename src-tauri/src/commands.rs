@@ -27,6 +27,7 @@ use launcher_core::{
         loaders::LoaderKind,
     },
     mods::LocalMod,
+    perland::FreeServerSettings,
     settings::{Channel, Settings},
     ErrorCode, LauncherError,
 };
@@ -686,13 +687,22 @@ pub async fn free_server_create(
     core: CoreState<'_>,
     name: String,
     kind: String,
+    version: Option<String>,
     modrinth_version_id: Option<String>,
+    settings: Option<FreeServerSettings>,
     language: String,
 ) -> Res<FreeServerCard> {
     logged(
         "free_server_create",
-        core.free_server_create(&name, &kind, modrinth_version_id, &language)
-            .await,
+        core.free_server_create(
+            &name,
+            &kind,
+            version,
+            modrinth_version_id,
+            settings,
+            &language,
+        )
+        .await,
     )
 }
 
@@ -892,11 +902,12 @@ pub async fn friends_create(
     core: CoreState<'_>,
     id: String,
     name: String,
+    settings: Option<FreeServerSettings>,
     language: String,
 ) -> Res<FreeServerCard> {
     logged(
         "friends_create",
-        core.friends_create(&id, &name, &language).await,
+        core.friends_create(&id, &name, settings, &language).await,
     )
 }
 

@@ -13,9 +13,9 @@ mod wire;
 
 pub use api::{
     CreateAllowance, CreateFreeServer, Deletion, DiscordAccount, Disk, EmailStarted, FreeLimits,
-    FreeServer, FreeServerState, GitHubAccount, LinkCode, ManageRefCore, MemoryLimits,
-    MinecraftAccount, PackLimits, Player, PlayerClient, PlayerConfig, PlayerStats, Relation,
-    ServerStats, SignInMethod, StatsInvite, TokenAnswer, YourServer,
+    FreeServer, FreeServerSettings, FreeServerState, FreeSettingsLimits, GitHubAccount, LinkCode,
+    ManageRefCore, MemoryLimits, MinecraftAccount, PackLimits, Player, PlayerClient, PlayerConfig,
+    PlayerStats, Relation, ServerStats, SignInMethod, StatsInvite, TokenAnswer, YourServer,
 };
 pub use auth::{AuthClient, Handoff, Membership, SessionJwt};
 pub use log_stream::{

@@ -55,6 +55,7 @@ async function bootstrap() {
       friends: (["ok", "missing", "heavy"] as const).find(
         (v) => v === params.get("friends"),
       ),
+      freeEngine: params.get("freeEngine") === "older" ? "older" : undefined,
     });
   }
   // Whatever fails here, the window still opens; the failure shows up as a toast.

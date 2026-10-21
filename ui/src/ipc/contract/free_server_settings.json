@@ -1,0 +1,15 @@
+[
+  {
+    "gameMode": "hardcore",
+    "difficulty": "hard",
+    "maxPlayers": 4,
+    "pvp": false,
+    "whitelist": true,
+    "seed": "perla",
+    "motd": "Hola amigos"
+  },
+  {
+    "pvp": false
+  },
+  {}
+]

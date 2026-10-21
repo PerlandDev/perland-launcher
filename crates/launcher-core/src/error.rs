@@ -91,7 +91,7 @@ error_codes! {
     // free servers
     EmailRequired, FreeServerExists, TooManyFreeServers, FreeServersFull, InvalidFreeServer,
     ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk, HostFull, FreeServersPaused,
-    FreeServerBlocked, FreeServerModsNotOnModrinth,
+    FreeServerBlocked, FreeServerModsNotOnModrinth, VersionsUnavailable,
     // managing a server
     ServerNotRunning, ServerConsoleUnavailable, TooManyCommands, ServerConsoleTimeout,
     CommandNeedsConfirmation, TeamQuotaFull, PlanFeatureLocked, SettingsChanged,
@@ -361,6 +361,7 @@ mod tests {
             (ErrorCode::HostFull, "host_full"),
             (ErrorCode::FreeServersPaused, "free_servers_paused"),
             (ErrorCode::FreeServerBlocked, "free_server_blocked"),
+            (ErrorCode::VersionsUnavailable, "versions_unavailable"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

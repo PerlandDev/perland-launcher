@@ -15,7 +15,16 @@ const LOADER_KEY = {
   neoforge: 'newInstance.loaderNeoForge',
 } as const;
 
-export function VersionFields({ choice, withLoader = true }: { choice: VersionChoice; withLoader?: boolean }) {
+export function VersionFields({
+  choice,
+  withLoader = true,
+  error,
+}: {
+  choice: VersionChoice;
+  withLoader?: boolean;
+  /** A refusal of the Minecraft version, under its select. */
+  error?: string | null;
+}) {
   const { t } = useTranslation();
   const retry = (onClick: () => void) => <Button onClick={onClick}>{t('common.retry')}</Button>;
   const options = choice.list.map((v) => ({ value: v.id, label: v.id }));
@@ -23,7 +32,7 @@ export function VersionFields({ choice, withLoader = true }: { choice: VersionCh
   return (
     <div className="grid gap-6">
       <div className="grid gap-3">
-        <Select label={t('newInstance.version')} value={choice.mc ?? ''} onChange={choice.setMinecraft} options={options} disabled={options.length === 0} />
+        <Select label={t('newInstance.version')} value={choice.mc ?? ''} onChange={choice.setMinecraft} options={options} disabled={options.length === 0} error={error} />
         <div className="flex items-center gap-3">
           <Toggle checked={choice.snapshots} onChange={choice.setSnapshots} label={t('newInstance.showSnapshots')} />
           <span className="text-sm text-ink-dim" aria-hidden>

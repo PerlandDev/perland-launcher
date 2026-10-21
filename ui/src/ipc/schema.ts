@@ -169,6 +169,28 @@ export const perlandStatus = z.strictObject({
   methods: z.array(z.string()),
   account: perlandAccount.nullable(),
 });
+/** The basic settings a free server is created with (`free_server_create`, `friends_create`). Each one left out keeps the
+ *  Engine's default; send only what the player changed, and null when they changed nothing. Hardcore takes only `hard`. */
+export const freeServerSettings = z.strictObject({
+  gameMode: z.enum(['survival', 'creative', 'adventure', 'hardcore']).optional(),
+  difficulty: z.enum(['peaceful', 'easy', 'normal', 'hard']).optional(),
+  /** 1 to `limits.maxPlayers`; left out, the limit. */
+  maxPlayers: z.number().int().optional(),
+  pvp: z.boolean().optional(),
+  /** On: only players added in Manage → Players can join. */
+  whitelist: z.boolean().optional(),
+  /** At most `seedMaxBytes` UTF-8 bytes, no control characters; left out, random. */
+  seed: z.string().optional(),
+  /** The server list message: at most `motdMaxBytes` UTF-8 bytes, no control characters, no `§`. */
+  motd: z.string().optional(),
+});
+/** The settings a free server takes at create (`limits.settings`). */
+export const freeSettingsLimits = z.strictObject({
+  gameModes: z.array(z.string()),
+  difficulties: z.array(z.string()),
+  seedMaxBytes: z.number().int(),
+  motdMaxBytes: z.number().int(),
+});
 /** What every free server has (the Engine's limits; 0 `sleepMinutes` means idle servers never stop). */
 export const freeLimits = z.strictObject({
   maxPlayers: z.number().int(),
@@ -180,6 +202,9 @@ export const freeLimits = z.strictObject({
   createsPerWeek: z.number().int(),
   /** Present only when the Engine takes a server made from the player's own instance ("Play this with friends"). */
   pack: z.strictObject({ maxBytes: z.number() }).nullable(),
+  /** Present only when the Engine checks the Minecraft version and takes `settings` at create: draw the version picker and
+   *  Options only then (an older Engine ignores both). */
+  settings: freeSettingsLimits.nullable(),
 });
 /** Whether the player may create a free server now. `reason` is the Engine's word (`email_required`, `free_server_exists`,
  *  `too_many_free_servers` with `retryAfter` seconds, `free_servers_full`, `host_full`, `free_servers_paused`, `free_server_blocked`)
@@ -743,6 +768,8 @@ export type ManageSettings = z.infer<typeof manageSettings>;
 export type ManageSettingsSave = z.infer<typeof manageSettingsSave>;
 export type ManageSaved = z.infer<typeof manageSaved>;
 export type ManageConsoleReply = z.infer<typeof manageConsoleReply>;
+export type FreeServerSettings = z.infer<typeof freeServerSettings>;
+export type FreeSettingsLimits = z.infer<typeof freeSettingsLimits>;
 export type FreeLimits = z.infer<typeof freeLimits>;
 export type CreateAllowance = z.infer<typeof createAllowance>;
 export type FreeDeletion = z.infer<typeof freeDeletion>;

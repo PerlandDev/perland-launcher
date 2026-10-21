@@ -13,6 +13,22 @@
       "createsPerWeek": 3,
       "pack": {
         "maxBytes": 67108864
+      },
+      "settings": {
+        "gameModes": [
+          "survival",
+          "creative",
+          "adventure",
+          "hardcore"
+        ],
+        "difficulties": [
+          "peaceful",
+          "easy",
+          "normal",
+          "hard"
+        ],
+        "seedMaxBytes": 64,
+        "motdMaxBytes": 64
       }
     },
     "create": {
@@ -79,9 +95,8 @@
       "unusedDays": 30,
       "warningDays": 7,
       "createsPerWeek": 3,
-      "pack": {
-        "maxBytes": 67108864
-      }
+      "pack": null,
+      "settings": null
     },
     "create": {
       "allowed": true,

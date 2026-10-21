@@ -1,7 +1,10 @@
 //! The Perland player API against a wiremock Engine. Fake tokens only.
 use launcher_core::{
     invite::Url,
-    perland::{CreateFreeServer, LinkCode, PlayerClient, PlayerConfig, Relation, SignInMethod},
+    perland::{
+        CreateFreeServer, FreeServerSettings, FreeSettingsLimits, LinkCode, PlayerClient,
+        PlayerConfig, Relation, SignInMethod,
+    },
     ErrorCategory, ErrorCode, LauncherError,
 };
 use serde_json::{json, Value};
@@ -601,6 +604,8 @@ fn create_body() -> CreateFreeServer {
         name: "Aventura".into(),
         kind: "modrinth".into(),
         modrinth_version_id: Some("Yp8wLY1P".into()),
+        version: None,
+        settings: None,
         language: "es".into(),
     }
 }
@@ -813,12 +818,94 @@ async fn create_vanilla_omits_version_id() {
         name: "Friends".into(),
         kind: "vanilla".into(),
         modrinth_version_id: None,
+        version: None,
+        settings: None,
         language: "en".into(),
     };
     client(&server)
         .create_free_server(&token(), &body)
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn create_sends_version_and_settings() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(route("/free-server")))
+        .and(body_json(json!({
+            "name": "Friends", "kind": "vanilla", "version": "1.21.4", "language": "en",
+            "settings": {
+                "gameMode": "hardcore", "difficulty": "hard", "maxPlayers": 4,
+                "pvp": false, "whitelist": true, "seed": "perla", "motd": "Hola"
+            }
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(envelope(free_view())))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let body = CreateFreeServer {
+        name: "Friends".into(),
+        kind: "vanilla".into(),
+        modrinth_version_id: None,
+        version: Some("1.21.4".into()),
+        settings: Some(FreeServerSettings {
+            game_mode: Some("hardcore".into()),
+            difficulty: Some("hard".into()),
+            max_players: Some(4),
+            pvp: Some(false),
+            whitelist: Some(true),
+            seed: Some("perla".into()),
+            motd: Some("Hola".into()),
+        }),
+        language: "en".into(),
+    };
+    client(&server)
+        .create_free_server(&token(), &body)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn create_sends_only_the_settings_given() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(route("/free-server")))
+        .and(body_json(json!({
+            "name": "Friends", "kind": "vanilla", "language": "en",
+            "settings": { "pvp": false }
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(envelope(free_view())))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let body = CreateFreeServer {
+        name: "Friends".into(),
+        kind: "vanilla".into(),
+        modrinth_version_id: None,
+        version: None,
+        settings: Some(FreeServerSettings {
+            pvp: Some(false),
+            ..FreeServerSettings::default()
+        }),
+        language: "en".into(),
+    };
+    client(&server)
+        .create_free_server(&token(), &body)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn create_invalid_names_the_field() {
+    let e = create_fails(
+        400,
+        "invalid_free_server",
+        json!({ "field": "settings.difficulty" }),
+    )
+    .await;
+    assert_eq!(e.code, ErrorCode::InvalidFreeServer);
+    assert_eq!(param(&e, "field"), Some("settings.difficulty"));
 }
 
 #[tokio::test]
@@ -888,6 +975,19 @@ async fn create_host_full() {
 async fn create_paused() {
     let e = create_fails(503, "free_servers_paused", json!({})).await;
     assert_eq!(e.code, ErrorCode::FreeServersPaused);
+}
+
+#[tokio::test]
+async fn create_versions_unavailable() {
+    // The Engine couldn't read Mojang's version list to check the version: nothing was made, so
+    // this is its own refusal, not a lost answer and not "can't reach Perland".
+    let e = create_fails(502, "versions_unavailable", json!({})).await;
+    assert_eq!(e.code, ErrorCode::VersionsUnavailable);
+    assert_eq!(e.category, ErrorCategory::Network);
+    assert_eq!(
+        e.message,
+        "Perland couldn't check the Minecraft versions right now. Try again in a moment."
+    );
 }
 
 #[tokio::test]
@@ -1243,6 +1343,51 @@ async fn free_server_reads_pack_limits() {
     assert_eq!(read.limits.pack.map(|p| p.max_bytes), Some(64 << 20));
 }
 
+#[tokio::test]
+async fn free_server_reads_settings_limits() {
+    let server = MockServer::start().await;
+    let mut state = free_state(Value::Null);
+    answer(&server, "GET", "/free-server", 200, envelope(state.clone())).await;
+    let read = client(&server)
+        .free_server(&token())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(read.limits.settings, None, "an older Engine has none");
+
+    let server = MockServer::start().await;
+    state["limits"]["settings"] = json!({
+        "gameModes": ["survival", "creative", "adventure", "hardcore"],
+        "difficulties": ["peaceful", "easy", "normal", "hard"],
+        "seedMaxBytes": 64, "motdMaxBytes": 64
+    });
+    answer(&server, "GET", "/free-server", 200, envelope(state)).await;
+    let read = client(&server)
+        .free_server(&token())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        read.limits.settings,
+        Some(FreeSettingsLimits {
+            game_modes: vec![
+                "survival".into(),
+                "creative".into(),
+                "adventure".into(),
+                "hardcore".into()
+            ],
+            difficulties: vec![
+                "peaceful".into(),
+                "easy".into(),
+                "normal".into(),
+                "hard".into()
+            ],
+            seed_max_bytes: 64,
+            motd_max_bytes: 64,
+        })
+    );
+}
+
 /// Matches a multipart body holding every one of these byte strings.
 struct MultipartWith(Vec<Vec<u8>>);
 
@@ -1260,6 +1405,20 @@ impl wiremock::Match for MultipartWith {
                     .windows(want.len())
                     .any(|w| w == want.as_slice())
             })
+    }
+}
+
+/// Matches a body holding none of these byte strings.
+struct MultipartWithout(Vec<Vec<u8>>);
+
+impl wiremock::Match for MultipartWithout {
+    fn matches(&self, request: &wiremock::Request) -> bool {
+        self.0.iter().all(|nope| {
+            !request
+                .body
+                .windows(nope.len())
+                .any(|w| w == nope.as_slice())
+        })
     }
 }
 
@@ -1281,15 +1440,40 @@ async fn create_from_pack_uploads_multipart() {
             b"name=\"pack\"; filename=\"pack.mrpack\"".to_vec(),
             pack.clone(),
         ]))
+        .and(MultipartWithout(vec![b"name=\"settings\"".to_vec()]))
         .respond_with(ResponseTemplate::new(201).set_body_json(envelope(free_view())))
         .expect(1)
         .mount(&server)
         .await;
     let made = client(&server)
-        .create_free_server_from_pack(&token(), "Amigos", "es", pack)
+        .create_free_server_from_pack(&token(), "Amigos", "es", pack, None)
         .await
         .unwrap();
     assert_eq!(made.name, "Aventura");
+}
+
+#[tokio::test]
+async fn create_from_pack_sends_settings_when_given() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(route("/free-server/pack")))
+        .and(MultipartWith(vec![
+            b"name=\"name\"\r\n\r\nAmigos".to_vec(),
+            b"name=\"settings\"\r\n\r\n{\"difficulty\":\"hard\",\"whitelist\":true}".to_vec(),
+        ]))
+        .respond_with(ResponseTemplate::new(201).set_body_json(envelope(free_view())))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let settings = FreeServerSettings {
+        difficulty: Some("hard".into()),
+        whitelist: Some(true),
+        ..FreeServerSettings::default()
+    };
+    client(&server)
+        .create_free_server_from_pack(&token(), "Amigos", "es", b"x".to_vec(), Some(settings))
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -1307,7 +1491,7 @@ async fn create_from_pack_maps_refusals_and_lost_answers() {
     )
     .await;
     let e = client(&server)
-        .create_free_server_from_pack(&token(), "Amigos", "en", b"x".to_vec())
+        .create_free_server_from_pack(&token(), "Amigos", "en", b"x".to_vec(), None)
         .await
         .unwrap_err();
     assert_eq!(e.code, ErrorCode::ModpackUnsupported);
@@ -1319,7 +1503,7 @@ async fn create_from_pack_maps_refusals_and_lost_answers() {
         .mount(&server)
         .await;
     let e = client(&server)
-        .create_free_server_from_pack(&token(), "Amigos", "en", b"x".to_vec())
+        .create_free_server_from_pack(&token(), "Amigos", "en", b"x".to_vec(), None)
         .await
         .unwrap_err();
     assert_eq!(e.code, ErrorCode::ConnectionDropped);

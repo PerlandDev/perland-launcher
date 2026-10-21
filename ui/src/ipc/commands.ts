@@ -45,6 +45,7 @@ import type {
   PackStatus,
   FreeServerCard,
   FreeServerKind,
+  FreeServerSettings,
   FreeServerPage,
   PerlandAccount,
   PerlandStats,
@@ -79,7 +80,9 @@ export const commands = {
   diagnosticsExport: (path: string) => invoke<string>('diagnostics_export', { path }),
   diagnosticsReveal: () => invoke<null>('diagnostics_reveal'),
   friendsCheck: (id: string) => invoke<FriendsCheck>('friends_check', { id }),
-  friendsCreate: (id: string, name: string, language: string) => invoke<FreeServerCard>('friends_create', { id, name, language }),
+  /** The path follows the instance: vanilla on its version, a Modrinth modpack by its version id, else the server pack. */
+  friendsCreate: (id: string, name: string, settings: FreeServerSettings | null, language: string) =>
+    invoke<FreeServerCard>('friends_create', { id, name, settings, language }),
   sharePreview: (id: string) => invoke<SharePreview>('share_preview', { id }),
   shareExport: (id: string, choice: ShareChoice, path: string) => invoke<string>('share_export', { id, choice, path }),
   shareReveal: () => invoke<null>('share_reveal'),
@@ -182,8 +185,15 @@ export const commands = {
   /** The free-server page (limits, whether the player may create one, theirs), or null while signed out or when it's off. */
   freeServer: () => invoke<FreeServerPage | null>('free_server'),
   /** Takes up to 150 s. A timeout or a network failure may still have created it: read `freeServer` after. */
-  freeServerCreate: (name: string, kind: FreeServerKind, modrinthVersionId: string | null, language: string) =>
-    invoke<FreeServerCard>('free_server_create', { name, kind, modrinthVersionId, language }),
+  /** `version` is a vanilla server's Minecraft version (null: the Engine's newest release); a modpack decides its own. */
+  freeServerCreate: (
+    name: string,
+    kind: FreeServerKind,
+    version: string | null,
+    modrinthVersionId: string | null,
+    settings: FreeServerSettings | null,
+    language: string,
+  ) => invoke<FreeServerCard>('free_server_create', { name, kind, version, modrinthVersionId, settings, language }),
   freeServerStart: () => invoke<FreeServerCard>('free_server_start'),
   freeServerDelete: () => invoke<boolean>('free_server_delete'),
   /** Starts the server if it's off and joins it; answers the instance id. The caller starts the run (`play(id, true)`). */

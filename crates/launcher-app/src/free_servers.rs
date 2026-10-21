@@ -6,7 +6,7 @@
 use launcher_core::{
     instances::{ServerAddress, ServerStatus},
     invite::{non_empty, InviteLink, Url},
-    perland::{CreateFreeServer, FreeServer, Session},
+    perland::{CreateFreeServer, FreeServer, FreeServerSettings, Session},
     ErrorCode, LauncherError, Result,
 };
 
@@ -28,8 +28,86 @@ pub(crate) fn valid_name(name: &str) -> bool {
 }
 
 /// The Engine's rule for a Modrinth version id.
-fn valid_version_id(id: &str) -> bool {
+pub(crate) fn valid_version_id(id: &str) -> bool {
     (1..=16).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
+/// The Engine's compose-safe rule for a Minecraft version: 1 to 32 ASCII letters, digits, `.`,
+/// `-` and `_` (`LATEST` passes). The Engine then looks it up in Mojang's list.
+pub(crate) fn valid_minecraft_version(version: &str) -> bool {
+    (1..=32).contains(&version.len())
+        && version
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
+}
+
+/// The game modes and difficulties a free server takes (`limits.settings` lists the same).
+const GAME_MODES: [&str; 4] = ["survival", "creative", "adventure", "hardcore"];
+const DIFFICULTIES: [&str; 4] = ["peaceful", "easy", "normal", "hard"];
+/// The most bytes a seed or a server list message may have.
+const SETTING_MAX_BYTES: usize = 64;
+
+/// A refusal of one field, named as the Engine's `data.field` names it (`version`,
+/// `settings.difficulty`, ...), so the UI can put the line under it.
+fn invalid_field(field: &str, message: &str) -> LauncherError {
+    LauncherError::network(ErrorCode::InvalidFreeServer, message).with_param("field", field)
+}
+
+/// The version to send: blank is none (the Engine's `LATEST`), else it must pass the Engine's
+/// rule.
+pub(crate) fn checked_version(version: Option<String>) -> Result<Option<String>> {
+    match version.as_deref().map(str::trim) {
+        None | Some("") => Ok(None),
+        Some(v) if valid_minecraft_version(v) => Ok(Some(v.to_string())),
+        Some(_) => Err(invalid_field(
+            "version",
+            "Free servers can't run that Minecraft version.",
+        )),
+    }
+}
+
+/// The settings to send, refused as the Engine would: a known game mode and difficulty (hard
+/// with hardcore), at least one player, and a seed and message of at most 64 bytes with no
+/// control characters (and no `§` in the message). Settings with nothing in them are none, so
+/// an untouched form sends today's request.
+pub(crate) fn checked_settings(
+    settings: Option<FreeServerSettings>,
+) -> Result<Option<FreeServerSettings>> {
+    let Some(settings) = settings else {
+        return Ok(None);
+    };
+    if settings == FreeServerSettings::default() {
+        return Ok(None);
+    }
+    let bad =
+        |name: &str| invalid_field(&format!("settings.{name}"), "Check the server's options.");
+    if let Some(mode) = &settings.game_mode {
+        if !GAME_MODES.contains(&mode.as_str()) {
+            return Err(bad("gameMode"));
+        }
+    }
+    if let Some(difficulty) = &settings.difficulty {
+        let hardcore = settings.game_mode.as_deref() == Some("hardcore");
+        if !DIFFICULTIES.contains(&difficulty.as_str()) || (hardcore && difficulty != "hard") {
+            return Err(bad("difficulty"));
+        }
+    }
+    if settings.max_players == Some(0) {
+        return Err(bad("maxPlayers"));
+    }
+    let text_ok =
+        |text: &str| text.len() <= SETTING_MAX_BYTES && !text.chars().any(char::is_control);
+    if settings.seed.as_deref().is_some_and(|seed| !text_ok(seed)) {
+        return Err(bad("seed"));
+    }
+    if settings
+        .motd
+        .as_deref()
+        .is_some_and(|motd| !text_ok(motd) || motd.contains('§'))
+    {
+        return Err(bad("motd"));
+    }
+    Ok(Some(settings))
 }
 
 pub(crate) fn invalid() -> LauncherError {
@@ -37,6 +115,11 @@ pub(crate) fn invalid() -> LauncherError {
         ErrorCode::InvalidFreeServer,
         "Check the server name: letters, numbers, - and _ only, up to 32.",
     )
+}
+
+/// A bad server name, named as the Engine names it, so the dialog puts it under the name.
+pub(crate) fn invalid_name() -> LauncherError {
+    invalid().with_param("field", "name")
 }
 
 fn signed_out() -> LauncherError {
@@ -255,26 +338,33 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }))
     }
 
-    /// Create the player's free server. The name and kind are checked against the Engine's
-    /// rules before anything is sent: `kind` is `vanilla` (no version id is sent) or
-    /// `modrinth` with the Modrinth version id of the pack. `language` is the UI's.
+    /// Create the player's free server. Everything is checked against the Engine's rules
+    /// before anything is sent: `kind` is `vanilla`, on `version` (blank or left out: the
+    /// Engine's `LATEST`; no Modrinth version id is sent), or `modrinth` with the Modrinth
+    /// version id of the pack (no version is sent: the pack decides it). `settings` left out
+    /// keeps every default. `language` is the UI's.
     pub async fn free_server_create(
         &self,
         name: &str,
         kind: &str,
+        version: Option<String>,
         modrinth_version_id: Option<String>,
+        settings: Option<FreeServerSettings>,
         language: &str,
     ) -> Result<FreeServerCard> {
         let name = name.trim();
         if !valid_name(name) {
-            return Err(invalid());
+            return Err(invalid_name());
         }
-        let modrinth_version_id = match kind {
-            "vanilla" => None,
-            "modrinth" => Some(
-                modrinth_version_id
-                    .filter(|id| valid_version_id(id))
-                    .ok_or_else(invalid)?,
+        let (version, modrinth_version_id) = match kind {
+            "vanilla" => (checked_version(version)?, None),
+            "modrinth" => (
+                None,
+                Some(
+                    modrinth_version_id
+                        .filter(|id| valid_version_id(id))
+                        .ok_or_else(invalid)?,
+                ),
             ),
             _ => return Err(invalid()),
         };
@@ -282,8 +372,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             name: name.to_string(),
             kind: kind.to_string(),
             modrinth_version_id,
+            version,
+            settings: checked_settings(settings)?,
             language: language_tag(language).to_string(),
         };
+        self.free_server_create_checked(request).await
+    }
+
+    /// Send a create already checked against the Engine's rules.
+    pub(crate) async fn free_server_create_checked(
+        &self,
+        request: CreateFreeServer,
+    ) -> Result<FreeServerCard> {
         let session = self.free_session().await?;
         let player = self.runner.player();
         let created = self
@@ -355,7 +455,7 @@ mod tests {
         accounts::BuildKind,
         instances::ServerStatus,
         invite::Url,
-        perland::{Profile, Session},
+        perland::{FreeServerSettings, Profile, Session},
         ErrorCode, LauncherError,
     };
 
@@ -408,7 +508,7 @@ mod tests {
             core.free_server_start().await.unwrap_err(),
             core.free_server_delete().await.unwrap_err(),
             core.free_server_play().await.unwrap_err(),
-            core.free_server_create("Survival", "vanilla", None, "en")
+            core.free_server_create("Survival", "vanilla", None, None, None, "en")
                 .await
                 .unwrap_err(),
         ] {
@@ -460,7 +560,7 @@ mod tests {
             *runner.player.deleted.lock().unwrap() = Err(signed_out());
             let error = match call {
                 "create" => core
-                    .free_server_create("Survival", "vanilla", None, "en")
+                    .free_server_create("Survival", "vanilla", None, None, None, "en")
                     .await
                     .unwrap_err(),
                 "start" => core.free_server_start().await.unwrap_err(),
@@ -486,7 +586,7 @@ mod tests {
             ("Survival", ""),
         ] {
             let error = core
-                .free_server_create(name, kind, None, "en")
+                .free_server_create(name, kind, None, None, None, "en")
                 .await
                 .unwrap_err();
             assert_eq!(
@@ -494,15 +594,224 @@ mod tests {
                 ErrorCode::InvalidFreeServer,
                 "{name:?} {kind:?}"
             );
+            // A bad name names its field, as the Engine's refusal does; a bad kind names none.
+            let want = (kind == "vanilla").then_some("name");
+            assert_eq!(
+                error.params.get("field").map(String::as_str),
+                want,
+                "{name:?} {kind:?}"
+            );
         }
         assert!(runner.player.calls.lock().unwrap().is_empty());
-        core.free_server_create(&"x".repeat(32), "vanilla", None, "en")
+        core.free_server_create(&"x".repeat(32), "vanilla", None, None, None, "en")
             .await
             .expect("32 characters is fine");
-        core.free_server_create("my_world-2", "vanilla", None, "en")
+        core.free_server_create("my_world-2", "vanilla", None, None, None, "en")
             .await
             .unwrap();
         assert_eq!(runner.player.calls_to("create_free_server").len(), 2);
+    }
+
+    fn field(error: &LauncherError) -> Option<&str> {
+        error.params.get("field").map(String::as_str)
+    }
+
+    #[tokio::test]
+    async fn create_refuses_a_bad_version_without_a_call() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        let long = "1".repeat(33);
+        for version in ["1.21 1", long.as_str(), "1.21/1", "1.21\n2", "1.21.4é"] {
+            let error = core
+                .free_server_create(
+                    "Survival",
+                    "vanilla",
+                    Some(version.into()),
+                    None,
+                    None,
+                    "en",
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(error.code, ErrorCode::InvalidFreeServer, "{version:?}");
+            assert_eq!(field(&error), Some("version"), "{version:?}");
+        }
+        assert!(runner.player.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_sends_the_version() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        let longest = "1".repeat(32);
+        for version in ["1.21.4", "24w14a", "1.20.5-rc1", "LATEST", longest.as_str()] {
+            core.free_server_create(
+                "Survival",
+                "vanilla",
+                Some(version.into()),
+                None,
+                None,
+                "en",
+            )
+            .await
+            .unwrap();
+        }
+        // Blank is no version: the Engine's LATEST.
+        core.free_server_create("Survival", "vanilla", Some("  ".into()), None, None, "en")
+            .await
+            .unwrap();
+        // A Modrinth pack decides its own version.
+        core.free_server_create(
+            "Pack",
+            "modrinth",
+            Some("1.21.4".into()),
+            Some("AbC123xy".into()),
+            None,
+            "en",
+        )
+        .await
+        .unwrap();
+        let sent: Vec<Option<String>> = runner
+            .player
+            .create_requests
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|r| r.version.clone())
+            .collect();
+        assert_eq!(
+            sent,
+            [
+                Some("1.21.4".into()),
+                Some("24w14a".into()),
+                Some("1.20.5-rc1".into()),
+                Some("LATEST".into()),
+                Some(longest.clone()),
+                None,
+                None,
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn create_refuses_bad_settings_without_a_call() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        let long = "s".repeat(65);
+        let cases: Vec<(FreeServerSettings, &str)> = vec![
+            (
+                FreeServerSettings {
+                    game_mode: Some("spectator".into()),
+                    ..Default::default()
+                },
+                "settings.gameMode",
+            ),
+            (
+                FreeServerSettings {
+                    difficulty: Some("insane".into()),
+                    ..Default::default()
+                },
+                "settings.difficulty",
+            ),
+            (
+                FreeServerSettings {
+                    game_mode: Some("hardcore".into()),
+                    difficulty: Some("easy".into()),
+                    ..Default::default()
+                },
+                "settings.difficulty",
+            ),
+            (
+                FreeServerSettings {
+                    max_players: Some(0),
+                    ..Default::default()
+                },
+                "settings.maxPlayers",
+            ),
+            (
+                FreeServerSettings {
+                    seed: Some(long.clone()),
+                    ..Default::default()
+                },
+                "settings.seed",
+            ),
+            (
+                FreeServerSettings {
+                    seed: Some("a\tb".into()),
+                    ..Default::default()
+                },
+                "settings.seed",
+            ),
+            (
+                FreeServerSettings {
+                    motd: Some(long.clone()),
+                    ..Default::default()
+                },
+                "settings.motd",
+            ),
+            (
+                FreeServerSettings {
+                    motd: Some("hi\nthere".into()),
+                    ..Default::default()
+                },
+                "settings.motd",
+            ),
+            (
+                FreeServerSettings {
+                    motd: Some("§6gold".into()),
+                    ..Default::default()
+                },
+                "settings.motd",
+            ),
+        ];
+        for (settings, want) in cases {
+            let error = core
+                .free_server_create("Survival", "vanilla", None, None, Some(settings), "en")
+                .await
+                .unwrap_err();
+            assert_eq!(error.code, ErrorCode::InvalidFreeServer, "{want}");
+            assert_eq!(field(&error), Some(want));
+        }
+        assert!(runner.player.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_sends_the_settings() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        let settings = FreeServerSettings {
+            game_mode: Some("hardcore".into()),
+            difficulty: Some("hard".into()),
+            max_players: Some(4),
+            pvp: Some(false),
+            whitelist: Some(true),
+            seed: Some("s".repeat(64)),
+            motd: Some("Hola amigos ñ".into()),
+        };
+        core.free_server_create(
+            "Survival",
+            "vanilla",
+            Some("1.21.4".into()),
+            None,
+            Some(settings.clone()),
+            "en",
+        )
+        .await
+        .unwrap();
+        // Settings with nothing in them are no settings: today's request.
+        core.free_server_create(
+            "Survival",
+            "vanilla",
+            None,
+            None,
+            Some(FreeServerSettings::default()),
+            "en",
+        )
+        .await
+        .unwrap();
+        let sent = runner.player.create_requests.lock().unwrap().clone();
+        assert_eq!(sent[0].settings, Some(settings));
+        assert_eq!(sent[1].settings, None);
     }
 
     #[tokio::test]
@@ -512,15 +821,29 @@ mod tests {
         let long = "a".repeat(17);
         for version in [None, Some(""), Some("not-valid"), Some(long.as_str())] {
             let error = core
-                .free_server_create("Pack", "modrinth", version.map(Into::into), "en")
+                .free_server_create(
+                    "Pack",
+                    "modrinth",
+                    None,
+                    version.map(Into::into),
+                    None,
+                    "en",
+                )
                 .await
                 .unwrap_err();
             assert_eq!(error.code, ErrorCode::InvalidFreeServer, "{version:?}");
         }
         assert!(runner.player.calls.lock().unwrap().is_empty());
-        core.free_server_create("Pack", "modrinth", Some("AbC123xy".into()), "en")
-            .await
-            .unwrap();
+        core.free_server_create(
+            "Pack",
+            "modrinth",
+            None,
+            Some("AbC123xy".into()),
+            None,
+            "en",
+        )
+        .await
+        .unwrap();
         let call = &runner.player.calls_to("create_free_server")[0];
         assert_eq!(
             call.args,
@@ -539,10 +862,17 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         sign_in(&core, "https://api.example.com");
         let card = core
-            .free_server_create("Survival", "vanilla", Some("ignored1".into()), "es-MX")
+            .free_server_create(
+                "Survival",
+                "vanilla",
+                None,
+                Some("ignored1".into()),
+                None,
+                "es-MX",
+            )
             .await
             .unwrap();
-        core.free_server_create("Survival", "vanilla", None, "fr")
+        core.free_server_create("Survival", "vanilla", None, None, None, "fr")
             .await
             .unwrap();
         let calls = runner.player.calls_to("create_free_server");
@@ -769,7 +1099,7 @@ mod tests {
         std::fs::write(&dir, b"not a folder").unwrap();
         assert!(core.joined_invites().await.is_err());
         let created = core
-            .free_server_create("Survival", "vanilla", None, "en")
+            .free_server_create("Survival", "vanilla", None, None, None, "en")
             .await
             .expect("the Engine created it");
         assert_eq!(created.card.instance, None);
@@ -893,7 +1223,7 @@ mod tests {
         serve_free(&runner, Some(free_view("offline")));
         serve(&runner, &invite('F'), Ok(server_view("Survival")));
         core.free_server().await.unwrap();
-        core.free_server_create("Survival", "vanilla", None, "en")
+        core.free_server_create("Survival", "vanilla", None, None, None, "en")
             .await
             .unwrap();
         core.free_server_start().await.unwrap();
