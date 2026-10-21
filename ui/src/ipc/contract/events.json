@@ -94,7 +94,26 @@
       "error": null,
       "synced": null,
       "manual": [],
-      "updateOnly": false
+      "updateOnly": false,
+      "restore": false
+    },
+    "update": null
+  },
+  {
+    "type": "run_state",
+    "instance": "asalith-fields",
+    "state": "idle",
+    "exit": {
+      "code": 1,
+      "killed": false,
+      "cancelled": false,
+      "cause": null,
+      "fixes": [],
+      "error": null,
+      "synced": null,
+      "manual": [],
+      "updateOnly": false,
+      "restore": true
     },
     "update": null
   },
@@ -120,7 +139,8 @@
       },
       "synced": null,
       "manual": [],
-      "updateOnly": false
+      "updateOnly": false,
+      "restore": false
     },
     "update": null
   },
@@ -137,7 +157,8 @@
       "error": null,
       "synced": null,
       "manual": [],
-      "updateOnly": false
+      "updateOnly": false,
+      "restore": false
     },
     "update": null
   },
@@ -212,7 +233,8 @@
         ]
       },
       "manual": [],
-      "updateOnly": false
+      "updateOnly": false,
+      "restore": false
     },
     "update": null
   },
@@ -252,7 +274,8 @@
           }
         }
       ],
-      "updateOnly": false
+      "updateOnly": false,
+      "restore": false
     },
     "update": null
   },
@@ -269,7 +292,8 @@
       "error": null,
       "synced": null,
       "manual": [],
-      "updateOnly": true
+      "updateOnly": true,
+      "restore": false
     },
     "update": null
   },

@@ -48,6 +48,9 @@ pub struct ExitInfo {
     pub manual: Vec<ManualFile>,
     /// The banner's Update: the run synced and stopped there, with no game.
     pub update_only: bool,
+    /// A crash right after an update that hasn't run cleanly since: the crash card offers
+    /// "Go back to how it was" (spec §5.7).
+    pub restore: bool,
 }
 
 /// One fix the crash card can apply itself.

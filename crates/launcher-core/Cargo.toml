@@ -27,6 +27,7 @@ tracing-subscriber.workspace = true
 tracing-appender.workspace = true
 image.workspace = true
 regex.workspace = true
+same-file = "1.0.6"
 
 [dev-dependencies]
 tempfile.workspace = true

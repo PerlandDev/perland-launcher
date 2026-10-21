@@ -143,6 +143,27 @@
     "updatedTo": "Updated to {{version}}",
     "checkFailed": "Couldn't check for updates"
   },
+  "restore": {
+    "menu": "Go back to how it was…",
+    "undoMenu": "Undo going back…",
+    "updateAgain": "Update again",
+    "title": "Go back to how {{name}} was?",
+    "undoes": "This undoes: {{list}}",
+    "safe": "Your worlds, screenshots and game settings stay as they are.",
+    "size": "The restore point uses {{size}}.",
+    "serverWarning": "{{server}} uses the newer mods. Until you update again, you may not be able to join.",
+    "confirm": "Go back",
+    "done": "{{name}} is back to how it was.",
+    "heldServer": "You went back to the earlier mods. {{server}} uses newer ones, so joining may not work.",
+    "held": "Updates are paused because you went back.",
+    "change": {
+      "packUpdate": "updated to {{to}}",
+      "installed": "installed {{name}}",
+      "removed": "removed {{name}}"
+    },
+    "more": "and {{count}} more",
+    "plateAction": "Go back"
+  },
   "progress": {
     "install_minecraft": "Installing Minecraft {{version}}",
     "download_java": "Downloading Java {{version}}",
@@ -820,6 +841,8 @@
     "not_enough_space": { "message": "Not enough free space: {{needed_mb}} MB needed, {{free_mb}} MB free.", "fix": "Free up some space and try again." },
     "instance_locked": { "message": "Another Perland Launcher window is using this instance.", "fix": "Close the other window, or wait for it to finish." },
     "instance_folder_in_use": { "message": "Another program is using this instance's folder.", "fix": "Close any window or program using the folder, then try again." },
+    "restore_point_gone": { "message": "There is nothing to go back to." },
+    "restore_failed": { "message": "Couldn't go back to how it was.", "fix": "Close any window showing the instance's folder, then try again." },
     "art_file_invalid": { "message": "That file can't be used as an instance image.", "fix": "Pick a PNG, JPEG or WebP image." },
     "banner_focus_invalid": { "message": "That position is outside the picture." },
     "import_not_instance": { "message": "This folder doesn't look like a Minecraft instance.", "fix": "Pick the instance's own folder: the one with mods, saves or config inside." },

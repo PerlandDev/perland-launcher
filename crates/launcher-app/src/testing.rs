@@ -568,6 +568,18 @@ impl FakeRunner {
         self.gate.add_permits(n);
     }
 
+    /// Lose a running fake game: its `wait` fails instead of reporting an exit.
+    pub fn lose(&self, id: &str) {
+        let slot = self
+            .exits
+            .lock()
+            .unwrap()
+            .get(id)
+            .cloned()
+            .expect("game started");
+        drop(slot.lock().unwrap().take());
+    }
+
     /// End a running fake game with this exit.
     pub fn finish(&self, id: &str, exit: GameExit) {
         let slot = self

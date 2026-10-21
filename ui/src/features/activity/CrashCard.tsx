@@ -6,8 +6,10 @@ import { runStore } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
-import { Close, Copy, WarningDiamond } from '../../ui/Icon';
+import { Close, Copy, Undo, WarningDiamond } from '../../ui/Icon';
+import { GoBackDialog } from '../home/GoBackDialog';
 import { versionLine } from '../home/labels';
+import { useRestorePoint } from '../home/useRestorePoint';
 import { CrashFixes } from './CrashFixes';
 import { useModrinthMods } from './useModrinthMods';
 
@@ -15,6 +17,8 @@ import { useModrinthMods } from './useModrinthMods';
 export function CrashCard({ instance, exit, lines }: { instance: Instance; exit: ExitInfo; lines: string[] }) {
   const { t, i18n } = useTranslation();
   const [showDetails, setShowDetails] = useState(false);
+  const point = useRestorePoint(instance.id).data ?? null;
+  const [confirming, setConfirming] = useState(false);
   const found = useModrinthMods(exit.fixes);
   // A missing mod Modrinth knows is named as its Find button names it ("Fabric API", not "fabric-api").
   const missing = exit.fixes.map((fix) => (fix.kind === 'find_mod' ? found.get(fix.project)?.title : undefined)).find(Boolean);
@@ -35,10 +39,12 @@ export function CrashCard({ instance, exit, lines }: { instance: Instance; exit:
         ]),
       )
       .catch(pushError);
-  // Without a fix to show, Copy for support is the card's one action, raised as it always was.
   const anyFix = exit.fixes.some((fix) => fix.kind !== 'find_mod' || found.has(fix.project));
+  // A crash right after an update offers going back: after the cause's own fixes, the primary when it's the only one.
+  const goBack = exit.restore && point?.kind === 'beforeChange';
+  // Without a fix to show, Copy for support is the card's one action, raised as it always was.
   const copyButton = (
-    <Button variant={anyFix ? 'ghost' : 'secondary'} icon={<Copy />} onClick={copy}>
+    <Button variant={anyFix || goBack ? 'ghost' : 'secondary'} icon={<Copy />} onClick={copy}>
       {t('activity.copyForSupport')}
     </Button>
   );
@@ -69,6 +75,11 @@ export function CrashCard({ instance, exit, lines }: { instance: Instance; exit:
         {dismiss}
       </div>
       <CrashFixes instance={instance} fixes={exit.fixes} found={found}>
+        {goBack && (
+          <Button variant={anyFix ? 'ghost' : 'secondary'} icon={<Undo />} onClick={() => setConfirming(true)}>
+            {t('restore.menu')}
+          </Button>
+        )}
         {copyButton}
         {cause?.detail && (
           <Button variant="ghost" aria-expanded={showDetails} onClick={() => setShowDetails((v) => !v)}>
@@ -81,6 +92,7 @@ export function CrashCard({ instance, exit, lines }: { instance: Instance; exit:
           {cause.detail}
         </pre>
       )}
+      {confirming && point && <GoBackDialog instance={instance} point={point} onClose={() => setConfirming(false)} />}
     </div>
   );
 }

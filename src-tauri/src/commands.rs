@@ -7,8 +7,8 @@ use launcher_app::dto::{
     FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstallPlanView,
     InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
     ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus,
-    PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage, RunSnapshot,
-    SearchRequest, ServerNews, ServerStatusView, YourServersPage,
+    PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage, RestorePointDto,
+    RunSnapshot, SearchRequest, ServerNews, ServerStatusView, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -305,6 +305,24 @@ pub fn play_answer(core: CoreState<'_>, id: String, update: bool) -> Res<()> {
 #[tauri::command]
 pub async fn pack_update(core: CoreState<'_>, id: String) -> Res<()> {
     logged("pack_update", core.inner().pack_update(&id).await)
+}
+
+#[tauri::command]
+pub async fn pack_update_again(core: CoreState<'_>, id: String) -> Res<()> {
+    logged(
+        "pack_update_again",
+        core.inner().pack_update_again(&id).await,
+    )
+}
+
+#[tauri::command]
+pub async fn restore_point(core: CoreState<'_>, id: String) -> Res<Option<RestorePointDto>> {
+    logged("restore_point", core.restore_point(&id).await)
+}
+
+#[tauri::command]
+pub async fn restore_go_back(core: CoreState<'_>, id: String) -> Res<Option<RestorePointDto>> {
+    logged("restore_go_back", core.restore_go_back(&id).await)
 }
 
 #[tauri::command]

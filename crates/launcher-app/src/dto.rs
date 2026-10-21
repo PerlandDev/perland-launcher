@@ -15,6 +15,7 @@ use launcher_core::{
     mods::LocalMod,
     perland::{CreateAllowance, Deletion, Disk, FreeLimits},
     public_list::Facets,
+    restore::{Change, PointKind},
     sync::{ManualFile, PendingUpdate, SyncReport},
     LauncherError,
 };
@@ -217,6 +218,21 @@ impl From<&SyncReport> for SyncSummary {
     }
 }
 
+/// The instance's restore point, for "Go back to how it was" (spec §5.7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestorePointDto {
+    pub kind: PointKind,
+    /// Unix seconds.
+    pub created_at: u64,
+    /// What happened since the point was taken, oldest first.
+    pub changes: Vec<Change>,
+    /// Bytes the point alone holds on disk.
+    pub size_bytes: u64,
+    /// The server's display name, for a server instance (the confirm dialog warns about it).
+    pub server: Option<String>,
+}
+
 /// For the banner: the installed version, and the update (or why there's no answer).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -224,6 +240,8 @@ pub struct PackStatus {
     pub installed_version: Option<String>,
     pub update: Option<PackUpdate>,
     pub check_error: Option<LauncherError>,
+    /// This read lifted the instance's update hold: the UI's copy of the instance is stale.
+    pub hold_lifted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
