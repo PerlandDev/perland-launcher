@@ -163,7 +163,7 @@ There is **one restore point per instance** (**our call**). It means "how it was
 2. **Take a `beforeGoingBack` point of now**, over the same scope, with the current `managed.json`/`pack.json`/game/choices. It is built in `restore/new/` as in §5.3, but **not swapped in yet**.
 3. **Stage the restored folders:** for each folder in scope, build `minecraft/.<top>.perland-restore/` by hard-linking (or copying, as in §5.2) from `point/files/<top>`.
    - Copied files are copied again, so the point stays intact until the end.
-   - A linked file whose size or mtime no longer matches `point.json` was changed in place by someone. It is skipped, the current file is kept, and the result counts it (**our call**: a partial match is better than a dead end).
+   - A linked file whose size or mtime no longer matches `point.json` was changed in place by someone. It is skipped, the current file is kept, and the launcher log records how many (**our call**: a partial match is better than a dead end).
 4. **Write the journal** `restore/restoring.json` (`write_atomic`) listing the folders and step `swapping`.
 5. **Swap each folder** (`rename_with_retry`):
    - `minecraft/<top>` → `restore/aside/<top>`;
@@ -286,6 +286,6 @@ Going back cannot win against a server: the next sync re-applies the server's pa
 ## 8. Known limits (said plainly)
 
 - **Root-level files:** these, including `options.txt`, are never restored, even if the update changed them.
-- **Files edited in place:** a jar a player overwrote in place after the update (rare) is kept as it is now, and the result says how many.
+- **Files edited in place:** a jar a player overwrote in place after the update (rare) is kept as it is now, and the launcher log records how many.
 - **No hard links:** on file systems without hard links, a point costs a full copy of the folders in scope. Past 1 GiB, there is no point.
 - **One step back:** "Go back" reaches only how it was when you last played, not any earlier state.
