@@ -23,7 +23,7 @@ describe('runStore', () => {
     store.apply({ type: 'run_state', instance: 'pack', state: 'running', exit: null, update: null });
     expect(store.run('pack').progress).toBeNull();
     expect(store.active()).toEqual(['pack']);
-    const exit = exitOf({ code: 1, crash: 'out_of_memory' });
+    const exit = exitOf({ code: 1 });
     store.apply({ type: 'run_state', instance: 'pack', state: 'idle', exit, update: null });
     expect(store.run('pack')).toMatchObject({ state: 'idle', lastExit: exit });
     expect(store.active()).toEqual([]);

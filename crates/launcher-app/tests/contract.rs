@@ -21,7 +21,7 @@ use launcher_app::{
         ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary, YourServerCard,
         YourServersPage,
     },
-    events::{AppEvent, ExitInfo, RunStateKind},
+    events::{AppEvent, CrashFix, ExitInfo, RunStateKind},
     updates::UpdateState,
 };
 use launcher_core::browse::{
@@ -41,7 +41,7 @@ use launcher_core::{
     },
     invite::invite_link_cases,
     java::JavaFit,
-    launch::CrashHint,
+    launch::crash::{Crash, CrashCause, ModRef, Vendor},
     meta::{
         catalog::{LoaderVersion, McKind, McVersion},
         loaders::LoaderKind,
@@ -872,7 +872,44 @@ fn contract_fixtures_are_current() {
                 state: RunStateKind::Idle,
                 exit: Some(ExitInfo {
                     code: Some(1),
-                    crash: Some(CrashHint::OutOfMemory),
+                    cause: Some(
+                        Crash {
+                            cause: CrashCause::ModsClash {
+                                module: ModRef {
+                                    id: "sodium".into(),
+                                    name: Some("Sodium".into()),
+                                    file: Some("sodium-0.5.8.jar".into()),
+                                },
+                                other: ModRef {
+                                    id: "optifabric".into(),
+                                    name: Some("OptiFabric".into()),
+                                    file: Some("optifabric-1.13.24.jar".into()),
+                                },
+                            },
+                            detail: "- Mod 'Sodium' (sodium) 0.5.8 is incompatible with any version of mod 'OptiFabric' (optifabric)".into(),
+                        }
+                        .error(),
+                    ),
+                    fixes: vec![
+                        CrashFix::DisableMod {
+                            file: "optifabric-1.13.24.jar".into(),
+                            name: "OptiFabric".into(),
+                        },
+                        CrashFix::DisableMod {
+                            file: "sodium-0.5.8.jar".into(),
+                            name: "Sodium".into(),
+                        },
+                        CrashFix::MoreMemory,
+                        CrashFix::RecommendedJava,
+                        CrashFix::JavaSettings,
+                        CrashFix::FindMod {
+                            project: "fabric-api".into(),
+                        },
+                        CrashFix::Repair,
+                        CrashFix::UpdateDrivers {
+                            vendor: Vendor::Nvidia,
+                        },
+                    ],
                     ..ExitInfo::default()
                 }),
                 update: None,

@@ -1,0 +1,4 @@
+# source: latest_log
+[12:00:01] [main/INFO]: Loading Minecraft 1.20.1 with Fabric Loader 0.15.11
+[12:00:01] [main/INFO]: Java is OpenJDK 64-Bit Server VM, version 17.0.8, running on Windows 10:amd64
+Exception in thread "main" java.lang.NoClassDefFoundError: com/example/Missing

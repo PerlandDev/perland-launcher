@@ -430,6 +430,16 @@ async fn begin_rerun(marker: &Path) -> Result<()> {
     }
 }
 
+/// Make the next install run the loader's processors again ("Repair"): their outputs carry no
+/// hashes a download check could compare (NeoForge's list none), so dropping the marker is the
+/// only way to rebuild a damaged one.
+pub async fn forget_processors(dirs: &LauncherDirs, resolved: &ResolvedVersion) -> Result<()> {
+    if resolved.forge.is_none() {
+        return Ok(());
+    }
+    begin_rerun(&dirs.version_dir(&resolved.json.id).join(MARKER)).await
+}
+
 /// Older installers bundle jars under `maven/<path>`: copy each wanted one out, verified. Jars
 /// the installer doesn't bundle are left for the processors to build. Blocking.
 fn extract_bundled(installer: &Path, libraries: &Path, wanted: &[DownloadRequest]) -> Result<()> {
@@ -1030,5 +1040,19 @@ mod tests {
         std::fs::write(&forge, "x").unwrap(); // different size: replaced
         copy_client_jar(&vanilla, &forge).await.unwrap();
         assert_eq!(std::fs::read(&forge).unwrap(), b"game");
+    }
+
+    #[tokio::test]
+    async fn forget_processors_removes_the_marker() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = LauncherDirs::new(tmp.path());
+        let resolved = crate::test_support::forge_resolved();
+        let marker = dirs.version_dir(&resolved.json.id).join(MARKER);
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(&marker, "sha1").unwrap();
+        forget_processors(&dirs, &resolved).await.unwrap();
+        assert!(!marker.exists());
+        // Nothing to forget is fine too.
+        forget_processors(&dirs, &resolved).await.unwrap();
     }
 }

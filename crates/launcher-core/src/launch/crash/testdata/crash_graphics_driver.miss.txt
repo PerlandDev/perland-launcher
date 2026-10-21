@@ -1,0 +1,4 @@
+# source: hs_err
+#  EXCEPTION_ACCESS_VIOLATION (0xc0000005) at pc=0x00007ffb1c3c1f2a, pid=11820, tid=9312
+# Problematic frame:
+# V  [jvm.dll+0x3c1f2a]
