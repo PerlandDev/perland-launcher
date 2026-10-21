@@ -11,6 +11,8 @@ use wiremock::{
 };
 
 const JWT: &str = "eyJ.a.b";
+/// `X-User-Token` as the Engine reads it: the JWT after `Bearer `.
+const BEARER: &str = "Bearer eyJ.a.b";
 
 fn envelope(data: Value) -> Value {
     json!({ "success": true, "data": data, "error": null, "meta": { "requestId": "r" } })
@@ -28,7 +30,7 @@ fn jwt() -> SessionJwt {
 async fn ok(server: &MockServer, verb: &str, route: &str, data: Value) {
     Mock::given(method(verb))
         .and(path(route))
-        .and(header("x-user-token", JWT))
+        .and(header("x-user-token", BEARER))
         .respond_with(ResponseTemplate::new(200).set_body_json(envelope(data)))
         .expect(1)
         .mount(server)
@@ -41,7 +43,7 @@ async fn get_all_lists_single_servers() {
     Mock::given(method("GET"))
         .and(path("/api/v1/stacks/get-all"))
         .and(query_param("kind", "single"))
-        .and(header("x-user-token", JWT))
+        .and(header("x-user-token", BEARER))
         .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
             "servers": [{
                 "stackName": "survival", "status": "running", "health": "healthy",
@@ -66,7 +68,7 @@ async fn details_reads_without_stats() {
     Mock::given(method("GET"))
         .and(path("/api/v1/stacks/details/survival"))
         .and(query_param("stats", "false"))
-        .and(header("x-user-token", JWT))
+        .and(header("x-user-token", BEARER))
         .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
             "stackName": "survival", "status": "running", "version": "1.21", "type": "paper",
             "pendingRestart": true,
@@ -170,7 +172,7 @@ async fn lifecycle_posts_to_each_verb() {
     for verb in ["start", "stop", "restart"] {
         Mock::given(method("POST"))
             .and(path(format!("/api/v1/stacks/{verb}/survival")))
-            .and(header("x-user-token", JWT))
+            .and(header("x-user-token", BEARER))
             .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({}))))
             .expect(1)
             .mount(&server)
@@ -252,7 +254,7 @@ async fn kick_sends_the_names() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/api/v1/stacks/survival/players/kick"))
-        .and(header("x-user-token", JWT))
+        .and(header("x-user-token", BEARER))
         .and(body_json(json!({ "names": ["Ana"] })))
         .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
             "results": [{ "name": "Ana", "status": "failed", "message": "No player" }]
@@ -341,7 +343,7 @@ async fn change_uses_each_lists_add_and_remove_routes() {
     for route in routes {
         Mock::given(method("POST"))
             .and(path(route))
-            .and(header("x-user-token", JWT))
+            .and(header("x-user-token", BEARER))
             .and(body_json(json!({ "names": ["Ana"] })))
             .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
                 "results": [{ "name": "Ana", "status": "ok" }]
@@ -402,7 +404,7 @@ async fn put_settings_next_restart_sets_the_query() {
     Mock::given(method("PUT"))
         .and(path("/api/v1/stacks/survival/settings"))
         .and(query_param("apply", "next-restart"))
-        .and(header("x-user-token", JWT))
+        .and(header("x-user-token", BEARER))
         .and(body_json(body.clone()))
         .respond_with(ResponseTemplate::new(200).set_body_json(saved()))
         .expect(1)
@@ -438,7 +440,7 @@ async fn console_sends_the_command_and_confirmation() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/api/v1/stacks/survival/console"))
-        .and(header("x-user-token", JWT))
+        .and(header("x-user-token", BEARER))
         .and(body_json(json!({ "command": "say hi", "confirm": false })))
         .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
             "outcome": "ok", "output": "done"
