@@ -33,6 +33,6 @@ pub use session::{
 pub use session_jwt::{jwt_exp, JwtCache, JwtSource, REFRESH_MARGIN_SECS};
 pub use stacks::{
     Apply, Ban, BanList, ConsoleReply, Diagnosis, Issue, IssueSubject, Lifecycle, ListKind,
-    NameList, NameResult, Online, SettingsDoc, SettingsSaved, StackClient, StackDetail, StackIdle,
-    StackItem,
+    NameList, NameResult, Online, SettingsDoc, SettingsSaved, StackClient, StackContainer,
+    StackDetail, StackIdle, StackItem,
 };

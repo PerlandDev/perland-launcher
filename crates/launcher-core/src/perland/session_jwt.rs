@@ -14,7 +14,10 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde_json::Value;
 
 use super::auth::SessionJwt;
-use crate::{error::Result, sync::BoxFuture};
+use crate::{
+    error::{ErrorCode, LauncherError, Result},
+    sync::BoxFuture,
+};
 
 /// A JWT closer than this to its `exp` is replaced, so a request never carries one that
 /// expires in flight.
@@ -76,6 +79,14 @@ impl JwtCache {
         tenant: &str,
         now: u64,
     ) -> Result<SessionJwt> {
+        // An empty tenant is the base JWT's key: its slot would be locked here and then again
+        // by `base`, which waits forever.
+        if tenant.is_empty() {
+            return Err(LauncherError::network(
+                ErrorCode::ServerNotFound,
+                "That server wasn't found.",
+            ));
+        }
         let slot = self.slot(tenant);
         let mut held = slot.lock().await;
         if let Some(jwt) = held.as_ref().filter(|j| is_fresh(j, now)) {
@@ -134,7 +145,6 @@ mod tests {
     };
 
     use super::*;
-    use crate::error::{ErrorCode, LauncherError};
 
     const NOW: u64 = 1_700_000_000;
 
@@ -193,6 +203,18 @@ mod tests {
                 Ok(SessionJwt::new(jwt_with_exp(self.exp)))
             })
         }
+    }
+
+    #[tokio::test]
+    async fn a_blank_tenant_is_refused_without_a_mint() {
+        let cache = JwtCache::default();
+        let source = FakeSource::new(NOW + 3600);
+        let e = tokio::time::timeout(Duration::from_secs(5), cache.jwt_for(&source, "", NOW))
+            .await
+            .expect("no deadlock on the base slot")
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::ServerNotFound);
+        assert_eq!(source.counts(), (0, 0));
     }
 
     #[test]

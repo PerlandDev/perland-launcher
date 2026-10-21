@@ -87,7 +87,7 @@ error_codes! {
     // Perland account
     PlayerAccountsClosed, SignInUnavailable, SignInFailed, SignInTimedOut, InvalidEmail,
     InvalidCode, TooManyCodes, EmailUnavailable, PerlandSignedOut, PlayerServersClosed,
-    TooManyPlayerServers, MinecraftLinkClosed,
+    TooManyPlayerServers, MinecraftLinkClosed, AccountDisabled,
     // free servers
     EmailRequired, FreeServerExists, TooManyFreeServers, FreeServersFull, InvalidFreeServer,
     ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk, HostFull, FreeServersPaused,
@@ -96,7 +96,8 @@ error_codes! {
     ServerNotRunning, ServerConsoleUnavailable, TooManyCommands, ServerConsoleTimeout,
     CommandNeedsConfirmation, TeamQuotaFull, PlanFeatureLocked, SettingsChanged,
     VersionChangeNeedsConfirmation, DataLossNeedsConfirmation, MojangUnavailable, TooManyStreams,
-    TooManyDiagnoses, ManagedBySource, ServerNotFound, ManageForbidden,
+    TooManyDiagnoses, ManagedBySource, ServerNotFound, ManageForbidden, SafetyBackupFailed,
+    ApplyFailed, ComposeNotEditable,
     // sharing an instance
     SharePathInvalid, ShareTooLarge,
     // anything unexpected
@@ -393,6 +394,10 @@ mod tests {
             (ErrorCode::ManagedBySource, "managed_by_source"),
             (ErrorCode::ServerNotFound, "server_not_found"),
             (ErrorCode::ManageForbidden, "manage_forbidden"),
+            (ErrorCode::SafetyBackupFailed, "safety_backup_failed"),
+            (ErrorCode::ApplyFailed, "apply_failed"),
+            (ErrorCode::ComposeNotEditable, "compose_not_editable"),
+            (ErrorCode::AccountDisabled, "account_disabled"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

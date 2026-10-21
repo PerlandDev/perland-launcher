@@ -288,3 +288,41 @@ async fn a_200_without_data_is_unexpected() {
     assert_ne!(e.code, ErrorCode::PerlandSignedOut);
     assert!(!e.message.contains("plt_"));
 }
+
+#[tokio::test]
+async fn select_tenant_403_is_forbidden_not_host_trouble() {
+    let server = MockServer::start().await;
+    let jwt = session(&server).await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/auth/select-tenant"))
+        .respond_with(
+            ResponseTemplate::new(403).set_body_json(
+                json!({ "success": false, "data": {}, "error": "user not in tenant" }),
+            ),
+        )
+        .mount(&server)
+        .await;
+    let e = client(&server)
+        .select_tenant(&jwt, "t-1")
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::ManageForbidden);
+}
+
+#[tokio::test]
+async fn select_tenant_disabled_account_stays_signed_out() {
+    let server = MockServer::start().await;
+    let jwt = session(&server).await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/auth/select-tenant"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(
+            json!({ "success": false, "data": { "code": "account_disabled" }, "error": "no" }),
+        ))
+        .mount(&server)
+        .await;
+    let e = client(&server)
+        .select_tenant(&jwt, "t-1")
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+}

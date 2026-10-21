@@ -395,6 +395,8 @@ enum Route {
     Plain,
     /// `POST /token`: the player typed no code, so a refused one is a failed sign-in.
     Token,
+    /// The email sign-in routes: no session yet, so a disabled account is said as such.
+    SignIn,
     /// Your servers: a 404 is an Engine that doesn't have them.
     Servers,
 }
@@ -460,7 +462,7 @@ impl PlayerClient {
         let reply = self
             .send(Method::POST, "/email/start", None, Some(&body), BODY_CAP)
             .await?;
-        self.ok(&reply, Route::Plain)?;
+        self.ok(&reply, Route::SignIn)?;
         self.data(&reply)
     }
 
@@ -470,7 +472,7 @@ impl PlayerClient {
         let reply = self
             .send(Method::POST, "/email/verify", None, Some(&body), BODY_CAP)
             .await?;
-        self.ok(&reply, Route::Plain)?;
+        self.ok(&reply, Route::SignIn)?;
         self.data(&reply)
     }
 
@@ -706,6 +708,10 @@ impl PlayerClient {
         };
         match failure.code.as_deref() {
             Some("player_accounts_disabled") => return accounts_closed(&host),
+            // Signing in to a disabled account: say so, there is no session to end.
+            Some("account_disabled") if matches!(route, Route::Token | Route::SignIn) => {
+                return account_disabled(&host)
+            }
             // A disabled player user: the session is no use any more.
             Some("account_disabled") => return signed_out(&host),
             Some("sign_in_method_unavailable") => {
@@ -810,6 +816,15 @@ fn email_unavailable(host: &str) -> LauncherError {
         ErrorCode::EmailUnavailable,
         "The email couldn't be sent. Try again in a moment.",
     )
+    .with_param("host", host)
+}
+
+fn account_disabled(host: &str) -> LauncherError {
+    LauncherError::auth(
+        ErrorCode::AccountDisabled,
+        "This Perland account is turned off.",
+    )
+    .with_fix("Contact Perland support.")
     .with_param("host", host)
 }
 

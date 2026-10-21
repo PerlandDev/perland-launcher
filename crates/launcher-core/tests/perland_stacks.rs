@@ -83,6 +83,63 @@ async fn details_reads_without_stats() {
 }
 
 #[tokio::test]
+async fn details_read_the_minecraft_containers_health() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/stacks/details/survival"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
+            "stackName": "survival", "status": "running",
+            "containers": [
+                { "containerName": "mysql_ab_cd_survival", "status": "running", "health": "healthy" },
+                { "containerName": "/minecraft_ab_cd_survival", "status": "running", "health": "starting" }
+            ]
+        }))))
+        .mount(&server)
+        .await;
+    let d = client(&server).details(&jwt(), "survival").await.unwrap();
+    assert_eq!(d.containers.len(), 2);
+    assert_eq!(d.minecraft_health(), "starting");
+}
+
+#[tokio::test]
+async fn details_without_a_minecraft_container_take_the_first_health() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/stacks/details/survival"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
+            "stackName": "survival", "status": "running",
+            "containers": [
+                { "containerName": "x", "status": "running" },
+                "nonsense",
+                { "containerName": "y", "status": "running", "health": "starting" }
+            ]
+        }))))
+        .mount(&server)
+        .await;
+    let d = client(&server).details(&jwt(), "survival").await.unwrap();
+    assert_eq!(
+        d.minecraft_health(),
+        "starting",
+        "a bad item is skipped, not fatal"
+    );
+}
+
+#[tokio::test]
+async fn details_with_null_containers_have_no_health() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/stacks/details/survival"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
+            "stackName": "survival", "status": "running", "containers": null
+        }))))
+        .mount(&server)
+        .await;
+    let d = client(&server).details(&jwt(), "survival").await.unwrap();
+    assert!(d.containers.is_empty());
+    assert_eq!(d.minecraft_health(), "");
+}
+
+#[tokio::test]
 async fn stack_names_are_one_escaped_segment() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
@@ -414,7 +471,7 @@ async fn refused(status: u16, body: Value) -> launcher_core::LauncherError {
 
 #[tokio::test]
 async fn refusals_map_to_codes() {
-    let cases: [(u16, &str, Value, ErrorCode); 16] = [
+    let cases: [(u16, &str, Value, ErrorCode); 19] = [
         (
             409,
             "server_not_running",
@@ -504,6 +561,19 @@ async fn refusals_map_to_codes() {
             "host_full",
             json!({ "dimension": "ram" }),
             ErrorCode::HostFull,
+        ),
+        (
+            409,
+            "safety_backup_failed",
+            json!({}),
+            ErrorCode::SafetyBackupFailed,
+        ),
+        (500, "apply_failed", json!({}), ErrorCode::ApplyFailed),
+        (
+            409,
+            "compose_not_editable",
+            json!({}),
+            ErrorCode::ComposeNotEditable,
         ),
         (
             403,

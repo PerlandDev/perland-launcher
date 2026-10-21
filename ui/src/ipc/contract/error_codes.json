@@ -134,6 +134,7 @@
   "player_servers_closed",
   "too_many_player_servers",
   "minecraft_link_closed",
+  "account_disabled",
   "email_required",
   "free_server_exists",
   "too_many_free_servers",
@@ -161,6 +162,9 @@
   "managed_by_source",
   "server_not_found",
   "manage_forbidden",
+  "safety_backup_failed",
+  "apply_failed",
+  "compose_not_editable",
   "share_path_invalid",
   "share_too_large",
   "internal"

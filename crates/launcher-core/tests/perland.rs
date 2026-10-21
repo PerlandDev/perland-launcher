@@ -1286,3 +1286,31 @@ async fn account_disabled_is_signed_out() {
     let e = client(&server).servers(&token()).await.unwrap_err();
     assert_eq!(e.code, ErrorCode::PerlandSignedOut);
 }
+
+#[tokio::test]
+async fn account_disabled_on_sign_in_is_account_disabled() {
+    let server = MockServer::start().await;
+    for suffix in ["/token", "/email/start", "/email/verify"] {
+        answer(
+            &server,
+            "POST",
+            suffix,
+            403,
+            failure("account_disabled", json!({})),
+        )
+        .await;
+    }
+    let c = client(&server);
+    let errors = [
+        c.token("c", "v", "http://127.0.0.1:1/cb")
+            .await
+            .unwrap_err(),
+        c.email_start("a@b.c", "en").await.unwrap_err(),
+        c.email_verify("a@b.c", "123456").await.unwrap_err(),
+    ];
+    for e in errors {
+        assert_eq!(e.code, ErrorCode::AccountDisabled);
+        assert_eq!(e.message, "This Perland account is turned off.");
+        assert_eq!(e.fix.as_deref(), Some("Contact Perland support."));
+    }
+}

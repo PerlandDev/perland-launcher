@@ -26,6 +26,10 @@ use crate::{
 const BODY_CAP: usize = 512 << 10;
 /// The server list can hold many servers.
 const LIST_CAP: usize = 1 << 20;
+/// Start, stop and restart wait inside the request: a stop waits for the server to save (up
+/// to 3 minutes) and a restart is a stop and a start, so the request gets the Engine's
+/// longest stop (6 minutes) rather than the usual 20 seconds.
+pub(crate) const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(6 * 60);
 
 /// One server in the list.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
@@ -64,6 +68,52 @@ pub struct StackDetail {
     /// Saved changes have not reached the running server yet.
     pub pending_restart: bool,
     pub idle: Option<StackIdle>,
+    /// The stack's containers (Minecraft and any database), each with its health check.
+    #[serde(deserialize_with = "lenient_containers")]
+    pub containers: Vec<StackContainer>,
+}
+
+impl StackDetail {
+    /// The Minecraft container's health (`starting`, `healthy`, `unhealthy`, `unknown`), or
+    /// `""` when the Engine gave none. The Engine names that container `minecraft_<...>`;
+    /// without one, the first container that has a health.
+    pub fn minecraft_health(&self) -> &str {
+        let health = |c: &&StackContainer| !c.health.is_empty();
+        self.containers
+            .iter()
+            .filter(health)
+            .find(|c| {
+                c.container_name
+                    .trim_start_matches('/')
+                    .starts_with("minecraft_")
+            })
+            .or_else(|| self.containers.iter().find(health))
+            .map(|c| c.health.as_str())
+            .unwrap_or_default()
+    }
+}
+
+/// One container of a stack.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct StackContainer {
+    pub container_name: String,
+    pub status: String,
+    pub health: String,
+}
+
+/// `containers` as a list, leaving out what isn't a container: a detail is never lost to a
+/// container entry the launcher can't read.
+fn lenient_containers<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Vec<StackContainer>, D::Error> {
+    Ok(match Value::deserialize(d)? {
+        Value::Array(items) => items
+            .into_iter()
+            .filter_map(|v| serde_json::from_value(v).ok())
+            .collect(),
+        _ => Vec::new(),
+    })
 }
 
 /// Who is on the server now. `players` is `None` when the Engine didn't understand the
@@ -355,7 +405,7 @@ impl StackClient {
             Method::POST,
             path,
             Some(&json!({})),
-            self.timeout,
+            LIFECYCLE_TIMEOUT,
             BODY_CAP,
         )
         .await
@@ -642,6 +692,25 @@ impl StackClient {
                     "The modpack sets this, so it can't be changed here.",
                 )
             }
+            Some("safety_backup_failed") => {
+                return net(
+                    ErrorCode::SafetyBackupFailed,
+                    "Perland couldn't save a backup before this change, so nothing changed. \
+                     Try again, or change it in Perland.",
+                )
+            }
+            Some("apply_failed") => {
+                return net(
+                    ErrorCode::ApplyFailed,
+                    "The change was saved but the server didn't start with it. Try Start again.",
+                )
+            }
+            Some("compose_not_editable") => {
+                return net(
+                    ErrorCode::ComposeNotEditable,
+                    "This server's settings can only be changed in Perland.",
+                )
+            }
             Some("host_full") => return host_full(&host),
             Some("free_server_over_disk") => {
                 return free_server_over_disk(&host, number("usedBytes"), number("limitBytes"))
@@ -673,4 +742,16 @@ pub(crate) enum StreamRefusal {
 fn not_found(host: &str) -> LauncherError {
     LauncherError::network(ErrorCode::ServerNotFound, "That server wasn't found.")
         .with_param("host", host)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lifecycle_waits_for_the_server_to_save() {
+        // A stop waits up to 3 minutes for the save; a whole network stop up to 6.
+        assert_eq!(LIFECYCLE_TIMEOUT, Duration::from_secs(6 * 60));
+        assert!(LIFECYCLE_TIMEOUT > CREATE_TIMEOUT);
+    }
 }

@@ -574,7 +574,7 @@ fn patch_settings(
         save.enable_whitelist != read.enable_whitelist,
     );
     if let Some(motd) = save.motd.as_ref().filter(|_| !read.motd_read_only) {
-        custom.insert("motd".into(), Value::from(motd.clone()));
+        set("motd", Value::from(motd.clone()), *motd != read.motd);
     }
     if let Some(version) = save
         .version
@@ -630,6 +630,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// The session and a JWT scoped to `tenant`.
     pub(crate) async fn manage_jwt(&self, tenant: &str) -> Result<(Session, SessionJwt)> {
+        // No server has a blank id; asking for one would only mint JWTs for nothing.
+        if tenant.trim().is_empty() {
+            return Err(LauncherError::network(
+                ErrorCode::ServerNotFound,
+                "That server wasn't found.",
+            ));
+        }
         self.fresh_jwt(Some(tenant)).await
     }
 
@@ -734,7 +741,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 api.details(engine, jwt, stack.to_string())
             })
             .await?;
-        let state = manage_state(&detail.status, "", detail.idle.as_ref());
+        let state = manage_state(
+            &detail.status,
+            detail.minecraft_health(),
+            detail.idle.as_ref(),
+        );
         let online = if state == "running" {
             match self
                 .with_jwt(tenant, |engine, jwt| {
@@ -1049,7 +1060,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 mod tests {
     use launcher_core::{
         accounts::BuildKind,
-        perland::{Issue, IssueSubject, Profile},
+        perland::{Issue, IssueSubject, Profile, StackContainer},
     };
     use serde_json::json;
 
@@ -1494,6 +1505,52 @@ mod tests {
         let detail = core.manage_detail("t1", "survival").await.unwrap();
         assert_eq!(detail.state, "asleep");
         assert_eq!(fake.calls_to("online").len(), 2);
+    }
+
+    #[tokio::test]
+    async fn detail_reads_health_starting() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.details.lock().unwrap() = Ok(StackDetail {
+            status: "running".into(),
+            containers: vec![
+                StackContainer {
+                    container_name: "mysql_a_b_survival".into(),
+                    status: "running".into(),
+                    health: "healthy".into(),
+                },
+                StackContainer {
+                    container_name: "minecraft_a_b_survival".into(),
+                    status: "running".into(),
+                    health: "starting".into(),
+                },
+            ],
+            ..StackDetail::default()
+        });
+        let detail = core.manage_detail("t1", "survival").await.unwrap();
+        assert_eq!(detail.state, "starting");
+        assert!(
+            fake.calls_to("online").is_empty(),
+            "nobody is asked for while it boots"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_blank_tenant_is_not_found_without_a_call() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        for tenant in ["", "  "] {
+            let e =
+                tokio::time::timeout(std::time::Duration::from_secs(5), core.manage_jwt(tenant))
+                    .await
+                    .expect("no deadlock")
+                    .unwrap_err();
+            assert_eq!(e.code, ErrorCode::ServerNotFound);
+        }
+        assert!(fake.calls_to("player_session").is_empty());
+        assert!(fake.calls_to("select_tenant").is_empty());
     }
 
     #[tokio::test]
@@ -2109,6 +2166,24 @@ mod tests {
         assert_eq!(c["difficulty"], "normal");
         assert_eq!(c["maxPlayers"], 5, "None leaves it as it was");
         assert!(body.get("broadcast").is_none() && body.get("skipSafetyBackup").is_none());
+    }
+
+    #[tokio::test]
+    async fn settings_save_writes_no_empty_motd_where_there_was_none() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.settings.lock().unwrap() = Ok(doc(
+            json!({"type": "PAPER", "version": "1.21.1", "customization": {}}),
+        ));
+        let mut s = save("r0");
+        s.motd = Some(String::new());
+        core.manage_settings_save("t1", "s", s).await.unwrap();
+        let (body, _) = put_of(&fake);
+        assert!(
+            body["settings"]["customization"].get("motd").is_none(),
+            "an unchanged empty MOTD is not written"
+        );
     }
 
     #[tokio::test]

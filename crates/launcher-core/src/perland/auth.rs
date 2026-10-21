@@ -14,7 +14,7 @@ use super::{
     wire::{failure, status_fallback, Credential, Reply, Wire},
 };
 use crate::{
-    error::{LauncherError, Result},
+    error::{ErrorCode, LauncherError, Result},
     invite::{client::host_of, InviteTiming},
 };
 
@@ -273,6 +273,15 @@ impl AuthClient {
             Some("account_disabled") => return signed_out(&host),
             _ => {}
         }
-        status_fallback(&host, reply.status)
+        match reply.status {
+            // Not (or no longer) a member of that server, or a role that can't use it: not
+            // the Engine having trouble.
+            403 => LauncherError::auth(
+                ErrorCode::ManageForbidden,
+                "Your role or plan doesn't allow this.",
+            )
+            .with_param("host", &host),
+            status => status_fallback(&host, status),
+        }
     }
 }
