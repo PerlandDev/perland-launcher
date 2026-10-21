@@ -1,0 +1,348 @@
+//! "Play this with friends" (spec `2026-10-21-play-with-friends-design.md`): the player's free
+//! server made from one of their instances. The launcher writes a server pack (Modrinth CDN mods
+//! and config files only, `share::write_server`), checks it against the Engine's numbers before
+//! anything is sent, and uploads it; the Engine checks it again.
+use launcher_core::{
+    instances::Instance,
+    perland::{FreeLimits, Session},
+    share::{self, PackMeta},
+    ErrorCode, LauncherError, Result,
+};
+
+use crate::{
+    app::AppCore,
+    dto::{FreeServerCard, FriendsCheck},
+    events::Host,
+    free_servers::{invalid, valid_name},
+    perland::{host_of, language_tag},
+    runner::Runner,
+};
+
+/// The Engine does not take a pack from the launcher (an older Engine, or the operator left it
+/// off), so the button should not have shown.
+fn packs_closed() -> LauncherError {
+    LauncherError::network(
+        ErrorCode::InvalidFreeServer,
+        "This Perland server can't be made from your own mods yet.",
+    )
+}
+
+fn needs_a_loader() -> LauncherError {
+    LauncherError::network(
+        ErrorCode::InvalidFreeServer,
+        "Only modded instances can become a server this way.",
+    )
+}
+
+fn too_heavy(host: &str, required: u32, limit: u32) -> LauncherError {
+    LauncherError::pack(
+        ErrorCode::ModpackTooHeavy,
+        "This modpack needs more memory than a free server has.",
+    )
+    .with_param("host", host)
+    .with_param("requiredMemoryMb", required.to_string())
+    .with_param("limitMemoryMb", limit.to_string())
+}
+
+fn too_big() -> LauncherError {
+    LauncherError::pack(
+        ErrorCode::ShareTooLarge,
+        "Your settings are too big for a free server.",
+    )
+}
+
+impl<R: Runner, H: Host> AppCore<R, H> {
+    /// The Engine's free-server limits, refused when it takes no pack.
+    async fn pack_limits(&self, session: &Session) -> Result<(FreeLimits, u64)> {
+        let player = self.runner.player();
+        let state = self
+            .free_call(session, |e, t| player.free_server(e, t))
+            .await?
+            .ok_or_else(packs_closed)?;
+        let max = state.limits.pack.ok_or_else(packs_closed)?.max_bytes;
+        Ok((state.limits, max))
+    }
+
+    async fn modded_instance(&self, id: &str) -> Result<Instance> {
+        let instance = self.instances.load(id).await?;
+        if instance.game.loader.is_none() {
+            return Err(needs_a_loader());
+        }
+        Ok(instance)
+    }
+
+    /// What a free server made from instance `id` would hold, against the Engine's limits.
+    /// Uploads nothing; the plan is kept for the create that usually follows.
+    pub async fn friends_check(&self, id: &str) -> Result<FriendsCheck> {
+        let instance = self.modded_instance(id).await?;
+        let session = self.free_session().await?;
+        let (limits, _) = self.pack_limits(&session).await?;
+        let plan = self.share_plan(&instance).await?;
+        let check = share::server_check(&plan);
+        {
+            let mut plans = self.share_plans.lock().unwrap_or_else(|e| e.into_inner());
+            plans.clear();
+            plans.insert(instance.id.clone(), plan);
+        }
+        Ok(FriendsCheck {
+            name: instance.name,
+            mods: check.mods,
+            server_mods: check.server_mods,
+            required_mb: check.required_mb,
+            limit_mb: limits.memory_mb.modded,
+            not_on_modrinth: check.not_on_modrinth,
+            settings: check.settings,
+        })
+    }
+
+    /// Create the player's free server from instance `id`: write the server pack, refuse what
+    /// the Engine would (mods not on Modrinth, too heavy, too big), then upload it.
+    pub async fn friends_create(
+        &self,
+        id: &str,
+        name: &str,
+        language: &str,
+    ) -> Result<FreeServerCard> {
+        let name = name.trim();
+        if !valid_name(name) {
+            return Err(invalid());
+        }
+        let instance = self.modded_instance(id).await?;
+        let session = self.free_session().await?;
+        let (limits, max_bytes) = self.pack_limits(&session).await?;
+        let kept = self
+            .share_plans
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&instance.id);
+        let plan = match kept {
+            Some(plan) => plan,
+            None => self.share_plan(&instance).await?,
+        };
+        let check = share::server_check(&plan);
+        if check.not_on_modrinth.is_empty() && check.required_mb > limits.memory_mb.modded {
+            return Err(too_heavy(
+                host_of(&session.engine),
+                check.required_mb,
+                limits.memory_mb.modded,
+            ));
+        }
+        // Inside `.perland/`, which no scan reads, and removed once read.
+        let out = self
+            .instances
+            .perland_dir(&instance.id)
+            .join("server-pack.mrpack");
+        let meta = PackMeta {
+            name: instance.name.clone(),
+            version_id: share::today_utc(),
+            minecraft: instance.game.minecraft.clone(),
+            loader: instance.game.loader.clone(),
+        };
+        share::write_server(&self.instances.game_dir(&instance.id), &plan, meta, &out).await?;
+        let pack = tokio::fs::read(&out).await;
+        let _ = tokio::fs::remove_file(&out).await;
+        let pack = pack?;
+        if pack.len() as u64 > max_bytes {
+            return Err(too_big());
+        }
+        let player = self.runner.player();
+        let (name, language) = (name.to_string(), language_tag(language).to_string());
+        let created = self
+            .free_call(&session, |e, t| {
+                player.create_free_server_from_pack(e, t, name, language, pack)
+            })
+            .await?;
+        Ok(self.free_card_of(&created).await)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Read;
+
+    use launcher_core::{
+        accounts::BuildKind,
+        instances::LoaderSpec,
+        invite::Url,
+        meta::loaders::LoaderKind,
+        perland::{PackLimits, Profile, Session},
+        share::Linked,
+        ErrorCode,
+    };
+    use serde_json::Value;
+
+    use crate::{
+        app::tests::{core, TestCore},
+        dto::NewInstance,
+        testing::{free_state, player_token, FakeRunner},
+    };
+
+    const CDN: &str = "https://cdn.modrinth.com/data/AAAA/versions/v1/known.jar";
+
+    fn sign_in(core: &TestCore) {
+        core.perland_store
+            .save(&Session {
+                engine: Url::parse("https://api.example.com").unwrap(),
+                token: player_token('s'),
+                profile: Profile {
+                    name: "Steve".into(),
+                    email: None,
+                    discord: true,
+                    minecraft: None,
+                },
+            })
+            .unwrap();
+    }
+
+    fn takes_packs(runner: &FakeRunner, modded_mb: u32) {
+        let mut state = free_state(None);
+        state.limits.memory_mb.modded = modded_mb;
+        state.limits.pack = Some(PackLimits {
+            max_bytes: 64 << 20,
+        });
+        *runner.player.free.lock().unwrap() = Ok(Some(state));
+    }
+
+    async fn instance(core: &TestCore, loader: bool, files: &[(&str, &[u8])]) -> String {
+        let instance = core
+            .instance_create(NewInstance {
+                name: "Sky Friends".into(),
+                minecraft: "1.20.1".into(),
+                loader: loader.then(|| LoaderSpec {
+                    kind: LoaderKind::Fabric,
+                    version: "0.16.14".into(),
+                }),
+            })
+            .await
+            .unwrap();
+        let game = core.instances.game_dir(&instance.id);
+        for (rel, body) in files {
+            let path = game.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+        instance.id
+    }
+
+    fn knows(runner: &FakeRunner, body: &[u8], url: &str) {
+        let sha1 = launcher_core::download::hash::sha1_hex(body);
+        runner.browser.share_linked.lock().unwrap().insert(
+            sha1.clone(),
+            Linked {
+                sha1,
+                sha512: launcher_core::download::hash::sha512_hex(body),
+                size: body.len() as u64,
+                url: url.into(),
+                env: None,
+            },
+        );
+    }
+
+    #[tokio::test]
+    async fn check_names_mods_not_on_modrinth() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        takes_packs(&runner, 6144);
+        knows(&runner, b"known", CDN);
+        let id = instance(
+            &core,
+            true,
+            &[
+                ("mods/known.jar", b"known"),
+                ("mods/own.jar", b"own"),
+                ("config/a.toml", b"a = 1"),
+            ],
+        )
+        .await;
+        let check = core.friends_check(&id).await.unwrap();
+        assert_eq!((check.mods, check.server_mods, check.settings), (2, 1, 1));
+        assert_eq!((check.required_mb, check.limit_mb), (2560, 6144));
+        assert_eq!(check.not_on_modrinth, ["own.jar"]);
+        assert!(runner
+            .player
+            .calls_to("create_free_server_from_pack")
+            .is_empty());
+
+        let error = core.friends_create(&id, "Amigos", "en").await.unwrap_err();
+        assert_eq!(error.code, ErrorCode::FreeServerModsNotOnModrinth);
+        assert!(runner.player.uploaded.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn create_uploads_the_server_pack() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        takes_packs(&runner, 6144);
+        knows(&runner, b"known", CDN);
+        let id = instance(
+            &core,
+            true,
+            &[
+                ("mods/known.jar", b"known"),
+                ("config/a.toml", b"a = 1"),
+                ("options.txt", b"v:1"),
+            ],
+        )
+        .await;
+        core.friends_check(&id).await.unwrap();
+        let card = core.friends_create(&id, " Amigos ", "es").await.unwrap();
+        assert_eq!(card.card.name, "Survival");
+        // The check's plan was reused: no second Modrinth lookup.
+        assert_eq!(runner.browser.share_lookups.lock().unwrap().len(), 1);
+
+        let pack = runner.player.uploaded.lock().unwrap()[0].clone();
+        let call = &runner.player.calls_to("create_free_server_from_pack")[0];
+        assert_eq!(
+            call.args,
+            [
+                player_token('s'),
+                "Amigos".into(),
+                "es".into(),
+                launcher_core::download::hash::sha256_hex(&pack),
+            ]
+        );
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(pack)).unwrap();
+        let mut names: Vec<String> = (0..zip.len())
+            .map(|i| zip.by_index(i).unwrap().name().unwrap().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["modrinth.index.json", "overrides/config/a.toml"]);
+        let mut index = String::new();
+        zip.by_name("modrinth.index.json")
+            .unwrap()
+            .read_to_string(&mut index)
+            .unwrap();
+        let index: Value = serde_json::from_str(&index).unwrap();
+        assert_eq!(index["files"][0]["downloads"][0], CDN);
+    }
+
+    #[tokio::test]
+    async fn refusals_upload_nothing() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        // Too heavy: 2560 MiB needed, 2048 there.
+        takes_packs(&runner, 2048);
+        knows(&runner, b"known", CDN);
+        let id = instance(&core, true, &[("mods/known.jar", b"known")]).await;
+        let error = core.friends_create(&id, "Amigos", "en").await.unwrap_err();
+        assert_eq!(error.code, ErrorCode::ModpackTooHeavy);
+        assert_eq!(
+            error.params.get("requiredMemoryMb").map(String::as_str),
+            Some("2560")
+        );
+
+        // A bad name, and a vanilla instance.
+        takes_packs(&runner, 6144);
+        let error = core.friends_create(&id, "a b", "en").await.unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidFreeServer);
+        let vanilla = instance(&core, false, &[]).await;
+        let error = core.friends_check(&vanilla).await.unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidFreeServer);
+
+        // An Engine that takes no pack.
+        *runner.player.free.lock().unwrap() = Ok(Some(free_state(None)));
+        let error = core.friends_check(&id).await.unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidFreeServer);
+        assert!(runner.player.uploaded.lock().unwrap().is_empty());
+    }
+}

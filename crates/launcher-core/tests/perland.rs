@@ -1195,3 +1195,108 @@ async fn stats_401_is_signed_out() {
     let e = client(&server).stats(&token()).await.unwrap_err();
     assert_eq!(e.code, ErrorCode::PerlandSignedOut);
 }
+
+#[tokio::test]
+async fn free_server_reads_pack_limits() {
+    let server = MockServer::start().await;
+    let mut state = free_state(Value::Null);
+    answer(&server, "GET", "/free-server", 200, envelope(state.clone())).await;
+    let read = client(&server)
+        .free_server(&token())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(read.limits.pack, None);
+
+    let server = MockServer::start().await;
+    state["limits"]["pack"] = json!({ "maxBytes": 67108864u64 });
+    answer(&server, "GET", "/free-server", 200, envelope(state)).await;
+    let read = client(&server)
+        .free_server(&token())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(read.limits.pack.map(|p| p.max_bytes), Some(64 << 20));
+}
+
+/// Matches a multipart body holding every one of these byte strings.
+struct MultipartWith(Vec<Vec<u8>>);
+
+impl wiremock::Match for MultipartWith {
+    fn matches(&self, request: &wiremock::Request) -> bool {
+        let multipart = request
+            .headers
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.starts_with("multipart/form-data; boundary="));
+        multipart
+            && self.0.iter().all(|want| {
+                request
+                    .body
+                    .windows(want.len())
+                    .any(|w| w == want.as_slice())
+            })
+    }
+}
+
+#[tokio::test]
+async fn create_from_pack_uploads_multipart() {
+    let server = MockServer::start().await;
+    let pack = b"PK pack bytes".to_vec();
+    let sha = launcher_core::download::hash::sha256_hex(&pack);
+    Mock::given(method("POST"))
+        .and(path(route("/free-server/pack")))
+        .and(header(
+            "authorization",
+            format!("Bearer {}", token()).as_str(),
+        ))
+        .and(MultipartWith(vec![
+            b"name=\"name\"\r\n\r\nAmigos".to_vec(),
+            b"name=\"language\"\r\n\r\nes".to_vec(),
+            format!("name=\"sha256\"\r\n\r\n{sha}").into_bytes(),
+            b"name=\"pack\"; filename=\"pack.mrpack\"".to_vec(),
+            pack.clone(),
+        ]))
+        .respond_with(ResponseTemplate::new(201).set_body_json(envelope(free_view())))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let made = client(&server)
+        .create_free_server_from_pack(&token(), "Amigos", "es", pack)
+        .await
+        .unwrap();
+    assert_eq!(made.name, "Aventura");
+}
+
+#[tokio::test]
+async fn create_from_pack_maps_refusals_and_lost_answers() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "POST",
+        "/free-server/pack",
+        400,
+        failure(
+            "modpack_unsupported",
+            json!({ "reason": "not_on_modrinth" }),
+        ),
+    )
+    .await;
+    let e = client(&server)
+        .create_free_server_from_pack(&token(), "Amigos", "en", b"x".to_vec())
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::ModpackUnsupported);
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(route("/free-server/pack")))
+        .respond_with(ResponseTemplate::new(504))
+        .mount(&server)
+        .await;
+    let e = client(&server)
+        .create_free_server_from_pack(&token(), "Amigos", "en", b"x".to_vec())
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::ConnectionDropped);
+}

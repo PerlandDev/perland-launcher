@@ -55,6 +55,10 @@ related_targets: ["ui/src"]
   - *Choices are rows, not a form.* The mods page's file rows with a toggle each; the name is the toggle's name. Worlds start off.
   - *Embedded is a fact.* What isn't on Modrinth is a plain sentence in the Mods row, seen before saving; never coral, never a warning.
   - *One lit key.* Save file… is the dialog's only amber; only the body scrolls, so it and the size beside it stay in view at 960 × 600.
+- **Play this with friends (#83), decided 2026-10-21:**
+  - *Share's rows, without toggles.* What the server gets (Mods with the memory line, Settings) as the same file rows; a server takes what it can and nothing is chosen.
+  - *A refusal is seen first.* Mods not on Modrinth, or mods heavier than a free server, are one coral line right under the intro, and Create is the flat disabled key: here it is a fault, unlike Share's embedded mods.
+  - *Same ending as Create a server for friends.* The creating and ready steps are the shared ones, so Play now stays that step's one amber.
 - **Back to Home (#79), decided 2026-10-21:**
   - *Every screen frame has a way back.* Settings, Accounts, Servers, Join server and Browse from the rail get the ghost back key that Mods, Instance settings and New instance already had, in the same place before the title. Nothing new is lit.
   - *Alt+Left, not Escape.* Alt+Left is the browser's and other launchers' back. Escape already closes dialogs and menus and cancels a rail drag, so one press too many would throw the player off the screen. Alt+Left does nothing in a text field (the caret's) or under an open dialog.

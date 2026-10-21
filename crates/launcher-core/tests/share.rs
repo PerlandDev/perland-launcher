@@ -518,3 +518,119 @@ async fn names_differing_by_case_still_import() {
     )
     .unwrap();
 }
+
+/// A game folder for a free server: a mod Modrinth serves from its CDN, settings a server
+/// takes and files it never takes.
+fn server_game(root: &Path) {
+    put(root, "mods/known.jar", b"known");
+    put(root, "config/a.toml", b"a = 1\n");
+    put(root, "config/sub/b.json5", b"{}\n");
+    put(root, "config/blob.bin", b"\x01\x02");
+    put(root, "config/nul.cfg", b"a\0b");
+    put(root, "defaultconfigs/c.toml", b"c = 2\n");
+    put(root, "kubejs/server_scripts/x.js", b"// script\n");
+    put(root, "options.txt", b"version:3465\n");
+    put(root, "resourcepacks/r.zip", b"rp");
+    put(root, "saves/W/level.dat", b"world");
+}
+
+#[tokio::test]
+async fn server_pack_holds_only_what_a_free_server_takes() {
+    let server = MockServer::start().await;
+    serve_versions(
+        &server,
+        json!({ sha1_hex(b"known"): version("P1", "known.jar", b"known", &format!("{CDN}/known.jar"), Some(sha512_hex(b"known"))) }),
+    )
+    .await;
+    serve_projects(
+        &server,
+        ResponseTemplate::new(200).set_body_json(json!([project("P1", "required", "required")])),
+    )
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    server_game(dir.path());
+    let plan = plan(&server, dir.path()).await;
+
+    let check = share::server_check(&plan);
+    assert_eq!(
+        (check.mods, check.server_mods, check.required_mb),
+        (1, 1, 2560)
+    );
+    assert!(check.not_on_modrinth.is_empty());
+
+    let out = dir.path().join("server.mrpack");
+    share::write_server(dir.path(), &plan, meta(), &out)
+        .await
+        .unwrap();
+    let index: Value = serde_json::from_str(&entry(&out, "modrinth.index.json").unwrap()).unwrap();
+    let paths: Vec<&str> = index["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|f| f["path"].as_str().unwrap())
+        .collect();
+    assert_eq!(paths, ["mods/known.jar"]);
+    assert_eq!(index["dependencies"]["fabric-loader"], "0.16.14");
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
+    let mut names: Vec<String> = (0..zip.len())
+        .map(|i| zip.by_index(i).unwrap().name().unwrap().into_owned())
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        [
+            "modrinth.index.json",
+            "overrides/config/a.toml",
+            "overrides/config/sub/b.json5",
+            "overrides/defaultconfigs/c.toml",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn server_pack_refuses_mods_not_on_modrinth() {
+    let server = MockServer::start().await;
+    // "hub.jar" is a Modrinth file hosted off the CDN; "own.jar" is unknown.
+    serve_versions(
+        &server,
+        json!({ sha1_hex(b"hub"): version("P2", "hub.jar", b"hub", "https://github.com/a/b/releases/download/1/hub.jar", Some(sha512_hex(b"hub"))) }),
+    )
+    .await;
+    serve_projects(&server, ResponseTemplate::new(200).set_body_json(json!([]))).await;
+    let dir = tempfile::tempdir().unwrap();
+    put(dir.path(), "mods/hub.jar", b"hub");
+    put(dir.path(), "mods/own.jar", b"own");
+    let plan = plan(&server, dir.path()).await;
+
+    let check = share::server_check(&plan);
+    assert_eq!(check.not_on_modrinth, ["hub.jar", "own.jar"]);
+    let out = dir.path().join("server.mrpack");
+    let err = share::write_server(dir.path(), &plan, meta(), &out)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::FreeServerModsNotOnModrinth);
+    assert!(!out.exists());
+}
+
+#[tokio::test]
+async fn client_only_mods_need_no_server_memory() {
+    let server = MockServer::start().await;
+    serve_versions(
+        &server,
+        json!({ sha1_hex(b"hud"): version("P3", "hud.jar", b"hud", &format!("{CDN}/hud.jar"), Some(sha512_hex(b"hud"))) }),
+    )
+    .await;
+    serve_projects(
+        &server,
+        ResponseTemplate::new(200).set_body_json(json!([project("P3", "required", "unsupported")])),
+    )
+    .await;
+    let dir = tempfile::tempdir().unwrap();
+    put(dir.path(), "mods/hud.jar", b"hud");
+    let plan = plan(&server, dir.path()).await;
+    let check = share::server_check(&plan);
+    assert_eq!(
+        (check.mods, check.server_mods, check.required_mb),
+        (1, 0, 2048)
+    );
+}

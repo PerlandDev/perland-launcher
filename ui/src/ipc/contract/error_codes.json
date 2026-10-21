@@ -133,6 +133,7 @@
   "host_full",
   "free_servers_paused",
   "free_server_blocked",
+  "free_server_mods_not_on_modrinth",
   "share_path_invalid",
   "share_too_large",
   "internal"

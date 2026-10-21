@@ -294,6 +294,15 @@ export function useFreeServerCreate(opts: Opts = {}) {
     onSettled: () => invalidateFree(qc),
   });
 }
+/** "Play this with friends": the free server made from instance `id`. */
+export function useFriendsCreate(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (r: { id: string; name: string; language: string }) => commands.friendsCreate(r.id, r.name, r.language),
+    onError: onError(opts),
+    onSettled: () => invalidateFree(qc),
+  });
+}
 export function useFreeServerStart(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({ mutationFn: commands.freeServerStart, onError: onError(opts), onSettled: () => invalidateFree(qc) });

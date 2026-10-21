@@ -35,6 +35,7 @@ export const MOCK_FREE_LIMITS: FreeLimits = {
   unusedDays: 30,
   warningDays: 7,
   createsPerWeek: 3,
+  pack: { maxBytes: 64 * 1024 ** 2 },
 };
 /** What a modpack that needs more than a free server's memory asks for. */
 const HEAVY_MEMORY_MB = 8192;

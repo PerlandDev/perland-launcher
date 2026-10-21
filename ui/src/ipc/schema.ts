@@ -145,6 +145,8 @@ export const freeLimits = z.strictObject({
   unusedDays: z.number().int(),
   warningDays: z.number().int(),
   createsPerWeek: z.number().int(),
+  /** Present only when the Engine takes a server made from the player's own instance ("Play this with friends"). */
+  pack: z.strictObject({ maxBytes: z.number() }).nullable(),
 });
 /** Whether the player may create a free server now. `reason` is the Engine's word (`email_required`, `free_server_exists`,
  *  `too_many_free_servers` with `retryAfter` seconds, `free_servers_full`, `host_full`, `free_servers_paused`, `free_server_blocked`)
@@ -311,6 +313,17 @@ export const sharePreview = z.strictObject({
   name: z.string(),
   fileName: z.string(),
   counts: categoryCount.array(),
+});
+
+/** What a free server made from an instance would hold, against the Engine's limits (`friends_check`). */
+export const friendsCheck = z.strictObject({
+  name: z.string(),
+  mods: z.number().int(),
+  serverMods: z.number().int(),
+  requiredMb: z.number().int(),
+  limitMb: z.number().int(),
+  notOnModrinth: z.string().array(),
+  settings: z.number().int(),
 });
 
 export const shareChoice = z.strictObject({
@@ -603,6 +616,7 @@ export type ImportPreview = z.infer<typeof importPreview>;
 export type ShareCategory = z.infer<typeof shareCategory>;
 export type CategoryCount = z.infer<typeof categoryCount>;
 export type SharePreview = z.infer<typeof sharePreview>;
+export type FriendsCheck = z.infer<typeof friendsCheck>;
 export type ShareChoice = z.infer<typeof shareChoice>;
 export type ImportRequest = z.infer<typeof importRequest>;
 export type OpenTarget = z.infer<typeof openTarget>;

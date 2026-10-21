@@ -8,9 +8,9 @@ pub mod session;
 
 pub use api::{
     CreateAllowance, CreateFreeServer, Deletion, DiscordAccount, Disk, EmailStarted, FreeLimits,
-    FreeServer, FreeServerState, LinkCode, MemoryLimits, MinecraftAccount, Player, PlayerClient,
-    PlayerConfig, PlayerStats, Relation, ServerStats, SignInMethod, StatsInvite, TokenAnswer,
-    YourServer,
+    FreeServer, FreeServerState, LinkCode, MemoryLimits, MinecraftAccount, PackLimits, Player,
+    PlayerClient, PlayerConfig, PlayerStats, Relation, ServerStats, SignInMethod, StatsInvite,
+    TokenAnswer, YourServer,
 };
 pub use loopback::{Callback, Language, Loopback};
 pub use panel::{manage_url, panel_url};

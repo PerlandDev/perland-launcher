@@ -10,7 +10,10 @@
       "sleepMinutes": 15,
       "unusedDays": 30,
       "warningDays": 7,
-      "createsPerWeek": 3
+      "createsPerWeek": 3,
+      "pack": {
+        "maxBytes": 67108864
+      }
     },
     "create": {
       "allowed": false,
@@ -70,7 +73,10 @@
       "sleepMinutes": 15,
       "unusedDays": 30,
       "warningDays": 7,
-      "createsPerWeek": 3
+      "createsPerWeek": 3,
+      "pack": {
+        "maxBytes": 67108864
+      }
     },
     "create": {
       "allowed": true,

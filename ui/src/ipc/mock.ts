@@ -22,6 +22,7 @@ import { handleFree, modrinthInstances, NOT_FREE, repeatsFreeServer, seedFree, t
 import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario } from './mockPerland';
 import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
 import type {
+  FriendsCheck,
   AccountsFile,
   ArtChoice,
   AppEvent,
@@ -89,6 +90,9 @@ export interface MockOptions {
   free?: FreeScenario;
   /** What Share… finds: `some` (default: two mods not on Modrinth), `all` (every mod on Modrinth) or `error` (Modrinth unreachable). */
   share?: 'some' | 'all' | 'error';
+  /** What Play this with friends finds: `ok` (default: every mod on Modrinth, fits), `missing` (two mods aren't on Modrinth) or
+   *  `heavy` (the mods need more memory than a free server has). */
+  friends?: 'ok' | 'missing' | 'heavy';
   /** What the save dialog returns; null means the player cancelled. Defaults to the suggested name in Downloads. */
   savePath?: string | null;
   /** The rail starts wide, with names. */
@@ -1194,6 +1198,31 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const left = files.filter((f) => f.fileName !== args.file);
       state.content.set(key, left);
       return clone(left);
+    }
+    case 'friends_check': {
+      const name = (find(args.id) ?? fail('disk', 'instance_not_found', 'gone')).name;
+      const heavy = state.options.friends === 'heavy';
+      return {
+        name,
+        mods: heavy ? 214 : 14,
+        serverMods: heavy ? 210 : 12,
+        requiredMb: heavy ? 7680 : 2560,
+        limitMb: 6144,
+        notOnModrinth: state.options.friends === 'missing' ? ['create-tweaks-1.2.jar', 'my-own-mod.jar'] : [],
+        settings: 52,
+      } satisfies FriendsCheck;
+    }
+    case 'friends_create': {
+      if (state.options.friends === 'missing') fail('pack', 'free_server_mods_not_on_modrinth', 'Free servers only run mods from Modrinth');
+      const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite }, []) as Instance;
+      return handleFree(
+        state.free,
+        state.perland.account,
+        state.listing,
+        'free_server_create',
+        { name: args.name, kind: 'vanilla', modrinthVersionId: null, language: args.language },
+        join,
+      );
     }
     case 'share_preview': {
       if (state.options.share === 'error') fail('network', 'host_unreachable', "Couldn't reach api.modrinth.com", { host: 'api.modrinth.com' });
