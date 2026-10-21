@@ -28,7 +28,7 @@ pub(super) enum Credential<'a> {
     None,
     /// `Authorization: Bearer <token>`
     Bearer(&'a str),
-    /// `X-User-Token: <jwt>`
+    /// `X-User-Token: Bearer <jwt>`
     UserToken(&'a str),
 }
 
@@ -50,7 +50,7 @@ fn authorize(
             value.set_sensitive(true);
             request.header(reqwest::header::AUTHORIZATION, value)
         }
-        Credential::UserToken(jwt) => request.header("X-User-Token", sensitive(jwt)),
+        Credential::UserToken(jwt) => request.header("X-User-Token", user_token(jwt)),
     })
 }
 
@@ -116,7 +116,7 @@ impl Wire {
     pub fn open_get(&self, path_and_query: &str, jwt: &str) -> reqwest::RequestBuilder {
         self.http
             .get(self.url(path_and_query))
-            .header("X-User-Token", sensitive(jwt))
+            .header("X-User-Token", user_token(jwt))
     }
 
     /// One request. Any status comes back as a `Reply`; only a request that got no answer, or
@@ -167,6 +167,12 @@ impl Wire {
 
 /// A header value that `Debug` and HTTP/2 compression treat as secret. An invalid value
 /// (control characters) becomes an empty one, which the Engine refuses.
+/// `X-User-Token` as the Engine reads it: the session JWT after `Bearer ` (a bare JWT is
+/// refused with 401).
+fn user_token(jwt: &str) -> HeaderValue {
+    sensitive(&format!("Bearer {jwt}"))
+}
+
 fn sensitive(token: &str) -> HeaderValue {
     let mut value = HeaderValue::from_str(token).unwrap_or_else(|_| HeaderValue::from_static(""));
     value.set_sensitive(true);

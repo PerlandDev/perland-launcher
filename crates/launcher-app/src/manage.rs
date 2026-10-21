@@ -1757,6 +1757,9 @@ mod tests {
             .with_writer(move || writer.clone())
             .finish();
         let _guard = tracing::subscriber::set_default(subscriber);
+        // Callsite interest is cached process-wide: a log line another test hit first, before
+        // this subscriber existed, stays cached as off. Recompute it now that this one is set.
+        tracing::callsite::rebuild_interest_cache();
 
         let (core, runner, host, _t) = core_with_panel("https://panel.example.com/");
         sign_in(&core);

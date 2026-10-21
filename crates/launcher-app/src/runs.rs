@@ -1656,12 +1656,26 @@ mod tests {
         let (core, runner, host, _t) = ready(true).await;
         core.play("alpha").await.unwrap();
         core.play("beta").await.unwrap();
+        // Both wait for the one permit; either may take it first.
         runner.open_gate(1);
-        host.wait_for("alpha", Running).await; // beta is still preparing or queued
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        let (running, waiting) = loop {
+            if host.states("alpha").contains(&Running) {
+                break ("alpha", "beta");
+            }
+            if host.states("beta").contains(&Running) {
+                break ("beta", "alpha");
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "neither run started"
+            );
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        };
         core.stop_all(Duration::from_secs(2)).await;
         assert!(!core.has_active_runs());
-        assert!(host.last_exit("alpha").unwrap().killed);
-        assert!(host.last_exit("beta").unwrap().cancelled);
+        assert!(host.last_exit(running).unwrap().killed);
+        assert!(host.last_exit(waiting).unwrap().cancelled);
     }
 
     /// A pack instance "Sky" (id `sky`) that synced 1.0.3 before, with `policy`.
