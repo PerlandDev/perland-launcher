@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { isLauncherError } from '../../ipc/errors';
 import type { ServerFacets } from '../../ipc/schema';
 import { useServersList, useUnfollow } from '../../state/queries';
+import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { ScreenFrame } from '../../ui/ScreenFrame';
@@ -21,7 +22,7 @@ const SKELETONS = 4;
 export function ServersScreen() {
   const { t } = useTranslation();
   return (
-    <ScreenFrame title={t('servers.title')} subtitle={t('servers.subtitle')} wide>
+    <ScreenFrame title={t('servers.title')} subtitle={t('servers.subtitle')} wide onBack={() => navigate({ name: 'home', id: null })}>
       <div className="grid gap-10">
         <YourServers />
         <PublicServers />

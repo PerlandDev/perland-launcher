@@ -10,6 +10,7 @@
     "rename": "Rename",
     "openFolder": "Open folder",
     "back": "Back",
+    "backTitle": "{{label}} (Alt+←)",
     "comingSoon": "Coming soon",
     "details": "Details",
     "hideDetails": "Hide details",
