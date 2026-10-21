@@ -29,6 +29,7 @@ use crate::{
     install::Installer,
     instances::{GameSpec, Instance, InstanceStore, SourceRef, UpdatePolicy},
     locks::InstanceLock,
+    restore,
     sources::{
         art, mrpack, no_pack, DesiredState, FileMode, FileSource, PackFile, PackInput,
         SourceConfig, Sources, UpdateCheck,
@@ -579,6 +580,59 @@ impl Syncer {
             .await
     }
 
+    /// A restore point for an update that is about to change files (spec §5.4). A sync that
+    /// resumes an interrupted one only adds to the point already there; a repair (same pack
+    /// version) restores the pack's own files and takes none.
+    async fn keep_restore_point(
+        &self,
+        store: &InstanceStore,
+        id: &str,
+        managed: &Managed,
+        desired: &DesiredState,
+        plan: &plan::Plan,
+        now: SystemTime,
+    ) {
+        // Nothing changes, or it is a repair of the pack's own files: no point.
+        if (plan.write.is_empty() && plan.trash.is_empty())
+            || managed.pack_version == desired.pack_version
+        {
+            return;
+        }
+        // Must run before `save_pack` replaces `pack.json`. Resumed: an earlier sync recorded
+        // another stamp than the one `managed.json` has and never finished its swap. No
+        // `pack.json` is not a resume.
+        let resumed = load_pack(&store.perland_dir(id))
+            .await
+            .is_some_and(|p| p.stamp != managed.stamp);
+        let change = restore::Change::PackUpdate {
+            from: managed.pack_version.clone(),
+            to: desired.pack_version.clone(),
+        };
+        let secs = now
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        if resumed {
+            restore::note_change(store, id, change, secs).await;
+            return;
+        }
+        let tops: Vec<String> = plan
+            .write
+            .iter()
+            .map(|p| p.file.path.as_str())
+            .chain(plan.trash.iter().map(String::as_str))
+            .chain(plan.case_aliases.iter().map(String::as_str))
+            .filter_map(restore::top_of)
+            .map(String::from)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let ctx = restore::ChangeCtx {
+            during_run: false,
+            now: secs,
+        };
+        restore::before_change(store, id, &tops, change, ctx).await;
+    }
+
     async fn sync_inner(
         &self,
         store: &InstanceStore,
@@ -722,6 +776,21 @@ impl Syncer {
         // version (whose leftovers would sit next to the new files as "additions").
         if cancel.is_cancelled() {
             return Err(sync_cancelled());
+        }
+        match &managed {
+            Some(m) => {
+                self.keep_restore_point(store, id, m, desired, &plan, now)
+                    .await
+            }
+            // A first sync (or linking an existing instance) takes no point, and an older one
+            // would undo only part of it.
+            None if !(plan.write.is_empty()
+                && plan.trash.is_empty()
+                && plan.case_aliases.is_empty()) =>
+            {
+                restore::discard(store, id).await
+            }
+            None => {}
         }
         save_pack(&perland, desired).await?;
         let trash_dir = apply::trash_folder(&perland, now);

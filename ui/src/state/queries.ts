@@ -34,6 +34,7 @@ export const qk = {
   contentFiles: (id: string, kind: ContentKind) => ['content', id, kind] as const,
   packStatus: (id: string) => ['pack', 'status', id] as const,
   packContents: (id: string) => ['pack', 'contents', id] as const,
+  restorePoint: (id: string) => ['restore', id] as const,
   instanceArt: (id: string) => ['instance', 'art', id] as const,
   instanceScreenshots: (id: string) => ['instance', 'screenshots', id] as const,
   instanceScreenshot: (id: string, name: string) => ['instance', 'screenshots', id, name] as const,
@@ -95,8 +96,20 @@ export const useModIcon = (id: string, file: string | null, version: number | un
   });
 export const useContentFiles = (id: string, kind: ContentKind) =>
   useQuery({ queryKey: qk.contentFiles(id, kind), queryFn: () => commands.contentList(id, kind) });
-export const usePackStatus = (id: string, enabled: boolean) =>
-  useQuery({ queryKey: qk.packStatus(id), queryFn: () => commands.packStatus(id), enabled, staleTime: TEN_MINUTES });
+export function usePackStatus(id: string, enabled: boolean) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: qk.packStatus(id),
+    queryFn: async () => {
+      const status = await commands.packStatus(id);
+      // The source caught up with the held version and the core lifted the hold: the cached instance still has it.
+      if (status.holdLifted) void qc.invalidateQueries({ queryKey: qk.instances });
+      return status;
+    },
+    enabled,
+    staleTime: TEN_MINUTES,
+  });
+}
 export const usePackContents = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packContents(id), queryFn: () => commands.packContents(id), enabled });
 export const useInstanceArt = (id: string) =>
@@ -598,7 +611,11 @@ export function useContentRemove(id: string, kind: ContentKind, opts: Opts = {})
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (file: string) => commands.contentRemove(id, kind, file),
-    onSuccess: (list) => qc.setQueryData(qk.contentFiles(id, kind), list),
+    onSuccess: (list) => {
+      qc.setQueryData(qk.contentFiles(id, kind), list);
+      // A removal takes or joins the restore point.
+      void qc.invalidateQueries({ queryKey: qk.restorePoint(id) });
+    },
     // A refused removal may still have changed the folder, so the list is asked for again.
     onError: (error) => {
       void qc.invalidateQueries({ queryKey: qk.contentFiles(id, kind) });
@@ -614,6 +631,11 @@ export function useModMutations(id: string, opts: Opts = {}) {
     // A pack instance's additions list follows the mods folder.
     void qc.invalidateQueries({ queryKey: qk.packContents(id) });
   };
+  // A removal takes or joins the restore point, so the menu's Go back changes.
+  const onRemoved = (list: Awaited<ReturnType<typeof commands.modsList>>) => {
+    onSuccess(list);
+    void qc.invalidateQueries({ queryKey: qk.restorePoint(id) });
+  };
   // A failed change may still have touched the folder (a partial add), so the list is asked for again.
   const failed = (error: unknown) => {
     void qc.invalidateQueries({ queryKey: qk.mods(id) });
@@ -627,6 +649,6 @@ export function useModMutations(id: string, opts: Opts = {}) {
       onError: failed,
     }),
     add: useMutation({ mutationFn: (paths: string[]) => commands.modsAdd(id, paths), onSuccess, onError: failed }),
-    remove: useMutation({ mutationFn: (file: string) => commands.modRemove(id, file), onSuccess, onError: failed }),
+    remove: useMutation({ mutationFn: (file: string) => commands.modRemove(id, file), onSuccess: onRemoved, onError: failed }),
   };
 }

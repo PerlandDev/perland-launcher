@@ -20,7 +20,8 @@
         "config/sodium-options.json"
       ]
     },
-    "checkError": null
+    "checkError": null,
+    "holdLifted": false
   },
   {
     "installedVersion": "1.0.3",
@@ -32,6 +33,7 @@
       "fix": "You can still play the version you have",
       "detail": null,
       "params": {}
-    }
+    },
+    "holdLifted": true
   }
 ]

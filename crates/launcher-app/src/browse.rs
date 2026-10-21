@@ -19,6 +19,7 @@ use launcher_core::{
     events::{Event, EventSink, TaskId},
     instances::{GameSpec, Instance, LoaderSpec},
     locks::InstanceLock,
+    restore::{self, Change, ChangeCtx},
     sync::lockfile::Managed,
     ErrorCode, LauncherError, Result,
 };
@@ -354,6 +355,26 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 return Err(refused);
             }
         };
+        if stored.instance.is_some() {
+            // The run holds the lock while its game is up: the install joins that run's point.
+            let during_run = _guard._lock.is_none();
+            for item in &stored.plan.items {
+                let tops: Vec<String> = item.kind.folder().map(String::from).into_iter().collect();
+                restore::before_change(
+                    &self.instances,
+                    &instance.id,
+                    &tops,
+                    Change::Installed {
+                        name: item.title.clone(),
+                    },
+                    ChangeCtx {
+                        during_run,
+                        now: crate::restore::now_secs(),
+                    },
+                )
+                .await;
+            }
+        }
         let managed = Managed::load(&self.instances.perland_dir(&instance.id)).await;
         let title = stored
             .plan
@@ -597,6 +618,31 @@ mod tests {
         assert!(core.installing.lock().unwrap().is_empty());
         // The instance lock was released: sync could take it now.
         InstanceLock::try_acquire(&core.instances.perland_dir(&instance.id)).unwrap();
+    }
+
+    #[tokio::test]
+    async fn browse_install_takes_point() {
+        use launcher_core::restore::{Change, PointKind};
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let instance = fabric(&core).await;
+        let mods = core.instances.game_dir(&instance.id).join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join("mine.jar"), b"jar").unwrap();
+        let view = core.browse_plan(into(&instance.id)).await.unwrap();
+        core.browse_install(&view.plan_id).await.unwrap();
+        let point = core.restore_point(&instance.id).await.unwrap().unwrap();
+        assert_eq!(point.kind, PointKind::BeforeChange);
+        assert_eq!(
+            point.changes,
+            vec![
+                Change::Installed {
+                    name: "Sodium".into()
+                },
+                Change::Installed {
+                    name: "Fabric API".into()
+                },
+            ]
+        );
     }
 
     #[tokio::test]

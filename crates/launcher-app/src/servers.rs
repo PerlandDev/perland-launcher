@@ -202,6 +202,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         instance.server = Some(ServerLink::from_view(&ev.view, &ev.engine, unix_now()));
         instance.update_policy = UpdatePolicy::Auto;
+        // A point of before this would put back files of another source.
+        launcher_core::restore::discard(&self.instances, id).await;
         self.instances.save(&instance).await?;
         Ok(instance)
     }
@@ -229,6 +231,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         instance.server = Some(ServerLink::from_view(&ev.view, &ev.engine, unix_now()));
         instance.update_policy = UpdatePolicy::Auto;
+        // A point of before this would put back files of another source.
+        launcher_core::restore::discard(&self.instances, id).await;
         self.instances.save(&instance).await?;
         Ok(instance)
     }
@@ -246,6 +250,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         // The records first: if the save below fails, the instance stays linked and its next
         // sync only writes them again.
         launcher_core::sync::forget_pack(&self.instances.perland_dir(id)).await?;
+        launcher_core::restore::discard(&self.instances, id).await;
         instance.source = SourceRef::None;
         instance.server = None;
         self.instances.save(&instance).await?;
@@ -587,6 +592,55 @@ mod tests {
         assert_eq!(instance_json(&core, &id), before);
         core.runs.lock().unwrap().clear();
         core.server_unlink(&id).await.unwrap();
+    }
+
+    async fn take_point(core: &crate::app::tests::TestCore, id: &str) {
+        let mods = core.instances.game_dir(id).join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join("mine.jar"), b"mine").unwrap();
+        launcher_core::restore::before_change(
+            &core.instances,
+            id,
+            &["mods".to_string()],
+            launcher_core::restore::Change::Installed {
+                name: "Mine".into(),
+            },
+            launcher_core::restore::ChangeCtx {
+                during_run: false,
+                now: 1_000,
+            },
+        )
+        .await;
+        assert!(launcher_core::restore::read(&core.instances, id, 1_000)
+            .await
+            .is_some());
+    }
+
+    async fn has_point(core: &crate::app::tests::TestCore, id: &str) -> bool {
+        launcher_core::restore::read(&core.instances, id, 1_000)
+            .await
+            .is_some()
+    }
+
+    /// The instance's source changes, so an older point would put back a contradictory state.
+    #[tokio::test]
+    async fn linking_relinking_and_unlinking_drop_the_restore_point() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        serve(&runner, &invite('B'), Ok(server_view("survival")));
+        let id = plain(&core).await.id;
+
+        take_point(&core, &id).await;
+        core.server_link(&id, &invite('A')).await.unwrap();
+        assert!(!has_point(&core, &id).await, "link");
+
+        take_point(&core, &id).await;
+        core.server_relink(&id, &invite('B')).await.unwrap();
+        assert!(!has_point(&core, &id).await, "relink");
+
+        take_point(&core, &id).await;
+        core.server_unlink(&id).await.unwrap();
+        assert!(!has_point(&core, &id).await, "unlink");
     }
 
     async fn plain(core: &crate::app::tests::TestCore) -> launcher_core::instances::Instance {
