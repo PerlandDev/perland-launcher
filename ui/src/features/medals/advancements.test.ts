@@ -52,7 +52,8 @@ describe('advancementName', () => {
 describe('groupOf and isKnown', () => {
   it('sorts IDs into tabs, mods and other', () => {
     expect(groupOf('minecraft:nether/find_fortress')).toBe('nether');
-    expect(groupOf('create:root')).toBe('create');
+    expect(groupOf('create:root')).toBe('mod:create');
+    expect(groupOf('end:root')).toBe('mod:end');
     expect(groupOf('minecraft:recipes/misc/x')).toBe('other');
     expect(groupOf('minecraft:story')).toBe('other');
     expect(groupOf(':x')).toBe('other');
@@ -63,7 +64,8 @@ describe('groupOf and isKnown', () => {
 
   it('names groups', () => {
     expect(groupName('end', tEn)).toBe('The End');
-    expect(groupName('create', tEn)).toBe('create');
+    expect(groupName('mod:create', tEn)).toBe('create');
+    expect(groupName('mod:other', tEn)).toBe('other');
     expect(groupName('other', tEs)).toBe('Otros');
   });
 });
@@ -79,13 +81,19 @@ describe('groupAchievements', () => {
       'minecraft:story/mine_stone',
       'weird',
     ]);
-    expect(groups.map((g) => g.group)).toEqual(['story', 'end', 'create', 'zeta', 'other']);
+    expect(groups.map((g) => g.group)).toEqual(['story', 'end', 'mod:create', 'mod:zeta', 'other']);
     const story = groups[0]!;
     expect(story.earned).toEqual(['minecraft:story/root', 'minecraft:story/mine_stone']);
     expect(story.total).toBe(VANILLA.story.length);
     expect(story.locked).toHaveLength(VANILLA.story.length - 2);
     expect(story.locked).not.toContain('minecraft:story/root');
-    expect(groups[2]).toEqual({ group: 'create', earned: ['create:root'], locked: [], total: null });
+    expect(groups[2]).toEqual({ group: 'mod:create', earned: ['create:root'], locked: [], total: null });
+  });
+
+  it('keeps a mod named like a vanilla tab apart from it', () => {
+    const groups = groupAchievements(['end:root', 'minecraft:end/root']);
+    expect(groups.map((g) => g.group)).toEqual(['end', 'mod:end']);
+    expect(groups[0]!.earned).toEqual(['minecraft:end/root']);
   });
 
   it('keeps a newer version’s extra advancement under its tab, earned', () => {

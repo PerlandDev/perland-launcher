@@ -27,7 +27,7 @@ export function AchievementsDialog({ server, open, onClose }: { server: ServerSt
         <span className="text-ink-dim"> · {t('achievements.serverKeeps')}</span>
       </p>
       {/* Only the list scrolls, so Close stays in view; it takes focus first, at the top. */}
-      <section className="achievements-list" tabIndex={0} aria-label={t('achievements.title', { server: server.name })}>
+      <section className="achievements-list" tabIndex={0} aria-label={t('achievements.listLabel')}>
         {groups.map((group) => {
           const heading = groupName(group.group, t);
           return (

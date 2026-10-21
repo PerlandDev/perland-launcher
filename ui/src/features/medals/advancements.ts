@@ -44,7 +44,10 @@ function parse(id: string): { namespace: string; path: string } | null {
   return { namespace: id.slice(0, at), path: id.slice(at + 1) };
 }
 
-/** Where an ID is listed: a vanilla tab, or its mod's namespace (`create`); `other` when it isn't an ID. */
+/** A mod's group: its namespace behind a prefix, so a mod called `end` or `other` never joins a vanilla group. */
+const MOD = 'mod:';
+
+/** Where an ID is listed: a vanilla tab, or `mod:` and its mod's namespace (`mod:create`); `other` when it isn't an ID. */
 export function groupOf(id: string): Tab | string {
   const parts = parse(id);
   if (!parts) return 'other';
@@ -53,7 +56,7 @@ export function groupOf(id: string): Tab | string {
     if ((TABS as readonly string[]).includes(tab) && parts.path.includes('/')) return tab;
     return 'other';
   }
-  return parts.namespace;
+  return MOD + parts.namespace;
 }
 
 /** Whether `id` is in the vanilla table, so it has a translated name. */
@@ -82,8 +85,8 @@ export function advancementName(id: string, t: TFunction): string {
 
 /** A group's heading: a vanilla tab's name, or a mod's namespace as it is ("create"). */
 export function groupName(group: string, t: TFunction): string {
-  if ((TABS as readonly string[]).includes(group)) return t(`achievements.tabs.${group}`);
-  if (group === 'other') return t('achievements.tabs.other');
+  if (group.startsWith(MOD)) return group.slice(MOD.length);
+  if ((TABS as readonly string[]).includes(group) || group === 'other') return t(`achievements.tabs.${group}`);
   return group;
 }
 

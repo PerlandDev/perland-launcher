@@ -21,7 +21,7 @@ describe('AchievementsDialog', () => {
     const dialog = screen.getByRole('dialog', { name: 'Achievements on Asalith' });
     expect(dialog).toHaveTextContent('3 achievements');
     const regions = within(dialog).getAllByRole('region').map((r) => r.getAttribute('aria-label'));
-    expect(regions).toEqual(['Achievements on Asalith', 'Minecraft', 'create']);
+    expect(regions).toEqual(['List of achievements', 'Minecraft', 'create']);
     const story = within(dialog).getByRole('region', { name: 'Minecraft' });
     expect(story).toHaveTextContent('2 of 16');
     expect(within(story).getByText('Diamonds!').closest('li')).toHaveTextContent('Earned:');

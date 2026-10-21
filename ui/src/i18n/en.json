@@ -987,6 +987,7 @@
   },
   "achievements": {
     "title": "Achievements on {{server}}",
+    "listLabel": "List of achievements",
     "open": "See your achievements on {{server}}",
     "count": "{{earned}} of {{total}}",
     "notYet": "Not yet",

@@ -933,7 +933,7 @@
     "locked": "Bloqueada",
     "earned": "Conseguida",
     "progress": "{{value}} de {{goal}}",
-    "next": "Siguiente: {{tier}} con {{goal}}",
+    "next": "Siguiente: {{tier}} al llegar a {{goal}}",
     "top": "Nivel máximo",
     "linkToEarn": "Vincula tu cuenta de Minecraft para ganar las medallas de servidor.",
     "earnedCount": "{{earned}} de {{total}} conseguidas",
@@ -942,7 +942,7 @@
       "goal": "Juega {{goal}} en esta computadora"
     },
     "regular": {
-      "name": "Habitual del servidor",
+      "name": "Fiel al servidor",
       "goal": "Juega {{goal}} en un servidor de Perland"
     },
     "achiever": {
@@ -957,7 +957,7 @@
     },
     "diamonds": {
       "name": "¡Diamantes!",
-      "goal": "Pica un diamante"
+      "goal": "Mina un diamante"
     },
     "nether": {
       "name": "Al Nether",
@@ -987,6 +987,7 @@
   },
   "achievements": {
     "title": "Logros en {{server}}",
+    "listLabel": "Lista de logros",
     "open": "Ver tus logros en {{server}}",
     "count": "{{earned}} de {{total}}",
     "notYet": "Todavía no",
@@ -1009,7 +1010,7 @@
       "upgrade_tools": "Mejores herramientas",
       "smelt_iron": "A fundir hierro",
       "obtain_armor": "A vestirse",
-      "lava_bucket": "Cosa caliente",
+      "lava_bucket": "¡Qué calor!",
       "iron_tools": "Pico de hierro",
       "deflect_arrow": "Hoy no, gracias",
       "form_obsidian": "Reto del balde de hielo",
@@ -1039,7 +1040,7 @@
       "obtain_blaze_rod": "Al fuego",
       "charge_respawn_anchor": "No tan \"siete\" vidas",
       "ride_strider_in_overworld_lava": "Como en casa",
-      "explore_nether": "Destinos turísticos calientes",
+      "explore_nether": "Destinos turísticos ardientes",
       "summon_wither": "Cumbres marchitas",
       "brew_potion": "Pociones caseras",
       "create_beacon": "Un faro para casa",
@@ -1048,7 +1049,7 @@
       "all_effects": "¿Cómo llegamos aquí?"
     },
     "end": {
-      "root": "El Fin",
+      "root": "El End",
       "kill_dragon": "Libera el End",
       "dragon_egg": "La siguiente generación",
       "enter_end_gateway": "Escapada remota",
@@ -1065,7 +1066,7 @@
       "kill_a_mob": "Cazador de monstruos",
       "read_power_of_chiseled_bookshelf": "El poder de los libros",
       "trade": "¡Qué buen trato!",
-      "trim_with_any_armor_pattern": "Un look nuevo",
+      "trim_with_any_armor_pattern": "Un nuevo estilo",
       "honey_block_slide": "Situación pegajosa",
       "ol_betsy": "La vieja Betsy",
       "lightning_rod_with_villager_no_fire": "Protector de descargas",
@@ -1097,7 +1098,7 @@
     },
     "husbandry": {
       "root": "Granja",
-      "safely_harvest_honey": "Abeja bienvenida",
+      "safely_harvest_honey": "Miel sin picaduras",
       "breed_an_animal": "Los loros y los murciélagos",
       "allay_deliver_item_to_player": "Yo soy tu amigo fiel",
       "ride_a_boat_with_a_goat": "¡Lo que haga flotar a tu cabra!",
