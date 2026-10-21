@@ -89,12 +89,36 @@ pub fn decide(
 
 /// The server in the game's `Connecting to <host>, <port>` line, plain or inside a log4j XML
 /// event. The host and port pass the same check as every address that reaches the game.
+///
+/// Only the game's own message counts: the text must open the message (see [`message`]). Chat is
+/// logged as `[CHAT] <name> …`, so another player typing "Connecting to …" never moves Continue.
 pub fn connect_line(line: &str) -> Option<ServerAddress> {
-    const MARK: &str = "Connecting to ";
-    let rest = &line[line.rfind(MARK)? + MARK.len()..];
+    let rest = message(line)?.strip_prefix("Connecting to ")?;
     let rest = rest.split("]]>").next().unwrap_or(rest);
     let (host, port) = rest.trim().rsplit_once(", ")?;
     ServerAddress::new(host.trim(), port.trim().parse().ok()?)
+}
+
+/// The message part of an INFO line: after `<![CDATA[` in Mojang's XML layout, else after the
+/// level in the plain layouts: vanilla `[t] [thread/INFO]: msg`, Forge `[t] [thread/INFO]
+/// [logger]: msg` and Fabric `[t] [thread/INFO] (logger) msg`.
+fn message(line: &str) -> Option<&str> {
+    const CDATA: &str = "<![CDATA[";
+    const LEVEL: &str = "/INFO]";
+    if let Some(i) = line.find(CDATA) {
+        return Some(&line[i + CDATA.len()..]);
+    }
+    let after = &line[line.find(LEVEL)? + LEVEL.len()..];
+    if let Some(message) = after.strip_prefix(": ") {
+        return Some(message);
+    }
+    let logger = after.strip_prefix(' ')?;
+    let close = match logger.chars().next()? {
+        '[' => "]: ",
+        '(' => ") ",
+        _ => return None,
+    };
+    Some(&logger[logger.find(close)? + close.len()..])
 }
 
 /// A LAN or local address (loopback, private, link-local, unique-local). A LAN world gets a new
@@ -130,7 +154,7 @@ pub fn opens_worlds(minecraft: &str) -> bool {
     let mut parts = base.split('.').map(|p| p.parse::<u32>().ok());
     match (parts.next().flatten(), parts.next().flatten()) {
         (Some(1), Some(minor)) => minor >= 20,
-        (Some(major), _) => major >= 25,
+        (Some(major), _) => major >= 26,
         _ => false,
     }
 }
@@ -144,12 +168,15 @@ fn snapshot(id: &str) -> Option<(u32, u32)> {
     Some((year.parse().ok()?, rest[..2].parse().ok()?))
 }
 
-/// One plain folder name: no separators, not `.` or `..`. A record never steps outside `saves/`.
+/// One plain folder name: no separators or drive prefix (`C:x`), not `.` or `..`, so a record
+/// never steps outside `saves/`; and no leading `-`, which the game would read as an option.
+/// Minecraft never names a world folder with `:` itself.
 pub fn safe_folder(folder: &str) -> bool {
     !folder.is_empty()
         && folder != "."
         && folder != ".."
-        && !folder.contains(['/', '\\', '\0'])
+        && !folder.starts_with('-')
+        && !folder.contains(['/', '\\', ':', '\0'])
         && folder.trim() == folder
 }
 
@@ -296,12 +323,41 @@ mod tests {
     }
 
     #[test]
+    fn connect_line_reads_forge_layouts() {
+        let line =
+            "[12:00:01] [Render thread/INFO] [minecraft/ConnectScreen]: Connecting to a.b, 25565";
+        assert_eq!(connect_line(line), Some(addr("a.b", 25565)));
+    }
+
+    #[test]
+    fn connect_line_reads_fabric_layouts() {
+        let line = "[12:00:01] [Render thread/INFO] (Minecraft) Connecting to a.b, 25566";
+        assert_eq!(connect_line(line), Some(addr("a.b", 25566)));
+    }
+
+    #[test]
+    fn chat_never_counts_as_a_connect() {
+        for line in [
+            "[12:00:09] [Render thread/INFO]: [CHAT] <Bob> Connecting to rival.net, 25565",
+            "[12:00:09] [Render thread/INFO]: [CHAT] <Bob> ]: Connecting to rival.net, 25565",
+            "<log4j:Message><![CDATA[[CHAT] <Bob> Connecting to rival.net, 25565]]></log4j:Message>",
+            "[12:00:09] [Worker/INFO]: Loaded 3 servers. Connecting to the store",
+            "[12:00:09] [Render thread/INFO] [minecraft/ChatComponent]: [CHAT] <Bob> ]: Connecting to rival.net, 25565",
+            "[12:00:09] [Render thread/INFO] (Minecraft) [CHAT] <Bob> Connecting to rival.net, 25565",
+            "[12:00:09] [Render thread/WARN]: Connecting to rival.net, 25565",
+        ] {
+            assert_eq!(connect_line(line), None, "{line}");
+        }
+    }
+
+    #[test]
     fn connect_line_ignores_others() {
         for line in [
-            "Connecting to",
-            "Connecting to bad host, 1",
-            "Connecting to a.b, 0",
-            "Connecting to a.b, 70000",
+            "[Render thread/INFO]: Connecting to",
+            "[Render thread/INFO]: Connecting to bad host, 1",
+            "[Render thread/INFO]: Connecting to a.b, 0",
+            "[Render thread/INFO]: Connecting to a.b, 70000",
+            "Connecting to a.b, 25565",
             "[INFO]: Loaded 7 recipes",
         ] {
             assert_eq!(connect_line(line), None, "{line}");
@@ -319,6 +375,7 @@ mod tests {
             "23w14a",
             "24w01a",
             "26.1",
+            "26.3",
         ] {
             assert!(opens_worlds(yes), "{yes}");
         }
@@ -331,6 +388,7 @@ mod tests {
             "rd-132211",
             "",
             "fabric",
+            "25.4",
         ] {
             assert!(!opens_worlds(no), "{no}");
         }
@@ -338,7 +396,17 @@ mod tests {
 
     #[test]
     fn unsafe_world_folders_never_show() {
-        for bad in ["", ".", "..", "../escape", "a/b", "a\\b", " padded"] {
+        for bad in [
+            "",
+            ".",
+            "..",
+            "../escape",
+            "a/b",
+            "a\\b",
+            " padded",
+            "C:foo",
+            "-world",
+        ] {
             assert!(!safe_folder(bad), "{bad:?}");
         }
         assert!(safe_folder("Mundo de Ana"));

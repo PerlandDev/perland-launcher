@@ -703,6 +703,8 @@ describe('Continue', () => {
   it('is unavailable without an account, like Play', async () => {
     const { backend } = renderApp(<Home id="asalith-fields" />);
     backend.state.accounts.active = null;
-    expect(await screen.findByRole('button', { name: 'Continue: Asalith Fields' })).toBeDisabled();
+    const key = await screen.findByRole('button', { name: 'Continue: Asalith Fields' });
+    expect(key).toBeDisabled();
+    expect(key).toHaveAttribute('title', 'Add an account to play');
   });
 });

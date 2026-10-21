@@ -429,6 +429,8 @@ function addPlaytime(state: MockState, id: string, run: MockRun) {
   const seconds = Math.floor((Date.now() - run.startedAt) / 1000);
   state.playtime.set(id, (state.playtime.get(id) ?? 0) + seconds);
   state.lastPlayed.set(id, Math.floor(Date.now() / 1000));
+  // The core remembers where a game was; a mock game that never said so leaves a world to continue in.
+  if (!state.continueTargets.has(id)) state.continueTargets.set(id, { kind: 'world', name: 'New World' });
 }
 
 function event(e: AppEvent) {

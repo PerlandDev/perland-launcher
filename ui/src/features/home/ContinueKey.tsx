@@ -27,7 +27,8 @@ export function ContinueKey({
       icon={target.kind === 'world' ? <WorldIcon /> : <Server />}
       disabled={disabled}
       aria-label={label}
-      title={label}
+      // Unavailable says why, the way Play does; otherwise the full name a long one may have cut.
+      title={disabled ? t('play.noAccount') : label}
       onClick={() => once((done) => void commands.playContinue(id).catch(pushError).finally(done))}
     >
       {/* The verb stays whole and the name gives way: a long world name ends in an ellipsis, never the verb. */}

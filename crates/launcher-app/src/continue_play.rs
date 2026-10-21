@@ -102,8 +102,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     .filter(|_| matches!(instance.source, SourceRef::Perland { .. }));
                 let is_own = own || link.is_some_and(|l| l.address.as_ref() == Some(&address));
                 if is_own {
-                    // The server may have moved: Play and join follows it. Gone hides it.
-                    let link = link.filter(|l| !l.gone)?;
+                    // The server may have moved: Play and join follows it. Gone hides it, and so
+                    // does an unknown address, which would open the title screen.
+                    let link = link.filter(|l| !l.gone && l.address.is_some())?;
                     let name = match link.name.trim() {
                         "" => instance.name.clone(),
                         name => name.to_string(),
