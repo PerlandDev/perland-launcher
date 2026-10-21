@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { FreeServerCard as FreeServer, PublicServerCard as Card } from '../../ipc/schema';
 import { Trash } from '../../ui/Icon';
 import { PublicServerCard } from '../servers-list/PublicServerCard';
-import { useManageItem } from '../servers-list/yours';
+import { useManageItem, useManageKey } from '../servers-list/yours';
 import { DeleteServerDialog } from './DeleteServerDialog';
 import { usePlayFreeServer } from './usePlayFreeServer';
 
@@ -13,12 +13,14 @@ const LIST_STATUSES: readonly string[] = ['online', 'starting', 'sleeping', 'off
 const UNPLAYABLE: readonly string[] = ['creating', 'deleting', 'stopped'];
 
 /** The player's own free server, first in Your servers: the public card tagged Owner, with its warning lines, its own status
- *  words while it is created or deleted, Play through `free_server_play`, and Manage in Perland (with a panel) and Delete server in its menu. */
+ *  words while it is created or deleted, Play through `free_server_play`, Manage beside Play when the launcher can run it (else
+ *  Manage in Perland in its menu, with a panel), and Delete server in its menu. */
 export function FreeServerCard({ server, onDeleting }: { server: FreeServer; onDeleting?: (going: boolean) => void }) {
   const { t, i18n } = useTranslation();
   const [deleting, setDeleting] = useState(false);
   const play = usePlayFreeServer();
   const manage = useManageItem();
+  const manageKey = useManageKey();
   const busy = server.freeStatus === 'creating' || server.freeStatus === 'deleting';
   const unplayable = UNPLAYABLE.includes(server.freeStatus) || server.disk.over;
   // The card takes its pill, Play and address from the Engine's own word. A word the app doesn't know keeps the card's status.
@@ -38,8 +40,10 @@ export function FreeServerCard({ server, onDeleting }: { server: FreeServer; onD
         notes={notes(t, i18n.language, server)}
         statusWord={statusWord(t, server.freeStatus)}
         onPlay={play.run}
+        primary={manageKey(server.manage)}
         menuItems={[
-          ...manage(server.name),
+          // With Manage on the card, More in Perland is on the Manage screen.
+          ...(server.manage ? [] : manage(server.name)),
           { label: t('freeServer.delete.action'), icon: <Trash />, danger: true, disabled: busy, onSelect: () => setDeleting(true) },
         ]}
       />

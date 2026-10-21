@@ -3,8 +3,9 @@ import { createElement, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import { inviteCanonical } from '../../ipc/inviteLink';
-import type { Instance, YourServerCard } from '../../ipc/schema';
+import type { Instance, ManageRef, YourServerCard } from '../../ipc/schema';
 import { qk, useAppInfo, usePerlandStatus, useYourServers } from '../../state/queries';
+import { navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { ExternalLink } from '../../ui/Icon';
 import type { MenuItem } from '../../ui/Menu';
@@ -28,7 +29,7 @@ export function useYours() {
   useEffect(() => {
     if (nullWhileSignedIn) void qc.invalidateQueries({ queryKey: qk.perland });
   }, [nullWhileSignedIn, qc]);
-  return { status, servers: signedIn ? list.data?.servers : undefined };
+  return { status, servers: signedIn ? list.data?.servers : undefined, managed: signedIn ? list.data?.managed : undefined };
 }
 
 /** The invite of each followed server by token, so the public list can give the same card Unfollow. */
@@ -37,6 +38,13 @@ export function useFollowed(): Map<string, string> {
   const followed = new Map<string, string>();
   for (const s of (signedIn ? list.data?.servers : undefined) ?? []) if (s.relation === 'followed' && s.invite) followed.set(s.token, s.invite);
   return followed;
+}
+
+/** The card's Manage key for a server the player runs from the launcher: it opens the Manage screen. Undefined without a
+ *  `manage` reference, so the card keeps Play as its only key. */
+export function useManageKey(): (manage: ManageRef | null) => { label: string; onSelect(): void } | undefined {
+  const { t } = useTranslation();
+  return (manage) => (manage ? { label: t('servers.yours.manageHere'), onSelect: () => navigate({ name: 'manage', ...manage }) } : undefined);
 }
 
 /** Manage in Perland for a server the player owns, by its stack name: the menu item that opens the panel's page for it in the

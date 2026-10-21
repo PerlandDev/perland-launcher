@@ -1,0 +1,12 @@
+[
+  {
+    "name": "Alex",
+    "status": "added",
+    "message": null
+  },
+  {
+    "name": "Nobody",
+    "status": "not_found",
+    "message": "No player has that name"
+  }
+]

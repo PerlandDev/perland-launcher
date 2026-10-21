@@ -1,6 +1,7 @@
 import { screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { inviteOf } from '../../ipc/mockServers';
+import type { YourServersPage } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
@@ -75,7 +76,8 @@ describe('YourServers', () => {
   });
 
   it('owned servers offer Manage in Perland', async () => {
-    const { user, calls } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has' });
+    // Nothing managed from the launcher here: with Manage, the card's own button replaces the menu item.
+    const { user, calls } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has', manage: 'none' });
     const section = await yours();
     await user.click(within(await cardIn(section, 'My world')).getByRole('button', { name: 'More for My world' }));
     await user.click(screen.getByRole('menuitem', { name: 'Manage in Perland' }));
@@ -91,7 +93,7 @@ describe('YourServers', () => {
   });
 
   it('no Manage in Perland without a panel', async () => {
-    const { user } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has', panel: false });
+    const { user } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has', panel: false, manage: 'none' });
     const section = await yours();
     expect(within(await cardIn(section, 'My world')).queryByRole('button', { name: /^More for/ })).toBeNull();
     await user.click(within(await cardIn(section, 'Weekend SMP')).getByRole('button', { name: 'More for Weekend SMP' }));
@@ -110,6 +112,70 @@ describe('YourServers', () => {
     await user.click(within(await cardIn(await yours(), 'My world')).getByRole('button', { name: 'More for My world' }));
     await user.click(screen.getByRole('menuitem', { name: 'Manage in Perland' }));
     await vi.waitFor(() => expect(toastsSnapshot()).toHaveLength(1));
+  });
+
+  it('a managed owner card shows Manage first and opens the screen', async () => {
+    const { user, backend } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has' });
+    // "My world" is run from the launcher too.
+    const handle = backend.handle;
+    vi.spyOn(backend, 'handle').mockImplementation(async (cmd, args) => {
+      const answer = await handle(cmd, args);
+      if (cmd !== 'your_servers' || answer === null) return answer;
+      const page = answer as YourServersPage;
+      return { ...page, servers: page.servers.map((s) => (s.name === 'My world' ? { ...s, manage: { tenantId: 'team-mine', stack: 'my-world' } } : s)) };
+    });
+    const section = await yours();
+    const mine = await cardIn(section, 'My world');
+    const keys = within(mine).getAllByRole('button').filter((b) => !b.getAttribute('aria-label')?.startsWith('More for'));
+    expect(keys.map((b) => b.textContent)).toEqual(['Manage', 'Play']);
+    // Its menu has nothing left: Manage in Perland lives on the Manage screen.
+    expect(within(mine).queryByRole('button', { name: 'More for My world' })).toBeNull();
+    // Order: the free server, the owner card with Manage, the managed-only server, then the rest.
+    const names = within(section)
+      .getAllByRole('listitem')
+      .map((li) => within(li).getByRole('heading', { level: 3 }).textContent);
+    expect(names.slice(0, 3)).toEqual(['Weekend SMP', 'My world', 'Team survival']);
+    await user.click(within(mine).getByRole('button', { name: 'Manage' }));
+    expect(routeSnapshot()).toEqual({ name: 'manage', tenantId: 'team-mine', stack: 'my-world' });
+  });
+
+  it('the free server card offers Manage and keeps Delete', async () => {
+    const { user } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has' });
+    const card = await cardIn(await yours(), 'Weekend SMP');
+    expect(within(card).getByRole('button', { name: 'Play' })).toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'More for Weekend SMP' }));
+    expect(screen.getByRole('menuitem', { name: 'Delete server' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Manage in Perland' })).toBeNull();
+    await user.keyboard('{Escape}');
+    await user.click(within(card).getByRole('button', { name: 'Manage' }));
+    expect(routeSnapshot()).toMatchObject({ name: 'manage', stack: 'Weekend SMP' });
+  });
+
+  it('an owner card without manage keeps Manage in Perland', async () => {
+    const { user } = renderApp(<ServersScreen />, { perland: 'signedIn' });
+    const mine = await cardIn(await yours(), 'My world');
+    expect(within(mine).queryByRole('button', { name: 'Manage' })).toBeNull();
+    await user.click(within(mine).getByRole('button', { name: 'More for My world' }));
+    expect(screen.getByRole('menuitem', { name: 'Manage in Perland' })).toBeInTheDocument();
+  });
+
+  it('managed-only servers show their own card', async () => {
+    const { user } = renderApp(<ServersScreen />, { perland: 'signedIn' });
+    const team = await cardIn(await yours(), 'Team survival');
+    expect(within(team).getByText('Running')).toBeInTheDocument();
+    expect(within(team).getByText('Builders')).toBeInTheDocument();
+    expect(within(team).getByText(/^Join from Minecraft: /)).toBeInTheDocument();
+    expect(within(team).getByRole('button', { name: 'Copy server address' })).toBeInTheDocument();
+    // No invite is known, so no Play.
+    expect(within(team).queryByRole('button', { name: 'Play' })).toBeNull();
+    await user.click(within(team).getByRole('button', { name: 'Manage' }));
+    expect(routeSnapshot()).toEqual({ name: 'manage', tenantId: 't-builders', stack: 'Team survival' });
+  });
+
+  it('managed-only servers stay when the list holds nothing else', async () => {
+    renderApp(<ServersScreen />, { perland: 'empty', free: 'off', manage: 'asleep' });
+    const team = await cardIn(await yours(), 'Team survival');
+    expect(within(team).getByText('Asleep · wakes when someone joins')).toBeInTheDocument();
   });
 
   it('unfollow_removes_the_card', async () => {
@@ -132,7 +198,7 @@ describe('YourServers', () => {
   });
 
   it('unfollowing the last card moves focus to Public servers', async () => {
-    const { user, backend } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'off' });
+    const { user, backend } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'off', manage: 'none' });
     backend.state.perland.servers = backend.state.perland.servers.filter((s) => s.name === 'Quiet Cove');
     const section = await yours();
     await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'More for Quiet Cove' }));

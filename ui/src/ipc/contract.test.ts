@@ -26,6 +26,14 @@ import linkCode from './contract/link_code.json';
 import listQueries from './contract/list_queries.json';
 import loaderVersions from './contract/loader_versions.json';
 import localMods from './contract/local_mods.json';
+import manageChangeResults from './contract/manage_change_results.json';
+import manageConsoleReply from './contract/manage_console_reply.json';
+import manageDetail from './contract/manage_detail.json';
+import manageDiagnosis from './contract/manage_diagnosis.json';
+import managePlayers from './contract/manage_players.json';
+import manageSaved from './contract/manage_saved.json';
+import manageSettings from './contract/manage_settings.json';
+import managedServers from './contract/managed_servers.json';
 import manualProgress from './contract/manual_progress.json';
 import mcVersions from './contract/mc_versions.json';
 import newInstance from './contract/new_instance.json';
@@ -97,6 +105,14 @@ const cases: [string, ZodType, unknown][] = [
   ['email_code_sent', s.emailCodeSent, emailCodeSent],
   ['your_servers_page', s.yourServersPage, yourServersPage],
   ['free_server_page', s.freeServerPage.array(), freeServerPage],
+  ['managed_servers', s.managedServer.array(), managedServers],
+  ['manage_detail', s.manageDetail.array(), manageDetail],
+  ['manage_diagnosis', s.manageDiagnosis.array(), manageDiagnosis],
+  ['manage_players', s.managePlayers, managePlayers],
+  ['manage_change_results', s.manageChangeResult.array(), manageChangeResults],
+  ['manage_settings', s.manageSettings, manageSettings],
+  ['manage_saved', s.manageSaved, manageSaved],
+  ['manage_console_reply', s.manageConsoleReply.array(), manageConsoleReply],
   ['deep_links', s.deepLink.array(), deepLinksFx],
   ['invite_links', s.inviteLinkCase.array(), inviteLinksFx],
   ['update_states', s.updateState.array(), updateStates],
@@ -120,6 +136,18 @@ describe('Rust contract fixtures', () => {
   it('lists error codes as snake_case strings', () => {
     expect(errorCodes.length).toBeGreaterThan(40);
     for (const code of errorCodes) expect(code).toMatch(/^[a-z0-9_]+$/);
+  });
+
+  it('reads every state word Rust sends, and a newer one as unknown', () => {
+    expect(manageDetail.map((d) => s.manageDetail.parse(d).state)).toEqual([
+      'running',
+      'asleep',
+      'starting',
+      'stopping',
+      'stopped',
+      'unknown',
+    ]);
+    expect(s.managedServer.parse({ ...managedServers[0], state: 'hibernating' }).state).toBe('unknown');
   });
 
   it('decodes every event and rejects junk', () => {

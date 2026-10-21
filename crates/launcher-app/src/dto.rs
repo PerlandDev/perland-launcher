@@ -1,5 +1,5 @@
 //! Shapes the commands take and return that aren't core types.
-use std::{fmt, path::PathBuf};
+use std::{collections::BTreeMap, fmt, path::PathBuf};
 
 use launcher_core::{
     accounts::BuildKind,
@@ -513,6 +513,9 @@ impl fmt::Debug for PublicServerCard {
 #[serde(rename_all = "camelCase")]
 pub struct YourServersPage {
     pub servers: Vec<YourServerCard>,
+    /// Servers the player owns or helps run that no card above (and not the free server's
+    /// own card) already shows. Empty when they can't be read.
+    pub managed: Vec<ManagedServer>,
 }
 
 /// A server of Your servers: the public list's card, whose `status` may also be `offline`,
@@ -526,6 +529,8 @@ pub struct YourServerCard {
     pub relation: String,
     /// Whether the player follows it (an owner or invitee can too).
     pub following: bool,
+    /// The server the player can manage this card as, when they can.
+    pub manage: Option<ManageRef>,
 }
 
 /// The player's free server (spec "Create a server for friends" §5 and §6.2): the limits every
@@ -564,6 +569,8 @@ pub struct FreeServerCard {
     pub invite_url: Option<String>,
     /// `perland://join?invite=…`, for friends who have the launcher.
     pub join_url: Option<String>,
+    /// The server in Manage, when the player's managed servers name it.
+    pub manage: Option<ManageRef>,
 }
 
 // Manual Debug: the invite URLs hold the invite's credential.
@@ -768,7 +775,7 @@ pub struct InstallResult {
 }
 
 /// The Perland account card: whether the Engine has player accounts on, the ways to sign in it
-/// offers (`discord`, `email`), and the signed-in player. Never carries the token.
+/// offers (`discord`, `email`, `github`), and the signed-in player. Never carries the token.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PerlandStatus {
@@ -861,6 +868,175 @@ pub struct EmailCodeSent {
 pub enum PerlandSignInPhase {
     Waiting,
     Exchanging,
+}
+
+/// A server a Manage call is about: its team and its name there.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageRef {
+    pub tenant_id: String,
+    pub stack: String,
+}
+
+/// A server the player owns or helps run, in Your servers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedServer {
+    pub tenant_id: String,
+    /// The team's display name.
+    pub team_name: String,
+    pub stack: String,
+    /// What the card shows: the server's name (today, `stack`).
+    pub name: String,
+    /// `running`, `asleep`, `starting`, `stopping`, `stopped` or `unknown`.
+    pub state: String,
+    /// What a player types to join, when the server has one.
+    pub address: Option<String>,
+    /// The player's own free server (the team is on the free plan).
+    pub free: bool,
+}
+
+/// One server in Manage: its state and who is on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageDetail {
+    pub tenant_id: String,
+    pub stack: String,
+    /// As `ManagedServer.state`.
+    pub state: String,
+    pub address: Option<String>,
+    /// Players on now and the most allowed; only while running, and when the server said.
+    pub online: Option<u32>,
+    pub max: Option<u32>,
+    pub players: Vec<String>,
+    /// Saved changes wait for a restart.
+    pub pending_restart: bool,
+    pub version: String,
+    /// When an idle server is stopped, if it is going to be.
+    pub stops_at: Option<String>,
+}
+
+/// Why a server's last run went wrong. The UI words it by `code` with `params`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageCause {
+    pub code: String,
+    /// The UI has words for this code.
+    pub known: bool,
+    /// The plugin or mod it is about.
+    pub subject: Option<String>,
+    pub params: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageDiagnosis {
+    /// The last run failed.
+    pub failed: bool,
+    /// The server ran out of memory.
+    pub oom_killed: bool,
+    pub cause: Option<ManageCause>,
+}
+
+/// A banned player and why, when the ban says.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageBan {
+    pub name: String,
+    pub reason: Option<String>,
+}
+
+/// A server's player lists.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagePlayers {
+    pub running: bool,
+    /// Who is on now; empty while the server isn't running.
+    pub online: Vec<String>,
+    pub whitelist: Vec<String>,
+    pub admins: Vec<String>,
+    pub bans: Vec<ManageBan>,
+    /// A list couldn't be read and shows empty.
+    pub unreadable: bool,
+}
+
+/// Names to add to a list or take off it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageListChange {
+    /// `whitelist`, `admins`, `bans` or `online` (only to remove: a kick).
+    pub list: String,
+    pub add: bool,
+    pub names: Vec<String>,
+}
+
+/// What a change did to one name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageChangeResult {
+    pub name: String,
+    pub status: String,
+    pub message: Option<String>,
+}
+
+/// The settings a player edits in Manage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageSettings {
+    pub revision: String,
+    pub motd: String,
+    /// The MOTD holds colour codes the launcher's editor would lose.
+    pub motd_read_only: bool,
+    pub mode: String,
+    pub difficulty: String,
+    pub max_players: Option<u32>,
+    pub pvp: bool,
+    pub enable_whitelist: bool,
+    pub version: String,
+    /// A modpack decides the version.
+    pub version_locked: bool,
+    pub pending_restart: bool,
+}
+
+/// A settings save from Manage.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageSettingsSave {
+    pub revision: String,
+    /// `None` leaves the MOTD as it is.
+    pub motd: Option<String>,
+    pub mode: String,
+    pub difficulty: String,
+    /// `None` takes the server's default.
+    pub max_players: Option<u32>,
+    pub pvp: bool,
+    pub enable_whitelist: bool,
+    /// `None` leaves the version as it is.
+    pub version: Option<String>,
+    /// `now` or `next_restart`.
+    pub apply: String,
+    #[serde(default)]
+    pub confirm_version_change: bool,
+    #[serde(default)]
+    pub acknowledge_data_loss: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageSaved {
+    pub settings: ManageSettings,
+    /// The running server was recreated with the changes.
+    pub restarted: bool,
+    /// The changes wait for the next start or restart.
+    pub pending: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageConsoleReply {
+    pub ok: bool,
+    /// The server's answer without colour codes.
+    pub output: String,
 }
 
 #[cfg(test)]

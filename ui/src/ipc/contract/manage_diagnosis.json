@@ -1,0 +1,29 @@
+[
+  {
+    "failed": true,
+    "oomKilled": true,
+    "cause": {
+      "code": "out_of_memory",
+      "known": true,
+      "subject": null,
+      "params": {}
+    }
+  },
+  {
+    "failed": true,
+    "oomKilled": false,
+    "cause": {
+      "code": "plugin_load_failed",
+      "known": true,
+      "subject": "EssentialsX",
+      "params": {
+        "minecraft": "1.21.1"
+      }
+    }
+  },
+  {
+    "failed": false,
+    "oomKilled": false,
+    "cause": null
+  }
+]

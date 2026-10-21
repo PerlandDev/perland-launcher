@@ -2,7 +2,18 @@
 // Only answers while the Perland mock is signed in. Fake tokens only.
 import { inviteCanonical } from './inviteLink';
 import { HOST, inviteOf, joinedInstance } from './mockServers';
-import type { CreateAllowance, FreeLimits, FreeServerCard, FreeServerPage, Instance, LauncherError, PerlandAccount, PublicServerCard, YourServerCard } from './schema';
+import type {
+  CreateAllowance,
+  FreeLimits,
+  FreeServerCard,
+  FreeServerPage,
+  Instance,
+  LauncherError,
+  ManageRef,
+  PerlandAccount,
+  PublicServerCard,
+  YourServerCard,
+} from './schema';
 
 /** `?free=`: `off` (the Engine has free servers off), `none` (the default, may create), `has` (a sleeping server), `warned`
  *  (it will be deleted soon, and the player was told), `overDisk` (stopped, out of space), `emailRequired`, `rateLimited`,
@@ -119,6 +130,8 @@ function cardOf(view: View): FreeServerCard {
     disk: { usedBytes: view.usedBytes, limitBytes: MOCK_FREE_LIMITS.diskBytes, checkedAt: new Date().toISOString(), over },
     inviteUrl: invite,
     joinUrl: invite === null ? null : `perland://join?invite=${encodeURIComponent(invite)}`,
+    // Set as it is answered: the Manage mock decides it.
+    manage: null,
   };
 }
 
@@ -189,13 +202,16 @@ export async function handleFree(
   cmd: string,
   args: Record<string, unknown>,
   join: (invite: string) => Instance,
+  /** The Manage reference the card carries (the Manage mock's), or null. */
+  manageOf: (card: FreeServerCard) => ManageRef | null = () => null,
 ): Promise<unknown> {
   if (!cmd.startsWith('free_server')) return NOT_FREE;
+  const answer = (card: FreeServerCard): FreeServerCard => ({ ...structuredClone(card), manage: manageOf(card) });
   const on = free.scenario !== 'off';
   // The page is null while signed out or off; the others need an account.
   if (cmd === 'free_server') {
     if (!on || !account) return null;
-    const server = free.server && { ...structuredClone(free.server), instance: joinedInstance(free.server, listing) };
+    const server = free.server && { ...answer(free.server), instance: joinedInstance(free.server, listing) };
     return { limits: MOCK_FREE_LIMITS, create: allowance(free), server } satisfies FreeServerPage;
   }
   if (!account) signedOut();
@@ -224,13 +240,14 @@ export async function handleFree(
       await wait(MOCK_FREE_CREATE_MS);
       if (!free.server) fail('network', 'free_server_exists', 'The server was deleted while it was created.');
       free.server = cardOf({ name, kind: kind as View['kind'], freeStatus: 'starting', invited: true, deletion: { deletesAt: inDays(30), warned: false }, usedBytes: 0 });
-      return structuredClone(free.server);
+      return answer(free.server);
     }
     case 'free_server_start': {
       const server = free.server ?? fail('network', 'invalid_free_server', "You don't have a free server.");
       if (server.disk.over) overDisk(server);
-      if (!['creating', 'deleting'].includes(server.freeStatus)) free.server = restate(server, 'starting');
-      return structuredClone(free.server);
+      const next = ['creating', 'deleting'].includes(server.freeStatus) ? server : restate(server, 'starting');
+      free.server = next;
+      return answer(next);
     }
     case 'free_server_delete':
       free.server = null;

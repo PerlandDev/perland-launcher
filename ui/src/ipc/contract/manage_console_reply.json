@@ -1,0 +1,10 @@
+[
+  {
+    "ok": true,
+    "output": "There are 1 of a max of 10 players online: Steve"
+  },
+  {
+    "ok": false,
+    "output": "Unknown command"
+  }
+]

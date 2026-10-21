@@ -326,5 +326,19 @@
       "detail": null,
       "params": {}
     }
+  },
+  {
+    "type": "server_log",
+    "tenantId": "t-1",
+    "stack": "my-world",
+    "lines": [
+      "[12:00:01] [Server thread/INFO]: Steve joined the game",
+      "[12:00:04] [Server thread/INFO]: <Steve> hello"
+    ]
+  },
+  {
+    "type": "server_log_ended",
+    "tenantId": "t-1",
+    "stack": "my-world"
   }
 ]

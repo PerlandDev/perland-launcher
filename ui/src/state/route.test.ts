@@ -15,3 +15,9 @@ it('remembers the last instance when storage works', () => {
   rememberInstance('pack');
   expect(lastInstance()).toBe('pack');
 });
+
+it('carries the server a manage route is about, and no instance', () => {
+  navigate({ name: 'manage', tenantId: 't-1', stack: 'Survival' });
+  expect(routeSnapshot()).toEqual({ name: 'manage', tenantId: 't-1', stack: 'Survival' });
+  expect(instanceOf(routeSnapshot())).toBeNull();
+});

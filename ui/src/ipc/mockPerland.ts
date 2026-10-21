@@ -2,7 +2,18 @@
 // Discord and email flows, and the player's Your servers set. Fake tokens and addresses only.
 import { inviteCanonical } from './inviteLink';
 import { inviteOf, joinedInstance, MOCK_INVITE, MOCK_PUBLIC_SERVERS } from './mockServers';
-import type { AppEvent, Instance, LauncherError, PerlandAccount, PerlandStats, PerlandStatus, PublicServerCard, YourServerCard, YourServersPage } from './schema';
+import type {
+  AppEvent,
+  Instance,
+  LauncherError,
+  ManagedServer,
+  PerlandAccount,
+  PerlandStats,
+  PerlandStatus,
+  PublicServerCard,
+  YourServerCard,
+  YourServersPage,
+} from './schema';
 
 /** `?perland=`: `off` closes accounts; `signedOut` (the default) offers Discord and email; `signedIn` has a player with
  *  one owner, one invited and two followed servers, not linked to Minecraft; `empty` is signed in with none; `emailOnly` offers
@@ -34,8 +45,10 @@ export interface MockPerland {
   attemptsLeft: number;
   /** Link polls answered since the last code. */
   linkPolls: number;
-  /** Ends the Discord step waiting in the browser, as the player's Cancel does. */
+  /** Ends the Discord (or GitHub) step waiting in the browser, as the player's Cancel does. */
   cancel: (() => void) | null;
+  /** A Perland panel is configured, so Sign in with GitHub is offered. */
+  github: boolean;
 }
 
 interface Listing {
@@ -76,18 +89,19 @@ const card = (letter: string, over: Partial<PublicServerCard>): PublicServerCard
 function seedServers(): YourServerCard[] {
   const shared = MOCK_PUBLIC_SERVERS.find((c) => c.token.startsWith(SHARED)) as PublicServerCard;
   return [
-    { ...card(OWNER, { name: 'My world', status: 'offline', address: 'play.example.com:25580' }), relation: 'owner', following: false },
+    { ...card(OWNER, { name: 'My world', status: 'offline', address: 'play.example.com:25580' }), relation: 'owner', following: false, manage: null },
     {
       ...card(INVITED, { name: 'Friends', whitelisted: true, players: { online: 2, max: 8 }, address: 'play.example.com:25581' }),
       relation: 'invited',
       following: true,
+      manage: null,
     },
-    { ...structuredClone(shared), relation: 'followed', following: true },
-    { ...card(QUIET, { name: 'Quiet Cove', status: 'sleeping', address: 'play.example.com:25582' }), relation: 'followed', following: true },
+    { ...structuredClone(shared), relation: 'followed', following: true, manage: null },
+    { ...card(QUIET, { name: 'Quiet Cove', status: 'sleeping', address: 'play.example.com:25582' }), relation: 'followed', following: true, manage: null },
   ];
 }
 
-export function seedPerland(scenario: PerlandScenario = 'signedOut'): MockPerland {
+export function seedPerland(scenario: PerlandScenario = 'signedOut', github = false): MockPerland {
   const signedIn = scenario === 'signedIn' || scenario === 'empty' || scenario === 'linked' || scenario === 'noAddon';
   return {
     scenario,
@@ -96,6 +110,7 @@ export function seedPerland(scenario: PerlandScenario = 'signedOut'): MockPerlan
     attemptsLeft: ATTEMPTS,
     linkPolls: 0,
     cancel: null,
+    github,
   };
 }
 
@@ -107,18 +122,19 @@ const closed = (): never => fail('network', 'player_accounts_closed', "Perland a
 /** What a call that needs a session answers without one, as the real backend does. */
 const signedOut = (): never => fail('auth', 'perland_signed_out', 'You were signed out of Perland.');
 
-const methodsOf = (scenario: PerlandScenario): string[] =>
-  scenario === 'off' ? [] : scenario === 'emailOnly' ? ['email'] : ['discord', 'email'];
+/** GitHub is offered (last) only with a Perland panel, as the app does. */
+const methodsOf = ({ scenario, github }: MockPerland): string[] =>
+  scenario === 'off' ? [] : scenario === 'emailOnly' ? ['email'] : github ? ['discord', 'email', 'github'] : ['discord', 'email'];
 
 export const NOT_PERLAND = Symbol('not a Perland command');
 
 const RELATIONS = ['owner', 'invited', 'followed'] as const;
 
 /** Your servers in the Engine's order (owner, invited, followed; each by name), with `instance` filled in like the public list does. */
-function page(perland: MockPerland, listing: Listing, hide: (card: YourServerCard) => boolean): YourServersPage {
+function page(perland: MockPerland, listing: Listing, hide: (card: YourServerCard) => boolean, managed: ManagedServer[]): YourServersPage {
   const rank = (c: YourServerCard) => RELATIONS.indexOf(c.relation);
   const servers = perland.servers.filter((c) => !hide(c)).sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
-  return { servers: servers.map((c) => ({ ...structuredClone(c), instance: joinedInstance(c, listing) })) };
+  return { servers: servers.map((c) => ({ ...structuredClone(c), instance: joinedInstance(c, listing) })), managed };
 }
 
 const story = (...names: string[]) => names.map((n) => `minecraft:story/${n}`);
@@ -187,15 +203,19 @@ export async function handlePerland(
   emit: (event: AppEvent) => void,
   /** Entries Your servers leaves out: the Engine's list repeats the player's free server, and the app shows it from its own view. */
   hide: (card: YourServerCard) => boolean = () => false,
+  /** The servers the player runs that no card shows (the Manage mock's). */
+  managed: () => ManagedServer[] = () => [],
 ): Promise<unknown> {
   const on = perland.scenario !== 'off';
   switch (cmd) {
     case 'perland_status':
-      return { enabled: on, methods: methodsOf(perland.scenario), account: on ? perland.account : null } satisfies PerlandStatus;
-    case 'perland_sign_in_discord': {
+      return { enabled: on, methods: methodsOf(perland), account: on ? perland.account : null } satisfies PerlandStatus;
+    case 'perland_sign_in_discord':
+    case 'perland_sign_in_github': {
       if (!on) closed();
-      if (!methodsOf(perland.scenario).includes('discord')) {
-        fail('network', 'sign_in_unavailable', "That way of signing in isn't available.", { method: 'discord' });
+      const method = cmd === 'perland_sign_in_github' ? 'github' : 'discord';
+      if (!methodsOf(perland).includes(method)) {
+        fail('network', 'sign_in_unavailable', "That way of signing in isn't available.", { method });
       }
       emit({ type: 'perland_sign_in', phase: 'waiting' });
       if (!(await wait(MOCK_DISCORD_WAIT_MS, perland))) return null;
@@ -210,7 +230,7 @@ export async function handlePerland(
       return null;
     case 'perland_email_start': {
       if (!on) closed();
-      if (!methodsOf(perland.scenario).includes('email')) fail('network', 'sign_in_unavailable', "That way of signing in isn't available.", { method: 'email' });
+      if (!methodsOf(perland).includes('email')) fail('network', 'sign_in_unavailable', "That way of signing in isn't available.", { method: 'email' });
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(args.email ?? '').trim())) fail('auth', 'invalid_email', 'Check the email address.');
       perland.attemptsLeft = ATTEMPTS;
       return { resendIn: RESEND_IN };
@@ -248,11 +268,11 @@ export async function handlePerland(
     case 'perland_stats':
       return on ? stats(perland, listing) : null;
     case 'your_servers':
-      return on && perland.account ? page(perland, listing, hide) : null;
+      return on && perland.account ? page(perland, listing, hide, managed()) : null;
     case 'your_servers_follow': {
       if (!on || !perland.account) return null;
       const known = publicCard(args.invite);
-      if (known && !find(perland, args.invite)) perland.servers.push({ ...structuredClone(known), relation: 'followed', following: true });
+      if (known && !find(perland, args.invite)) perland.servers.push({ ...structuredClone(known), relation: 'followed', following: true, manage: null });
       return null;
     }
     case 'your_servers_unfollow': {
@@ -265,7 +285,7 @@ export async function handlePerland(
     case 'your_servers_joined': {
       if (!on || !perland.account) return null;
       const known = publicCard(args.invite);
-      if (known && !find(perland, args.invite)) perland.servers.push({ ...structuredClone(known), relation: 'invited', following: true });
+      if (known && !find(perland, args.invite)) perland.servers.push({ ...structuredClone(known), relation: 'invited', following: true, manage: null });
       return null;
     }
     default:

@@ -4,6 +4,7 @@ import { applyContentProgress } from './contentProgress';
 import { applyImportProgress } from './importProgress';
 import { takeDeepLink } from './deepLink';
 import { isCrash } from './exit';
+import { manageLog } from './manageLog';
 import { qk, queryClient } from './queries';
 import { runStore } from './runStore';
 import { pushError } from './toasts';
@@ -22,6 +23,15 @@ export function handleEvent(event: AppEvent) {
   // So does an import from another launcher: it belongs to no instance yet.
   if (event.type === 'progress' && event.task.key === 'import_instance') {
     applyImportProgress(event);
+    return;
+  }
+  // The console being followed in Manage.
+  if (event.type === 'server_log') {
+    manageLog.push(event.tenantId, event.stack, event.lines);
+    return;
+  }
+  if (event.type === 'server_log_ended') {
+    manageLog.end(event.tenantId, event.stack);
     return;
   }
   runStore.apply(event);

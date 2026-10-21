@@ -10,14 +10,15 @@ use serde_json::{json, Value};
 
 use crate::{
     error::{ErrorCode, LauncherError, Result},
-    http::read_capped,
     invite::{
-        client::{host_of, host_trouble, rate_limited, request_failed, unexpected},
+        client::{host_of, host_trouble},
         view::modrinth_ref,
         InviteGame, InviteModrinth, InvitePlayers, InviteTiming,
     },
     public_list::PublicServer,
 };
+
+use super::wire::{failure, status_fallback, Credential, Reply, Wire};
 
 /// The longest answer read, in bytes.
 const BODY_CAP: usize = 64 << 10;
@@ -25,10 +26,8 @@ const BODY_CAP: usize = 64 << 10;
 const SERVERS_CAP: usize = 1 << 20;
 /// Per-server stats: 200 servers with up to 2000 advancement IDs each can pass 1 MiB.
 const STATS_CAP: usize = 4 << 20;
-/// The longest error body read, in bytes.
-const ERROR_CAP: usize = 4 << 10;
 /// Creating a free server: the Engine builds the stack while the request is open.
-const CREATE_TIMEOUT: Duration = Duration::from_secs(150);
+pub(super) const CREATE_TIMEOUT: Duration = Duration::from_secs(150);
 /// The Engine's own name for Modrinth, for a refusal that blames it.
 const MODRINTH_HOST: &str = "modrinth.com";
 
@@ -38,6 +37,9 @@ const MODRINTH_HOST: &str = "modrinth.com";
 pub enum SignInMethod {
     Discord,
     Email,
+    /// The panel's own sign-in page, for operators who manage servers. The Engine lists it
+    /// only when that path works for the launcher.
+    GitHub,
 }
 
 impl SignInMethod {
@@ -45,6 +47,7 @@ impl SignInMethod {
         match name {
             "discord" => Some(Self::Discord),
             "email" => Some(Self::Email),
+            "github" => Some(Self::GitHub),
             _ => None,
         }
     }
@@ -221,6 +224,25 @@ impl<'de> Deserialize<'de> for Relation {
     }
 }
 
+/// Where an owned server lives on the Engine: its team and its name there.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageRefCore {
+    pub tenant_id: String,
+    pub stack: String,
+}
+
+/// `manage`, or `None` when it is absent or not the shape the launcher knows: a newer or odd
+/// Engine must never drop the card.
+fn lenient_manage<'de, D: Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Option<ManageRefCore>, D::Error> {
+    let value = Option::<Value>::deserialize(d)?;
+    Ok(value
+        .and_then(|v| serde_json::from_value::<ManageRefCore>(v).ok())
+        .filter(|m| !m.tenant_id.trim().is_empty() && !m.stack.trim().is_empty()))
+}
+
 /// One entry of Your servers: the public list's card plus how the player relates to it.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -231,6 +253,9 @@ pub struct YourServer {
     pub relation: Relation,
     #[serde(default)]
     pub following: bool,
+    /// An owner entry of a server the player can manage (absent on older Engines).
+    #[serde(default, deserialize_with = "lenient_manage")]
+    pub manage: Option<ManageRefCore>,
 }
 
 /// The memory of each kind of free server, in MB.
@@ -359,25 +384,9 @@ struct DeletedData {
 }
 
 #[derive(Deserialize)]
-struct Envelope<T> {
-    data: Option<T>,
-}
-
-#[derive(Deserialize)]
 struct ServersData {
     #[serde(default)]
     servers: Vec<YourServer>,
-}
-
-/// What a failed request's error data says.
-struct Failure {
-    code: Option<String>,
-    data: Value,
-}
-
-struct Reply {
-    status: u16,
-    body: Vec<u8>,
 }
 
 /// Where a refusal comes from, for the few codes that mean different things by route.
@@ -386,14 +395,15 @@ enum Route {
     Plain,
     /// `POST /token`: the player typed no code, so a refused one is a failed sign-in.
     Token,
+    /// The email sign-in routes: no session yet, so a disabled account is said as such.
+    SignIn,
     /// Your servers: a 404 is an Engine that doesn't have them.
     Servers,
 }
 
 #[derive(Clone)]
 pub struct PlayerClient {
-    http: reqwest::Client,
-    engine: Url,
+    wire: Wire,
     timeout: std::time::Duration,
 }
 
@@ -401,7 +411,7 @@ pub struct PlayerClient {
 impl fmt::Debug for PlayerClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PlayerClient")
-            .field("engine", &host_of(&self.engine))
+            .field("engine", &host_of(self.wire.engine()))
             .finish_non_exhaustive()
     }
 }
@@ -410,26 +420,17 @@ impl PlayerClient {
     /// `engine` should come from `check_engine_url` (as `engine_for_site` gives it).
     pub fn new(http: reqwest::Client, engine: Url) -> Self {
         Self {
-            http,
-            engine,
+            wire: Wire::new(http, engine),
             timeout: InviteTiming::default().request_timeout,
         }
     }
 
     pub fn engine(&self) -> &Url {
-        &self.engine
+        self.wire.engine()
     }
 
     fn host(&self) -> String {
-        host_of(&self.engine)
-    }
-
-    fn route(&self, route: &str) -> Url {
-        Url::parse(&format!(
-            "{}/api/v1/player{route}",
-            self.engine.as_str().trim_end_matches('/')
-        ))
-        .expect("a checked Engine URL plus a fixed path is a URL")
+        self.wire.host()
     }
 
     /// `GET /config`. An Engine without accounts (404) or with them off (503) is
@@ -461,7 +462,7 @@ impl PlayerClient {
         let reply = self
             .send(Method::POST, "/email/start", None, Some(&body), BODY_CAP)
             .await?;
-        self.ok(&reply, Route::Plain)?;
+        self.ok(&reply, Route::SignIn)?;
         self.data(&reply)
     }
 
@@ -471,7 +472,7 @@ impl PlayerClient {
         let reply = self
             .send(Method::POST, "/email/verify", None, Some(&body), BODY_CAP)
             .await?;
-        self.ok(&reply, Route::Plain)?;
+        self.ok(&reply, Route::SignIn)?;
         self.data(&reply)
     }
 
@@ -525,9 +526,7 @@ impl PlayerClient {
         let reply = self
             .send(Method::GET, "/free-server", Some(token), None, BODY_CAP)
             .await?;
-        if reply.status == 404
-            || Self::failure(&reply).code.as_deref() == Some("free_servers_disabled")
-        {
+        if reply.status == 404 || failure(&reply).code.as_deref() == Some("free_servers_disabled") {
             return Ok(None);
         }
         self.ok(&reply, Route::Plain)?;
@@ -555,7 +554,7 @@ impl PlayerClient {
         // A reverse proxy that gives up on the long create answers its own 502 or 504, with
         // no Engine code. The Engine finishes the create anyway, so the answer is lost: the
         // dialog then waits for the server to show (spec §5 "Lost create answer").
-        if matches!(reply.status, 502 | 504) && Self::failure(&reply).code.is_none() {
+        if matches!(reply.status, 502 | 504) && failure(&reply).code.is_none() {
             return Err(answer_lost(&self.host(), reply.status));
         }
         self.ok(&reply, Route::Plain)?;
@@ -620,7 +619,7 @@ impl PlayerClient {
         match reply.status {
             404 => return Ok(None),
             503 => {
-                let failure = Self::failure(&reply);
+                let failure = failure(&reply);
                 if matches!(
                     failure.code.as_deref(),
                     Some("server_addon_disabled" | "player_accounts_disabled")
@@ -672,29 +671,17 @@ impl PlayerClient {
         body: Option<&Value>,
         cap: usize,
     ) -> Result<Reply> {
-        let host = self.host();
-        let mut request = self
-            .http
-            .request(method, self.route(route))
-            .timeout(timeout);
-        if let Some(token) = token {
-            request = request.bearer_auth(token);
-        }
-        if let Some(body) = body {
-            request = request.json(body);
-        }
-        let response = request.send().await.map_err(|e| request_failed(&host, e))?;
-        let status = response.status().as_u16();
-        let ok = response.status().is_success();
-        let read = read_capped(response, if ok { cap } else { ERROR_CAP }).await;
-        let body = match read {
-            Ok(Some(body)) => body,
-            Ok(None) if ok => return Err(unexpected(&host, "the answer is too large")),
-            Ok(None) => Vec::new(),
-            Err(e) if ok => return Err(request_failed(&host, e)),
-            Err(_) => Vec::new(),
-        };
-        Ok(Reply { status, body })
+        let credential = token.map_or(Credential::None, Credential::Bearer);
+        self.wire
+            .send(
+                timeout,
+                method,
+                &format!("/api/v1/player{route}"),
+                credential,
+                body,
+                cap,
+            )
+            .await
     }
 
     /// `Ok` for a success status, else the refusal.
@@ -706,28 +693,14 @@ impl PlayerClient {
         }
     }
 
-    /// The `data` of a success. The parser's own message can quote the body, so it is never
-    /// shown.
     fn data<T: DeserializeOwned>(&self, reply: &Reply) -> Result<T> {
-        serde_json::from_slice::<Envelope<T>>(&reply.body)
-            .ok()
-            .and_then(|e| e.data)
-            .ok_or_else(|| unexpected(&self.host(), "the answer isn't valid"))
-    }
-
-    fn failure(reply: &Reply) -> Failure {
-        let data = serde_json::from_slice::<Value>(&reply.body)
-            .ok()
-            .and_then(|mut v| v.get_mut("data").map(Value::take))
-            .unwrap_or(Value::Null);
-        let code = data.get("code").and_then(Value::as_str).map(str::to_string);
-        Failure { code, data }
+        self.wire.data(reply)
     }
 
     /// What a refused request means: the Engine's `data.code` first, then the status.
     fn refusal(&self, reply: &Reply, route: Route) -> LauncherError {
         let host = self.host();
-        let failure = Self::failure(reply);
+        let failure = failure(reply);
         let param = |name: &str| match failure.data.get(name) {
             Some(Value::Number(n)) => Some(n.to_string()),
             Some(Value::String(s)) => Some(s.clone()),
@@ -735,6 +708,12 @@ impl PlayerClient {
         };
         match failure.code.as_deref() {
             Some("player_accounts_disabled") => return accounts_closed(&host),
+            // Signing in to a disabled account: say so, there is no session to end.
+            Some("account_disabled") if matches!(route, Route::Token | Route::SignIn) => {
+                return account_disabled(&host)
+            }
+            // A disabled player user: the session is no use any more.
+            Some("account_disabled") => return signed_out(&host),
             Some("sign_in_method_unavailable") => {
                 return sign_in_unavailable(&host, param("method").as_deref())
             }
@@ -767,11 +746,8 @@ impl PlayerClient {
             _ => {}
         }
         match reply.status {
-            401 => signed_out(&host),
             404 if route == Route::Servers => servers_closed(&host),
-            429 => rate_limited(&host),
-            400 => unexpected(&host, "the request was refused"),
-            s => host_trouble(&host, s),
+            status => status_fallback(&host, status),
         }
     }
 }
@@ -785,7 +761,7 @@ fn answer_lost(host: &str, status: u16) -> LauncherError {
     .with_param("status", status.to_string())
 }
 
-fn accounts_closed(host: &str) -> LauncherError {
+pub(super) fn accounts_closed(host: &str) -> LauncherError {
     LauncherError::network(
         ErrorCode::PlayerAccountsClosed,
         "Perland accounts aren't open yet.",
@@ -843,7 +819,16 @@ fn email_unavailable(host: &str) -> LauncherError {
     .with_param("host", host)
 }
 
-fn signed_out(host: &str) -> LauncherError {
+fn account_disabled(host: &str) -> LauncherError {
+    LauncherError::auth(
+        ErrorCode::AccountDisabled,
+        "This Perland account is turned off.",
+    )
+    .with_fix("Contact Perland support.")
+    .with_param("host", host)
+}
+
+pub(super) fn signed_out(host: &str) -> LauncherError {
     LauncherError::auth(
         ErrorCode::PerlandSignedOut,
         "You were signed out of Perland.",
@@ -905,7 +890,7 @@ fn free_servers_full(host: &str) -> LauncherError {
 
 /// Perland's machine has no room for another server now. The Engine's `dimension` and `scope`
 /// are for the platform, not for players, so they are not kept.
-fn host_full(host: &str) -> LauncherError {
+pub(super) fn host_full(host: &str) -> LauncherError {
     LauncherError::network(
         ErrorCode::HostFull,
         "Perland is full right now. Try again in a few minutes.",
@@ -964,7 +949,11 @@ fn modpack_too_heavy(host: &str, required: Option<String>, limit: Option<String>
     e
 }
 
-fn free_server_over_disk(host: &str, used: Option<String>, limit: Option<String>) -> LauncherError {
+pub(super) fn free_server_over_disk(
+    host: &str,
+    used: Option<String>,
+    limit: Option<String>,
+) -> LauncherError {
     let mut e = LauncherError::network(
         ErrorCode::FreeServerOverDisk,
         "Your server is out of space, so it stays off.",

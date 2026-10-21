@@ -30,6 +30,7 @@ regex.workspace = true
 same-file = "1.0.6"
 
 [dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true
 wiremock.workspace = true
 

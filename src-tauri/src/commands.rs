@@ -6,9 +6,11 @@ use launcher_app::dto::{
     AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, ContinueTarget, EmailCodeSent,
     FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstallPlanView,
     InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
-    ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus,
-    PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage, RestorePointDto,
-    RunSnapshot, SearchRequest, ServerNews, ServerStatusView, YourServersPage,
+    ManageChangeResult, ManageConsoleReply, ManageDetail, ManageDiagnosis, ManageListChange,
+    ManagePlayers, ManageSaved, ManageSettings, ManageSettingsSave, ManagedServer, ManualProgress,
+    NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus, PerlandAccount,
+    PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage, RestorePointDto, RunSnapshot,
+    SearchRequest, ServerNews, ServerStatusView, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -571,6 +573,17 @@ pub async fn perland_sign_in_discord(
 }
 
 #[tauri::command]
+pub async fn perland_sign_in_github(
+    core: CoreState<'_>,
+    language: String,
+) -> Res<Option<PerlandAccount>> {
+    logged(
+        "perland_sign_in_github",
+        core.perland_sign_in_github(&language).await,
+    )
+}
+
+#[tauri::command]
 pub async fn perland_sign_in_reopen(core: CoreState<'_>) -> Res<()> {
     logged("perland_sign_in_reopen", core.perland_sign_in_reopen())
 }
@@ -696,6 +709,145 @@ pub async fn free_server_delete(core: CoreState<'_>) -> Res<bool> {
 #[tauri::command]
 pub async fn free_server_play(core: CoreState<'_>) -> Res<String> {
     logged("free_server_play", core.free_server_play().await)
+}
+
+#[tauri::command]
+pub async fn managed_servers(core: CoreState<'_>) -> Res<Vec<ManagedServer>> {
+    logged("managed_servers", core.managed_servers().await)
+}
+
+#[tauri::command]
+pub async fn manage_detail(
+    core: CoreState<'_>,
+    tenant_id: String,
+    stack: String,
+) -> Res<ManageDetail> {
+    logged(
+        "manage_detail",
+        core.manage_detail(&tenant_id, &stack).await,
+    )
+}
+
+#[tauri::command]
+pub async fn manage_action(
+    core: CoreState<'_>,
+    tenant_id: String,
+    stack: String,
+    action: String,
+) -> Res<()> {
+    logged(
+        "manage_action",
+        core.manage_action(&tenant_id, &stack, &action).await,
+    )
+}
+
+#[tauri::command]
+pub async fn manage_diagnosis(
+    core: CoreState<'_>,
+    tenant_id: String,
+    stack: String,
+) -> Res<ManageDiagnosis> {
+    logged(
+        "manage_diagnosis",
+        core.manage_diagnosis(&tenant_id, &stack).await,
+    )
+}
+
+#[tauri::command]
+pub async fn manage_players(
+    core: CoreState<'_>,
+    tenant_id: String,
+    stack: String,
+) -> Res<ManagePlayers> {
+    logged(
+        "manage_players",
+        core.manage_players(&tenant_id, &stack).await,
+    )
+}
+
+#[tauri::command]
+pub async fn manage_players_change(
+    core: CoreState<'_>,
+    tenant_id: String,
+    stack: String,
+    change: ManageListChange,
+) -> Res<Vec<ManageChangeResult>> {
+    logged(
+        "manage_players_change",
+        core.manage_players_change(&tenant_id, &stack, change).await,
+    )
+}
+
+#[tauri::command]
+pub async fn manage_settings(
+    core: CoreState<'_>,
+    tenant_id: String,
+    stack: String,
+) -> Res<ManageSettings> {
+    logged(
+        "manage_settings",
+        core.manage_settings(&tenant_id, &stack).await,
+    )
+}
+
+#[tauri::command]
+pub async fn manage_settings_save(
+    core: CoreState<'_>,
+    tenant_id: String,
+    stack: String,
+    save: ManageSettingsSave,
+) -> Res<ManageSaved> {
+    logged(
+        "manage_settings_save",
+        core.manage_settings_save(&tenant_id, &stack, save).await,
+    )
+}
+
+#[tauri::command]
+pub async fn manage_console(
+    core: CoreState<'_>,
+    tenant_id: String,
+    stack: String,
+    command: String,
+    confirm: bool,
+) -> Res<ManageConsoleReply> {
+    logged(
+        "manage_console",
+        core.manage_console(&tenant_id, &stack, &command, confirm)
+            .await,
+    )
+}
+
+/// Follows the server's console log as `server_log` events until closed.
+#[tauri::command]
+pub async fn manage_console_open(core: CoreState<'_>, tenant_id: String, stack: String) -> Res<()> {
+    logged(
+        "manage_console_open",
+        core.inner().manage_console_open(&tenant_id, &stack).await,
+    )
+}
+
+#[tauri::command]
+pub async fn manage_console_close(
+    core: CoreState<'_>,
+    tenant_id: String,
+    stack: String,
+) -> Res<()> {
+    core.manage_console_close(&tenant_id, &stack);
+    Ok(())
+}
+
+/// Opened from Rust, like `perland_manage`: the URL can hold a one-time sign-in code.
+#[tauri::command]
+pub async fn manage_open_panel(
+    core: CoreState<'_>,
+    tenant_id: String,
+    stack: Option<String>,
+) -> Res<()> {
+    logged(
+        "manage_open_panel",
+        core.manage_open_panel(&tenant_id, stack).await,
+    )
 }
 
 /// Called by the close dialog. Stopping waits a few seconds so the kills land before exit;
