@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supportText } from '../../ipc/errors';
 import type { ExitInfo, Instance } from '../../ipc/schema';
@@ -8,8 +9,10 @@ import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { formatGb } from '../../ui/format';
-import { Close, Copy, MemoryStick, WarningDiamond } from '../../ui/Icon';
+import { Close, Copy, MemoryStick, Undo, WarningDiamond } from '../../ui/Icon';
+import { GoBackDialog } from '../home/GoBackDialog';
 import { versionLine } from '../home/labels';
+import { useRestorePoint } from '../home/useRestorePoint';
 
 /** Why the game ended, in plain words, with the one fix the launcher can apply itself. */
 export function CrashCard({ instance, exit, lines }: { instance: Instance; exit: ExitInfo; lines: string[] }) {
@@ -17,6 +20,8 @@ export function CrashCard({ instance, exit, lines }: { instance: Instance; exit:
   const appInfo = useAppInfo();
   const update = useUpdateInstance();
   const raised = appInfo.data ? suggestMemory(instance.java.memoryMb, appInfo.data.systemMemoryMb) : null;
+  const point = useRestorePoint(instance.id).data ?? null;
+  const [confirming, setConfirming] = useState(false);
   const copy = () =>
     navigator.clipboard
       .writeText(
@@ -74,10 +79,17 @@ export function CrashCard({ instance, exit, lines }: { instance: Instance; exit:
             {t('activity.raiseMemory', { gb: formatGb(raised, i18n.language) })}
           </Button>
         )}
+        {/* After the cause's own fix (Raise memory), so a recognised cause keeps the first word. */}
+        {exit.restore && point?.kind === 'beforeChange' && (
+          <Button icon={<Undo />} onClick={() => setConfirming(true)}>
+            {t('restore.menu')}
+          </Button>
+        )}
         <Button icon={<Copy />} onClick={copy}>
           {t('activity.copyForSupport')}
         </Button>
       </div>
+      {confirming && point && <GoBackDialog instance={instance} point={point} onClose={() => setConfirming(false)} />}
     </div>
   );
 }

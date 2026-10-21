@@ -247,6 +247,20 @@ export const instance = z.strictObject({
   icon: z.enum(['auto', 'generated', 'custom']).nullable(),
   /** Which point of a picture background stays in view, in percent of its width and height; null is the default (bottom middle). */
   bannerFocus: z.strictObject({ x: z.number().int(), y: z.number().int() }).nullable(),
+  /** Set after going back on an instance that checks for updates: Play skips the check until "Update again". Absent when not held. */
+  updateHold: z.strictObject({ since: z.number().int(), version: z.string() }).optional(),
+});
+export const restoreChange = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('packUpdate'), from: z.string(), to: z.string() }),
+  z.strictObject({ kind: z.literal('installed'), name: z.string() }),
+  z.strictObject({ kind: z.literal('removed'), name: z.string() }),
+]);
+export const restorePoint = z.strictObject({
+  kind: z.enum(['beforeChange', 'beforeGoingBack']),
+  createdAt: z.number().int(),
+  changes: z.array(restoreChange),
+  sizeBytes: z.number().int(),
+  server: z.string().nullable(),
 });
 export const damagedInstance = z.strictObject({ id: z.string(), error: launcherError });
 export const instanceListing = z.strictObject({ instances: z.array(instance), damaged: z.array(damagedInstance) });
@@ -398,6 +412,8 @@ export const exitInfo = z.strictObject({
   synced: syncSummary.nullable(),
   manual: z.array(manualFile),
   updateOnly: z.boolean(),
+  /** A crash right after an update that hasn't run cleanly since: the crash card offers "Go back". */
+  restore: z.boolean(),
 });
 export const taskId = z.strictObject({ key: z.string(), params: z.record(z.string(), z.string()) });
 export const appEvent = z.discriminatedUnion('type', [
@@ -427,6 +443,7 @@ export const packStatus = z.strictObject({
   installedVersion: z.string().nullable(),
   update: packUpdate.nullable(),
   checkError: launcherError.nullable(),
+  holdLifted: z.boolean(),
 });
 export const optionalChoice = z.strictObject({ enabled: z.boolean(), description: z.string().nullable() });
 export const packMod = z.strictObject({ path: z.string(), name: z.string(), optional: optionalChoice.nullable() });
@@ -627,6 +644,8 @@ export type ManualFile = z.infer<typeof manualFile>;
 export type PackUpdate = z.infer<typeof packUpdate>;
 export type SyncSummary = z.infer<typeof syncSummary>;
 export type ExitInfo = z.infer<typeof exitInfo>;
+export type RestoreChange = z.infer<typeof restoreChange>;
+export type RestorePoint = z.infer<typeof restorePoint>;
 export type TaskId = z.infer<typeof taskId>;
 export type AppEvent = z.infer<typeof appEvent>;
 export type RunSnapshot = z.infer<typeof runSnapshot>;

@@ -44,6 +44,7 @@ export {
   Terminal,
   Trash,
   Trophy,
+  Undo,
   Unlink,
   Upload,
   User,

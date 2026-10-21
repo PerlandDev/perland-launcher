@@ -29,6 +29,8 @@ export function useInstallFlow() {
       qk.packContents(id),
       qk.contentFiles(id, 'resource_pack'),
       qk.contentFiles(id, 'shader'),
+      // An install takes or joins the restore point.
+      qk.restorePoint(id),
     ];
     for (const queryKey of keys) {
       void qc.invalidateQueries({ queryKey });

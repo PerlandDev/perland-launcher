@@ -16,9 +16,9 @@ use launcher_app::{
         NameListView, NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice,
         PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount,
         PerlandSignInPhase, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard,
-        PublicServerPage, RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers,
-        ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary, YourServerCard,
-        YourServersPage,
+        PublicServerPage, RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack,
+        ServerPlayers, ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary,
+        YourServerCard, YourServersPage,
     },
     events::{AppEvent, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -35,7 +35,8 @@ use launcher_core::{
     events::TaskId,
     instances::{
         ArtMode, DamagedInstance, Focus, GameSpec, IconMode, Instance, InstanceListing,
-        JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdatePolicy,
+        JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdateHold,
+        UpdatePolicy,
     },
     invite::invite_link_cases,
     java::JavaFit,
@@ -47,6 +48,7 @@ use launcher_core::{
     mods::LocalMod,
     perland::{CreateAllowance, Deletion, Disk, FreeLimits, MemoryLimits, PackLimits},
     public_list::{Facets, ListQuery, ListSort},
+    restore::{Change, PointKind},
     settings::{IconShape, Lang, Settings, Theme, UiFont},
     share::{Category, CategoryCount, ShareChoice},
     sync::ManualFile,
@@ -124,6 +126,7 @@ fn fabric_instance() -> Instance {
         art: ArtMode::Auto,
         icon: None,
         banner_focus: Some(Focus { x: 30, y: 60 }),
+        update_hold: None,
     }
 }
 
@@ -148,6 +151,7 @@ fn vanilla_instance() -> Instance {
         art: ArtMode::Generated,
         icon: Some(IconMode::Generated),
         banner_focus: None,
+        update_hold: None,
     }
 }
 
@@ -478,7 +482,50 @@ fn server_instance() -> Instance {
         art: ArtMode::Auto,
         icon: None,
         banner_focus: None,
+        update_hold: Some(UpdateHold {
+            since: 1_791_720_000,
+            version: "1.0.3".into(),
+        }),
     }
+}
+
+/// A point after an update and a Browse install, one after going back on a server instance,
+/// one after a removal, and none.
+fn restore_points() -> Vec<Option<RestorePointDto>> {
+    vec![
+        Some(RestorePointDto {
+            kind: PointKind::BeforeChange,
+            created_at: 1_791_720_000,
+            changes: vec![
+                Change::PackUpdate {
+                    from: "1.0.3".into(),
+                    to: "1.0.4".into(),
+                },
+                Change::Installed {
+                    name: "Sodium".into(),
+                },
+            ],
+            size_bytes: 524_288,
+            server: None,
+        }),
+        Some(RestorePointDto {
+            kind: PointKind::BeforeGoingBack,
+            created_at: 1_791_723_600,
+            changes: vec![],
+            size_bytes: 18_874_368,
+            server: Some("Survival".into()),
+        }),
+        Some(RestorePointDto {
+            kind: PointKind::BeforeChange,
+            created_at: 1_791_727_200,
+            changes: vec![Change::Removed {
+                name: "zoomify-2.11.2.jar".into(),
+            }],
+            size_bytes: 0,
+            server: None,
+        }),
+        None,
+    ]
 }
 
 fn sample_error() -> LauncherError {
@@ -809,6 +856,16 @@ fn contract_fixtures_are_current() {
                 exit: Some(ExitInfo {
                     code: Some(1),
                     crash: Some(CrashHint::OutOfMemory),
+                    ..ExitInfo::default()
+                }),
+                update: None,
+            },
+            AppEvent::RunState {
+                instance: "asalith-fields".into(),
+                state: RunStateKind::Idle,
+                exit: Some(ExitInfo {
+                    code: Some(1),
+                    restore: true,
                     ..ExitInfo::default()
                 }),
                 update: None,
@@ -1194,6 +1251,7 @@ fn contract_fixtures_are_current() {
                 installed_version: Some("1.0.3".into()),
                 update: Some(sample_update()),
                 check_error: None,
+                hold_lifted: false,
             },
             PackStatus {
                 installed_version: Some("1.0.3".into()),
@@ -1205,6 +1263,7 @@ fn contract_fixtures_are_current() {
                     )
                     .with_fix("You can still play the version you have"),
                 ),
+                hold_lifted: true,
             },
         ],
     );
@@ -1349,6 +1408,7 @@ fn contract_fixtures_are_current() {
         ],
     );
     check("server_instance", server_instance());
+    check("restore_points", restore_points());
     check("public_server_page", public_server_page());
     check("your_servers_page", your_servers_page());
     check("free_server_page", free_server_pages());

@@ -55,6 +55,8 @@ import type {
   PlaytimeEntry,
   ContinueTarget,
   ProjectDetail,
+  RestoreChange,
+  RestorePoint,
   RunStateKind,
   SearchHit,
   SearchPage,
@@ -111,6 +113,8 @@ export interface MockOptions {
   pictureBackground?: boolean;
   /** A Perland panel is configured (default), so owned servers offer Manage in Perland. */
   panel?: boolean;
+  /** The `survival` server instance went back to its earlier mods, so its updates are on hold. */
+  held?: boolean;
 }
 
 interface MockRun {
@@ -381,6 +385,36 @@ function seed(options: MockOptions) {
     listing.instances = [...listing.instances, ...modrinthInstances()];
   }
   const servers = seedServers(options.server, listing);
+  // Each instance's one restore point (the real one is .perland/restore/point/point.json).
+  const restorePoints = new Map<string, RestorePoint>();
+  if (!options.firstRun) {
+    // Sky Islands took its 1.0.3 update and some Browse changes since the last Play.
+    restorePoints.set('sky-islands', {
+      kind: 'beforeChange',
+      createdAt: Math.floor(Date.now() / 1000) - 3600,
+      changes: [
+        { kind: 'packUpdate', from: '1.0.2', to: '1.0.3' },
+        { kind: 'installed', name: 'Sodium' },
+        { kind: 'installed', name: 'Lithium' },
+        { kind: 'removed', name: 'JEI' },
+      ],
+      sizeBytes: 12_000_000,
+      server: null,
+    });
+  }
+  if (options.held && servers) {
+    const server = listing.instances.find((i) => i.id === MOCK_SERVER_ID);
+    if (server) {
+      server.updateHold = { since: Math.floor(Date.now() / 1000) - 600, version: '1.0.3' };
+      restorePoints.set(server.id, {
+        kind: 'beforeGoingBack',
+        createdAt: Math.floor(Date.now() / 1000) - 600,
+        changes: [],
+        sizeBytes: 18_000_000,
+        server: server.server?.name || server.name,
+      });
+    }
+  }
   return {
     listing,
     perland,
@@ -388,6 +422,7 @@ function seed(options: MockOptions) {
     // The player's own order, like instance-order.json. Existing instances start A-Z, so a new one lands above them.
     order: [...listing.instances].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map((i) => i.id),
     servers,
+    restorePoints,
     accounts,
     settings,
     appInfo,
@@ -453,6 +488,7 @@ export const exitOf = (partial: Partial<ExitInfo>): ExitInfo => ({
   synced: null,
   manual: [],
   updateOnly: false,
+  restore: false,
   ...partial,
 });
 
@@ -473,7 +509,7 @@ async function packPrelude(
   const id = instance.id;
   const pack = state.packs.get(id);
   if (!pack) return { synced: null };
-  const checks = pack.installed !== null && instance.updatePolicy !== 'pinned';
+  const checks = pack.installed !== null && instance.updatePolicy !== 'pinned' && !instance.updateHold;
   let take = false;
   if (checks) {
     await wait(400);
@@ -549,6 +585,7 @@ async function packPrelude(
     };
     pack.installed = u.toVersion;
     pack.update = null;
+    if (u.fromVersion) takePoint(state, instance, { kind: 'packUpdate', from: u.fromVersion, to: u.toVersion });
   } else if (!pack.installed) {
     pack.installed = '1.0.3';
   }
@@ -563,7 +600,7 @@ async function packPrelude(
 async function scriptRun(state: MockState, instance: Instance, updateOnly = false) {
   const id = instance.id;
   const pack = state.packs.get(id);
-  const first: RunStateKind = pack && pack.installed !== null && instance.updatePolicy !== 'pinned' ? 'checking' : 'queued';
+  const first: RunStateKind = pack && pack.installed !== null && instance.updatePolicy !== 'pinned' && !instance.updateHold ? 'checking' : 'queued';
   const run: MockRun = { state: first, cancelled: false, updateOnly, answer: null };
   state.runs.set(id, run);
   event({ type: 'run_state', instance: id, state: first, exit: null, update: null });
@@ -612,13 +649,47 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
         type: 'run_state',
         instance: id,
         state: 'idle',
-        exit: exitOf({ code: 1, crash: 'out_of_memory', synced }),
+        // Like the core: a crash before the change ran cleanly once offers going back.
+        exit: exitOf({ code: 1, crash: 'out_of_memory', synced, restore: state.restorePoints.get(id)?.kind === 'beforeChange' }),
         update: null,
       });
       return;
     }
     await wait(400);
   }
+}
+
+const nowSecs = () => Math.floor(Date.now() / 1000);
+
+/** A change takes a `beforeChange` point, like the core's `restore::before_change` (sealing aside). */
+function takePoint(state: MockState, instance: Instance, change: RestoreChange) {
+  const current = state.restorePoints.get(instance.id);
+  const changes = current?.kind === 'beforeChange' ? [...current.changes, change] : [change];
+  state.restorePoints.set(instance.id, {
+    kind: 'beforeChange',
+    createdAt: current?.kind === 'beforeChange' ? current.createdAt : nowSecs(),
+    changes,
+    sizeBytes: 8_400_000,
+    server: instance.source.kind === 'perland' ? instance.server?.name || instance.name : null,
+  });
+}
+
+/** Update again on a server instance (no `MockPack`): a short update-only sync to the server's pack. */
+async function scriptServerUpdate(state: MockState, instance: Instance, from: string) {
+  const id = instance.id;
+  const run: MockRun = { state: 'syncing', cancelled: false, updateOnly: true, answer: null };
+  state.runs.set(id, run);
+  event({ type: 'run_state', instance: id, state: 'syncing', exit: null, update: null });
+  for (let done = 0; done <= 12; done++) {
+    if (run.cancelled) return;
+    event({ type: 'progress', instance: id, task: { key: 'sync_pack', params: { name: instance.name } }, done, total: 12, bytes: done * 2_400_000 });
+    await wait(50);
+  }
+  if (run.cancelled || state.runs.get(id) !== run) return;
+  state.runs.delete(id);
+  takePoint(state, instance, { kind: 'packUpdate', from, to: '1.0.4' });
+  const synced: SyncSummary = { fromVersion: from, toVersion: '1.0.4', added: 3, updated: 2, removed: 1, keptModified: [], setAside: [] };
+  event({ type: 'run_state', instance: id, state: 'idle', exit: exitOf({ synced, updateOnly: true }), update: null });
 }
 
 /** A server whose pack is still building: Play waits in `checking` with "Server is preparing
@@ -909,9 +980,45 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       void scriptRun(state, target, true);
       return null;
     }
+    case 'restore_point':
+      return state.restorePoints.get(String(args.id)) ?? null;
+    case 'restore_go_back': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (state.runs.has(target.id)) fail('game', 'instance_busy', 'in use', { id: target.id });
+      const point = state.restorePoints.get(target.id) ?? fail('disk', 'restore_point_gone', 'There is nothing to go back to.');
+      const pack = state.packs.get(target.id);
+      const update = point.changes.find((c) => c.kind === 'packUpdate');
+      // Like the core: a hold stays; an instance that checks for updates is held when going back undoes a pack
+      // update, at the version it went back to.
+      const checks = (pack ? pack.installed !== null : target.source.kind === 'perland') && target.updatePolicy !== 'pinned';
+      const version = update?.from ?? pack?.installed ?? target.updateHold?.version ?? null;
+      if (pack && update) {
+        pack.installed = update.from;
+        pack.update = { fromVersion: update.from, toVersion: update.to, added: [], updated: [], removed: [], kept: [] };
+      }
+      const updated: Instance = { ...target };
+      if (target.updateHold) updated.updateHold = target.updateHold;
+      else if (checks && update && version && point.kind === 'beforeChange') updated.updateHold = { since: nowSecs(), version };
+      else delete updated.updateHold;
+      state.listing.instances = state.listing.instances.map((i) => (i.id === target.id ? updated : i));
+      const next: RestorePoint = { kind: 'beforeGoingBack', createdAt: nowSecs(), changes: [], sizeBytes: point.sizeBytes, server: point.server };
+      state.restorePoints.set(target.id, next);
+      return next;
+    }
+    case 'pack_update_again': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      const pack = state.packs.get(target.id);
+      if (!pack && target.source.kind !== 'perland') fail('pack', 'no_pack', "This instance doesn't come from a pack");
+      if (state.runs.has(target.id)) fail('game', 'instance_busy', 'in use', { id: target.id });
+      const { updateHold, ...rest } = target;
+      state.listing.instances = state.listing.instances.map((i) => (i.id === target.id ? rest : i));
+      if (pack) void scriptRun(state, rest, true);
+      else void scriptServerUpdate(state, rest, updateHold?.version ?? '1.0.3');
+      return null;
+    }
     case 'pack_status': {
       const pack = state.packs.get(String(args.id)) ?? fail('pack', 'no_pack', "This instance doesn't come from a pack");
-      return { installedVersion: pack.installed, update: pack.installed ? pack.update : null, checkError: null } satisfies PackStatus;
+      return { installedVersion: pack.installed, update: pack.installed ? pack.update : null, checkError: null, holdLifted: false } satisfies PackStatus;
     }
     case 'pack_contents':
       return (state.packs.get(String(args.id)) ?? fail('pack', 'no_pack', 'no pack')).contents;

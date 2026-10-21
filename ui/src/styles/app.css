@@ -1084,7 +1084,10 @@
     right: 0;
     bottom: calc(100% + 0.5rem);
     z-index: 30;
+    /* As wide as its longest item, so "Go back to how it was…" (and longer Spanish) stays on one line. */
+    width: max-content;
     min-width: 13rem;
+    max-width: 22rem;
     padding: 0.375rem;
     background: var(--color-raised);
     border-radius: 6px;
