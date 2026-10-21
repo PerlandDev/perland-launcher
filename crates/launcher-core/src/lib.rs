@@ -14,6 +14,7 @@ pub mod instance_order;
 pub mod instances;
 pub mod invite;
 pub mod java;
+pub mod last_place;
 pub mod launch;
 pub mod locks;
 pub mod logging;

@@ -349,6 +349,12 @@ pub fn entries(bytes: &[u8]) -> std::result::Result<Vec<(String, String)>, &'sta
         .collect())
 }
 
+/// Does the typed `ip` (as in the list or Direct Connect) name `address`? Read the way the game
+/// reads it: case aside, with port 25565 when none is given.
+pub fn same_address(ip: &str, address: &ServerAddress) -> bool {
+    normalize(ip.as_bytes()).is_some_and(|ip| Some(ip) == normalize(address.display().as_bytes()))
+}
+
 /// What [`ensure_listed`] did to the list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Listed {
