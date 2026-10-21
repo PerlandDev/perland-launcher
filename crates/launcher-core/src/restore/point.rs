@@ -313,17 +313,37 @@ pub(crate) async fn swap_in(restore_dir: &Path) -> Result<()> {
         point_dir(restore_dir),
         restore_dir.join("old"),
     );
+    recover_old(restore_dir).await;
     let _ = tokio::fs::remove_dir_all(&old).await;
-    if tokio::fs::try_exists(&point).await.map_err(io_err)? {
+    let had_point = tokio::fs::try_exists(&point).await.map_err(io_err)?;
+    if had_point {
         rename_with_retry(&point, &old).await.map_err(io_err)?;
     }
-    rename_with_retry(&new, &point).await.map_err(io_err)?;
+    if let Err(e) = rename_with_retry(&new, &point).await {
+        if had_point {
+            // Put the previous point back: it is the only copy.
+            let _ = rename_with_retry(&old, &point).await;
+        }
+        return Err(io_err(e));
+    }
     let _ = tokio::fs::remove_dir_all(&old).await;
     Ok(())
 }
 
-/// Remove leftovers of an interrupted build: `new/`, `new-<top>/` and `old/`.
+/// An interrupted swap can leave the previous point in `old/` and no `point/`: put it back.
+async fn recover_old(restore: &Path) {
+    let (point, old) = (point_dir(restore), restore.join("old"));
+    if !tokio::fs::try_exists(&point).await.unwrap_or(true)
+        && tokio::fs::try_exists(&old).await.unwrap_or(false)
+    {
+        let _ = rename_with_retry(&old, &point).await;
+    }
+}
+
+/// Remove leftovers of an interrupted build: `new/`, `new-<top>/` and `old/` (after putting
+/// back a previous point that only `old/` still holds).
 async fn clear_scratch(restore: &Path) {
+    recover_old(restore).await;
     let Ok(mut entries) = tokio::fs::read_dir(restore).await else {
         return;
     };
@@ -343,6 +363,7 @@ async fn write_meta(dir: &Path, meta: &PointMeta) -> Result<()> {
 
 /// The point as stored, with no age check. A point folder that can't be read is removed.
 async fn load_meta(restore: &Path) -> Option<PointMeta> {
+    recover_old(restore).await;
     let dir = point_dir(restore);
     if !tokio::fs::try_exists(&dir).await.unwrap_or(false) {
         return None;
@@ -669,6 +690,49 @@ mod tests {
         assert!(fx.read().await.is_some());
         assert!(!fx.point_file("mods/stale.jar").exists());
         assert!(!fx.restore().join("new").exists());
+    }
+
+    #[tokio::test]
+    async fn stale_old_dir_is_the_point_when_point_is_missing() {
+        let fx = Fixture::new().await;
+        fx.put("mods/old.jar", b"old");
+        fx.change(&["mods"], "Sodium", false, T0).await;
+        // An interrupted swap: point/ renamed to old/, new/ never arrived.
+        std::fs::rename(fx.restore().join("point"), fx.restore().join("old")).unwrap();
+        assert_eq!(fx.read().await.unwrap().changes, [installed("Sodium")]);
+
+        std::fs::rename(fx.restore().join("point"), fx.restore().join("old")).unwrap();
+        fx.change(&["mods"], "Lithium", false, T0 + 1).await;
+        let meta = fx.read().await.unwrap();
+        assert_eq!(meta.changes, [installed("Sodium"), installed("Lithium")]);
+        assert!(!fx.restore().join("old").exists());
+    }
+
+    #[tokio::test]
+    async fn failed_swap_keeps_previous_point() {
+        let fx = Fixture::new().await;
+        fx.put("mods/old.jar", b"old");
+        fx.change(&["mods"], "Sodium", false, T0).await;
+        // No new/ to swap in: the second rename fails.
+        assert!(swap_in(&fx.restore()).await.is_err());
+        assert_eq!(fx.read().await.unwrap().changes, [installed("Sodium")]);
+    }
+
+    #[tokio::test]
+    async fn going_back_point_is_replaced_by_before_change() {
+        let fx = Fixture::new().await;
+        fx.put("mods/old.jar", b"old");
+        fx.change(&["mods"], "Sodium", false, T0).await;
+        let mut meta = fx.read().await.unwrap();
+        meta.kind = PointKind::BeforeGoingBack;
+        write_meta(&fx.restore().join("point"), &meta)
+            .await
+            .unwrap();
+        fx.change(&["mods"], "Lithium", false, T0 + 1).await;
+
+        let meta = fx.read().await.unwrap();
+        assert_eq!(meta.kind, PointKind::BeforeChange);
+        assert_eq!(meta.changes, [installed("Lithium")]);
     }
 
     #[tokio::test]

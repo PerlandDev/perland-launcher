@@ -32,6 +32,11 @@ pub(crate) fn is_archive(name: &str) -> bool {
 /// The files under `dir` (not symlinks, not folders), with their metadata.
 fn walk(dir: &Path) -> IoResult<Vec<(PathBuf, fs::Metadata)>> {
     let mut out = Vec::new();
+    // A linked folder (symlink or junction) is not followed.
+    match fs::symlink_metadata(dir) {
+        Ok(meta) if meta.file_type().is_symlink() => return Ok(out),
+        _ => {}
+    }
     let mut stack = vec![dir.to_path_buf()];
     while let Some(dir) = stack.pop() {
         let entries = match fs::read_dir(&dir) {
@@ -211,6 +216,20 @@ mod tests {
         );
         assert_eq!(copy_size(&game, "mods", LinkMode::Copy).unwrap(), 3);
         assert_eq!(copy_size(&game, "mods", LinkMode::Auto).unwrap(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn linked_folder_is_not_followed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (game, dest) = (tmp.path().join("game"), tmp.path().join("dest"));
+        write(&tmp.path().join("elsewhere/a.toml"), b"x");
+        fs::create_dir_all(&game).unwrap();
+        std::os::unix::fs::symlink(tmp.path().join("elsewhere"), game.join("config")).unwrap();
+        let files = snapshot_folder(&game, "config", &dest, LinkMode::Auto)
+            .unwrap()
+            .unwrap();
+        assert!(files.is_empty());
     }
 
     #[test]
