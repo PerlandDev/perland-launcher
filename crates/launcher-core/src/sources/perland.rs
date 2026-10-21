@@ -26,8 +26,8 @@ use crate::{
         client::{
             gone, host_of, host_trouble, offline, rate_limited, request_failed, status_error,
         },
-        invite_route, non_empty, EngineView, InviteGame, InviteLink, InviteModrinth, InviteView,
-        Url, PACK_READY, PACK_UNAVAILABLE,
+        invite_route, non_empty, EngineView, InviteGame, InviteLink, InviteModrinth, InvitePack,
+        InviteView, Url, PACK_READY, PACK_UNAVAILABLE,
     },
     meta::mojang::VersionManifest,
     sync::{sync_cancelled, Cancel},
@@ -58,14 +58,21 @@ async fn concrete_version(src: &Sources, version: &str) -> Result<String> {
     Ok(manifest.latest.release)
 }
 
-/// What the update check compares: the pinned commit, `modrinth:<version id>`, or
-/// `vanilla:<version>`. `None` for a modded stack on an Engine that doesn't send the commit yet.
+/// What the update check compares: the pack's stamp, else the pinned commit,
+/// `modrinth:<version id>`, or `vanilla:<version>`. `None` for a modded stack on an Engine that
+/// doesn't send the commit yet.
 pub fn stamp_of(view: &InviteView) -> Option<String> {
     match (&view.pack, &view.modrinth) {
-        (Some(pack), _) => non_empty(&pack.commit).map(str::to_string),
+        (Some(pack), _) => pack_stamp(pack).map(str::to_string),
         (None, Some(m)) => Some(format!("{MODRINTH_PREFIX}{}", m.version_id)),
         (None, None) => game_version(view).map(|v| format!("{VANILLA_PREFIX}{v}")),
     }
+}
+
+/// The pack's stamp, which also moves when the Engine rebuilds one commit's pack differently,
+/// else its commit (older Engines).
+fn pack_stamp(pack: &InvitePack) -> Option<&str> {
+    non_empty(&pack.stamp).or_else(|| non_empty(&pack.commit))
 }
 
 /// The version players see: the pack's, else the server's Minecraft version.
@@ -306,7 +313,14 @@ async fn resolve_inner(
     if cancel.is_cancelled() {
         return Err(sync_cancelled());
     }
-    let (path, hashes, stamp) = download_pack(src, link, &ev, non_empty(&pack.commit)).await?;
+    let (path, hashes, stamp) = download_pack(
+        src,
+        link,
+        &ev,
+        non_empty(&pack.stamp),
+        non_empty(&pack.commit),
+    )
+    .await?;
     let mut desired = tokio::task::spawn_blocking(move || {
         mrpack::read_archive(&path, stamp, hashes, mrpack::Limits::default())
     })
@@ -422,21 +436,26 @@ async fn wait_for_pack(
 }
 
 /// Download the pack into the object cache. Returns where it is, its hashes and its stamp:
-/// the pack's ETag, else `commit` (the Engine's ETag is `"<commit>"`).
+/// the view's `stamp` when the Engine sends one (the update check compares it), else the pack's
+/// ETag, else `commit` (the Engine's ETag is `"<commit>"`).
 async fn download_pack(
     src: &Sources,
     link: &InviteLink,
     ev: &EngineView,
+    view_stamp: Option<&str>,
     commit: Option<&str>,
 ) -> Result<(PathBuf, Hashes, String)> {
     let host = host_of(&ev.engine);
     let url = invite_route(&ev.engine, link, "/pack");
-    let stamp = match (head_pack(src, &url, &host, None).await, commit) {
-        (Ok(PackHead::Tag(Some(tag))), _) => tag,
-        // A failed HEAD is left to the GET below, which reports the Engine's reason.
-        (_, Some(commit)) => commit.to_string(),
-        (Err(e), None) => return Err(e),
-        (Ok(_), None) => return Err(pack_unavailable(Some("no ETag".into()))),
+    let stamp = match view_stamp {
+        Some(stamp) => stamp.to_string(),
+        None => match (head_pack(src, &url, &host, None).await, commit) {
+            (Ok(PackHead::Tag(Some(tag))), _) => tag,
+            // A failed HEAD is left to the GET below, which reports the Engine's reason.
+            (_, Some(commit)) => commit.to_string(),
+            (Err(e), None) => return Err(e),
+            (Ok(_), None) => return Err(pack_unavailable(Some("no ETag".into()))),
+        },
     };
     // Named by stamp (the pack's ETag, else the commit), so an interrupted download resumes
     // with Range and a finished one is reused: one stamp is always one file.

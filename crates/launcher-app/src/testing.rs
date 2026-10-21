@@ -232,6 +232,7 @@ pub(crate) fn server_view(name: &str) -> EngineView {
                 state: "ready".into(),
                 zip_state: Some("ready".into()),
                 commit: Some("c1".into()),
+                stamp: None,
             }),
             team: InviteTeam {
                 display_name: "Acme".into(),

@@ -961,7 +961,11 @@ fn contract_fixtures_are_current() {
                         instance: Some("asalith-fields".into()),
                         name: "Asalith".into(),
                         playtime_seconds: 45_000,
-                        advancements: 12,
+                        advancements: 2,
+                        advancement_ids: vec![
+                            "create:andesite_alloy".into(),
+                            "minecraft:story/mine_stone".into(),
+                        ],
                     },
                     ServerStatsView {
                         token: "B".repeat(43),
@@ -969,6 +973,7 @@ fn contract_fixtures_are_current() {
                         name: "Skyblock".into(),
                         playtime_seconds: 0,
                         advancements: 0,
+                        advancement_ids: vec![],
                     },
                 ],
             }),

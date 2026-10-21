@@ -6,14 +6,19 @@
         "instance": "asalith-fields",
         "name": "Asalith",
         "playtimeSeconds": 45000,
-        "advancements": 12
+        "advancements": 2,
+        "advancementIds": [
+          "create:andesite_alloy",
+          "minecraft:story/mine_stone"
+        ]
       },
       {
         "token": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
         "instance": null,
         "name": "Skyblock",
         "playtimeSeconds": 0,
-        "advancements": 0
+        "advancements": 0,
+        "advancementIds": []
       }
     ]
   },
