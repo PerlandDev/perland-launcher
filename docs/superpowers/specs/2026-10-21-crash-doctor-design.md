@@ -1,7 +1,7 @@
 # Perland Launcher: Crash Doctor, Design
 
 - **Date:** 2026-10-21
-- **Issue:** filed with this spec (label `enhancement`).
+- **Issue:** PerlandDev/perland-launcher#87.
 - **Builds on:**
   - `docs/superpowers/specs/2026-10-09-launcher-core-design.md` (the launch, `GameExit`, the redacted log);
   - `docs/superpowers/specs/2026-10-10-launcher-desktop-ui-design.md` (the activity drawer and its crash card);
@@ -113,7 +113,7 @@ fixes: Vec<CrashFix>           // offered on the crash card, first is the primar
 
 Two fields, not one struct, so Session A's "Go back to how it was" is just another `CrashFix` kind (`restore`) pushed onto `fixes`, also on a crash with no known cause.
 
-**Repair** is `AppCore::play_repair(id)` (command `play_repair`): `start_run` with `PlayArgs { repair: true }`; `Runner::prepare` gets `repair: bool`, and `CoreRunner` prepares with an installer whose downloader checks existing files by hash. Everything else about the run is the same (sync, Play, progress).
+**Repair** is `AppCore::play_repair(id)` (command `play_repair`): `start_run` with `PlayArgs { repair: true }`; `Runner::prepare` gets `repair: bool`, and `CoreRunner` prepares with an installer whose downloader checks existing files by hash. Everything else about the run is the same (sync, Play, progress). Hashing alone can't see a damaged Forge/NeoForge processor output (they are skipped once `.perland-loader` exists, and NeoForge's list no output hashes), and that is exactly what makes `BootstrapLauncher` fail to load, so a repair also drops that marker first and the processors run again (**our call**: otherwise the button would sometimes claim a fix it can't do).
 
 ## 8. The card (our call; through `/impeccable`)
 
@@ -131,6 +131,12 @@ Two fields, not one struct, so Session A's "Go back to how it was" is just anoth
 - **Attribution:** the launcher's rule table is written fresh for client logs in Rust; it ports no PerlandEngine code (the engine's Go entry parser, subjects and fingerprints are server concepts the launcher doesn't need). Both projects are PerlandDev's. Where a pattern reads the same loader message as an engine pattern, the module header says it mirrors `internal/minecraft/diagnosis/catalogue.go`, and `NOTICE` lists it, so the provenance is on record either way.
 - Fixtures: `testdata/<code>.hit.txt` and `<code>.miss.txt`, cases split by `---`, headers `# source: tail|crash_report|latest_log|hs_err` and `# param k=v`. A test asserts every rule has both files, every hit case yields its code and params, and every miss case doesn't yield that code. Tiny, written from the real formats. No fuzzing locally.
 
-## 10. Left to the builder
+## 10. Settled after the builder check
+
+- **Parallel sessions.** B starts from `main` and owns the card layout. The fix row renders with or without a cause, so Session A's `restore` needs no cause; whichever of A and B merges second adapts by merging `main` (never dropping the other's work). The shape was sent to the coordinating session on 2026-10-21.
+- **Repair and Forge processors.** See §7: a repair drops the processor marker.
+- **What counts as "on Modrinth" for Find.** The id is first mapped through a small alias list (Fabric API's module ids, `fabric` and `fabric-api-base`/`fabric-*-v1` style ids → `fabric-api`; `quilted_fabric_api` → `qsl`), then looked up with `browse_project`; Find shows only when that returns a project whose `kind` is `mod`. It opens the project page, which already shows whether a version fits this instance and installs through the normal flow (refusing an incompatible one with its own error), so the button never promises an install, only the page. Checking versions on the card would duplicate that flow (**our call**).
+
+## 11. Left to the builder
 
 Exact regexes; the es wording within the rules above; the mock's per-cause demo; how the card lays out the key row at 960 × 600.
