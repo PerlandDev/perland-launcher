@@ -201,3 +201,182 @@ async fn follow_asks_for_a_new_jwt_once_on_401() {
     .unwrap();
     assert_eq!(*calls.lock().unwrap(), 2);
 }
+
+const T1: &str = "2026-10-21T10:00:01.000000000Z";
+const T2: &str = "2026-10-21T10:00:02.000000000Z";
+
+fn texts(sink: &Arc<Mutex<Vec<String>>>) -> impl FnMut(Vec<LogLine>) + Send {
+    let sink = sink.clone();
+    move |lines| {
+        sink.lock()
+            .unwrap()
+            .extend(lines.into_iter().map(|l| l.text))
+    }
+}
+
+#[tokio::test]
+async fn follow_reconnects_after_a_drop_without_end() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .and(query_param("since", T1))
+        .and(query_param("tail", "0"))
+        .respond_with(sse(log(T2, "two")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .and(query_param("tail", "200"))
+        // No `end` event: the connection just closes.
+        .respond_with(sse(log(T1, "one")))
+        .mount(&server)
+        .await;
+    let (tx, rx) = watch::channel(false);
+    let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+    let mut push = texts(&seen);
+    let probe = seen.clone();
+    follow_logs_after(
+        &client(&server),
+        jwt_source(),
+        "survival",
+        move |lines| {
+            push(lines);
+            if probe.lock().unwrap().len() >= 2 {
+                tx.send(true).unwrap();
+            }
+        },
+        rx,
+        std::time::Duration::from_millis(20),
+    )
+    .await
+    .unwrap();
+    assert_eq!(*seen.lock().unwrap(), ["one", "two"]);
+}
+
+#[tokio::test]
+async fn follow_retries_an_engine_restart_after_connecting() {
+    let server = MockServer::start().await;
+    // After the first connect: a 503, then a plain 429, then the stream.
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .and(query_param("since", T1))
+        .respond_with(sse(log(T2, "two")))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .and(query_param("since", T1))
+        .respond_with(ResponseTemplate::new(429))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .and(query_param("since", T1))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .with_priority(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .and(query_param("tail", "200"))
+        .respond_with(sse(log(T1, "one")))
+        .mount(&server)
+        .await;
+    let (tx, rx) = watch::channel(false);
+    let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+    let mut push = texts(&seen);
+    let probe = seen.clone();
+    follow_logs_after(
+        &client(&server),
+        jwt_source(),
+        "survival",
+        move |lines| {
+            push(lines);
+            if probe.lock().unwrap().len() >= 2 {
+                tx.send(true).unwrap();
+            }
+        },
+        rx,
+        std::time::Duration::from_millis(20),
+    )
+    .await
+    .unwrap();
+    assert_eq!(*seen.lock().unwrap(), ["one", "two"]);
+}
+
+#[tokio::test]
+async fn follow_keeps_failing_first_connect_terminal() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let (_tx, rx) = watch::channel(false);
+    let err = follow_logs(&client(&server), jwt_source(), "survival", |_| {}, rx)
+        .await
+        .unwrap_err();
+    assert_ne!(err.code, ErrorCode::TooManyStreams);
+}
+
+#[tokio::test]
+async fn follow_stops_during_the_reconnect_wait() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .respond_with(sse(log(T1, "one")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let (tx, rx) = watch::channel(false);
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        tx.send(true).unwrap();
+    });
+    let done = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        follow_logs_after(
+            &client(&server),
+            jwt_source(),
+            "survival",
+            |_| {},
+            rx,
+            std::time::Duration::from_secs(60),
+        ),
+    )
+    .await
+    .expect("stop is honored while waiting");
+    done.unwrap();
+}
+
+#[tokio::test]
+async fn follow_waits_between_attempts_when_the_server_closes_at_once() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .respond_with(sse(String::new()))
+        .mount(&server)
+        .await;
+    let (tx, rx) = watch::channel(false);
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(450)).await;
+        tx.send(true).unwrap();
+    });
+    follow_logs_after(
+        &client(&server),
+        jwt_source(),
+        "survival",
+        |_| {},
+        rx,
+        std::time::Duration::from_millis(100),
+    )
+    .await
+    .unwrap();
+    let requests = server.received_requests().await.unwrap().len();
+    // About one per 100 ms: a hot loop would make hundreds.
+    assert!((3..=7).contains(&requests), "{requests} requests");
+}

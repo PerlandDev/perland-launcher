@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use reqwest::{Method, Url};
+use reqwest::{header::HeaderValue, Method, Url};
 use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::Value;
 
@@ -82,7 +82,7 @@ impl Wire {
     pub fn open_get(&self, path_and_query: &str, jwt: &str) -> reqwest::RequestBuilder {
         self.http
             .get(self.url(path_and_query))
-            .header("X-User-Token", jwt)
+            .header("X-User-Token", sensitive(jwt))
     }
 
     /// One request. Any status comes back as a `Reply`; only a request that got no answer, or
@@ -101,8 +101,13 @@ impl Wire {
         let mut request = self.http.request(method, self.url(path)).timeout(timeout);
         request = match credential {
             Credential::None => request,
-            Credential::Bearer(token) => request.bearer_auth(token),
-            Credential::UserToken(jwt) => request.header("X-User-Token", jwt),
+            Credential::Bearer(token) => {
+                let mut value = HeaderValue::from_str(&format!("Bearer {token}"))
+                    .map_err(|_| unexpected(&host, "the credential isn't a valid header"))?;
+                value.set_sensitive(true);
+                request.header(reqwest::header::AUTHORIZATION, value)
+            }
+            Credential::UserToken(jwt) => request.header("X-User-Token", sensitive(jwt)),
         };
         if let Some(body) = body {
             request = request.json(body);
@@ -129,6 +134,14 @@ impl Wire {
             .and_then(|e| e.data)
             .ok_or_else(|| unexpected(&self.host(), "the answer isn't valid"))
     }
+}
+
+/// A header value that `Debug` and HTTP/2 compression treat as secret. An invalid value
+/// (control characters) becomes an empty one, which the Engine refuses.
+fn sensitive(token: &str) -> HeaderValue {
+    let mut value = HeaderValue::from_str(token).unwrap_or_else(|_| HeaderValue::from_static(""));
+    value.set_sensitive(true);
+    value
 }
 
 pub(super) fn failure(reply: &Reply) -> Failure {

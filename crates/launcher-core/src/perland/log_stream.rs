@@ -79,6 +79,8 @@ struct EndData {
 #[derive(Default)]
 pub struct SseParser {
     buffer: Vec<u8>,
+    /// An over-long line is being dropped up to its next newline.
+    skipping: bool,
     event: String,
     data: Vec<String>,
 }
@@ -93,7 +95,7 @@ impl SseParser {
             if line.last() == Some(&b'\r') {
                 line = &line[..line.len() - 1];
             }
-            if line.len() > LINE_CAP {
+            if std::mem::take(&mut self.skipping) || line.len() > LINE_CAP {
                 continue;
             }
             if let Some(event) = self.line(&String::from_utf8_lossy(line)) {
@@ -102,6 +104,7 @@ impl SseParser {
         }
         if self.buffer.len() > LINE_CAP {
             self.buffer.clear();
+            self.skipping = true;
         }
         events
     }
@@ -141,6 +144,24 @@ impl SseParser {
     }
 }
 
+/// A timestamp as a string that sorts by time: `YYYY-MM-DDTHH:MM:SS`, then the fraction padded
+/// to nine digits, then `Z`. Only the UTC (`Z`) form the daemon writes is understood; anything
+/// else is `None`.
+fn time_key(timestamp: &str) -> Option<String> {
+    let rest = timestamp.strip_suffix('Z')?;
+    let (whole, fraction) = rest.split_once('.').unwrap_or((rest, ""));
+    let b = whole.as_bytes();
+    let shape = b.len() == 19
+        && b.iter().enumerate().all(|(i, c)| match i {
+            4 | 7 => *c == b'-',
+            10 => *c == b'T',
+            13 | 16 => *c == b':',
+            _ => c.is_ascii_digit(),
+        });
+    let fraction_ok = fraction.len() <= 9 && fraction.bytes().all(|c| c.is_ascii_digit());
+    (shape && fraction_ok).then(|| format!("{whole}.{fraction:0<9}"))
+}
+
 /// Resolves when `stop` is true, or when its sender is gone (nobody can ask to keep going).
 async fn stopped(stop: &mut watch::Receiver<bool>) {
     let _ = stop.wait_for(|stop| *stop).await;
@@ -170,9 +191,11 @@ pub async fn follow_logs_after(
     mut stop: watch::Receiver<bool>,
     reconnect_after: Duration,
 ) -> Result<()> {
-    // The Engine's timestamps are RFC3339Nano in UTC from one daemon, all in the same shape,
-    // so comparing them as strings orders them in time.
+    // Docker's RFC3339Nano trims trailing zeros from the fraction (even all of it), so
+    // timestamps are compared as `time_key`s, padded to one width.
+    // `last` is the raw timestamp sent back as `since`; `last_key` is its normalized form.
     let mut last: Option<String> = None;
+    let mut last_key: Option<String> = None;
     let mut connected = false;
     loop {
         if *stop.borrow() {
@@ -198,13 +221,18 @@ pub async fn follow_logs_after(
                     for event in parser.push(&chunk) {
                         match event {
                             SseEvent::Log(mut line) => {
-                                if let (Some(ts), Some(seen)) = (&line.timestamp, &last) {
-                                    if ts <= seen {
+                                // A line with no timestamp (or one in a shape we don't
+                                // know) can't be compared, so it is never dropped as a
+                                // repeat and never moves the resume point.
+                                let key = line.timestamp.as_deref().and_then(time_key);
+                                if let (Some(key), Some(seen)) = (&key, &last_key) {
+                                    if key <= seen {
                                         continue;
                                     }
                                 }
-                                if let Some(ts) = &line.timestamp {
-                                    last = Some(ts.clone());
+                                if let Some(key) = key {
+                                    last = line.timestamp.clone();
+                                    last_key = Some(key);
                                 }
                                 line.text = strip_formatting(&line.text);
                                 lines.push(line);
@@ -303,6 +331,28 @@ mod tests {
             log("t1", "ok")
         );
         assert_eq!(p.push(body.as_bytes()), [line("t1", "ok")]);
+    }
+
+    #[test]
+    fn time_keys_order_mixed_fraction_widths() {
+        let a = time_key("2026-10-21T10:00:01Z").unwrap();
+        let b = time_key("2026-10-21T10:00:01.5Z").unwrap();
+        let c = time_key("2026-10-21T10:00:01.123456789Z").unwrap();
+        assert!(a < c && c < b);
+        assert_eq!(a, "2026-10-21T10:00:01.000000000");
+        assert_eq!(time_key("2026-10-21T10:00:01+02:00"), None);
+        assert_eq!(time_key("soon"), None);
+    }
+
+    #[test]
+    fn parser_drops_an_over_long_line_to_its_newline() {
+        let mut p = SseParser::default();
+        // A long junk line whose tail looks like a field, then a real event.
+        let mut long = vec![b'x'; LINE_CAP + 1];
+        assert!(p.push(&long).is_empty());
+        long = b"tail\nevent: end\ndata: {\"reason\":\"eof\"}\n\n".to_vec();
+        // The rest of the long line ("tail") is ignored; the next event still parses.
+        assert_eq!(p.push(&long), [SseEvent::End("eof".into())]);
     }
 
     #[test]

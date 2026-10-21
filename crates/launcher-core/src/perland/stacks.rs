@@ -528,9 +528,16 @@ impl StackClient {
             .ok()
             .flatten()
             .unwrap_or_default();
-        Err(StreamRefusal::Refused(
-            self.refusal(&Reply { status, body }),
-        ))
+        let refusal = self.refusal(&Reply { status, body });
+        // An Engine restarting (5xx) or busy (a plain 429) is worth another try; a full set
+        // of streams (also 429, with its own code), a missing server and a signed-out player
+        // are not.
+        let passing = status >= 500 || (status == 429 && refusal.code != ErrorCode::TooManyStreams);
+        Err(if passing {
+            StreamRefusal::Unreachable(refusal)
+        } else {
+            StreamRefusal::Refused(refusal)
+        })
     }
 
     /// What a refused request means: the Engine's `data.code` first, then the status.
@@ -658,7 +665,8 @@ impl StackClient {
 pub(crate) enum StreamRefusal {
     /// The Engine answered no.
     Refused(LauncherError),
-    /// No answer came (the network, a dropped connection).
+    /// No usable answer: the network, a dropped connection, or an Engine restarting or
+    /// busy (5xx, a plain 429). Worth retrying once the stream has been open before.
     Unreachable(LauncherError),
 }
 
