@@ -583,7 +583,6 @@ impl Syncer {
     /// A restore point for an update that is about to change files (spec §5.4). A sync that
     /// resumes an interrupted one only adds to the point already there; a repair (same pack
     /// version) restores the pack's own files and takes none.
-    #[allow(clippy::too_many_arguments)]
     async fn keep_restore_point(
         &self,
         store: &InstanceStore,
@@ -591,12 +590,20 @@ impl Syncer {
         managed: &Managed,
         desired: &DesiredState,
         plan: &plan::Plan,
-        resumed: bool,
         now: SystemTime,
     ) {
-        if managed.pack_version == desired.pack_version {
+        // Nothing changes, or it is a repair of the pack's own files: no point.
+        if (plan.write.is_empty() && plan.trash.is_empty())
+            || managed.pack_version == desired.pack_version
+        {
             return;
         }
+        // Must run before `save_pack` replaces `pack.json`. Resumed: an earlier sync recorded
+        // another stamp than the one `managed.json` has and never finished its swap. No
+        // `pack.json` is not a resume.
+        let resumed = load_pack(&store.perland_dir(id))
+            .await
+            .is_some_and(|p| p.stamp != managed.stamp);
         let change = restore::Change::PackUpdate {
             from: managed.pack_version.clone(),
             to: desired.pack_version.clone(),
@@ -770,14 +777,9 @@ impl Syncer {
         if cancel.is_cancelled() {
             return Err(sync_cancelled());
         }
-        // The state this sync resumes is read before `save_pack` replaces it.
-        let resumed =
-            load_pack(&perland).await.map(|p| p.stamp) != managed.as_ref().map(|m| m.stamp.clone());
         if let Some(m) = &managed {
-            if !plan.write.is_empty() || !plan.trash.is_empty() {
-                self.keep_restore_point(store, id, m, desired, &plan, resumed, now)
-                    .await;
-            }
+            self.keep_restore_point(store, id, m, desired, &plan, now)
+                .await;
         }
         save_pack(&perland, desired).await?;
         let trash_dir = apply::trash_folder(&perland, now);

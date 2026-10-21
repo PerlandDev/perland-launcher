@@ -21,6 +21,14 @@ use crate::{
     },
 };
 
+/// Param marking the error of a point that would copy more than the cap.
+const OVER_CAP: &str = "over_cap";
+
+/// The point couldn't be built because it would copy more than the cap (not for lack of room).
+pub(crate) fn is_over_cap(e: &LauncherError) -> bool {
+    e.params.contains_key(OVER_CAP)
+}
+
 const META_FILE: &str = "point.json";
 const META_VERSION: u32 = 1;
 
@@ -207,7 +215,9 @@ async fn snapshot_tops(
                 copied = copied.saturating_add(snapshot::copy_size(&game_dir, top, mode)?);
             }
             if copied > cap {
-                return Err(not_enough_space(copied, cap));
+                return Err(
+                    internal("A restore point would be too large").with_param(OVER_CAP, "true")
+                );
             }
             std::fs::create_dir_all(&dest)?;
             let needed = copied.saturating_add(SPACE_MARGIN);

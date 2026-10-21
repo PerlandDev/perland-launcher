@@ -12,7 +12,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use super::{
-    point::{self, build_point_capped, clear_scratch, load_meta, point_dir, recover_old, swap_in},
+    point::{
+        self, build_point_capped, clear_scratch, is_over_cap, load_meta, point_dir, recover_old,
+        swap_in,
+    },
     restore_dir, top_of, PointKind, SnapFile, COPY_CAP,
 };
 use crate::{
@@ -34,6 +37,10 @@ const STAGED_SUFFIX: &str = ".perland-restore";
 pub struct WentBack {
     /// Linked files changed in place since the point was taken: the current file was kept.
     pub kept_current: u32,
+    /// `false` when the point of how it was before going back could not be kept (it would copy
+    /// more than the cap): the instance equals the old point, which is gone, so there is no
+    /// point afterwards.
+    pub kept_undo: bool,
 }
 
 /// Where a test stops `go_back`, as if the launcher died right after that step. A real
@@ -58,6 +65,13 @@ struct Journal {
     hold: Option<UpdateHold>,
     /// `false` when the point had no such folder: the current one is moved aside, not replaced.
     had: BTreeMap<String, bool>,
+    /// `false`: no point of before going back was built; step 9 deletes the old point instead.
+    #[serde(default = "yes")]
+    keep_undo: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 fn staged_name(top: &str) -> String {
@@ -110,7 +124,11 @@ async fn run(
 ) -> Result<WentBack> {
     // 1. An interrupted go-back that recovery finished already did what the player asked.
     if recover_inner(store, id).await? {
-        return Ok(WentBack { kept_current: 0 });
+        let kept_undo = point::read(store, id, now).await.is_some();
+        return Ok(WentBack {
+            kept_current: 0,
+            kept_undo,
+        });
     }
     let restore = restore_dir(&store.perland_dir(id));
     let game_dir = store.game_dir(id);
@@ -129,9 +147,10 @@ async fn run(
     }
 
     // 2–3. The point of now, waiting in `new/`, and the staged folders.
+    let mut keep_undo = true;
     let prepared = async {
         clear_scratch(&restore).await;
-        build_point_capped(
+        let undo = build_point_capped(
             store,
             id,
             &meta.scope,
@@ -140,12 +159,18 @@ async fn run(
             &restore.join("new"),
             cap,
         )
-        .await
-        // Too big or no room: say so, rather than blaming a window holding the folder.
-        .map_err(|e| match e.code {
-            ErrorCode::NotEnoughSpace => e,
-            _ => errors::failed(e),
-        })?;
+        .await;
+        match undo {
+            Ok(_) => {}
+            // Too big to keep: go back anyway, without a way to undo it.
+            Err(e) if is_over_cap(&e) => {
+                keep_undo = false;
+                clear_scratch(&restore).await;
+            }
+            // No room: say so, rather than blaming a window holding the folder.
+            Err(e) if e.code == ErrorCode::NotEnoughSpace => return Err(e),
+            Err(e) => return Err(errors::failed(e)),
+        }
         stage(
             game_dir.clone(),
             point_dir(&restore).join("files"),
@@ -163,7 +188,10 @@ async fn run(
         }
     };
     if stop == Some(StopAfter::Staged) {
-        return Ok(WentBack { kept_current });
+        return Ok(WentBack {
+            kept_current,
+            kept_undo: keep_undo,
+        });
     }
 
     // 4. The journal: from here on, recovery rolls forward.
@@ -172,6 +200,7 @@ async fn run(
         tops,
         hold,
         had,
+        keep_undo,
     };
     let bytes = serde_json::to_vec_pretty(&journal).map_err(errors::failed)?;
     if let Err(e) = write_atomic(&restore.join(JOURNAL_FILE), &bytes).await {
@@ -179,11 +208,17 @@ async fn run(
         return Err(errors::failed(e));
     }
     if stop == Some(StopAfter::Journal) {
-        return Ok(WentBack { kept_current });
+        return Ok(WentBack {
+            kept_current,
+            kept_undo: keep_undo,
+        });
     }
 
     finish(store, id, &journal, stop).await?;
-    Ok(WentBack { kept_current })
+    Ok(WentBack {
+        kept_current,
+        kept_undo: keep_undo,
+    })
 }
 
 /// Build `game_dir/.<top>.perland-restore/` for each of `tops` from the point's files. Linked
@@ -323,7 +358,16 @@ async fn finish(
     let _ = tokio::task::spawn_blocking(move || clear_set_aside(&game)).await;
 
     // 9. The point of before going back becomes the point; then the journal goes.
-    swap_in(&restore).await.map_err(errors::failed)?;
+    if journal.keep_undo {
+        swap_in(&restore).await.map_err(errors::failed)?;
+    } else {
+        // The instance equals the old point now: nothing to go back to.
+        let _ = tokio::fs::remove_dir_all(restore.join("old")).await;
+        match tokio::fs::remove_dir_all(point_dir(&restore)).await {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(errors::failed(e)),
+            _ => {}
+        }
+    }
     if let Err(e) = tokio::fs::remove_dir_all(&aside).await {
         if e.kind() != std::io::ErrorKind::NotFound {
             tracing::warn!("couldn't remove the folders set aside by going back: {e}");
@@ -425,7 +469,7 @@ async fn recover_inner(store: &InstanceStore, id: &str) -> Result<bool> {
         .filter(|j| j.version == JOURNAL_VERSION)
         .ok_or_else(|| errors::failed("the restore journal is damaged"))?;
     recover_old(&restore).await;
-    if exists(&restore.join("new")).await {
+    if !journal.keep_undo || exists(&restore.join("new")).await {
         finish(store, id, &journal, None).await?;
     } else {
         // Step 9 swapped the point in already: only the cleanup is left.
@@ -729,18 +773,38 @@ mod tests {
 
         let went = fx.go_back(None).await.unwrap();
         assert_eq!(went.kept_current, 0);
-        assert!(fx.game("mods/a.jar").is_file(), "not dropped");
+        // The point shares the jar's inode, so the point's file holds the edited bytes too.
+        assert_eq!(fx.text("mods/a.jar"), "edited");
     }
 
     #[tokio::test]
-    async fn going_back_over_the_cap_is_a_space_error_and_touches_nothing() {
+    async fn going_back_over_the_cap_goes_back_without_an_undo_point() {
         let fx = Fixture::updated().await;
-        let err = go_back_capped(&fx.store, &fx.id, T0 + 10, 0)
-            .await
-            .unwrap_err();
-        assert_eq!(err.code, ErrorCode::NotEnoughSpace);
-        fx.assert_after().await;
+        let went = go_back_capped(&fx.store, &fx.id, T0 + 10, 0).await.unwrap();
+        assert!(!went.kept_undo);
+        fx.assert_before().await;
         fx.assert_no_leftovers();
+        assert!(read(&fx.store, &fx.id, T0 + 10).await.is_none());
+        assert!(!fx.restore().join("point").exists());
+    }
+
+    #[tokio::test]
+    async fn recovery_of_a_go_back_without_an_undo_point_finishes_it() {
+        let fx = Fixture::updated().await;
+        let stopped = run(
+            &fx.store,
+            &fx.id,
+            None,
+            T0 + 10,
+            Some(StopAfter::Journal),
+            0,
+        )
+        .await
+        .unwrap();
+        assert!(!stopped.kept_undo);
+        recover(&fx.store, &fx.id).await.unwrap();
+        fx.assert_before().await;
+        assert!(read(&fx.store, &fx.id, T0 + 10).await.is_none());
     }
 
     #[tokio::test]

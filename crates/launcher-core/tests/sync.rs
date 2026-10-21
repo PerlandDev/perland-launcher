@@ -1747,3 +1747,25 @@ async fn resumed_sync_only_notes() {
     );
     assert_eq!(meta.changes.len(), 2);
 }
+
+#[tokio::test]
+async fn a_repair_sync_takes_no_point() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1_create(&env)).await;
+    std::fs::remove_file(env.game_file(&instance.id, "mods/create-1.jar")).unwrap();
+    let report = done(ensure(&env, &instance.id).await.unwrap().outcome);
+    assert!(!report.up_to_date);
+    assert!(env.game_file(&instance.id, "mods/create-1.jar").exists());
+    assert!(point(&env, &instance.id).await.is_none());
+}
+
+#[tokio::test]
+async fn a_missing_pack_json_is_not_a_resume() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1_create(&env)).await;
+    std::fs::remove_file(env.store.perland_dir(&instance.id).join("pack.json")).unwrap();
+    publish_update(&env, "2.0.0", "create-2.jar", b"create 2").await;
+    done(ensure(&env, &instance.id).await.unwrap().outcome);
+    let meta = point(&env, &instance.id).await.expect("a point");
+    assert!(meta.files.iter().any(|f| f.path == "mods/create-1.jar"));
+}
