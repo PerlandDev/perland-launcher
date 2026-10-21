@@ -246,7 +246,7 @@ describe('Home', () => {
     const handle = backend.handle;
     vi.spyOn(backend, 'handle').mockImplementation(async (cmd, args) =>
       cmd === 'pack_status'
-        ? { installedVersion: '1.0.3', update: null, checkError: { category: 'network', code: 'update_check_failed', message: 'x', fix: null, detail: null, params: {} } }
+        ? { installedVersion: '1.0.3', update: null, checkError: { category: 'network', code: 'update_check_failed', message: 'x', fix: null, detail: null, params: {} }, holdLifted: false }
         : handle(cmd, args),
     );
     expect(await screen.findByText("Couldn't check for updates")).toBeInTheDocument();
@@ -652,6 +652,7 @@ describe('server instances', () => {
               installedVersion: '1.0.4',
               update: { fromVersion: '1.0.4', toVersion: '1.0.5', added: [], updated: [], removed: [], kept: [] },
               checkError: null,
+              holdLifted: false,
             }
           : backend.handle(cmd, args),
     });

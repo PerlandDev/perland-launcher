@@ -982,7 +982,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const point = state.restorePoints.get(target.id) ?? fail('disk', 'restore_point_gone', 'There is nothing to go back to.');
       const pack = state.packs.get(target.id);
       const update = point.changes.find((c) => c.kind === 'packUpdate');
-      // Like the core: an instance that checks for updates holds them, at the version it went back to.
+      // Like the core: a hold stays; an instance that checks for updates is held when going back undoes a pack
+      // update, at the version it went back to.
       const checks = (pack ? pack.installed !== null : target.source.kind === 'perland') && target.updatePolicy !== 'pinned';
       const version = update?.from ?? pack?.installed ?? target.updateHold?.version ?? null;
       if (pack && update) {
@@ -990,7 +991,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         pack.update = { fromVersion: update.from, toVersion: update.to, added: [], updated: [], removed: [], kept: [] };
       }
       const updated: Instance = { ...target };
-      if (checks && version && point.kind === 'beforeChange') updated.updateHold = { since: nowSecs(), version };
+      if (target.updateHold) updated.updateHold = target.updateHold;
+      else if (checks && update && version && point.kind === 'beforeChange') updated.updateHold = { since: nowSecs(), version };
       else delete updated.updateHold;
       state.listing.instances = state.listing.instances.map((i) => (i.id === target.id ? updated : i));
       const next: RestorePoint = { kind: 'beforeGoingBack', createdAt: nowSecs(), changes: [], sizeBytes: point.sizeBytes, server: point.server };
@@ -1010,7 +1012,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     }
     case 'pack_status': {
       const pack = state.packs.get(String(args.id)) ?? fail('pack', 'no_pack', "This instance doesn't come from a pack");
-      return { installedVersion: pack.installed, update: pack.installed ? pack.update : null, checkError: null } satisfies PackStatus;
+      return { installedVersion: pack.installed, update: pack.installed ? pack.update : null, checkError: null, holdLifted: false } satisfies PackStatus;
     }
     case 'pack_contents':
       return (state.packs.get(String(args.id)) ?? fail('pack', 'no_pack', 'no pack')).contents;

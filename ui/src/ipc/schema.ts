@@ -406,6 +406,7 @@ export const packStatus = z.strictObject({
   installedVersion: z.string().nullable(),
   update: packUpdate.nullable(),
   checkError: launcherError.nullable(),
+  holdLifted: z.boolean(),
 });
 export const optionalChoice = z.strictObject({ enabled: z.boolean(), description: z.string().nullable() });
 export const packMod = z.strictObject({ path: z.string(), name: z.string(), optional: optionalChoice.nullable() });
