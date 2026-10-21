@@ -39,6 +39,11 @@ related_targets: ["ui/src"]
   - *A fact, not a stat.* On a server card, "12 achievements · 1 day 6 h played" is one plain 0.875rem `ink-dim` tabular line under the news line, the game line's voice: no icon, number styling, lamp or badge. Play stays the card's only key that lights.
   - *Home counts, the card times.* Home's plate says only "7 achievements": the news line's laminate plate with a 1rem `ink-dim` pixel trophy and `ink` text, never amber or lime. The version line keeps the local time played, so Home never shows two different playtimes.
   - *Nothing when there's nothing.* Signed out, not linked, the add-on off, or no achievements (and under a minute on the card): no line, no plate.
+- **Medals and achievements (#32), decided 2026-10-21:**
+  - *Medals are pictures.* A pixel octagon on a dirt ribbon in an art palette of four metals (copper, iron, gold, diamond), never the role hues; the tier is also a word. Locked is a sunk `ground` slot with a dim emblem.
+  - *One case, not cards.* All medals share one `panel` on Accounts in two columns; progress is the blue block meter. Nothing lit; Add offline account stays the primary.
+  - *The facts open the list.* The card's stats line and Home's plate stay flat facts that raise on hover and open the achievements dialog; Accounts lists the servers as flat rows. Earned is a lime check (OK) and not yet is a dim lock, each also in words.
+  - *Calm when off.* Without Perland's stats only the local time medal shows; not linked, the server medals show locked under one line.
 - **Instance actions without right-click (#62), decided 2026-10-17:**
   - *One list.* Home's ⋯ key, a right-click on Home or a rail cabinet, and the wide rail's ⋯ key all show the same list; nothing lives only behind a right-click.
   - *The first two in the open.* Change image and Instance settings are raised keys at Home's top right, never lit; Play stays the only amber.
