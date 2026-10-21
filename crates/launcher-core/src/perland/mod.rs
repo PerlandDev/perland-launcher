@@ -6,6 +6,7 @@ pub mod loopback;
 pub mod panel;
 pub mod pkce;
 pub mod session;
+pub mod session_jwt;
 mod wire;
 
 pub use api::{
@@ -21,3 +22,4 @@ pub use pkce::{authorize_url, Pkce};
 pub use session::{
     KeyringStore, MemoryStore, Profile, SecretError, SecretStore, Session, SessionStore,
 };
+pub use session_jwt::{jwt_exp, JwtCache, JwtSource, REFRESH_MARGIN_SECS};

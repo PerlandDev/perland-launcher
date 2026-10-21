@@ -26,6 +26,10 @@ const BODY_CAP: usize = 64 << 10;
 pub struct SessionJwt(String);
 
 impl SessionJwt {
+    pub fn new(token: impl Into<String>) -> Self {
+        Self(token.into())
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
