@@ -70,7 +70,6 @@
     - `async fn memberships(&self, jwt: &SessionJwt) -> Result<Vec<Membership>>`: `GET /api/v1/auth/memberships`, `X-User-Token`.
     - `async fn select_tenant(&self, jwt: &SessionJwt, tenant_id: &str) -> Result<SessionJwt>`: body `{tenantId}`, answer `data.token`.
     - `async fn handoff(&self, device: &str, tenant_id: &str) -> Result<Option<Handoff>>`: `POST /api/v1/auth/handoff` body `{tenantId}`; `Ok(None)` on 404 or 405 (Engine without it).
-    - `async fn launcher_github(&self) -> bool`: `GET /api/v1/auth/config`, `data.launcherGitHub == true`; any failure is `false`.
   - Errors through the same mapping as `PlayerClient::refusal` (reuse: make `refusal`/`send` helpers shared, e.g. move the common `send`/`Reply`/`Failure` into a private `perland/wire.rs` used by both clients; keep `PlayerClient` behaviour identical). 401 → `PerlandSignedOut`; 403 `account_disabled` → `PerlandSignedOut` too (the session no longer works); 503 `player_accounts_disabled` → `PlayerAccountsClosed`; 404 on `player-session` → `PlayerAccountsClosed` (an Engine without it).
 
 - [ ] **Step 1: Write failing wiremock tests** in `tests/perland_auth.rs` (copy the server setup style of `tests/perland.rs`):
@@ -79,7 +78,6 @@
   - `memberships_send_the_jwt_in_x_user_token_and_read_plan`: two entries, one with `"plan":{"name":"player-free","title":"Free"}` and `"branding":{"displayName":"Perland"}`, one without `plan`; assert `plan == Some("player-free")` and `None`, `display_name` values.
   - `select_tenant_posts_the_tenant_id`: body matcher `{"tenantId":"t-1"}`.
   - `handoff_404_is_none`, `handoff_answers_the_code` (`{"code":"hc_1","expiresIn":120}`), `handoff_sends_bearer_device_token`.
-  - `launcher_github_reads_auth_config` (`true` when `launcherGitHub:true`; `false` when the field is absent and when the route 404s).
   - `debug_never_prints_tokens`: `format!("{:?}", jwt)` and the `Handoff` contain neither the token nor the code.
 - [ ] **Step 2: Run** `cargo test -p launcher-core --test perland_auth` — expected FAIL (module missing).
 - [ ] **Step 3: Implement** `auth.rs` (and the shared `wire.rs` if extracted). Body cap 64 KiB as `BODY_CAP`.
@@ -190,7 +188,7 @@
 **Interfaces:**
 - Consumes: Tasks 1–3.
 - Produces:
-  - `pub trait StackApi: Send + Sync + 'static` — the same shape as `PlayerApi` (every call takes `engine: Url, jwt: SessionJwt`), one method per `StackClient` call plus `player_session(engine, device)`, `memberships(engine, jwt)`, `select_tenant(engine, jwt, tenant)`, `handoff(engine, device, tenant) -> Option<Handoff>`, `launcher_github(engine) -> bool`. `CorePlayer`-like `CoreStack` over the no-redirect `HttpClient`. `Runner::stack(&self) -> Arc<dyn StackApi>`; `FakeStack` in `testing.rs` with scripted answers and a call log (like `FakePlayer`).
+  - `pub trait StackApi: Send + Sync + 'static` — the same shape as `PlayerApi` (every call takes `engine: Url, jwt: SessionJwt`), one method per `StackClient` call plus `player_session(engine, device)`, `memberships(engine, jwt)`, `select_tenant(engine, jwt, tenant)`, `handoff(engine, device, tenant) -> Option<Handoff>`. `CorePlayer`-like `CoreStack` over the no-redirect `HttpClient`. `Runner::stack(&self) -> Arc<dyn StackApi>`; `FakeStack` in `testing.rs` with scripted answers and a call log (like `FakePlayer`).
   - `AppCore` gains `jwts: launcher_core::perland::JwtCache` (cleared in `forget_session` and `adopt`).
   - `pub(crate) async fn manage_jwt(&self, tenant: &str) -> Result<(Session, SessionJwt)>` — through the cache; a `PerlandSignedOut` from `player-session` calls `drop_session`. `pub(crate) async fn with_jwt<T>(&self, tenant, call: impl Fn(Url, SessionJwt) -> BoxFuture<Result<T>>) -> Result<T>`: on `PerlandSignedOut` from the call, `jwts.forget(tenant)` and retry once; a second 401 is returned as is (the device session may still be fine).
   - DTOs (`dto.rs`, camelCase, `Serialize`):
@@ -261,7 +259,7 @@
 - Test: `crates/launcher-core/tests/perland.rs` (parse), unit tests in `your_servers.rs` and `perland.rs`
 
 **Interfaces:**
-- Consumes: `managed_servers` (Task 5), `ManageRef`, `launcher_github` (Task 1).
+- Consumes: `managed_servers` (Task 5), `ManageRef`.
 - Produces:
   - `YourServer.manage: Option<ManageRefCore { tenant_id, stack }>` (`#[serde(default)]`).
   - `YourServerCard.manage: Option<ManageRef>`, `FreeServerCard.manage: Option<ManageRef>`, `YourServersPage.managed: Vec<ManagedServer>` (managed servers matched to no card).
@@ -270,11 +268,11 @@
     2. An owner entry with `manage` that matches a managed server by `{tenantId, stack}` keeps its card and gets `manage`; the managed server leaves `managed`.
     3. An owner entry without `manage` (today's Engine): matched by equal address (`ServerAddress` display, case-insensitive) to a managed server; then as 2.
     4. Every other managed server goes in `managed`.
-  - `SignInMethod::GitHub` (`"github"`), offered in `PerlandStatus.methods` only when `config.panel` is set AND (`/player/config` lists `github` OR `launcher_github(engine)`).
+  - `SignInMethod::GitHub` (`"github"`), offered in `PerlandStatus.methods` only when `config.panel` is set AND `/player/config` lists `github` (the Engine lists it exactly when the launcher GitHub path works). Also: a 403 with `data.code` `account_disabled` on any player route maps to `PerlandSignedOut` in `PlayerClient::refusal` (test `account_disabled_is_signed_out`).
   - `pub fn launcher_sign_in_url(panel: &Url, redirect: &str, pkce: &Pkce) -> Url`: `<panel>/launcher/sign-in?redirect_uri=&code_challenge=&code_challenge_method=S256&state=`.
   - `perland_sign_in_github(language) -> Result<Option<PerlandAccount>>`: the Discord flow (`perland_sign_in_discord`) generalized into a private `sign_in_in_browser(method, language)`; the URL differs, the loopback, PKCE, cancel, reopen and `POST /player/token` redemption are the same. Refused with `SignInUnavailable` (param `method: github`) when not offered.
 
-- [ ] **Step 1: Tests**: core `your_server_reads_manage` and `your_server_without_manage_is_none`, `methods_keep_github`; app `free_server_card_gets_manage`, `owner_card_with_manage_is_deduped`, `owner_card_without_manage_matches_by_address`, `unmatched_managed_servers_are_listed`, `managed_failure_keeps_your_servers` (FakeStack `player-session` errors → page as today, `managed` empty), `github_offered_only_with_a_panel_and_the_engine_saying_so` (4 cases), `github_sign_in_opens_the_panel_page_and_redeems_at_player_token`, `launcher_sign_in_url_has_the_four_params`.
+- [ ] **Step 1: Tests**: core `your_server_reads_manage` and `your_server_without_manage_is_none`, `methods_keep_github`; app `free_server_card_gets_manage`, `owner_card_with_manage_is_deduped`, `owner_card_without_manage_matches_by_address`, `unmatched_managed_servers_are_listed`, `managed_failure_keeps_your_servers`, `account_disabled_is_signed_out` (FakeStack `player-session` errors → page as today, `managed` empty), `github_offered_only_with_a_panel_and_the_engine_saying_so` (4 cases), `github_sign_in_opens_the_panel_page_and_redeems_at_player_token`, `launcher_sign_in_url_has_the_four_params`.
 - [ ] **Step 2: Run** — FAIL; **Step 3: implement**; **Step 4: run** `cargo test -p launcher-core -p launcher-app` — PASS.
 - [ ] **Step 5: Commit** `feat(app): managed servers in Your servers, and Sign in with GitHub`.
 
