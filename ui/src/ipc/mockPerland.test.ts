@@ -17,10 +17,23 @@ const status = async (b: ReturnType<typeof backend>) => (await b.handle('perland
 const page = async (b: ReturnType<typeof backend>) => (await b.handle('your_servers')) as YourServersPage | null;
 
 describe('mock Perland account', () => {
-  it('is signed out and offers both methods by default', async () => {
+  it('is signed out and offers Discord, email and (with the panel) GitHub by default', async () => {
     const st = await status(backend());
-    expect(st).toEqual({ enabled: true, methods: ['discord', 'email'], account: null });
+    expect(st).toEqual({ enabled: true, methods: ['discord', 'email', 'github'], account: null });
     expect(s.perlandStatus.safeParse(st).success).toBe(true);
+    expect((await status(createMockBackend({ panel: false }))).methods).toEqual(['discord', 'email']);
+  });
+
+  it('signs in with GitHub like Discord, and refuses it without a panel', async () => {
+    vi.useFakeTimers();
+    const b = backend();
+    const done = b.handle('perland_sign_in_github', { language: 'en' });
+    await vi.runAllTimersAsync();
+    expect(((await done) as PerlandAccount).newPlayer).toBe(true);
+    await expect(createMockBackend({ panel: false }).handle('perland_sign_in_github', { language: 'en' })).rejects.toMatchObject({
+      code: 'sign_in_unavailable',
+      params: { method: 'github' },
+    });
   });
 
   it('turns accounts off', async () => {
@@ -100,7 +113,7 @@ describe('mock Perland account', () => {
 describe('mock Your servers', () => {
   it('is null signed out and empty when there are none', async () => {
     expect(await page(backend())).toBeNull();
-    expect(await page(backend('empty'))).toEqual({ servers: [] });
+    expect(await page(backend('empty'))).toEqual({ servers: [], managed: [] });
     expect((await status(backend('empty'))).account).not.toBeNull();
   });
 

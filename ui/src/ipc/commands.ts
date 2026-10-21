@@ -26,6 +26,16 @@ import type {
   LoaderKind,
   LoaderVersion,
   LocalMod,
+  ManageChangeResult,
+  ManageConsoleReply,
+  ManageDetail,
+  ManageDiagnosis,
+  ManagedServer,
+  ManageListChange,
+  ManagePlayers,
+  ManageSaved,
+  ManageSettings,
+  ManageSettingsSave,
   ManualProgress,
   McVersion,
   NewInstance,
@@ -126,6 +136,8 @@ export const commands = {
   perlandStatus: () => invoke<PerlandStatus>('perland_status'),
   /** Opens the browser and waits for the player to finish; null when they canceled or said no. */
   perlandSignInDiscord: (language: string) => invoke<PerlandAccount | null>('perland_sign_in_discord', { language }),
+  /** Signs in through the Perland panel's GitHub page in the browser, like Discord. */
+  perlandSignInGithub: (language: string) => invoke<PerlandAccount | null>('perland_sign_in_github', { language }),
   perlandSignInReopen: () => invoke<null>('perland_sign_in_reopen'),
   perlandSignInCancel: () => invoke<null>('perland_sign_in_cancel'),
   perlandEmailStart: (email: string, language: string) => invoke<EmailCodeSent>('perland_email_start', { email, language }),
@@ -155,6 +167,27 @@ export const commands = {
   freeServerDelete: () => invoke<boolean>('free_server_delete'),
   /** Starts the server if it's off and joins it; answers the instance id. The caller starts the run (`play(id, true)`). */
   freeServerPlay: () => invoke<string>('free_server_play'),
+  /** Every server the player owns or helps run, free server first. Empty while signed out. */
+  managedServers: () => invoke<ManagedServer[]>('managed_servers'),
+  manageDetail: (tenantId: string, stack: string) => invoke<ManageDetail>('manage_detail', { tenantId, stack }),
+  manageAction: (tenantId: string, stack: string, action: 'start' | 'stop' | 'restart') =>
+    invoke<null>('manage_action', { tenantId, stack, action }),
+  manageDiagnosis: (tenantId: string, stack: string) => invoke<ManageDiagnosis>('manage_diagnosis', { tenantId, stack }),
+  managePlayers: (tenantId: string, stack: string) => invoke<ManagePlayers>('manage_players', { tenantId, stack }),
+  managePlayersChange: (tenantId: string, stack: string, change: ManageListChange) =>
+    invoke<ManageChangeResult[]>('manage_players_change', { tenantId, stack, change }),
+  manageSettings: (tenantId: string, stack: string) => invoke<ManageSettings>('manage_settings', { tenantId, stack }),
+  /** Rejects with `settings_changed` when someone saved since `save.revision` was read. */
+  manageSettingsSave: (tenantId: string, stack: string, save: ManageSettingsSave) =>
+    invoke<ManageSaved>('manage_settings_save', { tenantId, stack, save }),
+  /** Rejects with `command_needs_confirmation` for a command that stops the server, unless `confirm`. */
+  manageConsole: (tenantId: string, stack: string, command: string, confirm: boolean) =>
+    invoke<ManageConsoleReply>('manage_console', { tenantId, stack, command, confirm }),
+  /** Follows the server's console as `server_log` events (one server at a time) until closed. */
+  manageConsoleOpen: (tenantId: string, stack: string) => invoke<null>('manage_console_open', { tenantId, stack }),
+  manageConsoleClose: (tenantId: string, stack: string) => invoke<null>('manage_console_close', { tenantId, stack }),
+  /** The panel in the browser at a server's page, or the team's upgrade page with `stack` null. */
+  manageOpenPanel: (tenantId: string, stack: string | null) => invoke<null>('manage_open_panel', { tenantId, stack }),
   quit: (stopGames: boolean) => invoke<null>('quit', { stopGames }),
   browseSearch: (request: SearchRequest) => invoke<SearchPage>('browse_search', { request }),
   browseCategories: (kind: ContentKind) => invoke<string[]>('browse_categories', { kind }),

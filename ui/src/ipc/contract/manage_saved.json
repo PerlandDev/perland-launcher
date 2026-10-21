@@ -1,0 +1,17 @@
+{
+  "settings": {
+    "revision": "rev-8",
+    "motd": "Welcome to My world",
+    "motdReadOnly": false,
+    "mode": "survival",
+    "difficulty": "normal",
+    "maxPlayers": 10,
+    "pvp": true,
+    "enableWhitelist": false,
+    "version": "1.21.1",
+    "versionLocked": false,
+    "pendingRestart": true
+  },
+  "restarted": false,
+  "pending": true
+}

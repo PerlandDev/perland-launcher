@@ -61,6 +61,56 @@ it('sends the argument names Rust expects', async () => {
   ]);
 });
 
+it('sends Manage arguments as Rust names them', async () => {
+  const calls: [string, unknown][] = [];
+  mockIPC((cmd, args) => {
+    calls.push([cmd, args]);
+    return null;
+  });
+  const change = { list: 'bans' as const, add: true, names: ['Griefer'] };
+  const save = {
+    revision: 'r',
+    motd: null,
+    mode: 'survival',
+    difficulty: 'easy',
+    maxPlayers: 10,
+    pvp: true,
+    enableWhitelist: false,
+    version: null,
+    apply: 'now',
+  } as const;
+  await commands.perlandSignInGithub('es');
+  await commands.managedServers();
+  await commands.manageDetail('t', 'w');
+  await commands.manageAction('t', 'w', 'restart');
+  await commands.manageDiagnosis('t', 'w');
+  await commands.managePlayers('t', 'w');
+  await commands.managePlayersChange('t', 'w', change);
+  await commands.manageSettings('t', 'w');
+  await commands.manageSettingsSave('t', 'w', save);
+  await commands.manageConsole('t', 'w', 'list', false);
+  await commands.manageConsoleOpen('t', 'w');
+  await commands.manageConsoleClose('t', 'w');
+  await commands.manageOpenPanel('t', 'w');
+  await commands.manageOpenPanel('t', null);
+  expect(calls).toEqual([
+    ['perland_sign_in_github', { language: 'es' }],
+    ['managed_servers', {}],
+    ['manage_detail', { tenantId: 't', stack: 'w' }],
+    ['manage_action', { tenantId: 't', stack: 'w', action: 'restart' }],
+    ['manage_diagnosis', { tenantId: 't', stack: 'w' }],
+    ['manage_players', { tenantId: 't', stack: 'w' }],
+    ['manage_players_change', { tenantId: 't', stack: 'w', change }],
+    ['manage_settings', { tenantId: 't', stack: 'w' }],
+    ['manage_settings_save', { tenantId: 't', stack: 'w', save }],
+    ['manage_console', { tenantId: 't', stack: 'w', command: 'list', confirm: false }],
+    ['manage_console_open', { tenantId: 't', stack: 'w' }],
+    ['manage_console_close', { tenantId: 't', stack: 'w' }],
+    ['manage_open_panel', { tenantId: 't', stack: 'w' }],
+    ['manage_open_panel', { tenantId: 't', stack: null }],
+  ]);
+});
+
 it('rejects with the LauncherError Rust returned', async () => {
   mockIPC(() => {
     throw { category: 'game', code: 'already_running', message: 'busy', fix: null, detail: null, params: {} };

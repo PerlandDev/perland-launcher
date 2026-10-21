@@ -25,6 +25,7 @@ async function bootstrap() {
     const { installMock, mockUpdateState } = await import('./ipc/mock');
     const { perlandScenario } = await import('./ipc/mockPerland');
     const { freeScenario } = await import('./ipc/mockFree');
+    const { manageScenario } = await import('./ipc/mockManage');
     const params = new URLSearchParams(window.location.search);
     const themeParam = theme.safeParse(params.get('theme'));
     const fontParam = uiFont.safeParse(params.get('font'));
@@ -39,6 +40,7 @@ async function bootstrap() {
       link: params.get('link') ?? undefined,
       perland: perlandScenario(params.get('perland')),
       free: freeScenario(params.get('free')),
+      manage: manageScenario(params.get('manage')),
       server: (params.get('server') as ServerScenario | null) ?? undefined,
       railExpanded: params.has('railExpanded'),
       iconShape: params.get('iconShape') === 'round' ? 'round' : undefined,
