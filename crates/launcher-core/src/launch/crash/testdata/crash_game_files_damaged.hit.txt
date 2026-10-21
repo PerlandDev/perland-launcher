@@ -1,0 +1,9 @@
+# source: tail
+Caused by: java.util.zip.ZipException: invalid LOC header (bad signature) in ~/PerlandLauncher/libraries/org/ow2/asm/asm/9.6/asm-9.6.jar
+---
+# source: tail
+Error: Could not find or load main class net.minecraft.client.main.Main
+Caused by: java.lang.ClassNotFoundException: net.minecraft.client.main.Main
+---
+# source: tail
+Exception in thread "main" java.lang.ClassNotFoundException: cpw.mods.bootstraplauncher.BootstrapLauncher

@@ -17,7 +17,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-pub use crash::CrashHint;
+pub use crash::Crash;
 pub use redact::Redactor;
 
 use crate::{
@@ -96,7 +96,7 @@ pub struct GameExit {
     /// The last `TAIL_LINES` redacted output lines.
     pub tail: Vec<String>,
     /// A likely cause, only for exits nobody asked for that weren't clean.
-    pub crash: Option<CrashHint>,
+    pub crash: Option<Crash>,
 }
 
 /// Asks a running game to stop. Cheap to clone; calling `kill` twice is harmless.
@@ -649,6 +649,8 @@ fn spawn_with_log(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Crash reports and logs older than this belong to an earlier run.
+    let started = std::time::SystemTime::now();
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     let mut child = command.spawn().map_err(|e| {
@@ -668,6 +670,7 @@ fn spawn_with_log(
         .collect();
     drop(line_tx);
     let tail = Arc::new(Mutex::new(Tail::default()));
+    let (crash_redactor, game_dir) = (redactor.clone(), cmd.cwd.clone());
     let pump = tokio::spawn(pump_lines(line_rx, redactor, sink, log, tail.clone()));
     let (kill_tx, kill_rx) = watch::channel(false);
     let (done_tx, done_rx) = oneshot::channel();
@@ -675,19 +678,22 @@ fn spawn_with_log(
         let result = wait_for_exit(child, kill_rx).await;
         drain_output(pump, readers, DRAIN_TIMEOUT).await;
         let tail = tail.lock().unwrap_or_else(|e| e.into_inner()).lines();
-        let exit = result.map(|(code, killed)| {
-            let crash = if !killed && code != Some(0) {
-                crash::diagnose(&tail)
-            } else {
-                None
-            };
-            GameExit {
-                code,
-                killed,
-                tail,
-                crash,
+        let exit = match result {
+            Ok((code, killed)) => {
+                let crash = if !killed && code != Some(0) {
+                    crash::diagnose(&game_dir, pid, started, &tail, &crash_redactor).await
+                } else {
+                    None
+                };
+                Ok(GameExit {
+                    code,
+                    killed,
+                    tail,
+                    crash,
+                })
             }
-        });
+            Err(e) => Err(e),
+        };
         let _ = done_tx.send(exit);
     });
     Ok(GameProcess {

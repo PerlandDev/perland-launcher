@@ -358,7 +358,15 @@ export const openTarget = z.discriminatedUnion('kind', [
 ]);
 
 export const runStateKind = z.enum(['idle', 'checking', 'asking', 'queued', 'syncing', 'preparing', 'waking', 'running', 'stopping']);
-export const crashHint = z.enum(['out_of_memory']);
+export const crashFix = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('more_memory') }),
+  z.strictObject({ kind: z.literal('recommended_java') }),
+  z.strictObject({ kind: z.literal('java_settings') }),
+  z.strictObject({ kind: z.literal('find_mod'), project: z.string() }),
+  z.strictObject({ kind: z.literal('disable_mod'), file: z.string(), name: z.string() }),
+  z.strictObject({ kind: z.literal('repair') }),
+  z.strictObject({ kind: z.literal('update_drivers'), vendor: z.enum(['amd', 'nvidia', 'intel']) }),
+]);
 export const hashes = z.strictObject({
   sha1: z.string().nullable(),
   sha256: z.string().nullable(),
@@ -394,7 +402,8 @@ export const exitInfo = z.strictObject({
   code: z.number().int().nullable(),
   killed: z.boolean(),
   cancelled: z.boolean(),
-  crash: crashHint.nullable(),
+  cause: launcherError.nullable(),
+  fixes: z.array(crashFix),
   error: launcherError.nullable(),
   synced: syncSummary.nullable(),
   manual: z.array(manualFile),
@@ -624,7 +633,7 @@ export type ShareChoice = z.infer<typeof shareChoice>;
 export type ImportRequest = z.infer<typeof importRequest>;
 export type OpenTarget = z.infer<typeof openTarget>;
 export type RunStateKind = z.infer<typeof runStateKind>;
-export type CrashHint = z.infer<typeof crashHint>;
+export type CrashFix = z.infer<typeof crashFix>;
 export type Hashes = z.infer<typeof hashes>;
 export type ManualFile = z.infer<typeof manualFile>;
 export type PackUpdate = z.infer<typeof packUpdate>;

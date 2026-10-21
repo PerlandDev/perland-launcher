@@ -4,7 +4,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use launcher_core::{events::TaskId, launch::CrashHint, sync::ManualFile, LauncherError};
+use launcher_core::{events::TaskId, launch::crash::Vendor, sync::ManualFile, LauncherError};
 use serde::Serialize;
 
 use crate::dto::{PackUpdate, PerlandSignInPhase, SyncSummary};
@@ -37,7 +37,10 @@ pub struct ExitInfo {
     pub code: Option<i32>,
     pub killed: bool,
     pub cancelled: bool,
-    pub crash: Option<CrashHint>,
+    /// Why the game crashed, when a rule recognised it (a `crash_*` code).
+    pub cause: Option<LauncherError>,
+    /// What the crash card offers, the primary first. May be offered without a known cause.
+    pub fixes: Vec<CrashFix>,
     pub error: Option<LauncherError>,
     /// What the run's sync changed (None when nothing changed or nothing synced).
     pub synced: Option<SyncSummary>,
@@ -48,6 +51,26 @@ pub struct ExitInfo {
     /// A crash right after an update that hasn't run cleanly since: the crash card offers
     /// "Go back to how it was" (spec §5.7).
     pub restore: bool,
+}
+
+/// One fix the crash card can apply itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CrashFix {
+    /// Raise the instance's memory (the UI picks how much the computer allows).
+    MoreMemory,
+    /// Switch the instance back to the Java its game version asks for.
+    RecommendedJava,
+    /// Open the instance settings' Java section.
+    JavaSettings,
+    /// Open Browse on this Modrinth project, when it exists there.
+    FindMod { project: String },
+    /// Turn off a mod the player added.
+    DisableMod { file: String, name: String },
+    /// Check every game file by its hash, download what's wrong, and play.
+    Repair,
+    /// Open the graphics vendor's driver page.
+    UpdateDrivers { vendor: Vendor },
 }
 
 impl ExitInfo {

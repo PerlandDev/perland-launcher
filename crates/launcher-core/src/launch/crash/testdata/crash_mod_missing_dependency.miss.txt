@@ -1,0 +1,6 @@
+# source: latest_log
+[12:00:03] [main/WARN]: Warnings were found!
+	 - Mod 'Iris' (iris) 1.7.0+mc1.20.1 recommends any version of mod 'Sodium Extra' (sodium-extra), which is missing!
+---
+# source: latest_log
+	Mod ID: 'jei', Requested by: 'justenoughbreeding', Expected range: '[15.2,)', Actual version: '15.0.0.12'

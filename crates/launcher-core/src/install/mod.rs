@@ -352,6 +352,19 @@ pub struct Installer {
 }
 
 impl Installer {
+    /// The same installer, judging files already on disk by their hash ("Repair").
+    pub fn repairing(&self) -> Self {
+        Self {
+            dirs: self.dirs.clone(),
+            meta: self.meta.clone(),
+            downloader: self
+                .downloader
+                .clone()
+                .with_existing_check(crate::download::ExistingCheck::Hash),
+            platform: self.platform,
+        }
+    }
+
     /// Look up the vanilla version (and loader profile) and merge them. Works offline once cached.
     pub async fn resolve(
         &self,
@@ -487,6 +500,26 @@ mod tests {
 
     fn dirs() -> LauncherDirs {
         LauncherDirs::new("/pl")
+    }
+
+    #[test]
+    fn repairing_checks_files_by_hash() {
+        let http = reqwest::Client::new();
+        let installer = Installer {
+            dirs: dirs(),
+            meta: MetaClient::new(http.clone(), "/pl/meta"),
+            downloader: Downloader::new(http),
+            platform: WINDOWS_X64,
+        };
+        let repairing = installer.repairing();
+        assert_eq!(
+            repairing.downloader.existing_check(),
+            crate::download::ExistingCheck::Hash
+        );
+        assert_eq!(
+            installer.downloader.existing_check(),
+            crate::download::ExistingCheck::Size
+        );
     }
 
     #[test]
