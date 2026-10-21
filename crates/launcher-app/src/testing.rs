@@ -476,6 +476,7 @@ pub(crate) struct FakeRunner {
     pub news_image_calls: Mutex<Vec<(String, String, String)>>,
     /// The server each `start` was told to join.
     pub started_joins: Mutex<Vec<Option<ServerAddress>>>,
+    pub started_worlds: Mutex<Vec<Option<String>>>,
     /// What `check_update` reports per instance id (none: up to date).
     pub update_checks: Mutex<HashMap<String, UpdateCheck>>,
     /// What `server_ping` answers (default: nobody), and each address it was asked.
@@ -531,6 +532,7 @@ impl FakeRunner {
             news_image: Mutex::new(None),
             news_image_calls: Mutex::new(Vec::new()),
             started_joins: Mutex::new(Vec::new()),
+            started_worlds: Mutex::new(Vec::new()),
             update_checks: Mutex::new(HashMap::new()),
             ping_answer: Mutex::new(Ping::NoAnswer),
             pings: Mutex::new(Vec::new()),
@@ -610,9 +612,11 @@ impl Runner for FakeRunner {
         _prepared: (),
         _session: Session,
         join: Option<ServerAddress>,
+        world: Option<String>,
         sink: EventSink,
     ) -> BoxFuture<Result<Box<dyn RunningGame>>> {
         self.started_joins.lock().unwrap().push(join);
+        self.started_worlds.lock().unwrap().push(world);
         let lines = self.start_lines.lock().unwrap().clone();
         let (tx, rx) = oneshot::channel();
         let slot: ExitSlot = Arc::new(Mutex::new(Some(tx)));

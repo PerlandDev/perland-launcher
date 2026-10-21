@@ -51,6 +51,9 @@ pub struct LaunchSpec<'a> {
     /// Join this server once the game starts: quick play where the version supports it,
     /// `--server`/`--port` elsewhere.
     pub join: Option<&'a ServerAddress>,
+    /// Open this world (a folder under `saves/`) once the game starts: quick play only. A
+    /// version without it refuses, rather than open the title screen as if nothing was asked.
+    pub world: Option<&'a str>,
 }
 
 #[derive(Clone)]
@@ -183,6 +186,9 @@ fn path_str(p: &Path) -> String {
 /// The feature a version JSON declares when it takes `--quickPlayMultiplayer` (1.20 and later).
 pub const QUICK_PLAY_MULTIPLAYER: &str = "is_quick_play_multiplayer";
 
+/// The feature a version JSON declares when it takes `--quickPlaySingleplayer` (1.20 and later).
+pub const QUICK_PLAY_SINGLEPLAYER: &str = "is_quick_play_singleplayer";
+
 /// Does the version (with its loader merged in) declare `feature` in a game-argument rule?
 pub fn declares_feature(json: &VersionJson, feature: &str) -> bool {
     json.arguments.as_ref().is_some_and(|a| {
@@ -198,11 +204,21 @@ pub fn declares_feature(json: &VersionJson, feature: &str) -> bool {
 pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
     let json = &spec.resolved.json;
     let quick_play = spec.join.is_some() && declares_feature(json, QUICK_PLAY_MULTIPLAYER);
-    let ctx = if quick_play {
-        RuleContext::new(spec.platform).with_feature(QUICK_PLAY_MULTIPLAYER)
-    } else {
-        RuleContext::new(spec.platform)
-    };
+    if spec.world.is_some() && !declares_feature(json, QUICK_PLAY_SINGLEPLAYER) {
+        return Err(LauncherError::game(
+            ErrorCode::WorldContinueUnsupported,
+            "This Minecraft version can't open a world straight away",
+        )
+        .with_fix("Press Play and pick the world in Singleplayer")
+        .with_param("version", &json.id));
+    }
+    let mut ctx = RuleContext::new(spec.platform);
+    if quick_play {
+        ctx = ctx.with_feature(QUICK_PLAY_MULTIPLAYER);
+    }
+    if spec.world.is_some() {
+        ctx = ctx.with_feature(QUICK_PLAY_SINGLEPLAYER);
+    }
     let classpath = classpath(spec.resolved, spec.dirs, &ctx)?;
     let cp_string = classpath
         .iter()
@@ -252,6 +268,9 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
     ]);
     if let (true, Some(address)) = (quick_play, spec.join) {
         vars.insert("quickPlayMultiplayer", address.display());
+    }
+    if let Some(world) = spec.world {
+        vars.insert("quickPlaySingleplayer", world.to_string());
     }
 
     // The player's arguments come before the version's, so when a property repeats, the
@@ -719,12 +738,51 @@ mod tests {
             platform,
             launcher_version: "0.1.0",
             join,
+            world: None,
         })
         .unwrap()
     }
 
     fn server() -> ServerAddress {
         ServerAddress::new("play.example.com", 25566).unwrap()
+    }
+
+    fn build_world(resolved: &ResolvedVersion, world: &str) -> Result<LaunchCommand> {
+        let dirs = LauncherDirs::new("/pl");
+        let session = offline_account("Steve").unwrap().offline_session();
+        build_command(&LaunchSpec {
+            dirs: &dirs,
+            resolved,
+            game_dir: Path::new("/pl/instances/x/minecraft"),
+            java: Path::new("/pl/java/x/bin/java"),
+            session: &session,
+            memory_mb: 4096,
+            jvm_args: Vec::new(),
+            platform: WINDOWS_X64,
+            launcher_version: "0.1.0",
+            join: None,
+            world: Some(world),
+        })
+    }
+
+    #[test]
+    fn quick_play_opens_a_world_on_1_20_1() {
+        let cmd = build_world(&vanilla("1.20.1.json", "1.20.1"), "Mundo de Ana").unwrap();
+        assert_eq!(
+            arg_after(&cmd.args, "--quickPlaySingleplayer"),
+            "Mundo de Ana"
+        );
+        assert!(!cmd.args.contains(&"--quickPlayMultiplayer".to_string()));
+        assert!(!cmd.args.contains(&"--server".to_string()));
+        assert!(!cmd.args.contains(&"--quickPlayPath".to_string()));
+    }
+
+    #[test]
+    fn a_world_on_a_version_without_quick_play_is_refused() {
+        let err = build_world(&vanilla("1.12.2.json", "1.12.2"), "Mundo")
+            .err()
+            .expect("1.12.2 can't open a world straight away");
+        assert_eq!(err.code, ErrorCode::WorldContinueUnsupported);
     }
 
     fn vanilla(file: &str, id: &str) -> ResolvedVersion {
