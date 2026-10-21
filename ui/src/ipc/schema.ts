@@ -446,6 +446,8 @@ export const javaFound = z.strictObject({
 });
 export const javaOverview = z.strictObject({ required: z.number().int().nullable(), installs: z.array(javaFound) });
 export const playtimeEntry = z.strictObject({ id: z.string(), seconds: z.number().int(), lastPlayed: z.number().int() });
+/** Where Home's Continue takes the player: a world (its folder) or a server (its name). */
+export const continueTarget = z.strictObject({ kind: z.enum(['world', 'server']), name: z.string() });
 
 export const contentKind = z.enum(['modpack', 'mod', 'resource_pack', 'shader']);
 export const sortIndex = z.enum(['relevance', 'downloads', 'follows', 'newest', 'updated']);
@@ -617,6 +619,7 @@ export type RunSnapshot = z.infer<typeof runSnapshot>;
 export type JavaFound = z.infer<typeof javaFound>;
 export type JavaOverview = z.infer<typeof javaOverview>;
 export type PlaytimeEntry = z.infer<typeof playtimeEntry>;
+export type ContinueTarget = z.infer<typeof continueTarget>;
 export type PackStatus = z.infer<typeof packStatus>;
 export type OptionalChoice = z.infer<typeof optionalChoice>;
 export type PackMod = z.infer<typeof packMod>;

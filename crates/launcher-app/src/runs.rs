@@ -7,7 +7,7 @@
 //! A run leaves the map (idle) with exactly one final `run_state` event carrying how it ended.
 use std::{
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use launcher_core::{
@@ -15,6 +15,7 @@ use launcher_core::{
     events::{Event, EventSink},
     fsutil::write_atomic,
     instances::{unix_now, Instance, ServerAddress, ServerStatus, SourceRef, UpdatePolicy},
+    last_place,
     locks::InstanceLock,
     playtime, server_list,
     server_wake::{Knock, Ping, WaitEnd},
@@ -31,6 +32,7 @@ use tokio::{
 
 use crate::{
     app::{AppCore, ManualState, Run},
+    continue_play::Connected,
     dto::{PackUpdate, RunSnapshot, SyncSummary},
     events::{AppEvent, ExitInfo, Host, ProgressThrottle, RunStateKind, PROGRESS_INTERVAL},
     logs::spawn_batcher,
@@ -38,13 +40,25 @@ use crate::{
     servers::{apply_view, server_source},
 };
 
-/// What a game run needs besides the instance: who plays, whether the window hides, and
-/// whether the game joins the instance's server straight away (else it opens at the title
-/// screen with the server in its Multiplayer list).
+/// What a game run needs besides the instance: who plays, whether the window hides, and where
+/// the game goes once it starts.
 pub(crate) struct PlayArgs {
     pub(crate) session: Session,
     pub(crate) minimize: bool,
-    pub(crate) join: bool,
+    pub(crate) destination: Destination,
+}
+
+/// Where the game goes once it starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Destination {
+    /// The title screen; a server instance's server waits at the top of the Multiplayer list.
+    Title,
+    /// A server instance's own server ("Play and join"): its latest address, woken first.
+    JoinOwn,
+    /// Any other server (Continue), woken first when it's a sleeping Perland server.
+    Join(ServerAddress),
+    /// A world in `saves/` (Continue).
+    World(String),
 }
 
 fn address_unknown() -> LauncherError {
@@ -71,13 +85,27 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Queue a run; `join: true` also connects a server instance's game to its server
     /// ("Play and join"). Everything after this arrives as events.
     pub async fn play_with(self: &Arc<Self>, id: &str, join: bool) -> Result<()> {
+        let destination = if join {
+            Destination::JoinOwn
+        } else {
+            Destination::Title
+        };
+        self.play_to(id, destination).await
+    }
+
+    /// Queue a run that ends at `destination`. Everything after this arrives as events.
+    pub(crate) async fn play_to(
+        self: &Arc<Self>,
+        id: &str,
+        destination: Destination,
+    ) -> Result<()> {
         // `load` takes the id from the folder, so a copied instance.json can't name another one.
         let instance = self.instances.load(id).await?;
         tracing::info!(
             instance = id,
             minecraft = instance.game.minecraft.as_str(),
             loader = ?instance.game.loader.as_ref().map(|l| (l.kind, l.version.as_str())),
-            join,
+            ?destination,
             "play"
         );
         let account = self.accounts.lock().await.active().await?.ok_or_else(|| {
@@ -99,7 +127,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             Some(PlayArgs {
                 session,
                 minimize,
-                join,
+                destination,
             }),
             checks,
         )
@@ -476,7 +504,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Core events for one run become app events tagged with the instance.
-    fn run_sink(&self, id: &str, log_tx: mpsc::UnboundedSender<String>) -> EventSink {
+    fn run_sink(
+        &self,
+        id: &str,
+        log_tx: mpsc::UnboundedSender<String>,
+        connected: Connected,
+    ) -> EventSink {
         let host = self.host.clone();
         let id = id.to_string();
         let throttle = Mutex::new(ProgressThrottle::new(PROGRESS_INTERVAL));
@@ -504,6 +537,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 }
             }
             Event::Log { line } => {
+                if let Some(address) = last_place::connect_line(&line) {
+                    *connected.lock().unwrap_or_else(|e| e.into_inner()) =
+                        Some((address, SystemTime::now()));
+                }
                 let _ = log_tx.send(line);
             }
             Event::Warning(error) => host.emit(AppEvent::Warning {
@@ -528,7 +565,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             ..info
         };
         let (log_tx, batcher) = spawn_batcher(id.clone(), self.host.clone(), self.logs.clone());
-        let sink = self.run_sink(&id, log_tx);
+        let connected = Connected::default();
+        let sink = self.run_sink(&id, log_tx, connected.clone());
         // Held from the update check until the run ends: the CLI or another window can't
         // change this instance's files meanwhile (spec addendum §4.2).
         let lock = match self.lock_instance(&id).await {
@@ -655,7 +693,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             self.list_server(&id, &instance, address).await;
         }
         let last_status = instance.server.as_ref().and_then(|s| s.last_status);
-        let join = address.clone().filter(|_| args.join);
+        let join = match &args.destination {
+            Destination::JoinOwn => address.clone(),
+            Destination::Join(other) => Some(other.clone()),
+            Destination::Title | Destination::World(_) => None,
+        };
+        let world = match &args.destination {
+            Destination::World(folder) => Some(folder.clone()),
+            _ => None,
+        };
         // A Stop that came after the sync returned (while the instance reloaded) left the run
         // `stopping`: end it here rather than start a game nobody wants.
         if !self.set_phase(&id, RunStateKind::Preparing) {
@@ -680,27 +726,34 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         // Released before any wait, so a wake never holds up another install.
         drop(permit);
-        if let Some(address) = &address {
-            let name = args.session.username.clone();
-            if args.join {
-                if !self
-                    .wake_for_join(&id, address, last_status, &name, &synced, &cancel)
-                    .await
-                {
-                    let info = ExitInfo {
-                        cancelled: true,
-                        synced,
-                        ..ExitInfo::default()
-                    };
-                    return self.finish(&id, info, sink, batcher, Some(lock)).await;
-                }
-            } else if last_status == Some(ServerStatus::Sleeping) {
+        // Another server's status isn't known here: only a waker that answers is waited for.
+        let wake = match &args.destination {
+            Destination::JoinOwn => join.clone().map(|a| (a, last_status)),
+            Destination::Join(other) => Some((other.clone(), None)),
+            Destination::Title | Destination::World(_) => None,
+        };
+        let name = args.session.username.clone();
+        if let Some((target, last)) = &wake {
+            if !self
+                .wake_for_join(&id, target, *last, &name, &synced, &cancel)
+                .await
+            {
+                let info = ExitInfo {
+                    cancelled: true,
+                    synced,
+                    ..ExitInfo::default()
+                };
+                return self.finish(&id, info, sink, batcher, Some(lock)).await;
+            }
+        } else if let (Destination::Title, Some(address)) = (&args.destination, &address) {
+            if last_status == Some(ServerStatus::Sleeping) {
                 self.wake_in_background(&id, address.clone(), name);
             }
         }
+        let started_at = SystemTime::now();
         let game = match self
             .runner
-            .start(instance, prepared, args.session, join, sink.clone())
+            .start(instance, prepared, args.session, join, world, sink.clone())
             .await
         {
             Ok(game) => game,
@@ -760,6 +813,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if let Some(started) = started {
             self.record_playtime(&id, started).await;
         }
+        self.record_place(&id, address.as_ref(), &connected, started_at)
+            .await;
         let crashed = info.is_crash();
         self.finish(&id, info, sink, batcher, Some(lock)).await;
         if args.minimize || crashed {
@@ -941,6 +996,7 @@ mod tests {
         ErrorCode, LauncherError,
     };
 
+    use super::Destination;
     use crate::{
         app::tests::{core, TestCore},
         dto::NewInstance,
@@ -2274,6 +2330,49 @@ mod tests {
         );
         assert!(core.instances.load(&id).await.unwrap().server.unwrap().gone);
         assert!(runner.prepared.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_join_destination_joins_that_address() {
+        let (core, runner, host, _t) = ready(true).await;
+        let hub = ServerAddress::new("hub.example.org", 25565).unwrap();
+        *runner.ping_answer.lock().unwrap() = Ping::Waker;
+        core.play_to("alpha", Destination::Join(hub.clone()))
+            .await
+            .unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        assert_eq!(
+            *runner.started_joins.lock().unwrap(),
+            vec![Some(hub.clone())]
+        );
+        assert_eq!(*runner.started_worlds.lock().unwrap(), vec![None]);
+        assert_eq!(*runner.pings.lock().unwrap(), vec![hub.clone()]);
+        assert_eq!(
+            runner.knocks.lock().unwrap()[0].0,
+            hub,
+            "a sleeping server wakes"
+        );
+        core.stop("alpha").unwrap();
+        host.wait_for("alpha", Idle).await;
+    }
+
+    #[tokio::test]
+    async fn a_world_destination_opens_the_world() {
+        let (core, runner, host, _t) = ready(true).await;
+        core.play_to("alpha", Destination::World("Mundo".into()))
+            .await
+            .unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        assert_eq!(
+            *runner.started_worlds.lock().unwrap(),
+            vec![Some("Mundo".to_string())]
+        );
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![None]);
+        assert!(runner.pings.lock().unwrap().is_empty());
+        core.stop("alpha").unwrap();
+        host.wait_for("alpha", Idle).await;
     }
 
     #[tokio::test]

@@ -144,6 +144,8 @@ fn main() {
             commands::account_set_active,
             commands::account_remove,
             commands::play,
+            commands::continue_target,
+            commands::play_continue,
             commands::stop,
             commands::run_states,
             commands::log_tail,

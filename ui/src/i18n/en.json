@@ -60,6 +60,8 @@
     "deleteTitle": "Delete {{name}}?",
     "deleteBody": "This removes the instance and everything in it, including worlds and screenshots. It can't be undone.",
     "deleteConfirm": "Delete instance",
+    "continue": "Continue",
+    "continueTo": "Continue: {{name}}",
     "played": "{{time}} played"
   },
   "image": {
@@ -823,6 +825,7 @@
     "server_list_failed": { "message": "Couldn't add the server to the game's server list.", "fix": "Add {{address}} in Multiplayer by hand." },
     "server_list_closed": { "message": "The server list isn't open yet. Check back soon." },
     "server_wake_failed": { "message": "Couldn't wake the server. The game will try to join anyway." },
+    "world_continue_unsupported": { "message": "This Minecraft version can't open a world straight away.", "fix": "Press Play and pick the world in Singleplayer." },
     "player_accounts_closed": { "message": "Perland accounts aren't open yet." },
     "sign_in_unavailable": { "message": "That way of signing in isn't available." },
     "sign_in_failed": { "message": "Couldn't sign you in. Try again." },
