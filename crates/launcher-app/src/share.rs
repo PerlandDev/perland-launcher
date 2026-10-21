@@ -296,11 +296,15 @@ mod tests {
 
     #[test]
     fn typed_names_get_the_extension() {
-        let path = |p: &str| mrpack_path(PathBuf::from(p)).map(|p| p.display().to_string());
-        assert_eq!(path("/d/Sky.mrpack").unwrap(), "/d/Sky.mrpack");
-        assert_eq!(path("/d/Sky.MRPACK").unwrap(), "/d/Sky.MRPACK");
-        assert_eq!(path("/d/Sky").unwrap(), "/d/Sky.mrpack");
-        assert_eq!(path("/d/Fabric 1.20.1").unwrap(), "/d/Fabric 1.20.1.mrpack");
+        // Only the file name changes; compared alone, since Windows joins with a backslash.
+        let path = |p: &str| {
+            mrpack_path(PathBuf::from(p))
+                .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        };
+        assert_eq!(path("/d/Sky.mrpack").unwrap(), "Sky.mrpack");
+        assert_eq!(path("/d/Sky.MRPACK").unwrap(), "Sky.MRPACK");
+        assert_eq!(path("/d/Sky").unwrap(), "Sky.mrpack");
+        assert_eq!(path("/d/Fabric 1.20.1").unwrap(), "Fabric 1.20.1.mrpack");
         assert_eq!(
             path("/d/Sky.zip").unwrap_err().code,
             ErrorCode::SharePathInvalid
