@@ -630,10 +630,10 @@ fn spawn_with_log(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Crash reports and logs older than this belong to an earlier run.
+    let started = std::time::SystemTime::now();
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-                                         // Crash reports and logs older than this belong to an earlier run.
-    let started = std::time::SystemTime::now();
     let mut child = command.spawn().map_err(|e| {
         LauncherError::java(ErrorCode::JavaStartFailed, "Java couldn't be started")
             .with_fix("Reinstall Java from the instance settings")

@@ -162,7 +162,6 @@
     "crashTitle": "{{name}} se cerró de forma inesperada",
     "crashCode": "Código de salida {{code}}",
     "raiseMemory": "Subir a {{gb}} GB",
-    "fixes": "Lo que puedes hacer",
     "fixMemorySettings": "Ajustes de memoria",
     "fixRecommendedJava": "Usar el Java recomendado",
     "fixJavaSettings": "Ajustes de Java",

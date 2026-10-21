@@ -134,7 +134,7 @@ fn out_of_memory(text: &str, _: MixinOwner) -> Option<Found> {
     // Not "unable to create native thread": more heap doesn't help that one.
     static RE: LazyLock<Regex> = LazyLock::new(|| {
         re(
-            r"(?m)java\.lang\.OutOfMemoryError(?:: (?:Java heap space|GC overhead limit exceeded|Metaspace|Direct buffer memory|Requested array size exceeds VM limit))?[ \t]*$",
+            r"(?m)java\.lang\.OutOfMemoryError(?:: (?:Java heap space|GC overhead limit exceeded|Metaspace|Direct buffer memory))?[ \t]*$",
         )
     });
     RE.captures(text)
@@ -292,6 +292,20 @@ fn wrong_version(text: &str, _: MixinOwner) -> Option<Found> {
     ))
 }
 
+/// A log line printed below error level. Mixin and the loaders log a failure the game carries on
+/// past (a non-required mixin, a jar they skip) as a warning; naming its mod as the culprit of a
+/// crash with another cause would put a wrong "Turn off" on the card.
+fn quiet(line: &str) -> bool {
+    static LEVEL: LazyLock<Regex> = LazyLock::new(|| {
+        re(r"\[[^\]\n]*/(?:WARN|INFO|DEBUG|TRACE)\]|\[\d\d:\d\d:\d\d (?:WARN|INFO|DEBUG)\]")
+    });
+    LEVEL.is_match(line)
+}
+
+fn line_at(text: &str, at: usize) -> &str {
+    lines_of(text, at..at)
+}
+
 fn mod_failed(text: &str, owner: MixinOwner) -> Option<Found> {
     const CONFIG: &str = r"(?P<config>[\w.-]*mixins?[\w.-]*\.json)";
     static APPLY: LazyLock<Regex> = LazyLock::new(|| {
@@ -307,6 +321,10 @@ fn mod_failed(text: &str, owner: MixinOwner) -> Option<Found> {
     // Without a mod that owns it, a mixin error names no culprit: it stays generic.
     [&*APPLY, &*INJECT].into_iter().find_map(|re| {
         re.captures_iter(text).find_map(|c| {
+            let start = c.get(0).expect("group 0 always matches").start();
+            if quiet(line_at(text, start)) {
+                return None;
+            }
             let id = group(&c, "id").or_else(|| owner(&c["config"]))?;
             let module = ModRef {
                 id,
@@ -328,7 +346,7 @@ static ZIP_ERROR: LazyLock<Regex> = LazyLock::new(|| {
 fn zip_error_naming<'t>(text: &'t str, path: &Regex) -> Option<(Range<usize>, Captures<'t>)> {
     let mut offset = 0;
     for line in text.split_inclusive('\n') {
-        if ZIP_ERROR.is_match(line) {
+        if ZIP_ERROR.is_match(line) && !quiet(line) {
             if let Some(c) = path.captures(line) {
                 let at = offset..offset + line.trim_end().len();
                 return Some((at, c));
@@ -341,10 +359,14 @@ fn zip_error_naming<'t>(text: &'t str, path: &Regex) -> Option<(Range<usize>, Ca
 
 fn mod_file_damaged(text: &str, _: MixinOwner) -> Option<Found> {
     static PATH: LazyLock<Regex> =
-        LazyLock::new(|| re(r#"mods[/\\](?P<file>[^/\\\[\]\n:'"]+?\.jar)\b"#));
+        LazyLock::new(|| re(r#"(?:^|[/\\\[\s])mods[/\\](?P<file>[^/\\\[\]\n:'"]+?\.jar)\b"#));
     let (at, c) = zip_error_naming(text, &PATH)?;
     let cause = CrashCause::ModFileDamaged {
-        file: c["file"].to_string(),
+        module: ModRef {
+            id: c["file"].to_string(),
+            name: None,
+            file: None,
+        },
     };
     Some(Found { cause, at })
 }

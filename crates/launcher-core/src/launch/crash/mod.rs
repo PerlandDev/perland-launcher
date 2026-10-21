@@ -97,9 +97,10 @@ pub enum CrashCause {
     ModFailed {
         module: ModRef,
     },
-    /// `file` is the damaged jar's name in `mods/`.
+    /// A jar in `mods/` that can't be read: its id is the file name the log gives, and it has a
+    /// `file` only when that is an enabled jar on disk.
     ModFileDamaged {
-        file: String,
+        module: ModRef,
     },
     GameFilesDamaged,
 }
@@ -178,9 +179,9 @@ impl Crash {
                 format!("{} broke while the game was loading", module.shown()),
                 "Turn it off and press Play again",
             ),
-            CrashCause::ModFileDamaged { file } => (
+            CrashCause::ModFileDamaged { module } => (
                 C::Integrity,
-                format!("The file for {file} is damaged"),
+                format!("The file for {} is damaged", module.shown()),
                 "Turn it off and download it again",
             ),
             CrashCause::GameFilesDamaged => (
@@ -220,10 +221,11 @@ impl Crash {
                 ("mod", module.shown().to_string()),
                 ("other", other.shown().to_string()),
             ],
-            CrashCause::ModWrongVersion { module } | CrashCause::ModFailed { module } => {
+            CrashCause::ModWrongVersion { module }
+            | CrashCause::ModFailed { module }
+            | CrashCause::ModFileDamaged { module } => {
                 vec![("mod", module.shown().to_string())]
             }
-            CrashCause::ModFileDamaged { file } => vec![("mod", file.clone())],
         }
     }
 }
@@ -240,14 +242,21 @@ pub async fn diagnose(
     let evidence = evidence::gather(game_dir, pid, started, tail, redactor).await;
     let dir = game_dir.to_path_buf();
     tokio::task::spawn_blocking(move || {
+        // Each jar is opened once at most, however many mixin lines the logs hold.
         let jars = OnceCell::new();
         let jars = || jars.get_or_init(|| mods::scan(&dir));
+        let configs = OnceCell::new();
         let owner = |config: &str| {
-            let file = mods::owner_of_entry(&dir, config)?;
-            jars().iter().find(|j| j.file == file).map(|j| j.id.clone())
+            let file = configs
+                .get_or_init(|| mods::mixin_configs(&dir))
+                .get(config)?;
+            jars()
+                .iter()
+                .find(|j| &j.file == file)
+                .map(|j| j.id.clone())
         };
         let mut crash = classify(&evidence, &owner)?;
-        mods::resolve(&mut crash.cause, jars());
+        mods::resolve(&mut crash.cause, jars(), &mods::enabled_files(&dir));
         Some(crash)
     })
     .await

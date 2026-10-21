@@ -162,7 +162,6 @@
     "crashTitle": "{{name}} closed unexpectedly",
     "crashCode": "Exit code {{code}}",
     "raiseMemory": "Raise to {{gb}} GB",
-    "fixes": "What you can do",
     "fixMemorySettings": "Memory settings",
     "fixRecommendedJava": "Use the recommended Java",
     "fixJavaSettings": "Java settings",

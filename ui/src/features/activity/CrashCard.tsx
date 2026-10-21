@@ -35,9 +35,10 @@ export function CrashCard({ instance, exit, lines }: { instance: Instance; exit:
         ]),
       )
       .catch(pushError);
-  // Without a fix, Copy for support is the card's one action, raised as it always was.
+  // Without a fix to show, Copy for support is the card's one action, raised as it always was.
+  const anyFix = exit.fixes.some((fix) => fix.kind !== 'find_mod' || found.has(fix.project));
   const copyButton = (
-    <Button variant={exit.fixes.length > 0 ? 'ghost' : 'secondary'} icon={<Copy />} onClick={copy}>
+    <Button variant={anyFix ? 'ghost' : 'secondary'} icon={<Copy />} onClick={copy}>
       {t('activity.copyForSupport')}
     </Button>
   );

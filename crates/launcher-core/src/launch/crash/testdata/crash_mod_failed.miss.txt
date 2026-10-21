@@ -3,3 +3,6 @@
 ---
 # source: tail
 [12:00:05] [main/FATAL] [mixin/]: Mixin apply failed unknown.mixins.json:SomeMixin -> net.minecraft.server.level.ServerLevel: org.spongepowered.asm.mixin.transformer.throwables.InvalidMixinException
+---
+# source: latest_log
+[12:00:05] [main/WARN] [mixin/]: Mixin apply for mod sodium failed sodium.mixins.json:compat.OptionalMixin from mod sodium -> net.minecraft.class_761: org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException

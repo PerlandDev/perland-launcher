@@ -84,6 +84,13 @@ describe('CrashCard', () => {
     expect(screen.queryByRole('button', { name: /^Find/ })).not.toBeInTheDocument();
   });
 
+  it('raises Copy for support when no fix can show', async () => {
+    show(crashed('missing', { fixes: [{ kind: 'find_mod', project: 'not-on-modrinth' }] }));
+    expect(await screen.findByRole('heading', { name: "Iris needs fabric-api, which isn't installed." })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Copy for support' })).not.toHaveClass('btn-ghost'));
+    expect(screen.queryByRole('button', { name: /^Find/ })).not.toBeInTheDocument();
+  });
+
   it('raises memory within what the computer has', async () => {
     const { user, calls } = show(crashed('memory'));
     await user.click(await screen.findByRole('button', { name: 'Raise to 6 GB' }));

@@ -10,8 +10,9 @@ use crate::events::CrashFix;
 pub(crate) fn files_named(crash: &Crash) -> Vec<String> {
     let mods: Vec<&ModRef> = match &crash.cause {
         CrashCause::ModsClash { module, other } => vec![other, module],
-        CrashCause::ModWrongVersion { module } | CrashCause::ModFailed { module } => vec![module],
-        CrashCause::ModFileDamaged { file } => return vec![file.clone()],
+        CrashCause::ModWrongVersion { module }
+        | CrashCause::ModFailed { module }
+        | CrashCause::ModFileDamaged { module } => vec![module],
         _ => vec![],
     };
     mods.into_iter().filter_map(|m| m.file.clone()).collect()
@@ -55,16 +56,9 @@ pub(crate) fn fixes_for(
         CrashCause::ModsClash { module, other } => {
             [other, module].into_iter().filter_map(disable).collect()
         }
-        CrashCause::ModWrongVersion { module } | CrashCause::ModFailed { module } => {
-            disable(module).into_iter().collect()
-        }
-        CrashCause::ModFileDamaged { file } => disable(&ModRef {
-            id: file.clone(),
-            name: Some(file.clone()),
-            file: Some(file.clone()),
-        })
-        .into_iter()
-        .collect(),
+        CrashCause::ModWrongVersion { module }
+        | CrashCause::ModFailed { module }
+        | CrashCause::ModFileDamaged { module } => disable(module).into_iter().collect(),
         CrashCause::GameFilesDamaged => vec![CrashFix::Repair],
     }
 }
@@ -251,16 +245,22 @@ mod tests {
 
     #[test]
     fn damaged_files() {
-        let cause = CrashCause::ModFileDamaged {
-            file: "sodium.jar".into(),
+        let damaged = |file: Option<&str>| CrashCause::ModFileDamaged {
+            module: ModRef {
+                id: "sodium.jar".into(),
+                name: Some("Sodium".into()),
+                file: file.map(Into::into),
+            },
         };
         assert_eq!(
-            fixes(cause, false, &[], None),
+            fixes(damaged(Some("sodium.jar")), false, &[], None),
             [CrashFix::DisableMod {
                 file: "sodium.jar".into(),
-                name: "sodium.jar".into()
+                name: "Sodium".into()
             }]
         );
+        // Not an enabled jar on disk: nothing to turn off.
+        assert!(fixes(damaged(None), false, &[], None).is_empty());
         assert_eq!(
             fixes(CrashCause::GameFilesDamaged, false, &[], None),
             [CrashFix::Repair]

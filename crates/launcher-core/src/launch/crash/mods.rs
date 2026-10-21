@@ -84,6 +84,30 @@ fn declared(jar: &mut zip::ZipArchive<std::fs::File>) -> Vec<(String, Option<Str
     out
 }
 
+/// The enabled jars' file names.
+pub fn enabled_files(game_dir: &Path) -> Vec<String> {
+    enabled_jars(game_dir)
+        .into_iter()
+        .map(|(file, _)| file)
+        .collect()
+}
+
+/// The enabled jar that holds each mixin config (a `*mixin*.json` at a jar's root), by config.
+pub fn mixin_configs(game_dir: &Path) -> std::collections::HashMap<String, String> {
+    let mut configs = std::collections::HashMap::new();
+    for (file, path) in enabled_jars(game_dir) {
+        let Some(jar) = open(&path) else { continue };
+        for name in jar.file_names().flatten() {
+            if !name.contains('/') && name.contains("mixin") && name.ends_with(".json") {
+                configs
+                    .entry(name.to_string())
+                    .or_insert_with(|| file.clone());
+            }
+        }
+    }
+    configs
+}
+
 /// Every mod the enabled jars declare, in file name order.
 pub fn scan(game_dir: &Path) -> Vec<JarMod> {
     enabled_jars(game_dir)
@@ -101,13 +125,6 @@ pub fn scan(game_dir: &Path) -> Vec<JarMod> {
         .collect()
 }
 
-/// The enabled jar that holds `entry` (a mixin config) at its root.
-pub fn owner_of_entry(game_dir: &Path, entry: &str) -> Option<String> {
-    enabled_jars(game_dir)
-        .into_iter()
-        .find_map(|(file, path)| open(&path)?.index_for_name(entry).map(|_| file))
-}
-
 fn fill(module: &mut ModRef, jars: &[JarMod]) {
     if let Some(jar) = jars.iter().find(|j| j.id == module.id) {
         module.file = Some(jar.file.clone());
@@ -117,9 +134,20 @@ fn fill(module: &mut ModRef, jars: &[JarMod]) {
     }
 }
 
-/// Give each mod the cause names its jar's file and name, when an enabled jar declares it.
-pub fn resolve(cause: &mut CrashCause, jars: &[JarMod]) {
+/// Give each mod the cause names its jar's file and name, when an enabled jar declares it. A
+/// damaged jar is named by its file: it keeps that file only when it is an enabled jar on disk
+/// (`files`), with the name of the mod it declares when it could still be read.
+pub fn resolve(cause: &mut CrashCause, jars: &[JarMod], files: &[String]) {
     match cause {
+        CrashCause::ModFileDamaged { module } => {
+            if files.contains(&module.id) {
+                module.file = Some(module.id.clone());
+                module.name = jars
+                    .iter()
+                    .find(|j| j.file == module.id)
+                    .and_then(|j| j.name.clone());
+            }
+        }
         CrashCause::ModMissingDependency { module, .. }
         | CrashCause::ModWrongVersion { module }
         | CrashCause::ModFailed { module } => fill(module, jars),
@@ -209,11 +237,51 @@ pub(crate) mod tests {
         let tmp = tempfile::tempdir().unwrap();
         jar(tmp.path(), "a.jar", &[("a.mixins.json", "{}")]);
         jar(tmp.path(), "create.jar", &[("create.mixins.json", "{}")]);
+        jar(
+            tmp.path(),
+            "fabric-api.jar",
+            &[("assets/x/mixins.json", "{}"), ("fabric.mod.json", "{}")],
+        );
+        let configs = mixin_configs(tmp.path());
         assert_eq!(
-            owner_of_entry(tmp.path(), "create.mixins.json").as_deref(),
+            configs.get("create.mixins.json").map(String::as_str),
             Some("create.jar")
         );
-        assert_eq!(owner_of_entry(tmp.path(), "none.mixins.json"), None);
+        assert_eq!(
+            configs.get("a.mixins.json").map(String::as_str),
+            Some("a.jar")
+        );
+        assert_eq!(configs.len(), 2, "{configs:?}");
+    }
+
+    #[test]
+    fn a_damaged_jar_has_a_file_only_when_it_is_on_disk() {
+        let jars = [JarMod {
+            file: "sodium.jar".into(),
+            id: "sodium".into(),
+            name: Some("Sodium".into()),
+        }];
+        let damaged = |file: &str| CrashCause::ModFileDamaged {
+            module: ModRef {
+                id: file.into(),
+                name: None,
+                file: None,
+            },
+        };
+        let mut on_disk = damaged("sodium.jar");
+        resolve(&mut on_disk, &jars, &["sodium.jar".into()]);
+        let CrashCause::ModFileDamaged { module } = on_disk else {
+            unreachable!()
+        };
+        assert_eq!(module.file.as_deref(), Some("sodium.jar"));
+        assert_eq!(module.shown(), "Sodium");
+        let mut gone = damaged("gone.jar");
+        resolve(&mut gone, &jars, &["sodium.jar".into()]);
+        let CrashCause::ModFileDamaged { module } = gone else {
+            unreachable!()
+        };
+        assert_eq!(module.file, None);
+        assert_eq!(module.shown(), "gone.jar");
     }
 
     #[test]
@@ -235,7 +303,7 @@ pub(crate) mod tests {
                 file: None,
             },
         };
-        resolve(&mut cause, &jars);
+        resolve(&mut cause, &jars, &["sodium.jar".into()]);
         let CrashCause::ModsClash { module, other } = cause else {
             unreachable!()
         };
