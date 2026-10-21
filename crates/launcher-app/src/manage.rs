@@ -499,21 +499,34 @@ fn patch_settings(
         *custom = Value::Object(Default::default());
     }
     let custom = custom.as_object_mut().ok_or_else(malformed)?;
-    custom.insert("mode".into(), Value::from(save.mode.clone()));
-    custom.insert("difficulty".into(), Value::from(save.difficulty.clone()));
-    match save.max_players {
-        Some(n) => {
-            custom.insert("maxPlayers".into(), Value::from(n));
+    // A key is written only when the document has it or the player changed what Manage
+    // showed: writing a default where nothing was changes the compose file (an
+    // `ENABLE_WHITELIST: 'FALSE'` would turn off a whitelist a starting list enabled).
+    let mut set = |key: &str, value: Value, changed: bool| {
+        if changed || custom.get(key).is_some_and(|v| !v.is_null()) {
+            custom.insert(key.into(), value);
         }
-        // Cleared: the server's default. Unset already, it stays as it was.
-        None => {
-            if custom.get("maxPlayers").is_some_and(|v| !v.is_null()) {
-                custom.remove("maxPlayers");
-            }
-        }
+    };
+    set(
+        "mode",
+        Value::from(save.mode.clone()),
+        save.mode != read.mode,
+    );
+    set(
+        "difficulty",
+        Value::from(save.difficulty.clone()),
+        save.difficulty != read.difficulty,
+    );
+    // `None` never removes it: itzg's default (20) can be above a free server's limit.
+    if let Some(n) = save.max_players {
+        set("maxPlayers", Value::from(n), Some(n) != read.max_players);
     }
-    custom.insert("pvp".into(), Value::from(save.pvp));
-    custom.insert("enableWhitelist".into(), Value::from(save.enable_whitelist));
+    set("pvp", Value::from(save.pvp), save.pvp != read.pvp);
+    set(
+        "enableWhitelist",
+        Value::from(save.enable_whitelist),
+        save.enable_whitelist != read.enable_whitelist,
+    );
     if let Some(motd) = save.motd.as_ref().filter(|_| !read.motd_read_only) {
         custom.insert("motd".into(), Value::from(motd.clone()));
     }
@@ -2048,8 +2061,52 @@ mod tests {
         let c = &body["settings"]["customization"];
         assert_eq!(c["motd"], "New");
         assert_eq!(c["difficulty"], "normal");
-        assert!(c.get("maxPlayers").is_none(), "cleared: the default");
+        assert_eq!(c["maxPlayers"], 5, "None leaves it as it was");
         assert!(body.get("broadcast").is_none() && body.get("skipSafetyBackup").is_none());
+    }
+
+    #[tokio::test]
+    async fn settings_save_leaves_absent_fields_absent() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        let bare =
+            json!({"type": "PAPER", "version": "1.21.1", "customization": {"viewDistance": 8}});
+        *fake.settings.lock().unwrap() = Ok(doc(bare.clone()));
+        // What Manage reports for that document, sent back unchanged.
+        let shown = core.manage_settings("t1", "s").await.unwrap();
+        let s = ManageSettingsSave {
+            revision: shown.revision,
+            motd: None,
+            mode: shown.mode,
+            difficulty: shown.difficulty,
+            max_players: shown.max_players,
+            pvp: shown.pvp,
+            enable_whitelist: shown.enable_whitelist,
+            version: Some(shown.version),
+            apply: "now".into(),
+            confirm_version_change: false,
+            acknowledge_data_loss: false,
+        };
+        core.manage_settings_save("t1", "s", s.clone())
+            .await
+            .unwrap();
+        let (body, _) = put_of(&fake);
+        assert_eq!(body["settings"], bare);
+
+        // A changed default is written; the others stay absent.
+        fake.calls.lock().unwrap().clear();
+        let mut changed = s;
+        changed.enable_whitelist = true;
+        changed.max_players = Some(8);
+        core.manage_settings_save("t1", "s", changed).await.unwrap();
+        let (body, _) = put_of(&fake);
+        let c = &body["settings"]["customization"];
+        assert_eq!(c["enableWhitelist"], true);
+        assert_eq!(c["maxPlayers"], 8);
+        for key in ["mode", "difficulty", "pvp"] {
+            assert!(c.get(key).is_none(), "{key}");
+        }
     }
 
     #[tokio::test]
