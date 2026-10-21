@@ -12,14 +12,14 @@ use launcher_app::{
     deep_link::DeepLink,
     dto::{
         AppInfo, ArtChoice, Build, ContentFile, ContinueKind, ContinueTarget, EmailCodeSent,
-        FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstanceArtData,
-        JavaFound, JavaOverview, JoinPreview, LinkCodeView, ManualProgress, NameListView,
-        NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest,
-        PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase,
-        PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage,
-        RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers,
-        ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary, YourServerCard,
-        YourServersPage,
+        FreeServerCard, FreeServerPage, FriendsCheck, IconChoice, ImportPreview, ImportRequest,
+        InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView, ManualProgress,
+        NameListView, NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice,
+        PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount,
+        PerlandSignInPhase, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard,
+        PublicServerPage, RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack,
+        ServerPlayers, ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary,
+        YourServerCard, YourServersPage,
     },
     events::{AppEvent, CrashFix, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -47,7 +47,7 @@ use launcher_core::{
         loaders::LoaderKind,
     },
     mods::LocalMod,
-    perland::{CreateAllowance, Deletion, Disk, FreeLimits, MemoryLimits},
+    perland::{CreateAllowance, Deletion, Disk, FreeLimits, MemoryLimits, PackLimits},
     public_list::{Facets, ListQuery, ListSort},
     restore::{Change, PointKind},
     settings::{IconShape, Lang, Settings, Theme, UiFont},
@@ -245,6 +245,9 @@ fn free_server_pages() -> Vec<FreeServerPage> {
         unused_days: 30,
         warning_days: 7,
         creates_per_week: 3,
+        pack: Some(PackLimits {
+            max_bytes: 64 << 20,
+        }),
     };
     let card = PublicServerCard {
         token: "F".repeat(43),
@@ -1136,6 +1139,18 @@ fn contract_fixtures_are_current() {
                 kind: LoaderKind::Fabric,
                 version: "0.19.5".into(),
             }),
+        },
+    );
+    check(
+        "friends_check",
+        FriendsCheck {
+            name: "Sky Friends".into(),
+            mods: 12,
+            server_mods: 10,
+            required_mb: 2560,
+            limit_mb: 6144,
+            not_on_modrinth: vec!["own.jar".into()],
+            settings: 34,
         },
     );
     check(

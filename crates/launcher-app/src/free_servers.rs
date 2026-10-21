@@ -20,7 +20,7 @@ use crate::{
 };
 
 /// The Engine's rule for a free server's name.
-fn valid_name(name: &str) -> bool {
+pub(crate) fn valid_name(name: &str) -> bool {
     (1..=32).contains(&name.len())
         && name
             .bytes()
@@ -32,7 +32,7 @@ fn valid_version_id(id: &str) -> bool {
     (1..=16).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 
-fn invalid() -> LauncherError {
+pub(crate) fn invalid() -> LauncherError {
     LauncherError::network(
         ErrorCode::InvalidFreeServer,
         "Check the server name: letters, numbers, - and _ only, up to 32.",
@@ -183,12 +183,12 @@ fn cannot_join(address: String) -> LauncherError {
 
 impl<R: Runner, H: Host> AppCore<R, H> {
     /// The session, or `perland_signed_out` without one.
-    async fn free_session(&self) -> Result<Session> {
+    pub(crate) async fn free_session(&self) -> Result<Session> {
         self.perland_session().await.ok_or_else(signed_out)
     }
 
     /// `call` against the session's Engine; a 401 forgets the session.
-    async fn free_call<T>(
+    pub(crate) async fn free_call<T>(
         &self,
         session: &Session,
         call: impl FnOnce(Url, String) -> BoxFuture<Result<T>>,
@@ -205,7 +205,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// The free-server view as a card, with the instance that already joins it. The Engine
     /// already answered, so instances that can't be read leave the card without one rather
     /// than fail the call.
-    async fn free_card_of(&self, server: &FreeServer) -> FreeServerCard {
+    pub(crate) async fn free_card_of(&self, server: &FreeServer) -> FreeServerCard {
         let joined = match self.joined_invites().await {
             Ok(joined) => joined,
             Err(e) => {

@@ -179,13 +179,8 @@ Every other stack goes to the existing `playerpack.Service`. The public view the
 
 The Engine PR merges and deploys first. The launcher PR can merge before or after: without `limits.pack` it shows nothing. A launcher released before the deploy also shows nothing.
 
-## 9. Why this was not built in this session
+## 9. How it was built
 
-- **itzg could not be checked.** The safety of section 5.4 rests on itzg's behaviour with `MODRINTH_MODPACK` set to a local file on a read-only mount:
-  - that it installs from it;
-  - that it verifies index hashes;
-  - that it honours `env.server: unsupported`;
-  - that it writes nothing back to `/perland`.
-
-  This session's container has no Docker daemon, so that path could not be exercised. Shipping an untrusted-upload path on the strength of reading the docs is the "half-checked" outcome the task asked to avoid.
-- **The Engine change is large.** It is a new multipart route, a hardened archive checker, compose and storage changes, an invite-pack decorator, a sweep, a migration, swagger, catalog and the site records, plus the launcher half. That is a feature of its own, best built and reviewed in a session that can run itzg.
+- **itzg was read, not trusted.** mc-image-helper's source shows that a local `MODRINTH_MODPACK` file is installed without checking the index's hashes or the override paths. So the Engine checks everything itself (PerlandDev/PerlandEngine#504): every index file must be one Modrinth serves from `cdn.modrinth.com` with the same sha1, sha512 and size, overrides are only text config files under `config/` and `defaultconfigs/`, and the server runs a clean pack the Engine writes, mounted read-only outside `/data`. The Engine route is off unless the operator sets `FREE_SERVER_PACKS_ENABLED`.
+- **Mods not on Modrinth are refused, not carried.** The Engine never hands out jars a player uploaded, and friends download the server's pack through the invite, so a jar Modrinth doesn't serve can't be part of a free server.
+- **Launcher:** `share::server_check` and `share::write_server` (core), `friends_check` and `friends_create` (app), and the Play this with friends dialog, which reuses Create a server for friends' creating and ready steps (`ui/src/features/free-server/steps.tsx`). The new error code is `free_server_mods_not_on_modrinth`.

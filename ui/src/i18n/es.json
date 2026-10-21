@@ -448,6 +448,26 @@
       "show": "Mostrar en la carpeta"
     }
   },
+  "friends": {
+    "menu": "Jugar esto con amigos…",
+    "title": "Juega {{name}} con amigos",
+    "intro": "Tu servidor gratis usa estos mods y ajustes. Tus amigos reciben los mismos al abrir tu enlace de invitación.",
+    "whatGoes": "Lo que recibe el servidor",
+    "mods": "Mods",
+    "modsCount_one": "{{count}} mod",
+    "modsCount_other": "{{count}} mods",
+    "memory": "Necesita {{need}} GB de memoria. Un servidor gratis tiene {{have}} GB.",
+    "settings": "Ajustes",
+    "settingsCount_one": "{{count}} archivo de ajustes de mods",
+    "settingsCount_other": "{{count}} archivos de ajustes de mods",
+    "stays": "Los mundos, paquetes de recursos y shaders se quedan en tu computadora.",
+    "loading": "Revisando tus mods…",
+    "notOnModrinth_one": "Los servidores gratis solo usan mods de Modrinth. {{count}} de tus mods no está ahí: {{names}}.",
+    "notOnModrinth_other": "Los servidores gratis solo usan mods de Modrinth. {{count}} de tus mods no están ahí: {{names}}.",
+    "tooHeavy": "Tus mods necesitan {{need}} GB de memoria. Los servidores gratis tienen {{have}} GB.",
+    "tooBig": "Tus ajustes son demasiado grandes para un servidor gratis.",
+    "running": "Primero cierra el juego."
+  },
   "share": {
     "menu": "Compartir…",
     "title": "Compartir {{name}}",
@@ -827,6 +847,7 @@
     "log_write_stopped": { "message": "El registro del juego dejó de guardarse en el disco.", "fix": "Revisa el espacio libre. El juego sigue abierto." },
     "diagnostics_path_invalid": { "message": "El diagnóstico se guarda como archivo .zip.", "fix": "Elige un nombre que termine en .zip." },
     "share_path_invalid": { "message": "Las instancias compartidas se guardan como archivo .mrpack.", "fix": "Elige un nombre que termine en .mrpack." },
+    "free_server_mods_not_on_modrinth": { "message": "Los servidores gratis solo usan mods de Modrinth." },
     "share_too_large": { "message": "Esto es demasiado grande para compartirlo en un solo archivo.", "fix": "Deja fuera los mundos o los archivos grandes." },
     "mod_not_jar": { "message": "Solo se pueden agregar archivos .jar como mods." },
     "mod_exists": { "message": "{{file}} ya está en esta instancia." },

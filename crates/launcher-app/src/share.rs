@@ -44,7 +44,7 @@ fn mrpack_path(out: PathBuf) -> Result<PathBuf> {
 }
 
 impl<R: Runner, H: Host> AppCore<R, H> {
-    async fn share_plan(&self, instance: &Instance) -> Result<SharePlan> {
+    pub(crate) async fn share_plan(&self, instance: &Instance) -> Result<SharePlan> {
         let scan = share::scan(&self.instances.game_dir(&instance.id)).await?;
         if scan.skipped_secrets > 0 || scan.skipped_unreadable > 0 {
             tracing::info!(

@@ -1,0 +1,11 @@
+{
+  "name": "Sky Friends",
+  "mods": 12,
+  "serverMods": 10,
+  "requiredMb": 2560,
+  "limitMb": 6144,
+  "notOnModrinth": [
+    "own.jar"
+  ],
+  "settings": 34
+}

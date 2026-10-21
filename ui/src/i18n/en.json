@@ -448,6 +448,26 @@
       "show": "Show in folder"
     }
   },
+  "friends": {
+    "menu": "Play this with friends…",
+    "title": "Play {{name}} with friends",
+    "intro": "Your free server runs these mods and settings. Friends get the same ones when they open your invite link.",
+    "whatGoes": "What the server gets",
+    "mods": "Mods",
+    "modsCount_one": "{{count}} mod",
+    "modsCount_other": "{{count}} mods",
+    "memory": "Needs {{need}} GB of memory. A free server has {{have}} GB.",
+    "settings": "Settings",
+    "settingsCount_one": "{{count}} mod settings file",
+    "settingsCount_other": "{{count}} mod settings files",
+    "stays": "Worlds, resource packs and shaders stay on your computer.",
+    "loading": "Checking your mods…",
+    "notOnModrinth_one": "Free servers only run mods from Modrinth. {{count}} of your mods isn't there: {{names}}.",
+    "notOnModrinth_other": "Free servers only run mods from Modrinth. {{count}} of your mods aren't there: {{names}}.",
+    "tooHeavy": "Your mods need {{need}} GB of memory. Free servers have {{have}} GB.",
+    "tooBig": "Your settings are too big for a free server.",
+    "running": "Stop the game first."
+  },
   "share": {
     "menu": "Share…",
     "title": "Share {{name}}",
@@ -827,6 +847,7 @@
     "log_write_stopped": { "message": "The game log stopped being saved to disk.", "fix": "Check free disk space. The game keeps running." },
     "diagnostics_path_invalid": { "message": "Diagnostics are saved as a .zip file.", "fix": "Pick a file name that ends in .zip." },
     "share_path_invalid": { "message": "Shared instances are saved as a .mrpack file.", "fix": "Pick a file name that ends in .mrpack." },
+    "free_server_mods_not_on_modrinth": { "message": "Free servers only run mods from Modrinth." },
     "share_too_large": { "message": "This is too big to share as one file.", "fix": "Leave out worlds, or large files." },
     "mod_not_jar": { "message": "Only .jar files can be added as mods." },
     "mod_exists": { "message": "{{file}} is already in this instance." },

@@ -9,7 +9,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 use crate::{
@@ -582,8 +582,28 @@ pub async fn write_with(
             rel: file.path.clone(),
             name: format!("{prefix}/{}", file.path),
             settings: file.category == Category::Settings,
+            text_only: false,
         });
     }
+    write_pack(
+        game_dir,
+        meta,
+        index_files,
+        carried,
+        choice.resource_packs,
+        out,
+    )
+    .await
+}
+
+async fn write_pack(
+    game_dir: &Path,
+    meta: PackMeta,
+    index_files: Vec<Value>,
+    carried: Vec<Carried>,
+    keep_rp: bool,
+    out: &Path,
+) -> Result<()> {
     let mut dependencies = BTreeMap::from([("minecraft".to_string(), meta.minecraft.clone())]);
     if let Some(loader) = &meta.loader {
         dependencies.insert(loader_key(loader.kind).into(), loader.version.clone());
@@ -599,10 +619,200 @@ pub async fn write_with(
     });
     let index = serde_json::to_vec_pretty(&index).map_err(std::io::Error::other)?;
     let (game, out) = (game_dir.to_path_buf(), out.to_path_buf());
-    let keep_rp = choice.resource_packs;
     tokio::task::spawn_blocking(move || write_archive(&game, &index, &carried, keep_rp, &out))
         .await
         .map_err(|e| LauncherError::from(std::io::Error::other(e)))?
+}
+
+/// How a free server reads the server pack: the Engine's own caps on overrides (one file,
+/// all of them), so the launcher never uploads a pack the Engine refuses.
+#[derive(Debug, Clone, Copy)]
+pub struct ServerLimits {
+    pub override_entry: u64,
+    pub overrides_total: u64,
+}
+
+impl Default for ServerLimits {
+    fn default() -> Self {
+        Self {
+            override_entry: 1 << 20,
+            overrides_total: 8 << 20,
+        }
+    }
+}
+
+/// The only host a free server downloads mods from.
+const SERVER_HOST: &str = "cdn.modrinth.com";
+/// The folders whose files a free server takes as overrides.
+const SERVER_SETTINGS_DIRS: [&str; 2] = ["config/", "defaultconfigs/"];
+/// The config files a free server takes, by extension.
+const SERVER_TEXT_EXTENSIONS: [&str; 11] = [
+    "toml",
+    "json",
+    "json5",
+    "properties",
+    "cfg",
+    "txt",
+    "yml",
+    "yaml",
+    "snbt",
+    "conf",
+    "ini",
+];
+
+/// What a free server made from this instance would hold, before anything is uploaded.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ServerPackCheck {
+    /// Mods in the instance.
+    pub mods: usize,
+    /// Mods the server loads (the side Modrinth says is not client only).
+    pub server_mods: usize,
+    /// The memory those mods need, by the Engine's rule.
+    pub required_mb: u32,
+    /// File names of mods a free server cannot download: not on Modrinth's CDN.
+    pub not_on_modrinth: Vec<String>,
+    /// Settings files the server gets.
+    pub settings: usize,
+    /// Settings files left out: not a config file, or past the size caps.
+    pub settings_left_out: usize,
+}
+
+/// The Engine's memory rule for a modpack: 2048 MiB plus 24 per server mod, rounded up to 512.
+pub fn required_memory_mb(server_mods: usize) -> u32 {
+    let mb = 2048u64 + 24 * server_mods as u64;
+    (mb.div_ceil(512) * 512).min(u32::MAX as u64) as u32
+}
+
+fn on_server_host(raw: &str) -> bool {
+    reqwest::Url::parse(raw)
+        .is_ok_and(|url| url.scheme() == "https" && url.host_str() == Some(SERVER_HOST))
+}
+
+fn server_setting(path: &str) -> bool {
+    SERVER_SETTINGS_DIRS
+        .iter()
+        .any(|dir| path.len() > dir.len() && path.starts_with(dir))
+        && Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| SERVER_TEXT_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+}
+
+/// The server pack's mods and settings, as `write_server` would write them.
+fn server_parts(
+    plan: &SharePlan,
+    limits: ServerLimits,
+) -> (
+    ServerPackCheck,
+    Vec<(&ScannedFile, &Linked)>,
+    Vec<&ScannedFile>,
+) {
+    let mut check = ServerPackCheck::default();
+    let (mut mods, mut settings, mut total) = (Vec::new(), Vec::new(), 0u64);
+    for file in &plan.scan.files {
+        match file.category {
+            Category::Mods => {
+                check.mods += 1;
+                match plan.linked_for(file).filter(|l| on_server_host(&l.url)) {
+                    Some(linked) => {
+                        if linked
+                            .env
+                            .as_ref()
+                            .is_none_or(|e| e.server != "unsupported")
+                        {
+                            check.server_mods += 1;
+                        }
+                        mods.push((file, linked));
+                    }
+                    None => check.not_on_modrinth.push(
+                        file.path
+                            .rsplit('/')
+                            .next()
+                            .unwrap_or(&file.path)
+                            .to_string(),
+                    ),
+                }
+            }
+            Category::Settings if server_setting(&file.path) => {
+                if file.size > limits.override_entry || total + file.size > limits.overrides_total {
+                    check.settings_left_out += 1;
+                    continue;
+                }
+                total += file.size;
+                check.settings += 1;
+                settings.push(file);
+            }
+            Category::Settings => check.settings_left_out += 1,
+            _ => {}
+        }
+    }
+    check.not_on_modrinth.sort();
+    check.required_mb = required_memory_mb(check.server_mods);
+    (check, mods, settings)
+}
+
+/// What a free server made from this instance would hold. Reads nothing.
+pub fn server_check(plan: &SharePlan) -> ServerPackCheck {
+    server_parts(plan, ServerLimits::default()).0
+}
+
+fn not_on_modrinth(names: &[String]) -> LauncherError {
+    LauncherError::pack(
+        ErrorCode::FreeServerModsNotOnModrinth,
+        "Free servers only run mods from Modrinth",
+    )
+    .with_detail(names.join(", "))
+}
+
+pub async fn write_server(
+    game_dir: &Path,
+    plan: &SharePlan,
+    meta: PackMeta,
+    out: &Path,
+) -> Result<ServerPackCheck> {
+    write_server_with(game_dir, plan, meta, out, ServerLimits::default()).await
+}
+
+/// Write the pack a free server is made from: the mods as Modrinth CDN entries and the config
+/// files under `overrides/`, nothing else (no worlds, resource or shader packs, scripts or
+/// `options.txt`). Refuses, before writing, when a mod is not on Modrinth's CDN.
+pub async fn write_server_with(
+    game_dir: &Path,
+    plan: &SharePlan,
+    meta: PackMeta,
+    out: &Path,
+    limits: ServerLimits,
+) -> Result<ServerPackCheck> {
+    let (check, mods, settings) = server_parts(plan, limits);
+    if !check.not_on_modrinth.is_empty() {
+        return Err(not_on_modrinth(&check.not_on_modrinth));
+    }
+    let index_files = mods
+        .iter()
+        .map(|(file, linked)| {
+            let mut entry = json!({
+                "path": file.path,
+                "hashes": { "sha1": linked.sha1, "sha512": linked.sha512 },
+                "downloads": [linked.url],
+                "fileSize": linked.size,
+            });
+            if let Some(env) = &linked.env {
+                entry["env"] = json!(env);
+            }
+            entry
+        })
+        .collect();
+    let carried = settings
+        .iter()
+        .map(|file| Carried {
+            rel: file.path.clone(),
+            name: format!("overrides/{}", file.path),
+            settings: true,
+            text_only: true,
+        })
+        .collect();
+    write_pack(game_dir, meta, index_files, carried, false, out).await?;
+    Ok(check)
 }
 
 /// A file the pack carries: where it is, its name in the archive, and whether it is a Settings
@@ -611,6 +821,8 @@ struct Carried {
     rel: String,
     name: String,
     settings: bool,
+    /// Left out when it is not text (holds a NUL), as a free server refuses it.
+    text_only: bool,
 }
 
 fn part_path(out: &Path) -> PathBuf {
@@ -652,6 +864,9 @@ fn write_archive(
                 .take(SECRET_SCAN_MAX + 1)
                 .read_to_end(&mut head)?;
             if head.len() as u64 <= SECRET_SCAN_MAX && has_secret_text(&head) {
+                continue;
+            }
+            if file.text_only && head.contains(&0) {
                 continue;
             }
             zip.start_file(file.name.as_str(), options)
@@ -721,6 +936,29 @@ fn date_of(unix: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn required_memory_follows_the_engine() {
+        for (mods, mb) in [(0, 2048), (1, 2560), (21, 2560), (22, 3072), (220, 7680)] {
+            assert_eq!(required_memory_mb(mods), mb, "{mods} mods");
+        }
+    }
+
+    #[test]
+    fn server_settings_are_config_text_only() {
+        for (path, takes) in [
+            ("config/a.toml", true),
+            ("config/sub/b.JSON5", true),
+            ("defaultconfigs/c.snbt", true),
+            ("config/", false),
+            ("config/a.bin", false),
+            ("config/a.jar", false),
+            ("kubejs/a.json", false),
+            ("options.txt", false),
+        ] {
+            assert_eq!(server_setting(path), takes, "{path}");
+        }
+    }
 
     fn put(root: &Path, rel: &str, body: &[u8]) {
         let path = root.join(rel);

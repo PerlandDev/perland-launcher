@@ -91,7 +91,7 @@ error_codes! {
     // free servers
     EmailRequired, FreeServerExists, TooManyFreeServers, FreeServersFull, InvalidFreeServer,
     ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk, HostFull, FreeServersPaused,
-    FreeServerBlocked,
+    FreeServerBlocked, FreeServerModsNotOnModrinth,
     // managing a server
     ServerNotRunning, ServerConsoleUnavailable, TooManyCommands, ServerConsoleTimeout,
     CommandNeedsConfirmation, TeamQuotaFull, PlanFeatureLocked, SettingsChanged,
@@ -231,6 +231,10 @@ mod tests {
         for (code, wire) in [
             (ErrorCode::SharePathInvalid, "share_path_invalid"),
             (ErrorCode::ShareTooLarge, "share_too_large"),
+            (
+                ErrorCode::FreeServerModsNotOnModrinth,
+                "free_server_mods_not_on_modrinth",
+            ),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

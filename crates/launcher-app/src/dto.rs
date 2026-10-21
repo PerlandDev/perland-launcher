@@ -64,6 +64,24 @@ pub struct SharePreview {
     pub counts: Vec<launcher_core::share::CategoryCount>,
 }
 
+/// What a free server made from an instance would hold, before anything is uploaded
+/// ("Play this with friends").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FriendsCheck {
+    pub name: String,
+    pub mods: usize,
+    pub server_mods: usize,
+    /// The memory the mods need, by the Engine's rule.
+    pub required_mb: u32,
+    /// What a modded free server has.
+    pub limit_mb: u32,
+    /// File names of mods a free server can't download.
+    pub not_on_modrinth: Vec<String>,
+    /// Config files the server gets.
+    pub settings: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewInstance {
@@ -555,7 +573,7 @@ pub struct FreeServerPage {
 pub struct FreeServerCard {
     #[serde(flatten)]
     pub card: PublicServerCard,
-    /// `vanilla` or `modrinth`.
+    /// `vanilla`, `modrinth`, or `pack` (made from an instance).
     pub kind: String,
     pub memory_mb: u32,
     pub max_players: u32,

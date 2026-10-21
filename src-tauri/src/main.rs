@@ -236,6 +236,8 @@ fn main() {
             commands::update_restart,
             commands::diagnostics_export,
             commands::diagnostics_reveal,
+            commands::friends_check,
+            commands::friends_create,
             commands::share_preview,
             commands::share_export,
             commands::share_reveal,

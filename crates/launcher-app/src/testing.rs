@@ -959,6 +959,8 @@ pub(crate) struct FakePlayer {
     pub free: Mutex<Result<Option<FreeServerState>>>,
     /// What `create_free_server` answers. Default: `free_view("starting")`.
     pub created: Mutex<Result<FreeServer>>,
+    /// The packs `create_free_server_from_pack` received.
+    pub uploaded: Mutex<Vec<Vec<u8>>>,
     /// What `start_free_server` answers. Default: `free_view("starting")`.
     pub started: Mutex<Result<FreeServer>>,
     /// What `delete_free_server` answers. Default: deleted.
@@ -996,6 +998,7 @@ impl FakePlayer {
             relation: Mutex::new(Ok(())),
             free: Mutex::new(Ok(None)),
             created: Mutex::new(Ok(free_view("starting"))),
+            uploaded: Mutex::new(Vec::new()),
             started: Mutex::new(Ok(free_view("starting"))),
             deleted: Mutex::new(Ok(true)),
             link_code: Mutex::new(Ok(LinkCode {
@@ -1160,6 +1163,23 @@ impl PlayerApi for FakePlayer {
                 &version,
                 &request.language,
             ],
+            &self.created,
+        )
+    }
+    fn create_free_server_from_pack(
+        &self,
+        engine: Url,
+        token: String,
+        name: String,
+        language: String,
+        pack: Vec<u8>,
+    ) -> BoxFuture<Result<FreeServer>> {
+        let sha256 = launcher_core::download::hash::sha256_hex(&pack);
+        self.uploaded.lock().unwrap().push(pack);
+        self.record(
+            "create_free_server_from_pack",
+            engine,
+            &[&token, &name, &language, &sha256],
             &self.created,
         )
     }
@@ -1660,6 +1680,7 @@ pub(crate) fn free_state(server: Option<FreeServer>) -> FreeServerState {
             unused_days: 30,
             warning_days: 7,
             creates_per_week: 3,
+            pack: None,
         },
         create: CreateAllowance {
             allowed: server.is_none(),

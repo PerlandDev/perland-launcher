@@ -4,7 +4,10 @@
 
 use std::{fmt, time::Duration};
 
-use reqwest::{Method, Url};
+use reqwest::{
+    multipart::{Form, Part},
+    Method, Url,
+};
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 
@@ -278,6 +281,15 @@ pub struct FreeLimits {
     pub unused_days: u32,
     pub warning_days: u32,
     pub creates_per_week: u32,
+    /// Present only when the Engine takes a pack the player uploads.
+    pub pack: Option<PackLimits>,
+}
+
+/// What a pack upload may be.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PackLimits {
+    pub max_bytes: u64,
 }
 
 /// Whether the player may create a free server now. `reason` is `email_required`,
@@ -556,6 +568,44 @@ impl PlayerClient {
         // dialog then waits for the server to show (spec §5 "Lost create answer").
         if matches!(reply.status, 502 | 504) && failure(&reply).code.is_none() {
             return Err(answer_lost(&self.host(), reply.status));
+        }
+        self.ok(&reply, Route::Plain)?;
+        self.data(&reply)
+    }
+
+    /// `POST /free-server/pack`: the free server made from a `.mrpack` the player built, sent
+    /// as multipart with its SHA-256. Waits like `create_free_server`, and a lost answer is the
+    /// same error.
+    pub async fn create_free_server_from_pack(
+        &self,
+        token: &str,
+        name: &str,
+        language: &str,
+        pack: Vec<u8>,
+    ) -> Result<FreeServer> {
+        let sha256 = crate::download::hash::sha256_hex(&pack);
+        let part = Part::bytes(pack)
+            .file_name("pack.mrpack")
+            .mime_str("application/x-modrinth-modpack+zip")
+            .expect("a valid mime type");
+        let form = Form::new()
+            .text("name", name.to_string())
+            .text("language", language.to_string())
+            .text("sha256", sha256)
+            .part("pack", part);
+        let host = self.host();
+        let reply = self
+            .wire
+            .send_form(
+                CREATE_TIMEOUT,
+                "/api/v1/player/free-server/pack",
+                Credential::Bearer(token),
+                form,
+                BODY_CAP,
+            )
+            .await?;
+        if matches!(reply.status, 502 | 504) && failure(&reply).code.is_none() {
+            return Err(answer_lost(&host, reply.status));
         }
         self.ok(&reply, Route::Plain)?;
         self.data(&reply)

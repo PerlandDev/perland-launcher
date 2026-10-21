@@ -146,6 +146,7 @@
   "host_full",
   "free_servers_paused",
   "free_server_blocked",
+  "free_server_mods_not_on_modrinth",
   "server_not_running",
   "server_console_unavailable",
   "too_many_commands",

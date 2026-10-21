@@ -9,6 +9,7 @@ pub mod deep_link;
 pub mod dto;
 pub mod events;
 mod free_servers;
+mod friends;
 mod import;
 #[cfg(test)]
 mod live_tests;

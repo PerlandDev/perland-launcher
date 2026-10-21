@@ -78,6 +78,15 @@ pub trait PlayerApi: Send + Sync + 'static {
         token: String,
         request: CreateFreeServer,
     ) -> BoxFuture<Result<FreeServer>>;
+    /// The free server made from a `.mrpack` the launcher wrote from an instance.
+    fn create_free_server_from_pack(
+        &self,
+        engine: Url,
+        token: String,
+        name: String,
+        language: String,
+        pack: Vec<u8>,
+    ) -> BoxFuture<Result<FreeServer>>;
     fn start_free_server(&self, engine: Url, token: String) -> BoxFuture<Result<FreeServer>>;
     fn delete_free_server(&self, engine: Url, token: String) -> BoxFuture<Result<bool>>;
     fn link_code(&self, engine: Url, token: String) -> BoxFuture<Result<LinkCode>>;
@@ -203,6 +212,22 @@ impl PlayerApi for CorePlayer {
     ) -> BoxFuture<Result<FreeServer>> {
         let client = self.client(engine);
         Box::pin(async move { client?.create_free_server(&token, &request).await })
+    }
+
+    fn create_free_server_from_pack(
+        &self,
+        engine: Url,
+        token: String,
+        name: String,
+        language: String,
+        pack: Vec<u8>,
+    ) -> BoxFuture<Result<FreeServer>> {
+        let client = self.client(engine);
+        Box::pin(async move {
+            client?
+                .create_free_server_from_pack(&token, &name, &language, pack)
+                .await
+        })
     }
 
     fn start_free_server(&self, engine: Url, token: String) -> BoxFuture<Result<FreeServer>> {

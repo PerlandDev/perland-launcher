@@ -37,6 +37,40 @@ pub(super) struct Reply {
     pub body: Vec<u8>,
 }
 
+fn authorize(
+    host: &str,
+    request: reqwest::RequestBuilder,
+    credential: Credential<'_>,
+) -> Result<reqwest::RequestBuilder> {
+    Ok(match credential {
+        Credential::None => request,
+        Credential::Bearer(token) => {
+            let mut value = HeaderValue::from_str(&format!("Bearer {token}"))
+                .map_err(|_| unexpected(host, "the credential isn't a valid header"))?;
+            value.set_sensitive(true);
+            request.header(reqwest::header::AUTHORIZATION, value)
+        }
+        Credential::UserToken(jwt) => request.header("X-User-Token", sensitive(jwt)),
+    })
+}
+
+/// Sends a built request and reads its answer: any status is a `Reply`, a success capped at
+/// `cap`, an error body at 4 KiB (dropped when longer).
+async fn finish(host: &str, request: reqwest::RequestBuilder, cap: usize) -> Result<Reply> {
+    let response = request.send().await.map_err(|e| request_failed(host, e))?;
+    let status = response.status().as_u16();
+    let ok = response.status().is_success();
+    let read = read_capped(response, if ok { cap } else { ERROR_CAP }).await;
+    let body = match read {
+        Ok(Some(body)) => body,
+        Ok(None) if ok => return Err(unexpected(host, "the answer is too large")),
+        Ok(None) => Vec::new(),
+        Err(e) if ok => return Err(request_failed(host, e)),
+        Err(_) => Vec::new(),
+    };
+    Ok(Reply { status, body })
+}
+
 /// What a failed request's error data says.
 pub(super) struct Failure {
     pub code: Option<String>,
@@ -98,32 +132,27 @@ impl Wire {
         cap: usize,
     ) -> Result<Reply> {
         let host = self.host();
-        let mut request = self.http.request(method, self.url(path)).timeout(timeout);
-        request = match credential {
-            Credential::None => request,
-            Credential::Bearer(token) => {
-                let mut value = HeaderValue::from_str(&format!("Bearer {token}"))
-                    .map_err(|_| unexpected(&host, "the credential isn't a valid header"))?;
-                value.set_sensitive(true);
-                request.header(reqwest::header::AUTHORIZATION, value)
-            }
-            Credential::UserToken(jwt) => request.header("X-User-Token", sensitive(jwt)),
-        };
+        let request = self.http.request(method, self.url(path)).timeout(timeout);
+        let mut request = authorize(&host, request, credential)?;
         if let Some(body) = body {
             request = request.json(body);
         }
-        let response = request.send().await.map_err(|e| request_failed(&host, e))?;
-        let status = response.status().as_u16();
-        let ok = response.status().is_success();
-        let read = read_capped(response, if ok { cap } else { ERROR_CAP }).await;
-        let body = match read {
-            Ok(Some(body)) => body,
-            Ok(None) if ok => return Err(unexpected(&host, "the answer is too large")),
-            Ok(None) => Vec::new(),
-            Err(e) if ok => return Err(request_failed(&host, e)),
-            Err(_) => Vec::new(),
-        };
-        Ok(Reply { status, body })
+        finish(&host, request, cap).await
+    }
+
+    /// A POST of a multipart form, answered like `send`.
+    pub async fn send_form(
+        &self,
+        timeout: Duration,
+        path: &str,
+        credential: Credential<'_>,
+        form: reqwest::multipart::Form,
+        cap: usize,
+    ) -> Result<Reply> {
+        let host = self.host();
+        let request = self.http.post(self.url(path)).timeout(timeout);
+        let request = authorize(&host, request, credential)?.multipart(form);
+        finish(&host, request, cap).await
     }
 
     /// The `data` of a success. The parser's own message can quote the body, so it is never

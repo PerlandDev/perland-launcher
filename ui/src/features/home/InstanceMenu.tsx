@@ -2,8 +2,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { commands } from "../../ipc/commands";
-import type { Instance } from "../../ipc/schema";
-import { qk } from "../../state/queries";
+import type { FreeLimits, Instance } from "../../ipc/schema";
+import { qk, useFreeServer, usePerlandStatus } from "../../state/queries";
 import { navigate } from "../../state/route";
 import { useRun } from "../../state/runStore";
 import { pushError } from "../../state/toasts";
@@ -19,10 +19,12 @@ import {
   Share,
   Trash,
   Undo,
+  Users,
 } from "../../ui/Icon";
 import { copyText } from "../../ui/copyText";
 import type { MenuItem } from "../../ui/Menu";
 import { ManageServerLink } from "../servers/ManageServerLink";
+import { FriendsServerDialog } from "../free-server/FriendsServerDialog";
 import { ShareDialog } from "../share/ShareDialog";
 import { ImageDialog } from "./ImageDialog";
 import { GoBackDialog } from "./GoBackDialog";
@@ -44,7 +46,7 @@ export interface InstanceActions {
 export function useInstanceActions(instance: Instance): InstanceActions {
   const { t } = useTranslation();
   const [dialog, setDialog] = useState<
-    "rename" | "image" | "delete" | "manage" | "goBack" | "share" | null
+    "rename" | "image" | "delete" | "manage" | "goBack" | "share" | "friends" | null
   >(null);
   const qc = useQueryClient();
   const close = () => setDialog(null);
@@ -52,6 +54,17 @@ export function useInstanceActions(instance: Instance): InstanceActions {
   const address = instance.server?.address ?? null;
   // A run saves the whole instance when it syncs, so linking waits until it is idle.
   const running = useRun(instance.id).state !== "idle";
+  // Play this with friends: a modded instance, a signed-in player without a free server, and an Engine that takes a pack.
+  const signedIn = Boolean(usePerlandStatus().data?.account);
+  const free = useFreeServer(
+    signedIn && !isServer(instance) && instance.game.loader !== null,
+  ).data;
+  const friendsLimits =
+    free && free.limits.pack !== null && free.server === null
+      ? free.limits
+      : null;
+  // Kept from when the dialog opened: once the server exists the item goes, but the dialog stays for its ready step.
+  const [openLimits, setOpenLimits] = useState<FreeLimits | null>(null);
   const serverItems: MenuItem[] = isServer(instance)
     ? [
         {
@@ -198,6 +211,20 @@ export function useInstanceActions(instance: Instance): InstanceActions {
               onSelect: () => setDialog("share"),
             },
           ]),
+      ...(friendsLimits
+        ? [
+            {
+              id: "friends",
+              label: t("friends.menu"),
+              icon: <Users />,
+              disabled: running,
+              onSelect: () => {
+                setOpenLimits(friendsLimits);
+                setDialog("friends");
+              },
+            },
+          ]
+        : []),
       {
         id: "openFolder",
         label: t("common.openFolder"),
@@ -236,6 +263,13 @@ export function useInstanceActions(instance: Instance): InstanceActions {
         )}
         {dialog === "share" && (
           <ShareDialog instance={instance} onClose={close} />
+        )}
+        {dialog === "friends" && openLimits && (
+          <FriendsServerDialog
+            instance={instance}
+            limits={openLimits}
+            onClose={close}
+          />
         )}
       </>
     ),

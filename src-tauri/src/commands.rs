@@ -874,6 +874,27 @@ pub async fn diagnostics_export(core: CoreState<'_>, path: PathBuf) -> Res<Strin
 }
 
 #[tauri::command]
+pub async fn friends_check(
+    core: CoreState<'_>,
+    id: String,
+) -> Res<launcher_app::dto::FriendsCheck> {
+    logged("friends_check", core.friends_check(&id).await)
+}
+
+#[tauri::command]
+pub async fn friends_create(
+    core: CoreState<'_>,
+    id: String,
+    name: String,
+    language: String,
+) -> Res<FreeServerCard> {
+    logged(
+        "friends_create",
+        core.friends_create(&id, &name, &language).await,
+    )
+}
+
+#[tauri::command]
 pub async fn share_preview(
     core: CoreState<'_>,
     id: String,
