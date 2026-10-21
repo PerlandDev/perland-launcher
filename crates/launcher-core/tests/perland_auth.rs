@@ -216,6 +216,23 @@ async fn handoff_answers_the_code() {
 }
 
 #[tokio::test]
+async fn handoff_without_a_team_names_none() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/auth/handoff"))
+        .and(body_json(json!({})))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(envelope(json!({ "code": "hc_2", "expiresIn": 120 }))),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    let handoff = client(&server).handoff(DEVICE, "").await.unwrap().unwrap();
+    assert_eq!(handoff.code, "hc_2");
+}
+
+#[tokio::test]
 async fn handoff_sends_bearer_device_token() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

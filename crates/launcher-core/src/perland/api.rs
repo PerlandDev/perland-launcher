@@ -90,6 +90,16 @@ pub struct DiscordAccount {
     pub global_name: Option<String>,
 }
 
+/// The GitHub account of the player's Perland account. Absent from an Engine older than
+/// PerlandEngine#514.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GitHubAccount {
+    pub login: String,
+    /// The picture on GitHub's CDN; `""` without one.
+    pub avatar_url: String,
+}
+
 /// The signed-in player. `display_name` is `""` for an email-only player.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -98,6 +108,7 @@ pub struct Player {
     pub display_name: String,
     pub email: Option<String>,
     pub discord: Option<DiscordAccount>,
+    pub github: Option<GitHubAccount>,
     pub minecraft: Option<MinecraftAccount>,
     pub created_at: String,
 }

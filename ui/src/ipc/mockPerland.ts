@@ -17,10 +17,11 @@ import type {
 
 /** `?perland=`: `off` closes accounts; `signedOut` (the default) offers Discord and email; `signedIn` has a player with
  *  one owner, one invited and two followed servers, not linked to Minecraft; `empty` is signed in with none; `emailOnly` offers
- *  only email; `linked` is `signedIn` already linked as Steve, with stats; `noAddon` is `signedIn` with the Engine's stats add-on off. */
-export type PerlandScenario = 'off' | 'signedOut' | 'signedIn' | 'empty' | 'emailOnly' | 'linked' | 'noAddon';
+ *  only email; `linked` is `signedIn` already linked as Steve, with stats; `noAddon` is `signedIn` with the Engine's stats add-on off;
+ *  `github` is `signedIn` as a GitHub account with no Discord and no email. */
+export type PerlandScenario = 'off' | 'signedOut' | 'signedIn' | 'empty' | 'emailOnly' | 'linked' | 'noAddon' | 'github';
 
-const SCENARIOS: readonly string[] = ['off', 'signedOut', 'signedIn', 'empty', 'emailOnly', 'linked', 'noAddon'];
+const SCENARIOS: readonly string[] = ['off', 'signedOut', 'signedIn', 'empty', 'emailOnly', 'linked', 'noAddon', 'github'];
 /** The `?perland=` preview param, or undefined for anything else (dev:mock only). */
 export const perlandScenario = (name: string | null): PerlandScenario | undefined =>
   name !== null && SCENARIOS.includes(name) ? (name as PerlandScenario) : undefined;
@@ -55,7 +56,17 @@ interface Listing {
   instances: Instance[];
 }
 
-const STEVE: PerlandAccount = { name: 'Steve', displayName: 'Steve', email: 'steve@example.com', discord: true, newPlayer: false, minecraft: null };
+const STEVE: PerlandAccount = {
+  name: 'Steve',
+  displayName: 'Steve',
+  email: 'steve@example.com',
+  discord: true,
+  github: false,
+  newPlayer: false,
+  minecraft: null,
+};
+/** A GitHub account with no Discord and no email: the Engine names it by its login. */
+const OCTOCAT: PerlandAccount = { name: 'octocat', displayName: 'octocat', email: null, discord: false, github: true, newPlayer: false, minecraft: null };
 
 /** The tokens of the servers Your servers has that the public list doesn't. */
 const OWNER = 'O';
@@ -89,7 +100,12 @@ const card = (letter: string, over: Partial<PublicServerCard>): PublicServerCard
 function seedServers(): YourServerCard[] {
   const shared = MOCK_PUBLIC_SERVERS.find((c) => c.token.startsWith(SHARED)) as PublicServerCard;
   return [
-    { ...card(OWNER, { name: 'My world', status: 'offline', address: 'play.example.com:25580' }), relation: 'owner', following: false, manage: null },
+    {
+      ...card(OWNER, { name: 'My world', status: 'offline', whitelisted: true, address: 'play.example.com:25580' }),
+      relation: 'owner',
+      following: false,
+      manage: null,
+    },
     {
       ...card(INVITED, { name: 'Friends', whitelisted: true, players: { online: 2, max: 8 }, address: 'play.example.com:25581' }),
       relation: 'invited',
@@ -105,7 +121,7 @@ export function seedPerland(scenario: PerlandScenario = 'signedOut', github = fa
   const signedIn = scenario === 'signedIn' || scenario === 'empty' || scenario === 'linked' || scenario === 'noAddon';
   return {
     scenario,
-    account: signedIn ? { ...STEVE, minecraft: scenario === 'linked' ? 'Steve' : null } : null,
+    account: scenario === 'github' ? { ...OCTOCAT } : signedIn ? { ...STEVE, minecraft: scenario === 'linked' ? 'Steve' : null } : null,
     servers: scenario === 'empty' ? [] : seedServers(),
     attemptsLeft: ATTEMPTS,
     linkPolls: 0,
@@ -220,7 +236,7 @@ export async function handlePerland(
       emit({ type: 'perland_sign_in', phase: 'waiting' });
       if (!(await wait(MOCK_DISCORD_WAIT_MS, perland))) return null;
       emit({ type: 'perland_sign_in', phase: 'exchanging' });
-      perland.account = { ...STEVE, newPlayer: true };
+      perland.account = { ...(method === 'github' ? OCTOCAT : STEVE), newPlayer: true };
       return perland.account;
     }
     case 'perland_sign_in_reopen':
@@ -242,7 +258,7 @@ export async function handlePerland(
         perland.attemptsLeft = Math.max(0, perland.attemptsLeft - 1);
         fail('auth', 'invalid_code', "That code isn't right.", { attemptsLeft: String(perland.attemptsLeft) });
       }
-      perland.account = { name: email, displayName: '', email, discord: false, newPlayer: true, minecraft: null };
+      perland.account = { name: email, displayName: '', email, discord: false, github: false, newPlayer: true, minecraft: null };
       return perland.account;
     }
     case 'perland_sign_out':

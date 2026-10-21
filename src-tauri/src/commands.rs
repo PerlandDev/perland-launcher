@@ -850,6 +850,12 @@ pub async fn manage_open_panel(
     )
 }
 
+/// The panel's account page, opened from Rust for the same reason.
+#[tauri::command]
+pub async fn perland_open_account(core: CoreState<'_>) -> Res<()> {
+    logged("perland_open_account", core.perland_open_account().await)
+}
+
 /// Called by the close dialog. Stopping waits a few seconds so the kills land before exit;
 /// keeping the games playing counts their time so far, as nothing tracks them after exit.
 #[tauri::command]

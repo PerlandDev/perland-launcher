@@ -22,6 +22,11 @@ pub fn manage_url(panel: &Url, stack: &str) -> Url {
     url
 }
 
+/// The panel page of the signed-in account: its sign-in methods, where an email is added.
+pub fn account_path() -> &'static str {
+    "/account"
+}
+
 /// The panel page that upgrades a team's plan.
 pub fn upgrade_path() -> &'static str {
     "/settings/upgrade"

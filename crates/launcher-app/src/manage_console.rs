@@ -331,6 +331,7 @@ mod tests {
                     name: "Steve".into(),
                     email: None,
                     discord: true,
+                    github: false,
                     minecraft: None,
                 },
             })

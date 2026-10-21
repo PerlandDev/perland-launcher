@@ -24,7 +24,7 @@ describe('FreeServerEntry', () => {
     const cases: [FreeScenario, string][] = [
       [
         'emailRequired',
-        'Free servers need a verified email on your account. Verify your email on Discord, then sign out and sign in again.',
+        'Free servers need a verified email on your Perland account. Add one, then try again.',
       ],
       ['exists', 'Another account with your email already has a free server.'],
       ['rateLimited', 'You can create another server in 2 hours.'],
@@ -40,6 +40,21 @@ describe('FreeServerEntry', () => {
       expect(within(section).queryByRole('button', { name: ENTRY })).toBeNull();
       unmount();
     }
+  });
+
+  it('email required offers the panel account page', async () => {
+    const { user, calls } = renderApp(<ServersScreen />, { perland: 'github', free: 'emailRequired' });
+    const section = await yours();
+    expect(within(section).queryByText(/Discord/)).toBeNull();
+    await user.click(await within(section).findByRole('button', { name: 'Add an email' }));
+    expect(sent(calls, 'perland_open_account')).toHaveLength(1);
+  });
+
+  it('email required without a panel has no button', async () => {
+    renderApp(<ServersScreen />, { perland: 'signedIn', free: 'emailRequired', panel: false });
+    const section = await yours();
+    expect(await within(section).findByText(/^Free servers need a verified email/)).toBeInTheDocument();
+    expect(within(section).queryByRole('button', { name: 'Add an email' })).toBeNull();
   });
 
   it('nothing once the player has a server', async () => {

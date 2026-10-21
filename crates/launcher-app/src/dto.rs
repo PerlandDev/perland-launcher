@@ -807,7 +807,8 @@ pub struct PerlandStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PerlandAccount {
-    /// The display name, else the email, else `""` (the UI then says "Perland player").
+    /// The display name, else the GitHub login, else the email, else `""` (the UI then says
+    /// "Perland player").
     pub name: String,
     /// The display name the player picked, never the email; `""` without one (email-only
     /// players). Prefills a free server's name.
@@ -815,6 +816,8 @@ pub struct PerlandAccount {
     pub email: Option<String>,
     /// Whether a Discord account is linked.
     pub discord: bool,
+    /// Whether the Perland account has a GitHub identity.
+    pub github: bool,
     /// The sign-in that made this session created the player.
     pub new_player: bool,
     /// The linked Minecraft account's name, as it was when linked.

@@ -1027,14 +1027,29 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// (an older Engine, signed out, or any failure) the page opens plainly and the panel asks
     /// the player to sign in. The URL holding the code is never logged.
     pub async fn manage_open_panel(&self, tenant: &str, stack: Option<String>) -> Result<()> {
-        let panel = self.config.panel.as_ref().ok_or_else(link_refused)?;
         let next = match stack.as_deref() {
             Some(stack) if stack.trim().is_empty() => return Err(link_refused()),
             Some(stack) => perland::server_path(stack),
             None => perland::upgrade_path().to_string(),
         };
+        if tenant.trim().is_empty() {
+            return self.open_panel_at(None, &next).await;
+        }
+        self.open_panel_at(Some(tenant), &next).await
+    }
+
+    /// Open the panel's account page, where the player adds an email or another way to sign in,
+    /// signed in as `manage_open_panel` does but with no team.
+    pub async fn perland_open_account(&self) -> Result<()> {
+        self.open_panel_at(Some(""), perland::account_path()).await
+    }
+
+    /// Open `next` on the panel, signed in for `tenant` (`""` names no team) when the Engine
+    /// gives a handoff code; `None` opens the page plainly.
+    async fn open_panel_at(&self, tenant: Option<&str>, next: &str) -> Result<()> {
+        let panel = self.config.panel.as_ref().ok_or_else(link_refused)?;
         let session = self.perland_session().await;
-        if let Some(session) = session.filter(|_| !tenant.trim().is_empty()) {
+        if let (Some(session), Some(tenant)) = (session, tenant) {
             let handoff = self
                 .runner
                 .stack()
@@ -1043,7 +1058,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             match handoff {
                 Ok(Some(handoff)) => {
                     self.host
-                        .open_url(perland::handoff_url(panel, &handoff.code, &next).as_str());
+                        .open_url(perland::handoff_url(panel, &handoff.code, next).as_str());
                     return Ok(());
                 }
                 Ok(None) => {}
@@ -1051,7 +1066,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
         }
         self.host
-            .open_url(perland::panel_page(panel, &next).as_str());
+            .open_url(perland::panel_page(panel, next).as_str());
         Ok(())
     }
 }
@@ -1081,6 +1096,7 @@ mod tests {
                     name: "Steve".into(),
                     email: None,
                     discord: true,
+                    github: false,
                     minecraft: None,
                 },
             })
@@ -1604,6 +1620,11 @@ mod tests {
         assert!(!diagnosis.failed && diagnosis.cause.is_none());
     }
 
+    /// Held by the tests that reach the failed-handoff log line. Its callsite interest is cached
+    /// process-wide: a test registering it while `open_panel_never_logs_the_code` rebuilds the
+    /// cache under its own subscriber can leave it off for that subscriber.
+    static PANEL_LOG: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     #[tokio::test]
     async fn open_panel_uses_the_handoff() {
         let (core, runner, host, _t) = core_with_panel("https://panel.example.com/");
@@ -1625,7 +1646,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn open_account_signs_in_without_a_team() {
+        let (core, runner, host, _t) = core_with_panel("https://panel.example.com/");
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.handoff.lock().unwrap() = Ok(Some(Handoff {
+            code: "hc_secret".into(),
+            expires_in: 60,
+        }));
+        core.perland_open_account().await.unwrap();
+        *fake.handoff.lock().unwrap() = Ok(None);
+        core.perland_open_account().await.unwrap();
+        assert_eq!(
+            *host.opened.lock().unwrap(),
+            [
+                "https://panel.example.com/login/handoff?code=hc_secret&next=%2Faccount",
+                "https://panel.example.com/account"
+            ]
+        );
+        let calls = fake.calls_to("handoff");
+        assert_eq!(calls[0].args, [player_token('s'), String::new()]);
+    }
+
+    #[tokio::test]
+    async fn open_account_needs_a_panel() {
+        let (core, _runner, host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let e = core.perland_open_account().await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::LinkRefused);
+        assert!(host.opened.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn open_panel_without_handoff_opens_the_page() {
+        let _log = PANEL_LOG.lock().await;
         let (core, runner, host, _t) = core_with_panel("https://panel.example.com/");
         sign_in(&core);
         let fake = stack(&runner);
@@ -1701,6 +1755,7 @@ mod tests {
 
     #[tokio::test]
     async fn open_panel_never_logs_the_code() {
+        let _log = PANEL_LOG.lock().await;
         let buf = Buf::default();
         let writer = buf.clone();
         let subscriber = tracing_subscriber::fmt()

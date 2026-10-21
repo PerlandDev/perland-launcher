@@ -232,10 +232,14 @@ impl AuthClient {
         self.data::<TokenData>(&reply).map(|d| SessionJwt(d.token))
     }
 
-    /// `POST /handoff`: a one-time panel sign-in code for a server. `None` when the Engine
-    /// doesn't have the route (404 or 405).
+    /// `POST /handoff`: a one-time panel sign-in code for a server's team, or for no team when
+    /// `tenant_id` is `""`. `None` when the Engine doesn't have the route (404 or 405).
     pub async fn handoff(&self, device: &str, tenant_id: &str) -> Result<Option<Handoff>> {
-        let body = json!({ "tenantId": tenant_id });
+        let body = if tenant_id.is_empty() {
+            json!({})
+        } else {
+            json!({ "tenantId": tenant_id })
+        };
         let reply = self
             .send(
                 Method::POST,

@@ -315,7 +315,7 @@ pub(crate) fn language_tag(language: &str) -> &'static str {
     }
 }
 
-/// The name the player picked (Discord-based), or `""`: `Profile.name` falls back to the email,
+/// The name the player picked (Discord- or GitHub-based), or `""`: `Profile.name` falls back to the email,
 /// and an email must never become a server name on a public page.
 fn display_name(profile: &Profile) -> String {
     if profile.email.as_deref() == Some(profile.name.as_str()) {
@@ -331,6 +331,7 @@ fn account(profile: &Profile, new_player: bool) -> PerlandAccount {
         display_name: display_name(profile),
         email: profile.email.clone(),
         discord: profile.discord,
+        github: profile.github,
         new_player,
         minecraft: profile.minecraft.clone(),
     }
@@ -860,6 +861,7 @@ mod tests {
                 name: "Alex".into(),
                 email: Some("alex@example.com".into()),
                 discord: false,
+                github: false,
                 minecraft: None,
             },
         }
@@ -1000,6 +1002,7 @@ mod tests {
                 display_name: "Steve".into(),
                 email: Some("steve@example.com".into()),
                 discord: true,
+                github: false,
                 new_player: true,
                 minecraft: None,
             }
@@ -1027,6 +1030,7 @@ mod tests {
             name: name.into(),
             email: email.map(Into::into),
             discord: false,
+            github: false,
             minecraft: None,
         };
         let shown = |p: Profile| account(&p, false).display_name;
@@ -1046,6 +1050,23 @@ mod tests {
             full.name, "alex@example.com",
             "the account card still names them"
         );
+    }
+
+    #[test]
+    fn a_github_account_is_named_by_its_login() {
+        let player = Player {
+            github: Some(launcher_core::perland::GitHubAccount {
+                login: "octocat".into(),
+                avatar_url: String::new(),
+            }),
+            ..Player::default()
+        };
+        let shown = account(&Profile::from_player(&player), false);
+        assert_eq!(
+            (shown.name.as_str(), shown.display_name.as_str()),
+            ("octocat", "octocat")
+        );
+        assert!(shown.github && !shown.discord);
     }
 
     #[tokio::test]

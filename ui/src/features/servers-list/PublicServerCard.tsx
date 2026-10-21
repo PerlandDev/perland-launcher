@@ -128,7 +128,7 @@ export function PublicServerCard({
       <ServerStatsLine token={card.token} />
       {(card.whitelisted || (!joinable && card.address)) && (
         <div className="server-tile-facts">
-          {card.whitelisted && <InviteOnly />}
+          {card.whitelisted && <InviteOnly owner={tag === 'owner'} />}
           {!joinable && card.address && <JoinFromMinecraft address={card.address} />}
         </div>
       )}

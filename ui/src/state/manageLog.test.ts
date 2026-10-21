@@ -8,6 +8,7 @@ const account = (name: string): PerlandStatus['account'] => ({
   displayName: name,
   email: `${name}@example.com`,
   discord: false,
+  github: false,
   newPlayer: false,
   minecraft: null,
 });

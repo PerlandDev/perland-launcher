@@ -219,7 +219,10 @@ export function PerlandAccountCard() {
   let body;
   if (account) {
     const name = shownName(account);
-    const second = account.email && account.email !== name ? account.email : account.discord ? t('perland.viaDiscord') : null;
+    // The email when it isn't already the name, else how the account signs in. The Engine names the account by Discord first,
+    // then GitHub, so the method follows the same order.
+    const method = account.discord ? t('perland.viaDiscord') : account.github ? t('perland.viaGithub') : null;
+    const second = account.email && account.email !== name ? account.email : method;
     body = (
       <div className="grid gap-3">
         <div className="panel flex items-center gap-4 px-4 py-3">

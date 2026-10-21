@@ -36,7 +36,7 @@ Players want their own small server for friends, and setting up hosting is out o
   - The player never sees a start button.
 - **Friends join with the link**, modpack servers included: the launcher installs the server's Modrinth modpack version, then connects. Afterwards their card in Your servers plays that instance.
 - **When creating isn't possible:** the entry point says why in one line:
-  - "Free servers need a verified email on your account. Verify your email on Discord, then sign out and sign in again." (for a Discord account without a verified email)
+  - "Free servers need a verified email on your Perland account. Add one, then try again." (for an account without a verified email; since one Perland account, the email is added on the panel's account page, which "Add an email" opens signed in while a panel is configured)
   - "Another account with your email already has a free server."
   - "A server is being created right now."
   - "You can create another server in 2 days."
@@ -140,7 +140,7 @@ Players want their own small server for friends, and setting up hosting is out o
 | Statuses `creating` / `deleting` | The card reads "Being created…" or "Being deleted…" with Play disabled |
 | Polling | `GET /free-server` while the Servers screen is open and the player is signed in: every 30 s, and every 15 s while the status is `creating`, `starting` or `deleting` (**our call**: the contract's minimum is 15 s). Both this poll and Your servers' dedupe read the page, so the Engine gets about one extra read a minute. That is accepted (**our call**) |
 | Joining a Modrinth-pack server | Keep `SourceRef::Perland`, so the instance stays a server instance with its wake, Multiplayer entry and news. `InviteView` and `PublicServer` gain `modrinth: Option<{projectId, versionId}>`. `joinable_game` counts it like a pack. On sync, `perland.rs` resolves the Modrinth version through `modrinth::resolve`, and the stamp follows the version id, so a version change on the Engine updates players |
-| `create.reason` text | `email_required`: "Free servers need a verified email on your account. Verify your email on Discord, then sign out and sign in again." (no button; an email sign-in would make a second account). `too_many_free_servers`: with `retryAfter` ≤ 5, "A server is being created right now."; otherwise "You can create another server in {time}." (rounded up to minutes, hours or days). `free_servers_full`: "Free servers are full right now. Try again later." `free_server_exists` with no server: "Another account with your email already has a free server." |
+| `create.reason` text | `email_required`: "Free servers need a verified email on your Perland account. Add one, then try again." with a raised "Add an email" that opens the panel's `/account` signed in (`perland_open_account`, a handoff with no team), only while a panel is configured; no button without one. `too_many_free_servers`: with `retryAfter` ≤ 5, "A server is being created right now."; otherwise "You can create another server in {time}." (rounded up to minutes, hours or days). `free_servers_full`: "Free servers are full right now. Try again later." `free_server_exists` with no server: "Another account with your email already has a free server." |
 
 ## 6. Design
 
