@@ -7,6 +7,7 @@ pub mod panel;
 pub mod pkce;
 pub mod session;
 pub mod session_jwt;
+pub mod stacks;
 mod wire;
 
 pub use api::{
@@ -23,3 +24,8 @@ pub use session::{
     KeyringStore, MemoryStore, Profile, SecretError, SecretStore, Session, SessionStore,
 };
 pub use session_jwt::{jwt_exp, JwtCache, JwtSource, REFRESH_MARGIN_SECS};
+pub use stacks::{
+    Apply, Ban, BanList, ConsoleReply, Diagnosis, Issue, IssueSubject, Lifecycle, ListKind,
+    NameList, NameResult, Online, SettingsDoc, SettingsSaved, StackClient, StackDetail, StackIdle,
+    StackItem,
+};

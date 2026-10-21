@@ -84,6 +84,11 @@ error_codes! {
     EmailRequired, FreeServerExists, TooManyFreeServers, FreeServersFull, InvalidFreeServer,
     ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk, HostFull, FreeServersPaused,
     FreeServerBlocked,
+    // managing a server
+    ServerNotRunning, ServerConsoleUnavailable, TooManyCommands, ServerConsoleTimeout,
+    CommandNeedsConfirmation, TeamQuotaFull, PlanFeatureLocked, SettingsChanged,
+    VersionChangeNeedsConfirmation, DataLossNeedsConfirmation, MojangUnavailable, TooManyStreams,
+    TooManyDiagnoses, ManagedBySource, ServerNotFound, ManageForbidden,
     // anything unexpected
     Internal,
 }
@@ -310,6 +315,43 @@ mod tests {
             (ErrorCode::HostFull, "host_full"),
             (ErrorCode::FreeServersPaused, "free_servers_paused"),
             (ErrorCode::FreeServerBlocked, "free_server_blocked"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
+    fn managing_a_server_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::ServerNotRunning, "server_not_running"),
+            (
+                ErrorCode::ServerConsoleUnavailable,
+                "server_console_unavailable",
+            ),
+            (ErrorCode::TooManyCommands, "too_many_commands"),
+            (ErrorCode::ServerConsoleTimeout, "server_console_timeout"),
+            (
+                ErrorCode::CommandNeedsConfirmation,
+                "command_needs_confirmation",
+            ),
+            (ErrorCode::TeamQuotaFull, "team_quota_full"),
+            (ErrorCode::PlanFeatureLocked, "plan_feature_locked"),
+            (ErrorCode::SettingsChanged, "settings_changed"),
+            (
+                ErrorCode::VersionChangeNeedsConfirmation,
+                "version_change_needs_confirmation",
+            ),
+            (
+                ErrorCode::DataLossNeedsConfirmation,
+                "data_loss_needs_confirmation",
+            ),
+            (ErrorCode::MojangUnavailable, "mojang_unavailable"),
+            (ErrorCode::TooManyStreams, "too_many_streams"),
+            (ErrorCode::TooManyDiagnoses, "too_many_diagnoses"),
+            (ErrorCode::ManagedBySource, "managed_by_source"),
+            (ErrorCode::ServerNotFound, "server_not_found"),
+            (ErrorCode::ManageForbidden, "manage_forbidden"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

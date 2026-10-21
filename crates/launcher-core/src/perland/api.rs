@@ -27,7 +27,7 @@ const SERVERS_CAP: usize = 1 << 20;
 /// Per-server stats: 200 servers with up to 2000 advancement IDs each can pass 1 MiB.
 const STATS_CAP: usize = 4 << 20;
 /// Creating a free server: the Engine builds the stack while the request is open.
-const CREATE_TIMEOUT: Duration = Duration::from_secs(150);
+pub(super) const CREATE_TIMEOUT: Duration = Duration::from_secs(150);
 /// The Engine's own name for Modrinth, for a refusal that blames it.
 const MODRINTH_HOST: &str = "modrinth.com";
 
@@ -830,7 +830,7 @@ fn free_servers_full(host: &str) -> LauncherError {
 
 /// Perland's machine has no room for another server now. The Engine's `dimension` and `scope`
 /// are for the platform, not for players, so they are not kept.
-fn host_full(host: &str) -> LauncherError {
+pub(super) fn host_full(host: &str) -> LauncherError {
     LauncherError::network(
         ErrorCode::HostFull,
         "Perland is full right now. Try again in a few minutes.",
@@ -889,7 +889,11 @@ fn modpack_too_heavy(host: &str, required: Option<String>, limit: Option<String>
     e
 }
 
-fn free_server_over_disk(host: &str, used: Option<String>, limit: Option<String>) -> LauncherError {
+pub(super) fn free_server_over_disk(
+    host: &str,
+    used: Option<String>,
+    limit: Option<String>,
+) -> LauncherError {
     let mut e = LauncherError::network(
         ErrorCode::FreeServerOverDisk,
         "Your server is out of space, so it stays off.",
