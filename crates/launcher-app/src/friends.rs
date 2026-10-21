@@ -16,7 +16,9 @@ use crate::{
     app::AppCore,
     dto::{FreeServerCard, FriendsCheck},
     events::Host,
-    free_servers::{checked_settings, checked_version, invalid, valid_name, valid_version_id},
+    free_servers::{
+        checked_settings, checked_version, invalid, invalid_name, valid_name, valid_version_id,
+    },
     perland::{host_of, language_tag},
     runner::Runner,
 };
@@ -44,6 +46,15 @@ fn linked_to_a_server() -> LauncherError {
         ErrorCode::InvalidFreeServer,
         "This instance belongs to a server, so it can't become another one.",
     )
+}
+
+/// The instance's stored Modrinth version id isn't one the Engine takes (a damaged instance).
+fn bad_pack_version() -> LauncherError {
+    LauncherError::network(
+        ErrorCode::InvalidFreeServer,
+        "This modpack's Modrinth version can't be used for a free server. Reinstall the modpack from Browse.",
+    )
+    .with_param("field", "pack")
 }
 
 fn needs_a_loader() -> LauncherError {
@@ -138,7 +149,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     ) -> Result<FreeServerCard> {
         let name = name.trim();
         if !valid_name(name) {
-            return Err(invalid());
+            return Err(invalid_name());
         }
         let settings = checked_settings(settings)?;
         let instance = self.friends_instance(id).await?;
@@ -167,7 +178,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
         if let SourceRef::Modrinth { version_id, .. } = &instance.source {
             if !valid_version_id(version_id) {
-                return Err(invalid());
+                return Err(bad_pack_version());
             }
             return self
                 .free_server_create_checked(request("modrinth", None, Some(version_id.clone())))
@@ -581,5 +592,32 @@ mod tests {
             Some("settings.maxPlayers")
         );
         assert!(runner.player.calls.lock().unwrap().is_empty());
+
+        // A bad name names its field.
+        let error = core
+            .friends_create(&vanilla, "a b", None, "en")
+            .await
+            .unwrap_err();
+        assert_eq!(error.params.get("field").map(String::as_str), Some("name"));
+
+        // A stored Modrinth version id the Engine wouldn't take: said plainly, not as a name problem.
+        let pack = instance(&core, true, &[]).await;
+        with_source(
+            &core,
+            &pack,
+            SourceRef::Modrinth {
+                project_id: "1KVo5zza".into(),
+                version_id: "not/an id".into(),
+            },
+        )
+        .await;
+        let error = core
+            .friends_create(&pack, "Amigos", None, "en")
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::InvalidFreeServer);
+        assert!(!error.message.contains("name"), "{}", error.message);
+        assert_eq!(error.params.get("field").map(String::as_str), Some("pack"));
+        assert!(runner.player.calls_to("create_free_server").is_empty());
     }
 }

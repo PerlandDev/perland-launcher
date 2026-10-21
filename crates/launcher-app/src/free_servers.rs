@@ -117,6 +117,11 @@ pub(crate) fn invalid() -> LauncherError {
     )
 }
 
+/// A bad server name, named as the Engine names it, so the dialog puts it under the name.
+pub(crate) fn invalid_name() -> LauncherError {
+    invalid().with_param("field", "name")
+}
+
 fn signed_out() -> LauncherError {
     LauncherError::auth(
         ErrorCode::PerlandSignedOut,
@@ -349,7 +354,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     ) -> Result<FreeServerCard> {
         let name = name.trim();
         if !valid_name(name) {
-            return Err(invalid());
+            return Err(invalid_name());
         }
         let (version, modrinth_version_id) = match kind {
             "vanilla" => (checked_version(version)?, None),
@@ -587,6 +592,13 @@ mod tests {
             assert_eq!(
                 error.code,
                 ErrorCode::InvalidFreeServer,
+                "{name:?} {kind:?}"
+            );
+            // A bad name names its field, as the Engine's refusal does; a bad kind names none.
+            let want = (kind == "vanilla").then_some("name");
+            assert_eq!(
+                error.params.get("field").map(String::as_str),
+                want,
                 "{name:?} {kind:?}"
             );
         }
