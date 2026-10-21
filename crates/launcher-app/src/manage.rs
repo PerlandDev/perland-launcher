@@ -25,7 +25,11 @@ use serde_json::Value;
 
 use crate::{
     app::AppCore,
-    dto::{ManageCause, ManageDetail, ManageDiagnosis, ManagedServer},
+    dto::{
+        ManageBan, ManageCause, ManageChangeResult, ManageConsoleReply, ManageDetail,
+        ManageDiagnosis, ManageListChange, ManagePlayers, ManageSaved, ManageSettings,
+        ManageSettingsSave, ManagedServer,
+    },
     events::Host,
     runner::{BoxFuture, Runner},
 };
@@ -404,6 +408,125 @@ fn param_text(value: &Value) -> String {
     }
 }
 
+/// The most names one change takes (the Engine's limit).
+const MAX_NAMES: usize = 50;
+
+/// `settings.customization.<key>`, when set.
+fn custom<'a>(settings: &'a Value, key: &str) -> Option<&'a Value> {
+    settings
+        .get("customization")
+        .and_then(|c| c.get(key))
+        .filter(|v| !v.is_null())
+}
+
+fn custom_text(settings: &Value, key: &str, default: &str) -> String {
+    custom(settings, key)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(default)
+        .to_string()
+}
+
+fn custom_bool(settings: &Value, key: &str, default: bool) -> bool {
+    custom(settings, key)
+        .and_then(Value::as_bool)
+        .unwrap_or(default)
+}
+
+/// A modpack decides the server's version: the Engine says so, or the server runs a Modrinth
+/// pack (a free server made from one keeps it in `env`).
+fn version_locked(doc: &SettingsDoc) -> bool {
+    let settings = &doc.settings;
+    doc.managed_by_source
+        .as_deref()
+        .is_some_and(|s| !s.is_empty())
+        || settings
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|t| t.eq_ignore_ascii_case("MODRINTH"))
+        || custom(settings, "env")
+            .and_then(|env| env.get("MODRINTH_MODPACK"))
+            .is_some_and(|v| !v.is_null())
+}
+
+/// What Manage shows of a settings document, with itzg's defaults for what is unset.
+fn manage_settings_of(doc: &SettingsDoc) -> ManageSettings {
+    let settings = &doc.settings;
+    let motd = custom_text(settings, "motd", "");
+    ManageSettings {
+        revision: doc.revision.clone(),
+        // The launcher's editor has no colour codes: one would be lost on save.
+        motd_read_only: motd.contains('§'),
+        motd,
+        mode: custom_text(settings, "mode", "survival"),
+        difficulty: custom_text(settings, "difficulty", "easy"),
+        max_players: custom(settings, "maxPlayers")
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok()),
+        pvp: custom_bool(settings, "pvp", true),
+        enable_whitelist: custom_bool(settings, "enableWhitelist", false),
+        version: settings
+            .get("version")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        version_locked: version_locked(doc),
+        pending_restart: doc.pending_restart,
+    }
+}
+
+/// Writes what Manage edits onto the raw settings document `settings`, read as `read`,
+/// leaving every other field as it is.
+fn patch_settings(
+    settings: &mut Value,
+    read: &ManageSettings,
+    save: &ManageSettingsSave,
+) -> Result<()> {
+    let malformed = || {
+        LauncherError::network(
+            ErrorCode::Internal,
+            "The server's settings came back in a shape the launcher can't edit.",
+        )
+    };
+    if settings.is_null() {
+        *settings = Value::Object(Default::default());
+    }
+    let root = settings.as_object_mut().ok_or_else(malformed)?;
+    let custom = root
+        .entry("customization")
+        .or_insert_with(|| Value::Object(Default::default()));
+    if custom.is_null() {
+        *custom = Value::Object(Default::default());
+    }
+    let custom = custom.as_object_mut().ok_or_else(malformed)?;
+    custom.insert("mode".into(), Value::from(save.mode.clone()));
+    custom.insert("difficulty".into(), Value::from(save.difficulty.clone()));
+    match save.max_players {
+        Some(n) => {
+            custom.insert("maxPlayers".into(), Value::from(n));
+        }
+        // Cleared: the server's default. Unset already, it stays as it was.
+        None => {
+            if custom.get("maxPlayers").is_some_and(|v| !v.is_null()) {
+                custom.remove("maxPlayers");
+            }
+        }
+    }
+    custom.insert("pvp".into(), Value::from(save.pvp));
+    custom.insert("enableWhitelist".into(), Value::from(save.enable_whitelist));
+    if let Some(motd) = save.motd.as_ref().filter(|_| !read.motd_read_only) {
+        custom.insert("motd".into(), Value::from(motd.clone()));
+    }
+    if let Some(version) = save
+        .version
+        .as_ref()
+        .filter(|v| !read.version_locked && **v != read.version)
+    {
+        root.insert("version".into(), Value::from(version.clone()));
+    }
+    Ok(())
+}
+
 impl<R: Runner, H: Host> AppCore<R, H> {
     /// A fresh JWT: scoped to `tenant`, or the base one with `None`. Through the cache; a
     /// refused `player-session` signs the player out. A cached base JWT that `select-tenant`
@@ -627,6 +750,205 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     .map(|(k, v)| (k.clone(), param_text(v)))
                     .collect::<BTreeMap<_, _>>(),
             }),
+        })
+    }
+
+    /// Who is on (while the server runs), the whitelist, the admins and the bans, read at
+    /// once. A list that fails shows empty and marks the answer `unreadable`; so does a list
+    /// the Engine could not read itself.
+    pub async fn manage_players(&self, tenant: &str, stack: &str) -> Result<ManagePlayers> {
+        let api = self.runner.stack();
+        let stack = stack.to_string();
+        let (online, whitelist, ops, bans) = futures_util::join!(
+            self.with_jwt(tenant, |engine, jwt| api.online(engine, jwt, stack.clone())),
+            self.with_jwt(tenant, |engine, jwt| {
+                api.list(engine, jwt, stack.clone(), ListKind::Whitelist)
+            }),
+            self.with_jwt(tenant, |engine, jwt| {
+                api.list(engine, jwt, stack.clone(), ListKind::Ops)
+            }),
+            self.with_jwt(tenant, |engine, jwt| api.bans(engine, jwt, stack.clone())),
+        );
+        // Signed out (or signed out meanwhile) is the answer, not four empty lists.
+        let failed = online.is_err() || whitelist.is_err() || ops.is_err() || bans.is_err();
+        if failed && self.perland_session().await.is_none() {
+            return Err(signed_out());
+        }
+        let mut unreadable = false;
+        let mut take = |what: &str, code: Option<ErrorCode>| {
+            if let Some(code) = code {
+                tracing::info!(?code, list = what, "couldn't read one of a server's lists");
+                unreadable = true;
+            }
+        };
+        take("online", online.as_ref().err().map(|e| e.code));
+        take("whitelist", whitelist.as_ref().err().map(|e| e.code));
+        take("admins", ops.as_ref().err().map(|e| e.code));
+        take("bans", bans.as_ref().err().map(|e| e.code));
+        let whitelist = whitelist.unwrap_or_default();
+        let ops = ops.unwrap_or_default();
+        let bans = bans.unwrap_or_default();
+        unreadable |= whitelist.unreadable || ops.unreadable || bans.unreadable;
+        let running = match &online {
+            Ok(online) => online.running,
+            Err(_) => whitelist.running || ops.running || bans.running,
+        };
+        let online = online
+            .ok()
+            .filter(|o| o.running)
+            .and_then(|o| o.players)
+            .unwrap_or_default();
+        Ok(ManagePlayers {
+            running,
+            online,
+            whitelist: whitelist.names,
+            admins: ops.names,
+            bans: bans
+                .bans
+                .into_iter()
+                .map(|b| ManageBan {
+                    name: b.name,
+                    reason: b.reason.filter(|r| !r.trim().is_empty()),
+                })
+                .collect(),
+            unreadable,
+        })
+    }
+
+    /// Adds names to a list or takes them off it: `whitelist`, `admins` (ops) or `bans`
+    /// (ban, unban), or a kick (`online`, remove only). 1 to 50 names, as the Engine takes.
+    pub async fn manage_players_change(
+        &self,
+        tenant: &str,
+        stack: &str,
+        change: ManageListChange,
+    ) -> Result<Vec<ManageChangeResult>> {
+        if change.names.is_empty() || change.names.len() > MAX_NAMES {
+            return Err(LauncherError::game(
+                ErrorCode::Internal,
+                "Pick between 1 and 50 players.",
+            ));
+        }
+        let kind = match (change.list.as_str(), change.add) {
+            ("online", false) => None,
+            ("whitelist", _) => Some(ListKind::Whitelist),
+            ("admins", _) => Some(ListKind::Ops),
+            ("bans", _) => Some(ListKind::Bans),
+            _ => {
+                return Err(LauncherError::game(
+                    ErrorCode::Internal,
+                    "That isn't a list players can be changed on.",
+                ))
+            }
+        };
+        let api = self.runner.stack();
+        let names = change.names;
+        let results = self
+            .with_jwt(tenant, |engine, jwt| match kind {
+                None => api.kick(engine, jwt, stack.to_string(), names.clone()),
+                Some(kind) => api.change(
+                    engine,
+                    jwt,
+                    stack.to_string(),
+                    kind,
+                    change.add,
+                    names.clone(),
+                ),
+            })
+            .await?;
+        Ok(results
+            .into_iter()
+            .map(|r| ManageChangeResult {
+                name: r.name,
+                status: r.status,
+                message: r.message,
+            })
+            .collect())
+    }
+
+    /// The settings a player edits in Manage, read from the server's settings document.
+    pub async fn manage_settings(&self, tenant: &str, stack: &str) -> Result<ManageSettings> {
+        let api = self.runner.stack();
+        let doc = self
+            .with_jwt(tenant, |engine, jwt| {
+                api.settings(engine, jwt, stack.to_string())
+            })
+            .await?;
+        Ok(manage_settings_of(&doc))
+    }
+
+    /// Saves the settings a player edits. The Engine's PUT replaces the whole document and
+    /// returns a field left out to its default (a modpack free server keeps its `MODRINTH_*`
+    /// keys in `customization.env`), so this reads the document first and changes only the
+    /// fields Manage edits on that raw JSON: everything else goes back as the Engine sent it.
+    /// `save.revision` is sent as given, so a change made elsewhere since the player read the
+    /// settings answers `SettingsChanged`.
+    pub async fn manage_settings_save(
+        &self,
+        tenant: &str,
+        stack: &str,
+        save: ManageSettingsSave,
+    ) -> Result<ManageSaved> {
+        let api = self.runner.stack();
+        let doc = self
+            .with_jwt(tenant, |engine, jwt| {
+                api.settings(engine, jwt, stack.to_string())
+            })
+            .await?;
+        let read = manage_settings_of(&doc);
+        let mut settings = doc.settings.clone();
+        patch_settings(&mut settings, &read, &save)?;
+        let body = serde_json::json!({
+            "revision": save.revision,
+            "settings": settings,
+            "confirmVersionChange": save.confirm_version_change,
+            "acknowledgeDataLoss": save.acknowledge_data_loss,
+        });
+        let apply = match save.apply.as_str() {
+            "next_restart" => Apply::NextRestart,
+            _ => Apply::Now,
+        };
+        let saved = self
+            .with_jwt(tenant, |engine, jwt| {
+                api.put_settings(engine, jwt, stack.to_string(), body.clone(), apply)
+            })
+            .await?;
+        let shown = SettingsDoc {
+            revision: saved.revision,
+            managed_by_source: doc.managed_by_source,
+            pending_restart: saved.pending,
+            // An answer without the document: what was sent is what was saved.
+            settings: if saved.settings.is_object() {
+                saved.settings
+            } else {
+                settings
+            },
+        };
+        Ok(ManageSaved {
+            settings: manage_settings_of(&shown),
+            restarted: saved.restarted,
+            pending: saved.pending,
+        })
+    }
+
+    /// Runs one console command. `confirm` lets a command that stops the server through;
+    /// without it one answers `CommandNeedsConfirmation`.
+    pub async fn manage_console(
+        &self,
+        tenant: &str,
+        stack: &str,
+        command: &str,
+        confirm: bool,
+    ) -> Result<ManageConsoleReply> {
+        let api = self.runner.stack();
+        let reply = self
+            .with_jwt(tenant, |engine, jwt| {
+                api.console(engine, jwt, stack.to_string(), command.to_string(), confirm)
+            })
+            .await?;
+        Ok(ManageConsoleReply {
+            ok: reply.outcome == "ok",
+            output: perland::strip_formatting(&reply.output),
         })
     }
 
@@ -1301,5 +1623,519 @@ mod tests {
             "only the opened URL holds it"
         );
         assert!(!opened[1].contains("hc_secret_code"));
+    }
+
+    fn results(names: &[&str], status: &str) -> Vec<NameResult> {
+        names
+            .iter()
+            .map(|n| NameResult {
+                name: n.to_string(),
+                status: status.into(),
+                message: None,
+            })
+            .collect()
+    }
+
+    fn names(list: &[&str]) -> NameList {
+        NameList {
+            names: list.iter().map(|n| n.to_string()).collect(),
+            ..NameList::default()
+        }
+    }
+
+    fn change(list: &str, add: bool, who: &[&str]) -> ManageListChange {
+        ManageListChange {
+            list: list.into(),
+            add,
+            names: who.iter().map(|n| n.to_string()).collect(),
+        }
+    }
+
+    #[tokio::test]
+    async fn players_read_four_lists() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.online.lock().unwrap() = Ok(Online {
+            running: true,
+            online: 1,
+            max: 20,
+            players: Some(vec!["Alex".into()]),
+            ..Online::default()
+        });
+        *fake.whitelist.lock().unwrap() = Ok(names(&["Alex", "Steve"]));
+        *fake.ops.lock().unwrap() = Ok(names(&["Steve"]));
+        *fake.bans.lock().unwrap() = Ok(BanList {
+            running: true,
+            unreadable: false,
+            bans: vec![
+                perland::Ban {
+                    name: "Griefer".into(),
+                    reason: Some("TNT".into()),
+                },
+                perland::Ban {
+                    name: "Quiet".into(),
+                    reason: None,
+                },
+            ],
+        });
+        let players = core.manage_players("t1", "survival").await.unwrap();
+        assert_eq!(
+            players,
+            ManagePlayers {
+                running: true,
+                online: vec!["Alex".into()],
+                whitelist: vec!["Alex".into(), "Steve".into()],
+                admins: vec!["Steve".into()],
+                bans: vec![
+                    ManageBan {
+                        name: "Griefer".into(),
+                        reason: Some("TNT".into()),
+                    },
+                    ManageBan {
+                        name: "Quiet".into(),
+                        reason: None,
+                    },
+                ],
+                unreadable: false,
+            }
+        );
+        let lists: Vec<Vec<String>> = fake.calls_to("list").into_iter().map(|c| c.args).collect();
+        assert!(lists.contains(&vec!["survival".into(), "Whitelist".into()]));
+        assert!(lists.contains(&vec!["survival".into(), "Ops".into()]));
+        assert_eq!(fake.calls_to("bans").len(), 1);
+        assert_eq!(fake.calls_to("online").len(), 1);
+
+        // Stopped: who is on isn't asked.
+        *fake.online.lock().unwrap() = Ok(Online::default());
+        let players = core.manage_players("t1", "survival").await.unwrap();
+        assert!(!players.running && players.online.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_failing_list_is_unreadable_not_an_error() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.whitelist.lock().unwrap() = Ok(names(&["Alex"]));
+        *fake.ops.lock().unwrap() = Err(LauncherError::network(ErrorCode::Internal, "boom"));
+        let players = core.manage_players("t1", "survival").await.unwrap();
+        assert!(players.unreadable);
+        assert!(players.admins.is_empty());
+        assert_eq!(players.whitelist, ["Alex"]);
+
+        // A list the Engine read as unreadable is unreadable too.
+        *fake.ops.lock().unwrap() = Ok(NameList::default());
+        *fake.bans.lock().unwrap() = Ok(BanList {
+            unreadable: true,
+            ..BanList::default()
+        });
+        assert!(
+            core.manage_players("t1", "survival")
+                .await
+                .unwrap()
+                .unreadable
+        );
+    }
+
+    #[tokio::test]
+    async fn kick_is_online_remove() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.kick.lock().unwrap() = Ok(vec![NameResult {
+            name: "Alex".into(),
+            status: "kicked".into(),
+            message: Some("bye".into()),
+        }]);
+        let out = core
+            .manage_players_change("t1", "survival", change("online", false, &["Alex"]))
+            .await
+            .unwrap();
+        assert_eq!(
+            out,
+            [ManageChangeResult {
+                name: "Alex".into(),
+                status: "kicked".into(),
+                message: Some("bye".into()),
+            }]
+        );
+        assert_eq!(fake.calls_to("kick")[0].args, ["survival", "Alex"]);
+        assert!(fake.calls_to("change").is_empty());
+
+        // Nobody is added to who is on.
+        let e = core
+            .manage_players_change("t1", "survival", change("online", true, &["Alex"]))
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::Internal);
+        assert_eq!(fake.calls_to("kick").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn admins_map_to_ops() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.change.lock().unwrap() = Ok(results(&["Steve"], "opped"));
+        core.manage_players_change("t1", "survival", change("admins", true, &["Steve"]))
+            .await
+            .unwrap();
+        core.manage_players_change("t1", "survival", change("whitelist", false, &["Alex"]))
+            .await
+            .unwrap();
+        core.manage_players_change("t1", "survival", change("bans", true, &["Griefer"]))
+            .await
+            .unwrap();
+        let calls: Vec<Vec<String>> = fake
+            .calls_to("change")
+            .into_iter()
+            .map(|c| c.args)
+            .collect();
+        assert_eq!(
+            calls,
+            [
+                ["survival", "Ops", "true", "Steve"],
+                ["survival", "Whitelist", "false", "Alex"],
+                ["survival", "Bans", "true", "Griefer"],
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn unban_is_bans_remove() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.change.lock().unwrap() = Ok(results(&["Griefer"], "pardoned"));
+        let out = core
+            .manage_players_change("t1", "survival", change("bans", false, &["Griefer"]))
+            .await
+            .unwrap();
+        assert_eq!(out[0].status, "pardoned");
+        assert_eq!(
+            fake.calls_to("change")[0].args,
+            ["survival", "Bans", "false", "Griefer"]
+        );
+    }
+
+    #[tokio::test]
+    async fn changes_refuse_more_than_fifty_names() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let many: Vec<String> = (0..51).map(|i| format!("p{i}")).collect();
+        let fifty = ManageListChange {
+            list: "whitelist".into(),
+            add: true,
+            names: many[..50].to_vec(),
+        };
+        core.manage_players_change("t1", "s", fifty).await.unwrap();
+        for bad in [
+            ManageListChange {
+                list: "whitelist".into(),
+                add: true,
+                names: many,
+            },
+            change("whitelist", true, &[]),
+            change("friends", true, &["Alex"]),
+        ] {
+            let e = core
+                .manage_players_change("t1", "s", bad)
+                .await
+                .unwrap_err();
+            assert_eq!(e.code, ErrorCode::Internal);
+        }
+        assert_eq!(stack(&runner).calls_to("change").len(), 1);
+    }
+
+    fn doc(settings: Value) -> SettingsDoc {
+        SettingsDoc {
+            revision: "r1".into(),
+            managed_by_source: None,
+            pending_restart: false,
+            settings,
+        }
+    }
+
+    #[tokio::test]
+    async fn settings_read_defaults() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.settings.lock().unwrap() = Ok(SettingsDoc {
+            pending_restart: true,
+            ..doc(json!({"type": "PAPER", "version": "1.21.1", "customization": {}}))
+        });
+        let settings = core.manage_settings("t1", "survival").await.unwrap();
+        assert_eq!(
+            settings,
+            ManageSettings {
+                revision: "r1".into(),
+                motd: String::new(),
+                motd_read_only: false,
+                mode: "survival".into(),
+                difficulty: "easy".into(),
+                max_players: None,
+                pvp: true,
+                enable_whitelist: false,
+                version: "1.21.1".into(),
+                version_locked: false,
+                pending_restart: true,
+            }
+        );
+
+        *fake.settings.lock().unwrap() = Ok(doc(json!({
+            "version": "1.20.4",
+            "customization": {
+                "motd": "Hi there", "mode": "creative", "difficulty": "hard",
+                "maxPlayers": 12, "pvp": false, "enableWhitelist": true,
+            }
+        })));
+        let settings = core.manage_settings("t1", "survival").await.unwrap();
+        assert_eq!(settings.motd, "Hi there");
+        assert_eq!(settings.mode, "creative");
+        assert_eq!(settings.difficulty, "hard");
+        assert_eq!(settings.max_players, Some(12));
+        assert!(!settings.pvp && settings.enable_whitelist);
+    }
+
+    #[tokio::test]
+    async fn settings_motd_with_section_codes_is_read_only() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        *stack(&runner).settings.lock().unwrap() =
+            Ok(doc(json!({"customization": {"motd": "§6Gold"}})));
+        let settings = core.manage_settings("t1", "s").await.unwrap();
+        assert!(settings.motd_read_only);
+        assert_eq!(settings.motd, "§6Gold");
+    }
+
+    #[tokio::test]
+    async fn settings_version_locked_for_a_modpack() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        let cases = [
+            SettingsDoc {
+                managed_by_source: Some("modpack".into()),
+                ..doc(json!({"version": "1.20.1"}))
+            },
+            doc(json!({"type": "MODRINTH", "version": "1.20.1"})),
+            doc(
+                json!({"version": "1.20.1", "customization": {"env": {"MODRINTH_MODPACK": "abc"}}}),
+            ),
+        ];
+        for case in cases {
+            *fake.settings.lock().unwrap() = Ok(case.clone());
+            let settings = core.manage_settings("t1", "s").await.unwrap();
+            assert!(settings.version_locked, "{case:?}");
+        }
+        *fake.settings.lock().unwrap() = Ok(doc(json!({"type": "FABRIC", "version": "1.20.1"})));
+        assert!(
+            !core
+                .manage_settings("t1", "s")
+                .await
+                .unwrap()
+                .version_locked
+        );
+    }
+
+    fn save(revision: &str) -> ManageSettingsSave {
+        ManageSettingsSave {
+            revision: revision.into(),
+            motd: None,
+            mode: "survival".into(),
+            difficulty: "normal".into(),
+            max_players: Some(10),
+            pvp: true,
+            enable_whitelist: false,
+            version: None,
+            apply: "now".into(),
+            confirm_version_change: false,
+            acknowledge_data_loss: false,
+        }
+    }
+
+    /// The body of the one PUT the fake saw, and its apply mode.
+    fn put_of(fake: &FakeStack) -> (Value, String) {
+        let calls = fake.calls_to("put_settings");
+        assert_eq!(calls.len(), 1);
+        (
+            serde_json::from_str(&calls[0].args[1]).unwrap(),
+            calls[0].args[2].clone(),
+        )
+    }
+
+    fn modpack_doc() -> Value {
+        json!({
+            "type": "MODRINTH",
+            "version": "1.20.1",
+            "loaderVersion": "0.16.0",
+            "customization": {
+                "motd": "§aModded",
+                "mode": "survival",
+                "difficulty": "normal",
+                "maxPlayers": 10,
+                "pvp": true,
+                "enableWhitelist": false,
+                "viewDistance": 12,
+                "ops": ["Steve"],
+                "env": {"MODRINTH_MODPACK": "abc", "MODRINTH_VERSION": "v1", "MODRINTH_LOADER": "fabric"},
+                "unknownFutureField": {"nested": [1, 2, 3]}
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn settings_put_keeps_every_field_it_did_not_change() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.settings.lock().unwrap() = Ok(doc(modpack_doc()));
+        *fake.put_settings.lock().unwrap() = Ok(SettingsSaved {
+            revision: "r2".into(),
+            pending: false,
+            restarted: true,
+            settings: modpack_doc(),
+        });
+        let mut s = save("r1");
+        s.pvp = false;
+        // The MOTD is read only (colour codes) and the version locked (a modpack): both are
+        // left as they are even when sent.
+        s.motd = Some("Plain".into());
+        s.version = Some("1.21.1".into());
+        let saved = core.manage_settings_save("t1", "pack", s).await.unwrap();
+
+        let (body, apply) = put_of(&fake);
+        let mut want = modpack_doc();
+        want["customization"]["pvp"] = json!(false);
+        assert_eq!(
+            body,
+            json!({
+                "revision": "r1",
+                "settings": want,
+                "confirmVersionChange": false,
+                "acknowledgeDataLoss": false,
+            })
+        );
+        assert_eq!(apply, "Now");
+        assert!(saved.restarted && !saved.pending);
+        assert_eq!(saved.settings.revision, "r2");
+        assert!(saved.settings.version_locked);
+    }
+
+    #[tokio::test]
+    async fn settings_save_sends_the_revision_and_confirmations() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.settings.lock().unwrap() = Ok(doc(json!({
+            "type": "PAPER", "version": "1.20.4", "customization": {"motd": "Old", "maxPlayers": 5}
+        })));
+        let mut s = save("r0");
+        s.motd = Some("New".into());
+        s.version = Some("1.21.1".into());
+        s.max_players = None;
+        s.confirm_version_change = true;
+        s.acknowledge_data_loss = true;
+        core.manage_settings_save("t1", "s", s).await.unwrap();
+        let (body, _) = put_of(&fake);
+        assert_eq!(body["revision"], "r0", "the revision the player read");
+        assert_eq!(body["confirmVersionChange"], true);
+        assert_eq!(body["acknowledgeDataLoss"], true);
+        assert_eq!(body["settings"]["version"], "1.21.1");
+        assert_eq!(body["settings"]["type"], "PAPER");
+        let c = &body["settings"]["customization"];
+        assert_eq!(c["motd"], "New");
+        assert_eq!(c["difficulty"], "normal");
+        assert!(c.get("maxPlayers").is_none(), "cleared: the default");
+        assert!(body.get("broadcast").is_none() && body.get("skipSafetyBackup").is_none());
+    }
+
+    #[tokio::test]
+    async fn settings_save_skips_a_locked_version() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.settings.lock().unwrap() = Ok(SettingsDoc {
+            managed_by_source: Some("modpack".into()),
+            ..doc(json!({"type": "FABRIC", "version": "1.20.1", "customization": {}}))
+        });
+        let mut s = save("r1");
+        s.version = Some("1.21.1".into());
+        core.manage_settings_save("t1", "s", s).await.unwrap();
+        let (body, _) = put_of(&fake);
+        assert_eq!(body["settings"]["version"], "1.20.1");
+    }
+
+    #[tokio::test]
+    async fn settings_save_next_restart_passes_apply() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.settings.lock().unwrap() = Ok(doc(json!({"version": "1.21.1", "customization": {}})));
+        *fake.put_settings.lock().unwrap() = Ok(SettingsSaved {
+            revision: "r2".into(),
+            pending: true,
+            restarted: false,
+            settings: json!({"version": "1.21.1", "customization": {"pvp": true, "mode": "survival"}}),
+        });
+        let mut s = save("r1");
+        s.apply = "next_restart".into();
+        let saved = core.manage_settings_save("t1", "s", s).await.unwrap();
+        let (_, apply) = put_of(&fake);
+        assert_eq!(apply, "NextRestart");
+        assert!(saved.pending && !saved.restarted);
+        assert!(saved.settings.pending_restart);
+    }
+
+    #[tokio::test]
+    async fn console_strips_formatting() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.console.lock().unwrap() = Ok(ConsoleReply {
+            outcome: "ok".into(),
+            output: "§aThere are §e2§a players online".into(),
+            code: None,
+        });
+        let reply = core.manage_console("t1", "s", "list", false).await.unwrap();
+        assert_eq!(
+            reply,
+            ManageConsoleReply {
+                ok: true,
+                output: "There are 2 players online".into(),
+            }
+        );
+        assert_eq!(fake.calls_to("console")[0].args, ["s", "list", "false"]);
+
+        *fake.console.lock().unwrap() = Ok(ConsoleReply {
+            outcome: "error".into(),
+            output: "Unknown command".into(),
+            code: None,
+        });
+        assert!(!core.manage_console("t1", "s", "x", false).await.unwrap().ok);
+    }
+
+    #[tokio::test]
+    async fn console_needs_confirmation_is_a_code() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.console.lock().unwrap() = Err(LauncherError::network(
+            ErrorCode::CommandNeedsConfirmation,
+            "This command stops the server.",
+        ));
+        let e = core
+            .manage_console("t1", "s", "stop", false)
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::CommandNeedsConfirmation);
+        *fake.console.lock().unwrap() = Ok(ConsoleReply {
+            outcome: "ok".into(),
+            ..ConsoleReply::default()
+        });
+        core.manage_console("t1", "s", "stop", true).await.unwrap();
+        assert_eq!(fake.calls_to("console")[1].args, ["s", "stop", "true"]);
     }
 }

@@ -883,6 +883,107 @@ pub struct ManageDiagnosis {
     pub cause: Option<ManageCause>,
 }
 
+/// A banned player and why, when the ban says.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageBan {
+    pub name: String,
+    pub reason: Option<String>,
+}
+
+/// A server's player lists.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagePlayers {
+    pub running: bool,
+    /// Who is on now; empty while the server isn't running.
+    pub online: Vec<String>,
+    pub whitelist: Vec<String>,
+    pub admins: Vec<String>,
+    pub bans: Vec<ManageBan>,
+    /// A list couldn't be read and shows empty.
+    pub unreadable: bool,
+}
+
+/// Names to add to a list or take off it.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageListChange {
+    /// `whitelist`, `admins`, `bans` or `online` (only to remove: a kick).
+    pub list: String,
+    pub add: bool,
+    pub names: Vec<String>,
+}
+
+/// What a change did to one name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageChangeResult {
+    pub name: String,
+    pub status: String,
+    pub message: Option<String>,
+}
+
+/// The settings a player edits in Manage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageSettings {
+    pub revision: String,
+    pub motd: String,
+    /// The MOTD holds colour codes the launcher's editor would lose.
+    pub motd_read_only: bool,
+    pub mode: String,
+    pub difficulty: String,
+    pub max_players: Option<u32>,
+    pub pvp: bool,
+    pub enable_whitelist: bool,
+    pub version: String,
+    /// A modpack decides the version.
+    pub version_locked: bool,
+    pub pending_restart: bool,
+}
+
+/// A settings save from Manage.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageSettingsSave {
+    pub revision: String,
+    /// `None` leaves the MOTD as it is.
+    pub motd: Option<String>,
+    pub mode: String,
+    pub difficulty: String,
+    /// `None` takes the server's default.
+    pub max_players: Option<u32>,
+    pub pvp: bool,
+    pub enable_whitelist: bool,
+    /// `None` leaves the version as it is.
+    pub version: Option<String>,
+    /// `now` or `next_restart`.
+    pub apply: String,
+    #[serde(default)]
+    pub confirm_version_change: bool,
+    #[serde(default)]
+    pub acknowledge_data_loss: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageSaved {
+    pub settings: ManageSettings,
+    /// The running server was recreated with the changes.
+    pub restarted: bool,
+    /// The changes wait for the next start or restart.
+    pub pending: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageConsoleReply {
+    pub ok: bool,
+    /// The server's answer without colour codes.
+    pub output: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
