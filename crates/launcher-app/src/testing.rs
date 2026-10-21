@@ -35,11 +35,12 @@ use launcher_core::{
     meta::loaders::LoaderKind,
     news::NewsPage,
     perland::{
-        Apply, BanList, ConsoleReply, CreateAllowance, CreateFreeServer, Diagnosis, DiscordAccount,
-        Disk, EmailStarted, FreeLimits, FreeServer, FreeServerSettings, FreeServerState, Handoff,
-        Lifecycle, LinkCode, ListKind, Membership, MemoryLimits, NameList, NameResult, Online,
-        Player, PlayerConfig, PlayerStats, SessionJwt, SettingsDoc, SettingsSaved, SignInMethod,
-        StackDetail, StackItem, TokenAnswer, YourServer,
+        Apply, BanList, ConsoleReply, CreateAllowance, CreateFreeServer, CreateServer,
+        CreatedServer, Diagnosis, DiscordAccount, Disk, EmailStarted, EngineVersion, FreeLimits,
+        FreeServer, FreeServerSettings, FreeServerState, Handoff, Lifecycle, LinkCode, ListKind,
+        Membership, MemoryLimits, NameList, NameResult, Online, Player, PlayerConfig, PlayerStats,
+        SessionJwt, SettingsDoc, SettingsSaved, SignInMethod, StackDetail, StackItem, TeamUsage,
+        TokenAnswer, YourServer,
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
@@ -1220,6 +1221,9 @@ pub(crate) fn fake_jwt(n: usize) -> String {
     format!("h.{payload}.s")
 }
 
+/// A version list's `(type, minecraft)`.
+pub(crate) type VersionsKey = (String, Option<String>);
+
 /// The Engine's auth and server routes, answered from what the test scripted. `player_session`
 /// and `select_tenant` mint a new JWT per call; every call is recorded.
 pub(crate) struct FakeStack {
@@ -1243,6 +1247,14 @@ pub(crate) struct FakeStack {
     pub settings: Mutex<Result<SettingsDoc>>,
     pub put_settings: Mutex<Result<SettingsSaved>>,
     pub console: Mutex<Result<ConsoleReply>>,
+    /// Default: a started server named as asked.
+    pub create_server: Mutex<Result<CreatedServer>>,
+    /// Every create body sent (both routes), and each uploaded pack.
+    pub created: Mutex<Vec<CreateServer>>,
+    pub uploaded: Mutex<Vec<Vec<u8>>>,
+    pub usage: Mutex<Result<TeamUsage>>,
+    /// What `versions` answers per `(type, minecraft)`; missing: none.
+    pub versions: Mutex<HashMap<VersionsKey, Vec<EngineVersion>>>,
     /// The next `follow_logs` answers this instead of connecting.
     pub logs_refusal: Mutex<Option<LauncherError>>,
     /// Every log stream that connected, oldest first.
@@ -1274,6 +1286,11 @@ impl FakeStack {
             settings: Mutex::new(Ok(SettingsDoc::default())),
             put_settings: Mutex::new(Ok(SettingsSaved::default())),
             console: Mutex::new(Ok(ConsoleReply::default())),
+            create_server: Mutex::new(Ok(CreatedServer::default())),
+            created: Mutex::new(Vec::new()),
+            uploaded: Mutex::new(Vec::new()),
+            usage: Mutex::new(Ok(TeamUsage::default())),
+            versions: Mutex::new(HashMap::new()),
             logs_refusal: Mutex::new(None),
             log_streams: Mutex::new(Vec::new()),
             fail_next: Mutex::new(HashMap::new()),
@@ -1375,6 +1392,34 @@ impl FakeStack {
             Some(e) => Err(e),
             None => answer.lock().unwrap().clone(),
         };
+        Box::pin(async move { answer })
+    }
+}
+
+impl FakeStack {
+    /// A create on either route: recorded with its body (and pack), then the scripted answer,
+    /// named as asked when the script leaves the name out.
+    fn create(
+        &self,
+        route: &'static str,
+        engine: Url,
+        jwt: SessionJwt,
+        server: CreateServer,
+        pack: Option<Vec<u8>>,
+    ) -> BoxFuture<Result<CreatedServer>> {
+        let answer = match self.note(route, engine, Some(&jwt), &[&server.server_name]) {
+            Some(e) => Err(e),
+            None => self.create_server.lock().unwrap().clone().map(|mut c| {
+                if c.server_name.is_empty() {
+                    c.server_name = server.server_name.clone();
+                }
+                c
+            }),
+        };
+        self.created.lock().unwrap().push(server);
+        if let Some(pack) = pack {
+            self.uploaded.lock().unwrap().push(pack);
+        }
         Box::pin(async move { answer })
     }
 }
@@ -1568,6 +1613,46 @@ impl StackApi for FakeStack {
             &[&stack, &command, &confirm],
             &self.console,
         )
+    }
+    fn create_server(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        server: CreateServer,
+    ) -> BoxFuture<Result<CreatedServer>> {
+        self.create("create_server", engine, jwt, server, None)
+    }
+    fn create_server_from_pack(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        server: CreateServer,
+        pack: Vec<u8>,
+    ) -> BoxFuture<Result<CreatedServer>> {
+        self.create("create_server_from_pack", engine, jwt, server, Some(pack))
+    }
+    fn usage(&self, engine: Url, jwt: SessionJwt) -> BoxFuture<Result<TeamUsage>> {
+        self.answer("usage", engine, jwt, &[], &self.usage)
+    }
+    fn versions(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        server_type: String,
+        minecraft: Option<String>,
+    ) -> BoxFuture<Result<Vec<EngineVersion>>> {
+        let shown = minecraft.clone().unwrap_or_default();
+        let answer = match self.note("versions", engine, Some(&jwt), &[&server_type, &shown]) {
+            Some(e) => Err(e),
+            None => Ok(self
+                .versions
+                .lock()
+                .unwrap()
+                .get(&(server_type, minecraft))
+                .cloned()
+                .unwrap_or_default()),
+        };
+        Box::pin(async move { answer })
     }
     fn follow_logs(
         &self,

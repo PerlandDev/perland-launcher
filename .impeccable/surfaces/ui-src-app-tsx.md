@@ -67,6 +67,11 @@ related_targets: ["ui/src"]
   - *Options is a fact until opened.* A seam row under the name that reads what the server gets ("Survival, Easy, up to 10 players"); untouched sends nothing. No lamp, no badge, nothing lit: Create stays the dialog's one amber.
   - *Existing parts only.* The New instance version select, the kind's segments, the Settings switch rows and the standard fields; a locked choice is a disabled select with a one-line reason, not a hidden one.
   - *Every instance, one item.* Vanilla says its version in a sentence (old alphas and betas get one coral line and no Create); a Modrinth pack says it runs as published; other modded instances keep the mods check.
+- **Create a server on a team, decided 2026-10-21:**
+  - *Where is the first segments row.* "Your free server" (while the player can make it) then each team by name, the kind's pressed key with the lime lamp; nothing shows when the free server is the only place. The team path never says "free".
+  - *Existing parts only.* Server type as segments, the New instance Minecraft version select with Show snapshots, a loader version select, Memory as a short tabular select, then the name and the same Options (20 players by default). Create stays the one amber.
+  - *A plan lock is advice.* Manage's blue lock line with a raised Upgrade under the field; the field stays changeable, since another choice may be in the plan.
+  - *The end is Manage.* No invite step: "Your server is ready" with Manage lit; made without room, one plain line says so and how to start it.
 - **Back to Home (#79), decided 2026-10-21:**
   - *Every screen frame has a way back.* Settings, Accounts, Servers, Join server and Browse from the rail get the ghost back key that Mods, Instance settings and New instance already had, in the same place before the title. Nothing new is lit.
   - *Alt+Left, not Escape.* Alt+Left is the browser's and other launchers' back. Escape already closes dialogs and menus and cancels a rail drag, so one press too many would throw the player off the screen. Alt+Left does nothing in a text field (the caret's) or under an open dialog.

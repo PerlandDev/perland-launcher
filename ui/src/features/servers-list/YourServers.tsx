@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { YourServerCard } from '../../ipc/schema';
-import { useFreeServer, useUnfollow } from '../../state/queries';
+import { useCreatableTeams, useFreeServer, useUnfollow } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { FreeServerCard } from '../free-server/FreeServerCard';
 import { FreeServerEntry } from '../free-server/FreeServerEntry';
@@ -19,6 +19,8 @@ export function YourServers() {
   // The free server's page: null while free servers are off. While it is there the section stays, for its entry (and the
   // create dialog, which must outlive the entry once the server exists).
   const free = useFreeServer(status?.account != null).data;
+  // The teams the player may create a server on: with any, the entry is "Create a server" with Where.
+  const teams = useCreatableTeams(status?.account != null).data ?? [];
   const unfollow = useUnfollow();
   const manage = useManageItem();
   const manageKey = useManageKey();
@@ -63,7 +65,7 @@ export function YourServers() {
       </p>
     );
   }
-  if (!servers?.length && !managed?.length && !free) return null;
+  if (!servers?.length && !managed?.length && !free && teams.length === 0) return null;
   // The app already leaves the free server out of /servers; the same card is still never drawn twice.
   const listed = (servers ?? []).filter((card) => !own || own.token === '' || card.token !== own.token);
   // The servers the player runs come first: owner cards with Manage, then the ones only Manage knows, then the rest as listed.
@@ -88,7 +90,7 @@ export function YourServers() {
       <h2 ref={heading} id="your-servers" tabIndex={-1} className="text-[1.125rem] leading-tight font-bold">
         {t('servers.yours.title')}
       </h2>
-      {free && <FreeServerEntry page={free} />}
+      {(free || teams.length > 0) && <FreeServerEntry page={free ?? null} teams={teams} />}
       {(own || listed.length > 0 || runOnly.length > 0) && (
         <ul className="servers-grid">
           {own && (

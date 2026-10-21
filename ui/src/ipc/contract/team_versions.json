@@ -1,0 +1,12 @@
+[
+  {
+    "id": "47.3.0",
+    "stable": true,
+    "recommended": true
+  },
+  {
+    "id": "1.21.2-rc1",
+    "stable": false,
+    "recommended": false
+  }
+]

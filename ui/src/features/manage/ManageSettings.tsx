@@ -44,14 +44,14 @@ type Notice = 'saved' | 'savedRestarted' | 'savedPending' | 'changed';
 const options = (known: string[], current: string, label: (value: string) => string) =>
   (known.includes(current) ? known : [...known, current]).map((value) => ({ value, label: known.includes(value) ? label(value) : value }));
 
-/** Under a field the plan locks: the reason and Upgrade, which opens the panel's plans page. */
-function LockedNote({ tenantId }: { tenantId: string }) {
+/** Under a field the plan locks: the reason (`text`, else Manage's) and Upgrade, which opens the team's plans page on the panel. */
+export function LockedNote({ tenantId, text }: { tenantId: string; text?: string }) {
   const { t } = useTranslation();
   const once = useSingleFlight();
   return (
     <div className="manage-locked">
       <Lock className="h-4 w-4 flex-none" aria-hidden />
-      <p className="flex-1">{t('manage.settings.locked')}</p>
+      <p className="flex-1">{text ?? t('manage.settings.locked')}</p>
       <Button onClick={() => once((done) => void openManagePanel(tenantId, null).finally(done))}>{t('manage.settings.upgrade')}</Button>
     </div>
   );

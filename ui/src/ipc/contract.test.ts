@@ -60,6 +60,12 @@ import settingsFx from './contract/settings.json';
 import shareChoiceFx from './contract/share_choice.json';
 import sharePreviewFx from './contract/share_preview.json';
 import friendsCheckFx from './contract/friends_check.json';
+import creatableTeamsFx from './contract/creatable_teams.json';
+import teamRoomFx from './contract/team_room.json';
+import teamVersionsFx from './contract/team_versions.json';
+import teamCreateRequestsFx from './contract/team_create_requests.json';
+import teamInstanceRequestsFx from './contract/team_instance_requests.json';
+import teamServerCreatedFx from './contract/team_server_created.json';
 import updateStates from './contract/update_states.json';
 import versions from './contract/versions.json';
 import yourServersPage from './contract/your_servers_page.json';
@@ -83,6 +89,12 @@ const cases: [string, ZodType, unknown][] = [
   ['import_preview', s.importPreview, importPreview],
   ['share_preview', s.sharePreview, sharePreviewFx],
   ['friends_check', s.friendsCheck, friendsCheckFx],
+  ['creatable_teams', s.creatableTeam.array(), creatableTeamsFx],
+  ['team_room', s.teamRoom, teamRoomFx],
+  ['team_versions', s.teamVersion.array(), teamVersionsFx],
+  ['team_create_requests', s.teamCreateRequest.array(), teamCreateRequestsFx],
+  ['team_instance_requests', s.teamInstanceRequest.array(), teamInstanceRequestsFx],
+  ['team_server_created', s.teamServerCreated.array(), teamServerCreatedFx],
   ['share_choice', s.shareChoice, shareChoiceFx],
   ['import_request', s.importRequest, importRequest],
   ['open_targets', s.openTarget.array(), openTargets],

@@ -290,8 +290,8 @@ struct Results {
 
 #[derive(Clone)]
 pub struct StackClient {
-    wire: Wire,
-    timeout: Duration,
+    pub(super) wire: Wire,
+    pub(super) timeout: Duration,
 }
 
 // Manual Debug: keep to the origin.
@@ -313,7 +313,7 @@ impl StackClient {
         }
     }
 
-    fn host(&self) -> String {
+    pub(super) fn host(&self) -> String {
         self.wire.host()
     }
 
@@ -334,7 +334,7 @@ impl StackClient {
         Ok(url.path().to_string())
     }
 
-    async fn call(
+    pub(super) async fn call(
         &self,
         jwt: &SessionJwt,
         method: Method,
@@ -591,7 +591,7 @@ impl StackClient {
     }
 
     /// What a refused request means: the Engine's `data.code` first, then the status.
-    fn refusal(&self, reply: &Reply) -> LauncherError {
+    pub(super) fn refusal(&self, reply: &Reply) -> LauncherError {
         let host = self.host();
         let failure = failure(reply);
         let text = |name: &str| {

@@ -774,6 +774,69 @@
       "notDeleted": "Your server is still being set up, so it can't be deleted yet. Try again in a minute."
     }
   },
+  "teamServer": {
+    "entry": {
+      "lead": "Make a server for you and your friends, on your own free server or one of your teams.",
+      "leadTeams": "Make a server on one of your teams.",
+      "create": "Create a server"
+    },
+    "title": "Create a server",
+    "where": "Where",
+    "free": "Your free server",
+    "type": "Server type",
+    "types": {
+      "vanilla": "Vanilla",
+      "paper": "Paper",
+      "fabric": "Fabric",
+      "forge": "Forge",
+      "neoforge": "NeoForge",
+      "quilt": "Quilt"
+    },
+    "loaderVersion": "Loader version",
+    "stable": "{{version}}",
+    "recommended": "{{version}} (recommended)",
+    "beta": "{{version}} (beta)",
+    "noVersions": "This server type has no versions to pick right now.",
+    "noLoader": "There's no loader for Minecraft {{version}} yet. Pick another version.",
+    "memory": "Memory",
+    "memoryGb": "{{count}} GB",
+    "memoryHint": "More memory runs more mods and more players.",
+    "nameHint": "Letters, numbers, - and _ only, up to 32. Your team sees it in Manage.",
+    "vanillaIntro": "Runs Minecraft {{version}}, the same as this instance. Friends join on that version.",
+    "loaderIntro": "Runs Minecraft {{version}} with {{loader}} {{loaderVersion}}, the same as this instance.",
+    "modrinthIntro": "Runs {{pack}} as published on Modrinth. Mods you added yourself stay on your computer.",
+    "packIntro": "The server runs these mods and settings.",
+    "memoryLine": "Needs {{need}} GB of memory.",
+    "needsMemory": "Your mods need {{need}} GB of memory. Pick at least that much.",
+    "notOnModrinth_one": "Servers only run mods from Modrinth. {{count}} of your mods isn't there: {{names}}.",
+    "notOnModrinth_other": "Servers only run mods from Modrinth. {{count}} of your mods aren't there: {{names}}.",
+    "oldVersion": "Servers can't run Minecraft {{version}}.",
+    "locked": "Your team's plan doesn't include this.",
+    "refused": "The server couldn't be created with these choices. Try another name or version.",
+    "versionRefused": "This version can't be used. Pick another one.",
+    "packRefused": "This modpack can't become a server. Reinstall it from Browse.",
+    "noServers": "Your team's plan has no room for another server.",
+    "tooBig": "Your team's plan has no room for a server this size.",
+    "tooHeavy": "This modpack needs {{need}} GB of memory. Pick at least that much.",
+    "nameTaken": "Your team already has a server with that name.",
+    "packTooBig": "Your settings are too big for a server.",
+    "optionRefused": "The server can't use this option. Pick another one.",
+    "unsupported": {
+      "not_found": "This modpack isn't on Modrinth anymore.",
+      "not_modpack": "This isn't a modpack.",
+      "loader": "Servers can't run this modpack's loader.",
+      "too_large": "This modpack is too large to upload.",
+      "unsafe": "This modpack has files a server can't take.",
+      "not_on_modrinth": "Servers only run mods from Modrinth."
+    },
+    "ready": {
+      "title": "Your server is ready",
+      "hint": "Your server is running. Open Manage to change its settings and add players.",
+      "noRoom": "Your server is ready, but your team has no room to run it now. Stop another server to start it.",
+      "hostFull": "Your server is ready, but Perland is full right now. Start it in a few minutes.",
+      "manage": "Manage"
+    }
+  },
   "news": {
     "label": "News",
     "title": "News from {{name}}",
@@ -805,6 +868,9 @@
     }
   },
   "errors": {
+    "team_server_too_big": { "message": "Your team's plan has no room for a server this size." },
+    "server_name_taken": { "message": "Your team already has a server with that name." },
+    "invalid_team_server": { "message": "The server couldn't be created with these choices." },
     "offline_name_invalid": { "message": "Player names must be 3–16 letters, numbers or underscores." },
     "accounts_damaged": { "message": "Your accounts file is damaged.", "fix": "Remove accounts.json from the data folder and add your accounts again." },
     "offline_locked": { "message": "Offline accounts unlock after you sign in once with a Microsoft account that owns Minecraft.", "fix": "Microsoft sign-in is coming soon." },

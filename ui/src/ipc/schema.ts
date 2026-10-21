@@ -488,6 +488,48 @@ export const friendsCheck = z.strictObject({
   settings: z.number().int(),
 });
 
+/** A team the player may create a server on (owner or member, never the free team): `creatable_teams`. */
+export const creatableTeam = z.strictObject({ tenantId: z.string(), name: z.string() });
+/** How big a server a team can make now (`team_room`): memory choices in whole GB, the first pick, and the cores it gets. */
+export const teamRoom = z.strictObject({
+  memoryGb: z.number().int().array(),
+  defaultGb: z.number().int(),
+  cpu: z.number(),
+  /** How many more servers the team's plan lets it make; null when the Engine didn't say. */
+  serversLeft: z.number().int().nullable(),
+});
+/** The server types a team server can be. */
+export const teamServerType = z.enum(['vanilla', 'paper', 'fabric', 'forge', 'neoforge', 'quilt']);
+/** One version the Engine runs (`team_versions`), newest first; `stable` is false for snapshots and betas. */
+export const teamVersion = z.strictObject({ id: z.string(), stable: z.boolean(), recommended: z.boolean() });
+/** A server to make on a team from a type and a version (`team_create`). */
+export const teamCreateRequest = z.strictObject({
+  tenantId: z.string(),
+  name: z.string(),
+  type: teamServerType,
+  version: z.string(),
+  /** Modded types only; null: the newest. */
+  loaderVersion: z.string().nullable(),
+  memoryGb: z.number().int(),
+  settings: freeServerSettings.nullable(),
+});
+/** A server to make on a team from an instance (`team_create_from_instance`); the instance decides what it runs. */
+export const teamInstanceRequest = z.strictObject({
+  tenantId: z.string(),
+  id: z.string(),
+  name: z.string(),
+  memoryGb: z.number().int(),
+  settings: freeServerSettings.nullable(),
+});
+/** A server made on a team. `started` false: the team had no room to run it, so it waits, stopped. */
+export const teamServerCreated = z.strictObject({
+  tenantId: z.string(),
+  stack: z.string(),
+  started: z.boolean(),
+  notStartedReason: z.string().nullable(),
+  address: z.string().nullable(),
+});
+
 export const shareChoice = z.strictObject({
   mods: z.boolean(),
   settings: z.boolean(),
@@ -812,6 +854,13 @@ export type ShareCategory = z.infer<typeof shareCategory>;
 export type CategoryCount = z.infer<typeof categoryCount>;
 export type SharePreview = z.infer<typeof sharePreview>;
 export type FriendsCheck = z.infer<typeof friendsCheck>;
+export type CreatableTeam = z.infer<typeof creatableTeam>;
+export type TeamRoom = z.infer<typeof teamRoom>;
+export type TeamServerType = z.infer<typeof teamServerType>;
+export type TeamVersion = z.infer<typeof teamVersion>;
+export type TeamCreateRequest = z.infer<typeof teamCreateRequest>;
+export type TeamInstanceRequest = z.infer<typeof teamInstanceRequest>;
+export type TeamServerCreated = z.infer<typeof teamServerCreated>;
 export type ShareChoice = z.infer<typeof shareChoice>;
 export type ImportRequest = z.infer<typeof importRequest>;
 export type OpenTarget = z.infer<typeof openTarget>;

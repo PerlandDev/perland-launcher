@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { FreeLimits, FreeServerSettings } from '../../ipc/schema';
+import type { FreeServerSettings, FreeSettingsLimits } from '../../ipc/schema';
 
 // Options for a new free server (spec 2026-10-21 §4.1): a disclosure under the name, closed by default, that starts on what
 // the server gets anyway. Only what the player changed is sent, so an untouched form makes exactly today's server.
@@ -21,20 +21,35 @@ export interface OptionsState {
   whitelist: boolean;
   seed: string;
   motd: string;
-  /** The Engine's player limit: the default, and the most the field takes. */
+  /** The most the field takes. */
   limit: number;
+  /** What the server gets left alone: a free server's limit, a team server's 20. */
+  defaultPlayers: number;
 }
 
-/** What a server left alone gets (the Engine's defaults): survival, easy, the player limit, PvP on, whitelist off. */
+/** What bounds the Options: the most players, the number a server left alone gets (the most, when left out), and the
+ *  settings the Engine takes (null: no Options). A free server's `FreeLimits` is one. */
+export interface OptionLimits {
+  maxPlayers: number;
+  defaultPlayers?: number;
+  settings: FreeSettingsLimits | null;
+}
+
+/** A team server's Options (spec 2026-10-21 §6.3): every mode and difficulty, 20 players by default, up to the Engine's 1000,
+ *  and the same seed and message rules as a free server. */
+export const TEAM_OPTION_LIMITS: OptionLimits = {
+  maxPlayers: 1000,
+  defaultPlayers: 20,
+  settings: { gameModes: ['survival', 'creative', 'adventure', 'hardcore'], difficulties: ['peaceful', 'easy', 'normal', 'hard'], seedMaxBytes: 64, motdMaxBytes: 64 },
+};
+
+/** What a server left alone gets (the Engine's defaults): survival, easy, the default players, PvP on, whitelist off. */
 const DEFAULTS = { gameMode: 'survival', difficulty: 'easy', pvp: true, whitelist: false } as const;
 
-export const initialOptions = (limits: FreeLimits): OptionsState => ({
-  ...DEFAULTS,
-  maxPlayers: String(limits.maxPlayers),
-  seed: '',
-  motd: '',
-  limit: limits.maxPlayers,
-});
+export const initialOptions = (limits: OptionLimits): OptionsState => {
+  const defaultPlayers = limits.defaultPlayers ?? limits.maxPlayers;
+  return { ...DEFAULTS, maxPlayers: String(defaultPlayers), seed: '', motd: '', limit: limits.maxPlayers, defaultPlayers };
+};
 
 /** The settings to send: only the fields changed from the defaults, or null when nothing changed. Hardcore sends no
  *  difficulty (the Engine makes it Hard). Call it after `problems` found none. */
@@ -43,7 +58,7 @@ export function settingsOf(state: OptionsState): FreeServerSettings | null {
   if (state.gameMode !== DEFAULTS.gameMode) settings.gameMode = state.gameMode;
   if (state.gameMode !== 'hardcore' && state.difficulty !== DEFAULTS.difficulty) settings.difficulty = state.difficulty;
   const max = Number(state.maxPlayers);
-  if (state.maxPlayers.trim() !== '' && max !== state.limit) settings.maxPlayers = max;
+  if (state.maxPlayers.trim() !== '' && max !== state.defaultPlayers) settings.maxPlayers = max;
   if (state.pvp !== DEFAULTS.pvp) settings.pvp = state.pvp;
   if (state.whitelist !== DEFAULTS.whitelist) settings.whitelist = state.whitelist;
   if (state.seed.trim() !== '') settings.seed = state.seed.trim();
@@ -58,7 +73,7 @@ export const isOptionField = (field: string): boolean => OPTION_FIELDS.has(field
 const bytes = (text: string) => new TextEncoder().encode(text).length;
 
 /** What the Engine would refuse, by its field name (`settings.maxPlayers`, ...), in words. */
-function problems(t: TFunction, state: OptionsState, limits: FreeLimits): Record<string, string> {
+function problems(t: TFunction, state: OptionsState, limits: OptionLimits): Record<string, string> {
   const found: Record<string, string> = {};
   const max = Number(state.maxPlayers);
   if (state.maxPlayers.trim() === '' || !Number.isInteger(max) || max < 1 || max > state.limit) {
@@ -70,8 +85,8 @@ function problems(t: TFunction, state: OptionsState, limits: FreeLimits): Record
   return found;
 }
 
-/** The words for an option the Engine refused, by its `field`. */
-export function optionRefusal(t: TFunction, field: string, limit: number): string {
+/** The words for an option the Engine refused, by its `field`; `fallback` for one with no words of its own. */
+export function optionRefusal(t: TFunction, field: string, limit: number, fallback = 'freeServer.options.refused'): string {
   switch (field) {
     case 'settings.maxPlayers':
       return t('freeServer.options.maxPlayersInvalid', { max: limit });
@@ -80,7 +95,7 @@ export function optionRefusal(t: TFunction, field: string, limit: number): strin
     case 'settings.motd':
       return t('freeServer.options.motdInvalid');
     default:
-      return t('freeServer.options.refused');
+      return t(fallback);
   }
 }
 
@@ -88,7 +103,7 @@ export function optionRefusal(t: TFunction, field: string, limit: number): strin
 export const oneLine = (text: string) => text.replace(/[\r\n\t]/g, ' ');
 
 /** The Options state of one dialog. `show` is false on an Engine that doesn't take settings: nothing shows, nothing is sent. */
-export function useServerOptions(limits: FreeLimits) {
+export function useServerOptions(limits: OptionLimits) {
   const { t } = useTranslation();
   const show = limits.settings !== null;
   const [state, setState] = useState(() => initialOptions(limits));

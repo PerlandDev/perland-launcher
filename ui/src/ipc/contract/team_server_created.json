@@ -1,0 +1,16 @@
+[
+  {
+    "tenantId": "t-2",
+    "stack": "Amigos",
+    "started": true,
+    "notStartedReason": null,
+    "address": "play.example.com:25571"
+  },
+  {
+    "tenantId": "t-2",
+    "stack": "Amigos",
+    "started": false,
+    "notStartedReason": "quota_exceeded",
+    "address": null
+  }
+]

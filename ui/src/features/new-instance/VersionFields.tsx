@@ -15,6 +15,37 @@ const LOADER_KEY = {
   neoforge: 'newInstance.loaderNeoForge',
 } as const;
 
+/** The Minecraft version select and its Show snapshots toggle: what `VersionFields` shows first, and what a form with its own
+ *  version list (a team server's, from the Engine) reuses. */
+export interface MinecraftChoice {
+  list: { id: string }[];
+  mc: string | null;
+  setMinecraft: (next: string) => void;
+  snapshots: boolean;
+  setSnapshots: (on: boolean) => void;
+  versions: { isError: boolean; error: unknown; refetch: () => unknown };
+}
+
+export function MinecraftVersionField({ choice, error }: { choice: MinecraftChoice; error?: string | null }) {
+  const { t } = useTranslation();
+  const options = choice.list.map((v) => ({ value: v.id, label: v.id }));
+  if (choice.mc && !options.some((o) => o.value === choice.mc)) options.unshift({ value: choice.mc, label: choice.mc });
+  return (
+    <div className="grid gap-3">
+      <Select label={t('newInstance.version')} value={choice.mc ?? ''} onChange={choice.setMinecraft} options={options} disabled={options.length === 0} error={error} />
+      <div className="flex items-center gap-3">
+        <Toggle checked={choice.snapshots} onChange={choice.setSnapshots} label={t('newInstance.showSnapshots')} />
+        <span className="text-sm text-ink-dim" aria-hidden>
+          {t('newInstance.showSnapshots')}
+        </span>
+      </div>
+      {choice.versions.isError && (
+        <ErrorCard error={choice.versions.error} actions={<Button onClick={() => void choice.versions.refetch()}>{t('common.retry')}</Button>} />
+      )}
+    </div>
+  );
+}
+
 export function VersionFields({
   choice,
   withLoader = true,
@@ -27,20 +58,9 @@ export function VersionFields({
 }) {
   const { t } = useTranslation();
   const retry = (onClick: () => void) => <Button onClick={onClick}>{t('common.retry')}</Button>;
-  const options = choice.list.map((v) => ({ value: v.id, label: v.id }));
-  if (choice.mc && !options.some((o) => o.value === choice.mc)) options.unshift({ value: choice.mc, label: choice.mc });
   return (
     <div className="grid gap-6">
-      <div className="grid gap-3">
-        <Select label={t('newInstance.version')} value={choice.mc ?? ''} onChange={choice.setMinecraft} options={options} disabled={options.length === 0} error={error} />
-        <div className="flex items-center gap-3">
-          <Toggle checked={choice.snapshots} onChange={choice.setSnapshots} label={t('newInstance.showSnapshots')} />
-          <span className="text-sm text-ink-dim" aria-hidden>
-            {t('newInstance.showSnapshots')}
-          </span>
-        </div>
-        {choice.versions.isError && <ErrorCard error={choice.versions.error} actions={retry(() => void choice.versions.refetch())} />}
-      </div>
+      <MinecraftVersionField choice={choice} error={error} />
       {withLoader && (
         <fieldset className="grid gap-3">
           <legend className="mb-1.5 text-sm font-semibold">{t('newInstance.loader')}</legend>

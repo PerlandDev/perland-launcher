@@ -20,7 +20,7 @@ export function ServerOptions({ options }: { options: ServerOptionsModel }) {
   const summary = t('freeServer.options.summary', {
     mode: modeLabel(t, state.gameMode),
     difficulty: t(`manage.settings.difficulties.${shownDifficulty}`),
-    count: Number(state.maxPlayers) || state.limit,
+    count: Number(state.maxPlayers) || state.defaultPlayers,
   });
   const line = (field: string) =>
     errors[field] ? (
@@ -58,7 +58,7 @@ export function ServerOptions({ options }: { options: ServerOptionsModel }) {
             {/* Below the segments' 4px travel, as the kind's hint. */}
             <div className="mt-1">{line('settings.gameMode')}</div>
           </fieldset>
-          <div className="manage-pair">
+          <div className="manage-pair items-start">
             <Field
               label={t('manage.settings.difficulty')}
               hint={hardcore ? t('freeServer.options.hardcoreHint') : null}

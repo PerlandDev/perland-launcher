@@ -1019,6 +1019,66 @@ pub struct ManageSettings {
     pub pending_restart: bool,
 }
 
+/// A team the player may create a server on ("Create a server" → Where): one they own or are a
+/// member of, never a viewer's, and never the free team (its server is the free server).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatableTeam {
+    pub tenant_id: String,
+    /// The team's display name.
+    pub name: String,
+}
+
+/// How big a server the team can make now: the memory choices in whole GB (up to what the team
+/// has available, or its plan's limit when nothing is left to run one now), the one picked
+/// first, and the cores the server gets (not asked).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamRoom {
+    pub memory_gb: Vec<u32>,
+    pub default_gb: u32,
+    pub cpu: f64,
+    /// How many more servers the team's plan lets it make; `None` when the Engine didn't say.
+    pub servers_left: Option<u32>,
+}
+
+/// A server to create on a team. `version` is the Minecraft version; `loader_version` only for a
+/// modded type (none: the Engine installs the newest). `settings` left out: every default.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamCreateRequest {
+    pub tenant_id: String,
+    pub name: String,
+    pub r#type: String,
+    pub version: String,
+    pub loader_version: Option<String>,
+    pub memory_gb: u32,
+    pub settings: Option<launcher_core::perland::FreeServerSettings>,
+}
+
+/// A server to create on a team from instance `id`: the instance decides what it runs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamInstanceRequest {
+    pub tenant_id: String,
+    pub id: String,
+    pub name: String,
+    pub memory_gb: u32,
+    pub settings: Option<launcher_core::perland::FreeServerSettings>,
+}
+
+/// A server made on a team. `started` is false when the team had no room to run it
+/// (`not_started_reason` `quota_exceeded`, or `host_full`): it exists, stopped.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamServerCreated {
+    pub tenant_id: String,
+    pub stack: String,
+    pub started: bool,
+    pub not_started_reason: Option<String>,
+    pub address: Option<String>,
+}
+
 /// A settings save from Manage.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]

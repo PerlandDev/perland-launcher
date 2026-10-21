@@ -24,6 +24,9 @@ export function prefillName(displayName: string): string {
 
 const gb = (mb: number) => Math.floor(mb / 1024);
 
+/** Memory in GB with at most one decimal, as the player reads it ("2.5"). */
+export const gbText = (mb: number, language: string) => new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(mb / 1024);
+
 /** What every free server gets, in sentences, from the Engine's limits. Without an idle stop a server neither sleeps nor is
  *  deleted for being unused, so those two sentences go. */
 export function limitsText(t: TFunction, limits: FreeLimits): string {

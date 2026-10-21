@@ -4,7 +4,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import { describeError, isLauncherError } from '../../ipc/errors';
-import type { FreeServerCard } from '../../ipc/schema';
+import type { FreeLimits, FreeServerCard, TeamServerCreated } from '../../ipc/schema';
 import { qk } from '../../state/queries';
 import { pushNotice } from '../../state/toasts';
 import { Button } from '../../ui/Button';
@@ -20,6 +20,22 @@ export const LOST_POLL_MS = 5_000;
 export const LOST_GIVE_UP_MS = 5 * 60_000;
 
 export type Step = { kind: 'pick' } | { kind: 'creating'; lost: boolean } | { kind: 'ready'; server: FreeServerCard };
+
+/** What the free-server hooks run on while the free server isn't offered: no Options, nothing sent. */
+export const NO_FREE_LIMITS: FreeLimits = {
+  maxPlayers: 0,
+  memoryMb: { vanilla: 0, modded: 0 },
+  diskBytes: 0,
+  sleepMinutes: 0,
+  unusedDays: 0,
+  warningDays: 0,
+  createsPerWeek: 0,
+  pack: null,
+  settings: null,
+};
+
+/** The create dialogs' steps: the free server's, and a team server's last one (Manage). */
+export type DialogStep = Step | { kind: 'teamReady'; server: TeamServerCreated };
 
 /** The steps after the pick, shared by every way of making the free server: creating (a status sentence and Close), and
  *  ready (the invite link with Copy, and Play now). */

@@ -26,6 +26,7 @@ async function bootstrap() {
     const { perlandScenario } = await import("./ipc/mockPerland");
     const { freeScenario } = await import("./ipc/mockFree");
     const { manageScenario } = await import("./ipc/mockManage");
+    const { teamsScenario } = await import("./ipc/mockTeams");
     const { crashScenario } = await import("./ipc/mockCrash");
     const params = new URLSearchParams(window.location.search);
     const themeParam = theme.safeParse(params.get("theme"));
@@ -42,6 +43,7 @@ async function bootstrap() {
       perland: perlandScenario(params.get("perland")),
       free: freeScenario(params.get("free")),
       manage: manageScenario(params.get("manage")),
+      teams: teamsScenario(params.get("teams")) ?? "some",
       server: (params.get("server") as ServerScenario | null) ?? undefined,
       railExpanded: params.has("railExpanded"),
       iconShape: params.get("iconShape") === "round" ? "round" : undefined,

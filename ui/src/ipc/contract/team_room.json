@@ -1,0 +1,13 @@
+{
+  "memoryGb": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "defaultGb": 4,
+  "cpu": 1.5,
+  "serversLeft": 2
+}
