@@ -17,7 +17,7 @@ fn envelope(data: Value) -> Value {
 }
 
 fn client(server: &MockServer) -> AuthClient {
-    let http = launcher_core::http::client("test").unwrap();
+    let http = launcher_core::http::client_without_redirects("test").unwrap();
     AuthClient::new(http, Url::parse(&server.uri()).unwrap())
 }
 
@@ -258,4 +258,33 @@ async fn debug_never_prints_tokens() {
     assert!(!shown.contains("hc_secret"), "{shown}");
     let shown = format!("{:?}", client(&server));
     assert!(!shown.contains("plt_"), "{shown}");
+}
+
+#[tokio::test]
+async fn select_tenant_401_is_signed_out() {
+    let server = MockServer::start().await;
+    let jwt = session(&server).await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/auth/select-tenant"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    let e = client(&server)
+        .select_tenant(&jwt, "t-1")
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+}
+
+#[tokio::test]
+async fn a_200_without_data_is_unexpected() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/v1/auth/player-session"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "success": true })))
+        .mount(&server)
+        .await;
+    let e = client(&server).player_session(DEVICE).await.unwrap_err();
+    assert_ne!(e.code, ErrorCode::PerlandSignedOut);
+    assert!(!e.message.contains("plt_"));
 }

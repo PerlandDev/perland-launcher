@@ -10,14 +10,15 @@ use serde_json::{json, Value};
 
 use crate::{
     error::{ErrorCode, LauncherError, Result},
-    http::read_capped,
     invite::{
-        client::{host_of, host_trouble, rate_limited, request_failed, unexpected},
+        client::{host_of, host_trouble},
         view::modrinth_ref,
         InviteGame, InviteModrinth, InvitePlayers, InviteTiming,
     },
     public_list::PublicServer,
 };
+
+use super::wire::{failure, status_fallback, Credential, Reply, Wire};
 
 /// The longest answer read, in bytes.
 const BODY_CAP: usize = 64 << 10;
@@ -25,8 +26,6 @@ const BODY_CAP: usize = 64 << 10;
 const SERVERS_CAP: usize = 1 << 20;
 /// Per-server stats: 200 servers with up to 2000 advancement IDs each can pass 1 MiB.
 const STATS_CAP: usize = 4 << 20;
-/// The longest error body read, in bytes.
-const ERROR_CAP: usize = 4 << 10;
 /// Creating a free server: the Engine builds the stack while the request is open.
 const CREATE_TIMEOUT: Duration = Duration::from_secs(150);
 /// The Engine's own name for Modrinth, for a refusal that blames it.
@@ -344,25 +343,9 @@ struct DeletedData {
 }
 
 #[derive(Deserialize)]
-struct Envelope<T> {
-    data: Option<T>,
-}
-
-#[derive(Deserialize)]
 struct ServersData {
     #[serde(default)]
     servers: Vec<YourServer>,
-}
-
-/// What a failed request's error data says.
-struct Failure {
-    code: Option<String>,
-    data: Value,
-}
-
-struct Reply {
-    status: u16,
-    body: Vec<u8>,
 }
 
 /// Where a refusal comes from, for the few codes that mean different things by route.
@@ -377,8 +360,7 @@ enum Route {
 
 #[derive(Clone)]
 pub struct PlayerClient {
-    http: reqwest::Client,
-    engine: Url,
+    wire: Wire,
     timeout: std::time::Duration,
 }
 
@@ -386,7 +368,7 @@ pub struct PlayerClient {
 impl fmt::Debug for PlayerClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PlayerClient")
-            .field("engine", &host_of(&self.engine))
+            .field("engine", &host_of(self.wire.engine()))
             .finish_non_exhaustive()
     }
 }
@@ -395,26 +377,17 @@ impl PlayerClient {
     /// `engine` should come from `check_engine_url` (as `engine_for_site` gives it).
     pub fn new(http: reqwest::Client, engine: Url) -> Self {
         Self {
-            http,
-            engine,
+            wire: Wire::new(http, engine),
             timeout: InviteTiming::default().request_timeout,
         }
     }
 
     pub fn engine(&self) -> &Url {
-        &self.engine
+        self.wire.engine()
     }
 
     fn host(&self) -> String {
-        host_of(&self.engine)
-    }
-
-    fn route(&self, route: &str) -> Url {
-        Url::parse(&format!(
-            "{}/api/v1/player{route}",
-            self.engine.as_str().trim_end_matches('/')
-        ))
-        .expect("a checked Engine URL plus a fixed path is a URL")
+        self.wire.host()
     }
 
     /// `GET /config`. An Engine without accounts (404) or with them off (503) is
@@ -510,9 +483,7 @@ impl PlayerClient {
         let reply = self
             .send(Method::GET, "/free-server", Some(token), None, BODY_CAP)
             .await?;
-        if reply.status == 404
-            || Self::failure(&reply).code.as_deref() == Some("free_servers_disabled")
-        {
+        if reply.status == 404 || failure(&reply).code.as_deref() == Some("free_servers_disabled") {
             return Ok(None);
         }
         self.ok(&reply, Route::Plain)?;
@@ -540,7 +511,7 @@ impl PlayerClient {
         // A reverse proxy that gives up on the long create answers its own 502 or 504, with
         // no Engine code. The Engine finishes the create anyway, so the answer is lost: the
         // dialog then waits for the server to show (spec §5 "Lost create answer").
-        if matches!(reply.status, 502 | 504) && Self::failure(&reply).code.is_none() {
+        if matches!(reply.status, 502 | 504) && failure(&reply).code.is_none() {
             return Err(answer_lost(&self.host(), reply.status));
         }
         self.ok(&reply, Route::Plain)?;
@@ -605,7 +576,7 @@ impl PlayerClient {
         match reply.status {
             404 => return Ok(None),
             503 => {
-                let failure = Self::failure(&reply);
+                let failure = failure(&reply);
                 if matches!(
                     failure.code.as_deref(),
                     Some("server_addon_disabled" | "player_accounts_disabled")
@@ -655,29 +626,17 @@ impl PlayerClient {
         body: Option<&Value>,
         cap: usize,
     ) -> Result<Reply> {
-        let host = self.host();
-        let mut request = self
-            .http
-            .request(method, self.route(route))
-            .timeout(timeout);
-        if let Some(token) = token {
-            request = request.bearer_auth(token);
-        }
-        if let Some(body) = body {
-            request = request.json(body);
-        }
-        let response = request.send().await.map_err(|e| request_failed(&host, e))?;
-        let status = response.status().as_u16();
-        let ok = response.status().is_success();
-        let read = read_capped(response, if ok { cap } else { ERROR_CAP }).await;
-        let body = match read {
-            Ok(Some(body)) => body,
-            Ok(None) if ok => return Err(unexpected(&host, "the answer is too large")),
-            Ok(None) => Vec::new(),
-            Err(e) if ok => return Err(request_failed(&host, e)),
-            Err(_) => Vec::new(),
-        };
-        Ok(Reply { status, body })
+        let credential = token.map_or(Credential::None, Credential::Bearer);
+        self.wire
+            .send(
+                timeout,
+                method,
+                &format!("/api/v1/player{route}"),
+                credential,
+                body,
+                cap,
+            )
+            .await
     }
 
     /// `Ok` for a success status, else the refusal.
@@ -689,28 +648,14 @@ impl PlayerClient {
         }
     }
 
-    /// The `data` of a success. The parser's own message can quote the body, so it is never
-    /// shown.
     fn data<T: DeserializeOwned>(&self, reply: &Reply) -> Result<T> {
-        serde_json::from_slice::<Envelope<T>>(&reply.body)
-            .ok()
-            .and_then(|e| e.data)
-            .ok_or_else(|| unexpected(&self.host(), "the answer isn't valid"))
-    }
-
-    fn failure(reply: &Reply) -> Failure {
-        let data = serde_json::from_slice::<Value>(&reply.body)
-            .ok()
-            .and_then(|mut v| v.get_mut("data").map(Value::take))
-            .unwrap_or(Value::Null);
-        let code = data.get("code").and_then(Value::as_str).map(str::to_string);
-        Failure { code, data }
+        self.wire.data(reply)
     }
 
     /// What a refused request means: the Engine's `data.code` first, then the status.
     fn refusal(&self, reply: &Reply, route: Route) -> LauncherError {
         let host = self.host();
-        let failure = Self::failure(reply);
+        let failure = failure(reply);
         let param = |name: &str| match failure.data.get(name) {
             Some(Value::Number(n)) => Some(n.to_string()),
             Some(Value::String(s)) => Some(s.clone()),
@@ -750,11 +695,8 @@ impl PlayerClient {
             _ => {}
         }
         match reply.status {
-            401 => signed_out(&host),
             404 if route == Route::Servers => servers_closed(&host),
-            429 => rate_limited(&host),
-            400 => unexpected(&host, "the request was refused"),
-            s => host_trouble(&host, s),
+            status => status_fallback(&host, status),
         }
     }
 }

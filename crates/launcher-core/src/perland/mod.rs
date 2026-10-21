@@ -6,6 +6,7 @@ pub mod loopback;
 pub mod panel;
 pub mod pkce;
 pub mod session;
+mod wire;
 
 pub use api::{
     CreateAllowance, CreateFreeServer, Deletion, DiscordAccount, Disk, EmailStarted, FreeLimits,

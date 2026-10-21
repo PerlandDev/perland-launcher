@@ -6,23 +6,20 @@
 use std::fmt;
 
 use reqwest::{Method, Url};
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::Deserialize;
 use serde_json::{json, Value};
 
-use super::api::{accounts_closed, signed_out};
+use super::{
+    api::{accounts_closed, signed_out},
+    wire::{failure, status_fallback, Credential, Reply, Wire},
+};
 use crate::{
     error::{LauncherError, Result},
-    http::read_capped,
-    invite::{
-        client::{host_of, host_trouble, rate_limited, request_failed, unexpected},
-        InviteTiming,
-    },
+    invite::{client::host_of, InviteTiming},
 };
 
 /// The longest answer read, in bytes.
 const BODY_CAP: usize = 64 << 10;
-/// The longest error body read, in bytes.
-const ERROR_CAP: usize = 4 << 10;
 
 /// An Engine session JWT, sent as `X-User-Token`.
 #[derive(Clone, PartialEq, Eq)]
@@ -70,11 +67,6 @@ impl fmt::Debug for Handoff {
 }
 
 #[derive(Deserialize)]
-struct Envelope<T> {
-    data: Option<T>,
-}
-
-#[derive(Deserialize)]
 struct TokenData {
     token: String,
 }
@@ -118,24 +110,9 @@ struct HandoffData {
     expires_in: u64,
 }
 
-struct Reply {
-    status: u16,
-    body: Vec<u8>,
-}
-
-/// How a request proves who sends it.
-#[derive(Clone, Copy)]
-enum Credential<'a> {
-    /// `Authorization: Bearer plt_…`
-    Device(&'a str),
-    /// `X-User-Token: <jwt>`
-    Jwt(&'a SessionJwt),
-}
-
 #[derive(Clone)]
 pub struct AuthClient {
-    http: reqwest::Client,
-    engine: Url,
+    wire: Wire,
     timeout: std::time::Duration,
 }
 
@@ -143,31 +120,47 @@ pub struct AuthClient {
 impl fmt::Debug for AuthClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AuthClient")
-            .field("engine", &host_of(&self.engine))
+            .field("engine", &host_of(self.wire.engine()))
             .finish_non_exhaustive()
     }
 }
 
 impl AuthClient {
-    /// `engine` should come from `check_engine_url` (as `engine_for_site` gives it).
+    /// `engine` should come from `check_engine_url` (as `engine_for_site` gives it). `http`
+    /// must not follow redirects (`http::client_without_redirects`): a redirect would forward
+    /// the device token or the session JWT to another host.
     pub fn new(http: reqwest::Client, engine: Url) -> Self {
         Self {
-            http,
-            engine,
+            wire: Wire::new(http, engine),
             timeout: InviteTiming::default().request_timeout,
         }
     }
 
     fn host(&self) -> String {
-        host_of(&self.engine)
+        self.wire.host()
     }
 
-    fn route(&self, route: &str) -> Url {
-        Url::parse(&format!(
-            "{}/api/v1/auth{route}",
-            self.engine.as_str().trim_end_matches('/')
-        ))
-        .expect("a checked Engine URL plus a fixed path is a URL")
+    async fn send(
+        &self,
+        method: Method,
+        route: &str,
+        credential: Credential<'_>,
+        body: Option<&Value>,
+    ) -> Result<Reply> {
+        self.wire
+            .send(
+                self.timeout,
+                method,
+                &format!("/api/v1/auth{route}"),
+                credential,
+                body,
+                BODY_CAP,
+            )
+            .await
+    }
+
+    fn data<T: serde::de::DeserializeOwned>(&self, reply: &Reply) -> Result<T> {
+        self.wire.data(reply)
     }
 
     /// `POST /player-session`: the device token for a session JWT. An Engine without the
@@ -177,7 +170,7 @@ impl AuthClient {
             .send(
                 Method::POST,
                 "/player-session",
-                Credential::Device(device),
+                Credential::Bearer(device),
                 None,
             )
             .await?;
@@ -191,7 +184,12 @@ impl AuthClient {
     /// `GET /memberships`: the servers the player belongs to.
     pub async fn memberships(&self, jwt: &SessionJwt) -> Result<Vec<Membership>> {
         let reply = self
-            .send(Method::GET, "/memberships", Credential::Jwt(jwt), None)
+            .send(
+                Method::GET,
+                "/memberships",
+                Credential::UserToken(jwt.as_str()),
+                None,
+            )
             .await?;
         self.ok(&reply)?;
         let data: MembershipsData = self.data(&reply)?;
@@ -222,7 +220,7 @@ impl AuthClient {
             .send(
                 Method::POST,
                 "/select-tenant",
-                Credential::Jwt(jwt),
+                Credential::UserToken(jwt.as_str()),
                 Some(&body),
             )
             .await?;
@@ -238,7 +236,7 @@ impl AuthClient {
             .send(
                 Method::POST,
                 "/handoff",
-                Credential::Device(device),
+                Credential::Bearer(device),
                 Some(&body),
             )
             .await?;
@@ -253,41 +251,6 @@ impl AuthClient {
         }))
     }
 
-    /// One request. Any status comes back as a `Reply`; only a request that got no answer, or
-    /// a success too large to read, is an error here.
-    async fn send(
-        &self,
-        method: Method,
-        route: &str,
-        credential: Credential<'_>,
-        body: Option<&Value>,
-    ) -> Result<Reply> {
-        let host = self.host();
-        let mut request = self
-            .http
-            .request(method, self.route(route))
-            .timeout(self.timeout);
-        request = match credential {
-            Credential::Device(token) => request.bearer_auth(token),
-            Credential::Jwt(jwt) => request.header("X-User-Token", jwt.as_str()),
-        };
-        if let Some(body) = body {
-            request = request.json(body);
-        }
-        let response = request.send().await.map_err(|e| request_failed(&host, e))?;
-        let status = response.status().as_u16();
-        let ok = response.status().is_success();
-        let read = read_capped(response, if ok { BODY_CAP } else { ERROR_CAP }).await;
-        let body = match read {
-            Ok(Some(body)) => body,
-            Ok(None) if ok => return Err(unexpected(&host, "the answer is too large")),
-            Ok(None) => Vec::new(),
-            Err(e) if ok => return Err(request_failed(&host, e)),
-            Err(_) => Vec::new(),
-        };
-        Ok(Reply { status, body })
-    }
-
     fn ok(&self, reply: &Reply) -> Result<()> {
         if (200..300).contains(&reply.status) {
             Ok(())
@@ -296,32 +259,16 @@ impl AuthClient {
         }
     }
 
-    /// The `data` of a success. The parser's own message can quote the body, so it is never
-    /// shown.
-    fn data<T: DeserializeOwned>(&self, reply: &Reply) -> Result<T> {
-        serde_json::from_slice::<Envelope<T>>(&reply.body)
-            .ok()
-            .and_then(|e| e.data)
-            .ok_or_else(|| unexpected(&self.host(), "the answer isn't valid"))
-    }
-
     /// What a refused request means: the Engine's `data.code` first, then the status.
     fn refusal(&self, reply: &Reply) -> LauncherError {
         let host = self.host();
-        let code = serde_json::from_slice::<Value>(&reply.body)
-            .ok()
-            .and_then(|v| v.get("data")?.get("code")?.as_str().map(str::to_string));
+        let code = failure(reply).code;
         match code.as_deref() {
             Some("player_accounts_disabled") => return accounts_closed(&host),
             // The session no longer works.
             Some("account_disabled") => return signed_out(&host),
             _ => {}
         }
-        match reply.status {
-            401 => signed_out(&host),
-            429 => rate_limited(&host),
-            400 => unexpected(&host, "the request was refused"),
-            s => host_trouble(&host, s),
-        }
+        status_fallback(&host, reply.status)
     }
 }
