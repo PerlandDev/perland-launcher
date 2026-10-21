@@ -10,17 +10,20 @@ import type { PerlandAccount, PerlandStatus } from '../../ipc/schema';
 import { qk, usePerlandStatus } from '../../state/queries';
 import { Button } from '../../ui/Button';
 import { Field } from '../../ui/Field';
-import { WarningDiamond } from '../../ui/Icon';
+import mark from '../../assets/mark.svg';
+import { DiscordGlyph } from '../../ui/DiscordGlyph';
+import { Mail, WarningDiamond } from '../../ui/Icon';
 import { MinecraftLink } from './MinecraftLink';
 
-/** Where the card is: signed out (`idle`), waiting on the browser (Discord or GitHub), or the two email steps. */
+/** Where the card is: signed out (`idle`), waiting on the browser (Perland or Discord), or the two email steps. */
 type Step = 'idle' | 'browser' | 'email' | 'code';
-/** The ways to sign in, in the card's order; each shows only while the Engine offers it. */
-const METHODS = ['discord', 'github', 'email'] as const;
+/** The ways to sign in, in the card's order; each shows only while the Engine offers it. The Engine's `github` is the panel's
+ *  sign-in page, which signs in with the player's Perland account, so the card names it "Continue with Perland" and leads with it. */
+const METHODS = ['github', 'discord', 'email'] as const;
 /** The ways that finish in the browser, with the same waiting, reopen and cancel steps. */
 type BrowserMethod = 'discord' | 'github';
 
-/** The Perland account on Accounts: sign in with Discord, GitHub (while the Engine offers it) or an email code, or who is signed in and Sign out.
+/** The Perland account on Accounts: sign in with Perland (the panel's page, while the Engine offers it), Discord or an email code, or who is signed in and Sign out.
  *  It renders nothing while the Engine has player accounts closed, so a player who never signs in sees no change. */
 export function PerlandAccountCard() {
   const { t, i18n } = useTranslation();
@@ -213,6 +216,9 @@ export function PerlandAccountCard() {
   );
   const pending = busy || undefined;
   const methods = METHODS.filter((m) => data.methods.includes(m));
+  // Continue with Perland leads as the large key on its own row; Discord and email follow as the standard raised pair.
+  const lead = methods.includes('github');
+  const others = methods.filter((m) => m !== 'github');
   const account = data.account;
   const waitLeft = Math.max(0, Math.ceil((resendAt - now) / 1000));
 
@@ -321,16 +327,26 @@ export function PerlandAccountCard() {
     body = (
       <div className="panel grid gap-4 p-5">
         <p className="text-ink-dim">{t('perland.pitch')}</p>
-        <div className="flex flex-wrap gap-3">
-          {methods.map((method, i) => (
-            <Button
-              key={method}
-              ref={i === 0 ? (el) => void (firstControl.current = el) : undefined}
-              onClick={method === 'email' ? () => go('email') : method === 'github' ? startGithub : startDiscord}
-            >
-              {t(`perland.${method}`)}
+        <div className="grid justify-items-start gap-4">
+          {lead && (
+            <Button ref={(el) => void (firstControl.current = el)} size="lg" icon={<img src={mark} alt="" width={28} height={24} />} onClick={startGithub}>
+              {t('perland.withPerland')}
             </Button>
-          ))}
+          )}
+          {others.length > 0 && (
+            <div className="flex flex-wrap gap-3">
+              {others.map((method, i) => (
+                <Button
+                  key={method}
+                  ref={!lead && i === 0 ? (el) => void (firstControl.current = el) : undefined}
+                  icon={method === 'email' ? <Mail data-icon="mail" aria-hidden /> : <DiscordGlyph data-icon="discord" aria-hidden />}
+                  onClick={method === 'email' ? () => go('email') : startDiscord}
+                >
+                  {t(`perland.${method}`)}
+                </Button>
+              ))}
+            </div>
+          )}
         </div>
         {errorLine}
       </div>
