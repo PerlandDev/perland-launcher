@@ -34,6 +34,7 @@ use launcher_core::{
     perland::{KeyringStore, SecretStore, SessionStore},
     platform::Platform,
     playtime,
+    restore::{self, Change, ChangeCtx},
     settings::{Channel, Settings, SettingsStore},
     sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
     ErrorCode, LauncherError, Result,
@@ -52,6 +53,7 @@ use crate::{
     events::{AppEvent, Host, RunStateKind},
     logs::LogStore,
     perland::{PerlandState, SignInSlot, ACCOUNT_MARKER},
+    restore::{lock_or_busy, now_secs},
     runner::{Kill, Runner},
 };
 
@@ -126,6 +128,10 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) installing: Mutex<HashSet<String>>,
     /// The file the last diagnostics export wrote (for "Show in folder").
     last_export: Mutex<Option<PathBuf>>,
+    /// The file the last share wrote (for "Show in folder").
+    pub(crate) last_share: Mutex<Option<PathBuf>>,
+    /// Per instance: the plan the Share dialog showed, taken by the export that follows.
+    pub(crate) share_plans: Mutex<HashMap<String, launcher_core::share::SharePlan>>,
     /// The running import from another launcher, if any (see `import.rs`): one at a time.
     pub(crate) import_slot: Mutex<Option<Cancel>>,
     /// Per running game: when it started, until its time is counted (see `runs.rs`).
@@ -211,6 +217,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             plan_seq: AtomicU64::new(0),
             installing: Mutex::new(HashSet::new()),
             last_export: Mutex::new(None),
+            last_share: Mutex::new(None),
+            share_plans: Mutex::new(HashMap::new()),
             import_slot: Mutex::new(None),
             playing_since: Mutex::new(HashMap::new()),
             perland: tokio::sync::Mutex::new(PerlandState::default()),
@@ -445,6 +453,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         instance.art_seed = current.art_seed.clone();
         instance.icon = current.icon;
         instance.banner_focus = current.banner_focus;
+        // Only going back and "Update again" set or lift the hold.
+        instance.update_hold = current.update_hold.clone();
         if matches!(current.source, SourceRef::Perland { .. }) {
             instance.update_policy = UpdatePolicy::Auto;
         }
@@ -599,14 +609,38 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         mods::list(&dir).await
     }
 
+    /// Refused while the game runs, an install writes into the instance or another process
+    /// holds it. The restore point keeps the jar, so the removal can be undone.
     pub async fn mod_remove(&self, id: &str, file: &str) -> Result<Vec<LocalMod>> {
         if self.is_busy(id) {
             return Err(busy(id));
         }
+        if self.is_installing(id) {
+            return Err(crate::browse::content_installing());
+        }
         self.refuse_managed(id, file).await?;
         let dir = self.game_dir(id).await?;
+        let _lock = lock_or_busy(&self.instances.perland_dir(id), id)?;
+        self.before_removal(id, "mods", file).await;
         mods::remove(&dir, file).await?;
         mods::list(&dir).await
+    }
+
+    /// Keep a restore point before `file` leaves `folder` (the caller holds the lock).
+    async fn before_removal(&self, id: &str, folder: &str, file: &str) {
+        restore::before_change(
+            &self.instances,
+            id,
+            &[folder.to_string()],
+            Change::Removed {
+                name: file.to_string(),
+            },
+            ChangeCtx {
+                during_run: false,
+                now: now_secs(),
+            },
+        )
+        .await;
     }
 
     /// The resource packs or shaders in the instance. Those the pack's lockfile owns are flagged
@@ -643,9 +677,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if self.is_installing(id) {
             return Err(crate::browse::content_installing());
         }
-        self.refuse_managed_in(id, kind.folder().unwrap_or_default(), file)
-            .await?;
+        let folder = kind.folder().unwrap_or_default();
+        self.refuse_managed_in(id, folder, file).await?;
         let dir = self.game_dir(id).await?;
+        let _lock = lock_or_busy(&self.instances.perland_dir(id), id)?;
+        self.before_removal(id, folder, file).await;
         content::remove(&dir, kind, file).await?;
         self.content_list(id, kind).await
     }

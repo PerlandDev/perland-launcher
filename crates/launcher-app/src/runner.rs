@@ -64,6 +64,7 @@ pub trait Runner: Send + Sync + 'static {
         prepared: Self::Prepared,
         session: Session,
         join: Option<ServerAddress>,
+        world: Option<String>,
         sink: EventSink,
     ) -> BoxFuture<Result<Box<dyn RunningGame>>>;
     /// A new instance for a pack: named after it, with its game version, policy and art.
@@ -211,6 +212,7 @@ impl Runner for CoreRunner {
         prepared: Prepared,
         session: Session,
         join: Option<ServerAddress>,
+        world: Option<String>,
         sink: EventSink,
     ) -> BoxFuture<Result<Box<dyn RunningGame>>> {
         let installer = self.installer.clone();
@@ -226,6 +228,7 @@ impl Runner for CoreRunner {
                 platform: installer.platform,
                 launcher_version: &version,
                 join: join.as_ref(),
+                world: world.as_deref(),
             };
             let game = play::start(&spec, sink).await?;
             Ok(Box::new(game) as Box<dyn RunningGame>)

@@ -1,6 +1,6 @@
 //! The seam between the app and Browse. The real one is `launcher_core::browse::Browse`; tests
 //! use `FakeBrowser`.
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use launcher_core::{
     browse::{
@@ -14,6 +14,7 @@ use launcher_core::{
     },
     events::{EventSink, TaskId},
     meta::{catalog, loaders::LoaderKind, MetaClient},
+    share::Linked,
     sync::lockfile::Managed,
     ErrorCode, LauncherError, Result,
 };
@@ -46,6 +47,8 @@ pub trait Browser: Send + Sync + 'static {
     fn loader_version(&self, kind: LoaderKind, minecraft: String) -> BoxFuture<Result<String>>;
     /// The icon URL of the Modrinth project a file with this sha1 belongs to.
     fn project_icon_url(&self, sha1: String) -> BoxFuture<Result<Option<String>>>;
+    /// The files Modrinth serves among these sha1s (see `launcher_core::share::lookup`).
+    fn share_lookup(&self, sha1s: Vec<String>) -> BoxFuture<Result<HashMap<String, Linked>>>;
 }
 
 pub struct CoreBrowser {
@@ -136,5 +139,9 @@ impl Browser for CoreBrowser {
     fn project_icon_url(&self, sha1: String) -> BoxFuture<Result<Option<String>>> {
         let b = self.browse.clone();
         Box::pin(async move { b.project_icon_url(&sha1).await })
+    }
+    fn share_lookup(&self, sha1s: Vec<String>) -> BoxFuture<Result<HashMap<String, Linked>>> {
+        let b = self.browse.clone();
+        Box::pin(async move { launcher_core::share::lookup(&b.api, &sha1s).await })
     }
 }

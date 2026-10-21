@@ -51,9 +51,17 @@ related_targets: ["ui/src"]
 - **Manage server link (#63), decided 2026-10-17:**
   - *One dialog, nothing lit.* The join card set bare on the dialog's panel, the invite and the address as well copy rows, a ghost Unlink and raised Change link and Close. Play keeps the room's amber.
   - *Unlink says what stays.* The standard confirm with the coral Unlink; its body names what is kept (worlds, mods, settings) before what stops.
+- **Share an instance (#83), decided 2026-10-21:**
+  - *Choices are rows, not a form.* The mods page's file rows with a toggle each; the name is the toggle's name. Worlds start off.
+  - *Embedded is a fact.* What isn't on Modrinth is a plain sentence in the Mods row, seen before saving; never coral, never a warning.
+  - *One lit key.* Save file… is the dialog's only amber; only the body scrolls, so it and the size beside it stay in view at 960 × 600.
 - **Back to Home (#79), decided 2026-10-21:**
   - *Every screen frame has a way back.* Settings, Accounts, Servers, Join server and Browse from the rail get the ghost back key that Mods, Instance settings and New instance already had, in the same place before the title. Nothing new is lit.
   - *Alt+Left, not Escape.* Alt+Left is the browser's and other launchers' back. Escape already closes dialogs and menus and cancels a rail drag, so one press too many would throw the player off the screen. Alt+Left does nothing in a text field (the caret's) or under an open dialog.
+- **Continue where you left off (#86), decided 2026-10-21:**
+  - *A key, not a hero.* A standard raised key (md, never lit) in Play's column, directly above Play and right-aligned to it; Play stays the room's only amber.
+  - *The verb stays, the name gives.* "Continue" in 400 `ink-dim`, then the world or server name in 650 `ink`, truncating inside a key no wider than Play (17.5rem). The full "Continue: name" is the accessible name and tooltip. A pixel map marks a world, the server glyph a server.
+  - *Nothing when there's nowhere.* No place, a deleted world, a server off the list, a gone Perland server or a version that can't open a world: no key, no message. It steps aside while the instance runs, and is disabled with Play when there's no account.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract

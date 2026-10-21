@@ -3,6 +3,7 @@
 pub mod app;
 pub mod browse;
 pub mod browser;
+mod continue_play;
 pub mod deep_link;
 pub mod dto;
 pub mod events;
@@ -19,9 +20,11 @@ mod news;
 mod packs;
 pub mod perland;
 mod public_servers;
+mod restore;
 pub mod runner;
 mod runs;
 mod servers;
+mod share;
 #[cfg(test)]
 pub(crate) mod testing;
 pub mod updates;

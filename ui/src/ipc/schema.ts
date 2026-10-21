@@ -363,6 +363,20 @@ export const instance = z.strictObject({
   icon: z.enum(['auto', 'generated', 'custom']).nullable(),
   /** Which point of a picture background stays in view, in percent of its width and height; null is the default (bottom middle). */
   bannerFocus: z.strictObject({ x: z.number().int(), y: z.number().int() }).nullable(),
+  /** Set after going back on an instance that checks for updates: Play skips the check until "Update again". Absent when not held. */
+  updateHold: z.strictObject({ since: z.number().int(), version: z.string() }).optional(),
+});
+export const restoreChange = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('packUpdate'), from: z.string(), to: z.string() }),
+  z.strictObject({ kind: z.literal('installed'), name: z.string() }),
+  z.strictObject({ kind: z.literal('removed'), name: z.string() }),
+]);
+export const restorePoint = z.strictObject({
+  kind: z.enum(['beforeChange', 'beforeGoingBack']),
+  createdAt: z.number().int(),
+  changes: z.array(restoreChange),
+  sizeBytes: z.number().int(),
+  server: z.string().nullable(),
 });
 export const damagedInstance = z.strictObject({ id: z.string(), error: launcherError });
 export const instanceListing = z.strictObject({ instances: z.array(instance), damaged: z.array(damagedInstance) });
@@ -415,6 +429,30 @@ export const contentFile = z.strictObject({
   managed: z.boolean(),
 });
 export const newInstance = z.strictObject({ name: z.string(), minecraft: z.string(), loader: loaderSpec.nullable() });
+export const shareCategory = z.enum(['mods', 'settings', 'resourcePacks', 'shaderPacks', 'worlds']);
+
+/** One Share choice's numbers: files (world folders for worlds), how many link to Modrinth, and the bytes the file carries. */
+export const categoryCount = z.strictObject({
+  category: shareCategory,
+  files: z.number().int(),
+  linked: z.number().int(),
+  embeddedBytes: z.number().int(),
+});
+
+export const sharePreview = z.strictObject({
+  name: z.string(),
+  fileName: z.string(),
+  counts: categoryCount.array(),
+});
+
+export const shareChoice = z.strictObject({
+  mods: z.boolean(),
+  settings: z.boolean(),
+  resourcePacks: z.boolean(),
+  shaderPacks: z.boolean(),
+  worlds: z.boolean(),
+});
+
 export const importPreview = z.strictObject({
   path: z.string(),
   name: z.string().nullable(),
@@ -479,6 +517,8 @@ export const exitInfo = z.strictObject({
   synced: syncSummary.nullable(),
   manual: z.array(manualFile),
   updateOnly: z.boolean(),
+  /** A crash right after an update that hasn't run cleanly since: the crash card offers "Go back". */
+  restore: z.boolean(),
 });
 export const taskId = z.strictObject({ key: z.string(), params: z.record(z.string(), z.string()) });
 export const appEvent = z.discriminatedUnion('type', [
@@ -512,6 +552,7 @@ export const packStatus = z.strictObject({
   installedVersion: z.string().nullable(),
   update: packUpdate.nullable(),
   checkError: launcherError.nullable(),
+  holdLifted: z.boolean(),
 });
 export const optionalChoice = z.strictObject({ enabled: z.boolean(), description: z.string().nullable() });
 export const packMod = z.strictObject({ path: z.string(), name: z.string(), optional: optionalChoice.nullable() });
@@ -544,6 +585,8 @@ export const javaFound = z.strictObject({
 });
 export const javaOverview = z.strictObject({ required: z.number().int().nullable(), installs: z.array(javaFound) });
 export const playtimeEntry = z.strictObject({ id: z.string(), seconds: z.number().int(), lastPlayed: z.number().int() });
+/** Where Home's Continue takes the player: a world (its folder) or a server (its name). */
+export const continueTarget = z.strictObject({ kind: z.enum(['world', 'server']), name: z.string() });
 
 export const contentKind = z.enum(['modpack', 'mod', 'resource_pack', 'shader']);
 export const sortIndex = z.enum(['relevance', 'downloads', 'follows', 'newest', 'updated']);
@@ -711,6 +754,10 @@ export type LocalMod = z.infer<typeof localMod>;
 export type ContentFile = z.infer<typeof contentFile>;
 export type NewInstance = z.infer<typeof newInstance>;
 export type ImportPreview = z.infer<typeof importPreview>;
+export type ShareCategory = z.infer<typeof shareCategory>;
+export type CategoryCount = z.infer<typeof categoryCount>;
+export type SharePreview = z.infer<typeof sharePreview>;
+export type ShareChoice = z.infer<typeof shareChoice>;
 export type ImportRequest = z.infer<typeof importRequest>;
 export type OpenTarget = z.infer<typeof openTarget>;
 export type RunStateKind = z.infer<typeof runStateKind>;
@@ -720,12 +767,15 @@ export type ManualFile = z.infer<typeof manualFile>;
 export type PackUpdate = z.infer<typeof packUpdate>;
 export type SyncSummary = z.infer<typeof syncSummary>;
 export type ExitInfo = z.infer<typeof exitInfo>;
+export type RestoreChange = z.infer<typeof restoreChange>;
+export type RestorePoint = z.infer<typeof restorePoint>;
 export type TaskId = z.infer<typeof taskId>;
 export type AppEvent = z.infer<typeof appEvent>;
 export type RunSnapshot = z.infer<typeof runSnapshot>;
 export type JavaFound = z.infer<typeof javaFound>;
 export type JavaOverview = z.infer<typeof javaOverview>;
 export type PlaytimeEntry = z.infer<typeof playtimeEntry>;
+export type ContinueTarget = z.infer<typeof continueTarget>;
 export type PackStatus = z.infer<typeof packStatus>;
 export type OptionalChoice = z.infer<typeof optionalChoice>;
 export type PackMod = z.infer<typeof packMod>;

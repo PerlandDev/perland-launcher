@@ -102,6 +102,9 @@
   "server_list_failed",
   "server_list_closed",
   "server_wake_failed",
+  "restore_point_gone",
+  "restore_failed",
+  "world_continue_unsupported",
   "launcher_update_failed",
   "launcher_update_invalid",
   "launcher_update_busy",
@@ -148,5 +151,7 @@
   "managed_by_source",
   "server_not_found",
   "manage_forbidden",
+  "share_path_invalid",
+  "share_too_large",
   "internal"
 ]

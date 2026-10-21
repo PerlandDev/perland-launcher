@@ -15,6 +15,7 @@ use launcher_core::{
     mods::LocalMod,
     perland::{CreateAllowance, Deletion, Disk, FreeLimits},
     public_list::Facets,
+    restore::{Change, PointKind},
     sync::{ManualFile, PendingUpdate, SyncReport},
     LauncherError,
 };
@@ -50,6 +51,17 @@ pub struct AppInfo {
     pub data_dir: String,
     /// A Perland panel is configured: the servers the player owns offer Manage in Perland.
     pub panel: bool,
+}
+
+/// What the Share dialog shows (see `share.rs`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharePreview {
+    pub name: String,
+    /// The suggested file name, `<name>.mrpack`.
+    pub file_name: String,
+    /// Only the choices that have anything, in the dialog's order.
+    pub counts: Vec<launcher_core::share::CategoryCount>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -103,6 +115,22 @@ pub struct PlaytimeEntry {
     pub seconds: u64,
     /// Seconds since the Unix epoch when its last game ended (0: never played).
     pub last_played: u64,
+}
+
+/// Where Home's Continue takes the player: a world or a server, by the name they know it by.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContinueTarget {
+    pub kind: ContinueKind,
+    /// The world's folder, the server's name in the Multiplayer list, or the Perland server's.
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContinueKind {
+    World,
+    Server,
 }
 
 /// Folders the UI may ask to open. Never a raw path, so the webview can't open arbitrary places.
@@ -190,6 +218,21 @@ impl From<&SyncReport> for SyncSummary {
     }
 }
 
+/// The instance's restore point, for "Go back to how it was" (spec §5.7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestorePointDto {
+    pub kind: PointKind,
+    /// Unix seconds.
+    pub created_at: u64,
+    /// What happened since the point was taken, oldest first.
+    pub changes: Vec<Change>,
+    /// Bytes the point alone holds on disk.
+    pub size_bytes: u64,
+    /// The server's display name, for a server instance (the confirm dialog warns about it).
+    pub server: Option<String>,
+}
+
 /// For the banner: the installed version, and the update (or why there's no answer).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -197,6 +240,8 @@ pub struct PackStatus {
     pub installed_version: Option<String>,
     pub update: Option<PackUpdate>,
     pub check_error: Option<LauncherError>,
+    /// This read lifted the instance's update hold: the UI's copy of the instance is stale.
+    pub hold_lifted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

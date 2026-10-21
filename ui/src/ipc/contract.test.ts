@@ -45,8 +45,10 @@ import perlandStats from './contract/perland_stats.json';
 import perlandStatus from './contract/perland_status.json';
 import planRequests from './contract/plan_requests.json';
 import playtimeFx from './contract/playtime.json';
+import continueTargetFx from './contract/continue_target.json';
 import projectDetail from './contract/project_detail.json';
 import publicServerPage from './contract/public_server_page.json';
+import restorePoints from './contract/restore_points.json';
 import runSnapshots from './contract/run_snapshots.json';
 import searchPage from './contract/search_page.json';
 import searchRequests from './contract/search_requests.json';
@@ -54,6 +56,8 @@ import serverInstanceFx from './contract/server_instance.json';
 import serverNews from './contract/server_news.json';
 import serverStatusFx from './contract/server_status.json';
 import settingsFx from './contract/settings.json';
+import shareChoiceFx from './contract/share_choice.json';
+import sharePreviewFx from './contract/share_preview.json';
 import updateStates from './contract/update_states.json';
 import versions from './contract/versions.json';
 import yourServersPage from './contract/your_servers_page.json';
@@ -75,6 +79,8 @@ const cases: [string, ZodType, unknown][] = [
   ['mc_versions', s.mcVersion.array(), mcVersions],
   ['new_instance', s.newInstance, newInstance],
   ['import_preview', s.importPreview, importPreview],
+  ['share_preview', s.sharePreview, sharePreviewFx],
+  ['share_choice', s.shareChoice, shareChoiceFx],
   ['import_request', s.importRequest, importRequest],
   ['open_targets', s.openTarget.array(), openTargets],
   ['pack_add_requests', s.packAddRequest.array(), packAddRequests],
@@ -84,9 +90,11 @@ const cases: [string, ZodType, unknown][] = [
   ['pack_contents', s.packContents, packContents],
   ['pack_status', s.packStatus.array(), packStatus],
   ['playtime', s.playtimeEntry.array(), playtimeFx],
+  ['continue_target', s.continueTarget.nullable().array(), continueTargetFx],
   ['run_snapshots', s.runSnapshot.array(), runSnapshots],
   ['settings', s.settings, settingsFx],
   ['server_instance', s.instance, serverInstanceFx],
+  ['restore_points', s.restorePoint.nullable().array(), restorePoints],
   ['join_preview', s.joinPreview.array(), joinPreviewFx],
   ['server_status', s.serverStatusView.array(), serverStatusFx],
   ['public_server_page', s.publicServerPage, publicServerPage],

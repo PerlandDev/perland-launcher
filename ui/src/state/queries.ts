@@ -27,12 +27,14 @@ export const qk = {
   instances: ['instances'] as const,
   accounts: ['accounts'] as const,
   playtime: ['playtime'] as const,
+  continueTarget: (id: string) => ['continue', id] as const,
   mcVersions: ['catalog', 'minecraft'] as const,
   loaders: (kind: LoaderKind, mc: string) => ['catalog', 'loaders', kind, mc] as const,
   mods: (id: string) => ['mods', id] as const,
   contentFiles: (id: string, kind: ContentKind) => ['content', id, kind] as const,
   packStatus: (id: string) => ['pack', 'status', id] as const,
   packContents: (id: string) => ['pack', 'contents', id] as const,
+  restorePoint: (id: string) => ['restore', id] as const,
   instanceArt: (id: string) => ['instance', 'art', id] as const,
   instanceScreenshots: (id: string) => ['instance', 'screenshots', id] as const,
   instanceScreenshot: (id: string, name: string) => ['instance', 'screenshots', id, name] as const,
@@ -71,6 +73,8 @@ export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: co
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
 /** Time played per instance on this computer. Refreshed when a run ends and when an instance moves or goes. */
 export const usePlaytime = () => useQuery({ queryKey: qk.playtime, queryFn: commands.playtimeList });
+/** Where Continue takes the player in instance `id`. Refreshed when a run ends. */
+export const useContinueTarget = (id: string) => useQuery({ queryKey: qk.continueTarget(id), queryFn: () => commands.continueTarget(id) });
 /** The active account's name, or null while loading or when there is none. */
 export function useActiveAccountName(): string | null {
   const { data } = useAccounts();
@@ -96,8 +100,20 @@ export const useModIcon = (id: string, file: string | null, version: number | un
   });
 export const useContentFiles = (id: string, kind: ContentKind) =>
   useQuery({ queryKey: qk.contentFiles(id, kind), queryFn: () => commands.contentList(id, kind) });
-export const usePackStatus = (id: string, enabled: boolean) =>
-  useQuery({ queryKey: qk.packStatus(id), queryFn: () => commands.packStatus(id), enabled, staleTime: TEN_MINUTES });
+export function usePackStatus(id: string, enabled: boolean) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: qk.packStatus(id),
+    queryFn: async () => {
+      const status = await commands.packStatus(id);
+      // The source caught up with the held version and the core lifted the hold: the cached instance still has it.
+      if (status.holdLifted) void qc.invalidateQueries({ queryKey: qk.instances });
+      return status;
+    },
+    enabled,
+    staleTime: TEN_MINUTES,
+  });
+}
 export const usePackContents = (id: string, enabled: boolean) =>
   useQuery({ queryKey: qk.packContents(id), queryFn: () => commands.packContents(id), enabled });
 export const useInstanceArt = (id: string) =>
@@ -599,7 +615,11 @@ export function useContentRemove(id: string, kind: ContentKind, opts: Opts = {})
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (file: string) => commands.contentRemove(id, kind, file),
-    onSuccess: (list) => qc.setQueryData(qk.contentFiles(id, kind), list),
+    onSuccess: (list) => {
+      qc.setQueryData(qk.contentFiles(id, kind), list);
+      // A removal takes or joins the restore point.
+      void qc.invalidateQueries({ queryKey: qk.restorePoint(id) });
+    },
     // A refused removal may still have changed the folder, so the list is asked for again.
     onError: (error) => {
       void qc.invalidateQueries({ queryKey: qk.contentFiles(id, kind) });
@@ -615,6 +635,11 @@ export function useModMutations(id: string, opts: Opts = {}) {
     // A pack instance's additions list follows the mods folder.
     void qc.invalidateQueries({ queryKey: qk.packContents(id) });
   };
+  // A removal takes or joins the restore point, so the menu's Go back changes.
+  const onRemoved = (list: Awaited<ReturnType<typeof commands.modsList>>) => {
+    onSuccess(list);
+    void qc.invalidateQueries({ queryKey: qk.restorePoint(id) });
+  };
   // A failed change may still have touched the folder (a partial add), so the list is asked for again.
   const failed = (error: unknown) => {
     void qc.invalidateQueries({ queryKey: qk.mods(id) });
@@ -628,7 +653,7 @@ export function useModMutations(id: string, opts: Opts = {}) {
       onError: failed,
     }),
     add: useMutation({ mutationFn: (paths: string[]) => commands.modsAdd(id, paths), onSuccess, onError: failed }),
-    remove: useMutation({ mutationFn: (file: string) => commands.modRemove(id, file), onSuccess, onError: failed }),
+    remove: useMutation({ mutationFn: (file: string) => commands.modRemove(id, file), onSuccess: onRemoved, onError: failed }),
   };
 }
 

@@ -33,6 +33,9 @@ it('sends the argument names Rust expects', async () => {
   await commands.perlandLinkPoll();
   await commands.perlandUnlink();
   await commands.perlandStats();
+  await commands.restorePoint('pack');
+  await commands.restoreGoBack('pack');
+  await commands.packUpdateAgain('pack');
   expect(calls).toEqual([
     ['play', { id: 'pack', join: false }],
     ['play', { id: 'pack', join: true }],
@@ -58,6 +61,9 @@ it('sends the argument names Rust expects', async () => {
     ['perland_link_poll', {}],
     ['perland_unlink', {}],
     ['perland_stats', {}],
+    ['restore_point', { id: 'pack' }],
+    ['restore_go_back', { id: 'pack' }],
+    ['pack_update_again', { id: 'pack' }],
   ]);
 });
 
