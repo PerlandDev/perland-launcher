@@ -10,7 +10,7 @@ import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
 import { ServerOptions } from './ServerOptions';
-import { useServerOptions } from './serverOptions';
+import { isOptionField, useServerOptions } from './serverOptions';
 import { refusalOf, serverStep, useLostPoll, type Step } from './steps';
 import { engineLanguage, friendsPath, isOldVersion, isServerName, limitsText, maybeCreated, prefillName } from './freeServer';
 import { usePlayFreeServer } from './usePlayFreeServer';
@@ -96,10 +96,11 @@ export function FriendsServerDialog({
           const { field, text } = refusalOf(t, i18n, error, name, limits.maxPlayers);
           setNameError(field === 'name' ? text : null);
           options.clearErrors();
-          const optionField = field !== null && field.startsWith('settings.') && options.show;
+          const optionField = field !== null && isOptionField(field) && options.show;
           if (optionField) options.refuse(field, text);
-          // The version isn't picked here, so its refusal is a line.
-          setRefusal(field === 'name' || optionField ? null : text);
+          // The version isn't picked here, so its refusal is a line naming the instance's version.
+          const line = field === 'version' ? t('friends.oldVersion', { version: minecraft }) : text;
+          setRefusal(field === 'name' || optionField ? null : line);
           setStep({ kind: 'pick' });
         },
       },

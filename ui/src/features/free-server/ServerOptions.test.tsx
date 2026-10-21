@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { MOCK_FREE_LIMITS } from '../../ipc/mockFree';
 import { renderWithProviders } from '../../test/render';
 import { ServerOptions } from './ServerOptions';
-import { initialOptions, settingsOf, useServerOptions } from './serverOptions';
+import { initialOptions, isOptionField, settingsOf, useServerOptions } from './serverOptions';
 
 const base = initialOptions(MOCK_FREE_LIMITS);
 
@@ -51,6 +51,23 @@ describe('ServerOptions', () => {
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).toHaveTextContent('Survival, Easy, up to 10 players');
     expect(screen.queryByRole('radio', { name: 'Survival' })).toBeNull();
+    // It names the panel only while the panel is there.
+    expect(toggle).not.toHaveAttribute('aria-controls');
+  });
+
+  it('names the open panel it controls', async () => {
+    const { user } = renderWithProviders(<Harness />);
+    await user.click(screen.getByRole('button', { name: /^Options/ }));
+    const id = screen.getByRole('button', { name: /^Options/ }).getAttribute('aria-controls');
+    expect(id).toBeTruthy();
+    expect(document.getElementById(id!)).toContainElement(screen.getByRole('radio', { name: 'Survival' }));
+  });
+
+  it('places only the options it has a field for', () => {
+    for (const field of ['settings.gameMode', 'settings.difficulty', 'settings.maxPlayers', 'settings.pvp', 'settings.whitelist', 'settings.seed', 'settings.motd']) {
+      expect(isOptionField(field)).toBe(true);
+    }
+    for (const field of ['settings.hardcore', 'settings.', 'version', 'name']) expect(isOptionField(field)).toBe(false);
   });
 
   it('opens on the defaults', async () => {

@@ -232,6 +232,18 @@ describe('Play this with friends, by instance kind', () => {
     expect(sent(calls, 'friends_create')).toEqual([]);
   });
 
+  it('a refused version is said with the instance version, since nothing is picked here', async () => {
+    const refuse = (cmd: string) =>
+      cmd === 'friends_create'
+        ? Promise.reject({ category: 'network', code: 'invalid_free_server', message: 'x', fix: null, detail: null, params: { field: 'version' } })
+        : undefined;
+    const { user } = await homeWith('creative-flat', 'Creative Flat', refuse);
+    await user.click(await screen.findByRole('menuitem', { name: ITEM }));
+    const box = screen.getByRole('dialog', { name: 'Play Creative Flat with friends' });
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    expect(await within(box).findByRole('alert')).toHaveTextContent("Free servers can't run Minecraft 26.3.");
+  });
+
   it('speaks Spanish on a Modrinth modpack', async () => {
     await i18n.changeLanguage('es');
     const app = renderApp(<Home id="cozy-pack" />, { perland: 'signedIn', free: 'none' });

@@ -51,6 +51,10 @@ export function settingsOf(state: OptionsState): FreeServerSettings | null {
   return Object.keys(settings).length > 0 ? settings : null;
 }
 
+/** The Engine fields (`settings.<name>`) the Options have a place for; a refusal of any other is a line under the form. */
+const OPTION_FIELDS = new Set(['gameMode', 'difficulty', 'maxPlayers', 'pvp', 'whitelist', 'seed', 'motd'].map((k) => `settings.${k}`));
+export const isOptionField = (field: string): boolean => OPTION_FIELDS.has(field);
+
 const bytes = (text: string) => new TextEncoder().encode(text).length;
 
 /** What the Engine would refuse, by its field name (`settings.maxPlayers`, ...), in words. */

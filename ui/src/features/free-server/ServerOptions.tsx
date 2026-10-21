@@ -30,7 +30,7 @@ export function ServerOptions({ options }: { options: ServerOptionsModel }) {
     ) : null;
   return (
     <div className="grid gap-5">
-      <button type="button" className="options-disclosure" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+      <button type="button" className="options-disclosure" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}>
         <span className="grid min-w-0 gap-0.5">
           <span className="text-sm font-semibold text-ink">{t('freeServer.options.title')}</span>
           {!open && <span className="text-sm text-ink-dim">{summary}</span>}
@@ -66,7 +66,7 @@ export function ServerOptions({ options }: { options: ServerOptionsModel }) {
               alert
             >
               <select
-                className="field-input text-ink"
+                className="field-input"
                 value={shownDifficulty}
                 disabled={hardcore}
                 onChange={(e) => set({ difficulty: e.target.value as Difficulty })}

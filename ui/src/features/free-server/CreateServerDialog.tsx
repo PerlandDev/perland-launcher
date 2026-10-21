@@ -10,7 +10,7 @@ import { useVersionChoice } from '../new-instance/useVersionChoice';
 import { VersionFields } from '../new-instance/VersionFields';
 import { engineLanguage, isServerName, limitsText, maybeCreated, prefillName } from './freeServer';
 import { ServerOptions } from './ServerOptions';
-import { useServerOptions } from './serverOptions';
+import { isOptionField, useServerOptions } from './serverOptions';
 import { refusalOf, serverStep, useLostPoll, type Step } from './steps';
 import { usePlayFreeServer } from './usePlayFreeServer';
 
@@ -71,7 +71,7 @@ export function CreateServerDialog({ limits, onClose }: { limits: FreeLimits; on
           setNameError(field === 'name' ? text : null);
           setVersionError(field === 'version' && picksVersion ? text : null);
           options.clearErrors();
-          const optionField = field !== null && field.startsWith('settings.') && options.show;
+          const optionField = field !== null && isOptionField(field) && options.show;
           if (optionField) options.refuse(field, text);
           const placed = field === 'name' || (field === 'version' && picksVersion) || optionField;
           setRefusal(placed ? null : text);

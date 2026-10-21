@@ -155,6 +155,16 @@ describe('CreateServerDialog version and options', () => {
     expect(await within(box).findByText('Use letters, numbers, - and _ only, up to 32.')).toBeInTheDocument();
     expect(within(box).getByLabelText('Server name')).toHaveAttribute('aria-invalid', 'true');
   });
+
+  it('an option the form has no place for is a line, not lost', async () => {
+    const app = renderWith((cmd) => (cmd === 'free_server_create' ? refusedWith({ host: 'engine', field: 'settings.hardcore' }) : undefined));
+    await app.user.click(await screen.findByRole('button', { name: ENTRY }));
+    const box = await dialog();
+    await vanillaReady(box);
+    await app.user.click(within(box).getByRole('button', { name: 'Create' }));
+    expect(await within(box).findByRole('alert')).toHaveTextContent("Free servers can't use this option. Pick another one.");
+    expect(within(box).getByRole('button', { name: /^Options/ })).toHaveAttribute('aria-expanded', 'false');
+  });
 });
 
 describe('CreateServerDialog', () => {

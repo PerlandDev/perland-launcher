@@ -467,6 +467,7 @@ The one lit button: 17.5rem × 5.5rem minimum with notched 6px corners. It has a
 - **Field:** a 600-weight 0.875rem label above, then the control, then a hint (`ink-dim`) or an error (`coral`), linked by `aria-describedby`.
 - **Focus:** the global 2px amber outline at a 3px offset. The caret is amber.
 - **Error:** the ring thickens to 2px `coral`.
+- **Disabled (a locked choice):** a flat `panel` face with a 1px `line` ring and `ink-dim` text, the select's chevron at 40%, and a not-allowed cursor; the field's hint says why it is locked.
 
 ### Segments, Toggle, Slider
 - **Segment:** a raised `raised` face on a 4px `dirt-deep` step. When checked it is pressed into its slot: it translates down 4px, the face recesses to `ground`, and an 8px square **lime lamp** appears before the label. Focus shows the amber ring on the whole segment.
