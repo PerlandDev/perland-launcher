@@ -1,0 +1,39 @@
+[
+  {
+    "kind": "beforeChange",
+    "createdAt": 1791720000,
+    "changes": [
+      {
+        "kind": "packUpdate",
+        "from": "1.0.3",
+        "to": "1.0.4"
+      },
+      {
+        "kind": "installed",
+        "name": "Sodium"
+      }
+    ],
+    "sizeBytes": 524288,
+    "server": null
+  },
+  {
+    "kind": "beforeGoingBack",
+    "createdAt": 1791723600,
+    "changes": [],
+    "sizeBytes": 18874368,
+    "server": "Survival"
+  },
+  {
+    "kind": "beforeChange",
+    "createdAt": 1791727200,
+    "changes": [
+      {
+        "kind": "removed",
+        "name": "zoomify-2.11.2.jar"
+      }
+    ],
+    "sizeBytes": 0,
+    "server": null
+  },
+  null
+]

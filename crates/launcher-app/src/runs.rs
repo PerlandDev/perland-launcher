@@ -16,7 +16,9 @@ use launcher_core::{
     fsutil::write_atomic,
     instances::{unix_now, Instance, ServerAddress, ServerStatus, SourceRef, UpdatePolicy},
     locks::InstanceLock,
-    playtime, server_list,
+    playtime,
+    restore::{self, PointKind},
+    server_list,
     server_wake::{Knock, Ping, WaitEnd},
     sync::{
         lockfile::PACK_FILE, manual::Scanner, Cancel, Ensured, ManualFile, PendingUpdate,
@@ -105,11 +107,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         )
     }
 
-    /// Does a run of `instance` start with an update check? Only a pack that synced before
-    /// and isn't pinned: a first sync installs the newest version anyway.
+    /// Does a run of `instance` start with an update check? Only a pack that synced before,
+    /// isn't pinned and isn't held after going back: a first sync installs the newest version
+    /// anyway.
     pub(crate) async fn checks_for_updates(&self, instance: &Instance) -> bool {
         instance.source != SourceRef::None
             && instance.update_policy != UpdatePolicy::Pinned
+            && instance.update_hold.is_none()
             && tokio::fs::try_exists(self.instances.perland_dir(&instance.id).join(PACK_FILE))
                 .await
                 .unwrap_or(false)
@@ -539,6 +543,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     .await
             }
         };
+        // A go-back that was interrupted is finished (or its leftovers cleared) before
+        // anything reads the files; a half-swapped instance must not sync or launch.
+        if let Err(error) = restore::recover(&self.instances, &id).await {
+            return self
+                .finish(&id, ended(failed(error)), sink, batcher, Some(lock))
+                .await;
+        }
         let accept = if checks {
             let accept = self.decide_update(&id, &instance, update_only, &sink).await;
             self.set_phase(&id, RunStateKind::Queued);
@@ -712,6 +723,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 return self.finish(&id, info, sink, batcher, Some(lock)).await;
             }
         };
+        // Wall-clock start, for the restore point (`run_ended`).
+        let started_at = crate::restore::now_secs();
         // No `.await` between `start` returning and recording the killer, so a Stop can't slip
         // in and leave the game running with nobody holding its killer.
         {
@@ -734,6 +747,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 }
             }
         };
+        // The game launched: later changes start a new restore point.
+        restore::seal(&self.instances, &id).await;
         if args.minimize {
             self.host.minimize();
         }
@@ -761,10 +776,23 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             self.record_playtime(&id, started).await;
         }
         let crashed = info.is_crash();
+        restore::run_ended(&self.instances, &id, started_at, crashed).await;
+        let info = ExitInfo {
+            restore: crashed && self.offers_restore(&id).await,
+            ..info
+        };
         self.finish(&id, info, sink, batcher, Some(lock)).await;
         if args.minimize || crashed {
             self.host.restore();
         }
+    }
+
+    /// The crash card offers "Go back": the point is of before an update that hasn't run
+    /// cleanly since.
+    async fn offers_restore(&self, id: &str) -> bool {
+        restore::read(&self.instances, id, crate::restore::now_secs())
+            .await
+            .is_some_and(|p| p.kind == PointKind::BeforeChange && !p.clean_run_since)
     }
 
     /// Before the game joins the server: wake it if it sleeps, and wait until it's up (spec

@@ -433,6 +433,7 @@ export const exitOf = (partial: Partial<ExitInfo>): ExitInfo => ({
   synced: null,
   manual: [],
   updateOnly: false,
+  restore: false,
   ...partial,
 });
 

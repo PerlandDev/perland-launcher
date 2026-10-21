@@ -234,6 +234,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// reported in `check_error`, not as an error: the banner just says it couldn't check.
     pub async fn pack_status(&self, id: &str) -> Result<PackStatus> {
         let instance = self.pack_instance(id).await?;
+        let held = instance.update_hold.clone();
         let installed = lockfile::load_pack(&self.instances.perland_dir(id)).await;
         let (update, check_error) = match &installed {
             None => (None, None),
@@ -271,11 +272,38 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 Err(error) => (None, Some(error)),
             },
         };
+        // Going back held the instance at its version; once the source is back there too,
+        // there is nothing left to differ (spec §5.8).
+        let installed_version = installed.map(|d| d.pack_version);
+        if let Some(hold) = &held {
+            let caught_up = update.is_none()
+                && check_error.is_none()
+                && installed_version.as_deref() == Some(hold.version.as_str());
+            if caught_up {
+                self.lift_hold(id).await;
+            }
+        }
         Ok(PackStatus {
-            installed_version: installed.map(|d| d.pack_version),
+            installed_version,
             update,
             check_error,
         })
+    }
+
+    /// Clear the instance's update hold. Lockless like the banner's poll, so the instance is
+    /// reloaded first and left alone while a run rewrites it; the next poll tries again.
+    async fn lift_hold(&self, id: &str) {
+        if self.is_busy(id) {
+            return;
+        }
+        let Ok(mut instance) = self.instances.load(id).await else {
+            return;
+        };
+        if instance.update_hold.take().is_some() {
+            if let Err(error) = self.instances.save(&instance).await {
+                tracing::warn!(instance = id, %error, "couldn't lift the update hold");
+            }
+        }
     }
 
     /// A pack instance's mods: the pack's own (from `pack.json`, client side, under `mods/`)

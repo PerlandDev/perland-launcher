@@ -39,6 +39,7 @@ import planRequests from './contract/plan_requests.json';
 import playtimeFx from './contract/playtime.json';
 import projectDetail from './contract/project_detail.json';
 import publicServerPage from './contract/public_server_page.json';
+import restorePoints from './contract/restore_points.json';
 import runSnapshots from './contract/run_snapshots.json';
 import searchPage from './contract/search_page.json';
 import searchRequests from './contract/search_requests.json';
@@ -79,6 +80,7 @@ const cases: [string, ZodType, unknown][] = [
   ['run_snapshots', s.runSnapshot.array(), runSnapshots],
   ['settings', s.settings, settingsFx],
   ['server_instance', s.instance, serverInstanceFx],
+  ['restore_points', s.restorePoint.nullable().array(), restorePoints],
   ['join_preview', s.joinPreview.array(), joinPreviewFx],
   ['server_status', s.serverStatusView.array(), serverStatusFx],
   ['public_server_page', s.publicServerPage, publicServerPage],

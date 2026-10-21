@@ -17,6 +17,7 @@ mod news;
 mod packs;
 pub mod perland;
 mod public_servers;
+mod restore;
 pub mod runner;
 mod runs;
 mod servers;

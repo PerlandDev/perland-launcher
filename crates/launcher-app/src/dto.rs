@@ -15,6 +15,7 @@ use launcher_core::{
     mods::LocalMod,
     perland::{CreateAllowance, Deletion, Disk, FreeLimits},
     public_list::Facets,
+    restore::{Change, PointKind},
     sync::{ManualFile, PendingUpdate, SyncReport},
     LauncherError,
 };
@@ -188,6 +189,21 @@ impl From<&SyncReport> for SyncSummary {
             set_aside: r.set_aside.clone(),
         }
     }
+}
+
+/// The instance's restore point, for "Go back to how it was" (spec §5.7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestorePointDto {
+    pub kind: PointKind,
+    /// Unix seconds.
+    pub created_at: u64,
+    /// What happened since the point was taken, oldest first.
+    pub changes: Vec<Change>,
+    /// Bytes the point alone holds on disk.
+    pub size_bytes: u64,
+    /// The server's display name, for a server instance (the confirm dialog warns about it).
+    pub server: Option<String>,
 }
 
 /// For the banner: the installed version, and the update (or why there's no answer).
