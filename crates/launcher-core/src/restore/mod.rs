@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::instances::{GameSpec, SourceRef};
 
-// Used by `point` in the next commit.
-#[allow(dead_code)]
+pub mod point;
 pub mod snapshot;
+
+pub use point::{before_change, held_size, note_change, read, run_ended, seal, ChangeCtx};
 
 /// A point older than this (30 days) is deleted when it is read or a new one is made.
 pub const MAX_AGE_SECS: u64 = 30 * 24 * 60 * 60;
@@ -90,7 +91,6 @@ pub fn top_of(rel: &str) -> Option<&str> {
     rel.split_once('/').map(|(top, _)| top)
 }
 
-#[allow(dead_code)]
 pub(crate) fn restore_dir(perland: &Path) -> PathBuf {
     perland.join("restore")
 }
