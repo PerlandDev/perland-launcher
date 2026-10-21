@@ -1338,14 +1338,28 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       } satisfies FriendsCheck;
     }
     case 'friends_create': {
-      if (state.options.friends === 'missing') fail('pack', 'free_server_mods_not_on_modrinth', 'Free servers only run mods from Modrinth');
+      // As the app: vanilla on the instance's version, a Modrinth modpack by its version id, else the server pack.
+      const instance = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (instance.source.kind === 'perland') fail('network', 'invalid_free_server', "This instance belongs to a server, so it can't become another one.");
+      const vanilla = instance.game.loader === null;
+      const modrinth = !vanilla && instance.source.kind === 'modrinth' ? instance.source.versionId : null;
+      if (!vanilla && modrinth === null && state.options.friends === 'missing') {
+        fail('pack', 'free_server_mods_not_on_modrinth', 'Free servers only run mods from Modrinth');
+      }
       const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite }, []) as Instance;
       return handleFree(
         state.free,
         state.perland.account,
         state.listing,
         'free_server_create',
-        { name: args.name, kind: 'vanilla', modrinthVersionId: null, language: args.language },
+        {
+          name: args.name,
+          kind: modrinth === null ? 'vanilla' : 'modrinth',
+          version: vanilla ? instance.game.minecraft : null,
+          modrinthVersionId: modrinth,
+          settings: args.settings ?? null,
+          language: args.language,
+        },
         join,
       );
     }

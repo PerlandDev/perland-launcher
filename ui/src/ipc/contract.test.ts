@@ -10,6 +10,7 @@ import errorFx from './contract/error.json';
 import errorCodes from './contract/error_codes.json';
 import events from './contract/events.json';
 import freeServerPage from './contract/free_server_page.json';
+import freeServerSettings from './contract/free_server_settings.json';
 import iconChoices from './contract/icon_choices.json';
 import importPreview from './contract/import_preview.json';
 import importRequest from './contract/import_request.json';
@@ -107,6 +108,7 @@ const cases: [string, ZodType, unknown][] = [
   ['email_code_sent', s.emailCodeSent, emailCodeSent],
   ['your_servers_page', s.yourServersPage, yourServersPage],
   ['free_server_page', s.freeServerPage.array(), freeServerPage],
+  ['free_server_settings', s.freeServerSettings.array(), freeServerSettings],
   ['managed_servers', s.managedServer.array(), managedServers],
   ['manage_detail', s.manageDetail.array(), manageDetail],
   ['manage_diagnosis', s.manageDiagnosis.array(), manageDiagnosis],

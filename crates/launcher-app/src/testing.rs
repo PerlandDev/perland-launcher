@@ -36,10 +36,10 @@ use launcher_core::{
     news::NewsPage,
     perland::{
         Apply, BanList, ConsoleReply, CreateAllowance, CreateFreeServer, Diagnosis, DiscordAccount,
-        Disk, EmailStarted, FreeLimits, FreeServer, FreeServerState, Handoff, Lifecycle, LinkCode,
-        ListKind, Membership, MemoryLimits, NameList, NameResult, Online, Player, PlayerConfig,
-        PlayerStats, SessionJwt, SettingsDoc, SettingsSaved, SignInMethod, StackDetail, StackItem,
-        TokenAnswer, YourServer,
+        Disk, EmailStarted, FreeLimits, FreeServer, FreeServerSettings, FreeServerState, Handoff,
+        Lifecycle, LinkCode, ListKind, Membership, MemoryLimits, NameList, NameResult, Online,
+        Player, PlayerConfig, PlayerStats, SessionJwt, SettingsDoc, SettingsSaved, SignInMethod,
+        StackDetail, StackItem, TokenAnswer, YourServer,
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
@@ -960,8 +960,12 @@ pub(crate) struct FakePlayer {
     pub free: Mutex<Result<Option<FreeServerState>>>,
     /// What `create_free_server` answers. Default: `free_view("starting")`.
     pub created: Mutex<Result<FreeServer>>,
+    /// The requests `create_free_server` received.
+    pub create_requests: Mutex<Vec<CreateFreeServer>>,
     /// The packs `create_free_server_from_pack` received.
     pub uploaded: Mutex<Vec<Vec<u8>>>,
+    /// The settings `create_free_server_from_pack` received, one per upload.
+    pub uploaded_settings: Mutex<Vec<Option<FreeServerSettings>>>,
     /// What `start_free_server` answers. Default: `free_view("starting")`.
     pub started: Mutex<Result<FreeServer>>,
     /// What `delete_free_server` answers. Default: deleted.
@@ -999,7 +1003,9 @@ impl FakePlayer {
             relation: Mutex::new(Ok(())),
             free: Mutex::new(Ok(None)),
             created: Mutex::new(Ok(free_view("starting"))),
+            create_requests: Mutex::new(Vec::new()),
             uploaded: Mutex::new(Vec::new()),
+            uploaded_settings: Mutex::new(Vec::new()),
             started: Mutex::new(Ok(free_view("starting"))),
             deleted: Mutex::new(Ok(true)),
             link_code: Mutex::new(Ok(LinkCode {
@@ -1153,6 +1159,7 @@ impl PlayerApi for FakePlayer {
         token: String,
         request: CreateFreeServer,
     ) -> BoxFuture<Result<FreeServer>> {
+        self.create_requests.lock().unwrap().push(request.clone());
         let version = request.modrinth_version_id.unwrap_or_default();
         self.record(
             "create_free_server",
@@ -1174,9 +1181,11 @@ impl PlayerApi for FakePlayer {
         name: String,
         language: String,
         pack: Vec<u8>,
+        settings: Option<FreeServerSettings>,
     ) -> BoxFuture<Result<FreeServer>> {
         let sha256 = launcher_core::download::hash::sha256_hex(&pack);
         self.uploaded.lock().unwrap().push(pack);
+        self.uploaded_settings.lock().unwrap().push(settings);
         self.record(
             "create_free_server_from_pack",
             engine,

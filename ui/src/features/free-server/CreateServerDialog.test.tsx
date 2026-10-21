@@ -90,7 +90,9 @@ describe('CreateServerDialog', () => {
       {
         name: 'Steve',
         kind: 'vanilla',
+        version: null,
         modrinthVersionId: null,
+        settings: null,
         language: 'en',
       },
     ]);
@@ -125,7 +127,9 @@ describe('CreateServerDialog', () => {
       {
         name: 'Steve',
         kind: 'modrinth',
+        version: null,
         modrinthVersionId: 'kL2pYz4w',
+        settings: null,
         language: 'en',
       },
     ]);

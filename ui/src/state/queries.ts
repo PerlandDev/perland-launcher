@@ -3,7 +3,7 @@ import i18n from '../i18n';
 import { commands } from '../ipc/commands';
 import { isLauncherError } from '../ipc/errors';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ArtChoice, ManageListChange, ManageSettingsSave, ManageState, ContentKind, Focus, FreeServerKind, FreeServerPage, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PerlandStatus, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
+import type { ArtChoice, ManageListChange, ManageSettingsSave, ManageState, ContentKind, Focus, FreeServerKind, FreeServerPage, FreeServerSettings, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PerlandStatus, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { endImport, importWatched } from './importProgress';
@@ -317,14 +317,18 @@ const invalidateFree = (qc: QueryClient) =>
 export interface FreeServerRequest {
   name: string;
   kind: FreeServerKind;
+  /** A vanilla server's Minecraft version; null or left out: the Engine's newest release. */
+  version?: string | null;
   modrinthVersionId: string | null;
+  /** Only what the player changed; null or left out: every default. */
+  settings?: FreeServerSettings | null;
   language: string;
 }
 /** Creates the free server (the call can take a couple of minutes). The dialog shows the error itself, so pass `inline`. */
 export function useFreeServerCreate(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (r: FreeServerRequest) => commands.freeServerCreate(r.name, r.kind, r.modrinthVersionId, r.language),
+    mutationFn: (r: FreeServerRequest) => commands.freeServerCreate(r.name, r.kind, r.version ?? null, r.modrinthVersionId, r.settings ?? null, r.language),
     onError: onError(opts),
     onSettled: () => invalidateFree(qc),
   });
@@ -333,7 +337,8 @@ export function useFreeServerCreate(opts: Opts = {}) {
 export function useFriendsCreate(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (r: { id: string; name: string; language: string }) => commands.friendsCreate(r.id, r.name, r.language),
+    mutationFn: (r: { id: string; name: string; settings?: FreeServerSettings | null; language: string }) =>
+      commands.friendsCreate(r.id, r.name, r.settings ?? null, r.language),
     onError: onError(opts),
     onSettled: () => invalidateFree(qc),
   });

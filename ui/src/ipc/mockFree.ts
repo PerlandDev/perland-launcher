@@ -7,6 +7,7 @@ import type {
   FreeLimits,
   FreeServerCard,
   FreeServerPage,
+  FreeServerSettings,
   Instance,
   LauncherError,
   ManageRef,
@@ -91,6 +92,27 @@ export function fail(category: LauncherError['category'], code: string, message:
   throw { category, code, message, fix: null, detail: null, params } satisfies LauncherError;
 }
 
+const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+
+/** The field the app would refuse in `settings` (as the Engine's `data.field` names it), or null. */
+function settingsRefusal(raw: unknown): string | null {
+  if (raw === null || raw === undefined) return null;
+  const s = raw as FreeServerSettings;
+  const limits = MOCK_FREE_LIMITS.settings;
+  if (s.gameMode !== undefined && !limits?.gameModes.includes(s.gameMode)) return 'settings.gameMode';
+  if (s.difficulty !== undefined && (!limits?.difficulties.includes(s.difficulty) || (s.gameMode === 'hardcore' && s.difficulty !== 'hard'))) {
+    return 'settings.difficulty';
+  }
+  if (s.maxPlayers !== undefined && (s.maxPlayers < 1 || s.maxPlayers > MOCK_FREE_LIMITS.maxPlayers)) return 'settings.maxPlayers';
+  if (s.seed !== undefined && (utf8Bytes(s.seed) > (limits?.seedMaxBytes ?? 64) || CONTROL.test(s.seed))) return 'settings.seed';
+  if (s.motd !== undefined && (utf8Bytes(s.motd) > (limits?.motdMaxBytes ?? 64) || CONTROL.test(s.motd) || s.motd.includes('§'))) {
+    return 'settings.motd';
+  }
+  return null;
+}
+
 const inDays = (days: number) => new Date(Date.now() + days * DAY).toISOString();
 
 interface View {
@@ -100,6 +122,8 @@ interface View {
   invited: boolean;
   deletion: FreeServerCard['deletion'];
   usedBytes: number;
+  /** A vanilla server's Minecraft version; left out, `LATEST`. */
+  version?: string;
 }
 
 /** The card the app builds from the Engine's free-server view (`status` folds creating/deleting into sleeping, stopped into offline). */
@@ -118,8 +142,8 @@ function cardOf(view: View): FreeServerCard {
     displayName: view.name,
     iconVersion: null,
     // The Engine's view sends `game {type, version}` only: the app takes a modpack's loader from `type`, and a vanilla
-    // create (no version sent) runs and answers `LATEST`.
-    game: { version: modded ? '1.20.1' : 'LATEST', loader: modded ? 'fabric' : null, loaderVersion: null },
+    // create with no version sent runs and answers `LATEST`.
+    game: { version: modded ? '1.20.1' : (view.version ?? 'LATEST'), loader: modded ? 'fabric' : null, loaderVersion: null },
     modded,
     status: status as PublicServerCard['status'],
     players: view.freeStatus === 'online' ? { online: 0, max: MOCK_FREE_LIMITS.maxPlayers } : null,
@@ -232,6 +256,12 @@ export async function handleFree(
         /^[A-Za-z0-9_-]{1,32}$/.test(name) &&
         (kind === 'vanilla' ? version === null : kind === 'modrinth' && version !== null && /^[A-Za-z0-9]{1,16}$/.test(version));
       if (!valid) fail('network', 'invalid_free_server', 'Check the server name and the modpack.');
+      const minecraft = kind === 'vanilla' && typeof args.version === 'string' && args.version.trim() !== '' ? args.version.trim() : undefined;
+      if (minecraft !== undefined && !/^[A-Za-z0-9._-]{1,32}$/.test(minecraft)) {
+        fail('network', 'invalid_free_server', "Free servers can't run that Minecraft version.", { field: 'version' });
+      }
+      const field = settingsRefusal(args.settings);
+      if (field !== null) fail('network', 'invalid_free_server', "Check the server's options.", { field });
       if (!allowance(free).allowed) refuse(free);
       if (kind === 'modrinth') {
         const known = listing.instances.find((i) => i.source.kind === 'modrinth' && i.source.versionId === version);
@@ -243,10 +273,18 @@ export async function handleFree(
         }
       }
       // Hold the place while the Engine works, so a second create is refused.
-      free.server = cardOf({ name, kind: kind as View['kind'], freeStatus: 'creating', invited: false, deletion: null, usedBytes: 0 });
+      free.server = cardOf({ name, kind: kind as View['kind'], freeStatus: 'creating', invited: false, deletion: null, usedBytes: 0, version: minecraft });
       await wait(MOCK_FREE_CREATE_MS);
       if (!free.server) fail('network', 'free_server_exists', 'The server was deleted while it was created.');
-      free.server = cardOf({ name, kind: kind as View['kind'], freeStatus: 'starting', invited: true, deletion: { deletesAt: inDays(30), warned: false }, usedBytes: 0 });
+      free.server = cardOf({
+        name,
+        kind: kind as View['kind'],
+        freeStatus: 'starting',
+        invited: true,
+        deletion: { deletesAt: inDays(30), warned: false },
+        usedBytes: 0,
+        version: minecraft,
+      });
       return answer(free.server);
     }
     case 'free_server_start': {

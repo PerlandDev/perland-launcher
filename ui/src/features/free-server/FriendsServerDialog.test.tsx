@@ -37,7 +37,7 @@ describe('FriendsServerDialog', () => {
     expect(within(box).getByText('Worlds, resource packs and shaders stay on your computer.')).toBeInTheDocument();
     expect(within(box).getByText(/^Up to 10 players\./)).toBeInTheDocument();
     await user.click(within(box).getByRole('button', { name: 'Create' }));
-    expect(sent(calls, 'friends_create')).toEqual([{ id: 'cozy-pack', name: 'Steve', language: 'en' }]);
+    expect(sent(calls, 'friends_create')).toEqual([{ id: 'cozy-pack', name: 'Steve', settings: null, language: 'en' }]);
     expect(await screen.findByRole('heading', { name: 'Your server is ready' }, { timeout: 4000 })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Play now' })).toBeInTheDocument();
   });

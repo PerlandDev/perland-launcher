@@ -48,7 +48,8 @@ use launcher_core::{
     },
     mods::LocalMod,
     perland::{
-        CreateAllowance, Deletion, Disk, FreeLimits, FreeSettingsLimits, MemoryLimits, PackLimits,
+        CreateAllowance, Deletion, Disk, FreeLimits, FreeServerSettings, FreeSettingsLimits,
+        MemoryLimits, PackLimits,
     },
     public_list::{Facets, ListQuery, ListSort},
     restore::{Change, PointKind},
@@ -1505,6 +1506,25 @@ fn contract_fixtures_are_current() {
     check("public_server_page", public_server_page());
     check("your_servers_page", your_servers_page());
     check("free_server_page", free_server_pages());
+    check(
+        "free_server_settings",
+        vec![
+            FreeServerSettings {
+                game_mode: Some("hardcore".into()),
+                difficulty: Some("hard".into()),
+                max_players: Some(4),
+                pvp: Some(false),
+                whitelist: Some(true),
+                seed: Some("perla".into()),
+                motd: Some("Hola amigos".into()),
+            },
+            FreeServerSettings {
+                pvp: Some(false),
+                ..FreeServerSettings::default()
+            },
+            FreeServerSettings::default(),
+        ],
+    );
     check("server_news", server_news());
     check(
         "join_preview",

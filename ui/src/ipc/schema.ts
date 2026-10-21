@@ -169,6 +169,21 @@ export const perlandStatus = z.strictObject({
   methods: z.array(z.string()),
   account: perlandAccount.nullable(),
 });
+/** The basic settings a free server is created with (`free_server_create`, `friends_create`). Each one left out keeps the
+ *  Engine's default; send only what the player changed, and null when they changed nothing. Hardcore takes only `hard`. */
+export const freeServerSettings = z.strictObject({
+  gameMode: z.enum(['survival', 'creative', 'adventure', 'hardcore']).optional(),
+  difficulty: z.enum(['peaceful', 'easy', 'normal', 'hard']).optional(),
+  /** 1 to `limits.maxPlayers`; left out, the limit. */
+  maxPlayers: z.number().int().optional(),
+  pvp: z.boolean().optional(),
+  /** On: only players added in Manage → Players can join. */
+  whitelist: z.boolean().optional(),
+  /** At most `seedMaxBytes` UTF-8 bytes, no control characters; left out, random. */
+  seed: z.string().optional(),
+  /** The server list message: at most `motdMaxBytes` UTF-8 bytes, no control characters, no `§`. */
+  motd: z.string().optional(),
+});
 /** The settings a free server takes at create (`limits.settings`). */
 export const freeSettingsLimits = z.strictObject({
   gameModes: z.array(z.string()),
@@ -753,6 +768,7 @@ export type ManageSettings = z.infer<typeof manageSettings>;
 export type ManageSettingsSave = z.infer<typeof manageSettingsSave>;
 export type ManageSaved = z.infer<typeof manageSaved>;
 export type ManageConsoleReply = z.infer<typeof manageConsoleReply>;
+export type FreeServerSettings = z.infer<typeof freeServerSettings>;
 export type FreeSettingsLimits = z.infer<typeof freeSettingsLimits>;
 export type FreeLimits = z.infer<typeof freeLimits>;
 export type CreateAllowance = z.infer<typeof createAllowance>;
