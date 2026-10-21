@@ -1357,6 +1357,7 @@
         "hard": "Difícil"
       },
       "maxPlayers": "Máximo de jugadores",
+      "maxPlayersInvalid": "Elige un número del 1 al 1000.",
       "pvp": "PvP",
       "pvpHint": "Los jugadores pueden lastimarse entre ellos.",
       "whitelist": "Lista blanca",

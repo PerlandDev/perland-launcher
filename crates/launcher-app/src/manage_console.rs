@@ -44,6 +44,12 @@ pub(crate) struct ConsoleSlot {
     gate: Gate,
 }
 
+/// Closes per server, by (team, server). An open reads its server's count before it waits
+/// for the session and installs its stream only if the count is the same after: a close
+/// that came meanwhile (the screen left before the open got going) cancels it. Locked
+/// before `console_stream` wherever both are held.
+pub(crate) type CloseCounts = std::collections::HashMap<(String, String), u64>;
+
 /// Sends the stop, after any event the stream is emitting.
 fn stop(gate: &Gate) {
     let _ = gate.lock().unwrap_or_else(|e| e.into_inner()).send(true);
@@ -55,14 +61,25 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// connect opened the stream, or with its refusal (`TooManyStreams`, `ServerNotFound`, a
     /// sign-out). A stream that ends on its own later sends `server_log_ended`.
     pub async fn manage_console_open(self: &Arc<Self>, tenant: &str, stack: &str) -> Result<()> {
+        let key = (tenant.to_string(), stack.to_string());
+        let closes = self.close_count(&key);
         let session = self.perland_session().await.ok_or_else(signed_out)?;
         let (stop_tx, stop_rx) = watch::channel(false);
         let gate: Gate = Arc::new(Mutex::new(stop_tx));
-        let previous = self.console_slot().replace(ConsoleSlot {
-            tenant: tenant.to_string(),
-            stack: stack.to_string(),
-            gate: gate.clone(),
-        });
+        let previous = {
+            let counts = self.console_closes();
+            if counts.get(&key).copied().unwrap_or(0) != closes {
+                // Closed while it waited: the screen is gone, so nothing starts.
+                return Ok(());
+            }
+            let previous = self.console_slot().replace(ConsoleSlot {
+                tenant: tenant.to_string(),
+                stack: stack.to_string(),
+                gate: gate.clone(),
+            });
+            drop(counts);
+            previous
+        };
         if let Some(previous) = previous {
             stop(&previous.gate);
         }
@@ -111,6 +128,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Once this returns, no event of that stream follows.
     pub fn manage_console_close(&self, tenant: &str, stack: &str) {
         let taken = {
+            let mut counts = self.console_closes();
+            *counts
+                .entry((tenant.to_string(), stack.to_string()))
+                .or_default() += 1;
             let mut slot = self.console_slot();
             if slot
                 .as_ref()
@@ -132,6 +153,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if let Some(taken) = taken {
             stop(&taken.gate);
         }
+    }
+
+    fn console_closes(&self) -> std::sync::MutexGuard<'_, CloseCounts> {
+        self.console_closes
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn close_count(&self, key: &(String, String)) -> u64 {
+        self.console_closes().get(key).copied().unwrap_or(0)
     }
 
     fn console_slot(&self) -> std::sync::MutexGuard<'_, Option<ConsoleSlot>> {
@@ -420,6 +451,31 @@ mod tests {
         assert!(logs(&host).is_empty());
         assert!(ended(&host).is_empty());
         assert!(core.console_stream.lock().unwrap().is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn close_during_open_cancels_it() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        // The open waits on the Perland state while the screen closes.
+        let held = core.perland.lock().await;
+        let opening = tokio::spawn({
+            let core = core.clone();
+            async move { core.manage_console_open("t1", "survival").await }
+        });
+        wait(10).await;
+        core.manage_console_close("t1", "survival");
+        drop(held);
+        opening.await.unwrap().unwrap();
+        wait(150).await;
+        assert!(
+            runner.stack.log_streams.lock().unwrap().is_empty(),
+            "no stream starts for a closed screen"
+        );
+        assert!(core.console_stream.lock().unwrap().is_none());
+        // A later open of the same server still follows it.
+        core.manage_console_open("t1", "survival").await.unwrap();
+        assert_eq!(runner.stack.log_streams.lock().unwrap().len(), 1);
     }
 
     #[tokio::test(start_paused = true)]

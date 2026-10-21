@@ -91,6 +91,24 @@ describe('ManageSettings', () => {
     expect(await screen.findByText('Saved. It applies at the next restart.')).toBeInTheDocument();
   });
 
+  it('while it starts, a save waits for the next start', async () => {
+    const { user, calls } = show('starting');
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Difficulty' }), 'easy');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await vi.waitFor(() => expect(saves(calls)).toHaveLength(1));
+    expect(saves(calls)[0]?.apply).toBe('next_restart');
+  });
+
+  it('says when max players is out of range, and saves nothing', async () => {
+    const { user, calls } = show('stopped');
+    const max = await screen.findByRole('spinbutton', { name: 'Max players' });
+    await user.clear(max);
+    await user.type(max, '0');
+    expect(screen.getByText('Pick a number from 1 to 1000.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(saves(calls)).toEqual([]);
+  });
+
   it('a stopped server just saves', async () => {
     show('stopped');
     await screen.findByRole('combobox', { name: 'Game mode' });

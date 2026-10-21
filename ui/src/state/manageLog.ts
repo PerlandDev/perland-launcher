@@ -5,11 +5,13 @@ export const MANAGE_LOG_MAX = 1000;
 
 export interface ManageLog {
   lines: string[];
+  /** The running number of `lines[0]` since the store began: a line keeps its number (a stable key) as older ones fall off. */
+  first: number;
   /** The live log stopped on its own (`server_log_ended`); the console offers Reconnect. */
   ended: boolean;
 }
 
-const EMPTY: ManageLog = { lines: [], ended: false };
+const EMPTY: ManageLog = { lines: [], first: 0, ended: false };
 const logs = new Map<string, ManageLog>();
 const listeners = new Set<() => void>();
 
@@ -26,7 +28,11 @@ function set(tenantId: string, stack: string, next: (log: ManageLog) => ManageLo
 export const manageLog = {
   push(tenantId: string, stack: string, lines: string[]) {
     if (lines.length === 0) return;
-    set(tenantId, stack, (log) => ({ lines: log.lines.concat(lines).slice(-MANAGE_LOG_MAX), ended: false }));
+    set(tenantId, stack, (log) => {
+      const all = log.lines.concat(lines);
+      const drop = Math.max(0, all.length - MANAGE_LOG_MAX);
+      return { lines: all.slice(drop), first: log.first + drop, ended: false };
+    });
   },
   end(tenantId: string, stack: string) {
     set(tenantId, stack, (log) => ({ ...log, ended: true }));

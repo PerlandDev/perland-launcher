@@ -1,9 +1,10 @@
 import { act, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { MockOptions } from '../../ipc/mock';
+import { createMockBackend, type MockOptions } from '../../ipc/mock';
 import { MOCK_TEAM_SERVER, MOCK_TEAM_TENANT } from '../../ipc/mockManage';
 import { handleEvent } from '../../state/handleEvent';
 import { renderApp, sent } from '../../test/backend';
+import { renderWithProviders } from '../../test/render';
 import { ManageConsole } from './ManageConsole';
 
 const ref = { tenantId: MOCK_TEAM_TENANT, stack: MOCK_TEAM_SERVER };
@@ -15,6 +16,24 @@ describe('ManageConsole', () => {
     await vi.waitFor(() => expect(sent(calls, 'manage_console_open')).toEqual([ref]));
     unmount();
     await vi.waitFor(() => expect(sent(calls, 'manage_console_close')).toEqual([ref]));
+  });
+
+  it('a close before the open answered closes again once it has', async () => {
+    const backend = createMockBackend({ perland: 'signedIn', manage: 'running' });
+    const calls: [string, unknown][] = [];
+    let opened: (() => void) | null = null;
+    const { unmount } = renderWithProviders(<ManageConsole {...ref} />, {
+      ipc: (cmd, args) => {
+        calls.push([cmd, args]);
+        if (cmd === 'manage_console_open') return new Promise<null>((resolve) => (opened = () => resolve(null)));
+        return backend.handle(cmd, args);
+      },
+    });
+    await vi.waitFor(() => expect(opened).not.toBeNull());
+    unmount();
+    expect(sent(calls, 'manage_console_close')).toEqual([ref]);
+    act(() => opened?.());
+    await vi.waitFor(() => expect(sent(calls, 'manage_console_close')).toEqual([ref, ref]));
   });
 
   it('shows the lines the server sends', async () => {

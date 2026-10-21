@@ -14,7 +14,7 @@ const FOLLOW_SLACK = 40;
 
 /** The live lines, newest at the bottom. It follows them until the player scrolls up, then offers Jump to latest. Not a
  *  live region (`aria-live="off"`): a busy server would talk over everything. */
-function LogLines({ lines }: { lines: string[] }) {
+function LogLines({ lines, first }: { lines: string[]; first: number }) {
   const { t } = useTranslation();
   const scroller = useRef<HTMLDivElement>(null);
   const [follow, setFollow] = useState(true);
@@ -39,7 +39,7 @@ function LogLines({ lines }: { lines: string[] }) {
         {lines.length === 0 ? (
           <p className="text-ink-dim">{t('manage.console.empty')}</p>
         ) : (
-          lines.map((line, index) => <div key={index}>{line}</div>)
+          lines.map((line, index) => <div key={first + index}>{line}</div>)
         )}
       </div>
       {!follow && (
@@ -67,9 +67,21 @@ export function ManageConsole({ tenantId, stack }: { tenantId: string; stack: st
   useEffect(() => {
     if (!running) return;
     manageLog.resume(tenantId, stack);
-    commands.manageConsoleOpen(tenantId, stack).catch(pushError);
+    const close = () => void commands.manageConsoleClose(tenantId, stack).catch(() => {});
+    // A close sent while the open is still on its way may reach Rust first; once the open answers, close again so no
+    // stream outlives the screen (it would hold one of the team's few Engine log streams).
+    let closed = false;
+    commands.manageConsoleOpen(tenantId, stack).then(
+      () => {
+        if (closed) close();
+      },
+      (error: unknown) => {
+        if (!closed) pushError(error);
+      },
+    );
     return () => {
-      void commands.manageConsoleClose(tenantId, stack).catch(() => {});
+      closed = true;
+      close();
     };
   }, [tenantId, stack, running, attempt]);
 
@@ -95,7 +107,7 @@ export function ManageConsole({ tenantId, stack }: { tenantId: string; stack: st
 
   return (
     <div className="grid gap-6">
-      {(running || log.lines.length > 0) && <LogLines lines={log.lines} />}
+      {(running || log.lines.length > 0) && <LogLines lines={log.lines} first={log.first} />}
       {running && log.ended && (
         <div className="note-plate items-center" data-lamp="none">
           <p className="flex-1">{t('manage.console.ended')}</p>

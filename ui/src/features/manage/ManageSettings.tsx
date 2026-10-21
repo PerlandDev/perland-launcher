@@ -80,6 +80,7 @@ function SettingsForm({
   stack,
   saved,
   running,
+  moving,
   onSaved,
   onChanged,
 }: {
@@ -87,6 +88,8 @@ function SettingsForm({
   stack: string;
   saved: Saved;
   running: boolean;
+  /** Starting or stopping: a save waits for the next start rather than restart it mid-change. */
+  moving: boolean;
   onSaved: (notice: Notice) => void;
   onChanged: () => void;
 }) {
@@ -141,7 +144,7 @@ function SettingsForm({
       pvp: draft.pvp,
       enableWhitelist: draft.enableWhitelist,
       version: saved.versionLocked || draft.version.trim() === saved.version ? null : draft.version.trim(),
-      apply: running ? apply : 'now',
+      apply: running ? apply : moving ? 'next_restart' : 'now',
     });
   };
   const confirmAgain = (extra: Partial<ManageSettingsSave>) => {
@@ -221,10 +224,16 @@ function SettingsForm({
           max={1000}
           className="field-input w-32 tabular-nums"
           aria-invalid={maxInvalid || undefined}
+          aria-describedby={maxInvalid ? 'manage-max-error' : undefined}
           disabled={isLocked('maxPlayers')}
           value={draft.maxPlayers}
           onChange={(event) => edit({ maxPlayers: event.target.value })}
         />
+        {maxInvalid && (
+          <p id="manage-max-error" className="text-sm text-coral">
+            {t('manage.settings.maxPlayersInvalid')}
+          </p>
+        )}
         {note('maxPlayers')}
       </div>
       <SwitchRow
@@ -345,6 +354,7 @@ export function ManageSettings({ tenantId, stack }: { tenantId: string; stack: s
         stack={stack}
         saved={settings.data}
         running={detail.data?.state === 'running'}
+        moving={detail.data?.state === 'starting' || detail.data?.state === 'stopping'}
         onSaved={setNotice}
         onChanged={() => {
           setNotice('changed');
