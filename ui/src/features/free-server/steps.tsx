@@ -10,6 +10,7 @@ import { pushNotice } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { CopyRow } from '../../ui/CopyRow';
 import { isServerName, retryText } from './freeServer';
+import { optionRefusal } from './serverOptions';
 
 // The steps of making the free server that every dialog shares: creating, ready, waiting out a lost answer, and a refusal
 // in words.
@@ -126,30 +127,37 @@ export function useLostPoll(active: boolean, onReady: (server: FreeServerCard) =
   }, [active, qc]);
 }
 
-/** A refusal in words: a bad name goes on the name field, everything else is one line under the form. `invalid_free_server`
- *  names no field, so it goes on the name only when the name itself breaks the rule. */
-export function refusalOf(t: TFunction, i18n: I18n, error: unknown, name: string): { name: string | null; line: string | null } {
-  if (!isLauncherError(error)) return { name: null, line: describeError(i18n, error).message };
+/** A refusal in words, and the field it belongs under (`name`, `version`, `settings.<name>`, as the Engine's `data.field`
+ *  names it), or null for one line under the form. An `invalid_free_server` that names no field (an older Engine) goes on
+ *  the name only when the name itself breaks the rule. `maxPlayers` is the player limit, for the max players line. */
+export function refusalOf(
+  t: TFunction,
+  i18n: I18n,
+  error: unknown,
+  name: string,
+  maxPlayers = 0,
+): { field: string | null; text: string } {
+  if (!isLauncherError(error)) return { field: null, text: describeError(i18n, error).message };
   switch (error.code) {
-    case 'invalid_free_server':
-      return isServerName(name) ? { name: null, line: t('freeServer.pick.refused') } : { name: t('freeServer.pick.nameInvalid'), line: null };
+    case 'invalid_free_server': {
+      const field = error.params.field ?? (isServerName(name) ? null : 'name');
+      if (field === 'name') return { field, text: t('freeServer.pick.nameInvalid') };
+      if (field === 'version') return { field, text: t('freeServer.pick.versionRefused') };
+      if (field === 'pack') return { field: null, text: t('freeServer.pick.packRefused') };
+      if (field?.startsWith('settings.')) return { field, text: optionRefusal(t, field, maxPlayers) };
+      return { field: null, text: t('freeServer.pick.refused') };
+    }
     case 'modpack_unsupported': {
       const key = `freeServer.unsupported.${error.params.reason ?? ''}`;
-      return {
-        name: null,
-        line: i18n.exists(key) ? t(key) : describeError(i18n, error).message,
-      };
+      return { field: null, text: i18n.exists(key) ? t(key) : describeError(i18n, error).message };
     }
     case 'email_required':
-      return { name: null, line: t('freeServer.reason.emailRequired') };
+      return { field: null, text: t('freeServer.reason.emailRequired') };
     case 'too_many_free_servers': {
       const retry = Number(error.params.retryAfter);
-      return {
-        name: null,
-        line: Number.isFinite(retry) ? retryText(t, retry) : describeError(i18n, error).message,
-      };
+      return { field: null, text: Number.isFinite(retry) ? retryText(t, retry) : describeError(i18n, error).message };
     }
     default:
-      return { name: null, line: describeError(i18n, error).message };
+      return { field: null, text: describeError(i18n, error).message };
   }
 }

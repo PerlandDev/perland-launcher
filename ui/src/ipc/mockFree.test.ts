@@ -3,6 +3,7 @@ import { createMockBackend, stopMockRuns } from './mock';
 import type { MockOptions } from './mock';
 import { freeScenario, MOCK_FREE_CREATE_MS, MOCK_FREE_INVITE } from './mockFree';
 import { inviteCanonical } from './inviteLink';
+import { MOCK_INVITE } from './mockServers';
 import * as s from './schema';
 import type { FreeServerCard, FreeServerPage, Instance, YourServersPage } from './schema';
 
@@ -172,6 +173,31 @@ describe('mock free server create', () => {
     const pending = backend().handle('friends_create', { id: 'cozy-pack', name: 'Cozy', settings: null, language: 'en' }) as Promise<FreeServerCard>;
     await vi.advanceTimersByTimeAsync(MOCK_FREE_CREATE_MS);
     expect(await pending).toMatchObject({ kind: 'modrinth', modded: true });
+  });
+
+  it('friends_create makes a vanilla server on the instance version, on an Engine that checks it', async () => {
+    vi.useFakeTimers();
+    const pending = backend().handle('friends_create', { id: 'creative-flat', name: 'Flat', settings: { pvp: false }, language: 'en' }) as Promise<FreeServerCard>;
+    await vi.advanceTimersByTimeAsync(MOCK_FREE_CREATE_MS);
+    expect(await pending).toMatchObject({ kind: 'vanilla', modded: false, game: { version: '26.3' } });
+    const older = createMockBackend({ perland: 'signedIn', free: 'none', freeEngine: 'older' });
+    expect((await older.handle('free_server') as FreeServerPage).limits.settings).toBeNull();
+    await expect(older.handle('friends_create', { id: 'creative-flat', name: 'Flat', settings: null, language: 'en' })).rejects.toMatchObject({
+      code: 'invalid_free_server',
+    });
+    expect((await older.handle('free_server') as FreeServerPage).server).toBeNull();
+  });
+
+  it('friends_create refuses an instance linked to a server', async () => {
+    const b = createMockBackend({ perland: 'signedIn', free: 'none', server: 'online' });
+    await b.handle('server_link', { id: 'creative-flat', link: MOCK_INVITE });
+    await expect(b.handle('friends_create', { id: 'creative-flat', name: 'Flat', settings: null, language: 'en' })).rejects.toMatchObject({
+      code: 'invalid_free_server',
+    });
+    await expect(b.handle('friends_create', { id: 'survival', name: 'Flat', settings: null, language: 'en' })).rejects.toMatchObject({
+      code: 'invalid_free_server',
+    });
+    expect((await page(b))?.server).toBeNull();
   });
 });
 

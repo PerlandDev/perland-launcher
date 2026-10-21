@@ -25,6 +25,7 @@ import { copyText } from "../../ui/copyText";
 import type { MenuItem } from "../../ui/Menu";
 import { ManageServerLink } from "../servers/ManageServerLink";
 import { FriendsServerDialog } from "../free-server/FriendsServerDialog";
+import { friendsPath } from "../free-server/freeServer";
 import { ShareDialog } from "../share/ShareDialog";
 import { ImageDialog } from "./ImageDialog";
 import { GoBackDialog } from "./GoBackDialog";
@@ -54,13 +55,22 @@ export function useInstanceActions(instance: Instance): InstanceActions {
   const address = instance.server?.address ?? null;
   // A run saves the whole instance when it syncs, so linking waits until it is idle.
   const running = useRun(instance.id).state !== "idle";
-  // Play this with friends: a modded instance, a signed-in player without a free server, and an Engine that takes a pack.
+  // Play this with friends: a signed-in player without a free server, on an instance not linked to a server, and an Engine
+  // that can make it: a vanilla one needs the version checked (`limits.settings`), any other modded one pack uploads
+  // (`limits.pack`); a Modrinth modpack needs nothing more.
   const signedIn = Boolean(usePerlandStatus().data?.account);
-  const free = useFreeServer(
-    signedIn && !isServer(instance) && instance.game.loader !== null,
-  ).data;
+  const linked = isServer(instance) || instance.server !== null;
+  const free = useFreeServer(signedIn && !linked).data;
+  const path = friendsPath(instance);
+  // The page may be cached from elsewhere, so `linked` is asked again here, not only through the query.
   const friendsLimits =
-    free && free.limits.pack !== null && free.server === null
+    signedIn &&
+    !linked &&
+    free &&
+    free.server === null &&
+    (path === "vanilla"
+      ? free.limits.settings !== null
+      : path === "modrinth" || free.limits.pack !== null)
       ? free.limits
       : null;
   // Kept from when the dialog opened: once the server exists the item goes, but the dialog stays for its ready step.

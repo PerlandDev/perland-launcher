@@ -467,7 +467,11 @@
     "notOnModrinth_other": "Free servers only run mods from Modrinth. {{count}} of your mods aren't there: {{names}}.",
     "tooHeavy": "Your mods need {{need}} GB of memory. Free servers have {{have}} GB.",
     "tooBig": "Your settings are too big for a free server.",
-    "running": "Stop the game first."
+    "running": "Stop the game first.",
+    "vanillaIntro": "Your free server runs Minecraft {{version}}, the same as this instance. Friends join on that version.",
+    "modrinthIntro": "Runs {{pack}} as published on Modrinth. Mods you added yourself stay on your computer.",
+    "version": "Minecraft {{version}}",
+    "oldVersion": "Free servers can't run Minecraft {{version}}."
   },
   "share": {
     "menu": "Share…",
@@ -707,7 +711,26 @@
       "nameHint": "Friends see it on the invite page.",
       "nameInvalid": "Use letters, numbers, - and _ only, up to 32.",
       "refused": "The server couldn't be created with these choices. Try another name or modpack.",
+      "versionRefused": "Free servers can't run this version. Pick another one.",
+      "packRefused": "This modpack can't become a free server. Reinstall it from Browse.",
       "create": "Create"
+    },
+    "options": {
+      "title": "Options",
+      "summary_one": "{{mode}}, {{difficulty}}, up to {{count}} player",
+      "summary_other": "{{mode}}, {{difficulty}}, up to {{count}} players",
+      "hardcore": "Hardcore",
+      "hardcoreHint": "Hardcore is always on Hard.",
+      "maxPlayersHint": "From 1 to {{max}}.",
+      "maxPlayersInvalid": "Pick a number from 1 to {{max}}.",
+      "whitelistHint": "Only players you add in Manage → Players can join.",
+      "seed": "World seed",
+      "seedHint": "Leave it empty for a random world.",
+      "seedInvalid": "Use a shorter seed.",
+      "motd": "Server list message",
+      "motdHint": "What friends see under the name in their server list.",
+      "motdInvalid": "Use a shorter message, without §.",
+      "refused": "Free servers can't use this option. Pick another one."
     },
     "creating": {
       "title": "Creating your server…",

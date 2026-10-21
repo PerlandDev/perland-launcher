@@ -2750,6 +2750,22 @@
     margin-inline: -4px;
     padding: 4px;
   }
+  /* Options under the name: a seam row, not a button face. It says what the server gets while closed; nothing lights. */
+  .options-disclosure {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    width: 100%;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--color-line);
+    text-align: left;
+    color: var(--color-ink-dim);
+    cursor: pointer;
+  }
+  .options-disclosure:hover {
+    color: var(--color-ink);
+  }
   .share-sheet .content-row {
     padding-block: 0.5rem;
   }

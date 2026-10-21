@@ -101,6 +101,9 @@ export interface MockOptions {
   /** What Play this with friends finds: `ok` (default: every mod on Modrinth, fits), `missing` (two mods aren't on Modrinth) or
    *  `heavy` (the mods need more memory than a free server has). */
   friends?: 'ok' | 'missing' | 'heavy';
+  /** The Engine behind the free server: `current` (default) or `older`, from before free-server settings (no
+   *  `limits.settings`: no version picker or Options, and a vanilla instance can't become a server). */
+  freeEngine?: 'current' | 'older';
   /** What the save dialog returns; null means the player cancelled. Defaults to the suggested name in Downloads. */
   savePath?: string | null;
   /** The rail starts wide, with names. */
@@ -424,7 +427,7 @@ function seed(options: MockOptions) {
   return {
     listing,
     perland,
-    free: seedFree(options.free),
+    free: seedFree(options.free, options.freeEngine),
     // `empty` is a player with no servers at all, so none to manage either.
     manage: seedManage(options.manage ?? (options.perland === 'empty' ? 'none' : undefined), event),
     // The player's own order, like instance-order.json. Existing instances start A-Z, so a new one lands above them.
@@ -1340,8 +1343,14 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'friends_create': {
       // As the app: vanilla on the instance's version, a Modrinth modpack by its version id, else the server pack.
       const instance = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
-      if (instance.source.kind === 'perland') fail('network', 'invalid_free_server', "This instance belongs to a server, so it can't become another one.");
+      if (instance.source.kind === 'perland' || instance.server !== null) {
+        fail('network', 'invalid_free_server', "This instance belongs to a server, so it can't become another one.");
+      }
       const vanilla = instance.game.loader === null;
+      // An older Engine doesn't check the version: it would run the newest release, not the instance's.
+      if (vanilla && state.free.limits.settings === null) {
+        fail('network', 'invalid_free_server', "This Perland server can't make a server on your instance's version yet.");
+      }
       const modrinth = !vanilla && instance.source.kind === 'modrinth' ? instance.source.versionId : null;
       if (!vanilla && modrinth === null && state.options.friends === 'missing') {
         fail('pack', 'free_server_mods_not_on_modrinth', 'Free servers only run mods from Modrinth');

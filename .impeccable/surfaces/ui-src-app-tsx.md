@@ -63,6 +63,10 @@ related_targets: ["ui/src"]
   - *Share's rows, without toggles.* What the server gets (Mods with the memory line, Settings) as the same file rows; a server takes what it can and nothing is chosen.
   - *A refusal is seen first.* Mods not on Modrinth, or mods heavier than a free server, are one coral line right under the intro, and Create is the flat disabled key: here it is a fault, unlike Share's embedded mods.
   - *Same ending as Create a server for friends.* The creating and ready steps are the shared ones, so Play now stays that step's one amber.
+- **Free server settings, decided 2026-10-21:**
+  - *Options is a fact until opened.* A seam row under the name that reads what the server gets ("Survival, Easy, up to 10 players"); untouched sends nothing. No lamp, no badge, nothing lit: Create stays the dialog's one amber.
+  - *Existing parts only.* The New instance version select, the kind's segments, the Settings switch rows and the standard fields; a locked choice is a disabled select with a one-line reason, not a hidden one.
+  - *Every instance, one item.* Vanilla says its version in a sentence (old alphas and betas get one coral line and no Create); a Modrinth pack says it runs as published; other modded instances keep the mods check.
 - **Back to Home (#79), decided 2026-10-21:**
   - *Every screen frame has a way back.* Settings, Accounts, Servers, Join server and Browse from the rail get the ghost back key that Mods, Instance settings and New instance already had, in the same place before the title. Nothing new is lit.
   - *Alt+Left, not Escape.* Alt+Left is the browser's and other launchers' back. Escape already closes dialogs and menus and cancels a rail drag, so one press too many would throw the player off the screen. Alt+Left does nothing in a text field (the caret's) or under an open dialog.

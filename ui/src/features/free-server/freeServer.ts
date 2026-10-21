@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next';
 import { isLauncherError } from '../../ipc/errors';
-import type { CreateAllowance, FreeLimits } from '../../ipc/schema';
+import type { CreateAllowance, FreeLimits, Instance, McVersion } from '../../ipc/schema';
 
 /** The Engine's rule for a free server's name. */
 const NAME_RULE = /^[A-Za-z0-9_-]{1,32}$/;
@@ -89,4 +89,18 @@ export function maybeCreated(error: unknown): boolean {
   if (error.code !== 'too_many_free_servers') return false;
   const retry = Number(error.params.retryAfter);
   return Number.isFinite(retry) && retry <= 5;
+}
+
+/** How an instance becomes a free server, as the app's friends_create decides it: no loader is vanilla on the instance's
+ *  version, a Modrinth modpack is that pack by its version id, any other modded instance uploads its server pack. */
+export type FriendsPath = 'vanilla' | 'modrinth' | 'pack';
+export const friendsPath = (instance: Instance): FriendsPath =>
+  instance.game.loader === null ? 'vanilla' : instance.source.kind === 'modrinth' ? 'modrinth' : 'pack';
+
+/** Whether a free server can't run Minecraft `id`: an old alpha or beta, as the version list marks them (`old_*`), or, before
+ *  the list is read, by the shape of those ids (`b1.7.3`, `a1.2.6`, `c0.30`, `rd-…`, `inf-…`). */
+export function isOldVersion(id: string, versions: McVersion[] | undefined): boolean {
+  const known = versions?.find((v) => v.id === id);
+  if (known) return known.kind.startsWith('old_');
+  return /^(?:[abc]\d|rd-|inf-)/.test(id);
 }

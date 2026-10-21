@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isLauncherError } from '../../ipc/errors';
 import type { ManageSettings as Saved, ManageSettingsSave } from '../../ipc/schema';
@@ -8,7 +8,7 @@ import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { ExternalLink, Lock } from '../../ui/Icon';
 import { Select } from '../../ui/Select';
-import { Toggle } from '../../ui/Toggle';
+import { SwitchRow } from '../../ui/SwitchRow';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { Motd } from '../servers/MotdText';
 
@@ -53,24 +53,6 @@ function LockedNote({ tenantId }: { tenantId: string }) {
       <Lock className="h-4 w-4 flex-none" aria-hidden />
       <p className="flex-1">{t('manage.settings.locked')}</p>
       <Button onClick={() => once((done) => void openManagePanel(tenantId, null).finally(done))}>{t('manage.settings.upgrade')}</Button>
-    </div>
-  );
-}
-
-/** A switch with its name and a line on what it does, the launcher's Settings row. */
-function SwitchRow({ label, hint, checked, disabled, onChange, after }: { label: string; hint: string; checked: boolean; disabled: boolean; onChange: (next: boolean) => void; after?: ReactNode }) {
-  return (
-    <div className="grid gap-2">
-      <div className="flex items-start justify-between gap-6">
-        <div>
-          <p className="font-semibold" aria-hidden>
-            {label}
-          </p>
-          <p className="text-sm text-ink-dim">{hint}</p>
-        </div>
-        <Toggle checked={checked} label={label} disabled={disabled} onChange={onChange} />
-      </div>
-      {after}
     </div>
   );
 }

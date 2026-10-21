@@ -467,7 +467,11 @@
     "notOnModrinth_other": "Los servidores gratis solo usan mods de Modrinth. {{count}} de tus mods no están ahí: {{names}}.",
     "tooHeavy": "Tus mods necesitan {{need}} GB de memoria. Los servidores gratis tienen {{have}} GB.",
     "tooBig": "Tus ajustes son demasiado grandes para un servidor gratis.",
-    "running": "Primero cierra el juego."
+    "running": "Primero cierra el juego.",
+    "vanillaIntro": "Tu servidor gratis usa Minecraft {{version}}, igual que esta instancia. Tus amigos entran con esa versión.",
+    "modrinthIntro": "Usa {{pack}} tal como está publicado en Modrinth. Los mods que agregaste tú se quedan en tu computadora.",
+    "version": "Minecraft {{version}}",
+    "oldVersion": "Los servidores gratis no pueden usar Minecraft {{version}}."
   },
   "share": {
     "menu": "Compartir…",
@@ -707,7 +711,26 @@
       "nameHint": "Tus amigos lo ven en la página de invitación.",
       "nameInvalid": "Usa solo letras, números, - y _, hasta 32.",
       "refused": "No se pudo crear el servidor con estas opciones. Prueba con otro nombre u otro modpack.",
+      "versionRefused": "Los servidores gratis no pueden usar esta versión. Elige otra.",
+      "packRefused": "Este modpack no puede volverse un servidor gratis. Vuelve a instalarlo desde Explorar.",
       "create": "Crear"
+    },
+    "options": {
+      "title": "Opciones",
+      "summary_one": "{{mode}}, {{difficulty}}, hasta {{count}} jugador",
+      "summary_other": "{{mode}}, {{difficulty}}, hasta {{count}} jugadores",
+      "hardcore": "Extremo",
+      "hardcoreHint": "El modo Extremo siempre es Difícil.",
+      "maxPlayersHint": "Del 1 al {{max}}.",
+      "maxPlayersInvalid": "Elige un número del 1 al {{max}}.",
+      "whitelistHint": "Solo pueden entrar los jugadores que agregues en Administrar → Jugadores.",
+      "seed": "Semilla del mundo",
+      "seedHint": "Déjala vacía para un mundo al azar.",
+      "seedInvalid": "Usa una semilla más corta.",
+      "motd": "Mensaje en la lista de servidores",
+      "motdHint": "Lo que ven tus amigos bajo el nombre en su lista de servidores.",
+      "motdInvalid": "Usa un mensaje más corto, sin §.",
+      "refused": "Los servidores gratis no pueden usar esta opción. Elige otra."
     },
     "creating": {
       "title": "Creando tu servidor…",

@@ -80,6 +80,8 @@ export const modrinthInstances = (): Instance[] => [modpack('cozy-pack', 'Cozy P
 
 interface MockFree {
   scenario: FreeScenario;
+  /** What the Engine says about free servers; an older Engine has no `settings`. */
+  limits: FreeLimits;
   /** The player's free server, as the Engine holds it. */
   server: FreeServerCard | null;
 }
@@ -166,7 +168,8 @@ function cardOf(view: View): FreeServerCard {
   };
 }
 
-export function seedFree(scenario: FreeScenario = 'none'): MockFree {
+/** `older`: an Engine from before free-server settings (no `limits.settings`, so no version picker or Options). */
+export function seedFree(scenario: FreeScenario = 'none', engine: 'current' | 'older' = 'current'): MockFree {
   const base: View = { name: 'Weekend SMP', kind: 'vanilla', freeStatus: 'sleeping', invited: true, deletion: { deletesAt: inDays(30), warned: false }, usedBytes: GIB };
   const views: Partial<Record<FreeScenario, View>> = {
     has: base,
@@ -175,7 +178,8 @@ export function seedFree(scenario: FreeScenario = 'none'): MockFree {
     creating: { ...base, freeStatus: 'creating', invited: false, deletion: null, usedBytes: 0 },
   };
   const view = views[scenario];
-  return { scenario, server: view ? cardOf(view) : null };
+  const limits = engine === 'older' ? { ...MOCK_FREE_LIMITS, settings: null } : MOCK_FREE_LIMITS;
+  return { scenario, limits, server: view ? cardOf(view) : null };
 }
 
 const BLOCKED: Partial<Record<FreeScenario, CreateAllowance>> = {
@@ -243,7 +247,7 @@ export async function handleFree(
   if (cmd === 'free_server') {
     if (!on || !account) return null;
     const server = free.server && { ...answer(free.server), instance: joinedInstance(free.server, listing) };
-    return { limits: MOCK_FREE_LIMITS, create: allowance(free), server } satisfies FreeServerPage;
+    return { limits: free.limits, create: allowance(free), server } satisfies FreeServerPage;
   }
   if (!account) signedOut();
   if (!on) fail('network', 'player_accounts_closed', "Free servers aren't open yet.");
