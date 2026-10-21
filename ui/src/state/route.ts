@@ -14,6 +14,8 @@ export type Route =
   // `linkFor` is a vanilla or imported instance becoming a server instance.
   | { name: 'joinServer'; invite: string; relinkFor?: string; linkFor?: string }
   | { name: 'servers' }
+  // A server the player runs, by its team and its name there.
+  | { name: 'manage'; tenantId: string; stack: string }
   | { name: 'accounts' }
   | { name: 'settings' };
 

@@ -3003,3 +3003,146 @@
     color: var(--color-lime);
   }
 }
+
+/* Manage (running a server from the launcher): the overview panel on top, then Players, Console and Settings as the pressed
+   segment tabs. Start is the screen's one lit button; Stop is coral like Play while a game runs; everything else is raised,
+   ghost or flat. Lists are rows split by seams, never cards. */
+@layer components {
+  .manage-head {
+    display: grid;
+    gap: 1.25rem;
+    padding: 1.5rem;
+  }
+  .manage-head-top {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 1.25rem;
+  }
+  /* The server's art in a recessed window, the server card's icon well. */
+  .manage-icon {
+    display: grid;
+    place-items: center;
+    padding: 0.375rem;
+    background: var(--color-ground);
+    border-radius: 6px;
+    corner-shape: notch;
+    box-shadow: inset 0 0 0 1px var(--color-line);
+  }
+  .manage-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.75rem;
+  }
+  /* Why the last run failed: a 600 sentence led by the coral warning diamond, the owner card's warning line. */
+  .manage-cause {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    max-width: 60ch;
+    font-weight: 600;
+    text-wrap: pretty;
+  }
+  .manage-cause > svg {
+    margin-top: 0.1875rem;
+  }
+  .manage-head-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1rem;
+    padding-top: 1.25rem;
+    box-shadow: 0 -1px 0 var(--color-line);
+  }
+  .manage-list {
+    display: grid;
+    gap: 0.75rem;
+  }
+  .manage-rows {
+    display: grid;
+  }
+  .manage-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 3rem;
+    padding: 0.25rem 0;
+  }
+  .manage-row + .manage-row {
+    border-top: 1px solid var(--color-line);
+  }
+  .manage-row-name {
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .manage-add {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem 0.75rem;
+  }
+  /* A link to another tab: Readout Blue, underlined like the description links, ink on hover. */
+  .manage-link {
+    justify-self: start;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-align: left;
+    color: var(--color-blue-ink);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .manage-link:hover {
+    color: var(--color-ink);
+    text-decoration-thickness: 2px;
+  }
+  /* The live log: mono on a ground well, like the game log in the activity drawer. */
+  .manage-log {
+    height: 20rem;
+    overflow: auto;
+    padding: 0.5rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 20px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background: var(--color-ground);
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow: inset 0 0 0 1px var(--color-line);
+  }
+  .manage-reply {
+    max-height: 12rem;
+    overflow: auto;
+    margin: 0;
+    padding: 0.75rem 1rem;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 20px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .manage-motd {
+    padding: 0.5rem 0.75rem;
+  }
+  .manage-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5rem;
+  }
+  /* A field the plan locks: advice, so Readout Blue led by the pixel lock (the invite-only line), with a raised Upgrade. */
+  .manage-locked {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-blue-ink);
+  }
+}
