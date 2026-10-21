@@ -1,6 +1,7 @@
 import { act, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { exitOf } from '../../ipc/mock';
+import { mockCrash } from '../../ipc/mockCrash';
 import { openActivity } from '../../state/activity';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
@@ -34,12 +35,12 @@ describe('ActivityDrawer', () => {
         type: 'run_state',
         instance: 'asalith-fields',
         state: 'idle',
-        exit: exitOf({ code: 1, crash: 'out_of_memory' }),
+        exit: exitOf({ code: 1, cause: mockCrash('memory').cause, fixes: mockCrash('memory').fixes }),
         update: null,
       });
       openActivity('asalith-fields');
     });
-    expect(await screen.findByText('Minecraft ran out of memory')).toBeInTheDocument();
+    expect(await screen.findByText('Minecraft ran out of memory.')).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Raise to 6 GB' }));
     const update = sent(calls, 'instance_update')[0] as { instance: { java: { memoryMb: number } } };
     expect(update.instance.java.memoryMb).toBe(6144);

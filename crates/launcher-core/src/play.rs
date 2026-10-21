@@ -22,9 +22,12 @@ pub struct Prepared {
 }
 
 /// Resolve the version, install its files, and find Java (the instance's custom one, or Mojang's).
+/// `repair` checks every file already there by its hash (not only its size) and runs a loader's
+/// processors again.
 pub async fn prepare(
     installer: &Installer,
     instance: &Instance,
+    repair: bool,
     sink: &EventSink,
 ) -> Result<Prepared> {
     let loader = instance
@@ -33,6 +36,14 @@ pub async fn prepare(
         .as_ref()
         .map(|l| (l.kind, l.version.as_str()));
     let resolved = installer.resolve(&instance.game.minecraft, loader).await?;
+    let repairing;
+    let installer = if repair {
+        crate::install::forge::forget_processors(&installer.dirs, &resolved).await?;
+        repairing = installer.repairing();
+        &repairing
+    } else {
+        installer
+    };
     installer.install(&resolved, sink).await?;
     let java = match &instance.java.path {
         Some(path) => custom_java(path)?,

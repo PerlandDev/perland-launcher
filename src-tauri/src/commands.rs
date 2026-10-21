@@ -181,6 +181,11 @@ pub async fn play(core: CoreState<'_>, id: String, join: Option<bool>) -> Res<()
 }
 
 #[tauri::command]
+pub async fn play_repair(core: CoreState<'_>, id: String) -> Res<()> {
+    logged("play_repair", core.inner().play_repair(&id).await)
+}
+
+#[tauri::command]
 pub fn stop(core: CoreState<'_>, id: String) -> Res<()> {
     logged("stop", core.stop(&id))
 }

@@ -1,0 +1,20 @@
+# source: latest_log
+# param mod=Lithium
+# param missing=fabric-api
+[12:00:03] [main/ERROR]: Incompatible mods found!
+net.fabricmc.loader.impl.FormattedException: Some of your mods are incompatible with the game or each other!
+A potential solution has been determined, this may resolve your problem:
+	 - Install fabric-api, any version.
+More details:
+	 - Mod 'Lithium' (lithium) 0.11.2 requires any version of fabric-api, which is missing!
+---
+# source: latest_log
+# param mod=Iris
+# param missing=sodium
+	 - Mod 'Iris' (iris) 1.7.0+mc1.20.1 requires version 0.5.8 or later of mod 'Sodium' (sodium), which is missing!
+---
+# source: latest_log
+# param mod=create
+# param missing=flywheel
+[12:00:03] [main/ERROR] [net.minecraftforge.fml.loading.ModSorter/LOADING]: Missing or unsupported mandatory dependencies:
+	Mod ID: 'flywheel', Requested by: 'create', Expected range: '[0.6.10,0.6.11)', Actual version: '[MISSING]'

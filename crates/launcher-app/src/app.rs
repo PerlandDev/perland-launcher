@@ -723,7 +723,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Unknown (not an error) when the version JSON can't be had, e.g. offline before it was cached.
-    async fn java_required(&self, minecraft: &str) -> Option<u32> {
+    pub(crate) async fn java_required(&self, minecraft: &str) -> Option<u32> {
         java::required_for(&self.meta, minecraft).await.ok()
     }
 }

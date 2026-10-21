@@ -1,0 +1,29 @@
+# source: hs_err
+# param vendor=amd
+#
+# A fatal error has been detected by the Java Runtime Environment:
+#
+#  EXCEPTION_ACCESS_VIOLATION (0xc0000005) at pc=0x00007ffb5c1e2d4a, pid=11820, tid=9312
+#
+# JRE version: OpenJDK Runtime Environment Microsoft-8035246 (17.0.8+7) (build 17.0.8+7-LTS)
+# Problematic frame:
+# C  [atio6axx.dll+0x1a2d4a]
+---
+# source: hs_err
+# param vendor=nvidia
+#  EXCEPTION_ACCESS_VIOLATION (0xc0000005) at pc=0x00007ff9e1b3c2a0, pid=4412, tid=6120
+# Problematic frame:
+# C  [nvoglv64.dll+0xb3c2a0]
+---
+# source: hs_err
+# param vendor=intel
+#  EXCEPTION_ACCESS_VIOLATION (0xc0000005) at pc=0x00007ffc2a51f3b1, pid=7720, tid=1044
+# Problematic frame:
+# C  [ig9icd64.dll+0x51f3b1]
+---
+# source: tail
+[12:00:04] [Render thread/ERROR]: GLFW error 65542: WGL: The driver does not appear to support OpenGL
+---
+# source: tail
+org.lwjgl.LWJGLException: Pixel format not accelerated
+	at org.lwjgl.opengl.WindowsPeerInfo.nChoosePixelFormat(Native Method)

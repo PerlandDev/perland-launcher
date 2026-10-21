@@ -8,6 +8,11 @@ GPL-3.0-only) keep an attribution header naming the original file.
 
 (no ported files yet)
 
+Written after another PerlandDev project (no code copied):
+  crates/launcher-core/src/launch/crash/rules.rs reads the same loader messages, for game clients,
+  that PerlandEngine reads for servers in internal/minecraft/diagnosis/catalogue.go
+  (https://github.com/PerlandDev/PerlandEngine). Its rule table and fixtures are the launcher's own.
+
 "Minecraft" is a trademark of Mojang Synergies AB. This project is not affiliated with Mojang or Microsoft.
 
 Bundled fonts (SIL Open Font License 1.1):

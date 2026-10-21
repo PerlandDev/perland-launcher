@@ -80,6 +80,7 @@ export const commands = {
   accountSetActive: (uuid: string) => invoke<AccountsFile>('account_set_active', { uuid }),
   accountRemove: (uuid: string) => invoke<AccountsFile>('account_remove', { uuid }),
   play: (id: string, join = false) => invoke<null>('play', { id, join }),
+  playRepair: (id: string) => invoke<null>('play_repair', { id }),
   stop: (id: string) => invoke<null>('stop', { id }),
   runStates: () => invoke<RunSnapshot[]>('run_states'),
   logTail: (id: string) => invoke<string[]>('log_tail', { id }),

@@ -1,0 +1,5 @@
+# source: latest_log
+[12:00:02] [main/WARN] [mixin/]: Reference map 'create.refmap.json' for create.mixins.json could not be read. If this is a development environment you can ignore this message
+---
+# source: tail
+[12:00:05] [main/FATAL] [mixin/]: Mixin apply failed unknown.mixins.json:SomeMixin -> net.minecraft.server.level.ServerLevel: org.spongepowered.asm.mixin.transformer.throwables.InvalidMixinException

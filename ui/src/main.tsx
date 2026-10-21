@@ -25,12 +25,13 @@ async function bootstrap() {
     const { installMock, mockUpdateState } = await import('./ipc/mock');
     const { perlandScenario } = await import('./ipc/mockPerland');
     const { freeScenario } = await import('./ipc/mockFree');
+    const { crashScenario } = await import('./ipc/mockCrash');
     const params = new URLSearchParams(window.location.search);
     const themeParam = theme.safeParse(params.get('theme'));
     const fontParam = uiFont.safeParse(params.get('font'));
     installMock({
       firstRun: params.has('firstRun'),
-      crash: params.has('crash'),
+      crash: crashScenario(params.get('crash')),
       release: params.has('release'),
       beta: params.has('beta'),
       update: mockUpdateState(params.get('update')),

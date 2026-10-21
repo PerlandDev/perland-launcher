@@ -1,0 +1,8 @@
+# source: latest_log
+# param mod=Sodium
+# param other=OptiFabric
+[12:00:03] [main/ERROR]: Incompatible mods found!
+A potential solution has been determined, this may resolve your problem:
+	 - Remove mod 'OptiFabric' (optifabric) 1.13.24.
+More details:
+	 - Mod 'Sodium' (sodium) 0.5.8+mc1.20.1 is incompatible with any version of mod 'OptiFabric' (optifabric), but only the wrong version is present: 1.13.24!

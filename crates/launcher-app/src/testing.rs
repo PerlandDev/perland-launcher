@@ -458,6 +458,8 @@ pub(crate) struct FakeRunner {
     pub view_reads: AtomicUsize,
     /// The Engine each `invite_view` call was seeded with.
     pub engine_hints: Mutex<Vec<Option<String>>>,
+    /// The `repair` flag of every prepare, in order.
+    pub repairs: Mutex<Vec<bool>>,
     /// What `invite_icon` answers.
     pub icon: Mutex<Option<Vec<u8>>>,
     /// What `public_page` answers (none: `server_list_closed`).
@@ -522,6 +524,7 @@ impl FakeRunner {
             views: Mutex::new(HashMap::new()),
             view_reads: AtomicUsize::new(0),
             engine_hints: Mutex::new(Vec::new()),
+            repairs: Mutex::new(Vec::new()),
             icon: Mutex::new(None),
             public_page: Mutex::new(None),
             public_queries: Mutex::new(Vec::new()),
@@ -581,8 +584,9 @@ impl FakeRunner {
 impl Runner for FakeRunner {
     type Prepared = ();
 
-    fn prepare(&self, instance: Instance, sink: EventSink) -> BoxFuture<Result<()>> {
+    fn prepare(&self, instance: Instance, repair: bool, sink: EventSink) -> BoxFuture<Result<()>> {
         self.prepared.lock().unwrap().push(instance.game.clone());
+        self.repairs.lock().unwrap().push(repair);
         let gate = self.gate.clone();
         let error = self.prepare_error.lock().unwrap().take();
         let steps = *self.progress_steps.lock().unwrap();

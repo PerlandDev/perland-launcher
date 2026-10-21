@@ -52,6 +52,10 @@ error_codes! {
     JvmArgNotOption, JvmArgNotAllowed, JvmArgsMemory, JvmArgsTooLong,
     // launch
     NoGameArguments, GameFilesMissing,
+    // why a game crashed (the crash card's cause)
+    CrashOutOfMemory, CrashGraphicsDriver, CrashJavaTooOld, CrashJavaTooNew,
+    CrashModMissingDependency, CrashModsClash, CrashModWrongVersion, CrashModFailed,
+    CrashModFileDamaged, CrashGameFilesDamaged,
     // loaders and metadata
     VersionInvalid, LoaderUnsupported, LoaderVersionNotFound, MetaCacheMissing, MetaNotFound,
     MetaChecksum, MetaUnexpected, LoaderInstallerInvalid, LoaderTooOld, LoaderProcessorFailed,

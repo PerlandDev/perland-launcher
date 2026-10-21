@@ -1,0 +1,12 @@
+# source: latest_log
+# param mod=sodium
+[12:00:05] [Render thread/ERROR]: Mixin apply for mod sodium failed sodium.mixins.json:features.render.world.WorldRendererMixin from mod sodium -> net.minecraft.class_761: org.spongepowered.asm.mixin.injection.throwables.InvalidInjectionException Critical injection failure
+---
+# source: tail
+# owner create.mixins.json=create
+# param mod=create
+[12:00:05] [main/FATAL] [mixin/]: Mixin apply failed create.mixins.json:accessor.ServerLevelAccessor -> net.minecraft.server.level.ServerLevel: org.spongepowered.asm.mixin.transformer.throwables.InvalidMixinException @Shadow field entityTickList was not located in the target class net.minecraft.server.level.ServerLevel
+---
+# source: crash_report
+# param mod=lithium
+org.spongepowered.asm.mixin.injection.throwables.InjectionError: Critical injection failure: @Inject annotation on onTick could not find any targets matching 'tick' in net.minecraft.class_1937. Using refmap lithium-refmap.json [PREINJECT Applicator Phase -> lithium.mixins.json:world.WorldMixin from mod lithium -> Prepare Injections -> handler$zza000$onTick(Lorg/spongepowered/asm/mixin/injection/callback/CallbackInfo;)V]

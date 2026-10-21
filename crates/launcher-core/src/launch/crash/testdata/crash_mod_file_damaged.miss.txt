@@ -1,0 +1,2 @@
+# source: tail
+Caused by: java.util.zip.ZipException: invalid LOC header (bad signature) in ~/PerlandLauncher/libraries/org/ow2/asm/asm/9.6/asm-9.6.jar
