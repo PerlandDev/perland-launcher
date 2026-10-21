@@ -373,6 +373,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Forget the session, in memory and in the store. The caller holds the state.
     async fn forget_session(&self, state: &mut PerlandState) {
         state.session = None;
+        self.jwts.clear();
         state.checked = None;
         state.new_player = false;
         let store = self.perland_store.clone();
@@ -468,6 +469,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
         let shown = account(&session.profile, answer.new_player);
         state.session = Some(session);
+        // JWTs minted from the session this one replaced are not this player's to use.
+        self.jwts.clear();
         state.checked = Some(Instant::now());
         state.new_player = answer.new_player;
         state.email_engine = None;

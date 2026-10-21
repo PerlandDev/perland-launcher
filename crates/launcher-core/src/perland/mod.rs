@@ -22,7 +22,7 @@ pub use log_stream::{
     follow_logs, follow_logs_after, strip_formatting, LogLine, SseEvent, SseParser,
 };
 pub use loopback::{Callback, Language, Loopback};
-pub use panel::{manage_url, panel_url};
+pub use panel::{handoff_url, manage_url, panel_page, panel_url, server_path, upgrade_path};
 pub use pkce::{authorize_url, Pkce};
 pub use session::{
     KeyringStore, MemoryStore, Profile, SecretError, SecretStore, Session, SessionStore,

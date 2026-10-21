@@ -1,5 +1,5 @@
 //! Shapes the commands take and return that aren't core types.
-use std::{fmt, path::PathBuf};
+use std::{collections::BTreeMap, fmt, path::PathBuf};
 
 use launcher_core::{
     accounts::BuildKind,
@@ -810,6 +810,74 @@ pub struct EmailCodeSent {
 pub enum PerlandSignInPhase {
     Waiting,
     Exchanging,
+}
+
+/// A server a Manage call is about: its team and its name there.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageRef {
+    pub tenant_id: String,
+    pub stack: String,
+}
+
+/// A server the player owns or helps run, in Your servers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManagedServer {
+    pub tenant_id: String,
+    /// The team's display name.
+    pub team_name: String,
+    pub stack: String,
+    /// What the card shows: the server's name (today, `stack`).
+    pub name: String,
+    /// `running`, `asleep`, `starting`, `stopping`, `stopped` or `unknown`.
+    pub state: String,
+    /// What a player types to join, when the server has one.
+    pub address: Option<String>,
+    /// The player's own free server (the team is on the free plan).
+    pub free: bool,
+}
+
+/// One server in Manage: its state and who is on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageDetail {
+    pub tenant_id: String,
+    pub stack: String,
+    /// As `ManagedServer.state`.
+    pub state: String,
+    pub address: Option<String>,
+    /// Players on now and the most allowed; only while running, and when the server said.
+    pub online: Option<u32>,
+    pub max: Option<u32>,
+    pub players: Vec<String>,
+    /// Saved changes wait for a restart.
+    pub pending_restart: bool,
+    pub version: String,
+    /// When an idle server is stopped, if it is going to be.
+    pub stops_at: Option<String>,
+}
+
+/// Why a server's last run went wrong. The UI words it by `code` with `params`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageCause {
+    pub code: String,
+    /// The UI has words for this code.
+    pub known: bool,
+    /// The plugin or mod it is about.
+    pub subject: Option<String>,
+    pub params: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageDiagnosis {
+    /// The last run failed.
+    pub failed: bool,
+    /// The server ran out of memory.
+    pub oom_killed: bool,
+    pub cause: Option<ManageCause>,
 }
 
 #[cfg(test)]

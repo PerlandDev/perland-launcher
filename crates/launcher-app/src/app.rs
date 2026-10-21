@@ -137,6 +137,9 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) perland_store: Arc<SessionStore>,
     /// The Discord sign-in waiting for the browser, if any.
     pub(crate) perland_sign_in: Mutex<SignInSlot>,
+    /// Session JWTs for Manage (see `manage.rs`), cleared whenever the session is forgotten or
+    /// replaced.
+    pub(crate) jwts: launcher_core::perland::JwtCache,
     /// Makes the next import fail while it moves the copied files into the new instance.
     #[cfg(test)]
     pub(crate) import_fail_move: AtomicBool,
@@ -211,6 +214,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             perland: tokio::sync::Mutex::new(PerlandState::default()),
             perland_store: Arc::new(SessionStore::new(root.join(ACCOUNT_MARKER), secret)),
             perland_sign_in: Mutex::new(SignInSlot::default()),
+            jwts: launcher_core::perland::JwtCache::default(),
             #[cfg(test)]
             import_fail_move: AtomicBool::new(false),
             #[cfg(test)]

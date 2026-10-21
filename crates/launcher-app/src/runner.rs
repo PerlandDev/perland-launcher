@@ -18,7 +18,10 @@ use launcher_core::{
     Result,
 };
 
-use crate::perland::{CorePlayer, PlayerApi};
+use crate::{
+    manage::{CoreStack, StackApi},
+    perland::{CorePlayer, PlayerApi},
+};
 
 /// How often a woken server is pinged while the run waits for it.
 pub const WAKE_EVERY: Duration = Duration::from_secs(2);
@@ -124,6 +127,8 @@ pub trait Runner: Send + Sync + 'static {
     fn server_wait(&self, address: ServerAddress, cancel: Cancel) -> BoxFuture<WaitEnd>;
     /// The Engine's player routes (Sign in with Perland, Your servers).
     fn player(&self) -> Arc<dyn PlayerApi>;
+    /// The Engine's auth and server routes (Manage your server).
+    fn stack(&self) -> Arc<dyn StackApi>;
 }
 
 pub struct CoreRunner {
@@ -134,6 +139,7 @@ pub struct CoreRunner {
     public: PublicListClient,
     news: NewsClient,
     player: Arc<CorePlayer>,
+    stack: Arc<CoreStack>,
 }
 
 impl CoreRunner {
@@ -152,6 +158,10 @@ impl CoreRunner {
             .expect("the default site is a valid Perland site");
         let public = PublicListClient::new(syncer.sources.invites.clone(), site.clone());
         let player = Self::player_for(&syncer, &launcher_version, site);
+        // Never follows a redirect: one would forward the device token or a JWT.
+        let stack = Arc::new(CoreStack::new(
+            launcher_core::http::client_without_redirects(&launcher_version),
+        ));
         Self {
             installer,
             syncer: Arc::new(syncer),
@@ -160,6 +170,7 @@ impl CoreRunner {
             public,
             news,
             player,
+            stack,
         }
     }
     /// The player routes go through a client that never follows a redirect (one would replay a
@@ -334,6 +345,10 @@ impl Runner for CoreRunner {
 
     fn player(&self) -> Arc<dyn PlayerApi> {
         self.player.clone()
+    }
+
+    fn stack(&self) -> Arc<dyn StackApi> {
+        self.stack.clone()
     }
 }
 

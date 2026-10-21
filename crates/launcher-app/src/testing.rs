@@ -35,9 +35,11 @@ use launcher_core::{
     meta::loaders::LoaderKind,
     news::NewsPage,
     perland::{
-        CreateAllowance, CreateFreeServer, DiscordAccount, Disk, EmailStarted, FreeLimits,
-        FreeServer, FreeServerState, LinkCode, MemoryLimits, Player, PlayerConfig, PlayerStats,
-        SignInMethod, TokenAnswer, YourServer,
+        Apply, BanList, ConsoleReply, CreateAllowance, CreateFreeServer, Diagnosis, DiscordAccount,
+        Disk, EmailStarted, FreeLimits, FreeServer, FreeServerState, Handoff, Lifecycle, LinkCode,
+        ListKind, Membership, MemoryLimits, NameList, NameResult, Online, Player, PlayerConfig,
+        PlayerStats, SessionJwt, SettingsDoc, SettingsSaved, SignInMethod, StackDetail, StackItem,
+        TokenAnswer, YourServer,
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
@@ -59,6 +61,7 @@ use crate::{
     browser::Browser,
     dto::{NewInstance, PackUpdate},
     events::{AppEvent, ExitInfo, Host, RunStateKind},
+    manage::StackApi,
     perland::PlayerApi,
     runner::{BoxFuture, Kill, Runner, RunningGame},
 };
@@ -497,6 +500,7 @@ pub(crate) struct FakeRunner {
     /// Signalled once a held `server_wait` is parked.
     pub waiting: Arc<Notify>,
     pub player: Arc<FakePlayer>,
+    pub stack: Arc<FakeStack>,
 }
 
 impl FakeRunner {
@@ -544,6 +548,7 @@ impl FakeRunner {
             wait_gate: Arc::new(Semaphore::new(0)),
             waiting: Arc::new(Notify::new()),
             player: FakePlayer::new(),
+            stack: FakeStack::new(),
         })
     }
 
@@ -879,6 +884,10 @@ impl Runner for FakeRunner {
     fn player(&self) -> Arc<dyn PlayerApi> {
         self.player.clone()
     }
+
+    fn stack(&self) -> Arc<dyn StackApi> {
+        self.stack.clone()
+    }
 }
 
 /// A fake player token: `plt_` and 43 × `c`.
@@ -1138,6 +1147,354 @@ impl PlayerApi for FakePlayer {
     }
     fn delete_free_server(&self, engine: Url, token: String) -> BoxFuture<Result<bool>> {
         self.record("delete_free_server", engine, &[&token], &self.deleted)
+    }
+}
+
+/// One call `FakeStack` saw: the route, the Engine, the JWT it carried (with the team that JWT
+/// was minted for) and its other arguments.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct StackCall {
+    pub route: &'static str,
+    pub engine: Url,
+    pub jwt: Option<String>,
+    /// The team the JWT was scoped to; `None` for the base JWT or no JWT.
+    pub tenant: Option<String>,
+    pub args: Vec<String>,
+}
+
+/// A JWT that `jwt_exp` reads as expiring in 2100, numbered so each one minted differs.
+pub(crate) fn fake_jwt(n: usize) -> String {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    let payload = URL_SAFE_NO_PAD.encode(format!("{{\"exp\":4102444800,\"n\":{n}}}"));
+    format!("h.{payload}.s")
+}
+
+/// The Engine's auth and server routes, answered from what the test scripted. `player_session`
+/// and `select_tenant` mint a new JWT per call; every call is recorded.
+pub(crate) struct FakeStack {
+    /// Default: a fresh JWT. A scripted error is answered instead.
+    pub player_session: Mutex<Result<()>>,
+    /// Default: no teams.
+    pub memberships: Mutex<Result<Vec<Membership>>>,
+    /// Default: no handoff route (`None`).
+    pub handoff: Mutex<Result<Option<Handoff>>>,
+    /// What `get_all` answers per team (missing: no servers).
+    pub get_all: Mutex<HashMap<String, Result<Vec<StackItem>>>>,
+    pub details: Mutex<Result<StackDetail>>,
+    pub lifecycle: Mutex<Result<()>>,
+    pub diagnosis: Mutex<Result<Diagnosis>>,
+    pub online: Mutex<Result<Online>>,
+    pub kick: Mutex<Result<Vec<NameResult>>>,
+    pub whitelist: Mutex<Result<NameList>>,
+    pub ops: Mutex<Result<NameList>>,
+    pub bans: Mutex<Result<BanList>>,
+    pub change: Mutex<Result<Vec<NameResult>>>,
+    pub settings: Mutex<Result<SettingsDoc>>,
+    pub put_settings: Mutex<Result<SettingsSaved>>,
+    pub console: Mutex<Result<ConsoleReply>>,
+    /// Errors the next calls to a route answer, in order, before its scripted answer.
+    fail_next: Mutex<HashMap<&'static str, VecDeque<LauncherError>>>,
+    /// Every JWT minted by `select_tenant`, with its team.
+    minted: Mutex<HashMap<String, String>>,
+    count: AtomicUsize,
+    pub calls: Mutex<Vec<StackCall>>,
+}
+
+impl FakeStack {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            player_session: Mutex::new(Ok(())),
+            memberships: Mutex::new(Ok(vec![])),
+            handoff: Mutex::new(Ok(None)),
+            get_all: Mutex::new(HashMap::new()),
+            details: Mutex::new(Ok(StackDetail::default())),
+            lifecycle: Mutex::new(Ok(())),
+            diagnosis: Mutex::new(Ok(Diagnosis::default())),
+            online: Mutex::new(Ok(Online::default())),
+            kick: Mutex::new(Ok(vec![])),
+            whitelist: Mutex::new(Ok(NameList::default())),
+            ops: Mutex::new(Ok(NameList::default())),
+            bans: Mutex::new(Ok(BanList::default())),
+            change: Mutex::new(Ok(vec![])),
+            settings: Mutex::new(Ok(SettingsDoc::default())),
+            put_settings: Mutex::new(Ok(SettingsSaved::default())),
+            console: Mutex::new(Ok(ConsoleReply::default())),
+            fail_next: Mutex::new(HashMap::new()),
+            minted: Mutex::new(HashMap::new()),
+            count: AtomicUsize::new(0),
+            calls: Mutex::new(Vec::new()),
+        })
+    }
+
+    /// `get_all` with a JWT for `tenant` answers `answer`.
+    pub fn serve_all(&self, tenant: &str, answer: Result<Vec<StackItem>>) {
+        self.get_all
+            .lock()
+            .unwrap()
+            .insert(tenant.to_string(), answer);
+    }
+
+    /// The next call to `route` answers `error` (queued after any already scripted).
+    pub fn fail_next(&self, route: &'static str, error: LauncherError) {
+        self.fail_next
+            .lock()
+            .unwrap()
+            .entry(route)
+            .or_default()
+            .push_back(error);
+    }
+
+    /// The calls made to `route`.
+    pub fn calls_to(&self, route: &str) -> Vec<StackCall> {
+        self.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.route == route)
+            .cloned()
+            .collect()
+    }
+
+    /// The calls made to `route` with a JWT for `tenant`.
+    pub fn calls_for_tenant(&self, route: &str, tenant: &str) -> Vec<StackCall> {
+        self.calls_to(route)
+            .into_iter()
+            .filter(|c| c.tenant.as_deref() == Some(tenant))
+            .collect()
+    }
+
+    fn mint(&self) -> SessionJwt {
+        SessionJwt::new(fake_jwt(self.count.fetch_add(1, Ordering::SeqCst)))
+    }
+
+    /// Records the call and takes a queued failure for it, if any.
+    fn note(
+        &self,
+        route: &'static str,
+        engine: Url,
+        jwt: Option<&SessionJwt>,
+        args: &[&str],
+    ) -> Option<LauncherError> {
+        let tenant = jwt.and_then(|j| self.minted.lock().unwrap().get(j.as_str()).cloned());
+        self.calls.lock().unwrap().push(StackCall {
+            route,
+            engine,
+            jwt: jwt.map(|j| j.as_str().to_string()),
+            tenant,
+            args: args.iter().map(|a| a.to_string()).collect(),
+        });
+        self.fail_next
+            .lock()
+            .unwrap()
+            .get_mut(route)
+            .and_then(VecDeque::pop_front)
+    }
+
+    fn answer<T: Clone + Send + 'static>(
+        &self,
+        route: &'static str,
+        engine: Url,
+        jwt: SessionJwt,
+        args: &[&str],
+        answer: &Mutex<Result<T>>,
+    ) -> BoxFuture<Result<T>> {
+        let answer = match self.note(route, engine, Some(&jwt), args) {
+            Some(e) => Err(e),
+            None => answer.lock().unwrap().clone(),
+        };
+        Box::pin(async move { answer })
+    }
+}
+
+impl StackApi for FakeStack {
+    fn player_session(&self, engine: Url, device: String) -> BoxFuture<Result<SessionJwt>> {
+        let answer = match self.note("player_session", engine, None, &[&device]) {
+            Some(e) => Err(e),
+            None => self
+                .player_session
+                .lock()
+                .unwrap()
+                .clone()
+                .map(|()| self.mint()),
+        };
+        Box::pin(async move { answer })
+    }
+    fn memberships(&self, engine: Url, jwt: SessionJwt) -> BoxFuture<Result<Vec<Membership>>> {
+        self.answer("memberships", engine, jwt, &[], &self.memberships)
+    }
+    fn select_tenant(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        tenant: String,
+    ) -> BoxFuture<Result<SessionJwt>> {
+        let answer = match self.note("select_tenant", engine, Some(&jwt), &[&tenant]) {
+            Some(e) => Err(e),
+            None => {
+                let scoped = self.mint();
+                self.minted
+                    .lock()
+                    .unwrap()
+                    .insert(scoped.as_str().to_string(), tenant);
+                Ok(scoped)
+            }
+        };
+        Box::pin(async move { answer })
+    }
+    fn handoff(
+        &self,
+        engine: Url,
+        device: String,
+        tenant: String,
+    ) -> BoxFuture<Result<Option<Handoff>>> {
+        let answer = match self.note("handoff", engine, None, &[&device, &tenant]) {
+            Some(e) => Err(e),
+            None => self.handoff.lock().unwrap().clone(),
+        };
+        Box::pin(async move { answer })
+    }
+    fn get_all(&self, engine: Url, jwt: SessionJwt) -> BoxFuture<Result<Vec<StackItem>>> {
+        let tenant = self.minted.lock().unwrap().get(jwt.as_str()).cloned();
+        let answer = match self.note("get_all", engine, Some(&jwt), &[]) {
+            Some(e) => Err(e),
+            None => tenant
+                .and_then(|t| self.get_all.lock().unwrap().get(&t).cloned())
+                .unwrap_or(Ok(vec![])),
+        };
+        Box::pin(async move { answer })
+    }
+    fn details(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        stack: String,
+    ) -> BoxFuture<Result<StackDetail>> {
+        self.answer("details", engine, jwt, &[&stack], &self.details)
+    }
+    fn lifecycle(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        stack: String,
+        action: Lifecycle,
+    ) -> BoxFuture<Result<()>> {
+        let action = format!("{action:?}");
+        self.answer(
+            "lifecycle",
+            engine,
+            jwt,
+            &[&stack, &action],
+            &self.lifecycle,
+        )
+    }
+    fn diagnosis(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        stack: String,
+    ) -> BoxFuture<Result<Diagnosis>> {
+        self.answer("diagnosis", engine, jwt, &[&stack], &self.diagnosis)
+    }
+    fn online(&self, engine: Url, jwt: SessionJwt, stack: String) -> BoxFuture<Result<Online>> {
+        self.answer("online", engine, jwt, &[&stack], &self.online)
+    }
+    fn kick(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        stack: String,
+        names: Vec<String>,
+    ) -> BoxFuture<Result<Vec<NameResult>>> {
+        let mut args = vec![stack.as_str()];
+        args.extend(names.iter().map(String::as_str));
+        self.answer("kick", engine, jwt, &args, &self.kick)
+    }
+    fn list(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        stack: String,
+        kind: ListKind,
+    ) -> BoxFuture<Result<NameList>> {
+        let kind_name = format!("{kind:?}");
+        let answer = match kind {
+            ListKind::Whitelist => &self.whitelist,
+            ListKind::Ops => &self.ops,
+            // As `StackClient::list`: the ban list as names.
+            ListKind::Bans => {
+                let bans = self.bans.lock().unwrap().clone().map(|b| NameList {
+                    running: b.running,
+                    offline_mode: false,
+                    unreadable: b.unreadable,
+                    names: b.bans.into_iter().map(|b| b.name).collect(),
+                });
+                let answer = match self.note("list", engine, Some(&jwt), &[&stack, &kind_name]) {
+                    Some(e) => Err(e),
+                    None => bans,
+                };
+                return Box::pin(async move { answer });
+            }
+        };
+        self.answer("list", engine, jwt, &[&stack, &kind_name], answer)
+    }
+    fn bans(&self, engine: Url, jwt: SessionJwt, stack: String) -> BoxFuture<Result<BanList>> {
+        self.answer("bans", engine, jwt, &[&stack], &self.bans)
+    }
+    fn change(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        stack: String,
+        kind: ListKind,
+        add: bool,
+        names: Vec<String>,
+    ) -> BoxFuture<Result<Vec<NameResult>>> {
+        let (kind, add) = (format!("{kind:?}"), add.to_string());
+        let mut args = vec![stack.as_str(), kind.as_str(), add.as_str()];
+        args.extend(names.iter().map(String::as_str));
+        self.answer("change", engine, jwt, &args, &self.change)
+    }
+    fn settings(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        stack: String,
+    ) -> BoxFuture<Result<SettingsDoc>> {
+        self.answer("settings", engine, jwt, &[&stack], &self.settings)
+    }
+    fn put_settings(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        stack: String,
+        body: serde_json::Value,
+        apply: Apply,
+    ) -> BoxFuture<Result<SettingsSaved>> {
+        let (body, apply) = (body.to_string(), format!("{apply:?}"));
+        self.answer(
+            "put_settings",
+            engine,
+            jwt,
+            &[&stack, &body, &apply],
+            &self.put_settings,
+        )
+    }
+    fn console(
+        &self,
+        engine: Url,
+        jwt: SessionJwt,
+        stack: String,
+        command: String,
+        confirm: bool,
+    ) -> BoxFuture<Result<ConsoleReply>> {
+        let confirm = confirm.to_string();
+        self.answer(
+            "console",
+            engine,
+            jwt,
+            &[&stack, &command, &confirm],
+            &self.console,
+        )
     }
 }
 
