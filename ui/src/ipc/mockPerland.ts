@@ -121,6 +121,24 @@ function page(perland: MockPerland, listing: Listing, hide: (card: YourServerCar
   return { servers: servers.map((c) => ({ ...structuredClone(c), instance: joinedInstance(c, listing) })) };
 }
 
+const story = (...names: string[]) => names.map((n) => `minecraft:story/${n}`);
+/** The owner's world: far along, past the dragon. */
+const OWNER_IDS = [
+  ...story('root', 'mine_stone', 'upgrade_tools', 'smelt_iron', 'mine_diamond', 'enter_the_nether', 'enter_the_end'),
+  'minecraft:end/kill_dragon',
+  'minecraft:end/root',
+  'minecraft:nether/root',
+  'minecraft:nether/find_fortress',
+  'minecraft:adventure/root',
+].sort();
+/** The mock server instance's: a modded start. */
+const MOCK_SERVER_IDS = [
+  ...story('root', 'mine_stone', 'upgrade_tools', 'smelt_iron'),
+  'create:andesite_alloy',
+  'create:root',
+  'minecraft:husbandry/plant_seed',
+].sort();
+
 /** The linked player's numbers: the owner's server, the shared followed one, and the mock server instance's. */
 function stats(perland: MockPerland, listing: Listing): PerlandStats | null {
   if (!perland.account || perland.scenario === 'noAddon') return null;
@@ -129,9 +147,9 @@ function stats(perland: MockPerland, listing: Listing): PerlandStats | null {
   const mockServer = MOCK_PUBLIC_SERVERS.find((c) => c.invite === MOCK_INVITE) as PublicServerCard;
   return {
     servers: [
-      { token: OWNER.repeat(43), instance: null, name: 'My world', playtimeSeconds: 108000, advancements: 12 },
-      { token: shared.token, instance: joinedInstance(shared, listing), name: shared.name, playtimeSeconds: 2400, advancements: 3 },
-      { token: mockServer.token, instance: joinedInstance(mockServer, listing), name: mockServer.name, playtimeSeconds: 14400, advancements: 7 },
+      { token: OWNER.repeat(43), instance: null, name: 'My world', playtimeSeconds: 108000, advancements: OWNER_IDS.length, advancementIds: OWNER_IDS },
+      { token: shared.token, instance: joinedInstance(shared, listing), name: shared.name, playtimeSeconds: 2400, advancements: 3, advancementIds: story('root', 'mine_stone', 'upgrade_tools') },
+      { token: mockServer.token, instance: joinedInstance(mockServer, listing), name: mockServer.name, playtimeSeconds: 14400, advancements: MOCK_SERVER_IDS.length, advancementIds: MOCK_SERVER_IDS },
     ],
   };
 }

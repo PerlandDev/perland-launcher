@@ -411,6 +411,19 @@ pub struct Instance {
     /// `None` is the default, the bottom middle; generated landscapes ignore it.
     #[serde(default)]
     pub banner_focus: Option<Focus>,
+    /// Set by going back on an instance that checks for updates: sync is skipped until the
+    /// player updates again, or the source's version equals `version`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub update_hold: Option<UpdateHold>,
+}
+
+/// Updates paused because the player went back to an earlier pack version.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UpdateHold {
+    /// Unix seconds.
+    pub since: u64,
+    /// The restored pack version.
+    pub version: String,
 }
 
 impl Instance {
@@ -482,6 +495,7 @@ impl InstanceStore {
             art: ArtMode::Auto,
             icon: None,
             banner_focus: None,
+            update_hold: None,
         };
         tokio::fs::create_dir_all(self.game_dir(&instance.id)).await?;
         tokio::fs::create_dir_all(self.perland_dir(&instance.id)).await?;

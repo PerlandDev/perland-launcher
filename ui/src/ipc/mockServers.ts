@@ -367,7 +367,7 @@ function addressOf(card: PublicServerCard): { host: string; port: number } | nul
 
 /** The server instance Add makes from a public card. */
 function instanceFromCard(card: PublicServerCard, id: string, canonical: string): Instance {
-  const base = clone(serverInstanceFx) as Instance;
+  const base = serverInstance();
   return {
     ...base,
     id,
@@ -418,10 +418,18 @@ function sorted(instances: Instance[]): Instance[] {
 }
 
 /** Add the `survival` server instance for `scenario`. */
+/** A fresh server instance from the fixture. The fixture carries an update hold for the contract; a
+ *  joined server has none (the `held` mock puts it back). */
+function serverInstance(): Instance {
+  const instance = clone(serverInstanceFx) as Instance;
+  delete instance.updateHold;
+  return instance;
+}
+
 export function seedServers(scenario: ServerScenario | undefined, listing: Listing): MockServers | null {
   if (!scenario) return null;
   if (scenario === 'closed') return { scenario };
-  const instance = clone(serverInstanceFx) as Instance;
+  const instance = serverInstance();
   if (instance.server) {
     instance.server.gone = scenario === 'gone';
     instance.server.whitelisted = scenario === 'whitelisted';
@@ -527,7 +535,7 @@ export function handleServer(
       let id = MOCK_SERVER_ID;
       for (let n = 2; taken.has(id); n++) id = `${MOCK_SERVER_ID}-${n}`;
       const created: Instance = {
-        ...(clone(serverInstanceFx) as Instance),
+        ...serverInstance(),
         id,
         source: { kind: 'perland', invite: canonical, engine: 'https://api.example.com/' },
       };
@@ -549,7 +557,7 @@ export function handleServer(
         ...target,
         source: { kind: 'perland', invite: canonical, engine: 'https://api.example.com/' },
         updatePolicy: 'auto',
-        server: (clone(serverInstanceFx) as Instance).server,
+        server: serverInstance().server,
       };
       listing.instances = listing.instances.map((i) => (i.id === linked.id ? linked : i));
       return linked;

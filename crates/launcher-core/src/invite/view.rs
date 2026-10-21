@@ -113,6 +113,10 @@ pub struct InvitePack {
     /// The pinned modpack commit, the `/pack` ETag without quotes. Absent on older Engines.
     #[serde(default)]
     pub commit: Option<String>,
+    /// Changes whenever the `.mrpack` does, also for one commit when the Engine builds packs
+    /// differently (`<commit>-<format>`, opaque). Absent on older Engines.
+    #[serde(default)]
+    pub stamp: Option<String>,
 }
 
 /// A Modrinth modpack version: the project and the version a server installs.

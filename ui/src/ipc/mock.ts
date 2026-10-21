@@ -20,6 +20,7 @@ import { APP_EVENT } from './events';
 import { inviteCanonical } from './inviteLink';
 import { handleFree, modrinthInstances, NOT_FREE, repeatsFreeServer, seedFree, type FreeScenario } from './mockFree';
 import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario } from './mockPerland';
+import { mockCrash, type CrashScenario } from './mockCrash';
 import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
 import type {
   AccountsFile,
@@ -52,7 +53,10 @@ import type {
   PlanItemView,
   PlanSkip,
   PlaytimeEntry,
+  ContinueTarget,
   ProjectDetail,
+  RestoreChange,
+  RestorePoint,
   RunStateKind,
   SearchHit,
   SearchPage,
@@ -67,7 +71,8 @@ import type {
 
 export interface MockOptions {
   firstRun?: boolean;
-  crash?: boolean;
+  /** The game crashes a few seconds into its first run, with this cause. */
+  crash?: CrashScenario;
   release?: boolean;
   /** An optimized beta build: offline accounts stay open, About says so. */
   beta?: boolean;
@@ -86,7 +91,9 @@ export interface MockOptions {
   /** Free server (only while `perland` is signed in): `none` (default, may create), `has`, `warned`, `overDisk`, `creating`, `exists`,
    *  `emailRequired`, `rateLimited`, `full` or `off`. Setting it, or signing in, adds a Cozy Pack and a Mega Pack (too heavy) Modrinth instance. */
   free?: FreeScenario;
-  /** What the save dialog returns; null means the player cancelled. Defaults to a zip in Downloads. */
+  /** What Share… finds: `some` (default: two mods not on Modrinth), `all` (every mod on Modrinth) or `error` (Modrinth unreachable). */
+  share?: 'some' | 'all' | 'error';
+  /** What the save dialog returns; null means the player cancelled. Defaults to the suggested name in Downloads. */
   savePath?: string | null;
   /** The rail starts wide, with names. */
   railExpanded?: boolean;
@@ -98,10 +105,14 @@ export interface MockOptions {
   font?: UiFont;
   /** Seconds played per instance id. Defaults to 12 h in Asalith Fields (none on first run). */
   playtime?: Record<string, number>;
+  /** Where Continue takes the player, per instance id. Defaults to the Asalith Fields server and a Creative Flat world. */
+  continueTargets?: Record<string, ContinueTarget>;
   /** Adds Castle Keep, an instance with the player's own background picture (dev:mock turns it on). */
   pictureBackground?: boolean;
   /** A Perland panel is configured (default), so owned servers offer Manage in Perland. */
   panel?: boolean;
+  /** The `survival` server instance went back to its earlier mods, so its updates are on hold. */
+  held?: boolean;
 }
 
 interface MockRun {
@@ -218,7 +229,7 @@ function uploadUrl(path: string): string | null {
 /** Move every id-keyed piece of mock state to a renamed instance's new id. */
 function moveId(state: MockState, from: string, to: string) {
   state.order = state.order.map((id) => (id === from ? to : id));
-  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.screenshots, state.browse.installed, state.playtime, state.lastPlayed] as Map<string, unknown>[]) {
+  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.screenshots, state.browse.installed, state.playtime, state.lastPlayed, state.continueTargets] as Map<string, unknown>[]) {
     if (map.has(from)) {
       map.set(to, map.get(from));
       map.delete(from);
@@ -372,6 +383,36 @@ function seed(options: MockOptions) {
     listing.instances = [...listing.instances, ...modrinthInstances()];
   }
   const servers = seedServers(options.server, listing);
+  // Each instance's one restore point (the real one is .perland/restore/point/point.json).
+  const restorePoints = new Map<string, RestorePoint>();
+  if (!options.firstRun) {
+    // Sky Islands took its 1.0.3 update and some Browse changes since the last Play.
+    restorePoints.set('sky-islands', {
+      kind: 'beforeChange',
+      createdAt: Math.floor(Date.now() / 1000) - 3600,
+      changes: [
+        { kind: 'packUpdate', from: '1.0.2', to: '1.0.3' },
+        { kind: 'installed', name: 'Sodium' },
+        { kind: 'installed', name: 'Lithium' },
+        { kind: 'removed', name: 'JEI' },
+      ],
+      sizeBytes: 12_000_000,
+      server: null,
+    });
+  }
+  if (options.held && servers) {
+    const server = listing.instances.find((i) => i.id === MOCK_SERVER_ID);
+    if (server) {
+      server.updateHold = { since: Math.floor(Date.now() / 1000) - 600, version: '1.0.3' };
+      restorePoints.set(server.id, {
+        kind: 'beforeGoingBack',
+        createdAt: Math.floor(Date.now() / 1000) - 600,
+        changes: [],
+        sizeBytes: 18_000_000,
+        server: server.server?.name || server.name,
+      });
+    }
+  }
   return {
     listing,
     perland,
@@ -379,6 +420,7 @@ function seed(options: MockOptions) {
     // The player's own order, like instance-order.json. Existing instances start A-Z, so a new one lands above them.
     order: [...listing.instances].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map((i) => i.id),
     servers,
+    restorePoints,
     accounts,
     settings,
     appInfo,
@@ -402,7 +444,18 @@ function seed(options: MockOptions) {
     // Seconds played per instance (the real one is .perland/playtime.json), and when each last ended.
     playtime: new Map<string, number>(Object.entries(options.playtime ?? (options.firstRun ? {} : { 'asalith-fields': 12 * 3600 }))),
     lastPlayed: new Map<string, number>(),
+    // Where each instance's game was last (the real one is .perland/last-place.json).
+    continueTargets: new Map<string, ContinueTarget>(
+      Object.entries(
+        options.continueTargets ??
+          (options.firstRun
+            ? {}
+            : { 'asalith-fields': { kind: 'server', name: 'Asalith Fields' }, 'creative-flat': { kind: 'world', name: 'Castle build' } }),
+      ),
+    ),
     runs: new Map<string, MockRun>(),
+    // Instances whose game already crashed once for `options.crash`.
+    crashed: new Set<string>(),
     // The running import from another launcher: Cancel sets `cancelled`.
     importRun: null as { cancelled: boolean } | null,
     options,
@@ -417,6 +470,8 @@ function addPlaytime(state: MockState, id: string, run: MockRun) {
   const seconds = Math.floor((Date.now() - run.startedAt) / 1000);
   state.playtime.set(id, (state.playtime.get(id) ?? 0) + seconds);
   state.lastPlayed.set(id, Math.floor(Date.now() / 1000));
+  // The core remembers where a game was; a mock game that never said so leaves a world to continue in.
+  if (!state.continueTargets.has(id)) state.continueTargets.set(id, { kind: 'world', name: 'New World' });
 }
 
 function event(e: AppEvent) {
@@ -428,11 +483,13 @@ export const exitOf = (partial: Partial<ExitInfo>): ExitInfo => ({
   code: null,
   killed: false,
   cancelled: false,
-  crash: null,
+  cause: null,
+  fixes: [],
   error: null,
   synced: null,
   manual: [],
   updateOnly: false,
+  restore: false,
   ...partial,
 });
 
@@ -453,7 +510,7 @@ async function packPrelude(
   const id = instance.id;
   const pack = state.packs.get(id);
   if (!pack) return { synced: null };
-  const checks = pack.installed !== null && instance.updatePolicy !== 'pinned';
+  const checks = pack.installed !== null && instance.updatePolicy !== 'pinned' && !instance.updateHold;
   let take = false;
   if (checks) {
     await wait(400);
@@ -529,6 +586,7 @@ async function packPrelude(
     };
     pack.installed = u.toVersion;
     pack.update = null;
+    if (u.fromVersion) takePoint(state, instance, { kind: 'packUpdate', from: u.fromVersion, to: u.toVersion });
   } else if (!pack.installed) {
     pack.installed = '1.0.3';
   }
@@ -543,7 +601,7 @@ async function packPrelude(
 async function scriptRun(state: MockState, instance: Instance, updateOnly = false) {
   const id = instance.id;
   const pack = state.packs.get(id);
-  const first: RunStateKind = pack && pack.installed !== null && instance.updatePolicy !== 'pinned' ? 'checking' : 'queued';
+  const first: RunStateKind = pack && pack.installed !== null && instance.updatePolicy !== 'pinned' && !instance.updateHold ? 'checking' : 'queued';
   const run: MockRun = { state: first, cancelled: false, updateOnly, answer: null };
   state.runs.set(id, run);
   event({ type: 'run_state', instance: id, state: first, exit: null, update: null });
@@ -584,21 +642,57 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
   while (state.runs.get(id) === run && run.state === 'running') {
     event({ type: 'log', instance: id, lines: [`[12:00:${String(n % 60).padStart(2, '0')}] [Render thread/INFO]: Tick ${n}`] });
     n += 1;
-    if (state.options.crash && Date.now() - started > 2500) {
-      event({ type: 'log', instance: id, lines: ['Exception in thread "main" java.lang.OutOfMemoryError: Java heap space'] });
+    if (state.options.crash && !state.crashed.has(id) && Date.now() - started > 2500) {
+      const crash = mockCrash(state.options.crash);
+      state.crashed.add(id);
+      event({ type: 'log', instance: id, lines: [crash.line] });
       state.runs.delete(id);
       addPlaytime(state, id, run);
       event({
         type: 'run_state',
         instance: id,
         state: 'idle',
-        exit: exitOf({ code: 1, crash: 'out_of_memory', synced }),
+        // Like the core: a crash before the change ran cleanly once offers going back.
+        exit: exitOf({ code: 1, cause: crash.cause, fixes: crash.fixes, synced, restore: state.restorePoints.get(id)?.kind === 'beforeChange' }),
         update: null,
       });
       return;
     }
     await wait(400);
   }
+}
+
+const nowSecs = () => Math.floor(Date.now() / 1000);
+
+/** A change takes a `beforeChange` point, like the core's `restore::before_change` (sealing aside). */
+function takePoint(state: MockState, instance: Instance, change: RestoreChange) {
+  const current = state.restorePoints.get(instance.id);
+  const changes = current?.kind === 'beforeChange' ? [...current.changes, change] : [change];
+  state.restorePoints.set(instance.id, {
+    kind: 'beforeChange',
+    createdAt: current?.kind === 'beforeChange' ? current.createdAt : nowSecs(),
+    changes,
+    sizeBytes: 8_400_000,
+    server: instance.source.kind === 'perland' ? instance.server?.name || instance.name : null,
+  });
+}
+
+/** Update again on a server instance (no `MockPack`): a short update-only sync to the server's pack. */
+async function scriptServerUpdate(state: MockState, instance: Instance, from: string) {
+  const id = instance.id;
+  const run: MockRun = { state: 'syncing', cancelled: false, updateOnly: true, answer: null };
+  state.runs.set(id, run);
+  event({ type: 'run_state', instance: id, state: 'syncing', exit: null, update: null });
+  for (let done = 0; done <= 12; done++) {
+    if (run.cancelled) return;
+    event({ type: 'progress', instance: id, task: { key: 'sync_pack', params: { name: instance.name } }, done, total: 12, bytes: done * 2_400_000 });
+    await wait(50);
+  }
+  if (run.cancelled || state.runs.get(id) !== run) return;
+  state.runs.delete(id);
+  takePoint(state, instance, { kind: 'packUpdate', from, to: '1.0.4' });
+  const synced: SyncSummary = { fromVersion: from, toVersion: '1.0.4', added: 3, updated: 2, removed: 1, keptModified: [], setAside: [] };
+  event({ type: 'run_state', instance: id, state: 'idle', exit: exitOf({ synced, updateOnly: true }), update: null });
 }
 
 /** A server whose pack is still building: Play waits in `checking` with "Server is preparing
@@ -774,6 +868,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.listing.instances = state.listing.instances.filter((i) => i.id !== args.id);
       state.listing.damaged = state.listing.damaged.filter((d) => d.id !== args.id);
       state.playtime.delete(String(args.id));
+      state.continueTargets.delete(String(args.id));
       state.lastPlayed.delete(String(args.id));
       return null;
     case 'import_inspect':
@@ -864,6 +959,16 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       void scriptRun(state, target);
       return null;
     }
+    case 'continue_target':
+      return state.continueTargets.get(String(args.id)) ?? null;
+    case 'play_repair':
+    case 'play_continue': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (!state.accounts.active) fail('auth', 'no_account', 'Add an account before playing');
+      if (state.runs.has(target.id)) fail('game', 'already_running', 'already running');
+      void scriptRun(state, target);
+      return null;
+    }
     case 'play_answer': {
       const run = state.runs.get(String(args.id));
       if (run?.state === 'asking' && run.answer) {
@@ -879,9 +984,45 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       void scriptRun(state, target, true);
       return null;
     }
+    case 'restore_point':
+      return state.restorePoints.get(String(args.id)) ?? null;
+    case 'restore_go_back': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (state.runs.has(target.id)) fail('game', 'instance_busy', 'in use', { id: target.id });
+      const point = state.restorePoints.get(target.id) ?? fail('disk', 'restore_point_gone', 'There is nothing to go back to.');
+      const pack = state.packs.get(target.id);
+      const update = point.changes.find((c) => c.kind === 'packUpdate');
+      // Like the core: a hold stays; an instance that checks for updates is held when going back undoes a pack
+      // update, at the version it went back to.
+      const checks = (pack ? pack.installed !== null : target.source.kind === 'perland') && target.updatePolicy !== 'pinned';
+      const version = update?.from ?? pack?.installed ?? target.updateHold?.version ?? null;
+      if (pack && update) {
+        pack.installed = update.from;
+        pack.update = { fromVersion: update.from, toVersion: update.to, added: [], updated: [], removed: [], kept: [] };
+      }
+      const updated: Instance = { ...target };
+      if (target.updateHold) updated.updateHold = target.updateHold;
+      else if (checks && update && version && point.kind === 'beforeChange') updated.updateHold = { since: nowSecs(), version };
+      else delete updated.updateHold;
+      state.listing.instances = state.listing.instances.map((i) => (i.id === target.id ? updated : i));
+      const next: RestorePoint = { kind: 'beforeGoingBack', createdAt: nowSecs(), changes: [], sizeBytes: point.sizeBytes, server: point.server };
+      state.restorePoints.set(target.id, next);
+      return next;
+    }
+    case 'pack_update_again': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      const pack = state.packs.get(target.id);
+      if (!pack && target.source.kind !== 'perland') fail('pack', 'no_pack', "This instance doesn't come from a pack");
+      if (state.runs.has(target.id)) fail('game', 'instance_busy', 'in use', { id: target.id });
+      const { updateHold, ...rest } = target;
+      state.listing.instances = state.listing.instances.map((i) => (i.id === target.id ? rest : i));
+      if (pack) void scriptRun(state, rest, true);
+      else void scriptServerUpdate(state, rest, updateHold?.version ?? '1.0.3');
+      return null;
+    }
     case 'pack_status': {
       const pack = state.packs.get(String(args.id)) ?? fail('pack', 'no_pack', "This instance doesn't come from a pack");
-      return { installedVersion: pack.installed, update: pack.installed ? pack.update : null, checkError: null } satisfies PackStatus;
+      return { installedVersion: pack.installed, update: pack.installed ? pack.update : null, checkError: null, holdLifted: false } satisfies PackStatus;
     }
     case 'pack_contents':
       return (state.packs.get(String(args.id)) ?? fail('pack', 'no_pack', 'no pack')).contents;
@@ -1169,6 +1310,26 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.content.set(key, left);
       return clone(left);
     }
+    case 'share_preview': {
+      if (state.options.share === 'error') fail('network', 'host_unreachable', "Couldn't reach api.modrinth.com", { host: 'api.modrinth.com' });
+      const name = (find(args.id) ?? fail('disk', 'instance_not_found', 'gone')).name;
+      const embedded = state.options.share === 'all' ? 0 : 2;
+      return {
+        name,
+        fileName: `${name.replace(/[<>:"/\\|?*]/g, '-')}.mrpack`,
+        counts: [
+          { category: 'mods', files: 14, linked: 14 - embedded, embeddedBytes: embedded * 1_350_000 },
+          { category: 'settings', files: 52, linked: 0, embeddedBytes: 420_000 },
+          { category: 'resourcePacks', files: 2, linked: 1, embeddedBytes: 6_800_000 },
+          { category: 'shaderPacks', files: 1, linked: 1, embeddedBytes: 0 },
+          { category: 'worlds', files: 2, linked: 0, embeddedBytes: 340_000_000 },
+        ],
+      };
+    }
+    case 'share_export':
+      if (state.runs.has(String(args.id))) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: args.id });
+      return (args as { path: string }).path;
+    case 'share_reveal':
     case 'diagnostics_reveal':
     case 'open_folder':
     case 'quit':
@@ -1210,7 +1371,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'diagnostics_export':
       return (args as { path: string }).path;
     case 'plugin:dialog|save':
-      return state.options.savePath === undefined ? 'C:/Users/player/Downloads/perland-diagnostics.zip' : state.options.savePath;
+      if (state.options.savePath !== undefined) return state.options.savePath;
+      return (args.options as { defaultPath?: string } | undefined)?.defaultPath ?? 'C:/Users/player/Downloads/perland-diagnostics.zip';
     case 'plugin:path|resolve_directory':
       return 'C:/Users/player/Downloads';
     case 'plugin:path|join':

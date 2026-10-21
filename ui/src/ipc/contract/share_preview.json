@@ -1,0 +1,36 @@
+{
+  "name": "Sky Friends",
+  "fileName": "Sky Friends.mrpack",
+  "counts": [
+    {
+      "category": "mods",
+      "files": 12,
+      "linked": 10,
+      "embeddedBytes": 2400000
+    },
+    {
+      "category": "settings",
+      "files": 48,
+      "linked": 0,
+      "embeddedBytes": 310000
+    },
+    {
+      "category": "resourcePacks",
+      "files": 2,
+      "linked": 1,
+      "embeddedBytes": 8000000
+    },
+    {
+      "category": "shaderPacks",
+      "files": 1,
+      "linked": 1,
+      "embeddedBytes": 0
+    },
+    {
+      "category": "worlds",
+      "files": 2,
+      "linked": 0,
+      "embeddedBytes": 340000000
+    }
+  ]
+}

@@ -22,9 +22,12 @@ pub struct Prepared {
 }
 
 /// Resolve the version, install its files, and find Java (the instance's custom one, or Mojang's).
+/// `repair` checks every file already there by its hash (not only its size) and runs a loader's
+/// processors again.
 pub async fn prepare(
     installer: &Installer,
     instance: &Instance,
+    repair: bool,
     sink: &EventSink,
 ) -> Result<Prepared> {
     let loader = instance
@@ -33,6 +36,14 @@ pub async fn prepare(
         .as_ref()
         .map(|l| (l.kind, l.version.as_str()));
     let resolved = installer.resolve(&instance.game.minecraft, loader).await?;
+    let repairing;
+    let installer = if repair {
+        crate::install::forge::forget_processors(&installer.dirs, &resolved).await?;
+        repairing = installer.repairing();
+        &repairing
+    } else {
+        installer
+    };
     installer.install(&resolved, sink).await?;
     let java = match &instance.java.path {
         Some(path) => custom_java(path)?,
@@ -74,6 +85,8 @@ pub struct StartSpec<'a> {
     pub launcher_version: &'a str,
     /// The server to join, if any (a server instance played with "join").
     pub join: Option<&'a ServerAddress>,
+    /// The world to open, if any (Continue on a world).
+    pub world: Option<&'a str>,
 }
 
 pub fn command(spec: &StartSpec) -> Result<LaunchCommand> {
@@ -90,6 +103,7 @@ pub fn command(spec: &StartSpec) -> Result<LaunchCommand> {
         platform: spec.platform,
         launcher_version: spec.launcher_version,
         join: spec.join,
+        world: spec.world,
     })
 }
 
@@ -220,6 +234,7 @@ mod tests {
             platform: Platform::current(),
             launcher_version: "0.1.0",
             join: None,
+            world: None,
         };
         let err = start(&spec, crate::events::noop_sink())
             .await
@@ -266,6 +281,7 @@ mod tests {
             platform: Platform::current(),
             launcher_version: "0.1.0",
             join: None,
+            world: None,
         };
         let err = command(&spec).expect_err("the quote is never closed");
         assert_eq!(err.code, ErrorCode::JvmArgsUnclosedQuote);
@@ -305,6 +321,7 @@ mod tests {
             platform: Platform::current(),
             launcher_version: "0.1.0",
             join: None,
+            world: None,
         };
         assert_eq!(java_major(&spec).await, Some(17));
     }
@@ -349,6 +366,7 @@ mod tests {
             platform: Platform::current(),
             launcher_version: "0.1.0",
             join: None,
+            world: None,
         };
         let line = redactor_for(&spec).redact(&format!("[Server] joined via {invite}"));
         assert!(!line.contains(&token), "{line}");

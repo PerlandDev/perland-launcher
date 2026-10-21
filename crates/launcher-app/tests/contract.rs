@@ -10,16 +10,17 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AppInfo, ArtChoice, Build, ContentFile, EmailCodeSent, FreeServerCard, FreeServerPage,
-        IconChoice, ImportPreview, ImportRequest, InstanceArtData, JavaFound, JavaOverview,
-        JoinPreview, LinkCodeView, ManualProgress, NameListView, NewInstance, NewsChangesView,
-        NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents, PackMod,
-        PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase, PerlandStats, PerlandStatus,
-        PlaytimeEntry, PublicServerCard, PublicServerPage, RunSnapshot, ServerGame, ServerNews,
-        ServerPack, ServerPlayers, ServerStatsView, ServerStatusView, ServerTeam, SyncSummary,
-        YourServerCard, YourServersPage,
+        AppInfo, ArtChoice, Build, ContentFile, ContinueKind, ContinueTarget, EmailCodeSent,
+        FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstanceArtData,
+        JavaFound, JavaOverview, JoinPreview, LinkCodeView, ManualProgress, NameListView,
+        NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest,
+        PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase,
+        PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage,
+        RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers,
+        ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary, YourServerCard,
+        YourServersPage,
     },
-    events::{AppEvent, ExitInfo, RunStateKind},
+    events::{AppEvent, CrashFix, ExitInfo, RunStateKind},
     updates::UpdateState,
 };
 use launcher_core::browse::{
@@ -34,11 +35,12 @@ use launcher_core::{
     events::TaskId,
     instances::{
         ArtMode, DamagedInstance, Focus, GameSpec, IconMode, Instance, InstanceListing,
-        JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdatePolicy,
+        JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdateHold,
+        UpdatePolicy,
     },
     invite::invite_link_cases,
     java::JavaFit,
-    launch::CrashHint,
+    launch::crash::{Crash, CrashCause, ModRef, Vendor},
     meta::{
         catalog::{LoaderVersion, McKind, McVersion},
         loaders::LoaderKind,
@@ -46,7 +48,9 @@ use launcher_core::{
     mods::LocalMod,
     perland::{CreateAllowance, Deletion, Disk, FreeLimits, MemoryLimits},
     public_list::{Facets, ListQuery, ListSort},
+    restore::{Change, PointKind},
     settings::{IconShape, Lang, Settings, Theme, UiFont},
+    share::{Category, CategoryCount, ShareChoice},
     sync::ManualFile,
     ErrorCode, LauncherError,
 };
@@ -122,6 +126,7 @@ fn fabric_instance() -> Instance {
         art: ArtMode::Auto,
         icon: None,
         banner_focus: Some(Focus { x: 30, y: 60 }),
+        update_hold: None,
     }
 }
 
@@ -146,6 +151,7 @@ fn vanilla_instance() -> Instance {
         art: ArtMode::Generated,
         icon: Some(IconMode::Generated),
         banner_focus: None,
+        update_hold: None,
     }
 }
 
@@ -478,7 +484,50 @@ fn server_instance() -> Instance {
         art: ArtMode::Auto,
         icon: None,
         banner_focus: None,
+        update_hold: Some(UpdateHold {
+            since: 1_791_720_000,
+            version: "1.0.3".into(),
+        }),
     }
+}
+
+/// A point after an update and a Browse install, one after going back on a server instance,
+/// one after a removal, and none.
+fn restore_points() -> Vec<Option<RestorePointDto>> {
+    vec![
+        Some(RestorePointDto {
+            kind: PointKind::BeforeChange,
+            created_at: 1_791_720_000,
+            changes: vec![
+                Change::PackUpdate {
+                    from: "1.0.3".into(),
+                    to: "1.0.4".into(),
+                },
+                Change::Installed {
+                    name: "Sodium".into(),
+                },
+            ],
+            size_bytes: 524_288,
+            server: None,
+        }),
+        Some(RestorePointDto {
+            kind: PointKind::BeforeGoingBack,
+            created_at: 1_791_723_600,
+            changes: vec![],
+            size_bytes: 18_874_368,
+            server: Some("Survival".into()),
+        }),
+        Some(RestorePointDto {
+            kind: PointKind::BeforeChange,
+            created_at: 1_791_727_200,
+            changes: vec![Change::Removed {
+                name: "zoomify-2.11.2.jar".into(),
+            }],
+            size_bytes: 0,
+            server: None,
+        }),
+        None,
+    ]
 }
 
 fn sample_error() -> LauncherError {
@@ -621,6 +670,20 @@ fn contract_fixtures_are_current() {
                 .with_detail("expected value at line 1 column 1"),
             }],
         },
+    );
+    check(
+        "continue_target",
+        vec![
+            Some(ContinueTarget {
+                kind: ContinueKind::Server,
+                name: "Asalith Fields".into(),
+            }),
+            Some(ContinueTarget {
+                kind: ContinueKind::World,
+                name: "Mundo de Ana".into(),
+            }),
+            None,
+        ],
     );
     check(
         "playtime",
@@ -794,7 +857,54 @@ fn contract_fixtures_are_current() {
                 state: RunStateKind::Idle,
                 exit: Some(ExitInfo {
                     code: Some(1),
-                    crash: Some(CrashHint::OutOfMemory),
+                    cause: Some(
+                        Crash {
+                            cause: CrashCause::ModsClash {
+                                module: ModRef {
+                                    id: "sodium".into(),
+                                    name: Some("Sodium".into()),
+                                    file: Some("sodium-0.5.8.jar".into()),
+                                },
+                                other: ModRef {
+                                    id: "optifabric".into(),
+                                    name: Some("OptiFabric".into()),
+                                    file: Some("optifabric-1.13.24.jar".into()),
+                                },
+                            },
+                            detail: "- Mod 'Sodium' (sodium) 0.5.8 is incompatible with any version of mod 'OptiFabric' (optifabric)".into(),
+                        }
+                        .error(),
+                    ),
+                    fixes: vec![
+                        CrashFix::DisableMod {
+                            file: "optifabric-1.13.24.jar".into(),
+                            name: "OptiFabric".into(),
+                        },
+                        CrashFix::DisableMod {
+                            file: "sodium-0.5.8.jar".into(),
+                            name: "Sodium".into(),
+                        },
+                        CrashFix::MoreMemory,
+                        CrashFix::RecommendedJava,
+                        CrashFix::JavaSettings,
+                        CrashFix::FindMod {
+                            project: "fabric-api".into(),
+                        },
+                        CrashFix::Repair,
+                        CrashFix::UpdateDrivers {
+                            vendor: Vendor::Nvidia,
+                        },
+                    ],
+                    ..ExitInfo::default()
+                }),
+                update: None,
+            },
+            AppEvent::RunState {
+                instance: "asalith-fields".into(),
+                state: RunStateKind::Idle,
+                exit: Some(ExitInfo {
+                    code: Some(1),
+                    restore: true,
                     ..ExitInfo::default()
                 }),
                 update: None,
@@ -966,7 +1076,11 @@ fn contract_fixtures_are_current() {
                         instance: Some("asalith-fields".into()),
                         name: "Asalith".into(),
                         playtime_seconds: 45_000,
-                        advancements: 12,
+                        advancements: 2,
+                        advancement_ids: vec![
+                            "create:andesite_alloy".into(),
+                            "minecraft:story/mine_stone".into(),
+                        ],
                     },
                     ServerStatsView {
                         token: "B".repeat(43),
@@ -974,6 +1088,7 @@ fn contract_fixtures_are_current() {
                         name: "Skyblock".into(),
                         playtime_seconds: 0,
                         advancements: 0,
+                        advancement_ids: vec![],
                     },
                 ],
             }),
@@ -989,6 +1104,55 @@ fn contract_fixtures_are_current() {
                 kind: LoaderKind::Fabric,
                 version: "0.19.5".into(),
             }),
+        },
+    );
+    check(
+        "share_preview",
+        SharePreview {
+            name: "Sky Friends".into(),
+            file_name: "Sky Friends.mrpack".into(),
+            counts: vec![
+                CategoryCount {
+                    category: Category::Mods,
+                    files: 12,
+                    linked: 10,
+                    embedded_bytes: 2_400_000,
+                },
+                CategoryCount {
+                    category: Category::Settings,
+                    files: 48,
+                    linked: 0,
+                    embedded_bytes: 310_000,
+                },
+                CategoryCount {
+                    category: Category::ResourcePacks,
+                    files: 2,
+                    linked: 1,
+                    embedded_bytes: 8_000_000,
+                },
+                CategoryCount {
+                    category: Category::ShaderPacks,
+                    files: 1,
+                    linked: 1,
+                    embedded_bytes: 0,
+                },
+                CategoryCount {
+                    category: Category::Worlds,
+                    files: 2,
+                    linked: 0,
+                    embedded_bytes: 340_000_000,
+                },
+            ],
+        },
+    );
+    check(
+        "share_choice",
+        ShareChoice {
+            mods: true,
+            settings: true,
+            resource_packs: true,
+            shader_packs: false,
+            worlds: false,
         },
     );
     check(
@@ -1114,6 +1278,7 @@ fn contract_fixtures_are_current() {
                 installed_version: Some("1.0.3".into()),
                 update: Some(sample_update()),
                 check_error: None,
+                hold_lifted: false,
             },
             PackStatus {
                 installed_version: Some("1.0.3".into()),
@@ -1125,6 +1290,7 @@ fn contract_fixtures_are_current() {
                     )
                     .with_fix("You can still play the version you have"),
                 ),
+                hold_lifted: true,
             },
         ],
     );
@@ -1269,6 +1435,7 @@ fn contract_fixtures_are_current() {
         ],
     );
     check("server_instance", server_instance());
+    check("restore_points", restore_points());
     check("public_server_page", public_server_page());
     check("your_servers_page", your_servers_page());
     check("free_server_page", free_server_pages());

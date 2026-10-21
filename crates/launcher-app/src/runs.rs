@@ -6,8 +6,9 @@
 //! starts at `queued`; a vanilla instance goes `queued`, `preparing`, `running`.
 //! A run leaves the map (idle) with exactly one final `run_state` event carrying how it ended.
 use std::{
+    collections::HashSet,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use launcher_core::{
@@ -15,8 +16,12 @@ use launcher_core::{
     events::{Event, EventSink},
     fsutil::write_atomic,
     instances::{unix_now, Instance, ServerAddress, ServerStatus, SourceRef, UpdatePolicy},
+    last_place,
+    launch::crash::{Crash, CrashCause},
     locks::InstanceLock,
-    playtime, server_list,
+    playtime,
+    restore::{self, PointKind},
+    server_list,
     server_wake::{Knock, Ping, WaitEnd},
     sync::{
         lockfile::PACK_FILE, manual::Scanner, Cancel, Ensured, ManualFile, PendingUpdate,
@@ -31,20 +36,38 @@ use tokio::{
 
 use crate::{
     app::{AppCore, ManualState, Run},
+    continue_play::Connected,
+    crash_fixes,
     dto::{PackUpdate, RunSnapshot, SyncSummary},
-    events::{AppEvent, ExitInfo, Host, ProgressThrottle, RunStateKind, PROGRESS_INTERVAL},
+    events::{
+        AppEvent, CrashFix, ExitInfo, Host, ProgressThrottle, RunStateKind, PROGRESS_INTERVAL,
+    },
     logs::spawn_batcher,
     runner::{Runner, WAKE_LIMIT},
     servers::{apply_view, server_source},
 };
 
-/// What a game run needs besides the instance: who plays, whether the window hides, and
-/// whether the game joins the instance's server straight away (else it opens at the title
-/// screen with the server in its Multiplayer list).
+/// What a game run needs besides the instance: who plays, whether the window hides, and where
+/// the game goes once it starts.
 pub(crate) struct PlayArgs {
     pub(crate) session: Session,
     pub(crate) minimize: bool,
-    pub(crate) join: bool,
+    pub(crate) destination: Destination,
+    /// Check every game file by its hash first (the crash card's Repair).
+    pub(crate) repair: bool,
+}
+
+/// Where the game goes once it starts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Destination {
+    /// The title screen; a server instance's server waits at the top of the Multiplayer list.
+    Title,
+    /// A server instance's own server ("Play and join"): its latest address, woken first.
+    JoinOwn,
+    /// Any other server (Continue), woken first when it's a sleeping Perland server.
+    Join(ServerAddress),
+    /// A world in `saves/` (Continue).
+    World(String),
 }
 
 fn address_unknown() -> LauncherError {
@@ -96,13 +119,43 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Queue a run; `join: true` also connects a server instance's game to its server
     /// ("Play and join"). Everything after this arrives as events.
     pub async fn play_with(self: &Arc<Self>, id: &str, join: bool) -> Result<()> {
+        let destination = if join {
+            Destination::JoinOwn
+        } else {
+            Destination::Title
+        };
+        self.play_to(id, destination).await
+    }
+
+    /// Queue a run that ends at `destination`. Everything after this arrives as events.
+    pub(crate) async fn play_to(
+        self: &Arc<Self>,
+        id: &str,
+        destination: Destination,
+    ) -> Result<()> {
+        self.play_run(id, destination, false).await
+    }
+
+    /// The crash card's Repair: a run that checks every game file by its hash, downloads what's
+    /// wrong, rebuilds a loader's patched files, and plays.
+    pub async fn play_repair(self: &Arc<Self>, id: &str) -> Result<()> {
+        self.play_run(id, Destination::Title, true).await
+    }
+
+    async fn play_run(
+        self: &Arc<Self>,
+        id: &str,
+        destination: Destination,
+        repair: bool,
+    ) -> Result<()> {
         // `load` takes the id from the folder, so a copied instance.json can't name another one.
         let instance = self.instances.load(id).await?;
         tracing::info!(
             instance = id,
             minecraft = instance.game.minecraft.as_str(),
             loader = ?instance.game.loader.as_ref().map(|l| (l.kind, l.version.as_str())),
-            join,
+            ?destination,
+            repair,
             "play"
         );
         let account = self.accounts.lock().await.active().await?.ok_or_else(|| {
@@ -124,17 +177,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             Some(PlayArgs {
                 session,
                 minimize,
-                join,
+                destination,
+                repair,
             }),
             checks,
         )
     }
 
-    /// Does a run of `instance` start with an update check? Only a pack that synced before
-    /// and isn't pinned: a first sync installs the newest version anyway.
+    /// Does a run of `instance` start with an update check? Only a pack that synced before,
+    /// isn't pinned and isn't held after going back: a first sync installs the newest version
+    /// anyway.
     pub(crate) async fn checks_for_updates(&self, instance: &Instance) -> bool {
         instance.source != SourceRef::None
             && instance.update_policy != UpdatePolicy::Pinned
+            && instance.update_hold.is_none()
             && tokio::fs::try_exists(self.instances.perland_dir(&instance.id).join(PACK_FILE))
                 .await
                 .unwrap_or(false)
@@ -148,6 +204,19 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         instance: Instance,
         play: Option<PlayArgs>,
         checks: bool,
+    ) -> Result<()> {
+        self.start_run_lifting(id, instance, play, checks, false)
+    }
+
+    /// `start_run`; with `lift_hold`, the run clears the instance's update hold once it holds
+    /// the lock ("Update again"), so a run that never starts leaves the hold in place.
+    pub(crate) fn start_run_lifting(
+        self: &Arc<Self>,
+        id: &str,
+        instance: Instance,
+        play: Option<PlayArgs>,
+        checks: bool,
+        lift_hold: bool,
     ) -> Result<()> {
         let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
         if runs.contains_key(id) {
@@ -177,10 +246,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let update_only = play.is_none();
         let core = Arc::clone(self);
         let (run_id, run_cancel) = (id.to_string(), cancel.clone());
-        let task =
-            tokio::spawn(
-                async move { core.drive(run_id, instance, play, checks, run_cancel).await },
-            );
+        let task = tokio::spawn(async move {
+            core.drive(run_id, instance, play, checks, lift_hold, run_cancel)
+                .await
+        });
         runs.insert(
             id.to_string(),
             Run {
@@ -512,7 +581,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Core events for one run become app events tagged with the instance.
-    fn run_sink(&self, id: &str, log_tx: mpsc::UnboundedSender<String>) -> EventSink {
+    fn run_sink(
+        &self,
+        id: &str,
+        log_tx: mpsc::UnboundedSender<String>,
+        connected: Connected,
+    ) -> EventSink {
         let host = self.host.clone();
         let id = id.to_string();
         let throttle = Mutex::new(ProgressThrottle::new(PROGRESS_INTERVAL));
@@ -540,6 +614,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 }
             }
             Event::Log { line } => {
+                if let Some(address) = last_place::connect_line(&line) {
+                    *connected.lock().unwrap_or_else(|e| e.into_inner()) =
+                        Some((address, SystemTime::now()));
+                }
                 let _ = log_tx.send(line);
             }
             Event::Warning(error) => host.emit(AppEvent::Warning {
@@ -556,6 +634,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         instance: Instance,
         play: Option<PlayArgs>,
         checks: bool,
+        lift_hold: bool,
         cancel: Cancel,
     ) {
         let update_only = play.is_none();
@@ -564,7 +643,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             ..info
         };
         let (log_tx, batcher) = spawn_batcher(id.clone(), self.host.clone(), self.logs.clone());
-        let sink = self.run_sink(&id, log_tx);
+        let connected = Connected::default();
+        let sink = self.run_sink(&id, log_tx, connected.clone());
         // Held from the update check until the run ends: the CLI or another window can't
         // change this instance's files meanwhile (spec addendum §4.2).
         let lock = match self.lock_instance(&id).await {
@@ -575,6 +655,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     .await
             }
         };
+        // A go-back that was interrupted is finished (or its leftovers cleared) before
+        // anything reads the files; a half-swapped instance must not sync or launch.
+        if let Err(error) = restore::recover(&self.instances, &id).await {
+            return self
+                .finish(&id, ended(failed(error)), sink, batcher, Some(lock))
+                .await;
+        }
+        if lift_hold {
+            if let Err(error) = self.lift_hold_locked(&id).await {
+                return self
+                    .finish(&id, ended(failed(error)), sink, batcher, Some(lock))
+                    .await;
+            }
+        }
         let accept = if checks {
             let accept = self.decide_update(&id, &instance, update_only, &sink).await;
             self.set_phase(&id, RunStateKind::Queued);
@@ -691,7 +785,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             self.list_server(&id, &instance, address).await;
         }
         let last_status = instance.server.as_ref().and_then(|s| s.last_status);
-        let join = address.clone().filter(|_| args.join);
+        let join = match &args.destination {
+            Destination::JoinOwn => address.clone(),
+            Destination::Join(other) => Some(other.clone()),
+            Destination::Title | Destination::World(_) => None,
+        };
+        let world = match &args.destination {
+            Destination::World(folder) => Some(folder.clone()),
+            _ => None,
+        };
         // A Stop that came after the sync returned (while the instance reloaded) left the run
         // `stopping`: end it here rather than start a game nobody wants.
         if !self.set_phase(&id, RunStateKind::Preparing) {
@@ -703,7 +805,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             };
             return self.finish(&id, info, sink, batcher, Some(lock)).await;
         }
-        let prepared = match self.runner.prepare(instance.clone(), sink.clone()).await {
+        let prepared = match self
+            .runner
+            .prepare(instance.clone(), args.repair, sink.clone())
+            .await
+        {
             Ok(prepared) => prepared,
             Err(error) => {
                 drop(permit);
@@ -716,27 +822,35 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         // Released before any wait, so a wake never holds up another install.
         drop(permit);
-        if let Some(address) = &address {
-            let name = args.session.username.clone();
-            if args.join {
-                if !self
-                    .wake_for_join(&id, address, last_status, &name, &synced, &cancel)
-                    .await
-                {
-                    let info = ExitInfo {
-                        cancelled: true,
-                        synced,
-                        ..ExitInfo::default()
-                    };
-                    return self.finish(&id, info, sink, batcher, Some(lock)).await;
-                }
-            } else if last_status == Some(ServerStatus::Sleeping) {
+        // Another server's status isn't known here: only a waker that answers is waited for.
+        let wake = match &args.destination {
+            Destination::JoinOwn => join.clone().map(|a| (a, last_status)),
+            Destination::Join(other) => Some((other.clone(), None)),
+            Destination::Title | Destination::World(_) => None,
+        };
+        let name = args.session.username.clone();
+        if let Some((target, last)) = &wake {
+            if !self
+                .wake_for_join(&id, target, *last, &name, &synced, &cancel)
+                .await
+            {
+                let info = ExitInfo {
+                    cancelled: true,
+                    synced,
+                    ..ExitInfo::default()
+                };
+                return self.finish(&id, info, sink, batcher, Some(lock)).await;
+            }
+        } else if let (Destination::Title, Some(address)) = (&args.destination, &address) {
+            if last_status == Some(ServerStatus::Sleeping) {
                 self.wake_in_background(&id, address.clone(), name);
             }
         }
+        let started_at = SystemTime::now();
+        let played = instance.clone();
         let game = match self
             .runner
-            .start(instance, prepared, args.session, join, sink.clone())
+            .start(instance, prepared, args.session, join, world, sink.clone())
             .await
         {
             Ok(game) => game,
@@ -748,6 +862,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 return self.finish(&id, info, sink, batcher, Some(lock)).await;
             }
         };
+        // Wall-clock start, for the restore point (`run_ended`).
+        let restore_started = crate::restore::now_secs();
         // No `.await` between `start` returning and recording the killer, so a Stop can't slip
         // in and leave the game running with nobody holding its killer.
         {
@@ -770,17 +886,26 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 }
             }
         };
+        // The game launched: later changes start a new restore point.
+        restore::seal(&self.instances, &id).await;
         if args.minimize {
             self.host.minimize();
         }
         let info = match game.wait().await {
-            Ok(exit) => ExitInfo {
-                code: exit.code,
-                killed: exit.killed,
-                crash: exit.crash,
-                synced,
-                ..ExitInfo::default()
-            },
+            Ok(exit) => {
+                let (cause, fixes) = match &exit.crash {
+                    Some(crash) => self.crash_card(&id, &played, crash).await,
+                    None => (None, Vec::new()),
+                };
+                ExitInfo {
+                    code: exit.code,
+                    killed: exit.killed,
+                    cause,
+                    fixes,
+                    synced,
+                    ..ExitInfo::default()
+                }
+            }
             Err(error) => ExitInfo {
                 synced,
                 ..failed(error)
@@ -796,11 +921,67 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if let Some(started) = started {
             self.record_playtime(&id, started).await;
         }
+        self.record_place(&id, address.as_ref(), &connected, started_at)
+            .await;
         let crashed = info.is_crash();
+        // A game we lost track of (a wait error) didn't prove the update runs cleanly.
+        restore::run_ended(
+            &self.instances,
+            &id,
+            restore_started,
+            crashed || info.error.is_some(),
+        )
+        .await;
+        let info = ExitInfo {
+            restore: crashed && self.offers_restore(&id).await,
+            ..info
+        };
         self.finish(&id, info, sink, batcher, Some(lock)).await;
         if args.minimize || crashed {
             self.host.restore();
         }
+    }
+
+    /// What the crash card says about `crash`, and the fixes it offers for this instance.
+    async fn crash_card(
+        &self,
+        id: &str,
+        instance: &Instance,
+        crash: &Crash,
+    ) -> (Option<LauncherError>, Vec<CrashFix>) {
+        let mut pack_owned = HashSet::new();
+        for file in crash_fixes::files_named(crash) {
+            if self.refuse_managed(id, &file).await.is_err() {
+                pack_owned.insert(file);
+            }
+        }
+        let java = match crash.cause {
+            CrashCause::JavaTooOld { .. } | CrashCause::JavaTooNew => {
+                self.java_required(&instance.game.minecraft).await
+            }
+            _ => None,
+        };
+        let fixes = crash_fixes::fixes_for(crash, instance.java.path.is_some(), &pack_owned, java);
+        tracing::info!(instance = id, cause = ?crash.code(), fixes = fixes.len(), "crash diagnosed");
+        (Some(crash.error()), fixes)
+    }
+
+    /// Clear the update hold, under the run's lock. The instance is reloaded so nothing else
+    /// on it changes.
+    async fn lift_hold_locked(&self, id: &str) -> Result<()> {
+        let mut instance = self.instances.load(id).await?;
+        if instance.update_hold.take().is_some() {
+            self.instances.save(&instance).await?;
+        }
+        Ok(())
+    }
+
+    /// The crash card offers "Go back": the point is of before an update that hasn't run
+    /// cleanly since.
+    async fn offers_restore(&self, id: &str) -> bool {
+        restore::read(&self.instances, id, crate::restore::now_secs())
+            .await
+            .is_some_and(|p| p.kind == PointKind::BeforeChange && !p.clean_run_since)
     }
 
     /// Before the game joins the server: wake it if it sleeps, and wait until it's up (spec
@@ -962,13 +1143,14 @@ fn failed(error: LauncherError) -> ExitInfo {
 
 #[cfg(test)]
 mod tests {
+    use crate::events::CrashFix;
     use std::{sync::atomic::Ordering, time::Duration};
 
     use launcher_core::{
         accounts::BuildKind,
         browse::compat::ContentKind,
         instances::{GameSpec, ServerAddress, ServerStatus, UpdatePolicy},
-        launch::CrashHint,
+        launch::crash::{Crash, CrashCause, ModRef},
         locks::InstanceLock,
         playtime, server_list,
         server_wake::{Knock, Ping, WaitEnd},
@@ -977,6 +1159,7 @@ mod tests {
         ErrorCode, LauncherError,
     };
 
+    use super::Destination;
     use crate::{
         app::tests::{core, TestCore},
         dto::NewInstance,
@@ -1205,16 +1388,87 @@ mod tests {
                 code: Some(1),
                 killed: false,
                 tail: vec![],
-                crash: Some(CrashHint::OutOfMemory),
+                crash: Some(Crash {
+                    cause: CrashCause::OutOfMemory,
+                    detail: "java.lang.OutOfMemoryError: Java heap space".into(),
+                }),
             },
         );
         host.wait_for("alpha", Idle).await;
         assert_eq!(host.minimized.load(Ordering::SeqCst), 0);
         assert_eq!(host.restored.load(Ordering::SeqCst), 1);
+        let exit = host.last_exit("alpha").unwrap();
+        let cause = exit.cause.unwrap();
+        assert_eq!(cause.code, ErrorCode::CrashOutOfMemory);
         assert_eq!(
-            host.last_exit("alpha").unwrap().crash,
-            Some(CrashHint::OutOfMemory)
+            cause.detail.as_deref(),
+            Some("java.lang.OutOfMemoryError: Java heap space")
         );
+        assert_eq!(exit.fixes, [CrashFix::MoreMemory]);
+    }
+
+    #[tokio::test]
+    async fn a_crash_names_the_mod_and_offers_to_turn_it_off() {
+        let (core, runner, host, _t) = ready(false).await;
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        let module = ModRef {
+            id: "create".into(),
+            name: Some("Create".into()),
+            file: Some("create.jar".into()),
+        };
+        runner.finish(
+            "alpha",
+            launcher_core::launch::GameExit {
+                code: Some(1),
+                killed: false,
+                tail: vec![],
+                crash: Some(Crash {
+                    cause: CrashCause::ModFailed { module },
+                    detail: String::new(),
+                }),
+            },
+        );
+        host.wait_for("alpha", Idle).await;
+        let exit = host.last_exit("alpha").unwrap();
+        assert!(exit.is_crash());
+        assert_eq!(exit.cause.unwrap().params["mod"], "Create");
+        assert_eq!(
+            exit.fixes,
+            [CrashFix::DisableMod {
+                file: "create.jar".into(),
+                name: "Create".into()
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unknown_crash_has_no_cause_or_fixes() {
+        let (core, runner, host, _t) = ready(false).await;
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        runner.finish("alpha", exit(Some(1)));
+        host.wait_for("alpha", Idle).await;
+        let exit = host.last_exit("alpha").unwrap();
+        assert!(exit.is_crash());
+        assert_eq!(exit.cause, None);
+        assert!(exit.fixes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn play_repair_prepares_with_repair() {
+        let (core, runner, host, _t) = ready(false).await;
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+        core.play_repair("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for_nth("alpha", Running, 2).await;
+        assert_eq!(*runner.repairs.lock().unwrap(), [false, true]);
     }
 
     #[tokio::test]
@@ -2367,6 +2621,49 @@ mod tests {
         );
         assert!(core.instances.load(&id).await.unwrap().server.unwrap().gone);
         assert!(runner.prepared.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_join_destination_joins_that_address() {
+        let (core, runner, host, _t) = ready(true).await;
+        let hub = ServerAddress::new("hub.example.org", 25565).unwrap();
+        *runner.ping_answer.lock().unwrap() = Ping::Waker;
+        core.play_to("alpha", Destination::Join(hub.clone()))
+            .await
+            .unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        assert_eq!(
+            *runner.started_joins.lock().unwrap(),
+            vec![Some(hub.clone())]
+        );
+        assert_eq!(*runner.started_worlds.lock().unwrap(), vec![None]);
+        assert_eq!(*runner.pings.lock().unwrap(), vec![hub.clone()]);
+        assert_eq!(
+            runner.knocks.lock().unwrap()[0].0,
+            hub,
+            "a sleeping server wakes"
+        );
+        core.stop("alpha").unwrap();
+        host.wait_for("alpha", Idle).await;
+    }
+
+    #[tokio::test]
+    async fn a_world_destination_opens_the_world() {
+        let (core, runner, host, _t) = ready(true).await;
+        core.play_to("alpha", Destination::World("Mundo".into()))
+            .await
+            .unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        assert_eq!(
+            *runner.started_worlds.lock().unwrap(),
+            vec![Some("Mundo".to_string())]
+        );
+        assert_eq!(*runner.started_joins.lock().unwrap(), vec![None]);
+        assert!(runner.pings.lock().unwrap().is_empty());
+        core.stop("alpha").unwrap();
+        host.wait_for("alpha", Idle).await;
     }
 
     #[tokio::test]

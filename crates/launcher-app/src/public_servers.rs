@@ -148,6 +148,7 @@ mod tests {
             state: "ready".into(),
             zip_state: Some("ready".into()),
             commit: Some("c1".into()),
+            stamp: None,
         }
     }
 

@@ -229,6 +229,7 @@ pub(crate) fn server_view(name: &str) -> EngineView {
                 state: "ready".into(),
                 zip_state: Some("ready".into()),
                 commit: Some("c1".into()),
+                stamp: None,
             }),
             team: InviteTeam {
                 display_name: "Acme".into(),
@@ -458,6 +459,8 @@ pub(crate) struct FakeRunner {
     pub view_reads: AtomicUsize,
     /// The Engine each `invite_view` call was seeded with.
     pub engine_hints: Mutex<Vec<Option<String>>>,
+    /// The `repair` flag of every prepare, in order.
+    pub repairs: Mutex<Vec<bool>>,
     /// What `invite_icon` answers.
     pub icon: Mutex<Option<Vec<u8>>>,
     /// What `public_page` answers (none: `server_list_closed`).
@@ -476,6 +479,7 @@ pub(crate) struct FakeRunner {
     pub news_image_calls: Mutex<Vec<(String, String, String)>>,
     /// The server each `start` was told to join.
     pub started_joins: Mutex<Vec<Option<ServerAddress>>>,
+    pub started_worlds: Mutex<Vec<Option<String>>>,
     /// What `check_update` reports per instance id (none: up to date).
     pub update_checks: Mutex<HashMap<String, UpdateCheck>>,
     /// What `server_ping` answers (default: nobody), and each address it was asked.
@@ -522,6 +526,7 @@ impl FakeRunner {
             views: Mutex::new(HashMap::new()),
             view_reads: AtomicUsize::new(0),
             engine_hints: Mutex::new(Vec::new()),
+            repairs: Mutex::new(Vec::new()),
             icon: Mutex::new(None),
             public_page: Mutex::new(None),
             public_queries: Mutex::new(Vec::new()),
@@ -531,6 +536,7 @@ impl FakeRunner {
             news_image: Mutex::new(None),
             news_image_calls: Mutex::new(Vec::new()),
             started_joins: Mutex::new(Vec::new()),
+            started_worlds: Mutex::new(Vec::new()),
             update_checks: Mutex::new(HashMap::new()),
             ping_answer: Mutex::new(Ping::NoAnswer),
             pings: Mutex::new(Vec::new()),
@@ -562,6 +568,18 @@ impl FakeRunner {
         self.gate.add_permits(n);
     }
 
+    /// Lose a running fake game: its `wait` fails instead of reporting an exit.
+    pub fn lose(&self, id: &str) {
+        let slot = self
+            .exits
+            .lock()
+            .unwrap()
+            .get(id)
+            .cloned()
+            .expect("game started");
+        drop(slot.lock().unwrap().take());
+    }
+
     /// End a running fake game with this exit.
     pub fn finish(&self, id: &str, exit: GameExit) {
         let slot = self
@@ -581,8 +599,9 @@ impl FakeRunner {
 impl Runner for FakeRunner {
     type Prepared = ();
 
-    fn prepare(&self, instance: Instance, sink: EventSink) -> BoxFuture<Result<()>> {
+    fn prepare(&self, instance: Instance, repair: bool, sink: EventSink) -> BoxFuture<Result<()>> {
         self.prepared.lock().unwrap().push(instance.game.clone());
+        self.repairs.lock().unwrap().push(repair);
         let gate = self.gate.clone();
         let error = self.prepare_error.lock().unwrap().take();
         let steps = *self.progress_steps.lock().unwrap();
@@ -610,9 +629,11 @@ impl Runner for FakeRunner {
         _prepared: (),
         _session: Session,
         join: Option<ServerAddress>,
+        world: Option<String>,
         sink: EventSink,
     ) -> BoxFuture<Result<Box<dyn RunningGame>>> {
         self.started_joins.lock().unwrap().push(join);
+        self.started_worlds.lock().unwrap().push(world);
         let lines = self.start_lines.lock().unwrap().clone();
         let (tx, rx) = oneshot::channel();
         let slot: ExitSlot = Arc::new(Mutex::new(Some(tx)));
@@ -1291,6 +1312,12 @@ pub(crate) struct FakeBrowser {
     pub icon_lookups: Mutex<Vec<String>>,
     /// While set, `project_icon_url` fails as if offline.
     pub icon_lookup_fails: AtomicBool,
+    /// What `share_lookup` knows, by sha1.
+    pub share_linked: Mutex<HashMap<String, launcher_core::share::Linked>>,
+    /// Each `share_lookup` call's sha1s.
+    pub share_lookups: Mutex<Vec<Vec<String>>>,
+    /// While set, `share_lookup` fails as if offline.
+    pub share_lookup_fails: AtomicBool,
 }
 
 impl FakeBrowser {
@@ -1309,6 +1336,9 @@ impl FakeBrowser {
             icon_urls: Mutex::new(HashMap::new()),
             icon_lookups: Mutex::new(Vec::new()),
             icon_lookup_fails: AtomicBool::new(false),
+            share_linked: Mutex::new(HashMap::new()),
+            share_lookups: Mutex::new(Vec::new()),
+            share_lookup_fails: AtomicBool::new(false),
         })
     }
 
@@ -1415,6 +1445,22 @@ impl Browser for FakeBrowser {
             Err(LauncherError::network(ErrorCode::Offline, "offline"))
         } else {
             Ok(self.icon_urls.lock().unwrap().get(&sha1).cloned())
+        };
+        Box::pin(async move { answer })
+    }
+    fn share_lookup(
+        &self,
+        sha1s: Vec<String>,
+    ) -> BoxFuture<Result<HashMap<String, launcher_core::share::Linked>>> {
+        self.share_lookups.lock().unwrap().push(sha1s.clone());
+        let answer = if self.share_lookup_fails.load(Ordering::SeqCst) {
+            Err(LauncherError::network(ErrorCode::Offline, "offline"))
+        } else {
+            let known = self.share_linked.lock().unwrap();
+            Ok(sha1s
+                .iter()
+                .filter_map(|s| known.get(s).map(|l| (s.clone(), l.clone())))
+                .collect())
         };
         Box::pin(async move { answer })
     }

@@ -281,7 +281,7 @@ async fn launch_instance(
     let platform = installer.platform;
     let sink = progress_sink();
 
-    let prepared = play::prepare(&installer, &instance, &sink).await?;
+    let prepared = play::prepare(&installer, &instance, false, &sink).await?;
     eprintln!();
     let game_dir = store.game_dir(&instance.id);
     let spec = StartSpec {
@@ -293,6 +293,7 @@ async fn launch_instance(
         platform,
         launcher_version: env!("CARGO_PKG_VERSION"),
         join: None,
+        world: None,
     };
 
     if dry_run {

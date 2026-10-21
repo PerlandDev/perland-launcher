@@ -1,0 +1,13 @@
+# source: tail
+# param required=21
+# param running=17
+Error: LinkageError occurred while loading main class net.minecraft.client.main.Main
+	java.lang.UnsupportedClassVersionError: net/minecraft/client/main/Main has been compiled by a more recent version of the Java Runtime (class file version 65.0), this version of the Java Runtime only recognizes class file versions up to 61.0
+---
+# source: latest_log
+# param required=21
+# param running=17
+[12:00:03] [main/ERROR]: Incompatible mods found!
+net.fabricmc.loader.impl.FormattedException: Some of your mods are incompatible with the game or each other!
+More details:
+	 - Mod 'Sodium' (sodium) 0.6.0 requires version 21 or later of 'OpenJDK 64-Bit Server VM' (java), but only the wrong version is present: 17!

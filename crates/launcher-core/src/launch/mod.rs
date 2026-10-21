@@ -17,7 +17,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-pub use crash::CrashHint;
+pub use crash::Crash;
 pub use redact::Redactor;
 
 use crate::{
@@ -51,6 +51,9 @@ pub struct LaunchSpec<'a> {
     /// Join this server once the game starts: quick play where the version supports it,
     /// `--server`/`--port` elsewhere.
     pub join: Option<&'a ServerAddress>,
+    /// Open this world (a folder under `saves/`) once the game starts: quick play only. A
+    /// version without it refuses, rather than open the title screen as if nothing was asked.
+    pub world: Option<&'a str>,
 }
 
 #[derive(Clone)]
@@ -93,7 +96,7 @@ pub struct GameExit {
     /// The last `TAIL_LINES` redacted output lines.
     pub tail: Vec<String>,
     /// A likely cause, only for exits nobody asked for that weren't clean.
-    pub crash: Option<CrashHint>,
+    pub crash: Option<Crash>,
 }
 
 /// Asks a running game to stop. Cheap to clone; calling `kill` twice is harmless.
@@ -183,6 +186,9 @@ fn path_str(p: &Path) -> String {
 /// The feature a version JSON declares when it takes `--quickPlayMultiplayer` (1.20 and later).
 pub const QUICK_PLAY_MULTIPLAYER: &str = "is_quick_play_multiplayer";
 
+/// The feature a version JSON declares when it takes `--quickPlaySingleplayer` (1.20 and later).
+pub const QUICK_PLAY_SINGLEPLAYER: &str = "is_quick_play_singleplayer";
+
 /// Does the version (with its loader merged in) declare `feature` in a game-argument rule?
 pub fn declares_feature(json: &VersionJson, feature: &str) -> bool {
     json.arguments.as_ref().is_some_and(|a| {
@@ -198,11 +204,21 @@ pub fn declares_feature(json: &VersionJson, feature: &str) -> bool {
 pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
     let json = &spec.resolved.json;
     let quick_play = spec.join.is_some() && declares_feature(json, QUICK_PLAY_MULTIPLAYER);
-    let ctx = if quick_play {
-        RuleContext::new(spec.platform).with_feature(QUICK_PLAY_MULTIPLAYER)
-    } else {
-        RuleContext::new(spec.platform)
-    };
+    if spec.world.is_some() && !declares_feature(json, QUICK_PLAY_SINGLEPLAYER) {
+        return Err(LauncherError::game(
+            ErrorCode::WorldContinueUnsupported,
+            "This Minecraft version can't open a world straight away",
+        )
+        .with_fix("Press Play and pick the world in Singleplayer")
+        .with_param("version", &json.id));
+    }
+    let mut ctx = RuleContext::new(spec.platform);
+    if quick_play {
+        ctx = ctx.with_feature(QUICK_PLAY_MULTIPLAYER);
+    }
+    if spec.world.is_some() {
+        ctx = ctx.with_feature(QUICK_PLAY_SINGLEPLAYER);
+    }
     let classpath = classpath(spec.resolved, spec.dirs, &ctx)?;
     let cp_string = classpath
         .iter()
@@ -252,6 +268,9 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
     ]);
     if let (true, Some(address)) = (quick_play, spec.join) {
         vars.insert("quickPlayMultiplayer", address.display());
+    }
+    if let Some(world) = spec.world {
+        vars.insert("quickPlaySingleplayer", world.to_string());
     }
 
     // The player's arguments come before the version's, so when a property repeats, the
@@ -630,6 +649,8 @@ fn spawn_with_log(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Crash reports and logs older than this belong to an earlier run.
+    let started = std::time::SystemTime::now();
     #[cfg(windows)]
     command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     let mut child = command.spawn().map_err(|e| {
@@ -649,6 +670,7 @@ fn spawn_with_log(
         .collect();
     drop(line_tx);
     let tail = Arc::new(Mutex::new(Tail::default()));
+    let (crash_redactor, game_dir) = (redactor.clone(), cmd.cwd.clone());
     let pump = tokio::spawn(pump_lines(line_rx, redactor, sink, log, tail.clone()));
     let (kill_tx, kill_rx) = watch::channel(false);
     let (done_tx, done_rx) = oneshot::channel();
@@ -656,19 +678,22 @@ fn spawn_with_log(
         let result = wait_for_exit(child, kill_rx).await;
         drain_output(pump, readers, DRAIN_TIMEOUT).await;
         let tail = tail.lock().unwrap_or_else(|e| e.into_inner()).lines();
-        let exit = result.map(|(code, killed)| {
-            let crash = if !killed && code != Some(0) {
-                crash::diagnose(&tail)
-            } else {
-                None
-            };
-            GameExit {
-                code,
-                killed,
-                tail,
-                crash,
+        let exit = match result {
+            Ok((code, killed)) => {
+                let crash = if !killed && code != Some(0) {
+                    crash::diagnose(&game_dir, pid, started, &tail, &crash_redactor).await
+                } else {
+                    None
+                };
+                Ok(GameExit {
+                    code,
+                    killed,
+                    tail,
+                    crash,
+                })
             }
-        });
+            Err(e) => Err(e),
+        };
         let _ = done_tx.send(exit);
     });
     Ok(GameProcess {
@@ -719,12 +744,51 @@ mod tests {
             platform,
             launcher_version: "0.1.0",
             join,
+            world: None,
         })
         .unwrap()
     }
 
     fn server() -> ServerAddress {
         ServerAddress::new("play.example.com", 25566).unwrap()
+    }
+
+    fn build_world(resolved: &ResolvedVersion, world: &str) -> Result<LaunchCommand> {
+        let dirs = LauncherDirs::new("/pl");
+        let session = offline_account("Steve").unwrap().offline_session();
+        build_command(&LaunchSpec {
+            dirs: &dirs,
+            resolved,
+            game_dir: Path::new("/pl/instances/x/minecraft"),
+            java: Path::new("/pl/java/x/bin/java"),
+            session: &session,
+            memory_mb: 4096,
+            jvm_args: Vec::new(),
+            platform: WINDOWS_X64,
+            launcher_version: "0.1.0",
+            join: None,
+            world: Some(world),
+        })
+    }
+
+    #[test]
+    fn quick_play_opens_a_world_on_1_20_1() {
+        let cmd = build_world(&vanilla("1.20.1.json", "1.20.1"), "Mundo de Ana").unwrap();
+        assert_eq!(
+            arg_after(&cmd.args, "--quickPlaySingleplayer"),
+            "Mundo de Ana"
+        );
+        assert!(!cmd.args.contains(&"--quickPlayMultiplayer".to_string()));
+        assert!(!cmd.args.contains(&"--server".to_string()));
+        assert!(!cmd.args.contains(&"--quickPlayPath".to_string()));
+    }
+
+    #[test]
+    fn a_world_on_a_version_without_quick_play_is_refused() {
+        let Err(err) = build_world(&vanilla("1.12.2.json", "1.12.2"), "Mundo") else {
+            panic!("1.12.2 can't open a world straight away");
+        };
+        assert_eq!(err.code, ErrorCode::WorldContinueUnsupported);
     }
 
     fn vanilla(file: &str, id: &str) -> ResolvedVersion {

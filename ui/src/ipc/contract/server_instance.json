@@ -35,5 +35,9 @@
   "artSeed": null,
   "art": "auto",
   "icon": null,
-  "bannerFocus": null
+  "bannerFocus": null,
+  "updateHold": {
+    "since": 1791720000,
+    "version": "1.0.3"
+  }
 }

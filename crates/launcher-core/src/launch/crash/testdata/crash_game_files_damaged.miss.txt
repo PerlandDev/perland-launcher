@@ -1,0 +1,2 @@
+# source: tail
+Caused by: java.lang.ClassNotFoundException: com.simibubi.create.foundation.ponder.PonderRegistry

@@ -15,6 +15,7 @@ import { Menu, type MenuHandle } from '../../ui/Menu';
 import { PlayButton } from '../../ui/PlayButton';
 import { formatPlaytime } from '../../ui/playtime';
 import { useSingleFlight } from '../../ui/useSingleFlight';
+import { ContinueKey } from './ContinueKey';
 import { DamagedView } from './DamagedView';
 import { EmptyState } from './EmptyState';
 import { useNameFit } from './fitName';
@@ -137,6 +138,8 @@ function InstanceView({ instance }: { instance: Instance }) {
           </Button>
           <Menu ref={menu} label={t('home.more')} items={actions.items} />
           <div className="grid justify-items-end gap-3">
+            {/* Secondary, above Play and right-aligned to it: one quiet way back to where the player was. */}
+            {run.state === 'idle' && <ContinueKey id={instance.id} disabled={!hasAccount} once={playOnce} />}
             <PlayButton
               state={run.state}
               progress={run.progress}

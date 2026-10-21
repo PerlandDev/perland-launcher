@@ -52,6 +52,10 @@ error_codes! {
     JvmArgNotOption, JvmArgNotAllowed, JvmArgsMemory, JvmArgsTooLong,
     // launch
     NoGameArguments, GameFilesMissing,
+    // why a game crashed (the crash card's cause)
+    CrashOutOfMemory, CrashGraphicsDriver, CrashJavaTooOld, CrashJavaTooNew,
+    CrashModMissingDependency, CrashModsClash, CrashModWrongVersion, CrashModFailed,
+    CrashModFileDamaged, CrashGameFilesDamaged,
     // loaders and metadata
     VersionInvalid, LoaderUnsupported, LoaderVersionNotFound, MetaCacheMissing, MetaNotFound,
     MetaChecksum, MetaUnexpected, LoaderInstallerInvalid, LoaderTooOld, LoaderProcessorFailed,
@@ -72,6 +76,10 @@ error_codes! {
     LinkHasPack,
     ServerPackUnavailable, ServerPackPending, ServerAddressUnknown, ServerListFailed, ServerListClosed,
     ServerWakeFailed,
+    // restore points
+    RestorePointGone, RestoreFailed,
+    // continue where you left off
+    WorldContinueUnsupported,
     // launcher updates
     LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
     // importing from another launcher
@@ -84,6 +92,8 @@ error_codes! {
     EmailRequired, FreeServerExists, TooManyFreeServers, FreeServersFull, InvalidFreeServer,
     ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk, HostFull, FreeServersPaused,
     FreeServerBlocked,
+    // sharing an instance
+    SharePathInvalid, ShareTooLarge,
     // anything unexpected
     Internal,
 }
@@ -160,6 +170,26 @@ impl From<std::io::Error> for LauncherError {
     }
 }
 
+/// Going back to the instance's restore point.
+pub mod restore {
+    use super::{ErrorCode, LauncherError};
+
+    /// No point to go back to: none was taken, it is too old, or it is damaged.
+    pub fn point_gone() -> LauncherError {
+        LauncherError::disk(
+            ErrorCode::RestorePointGone,
+            "There is nothing to go back to",
+        )
+    }
+
+    /// A folder couldn't be swapped back (another program holds it).
+    pub fn failed(detail: impl std::fmt::Display) -> LauncherError {
+        LauncherError::disk(ErrorCode::RestoreFailed, "Couldn't go back to how it was")
+            .with_fix("Close any window showing the instance's folder, then try again")
+            .with_detail(detail)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,6 +214,17 @@ mod tests {
             (ErrorCode::ImportInsideLauncher, "import_inside_launcher"),
             (ErrorCode::ImportBusy, "import_busy"),
             (ErrorCode::ImportCancelled, "import_cancelled"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
+    fn share_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::SharePathInvalid, "share_path_invalid"),
+            (ErrorCode::ShareTooLarge, "share_too_large"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));
@@ -314,6 +355,21 @@ mod tests {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));
         }
+    }
+
+    #[test]
+    fn restore_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::RestorePointGone, "restore_point_gone"),
+            (ErrorCode::RestoreFailed, "restore_failed"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+        assert_eq!(restore::point_gone().code, ErrorCode::RestorePointGone);
+        let failed = restore::failed("busy");
+        assert_eq!(failed.category, ErrorCategory::Disk);
+        assert!(failed.fix.is_some());
     }
 
     #[test]

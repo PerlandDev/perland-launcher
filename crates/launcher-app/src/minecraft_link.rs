@@ -119,6 +119,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     name: server.name,
                     playtime_seconds: server.playtime_seconds,
                     advancements: server.advancements,
+                    advancement_ids: server.advancement_ids,
                 })
             })
             .collect();
@@ -202,6 +203,9 @@ mod tests {
             invite: invite.map(|c| StatsInvite { token: token(c) }),
             playtime_seconds: playtime,
             advancements,
+            advancement_ids: (0..advancements)
+                .map(|i| format!("minecraft:story/a{i}"))
+                .collect(),
         }
     }
 
@@ -250,6 +254,7 @@ mod tests {
                     name: "Asalith".into(),
                     playtime_seconds: 7200,
                     advancements: 12,
+                    advancement_ids: (0..12).map(|i| format!("minecraft:story/a{i}")).collect(),
                 }],
             }
         );

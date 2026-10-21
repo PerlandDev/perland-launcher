@@ -1,0 +1,2 @@
+# source: tail
+Exception in thread "Render thread" java.lang.ClassCastException: class net.minecraft.class_2248 cannot be cast to class net.minecraft.class_1792

@@ -40,14 +40,18 @@ import type {
   PerlandStats,
   PerlandStatus,
   PlaytimeEntry,
+  ContinueTarget,
   ProjectDetail,
   PublicServerPage,
+  RestorePoint,
   RunSnapshot,
   SearchPage,
   SearchRequest,
   ServerNews,
   ServerStatusView,
   Settings,
+  ShareChoice,
+  SharePreview,
   UpdateState,
   VersionInfo,
   YourServersPage,
@@ -63,6 +67,9 @@ export const commands = {
   updateRestart: () => invoke<null>('update_restart'),
   diagnosticsExport: (path: string) => invoke<string>('diagnostics_export', { path }),
   diagnosticsReveal: () => invoke<null>('diagnostics_reveal'),
+  sharePreview: (id: string) => invoke<SharePreview>('share_preview', { id }),
+  shareExport: (id: string, choice: ShareChoice, path: string) => invoke<string>('share_export', { id, choice, path }),
+  shareReveal: () => invoke<null>('share_reveal'),
   instancesList: () => invoke<InstanceListing>('instances_list'),
   instanceCreate: (request: NewInstance) => invoke<Instance>('instance_create', { request }),
   instanceUpdate: (instance: Instance) => invoke<Instance>('instance_update', { instance }),
@@ -80,6 +87,11 @@ export const commands = {
   accountSetActive: (uuid: string) => invoke<AccountsFile>('account_set_active', { uuid }),
   accountRemove: (uuid: string) => invoke<AccountsFile>('account_remove', { uuid }),
   play: (id: string, join = false) => invoke<null>('play', { id, join }),
+  /** Where Continue would take the player in this instance, or null (no Continue key). */
+  continueTarget: (id: string) => invoke<ContinueTarget | null>('continue_target', { id }),
+  /** Play straight into that world or server; a plain Play when it no longer holds. */
+  playContinue: (id: string) => invoke<null>('play_continue', { id }),
+  playRepair: (id: string) => invoke<null>('play_repair', { id }),
   stop: (id: string) => invoke<null>('stop', { id }),
   runStates: () => invoke<RunSnapshot[]>('run_states'),
   logTail: (id: string) => invoke<string[]>('log_tail', { id }),
@@ -98,6 +110,12 @@ export const commands = {
   packAdd: (request: PackAddRequest) => invoke<Instance>('pack_add', { request }),
   playAnswer: (id: string, update: boolean) => invoke<null>('play_answer', { id, update }),
   packUpdate: (id: string) => invoke<null>('pack_update', { id }),
+  /** Clears the update hold left by going back, then runs the update like `packUpdate`. */
+  packUpdateAgain: (id: string) => invoke<null>('pack_update_again', { id }),
+  /** The instance's one restore point, or null when there is none to use. */
+  restorePoint: (id: string) => invoke<RestorePoint | null>('restore_point', { id }),
+  /** Puts the instance back to its restore point; returns the new point that undoes this, or null when none could be kept. */
+  restoreGoBack: (id: string) => invoke<RestorePoint | null>('restore_go_back', { id }),
   packStatus: (id: string) => invoke<PackStatus>('pack_status', { id }),
   packContents: (id: string) => invoke<PackContents>('pack_contents', { id }),
   packSetOptional: (id: string, path: string, enabled: boolean) =>

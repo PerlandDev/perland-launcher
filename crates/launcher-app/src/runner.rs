@@ -54,13 +54,21 @@ impl RunningGame for GameProcess {
 /// Installs and starts games. The real one uses `launcher_core::play`; tests use `FakeRunner`.
 pub trait Runner: Send + Sync + 'static {
     type Prepared: Send + 'static;
-    fn prepare(&self, instance: Instance, sink: EventSink) -> BoxFuture<Result<Self::Prepared>>;
+    /// Install what `instance` needs and find its Java. `repair` checks every file by its hash
+    /// and rebuilds a loader's patched files (the crash card's Repair).
+    fn prepare(
+        &self,
+        instance: Instance,
+        repair: bool,
+        sink: EventSink,
+    ) -> BoxFuture<Result<Self::Prepared>>;
     fn start(
         &self,
         instance: Instance,
         prepared: Self::Prepared,
         session: Session,
         join: Option<ServerAddress>,
+        world: Option<String>,
         sink: EventSink,
     ) -> BoxFuture<Result<Box<dyn RunningGame>>>;
     /// A new instance for a pack: named after it, with its game version, policy and art.
@@ -189,9 +197,14 @@ impl CoreRunner {
 impl Runner for CoreRunner {
     type Prepared = Prepared;
 
-    fn prepare(&self, instance: Instance, sink: EventSink) -> BoxFuture<Result<Prepared>> {
+    fn prepare(
+        &self,
+        instance: Instance,
+        repair: bool,
+        sink: EventSink,
+    ) -> BoxFuture<Result<Prepared>> {
         let installer = self.installer.clone();
-        Box::pin(async move { play::prepare(&installer, &instance, &sink).await })
+        Box::pin(async move { play::prepare(&installer, &instance, repair, &sink).await })
     }
 
     fn start(
@@ -200,6 +213,7 @@ impl Runner for CoreRunner {
         prepared: Prepared,
         session: Session,
         join: Option<ServerAddress>,
+        world: Option<String>,
         sink: EventSink,
     ) -> BoxFuture<Result<Box<dyn RunningGame>>> {
         let installer = self.installer.clone();
@@ -215,6 +229,7 @@ impl Runner for CoreRunner {
                 platform: installer.platform,
                 launcher_version: &version,
                 join: join.as_ref(),
+                world: world.as_deref(),
             };
             let game = play::start(&spec, sink).await?;
             Ok(Box::new(game) as Box<dyn RunningGame>)

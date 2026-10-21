@@ -1,6 +1,7 @@
 import { act, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { exitOf } from '../../ipc/mock';
+import { mockCrash } from '../../ipc/mockCrash';
 import { openActivity } from '../../state/activity';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
@@ -34,15 +35,47 @@ describe('ActivityDrawer', () => {
         type: 'run_state',
         instance: 'asalith-fields',
         state: 'idle',
-        exit: exitOf({ code: 1, crash: 'out_of_memory' }),
+        exit: exitOf({ code: 1, cause: mockCrash('memory').cause, fixes: mockCrash('memory').fixes }),
         update: null,
       });
       openActivity('asalith-fields');
     });
-    expect(await screen.findByText('Minecraft ran out of memory')).toBeInTheDocument();
+    expect(await screen.findByText('Minecraft ran out of memory.')).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Raise to 6 GB' }));
     const update = sent(calls, 'instance_update')[0] as { instance: { java: { memoryMb: number } } };
     expect(update.instance.java.memoryMb).toBe(6144);
+  });
+
+  it('offers to go back after a crash right after an update, after Raise memory', async () => {
+    const { user } = renderApp(<ActivityDrawer />);
+    act(() => {
+      runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'queued', exit: null, update: null });
+      runStore.apply({
+        type: 'run_state',
+        instance: 'sky-islands',
+        state: 'idle',
+        exit: exitOf({ code: 1, cause: mockCrash('memory').cause, fixes: mockCrash('memory').fixes, restore: true }),
+        update: null,
+      });
+      openActivity('sky-islands');
+    });
+    const goBack = await screen.findByRole('button', { name: 'Go back to how it was…' });
+    const raise = await screen.findByRole('button', { name: /^Raise to/ });
+    // A recognised cause keeps its own fix first.
+    expect(raise.compareDocumentPosition(goBack) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(goBack);
+    expect(screen.getByRole('dialog', { name: 'Go back to how Sky Islands was?' })).toBeInTheDocument();
+  });
+
+  it('offers no going back after a crash the update did not cause', async () => {
+    renderApp(<ActivityDrawer />);
+    act(() => {
+      runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'queued', exit: null, update: null });
+      runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'idle', exit: exitOf({ code: 1 }), update: null });
+      openActivity('sky-islands');
+    });
+    expect(await screen.findByText('Sky Islands closed unexpectedly')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Go back to how it was…' })).toBeNull();
   });
 
   it('shows the pack sync progress, but no meter while only checking', async () => {

@@ -1,0 +1,12 @@
+# source: tail
+Exception in thread "Render thread" java.lang.OutOfMemoryError: Java heap space
+	at java.base/java.util.Arrays.copyOf(Arrays.java:3537)
+---
+# source: crash_report
+---- Minecraft Crash Report ----
+Description: Unexpected error
+
+java.lang.OutOfMemoryError: GC overhead limit exceeded
+---
+# source: latest_log
+[18:20:11] [Worker-Main-3/ERROR]: java.lang.OutOfMemoryError: Metaspace
