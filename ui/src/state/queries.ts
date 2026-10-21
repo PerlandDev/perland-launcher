@@ -33,6 +33,7 @@ export const qk = {
   contentFiles: (id: string, kind: ContentKind) => ['content', id, kind] as const,
   packStatus: (id: string) => ['pack', 'status', id] as const,
   packContents: (id: string) => ['pack', 'contents', id] as const,
+  restorePoint: (id: string) => ['restore', id] as const,
   instanceArt: (id: string) => ['instance', 'art', id] as const,
   instanceScreenshots: (id: string) => ['instance', 'screenshots', id] as const,
   instanceScreenshot: (id: string, name: string) => ['instance', 'screenshots', id, name] as const,

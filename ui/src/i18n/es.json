@@ -141,6 +141,27 @@
     "updatedTo": "Actualizado a la {{version}}",
     "checkFailed": "No se pudo buscar actualizaciones"
   },
+  "restore": {
+    "menu": "Volver a como estaba…",
+    "undoMenu": "Deshacer la vuelta atrás…",
+    "updateAgain": "Actualizar de nuevo",
+    "title": "¿Volver a como estaba {{name}}?",
+    "undoes": "Esto deshace: {{list}}",
+    "safe": "Tus mundos, capturas y ajustes del juego se quedan como están.",
+    "size": "El punto de restauración ocupa {{size}}.",
+    "serverWarning": "{{server}} usa los mods más nuevos. Hasta que actualices de nuevo, puede que no puedas entrar.",
+    "confirm": "Volver",
+    "done": "{{name}} volvió a como estaba.",
+    "heldServer": "Volviste a los mods anteriores. {{server}} usa unos más nuevos, así que puede que no puedas entrar.",
+    "held": "Las actualizaciones están en pausa porque volviste atrás.",
+    "change": {
+      "packUpdate": "actualizado a {{to}}",
+      "installed": "instalado {{name}}",
+      "removed": "quitado {{name}}"
+    },
+    "more": "y {{count}} más",
+    "plateAction": "Volver"
+  },
   "progress": {
     "install_minecraft": "Instalando Minecraft {{version}}",
     "download_java": "Descargando Java {{version}}",

@@ -42,6 +42,7 @@ import type {
   PlaytimeEntry,
   ProjectDetail,
   PublicServerPage,
+  RestorePoint,
   RunSnapshot,
   SearchPage,
   SearchRequest,
@@ -98,6 +99,12 @@ export const commands = {
   packAdd: (request: PackAddRequest) => invoke<Instance>('pack_add', { request }),
   playAnswer: (id: string, update: boolean) => invoke<null>('play_answer', { id, update }),
   packUpdate: (id: string) => invoke<null>('pack_update', { id }),
+  /** Clears the update hold left by going back, then runs the update like `packUpdate`. */
+  packUpdateAgain: (id: string) => invoke<null>('pack_update_again', { id }),
+  /** The instance's one restore point, or null when there is none to use. */
+  restorePoint: (id: string) => invoke<RestorePoint | null>('restore_point', { id }),
+  /** Puts the instance back to its restore point; returns the new point that undoes this, or null when none could be kept. */
+  restoreGoBack: (id: string) => invoke<RestorePoint | null>('restore_go_back', { id }),
   packStatus: (id: string) => invoke<PackStatus>('pack_status', { id }),
   packContents: (id: string) => invoke<PackContents>('pack_contents', { id }),
   packSetOptional: (id: string, path: string, enabled: boolean) =>

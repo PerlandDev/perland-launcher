@@ -45,6 +45,7 @@ async function bootstrap() {
       theme: themeParam.success ? themeParam.data : undefined,
       font: fontParam.success ? fontParam.data : undefined,
       pictureBackground: !params.has('noPicture'),
+      held: params.has('held'),
     });
   }
   // Whatever fails here, the window still opens; the failure shows up as a toast.

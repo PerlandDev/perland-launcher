@@ -7,13 +7,15 @@ import { qk } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
-import { Copy, Folder, Gear, Image, Link, Pencil, Play, Reload, Trash } from '../../ui/Icon';
+import { Copy, Folder, Gear, Image, Link, Pencil, Play, Reload, Trash, Undo } from '../../ui/Icon';
 import { copyText } from '../../ui/copyText';
 import type { MenuItem } from '../../ui/Menu';
 import { ManageServerLink } from '../servers/ManageServerLink';
 import { ImageDialog } from './ImageDialog';
+import { GoBackDialog } from './GoBackDialog';
 import { DeleteDialog, RenameDialog } from './InstanceDialogs';
 import { addressText, inviteOf, isPack, isServer } from './labels';
+import { useRestorePoint } from './useRestorePoint';
 
 export interface InstanceActions {
   /** Every action, in menu order: the ⋯ key, a right-click and the rail all show this one list. */
@@ -28,7 +30,7 @@ export interface InstanceActions {
 /** The one definition of what can be done to an instance. Add an action here and every place that offers them gets it. */
 export function useInstanceActions(instance: Instance): InstanceActions {
   const { t } = useTranslation();
-  const [dialog, setDialog] = useState<'rename' | 'image' | 'delete' | 'manage' | null>(null);
+  const [dialog, setDialog] = useState<'rename' | 'image' | 'delete' | 'manage' | 'goBack' | null>(null);
   const qc = useQueryClient();
   const close = () => setDialog(null);
   const invite = inviteOf(instance);
@@ -55,6 +57,34 @@ export function useInstanceActions(instance: Instance): InstanceActions {
           onSelect: () => navigate({ name: 'joinServer', invite: '', linkFor: instance.id }),
         },
       ];
+  const point = useRestorePoint(instance.id).data ?? null;
+  const held = instance.updateHold !== undefined;
+  // Going back and updating again take the instance's lock, so while it runs they are gone, not greyed.
+  const restoreItems: MenuItem[] = running
+    ? []
+    : [
+        ...(held
+          ? [
+              {
+                id: 'updateAgain',
+                label: t('restore.updateAgain'),
+                icon: <Reload />,
+                onSelect: () =>
+                  void commands
+                    .packUpdateAgain(instance.id)
+                    .then(() => qc.invalidateQueries({ queryKey: qk.instances }))
+                    .catch(pushError),
+              },
+            ]
+          : []),
+        ...(point?.kind === 'beforeChange'
+          ? [{ id: 'goBack', label: t('restore.menu'), icon: <Undo />, onSelect: () => setDialog('goBack') }]
+          : []),
+        // On a held pack, Update again is the way forward; undoing the go-back there would drop the hold.
+        ...(point?.kind === 'beforeGoingBack' && !held
+          ? [{ id: 'undoGoBack', label: t('restore.undoMenu'), icon: <Undo />, onSelect: () => setDialog('goBack') }]
+          : []),
+      ];
   const settings: MenuItem = { id: 'settings', label: t('home.instanceSettings'), icon: <Gear />, onSelect: () => navigate({ name: 'instanceSettings', id: instance.id }) };
   // The core refuses a new picture while a run could save the whole instance over it (R3).
   const image: MenuItem = { id: 'image', label: t('image.menu'), icon: <Image />, disabled: running, onSelect: () => setDialog('image') };
@@ -62,9 +92,10 @@ export function useInstanceActions(instance: Instance): InstanceActions {
     items: [
       ...serverItems,
       ...linkItems,
-      ...(isPack(instance)
+      ...(isPack(instance) && !held
         ? [{ id: 'checkUpdates', label: t('home.checkUpdates'), icon: <Reload />, onSelect: () => void qc.invalidateQueries({ queryKey: qk.packStatus(instance.id) }) }]
         : []),
+      ...restoreItems,
       settings,
       { id: 'rename', label: t('common.rename'), icon: <Pencil />, onSelect: () => setDialog('rename') },
       image,
@@ -84,6 +115,7 @@ export function useInstanceActions(instance: Instance): InstanceActions {
         {dialog === 'image' && <ImageDialog instance={instance} onClose={close} />}
         {dialog === 'delete' && <DeleteDialog instance={instance} onClose={close} />}
         {dialog === 'manage' && <ManageServerLink instance={instance} onClose={close} />}
+        {dialog === 'goBack' && point && <GoBackDialog instance={instance} point={point} onClose={close} />}
       </>
     ),
   };

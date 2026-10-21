@@ -291,6 +291,120 @@ describe('Home', () => {
   });
 });
 
+describe('going back to how it was', () => {
+  const GO_BACK = 'Go back to how it was…';
+  const openMenu = async (user: ReturnType<typeof renderApp>['user'], name: string) => {
+    await screen.findByRole('heading', { name });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    return screen.getByRole('menu');
+  };
+
+  it('is not in the menu without a restore point', async () => {
+    const { user, calls } = renderApp(<Home id="creative-flat" />);
+    await waitFor(() => expect(sent(calls, 'restore_point')).toContainEqual({ id: 'creative-flat' }));
+    const menu = await openMenu(user, 'Creative Flat');
+    expect(within(menu).queryByRole('menuitem', { name: GO_BACK })).toBeNull();
+    expect(within(menu).queryByRole('menuitem', { name: 'Undo going back…' })).toBeNull();
+  });
+
+  it('is in the menu after a change, and opens the confirm', async () => {
+    const { user } = renderApp(<Home id="sky-islands" />);
+    await screen.findByRole('heading', { name: 'Sky Islands' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(await screen.findByRole('menuitem', { name: GO_BACK }));
+    const dialog = screen.getByRole('dialog', { name: 'Go back to how Sky Islands was?' });
+    expect(within(dialog).getByText('This undoes: updated to 1.0.3, installed Sodium, installed Lithium and 1 more')).toBeInTheDocument();
+    expect(within(dialog).getByText('The restore point uses 12 MB.')).toBeInTheDocument();
+  });
+
+  it('is gone from the menu, not disabled, while the game runs', async () => {
+    const { user, calls } = renderApp(<Home id="sky-islands" />);
+    await waitFor(() => expect(sent(calls, 'restore_point')).toContainEqual({ id: 'sky-islands' }));
+    act(() => runStore.apply({ type: 'run_state', instance: 'sky-islands', state: 'running', exit: null, update: null }));
+    const menu = await openMenu(user, 'Sky Islands');
+    expect(within(menu).queryByRole('menuitem', { name: GO_BACK })).toBeNull();
+  });
+
+  it('asks the point again when the run goes idle', async () => {
+    const { calls } = renderApp(<Home id="creative-flat" />);
+    await waitFor(() => expect(sent(calls, 'restore_point')).toHaveLength(1));
+    act(() => runStore.apply({ type: 'run_state', instance: 'creative-flat', state: 'running', exit: null, update: null }));
+    act(() => runStore.apply({ type: 'run_state', instance: 'creative-flat', state: 'idle', exit: exitOf({ code: 0 }), update: null }));
+    await waitFor(() => expect(sent(calls, 'restore_point')).toHaveLength(2));
+  });
+
+  it('offers Undo going back on a plain instance that went back', async () => {
+    const backend = createMockBackend();
+    backend.state.restorePoints.set('creative-flat', { kind: 'beforeGoingBack', createdAt: 1, changes: [], sizeBytes: 0, server: null });
+    const { user } = renderWithProviders(<Home id="creative-flat" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
+    const menu = await openMenu(user, 'Creative Flat');
+    await user.click(await within(menu).findByRole('menuitem', { name: 'Undo going back…' }));
+    expect(screen.getByRole('dialog', { name: 'Go back to how Creative Flat was?' })).toBeInTheDocument();
+  });
+
+  it('offers Update again in place of Check for updates on a held instance', async () => {
+    const { user, calls } = renderApp(<Home id="survival" />, { server: 'online', held: true });
+    const menu = await openMenu(user, 'Survival');
+    expect(within(menu).queryByRole('menuitem', { name: 'Check for updates' })).toBeNull();
+    expect(within(menu).queryByRole('menuitem', { name: 'Undo going back…' })).toBeNull();
+    await user.click(within(menu).getByRole('menuitem', { name: 'Update again' }));
+    expect(sent(calls, 'pack_update_again')).toEqual([{ id: 'survival' }]);
+  });
+
+  it('keeps the held line on a server plate, with Update again', async () => {
+    const { user, calls } = renderApp(<Home id="survival" />, { server: 'online', held: true });
+    expect(
+      await screen.findByText('You went back to the earlier mods. survival uses newer ones, so joining may not work.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Dismiss/ })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Update again' }));
+    expect(sent(calls, 'pack_update_again')).toEqual([{ id: 'survival' }]);
+  });
+
+  it('says updates are paused on a held pack', async () => {
+    const backend = createMockBackend();
+    backend.state.listing.instances = backend.state.listing.instances.map((i) =>
+      i.id === 'sky-islands' ? { ...i, updateHold: { since: 1, version: '1.0.3' } } : i,
+    );
+    renderWithProviders(<Home id="sky-islands" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
+    expect(await screen.findByText('Updates are paused because you went back.')).toBeInTheDocument();
+    expect(screen.queryByText(/Update ready/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Update again' })).toBeInTheDocument();
+  });
+
+  it('adds a quiet Go back to the plate after a sync with a point', async () => {
+    const { user } = renderApp(<Home id="sky-islands" />, { noUpdate: true });
+    await screen.findByRole('heading', { name: 'Sky Islands' });
+    act(() =>
+      runStore.apply({
+        type: 'run_state', instance: 'sky-islands', state: 'idle', update: null,
+        exit: exitOf({ updateOnly: true, synced: { fromVersion: '1.0.2', toVersion: '1.0.3', added: 2, updated: 1, removed: 1, keptModified: [], setAside: [] } }),
+      }),
+    );
+    expect(screen.getByText('Updated to 1.0.3')).toBeInTheDocument();
+    const goBack = await screen.findByRole('button', { name: 'Go back' });
+    expect(goBack).toHaveClass('btn-ghost'); // never a second lit or raised key
+    await user.click(goBack);
+    expect(screen.getByRole('dialog', { name: 'Go back to how Sky Islands was?' })).toBeInTheDocument();
+  });
+
+  it('leaves the plate without Go back when there is no point', async () => {
+    const backend = createMockBackend({ noUpdate: true });
+    backend.state.restorePoints.delete('sky-islands');
+    renderWithProviders(<Home id="sky-islands" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
+    await screen.findByRole('heading', { name: 'Sky Islands' });
+    act(() =>
+      runStore.apply({
+        type: 'run_state', instance: 'sky-islands', state: 'idle', update: null,
+        exit: exitOf({ updateOnly: true, synced: { fromVersion: '1.0.3', toVersion: '1.0.4', added: 3, updated: 2, removed: 1, keptModified: [], setAside: [] } }),
+      }),
+    );
+    expect(screen.getByText('Updated to 1.0.4')).toBeInTheDocument();
+    await act(async () => {});
+    expect(screen.queryByRole('button', { name: 'Go back' })).toBeNull();
+  });
+});
+
 it("shows the pack's own banner, and generated art otherwise", async () => {
   const { container } = renderApp(<Home id="sky-islands" />);
   await screen.findByRole('heading', { name: 'Sky Islands' });
