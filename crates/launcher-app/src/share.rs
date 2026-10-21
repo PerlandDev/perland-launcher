@@ -226,6 +226,9 @@ mod tests {
         let (core, runner, _, tmp) = core(BuildKind::Dev);
         knows_known(&runner);
         let instance = fabric(&core).await;
+        let restore = core.instances.perland_dir(&instance.id).join("restore/1");
+        std::fs::create_dir_all(&restore).unwrap();
+        std::fs::write(restore.join("mods.jar"), b"old").unwrap();
         core.share_preview(&instance.id).await.unwrap();
         let out = tmp.path().join("Sky Friends.mrpack");
         assert_eq!(
@@ -256,7 +259,16 @@ mod tests {
                 urls: vec![CDN.into()]
             }
         );
-        assert_eq!(core.share_last(), Some(out));
+        assert_eq!(core.share_last(), Some(out.clone()));
+        // Restore points and instance.json live beside the game folder: never in the pack.
+        let zip = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
+        let names: Vec<String> = zip.file_names().map(|n| n.unwrap().into_owned()).collect();
+        assert!(
+            names.iter().all(|n| !n.contains(".perland")
+                && !n.contains("restore")
+                && !n.ends_with("instance.json")),
+            "{names:?}"
+        );
     }
 
     #[tokio::test]
