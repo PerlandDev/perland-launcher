@@ -70,6 +70,23 @@ describe('ManageConsole', () => {
     expect(within(log).queryByText('not mine')).toBeNull();
   });
 
+  it('a reopen shows the tail once, not twice', async () => {
+    const first = show();
+    let log = await screen.findByRole('log', { name: 'Server console' });
+    await vi.waitFor(() => expect(sent(first.calls, 'manage_console_open')).toHaveLength(1));
+    // The open sends the last lines; they arrive as events.
+    act(() => handleEvent({ type: 'server_log', ...ref, lines: ['tail one', 'tail two'] }));
+    expect(within(log).getByText('tail one')).toBeInTheDocument();
+    first.unmount();
+    const second = show();
+    await vi.waitFor(() => expect(sent(second.calls, 'manage_console_open')).toHaveLength(1));
+    log = await screen.findByRole('log', { name: 'Server console' });
+    // The new open sends the same tail again.
+    act(() => handleEvent({ type: 'server_log', ...ref, lines: ['tail one', 'tail two'] }));
+    expect(within(log).getAllByText('tail one')).toHaveLength(1);
+    expect(within(log).getAllByText('tail two')).toHaveLength(1);
+  });
+
   it('a stop asks first, then sends it again with the confirmation', async () => {
     const { user, calls } = show();
     await user.type(await screen.findByRole('textbox', { name: 'Command' }), 'stop');

@@ -100,6 +100,7 @@ function SettingsForm({
   const [locked, setLocked] = useState<ReadonlySet<FieldName>>(new Set());
   const [asking, setAsking] = useState<'version' | 'dataLoss' | null>(null);
   const [failure, setFailure] = useState<unknown>(null);
+  const [panelOnly, setPanelOnly] = useState(false);
   // The body the Engine asked about, sent again with its confirmation.
   const last = useRef<ManageSettingsSave | null>(null);
   const panelOnce = useSingleFlight();
@@ -112,6 +113,7 @@ function SettingsForm({
     if (save.isPending) return;
     last.current = body;
     setFailure(null);
+    setPanelOnly(false);
     save.mutate(body, {
       onSuccess: (answer) => onSaved(answer.restarted ? 'savedRestarted' : answer.pending ? 'savedPending' : 'saved'),
       onError: (error) => {
@@ -127,6 +129,9 @@ function SettingsForm({
           edit({ [name]: draftOf(saved)[name] });
           return;
         }
+        // A refusal of something the form doesn't edit (an Engine that refuses the modpack's own `env` back): Upgrade
+        // can't help, only the panel can change it.
+        if (code === 'plan_feature_locked') return setPanelOnly(true);
         setFailure(error);
       },
     });
@@ -274,6 +279,14 @@ function SettingsForm({
         </div>
       )}
       {failure !== null && <ErrorCard error={failure} />}
+      {panelOnly && (
+        <div className="note-plate items-center" role="alert">
+          <p className="flex-1">{t('manage.settings.panelOnly')}</p>
+          <Button icon={<ExternalLink />} onClick={() => panelOnce((done) => void openManagePanel(tenantId, stack).finally(done))}>
+            {t('manage.morePerland')}
+          </Button>
+        </div>
+      )}
       <div className="sticky bottom-0 flex flex-wrap items-center justify-end gap-x-6 gap-y-3 bg-ground py-4 shadow-[0_-1px_0_var(--color-line)]">
         {running && (
           <fieldset className="flex flex-wrap items-center gap-2">

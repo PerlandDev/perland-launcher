@@ -1392,6 +1392,7 @@
       "applyNow": "Reiniciar ahora para aplicar",
       "applyLater": "Aplicar en el próximo reinicio",
       "locked": "Tu plan no incluye cambiar esto.",
+      "panelOnly": "Por ahora, la configuración de este servidor solo se puede cambiar en Perland.",
       "upgrade": "Mejorar plan",
       "changed": "Alguien cambió estos ajustes. Cargamos los nuevos.",
       "saved": "Guardado.",

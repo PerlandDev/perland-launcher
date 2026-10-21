@@ -37,10 +37,12 @@ export const manageLog = {
   end(tenantId: string, stack: string) {
     set(tenantId, stack, (log) => ({ ...log, ended: true }));
   },
-  /** The stream is (re)opened: it is live again. The lines stay, so a reconnect continues them. */
-  resume(tenantId: string, stack: string) {
-    if (!(logs.get(keyOf(tenantId, stack))?.ended ?? false)) return;
-    set(tenantId, stack, (log) => ({ ...log, ended: false }));
+  /** The stream is about to be (re)opened: every open sends the last lines again, so they replace what is shown rather
+   *  than repeat it. Line numbers keep counting, so no key is reused. */
+  clear(tenantId: string, stack: string) {
+    const log = logs.get(keyOf(tenantId, stack));
+    if (!log) return;
+    set(tenantId, stack, () => ({ lines: [], first: log.first + log.lines.length, ended: false }));
   },
   get(tenantId: string, stack: string): ManageLog {
     return logs.get(keyOf(tenantId, stack)) ?? EMPTY;

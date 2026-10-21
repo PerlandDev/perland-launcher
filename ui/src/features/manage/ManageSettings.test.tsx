@@ -42,6 +42,16 @@ describe('ManageSettings', () => {
     await vi.waitFor(() => expect(sent(calls, 'manage_open_panel')).toEqual([{ tenantId: ref.tenantId, stack: null }]));
   });
 
+  it('a refusal of a field the form has not sends the player to Perland', async () => {
+    const { user, calls } = withFirstSave('modpack', refusal('plan_feature_locked', { field: 'env' }));
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Difficulty' }), 'hard');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText("This server's settings can only be changed in Perland right now.")).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Upgrade' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'More in Perland' }));
+    await vi.waitFor(() => expect(sent(calls, 'manage_open_panel')).toEqual([ref]));
+  });
+
   it('a server-list name with colours is read only here', async () => {
     const { user, calls } = show('motdCodes');
     await screen.findByRole('combobox', { name: 'Game mode' });

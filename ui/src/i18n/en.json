@@ -1392,6 +1392,7 @@
       "applyNow": "Restart now to apply",
       "applyLater": "Apply at next restart",
       "locked": "Your plan doesn't include changing this.",
+      "panelOnly": "This server's settings can only be changed in Perland right now.",
       "upgrade": "Upgrade",
       "changed": "Someone changed these settings. We loaded the new ones.",
       "saved": "Saved.",

@@ -1,20 +1,38 @@
-import { QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { hashKey, QueryClient, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import i18n from '../i18n';
 import { commands } from '../ipc/commands';
 import { isLauncherError } from '../ipc/errors';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { ArtChoice, ManageListChange, ManageSettingsSave, ManageState, ContentKind, Focus, FreeServerKind, FreeServerPage, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
+import type { ArtChoice, ManageListChange, ManageSettingsSave, ManageState, ContentKind, Focus, FreeServerKind, FreeServerPage, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PerlandStatus, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { endImport, importWatched } from './importProgress';
+import { manageLog } from './manageLog';
 import { pushError, pushNotice } from './toasts';
 
 export function createQueryClient() {
-  return new QueryClient({
+  const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, refetchOnWindowFocus: false, staleTime: 30_000 },
       mutations: { retry: false },
     },
+  });
+  forgetConsolesOnAccountChange(client);
+  return client;
+}
+
+/** The consoles followed in Manage belong to the signed-in Perland player: a sign-out or another player's sign-in (seen
+ *  through `perland_status`) drops their lines. A refresh of the same account keeps them. */
+function forgetConsolesOnAccountChange(client: QueryClient) {
+  // undefined until the status is first read: nothing was shown for anyone yet.
+  let who: string | null | undefined;
+  client.getQueryCache().subscribe((event) => {
+    if (event.type !== 'updated' || event.query.queryHash !== hashKey(qk.perland)) return;
+    const status = event.query.state.data as PerlandStatus | undefined;
+    if (status === undefined) return;
+    const now = status.account ? `${status.account.name}\n${status.account.email ?? ''}` : null;
+    if (who !== undefined && who !== now) manageLog.reset();
+    who = now;
   });
 }
 

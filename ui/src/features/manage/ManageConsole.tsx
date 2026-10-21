@@ -70,7 +70,7 @@ export function ManageConsole({ tenantId, stack }: { tenantId: string; stack: st
 
   useEffect(() => {
     if (!running) return;
-    manageLog.resume(tenantId, stack);
+    manageLog.clear(tenantId, stack);
     const close = () => void commands.manageConsoleClose(tenantId, stack).catch(() => {});
     // A close sent while the open is still on its way may reach Rust first; once the open answers, close again so no
     // stream outlives the screen (it would hold one of the team's few Engine log streams).
