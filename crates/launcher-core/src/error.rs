@@ -88,6 +88,8 @@ error_codes! {
     EmailRequired, FreeServerExists, TooManyFreeServers, FreeServersFull, InvalidFreeServer,
     ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk, HostFull, FreeServersPaused,
     FreeServerBlocked,
+    // sharing an instance
+    SharePathInvalid, ShareTooLarge,
     // anything unexpected
     Internal,
 }
@@ -208,6 +210,17 @@ mod tests {
             (ErrorCode::ImportInsideLauncher, "import_inside_launcher"),
             (ErrorCode::ImportBusy, "import_busy"),
             (ErrorCode::ImportCancelled, "import_cancelled"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
+    fn share_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::SharePathInvalid, "share_path_invalid"),
+            (ErrorCode::ShareTooLarge, "share_too_large"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

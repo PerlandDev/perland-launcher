@@ -89,7 +89,9 @@ export interface MockOptions {
   /** Free server (only while `perland` is signed in): `none` (default, may create), `has`, `warned`, `overDisk`, `creating`, `exists`,
    *  `emailRequired`, `rateLimited`, `full` or `off`. Setting it, or signing in, adds a Cozy Pack and a Mega Pack (too heavy) Modrinth instance. */
   free?: FreeScenario;
-  /** What the save dialog returns; null means the player cancelled. Defaults to a zip in Downloads. */
+  /** What Share… finds: `some` (default: two mods not on Modrinth), `all` (every mod on Modrinth) or `error` (Modrinth unreachable). */
+  share?: 'some' | 'all' | 'error';
+  /** What the save dialog returns; null means the player cancelled. Defaults to the suggested name in Downloads. */
   savePath?: string | null;
   /** The rail starts wide, with names. */
   railExpanded?: boolean;
@@ -1300,6 +1302,26 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.content.set(key, left);
       return clone(left);
     }
+    case 'share_preview': {
+      if (state.options.share === 'error') fail('network', 'host_unreachable', "Couldn't reach api.modrinth.com", { host: 'api.modrinth.com' });
+      const name = (find(args.id) ?? fail('disk', 'instance_not_found', 'gone')).name;
+      const embedded = state.options.share === 'all' ? 0 : 2;
+      return {
+        name,
+        fileName: `${name.replace(/[<>:"/\\|?*]/g, '-')}.mrpack`,
+        counts: [
+          { category: 'mods', files: 14, linked: 14 - embedded, embeddedBytes: embedded * 1_350_000 },
+          { category: 'settings', files: 52, linked: 0, embeddedBytes: 420_000 },
+          { category: 'resourcePacks', files: 2, linked: 1, embeddedBytes: 6_800_000 },
+          { category: 'shaderPacks', files: 1, linked: 1, embeddedBytes: 0 },
+          { category: 'worlds', files: 2, linked: 0, embeddedBytes: 340_000_000 },
+        ],
+      };
+    }
+    case 'share_export':
+      if (state.runs.has(String(args.id))) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: args.id });
+      return (args as { path: string }).path;
+    case 'share_reveal':
     case 'diagnostics_reveal':
     case 'open_folder':
     case 'quit':
@@ -1341,7 +1363,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'diagnostics_export':
       return (args as { path: string }).path;
     case 'plugin:dialog|save':
-      return state.options.savePath === undefined ? 'C:/Users/player/Downloads/perland-diagnostics.zip' : state.options.savePath;
+      if (state.options.savePath !== undefined) return state.options.savePath;
+      return (args.options as { defaultPath?: string } | undefined)?.defaultPath ?? 'C:/Users/player/Downloads/perland-diagnostics.zip';
     case 'plugin:path|resolve_directory':
       return 'C:/Users/player/Downloads';
     case 'plugin:path|join':

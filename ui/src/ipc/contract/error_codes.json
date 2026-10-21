@@ -135,5 +135,7 @@
   "host_full",
   "free_servers_paused",
   "free_server_blocked",
+  "share_path_invalid",
+  "share_too_large",
   "internal"
 ]

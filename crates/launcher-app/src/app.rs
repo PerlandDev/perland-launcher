@@ -128,6 +128,10 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) installing: Mutex<HashSet<String>>,
     /// The file the last diagnostics export wrote (for "Show in folder").
     last_export: Mutex<Option<PathBuf>>,
+    /// The file the last share wrote (for "Show in folder").
+    pub(crate) last_share: Mutex<Option<PathBuf>>,
+    /// Per instance: the plan the Share dialog showed, taken by the export that follows.
+    pub(crate) share_plans: Mutex<HashMap<String, launcher_core::share::SharePlan>>,
     /// The running import from another launcher, if any (see `import.rs`): one at a time.
     pub(crate) import_slot: Mutex<Option<Cancel>>,
     /// Per running game: when it started, until its time is counted (see `runs.rs`).
@@ -208,6 +212,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             plan_seq: AtomicU64::new(0),
             installing: Mutex::new(HashSet::new()),
             last_export: Mutex::new(None),
+            last_share: Mutex::new(None),
+            share_plans: Mutex::new(HashMap::new()),
             import_slot: Mutex::new(None),
             playing_since: Mutex::new(HashMap::new()),
             perland: tokio::sync::Mutex::new(PerlandState::default()),

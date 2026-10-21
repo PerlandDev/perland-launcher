@@ -34,6 +34,7 @@ pub mod restore;
 pub mod server_list;
 pub mod server_wake;
 pub mod settings;
+pub mod share;
 pub mod sources;
 pub mod sync;
 #[cfg(test)]
