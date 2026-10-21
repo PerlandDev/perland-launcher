@@ -85,6 +85,7 @@ point/
 - `kind`: `beforeChange` or `beforeGoingBack`;
 - `scope`: top-level folder names in `files/`;
 - `game`: the instance's `GameSpec` at snapshot time;
+- `source`: the instance's `SourceRef` at snapshot time (an update can rewrite it to name the new version);
 - `optionalChoices`: the instance's optional choices at snapshot time;
 - `packVersion`: the version from `managed.json`, if any, for display;
 - `changes`: the list of what happened after the point was taken, for display. Each entry is one of:
@@ -169,7 +170,7 @@ There is **one restore point per instance** (**our call**). It means "how it was
    - `minecraft/.<top>.perland-restore` → `minecraft/<top>`.
 
    A folder that did not exist at snapshot time is moved aside and not replaced.
-6. **Put back the bookkeeping:** `managed.json` and `pack.json` (or delete them if the point had none), and `game` and `optionalChoices` into `instance.json`. Reload, modify and save, so a rename meanwhile is kept.
+6. **Put back the bookkeeping:** `managed.json` and `pack.json` (or delete them if the point had none), and `game`, `source` and `optionalChoices` into `instance.json`. Reload, modify and save, so a rename meanwhile is kept.
 7. **Hold updates** (§5.8) if the instance has a pack source.
 8. **Undo the setting aside:** a jar in `minecraft/mods-before-link/` that is the very same file (`same-file`) as one now back in `mods/` is removed from `mods-before-link/`. Otherwise "Update again" would set it aside a second time.
 9. **Finish:**
@@ -199,7 +200,11 @@ The UI asks `restore_point(id) → RestorePointDto | null`. It returns null when
 
   On a pack instance after going back, "Update again" shows instead, on the plate and in the menu (§5.8). The item is **hidden** (not disabled, unlike Change image, which is disabled) while the instance is running or busy. It reads the same `useRun` state.
 - **After-update plate** (`UpdatePlate.tsx`): when `lastExit.synced` reports changes and an unsealed `beforeChange` point exists, the plate adds a quiet "Go back" text action next to "Updated to X". It is not a second lit button.
-- **Crash card:** when `ExitInfo::is_crash` and the point is `beforeChange` with `cleanRunSince: false`, the card offers "Go back to how it was" as its primary action. It sits next to "Raise memory" when both apply; memory comes first for OOM.
+- **Crash card:** when `ExitInfo::is_crash` and the point is `beforeChange` with `cleanRunSince: false`, the card offers "Go back to how it was".
+  - **Building on Crash doctor:** the parallel Crash doctor work (branch `claude/crash-doctor`) owns the crash card's layout and hint model. In that model, `ExitInfo.fixes: Vec<CrashFix>` is rendered in order, the first one raised.
+    - This feature adds `CrashFix::Restore`, pushed in `runs.rs` after the exit, also when no cause is recognised.
+    - It goes **first** when no cause is recognised, and **after** the cause's own fixes otherwise, so a recognised cause (out of memory, a missing mod) keeps its specific fix as the primary one.
+  - **If this merges before Crash doctor:** `ExitInfo` gets a minimal `restore: bool`, and the card renders one more action next to "Raise memory" (memory first for out of memory). Crash doctor folds it into `fixes` when it merges.
   - When a run ends without a crash, the launcher sets `cleanRunSince: true` on the point.
 - **Confirm dialog** (all three places open it):
   - **Title:** "Go back to how {name} was?"
