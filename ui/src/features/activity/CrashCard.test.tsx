@@ -72,6 +72,7 @@ describe('CrashCard', () => {
   it('shows Find only for a mod Modrinth has', async () => {
     const { user } = show(crashed('missing'));
     await user.click(await screen.findByRole('button', { name: 'Find Fabric API' }));
+    expect(screen.getByRole('heading', { name: "Iris needs Fabric API, which isn't installed." })).toBeInTheDocument();
     expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'mod', instance: 'asalith-fields', project: 'fabric-api' });
   });
 

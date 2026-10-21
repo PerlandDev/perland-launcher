@@ -9,12 +9,16 @@ import { ErrorCard } from '../../ui/ErrorCard';
 import { Close, Copy, WarningDiamond } from '../../ui/Icon';
 import { versionLine } from '../home/labels';
 import { CrashFixes } from './CrashFixes';
+import { useModrinthMods } from './useModrinthMods';
 
 /** Why the game ended, in plain words, with the fixes the launcher can apply itself. */
 export function CrashCard({ instance, exit, lines }: { instance: Instance; exit: ExitInfo; lines: string[] }) {
   const { t, i18n } = useTranslation();
   const [showDetails, setShowDetails] = useState(false);
-  const cause = exit.cause ? describeError(i18n, exit.cause) : null;
+  const found = useModrinthMods(exit.fixes);
+  // A missing mod Modrinth knows is named as its Find button names it ("Fabric API", not "fabric-api").
+  const missing = exit.fixes.map((fix) => (fix.kind === 'find_mod' ? found.get(fix.project)?.title : undefined)).find(Boolean);
+  const cause = exit.cause ? describeError(i18n, missing ? { ...exit.cause, params: { ...exit.cause.params, missing } } : exit.cause) : null;
   const copy = () =>
     navigator.clipboard
       .writeText(
@@ -63,7 +67,7 @@ export function CrashCard({ instance, exit, lines }: { instance: Instance; exit:
         </div>
         {dismiss}
       </div>
-      <CrashFixes instance={instance} fixes={exit.fixes}>
+      <CrashFixes instance={instance} fixes={exit.fixes} found={found}>
         {copyButton}
         {cause?.detail && (
           <Button variant="ghost" aria-expanded={showDetails} onClick={() => setShowDetails((v) => !v)}>

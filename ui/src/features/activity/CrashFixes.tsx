@@ -1,10 +1,9 @@
-import { useQueries } from '@tanstack/react-query';
 import type { ReactElement, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import type { CrashFix, Instance, ProjectDetail } from '../../ipc/schema';
 import { suggestMemory } from '../../state/exit';
-import { qk, useAppInfo, useModMutations, useUpdateInstance } from '../../state/queries';
+import { useAppInfo, useModMutations, useUpdateInstance } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { pushError, pushNotice } from '../../state/toasts';
@@ -22,19 +21,20 @@ interface FixProps {
 
 /** The fixes the launcher can apply for a crash, in its order: the first raised, the rest ghost. Never lit: Play stays
  *  the one amber button, and pressing it again is the next step. A fix that can't show (a mod not on Modrinth) is skipped. */
-export function CrashFixes({ instance, fixes, children }: { instance: Instance; fixes: CrashFix[]; children?: ReactNode }) {
-  const finds = fixes.flatMap((fix) => (fix.kind === 'find_mod' ? [fix.project] : []));
-  const projects = useQueries({
-    queries: finds.map((project) => ({
-      queryKey: qk.browseProject(project),
-      queryFn: () => commands.browseProject(project),
-      retry: false,
-      staleTime: 5 * 60_000,
-    })),
-  });
-  const found = new Map(finds.map((project, i) => [project, projects[i]?.data]));
+export function CrashFixes({
+  instance,
+  fixes,
+  found,
+  children,
+}: {
+  instance: Instance;
+  fixes: CrashFix[];
+  /** Modrinth's mods for the Find fixes (`useModrinthMods`). */
+  found: Map<string, ProjectDetail>;
+  children?: ReactNode;
+}) {
   // A Find shows only once Modrinth has the project as a mod, so the primary is the first fix that shows.
-  const shown = fixes.filter((fix) => fix.kind !== 'find_mod' || found.get(fix.project)?.kind === 'mod');
+  const shown = fixes.filter((fix) => fix.kind !== 'find_mod' || found.has(fix.project));
   return (
     <div className="flex flex-wrap gap-3">
       {shown.map((fix, i) => (
