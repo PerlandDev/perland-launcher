@@ -30,6 +30,7 @@ const stats = (advancements: number, playtimeSeconds: number): ServerStats => ({
   name: 'My world',
   advancements,
   playtimeSeconds,
+  advancementIds: [],
 });
 
 describe('statsText', () => {
@@ -59,8 +60,19 @@ describe('statsText', () => {
 describe('ServerStatsLine', () => {
   it('renders the line with the linked stats', async () => {
     renderApp(<ServerStatsLine token={OWNER_TOKEN} />, { perland: 'linked' });
-    const line = await screen.findByText(/12 achievements/);
-    expect(line.closest('p')).toHaveTextContent(`Your stats on this server: 12 achievements · ${formatPlaytime(108000, t)} played`);
+    const line = await screen.findByRole('button', { name: /12 achievements/ });
+    expect(line).toHaveAccessibleName(
+      `Your stats on this server: 12 achievements · ${formatPlaytime(108000, t)} played. See your achievements on My world`,
+    );
+  });
+
+  it('opens the server’s achievements from the line', async () => {
+    const { user } = renderApp(<ServerStatsLine token={OWNER_TOKEN} />, { perland: 'linked' });
+    await user.click(await screen.findByRole('button', { name: /12 achievements/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Achievements on My world' });
+    expect(dialog).toHaveTextContent('Free the End');
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('renders nothing for a server without stats', async () => {
