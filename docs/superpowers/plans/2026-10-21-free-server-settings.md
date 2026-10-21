@@ -110,3 +110,23 @@
 **Files:** `app/components/play/create-form.tsx` (+ test), `app/components/play/free-plan.tsx` (pass `limits.settings`), i18n en/es/ca.
 
 - [ ] Tests: no `limits.settings` → today's form; with it, a `VersionCombobox` (vanilla) and a closed Options; untouched submit sends no version and no settings; hardcore locks difficulty. Implement; panel checks; screenshots; Engine roadmap record for the panel item; PR; merge.
+
+## Phase 2 (spec §6), after launcher PR 1 and the panel
+
+### Task E5: Shared packcheck package
+
+**Files:** Create `internal/minecraft/packcheck/` (moved `modpack.go`, `pack.go` and their tests from `internal/freeservers`); modify `internal/freeservers` (use `packcheck.Modpack`, errors), `cmd/server`, `internal/playersapi` (error mapping via `packcheck` types).
+
+- [ ] Move with `git mv`; no behaviour change; every existing test passes in its new home. `go build ./... && go test ./...`. Commit (`Changelog: none (refactor)` for this commit's part).
+
+### Task E6: Team create from a Modrinth version and from an uploaded pack
+
+**Files:** `internal/minecraft/model/DTOs/servers/servers-request-body-dto.go` (`ModrinthVersionID string \`json:"modrinthVersionId,omitempty"\``, left-out rule in `ValidateFields`), `internal/minecraft/controllers/servers-controller.go` (`CreateNewServer` runs `packcheck.ModpackChecker.Check(ctx, id, ramMB)`; new `CreateNewServerFromPack`), `internal/minecraft/routes/servers-routes.go` + `audit.go` (`POST /create-server/pack`), `internal/api/middleware/quota-middleware.go` (variant reading the `request` part), swagger, CLAUDE.md, changelog, roadmap, overlay examples.
+
+- [ ] Tests: `modrinthVersionId` with `type` → 400 naming `type`; good id → stack request has `ModrinthPack` with the pack's loader/version; too heavy against `ram` → 400 `modpack_too_heavy`; upload route: bad sha → 400; unsafe pack → 400 `modpack_unsupported` `unsafe`; quota middleware refuses an oversize `request` part with 402; audit records `stack.create`; free team still 402 `plan_feature_locked`. Implement; all Engine checks; PR; merge.
+
+### Task L5: Launcher: one create flow with Where
+
+**Files:** `crates/launcher-core/src/perland/stacks.rs` (`create_server`, `create_server_from_pack`, `usage`, `versions(type, minecraft?)`), `crates/launcher-app/src/manage.rs` or new `create.rs` (`creatable_teams`, `team_create`, `team_create_from_instance`), DTOs, contract, `ui/src/features/free-server/CreateServerDialog.tsx` (Where), new `ui/src/features/free-server/TeamServerForm.tsx`, `InstanceMenu.tsx`, `FriendsServerDialog.tsx`, i18n.
+
+- [ ] wiremock: create-server body per instance kind (vanilla; loader no mods → type/version/loaderVersion; Modrinth → `modrinthVersionId` with no type); pack upload multipart parts `request`, `sha256`, `pack`; `started: false` mapped to a card flag; 402 `plan_feature_locked` keeps `field`. Vitest: Where lists free + owner/member teams (no viewer); team path has no "free" copy; memory choices bounded by `available`; started:false line; locked field shows Upgrade. Implement; all CLAUDE.md checks; screenshots; PR; merge.
