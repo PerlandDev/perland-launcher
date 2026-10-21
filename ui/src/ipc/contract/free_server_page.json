@@ -56,7 +56,11 @@
         "over": false
       },
       "inviteUrl": "https://play.example.com/FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
-      "joinUrl": "perland://join?invite=https%3A%2F%2Fplay.example.com%2FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"
+      "joinUrl": "perland://join?invite=https%3A%2F%2Fplay.example.com%2FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+      "manage": {
+        "tenantId": "t-f",
+        "stack": "Steve"
+      }
     }
   },
   {

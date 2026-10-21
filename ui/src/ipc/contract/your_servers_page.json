@@ -22,7 +22,11 @@
       "region": null,
       "instance": null,
       "relation": "owner",
-      "following": false
+      "following": false,
+      "manage": {
+        "tenantId": "t-1",
+        "stack": "my-world"
+      }
     },
     {
       "token": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
@@ -46,7 +50,8 @@
       "region": null,
       "instance": null,
       "relation": "invited",
-      "following": true
+      "following": true,
+      "manage": null
     },
     {
       "token": "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",
@@ -70,7 +75,19 @@
       "region": null,
       "instance": "survival",
       "relation": "followed",
-      "following": true
+      "following": true,
+      "manage": null
+    }
+  ],
+  "managed": [
+    {
+      "tenantId": "t-2",
+      "teamName": "Builders",
+      "stack": "creative",
+      "name": "creative",
+      "state": "asleep",
+      "address": "play.example.com:25580",
+      "free": false
     }
   ]
 }

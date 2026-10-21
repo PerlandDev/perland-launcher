@@ -1195,3 +1195,94 @@ async fn stats_401_is_signed_out() {
     let e = client(&server).stats(&token()).await.unwrap_err();
     assert_eq!(e.code, ErrorCode::PerlandSignedOut);
 }
+
+#[tokio::test]
+async fn methods_keep_github() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "GET",
+        "/config",
+        200,
+        envelope(json!({ "enabled": true, "methods": ["discord", "email", "github"] })),
+    )
+    .await;
+    let config = client(&server).config().await.unwrap();
+    assert_eq!(
+        config.methods,
+        [
+            SignInMethod::Discord,
+            SignInMethod::Email,
+            SignInMethod::GitHub
+        ]
+    );
+}
+
+#[tokio::test]
+async fn your_server_reads_manage() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "GET",
+        "/servers",
+        200,
+        envelope(json!({ "servers": [
+            { "token": invite_token(), "name": "mine", "status": "online", "relation": "owner",
+              "manage": { "tenantId": "t-1", "stack": "Survival" } }
+        ] })),
+    )
+    .await;
+    let servers = client(&server).servers(&token()).await.unwrap();
+    let manage = servers[0].manage.as_ref().expect("manage");
+    assert_eq!(manage.tenant_id, "t-1");
+    assert_eq!(manage.stack, "Survival");
+}
+
+#[tokio::test]
+async fn your_server_without_manage_is_none() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "GET",
+        "/servers",
+        200,
+        envelope(json!({ "servers": [
+            { "token": invite_token(), "name": "a", "status": "online", "relation": "owner" },
+            { "token": invite_token(), "name": "b", "status": "online", "relation": "owner",
+              "manage": null },
+            { "token": invite_token(), "name": "c", "status": "online", "relation": "owner",
+              "manage": { "tenantId": "", "stack": "x" } },
+            { "token": invite_token(), "name": "d", "status": "online", "relation": "owner",
+              "manage": "nonsense" }
+        ] })),
+    )
+    .await;
+    let servers = client(&server).servers(&token()).await.unwrap();
+    assert_eq!(servers.len(), 4, "a bad manage never drops the card");
+    assert!(servers.iter().all(|s| s.manage.is_none()));
+}
+
+#[tokio::test]
+async fn account_disabled_is_signed_out() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "GET",
+        "/me",
+        403,
+        failure("account_disabled", json!({})),
+    )
+    .await;
+    answer(
+        &server,
+        "GET",
+        "/servers",
+        403,
+        failure("account_disabled", json!({})),
+    )
+    .await;
+    let e = client(&server).me(&token()).await.unwrap_err();
+    assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+    let e = client(&server).servers(&token()).await.unwrap_err();
+    assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+}

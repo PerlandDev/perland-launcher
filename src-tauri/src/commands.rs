@@ -538,6 +538,17 @@ pub async fn perland_sign_in_discord(
 }
 
 #[tauri::command]
+pub async fn perland_sign_in_github(
+    core: CoreState<'_>,
+    language: String,
+) -> Res<Option<PerlandAccount>> {
+    logged(
+        "perland_sign_in_github",
+        core.perland_sign_in_github(&language).await,
+    )
+}
+
+#[tauri::command]
 pub async fn perland_sign_in_reopen(core: CoreState<'_>) -> Res<()> {
     logged("perland_sign_in_reopen", core.perland_sign_in_reopen())
 }

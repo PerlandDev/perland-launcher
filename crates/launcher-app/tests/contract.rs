@@ -4,8 +4,8 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
 use launcher_app::dto::{
-    BrowsePlanRequest, InstallPlanView, InstallResult, PlanItemView, PlanTargetRequest,
-    PlanTargetView, SearchRequest,
+    BrowsePlanRequest, InstallPlanView, InstallResult, ManageRef, ManagedServer, PlanItemView,
+    PlanTargetRequest, PlanTargetView, SearchRequest,
 };
 use launcher_app::{
     deep_link::DeepLink,
@@ -193,18 +193,33 @@ fn your_servers_page() -> YourServersPage {
                 card: card('A', "My world", ServerStatus::Offline, None),
                 relation: "owner".into(),
                 following: false,
+                manage: Some(ManageRef {
+                    tenant_id: "t-1".into(),
+                    stack: "my-world".into(),
+                }),
             },
             YourServerCard {
                 card: card('B', "Friends", ServerStatus::Online, None),
                 relation: "invited".into(),
                 following: true,
+                manage: None,
             },
             YourServerCard {
                 card: card('C', "Survival", ServerStatus::Sleeping, Some("survival")),
                 relation: "followed".into(),
                 following: true,
+                manage: None,
             },
         ],
+        managed: vec![ManagedServer {
+            tenant_id: "t-2".into(),
+            team_name: "Builders".into(),
+            stack: "creative".into(),
+            name: "creative".into(),
+            state: "asleep".into(),
+            address: Some("play.example.com:25580".into()),
+            free: false,
+        }],
     }
 }
 
@@ -277,6 +292,10 @@ fn free_server_pages() -> Vec<FreeServerPage> {
                     "perland://join?invite=https%3A%2F%2Fplay.example.com%2F{}",
                     "F".repeat(43)
                 )),
+                manage: Some(ManageRef {
+                    tenant_id: "t-f".into(),
+                    stack: "Steve".into(),
+                }),
             }),
         },
         FreeServerPage {
@@ -909,7 +928,7 @@ fn contract_fixtures_are_current() {
         vec![
             PerlandStatus {
                 enabled: true,
-                methods: vec!["discord".into(), "email".into()],
+                methods: vec!["discord".into(), "email".into(), "github".into()],
                 account: None,
             },
             PerlandStatus {

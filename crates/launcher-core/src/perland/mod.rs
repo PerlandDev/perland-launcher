@@ -13,9 +13,9 @@ mod wire;
 
 pub use api::{
     CreateAllowance, CreateFreeServer, Deletion, DiscordAccount, Disk, EmailStarted, FreeLimits,
-    FreeServer, FreeServerState, LinkCode, MemoryLimits, MinecraftAccount, Player, PlayerClient,
-    PlayerConfig, PlayerStats, Relation, ServerStats, SignInMethod, StatsInvite, TokenAnswer,
-    YourServer,
+    FreeServer, FreeServerState, LinkCode, ManageRefCore, MemoryLimits, MinecraftAccount, Player,
+    PlayerClient, PlayerConfig, PlayerStats, Relation, ServerStats, SignInMethod, StatsInvite,
+    TokenAnswer, YourServer,
 };
 pub use auth::{AuthClient, Handoff, Membership, SessionJwt};
 pub use log_stream::{
@@ -23,7 +23,9 @@ pub use log_stream::{
     SseParser,
 };
 pub use loopback::{Callback, Language, Loopback};
-pub use panel::{handoff_url, manage_url, panel_page, panel_url, server_path, upgrade_path};
+pub use panel::{
+    handoff_url, launcher_sign_in_url, manage_url, panel_page, panel_url, server_path, upgrade_path,
+};
 pub use pkce::{authorize_url, Pkce};
 pub use session::{
     KeyringStore, MemoryStore, Profile, SecretError, SecretStore, Session, SessionStore,

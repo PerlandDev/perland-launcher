@@ -37,6 +37,9 @@ const MODRINTH_HOST: &str = "modrinth.com";
 pub enum SignInMethod {
     Discord,
     Email,
+    /// The panel's own sign-in page, for operators who manage servers. The Engine lists it
+    /// only when that path works for the launcher.
+    GitHub,
 }
 
 impl SignInMethod {
@@ -44,6 +47,7 @@ impl SignInMethod {
         match name {
             "discord" => Some(Self::Discord),
             "email" => Some(Self::Email),
+            "github" => Some(Self::GitHub),
             _ => None,
         }
     }
@@ -220,6 +224,25 @@ impl<'de> Deserialize<'de> for Relation {
     }
 }
 
+/// Where an owned server lives on the Engine: its team and its name there.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ManageRefCore {
+    pub tenant_id: String,
+    pub stack: String,
+}
+
+/// `manage`, or `None` when it is absent or not the shape the launcher knows: a newer or odd
+/// Engine must never drop the card.
+fn lenient_manage<'de, D: Deserializer<'de>>(
+    d: D,
+) -> std::result::Result<Option<ManageRefCore>, D::Error> {
+    let value = Option::<Value>::deserialize(d)?;
+    Ok(value
+        .and_then(|v| serde_json::from_value::<ManageRefCore>(v).ok())
+        .filter(|m| !m.tenant_id.trim().is_empty() && !m.stack.trim().is_empty()))
+}
+
 /// One entry of Your servers: the public list's card plus how the player relates to it.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -230,6 +253,9 @@ pub struct YourServer {
     pub relation: Relation,
     #[serde(default)]
     pub following: bool,
+    /// An owner entry of a server the player can manage (absent on older Engines).
+    #[serde(default, deserialize_with = "lenient_manage")]
+    pub manage: Option<ManageRefCore>,
 }
 
 /// The memory of each kind of free server, in MB.
@@ -680,6 +706,8 @@ impl PlayerClient {
         };
         match failure.code.as_deref() {
             Some("player_accounts_disabled") => return accounts_closed(&host),
+            // A disabled player user: the session is no use any more.
+            Some("account_disabled") => return signed_out(&host),
             Some("sign_in_method_unavailable") => {
                 return sign_in_unavailable(&host, param("method").as_deref())
             }

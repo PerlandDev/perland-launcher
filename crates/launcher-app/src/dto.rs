@@ -465,6 +465,9 @@ impl fmt::Debug for PublicServerCard {
 #[serde(rename_all = "camelCase")]
 pub struct YourServersPage {
     pub servers: Vec<YourServerCard>,
+    /// Servers the player owns or helps run that no card above (and not the free server's
+    /// own card) already shows. Empty when they can't be read.
+    pub managed: Vec<ManagedServer>,
 }
 
 /// A server of Your servers: the public list's card, whose `status` may also be `offline`,
@@ -478,6 +481,8 @@ pub struct YourServerCard {
     pub relation: String,
     /// Whether the player follows it (an owner or invitee can too).
     pub following: bool,
+    /// The server the player can manage this card as, when they can.
+    pub manage: Option<ManageRef>,
 }
 
 /// The player's free server (spec "Create a server for friends" §5 and §6.2): the limits every
@@ -516,6 +521,8 @@ pub struct FreeServerCard {
     pub invite_url: Option<String>,
     /// `perland://join?invite=…`, for friends who have the launcher.
     pub join_url: Option<String>,
+    /// The server in Manage, when the player's managed servers name it.
+    pub manage: Option<ManageRef>,
 }
 
 // Manual Debug: the invite URLs hold the invite's credential.
@@ -720,7 +727,7 @@ pub struct InstallResult {
 }
 
 /// The Perland account card: whether the Engine has player accounts on, the ways to sign in it
-/// offers (`discord`, `email`), and the signed-in player. Never carries the token.
+/// offers (`discord`, `email`, `github`), and the signed-in player. Never carries the token.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PerlandStatus {

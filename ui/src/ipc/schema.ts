@@ -117,8 +117,27 @@ export const publicServerPage = z.strictObject({
 /** Where a Your servers entry comes from. */
 export const yourServerRelation = z.enum(['owner', 'invited', 'followed']);
 /** A Your servers entry: the public list's card (offline stays `offline` here) plus how the player relates to it. */
-export const yourServerCard = publicServerCard.extend({ relation: yourServerRelation, following: z.boolean() });
-export const yourServersPage = z.strictObject({ servers: z.array(yourServerCard) });
+/** A server a Manage call is about: its team and its name there. */
+export const manageRef = z.strictObject({ tenantId: z.string(), stack: z.string() });
+/** A server the player owns or helps run that no card of Your servers shows. */
+export const managedServer = z.strictObject({
+  tenantId: z.string(),
+  teamName: z.string(),
+  stack: z.string(),
+  name: z.string(),
+  state: z.string(),
+  address: z.string().nullable(),
+  free: z.boolean(),
+});
+export const yourServerCard = publicServerCard.extend({
+  relation: yourServerRelation,
+  following: z.boolean(),
+  manage: manageRef.nullable().optional(),
+});
+export const yourServersPage = z.strictObject({
+  servers: z.array(yourServerCard),
+  managed: z.array(managedServer).optional(),
+});
 /** The signed-in player. `email` is null for a Discord-only account; `newPlayer` is true on the sign-in that made it. */
 export const perlandAccount = z.strictObject({
   name: z.string(),
@@ -178,6 +197,8 @@ export const freeServerCard = publicServerCard.extend({
   inviteUrl: z.string().nullable(),
   /** `perland://join?invite=…`, for friends who have the launcher. */
   joinUrl: z.string().nullable(),
+  /** The server in Manage, when the player's managed servers name it. */
+  manage: manageRef.nullable().optional(),
 });
 /** `free_server`: null while signed out or when free servers are off. */
 export const freeServerPage = z.strictObject({
