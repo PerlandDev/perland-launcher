@@ -40,7 +40,7 @@ fn io_err(e: std::io::Error) -> LauncherError {
     internal("Couldn't keep a restore point").with_detail(e)
 }
 
-fn point_dir(restore: &Path) -> PathBuf {
+pub(crate) fn point_dir(restore: &Path) -> PathBuf {
     restore.join("point")
 }
 
@@ -73,10 +73,7 @@ async fn before_change_capped(
     if let Err(e) = take(store, id, &tops, change, &ctx, cap).await {
         let restore = restore_dir(&store.perland_dir(id));
         clear_scratch(&restore).await;
-        tracing::warn!(
-            folders = tops.len(),
-            "no restore point for this change: {e}"
-        );
+        tracing::warn!(folders = ?tops, "no restore point for this change: {e}");
     }
 }
 
@@ -243,7 +240,6 @@ async fn snapshot_tops(
 
 /// Build a point for `tops` in `into` (emptied first): the folders' files, copies of
 /// `managed.json` and `pack.json`, and `point.json`. `go_back` builds its own point with it.
-#[allow(dead_code)]
 pub(crate) async fn build_point(
     store: &InstanceStore,
     id: &str,
@@ -331,7 +327,7 @@ pub(crate) async fn swap_in(restore_dir: &Path) -> Result<()> {
 }
 
 /// An interrupted swap can leave the previous point in `old/` and no `point/`: put it back.
-async fn recover_old(restore: &Path) {
+pub(crate) async fn recover_old(restore: &Path) {
     let (point, old) = (point_dir(restore), restore.join("old"));
     if !tokio::fs::try_exists(&point).await.unwrap_or(true)
         && tokio::fs::try_exists(&old).await.unwrap_or(false)
@@ -342,7 +338,7 @@ async fn recover_old(restore: &Path) {
 
 /// Remove leftovers of an interrupted build: `new/`, `new-<top>/` and `old/` (after putting
 /// back a previous point that only `old/` still holds).
-async fn clear_scratch(restore: &Path) {
+pub(crate) async fn clear_scratch(restore: &Path) {
     recover_old(restore).await;
     let Ok(mut entries) = tokio::fs::read_dir(restore).await else {
         return;
@@ -362,7 +358,7 @@ async fn write_meta(dir: &Path, meta: &PointMeta) -> Result<()> {
 }
 
 /// The point as stored, with no age check. A point folder that can't be read is removed.
-async fn load_meta(restore: &Path) -> Option<PointMeta> {
+pub(crate) async fn load_meta(restore: &Path) -> Option<PointMeta> {
     recover_old(restore).await;
     let dir = point_dir(restore);
     if !tokio::fs::try_exists(&dir).await.unwrap_or(false) {

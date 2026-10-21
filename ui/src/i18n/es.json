@@ -760,6 +760,8 @@
     "not_enough_space": { "message": "No hay suficiente espacio libre: se necesitan {{needed_mb}} MB y hay {{free_mb}} MB.", "fix": "Libera espacio e inténtalo de nuevo." },
     "instance_locked": { "message": "Otra ventana de Perland Launcher está usando esta instancia.", "fix": "Cierra la otra ventana o espera a que termine." },
     "instance_folder_in_use": { "message": "Otro programa está usando la carpeta de esta instancia.", "fix": "Cierra cualquier ventana o programa que use la carpeta y vuelve a intentarlo." },
+    "restore_point_gone": { "message": "No hay nada a qué volver." },
+    "restore_failed": { "message": "No se pudo volver a como estaba.", "fix": "Cierra cualquier ventana que muestre la carpeta de la instancia y vuelve a intentarlo." },
     "art_file_invalid": { "message": "Ese archivo no se puede usar como imagen de la instancia.", "fix": "Elige una imagen PNG, JPEG o WebP." },
     "banner_focus_invalid": { "message": "Esa posición está fuera de la imagen." },
     "import_not_instance": { "message": "Esta carpeta no parece una instancia de Minecraft.", "fix": "Elige la carpeta de la instancia: la que tiene mods, saves o config adentro." },

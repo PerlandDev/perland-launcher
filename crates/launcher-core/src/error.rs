@@ -72,6 +72,8 @@ error_codes! {
     LinkHasPack,
     ServerPackUnavailable, ServerPackPending, ServerAddressUnknown, ServerListFailed, ServerListClosed,
     ServerWakeFailed,
+    // restore points
+    RestorePointGone, RestoreFailed,
     // launcher updates
     LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
     // importing from another launcher
@@ -157,6 +159,26 @@ impl From<std::io::Error> for LauncherError {
         LauncherError::disk(ErrorCode::DiskIo, "Couldn't read or write a launcher file")
             .with_fix("Check free disk space and that the launcher folder isn't read-only")
             .with_detail(e)
+    }
+}
+
+/// Going back to the instance's restore point.
+pub mod restore {
+    use super::{ErrorCode, LauncherError};
+
+    /// No point to go back to: none was taken, it is too old, or it is damaged.
+    pub fn point_gone() -> LauncherError {
+        LauncherError::disk(
+            ErrorCode::RestorePointGone,
+            "There is nothing to go back to",
+        )
+    }
+
+    /// A folder couldn't be swapped back (another program holds it).
+    pub fn failed(detail: impl std::fmt::Display) -> LauncherError {
+        LauncherError::disk(ErrorCode::RestoreFailed, "Couldn't go back to how it was")
+            .with_fix("Close any window showing the instance's folder, then try again")
+            .with_detail(detail)
     }
 }
 
@@ -314,6 +336,21 @@ mod tests {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));
         }
+    }
+
+    #[test]
+    fn restore_codes_exist() {
+        for (code, wire) in [
+            (ErrorCode::RestorePointGone, "restore_point_gone"),
+            (ErrorCode::RestoreFailed, "restore_failed"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+        assert_eq!(restore::point_gone().code, ErrorCode::RestorePointGone);
+        let failed = restore::failed("busy");
+        assert_eq!(failed.category, ErrorCategory::Disk);
+        assert!(failed.fix.is_some());
     }
 
     #[test]

@@ -92,6 +92,10 @@ pub(crate) fn snapshot_folder(
     mode: LinkMode,
 ) -> IoResult<Result<Vec<SnapFile>, LinkFailed>> {
     let mut files = Vec::new();
+    // An existing folder is kept even when empty, so going back knows it was there.
+    if fs::symlink_metadata(game_dir.join(top)).is_ok_and(|m| m.is_dir()) {
+        fs::create_dir_all(dest.join(top))?;
+    }
     for (path, meta) in walk(&game_dir.join(top))? {
         let rel = rel_path(game_dir, &path);
         let to = dest.join(&rel);
@@ -241,6 +245,18 @@ mod tests {
             .unwrap();
         assert!(files.is_empty());
         assert!(!dest.join("mods").exists());
+    }
+
+    #[test]
+    fn empty_folder_is_kept_as_a_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (game, dest) = (tmp.path().join("game"), tmp.path().join("dest"));
+        fs::create_dir_all(game.join("shaderpacks")).unwrap();
+        let files = snapshot_folder(&game, "shaderpacks", &dest, LinkMode::Auto)
+            .unwrap()
+            .unwrap();
+        assert!(files.is_empty());
+        assert!(dest.join("shaderpacks").is_dir());
     }
 
     #[test]

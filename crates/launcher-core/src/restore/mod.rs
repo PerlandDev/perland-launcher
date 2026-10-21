@@ -1,7 +1,7 @@
 //! One restore point per instance, kept under `<instance>/.perland/restore/`, so the player can
 //! go back to how the instance was before the last update. Mod, pack and shader archives are
 //! hard-linked into the point, everything else is copied (see `snapshot`). Taking, extending,
-//! sealing and pruning the point is in `point`.
+//! sealing and pruning the point is in `point`; putting it back is in `go_back`.
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -11,9 +11,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::instances::{GameSpec, SourceRef};
 
+pub mod go_back;
 pub mod point;
 pub mod snapshot;
 
+pub use go_back::{go_back, recover, WentBack};
 pub use point::{before_change, held_size, note_change, read, run_ended, seal, ChangeCtx};
 
 /// A point older than this (30 days) is deleted when it is read or a new one is made.

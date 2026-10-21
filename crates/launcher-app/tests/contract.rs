@@ -122,6 +122,7 @@ fn fabric_instance() -> Instance {
         art: ArtMode::Auto,
         icon: None,
         banner_focus: Some(Focus { x: 30, y: 60 }),
+        update_hold: None,
     }
 }
 
@@ -146,6 +147,7 @@ fn vanilla_instance() -> Instance {
         art: ArtMode::Generated,
         icon: Some(IconMode::Generated),
         banner_focus: None,
+        update_hold: None,
     }
 }
 
@@ -473,6 +475,7 @@ fn server_instance() -> Instance {
         art: ArtMode::Auto,
         icon: None,
         banner_focus: None,
+        update_hold: None,
     }
 }
 

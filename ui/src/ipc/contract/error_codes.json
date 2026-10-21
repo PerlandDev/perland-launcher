@@ -102,6 +102,8 @@
   "server_list_failed",
   "server_list_closed",
   "server_wake_failed",
+  "restore_point_gone",
+  "restore_failed",
   "launcher_update_failed",
   "launcher_update_invalid",
   "launcher_update_busy",
