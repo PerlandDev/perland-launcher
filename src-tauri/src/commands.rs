@@ -688,6 +688,34 @@ pub async fn diagnostics_export(core: CoreState<'_>, path: PathBuf) -> Res<Strin
     .map(|p| p.display().to_string())
 }
 
+#[tauri::command]
+pub async fn share_preview(
+    core: CoreState<'_>,
+    id: String,
+) -> Res<launcher_app::dto::SharePreview> {
+    logged("share_preview", core.share_preview(&id).await)
+}
+
+#[tauri::command]
+pub async fn share_export(
+    core: CoreState<'_>,
+    id: String,
+    choice: launcher_core::share::ShareChoice,
+    path: PathBuf,
+) -> Res<String> {
+    logged("share_export", core.share_export(&id, choice, path).await)
+        .map(|p| p.display().to_string())
+}
+
+/// Reveals the file the last share wrote. The path never comes from the webview.
+#[tauri::command]
+pub fn share_reveal(app: AppHandle, core: CoreState<'_>) -> Res<()> {
+    if let Some(path) = core.share_last() {
+        let _ = app.opener().reveal_item_in_dir(path);
+    }
+    Ok(())
+}
+
 /// Reveals the file the last export wrote. The path never comes from the webview.
 #[tauri::command]
 pub fn diagnostics_reveal(app: AppHandle, core: CoreState<'_>) -> Res<()> {

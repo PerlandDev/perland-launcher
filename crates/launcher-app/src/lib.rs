@@ -20,6 +20,7 @@ mod public_servers;
 pub mod runner;
 mod runs;
 mod servers;
+mod share;
 #[cfg(test)]
 pub(crate) mod testing;
 pub mod updates;

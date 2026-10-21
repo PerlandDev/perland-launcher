@@ -1,0 +1,7 @@
+{
+  "mods": true,
+  "settings": true,
+  "resourcePacks": true,
+  "shaderPacks": false,
+  "worlds": false
+}
