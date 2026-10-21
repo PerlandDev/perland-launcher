@@ -22,6 +22,7 @@ export {
   Languages,
   Link,
   Lock,
+  Mail,
   Map,
   Megaphone,
   MemoryStick,

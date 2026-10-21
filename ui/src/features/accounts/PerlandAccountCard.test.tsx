@@ -76,19 +76,39 @@ describe('PerlandAccountCard', () => {
     expect(qc.getQueryData(qk.yourServers)).toBeUndefined();
   });
 
-  it('github shows only when offered', async () => {
+  it('Continue with Perland shows only when the Engine offers github', async () => {
     // The mock offers GitHub only while a panel is configured.
     renderApp(<PerlandAccountCard />, { perland: 'signedOut', panel: false });
     await screen.findByRole('button', { name: 'Continue with Discord' });
-    expect(screen.queryByRole('button', { name: 'Continue with GitHub' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continue with Perland' })).not.toBeInTheDocument();
+    expect(within(card()).getAllByRole('button').map((b) => b.textContent)).toEqual(['Continue with Discord', 'Continue with email']);
   });
 
-  it('github sign-in calls perland_sign_in_github', async () => {
+  it('puts Continue with Perland first, as the large key, and every key wears a hidden icon', async () => {
+    renderApp(<PerlandAccountCard />, { perland: 'signedOut' });
+    const perland = await screen.findByRole('button', { name: 'Continue with Perland' });
+    const buttons = within(card()).getAllByRole('button');
+    expect(buttons.map((b) => b.textContent)).toEqual(['Continue with Perland', 'Continue with Discord', 'Continue with email']);
+    // The lead key is large but raised, never lit: Accounts keeps one amber key.
+    expect(perland).toHaveClass('btn-lg');
+    expect(perland).not.toHaveClass('btn-primary');
+    // Every icon is decorative: the mark has empty alt text, the glyphs are hidden, and each key is named by its label alone.
+    const [, discord, email] = buttons;
+    expect(perland.querySelector('img')).toHaveAttribute('alt', '');
+    expect(discord?.querySelector('svg[data-icon="discord"]')).toHaveAttribute('aria-hidden', 'true');
+    expect(email?.querySelector('svg[data-icon="mail"]')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('names the Perland key in Spanish', async () => {
+    await i18n.changeLanguage('es');
+    renderApp(<PerlandAccountCard />, { perland: 'signedOut' });
+    expect(await screen.findByRole('button', { name: 'Continuar con Perland' })).toBeInTheDocument();
+  });
+
+  it('Continue with Perland calls perland_sign_in_github', async () => {
     const { user, calls, qc } = renderApp(<PerlandAccountCard />, { perland: 'signedOut' });
     seedYourServers(qc);
-    const buttons = within(await screen.findByRole('region', { name: 'Perland account' })).getAllByRole('button');
-    expect(buttons.map((b) => b.textContent)).toEqual(['Continue with Discord', 'Continue with GitHub', 'Continue with email']);
-    await user.click(screen.getByRole('button', { name: 'Continue with GitHub' }));
+    await user.click(await screen.findByRole('button', { name: 'Continue with Perland' }));
     expect(await screen.findByText('Finish signing in with your browser')).toBeInTheDocument();
     expect(sent(calls, 'perland_sign_in_github')).toEqual([{ language: 'en' }]);
     expect(sent(calls, 'perland_sign_in_discord')).toEqual([]);
@@ -108,12 +128,12 @@ describe('PerlandAccountCard', () => {
     expect(within(card).queryByText('Discord')).not.toBeInTheDocument();
   });
 
-  it('github sign-in can be canceled', async () => {
+  it('the Perland sign-in can be canceled', async () => {
     const { user, calls } = renderApp(<PerlandAccountCard />, { perland: 'signedOut' });
-    await user.click(await screen.findByRole('button', { name: 'Continue with GitHub' }));
+    await user.click(await screen.findByRole('button', { name: 'Continue with Perland' }));
     await screen.findByText('Finish signing in with your browser');
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(await screen.findByRole('button', { name: 'Continue with GitHub' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Continue with Perland' })).toBeInTheDocument();
     expect(sent(calls, 'perland_sign_in_cancel')).toHaveLength(1);
   });
 
