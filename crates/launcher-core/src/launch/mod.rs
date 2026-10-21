@@ -779,9 +779,9 @@ mod tests {
 
     #[test]
     fn a_world_on_a_version_without_quick_play_is_refused() {
-        let err = build_world(&vanilla("1.12.2.json", "1.12.2"), "Mundo")
-            .err()
-            .expect("1.12.2 can't open a world straight away");
+        let Err(err) = build_world(&vanilla("1.12.2.json", "1.12.2"), "Mundo") else {
+            panic!("1.12.2 can't open a world straight away");
+        };
         assert_eq!(err.code, ErrorCode::WorldContinueUnsupported);
     }
 

@@ -16,6 +16,7 @@ export {
   Languages,
   Link,
   Lock,
+  Map,
   Megaphone,
   MemoryStick,
   Minus,

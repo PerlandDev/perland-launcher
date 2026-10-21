@@ -7,7 +7,7 @@
 //! A run leaves the map (idle) with exactly one final `run_state` event carrying how it ended.
 use std::{
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use launcher_core::{
@@ -15,6 +15,7 @@ use launcher_core::{
     events::{Event, EventSink},
     fsutil::write_atomic,
     instances::{unix_now, Instance, ServerAddress, ServerStatus, SourceRef, UpdatePolicy},
+    last_place,
     locks::InstanceLock,
     playtime, server_list,
     server_wake::{Knock, Ping, WaitEnd},
@@ -31,6 +32,7 @@ use tokio::{
 
 use crate::{
     app::{AppCore, ManualState, Run},
+    continue_play::Connected,
     dto::{PackUpdate, RunSnapshot, SyncSummary},
     events::{AppEvent, ExitInfo, Host, ProgressThrottle, RunStateKind, PROGRESS_INTERVAL},
     logs::spawn_batcher,
@@ -502,7 +504,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Core events for one run become app events tagged with the instance.
-    fn run_sink(&self, id: &str, log_tx: mpsc::UnboundedSender<String>) -> EventSink {
+    fn run_sink(
+        &self,
+        id: &str,
+        log_tx: mpsc::UnboundedSender<String>,
+        connected: Connected,
+    ) -> EventSink {
         let host = self.host.clone();
         let id = id.to_string();
         let throttle = Mutex::new(ProgressThrottle::new(PROGRESS_INTERVAL));
@@ -530,6 +537,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 }
             }
             Event::Log { line } => {
+                if let Some(address) = last_place::connect_line(&line) {
+                    *connected.lock().unwrap_or_else(|e| e.into_inner()) =
+                        Some((address, SystemTime::now()));
+                }
                 let _ = log_tx.send(line);
             }
             Event::Warning(error) => host.emit(AppEvent::Warning {
@@ -554,7 +565,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             ..info
         };
         let (log_tx, batcher) = spawn_batcher(id.clone(), self.host.clone(), self.logs.clone());
-        let sink = self.run_sink(&id, log_tx);
+        let connected = Connected::default();
+        let sink = self.run_sink(&id, log_tx, connected.clone());
         // Held from the update check until the run ends: the CLI or another window can't
         // change this instance's files meanwhile (spec addendum §4.2).
         let lock = match self.lock_instance(&id).await {
@@ -738,6 +750,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 self.wake_in_background(&id, address.clone(), name);
             }
         }
+        let started_at = SystemTime::now();
         let game = match self
             .runner
             .start(instance, prepared, args.session, join, world, sink.clone())
@@ -800,6 +813,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if let Some(started) = started {
             self.record_playtime(&id, started).await;
         }
+        self.record_place(&id, address.as_ref(), &connected, started_at)
+            .await;
         let crashed = info.is_crash();
         self.finish(&id, info, sink, batcher, Some(lock)).await;
         if args.minimize || crashed {

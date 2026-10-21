@@ -54,6 +54,39 @@ pub async fn write(perland_dir: &Path, place: &LastPlace) -> Result<()> {
     Ok(())
 }
 
+/// The place a run ended at: the later of the last server it connected to (and when) and the
+/// last world it saved (and when). `own` is the instance's own Perland server, if it has one.
+/// `None` when the run did neither: the player only saw the menus, so the old place stays.
+pub fn decide(
+    server: Option<(ServerAddress, SystemTime)>,
+    world: Option<(String, SystemTime)>,
+    own: Option<&ServerAddress>,
+) -> Option<LastPlace> {
+    let unix = |t: SystemTime| {
+        t.duration_since(SystemTime::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs())
+    };
+    let server_wins = match (&server, &world) {
+        (Some((_, joined)), Some((_, saved))) => joined > saved,
+        (server, _) => server.is_some(),
+    };
+    if server_wins {
+        let (address, at) = server?;
+        Some(LastPlace::Server {
+            own: own == Some(&address),
+            host: address.host,
+            port: address.port,
+            at: unix(at),
+        })
+    } else {
+        let (folder, at) = world?;
+        Some(LastPlace::World {
+            folder,
+            at: unix(at),
+        })
+    }
+}
+
 /// The server in the game's `Connecting to <host>, <port>` line, plain or inside a log4j XML
 /// event. The host and port pass the same check as every address that reaches the game.
 pub fn connect_line(line: &str) -> Option<ServerAddress> {
@@ -205,6 +238,42 @@ mod tests {
 
     fn addr(host: &str, port: i64) -> ServerAddress {
         ServerAddress::new(host, port).unwrap()
+    }
+
+    #[test]
+    fn decide_takes_the_later_place() {
+        let t = |s| SystemTime::UNIX_EPOCH + Duration::from_secs(s);
+        let hub = addr("hub.example.org", 25565);
+        let server = Some((hub.clone(), t(100)));
+        let world = Some(("Mundo".to_string(), t(200)));
+        assert_eq!(
+            decide(server.clone(), world.clone(), None),
+            Some(LastPlace::World {
+                folder: "Mundo".into(),
+                at: 200
+            }),
+            "joined a server, then played a world"
+        );
+        let later = Some((hub.clone(), t(300)));
+        assert_eq!(
+            decide(later, world.clone(), Some(&hub)),
+            Some(LastPlace::Server {
+                host: "hub.example.org".into(),
+                port: 25565,
+                own: true,
+                at: 300
+            }),
+            "played a world, then joined a server"
+        );
+        assert!(matches!(
+            decide(server, None, Some(&addr("other.org", 25565))),
+            Some(LastPlace::Server { own: false, .. })
+        ));
+        assert!(matches!(
+            decide(None, world, None),
+            Some(LastPlace::World { .. })
+        ));
+        assert_eq!(decide(None, None, None), None, "only the menus");
     }
 
     #[test]

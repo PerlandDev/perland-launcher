@@ -59,6 +59,8 @@
     "deleteTitle": "¿Borrar {{name}}?",
     "deleteBody": "Se borra la instancia y todo lo que tiene, incluidos mundos y capturas. No se puede deshacer.",
     "deleteConfirm": "Borrar instancia",
+    "continue": "Continuar",
+    "continueTo": "Continuar: {{name}}",
     "played": "{{time}} de juego"
   },
   "image": {
@@ -783,6 +785,7 @@
     "server_list_failed": { "message": "No se pudo agregar el servidor a la lista de servidores del juego.", "fix": "Agrega {{address}} a mano en Multijugador." },
     "server_list_closed": { "message": "La lista de servidores aún no está abierta. Vuelve pronto." },
     "server_wake_failed": { "message": "No se pudo despertar el servidor. El juego intentará entrar igual." },
+    "world_continue_unsupported": { "message": "Esta versión de Minecraft no puede abrir un mundo directamente.", "fix": "Presiona Jugar y elige el mundo en Un jugador." },
     "player_accounts_closed": { "message": "Las cuentas de Perland aún no están abiertas." },
     "sign_in_unavailable": { "message": "Esa forma de iniciar sesión no está disponible." },
     "sign_in_failed": { "message": "No pudimos iniciar tu sesión. Inténtalo de nuevo." },

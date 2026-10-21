@@ -46,6 +46,10 @@ related_targets: ["ui/src"]
 - **Manage server link (#63), decided 2026-10-17:**
   - *One dialog, nothing lit.* The join card set bare on the dialog's panel, the invite and the address as well copy rows, a ghost Unlink and raised Change link and Close. Play keeps the room's amber.
   - *Unlink says what stays.* The standard confirm with the coral Unlink; its body names what is kept (worlds, mods, settings) before what stops.
+- **Continue where you left off (#86), decided 2026-10-21:**
+  - *A key, not a hero.* A standard raised key (md, never lit) in Play's column, directly above Play and right-aligned to it; Play stays the room's only amber.
+  - *The verb stays, the name gives.* "Continue" in 400 `ink-dim`, then the world or server name in 650 `ink`, truncating inside a key no wider than Play (17.5rem). The full "Continue: name" is the accessible name and tooltip. A pixel map marks a world, the server glyph a server.
+  - *Nothing when there's nowhere.* No place, a deleted world, a server off the list, a gone Perland server or a version that can't open a world: no key, no message. It steps aside while the instance runs, and is disabled with Play when there's no account.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract
