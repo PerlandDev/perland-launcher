@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { MOCK_FREE_LIMITS } from '../../ipc/mockFree';
 import { renderWithProviders } from '../../test/render';
 import { ServerOptions } from './ServerOptions';
-import { initialOptions, isOptionField, settingsOf, useServerOptions } from './serverOptions';
+import { initialOptions, isOptionField, settingsOf, useServerOptions } from './optionRules';
 
 const base = initialOptions(MOCK_FREE_LIMITS);
 

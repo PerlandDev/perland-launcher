@@ -10,7 +10,7 @@ import { useVersionChoice } from '../new-instance/useVersionChoice';
 import { VersionFields } from '../new-instance/VersionFields';
 import { engineLanguage, isServerName, limitsText, maybeCreated, prefillName } from './freeServer';
 import { ServerOptions } from './ServerOptions';
-import { isOptionField, useServerOptions } from './serverOptions';
+import { isOptionField, useServerOptions } from './optionRules';
 import { refusalOf, serverStep, useLostPoll, type Step } from './steps';
 import { usePlayFreeServer } from './usePlayFreeServer';
 

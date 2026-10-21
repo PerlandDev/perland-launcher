@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Field } from '../../ui/Field';
 import { ChevronDown } from '../../ui/Icon';
 import { SwitchRow } from '../../ui/SwitchRow';
-import { DIFFICULTIES, GAME_MODES, modeLabel, oneLine, type Difficulty, type ServerOptionsModel } from './serverOptions';
+import { DIFFICULTIES, GAME_MODES, modeLabel, oneLine, type Difficulty, type ServerOptionsModel } from './optionRules';
 
 // The Options disclosure of the free-server dialogs; its state and rules are in serverOptions.ts.
 

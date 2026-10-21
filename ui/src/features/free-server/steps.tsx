@@ -10,7 +10,7 @@ import { pushNotice } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { CopyRow } from '../../ui/CopyRow';
 import { isServerName, retryText } from './freeServer';
-import { optionRefusal } from './serverOptions';
+import { optionRefusal } from './optionRules';
 
 // The steps of making the free server that every dialog shares: creating, ready, waiting out a lost answer, and a refusal
 // in words.

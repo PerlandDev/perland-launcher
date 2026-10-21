@@ -10,7 +10,7 @@ import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
 import { ServerOptions } from './ServerOptions';
-import { isOptionField, useServerOptions } from './serverOptions';
+import { isOptionField, useServerOptions } from './optionRules';
 import { refusalOf, serverStep, useLostPoll, type Step } from './steps';
 import { engineLanguage, friendsPath, isOldVersion, isServerName, limitsText, maybeCreated, prefillName } from './freeServer';
 import { usePlayFreeServer } from './usePlayFreeServer';
