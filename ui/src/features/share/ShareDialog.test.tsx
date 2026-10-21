@@ -2,7 +2,9 @@ import { act, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { runStore } from '../../state/runStore';
 import { toastsSnapshot } from '../../state/toasts';
+import { createMockBackend } from '../../ipc/mock';
 import { renderApp, sent } from '../../test/backend';
+import { renderWithProviders } from '../../test/render';
 import { Home } from '../home/Home';
 
 const openShare = async (user: ReturnType<typeof renderApp>['user'], name = 'Creative Flat') => {
@@ -109,5 +111,36 @@ describe('ShareDialog', () => {
     act(() => runStore.apply({ type: 'run_state', instance: 'creative-flat', state: 'running', exit: null, update: null }));
     await user.click(screen.getByRole('button', { name: 'More options' }));
     expect(screen.getByRole('menuitem', { name: 'Share…' })).toBeDisabled();
+  });
+
+  it('refuses more than one file can hold before the save dialog', async () => {
+    const backend = createMockBackend();
+    const { user } = renderWithProviders(<Home id="creative-flat" />, {
+      ipc: async (cmd, args) => {
+        if (cmd !== 'share_preview') return backend.handle(cmd, args);
+        const preview = (await backend.handle(cmd, args)) as { counts: { category: string; embeddedBytes: number }[] };
+        for (const c of preview.counts) if (c.category === 'worlds') c.embeddedBytes = 9 * 1024 ** 3;
+        return preview;
+      },
+    });
+    const dialog = await openShare(user);
+    await within(dialog).findByText('14 mods');
+    await user.click(toggle(dialog, 'Worlds'));
+    expect(within(dialog).getByText('This is too big to share as one file. Leave out worlds.')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Save file…' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('stays open while the file is written', async () => {
+    const backend = createMockBackend();
+    const { user } = renderWithProviders(<Home id="creative-flat" />, {
+      ipc: (cmd, args) => (cmd === 'share_export' ? new Promise(() => {}) : backend.handle(cmd, args)),
+    });
+    const dialog = await openShare(user);
+    await within(dialog).findByText('14 mods');
+    await user.click(within(dialog).getByRole('button', { name: 'Save file…' }));
+    expect(await within(dialog).findByRole('button', { name: 'Saving…' })).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('dialog', { name: 'Share Creative Flat' })).toBeInTheDocument();
   });
 });

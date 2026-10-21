@@ -475,3 +475,46 @@ async fn nothing_to_look_up_asks_nothing() {
     assert!(linked.is_empty());
     assert!(server.received_requests().await.unwrap().is_empty());
 }
+
+#[tokio::test]
+async fn a_settings_file_that_gained_a_secret_since_the_scan_is_left_out() {
+    let server = MockServer::start().await;
+    serve_versions(&server, json!({})).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("minecraft");
+    game(&root);
+    let plan = plan(&server, &root).await;
+    std::fs::write(
+        root.join("config/a.toml"),
+        b"key = \"plt_0123456789abcdef0123\"",
+    )
+    .unwrap();
+    let out = tmp.path().join("p.mrpack");
+    share::write(&root, &plan, all(), meta(), &out)
+        .await
+        .unwrap();
+    assert!(entry(&out, "overrides/config/a.toml").is_none());
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn names_differing_by_case_still_import() {
+    let server = MockServer::start().await;
+    serve_versions(&server, json!({})).await;
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("minecraft");
+    game(&root);
+    put(&root, "config/A.toml", b"upper");
+    let plan = plan(&server, &root).await;
+    let out = tmp.path().join("p.mrpack");
+    share::write(&root, &plan, all(), meta(), &out)
+        .await
+        .unwrap();
+    mrpack::read_archive(
+        &out,
+        "s".into(),
+        Hashes::sha1("x".repeat(40)),
+        Limits::default(),
+    )
+    .unwrap();
+}

@@ -2,7 +2,7 @@
 //! Only an allowlist of the game folder is ever read, so logs, screenshots, the server list and
 //! everything beside the game folder (`.perland/`, `instance.json`) stay out by construction.
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs::File,
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -16,7 +16,7 @@ use crate::{
     browse::api::Api,
     download::hash::sha1_file,
     error::{ErrorCode, LauncherError, Result},
-    fsutil::normalize_rel,
+    fsutil::{is_in_use, normalize_rel, path_key},
     instances::LoaderSpec,
     meta::loaders::LoaderKind,
 };
@@ -49,6 +49,14 @@ pub struct Scan {
     pub files: Vec<ScannedFile>,
     /// Settings files left out because they look like they hold a secret.
     pub skipped_secrets: usize,
+    /// Files left out because they vanished or couldn't be read (held by another program).
+    pub skipped_unreadable: usize,
+}
+
+/// A file that vanished since it was listed, or that another program holds, is left out
+/// rather than failing the whole share.
+fn skippable(e: &std::io::Error) -> bool {
+    e.kind() == std::io::ErrorKind::NotFound || is_in_use(e)
 }
 
 /// Folders the Settings choice covers, whole.
@@ -99,6 +107,10 @@ fn scan_blocking(game: &Path) -> Result<Scan> {
     walk(game, "resourcepacks", Category::ResourcePacks, &mut scan)?;
     walk(game, "shaderpacks", Category::ShaderPacks, &mut scan)?;
     walk(game, "saves", Category::Worlds, &mut scan)?;
+    // Two names that differ only by case would make the reader refuse the whole pack (it
+    // keeps one file per case-insensitive path), so only the first, in sorted order, goes in.
+    let mut seen = HashSet::new();
+    scan.files.retain(|f| seen.insert(path_key(&f.path)));
     Ok(scan)
 }
 
@@ -118,13 +130,22 @@ fn children(dir: &Path, rel: &str) -> Result<Vec<(String, std::fs::Metadata)>> {
     match std::fs::symlink_metadata(dir) {
         Ok(meta) if meta.is_dir() => {}
         Ok(_) => return Ok(Vec::new()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) if skippable(&e) => return Ok(Vec::new()),
         Err(e) => return Err(e.into()),
     }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) if skippable(&e) => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
+    };
     let mut out = Vec::new();
-    for entry in std::fs::read_dir(dir)? {
+    for entry in entries {
         let entry = entry?;
-        let meta = entry.metadata()?;
+        let meta = match entry.metadata() {
+            Ok(meta) => meta,
+            Err(e) if skippable(&e) => continue,
+            Err(e) => return Err(e.into()),
+        };
         if meta.file_type().is_symlink() {
             continue;
         }
@@ -170,14 +191,29 @@ impl Scan {
         if category == Category::Settings {
             let name = path.rsplit('/').next().unwrap_or(&path);
             let secret = is_secret_name(name)
-                || (size <= SECRET_SCAN_MAX && has_secret_text(&std::fs::read(&full)?));
+                || (size <= SECRET_SCAN_MAX
+                    && match std::fs::read(&full) {
+                        Ok(bytes) => has_secret_text(&bytes),
+                        Err(e) if skippable(&e) => {
+                            self.skipped_unreadable += 1;
+                            return Ok(());
+                        }
+                        Err(e) => return Err(e.into()),
+                    });
             if secret {
                 self.skipped_secrets += 1;
                 return Ok(());
             }
         }
         let sha1 = if content {
-            Some(sha1_file(&full)?)
+            match sha1_file(&full) {
+                Ok(sha1) => Some(sha1),
+                Err(e) if skippable(&e) => {
+                    self.skipped_unreadable += 1;
+                    return Ok(());
+                }
+                Err(e) => return Err(e.into()),
+            }
         } else {
             None
         };
@@ -418,8 +454,10 @@ pub fn counts(plan: &SharePlan) -> Vec<CategoryCount> {
                 .map(|f| f.size)
                 .sum();
             let count = if category == Category::Worlds {
+                // A loose file right under saves/ is no world.
                 files
                     .iter()
+                    .filter(|f| f.path.split('/').count() > 2)
                     .filter_map(|f| f.path.split('/').nth(1))
                     .collect::<BTreeSet<_>>()
                     .len()
@@ -540,7 +578,11 @@ pub async fn write_with(
         } else {
             "overrides"
         };
-        carried.push((file.path.clone(), format!("{prefix}/{}", file.path)));
+        carried.push(Carried {
+            rel: file.path.clone(),
+            name: format!("{prefix}/{}", file.path),
+            settings: file.category == Category::Settings,
+        });
     }
     let mut dependencies = BTreeMap::from([("minecraft".to_string(), meta.minecraft.clone())]);
     if let Some(loader) = &meta.loader {
@@ -563,6 +605,14 @@ pub async fn write_with(
         .map_err(|e| LauncherError::from(std::io::Error::other(e)))?
 }
 
+/// A file the pack carries: where it is, its name in the archive, and whether it is a Settings
+/// file (checked for secrets again as it is written: it may have changed since the scan).
+struct Carried {
+    rel: String,
+    name: String,
+    settings: bool,
+}
+
 fn part_path(out: &Path) -> PathBuf {
     let mut name = out.file_name().unwrap_or_default().to_os_string();
     name.push(".part");
@@ -572,7 +622,7 @@ fn part_path(out: &Path) -> PathBuf {
 fn write_archive(
     game: &Path,
     index: &[u8],
-    carried: &[(String, String)],
+    carried: &[Carried],
     keep_resource_packs: bool,
     out: &Path,
 ) -> Result<()> {
@@ -584,22 +634,34 @@ fn write_archive(
             .large_file(true);
         zip.start_file(INDEX, options).map_err(zip_error)?;
         zip.write_all(index)?;
-        for (rel, name) in carried {
-            let source = game.join(rel);
-            let mut file = match File::open(&source) {
-                Ok(file) => file,
+        for file in carried {
+            let mut handle = match File::open(game.join(&file.rel)) {
+                Ok(handle) => handle,
                 // Gone since the scan (the game deleted a temp file): leave it out.
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(e) => return Err(e.into()),
             };
-            zip.start_file(name.as_str(), options).map_err(zip_error)?;
-            if SETTINGS_FILES[0] == rel {
-                let mut text = Vec::new();
-                file.read_to_end(&mut text)?;
-                let cleaned = clean_options(&String::from_utf8_lossy(&text), keep_resource_packs);
-                zip.write_all(cleaned.as_bytes())?;
+            if !file.settings {
+                zip.start_file(file.name.as_str(), options)
+                    .map_err(zip_error)?;
+                std::io::copy(&mut handle, &mut zip)?;
+                continue;
+            }
+            let mut head = Vec::new();
+            (&mut handle)
+                .take(SECRET_SCAN_MAX + 1)
+                .read_to_end(&mut head)?;
+            if head.len() as u64 <= SECRET_SCAN_MAX && has_secret_text(&head) {
+                continue;
+            }
+            zip.start_file(file.name.as_str(), options)
+                .map_err(zip_error)?;
+            if file.rel == SETTINGS_FILES[0] {
+                let text = String::from_utf8_lossy(&head);
+                zip.write_all(clean_options(&text, keep_resource_packs).as_bytes())?;
             } else {
-                std::io::copy(&mut file, &mut zip)?;
+                zip.write_all(&head)?;
+                std::io::copy(&mut handle, &mut zip)?;
             }
         }
         zip.finish().map_err(zip_error)?.sync_all()?;
@@ -834,5 +896,53 @@ mod tests {
             let (_, loader) = crate::sources::game_from(&versions).unwrap();
             assert_eq!(loader.unwrap().kind, kind);
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn names_differing_by_case_keep_the_first() {
+        let tmp = tempfile::tempdir().unwrap();
+        let game = tmp.path();
+        put(game, "config/Foo.toml", b"a");
+        put(game, "config/foo.toml", b"b");
+        put(game, "saves/W/level.dat", b"w");
+        put(game, "saves/w/level.dat", b"w");
+        let scan = scan(game).await.unwrap();
+        assert_eq!(
+            found(&scan),
+            vec![
+                ("config/Foo.toml", Category::Settings, false),
+                ("saves/W/level.dat", Category::Worlds, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn missing_or_held_files_are_skippable() {
+        assert!(skippable(&std::io::Error::from(
+            std::io::ErrorKind::NotFound
+        )));
+        assert!(skippable(&std::io::Error::from(
+            std::io::ErrorKind::PermissionDenied
+        )));
+        assert!(!skippable(&std::io::Error::other("disk on fire")));
+    }
+
+    #[test]
+    fn a_loose_file_under_saves_is_no_world() {
+        let file = |path: &str| ScannedFile {
+            path: path.into(),
+            size: 1,
+            category: Category::Worlds,
+            sha1: None,
+        };
+        let plan = SharePlan {
+            scan: Scan {
+                files: vec![file("saves/.DS_Store"), file("saves/W/level.dat")],
+                ..Scan::default()
+            },
+            linked: HashMap::new(),
+        };
+        assert_eq!(counts(&plan)[0].files, 1);
     }
 }

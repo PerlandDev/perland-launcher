@@ -14,6 +14,9 @@ import { Toggle } from '../../ui/Toggle';
 import { formatBytes } from '../../ui/format';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 
+/** The reader's cap on what one pack carries (`mrpack::Limits::default().total`): more can't be opened again. */
+const MAX_CARRIED = 8 * 1024 ** 3;
+
 /** Worlds are big and personal, so they start off; everything else starts on. */
 const START: ShareChoice = { mods: true, settings: true, resourcePacks: true, shaderPacks: true, worlds: false };
 
@@ -39,7 +42,14 @@ export function ShareDialog({ instance, onClose }: { instance: Instance; onClose
   const running = useRun(instance.id).state !== 'idle';
   const counts = preview.data?.counts ?? [];
   const nothingOn = counts.length > 0 && !counts.some((c) => choice[c.category]);
-  const blocked = saving || nothingOn || running;
+  const tooBig = carriedBytes(counts, choice) > MAX_CARRIED;
+  // Why Save is off, said beside it; none while it's on.
+  const reason = running ? t('share.running') : nothingOn ? t('share.pickSomething') : tooBig ? t('share.tooBig') : null;
+  const blocked = saving || reason !== null;
+  // The file is being written: closing now would hide a save that still finishes.
+  const close = () => {
+    if (!saving) onClose();
+  };
 
   const detail = (c: CategoryCount): string => {
     const size = formatBytes(c.embeddedBytes, i18n.language);
@@ -101,30 +111,30 @@ export function ShareDialog({ instance, onClose }: { instance: Instance; onClose
   return (
     <Dialog
       open
-      onClose={onClose}
+      onClose={close}
       title={t('share.title', { name: instance.name })}
       actions={
         <>
           {/* The size, or why Save is off, rides the action row so it stays in view while the list scrolls. */}
           {preview.isSuccess && (
             <p className="mr-auto min-w-0 flex-1 self-center text-sm text-ink" aria-live="polite">
-              {nothingOn || running ? (
+              {reason !== null ? (
                 <span id="share-blocked" className="font-semibold">
-                  {running ? t('share.running') : t('share.pickSomething')}
+                  {reason}
                 </span>
               ) : (
                 <span className="tabular">{t('share.size', { size: formatBytes(carriedBytes(counts, choice), i18n.language) })}</span>
               )}
             </p>
           )}
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" aria-disabled={saving || undefined} onClick={close}>
             {t('common.cancel')}
           </Button>
           {preview.isSuccess && (
             <Button
               variant="primary"
               aria-disabled={blocked || undefined}
-              aria-describedby={nothingOn || running ? 'share-blocked' : undefined}
+              aria-describedby={reason !== null ? 'share-blocked' : undefined}
               onClick={() => {
                 if (!blocked) once((done) => void saveFile().catch(pushError).finally(done));
               }}

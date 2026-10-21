@@ -16,35 +16,41 @@ use crate::{
     runner::Runner,
 };
 
-/// `out` as a `.mrpack` path: a name without an extension gets one (some save dialogs return
-/// the typed name as is); any other extension is refused.
+/// `out` as a `.mrpack` path. Save dialogs that return the typed name as is can hand back
+/// "Fabric 1.20.1" (extension "1"), so any other ending gets `.mrpack` added; only a name that
+/// is plainly another kind of archive is refused.
 fn mrpack_path(out: PathBuf) -> Result<PathBuf> {
-    let out = if out.extension().is_none() && out.file_name().is_some() {
-        out.with_extension("mrpack")
-    } else {
-        out
-    };
-    if out
+    let ext = out
         .extension()
-        .is_some_and(|e| e.eq_ignore_ascii_case("mrpack"))
-    {
-        Ok(out)
-    } else {
-        Err(LauncherError::disk(
+        .map(|e| e.to_string_lossy().to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("mrpack") => Ok(out),
+        Some("zip" | "jar" | "7z" | "rar") => Err(LauncherError::disk(
             ErrorCode::SharePathInvalid,
             "Shared instances are saved as a .mrpack file",
         )
-        .with_fix("Pick a file name that ends in .mrpack"))
+        .with_fix("Pick a file name that ends in .mrpack")),
+        _ if out.file_name().is_some() => {
+            let mut name = out.file_name().unwrap_or_default().to_os_string();
+            name.push(".mrpack");
+            Ok(out.with_file_name(name))
+        }
+        _ => Err(LauncherError::disk(
+            ErrorCode::SharePathInvalid,
+            "Shared instances are saved as a .mrpack file",
+        )
+        .with_fix("Pick a file name that ends in .mrpack")),
     }
 }
 
 impl<R: Runner, H: Host> AppCore<R, H> {
     async fn share_plan(&self, instance: &Instance) -> Result<SharePlan> {
         let scan = share::scan(&self.instances.game_dir(&instance.id)).await?;
-        if scan.skipped_secrets > 0 {
+        if scan.skipped_secrets > 0 || scan.skipped_unreadable > 0 {
             tracing::info!(
-                skipped = scan.skipped_secrets,
-                "share: left out files that look like they hold a secret"
+                secrets = scan.skipped_secrets,
+                unreadable = scan.skipped_unreadable,
+                "share: left out files that look like they hold a secret or couldn't be read"
             );
         }
         let sha1s = scan.files.iter().filter_map(|f| f.sha1.clone()).collect();
@@ -61,10 +67,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             file_name: share::file_name_for(&instance.name),
             counts: share::counts(&plan),
         };
-        self.share_plans
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(instance.id, plan);
+        // Only the latest dialog's plan is kept: one left by a cancelled dialog is dropped here.
+        let mut plans = self.share_plans.lock().unwrap_or_else(|e| e.into_inner());
+        plans.clear();
+        plans.insert(instance.id, plan);
         Ok(preview)
     }
 
@@ -274,6 +280,37 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::SharePathInvalid);
         assert_eq!(core.share_last(), None);
+    }
+
+    #[test]
+    fn typed_names_get_the_extension() {
+        let path = |p: &str| mrpack_path(PathBuf::from(p)).map(|p| p.display().to_string());
+        assert_eq!(path("/d/Sky.mrpack").unwrap(), "/d/Sky.mrpack");
+        assert_eq!(path("/d/Sky.MRPACK").unwrap(), "/d/Sky.MRPACK");
+        assert_eq!(path("/d/Sky").unwrap(), "/d/Sky.mrpack");
+        assert_eq!(path("/d/Fabric 1.20.1").unwrap(), "/d/Fabric 1.20.1.mrpack");
+        assert_eq!(
+            path("/d/Sky.zip").unwrap_err().code,
+            ErrorCode::SharePathInvalid
+        );
+    }
+
+    #[tokio::test]
+    async fn only_the_latest_plan_is_kept() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let one = fabric(&core).await;
+        let two = core
+            .instance_create(NewInstance {
+                name: "Other".into(),
+                minecraft: "1.20.1".into(),
+                loader: None,
+            })
+            .await
+            .unwrap();
+        core.share_preview(&one.id).await.unwrap();
+        core.share_preview(&two.id).await.unwrap();
+        let plans = core.share_plans.lock().unwrap();
+        assert_eq!(plans.keys().collect::<Vec<_>>(), vec![&two.id]);
     }
 
     #[tokio::test]
