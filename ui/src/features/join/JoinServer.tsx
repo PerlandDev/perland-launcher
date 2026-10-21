@@ -120,10 +120,12 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
         : busy
           ? t('join.adding')
           : t('join.add');
+  // Back and Cancel both return to where the link was going: the instance being linked, or Home.
+  const leave = () => navigate({ name: 'home', id: relinkFor ?? linkFor ?? null });
   const title = relinkFor ? t('join.relinkTitle') : linkFor ? t('join.linkTitle') : t('join.title');
 
   return (
-    <ScreenFrame title={title}>
+    <ScreenFrame title={title} onBack={leave}>
       <div className="grid max-w-3xl gap-6">
         {asking && (
           <form onSubmit={check} noValidate className="flex flex-wrap items-end gap-3">
@@ -202,7 +204,7 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
         {/* Cancel is always here, so a link that fails (or a deep link the player didn't mean) has a way out. */}
         <div className="sticky bottom-0 flex items-center justify-end gap-4 bg-ground py-4 shadow-[0_-1px_0_var(--color-line)]">
           {data && !relinkFor && !linkFor && !data.existing && <p className="text-sm text-ink-dim">{t('join.note')}</p>}
-          <Button onClick={() => navigate({ name: 'home', id: relinkFor ?? linkFor ?? null })}>{t('common.cancel')}</Button>
+          <Button onClick={leave}>{t('common.cancel')}</Button>
           {data && (
             <Button variant="primary" size="lg" disabled={busy} onClick={go}>
               {label}

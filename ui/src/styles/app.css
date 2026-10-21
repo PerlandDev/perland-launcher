@@ -2869,3 +2869,154 @@
     padding-inline: 0.5rem;
   }
 }
+
+/* Medals (#32): a medal case on Accounts and a server's achievements. Medals are pictures in their own metal palette (copper,
+   iron, gold, diamond), never the role hues, so Accounts' one primary stays the only amber. Progress is the blue block meter. */
+@layer components {
+  .medal-case {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem 1.5rem;
+    padding: 1.25rem;
+  }
+  .medal {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    min-width: 0;
+  }
+  .medal[data-locked] .font-bold {
+    color: var(--color-ink-dim);
+  }
+  .medal-badge {
+    position: relative;
+    flex: none;
+  }
+  .medal-art {
+    position: absolute;
+    inset: 0;
+  }
+  /* The emblem sits in the middle of the disc (8, 10 on the badge's 16-cell grid) in laminate black; locked, it fades to the
+     room's dim ink. */
+  .medal-emblem {
+    position: absolute;
+    left: 28.125%;
+    top: 40.625%;
+    width: 43.75%;
+    height: 43.75%;
+    color: #181410;
+  }
+  .medal-badge[data-locked] .medal-emblem {
+    color: var(--color-ink-dim);
+  }
+  .medal-meter {
+    display: grid;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+    max-width: 12rem;
+  }
+  .medal-meter .meter {
+    grid-template-columns: repeat(10, 1fr);
+    height: 0.5rem;
+  }
+  /* A server with achievements: a flat key row (raised on hover, never travels, never lit), like the news line. */
+  .medal-server {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0 0.75rem;
+    text-align: left;
+    color: var(--color-ink);
+    background: var(--color-panel);
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+  }
+  .medal-server:hover {
+    background: var(--color-raised);
+  }
+
+  /* The stats line and plate open the achievements: they stay flat facts, raised only under the pointer. */
+  .stats-key {
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    margin: -0.25rem -0.5rem;
+    padding: 0.25rem 0.5rem;
+    text-align: left;
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+  }
+  .stats-key:hover {
+    color: var(--color-ink);
+    background: var(--color-raised);
+  }
+  button.stats-plate.marquee-plate {
+    color: var(--color-ink);
+  }
+  button.stats-plate.marquee-plate:hover {
+    background: var(--color-raised);
+  }
+
+  /* The achievements dialog widens a little, and only its list scrolls, so Close stays in view. */
+  .dialog[open]:has(.achievements-list) {
+    display: flex;
+    flex-direction: column;
+    width: min(36rem, calc(100vw - 4rem));
+    overflow: hidden;
+  }
+  .dialog[open]:has(.achievements-list) > div:has(> .achievements-list) {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    color: var(--color-ink);
+  }
+  .achievements-list {
+    min-height: 0;
+    margin-top: 0.75rem;
+    overflow-y: auto;
+    /* Room for the focus ring, which the scroller would clip. */
+    margin-inline: -0.5rem;
+    padding-inline: 0.5rem;
+  }
+  .achievements-group {
+    padding-block: 0.875rem;
+  }
+  .achievements-group + .achievements-group {
+    border-top: 1px solid var(--color-line);
+  }
+  .achievements-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+  }
+  .achievements-items {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.25rem 1rem;
+    font-size: 0.875rem;
+  }
+  .achievements-items > li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.375rem;
+    min-width: 0;
+    color: var(--color-ink-dim);
+  }
+  .achievements-items > li[data-earned] {
+    color: var(--color-ink);
+  }
+  .achievements-items svg {
+    flex: none;
+    width: 1rem;
+    height: 1rem;
+    margin-top: 0.125rem;
+    color: var(--color-ink-dim);
+  }
+  .achievements-items > li[data-earned] svg {
+    color: var(--color-lime);
+  }
+}

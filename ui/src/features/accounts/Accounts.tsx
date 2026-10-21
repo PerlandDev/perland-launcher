@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Avatar } from '../../art/Avatar';
 import type { Account, AccountsFile } from '../../ipc/schema';
 import { useAccountMutations, useAccounts, useAppInfo, usePlaytime } from '../../state/queries';
+import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { ComingSoon } from '../../ui/ComingSoon';
 import { Dialog } from '../../ui/Dialog';
@@ -12,6 +13,7 @@ import { Check, Trash, User } from '../../ui/Icon';
 import { formatPlaytime } from '../../ui/playtime';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useSingleFlight } from '../../ui/useSingleFlight';
+import { Medals } from '../medals/Medals';
 import { OFFLINE_NAME } from './offlineName';
 import { PerlandAccountCard } from './PerlandAccountCard';
 
@@ -101,7 +103,7 @@ export function Accounts() {
   const successor = removing && removing.uuid === accounts.data?.active ? list.find((a) => a.uuid !== removing.uuid) : undefined;
   const losesActive = removing !== null && removing.uuid === accounts.data?.active;
   return (
-    <ScreenFrame title={t('accounts.title')}>
+    <ScreenFrame title={t('accounts.title')} onBack={() => navigate({ name: 'home', id: null })}>
       <div className="grid max-w-2xl gap-10">
         <PerlandAccountCard />
         <div className="grid gap-2">
@@ -152,6 +154,8 @@ export function Accounts() {
           </ul>
           {totalPlayed && <p className="mt-1 text-sm text-ink-dim">{t('accounts.totalPlayed', { time: totalPlayed })}</p>}
         </div>
+
+        <Medals />
 
         <section className="grid gap-4" aria-labelledby="add-heading">
           <h2 id="add-heading" ref={addHeading} tabIndex={-1} className="text-lg font-bold outline-none">

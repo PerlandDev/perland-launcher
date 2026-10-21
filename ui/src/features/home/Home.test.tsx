@@ -315,9 +315,13 @@ describe('server instances', () => {
     expect(await screen.findByRole('status', { name: `Server status: ${word}` })).toBeInTheDocument();
   });
 
-  it("show the player's achievements on the server as a plate", async () => {
-    renderApp(<Home id="survival" />, { server: 'online', perland: 'linked' });
+  it("show the player's achievements on the server as a plate that lists them", async () => {
+    const { user } = renderApp(<Home id="survival" />, { server: 'online', perland: 'linked' });
     expect(await screen.findByText('7 achievements')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /7 achievements\. See your achievements on/ }));
+    const dialog = screen.getByRole('dialog', { name: /^Achievements on / });
+    expect(dialog).toHaveTextContent('Andesite alloy');
+    expect(dialog).toHaveTextContent('A Seedy Place');
   });
 
   it('show no achievements plate without achievements', async () => {
