@@ -128,6 +128,19 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         play: Option<PlayArgs>,
         checks: bool,
     ) -> Result<()> {
+        self.start_run_lifting(id, instance, play, checks, false)
+    }
+
+    /// `start_run`; with `lift_hold`, the run clears the instance's update hold once it holds
+    /// the lock ("Update again"), so a run that never starts leaves the hold in place.
+    pub(crate) fn start_run_lifting(
+        self: &Arc<Self>,
+        id: &str,
+        instance: Instance,
+        play: Option<PlayArgs>,
+        checks: bool,
+        lift_hold: bool,
+    ) -> Result<()> {
         let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
         if runs.contains_key(id) {
             return Err(LauncherError::game(
@@ -156,10 +169,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let update_only = play.is_none();
         let core = Arc::clone(self);
         let (run_id, run_cancel) = (id.to_string(), cancel.clone());
-        let task =
-            tokio::spawn(
-                async move { core.drive(run_id, instance, play, checks, run_cancel).await },
-            );
+        let task = tokio::spawn(async move {
+            core.drive(run_id, instance, play, checks, lift_hold, run_cancel)
+                .await
+        });
         runs.insert(
             id.to_string(),
             Run {
@@ -524,6 +537,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         instance: Instance,
         play: Option<PlayArgs>,
         checks: bool,
+        lift_hold: bool,
         cancel: Cancel,
     ) {
         let update_only = play.is_none();
@@ -549,6 +563,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             return self
                 .finish(&id, ended(failed(error)), sink, batcher, Some(lock))
                 .await;
+        }
+        if lift_hold {
+            if let Err(error) = self.lift_hold_locked(&id).await {
+                return self
+                    .finish(&id, ended(failed(error)), sink, batcher, Some(lock))
+                    .await;
+            }
         }
         let accept = if checks {
             let accept = self.decide_update(&id, &instance, update_only, &sink).await;
@@ -776,7 +797,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             self.record_playtime(&id, started).await;
         }
         let crashed = info.is_crash();
-        restore::run_ended(&self.instances, &id, started_at, crashed).await;
+        // A game we lost track of (a wait error) didn't prove the update runs cleanly.
+        restore::run_ended(
+            &self.instances,
+            &id,
+            started_at,
+            crashed || info.error.is_some(),
+        )
+        .await;
         let info = ExitInfo {
             restore: crashed && self.offers_restore(&id).await,
             ..info
@@ -785,6 +813,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if args.minimize || crashed {
             self.host.restore();
         }
+    }
+
+    /// Clear the update hold, under the run's lock. The instance is reloaded so nothing else
+    /// on it changes.
+    async fn lift_hold_locked(&self, id: &str) -> Result<()> {
+        let mut instance = self.instances.load(id).await?;
+        if instance.update_hold.take().is_some() {
+            self.instances.save(&instance).await?;
+        }
+        Ok(())
     }
 
     /// The crash card offers "Go back": the point is of before an update that hasn't run

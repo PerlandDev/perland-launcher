@@ -102,16 +102,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.restore_point(id).await
     }
 
-    /// "Update again": lift the hold, then take the pack's update like the banner's Update.
+    /// "Update again": take the pack's update like the banner's Update, lifting the hold.
     pub async fn pack_update_again(self: &Arc<Self>, id: &str) -> Result<()> {
         if self.is_busy(id) {
             return Err(busy(id));
         }
+        // The run lifts the hold once it holds the lock; refused here, the hold stays.
         let mut instance = self.pack_instance(id).await?;
-        if instance.update_hold.take().is_some() {
-            self.instances.save(&instance).await?;
-        }
-        self.pack_update(id).await
+        instance.update_hold = None;
+        let checks = self.checks_for_updates(&instance).await;
+        self.start_run_lifting(id, instance, None, checks, true)
     }
 }
 
@@ -124,6 +124,7 @@ mod tests {
         instances::{unix_now, UpdateHold, UpdatePolicy},
         locks::InstanceLock,
         restore::{self, Change, ChangeCtx, PointKind},
+        ErrorCode,
     };
 
     use crate::{
@@ -329,6 +330,62 @@ mod tests {
             vec![(id.clone(), Some("1.0.4".to_string()))]
         );
         assert!(host.last_exit(&id).unwrap().update_only);
+    }
+
+    #[tokio::test]
+    async fn pack_update_again_on_a_busy_instance_keeps_the_hold() {
+        let (core, runner, host, _t) = ready().await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        updated(&core, &id).await;
+        core.restore_go_back(&id).await.unwrap();
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(core.pack_update_again(&id).await.unwrap_err(), busy(&id));
+        assert!(core
+            .instances
+            .load(&id)
+            .await
+            .unwrap()
+            .update_hold
+            .is_some());
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+
+        // Refused by start_run itself (an install writes into it): still held.
+        core.installing.lock().unwrap().insert(id.clone());
+        assert_eq!(
+            core.pack_update_again(&id).await.unwrap_err().code,
+            ErrorCode::ContentInstalling
+        );
+        core.installing.lock().unwrap().clear();
+        assert!(core
+            .instances
+            .load(&id)
+            .await
+            .unwrap()
+            .update_hold
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn a_lost_game_does_not_mark_the_point_clean() {
+        let (core, runner, host, _t) = ready().await;
+        let id = plain(&core, "Alpha").await;
+        updated(&core, &id).await;
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        runner.lose(&id);
+        host.wait_for(&id, Idle).await;
+        assert!(host.last_exit(&id).unwrap().error.is_some());
+        // The next crash still offers going back.
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for_nth(&id, Running, 2).await;
+        runner.finish(&id, exit(Some(1)));
+        host.wait_for_nth(&id, Idle, 2).await;
+        assert!(host.last_exit(&id).unwrap().restore);
     }
 
     #[tokio::test]
