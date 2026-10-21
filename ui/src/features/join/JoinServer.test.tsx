@@ -326,4 +326,14 @@ describe('JoinServer', () => {
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival-2' }));
     expect(sent(calls, 'join_add')).toHaveLength(1);
   });
+
+  it('goes back to Home, or to the instance it was linking', async () => {
+    const { user, unmount } = renderApp(<JoinServer invite="" />, { server: 'online' });
+    await user.click(await screen.findByRole('button', { name: 'Back' }));
+    expect(routeSnapshot()).toEqual({ name: 'home', id: null });
+    unmount();
+    const relinking = renderApp(<JoinServer invite="" relinkFor="survival" />, { server: 'online' });
+    await relinking.user.click(await screen.findByRole('button', { name: 'Back' }));
+    expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival' });
+  });
 });

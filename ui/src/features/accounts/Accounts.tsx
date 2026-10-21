@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Avatar } from '../../art/Avatar';
 import type { Account, AccountsFile } from '../../ipc/schema';
 import { useAccountMutations, useAccounts, useAppInfo, usePlaytime } from '../../state/queries';
+import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { ComingSoon } from '../../ui/ComingSoon';
 import { Dialog } from '../../ui/Dialog';
@@ -101,7 +102,7 @@ export function Accounts() {
   const successor = removing && removing.uuid === accounts.data?.active ? list.find((a) => a.uuid !== removing.uuid) : undefined;
   const losesActive = removing !== null && removing.uuid === accounts.data?.active;
   return (
-    <ScreenFrame title={t('accounts.title')}>
+    <ScreenFrame title={t('accounts.title')} onBack={() => navigate({ name: 'home', id: null })}>
       <div className="grid max-w-2xl gap-10">
         <PerlandAccountCard />
         <div className="grid gap-2">
