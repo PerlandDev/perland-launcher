@@ -2577,6 +2577,30 @@
     font-weight: 400;
     letter-spacing: 0.02em;
   }
+  /* A server the player runs: Manage takes the card's lit key and Play stands raised beside it, never lit, so a card still
+     lights one button. The pair wraps (Manage first) when Spanish runs long in a narrow card. */
+  .server-tile-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: auto;
+  }
+  .server-tile-actions > .btn {
+    flex: 1 1 7rem;
+    margin-top: 0;
+  }
+  .server-tile-second {
+    font-family: var(--font-display);
+    font-size: 1.125rem;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+  }
+  .server-tile-second[aria-disabled='true'] {
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    font-weight: 650;
+    letter-spacing: 0;
+  }
   /* "Joining…" is a sentence, so it is Atkinson, as Play's face switches while it prepares. */
   .server-tile-play[aria-disabled='true'] {
     font-family: var(--font-sans);

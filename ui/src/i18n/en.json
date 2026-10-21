@@ -358,6 +358,7 @@
     "title": "Perland account",
     "pitch": "Your servers and free servers go with you.",
     "discord": "Continue with Discord",
+    "github": "Continue with GitHub",
     "email": "Continue with email",
     "waiting": "Finish signing in with your browser",
     "exchanging": "Signing you in…",
@@ -588,6 +589,7 @@
       "invited": "Invited",
       "unfollow": "Unfollow",
       "manage": "Manage in Perland",
+      "manageHere": "Manage",
       "more": "More for {{name}}",
       "nudge": "Sign in with Perland to keep your servers here.",
       "signIn": "Sign in"

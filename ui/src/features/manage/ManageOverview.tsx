@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { InstanceIcon } from '../../art/InstanceIcon';
-import type { ManageCause, ManageDetail, ServerStatus } from '../../ipc/schema';
+import type { ManageCause } from '../../ipc/schema';
 import { openManagePanel, useManageAction, useManageDetail, useManageDiagnosis } from '../../state/queries';
 import { Button } from '../../ui/Button';
 import { CopyRow } from '../../ui/CopyRow';
@@ -12,28 +11,9 @@ import { ExternalLink, WarningDiamond } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { StatusPill } from '../servers/StatusPill';
 import { causeLine } from './causeLine';
+import { manageStateView } from './stateView';
 
 type Action = 'start' | 'stop' | 'restart';
-
-/** The state in words, and the LED it rides: lime running, blue while it changes, a switched-off lamp asleep, coral stopped. */
-function stateView(t: TFunction, detail: ManageDetail, crashed: boolean): { word: string; led: ServerStatus | null } {
-  switch (detail.state) {
-    case 'running':
-      return {
-        word: detail.online === null ? t('manage.state.runningNoCount') : t('manage.state.running', { count: detail.online }),
-        led: 'online',
-      };
-    case 'asleep':
-      return { word: t('manage.state.asleep'), led: 'sleeping' };
-    case 'starting':
-    case 'stopping':
-      return { word: t(`manage.state.${detail.state}`), led: 'starting' };
-    case 'stopped':
-      return { word: crashed ? t('manage.state.crashed') : t('manage.state.stopped'), led: 'offline' };
-    default:
-      return { word: t('manage.state.unknown'), led: null };
-  }
-}
 
 /** The top of Manage: the server's art and state in words, the one big button the state allows, the address and, when the
  *  last run failed, why. Start is the screen's one lit button; Stop is coral like Play while a game runs, Restart raised, and
@@ -65,7 +45,7 @@ export function ManageOverview({ tenantId, stack }: { tenantId: string; stack: s
   const failed = state === 'stopped' && diagnosis.data?.failed === true;
   const cause: ManageCause | null =
     diagnosis.data?.cause ?? (diagnosis.data?.oomKilled ? { code: 'out_of_memory', known: true, subject: null, params: {} } : null);
-  const view = detail.data ? stateView(t, detail.data, failed) : null;
+  const view = detail.data ? manageStateView(t, detail.data.state, detail.data.online, failed) : null;
   const pending = action.isPending ? action.variables : null;
   const busyWord = (which: Action) => (which === 'start' ? t('manage.action.starting') : which === 'stop' ? t('manage.action.stopping') : t('manage.action.restarting'));
 

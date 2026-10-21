@@ -25,7 +25,8 @@ import { ServerStatsLine } from './ServerStatsLine';
  *  amber. Your servers uses it too: `tag` labels an Owner or Invited server, `menu` gives a followed one Unfollow, and
  *  `follow` (on by default, as on the public list) makes Play follow the server once it is added. The owner's free server adds
  *  `notes` (warning lines), `menuItems` (after Unfollow), `statusWord` (in place of the list's word) and `onPlay` (in place
- *  of the join). */
+ *  of the join). A server the player runs from the launcher passes `primary` (Manage): it takes the key that lights with the
+ *  card, and Play stands raised beside it, so the card still lights one button. */
 export function PublicServerCard({
   card,
   tag,
@@ -35,6 +36,7 @@ export function PublicServerCard({
   menuItems,
   statusWord,
   onPlay,
+  primary,
 }: {
   card: Card;
   tag?: 'owner' | 'invited';
@@ -44,6 +46,7 @@ export function PublicServerCard({
   menuItems?: MenuItem[];
   statusWord?: string;
   onPlay?: () => Promise<void>;
+  primary?: { label: string; onSelect(): void };
 }) {
   const { t } = useTranslation();
   const nameId = useId();
@@ -74,6 +77,19 @@ export function PublicServerCard({
     unfollowing.current = true;
     menu?.onUnfollow();
   };
+  const playButton = (className: string) => (
+    <Button
+      ref={playRef}
+      size="lg"
+      className={className}
+      aria-describedby={nameId}
+      disabled={!joinable}
+      aria-disabled={play.busy || undefined}
+      onClick={play.run}
+    >
+      {play.busy ? t('servers.joining') : t('play.play')}
+    </Button>
+  );
   return (
     <article ref={ref} className="server-tile" aria-labelledby={nameId}>
       <div className="server-tile-head" data-menu={hasItems ? '' : undefined}>
@@ -116,17 +132,16 @@ export function PublicServerCard({
           {!joinable && card.address && <JoinFromMinecraft address={card.address} />}
         </div>
       )}
-      <Button
-        ref={playRef}
-        size="lg"
-        className="server-tile-play"
-        aria-describedby={nameId}
-        disabled={!joinable}
-        aria-disabled={play.busy || undefined}
-        onClick={play.run}
-      >
-        {play.busy ? t('servers.joining') : t('play.play')}
-      </Button>
+      {primary ? (
+        <div className="server-tile-actions">
+          <Button size="lg" className="server-tile-play" aria-describedby={nameId} onClick={primary.onSelect}>
+            {primary.label}
+          </Button>
+          {playButton('server-tile-second')}
+        </div>
+      ) : (
+        playButton('server-tile-play')
+      )}
     </article>
   );
 }
@@ -183,7 +198,7 @@ function usePlay(card: Card, follow: boolean, onPlay?: () => Promise<void>) {
 }
 
 /** A server the launcher can't join yet: the address to type in Minecraft, with Copy. */
-function JoinFromMinecraft({ address }: { address: string }) {
+export function JoinFromMinecraft({ address }: { address: string }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);

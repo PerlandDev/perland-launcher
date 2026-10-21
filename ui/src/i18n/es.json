@@ -358,6 +358,7 @@
     "title": "Cuenta de Perland",
     "pitch": "Tus servidores, incluidos los gratis, van contigo.",
     "discord": "Continuar con Discord",
+    "github": "Continuar con GitHub",
     "email": "Continuar con correo electrónico",
     "waiting": "Termina de iniciar sesión en tu navegador",
     "exchanging": "Iniciando tu sesión…",
@@ -588,6 +589,7 @@
       "invited": "Invitado",
       "unfollow": "Dejar de seguir",
       "manage": "Administrar en Perland",
+      "manageHere": "Administrar",
       "more": "Más opciones para {{name}}",
       "nudge": "Inicia sesión con Perland para guardar tus servidores aquí.",
       "signIn": "Iniciar sesión"
