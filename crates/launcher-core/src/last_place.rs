@@ -511,7 +511,8 @@ mod tests {
     async fn listed_name_finds_the_server_list_entry() {
         let tmp = tempfile::tempdir().unwrap();
         let listed = addr("play.example.com", 25566);
-        let (_, bytes) = server_list::with_server(None, "Asalith Fields", &listed, None).unwrap();
+        let (_, bytes) =
+            server_list::with_server(None, "Asalith Fields", &listed, None, &[]).unwrap();
         std::fs::write(tmp.path().join(server_list::FILE_NAME), bytes.unwrap()).unwrap();
         assert_eq!(
             listed_name(tmp.path(), &listed).await.as_deref(),

@@ -26,6 +26,7 @@
       "joinable": true,
       "address": "play.example.com:25570",
       "name": "Steve",
+      "displayName": "Steve",
       "iconVersion": null,
       "game": {
         "version": "1.20.1",

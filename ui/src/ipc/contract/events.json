@@ -48,7 +48,49 @@
       "code": 1,
       "killed": false,
       "cancelled": false,
-      "crash": "out_of_memory",
+      "cause": {
+        "category": "loader",
+        "code": "crash_mods_clash",
+        "message": "Sodium and OptiFabric don't work together",
+        "fix": "Turn one of them off and press Play again",
+        "detail": "- Mod 'Sodium' (sodium) 0.5.8 is incompatible with any version of mod 'OptiFabric' (optifabric)",
+        "params": {
+          "mod": "Sodium",
+          "other": "OptiFabric"
+        }
+      },
+      "fixes": [
+        {
+          "kind": "disable_mod",
+          "file": "optifabric-1.13.24.jar",
+          "name": "OptiFabric"
+        },
+        {
+          "kind": "disable_mod",
+          "file": "sodium-0.5.8.jar",
+          "name": "Sodium"
+        },
+        {
+          "kind": "more_memory"
+        },
+        {
+          "kind": "recommended_java"
+        },
+        {
+          "kind": "java_settings"
+        },
+        {
+          "kind": "find_mod",
+          "project": "fabric-api"
+        },
+        {
+          "kind": "repair"
+        },
+        {
+          "kind": "update_drivers",
+          "vendor": "nvidia"
+        }
+      ],
       "error": null,
       "synced": null,
       "manual": [],
@@ -65,7 +107,8 @@
       "code": 1,
       "killed": false,
       "cancelled": false,
-      "crash": null,
+      "cause": null,
+      "fixes": [],
       "error": null,
       "synced": null,
       "manual": [],
@@ -82,7 +125,8 @@
       "code": null,
       "killed": false,
       "cancelled": false,
-      "crash": null,
+      "cause": null,
+      "fixes": [],
       "error": {
         "category": "loader",
         "code": "minecraft_version_not_found",
@@ -108,7 +152,8 @@
       "code": null,
       "killed": false,
       "cancelled": true,
-      "crash": null,
+      "cause": null,
+      "fixes": [],
       "error": null,
       "synced": null,
       "manual": [],
@@ -171,7 +216,8 @@
       "code": 0,
       "killed": false,
       "cancelled": false,
-      "crash": null,
+      "cause": null,
+      "fixes": [],
       "error": null,
       "synced": {
         "fromVersion": "1.0.3",
@@ -200,7 +246,8 @@
       "code": null,
       "killed": false,
       "cancelled": false,
-      "crash": null,
+      "cause": null,
+      "fixes": [],
       "error": {
         "category": "pack",
         "code": "manual_downloads_needed",
@@ -240,7 +287,8 @@
       "code": null,
       "killed": false,
       "cancelled": false,
-      "crash": null,
+      "cause": null,
+      "fixes": [],
       "error": null,
       "synced": null,
       "manual": [],

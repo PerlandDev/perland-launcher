@@ -6,6 +6,7 @@
 //! starts at `queued`; a vanilla instance goes `queued`, `preparing`, `running`.
 //! A run leaves the map (idle) with exactly one final `run_state` event carrying how it ended.
 use std::{
+    collections::HashSet,
     sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime},
 };
@@ -16,6 +17,7 @@ use launcher_core::{
     fsutil::write_atomic,
     instances::{unix_now, Instance, ServerAddress, ServerStatus, SourceRef, UpdatePolicy},
     last_place,
+    launch::crash::{Crash, CrashCause},
     locks::InstanceLock,
     playtime,
     restore::{self, PointKind},
@@ -35,8 +37,11 @@ use tokio::{
 use crate::{
     app::{AppCore, ManualState, Run},
     continue_play::Connected,
+    crash_fixes,
     dto::{PackUpdate, RunSnapshot, SyncSummary},
-    events::{AppEvent, ExitInfo, Host, ProgressThrottle, RunStateKind, PROGRESS_INTERVAL},
+    events::{
+        AppEvent, CrashFix, ExitInfo, Host, ProgressThrottle, RunStateKind, PROGRESS_INTERVAL,
+    },
     logs::spawn_batcher,
     runner::{Runner, WAKE_LIMIT},
     servers::{apply_view, server_source},
@@ -48,6 +53,8 @@ pub(crate) struct PlayArgs {
     pub(crate) session: Session,
     pub(crate) minimize: bool,
     pub(crate) destination: Destination,
+    /// Check every game file by its hash first (the crash card's Repair).
+    pub(crate) repair: bool,
 }
 
 /// Where the game goes once it starts.
@@ -71,8 +78,33 @@ fn address_unknown() -> LauncherError {
 }
 
 /// The address a server instance's server was last put in the game's server list with, so a
-/// server that moved keeps its one entry (`<instance>/.perland/<LISTED_FILE>`).
+/// server that moved keeps its one entry, and the name it was given, so a display name change
+/// renames an entry the player never renamed (`<instance>/.perland/<LISTED_FILE>`).
 const LISTED_FILE: &str = "listed-server.json";
+
+/// What [`LISTED_FILE`] holds. Launchers before display names wrote the bare address.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+struct ListedRecord {
+    address: ServerAddress,
+    /// The entry's name as the launcher wrote it.
+    #[serde(default)]
+    name: Option<String>,
+}
+
+impl ListedRecord {
+    fn read(bytes: &[u8]) -> Option<ListedRecord> {
+        serde_json::from_slice::<ListedRecord>(bytes)
+            .ok()
+            .or_else(|| {
+                serde_json::from_slice::<ServerAddress>(bytes)
+                    .ok()
+                    .map(|address| ListedRecord {
+                        address,
+                        name: None,
+                    })
+            })
+    }
+}
 
 /// How long a run waits for an instance lock that a just-ended run is still letting go of.
 const LOCK_WAIT: Duration = Duration::from_secs(2);
@@ -101,6 +133,21 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         id: &str,
         destination: Destination,
     ) -> Result<()> {
+        self.play_run(id, destination, false).await
+    }
+
+    /// The crash card's Repair: a run that checks every game file by its hash, downloads what's
+    /// wrong, rebuilds a loader's patched files, and plays.
+    pub async fn play_repair(self: &Arc<Self>, id: &str) -> Result<()> {
+        self.play_run(id, Destination::Title, true).await
+    }
+
+    async fn play_run(
+        self: &Arc<Self>,
+        id: &str,
+        destination: Destination,
+        repair: bool,
+    ) -> Result<()> {
         // `load` takes the id from the folder, so a copied instance.json can't name another one.
         let instance = self.instances.load(id).await?;
         tracing::info!(
@@ -108,6 +155,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             minecraft = instance.game.minecraft.as_str(),
             loader = ?instance.game.loader.as_ref().map(|l| (l.kind, l.version.as_str())),
             ?destination,
+            repair,
             "play"
         );
         let account = self.accounts.lock().await.active().await?.ok_or_else(|| {
@@ -130,6 +178,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 session,
                 minimize,
                 destination,
+                repair,
             }),
             checks,
         )
@@ -474,12 +523,23 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let previous = tokio::fs::read(&record)
             .await
             .ok()
-            .and_then(|b| serde_json::from_slice::<ServerAddress>(&b).ok());
+            .and_then(|b| ListedRecord::read(&b));
+        // The names the launcher gave the entry: the one it recorded, else (a record from
+        // before display names) the instance's name, which the server's name gave it.
+        let ours: Vec<&str> = match previous.as_ref().and_then(|p| p.name.as_deref()) {
+            Some(written) => vec![written],
+            None => vec![instance.name.as_str()],
+        };
         let game_dir = self.instances.game_dir(id);
-        match server_list::ensure_listed(&game_dir, name, address, previous.as_ref()).await {
+        let previous_address = previous.as_ref().map(|p| &p.address);
+        match server_list::ensure_listed(&game_dir, name, address, previous_address, &ours).await {
             Ok(_) => {
-                if previous.as_ref() != Some(address) {
-                    let json = serde_json::to_vec(address).unwrap_or_default();
+                let now = ListedRecord {
+                    address: address.clone(),
+                    name: Some(name.to_string()),
+                };
+                if previous.as_ref() != Some(&now) {
+                    let json = serde_json::to_vec(&now).unwrap_or_default();
                     if let Err(error) = write_atomic(&record, &json).await {
                         tracing::warn!(instance = id, %error, "couldn't remember the listed server");
                     }
@@ -745,7 +805,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             };
             return self.finish(&id, info, sink, batcher, Some(lock)).await;
         }
-        let prepared = match self.runner.prepare(instance.clone(), sink.clone()).await {
+        let prepared = match self
+            .runner
+            .prepare(instance.clone(), args.repair, sink.clone())
+            .await
+        {
             Ok(prepared) => prepared,
             Err(error) => {
                 drop(permit);
@@ -783,6 +847,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
         }
         let started_at = SystemTime::now();
+        let played = instance.clone();
         let game = match self
             .runner
             .start(instance, prepared, args.session, join, world, sink.clone())
@@ -827,13 +892,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             self.host.minimize();
         }
         let info = match game.wait().await {
-            Ok(exit) => ExitInfo {
-                code: exit.code,
-                killed: exit.killed,
-                crash: exit.crash,
-                synced,
-                ..ExitInfo::default()
-            },
+            Ok(exit) => {
+                let (cause, fixes) = match &exit.crash {
+                    Some(crash) => self.crash_card(&id, &played, crash).await,
+                    None => (None, Vec::new()),
+                };
+                ExitInfo {
+                    code: exit.code,
+                    killed: exit.killed,
+                    cause,
+                    fixes,
+                    synced,
+                    ..ExitInfo::default()
+                }
+            }
             Err(error) => ExitInfo {
                 synced,
                 ..failed(error)
@@ -868,6 +940,30 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if args.minimize || crashed {
             self.host.restore();
         }
+    }
+
+    /// What the crash card says about `crash`, and the fixes it offers for this instance.
+    async fn crash_card(
+        &self,
+        id: &str,
+        instance: &Instance,
+        crash: &Crash,
+    ) -> (Option<LauncherError>, Vec<CrashFix>) {
+        let mut pack_owned = HashSet::new();
+        for file in crash_fixes::files_named(crash) {
+            if self.refuse_managed(id, &file).await.is_err() {
+                pack_owned.insert(file);
+            }
+        }
+        let java = match crash.cause {
+            CrashCause::JavaTooOld { .. } | CrashCause::JavaTooNew => {
+                self.java_required(&instance.game.minecraft).await
+            }
+            _ => None,
+        };
+        let fixes = crash_fixes::fixes_for(crash, instance.java.path.is_some(), &pack_owned, java);
+        tracing::info!(instance = id, cause = ?crash.code(), fixes = fixes.len(), "crash diagnosed");
+        (Some(crash.error()), fixes)
     }
 
     /// Clear the update hold, under the run's lock. The instance is reloaded so nothing else
@@ -1047,13 +1143,14 @@ fn failed(error: LauncherError) -> ExitInfo {
 
 #[cfg(test)]
 mod tests {
+    use crate::events::CrashFix;
     use std::{sync::atomic::Ordering, time::Duration};
 
     use launcher_core::{
         accounts::BuildKind,
         browse::compat::ContentKind,
         instances::{GameSpec, ServerAddress, ServerStatus, UpdatePolicy},
-        launch::CrashHint,
+        launch::crash::{Crash, CrashCause, ModRef},
         locks::InstanceLock,
         playtime, server_list,
         server_wake::{Knock, Ping, WaitEnd},
@@ -1291,16 +1388,87 @@ mod tests {
                 code: Some(1),
                 killed: false,
                 tail: vec![],
-                crash: Some(CrashHint::OutOfMemory),
+                crash: Some(Crash {
+                    cause: CrashCause::OutOfMemory,
+                    detail: "java.lang.OutOfMemoryError: Java heap space".into(),
+                }),
             },
         );
         host.wait_for("alpha", Idle).await;
         assert_eq!(host.minimized.load(Ordering::SeqCst), 0);
         assert_eq!(host.restored.load(Ordering::SeqCst), 1);
+        let exit = host.last_exit("alpha").unwrap();
+        let cause = exit.cause.unwrap();
+        assert_eq!(cause.code, ErrorCode::CrashOutOfMemory);
         assert_eq!(
-            host.last_exit("alpha").unwrap().crash,
-            Some(CrashHint::OutOfMemory)
+            cause.detail.as_deref(),
+            Some("java.lang.OutOfMemoryError: Java heap space")
         );
+        assert_eq!(exit.fixes, [CrashFix::MoreMemory]);
+    }
+
+    #[tokio::test]
+    async fn a_crash_names_the_mod_and_offers_to_turn_it_off() {
+        let (core, runner, host, _t) = ready(false).await;
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        let module = ModRef {
+            id: "create".into(),
+            name: Some("Create".into()),
+            file: Some("create.jar".into()),
+        };
+        runner.finish(
+            "alpha",
+            launcher_core::launch::GameExit {
+                code: Some(1),
+                killed: false,
+                tail: vec![],
+                crash: Some(Crash {
+                    cause: CrashCause::ModFailed { module },
+                    detail: String::new(),
+                }),
+            },
+        );
+        host.wait_for("alpha", Idle).await;
+        let exit = host.last_exit("alpha").unwrap();
+        assert!(exit.is_crash());
+        assert_eq!(exit.cause.unwrap().params["mod"], "Create");
+        assert_eq!(
+            exit.fixes,
+            [CrashFix::DisableMod {
+                file: "create.jar".into(),
+                name: "Create".into()
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unknown_crash_has_no_cause_or_fixes() {
+        let (core, runner, host, _t) = ready(false).await;
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        runner.finish("alpha", exit(Some(1)));
+        host.wait_for("alpha", Idle).await;
+        let exit = host.last_exit("alpha").unwrap();
+        assert!(exit.is_crash());
+        assert_eq!(exit.cause, None);
+        assert!(exit.fixes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn play_repair_prepares_with_repair() {
+        let (core, runner, host, _t) = ready(false).await;
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+        core.play_repair("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for_nth("alpha", Running, 2).await;
+        assert_eq!(*runner.repairs.lock().unwrap(), [false, true]);
     }
 
     #[tokio::test]
@@ -2216,6 +2384,7 @@ mod tests {
             "Mine",
             &ServerAddress::new("a.example.com", 25565).unwrap(),
             None,
+            &[],
         )
         .await
         .unwrap();
@@ -2257,6 +2426,62 @@ mod tests {
         );
         core.stop(&id).unwrap();
         host.wait_for_nth(&id, Idle, 2).await;
+    }
+
+    #[tokio::test]
+    async fn a_new_display_name_renames_the_entry_the_launcher_wrote() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+        core.update_server(&id, false, |s| {
+            s.as_mut().unwrap().name = "Survival con los panas".into()
+        })
+        .await
+        .unwrap();
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for_nth(&id, Running, 2).await;
+        assert_eq!(
+            listed(&core, &id),
+            vec![(
+                "Survival con los panas".into(),
+                "play.example.com:25566".into()
+            )]
+        );
+        core.stop(&id).unwrap();
+        host.wait_for_nth(&id, Idle, 2).await;
+    }
+
+    #[tokio::test]
+    async fn an_entry_the_player_renamed_keeps_its_name() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
+        let game = core.instances.game_dir(&id);
+        // A launcher from before display names: the bare address as the record.
+        server_list::ensure_listed(&game, "Friday night", &address().unwrap(), None, &[])
+            .await
+            .unwrap();
+        let record = core.instances.perland_dir(&id).join(super::LISTED_FILE);
+        std::fs::create_dir_all(record.parent().unwrap()).unwrap();
+        std::fs::write(&record, serde_json::to_vec(&address().unwrap()).unwrap()).unwrap();
+        core.update_server(&id, false, |s| {
+            s.as_mut().unwrap().name = "Survival con los panas".into()
+        })
+        .await
+        .unwrap();
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(
+            listed(&core, &id),
+            vec![("Friday night".into(), "play.example.com:25566".into())]
+        );
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
     }
 
     #[tokio::test]

@@ -1,0 +1,3 @@
+# source: tail
+Exception in thread "Worker-Main-9" java.lang.OutOfMemoryError: unable to create native thread: possibly out of memory or process/resource limits reached
+	at java.base/java.lang.Thread.start0(Native Method)

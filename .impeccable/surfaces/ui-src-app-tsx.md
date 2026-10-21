@@ -51,6 +51,10 @@ related_targets: ["ui/src"]
 - **Manage server link (#63), decided 2026-10-17:**
   - *One dialog, nothing lit.* The join card set bare on the dialog's panel, the invite and the address as well copy rows, a ghost Unlink and raised Change link and Close. Play keeps the room's amber.
   - *Unlink says what stays.* The standard confirm with the coral Unlink; its body names what is kept (worlds, mods, settings) before what stops.
+- **Crash doctor (#87), decided 2026-10-21:**
+  - *The cause is the title.* A recognised crash names itself and the mods in one 700-weight sentence, with the next step under it in `ink-dim`; an unknown crash keeps the old card word for word.
+  - *Fixes are a row, one raised.* The core orders the fixes; the first shown is a raised key, the rest ghost, then Copy for support and Details as ghosts. Nothing is amber, so Play is still the next step after a fix. Room is left for more kinds (undo last update's "Go back to how it was").
+  - *Absent, not disabled.* A fix the launcher can't do here (a mod not on Modrinth, a pack's own mod) isn't shown, and the missing mod is named as Modrinth names it once found.
 - **Share an instance (#83), decided 2026-10-21:**
   - *Choices are rows, not a form.* The mods page's file rows with a toggle each; the name is the toggle's name. Worlds start off.
   - *Embedded is a fact.* What isn't on Modrinth is a plain sentence in the Mods row, seen before saving; never coral, never a warning.

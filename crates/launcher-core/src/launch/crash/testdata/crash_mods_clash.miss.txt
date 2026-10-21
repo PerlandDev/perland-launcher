@@ -1,0 +1,3 @@
+# source: latest_log
+[12:00:03] [main/WARN]: Warnings were found!
+	 - Conflicting mods: Mod 'Sodium' (sodium) 0.5.8 conflicts with any version of mod 'Rubidium' (rubidium), but only the wrong version is present: 0.6.5!

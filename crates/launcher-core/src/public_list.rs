@@ -129,7 +129,10 @@ pub struct PublicServer {
     pub token: String,
     /// Absent without the Engine's `INVITE_BASE_URL`.
     pub invite_url: Option<String>,
+    /// The server's own name, which never changes.
     pub name: String,
+    /// The name the team gives players; absent on Engines before display names.
+    pub display_name: Option<String>,
     /// Raw text that may hold `§` colour codes.
     pub motd: String,
     pub icon_version: Option<String>,

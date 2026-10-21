@@ -451,7 +451,7 @@ impl JoinPreview {
         });
         JoinPreview {
             host: link.host().to_string(),
-            name: view.name.trim().to_string(),
+            name: view.shown_name(),
             motd: view.motd.chars().take(512).collect(),
             kind: view.kind.clone(),
             status: view.status(),
@@ -498,7 +498,10 @@ pub struct PublicServerCard {
     pub joinable: bool,
     /// `host:port`, the form players type.
     pub address: Option<String>,
+    /// The server's own name, which never changes (the panel's address for it).
     pub name: String,
+    /// The name players see: the team's display name, else `name`.
+    pub display_name: String,
     /// Present only when the server has an icon.
     pub icon_version: Option<String>,
     pub game: ServerGame,

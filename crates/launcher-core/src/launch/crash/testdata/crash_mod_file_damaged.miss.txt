@@ -1,0 +1,8 @@
+# source: tail
+Caused by: java.util.zip.ZipException: invalid LOC header (bad signature) in ~/PerlandLauncher/libraries/org/ow2/asm/asm/9.6/asm-9.6.jar
+---
+# source: latest_log
+[12:00:02] [main/WARN]: Error analyzing [~/PerlandLauncher/instances/asalith/minecraft/mods/broken.jar]: java.util.zip.ZipException: zip END header not found
+---
+# source: tail
+Caused by: java.util.zip.ZipException: zip END header not found in ~/PerlandLauncher/instances/asalith/minecraft/coremods/old.jar

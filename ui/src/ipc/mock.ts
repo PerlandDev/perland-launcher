@@ -20,6 +20,7 @@ import { APP_EVENT } from './events';
 import { inviteCanonical } from './inviteLink';
 import { handleFree, modrinthInstances, NOT_FREE, repeatsFreeServer, seedFree, type FreeScenario } from './mockFree';
 import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario } from './mockPerland';
+import { mockCrash, type CrashScenario } from './mockCrash';
 import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
 import type {
   FriendsCheck,
@@ -71,7 +72,8 @@ import type {
 
 export interface MockOptions {
   firstRun?: boolean;
-  crash?: boolean;
+  /** The game crashes a few seconds into its first run, with this cause. */
+  crash?: CrashScenario;
   release?: boolean;
   /** An optimized beta build: offline accounts stay open, About says so. */
   beta?: boolean;
@@ -456,6 +458,8 @@ function seed(options: MockOptions) {
       ),
     ),
     runs: new Map<string, MockRun>(),
+    // Instances whose game already crashed once for `options.crash`.
+    crashed: new Set<string>(),
     // The running import from another launcher: Cancel sets `cancelled`.
     importRun: null as { cancelled: boolean } | null,
     options,
@@ -483,7 +487,8 @@ export const exitOf = (partial: Partial<ExitInfo>): ExitInfo => ({
   code: null,
   killed: false,
   cancelled: false,
-  crash: null,
+  cause: null,
+  fixes: [],
   error: null,
   synced: null,
   manual: [],
@@ -641,8 +646,10 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
   while (state.runs.get(id) === run && run.state === 'running') {
     event({ type: 'log', instance: id, lines: [`[12:00:${String(n % 60).padStart(2, '0')}] [Render thread/INFO]: Tick ${n}`] });
     n += 1;
-    if (state.options.crash && Date.now() - started > 2500) {
-      event({ type: 'log', instance: id, lines: ['Exception in thread "main" java.lang.OutOfMemoryError: Java heap space'] });
+    if (state.options.crash && !state.crashed.has(id) && Date.now() - started > 2500) {
+      const crash = mockCrash(state.options.crash);
+      state.crashed.add(id);
+      event({ type: 'log', instance: id, lines: [crash.line] });
       state.runs.delete(id);
       addPlaytime(state, id, run);
       event({
@@ -650,7 +657,7 @@ async function scriptRun(state: MockState, instance: Instance, updateOnly = fals
         instance: id,
         state: 'idle',
         // Like the core: a crash before the change ran cleanly once offers going back.
-        exit: exitOf({ code: 1, crash: 'out_of_memory', synced, restore: state.restorePoints.get(id)?.kind === 'beforeChange' }),
+        exit: exitOf({ code: 1, cause: crash.cause, fixes: crash.fixes, synced, restore: state.restorePoints.get(id)?.kind === 'beforeChange' }),
         update: null,
       });
       return;
@@ -958,6 +965,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     }
     case 'continue_target':
       return state.continueTargets.get(String(args.id)) ?? null;
+    case 'play_repair':
     case 'play_continue': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
       if (!state.accounts.active) fail('auth', 'no_account', 'Add an account before playing');

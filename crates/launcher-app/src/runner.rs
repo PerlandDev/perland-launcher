@@ -54,7 +54,14 @@ impl RunningGame for GameProcess {
 /// Installs and starts games. The real one uses `launcher_core::play`; tests use `FakeRunner`.
 pub trait Runner: Send + Sync + 'static {
     type Prepared: Send + 'static;
-    fn prepare(&self, instance: Instance, sink: EventSink) -> BoxFuture<Result<Self::Prepared>>;
+    /// Install what `instance` needs and find its Java. `repair` checks every file by its hash
+    /// and rebuilds a loader's patched files (the crash card's Repair).
+    fn prepare(
+        &self,
+        instance: Instance,
+        repair: bool,
+        sink: EventSink,
+    ) -> BoxFuture<Result<Self::Prepared>>;
     fn start(
         &self,
         instance: Instance,
@@ -190,9 +197,14 @@ impl CoreRunner {
 impl Runner for CoreRunner {
     type Prepared = Prepared;
 
-    fn prepare(&self, instance: Instance, sink: EventSink) -> BoxFuture<Result<Prepared>> {
+    fn prepare(
+        &self,
+        instance: Instance,
+        repair: bool,
+        sink: EventSink,
+    ) -> BoxFuture<Result<Prepared>> {
         let installer = self.installer.clone();
-        Box::pin(async move { play::prepare(&installer, &instance, &sink).await })
+        Box::pin(async move { play::prepare(&installer, &instance, repair, &sink).await })
     }
 
     fn start(

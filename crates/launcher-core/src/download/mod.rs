@@ -89,6 +89,10 @@ impl Downloader {
         self
     }
 
+    pub fn existing_check(&self) -> ExistingCheck {
+        self.existing
+    }
+
     pub fn with_existing_check(mut self, check: ExistingCheck) -> Self {
         self.existing = check;
         self

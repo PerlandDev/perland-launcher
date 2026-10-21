@@ -181,7 +181,7 @@ mod tests {
 
     /// Put `address` in instance `id`'s Multiplayer list as `name`.
     fn list(core: &TestCore, id: &str, name: &str, address: &ServerAddress) {
-        let (_, bytes) = server_list::with_server(None, name, address, None).unwrap();
+        let (_, bytes) = server_list::with_server(None, name, address, None, &[]).unwrap();
         let dir = core.instances.game_dir(id);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(server_list::FILE_NAME), bytes.unwrap()).unwrap();
