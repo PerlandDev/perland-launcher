@@ -16,7 +16,7 @@ use crate::{
     fsutil::{rename_with_retry, write_atomic},
     instances::InstanceStore,
     sync::{
-        apply::{free_space, SPACE_MARGIN},
+        apply::{free_space, not_enough_space, SPACE_MARGIN},
         lockfile::{Managed, MANAGED_FILE, PACK_FILE},
     },
 };
@@ -207,11 +207,13 @@ async fn snapshot_tops(
                 copied = copied.saturating_add(snapshot::copy_size(&game_dir, top, mode)?);
             }
             if copied > cap {
-                return Err(internal("A restore point would be too large"));
+                return Err(not_enough_space(copied, cap));
             }
             std::fs::create_dir_all(&dest)?;
-            if free_space(&perland) < copied.saturating_add(SPACE_MARGIN) {
-                return Err(internal("Not enough free space for a restore point"));
+            let needed = copied.saturating_add(SPACE_MARGIN);
+            let free = free_space(&perland);
+            if free < needed {
+                return Err(not_enough_space(needed, free));
             }
             let mut files = Vec::new();
             let mut failed = false;
@@ -239,19 +241,8 @@ async fn snapshot_tops(
 }
 
 /// Build a point for `tops` in `into` (emptied first): the folders' files, copies of
-/// `managed.json` and `pack.json`, and `point.json`. `go_back` builds its own point with it.
-pub(crate) async fn build_point(
-    store: &InstanceStore,
-    id: &str,
-    tops: &[String],
-    kind: PointKind,
-    now: u64,
-    into: &Path,
-) -> Result<PointMeta> {
-    build_point_capped(store, id, tops, kind, now, into, COPY_CAP).await
-}
-
-async fn build_point_capped(
+/// `managed.json` and `pack.json`, and `point.json`. `go_back` builds its own point with it (with `COPY_CAP`).
+pub(crate) async fn build_point_capped(
     store: &InstanceStore,
     id: &str,
     tops: &[String],

@@ -1650,3 +1650,100 @@ async fn a_pack_jar_the_player_overwrote_is_set_aside_on_update() {
     );
     assert!(trashed(&env, &instance.id, "mods/zoom.jar").is_none());
 }
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+}
+
+async fn point(env: &Env, id: &str) -> Option<launcher_core::restore::PointMeta> {
+    launcher_core::restore::read(&env.store, id, now_secs()).await
+}
+
+async fn publish_update(env: &Env, version: &str, jar: &str, body: &[u8]) {
+    env.server.reset().await;
+    PackBuilder::new(&env.server, "Tiny", version)
+        .url_mod("create", jar, body, "both", None)
+        .mount(&env.server)
+        .await;
+}
+
+fn v1_create(env: &Env) -> PackBuilder {
+    PackBuilder::new(&env.server, "Tiny", "1.0.0").url_mod(
+        "create",
+        "create-1.jar",
+        b"create 1",
+        "both",
+        None,
+    )
+}
+
+#[tokio::test]
+async fn update_sync_takes_restore_point() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1_create(&env)).await;
+    publish_update(&env, "2.0.0", "create-2.jar", b"create 2").await;
+    done(ensure(&env, &instance.id).await.unwrap().outcome);
+
+    let meta = point(&env, &instance.id).await.expect("a point");
+    assert_eq!(
+        meta.changes,
+        vec![launcher_core::restore::Change::PackUpdate {
+            from: "1.0.0".into(),
+            to: "2.0.0".into()
+        }]
+    );
+    assert!(meta.scope.contains(&"mods".to_string()));
+    let held = env
+        .store
+        .perland_dir(&instance.id)
+        .join("restore/point/files/mods/create-1.jar");
+    assert_eq!(std::fs::read(held).unwrap(), b"create 1");
+}
+
+#[tokio::test]
+async fn first_install_takes_no_point() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1_create(&env)).await;
+    assert!(point(&env, &instance.id).await.is_none());
+}
+
+#[tokio::test]
+async fn up_to_date_sync_takes_no_point() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1_create(&env)).await;
+    done(ensure(&env, &instance.id).await.unwrap().outcome);
+    assert!(point(&env, &instance.id).await.is_none());
+}
+
+#[tokio::test]
+async fn resumed_sync_only_notes() {
+    let env = Env::new().await;
+    let instance = synced(&env, v1_create(&env)).await;
+    // v2 stops midway: pack.json says 2.0.0, managed.json still 1.0.0.
+    publish_update(&env, "2.0.0", "create-2.jar", b"create 2").await;
+    let trash = env.store.perland_dir(&instance.id).join("trash");
+    let _ = std::fs::remove_dir_all(&trash);
+    std::fs::write(&trash, b"in the way").unwrap();
+    ensure(&env, &instance.id).await.unwrap_err();
+    let first = point(&env, &instance.id).await.expect("a point");
+    std::fs::remove_file(&trash).unwrap();
+
+    // The pack moves on to v3 before the swap is finished.
+    publish_update(&env, "3.0.0", "create-3.jar", b"create 3").await;
+    done(ensure(&env, &instance.id).await.unwrap().outcome);
+
+    let meta = point(&env, &instance.id).await.expect("a point");
+    assert_eq!(meta.files, first.files, "not snapshotted again");
+    assert_eq!(meta.pack_version.as_deref(), Some("1.0.0"));
+    assert_eq!(
+        meta.changes.last(),
+        Some(&launcher_core::restore::Change::PackUpdate {
+            from: "1.0.0".into(),
+            to: "3.0.0".into()
+        })
+    );
+    assert_eq!(meta.changes.len(), 2);
+}

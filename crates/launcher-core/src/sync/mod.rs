@@ -29,6 +29,7 @@ use crate::{
     install::Installer,
     instances::{GameSpec, Instance, InstanceStore, SourceRef, UpdatePolicy},
     locks::InstanceLock,
+    restore,
     sources::{
         art, mrpack, no_pack, DesiredState, FileMode, FileSource, PackFile, PackInput,
         SourceConfig, Sources, UpdateCheck,
@@ -579,6 +580,52 @@ impl Syncer {
             .await
     }
 
+    /// A restore point for an update that is about to change files (spec §5.4). A sync that
+    /// resumes an interrupted one only adds to the point already there; a repair (same pack
+    /// version) restores the pack's own files and takes none.
+    #[allow(clippy::too_many_arguments)]
+    async fn keep_restore_point(
+        &self,
+        store: &InstanceStore,
+        id: &str,
+        managed: &Managed,
+        desired: &DesiredState,
+        plan: &plan::Plan,
+        resumed: bool,
+        now: SystemTime,
+    ) {
+        if managed.pack_version == desired.pack_version {
+            return;
+        }
+        let change = restore::Change::PackUpdate {
+            from: managed.pack_version.clone(),
+            to: desired.pack_version.clone(),
+        };
+        let secs = now
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        if resumed {
+            restore::note_change(store, id, change, secs).await;
+            return;
+        }
+        let tops: Vec<String> = plan
+            .write
+            .iter()
+            .map(|p| p.file.path.as_str())
+            .chain(plan.trash.iter().map(String::as_str))
+            .chain(plan.case_aliases.iter().map(String::as_str))
+            .filter_map(restore::top_of)
+            .map(String::from)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let ctx = restore::ChangeCtx {
+            during_run: false,
+            now: secs,
+        };
+        restore::before_change(store, id, &tops, change, ctx).await;
+    }
+
     async fn sync_inner(
         &self,
         store: &InstanceStore,
@@ -722,6 +769,15 @@ impl Syncer {
         // version (whose leftovers would sit next to the new files as "additions").
         if cancel.is_cancelled() {
             return Err(sync_cancelled());
+        }
+        // The state this sync resumes is read before `save_pack` replaces it.
+        let resumed =
+            load_pack(&perland).await.map(|p| p.stamp) != managed.as_ref().map(|m| m.stamp.clone());
+        if let Some(m) = &managed {
+            if !plan.write.is_empty() || !plan.trash.is_empty() {
+                self.keep_restore_point(store, id, m, desired, &plan, resumed, now)
+                    .await;
+            }
         }
         save_pack(&perland, desired).await?;
         let trash_dir = apply::trash_folder(&perland, now);

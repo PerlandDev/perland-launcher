@@ -144,8 +144,13 @@ pub(crate) fn ensure_space(needed: u64, free: u64) -> Result<()> {
     if needed <= free {
         return Ok(());
     }
+    Err(not_enough_space(needed, free))
+}
+
+/// The "not enough room" error: `needed` and `free` in bytes.
+pub(crate) fn not_enough_space(needed: u64, free: u64) -> LauncherError {
     let mb = |bytes: u64| bytes.div_ceil(1 << 20);
-    Err(LauncherError::disk(
+    LauncherError::disk(
         ErrorCode::NotEnoughSpace,
         format!(
             "Not enough free space: {} MB needed, {} MB free",
@@ -155,7 +160,7 @@ pub(crate) fn ensure_space(needed: u64, free: u64) -> Result<()> {
     )
     .with_param("needed_mb", mb(needed))
     .with_param("free_mb", mb(free))
-    .with_fix("Free up some space and try again"))
+    .with_fix("Free up some space and try again")
 }
 
 /// Free bytes on the volume holding `path`; when that can't be read, assume plenty: a full

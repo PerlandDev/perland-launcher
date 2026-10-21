@@ -12,11 +12,11 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use super::{
-    point::{self, build_point, clear_scratch, load_meta, point_dir, recover_old, swap_in},
-    restore_dir, top_of, PointKind, SnapFile,
+    point::{self, build_point_capped, clear_scratch, load_meta, point_dir, recover_old, swap_in},
+    restore_dir, top_of, PointKind, SnapFile, COPY_CAP,
 };
 use crate::{
-    error::{restore as errors, Result},
+    error::{restore as errors, ErrorCode, Result},
     fsutil::{rename_with_retry, write_atomic},
     instances::{InstanceStore, UpdateHold},
     sync::{
@@ -81,7 +81,7 @@ pub async fn go_back(
     hold: Option<UpdateHold>,
     now: u64,
 ) -> Result<WentBack> {
-    run(store, id, hold, now, None).await
+    run(store, id, hold, now, None, COPY_CAP).await
 }
 
 #[cfg(test)]
@@ -92,7 +92,12 @@ async fn go_back_stopping(
     now: u64,
     stop: StopAfter,
 ) -> Result<WentBack> {
-    run(store, id, hold, now, Some(stop)).await
+    run(store, id, hold, now, Some(stop), COPY_CAP).await
+}
+
+#[cfg(test)]
+async fn go_back_capped(store: &InstanceStore, id: &str, now: u64, cap: u64) -> Result<WentBack> {
+    run(store, id, None, now, None, cap).await
 }
 
 async fn run(
@@ -101,6 +106,7 @@ async fn run(
     hold: Option<UpdateHold>,
     now: u64,
     stop: Option<StopAfter>,
+    cap: u64,
 ) -> Result<WentBack> {
     // 1. An interrupted go-back that recovery finished already did what the player asked.
     if recover_inner(store, id).await? {
@@ -125,16 +131,21 @@ async fn run(
     // 2–3. The point of now, waiting in `new/`, and the staged folders.
     let prepared = async {
         clear_scratch(&restore).await;
-        build_point(
+        build_point_capped(
             store,
             id,
             &meta.scope,
             PointKind::BeforeGoingBack,
             now,
             &restore.join("new"),
+            cap,
         )
         .await
-        .map_err(errors::failed)?;
+        // Too big or no room: say so, rather than blaming a window holding the folder.
+        .map_err(|e| match e.code {
+            ErrorCode::NotEnoughSpace => e,
+            _ => errors::failed(e),
+        })?;
         stage(
             game_dir.clone(),
             point_dir(&restore).join("files"),
@@ -211,12 +222,12 @@ async fn stage(
                 if let Some(parent) = to.parent() {
                     std::fs::create_dir_all(parent).map_err(errors::failed)?;
                 }
-                if f.linked && !unchanged(&from, f) {
+                // Edited in place: the player's file stays. If it is gone too, the point's file
+                // is all that is left of it, so it comes back like any other.
+                let current = game_dir.join(&f.path);
+                if f.linked && !unchanged(&from, f) && current.is_file() {
                     kept += 1;
-                    let current = game_dir.join(&f.path);
-                    if current.is_file() {
-                        link_or_copy(&current, &to).map_err(errors::failed)?;
-                    }
+                    link_or_copy(&current, &to).map_err(errors::failed)?;
                     continue;
                 }
                 if f.linked {
@@ -706,6 +717,30 @@ mod tests {
         assert_eq!(went.kept_current, 1);
         assert_eq!(fx.text("mods/a.jar"), "edited");
         assert_eq!(fx.text("mods/keep.jar"), "k");
+    }
+
+    #[tokio::test]
+    async fn a_linked_jar_edited_then_deleted_comes_back_from_the_point() {
+        let fx = Fixture::new().await;
+        fx.put("mods/a.jar", b"a");
+        fx.snapshot(&["mods"]).await;
+        std::fs::write(fx.game("mods/a.jar"), b"edited").unwrap();
+        std::fs::remove_file(fx.game("mods/a.jar")).unwrap();
+
+        let went = fx.go_back(None).await.unwrap();
+        assert_eq!(went.kept_current, 0);
+        assert!(fx.game("mods/a.jar").is_file(), "not dropped");
+    }
+
+    #[tokio::test]
+    async fn going_back_over_the_cap_is_a_space_error_and_touches_nothing() {
+        let fx = Fixture::updated().await;
+        let err = go_back_capped(&fx.store, &fx.id, T0 + 10, 0)
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::NotEnoughSpace);
+        fx.assert_after().await;
+        fx.assert_no_leftovers();
     }
 
     #[tokio::test]
