@@ -72,6 +72,8 @@ error_codes! {
     LinkHasPack,
     ServerPackUnavailable, ServerPackPending, ServerAddressUnknown, ServerListFailed, ServerListClosed,
     ServerWakeFailed,
+    // continue where you left off
+    WorldContinueUnsupported,
     // launcher updates
     LauncherUpdateFailed, LauncherUpdateInvalid, LauncherUpdateBusy,
     // importing from another launcher

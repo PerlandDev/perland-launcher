@@ -3,6 +3,7 @@
 pub mod app;
 pub mod browse;
 pub mod browser;
+mod continue_play;
 pub mod deep_link;
 pub mod dto;
 pub mod events;

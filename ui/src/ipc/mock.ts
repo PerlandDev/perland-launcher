@@ -52,6 +52,7 @@ import type {
   PlanItemView,
   PlanSkip,
   PlaytimeEntry,
+  ContinueTarget,
   ProjectDetail,
   RunStateKind,
   SearchHit,
@@ -98,6 +99,8 @@ export interface MockOptions {
   font?: UiFont;
   /** Seconds played per instance id. Defaults to 12 h in Asalith Fields (none on first run). */
   playtime?: Record<string, number>;
+  /** Where Continue takes the player, per instance id. Defaults to the Asalith Fields server and a Creative Flat world. */
+  continueTargets?: Record<string, ContinueTarget>;
   /** Adds Castle Keep, an instance with the player's own background picture (dev:mock turns it on). */
   pictureBackground?: boolean;
   /** A Perland panel is configured (default), so owned servers offer Manage in Perland. */
@@ -218,7 +221,7 @@ function uploadUrl(path: string): string | null {
 /** Move every id-keyed piece of mock state to a renamed instance's new id. */
 function moveId(state: MockState, from: string, to: string) {
   state.order = state.order.map((id) => (id === from ? to : id));
-  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.screenshots, state.browse.installed, state.playtime, state.lastPlayed] as Map<string, unknown>[]) {
+  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.screenshots, state.browse.installed, state.playtime, state.lastPlayed, state.continueTargets] as Map<string, unknown>[]) {
     if (map.has(from)) {
       map.set(to, map.get(from));
       map.delete(from);
@@ -402,6 +405,15 @@ function seed(options: MockOptions) {
     // Seconds played per instance (the real one is .perland/playtime.json), and when each last ended.
     playtime: new Map<string, number>(Object.entries(options.playtime ?? (options.firstRun ? {} : { 'asalith-fields': 12 * 3600 }))),
     lastPlayed: new Map<string, number>(),
+    // Where each instance's game was last (the real one is .perland/last-place.json).
+    continueTargets: new Map<string, ContinueTarget>(
+      Object.entries(
+        options.continueTargets ??
+          (options.firstRun
+            ? {}
+            : { 'asalith-fields': { kind: 'server', name: 'Asalith Fields' }, 'creative-flat': { kind: 'world', name: 'Castle build' } }),
+      ),
+    ),
     runs: new Map<string, MockRun>(),
     // The running import from another launcher: Cancel sets `cancelled`.
     importRun: null as { cancelled: boolean } | null,
@@ -417,6 +429,8 @@ function addPlaytime(state: MockState, id: string, run: MockRun) {
   const seconds = Math.floor((Date.now() - run.startedAt) / 1000);
   state.playtime.set(id, (state.playtime.get(id) ?? 0) + seconds);
   state.lastPlayed.set(id, Math.floor(Date.now() / 1000));
+  // The core remembers where a game was; a mock game that never said so leaves a world to continue in.
+  if (!state.continueTargets.has(id)) state.continueTargets.set(id, { kind: 'world', name: 'New World' });
 }
 
 function event(e: AppEvent) {
@@ -774,6 +788,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.listing.instances = state.listing.instances.filter((i) => i.id !== args.id);
       state.listing.damaged = state.listing.damaged.filter((d) => d.id !== args.id);
       state.playtime.delete(String(args.id));
+      state.continueTargets.delete(String(args.id));
       state.lastPlayed.delete(String(args.id));
       return null;
     case 'import_inspect':
@@ -861,6 +876,15 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         void scriptServerWait(state, target);
         return null;
       }
+      void scriptRun(state, target);
+      return null;
+    }
+    case 'continue_target':
+      return state.continueTargets.get(String(args.id)) ?? null;
+    case 'play_continue': {
+      const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (!state.accounts.active) fail('auth', 'no_account', 'Add an account before playing');
+      if (state.runs.has(target.id)) fail('game', 'already_running', 'already running');
       void scriptRun(state, target);
       return null;
     }

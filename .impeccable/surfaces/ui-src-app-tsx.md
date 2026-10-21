@@ -54,6 +54,10 @@ related_targets: ["ui/src"]
 - **Back to Home (#79), decided 2026-10-21:**
   - *Every screen frame has a way back.* Settings, Accounts, Servers, Join server and Browse from the rail get the ghost back key that Mods, Instance settings and New instance already had, in the same place before the title. Nothing new is lit.
   - *Alt+Left, not Escape.* Alt+Left is the browser's and other launchers' back. Escape already closes dialogs and menus and cancels a rail drag, so one press too many would throw the player off the screen. Alt+Left does nothing in a text field (the caret's) or under an open dialog.
+- **Continue where you left off (#86), decided 2026-10-21:**
+  - *A key, not a hero.* A standard raised key (md, never lit) in Play's column, directly above Play and right-aligned to it; Play stays the room's only amber.
+  - *The verb stays, the name gives.* "Continue" in 400 `ink-dim`, then the world or server name in 650 `ink`, truncating inside a key no wider than Play (17.5rem). The full "Continue: name" is the accessible name and tooltip. A pixel map marks a world, the server glyph a server.
+  - *Nothing when there's nowhere.* No place, a deleted world, a server off the list, a gone Perland server or a version that can't open a world: no key, no message. It steps aside while the instance runs, and is disabled with Play when there's no account.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract
