@@ -581,6 +581,56 @@ async fn adding_reads_only_the_view_and_resolving_downloads_the_commit() {
         .ends_with(&route("/icon")));
 }
 
+/// A modded view from an Engine that sends `pack.stamp` next to the commit.
+fn stamped_view(commit: &str, stamp: &str) -> Value {
+    let mut view = modded_view(Some(commit), "ready");
+    view["pack"]["stamp"] = json!(stamp);
+    view
+}
+
+#[tokio::test]
+async fn with_a_pack_stamp_the_installed_stamp_is_the_view_stamp() {
+    // The Engine's ETag stays the commit; the stamp also moves when the Engine builds the
+    // pack differently, so it names what was downloaded.
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, stamped_view("c1", "c1-4")).await;
+    mount_pack(&server, mrpack(tmp.path(), "1.0.4"), "c1").await;
+    let desired = perland::resolve(
+        &sources(&server, tmp.path()),
+        &link(&server),
+        &noop_sink(),
+        &Cancel::default(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(desired.stamp, "c1-4");
+}
+
+#[tokio::test]
+async fn the_update_check_compares_pack_stamps() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_view(&server, stamped_view("c1", "c1-4")).await;
+    let src = sources(&server, tmp.path());
+    assert_eq!(
+        src.check(&source(&server), &installed("c1-4")).await,
+        UpdateCheck::UpToDate
+    );
+    // Installed from the same commit before the Engine sent a stamp: the pack is fetched again.
+    match src.check(&source(&server), &installed("c1")).await {
+        UpdateCheck::Available { stamp, .. } => assert_eq!(stamp, "c1-4"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(
+        hits(&server, &route("/pack")).await,
+        0,
+        "the stamp answers it; no HEAD"
+    );
+}
+
 #[tokio::test]
 async fn without_a_commit_the_stamp_is_the_pack_etag() {
     let tmp = tempfile::tempdir().unwrap();

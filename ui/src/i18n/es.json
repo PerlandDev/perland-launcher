@@ -10,6 +10,7 @@
     "rename": "Cambiar nombre",
     "openFolder": "Abrir carpeta",
     "back": "Volver",
+    "backTitle": "{{label}} (Alt+←)",
     "comingSoon": "Muy pronto",
     "details": "Detalles",
     "hideDetails": "Ocultar detalles",
@@ -925,5 +926,206 @@
     "days_other": "{{count}} días",
     "years_one": "{{count}} año",
     "years_other": "{{count}} años"
+  },
+  "medals": {
+    "title": "Medallas",
+    "tier1": "Cobre",
+    "tier2": "Hierro",
+    "tier3": "Oro",
+    "tier4": "Diamante",
+    "locked": "Bloqueada",
+    "earned": "Conseguida",
+    "progress": "{{value}} de {{goal}}",
+    "next": "Siguiente: {{tier}} al llegar a {{goal}}",
+    "top": "Nivel máximo",
+    "linkToEarn": "Vincula tu cuenta de Minecraft para ganar las medallas de servidor.",
+    "earnedCount": "{{earned}} de {{total}} conseguidas",
+    "time": {
+      "name": "Tiempo de juego",
+      "goal": "Juega {{goal}} en esta computadora"
+    },
+    "regular": {
+      "name": "Fiel al servidor",
+      "goal": "Juega {{goal}} en un servidor de Perland"
+    },
+    "achiever": {
+      "name": "Cazalogros",
+      "goal_one": "Consigue {{count}} logro",
+      "goal_other": "Consigue {{count}} logros distintos"
+    },
+    "traveler": {
+      "name": "Viajero",
+      "goal_one": "Consigue un logro en un servidor de Perland",
+      "goal_other": "Consigue logros en {{count}} servidores"
+    },
+    "diamonds": {
+      "name": "¡Diamantes!",
+      "goal": "Mina un diamante"
+    },
+    "nether": {
+      "name": "Al Nether",
+      "goal": "Entra al Nether"
+    },
+    "end": {
+      "name": "El End",
+      "goal": "Entra al End"
+    },
+    "elytra": {
+      "name": "Alas",
+      "goal": "Encuentra unos élitros"
+    },
+    "hero": {
+      "name": "Héroe de la aldea",
+      "goal": "Salva una aldea de una invasión"
+    },
+    "dragon": {
+      "name": "Matadragones",
+      "goal": "Derrota al dragón del End"
+    },
+    "wither": {
+      "name": "Invocador del Wither",
+      "goal": "Invoca al Wither"
+    },
+    "servers": "Logros por servidor"
+  },
+  "achievements": {
+    "title": "Logros en {{server}}",
+    "listLabel": "Lista de logros",
+    "open": "Ver tus logros en {{server}}",
+    "count": "{{earned}} de {{total}}",
+    "notYet": "Todavía no",
+    "gotIt": "Conseguido",
+    "modNote": "Los logros de mods muestran un nombre sacado de su ID.",
+    "serverKeeps": "El servidor guarda tus logros. Se actualizan después de jugar.",
+    "tabs": {
+      "story": "Minecraft",
+      "nether": "Nether",
+      "end": "El End",
+      "adventure": "Aventura",
+      "husbandry": "Granja",
+      "other": "Otros"
+    }
+  },
+  "advancements": {
+    "story": {
+      "root": "Minecraft",
+      "mine_stone": "Edad de piedra",
+      "upgrade_tools": "Mejores herramientas",
+      "smelt_iron": "A fundir hierro",
+      "obtain_armor": "A vestirse",
+      "lava_bucket": "¡Qué calor!",
+      "iron_tools": "Pico de hierro",
+      "deflect_arrow": "Hoy no, gracias",
+      "form_obsidian": "Reto del balde de hielo",
+      "mine_diamond": "¡Diamantes!",
+      "enter_the_nether": "Hay que ir más profundo",
+      "shiny_gear": "Cúbreme de diamantes",
+      "enchant_item": "Encantador",
+      "cure_zombie_villager": "Doctor zombi",
+      "follow_ender_eye": "Ojo espía",
+      "enter_the_end": "¿El Fin?"
+    },
+    "nether": {
+      "root": "Nether",
+      "return_to_sender": "Devolver al remitente",
+      "find_bastion": "Aquellos días",
+      "obtain_ancient_debris": "Oculto en las profundidades",
+      "fast_travel": "Burbuja subespacial",
+      "find_fortress": "Una fortaleza terrible",
+      "obtain_crying_obsidian": "¿Quién está picando cebolla?",
+      "distract_piglin": "Qué brillante",
+      "ride_strider": "Este bote tiene patas",
+      "uneasy_alliance": "Alianza incómoda",
+      "loot_bastion": "Cerdos de guerra",
+      "use_lodestone": "Magnetita, llévame a casa",
+      "netherite_armor": "Cúbreme de escombros",
+      "get_wither_skull": "Esqueleto escalofriante",
+      "obtain_blaze_rod": "Al fuego",
+      "charge_respawn_anchor": "No tan \"siete\" vidas",
+      "ride_strider_in_overworld_lava": "Como en casa",
+      "explore_nether": "Destinos turísticos ardientes",
+      "summon_wither": "Cumbres marchitas",
+      "brew_potion": "Pociones caseras",
+      "create_beacon": "Un faro para casa",
+      "all_potions": "Un cóctel furioso",
+      "create_full_beacon": "Farotástico",
+      "all_effects": "¿Cómo llegamos aquí?"
+    },
+    "end": {
+      "root": "El End",
+      "kill_dragon": "Libera el End",
+      "dragon_egg": "La siguiente generación",
+      "enter_end_gateway": "Escapada remota",
+      "respawn_dragon": "El Fin... otra vez...",
+      "dragon_breath": "Necesitas una menta",
+      "find_end_city": "La ciudad al final del juego",
+      "elytra": "El cielo es el límite",
+      "levitate": "Qué vista desde aquí arriba"
+    },
+    "adventure": {
+      "root": "Aventura",
+      "voluntary_exile": "Exilio voluntario",
+      "spyglass_at_parrot": "¿Es un pájaro?",
+      "kill_a_mob": "Cazador de monstruos",
+      "read_power_of_chiseled_bookshelf": "El poder de los libros",
+      "trade": "¡Qué buen trato!",
+      "trim_with_any_armor_pattern": "Un nuevo estilo",
+      "honey_block_slide": "Situación pegajosa",
+      "ol_betsy": "La vieja Betsy",
+      "lightning_rod_with_villager_no_fire": "Protector de descargas",
+      "fall_from_world_height": "Cuevas y acantilados",
+      "salvage_sherd": "Respeto por los restos",
+      "avoid_vibration": "Sigilo 100",
+      "sleep_in_bed": "Dulces sueños",
+      "hero_of_the_village": "Héroe de la aldea",
+      "spyglass_at_ghast": "¿Es un globo?",
+      "throw_trident": "Un chiste desechable",
+      "kill_mob_near_sculk_catalyst": "Se propaga",
+      "shoot_arrow": "Apunta",
+      "kill_all_mobs": "Monstruos cazados",
+      "totem_of_undying": "Posmortal",
+      "summon_iron_golem": "Ayuda contratada",
+      "trade_at_world_height": "Comerciante estelar",
+      "trim_with_all_exclusive_armor_patterns": "Herrería con estilo",
+      "two_birds_one_arrow": "Dos pájaros de un flechazo",
+      "whos_the_pillager_now": "¿Quién saquea ahora?",
+      "arbalistic": "Ballestero experto",
+      "craft_decorated_pot_using_only_sherds": "Restauración cuidadosa",
+      "adventuring_time": "Hora de aventura",
+      "play_jukebox_in_meadows": "La novicia rebelde",
+      "walk_on_powder_snow_with_leather_boots": "Ligero como un conejo",
+      "spyglass_at_dragon": "¿Es un avión?",
+      "very_very_frightening": "Muy, muy aterrador",
+      "sniper_duel": "Duelo de francotiradores",
+      "bullseye": "En el blanco"
+    },
+    "husbandry": {
+      "root": "Granja",
+      "safely_harvest_honey": "Miel sin picaduras",
+      "breed_an_animal": "Los loros y los murciélagos",
+      "allay_deliver_item_to_player": "Yo soy tu amigo fiel",
+      "ride_a_boat_with_a_goat": "¡Lo que haga flotar a tu cabra!",
+      "tame_an_animal": "Mejores amigos por siempre",
+      "make_a_sign_glow": "¡Mira cómo brilla!",
+      "fishy_business": "Asunto turbio",
+      "silk_touch_nest": "Mudanza de abejas",
+      "tadpole_in_a_bucket": "Balde, balde",
+      "obtain_sniffer_egg": "Huele interesante",
+      "plant_seed": "Un lugar para sembrar",
+      "wax_on": "Dar cera",
+      "bred_all_animals": "De dos en dos",
+      "allay_deliver_cake_to_note_block": "Canción de cumpleaños",
+      "complete_catalogue": "Un catálogo completo",
+      "tactical_fishing": "Pesca táctica",
+      "leash_all_frog_variants": "Cuando la pandilla llega saltando",
+      "feed_snifflet": "Pequeños olfateos",
+      "balanced_diet": "Una dieta balanceada",
+      "obtain_netherite_hoe": "Dedicación seria",
+      "wax_off": "Pulir cera",
+      "axolotl_in_a_bucket": "El depredador más tierno",
+      "froglights": "¡Con nuestros poderes combinados!",
+      "plant_any_sniffer_seed": "Sembrando el pasado",
+      "kill_axolotl_target": "¡El poder curativo de la amistad!"
+    }
   }
 }

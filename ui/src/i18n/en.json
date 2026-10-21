@@ -10,6 +10,7 @@
     "rename": "Rename",
     "openFolder": "Open folder",
     "back": "Back",
+    "backTitle": "{{label}} (Alt+←)",
     "comingSoon": "Coming soon",
     "details": "Details",
     "hideDetails": "Hide details",
@@ -925,5 +926,206 @@
     "days_other": "{{count}} days",
     "years_one": "{{count}} year",
     "years_other": "{{count}} years"
+  },
+  "medals": {
+    "title": "Medals",
+    "tier1": "Copper",
+    "tier2": "Iron",
+    "tier3": "Gold",
+    "tier4": "Diamond",
+    "locked": "Locked",
+    "earned": "Earned",
+    "progress": "{{value}} of {{goal}}",
+    "next": "Next: {{tier}} at {{goal}}",
+    "top": "Top tier",
+    "linkToEarn": "Link your Minecraft account to earn the server medals.",
+    "earnedCount": "{{earned}} of {{total}} earned",
+    "time": {
+      "name": "Time played",
+      "goal": "Play {{goal}} on this computer"
+    },
+    "regular": {
+      "name": "Server regular",
+      "goal": "Play {{goal}} on one Perland server"
+    },
+    "achiever": {
+      "name": "Achiever",
+      "goal_one": "Earn {{count}} achievement",
+      "goal_other": "Earn {{count}} different achievements"
+    },
+    "traveler": {
+      "name": "Traveler",
+      "goal_one": "Earn an achievement on a Perland server",
+      "goal_other": "Earn achievements on {{count}} servers"
+    },
+    "diamonds": {
+      "name": "Diamonds!",
+      "goal": "Mine a diamond"
+    },
+    "nether": {
+      "name": "Into the Nether",
+      "goal": "Go to the Nether"
+    },
+    "end": {
+      "name": "The End",
+      "goal": "Go to the End"
+    },
+    "elytra": {
+      "name": "Wings",
+      "goal": "Find elytra"
+    },
+    "hero": {
+      "name": "Village hero",
+      "goal": "Save a village from a raid"
+    },
+    "dragon": {
+      "name": "Dragon slayer",
+      "goal": "Defeat the Ender Dragon"
+    },
+    "wither": {
+      "name": "Wither summoner",
+      "goal": "Summon the Wither"
+    },
+    "servers": "Achievements by server"
+  },
+  "achievements": {
+    "title": "Achievements on {{server}}",
+    "listLabel": "List of achievements",
+    "open": "See your achievements on {{server}}",
+    "count": "{{earned}} of {{total}}",
+    "notYet": "Not yet",
+    "gotIt": "Earned",
+    "modNote": "Achievements from mods show a name made from their ID.",
+    "serverKeeps": "The server keeps your achievements. They update after you play.",
+    "tabs": {
+      "story": "Minecraft",
+      "nether": "Nether",
+      "end": "The End",
+      "adventure": "Adventure",
+      "husbandry": "Husbandry",
+      "other": "Other"
+    }
+  },
+  "advancements": {
+    "story": {
+      "root": "Minecraft",
+      "mine_stone": "Stone Age",
+      "upgrade_tools": "Getting an Upgrade",
+      "smelt_iron": "Acquire Hardware",
+      "obtain_armor": "Suit Up",
+      "lava_bucket": "Hot Stuff",
+      "iron_tools": "Isn't It Iron Pick",
+      "deflect_arrow": "Not Today, Thank You",
+      "form_obsidian": "Ice Bucket Challenge",
+      "mine_diamond": "Diamonds!",
+      "enter_the_nether": "We Need to Go Deeper",
+      "shiny_gear": "Cover Me with Diamonds",
+      "enchant_item": "Enchanter",
+      "cure_zombie_villager": "Zombie Doctor",
+      "follow_ender_eye": "Eye Spy",
+      "enter_the_end": "The End?"
+    },
+    "nether": {
+      "root": "Nether",
+      "return_to_sender": "Return to Sender",
+      "find_bastion": "Those Were the Days",
+      "obtain_ancient_debris": "Hidden in the Depths",
+      "fast_travel": "Subspace Bubble",
+      "find_fortress": "A Terrible Fortress",
+      "obtain_crying_obsidian": "Who is Cutting Onions?",
+      "distract_piglin": "Oh Shiny",
+      "ride_strider": "This Boat Has Legs",
+      "uneasy_alliance": "Uneasy Alliance",
+      "loot_bastion": "War Pigs",
+      "use_lodestone": "Country Lode, Take Me Home",
+      "netherite_armor": "Cover Me in Debris",
+      "get_wither_skull": "Spooky Scary Skeleton",
+      "obtain_blaze_rod": "Into Fire",
+      "charge_respawn_anchor": "Not Quite \"Nine\" Lives",
+      "ride_strider_in_overworld_lava": "Feels Like Home",
+      "explore_nether": "Hot Tourist Destinations",
+      "summon_wither": "Withering Heights",
+      "brew_potion": "Local Brewery",
+      "create_beacon": "Bring Home the Beacon",
+      "all_potions": "A Furious Cocktail",
+      "create_full_beacon": "Beaconator",
+      "all_effects": "How Did We Get Here?"
+    },
+    "end": {
+      "root": "The End",
+      "kill_dragon": "Free the End",
+      "dragon_egg": "The Next Generation",
+      "enter_end_gateway": "Remote Getaway",
+      "respawn_dragon": "The End... Again...",
+      "dragon_breath": "You Need a Mint",
+      "find_end_city": "The City at the End of the Game",
+      "elytra": "Sky's the Limit",
+      "levitate": "Great View From Up Here"
+    },
+    "adventure": {
+      "root": "Adventure",
+      "voluntary_exile": "Voluntary Exile",
+      "spyglass_at_parrot": "Is It a Bird?",
+      "kill_a_mob": "Monster Hunter",
+      "read_power_of_chiseled_bookshelf": "The Power of Books",
+      "trade": "What a Deal!",
+      "trim_with_any_armor_pattern": "Crafting a New Look",
+      "honey_block_slide": "Sticky Situation",
+      "ol_betsy": "Ol' Betsy",
+      "lightning_rod_with_villager_no_fire": "Surge Protector",
+      "fall_from_world_height": "Caves & Cliffs",
+      "salvage_sherd": "Respecting the Remnants",
+      "avoid_vibration": "Sneak 100",
+      "sleep_in_bed": "Sweet Dreams",
+      "hero_of_the_village": "Hero of the Village",
+      "spyglass_at_ghast": "Is It a Balloon?",
+      "throw_trident": "A Throwaway Joke",
+      "kill_mob_near_sculk_catalyst": "It Spreads",
+      "shoot_arrow": "Take Aim",
+      "kill_all_mobs": "Monsters Hunted",
+      "totem_of_undying": "Postmortal",
+      "summon_iron_golem": "Hired Help",
+      "trade_at_world_height": "Star Trader",
+      "trim_with_all_exclusive_armor_patterns": "Smithing with Style",
+      "two_birds_one_arrow": "Two Birds, One Arrow",
+      "whos_the_pillager_now": "Who's the Pillager Now?",
+      "arbalistic": "Arbalistic",
+      "craft_decorated_pot_using_only_sherds": "Careful Restoration",
+      "adventuring_time": "Adventuring Time",
+      "play_jukebox_in_meadows": "Sound of Music",
+      "walk_on_powder_snow_with_leather_boots": "Light as a Rabbit",
+      "spyglass_at_dragon": "Is It a Plane?",
+      "very_very_frightening": "Very Very Frightening",
+      "sniper_duel": "Sniper Duel",
+      "bullseye": "Bullseye"
+    },
+    "husbandry": {
+      "root": "Husbandry",
+      "safely_harvest_honey": "Bee Our Guest",
+      "breed_an_animal": "The Parrots and the Bats",
+      "allay_deliver_item_to_player": "You've Got a Friend in Me",
+      "ride_a_boat_with_a_goat": "Whatever Floats Your Goat!",
+      "tame_an_animal": "Best Friends Forever",
+      "make_a_sign_glow": "Glow and Behold!",
+      "fishy_business": "Fishy Business",
+      "silk_touch_nest": "Total Beelocation",
+      "tadpole_in_a_bucket": "Bukkit Bukkit",
+      "obtain_sniffer_egg": "Smells Interesting",
+      "plant_seed": "A Seedy Place",
+      "wax_on": "Wax On",
+      "bred_all_animals": "Two by Two",
+      "allay_deliver_cake_to_note_block": "Birthday Song",
+      "complete_catalogue": "A Complete Catalogue",
+      "tactical_fishing": "Tactical Fishing",
+      "leash_all_frog_variants": "When the Squad Hops into Town",
+      "feed_snifflet": "Little Sniffs",
+      "balanced_diet": "A Balanced Diet",
+      "obtain_netherite_hoe": "Serious Dedication",
+      "wax_off": "Wax Off",
+      "axolotl_in_a_bucket": "The Cutest Predator",
+      "froglights": "With Our Powers Combined!",
+      "plant_any_sniffer_seed": "Planting the Past",
+      "kill_axolotl_target": "The Healing Power of Friendship!"
+    }
   }
 }
