@@ -55,8 +55,33 @@ fn address_unknown() -> LauncherError {
 }
 
 /// The address a server instance's server was last put in the game's server list with, so a
-/// server that moved keeps its one entry (`<instance>/.perland/<LISTED_FILE>`).
+/// server that moved keeps its one entry, and the name it was given, so a display name change
+/// renames an entry the player never renamed (`<instance>/.perland/<LISTED_FILE>`).
 const LISTED_FILE: &str = "listed-server.json";
+
+/// What [`LISTED_FILE`] holds. Launchers before display names wrote the bare address.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+struct ListedRecord {
+    address: ServerAddress,
+    /// The entry's name as the launcher wrote it.
+    #[serde(default)]
+    name: Option<String>,
+}
+
+impl ListedRecord {
+    fn read(bytes: &[u8]) -> Option<ListedRecord> {
+        serde_json::from_slice::<ListedRecord>(bytes)
+            .ok()
+            .or_else(|| {
+                serde_json::from_slice::<ServerAddress>(bytes)
+                    .ok()
+                    .map(|address| ListedRecord {
+                        address,
+                        name: None,
+                    })
+            })
+    }
+}
 
 /// How long a run waits for an instance lock that a just-ended run is still letting go of.
 const LOCK_WAIT: Duration = Duration::from_secs(2);
@@ -429,12 +454,23 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let previous = tokio::fs::read(&record)
             .await
             .ok()
-            .and_then(|b| serde_json::from_slice::<ServerAddress>(&b).ok());
+            .and_then(|b| ListedRecord::read(&b));
+        // The names the launcher gave the entry: the one it recorded, else (a record from
+        // before display names) the instance's name, which the server's name gave it.
+        let ours: Vec<&str> = match previous.as_ref().and_then(|p| p.name.as_deref()) {
+            Some(written) => vec![written],
+            None => vec![instance.name.as_str()],
+        };
         let game_dir = self.instances.game_dir(id);
-        match server_list::ensure_listed(&game_dir, name, address, previous.as_ref()).await {
+        let previous_address = previous.as_ref().map(|p| &p.address);
+        match server_list::ensure_listed(&game_dir, name, address, previous_address, &ours).await {
             Ok(_) => {
-                if previous.as_ref() != Some(address) {
-                    let json = serde_json::to_vec(address).unwrap_or_default();
+                let now = ListedRecord {
+                    address: address.clone(),
+                    name: Some(name.to_string()),
+                };
+                if previous.as_ref() != Some(&now) {
+                    let json = serde_json::to_vec(&now).unwrap_or_default();
                     if let Err(error) = write_atomic(&record, &json).await {
                         tracing::warn!(instance = id, %error, "couldn't remember the listed server");
                     }
@@ -2094,6 +2130,7 @@ mod tests {
             "Mine",
             &ServerAddress::new("a.example.com", 25565).unwrap(),
             None,
+            &[],
         )
         .await
         .unwrap();
@@ -2135,6 +2172,62 @@ mod tests {
         );
         core.stop(&id).unwrap();
         host.wait_for_nth(&id, Idle, 2).await;
+    }
+
+    #[tokio::test]
+    async fn a_new_display_name_renames_the_entry_the_launcher_wrote() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+        core.update_server(&id, false, |s| {
+            s.as_mut().unwrap().name = "Survival con los panas".into()
+        })
+        .await
+        .unwrap();
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for_nth(&id, Running, 2).await;
+        assert_eq!(
+            listed(&core, &id),
+            vec![(
+                "Survival con los panas".into(),
+                "play.example.com:25566".into()
+            )]
+        );
+        core.stop(&id).unwrap();
+        host.wait_for_nth(&id, Idle, 2).await;
+    }
+
+    #[tokio::test]
+    async fn an_entry_the_player_renamed_keeps_its_name() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
+        let game = core.instances.game_dir(&id);
+        // A launcher from before display names: the bare address as the record.
+        server_list::ensure_listed(&game, "Friday night", &address().unwrap(), None, &[])
+            .await
+            .unwrap();
+        let record = core.instances.perland_dir(&id).join(super::LISTED_FILE);
+        std::fs::create_dir_all(record.parent().unwrap()).unwrap();
+        std::fs::write(&record, serde_json::to_vec(&address().unwrap()).unwrap()).unwrap();
+        core.update_server(&id, false, |s| {
+            s.as_mut().unwrap().name = "Survival con los panas".into()
+        })
+        .await
+        .unwrap();
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(
+            listed(&core, &id),
+            vec![("Friday night".into(), "play.example.com:25566".into())]
+        );
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
     }
 
     #[tokio::test]

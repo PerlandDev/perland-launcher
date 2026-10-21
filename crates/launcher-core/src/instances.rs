@@ -269,7 +269,7 @@ pub struct ServerLink {
     /// Last known and validated. Kept when the link stops working.
     #[serde(default)]
     pub address: Option<ServerAddress>,
-    /// The view's name at the last read.
+    /// The name players see at the last read: the server's display name, else its name.
     pub name: String,
     /// `cyan | blue | violet | magenta | other`.
     #[serde(default)]
@@ -290,7 +290,7 @@ impl ServerLink {
     pub fn from_view(view: &InviteView, engine: &Url, now: i64) -> ServerLink {
         ServerLink {
             address: ServerAddress::from_view(&view.address, engine),
-            name: view.name.trim().chars().take(MAX_NAME_CHARS).collect(),
+            name: view.shown_name().chars().take(MAX_NAME_CHARS).collect(),
             accent: accent_of(&view.team.accent),
             whitelisted: view.whitelisted,
             last_status: view.status(),

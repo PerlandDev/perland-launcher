@@ -16,8 +16,13 @@ pub struct InviteView {
     /// `stack` or `network`.
     #[serde(default)]
     pub kind: String,
+    /// The server's own name, which never changes.
     #[serde(default)]
     pub name: String,
+    /// The name the team gives players; absent on Engines before display names, and equal to
+    /// `name` when the team set none. Use [`InviteView::shown_name`].
+    #[serde(default)]
+    pub display_name: Option<String>,
     /// May hold `§` colour codes.
     #[serde(default)]
     pub motd: String,
@@ -172,6 +177,27 @@ impl InviteView {
     pub fn is_network(&self) -> bool {
         self.kind == "network"
     }
+
+    /// The name players see: the display name, else the server's own name. Trimmed, without
+    /// control characters (an Engine refuses them; this guards the servers.dat entry anyway).
+    pub fn shown_name(&self) -> String {
+        shown_name(&self.name, self.display_name.as_deref())
+    }
+}
+
+/// `display_name` when it holds something, else `name`; trimmed, control characters dropped.
+pub fn shown_name(name: &str, display_name: Option<&str>) -> String {
+    let clean = |s: &str| {
+        s.chars()
+            .filter(|c| !c.is_control())
+            .collect::<String>()
+            .trim()
+            .to_string()
+    };
+    match display_name.map(clean) {
+        Some(shown) if !shown.is_empty() => shown,
+        _ => clean(name),
+    }
 }
 
 #[cfg(test)]
@@ -198,6 +224,18 @@ mod tests {
             })
         );
         assert_eq!(view(serde_json::Value::Null).modrinth, None);
+    }
+
+    #[test]
+    fn shown_name_prefers_the_display_name() {
+        let v: InviteView = serde_json::from_value(json!({
+            "name": "survival_del_viernes", "displayName": " Survival con los panas "
+        }))
+        .unwrap();
+        assert_eq!(v.shown_name(), "Survival con los panas");
+        assert_eq!(view(serde_json::Value::Null).shown_name(), "pack");
+        assert_eq!(shown_name("s", Some("  ")), "s");
+        assert_eq!(shown_name("s", Some("a\nb")), "ab");
     }
 
     #[test]

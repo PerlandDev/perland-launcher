@@ -90,7 +90,10 @@ export const publicServerCard = z.strictObject({
   invite: z.string().nullable(),
   joinable: z.boolean(),
   address: z.string().nullable(),
+  /** The server's own name, which never changes. */
   name: z.string(),
+  /** The name players see: the team's display name, else `name`. */
+  displayName: z.string(),
   iconVersion: z.string().nullable(),
   game: serverGame,
   modded: z.boolean(),

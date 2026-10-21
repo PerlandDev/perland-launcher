@@ -69,6 +69,7 @@ const card = (letter: string, over: Partial<PublicServerCard>): PublicServerCard
   region: null,
   instance: null,
   ...over,
+  displayName: over.displayName ?? over.name ?? '',
 });
 
 /** Owner, invited, followed. The followed `SHARED` one is the public list's own card, token and invite included. */

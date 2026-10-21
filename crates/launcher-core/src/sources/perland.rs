@@ -131,7 +131,7 @@ fn unusable_version() -> LauncherError {
 }
 
 fn display_name(view: &InviteView) -> String {
-    view.name.trim().chars().take(MAX_NAME_CHARS).collect()
+    view.shown_name().chars().take(MAX_NAME_CHARS).collect()
 }
 
 fn source_of(link: &InviteLink, ev: &EngineView) -> SourceRef {

@@ -358,6 +358,8 @@ pub enum Listed {
     Moved,
     /// A new entry went to the top of the list.
     Added,
+    /// The server's entry kept its place and now carries the server's new name.
+    Renamed,
 }
 
 fn failed(address: &ServerAddress, detail: impl std::fmt::Display) -> LauncherError {
@@ -374,11 +376,15 @@ fn failed(address: &ServerAddress, detail: impl std::fmt::Display) -> LauncherEr
 /// have renamed or moved it), the entry for `previous` repointed when the server moved, else a
 /// new `name` entry at the top. A hidden entry for the server becomes visible at the top. A file
 /// that isn't valid NBT is never overwritten: that would lose the player's servers.
+///
+/// `ours` are the names the launcher wrote for this server before: an entry still named one of
+/// them takes `name` (the server's display name changed), while a name the player typed stays.
 pub fn with_server(
     current: Option<&[u8]>,
     name: &str,
     address: &ServerAddress,
     previous: Option<&ServerAddress>,
+    ours: &[&str],
 ) -> std::result::Result<(Listed, Option<Vec<u8>>), &'static str> {
     let (root_name, mut fields) = match current {
         Some(bytes) => parse(bytes)?,
@@ -393,8 +399,13 @@ pub fn with_server(
     let target = address.display();
     let wanted = normalize(target.as_bytes());
     let listed = if let Some(i) = servers.iter().position(|s| entry_ip(s) == wanted) {
+        let renamed = rename_ours(&mut servers[i], name, ours);
         if !is_hidden(&servers[i]) {
-            return Ok((Listed::Already, None));
+            if !renamed {
+                return Ok((Listed::Already, None));
+            }
+            set_field(&mut fields, "servers", Tag::List(10, servers));
+            return Ok((Listed::Renamed, Some(serialize(&root_name, &fields))));
         }
         let mut entry = servers.remove(i);
         unhide(&mut entry);
@@ -404,6 +415,7 @@ pub fn with_server(
         .map(|p| normalize(p.display().as_bytes()))
         .and_then(|old| servers.iter().position(|s| entry_ip(s) == old))
     {
+        rename_ours(&mut servers[i], name, ours);
         if let Tag::Compound(entry) = &mut servers[i] {
             set_field(entry, "ip", Tag::String(target.into_bytes()));
         }
@@ -427,6 +439,24 @@ pub fn with_server(
     Ok((listed, Some(serialize(&root_name, &fields))))
 }
 
+/// Gives `entry` the name `name` when it is still named one of `ours`, the names the launcher
+/// wrote; returns whether it changed.
+fn rename_ours(entry: &mut Tag, name: &str, ours: &[&str]) -> bool {
+    let Tag::Compound(fields) = entry else {
+        return false;
+    };
+    let wanted = modified_utf8(name);
+    let current = match field(fields, "name") {
+        Some(Tag::String(raw)) => raw.clone(),
+        _ => return false,
+    };
+    if current == wanted || !ours.iter().any(|o| modified_utf8(o) == current) {
+        return false;
+    }
+    set_field(fields, "name", Tag::String(wanted));
+    true
+}
+
 /// Put `address` in `<game_dir>/servers.dat` (see [`with_server`]). `previous` is the address
 /// this was last called with for the instance, so a server that moved keeps its one entry.
 pub async fn ensure_listed(
@@ -434,6 +464,7 @@ pub async fn ensure_listed(
     name: &str,
     address: &ServerAddress,
     previous: Option<&ServerAddress>,
+    ours: &[&str],
 ) -> Result<Listed> {
     let path = game_dir.join(FILE_NAME);
     let current = match tokio::fs::read(&path).await {
@@ -441,7 +472,7 @@ pub async fn ensure_listed(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
         Err(e) => return Err(failed(address, e)),
     };
-    let (listed, bytes) = with_server(current.as_deref(), name, address, previous)
+    let (listed, bytes) = with_server(current.as_deref(), name, address, previous, ours)
         .map_err(|why| failed(address, format!("{}: {why}", path.display())))?;
     if let Some(bytes) = bytes {
         write_atomic(&path, &bytes)
@@ -557,7 +588,7 @@ mod tests {
     #[test]
     fn a_missing_file_gets_the_server() {
         let (listed, bytes) =
-            with_server(None, "Asalith", &addr("play.example.com", 25566), None).unwrap();
+            with_server(None, "Asalith", &addr("play.example.com", 25566), None, &[]).unwrap();
         assert_eq!(listed, Listed::Added);
         assert_eq!(
             entries(&bytes.unwrap()),
@@ -572,6 +603,7 @@ mod tests {
             "Asalith",
             &addr("play.example.com", 25566),
             None,
+            &[],
         )
         .unwrap();
         assert_eq!(listed, Listed::Added);
@@ -600,6 +632,7 @@ mod tests {
             "Asalith",
             &addr("play.example.com", 25566),
             None,
+            &[],
         )
         .unwrap();
         assert_eq!(listed, Listed::Already);
@@ -614,12 +647,13 @@ mod tests {
             "Asalith",
             &addr("play.example.com", 25565),
             None,
+            &[],
         )
         .unwrap();
         assert_eq!(listed, Listed::Already);
         let v6 = file(vec![entry("Six", "2001:db8::1")]);
         let (listed, _) =
-            with_server(Some(&v6), "Asalith", &addr("2001:db8::1", 25565), None).unwrap();
+            with_server(Some(&v6), "Asalith", &addr("2001:db8::1", 25565), None, &[]).unwrap();
         assert_eq!(listed, Listed::Already);
     }
 
@@ -636,6 +670,7 @@ mod tests {
             "Asalith",
             &addr("play.example.com", 25566),
             None,
+            &[],
         )
         .unwrap();
         assert_eq!(listed, Listed::Added);
@@ -672,6 +707,7 @@ mod tests {
             "Asalith",
             &addr("play.example.com", 25570),
             Some(&addr("play.example.com", 25566)),
+            &[],
         )
         .unwrap();
         assert_eq!(listed, Listed::Moved);
@@ -689,6 +725,75 @@ mod tests {
     }
 
     #[test]
+    fn an_entry_the_launcher_named_takes_the_new_name() {
+        let current = file(vec![
+            entry("Mine", "a.example.com"),
+            entry("survival_del_viernes", "play.example.com:25566"),
+        ]);
+        let (listed, bytes) = with_server(
+            Some(&current),
+            "Survival con los panas",
+            &addr("play.example.com", 25566),
+            None,
+            &["survival_del_viernes"],
+        )
+        .unwrap();
+        assert_eq!(listed, Listed::Renamed);
+        assert_eq!(
+            entries(&bytes.unwrap()),
+            vec![
+                ("Mine".into(), "a.example.com".into(), false),
+                (
+                    "Survival con los panas".into(),
+                    "play.example.com:25566".into(),
+                    false
+                ),
+            ],
+            "the entry keeps its place"
+        );
+    }
+
+    #[test]
+    fn a_name_the_player_typed_stays() {
+        let current = file(vec![entry("Friday night", "play.example.com:25566")]);
+        let (listed, bytes) = with_server(
+            Some(&current),
+            "Survival con los panas",
+            &addr("play.example.com", 25566),
+            None,
+            &["survival_del_viernes"],
+        )
+        .unwrap();
+        assert_eq!(listed, Listed::Already);
+        assert_eq!(bytes, None);
+    }
+
+    #[test]
+    fn a_moved_entry_the_launcher_named_is_renamed_too() {
+        let current = file(vec![entry(
+            "survival_del_viernes",
+            "play.example.com:25566",
+        )]);
+        let (listed, bytes) = with_server(
+            Some(&current),
+            "Survival con los panas",
+            &addr("play.example.com", 25570),
+            Some(&addr("play.example.com", 25566)),
+            &["survival_del_viernes"],
+        )
+        .unwrap();
+        assert_eq!(listed, Listed::Moved);
+        assert_eq!(
+            entries(&bytes.unwrap()),
+            vec![(
+                "Survival con los panas".into(),
+                "play.example.com:25570".into(),
+                false
+            )]
+        );
+    }
+
+    #[test]
     fn a_removed_old_entry_means_a_new_one() {
         let current = file(vec![entry("Mine", "a.example.com")]);
         let (listed, bytes) = with_server(
@@ -696,6 +801,7 @@ mod tests {
             "Asalith",
             &addr("play.example.com", 25570),
             Some(&addr("play.example.com", 25566)),
+            &[],
         )
         .unwrap();
         assert_eq!(listed, Listed::Added);
@@ -704,7 +810,7 @@ mod tests {
 
     #[test]
     fn an_ipv6_server_is_written_with_brackets() {
-        let (_, bytes) = with_server(None, "Six", &addr("2001:db8::1", 25566), None).unwrap();
+        let (_, bytes) = with_server(None, "Six", &addr("2001:db8::1", 25566), None, &[]).unwrap();
         assert_eq!(entries(&bytes.unwrap())[0].1, "[2001:db8::1]:25566");
     }
 
@@ -712,7 +818,7 @@ mod tests {
     fn an_empty_list_typed_end_is_accepted() {
         let current = serialize(b"", &[(b"servers".to_vec(), Tag::List(0, vec![]))]);
         let (listed, bytes) =
-            with_server(Some(&current), "A", &addr("a.example.com", 1), None).unwrap();
+            with_server(Some(&current), "A", &addr("a.example.com", 1), None, &[]).unwrap();
         assert_eq!(listed, Listed::Added);
         assert_eq!(entries(&bytes.unwrap()).len(), 1);
     }
@@ -728,9 +834,9 @@ mod tests {
 
     #[test]
     fn a_damaged_file_is_never_overwritten() {
-        assert!(with_server(Some(b"not nbt"), "A", &addr("a.example.com", 1), None).is_err());
+        assert!(with_server(Some(b"not nbt"), "A", &addr("a.example.com", 1), None, &[]).is_err());
         let wrong = serialize(b"", &[(b"servers".to_vec(), Tag::Int(3))]);
-        assert!(with_server(Some(&wrong), "A", &addr("a.example.com", 1), None).is_err());
+        assert!(with_server(Some(&wrong), "A", &addr("a.example.com", 1), None, &[]).is_err());
     }
 
     #[tokio::test]
@@ -739,14 +845,14 @@ mod tests {
         let game = tmp.path().join("minecraft");
         let address = addr("play.example.com", 25566);
         assert_eq!(
-            ensure_listed(&game, "Asalith", &address, None)
+            ensure_listed(&game, "Asalith", &address, None, &[])
                 .await
                 .unwrap(),
             Listed::Added
         );
         let written = std::fs::read(game.join(FILE_NAME)).unwrap();
         assert_eq!(
-            ensure_listed(&game, "Asalith", &address, None)
+            ensure_listed(&game, "Asalith", &address, None, &[])
                 .await
                 .unwrap(),
             Listed::Already
@@ -758,7 +864,7 @@ mod tests {
     async fn ensure_listed_keeps_a_damaged_file() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join(FILE_NAME), b"junk").unwrap();
-        let err = ensure_listed(tmp.path(), "A", &addr("a.example.com", 1), None)
+        let err = ensure_listed(tmp.path(), "A", &addr("a.example.com", 1), None, &[])
             .await
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::ServerListFailed);

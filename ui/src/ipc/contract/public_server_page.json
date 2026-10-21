@@ -6,6 +6,7 @@
       "joinable": true,
       "address": "play.example.com:25566",
       "name": "Survival",
+      "displayName": "Survival con los panas",
       "iconVersion": "1a2b3c4d5e6f7a8b",
       "game": {
         "version": "1.20.1",
@@ -39,6 +40,7 @@
       "joinable": true,
       "address": "play.example.com:25567",
       "name": "Creative",
+      "displayName": "Creative",
       "iconVersion": null,
       "game": {
         "version": "1.21.1",
@@ -63,6 +65,7 @@
       "joinable": false,
       "address": "play.example.com:25568",
       "name": "Tech",
+      "displayName": "Tech",
       "iconVersion": "9f8e7d6c5b4a3921",
       "game": {
         "version": "1.20.1",

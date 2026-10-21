@@ -6,6 +6,7 @@
       "joinable": true,
       "address": "play.example.com:25566",
       "name": "My world",
+      "displayName": "My world",
       "iconVersion": null,
       "game": {
         "version": "1.21.1",
@@ -30,6 +31,7 @@
       "joinable": true,
       "address": "play.example.com:25566",
       "name": "Friends",
+      "displayName": "Friends",
       "iconVersion": null,
       "game": {
         "version": "1.21.1",
@@ -54,6 +56,7 @@
       "joinable": true,
       "address": "play.example.com:25566",
       "name": "Survival",
+      "displayName": "Survival",
       "iconVersion": null,
       "game": {
         "version": "1.21.1",
