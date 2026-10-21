@@ -6,7 +6,7 @@
   - `2026-10-17-free-server-for-friends-design.md` (the free-server flow and its contract).
   - `2026-10-21-play-with-friends-design.md` (the instance → server pack flow, launcher#95).
   - PerlandEngine `main` at 34de86f: `internal/freeservers/create.go`, `internal/playersapi/freeservers*.go`, `cmd/server/freeservers.go` (`freeStackRequest`), `internal/minecraft/controllers/free-server-rules.go` (`checkFreeSettings`), `internal/minecraft/versions` (the Mojang list `GET /versions?type=vanilla` serves), `internal/minecraft/presets` (hardcore as survival + `HARDCORE`, difficulty locked to hard).
-- **Status:** approved by the owner's brief ("fully implemented, work on your own"). The owner asked for no questions, so every decision below marked **our call** is ours, with its reason.
+- **Status:** approved by the owner's brief; phase 2 (section 6) added when the owner widened the scope ("fully implemented, work on your own"). The owner asked for no questions, so every decision below marked **our call** is ours, with its reason.
 
 ## 1. Why
 
@@ -131,6 +131,43 @@ The ⋯ item **Play this with friends…** (en) / **Jugar esto con amigos…** (
 - The "latest only" rule in the form's comment goes, replaced by the reason it's now safe (the Engine checks the version).
 - i18n en/es/ca; the mock engine (`scripts/mock-players.mjs`) gains the version check (against its mock versions list), the settings checks and `limits.settings`; unit tests; a roadmap record in the Engine per the panel's "Finishing a change".
 
-## 6. Left to the builder
+## 6. Phase 2: create on any team
+
+The owner widened the scope while phase 1 was being built: creating servers from the launcher is for every Perland user, not only free servers. Players on paid teams (owner or member, `servers:write`) have far more room, and Manage already works for any team (launcher#94, #97).
+
+### 6.1 Order (our call)
+
+Ordered PRs, each merged when green so value ships early:
+
+1. **Engine PR 1:** sections 3.1–3.5 (version check, settings, `limits.settings`).
+2. **Launcher PR 1:** sections 4.1–4.3 (picker, Options, any instance → free server). The master releases a beta after it.
+3. **Panel PR:** section 5.
+4. **Engine PR 2:** 6.2 (team create from a Modrinth pack version and from an uploaded pack, one shared checker).
+5. **Launcher PR 2:** 6.3 (one create flow with a Where choice; any instance → a server on any team).
+
+### 6.2 Engine: team stacks from packs
+
+- **Today** `POST /api/v1/stacks/create-server` can't run a Modrinth pack: `ServerRequestDTO.ModrinthPack` is `json:"-"`, set only by the free servers.
+- **Modrinth version id.** The create-server body gains `modrinthVersionId` (`^[A-Za-z0-9]{1,16}$`, the free create's rule). With it, `type`, `version`, `loaderVersion`, `modpack`, `preset` and `repos.modpack` must be left out (400 naming the field, like `preset_conflict`): the pack decides them. The engine runs the shared checker with the request's `ram` as the memory limit (`modpack_unsupported` with `data.reason`, `modpack_too_heavy` with `requiredMemoryMb`/`limitMemoryMb`, 502 `modrinth_unavailable`) and sets `ModrinthPack`, so the stack is made exactly like a Modrinth free server (`compose` TYPE MODRINTH). An older Engine refuses such a body (no `type`), never silently makes a vanilla server.
+- **Uploaded pack.** `POST /api/v1/stacks/create-server/pack`, multipart: `request` (the create-server JSON, at most 64 KiB, with the same left-out rule as `modrinthVersionId`), `sha256`, and the `.mrpack` as `pack` (at most `ModpackMaxBytes`). Same `servers:write` scope, the same quota check (a middleware variant that reads the `request` part), the same audit action (`stack.create`), the same 10 uploads a minute per client IP. The pack goes through the shared checker exactly as a free server's (only files Modrinth serves with matching hashes; overrides only text configs under `config/` and `defaultconfigs/`), and the stack mounts the clean pack the engine wrote, read-only.
+- **No switch (our call):** a team stack already takes any file through the files API, so a checked pack adds no risk; `FREE_SERVER_PACKS_ENABLED` stays the free servers' own switch.
+- **One checker.** `ModpackChecker` and `PackChecker` (with their errors, `RequiredMemoryMB`, `ReadPackSummary`) move from `internal/freeservers` to a new leaf package `internal/minecraft/packcheck`; freeservers and the stack create both call it. Nothing is copied.
+- `servers:write`-scoped creates stay refused on a free team (`freeCreateAllowed`), so the free team keeps its own create.
+- Records as in 3.5; CLAUDE.md rows for both routes.
+
+### 6.3 Launcher: one create flow
+
+- **Servers → Create a server** (en) / **Crear un servidor** (es) replaces "Create a server for friends" when the player belongs to a team that can create; otherwise the button is today's.
+- **Where** is the first choice: **Your free server** (the free team; free-server rules and copy, phase 1's form) or each team where the player is owner or member (from `/auth/memberships`, the JWT from `select-tenant`, as Manage does), by name. The team path never says "free".
+- **On a team:** name, server type (Vanilla, Paper, Fabric, Forge, NeoForge, Quilt), Minecraft version per type and the loader version for modded (`GET /api/v1/versions` with the team's JWT), memory (choices in whole GB up to the team's `available` memory from `GET /api/v1/tenants/current/usage`, default 4 GB or the most available below it), CPU (our call: not asked; 2 cores, or the most the team has left below that), and the same Options as 4.1 (max players default 20, no plan cap but the Engine's).
+- **Answers, worded plainly:** `started: false` → "Your server is ready, but your team has no room to run it now. Stop another server to start it."; 402 `quota_exceeded` → "Your team's plan has no room for a server this size."; 503 `host_full` → today's line; 402 `plan_feature_locked` on a field → the field shown locked with **Upgrade** (opens the panel's billing page), as the panel does.
+- **Any instance → a server on any team:** the same ⋯ item opens the same dialog with Where. On a team:
+  - vanilla → type vanilla, the instance's version;
+  - a loader instance with no mods → that type, version and loader version;
+  - an instance from a Modrinth pack → `modrinthVersionId`;
+  - any other modded instance → the uploaded pack (`/create-server/pack`), after the same mods check as the free path, against the memory chosen.
+- After a team create the dialog's last step is Manage for that server (not the invite step, since a team server's invite is the team's choice).
+
+## 7. Left to the builder
 
 Exact copy within PRODUCT.md (en/es, plus ca on the panel), the layout of Options within each design system, test names, and how the mock engines fake the version list.
