@@ -3,7 +3,10 @@
 //! time for the whole app: the Engine allows a team only a few, and the console shows one
 //! server. JWTs come from `AppCore::jwts` and never reach a log.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use launcher_core::{ErrorCode, LauncherError, Result};
 use tokio::{
@@ -28,6 +31,24 @@ fn stream_lost() -> LauncherError {
     LauncherError::network(ErrorCode::Internal, "The live log couldn't start.")
 }
 
+/// Stops a stream and orders its events against that stop: the stream's task emits only
+/// while holding it and seeing no stop, and a stop is sent while holding it, so once a stop
+/// returns no event of that stream can follow. `Host::emit` must not call back into the
+/// console (Tauri's posts the event to the webview and returns), or it would wait on itself.
+pub(crate) type Gate = Arc<Mutex<watch::Sender<bool>>>;
+
+/// The one console log being followed: its team, its server and its gate.
+pub(crate) struct ConsoleSlot {
+    tenant: String,
+    stack: String,
+    gate: Gate,
+}
+
+/// Sends the stop, after any event the stream is emitting.
+fn stop(gate: &Gate) {
+    let _ = gate.lock().unwrap_or_else(|e| e.into_inner()).send(true);
+}
+
 impl<R: Runner, H: Host> AppCore<R, H> {
     /// Follows the console log of `stack` in team `tenant`, sending `server_log` events, and
     /// stops the stream already open, whichever server it follows. Returns once the first
@@ -35,14 +56,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// sign-out). A stream that ends on its own later sends `server_log_ended`.
     pub async fn manage_console_open(self: &Arc<Self>, tenant: &str, stack: &str) -> Result<()> {
         let session = self.perland_session().await.ok_or_else(signed_out)?;
-        let (stop_tx, stop) = watch::channel(false);
-        let previous = self
-            .console_stream
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .replace((tenant.to_string(), stack.to_string(), stop_tx));
-        if let Some((_, _, previous)) = previous {
-            let _ = previous.send(true);
+        let (stop_tx, stop_rx) = watch::channel(false);
+        let gate: Gate = Arc::new(Mutex::new(stop_tx));
+        let previous = self.console_slot().replace(ConsoleSlot {
+            tenant: tenant.to_string(),
+            stack: stack.to_string(),
+            gate: gate.clone(),
+        });
+        if let Some(previous) = previous {
+            stop(&previous.gate);
         }
 
         let core = self.clone();
@@ -67,7 +89,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             stack.to_string(),
             sink,
             connected_tx,
-            stop.clone(),
+            stop_rx.clone(),
         );
         let (started_tx, started) = oneshot::channel();
         tokio::spawn(self.clone().console_task(
@@ -77,7 +99,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 follow,
                 connected,
                 lines,
-                stop,
+                stop: stop_rx,
+                gate,
             },
             started_tx,
         ));
@@ -85,32 +108,59 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Stops the console stream if it follows `stack` of `tenant`; another server's stays.
+    /// Once this returns, no event of that stream follows.
     pub fn manage_console_close(&self, tenant: &str, stack: &str) {
-        let mut slot = self
-            .console_stream
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if slot
-            .as_ref()
-            .is_some_and(|(t, s, _)| t == tenant && s == stack)
-        {
-            if let Some((_, _, stop)) = slot.take() {
-                let _ = stop.send(true);
+        let taken = {
+            let mut slot = self.console_slot();
+            if slot
+                .as_ref()
+                .is_some_and(|s| s.tenant == tenant && s.stack == stack)
+            {
+                slot.take()
+            } else {
+                None
             }
+        };
+        if let Some(taken) = taken {
+            stop(&taken.gate);
         }
     }
 
-    /// Clears the console slot when it still holds the stream `stop` belongs to.
-    fn forget_console(&self, stop: &watch::Receiver<bool>) {
-        let mut slot = self
-            .console_stream
+    /// Stops the console stream, whichever server it follows (the session it used is gone).
+    pub(crate) fn stop_console(&self) {
+        let taken = self.console_slot().take();
+        if let Some(taken) = taken {
+            stop(&taken.gate);
+        }
+    }
+
+    fn console_slot(&self) -> std::sync::MutexGuard<'_, Option<ConsoleSlot>> {
+        self.console_stream
             .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if slot
-            .as_ref()
-            .is_some_and(|(_, _, s)| s.subscribe().same_channel(stop))
-        {
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Clears the console slot when it still holds the stream of `gate`.
+    fn forget_console(&self, gate: &Gate) {
+        let mut slot = self.console_slot();
+        if slot.as_ref().is_some_and(|s| Arc::ptr_eq(&s.gate, gate)) {
             *slot = None;
+        }
+    }
+
+    /// Emits `events` unless the stream was stopped, holding its gate (see `Gate`).
+    fn emit_unless_stopped(
+        &self,
+        gate: &Gate,
+        stop: &watch::Receiver<bool>,
+        events: impl IntoIterator<Item = AppEvent>,
+    ) {
+        let _held = gate.lock().unwrap_or_else(|e| e.into_inner());
+        if *stop.borrow() {
+            return;
+        }
+        for event in events {
+            self.host.emit(event);
         }
     }
 
@@ -128,6 +178,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             connected,
             mut lines,
             stop,
+            gate,
         } = stream;
         // Waited on in the loop below, while `stop` itself is read in its arms.
         let mut stopping = stop.clone();
@@ -141,12 +192,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             },
         };
         if let Err(answer) = opened {
-            self.forget_console(&stop);
+            self.forget_console(&gate);
             let _ = started.send(answer);
             return;
         }
         let _ = started.send(Ok(()));
 
+        let lines_event = |batch: &mut Batch| {
+            let lines = batch.take();
+            (!lines.is_empty()).then(|| AppEvent::ServerLog {
+                tenant_id: tenant.clone(),
+                stack: stack.clone(),
+                lines,
+            })
+        };
         let mut batch = Batch::default();
         let mut lines_open = true;
         loop {
@@ -157,18 +216,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     while let Ok(more) = lines.try_recv() {
                         batch.push(more);
                     }
-                    let stopped = *stop.borrow();
-                    if !stopped {
-                        self.emit_lines(&tenant, &stack, &mut batch);
-                    }
-                    self.forget_console(&stop);
-                    if let (Err(e), false) = (ended, stopped) {
-                        tracing::info!(code = ?e.code, "a server's live log ended");
-                        self.host.emit(AppEvent::ServerLogEnded {
-                            tenant_id: tenant,
-                            stack,
+                    self.forget_console(&gate);
+                    let mut events: Vec<AppEvent> = lines_event(&mut batch).into_iter().collect();
+                    if let Err(e) = ended {
+                        if !*stop.borrow() {
+                            tracing::info!(code = ?e.code, "a server's live log ended");
+                        }
+                        events.push(AppEvent::ServerLogEnded {
+                            tenant_id: tenant.clone(),
+                            stack: stack.clone(),
                         });
                     }
+                    self.emit_unless_stopped(&gate, &stop, events);
                     return;
                 }
                 more = lines.recv(), if lines_open => match more {
@@ -176,22 +235,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     None => lines_open = false,
                 },
                 _ = tokio::time::sleep_until(deadline.unwrap_or_else(Instant::now)), if deadline.is_some() => {
-                    if !*stop.borrow() {
-                        self.emit_lines(&tenant, &stack, &mut batch);
-                    }
+                    let event = lines_event(&mut batch);
+                    self.emit_unless_stopped(&gate, &stop, event);
                 }
             }
-        }
-    }
-
-    fn emit_lines(&self, tenant: &str, stack: &str, batch: &mut Batch) {
-        let lines = batch.take();
-        if !lines.is_empty() {
-            self.host.emit(AppEvent::ServerLog {
-                tenant_id: tenant.to_string(),
-                stack: stack.to_string(),
-                lines,
-            });
         }
     }
 }
@@ -202,6 +249,7 @@ struct Stream {
     connected: oneshot::Receiver<()>,
     lines: mpsc::UnboundedReceiver<Vec<String>>,
     stop: watch::Receiver<bool>,
+    gate: Gate,
 }
 
 /// Lines waiting for the next event: at most `LOG_BATCH_LINES`, the newest.
@@ -388,8 +436,8 @@ mod tests {
         wait(150).await;
         assert_eq!(logs(&host), [("two".to_string(), texts(&["new"]))]);
         let slot = core.console_stream.lock().unwrap();
-        let (tenant, stack, _) = slot.as_ref().unwrap();
-        assert_eq!((tenant.as_str(), stack.as_str()), ("t2", "two"));
+        let slot = slot.as_ref().unwrap();
+        assert_eq!((slot.tenant.as_str(), slot.stack.as_str()), ("t2", "two"));
     }
 
     #[tokio::test(start_paused = true)]
@@ -458,5 +506,75 @@ mod tests {
             .unwrap_err();
         assert_eq!(e.code, ErrorCode::PerlandSignedOut);
         assert!(runner.stack.calls_to("follow_logs").is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn close_waits_for_an_event_being_emitted() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        core.manage_console_open("t1", "survival").await.unwrap();
+        let fired = Arc::new(AtomicBool::new(false));
+        let closed = Arc::new(AtomicBool::new(false));
+        let closed_during_emit = Arc::new(AtomicBool::new(false));
+        let weak = Arc::downgrade(&core);
+        let (f, c, early) = (fired.clone(), closed.clone(), closed_during_emit.clone());
+        *host.on_emit.lock().unwrap() = Some(Arc::new(move |e| {
+            if !matches!(e, AppEvent::ServerLog { .. }) || f.swap(true, Ordering::SeqCst) {
+                return;
+            }
+            // Another thread closes while this event is being emitted.
+            let core = weak.upgrade().unwrap();
+            let done = c.clone();
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                tx.send(()).unwrap();
+                core.manage_console_close("t1", "survival");
+                done.store(true, Ordering::SeqCst);
+            });
+            rx.recv().unwrap();
+            std::thread::sleep(Duration::from_millis(50));
+            early.store(c.load(Ordering::SeqCst), Ordering::SeqCst);
+        }));
+        runner.stack.log_lines(0, &["a"]);
+        wait(150).await;
+        while !closed.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(
+            !closed_during_emit.load(Ordering::SeqCst),
+            "close returned only after the event in flight"
+        );
+        runner.stack.log_lines(0, &["b"]);
+        wait(150).await;
+        assert_eq!(logs(&host), [("survival".to_string(), texts(&["a"]))]);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn sign_out_stops_the_console() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        core.manage_console_open("t1", "survival").await.unwrap();
+        core.perland_sign_out().await.unwrap();
+        assert!(*runner.stack.log_streams.lock().unwrap()[0].stop.borrow());
+        assert!(core.console_stream.lock().unwrap().is_none());
+        runner.stack.log_lines(0, &["a"]);
+        wait(150).await;
+        assert!(logs(&host).is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_new_session_stops_the_console() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        core.manage_console_open("t1", "survival").await.unwrap();
+        core.perland_email_verify("steve@example.com", "123456")
+            .await
+            .unwrap();
+        assert!(*runner.stack.log_streams.lock().unwrap()[0].stop.borrow());
+        assert!(core.console_stream.lock().unwrap().is_none());
+        runner.stack.log_lines(0, &["a"]);
+        wait(150).await;
+        assert!(logs(&host).is_empty());
     }
 }

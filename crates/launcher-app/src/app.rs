@@ -140,9 +140,8 @@ pub struct AppCore<R: Runner, H: Host> {
     /// Session JWTs for Manage (see `manage.rs`), cleared whenever the session is forgotten or
     /// replaced.
     pub(crate) jwts: launcher_core::perland::JwtCache,
-    /// The one console log being followed (see `manage_console.rs`): team, server and what
-    /// stops it.
-    pub(crate) console_stream: Mutex<Option<(String, String, tokio::sync::watch::Sender<bool>)>>,
+    /// The one console log being followed (see `manage_console.rs`).
+    pub(crate) console_stream: Mutex<Option<crate::manage_console::ConsoleSlot>>,
     /// Makes the next import fail while it moves the copied files into the new instance.
     #[cfg(test)]
     pub(crate) import_fail_move: AtomicBool,
