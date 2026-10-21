@@ -106,7 +106,7 @@ async fn memberships_send_the_jwt_in_x_user_token_and_read_plan() {
     let jwt = session(&server).await;
     Mock::given(method("GET"))
         .and(path("/api/v1/auth/memberships"))
-        .and(header("x-user-token", "eyJ.a.b"))
+        .and(header("x-user-token", "Bearer eyJ.a.b"))
         .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
             "memberships": [
                 {
@@ -153,7 +153,7 @@ async fn select_tenant_posts_the_tenant_id() {
     let jwt = session(&server).await;
     Mock::given(method("POST"))
         .and(path("/api/v1/auth/select-tenant"))
-        .and(header("x-user-token", "eyJ.a.b"))
+        .and(header("x-user-token", "Bearer eyJ.a.b"))
         .and(body_json(json!({ "tenantId": "t-1" })))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(envelope(json!({ "token": "eyJ.c.d" }))),

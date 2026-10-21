@@ -15,6 +15,8 @@ use wiremock::{
 };
 
 const JWT: &str = "eyJ.a.b";
+/// `X-User-Token` as the Engine reads it: the JWT after `Bearer `.
+const BEARER: &str = "Bearer eyJ.a.b";
 const ROUTE: &str = "/api/v1/stacks/survival/logs/stream";
 
 fn client(server: &MockServer) -> StackClient {
@@ -45,7 +47,7 @@ async fn follow_reads_lines_then_stops() {
         .and(path(ROUTE))
         .and(query_param("tail", "200"))
         .and(query_param("timestamps", "true"))
-        .and(header("x-user-token", JWT))
+        .and(header("x-user-token", BEARER))
         .respond_with(sse(format!(
             "{}{}event: end\ndata: {{\"reason\":\"eof\"}}\n\n",
             log("2026-10-21T10:00:00.000000001Z", "§aHello"),
@@ -166,14 +168,14 @@ async fn follow_asks_for_a_new_jwt_once_on_401() {
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path(ROUTE))
-        .and(header("x-user-token", "old"))
+        .and(header("x-user-token", "Bearer old"))
         .respond_with(ResponseTemplate::new(401))
         .expect(1)
         .mount(&server)
         .await;
     Mock::given(method("GET"))
         .and(path(ROUTE))
-        .and(header("x-user-token", "fresh"))
+        .and(header("x-user-token", "Bearer fresh"))
         .respond_with(sse(log("2026-10-21T10:00:00.000000001Z", "Hi")))
         .expect(1)
         .mount(&server)
@@ -430,14 +432,14 @@ async fn follow_with_reports_the_first_connect_and_asks_for_a_new_jwt_after_401(
     let server = MockServer::start().await;
     Mock::given(method("GET"))
         .and(path(ROUTE))
-        .and(header("x-user-token", "old"))
+        .and(header("x-user-token", "Bearer old"))
         .respond_with(ResponseTemplate::new(401))
         .expect(1)
         .mount(&server)
         .await;
     Mock::given(method("GET"))
         .and(path(ROUTE))
-        .and(header("x-user-token", "fresh"))
+        .and(header("x-user-token", "Bearer fresh"))
         .respond_with(sse(log(T1, "Hi")))
         .mount(&server)
         .await;
