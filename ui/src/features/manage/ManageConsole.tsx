@@ -9,6 +9,10 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 
+/** The opens issued per server (`tenantId/stack`), across every mount: a late close is sent only by the newest open, so
+ *  an older effect settling after a remount (StrictMode), a running flap or Reconnect never stops the newer stream. */
+const opens = new Map<string, number>();
+
 /** How close to the bottom (px) still counts as following the newest line. */
 const FOLLOW_SLACK = 40;
 
@@ -71,9 +75,12 @@ export function ManageConsole({ tenantId, stack }: { tenantId: string; stack: st
     // A close sent while the open is still on its way may reach Rust first; once the open answers, close again so no
     // stream outlives the screen (it would hold one of the team's few Engine log streams).
     let closed = false;
+    const key = `${tenantId}/${stack}`;
+    const generation = (opens.get(key) ?? 0) + 1;
+    opens.set(key, generation);
     commands.manageConsoleOpen(tenantId, stack).then(
       () => {
-        if (closed) close();
+        if (closed && opens.get(key) === generation) close();
       },
       (error: unknown) => {
         if (!closed) pushError(error);

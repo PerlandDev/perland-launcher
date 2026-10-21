@@ -36,6 +36,30 @@ describe('ManageConsole', () => {
     await vi.waitFor(() => expect(sent(calls, 'manage_console_close')).toEqual([ref, ref]));
   });
 
+  it('a late close never stops a newer open of the same server', async () => {
+    const backend = createMockBackend({ perland: 'signedIn', manage: 'running' });
+    const calls: [string, unknown][] = [];
+    const pending: (() => void)[] = [];
+    const ipc = (cmd: string, args?: unknown) => {
+      calls.push([cmd, args]);
+      if (cmd === 'manage_console_open') return new Promise<null>((resolve) => pending.push(() => resolve(null)));
+      return backend.handle(cmd, args);
+    };
+    const first = renderWithProviders(<ManageConsole {...ref} />, { ipc });
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    first.unmount();
+    const second = renderWithProviders(<ManageConsole {...ref} />, { ipc });
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    // The first open settles after the second was sent: no close may follow it.
+    act(() => pending[0]?.());
+    act(() => pending[1]?.());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sent(calls, 'manage_console_close')).toEqual([ref]);
+    const log = await second.findByRole('log', { name: 'Server console' });
+    act(() => handleEvent({ type: 'server_log', ...ref, lines: ['still live'] }));
+    expect(within(log).getByText('still live')).toBeInTheDocument();
+  });
+
   it('shows the lines the server sends', async () => {
     show();
     const log = await screen.findByRole('log', { name: 'Server console' });
