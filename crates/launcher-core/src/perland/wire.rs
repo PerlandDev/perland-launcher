@@ -77,6 +77,14 @@ impl Wire {
         .expect("a checked Engine URL plus a fixed path is a URL")
     }
 
+    /// A GET with the session JWT, not yet sent and with no total timeout: for a body that
+    /// stays open, such as the log stream.
+    pub fn open_get(&self, path_and_query: &str, jwt: &str) -> reqwest::RequestBuilder {
+        self.http
+            .get(self.url(path_and_query))
+            .header("X-User-Token", jwt)
+    }
+
     /// One request. Any status comes back as a `Reply`; only a request that got no answer, or
     /// a success too large to read, is an error here. An error body is read up to 4 KiB (and
     /// dropped when longer).

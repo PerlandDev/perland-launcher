@@ -15,7 +15,11 @@ use super::{
 };
 use crate::{
     error::{ErrorCode, LauncherError, Result},
-    invite::{client::host_of, InviteTiming},
+    http::read_capped,
+    invite::{
+        client::{host_of, request_failed},
+        InviteTiming,
+    },
 };
 
 /// The longest answer read, in bytes.
@@ -486,6 +490,49 @@ impl StackClient {
             .await
     }
 
+    /// `GET /{stack}/logs/stream`: the open response of the log stream on success, else what
+    /// the Engine's refusal means. `since` (a timestamp the stream already gave) asks only for
+    /// lines after it and skips the backlog.
+    pub(crate) async fn stream_logs_request(
+        &self,
+        jwt: &SessionJwt,
+        stack: &str,
+        since: Option<&str>,
+    ) -> std::result::Result<reqwest::Response, StreamRefusal> {
+        let path = self
+            .route(&[stack, "logs", "stream"])
+            .map_err(StreamRefusal::Refused)?;
+        let mut url = Url::parse("http://x/").expect("a fixed URL");
+        url.set_path(&path);
+        {
+            let mut query = url.query_pairs_mut();
+            query.append_pair("tail", if since.is_some() { "0" } else { "200" });
+            query.append_pair("timestamps", "true");
+            if let Some(since) = since {
+                query.append_pair("since", since);
+            }
+        }
+        let target = format!("{}?{}", url.path(), url.query().unwrap_or_default());
+        let response = self
+            .wire
+            .open_get(&target, jwt.as_str())
+            .send()
+            .await
+            .map_err(|e| StreamRefusal::Unreachable(request_failed(&self.host(), e)))?;
+        if response.status().is_success() {
+            return Ok(response);
+        }
+        let status = response.status().as_u16();
+        let body = read_capped(response, 4 << 10)
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        Err(StreamRefusal::Refused(
+            self.refusal(&Reply { status, body }),
+        ))
+    }
+
     /// What a refused request means: the Engine's `data.code` first, then the status.
     fn refusal(&self, reply: &Reply) -> LauncherError {
         let host = self.host();
@@ -605,6 +652,14 @@ impl StackClient {
             status => status_fallback(&host, status),
         }
     }
+}
+
+/// Why the log stream did not open.
+pub(crate) enum StreamRefusal {
+    /// The Engine answered no.
+    Refused(LauncherError),
+    /// No answer came (the network, a dropped connection).
+    Unreachable(LauncherError),
 }
 
 fn not_found(host: &str) -> LauncherError {
