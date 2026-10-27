@@ -21,6 +21,7 @@ pub mod logging;
 pub mod meta;
 pub mod mod_icons;
 pub mod mods;
+pub mod msa;
 pub mod news;
 pub mod news_seen;
 pub mod paths;

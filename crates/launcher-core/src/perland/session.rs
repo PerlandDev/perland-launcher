@@ -144,12 +144,12 @@ impl Default for KeyringStore {
 }
 
 #[cfg(any(windows, target_os = "linux"))]
-mod native {
+pub(crate) mod native {
     use super::{KeyringStore, SecretError, SecretStore, KEYRING_SERVICE, KEYRING_USER};
 
     /// A short phrase for a keyring failure. Debug and Display of some variants carry the
     /// bytes of the secret or of other attributes, so only the kind is named.
-    pub(super) fn map_error(e: keyring::Error) -> Result<(), SecretError> {
+    pub(crate) fn map_error(e: keyring::Error) -> Result<(), SecretError> {
         use keyring::Error as E;
         Err(match e {
             E::NoStorageAccess(_) | E::PlatformFailure(_) => SecretError::NoBackend,
