@@ -7,13 +7,13 @@ use launcher_core::{
     download::Downloader,
     events::{Event, EventSink},
     install::Installer,
-    instances::{GameSpec, InstanceStore, LoaderSpec, SourceRef},
+    instances::{GameSpec, Instance, InstanceStore, LoaderSpec, SourceRef},
     launch::Redactor,
     locks::InstanceLock,
     meta::{loaders::LoaderKind, MetaClient},
     paths::LauncherDirs,
     platform::Platform,
-    play::{self, StartSpec},
+    play::{self, Prepared, StartSpec},
     sources::{PackInput, UpdateCheck},
     sync::{
         lockfile::{additions, Managed},
@@ -52,6 +52,14 @@ enum Cmd {
     List,
     /// Add an offline account and make it active
     Offline { name: String },
+    /// Install an instance and bring its pack up to date, ready to play (needs no account)
+    Install {
+        #[arg(long)]
+        instance: String,
+        /// Don't update the pack first
+        #[arg(long)]
+        no_sync: bool,
+    },
     /// Install (if needed) and launch an instance with the active account
     Launch {
         #[arg(long)]
@@ -237,6 +245,11 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
             store.load(&instance).await?;
             sync_instance(&syncer(&dirs)?, &store, &instance, manual_dir).await?
         }
+        Cmd::Install { instance, no_sync } => {
+            let (_, prepared, _lock) = install_instance(&dirs, &store, &instance, no_sync).await?;
+            eprintln!();
+            println!("installed; java: {}", prepared.java.display());
+        }
         Cmd::Launch {
             instance,
             dry_run,
@@ -278,18 +291,9 @@ async fn launch_instance(
         .with_fix("This is a dev harness; use a debug build"));
     }
     let session = account.offline_session();
-    let mut instance = store.load(id).await?;
-    if instance.source != SourceRef::None && !no_sync {
-        sync_instance(&syncer(dirs)?, store, id, None).await?;
-        instance = store.load(id).await?; // a pack update can change the game version
-    }
-    // Held until the game exits: a sync from the app or another CLI must wait for it.
-    let _lock = InstanceLock::try_acquire(&store.perland_dir(id))?;
-    let (installer, _) = installer(dirs)?;
-    let platform = installer.platform;
+    let (instance, prepared, _lock) = install_instance(dirs, store, id, no_sync).await?;
+    let platform = Platform::current();
     let sink = progress_sink();
-
-    let prepared = play::prepare(&installer, &instance, false, &sink).await?;
     eprintln!();
     let game_dir = store.game_dir(&instance.id);
     let spec = StartSpec {
@@ -332,6 +336,25 @@ async fn launch_instance(
     let exit = game.wait().await?;
     eprintln!("game exited with {:?}", exit.code);
     Ok(())
+}
+
+/// Sync `id` (unless `no_sync`) and install everything it needs. The returned lock keeps a sync
+/// from the app or another CLI out until it is dropped (for a launch, until the game exits).
+async fn install_instance(
+    dirs: &LauncherDirs,
+    store: &InstanceStore,
+    id: &str,
+    no_sync: bool,
+) -> Result<(Instance, Prepared, InstanceLock), LauncherError> {
+    let mut instance = store.load(id).await?;
+    if instance.source != SourceRef::None && !no_sync {
+        sync_instance(&syncer(dirs)?, store, id, None).await?;
+        instance = store.load(id).await?; // a pack update can change the game version
+    }
+    let lock = InstanceLock::try_acquire(&store.perland_dir(id))?;
+    let (installer, _) = installer(dirs)?;
+    let prepared = play::prepare(&installer, &instance, false, &progress_sink()).await?;
+    Ok((instance, prepared, lock))
 }
 
 fn installer(dirs: &LauncherDirs) -> Result<(Arc<Installer>, reqwest::Client), LauncherError> {
