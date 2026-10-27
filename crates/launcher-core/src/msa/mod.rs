@@ -1,6 +1,7 @@
 //! Microsoft sign-in: the credential store for refresh tokens and the Microsoft/Xbox/Minecraft
 //! service chain. `MsaClient` holds the HTTP client and endpoints; each step is an `impl`
-//! block in its own module (`oauth` here, `xbox` and `minecraft` after).
+//! block in its own module (`oauth`, `xbox`, `minecraft`).
+pub mod minecraft;
 pub mod oauth;
 pub mod secrets;
 pub mod xbox;
