@@ -7,7 +7,8 @@ import { isCrash } from './exit';
 import { manageLog } from './manageLog';
 import { qk, queryClient } from './queries';
 import { runStore } from './runStore';
-import { pushError } from './toasts';
+import { openSignInPrompt } from './signInPrompt';
+import { isSignInError, pushError } from './toasts';
 
 /** Everything the UI does with an event from Rust. */
 export function handleEvent(event: AppEvent) {
@@ -60,6 +61,12 @@ export function handleEvent(event: AppEvent) {
       void queryClient.invalidateQueries({ queryKey });
     }
     const exit = event.exit;
+    // A run that ended because no account can play (removed while it waited, or a sign-in that ran out) asks for a
+    // sign-in, as a refused Play does.
+    if (exit && isSignInError(exit.error)) {
+      openSignInPrompt();
+      return;
+    }
     // Blocked files get their own dialog, not the activity drawer.
     if (exit && exit.manual.length === 0 && (exit.error || isCrash(exit))) openActivity(id);
   }
