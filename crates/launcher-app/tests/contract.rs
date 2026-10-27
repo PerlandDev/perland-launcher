@@ -752,6 +752,11 @@ fn contract_fixtures_are_current() {
             active: Some(steve.uuid.clone()),
             accounts: vec![steve, alex],
             licensed_signin_seen: false,
+            msa_waiting: Some(launcher_core::accounts::MsaWaiting {
+                client_id: "00000000-0000-0000-0000-000000000000".into(),
+                at: 1_700_000_000,
+            }),
+            offline_notice_dismissed: false,
         },
     );
     check(

@@ -158,7 +158,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             repair,
             "play"
         );
-        let account = self.accounts.lock().await.active().await?.ok_or_else(|| {
+        let account = self.active_account().await?.ok_or_else(|| {
             LauncherError::auth(ErrorCode::NoAccount, "Add an account before playing")
                 .with_fix("Open Accounts and add one")
         })?;

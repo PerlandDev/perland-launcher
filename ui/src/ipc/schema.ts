@@ -418,6 +418,8 @@ export const accountsFile = z.strictObject({
   accounts: z.array(account),
   active: z.string().nullable(),
   licensedSigninSeen: z.boolean(),
+  msaWaiting: z.strictObject({ clientId: z.string(), at: z.number().int() }).nullable(),
+  offlineNoticeDismissed: z.boolean(),
 });
 
 export const lang = z.enum(['en', 'es']);

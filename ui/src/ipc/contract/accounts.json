@@ -12,5 +12,10 @@
     }
   ],
   "active": "5627dd98-e6be-3c21-b8a8-e92344183641",
-  "licensedSigninSeen": false
+  "licensedSigninSeen": false,
+  "msaWaiting": {
+    "clientId": "00000000-0000-0000-0000-000000000000",
+    "at": 1700000000
+  },
+  "offlineNoticeDismissed": false
 }
