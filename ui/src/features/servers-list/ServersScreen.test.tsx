@@ -5,6 +5,7 @@ import { createMockBackend } from '../../ipc/mock';
 import { MOCK_PUBLIC_SERVERS } from '../../ipc/mockServers';
 import type { InstanceListing, ListQuery, PublicServerPage } from '../../ipc/schema';
 import { navigate, routeSnapshot } from '../../state/route';
+import { signInPromptSnapshot } from '../../state/signInPrompt';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
@@ -105,6 +106,15 @@ describe('ServersScreen', () => {
     expect(sent(calls, 'play')).toEqual([{ id: 'creative-plots', join: true }]);
     const order = calls.map(([cmd]) => cmd).filter((cmd) => cmd === 'join_add' || cmd === 'play');
     expect(order).toEqual(['join_add', 'play']);
+  });
+
+  it('Play without an account that can play opens the sign-in prompt and never joins', async () => {
+    const { user, calls } = renderApp(<ServersScreen />, { beta: true });
+    await user.click(within(await card('Creative Plots')).getByRole('button', { name: 'Play' }));
+    await vi.waitFor(() => expect(signInPromptSnapshot()).toBe(true));
+    expect(sent(calls, 'join_add')).toEqual([]);
+    expect(sent(calls, 'play')).toEqual([]);
+    expect(routeSnapshot()).toEqual({ name: 'home', id: null });
   });
 
   it('Play reuses the instance that already joins the server', async () => {

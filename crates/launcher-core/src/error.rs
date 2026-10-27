@@ -35,7 +35,10 @@ macro_rules! error_codes {
 
 error_codes! {
     // accounts
-    OfflineNameInvalid, AccountsDamaged, OfflineLocked, MicrosoftUnavailable, NoAccount,
+    OfflineNameInvalid, AccountsDamaged, OfflineLocked, NoAccount,
+    MicrosoftNotConfigured, MicrosoftAwaitingApproval, MicrosoftSignInAgain, MicrosoftRateLimited,
+    MinecraftNotOwned, MinecraftNoProfile, XboxNoProfile, XboxRegionBlocked, XboxAgeVerification,
+    XboxChildAccount,
     // disk
     DiskIo, DiskWriteFailed,
     // network
@@ -343,6 +346,31 @@ mod tests {
             (ErrorCode::PlayerServersClosed, "player_servers_closed"),
             (ErrorCode::TooManyPlayerServers, "too_many_player_servers"),
             (ErrorCode::MinecraftLinkClosed, "minecraft_link_closed"),
+        ] {
+            assert_eq!(serde_json::to_value(code).unwrap(), wire);
+            assert!(ErrorCode::ALL.contains(&code));
+        }
+    }
+
+    #[test]
+    fn microsoft_sign_in_codes_exist() {
+        for (code, wire) in [
+            (
+                ErrorCode::MicrosoftNotConfigured,
+                "microsoft_not_configured",
+            ),
+            (
+                ErrorCode::MicrosoftAwaitingApproval,
+                "microsoft_awaiting_approval",
+            ),
+            (ErrorCode::MicrosoftSignInAgain, "microsoft_sign_in_again"),
+            (ErrorCode::MicrosoftRateLimited, "microsoft_rate_limited"),
+            (ErrorCode::MinecraftNotOwned, "minecraft_not_owned"),
+            (ErrorCode::MinecraftNoProfile, "minecraft_no_profile"),
+            (ErrorCode::XboxNoProfile, "xbox_no_profile"),
+            (ErrorCode::XboxRegionBlocked, "xbox_region_blocked"),
+            (ErrorCode::XboxAgeVerification, "xbox_age_verification"),
+            (ErrorCode::XboxChildAccount, "xbox_child_account"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

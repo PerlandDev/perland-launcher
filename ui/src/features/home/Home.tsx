@@ -5,9 +5,10 @@ import { artSeed } from '../../art/seed';
 import { pixelUpscale } from '../../art/upscale';
 import { commands } from '../../ipc/commands';
 import type { Instance } from '../../ipc/schema';
-import { useAccounts, useInstances, useInstanceArt, usePlaytime } from '../../state/queries';
+import { useAccounts, useAppInfo, useInstances, useInstanceArt, usePlaytime } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
+import { openSignInPrompt } from '../../state/signInPrompt';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { Package } from '../../ui/Icon';
@@ -57,6 +58,10 @@ function InstanceView({ instance }: { instance: Instance }) {
   const run = useRun(instance.id);
   const accounts = useAccounts();
   const hasAccount = Boolean(accounts.data?.active);
+  // Offline accounts exist only in dev builds, where Accounts can add one; anywhere else the way to play is signing in
+  // with Microsoft, which the shared prompt offers on the spot.
+  const offlineAllowed = useAppInfo().data?.offlineAllowed === true;
+  const noAccount = offlineAllowed ? t('play.noAccount') : t('play.signIn');
   const art = useInstanceArt(instance.id);
   const seconds = usePlaytime().data?.find((p) => p.id === instance.id)?.seconds ?? 0;
   const played = formatPlaytime(seconds, t);
@@ -139,18 +144,22 @@ function InstanceView({ instance }: { instance: Instance }) {
           <Menu ref={menu} label={t('home.more')} items={actions.items} />
           <div className="grid justify-items-end gap-3">
             {/* Secondary, above Play and right-aligned to it: one quiet way back to where the player was. */}
-            {run.state === 'idle' && <ContinueKey id={instance.id} disabled={!hasAccount} once={playOnce} />}
+            {run.state === 'idle' && <ContinueKey id={instance.id} disabled={!hasAccount} disabledReason={noAccount} once={playOnce} />}
             <PlayButton
               state={run.state}
               progress={run.progress}
               disabled={!hasAccount}
-              disabledReason={t('play.noAccount')}
+              disabledReason={noAccount}
               onPlay={() => playOnce((done) => void commands.play(instance.id).catch(pushError).finally(done))}
               onStop={() => void commands.stop(instance.id).catch(pushError)}
             />
             {!hasAccount && accounts.isSuccess && (
-              <button type="button" className="text-sm text-blue-ink underline underline-offset-4" onClick={() => navigate({ name: 'accounts' })}>
-                {t('play.noAccount')}
+              <button
+                type="button"
+                className="text-sm text-blue-ink underline underline-offset-4"
+                onClick={() => (offlineAllowed ? navigate({ name: 'accounts' }) : openSignInPrompt())}
+              >
+                {noAccount}
               </button>
             )}
           </div>
@@ -178,3 +187,4 @@ export function Home({ id }: { id: string | null }) {
       return <EmptyState />;
   }
 }
+

@@ -13,7 +13,7 @@ use launcher_core::{
     invite::{InviteClient, InviteLink, Url},
     perland::{
         authorize_url, launcher_sign_in_url, Callback, CreateFreeServer, EmailStarted, FreeServer,
-        FreeServerSettings, FreeServerState, Language, LinkCode, Loopback, Pkce, Player,
+        FreeServerSettings, FreeServerState, Language, LinkCode, Loopback, Page, Pkce, Player,
         PlayerClient, PlayerConfig, PlayerStats, Profile, Session, SignInMethod, TokenAnswer,
         YourServer,
     },
@@ -657,6 +657,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .wait(
                 &pkce.state,
                 Language::parse(language),
+                Page::Success,
                 SIGN_IN_DEADLINE,
                 cancel.clone(),
             )

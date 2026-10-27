@@ -14,15 +14,15 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AppInfo, ArtChoice, Build, ContentFile, ContinueKind, ContinueTarget, EmailCodeSent,
-        FreeServerCard, FreeServerPage, FriendsCheck, IconChoice, ImportPreview, ImportRequest,
-        InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView, ManualProgress,
-        NameListView, NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice,
-        PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount,
-        PerlandSignInPhase, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard,
-        PublicServerPage, RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack,
-        ServerPlayers, ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary,
-        YourServerCard, YourServersPage,
+        AccountReady, AppInfo, ArtChoice, Build, ContentFile, ContinueKind, ContinueTarget,
+        EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice, ImportPreview,
+        ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
+        ManualProgress, NameListView, NewInstance, NewsChangesView, NewsPostView, OpenTarget,
+        OptionalChoice, PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate,
+        PerlandAccount, PerlandSignInPhase, PerlandStats, PerlandStatus, PlaytimeEntry,
+        PublicServerCard, PublicServerPage, RestorePointDto, RunSnapshot, ServerGame, ServerNews,
+        ServerPack, ServerPlayers, ServerStatsView, ServerStatusView, ServerTeam, SharePreview,
+        SyncSummary, YourServerCard, YourServersPage,
     },
     events::{AppEvent, CrashFix, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -755,6 +755,10 @@ fn contract_fixtures_are_current() {
         },
     );
     check(
+        "account_ready",
+        vec![AccountReady { ready: true }, AccountReady { ready: false }],
+    );
+    check(
         "settings",
         Settings {
             language: Some(Lang::Es),
@@ -1045,6 +1049,27 @@ fn contract_fixtures_are_current() {
             },
             AppEvent::PerlandSignIn {
                 phase: PerlandSignInPhase::Exchanging,
+            },
+            AppEvent::MicrosoftSignIn {
+                phase: PerlandSignInPhase::Waiting,
+            },
+            AppEvent::MicrosoftSignIn {
+                phase: PerlandSignInPhase::Exchanging,
+            },
+            AppEvent::MicrosoftSignInStep {
+                step: launcher_core::msa::MsaStep::Microsoft,
+            },
+            AppEvent::MicrosoftSignInStep {
+                step: launcher_core::msa::MsaStep::Xbox,
+            },
+            AppEvent::MicrosoftSignInStep {
+                step: launcher_core::msa::MsaStep::Xsts,
+            },
+            AppEvent::MicrosoftSignInStep {
+                step: launcher_core::msa::MsaStep::Minecraft,
+            },
+            AppEvent::MicrosoftSignInStep {
+                step: launcher_core::msa::MsaStep::Profile,
             },
             AppEvent::Update {
                 state: UpdateState::Ready {

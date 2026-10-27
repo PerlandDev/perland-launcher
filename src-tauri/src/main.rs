@@ -7,10 +7,18 @@ mod updater;
 
 use std::{path::PathBuf, sync::Arc};
 
-use launcher_app::{AppConfig, AppCore, CoreRunner};
+use launcher_app::{AppConfig, AppCore, CoreMsa, CoreRunner};
 use launcher_core::{
-    accounts::BuildKind, download::Downloader, install::Installer, meta::MetaClient,
-    paths::LauncherDirs, platform::Platform,
+    accounts::BuildKind,
+    download::Downloader,
+    install::Installer,
+    meta::MetaClient,
+    msa::{
+        secrets::{FallbackSecrets, KeyringSecrets},
+        MsaEndpoints,
+    },
+    paths::LauncherDirs,
+    platform::Platform,
 };
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -143,6 +151,9 @@ fn main() {
             commands::account_add_offline,
             commands::account_set_active,
             commands::account_remove,
+            commands::account_sign_in_microsoft,
+            commands::account_sign_in_cancel,
+            commands::account_ready,
             commands::play,
             commands::continue_target,
             commands::play_continue,
@@ -323,7 +334,18 @@ fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> 
         launcher_core::browse::BrowseConfig::default(),
     );
     let syncer = launcher_core::sync::Syncer::for_installer(installer.clone(), http);
-    let mut runner = CoreRunner::new(installer, syncer, version.clone(), browse);
+    // Never follows a redirect: one would replay a code or refresh token to another host.
+    let msa = Arc::new(CoreMsa::new(
+        launcher_core::http::client_without_redirects(&version)?,
+        MsaEndpoints::production(),
+        // A dev run may point at its own Azure app; a shipped build uses the one it was built with.
+        launcher_core::msa::client_id(
+            std::env::var("PERLAND_MS_CLIENT_ID").ok().as_deref(),
+            option_env!("PERLAND_MS_CLIENT_ID"),
+            BuildKind::current(),
+        ),
+    ));
+    let mut runner = CoreRunner::new(installer, syncer, version.clone(), browse, msa);
     if let Some(site) = site_override(std::env::var("PERLAND_SITE_URL").ok().as_deref()) {
         runner = runner.with_site(site);
     }
@@ -339,5 +361,12 @@ fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> 
             option_env!("PERLAND_PANEL_URL"),
         ),
     };
-    Ok(AppCore::new(config, meta, runner, host))
+    Ok(AppCore::new(
+        config,
+        meta,
+        runner,
+        host,
+        // Where there is no credential store, the Microsoft sign-in lasts until the launcher closes.
+        Arc::new(FallbackSecrets::new(KeyringSecrets::new())),
+    ))
 }

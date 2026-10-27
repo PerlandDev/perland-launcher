@@ -419,6 +419,15 @@ export const accountsFile = z.strictObject({
   active: z.string().nullable(),
   licensedSigninSeen: z.boolean(),
 });
+/** The calls of the Microsoft sign-in chain, in order: Microsoft's code, Xbox Live, XSTS, Minecraft's login, the profile and
+ *  ownership check. */
+export const MSA_STEPS = ['microsoft', 'xbox', 'xsts', 'minecraft', 'profile'] as const;
+export const msaStep = z.enum(MSA_STEPS);
+export type MsaStep = z.infer<typeof msaStep>;
+/** Whether the player can play, read without a network call (`account_ready`). */
+export const accountReady = z.strictObject({
+  ready: z.boolean(),
+});
 
 export const lang = z.enum(['en', 'es']);
 export const channel = z.enum(['stable', 'beta']);
@@ -636,6 +645,10 @@ export const appEvent = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('deep_link') }),
   z.strictObject({ type: z.literal('update'), state: updateState }),
   z.strictObject({ type: z.literal('perland_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
+  /** A Microsoft sign-in moved on: the browser is open, or its code is being redeemed. */
+  z.strictObject({ type: z.literal('microsoft_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
+  /** A Microsoft sign-in started a call of its chain; a failure stops on the step reported last. */
+  z.strictObject({ type: z.literal('microsoft_sign_in_step'), step: msaStep }),
   /** New lines of the server console being followed in Manage, without colour codes. */
   z.strictObject({ type: z.literal('server_log'), tenantId: z.string(), stack: z.string(), lines: z.array(z.string()) }),
   /** That console log stopped on its own: offer to reconnect. */
@@ -838,6 +851,7 @@ export type DamagedInstance = z.infer<typeof damagedInstance>;
 export type InstanceListing = z.infer<typeof instanceListing>;
 export type Account = z.infer<typeof account>;
 export type AccountsFile = z.infer<typeof accountsFile>;
+export type AccountReady = z.infer<typeof accountReady>;
 export type Lang = z.infer<typeof lang>;
 export type Channel = z.infer<typeof channel>;
 export type Theme = z.infer<typeof theme>;

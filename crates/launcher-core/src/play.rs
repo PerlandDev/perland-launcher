@@ -110,8 +110,13 @@ pub fn command(spec: &StartSpec) -> Result<LaunchCommand> {
 /// Scrubs the game's output and log: the access token, the home folder, and a server
 /// instance's invite token.
 pub fn redactor_for(spec: &StartSpec) -> Redactor {
-    let mut redactor = Redactor::for_current_user().with_secret(spec.session.access_token.clone());
-    if let SourceRef::Perland { invite, .. } = &spec.instance.source {
+    session_redactor(spec.instance, spec.session)
+}
+
+/// `redactor_for`, from the instance and the session alone.
+pub fn session_redactor(instance: &Instance, session: &Session) -> Redactor {
+    let mut redactor = Redactor::for_current_user().with_secret(session.access_token.clone());
+    if let SourceRef::Perland { invite, .. } = &instance.source {
         if let Ok(link) = InviteLink::parse(invite) {
             redactor = redactor.with_secret(link.token().to_string());
         }

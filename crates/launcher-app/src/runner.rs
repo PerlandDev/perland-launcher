@@ -20,6 +20,7 @@ use launcher_core::{
 
 use crate::{
     manage::{CoreStack, StackApi},
+    msa::MsaApi,
     perland::{CorePlayer, PlayerApi},
 };
 
@@ -137,6 +138,8 @@ pub trait Runner: Send + Sync + 'static {
     fn player(&self) -> Arc<dyn PlayerApi>;
     /// The Engine's auth and server routes (Manage your server).
     fn stack(&self) -> Arc<dyn StackApi>;
+    /// Microsoft, Xbox and Minecraft services (Sign in with Microsoft).
+    fn msa(&self) -> Arc<dyn MsaApi>;
 }
 
 pub struct CoreRunner {
@@ -148,6 +151,7 @@ pub struct CoreRunner {
     news: NewsClient,
     player: Arc<CorePlayer>,
     stack: Arc<CoreStack>,
+    msa: Arc<dyn MsaApi>,
 }
 
 impl CoreRunner {
@@ -156,6 +160,7 @@ impl CoreRunner {
         syncer: Syncer,
         launcher_version: String,
         browse: launcher_core::browse::Browse,
+        msa: Arc<dyn MsaApi>,
     ) -> Self {
         let browser = Arc::new(crate::browser::CoreBrowser::new(
             browse,
@@ -179,6 +184,7 @@ impl CoreRunner {
             news,
             player,
             stack,
+            msa,
         }
     }
     /// The player routes go through a client that never follows a redirect (one would replay a
@@ -364,6 +370,10 @@ impl Runner for CoreRunner {
 
     fn stack(&self) -> Arc<dyn StackApi> {
         self.stack.clone()
+    }
+
+    fn msa(&self) -> Arc<dyn MsaApi> {
+        self.msa.clone()
     }
 }
 

@@ -38,14 +38,40 @@ it('walks a new player from welcome to their first instance', async () => {
   expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { firstRunDone: true, language: 'es' } });
 });
 
-it('lets release builds skip the account step honestly', async () => {
-  const { user } = renderApp(<FirstRun />, { firstRun: true, release: true });
+it('asks a beta build to sign in with Microsoft, with no name field', async () => {
+  const { user } = renderApp(<FirstRun />, { firstRun: true, beta: true });
   await user.click(await screen.findByRole('button', { name: "Let's go" }));
   await user.click(screen.getByRole('button', { name: 'English' }));
-  expect(await screen.findByText(/Microsoft sign-in is coming soon/)).toBeInTheDocument();
-  expect(screen.getByText('Sign in with Microsoft').closest('[aria-disabled]')).toHaveAttribute('aria-disabled', 'true');
-  await user.click(screen.getByRole('button', { name: 'Skip for now' }));
+  expect(await screen.findByRole('button', { name: 'Sign in with Microsoft' })).toBeInTheDocument();
+  expect(screen.getByText('You need a Microsoft account that owns Minecraft: Java Edition.')).toBeInTheDocument();
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
+});
+
+it('shows the name field in a dev build', async () => {
+  const { user } = renderApp(<FirstRun />, { firstRun: true });
+  await user.click(await screen.findByRole('button', { name: "Let's go" }));
+  await user.click(screen.getByRole('button', { name: 'English' }));
+  expect(await screen.findByRole('textbox', { name: 'Player name' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Sign in with Microsoft' })).not.toBeInTheDocument();
+});
+
+it('lets a beta build skip the sign-in to the first instance', async () => {
+  const { user, calls } = renderApp(<FirstRun />, { firstRun: true, beta: true });
+  await user.click(await screen.findByRole('button', { name: "Let's go" }));
+  await user.click(screen.getByRole('button', { name: 'English' }));
+  await user.click(await screen.findByRole('button', { name: 'Skip for now' }));
   expect(await screen.findByRole('heading', { name: 'Your first instance' })).toBeInTheDocument();
+  expect(sent(calls, 'account_sign_in_microsoft')).toHaveLength(0);
+});
+
+it('goes on to the first instance once the Microsoft sign-in is done', async () => {
+  const { user, calls } = renderApp(<FirstRun />, { firstRun: true, beta: true });
+  await user.click(await screen.findByRole('button', { name: "Let's go" }));
+  await user.click(screen.getByRole('button', { name: 'English' }));
+  await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
+  expect(await screen.findByRole('heading', { name: 'Your first instance' }, { timeout: 4000 })).toBeInTheDocument();
+  expect(sent(calls, 'account_sign_in_microsoft')).toEqual([{ language: 'en' }]);
 });
 
 it('does not suggest the game itself is free', async () => {
@@ -106,7 +132,7 @@ it('shows neither form nor locked copy while it is unknown whether offline accou
   expect(await screen.findByRole('heading', { name: "Who's playing?" })).toBeInTheDocument();
   expect(screen.getByText('Loading…')).toBeInTheDocument();
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-  expect(screen.queryByText(/Microsoft sign-in is coming soon/)).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Sign in with Microsoft' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Skip for now' })).not.toBeInTheDocument();
 });
 
@@ -118,7 +144,7 @@ it('offers Try again when the build info fails to load', async () => {
   await act(async () => qc.resetQueries({ queryKey: ['appInfo'] }));
   await user.click(screen.getByRole('button', { name: 'English' }));
   expect(await screen.findByRole('alert')).toHaveTextContent(diskIo);
-  expect(screen.queryByText(/Microsoft sign-in is coming soon/)).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Sign in with Microsoft' })).not.toBeInTheDocument();
   info.mode = 'pass';
   await user.click(screen.getByRole('button', { name: 'Try again' }));
   expect(await screen.findByRole('textbox', { name: 'Player name' })).toBeInTheDocument();

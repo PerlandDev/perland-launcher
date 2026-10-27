@@ -23,7 +23,7 @@ pub use log_stream::{
     follow_logs, follow_logs_after, follow_logs_with, strip_formatting, LogLine, SseEvent,
     SseParser,
 };
-pub use loopback::{Callback, Language, Loopback};
+pub use loopback::{Callback, Language, Loopback, Page};
 pub use panel::{
     account_path, handoff_url, launcher_sign_in_url, manage_url, panel_page, panel_url,
     server_path, upgrade_path,

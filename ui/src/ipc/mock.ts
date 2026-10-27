@@ -24,6 +24,7 @@ import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario } from '.
 import { mockCrash, type CrashScenario } from './mockCrash';
 import { handleTeams, NOT_TEAMS, type TeamsScenario } from './mockTeams';
 import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
+import { MSA_STEPS, type MsaStep } from './schema';
 import type {
   FriendsCheck,
   AccountsFile,
@@ -77,8 +78,16 @@ export interface MockOptions {
   /** The game crashes a few seconds into its first run, with this cause. */
   crash?: CrashScenario;
   release?: boolean;
-  /** An optimized beta build: offline accounts stay open, About says so. */
+  /** An optimized beta build: About says so, and offline accounts are hidden as the real app hides them (Accounts and First run
+   *  then offer Microsoft sign-in only, and `account_ready` asks for the "offline accounts are gone" notice). */
   beta?: boolean;
+  /** Microsoft sign-in: `signedOut` (default), `signedIn` (Alex, a Microsoft account, is in use), `awaiting` (every sign-in runs the
+   *  chain and Minecraft's login refuses it with `microsoft_awaiting_approval`), `notConfigured` (a build without a client id) or
+   *  `notOwned` (the account doesn't own Minecraft). A sign-in waits 1.5 s, as if in the browser, then runs each step of the chain
+   *  and signs in as Alex. */
+  microsoft?: MicrosoftScenario;
+  /** How long each step of the mock Microsoft sign-in takes, in ms (default 450): slow it down to watch or capture a step. */
+  microsoftStepMs?: number;
   /** The launcher's own update state; defaults to idle on release and beta builds, off in dev. */
   update?: UpdateState;
   /** The pack's first sync ends with two files the player has to download by hand. */
@@ -181,6 +190,15 @@ const IMPORT_SIZE = 1_234_000_000;
 
 /** A 1x1 PNG, the stand-in for a picked image. */
 const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+export type MicrosoftScenario = 'signedOut' | 'signedIn' | 'awaiting' | 'notConfigured' | 'notOwned';
+
+/** The Microsoft account the mock signs in as. */
+export const MOCK_MICROSOFT_ACCOUNT = { provider: 'microsoft', username: 'Alex', uuid: '853c80ef-3c37-49fd-aa49-938b674adae6' } as const;
+/** How long the mock's Microsoft sign-in waits on "the browser". */
+export const MOCK_MICROSOFT_WAIT_MS = 1500;
+/** How long each call of the mock's Microsoft sign-in chain takes. */
+export const MOCK_MICROSOFT_STEP_MS = 450;
 
 const clone = <T>(value: T): T => structuredClone(value);
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -313,12 +331,23 @@ function seed(options: MockOptions) {
     accounts.active = null;
     settings.firstRunDone = false;
   }
+  if (options.microsoft === 'signedIn') {
+    accounts.accounts = [...accounts.accounts, { ...MOCK_MICROSOFT_ACCOUNT }];
+    accounts.active = MOCK_MICROSOFT_ACCOUNT.uuid;
+  }
   const appInfo: AppInfo = {
     ...(clone(appInfoFx) as AppInfo),
     build: options.release ? 'release' : options.beta ? 'beta' : 'dev',
-    offlineAllowed: !options.release,
+    // Offline accounts are a dev-build thing only.
+    offlineAllowed: !options.release && !options.beta,
     panel: options.panel ?? true,
   };
+  // Like the core's `visible`: a non-dev build never lists an offline account, and one in use reads as none. The real file
+  // keeps them for a dev build on the same computer; the mock has no dev build to keep them for.
+  if (!appInfo.offlineAllowed) {
+    accounts.accounts = accounts.accounts.filter((a) => a.provider !== 'offline');
+    if (!accounts.accounts.some((a) => a.uuid === accounts.active)) accounts.active = null;
+  }
   const update: UpdateState = options.update ?? { state: options.release || options.beta ? 'idle' : 'off' };
   const mods = new Map<string, LocalMod[]>([['asalith-fields', clone(localModsFx) as LocalMod[]]]);
   const packs = new Map<string, MockPack>();
@@ -440,6 +469,7 @@ function seed(options: MockOptions) {
     servers,
     restorePoints,
     accounts,
+    microsoft: { scenario: options.microsoft ?? 'signedOut', cancel: null as (() => void) | null },
     settings,
     appInfo,
     update,
@@ -481,6 +511,46 @@ function seed(options: MockOptions) {
 }
 
 export type MockState = ReturnType<typeof seed>;
+
+/** Wait on "the browser" for `ms`; false when the sign-in was canceled meanwhile. */
+function microsoftWait(state: MockState, ms: number) {
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      state.microsoft.cancel = null;
+      resolve(true);
+    }, ms);
+    state.microsoft.cancel = () => {
+      clearTimeout(timer);
+      state.microsoft.cancel = null;
+      resolve(false);
+    };
+  });
+}
+
+/** The core's `account_sign_in_microsoft`: the browser step, then each call of the chain in turn, as the core reports them, and the
+ *  account in use, or the scenario's refusal on the step the real service gives it (Minecraft's login for `awaiting`, the profile
+ *  and ownership check for `notOwned`). */
+async function signInMicrosoft(state: MockState) {
+  // A new sign-in cancels the one before, as the core's slot does.
+  state.microsoft.cancel?.();
+  const { scenario } = state.microsoft;
+  if (scenario === 'notConfigured') fail('auth', 'microsoft_not_configured', "Microsoft sign-in isn't set up in this build.");
+  event({ type: 'microsoft_sign_in', phase: 'waiting' });
+  if (!(await microsoftWait(state, MOCK_MICROSOFT_WAIT_MS))) return null;
+  event({ type: 'microsoft_sign_in', phase: 'exchanging' });
+  const stopAt: MsaStep | null = scenario === 'awaiting' ? 'minecraft' : scenario === 'notOwned' ? 'profile' : null;
+  for (const step of MSA_STEPS) {
+    event({ type: 'microsoft_sign_in_step', step });
+    if (!(await microsoftWait(state, state.options.microsoftStepMs ?? MOCK_MICROSOFT_STEP_MS))) return null;
+    if (step === stopAt) break;
+  }
+  if (scenario === 'awaiting') fail('auth', 'microsoft_awaiting_approval', 'Minecraft turned down this app: it is still waiting on approval.');
+  if (scenario === 'notOwned') fail('auth', 'minecraft_not_owned', "This Microsoft account doesn't own Minecraft: Java Edition.");
+  const alex = { ...MOCK_MICROSOFT_ACCOUNT };
+  state.accounts.accounts = [...state.accounts.accounts.filter((a) => a.uuid !== alex.uuid), alex];
+  state.accounts.active = alex.uuid;
+  return state.accounts;
+}
 
 /** Like the core: a game that ran adds its time before the run goes idle. */
 function addPlaytime(state: MockState, id: string, run: MockRun) {
@@ -965,6 +1035,18 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.accounts.accounts = state.accounts.accounts.filter((a) => a.uuid !== args.uuid);
       if (state.accounts.active === args.uuid) state.accounts.active = state.accounts.accounts[0]?.uuid ?? null;
       return state.accounts;
+    }
+    case 'account_sign_in_microsoft':
+      return signInMicrosoft(state);
+    case 'account_sign_in_cancel':
+      state.microsoft.cancel?.();
+      return null;
+    case 'account_ready': {
+      const active = state.accounts.accounts.find((a) => a.uuid === state.accounts.active);
+      return {
+        // As the core: a Microsoft account, or an offline one in a dev build.
+        ready: active?.provider === 'microsoft' || (active?.provider === 'offline' && state.appInfo.offlineAllowed),
+      };
     }
     case 'play': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');

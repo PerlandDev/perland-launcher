@@ -62,7 +62,18 @@ fn launcher(root: &Path, timing: InviteTiming) -> (Arc<LiveCore>, Arc<RecordingH
         config: SourceConfig::default(),
     };
     let syncer = Syncer::new(installer.clone(), sources, dirs.root());
-    let runner = Arc::new(CoreRunner::new(installer, syncer, "0.1.0".into(), browse));
+    let msa = Arc::new(crate::msa::CoreMsa::new(
+        launcher_core::http::client_without_redirects("test").unwrap(),
+        launcher_core::msa::MsaEndpoints::production(),
+        None,
+    ));
+    let runner = Arc::new(CoreRunner::new(
+        installer,
+        syncer,
+        "0.1.0".into(),
+        browse,
+        msa,
+    ));
     let host = RecordingHost::new();
     let core = AppCore::new(
         AppConfig {
@@ -76,6 +87,7 @@ fn launcher(root: &Path, timing: InviteTiming) -> (Arc<LiveCore>, Arc<RecordingH
         meta,
         runner,
         host.clone(),
+        Arc::new(launcher_core::msa::secrets::MemorySecrets::default()),
     );
     (core, host)
 }

@@ -6,13 +6,13 @@
 //! starts at `queued`; a vanilla instance goes `queued`, `preparing`, `running`.
 //! A run leaves the map (idle) with exactly one final `run_state` event carrying how it ended.
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime},
 };
 
 use launcher_core::{
-    accounts::{Provider, Session},
+    accounts::{Account, Session},
     events::{Event, EventSink},
     fsutil::write_atomic,
     instances::{unix_now, Instance, ServerAddress, ServerStatus, SourceRef, UpdatePolicy},
@@ -50,7 +50,11 @@ use crate::{
 /// What a game run needs besides the instance: who plays, whether the window hides, and where
 /// the game goes once it starts.
 pub(crate) struct PlayArgs {
+    /// The account the run was started for: checked again just before the game starts.
+    pub(crate) account: Account,
     pub(crate) session: Session,
+    /// When `session` passed its check (the run clock).
+    pub(crate) checked_at: Instant,
     pub(crate) minimize: bool,
     pub(crate) destination: Destination,
     /// Check every game file by its hash first (the crash card's Repair).
@@ -106,6 +110,17 @@ impl ListedRecord {
     }
 }
 
+/// A run whose session was checked longer ago than this checks it again just before the game
+/// starts: the run can wait a long time on "Update ready", a sync or a wake, and the game must
+/// never start on a spent token. A fresher check stands, so a plain Play asks Minecraft once.
+const SESSION_RECHECK: Duration = Duration::from_secs(5 * 60);
+
+/// Play without an account that can play.
+fn no_account() -> LauncherError {
+    LauncherError::auth(ErrorCode::NoAccount, "Add an account before playing")
+        .with_fix("Open Accounts and add one")
+}
+
 /// How long a run waits for an instance lock that a just-ended run is still letting go of.
 const LOCK_WAIT: Duration = Duration::from_secs(2);
 
@@ -158,24 +173,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             repair,
             "play"
         );
-        let account = self.accounts.lock().await.active().await?.ok_or_else(|| {
-            LauncherError::auth(ErrorCode::NoAccount, "Add an account before playing")
-                .with_fix("Open Accounts and add one")
-        })?;
-        if account.provider != Provider::Offline {
-            return Err(LauncherError::auth(
-                ErrorCode::MicrosoftUnavailable,
-                "Microsoft accounts arrive in a later version",
-            ));
-        }
-        let session = account.offline_session();
+        // Cheap refusals first, so Play on a busy instance costs no call to Minecraft.
+        self.refuse_busy(id)?;
+        let account = self.active_account().await?.ok_or_else(no_account)?;
+        let session = self.session_for(account.clone()).await?;
+        let checked_at = self.run_clock();
         let minimize = self.settings_get().await.minimize_on_play;
         let checks = self.checks_for_updates(&instance).await;
         self.start_run(
             id,
             instance,
             Some(PlayArgs {
+                account,
                 session,
+                checked_at,
                 minimize,
                 destination,
                 repair,
@@ -219,21 +230,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         lift_hold: bool,
     ) -> Result<()> {
         let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
-        if runs.contains_key(id) {
-            return Err(LauncherError::game(
-                ErrorCode::AlreadyRunning,
-                "This instance is already running",
-            )
-            .with_param("id", id));
-        }
-        if self
-            .installing
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .contains(id)
-        {
-            return Err(crate::browse::content_installing());
-        }
+        Self::busy_refusal(&runs, &self.installing, id)?;
         self.logs.reset(id);
         let first = if checks {
             RunStateKind::Checking
@@ -264,6 +261,56 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             },
         );
         Ok(())
+    }
+
+    /// Refuse a run of an instance that runs or is being installed into.
+    fn refuse_busy(&self, id: &str) -> Result<()> {
+        let runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
+        Self::busy_refusal(&runs, &self.installing, id)
+    }
+
+    fn busy_refusal(
+        runs: &HashMap<String, Run>,
+        installing: &Mutex<HashSet<String>>,
+        id: &str,
+    ) -> Result<()> {
+        if runs.contains_key(id) {
+            return Err(LauncherError::game(
+                ErrorCode::AlreadyRunning,
+                "This instance is already running",
+            )
+            .with_param("id", id));
+        }
+        if installing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(id)
+        {
+            return Err(crate::browse::content_installing());
+        }
+        Ok(())
+    }
+
+    /// The session the game starts with. The account the run was started for must still be on
+    /// this computer (and one the player may see), else `no_account`; a session checked more
+    /// than `SESSION_RECHECK` ago is checked again online.
+    async fn session_at_start(
+        &self,
+        account: &Account,
+        session: Session,
+        checked_at: Instant,
+    ) -> Result<Session> {
+        let current = self
+            .accounts_list()
+            .await?
+            .accounts
+            .into_iter()
+            .find(|a| a.uuid == account.uuid)
+            .ok_or_else(no_account)?;
+        if self.run_clock().saturating_duration_since(checked_at) < SESSION_RECHECK {
+            return Ok(session);
+        }
+        self.session_for(current).await
     }
 
     /// The player's answer to "Update ready": take the update, or play what's installed.
@@ -846,11 +893,25 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 self.wake_in_background(&id, address.clone(), name);
             }
         }
+        // The session was checked when the run was queued; the run may have waited since.
+        let session = match self
+            .session_at_start(&args.account, args.session, args.checked_at)
+            .await
+        {
+            Ok(session) => session,
+            Err(error) => {
+                let info = ExitInfo {
+                    synced,
+                    ..failed(error)
+                };
+                return self.finish(&id, info, sink, batcher, Some(lock)).await;
+            }
+        };
         let started_at = SystemTime::now();
         let played = instance.clone();
         let game = match self
             .runner
-            .start(instance, prepared, args.session, join, world, sink.clone())
+            .start(instance, prepared, session, join, world, sink.clone())
             .await
         {
             Ok(game) => game,
@@ -1224,6 +1285,295 @@ mod tests {
             core.play("alpha").await.unwrap_err().code,
             ErrorCode::NoAccount
         );
+    }
+
+    #[tokio::test]
+    async fn active_offline_in_beta_is_no_account() {
+        let (core, runner, host, _t) = core(BuildKind::Beta);
+        core.instance_create(NewInstance {
+            name: "Alpha".into(),
+            minecraft: "1.20.1".into(),
+            loader: None,
+        })
+        .await
+        .unwrap();
+        let steve = launcher_core::accounts::offline_account("Steve").unwrap();
+        let file = launcher_core::accounts::AccountsFile {
+            active: Some(steve.uuid.clone()),
+            accounts: vec![steve],
+            ..Default::default()
+        };
+        core.accounts.lock().await.save(&file).await.unwrap();
+        assert_eq!(
+            core.play("alpha").await.unwrap_err().code,
+            ErrorCode::NoAccount
+        );
+        assert!(host.states("alpha").is_empty(), "no run was queued");
+        assert!(runner.started_sessions.lock().unwrap().is_empty());
+    }
+
+    /// A Release core with Alex signed in with Microsoft (token `mc-secret-token` in memory)
+    /// and an instance `alpha`.
+    async fn signed_in_release() -> (
+        Arc<TestCore>,
+        Arc<FakeRunner>,
+        Arc<RecordingHost>,
+        tempfile::TempDir,
+    ) {
+        use launcher_core::{
+            accounts::{Account, Provider},
+            msa::{
+                minecraft::{dashed, McToken},
+                secrets::save_refresh,
+            },
+        };
+        let (core, runner, host, tmp) = core(BuildKind::Release);
+        core.instance_create(NewInstance {
+            name: "Alpha".into(),
+            minecraft: "1.20.1".into(),
+            loader: None,
+        })
+        .await
+        .unwrap();
+        let uuid = dashed("0123456789abcdef0123456789abcdef");
+        core.accounts
+            .lock()
+            .await
+            .add_microsoft(Account {
+                provider: Provider::Microsoft,
+                username: "Alex".into(),
+                uuid: uuid.clone(),
+            })
+            .await
+            .unwrap();
+        save_refresh(&*core.msa_secrets, &uuid, "refresh-Alex").unwrap();
+        core.msa_tokens.lock().unwrap().insert(
+            uuid,
+            (
+                McToken {
+                    access_token: "mc-secret-token".into(),
+                    expires_at: crate::restore::now_secs() + 7200,
+                },
+                Some("xuid-Alex".into()),
+            ),
+        );
+        (core, runner, host, tmp)
+    }
+
+    #[tokio::test]
+    async fn play_checks_the_microsoft_session() {
+        let (core, runner, host, _t) = signed_in_release().await;
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        assert_eq!(runner.msa.calls_to("profile").len(), 1);
+        let sessions = runner.started_sessions.lock().unwrap().clone();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].user_type, "msa");
+        assert_eq!(sessions[0].access_token, "mc-secret-token");
+        assert_eq!(
+            sessions[0].client_id.as_deref(),
+            Some(crate::testing::MS_CLIENT_ID)
+        );
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+    }
+
+    #[tokio::test]
+    async fn play_refuses_when_the_check_fails() {
+        let (core, runner, host, _t) = signed_in_release().await;
+        runner
+            .msa
+            .profiles
+            .lock()
+            .unwrap()
+            .push_back(Err(LauncherError::network(
+                ErrorCode::HostUnreachable,
+                "Couldn't reach Minecraft",
+            )));
+        assert_eq!(
+            core.play("alpha").await.unwrap_err().code,
+            ErrorCode::HostUnreachable
+        );
+        assert!(host.states("alpha").is_empty());
+        assert!(runner.started_sessions.lock().unwrap().is_empty());
+    }
+
+    /// Spec "Tests": every way into a game refuses without an account that can play, before
+    /// any run is queued or any session reaches the runner.
+    #[tokio::test]
+    async fn every_play_entry_point_needs_an_account_that_can_play() {
+        for (build, offline) in [
+            (BuildKind::Release, false),
+            (BuildKind::Release, true),
+            (BuildKind::Beta, false),
+            (BuildKind::Beta, true),
+        ] {
+            let (core, runner, host, _t) = core(build);
+            core.instance_create(NewInstance {
+                name: "Alpha".into(),
+                minecraft: "1.20.1".into(),
+                loader: None,
+            })
+            .await
+            .unwrap();
+            if offline {
+                // An offline account left over from an older launcher, still marked active.
+                let steve = launcher_core::accounts::offline_account("Steve").unwrap();
+                let file = launcher_core::accounts::AccountsFile {
+                    active: Some(steve.uuid.clone()),
+                    accounts: vec![steve],
+                    ..Default::default()
+                };
+                core.accounts.lock().await.save(&file).await.unwrap();
+            }
+            let join = ServerAddress::new("play.example.com", 25565).unwrap();
+            let answers = [
+                ("play", core.play("alpha").await),
+                ("play_with", core.play_with("alpha", true).await),
+                (
+                    "play_to(join)",
+                    core.play_to("alpha", Destination::Join(join)).await,
+                ),
+                ("play_continue", core.play_continue("alpha").await),
+                ("play_repair", core.play_repair("alpha").await),
+            ];
+            for (entry, answer) in answers {
+                assert_eq!(
+                    answer.unwrap_err().code,
+                    ErrorCode::NoAccount,
+                    "{entry}, {build:?}, offline account: {offline}"
+                );
+            }
+            assert!(host.states("alpha").is_empty(), "no run was queued");
+            assert!(runner.started_sessions.lock().unwrap().is_empty());
+            assert!(runner.msa.calls.lock().unwrap().is_empty());
+        }
+    }
+
+    /// Play on an instance that runs (or is being installed into) is refused before the
+    /// online session check, so it costs no call to Minecraft.
+    #[tokio::test]
+    async fn a_busy_instance_is_refused_before_the_session_check() {
+        let (core, runner, host, _t) = signed_in_release().await;
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        assert_eq!(runner.msa.calls_to("profile").len(), 1);
+        assert_eq!(
+            core.play("alpha").await.unwrap_err().code,
+            ErrorCode::AlreadyRunning
+        );
+        assert_eq!(runner.msa.calls_to("profile").len(), 1, "no second check");
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+
+        core.installing.lock().unwrap().insert("alpha".into());
+        assert_eq!(
+            core.play("alpha").await.unwrap_err().code,
+            ErrorCode::ContentInstalling
+        );
+        assert_eq!(runner.msa.calls_to("profile").len(), 1, "no check either");
+    }
+
+    /// The session was checked when the run was queued; an account removed while the run
+    /// waited (here on "Update ready") must not start the game.
+    #[tokio::test]
+    async fn an_account_removed_while_the_run_waits_never_starts_the_game() {
+        let (core, runner, host, _t) = signed_in_release().await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        offer(&runner, &id);
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        let uuid = core.accounts_list().await.unwrap().accounts[0].uuid.clone();
+        core.account_remove(&uuid).await.unwrap();
+        core.play_answer(&id, false).unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Idle).await;
+        let error = host.last_exit(&id).unwrap().error.expect("the run failed");
+        assert_eq!(error.code, ErrorCode::NoAccount);
+        assert!(runner.started_sessions.lock().unwrap().is_empty());
+    }
+
+    /// A run that waited long (here an hour on "Update ready") checks the session again just
+    /// before the game starts, so it never starts on a spent Minecraft token.
+    #[tokio::test]
+    async fn a_run_that_waited_long_checks_the_session_again() {
+        use launcher_core::msa::minecraft::McToken;
+        let (core, runner, host, _t) = signed_in_release().await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        offer(&runner, &id);
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        assert_eq!(runner.msa.calls_to("profile").len(), 1);
+        // An hour went by: the token kept in memory has ten minutes left.
+        core.clock_ahead.store(3600, Ordering::SeqCst);
+        let uuid = core.accounts_list().await.unwrap().accounts[0].uuid.clone();
+        core.msa_tokens.lock().unwrap().insert(
+            uuid,
+            (
+                McToken {
+                    access_token: "mc-secret-token".into(),
+                    expires_at: crate::restore::now_secs() + 600,
+                },
+                Some("xuid-Alex".into()),
+            ),
+        );
+        core.play_answer(&id, false).unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(runner.msa.calls_to("refresh").len(), 1, "a fresh token");
+        assert_eq!(runner.msa.calls_to("profile").len(), 2, "checked again");
+        let sessions = runner.started_sessions.lock().unwrap().clone();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].access_token, "mc-Alex");
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    /// The same wait, cut short by a failed check at spawn: the run ends with that error and
+    /// the game never starts.
+    #[tokio::test]
+    async fn a_failed_check_before_the_game_starts_ends_the_run() {
+        let (core, runner, host, _t) = signed_in_release().await;
+        let id = pack(&core, UpdatePolicy::Ask).await;
+        offer(&runner, &id);
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        core.clock_ahead.store(3600, Ordering::SeqCst);
+        runner
+            .msa
+            .profiles
+            .lock()
+            .unwrap()
+            .push_back(Err(LauncherError::network(
+                ErrorCode::HostUnreachable,
+                "Couldn't reach Minecraft",
+            )));
+        core.play_answer(&id, false).unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Idle).await;
+        let error = host.last_exit(&id).unwrap().error.expect("the run failed");
+        assert_eq!(error.code, ErrorCode::HostUnreachable);
+        assert!(runner.started_sessions.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn access_token_is_redacted_in_game_log() {
+        let (core, runner, host, _t) = signed_in_release().await;
+        *runner.start_lines.lock().unwrap() =
+            vec!["[INFO] Setting user: Alex, token mc-secret-token".into()];
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+        let kept = core.log_tail("alpha");
+        assert_eq!(kept, vec!["[INFO] Setting user: Alex, token <redacted>"]);
+        assert!(host
+            .log_lines("alpha")
+            .iter()
+            .all(|l| !l.contains("mc-secret-token")));
     }
 
     #[tokio::test]

@@ -6,6 +6,7 @@ import { commands } from '../../ipc/commands';
 import { isLauncherError } from '../../ipc/errors';
 import type { PublicServerCard as Card } from '../../ipc/schema';
 import { qk, recordYourServer, useServerIcon } from '../../state/queries';
+import { requireAccount } from '../../state/requireAccount';
 import { navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
@@ -177,6 +178,8 @@ function usePlay(card: Card, follow: boolean, onPlay?: () => Promise<void>) {
     void (async () => {
       let id: string | null = null;
       try {
+        // Without an account that can play, the sign-in prompt opens and nothing is added or followed.
+        if (!(await requireAccount())) return;
         // Always asked, even when the card names an instance: it answers the one that joins the server
         // now, so an instance deleted since the list loaded is never played.
         id = (await commands.joinAdd(invite)).id;

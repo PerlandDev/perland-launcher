@@ -883,6 +883,14 @@ pub struct EmailCodeSent {
     pub resend_in: u64,
 }
 
+/// Whether the player can play, read without a network call (`account_ready`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountReady {
+    /// The active account is a Microsoft account with a stored refresh token.
+    pub ready: bool,
+}
+
 /// Where a Discord sign-in is: waiting for the browser, or redeeming the code it brought back.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]

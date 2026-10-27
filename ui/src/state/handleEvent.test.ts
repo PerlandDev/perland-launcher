@@ -9,6 +9,7 @@ import { importProgressSnapshot } from './importProgress';
 import { qk, queryClient } from './queries';
 import { routeSnapshot } from './route';
 import { runStore } from './runStore';
+import { closeSignInPrompt, signInPromptSnapshot } from './signInPrompt';
 import { clearToasts, toastsSnapshot } from './toasts';
 
 it('turns warnings into toasts and opens the drawer on a crash', () => {
@@ -57,6 +58,21 @@ it('opens the drawer when a game fails to start', () => {
   });
   const { result } = renderHook(() => useActivity());
   expect(result.current).toEqual({ open: true, focus: 'pack' });
+});
+
+it('opens the sign-in prompt, not the drawer, when a run ends for want of a sign-in', () => {
+  for (const code of ['no_account', 'microsoft_sign_in_again'] as const) {
+    resetActivity();
+    closeSignInPrompt();
+    clearToasts();
+    const error = { category: 'auth', code, message: 'x', fix: null, detail: null, params: {} } as const;
+    handleEvent({ type: 'run_state', instance: 'pack', state: 'idle', exit: exitOf({ error }), update: null });
+    expect(signInPromptSnapshot()).toBe(true);
+    const { result } = renderHook(() => useActivity());
+    expect(result.current.open).toBe(false);
+    expect(toastsSnapshot()).toHaveLength(0);
+  }
+  closeSignInPrompt();
 });
 
 it('an ended run refreshes the instance and its pack queries', () => {

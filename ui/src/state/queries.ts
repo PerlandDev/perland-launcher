@@ -8,6 +8,7 @@ import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { endImport, importWatched } from './importProgress';
 import { manageLog } from './manageLog';
+import { requireAccount } from './requireAccount';
 import { pushError, pushNotice } from './toasts';
 
 export function createQueryClient() {
@@ -44,6 +45,7 @@ export const qk = {
   update: ['update'] as const,
   instances: ['instances'] as const,
   accounts: ['accounts'] as const,
+  accountReady: ['accountReady'] as const,
   playtime: ['playtime'] as const,
   continueTarget: (id: string) => ['continue', id] as const,
   mcVersions: ['catalog', 'minecraft'] as const,
@@ -92,6 +94,9 @@ export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: comm
 export const useUpdate = () => useQuery({ queryKey: qk.update, queryFn: commands.updateStatus });
 export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: commands.instancesList });
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
+/** Whether Play can start (a Microsoft account in use, signed in), whether Microsoft is still approving this build, and whether
+ *  the "offline accounts are gone" notice is due. Every sign-in, remove and dismiss asks for it again. */
+export const useAccountReady = () => useQuery({ queryKey: qk.accountReady, queryFn: commands.accountReady });
 /** Time played per instance on this computer. Refreshed when a run ends and when an instance moves or goes. */
 export const usePlaytime = () => useQuery({ queryKey: qk.playtime, queryFn: commands.playtimeList });
 /** Where Continue takes the player in instance `id`. Refreshed when a run ends. */
@@ -446,11 +451,14 @@ export function useImportInstance() {
   });
 }
 
+/** Add a server's instance. Without an account that can play it opens the sign-in prompt and adds nothing (answers null). */
 export function useJoinAdd(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (link: string) => commands.joinAdd(link),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    mutationFn: async (link: string) => ((await requireAccount()) ? commands.joinAdd(link) : null),
+    onSuccess: (instance) => {
+      if (instance) return qc.invalidateQueries({ queryKey: qk.instances });
+    },
     onError: onError(opts),
   });
 }
@@ -663,10 +671,15 @@ export function useDeleteInstance(opts: Opts = {}) {
 
 export function useAccountMutations(opts: Opts = {}) {
   const qc = useQueryClient();
-  const onSuccess = (file: Awaited<ReturnType<typeof commands.accountsList>>) => qc.setQueryData(qk.accounts, file);
+  const onSuccess = (file: Awaited<ReturnType<typeof commands.accountsList>>) => {
+    qc.setQueryData(qk.accounts, file);
+    // Who is in use decides whether Play can start.
+    void qc.invalidateQueries({ queryKey: qk.accountReady });
+  };
   // A failed change may have been made against a stale list, so the list is asked for again.
   const failed = (error: unknown) => {
     void qc.invalidateQueries({ queryKey: qk.accounts });
+    void qc.invalidateQueries({ queryKey: qk.accountReady });
     onError(opts)(error);
   };
   return {
@@ -675,6 +688,7 @@ export function useAccountMutations(opts: Opts = {}) {
     remove: useMutation({ mutationFn: commands.accountRemove, onSuccess, onError: failed }),
   };
 }
+
 
 /** Remove a resource pack or shader. The list the core hands back replaces the cached one. */
 export function useContentRemove(id: string, kind: ContentKind, opts: Opts = {}) {

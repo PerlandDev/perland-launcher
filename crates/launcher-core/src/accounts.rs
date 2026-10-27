@@ -31,6 +31,8 @@ pub struct Session {
     pub access_token: String,
     pub user_type: String,
     pub xuid: Option<String>,
+    /// The Azure app the token was issued to (`clientid`); `None` for an offline session.
+    pub client_id: Option<String>,
 }
 
 // Manual `Debug` so formatting a `Session` (or anything holding one) can never print the token.
@@ -42,6 +44,7 @@ impl std::fmt::Debug for Session {
             .field("access_token", &"<redacted>")
             .field("user_type", &self.user_type)
             .field("xuid", &self.xuid)
+            .field("client_id", &self.client_id)
             .finish()
     }
 }
@@ -54,6 +57,7 @@ impl Account {
             access_token: "0".to_string(),
             user_type: "legacy".to_string(),
             xuid: None,
+            client_id: None,
         }
     }
 }
@@ -99,7 +103,7 @@ pub fn offline_account(name: &str) -> Result<Account> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuildKind {
     Dev,
-    /// An optimized build made with `PERLAND_BUILD=beta`: offline accounts stay open (spec §3.1).
+    /// An optimized build made with `PERLAND_BUILD=beta`. Offline accounts are dev-only.
     Beta,
     Release,
 }
@@ -122,12 +126,13 @@ impl BuildKind {
     }
 }
 
-/// Dev and beta builds allow offline accounts; release builds unlock them only after a licensed
-/// Microsoft sign-in on this install.
-pub fn offline_allowed(build: BuildKind, licensed_signin_seen: bool) -> bool {
-    matches!(build, BuildKind::Dev | BuildKind::Beta) || licensed_signin_seen
+/// Offline accounts exist only in dev builds. Mojang's review requires every shipped build
+/// to need a Microsoft account that owns Minecraft.
+pub fn offline_allowed(build: BuildKind) -> bool {
+    build == BuildKind::Dev
 }
 
+/// The launcher's own record of an unfinished Microsoft sign-in (a browser window it opened).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsFile {
@@ -135,8 +140,24 @@ pub struct AccountsFile {
     pub accounts: Vec<Account>,
     #[serde(default)]
     pub active: Option<String>,
+    /// No longer read; kept so older files still parse and round-trip.
     #[serde(default)]
     pub licensed_signin_seen: bool,
+}
+
+/// What the player may see: outside dev builds, offline accounts are gone, and `active` is
+/// cleared when it named one. The file on disk is not touched.
+pub fn visible(mut file: AccountsFile, build: BuildKind) -> AccountsFile {
+    if offline_allowed(build) {
+        return file;
+    }
+    file.accounts.retain(|a| a.provider != Provider::Offline);
+    if let Some(active) = &file.active {
+        if !file.accounts.iter().any(|a| &a.uuid == active) {
+            file.active = None;
+        }
+    }
+    file
 }
 
 pub struct AccountStore {
@@ -170,9 +191,12 @@ impl AccountStore {
 
     pub async fn add_offline(&self, name: &str, build: BuildKind) -> Result<Account> {
         let mut file = self.load().await?;
-        if !offline_allowed(build, file.licensed_signin_seen) {
-            return Err(LauncherError::auth(ErrorCode::OfflineLocked, "Offline accounts unlock after you sign in once with a Microsoft account that owns Minecraft")
-                .with_fix("Add a Microsoft account first"));
+        if !offline_allowed(build) {
+            return Err(LauncherError::auth(
+                ErrorCode::OfflineLocked,
+                "Offline accounts are only available in development builds.",
+            )
+            .with_fix("Sign in with a Microsoft account that owns Minecraft"));
         }
         let account = offline_account(name)?;
         file.accounts.retain(|a| a.uuid != account.uuid);
@@ -180,6 +204,30 @@ impl AccountStore {
         file.active = Some(account.uuid.clone());
         self.save(&file).await?;
         Ok(account)
+    }
+
+    /// Add a Microsoft account, or refresh the one with the same uuid, and make it active.
+    pub async fn add_microsoft(&self, account: Account) -> Result<AccountsFile> {
+        let mut file = self.load().await?;
+        file.active = Some(account.uuid.clone());
+        match file.accounts.iter_mut().find(|a| a.uuid == account.uuid) {
+            Some(existing) => *existing = account,
+            None => file.accounts.push(account),
+        }
+        self.save(&file).await?;
+        Ok(file)
+    }
+
+    /// Change the player name of the account `uuid`, leaving which account is active alone.
+    /// `false` when no such account is stored (it was removed meanwhile): nothing is written.
+    pub async fn rename(&self, uuid: &str, username: &str) -> Result<bool> {
+        let mut file = self.load().await?;
+        let Some(account) = file.accounts.iter_mut().find(|a| a.uuid == uuid) else {
+            return Ok(false);
+        };
+        account.username = username.to_string();
+        self.save(&file).await?;
+        Ok(true)
     }
 
     pub async fn active(&self) -> Result<Option<Account>> {
@@ -253,6 +301,7 @@ mod tests {
         assert_eq!(s.uuid, "5627dd98e6be3c21b8a8e92344183641");
         assert_eq!(s.access_token, "0");
         assert_eq!(s.user_type, "legacy");
+        assert_eq!(s.client_id, None);
     }
 
     #[test]
@@ -263,8 +312,10 @@ mod tests {
             access_token: "secret-token-123".to_string(),
             user_type: "msa".to_string(),
             xuid: None,
+            client_id: Some("client-1".to_string()),
         };
         let shown = format!("{session:?}");
+        assert!(shown.contains("client-1"));
         assert!(shown.contains("<redacted>"));
         assert!(shown.contains("Steve"));
         assert!(!shown.contains("secret-token-123"));
@@ -283,20 +334,135 @@ mod tests {
         );
     }
 
+    fn microsoft(name: &str, uuid: &str) -> Account {
+        Account {
+            provider: Provider::Microsoft,
+            username: name.to_string(),
+            uuid: uuid.to_string(),
+        }
+    }
+
     #[test]
     fn offline_gate() {
-        assert!(offline_allowed(BuildKind::Dev, false));
-        assert!(offline_allowed(BuildKind::Beta, false));
-        assert!(!offline_allowed(BuildKind::Release, false));
-        assert!(offline_allowed(BuildKind::Release, true));
+        assert!(offline_allowed(BuildKind::Dev));
+        assert!(!offline_allowed(BuildKind::Beta));
+        assert!(!offline_allowed(BuildKind::Release));
+    }
+
+    #[test]
+    fn visible_drops_offline_and_clears_active() {
+        let steve = offline_account("Steve").unwrap();
+        let alex = microsoft("Alex", "11111111-1111-1111-1111-111111111111");
+        let file = AccountsFile {
+            accounts: vec![steve.clone(), alex.clone()],
+            active: Some(steve.uuid.clone()),
+            ..AccountsFile::default()
+        };
+        for build in [BuildKind::Beta, BuildKind::Release] {
+            let shown = visible(file.clone(), build);
+            assert_eq!(shown.accounts, vec![alex.clone()]);
+            assert_eq!(shown.active, None);
+        }
+        assert_eq!(visible(file.clone(), BuildKind::Dev), file);
+
+        // An active Microsoft account stays active.
+        let file = AccountsFile {
+            active: Some(alex.uuid.clone()),
+            ..file
+        };
+        assert_eq!(
+            visible(file, BuildKind::Release).active.as_deref(),
+            Some(alex.uuid.as_str())
+        );
+    }
+
+    #[test]
+    fn old_file_parses() {
+        let file: AccountsFile =
+            serde_json::from_str(r#"{"accounts":[],"active":null,"licensedSigninSeen":true}"#)
+                .unwrap();
+        assert!(file.licensed_signin_seen);
     }
 
     #[tokio::test]
-    async fn beta_builds_add_offline_accounts() {
+    async fn add_microsoft_upserts_and_activates() {
         let tmp = tempfile::tempdir().unwrap();
         let store = AccountStore::new(tmp.path().join("accounts.json"));
-        let added = store.add_offline("Steve", BuildKind::Beta).await.unwrap();
-        assert_eq!(added.username, "Steve");
+        let uuid = "11111111-1111-1111-1111-111111111111";
+        store.add_microsoft(microsoft("Alex", uuid)).await.unwrap();
+        let other = microsoft("Sam", "22222222-2222-2222-2222-222222222222");
+        store.add_microsoft(other.clone()).await.unwrap();
+        let file = store
+            .add_microsoft(microsoft("AlexRenamed", uuid))
+            .await
+            .unwrap();
+        assert_eq!(file.accounts.len(), 2, "same uuid does not duplicate");
+        assert_eq!(file.active.as_deref(), Some(uuid));
+        assert_eq!(
+            file.accounts
+                .iter()
+                .find(|a| a.uuid == uuid)
+                .unwrap()
+                .username,
+            "AlexRenamed"
+        );
+        assert_eq!(store.load().await.unwrap(), file);
+    }
+
+    #[tokio::test]
+    async fn rename_keeps_the_active_account() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = AccountStore::new(tmp.path().join("accounts.json"));
+        let alex = "11111111-1111-1111-1111-111111111111";
+        let sam = "22222222-2222-2222-2222-222222222222";
+        store.add_microsoft(microsoft("Alex", alex)).await.unwrap();
+        store.add_microsoft(microsoft("Sam", sam)).await.unwrap();
+        assert!(store.rename(alex, "Alexis").await.unwrap());
+        let file = store.load().await.unwrap();
+        assert_eq!(
+            file.active.as_deref(),
+            Some(sam),
+            "the active account stays"
+        );
+        let names: Vec<_> = file.accounts.iter().map(|a| a.username.as_str()).collect();
+        assert_eq!(names, ["Alexis", "Sam"]);
+        assert!(
+            !store
+                .rename("33333333-3333-3333-3333-333333333333", "X")
+                .await
+                .unwrap(),
+            "an account that is gone is not added back"
+        );
+        assert_eq!(store.load().await.unwrap(), file);
+    }
+
+    /// A file an earlier beta wrote, with the approval wait and the offline-accounts notice it
+    /// no longer keeps, still parses.
+    #[test]
+    fn a_file_with_retired_fields_still_parses() {
+        let file: AccountsFile = serde_json::from_str(
+            r#"{"accounts":[],"active":null,"msaWaiting":{"clientId":"abc","at":42},"offlineNoticeDismissed":true}"#,
+        )
+        .unwrap();
+        assert_eq!(file, AccountsFile::default());
+    }
+
+    #[tokio::test]
+    async fn add_offline_refused_in_beta_even_after_licensed_signin() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = AccountStore::new(tmp.path().join("accounts.json"));
+        store
+            .save(&AccountsFile {
+                licensed_signin_seen: true,
+                ..AccountsFile::default()
+            })
+            .await
+            .unwrap();
+        for build in [BuildKind::Beta, BuildKind::Release] {
+            let err = store.add_offline("Steve", build).await.unwrap_err();
+            assert_eq!(err.code, ErrorCode::OfflineLocked);
+        }
+        assert!(store.load().await.unwrap().accounts.is_empty());
     }
 
     #[tokio::test]

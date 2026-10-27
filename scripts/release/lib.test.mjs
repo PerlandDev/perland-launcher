@@ -5,6 +5,7 @@ import {
   channelName,
   checkSignatureKeys,
   ciGate,
+  clientIdGate,
   findBundle,
   keyIdOf,
   nextVersion,
@@ -141,4 +142,24 @@ test('a failed, running or missing CI run stops a publish', () => {
 test('a dry run only warns about CI', () => {
   assert.equal(ciGate([run('completed', 'failure')], { publish: false }).level, 'warning');
   assert.equal(ciGate([], { publish: false }).level, 'warning');
+});
+
+test('a publish without the Microsoft client ID stops, since that build could not start the game', () => {
+  for (const value of [undefined, '', '   ']) {
+    const gate = clientIdGate(value, { publish: true });
+    assert.equal(gate.level, 'error');
+    assert.match(gate.message, /PERLAND_MS_CLIENT_ID/);
+  }
+});
+
+test('a dry run only warns about a missing Microsoft client ID', () => {
+  const gate = clientIdGate('', { publish: false });
+  assert.equal(gate.level, 'warning');
+  assert.match(gate.message, /PERLAND_MS_CLIENT_ID/);
+});
+
+test('a set Microsoft client ID lets the release through', () => {
+  for (const publish of [true, false]) {
+    assert.equal(clientIdGate('00000000-0000-4000-8000-0000000000aa', { publish }).level, 'ok');
+  }
 });

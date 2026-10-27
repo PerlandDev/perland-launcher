@@ -41,6 +41,8 @@ Features from Plans 2–4 and 6 are either visibly "coming soon" or absent. They
 | Brand mark | The legacy PerlandDev pixel land plots, redrawn as a clean vector. |
 | Offline gate | Kept. Release builds show "Sign in with Microsoft · coming soon" and can't add offline accounts. Dev builds can. |
 
+Superseded by `2026-10-27-microsoft-sign-in-design.md`: beta and stable builds have no offline accounts.
+
 ## 2. Screens
 
 | Screen | Contents |

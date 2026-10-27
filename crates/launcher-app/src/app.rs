@@ -11,7 +11,7 @@ use std::{
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
-    accounts::{AccountStore, AccountsFile, BuildKind},
+    accounts::{visible, AccountStore, AccountsFile, BuildKind},
     browse::{compat::ContentKind, images::ImageKind},
     content,
     diagnostics::{self, SystemInfo},
@@ -29,6 +29,7 @@ use launcher_core::{
     },
     mod_icons,
     mods::{self, LocalMod},
+    msa::{minecraft::McToken, secrets::KeyedSecrets},
     news_seen::{NewsSeen, NEWS_SEEN_FILE},
     paths::LauncherDirs,
     perland::{KeyringStore, SecretStore, SessionStore},
@@ -40,7 +41,7 @@ use launcher_core::{
     ErrorCode, LauncherError, Result,
 };
 use tokio::{
-    sync::{oneshot, Semaphore},
+    sync::{oneshot, watch, Semaphore},
     task::AbortHandle,
 };
 
@@ -143,6 +144,14 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) perland_store: Arc<SessionStore>,
     /// The Discord sign-in waiting for the browser, if any.
     pub(crate) perland_sign_in: Mutex<SignInSlot>,
+    /// Microsoft refresh tokens, one per account (see `msa.rs`).
+    pub(crate) msa_secrets: Arc<dyn KeyedSecrets>,
+    /// Per Microsoft account (by dashed uuid): its Minecraft token and xuid, in memory only.
+    pub(crate) msa_tokens: Mutex<HashMap<String, (McToken, Option<String>)>>,
+    /// Held across a refresh of the Minecraft token, so launches at once share one.
+    pub(crate) msa_refresh: tokio::sync::Mutex<()>,
+    /// The Microsoft sign-in waiting for the browser, if any: its cancel switch.
+    pub(crate) msa_sign_in: Mutex<Option<watch::Sender<bool>>>,
     /// Session JWTs for Manage (see `manage.rs`), cleared whenever the session is forgotten or
     /// replaced.
     pub(crate) jwts: launcher_core::perland::JwtCache,
@@ -186,8 +195,22 @@ fn valid_id(id: &str) -> Result<()> {
 }
 
 impl<R: Runner, H: Host> AppCore<R, H> {
-    pub fn new(config: AppConfig, meta: MetaClient, runner: Arc<R>, host: Arc<H>) -> Arc<Self> {
-        Self::with_secret_store(config, meta, runner, host, Arc::new(KeyringStore::new()))
+    /// `msa_secrets` keeps Microsoft refresh tokens (the OS credential store in the app).
+    pub fn new(
+        config: AppConfig,
+        meta: MetaClient,
+        runner: Arc<R>,
+        host: Arc<H>,
+        msa_secrets: Arc<dyn KeyedSecrets>,
+    ) -> Arc<Self> {
+        Self::with_secret_store(
+            config,
+            meta,
+            runner,
+            host,
+            Arc::new(KeyringStore::new()),
+            msa_secrets,
+        )
     }
 
     /// Like `new`, with the Perland token kept in `secret` instead of the OS credential store.
@@ -198,6 +221,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         runner: Arc<R>,
         host: Arc<H>,
         secret: Arc<dyn SecretStore>,
+        msa_secrets: Arc<dyn KeyedSecrets>,
     ) -> Arc<Self> {
         let root = config.dirs.root().to_path_buf();
         Arc::new(Self {
@@ -227,6 +251,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             perland: tokio::sync::Mutex::new(PerlandState::default()),
             perland_store: Arc::new(SessionStore::new(root.join(ACCOUNT_MARKER), secret)),
             perland_sign_in: Mutex::new(SignInSlot::default()),
+            msa_secrets,
+            msa_tokens: Mutex::new(HashMap::new()),
+            msa_refresh: tokio::sync::Mutex::new(()),
+            msa_sign_in: Mutex::new(None),
             jwts: launcher_core::perland::JwtCache::default(),
             console_stream: Mutex::new(None),
             console_closes: Mutex::new(Default::default()),
@@ -273,29 +301,21 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// A damaged accounts file doesn't fail this: Settings needs it to offer "Open data folder",
-    /// which is the fix. Offline then stays locked in release builds, and the damage is reported
-    /// once as a warning (without the file's contents).
+    /// which is the fix. The damage is reported once as a warning (without the file's contents).
     pub async fn app_info(&self) -> Result<AppInfo> {
-        let licensed_signin_seen = match self.accounts.lock().await.list().await {
-            Ok(accounts) => accounts.licensed_signin_seen,
-            Err(mut error) => {
-                error.detail = None;
-                if !self.accounts_warned.swap(true, Ordering::SeqCst) {
-                    self.host.emit(AppEvent::Warning {
-                        instance: None,
-                        error,
-                    });
-                }
-                false
+        if let Err(mut error) = self.accounts.lock().await.list().await {
+            error.detail = None;
+            if !self.accounts_warned.swap(true, Ordering::SeqCst) {
+                self.host.emit(AppEvent::Warning {
+                    instance: None,
+                    error,
+                });
             }
-        };
+        }
         Ok(AppInfo {
             version: self.config.launcher_version.clone(),
             build: self.config.build.into(),
-            offline_allowed: launcher_core::accounts::offline_allowed(
-                self.config.build,
-                licensed_signin_seen,
-            ),
+            offline_allowed: launcher_core::accounts::offline_allowed(self.config.build),
             system_memory_mb: self.config.system_memory_mb,
             data_dir: self.config.dirs.root().display().to_string(),
             panel: self.config.panel.is_some(),
@@ -531,22 +551,46 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         catalog::loader_versions(&self.meta, kind, mc).await
     }
 
+    /// The accounts the player may see: outside dev builds, offline ones are left out.
     pub async fn accounts_list(&self) -> Result<AccountsFile> {
-        self.accounts.lock().await.list().await
+        let file = self.accounts.lock().await.list().await?;
+        Ok(visible(file, self.config.build))
+    }
+
+    /// The active account as the player sees it (never an offline one outside dev builds).
+    pub(crate) async fn active_account(&self) -> Result<Option<launcher_core::accounts::Account>> {
+        let file = self.accounts_list().await?;
+        Ok(file
+            .active
+            .and_then(|uuid| file.accounts.into_iter().find(|a| a.uuid == uuid)))
     }
 
     pub async fn account_add_offline(&self, name: &str) -> Result<AccountsFile> {
         let store = self.accounts.lock().await;
         store.add_offline(name, self.config.build).await?;
-        store.list().await
+        Ok(visible(store.list().await?, self.config.build))
     }
 
+    /// Only an account the player may see can become active (never an offline one outside
+    /// dev builds).
     pub async fn account_set_active(&self, uuid: &str) -> Result<AccountsFile> {
-        self.accounts.lock().await.set_active(uuid).await
+        let store = self.accounts.lock().await;
+        let shown = visible(store.list().await?, self.config.build);
+        if !shown.accounts.iter().any(|a| a.uuid == uuid) {
+            return Err(LauncherError::auth(
+                ErrorCode::NoAccount,
+                "That account isn't on this computer anymore",
+            ));
+        }
+        let file = store.set_active(uuid).await?;
+        Ok(visible(file, self.config.build))
     }
 
+    /// Forget an account, with its Microsoft sign-in.
     pub async fn account_remove(&self, uuid: &str) -> Result<AccountsFile> {
-        self.accounts.lock().await.remove(uuid).await
+        let file = self.accounts.lock().await.remove(uuid).await?;
+        self.forget_microsoft(uuid).await;
+        Ok(visible(file, self.config.build))
     }
 
     async fn game_dir(&self, id: &str) -> Result<PathBuf> {
@@ -839,6 +883,43 @@ pub(crate) mod tests {
         Arc<RecordingHost>,
         tempfile::TempDir,
     ) {
+        core_with_msa(
+            build,
+            secret,
+            panel,
+            Arc::new(launcher_core::msa::secrets::MemorySecrets::default()),
+        )
+    }
+
+    /// `core`, with Microsoft refresh tokens kept in `msa_secrets`.
+    pub(crate) fn core_with_msa_secrets(
+        build: BuildKind,
+        msa_secrets: Arc<dyn KeyedSecrets>,
+    ) -> (
+        Arc<TestCore>,
+        Arc<FakeRunner>,
+        Arc<RecordingHost>,
+        tempfile::TempDir,
+    ) {
+        core_with_msa(
+            build,
+            Arc::new(launcher_core::perland::MemoryStore::default()),
+            None,
+            msa_secrets,
+        )
+    }
+
+    fn core_with_msa(
+        build: BuildKind,
+        secret: Arc<dyn SecretStore>,
+        panel: Option<launcher_core::invite::Url>,
+        msa_secrets: Arc<dyn KeyedSecrets>,
+    ) -> (
+        Arc<TestCore>,
+        Arc<FakeRunner>,
+        Arc<RecordingHost>,
+        tempfile::TempDir,
+    ) {
         let tmp = tempfile::tempdir().unwrap();
         let dirs = LauncherDirs::new(tmp.path());
         let runner = FakeRunner::new();
@@ -858,6 +939,7 @@ pub(crate) mod tests {
             runner.clone(),
             host.clone(),
             secret,
+            msa_secrets,
         );
         (core, runner, host, tmp)
     }
@@ -885,17 +967,32 @@ pub(crate) mod tests {
         assert!(info.offline_allowed);
         assert_eq!(info.build, Build::Dev);
         assert_eq!(info.system_memory_mb, 16384);
-        let (release, _, _, _t2) = core(BuildKind::Release);
-        assert!(!release.app_info().await.unwrap().offline_allowed);
-        assert_eq!(
-            release.account_add_offline("Steve").await.unwrap_err().code,
-            ErrorCode::OfflineLocked
-        );
+        for kind in [BuildKind::Release, BuildKind::Beta] {
+            let (locked, _, _, _t2) = core(kind);
+            assert!(!locked.app_info().await.unwrap().offline_allowed);
+            assert_eq!(
+                locked.account_add_offline("Steve").await.unwrap_err().code,
+                ErrorCode::OfflineLocked
+            );
+        }
         let (beta, _, _, _t3) = core(BuildKind::Beta);
-        let info = beta.app_info().await.unwrap();
-        assert_eq!(info.build, Build::Beta);
-        assert!(info.offline_allowed);
-        beta.account_add_offline("Steve").await.unwrap();
+        assert_eq!(beta.app_info().await.unwrap().build, Build::Beta);
+    }
+
+    #[tokio::test]
+    async fn outside_dev_offline_accounts_on_disk_are_hidden() {
+        let (dev, _, _, tmp) = core(BuildKind::Dev);
+        dev.account_add_offline("Steve").await.unwrap();
+        let (beta, _, _, _t) = core(BuildKind::Beta);
+        // Same file, other build.
+        std::fs::copy(
+            tmp.path().join("accounts.json"),
+            _t.path().join("accounts.json"),
+        )
+        .unwrap();
+        let shown = beta.accounts_list().await.unwrap();
+        assert!(shown.accounts.is_empty());
+        assert_eq!(shown.active, None);
     }
 
     #[tokio::test]

@@ -106,14 +106,16 @@ impl Loopback {
         format!("http://127.0.0.1:{}/callback", self.port)
     }
 
-    /// Accepts connections until one carries `state` back with a code or an error, the
-    /// `deadline` passes (`sign_in_timed_out`), or `cancel` turns true or its sender is dropped.
+    /// Accepts connections until one carries `state` back with a code (the browser is shown
+    /// `success`) or an error, the `deadline` passes (`sign_in_timed_out`), or `cancel` turns
+    /// true or its sender is dropped.
     /// Other paths get a 404 and a callback with another `state` gets the "old link" page; the
     /// wait goes on after both. Must run inside a tokio runtime.
     pub async fn wait(
         self,
         state: &str,
         language: Language,
+        success: Page,
         deadline: Duration,
         mut cancel: watch::Receiver<bool>,
     ) -> Result<Callback> {
@@ -149,7 +151,7 @@ impl Loopback {
                 accepted = listener.accept() => match accepted {
                     Ok((stream, _)) => {
                         let state = state.to_string();
-                        connections.spawn(serve(stream, state, language));
+                        connections.spawn(serve(stream, state, language, success));
                     }
                     // Out of file descriptors, say: wait a little rather than spin.
                     Err(_) => tokio::time::sleep(ACCEPT_BACKOFF).await,
@@ -245,9 +247,13 @@ fn parse_request_line(line: &str) -> Request {
     Request::Callback { code, error, state }
 }
 
-#[derive(Clone, Copy)]
-enum Page {
+/// The page the browser is left on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Page {
+    /// Perland signed the player in.
     Success,
+    /// The browser brought a Microsoft code back: the launcher still has to finish.
+    MicrosoftContinue,
     Denied,
     Failed,
     OldLink,
@@ -260,6 +266,12 @@ fn page_html(page: Page, language: Language) -> String {
         }
         (Page::Success, Language::Es) => {
             "Ya iniciaste sesión en Perland. Puedes cerrar esta pestaña y volver al launcher."
+        }
+        (Page::MicrosoftContinue, Language::En) => {
+            "Go back to Perland Launcher to finish signing in. You can close this tab."
+        }
+        (Page::MicrosoftContinue, Language::Es) => {
+            "Vuelve a Perland Launcher para terminar de iniciar sesión. Puedes cerrar esta pestaña."
         }
         (Page::Denied, Language::En) => "Sign-in was canceled. You can close this tab.",
         (Page::Denied, Language::Es) => {
@@ -325,7 +337,12 @@ fn clean_error(raw: &str) -> String {
 }
 
 /// Answers one connection. Returns the outcome only when the request ended the wait.
-async fn serve(mut stream: TcpStream, state: String, language: Language) -> Option<Callback> {
+async fn serve(
+    mut stream: TcpStream,
+    state: String,
+    language: Language,
+    success: Page,
+) -> Option<Callback> {
     let head = timeout(READ_TIMEOUT, read_head(&mut stream))
         .await
         .ok()?
@@ -359,7 +376,7 @@ async fn serve(mut stream: TcpStream, state: String, language: Language) -> Opti
                 }
             } else if let Some(code) = code.filter(|c| !c.is_empty()) {
                 (
-                    html_response("200 OK", Page::Success, language),
+                    html_response("200 OK", success, language),
                     Some(Callback::Code(code)),
                 )
             } else {
@@ -504,7 +521,13 @@ mod tests {
 
     #[test]
     fn pages_are_self_contained() {
-        for page in [Page::Success, Page::Denied, Page::Failed, Page::OldLink] {
+        for page in [
+            Page::Success,
+            Page::MicrosoftContinue,
+            Page::Denied,
+            Page::Failed,
+            Page::OldLink,
+        ] {
             for lang in [Language::En, Language::Es] {
                 let html = page_html(page, lang);
                 assert!(html.contains(&format!("<html lang=\"{}\">", lang.tag())));
@@ -514,6 +537,18 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn microsoft_page_says_continue() {
+        let en = page_html(Page::MicrosoftContinue, Language::En);
+        assert!(en
+            .contains("Go back to Perland Launcher to finish signing in. You can close this tab."));
+        let es = page_html(Page::MicrosoftContinue, Language::Es);
+        assert!(es.contains(
+            "Vuelve a Perland Launcher para terminar de iniciar sesión. Puedes cerrar esta pestaña."
+        ));
+        assert!(es.contains("<html lang=\"es\">"));
     }
 
     #[test]
