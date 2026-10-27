@@ -1,9 +1,9 @@
 import { useTranslation } from 'react-i18next';
 import { closeSignInPrompt, useSignInPrompt } from '../../state/signInPrompt';
-import { pushNotice } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { MicrosoftSignIn } from './MicrosoftSignIn';
+import { pushSignedInNotice } from './signedInNotice';
 
 /** The one place Play asks for a Microsoft account: the standard dialog, opened from anywhere (a refused launch, the check
  *  before a join or a free server's start) and drawn once by the app. The sign-in is its one lit key; Close is ghost. Once
@@ -13,7 +13,7 @@ export function SignInPrompt() {
   const open = useSignInPrompt();
   const signedIn = () => {
     closeSignInPrompt();
-    pushNotice({ title: t('accounts.promptSignedIn') });
+    pushSignedInNotice(t);
   };
   return (
     <Dialog
