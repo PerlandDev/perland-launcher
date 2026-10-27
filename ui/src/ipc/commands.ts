@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
+  AccountReady,
   AccountsFile,
   AppInfo,
   ArtChoice,
@@ -120,6 +121,12 @@ export const commands = {
   accountAddOffline: (name: string) => invoke<AccountsFile>('account_add_offline', { name }),
   accountSetActive: (uuid: string) => invoke<AccountsFile>('account_set_active', { uuid }),
   accountRemove: (uuid: string) => invoke<AccountsFile>('account_remove', { uuid }),
+  /** Sign in with Microsoft in the browser. Null when it was canceled (here or in the browser). */
+  accountSignInMicrosoft: (language: string) => invoke<AccountsFile | null>('account_sign_in_microsoft', { language }),
+  accountSignInCancel: () => invoke<null>('account_sign_in_cancel'),
+  /** Whether Play can start now, read without a network call. */
+  accountReady: () => invoke<AccountReady>('account_ready'),
+  accountDismissOfflineNotice: () => invoke<null>('account_dismiss_offline_notice'),
   play: (id: string, join = false) => invoke<null>('play', { id, join }),
   /** Where Continue would take the player in this instance, or null (no Continue key). */
   continueTarget: (id: string) => invoke<ContinueTarget | null>('continue_target', { id }),

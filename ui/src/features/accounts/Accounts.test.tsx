@@ -42,11 +42,42 @@ it('switches, adds and removes offline accounts', async () => {
   expect(sent(calls, 'account_remove')).toHaveLength(1);
 });
 
-it('keeps Microsoft sign-in as coming soon and locks offline in release builds', async () => {
-  renderApp(<Accounts />, { release: true });
-  expect(await screen.findByText(/Offline accounts unlock after you sign in once/)).toBeInTheDocument();
+it('beta shows Add Microsoft account and never Add offline account', async () => {
+  renderApp(<Accounts />, { beta: true });
+  expect(await screen.findByRole('button', { name: 'Add Microsoft account' })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Add an account' })).toBeInTheDocument();
+  expect(screen.queryByText('Add offline account')).not.toBeInTheDocument();
   expect(screen.queryByRole('textbox', { name: 'Player name' })).not.toBeInTheDocument();
-  expect(screen.getByText('Sign in with Microsoft').closest('[aria-disabled]')).toHaveAttribute('aria-disabled', 'true');
+  // The fixture's offline accounts are hidden, as the real app hides them.
+  expect(screen.queryByText('Steve')).not.toBeInTheDocument();
+  expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
+});
+
+it('lists a Microsoft account with Remove and no offline badge', async () => {
+  const { user, calls } = renderApp(<Accounts />, { beta: true, microsoft: 'signedIn' });
+  const alex = (await screen.findByText('Alex')).closest('li')!;
+  expect(within(alex).getByText('In use')).toBeInTheDocument();
+  expect(within(alex).queryByText('Offline')).not.toBeInTheDocument();
+  await user.click(within(alex).getByRole('button', { name: 'Remove Alex' }));
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveTextContent('You can sign in again any time. Your worlds stay where they are.');
+  await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+  expect(sent(calls, 'account_remove')).toHaveLength(1);
+  await waitFor(() => expect(screen.queryByText('Alex')).not.toBeInTheDocument());
+});
+
+it('adds a Microsoft account and says who is in use', async () => {
+  const { user, calls } = renderApp(<Accounts />, { beta: true });
+  await user.click(await screen.findByRole('button', { name: 'Add Microsoft account' }));
+  expect(await screen.findByText('Alex', {}, { timeout: 4000 })).toBeInTheDocument();
+  expect(sent(calls, 'account_sign_in_microsoft')).toEqual([{ language: 'en' }]);
+  expect(screen.getByText('Signed in as Alex.')).toBeInTheDocument();
+});
+
+it('offers both kinds in a dev build', async () => {
+  renderApp(<Accounts />);
+  expect(await screen.findByRole('button', { name: 'Add Microsoft account' })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Add offline account' })).toBeInTheDocument();
 });
 
 it('does not say the name is wrong until the player has typed it and tried to add it', async () => {
@@ -148,14 +179,6 @@ it('says what removing loses and that it can be added again, and sends one remov
   expect(screen.queryByText('Alex_Builds')).not.toBeInTheDocument();
 });
 
-it('does not promise an offline account can be added again when offline accounts are locked', async () => {
-  const { user } = renderApp(<Accounts />, { release: true });
-  await user.click(await screen.findByRole('button', { name: 'Remove Alex_Builds' }));
-  const dialog = screen.getByRole('dialog');
-  expect(dialog).not.toHaveTextContent('add it again any time');
-  expect(dialog).toHaveTextContent('add offline accounts again after you sign in with Microsoft, which is coming soon');
-});
-
 it('keeps the dialog open and shows why a remove failed inside it', async () => {
   const { user, calls, backend } = renderApp(<Accounts />);
   await screen.findByText('Alex_Builds');
@@ -221,12 +244,10 @@ it('moves focus to the previous account when the last one is removed', async () 
 });
 
 it('moves focus to the add section when no accounts are left and offline accounts are locked', async () => {
-  const { user } = renderApp(<Accounts />, { release: true });
-  await user.click(await screen.findByRole('button', { name: 'Remove Alex_Builds' }));
+  const { user } = renderApp(<Accounts />, { beta: true, microsoft: 'signedIn' });
+  await user.click(await screen.findByRole('button', { name: 'Remove Alex' }));
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
-  await user.click(await screen.findByRole('button', { name: 'Remove Steve' }));
-  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
-  await waitFor(() => expect(screen.getByRole('heading', { name: 'Add offline account' })).toHaveFocus());
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Add an account' })).toHaveFocus());
 });
 
 it('announces the new active account after an add and after removing the active one', async () => {

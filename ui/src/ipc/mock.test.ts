@@ -176,6 +176,52 @@ describe('mock backend', () => {
     await expect(handle('account_add_offline', { name: 'Steve' })).rejects.toMatchObject({ code: 'offline_locked' });
   });
 
+  it('the awaiting option rejects with microsoft_awaiting_approval and then accountReady says so', async () => {
+    const { handle } = createMockBackend({ beta: true, microsoft: 'awaiting' });
+    expect(await handle('account_ready')).toEqual({ ready: false, awaitingApproval: false, offlineNotice: true });
+    await expect(handle('account_sign_in_microsoft', { language: 'en' })).rejects.toMatchObject({ code: 'microsoft_awaiting_approval' });
+    expect(await handle('account_ready')).toMatchObject({ ready: false, awaitingApproval: true });
+  }, 10_000);
+
+  it('signs in with Microsoft as Alex, ready to play', async () => {
+    const { handle } = createMockBackend({ beta: true });
+    const file = (await handle('account_sign_in_microsoft', { language: 'en' })) as AccountsFile;
+    expect(file.accounts).toEqual([{ provider: 'microsoft', username: 'Alex', uuid: expect.any(String) }]);
+    expect(file.active).toBe(file.accounts[0]!.uuid);
+    expect(await handle('account_ready')).toEqual({ ready: true, awaitingApproval: false, offlineNotice: true });
+    await handle('account_dismiss_offline_notice');
+    expect(await handle('account_ready')).toMatchObject({ offlineNotice: false });
+    expect(((await handle('accounts_list')) as AccountsFile).offlineNoticeDismissed).toBe(true);
+  }, 10_000);
+
+  it('answers a canceled Microsoft sign-in with null', async () => {
+    const { handle } = createMockBackend({ beta: true });
+    const signing = handle('account_sign_in_microsoft', { language: 'en' });
+    await handle('account_sign_in_cancel');
+    expect(await signing).toBeNull();
+    expect(((await handle('accounts_list')) as AccountsFile).accounts).toEqual([]);
+  });
+
+  it('fails a Microsoft sign-in with the matching code', async () => {
+    await expect(createMockBackend({ microsoft: 'notConfigured' }).handle('account_sign_in_microsoft', { language: 'en' })).rejects.toMatchObject({
+      code: 'microsoft_not_configured',
+    });
+    await expect(createMockBackend({ microsoft: 'notOwned' }).handle('account_sign_in_microsoft', { language: 'en' })).rejects.toMatchObject({
+      code: 'minecraft_not_owned',
+    });
+  }, 10_000);
+
+  it('hides offline accounts in a beta build and keeps them in dev', async () => {
+    const beta = (await createMockBackend({ beta: true }).handle('accounts_list')) as AccountsFile;
+    expect(beta.accounts).toEqual([]);
+    expect(beta.active).toBeNull();
+    const dev = createMockBackend();
+    expect(((await dev.handle('accounts_list')) as AccountsFile).accounts).toHaveLength(2);
+    expect(await dev.handle('account_ready')).toEqual({ ready: false, awaitingApproval: false, offlineNotice: false });
+    const signedIn = (await createMockBackend({ beta: true, microsoft: 'signedIn' }).handle('accounts_list')) as AccountsFile;
+    expect(signedIn.accounts.map((a) => [a.provider, a.username])).toEqual([['microsoft', 'Alex']]);
+  });
+
   it('scripts a pack run that asks, updates and plays', async () => {
     const backend = installMock();
     await backend.handle('play', { id: 'sky-islands' });

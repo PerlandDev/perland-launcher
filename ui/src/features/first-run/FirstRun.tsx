@@ -7,11 +7,11 @@ import type { Instance, Lang } from '../../ipc/schema';
 import { useAccountMutations, useAppInfo, useCreateInstance, useSaveSettings, useSettings } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
-import { ComingSoon } from '../../ui/ComingSoon';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { Search, User } from '../../ui/Icon';
+import { Search } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
+import { MicrosoftSignIn } from '../accounts/MicrosoftSignIn';
 import { OFFLINE_NAME } from '../accounts/offlineName';
 import { TitleBar } from '../titlebar/TitleBar';
 import { useVersionChoice } from '../new-instance/useVersionChoice';
@@ -187,11 +187,11 @@ export function FirstRun() {
                 )}
                 {appInfo.data && !appInfo.data.offlineAllowed && (
                   <>
-                    <p className="text-ink-dim">{t('firstRun.accountLockedBody')}</p>
-                    <ComingSoon label={t('accounts.microsoft')} icon={<User className="h-5 w-5" />} />
-                    <Button size="lg" onClick={() => setStep(3)}>
-                      {t('firstRun.skip')}
-                    </Button>
+                    <MicrosoftSignIn variant="primary" onSignedIn={() => setStep(3)} />
+                    <div className="grid justify-items-start gap-2">
+                      <p className="text-sm text-ink-dim">{t('firstRun.skipLater')}</p>
+                      <Button onClick={() => setStep(3)}>{t('firstRun.skip')}</Button>
+                    </div>
                   </>
                 )}
                 {addOffline.isError && <ErrorCard error={addOffline.error} />}

@@ -24,6 +24,7 @@ it('sends the argument names Rust expects', async () => {
   await commands.instanceArt('pack');
   await commands.instanceArtSet('pack', { kind: 'generated', seed: 'dunes' });
   await commands.perlandSignInDiscord('es');
+  await commands.accountSignInMicrosoft('es');
   await commands.perlandEmailStart('a@b.c', 'en');
   await commands.perlandEmailVerify('a@b.c', '123456');
   await commands.yourServersFollow('inv');
@@ -52,6 +53,7 @@ it('sends the argument names Rust expects', async () => {
     ['instance_art', { id: 'pack' }],
     ['instance_art_set', { id: 'pack', choice: { kind: 'generated', seed: 'dunes' } }],
     ['perland_sign_in_discord', { language: 'es' }],
+    ['account_sign_in_microsoft', { language: 'es' }],
     ['perland_email_start', { email: 'a@b.c', language: 'en' }],
     ['perland_email_verify', { email: 'a@b.c', code: '123456' }],
     ['your_servers_follow', { invite: 'inv' }],

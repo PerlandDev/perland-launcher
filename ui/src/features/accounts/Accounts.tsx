@@ -5,15 +5,15 @@ import type { Account, AccountsFile } from '../../ipc/schema';
 import { useAccountMutations, useAccounts, useAppInfo, usePlaytime } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
-import { ComingSoon } from '../../ui/ComingSoon';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { Check, Trash, User } from '../../ui/Icon';
+import { Check, Trash } from '../../ui/Icon';
 import { formatPlaytime } from '../../ui/playtime';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { Medals } from '../medals/Medals';
+import { MicrosoftSignIn } from './MicrosoftSignIn';
 import { OFFLINE_NAME } from './offlineName';
 import { PerlandAccountCard } from './PerlandAccountCard';
 
@@ -97,8 +97,14 @@ export function Accounts() {
         onSettled: done,
       }),
     );
-  const offlineLocked = appInfo.data?.offlineAllowed === false;
-  const removeBody = !appInfo.data ? t('accounts.removeBodyPending') : offlineLocked ? t('accounts.removeBodyLocked') : t('accounts.removeBody');
+  const offlineAllowed = appInfo.data?.offlineAllowed === true;
+  /** A Microsoft account comes back with a sign-in; an offline one only where offline accounts can still be added. */
+  const removeBody = (account: Account) =>
+    account.provider === 'microsoft'
+      ? t('accounts.removeBodyMicrosoft')
+      : offlineAllowed
+        ? t('accounts.removeBody')
+        : t('accounts.removeBodyPending');
   // Mirrors the core: removing the account in use promotes the first one left.
   const successor = removing && removing.uuid === accounts.data?.active ? list.find((a) => a.uuid !== removing.uuid) : undefined;
   const losesActive = removing !== null && removing.uuid === accounts.data?.active;
@@ -130,7 +136,7 @@ export function Accounts() {
                   <Avatar uuid={account.uuid} size={40} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold">{account.username}</p>
-                    <span className="badge mt-1">{t('accounts.offlineBadge')}</span>
+                    {account.provider === 'offline' && <span className="badge mt-1">{t('accounts.offlineBadge')}</span>}
                   </div>
                   {inUse ? (
                     <span className="flex items-center gap-2 font-semibold text-lime">
@@ -159,38 +165,34 @@ export function Accounts() {
 
         <section className="grid gap-4" aria-labelledby="add-heading">
           <h2 id="add-heading" ref={addHeading} tabIndex={-1} className="text-lg font-bold outline-none">
-            {t('accounts.addOffline')}
+            {t('accounts.addTitle')}
           </h2>
-          {offlineLocked ? (
-            <p className="text-ink-dim">{t('accounts.offlineLocked')}</p>
-          ) : (
-            appInfo.data && (
-              <form onSubmit={submit} className="flex items-start gap-3">
-                <div className="flex-1">
-                  <Field
-                    label={t('accounts.offlineName')}
-                    hint={t('accounts.offlineHint')}
-                    error={showInvalid ? t('errors.offline_name_invalid.message') : null}
-                  >
-                    <input
-                      ref={nameInput}
-                      className="field-input"
-                      value={name}
-                      maxLength={16}
-                      autoComplete="off"
-                      onChange={(e) => setName(e.target.value)}
-                      onBlur={() => name && setChecked(true)}
-                    />
-                  </Field>
-                </div>
-                <Button type="submit" variant="primary" className="mt-7" aria-disabled={add.isPending || undefined}>
-                  {t('accounts.addOffline')}
-                </Button>
-              </form>
-            )
+          <MicrosoftSignIn variant="inline" />
+          {offlineAllowed && (
+            <form onSubmit={submit} className="flex items-start gap-3">
+              <div className="flex-1">
+                <Field
+                  label={t('accounts.offlineName')}
+                  hint={t('accounts.offlineHint')}
+                  error={showInvalid ? t('errors.offline_name_invalid.message') : null}
+                >
+                  <input
+                    ref={nameInput}
+                    className="field-input"
+                    value={name}
+                    maxLength={16}
+                    autoComplete="off"
+                    onChange={(e) => setName(e.target.value)}
+                    onBlur={() => name && setChecked(true)}
+                  />
+                </Field>
+              </div>
+              <Button type="submit" className="mt-7" aria-disabled={add.isPending || undefined}>
+                {t('accounts.addOffline')}
+              </Button>
+            </form>
           )}
           {add.isError && <ErrorCard error={add.error} />}
-          <ComingSoon label={t('accounts.microsoft')} icon={<User className="h-5 w-5" />} />
         </section>
       </div>
       {removing && (
@@ -207,7 +209,7 @@ export function Accounts() {
             </>
           }
         >
-          {removeBody}
+          {removeBody(removing)}
           {losesActive && (
             <p className="mt-2">{successor ? t('accounts.removeNext', { name: successor.username }) : t('accounts.removeNone')}</p>
           )}

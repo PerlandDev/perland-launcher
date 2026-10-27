@@ -44,6 +44,7 @@ export const qk = {
   update: ['update'] as const,
   instances: ['instances'] as const,
   accounts: ['accounts'] as const,
+  accountReady: ['accountReady'] as const,
   playtime: ['playtime'] as const,
   continueTarget: (id: string) => ['continue', id] as const,
   mcVersions: ['catalog', 'minecraft'] as const,
@@ -92,6 +93,9 @@ export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: comm
 export const useUpdate = () => useQuery({ queryKey: qk.update, queryFn: commands.updateStatus });
 export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: commands.instancesList });
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
+/** Whether Play can start (a Microsoft account in use, signed in), whether Microsoft is still approving this build, and whether
+ *  the "offline accounts are gone" notice is due. Every sign-in, remove and dismiss asks for it again. */
+export const useAccountReady = () => useQuery({ queryKey: qk.accountReady, queryFn: commands.accountReady });
 /** Time played per instance on this computer. Refreshed when a run ends and when an instance moves or goes. */
 export const usePlaytime = () => useQuery({ queryKey: qk.playtime, queryFn: commands.playtimeList });
 /** Where Continue takes the player in instance `id`. Refreshed when a run ends. */
@@ -663,10 +667,15 @@ export function useDeleteInstance(opts: Opts = {}) {
 
 export function useAccountMutations(opts: Opts = {}) {
   const qc = useQueryClient();
-  const onSuccess = (file: Awaited<ReturnType<typeof commands.accountsList>>) => qc.setQueryData(qk.accounts, file);
+  const onSuccess = (file: Awaited<ReturnType<typeof commands.accountsList>>) => {
+    qc.setQueryData(qk.accounts, file);
+    // Who is in use decides whether Play can start.
+    void qc.invalidateQueries({ queryKey: qk.accountReady });
+  };
   // A failed change may have been made against a stale list, so the list is asked for again.
   const failed = (error: unknown) => {
     void qc.invalidateQueries({ queryKey: qk.accounts });
+    void qc.invalidateQueries({ queryKey: qk.accountReady });
     onError(opts)(error);
   };
   return {
@@ -674,6 +683,17 @@ export function useAccountMutations(opts: Opts = {}) {
     setActive: useMutation({ mutationFn: commands.accountSetActive, onSuccess, onError: failed }),
     remove: useMutation({ mutationFn: commands.accountRemove, onSuccess, onError: failed }),
   };
+}
+
+/** Hide the "offline accounts are gone" notice for good. */
+export function useDismissOfflineNotice(opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: commands.accountDismissOfflineNotice,
+    onSettled: () =>
+      Promise.all([qc.invalidateQueries({ queryKey: qk.accountReady }), qc.invalidateQueries({ queryKey: qk.accounts })]),
+    onError: onError(opts),
+  });
 }
 
 /** Remove a resource pack or shader. The list the core hands back replaces the cached one. */

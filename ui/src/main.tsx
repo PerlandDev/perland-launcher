@@ -36,6 +36,9 @@ async function bootstrap() {
       crash: crashScenario(params.get("crash")),
       release: params.has("release"),
       beta: params.has("beta"),
+      microsoft: (
+        ["signedOut", "signedIn", "awaiting", "notConfigured", "notOwned"] as const
+      ).find((v) => v === params.get("microsoft")),
       update: mockUpdateState(params.get("update")),
       manual: params.has("manual"),
       noUpdate: params.has("noUpdate"),

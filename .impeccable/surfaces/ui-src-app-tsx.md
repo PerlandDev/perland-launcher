@@ -32,7 +32,7 @@ related_targets: ["ui/src"]
   - *The owner card is the same tile.* Warnings are coral-diamond sentences under the head, not a banner; the status words replace the readout's word; Delete server is a danger item in the card's ⋯ menu behind the standard confirm. Play stays the only amber.
 - **Minecraft link (#52), decided 2026-10-17:**
   - *A row, not a screen.* A second `panel` under the profile in the signed-in Perland card, built like it: a 40px `raised` plate (a pixel link icon in `ink-dim`), the 700-weight title over one `ink-dim` line, and the action at right. Absent when signed out or the stats add-on is off.
-  - *Nothing lit.* Link, Copy command and Get a new code are raised; Unlink and Cancel are ghost. Accounts' one primary stays Add offline account.
+  - *Nothing lit.* Link, Copy command and Get a new code are raised; Unlink and Cancel are ghost. Accounts' one primary is Add Microsoft account.
   - *The code is a readout.* Bungee 1.5rem in a recessed `well`, tabular, with the countdown ("Expires in 9:41") in `ink-dim` tabular beside it; the command sits in the sentence as a mono `inline-code` chip. The code block lines up with the text column, its buttons on their own row below.
   - *Linked is a fact.* "Linked to **Steve**" with the name in 700 `ink`: no lime lamp or badge.
 - **Server stats (#52), decided 2026-10-17:**
@@ -41,7 +41,7 @@ related_targets: ["ui/src"]
   - *Nothing when there's nothing.* Signed out, not linked, the add-on off, or no achievements (and under a minute on the card): no line, no plate.
 - **Medals and achievements (#32), decided 2026-10-21:**
   - *Medals are pictures.* A pixel octagon on a dirt ribbon in an art palette of four metals (copper, iron, gold, diamond), never the role hues; the tier is also a word. Locked is a sunk `ground` slot with a dim emblem.
-  - *One case, not cards.* All medals share one `panel` on Accounts in two columns; progress is the blue block meter. Nothing lit; Add offline account stays the primary.
+  - *One case, not cards.* All medals share one `panel` on Accounts in two columns; progress is the blue block meter. Nothing lit; Add Microsoft account stays the primary.
   - *The facts open the list.* The card's stats line and Home's plate stay flat facts that raise on hover and open the achievements dialog; Accounts lists the servers as flat rows. Earned is a lime check (OK) and not yet is a dim lock, each also in words.
   - *Calm when off.* Without Perland's stats only the local time medal shows; not linked, the server medals show locked under one line.
 - **Instance actions without right-click (#62), decided 2026-10-17:**
@@ -79,6 +79,10 @@ related_targets: ["ui/src"]
   - *A key, not a hero.* A standard raised key (md, never lit) in Play's column, directly above Play and right-aligned to it; Play stays the room's only amber.
   - *The verb stays, the name gives.* "Continue" in 400 `ink-dim`, then the world or server name in 650 `ink`, truncating inside a key no wider than Play (17.5rem). The full "Continue: name" is the accessible name and tooltip. A pixel map marks a world, the server glyph a server.
   - *Nothing when there's nowhere.* No place, a deleted world, a server off the list, a gone Perland server or a version that can't open a world: no key, no message. It steps aside while the instance runs, and is disabled with Play when there's no account.
+- **Microsoft sign-in, decided 2026-10-27:**
+  - *One shared key.* First run, Accounts and the sign-in prompt draw the same `MicrosoftSignIn`: why line, one amber key, then Perland's browser step (status line, ghost Cancel). It replaces the "coming soon" tile; no Microsoft logo.
+  - *Approval is advice.* Waiting on Microsoft's approval is `blue-ink` with a pixel clock and "Try again", never coral; a real failure is the coral diamond line under the key, never a toast.
+  - *Accounts' amber moves.* Add Microsoft account is Accounts' one lit key; dev builds' Add offline account drops to raised.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract

@@ -77,8 +77,13 @@ export interface MockOptions {
   /** The game crashes a few seconds into its first run, with this cause. */
   crash?: CrashScenario;
   release?: boolean;
-  /** An optimized beta build: offline accounts stay open, About says so. */
+  /** An optimized beta build: About says so, and offline accounts are hidden as the real app hides them (Accounts and First run
+   *  then offer Microsoft sign-in only, and `account_ready` asks for the "offline accounts are gone" notice). */
   beta?: boolean;
+  /** Microsoft sign-in: `signedOut` (default), `signedIn` (Alex, a Microsoft account, is in use), `awaiting` (the sign-in fails
+   *  with `microsoft_awaiting_approval` and the wait is remembered), `notConfigured` (a build without a client id) or `notOwned`
+   *  (the account doesn't own Minecraft). A sign-in waits 1.5 s, as if in the browser, then signs in as Alex. */
+  microsoft?: MicrosoftScenario;
   /** The launcher's own update state; defaults to idle on release and beta builds, off in dev. */
   update?: UpdateState;
   /** The pack's first sync ends with two files the player has to download by hand. */
@@ -181,6 +186,13 @@ const IMPORT_SIZE = 1_234_000_000;
 
 /** A 1x1 PNG, the stand-in for a picked image. */
 const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+export type MicrosoftScenario = 'signedOut' | 'signedIn' | 'awaiting' | 'notConfigured' | 'notOwned';
+
+/** The Microsoft account the mock signs in as. */
+export const MOCK_MICROSOFT_ACCOUNT = { provider: 'microsoft', username: 'Alex', uuid: '853c80ef-3c37-49fd-aa49-938b674adae6' } as const;
+/** How long the mock's Microsoft sign-in waits on "the browser". */
+export const MOCK_MICROSOFT_WAIT_MS = 1500;
 
 const clone = <T>(value: T): T => structuredClone(value);
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -306,6 +318,8 @@ function seed(options: MockOptions) {
   const listing = clone(listingFx) as InstanceListing;
   const accounts = clone(accountsFx) as AccountsFile;
   const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, iconShape: options.iconShape ?? 'square', theme: options.theme ?? 'laminate', font: options.font ?? 'hyperlegible', language: null };
+  accounts.msaWaiting = null;
+  accounts.offlineNoticeDismissed = false;
   if (options.firstRun) {
     listing.instances = [];
     listing.damaged = [];
@@ -313,12 +327,24 @@ function seed(options: MockOptions) {
     accounts.active = null;
     settings.firstRunDone = false;
   }
+  if (options.microsoft === 'signedIn') {
+    accounts.accounts = [...accounts.accounts, { ...MOCK_MICROSOFT_ACCOUNT }];
+    accounts.active = MOCK_MICROSOFT_ACCOUNT.uuid;
+  }
   const appInfo: AppInfo = {
     ...(clone(appInfoFx) as AppInfo),
     build: options.release ? 'release' : options.beta ? 'beta' : 'dev',
-    offlineAllowed: !options.release,
+    // Offline accounts are a dev-build thing only.
+    offlineAllowed: !options.release && !options.beta,
     panel: options.panel ?? true,
   };
+  // Like the core's `visible`: a non-dev build never lists an offline account, and one in use reads as none. The real file
+  // keeps them for a dev build on the same computer; the mock has no dev build to keep them for.
+  const offlineHidden = !appInfo.offlineAllowed && accounts.accounts.some((a) => a.provider === 'offline');
+  if (!appInfo.offlineAllowed) {
+    accounts.accounts = accounts.accounts.filter((a) => a.provider !== 'offline');
+    if (!accounts.accounts.some((a) => a.uuid === accounts.active)) accounts.active = null;
+  }
   const update: UpdateState = options.update ?? { state: options.release || options.beta ? 'idle' : 'off' };
   const mods = new Map<string, LocalMod[]>([['asalith-fields', clone(localModsFx) as LocalMod[]]]);
   const packs = new Map<string, MockPack>();
@@ -440,6 +466,9 @@ function seed(options: MockOptions) {
     servers,
     restorePoints,
     accounts,
+    // The core's `hides_offline`: this build hid offline accounts the file still holds.
+    offlineHidden,
+    microsoft: { scenario: options.microsoft ?? 'signedOut', cancel: null as (() => void) | null },
     settings,
     appInfo,
     update,
@@ -481,6 +510,42 @@ function seed(options: MockOptions) {
 }
 
 export type MockState = ReturnType<typeof seed>;
+
+/** Wait on "the browser" for `ms`; false when the sign-in was canceled meanwhile. */
+function microsoftWait(state: MockState, ms: number) {
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      state.microsoft.cancel = null;
+      resolve(true);
+    }, ms);
+    state.microsoft.cancel = () => {
+      clearTimeout(timer);
+      state.microsoft.cancel = null;
+      resolve(false);
+    };
+  });
+}
+
+/** The core's `account_sign_in_microsoft`: the browser step, then the account in use, or the scenario's failure. */
+async function signInMicrosoft(state: MockState) {
+  // A new sign-in cancels the one before, as the core's slot does.
+  state.microsoft.cancel?.();
+  const { scenario } = state.microsoft;
+  if (scenario === 'notConfigured') fail('auth', 'microsoft_not_configured', "Microsoft sign-in isn't set up in this build.");
+  event({ type: 'microsoft_sign_in', phase: 'waiting' });
+  if (!(await microsoftWait(state, MOCK_MICROSOFT_WAIT_MS))) return null;
+  event({ type: 'microsoft_sign_in', phase: 'exchanging' });
+  if (scenario === 'awaiting') {
+    state.accounts.msaWaiting = { clientId: 'mock-client', at: Math.floor(Date.now() / 1000) };
+    fail('auth', 'microsoft_awaiting_approval', 'Microsoft sign-in is waiting on approval.');
+  }
+  state.accounts.msaWaiting = null;
+  if (scenario === 'notOwned') fail('auth', 'minecraft_not_owned', "This Microsoft account doesn't own Minecraft: Java Edition.");
+  const alex = { ...MOCK_MICROSOFT_ACCOUNT };
+  state.accounts.accounts = [...state.accounts.accounts.filter((a) => a.uuid !== alex.uuid), alex];
+  state.accounts.active = alex.uuid;
+  return state.accounts;
+}
 
 /** Like the core: a game that ran adds its time before the run goes idle. */
 function addPlaytime(state: MockState, id: string, run: MockRun) {
@@ -966,6 +1031,22 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       if (state.accounts.active === args.uuid) state.accounts.active = state.accounts.accounts[0]?.uuid ?? null;
       return state.accounts;
     }
+    case 'account_sign_in_microsoft':
+      return signInMicrosoft(state);
+    case 'account_sign_in_cancel':
+      state.microsoft.cancel?.();
+      return null;
+    case 'account_ready': {
+      const active = state.accounts.accounts.find((a) => a.uuid === state.accounts.active);
+      return {
+        ready: active?.provider === 'microsoft',
+        awaitingApproval: state.accounts.msaWaiting !== null,
+        offlineNotice: state.offlineHidden && !state.accounts.offlineNoticeDismissed,
+      };
+    }
+    case 'account_dismiss_offline_notice':
+      state.accounts.offlineNoticeDismissed = true;
+      return null;
     case 'play': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
       if (!state.accounts.active) fail('auth', 'no_account', 'Add an account before playing');
