@@ -139,11 +139,20 @@ pub fn save_refresh(store: &dyn KeyedSecrets, uuid: &str, token: &str) -> Result
     for (i, piece) in pieces.iter().enumerate() {
         store.save(&chunk_key(uuid, i), piece)?;
     }
-    // Remove chunks left by a longer earlier token, until a load finds none.
-    let mut i = pieces.len();
-    while store.load(&chunk_key(uuid, i))?.is_some() {
+    // Remove chunks left by a longer earlier token.
+    delete_from(store, uuid, pieces.len())
+}
+
+/// Delete chunks `start`, `start + 1`, ... up to the first missing one. The end is found first
+/// and chunks go from the last down, so a failure partway leaves a contiguous run from `start`
+/// that a retry finds and finishes: no chunk is stranded behind a gap.
+fn delete_from(store: &dyn KeyedSecrets, uuid: &str, start: usize) -> Result<(), SecretError> {
+    let mut end = start;
+    while store.load(&chunk_key(uuid, end))?.is_some() {
+        end += 1;
+    }
+    for i in (start..end).rev() {
         store.delete(&chunk_key(uuid, i))?;
-        i += 1;
     }
     Ok(())
 }
@@ -162,17 +171,13 @@ pub fn load_refresh(store: &dyn KeyedSecrets, uuid: &str) -> Result<Option<Strin
 
 /// Remove every chunk of account `uuid`'s refresh token. Nothing stored is fine.
 pub fn delete_refresh(store: &dyn KeyedSecrets, uuid: &str) -> Result<(), SecretError> {
-    let mut i = 0;
-    while store.load(&chunk_key(uuid, i))?.is_some() {
-        store.delete(&chunk_key(uuid, i))?;
-        i += 1;
-    }
-    Ok(())
+    delete_from(store, uuid, 0)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
 
     const UUID: &str = "11111111-2222-3333-4444-555555555555";
 
@@ -264,6 +269,70 @@ mod tests {
         assert_eq!(
             load_refresh(&store, UUID).unwrap().unwrap().len(),
             CHUNK_CHARS * 2
+        );
+    }
+
+    /// A store whose `n`th delete (counting from 1) fails once.
+    struct FailingDelete {
+        inner: MemorySecrets,
+        deletes: Mutex<usize>,
+        fail_on: usize,
+    }
+
+    impl KeyedSecrets for FailingDelete {
+        fn load(&self, key: &str) -> Result<Option<String>, SecretError> {
+            self.inner.load(key)
+        }
+        fn save(&self, key: &str, value: &str) -> Result<(), SecretError> {
+            self.inner.save(key, value)
+        }
+        fn delete(&self, key: &str) -> Result<(), SecretError> {
+            let mut n = self.deletes.lock().unwrap();
+            *n += 1;
+            if *n == self.fail_on {
+                return Err(SecretError::Other("boom".into()));
+            }
+            self.inner.delete(key)
+        }
+    }
+
+    fn failing(fail_on: usize) -> FailingDelete {
+        FailingDelete {
+            inner: MemorySecrets::default(),
+            deletes: Mutex::new(0),
+            fail_on,
+        }
+    }
+
+    fn assert_no_chunks(store: &dyn KeyedSecrets, chunks: usize) {
+        for i in 0..chunks {
+            assert_eq!(store.load(&chunk_key(UUID, i)).unwrap(), None, "chunk {i}");
+        }
+    }
+
+    #[test]
+    fn interrupted_delete_is_finished_by_a_retry() {
+        for fail_on in 1..=3 {
+            let store = failing(fail_on);
+            save_refresh(&store, UUID, &token(2500)).unwrap();
+            assert!(delete_refresh(&store, UUID).is_err());
+            delete_refresh(&store, UUID).unwrap();
+            assert_no_chunks(&store, 4);
+        }
+    }
+
+    #[test]
+    fn interrupted_stale_tail_removal_is_finished_by_a_retry() {
+        let store = failing(2);
+        save_refresh(&store, UUID, &token(2500)).unwrap();
+        assert!(save_refresh(&store, UUID, "short").is_err());
+        // The retry removes the rest of the tail.
+        save_refresh(&store, UUID, "short").unwrap();
+        assert_eq!(store.load(&chunk_key(UUID, 1)).unwrap(), None);
+        assert_eq!(store.load(&chunk_key(UUID, 2)).unwrap(), None);
+        assert_eq!(
+            load_refresh(&store, UUID).unwrap().as_deref(),
+            Some("short")
         );
     }
 }
