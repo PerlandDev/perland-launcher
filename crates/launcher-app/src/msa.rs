@@ -209,7 +209,32 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 }
                 Err(e)
             }
+            // These come only after Minecraft accepted the Xbox token, so the client id is
+            // approved: the memo of a wait no longer holds.
+            Err(e)
+                if matches!(
+                    e.code,
+                    ErrorCode::MinecraftNotOwned | ErrorCode::MinecraftNoProfile
+                ) =>
+            {
+                self.clear_msa_waiting().await;
+                Err(e)
+            }
             Err(e) => Err(e),
+        }
+    }
+
+    /// Forget the approval wait, if one is remembered. A failure is only logged: the sign-in's
+    /// own answer matters more.
+    async fn clear_msa_waiting(&self) {
+        let store = self.accounts.lock().await;
+        let cleared = match store.list().await {
+            Ok(file) if file.msa_waiting.is_some() => store.set_msa_waiting(None).await,
+            Ok(_) => Ok(()),
+            Err(e) => Err(e),
+        };
+        if let Err(e) = cleared {
+            tracing::warn!(code = ?e.code, "couldn't forget the approval wait");
         }
     }
 
@@ -513,6 +538,37 @@ mod tests {
         assert!(ready.ready);
         let file = core.accounts.lock().await.list().await.unwrap();
         assert_eq!(file.msa_waiting, None);
+    }
+
+    #[tokio::test]
+    async fn awaiting_approval_is_cleared_once_past_xbox() {
+        let (core, runner, host, _t) = core(BuildKind::Release);
+        {
+            let mut redeems = runner.msa.redeems.lock().unwrap();
+            redeems.push_back(Err(awaiting()));
+            redeems.push_back(Err(LauncherError::auth(
+                ErrorCode::MinecraftNotOwned,
+                "doesn't own Minecraft",
+            )));
+        }
+        let task = sign_in(&core);
+        let opened = host.wait_for_opened(1).await;
+        come_back(&opened[0], "code=c1").await;
+        finish(task).await.unwrap_err();
+        assert!(core.account_ready().await.unwrap().awaiting_approval);
+
+        let task = sign_in(&core);
+        let opened = host.wait_for_opened(2).await;
+        come_back(&opened[1], "code=c2").await;
+        let err = finish(task).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::MinecraftNotOwned);
+        assert!(
+            !core.account_ready().await.unwrap().awaiting_approval,
+            "Minecraft answered, so the app is approved"
+        );
+        let file = core.accounts.lock().await.list().await.unwrap();
+        assert_eq!(file.msa_waiting, None);
+        assert!(file.accounts.is_empty());
     }
 
     #[tokio::test]
