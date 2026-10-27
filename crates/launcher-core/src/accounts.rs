@@ -31,6 +31,8 @@ pub struct Session {
     pub access_token: String,
     pub user_type: String,
     pub xuid: Option<String>,
+    /// The Azure app the token was issued to (`clientid`); `None` for an offline session.
+    pub client_id: Option<String>,
 }
 
 // Manual `Debug` so formatting a `Session` (or anything holding one) can never print the token.
@@ -42,6 +44,7 @@ impl std::fmt::Debug for Session {
             .field("access_token", &"<redacted>")
             .field("user_type", &self.user_type)
             .field("xuid", &self.xuid)
+            .field("client_id", &self.client_id)
             .finish()
     }
 }
@@ -54,6 +57,7 @@ impl Account {
             access_token: "0".to_string(),
             user_type: "legacy".to_string(),
             xuid: None,
+            client_id: None,
         }
     }
 }
@@ -235,6 +239,18 @@ impl AccountStore {
         Ok(file)
     }
 
+    /// Change the player name of the account `uuid`, leaving which account is active alone.
+    /// `false` when no such account is stored (it was removed meanwhile): nothing is written.
+    pub async fn rename(&self, uuid: &str, username: &str) -> Result<bool> {
+        let mut file = self.load().await?;
+        let Some(account) = file.accounts.iter_mut().find(|a| a.uuid == uuid) else {
+            return Ok(false);
+        };
+        account.username = username.to_string();
+        self.save(&file).await?;
+        Ok(true)
+    }
+
     pub async fn set_msa_waiting(&self, waiting: Option<MsaWaiting>) -> Result<()> {
         let mut file = self.load().await?;
         file.msa_waiting = waiting;
@@ -318,6 +334,7 @@ mod tests {
         assert_eq!(s.uuid, "5627dd98e6be3c21b8a8e92344183641");
         assert_eq!(s.access_token, "0");
         assert_eq!(s.user_type, "legacy");
+        assert_eq!(s.client_id, None);
     }
 
     #[test]
@@ -328,8 +345,10 @@ mod tests {
             access_token: "secret-token-123".to_string(),
             user_type: "msa".to_string(),
             xuid: None,
+            client_id: Some("client-1".to_string()),
         };
         let shown = format!("{session:?}");
+        assert!(shown.contains("client-1"));
         assert!(shown.contains("<redacted>"));
         assert!(shown.contains("Steve"));
         assert!(!shown.contains("secret-token-123"));
@@ -436,6 +455,33 @@ mod tests {
                 .unwrap()
                 .username,
             "AlexRenamed"
+        );
+        assert_eq!(store.load().await.unwrap(), file);
+    }
+
+    #[tokio::test]
+    async fn rename_keeps_the_active_account() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = AccountStore::new(tmp.path().join("accounts.json"));
+        let alex = "11111111-1111-1111-1111-111111111111";
+        let sam = "22222222-2222-2222-2222-222222222222";
+        store.add_microsoft(microsoft("Alex", alex)).await.unwrap();
+        store.add_microsoft(microsoft("Sam", sam)).await.unwrap();
+        assert!(store.rename(alex, "Alexis").await.unwrap());
+        let file = store.load().await.unwrap();
+        assert_eq!(
+            file.active.as_deref(),
+            Some(sam),
+            "the active account stays"
+        );
+        let names: Vec<_> = file.accounts.iter().map(|a| a.username.as_str()).collect();
+        assert_eq!(names, ["Alexis", "Sam"]);
+        assert!(
+            !store
+                .rename("33333333-3333-3333-3333-333333333333", "X")
+                .await
+                .unwrap(),
+            "an account that is gone is not added back"
         );
         assert_eq!(store.load().await.unwrap(), file);
     }

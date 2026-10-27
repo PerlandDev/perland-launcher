@@ -5,10 +5,13 @@
 use std::sync::Mutex;
 
 use launcher_core::{
-    accounts::{hides_offline, visible, Account, AccountsFile, MsaWaiting, Provider},
+    accounts::{
+        hides_offline, offline_allowed, visible, Account, AccountsFile, MsaWaiting, Provider,
+        Session,
+    },
     http::HttpClient,
     msa::{
-        minecraft::{dashed, McProfile, McToken, SignedIn},
+        minecraft::{dashed, ownership, McProfile, McToken, SignedIn},
         secrets::{delete_refresh, load_refresh, save_refresh},
         MsaClient, MsaEndpoints,
     },
@@ -51,6 +54,18 @@ pub(crate) fn not_configured() -> LauncherError {
         ErrorCode::MicrosoftNotConfigured,
         "Microsoft sign-in isn't set up in this build.",
     )
+}
+
+/// A Minecraft token with less time than this left is refreshed before a launch.
+const MIN_TOKEN_LIFE: u64 = 3600;
+
+/// A launch whose Microsoft sign-in can't be used any more.
+fn sign_in_again() -> LauncherError {
+    LauncherError::auth(
+        ErrorCode::MicrosoftSignInAgain,
+        "Sign in with Microsoft again to keep playing.",
+    )
+    .with_fix("Sign in")
 }
 
 /// `MsaApi` over `launcher_core::msa::MsaClient`.
@@ -341,6 +356,151 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
     }
 
+    /// The check before every launch: the session the game starts with. An offline account
+    /// plays only in a dev build. A Microsoft account always passes an online check of its
+    /// Minecraft token, refreshed first when it has less than an hour left; any failure,
+    /// a network one included, is returned and the game doesn't start.
+    pub(crate) async fn session_for(&self, account: Account) -> Result<Session> {
+        match account.provider {
+            Provider::Offline if offline_allowed(self.config.build) => {
+                Ok(account.offline_session())
+            }
+            Provider::Offline => Err(LauncherError::auth(
+                ErrorCode::NoAccount,
+                "Sign in with Microsoft to play",
+            )),
+            Provider::Microsoft => self.microsoft_session(account).await,
+        }
+    }
+
+    async fn microsoft_session(&self, account: Account) -> Result<Session> {
+        let msa = self.runner.msa();
+        // Held for the whole check, so launches at once share one refresh: the second one
+        // reads the token the first one stored.
+        let _held = self.msa_refresh.lock().await;
+        let uuid = account.uuid.clone();
+        let refresh = self
+            .stored_refresh(&uuid)
+            .await?
+            .ok_or_else(sign_in_again)?;
+        let cached = self
+            .msa_tokens
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&uuid)
+            .cloned();
+        let mut refreshed = false;
+        let (mut token, mut xuid) = match cached {
+            Some((token, xuid))
+                if token.expires_at.saturating_sub(now_secs()) >= MIN_TOKEN_LIFE =>
+            {
+                (token, xuid)
+            }
+            _ => {
+                refreshed = true;
+                self.refresh_minecraft(&*msa, &uuid, refresh.clone())
+                    .await?
+            }
+        };
+        let profile = loop {
+            match msa.profile(token.clone()).await {
+                Ok(Some(profile)) => break profile,
+                Ok(None) => return Err(ownership(None, false).unwrap_err()),
+                // The token was turned down: one refresh, then ask again.
+                Err(e) if e.code == ErrorCode::MicrosoftSignInAgain && !refreshed => {
+                    refreshed = true;
+                    (token, xuid) = self
+                        .refresh_minecraft(&*msa, &uuid, refresh.clone())
+                        .await?;
+                }
+                Err(e) => return Err(e),
+            }
+        };
+        if profile.name != account.username {
+            if let Err(e) = self
+                .accounts
+                .lock()
+                .await
+                .rename(&uuid, &profile.name)
+                .await
+            {
+                tracing::warn!(code = ?e.code, "couldn't keep the new player name");
+            }
+        }
+        Ok(Session {
+            username: profile.name,
+            uuid: profile.id.replace('-', ""),
+            access_token: token.access_token,
+            user_type: "msa".into(),
+            xuid,
+            client_id: msa.client_id(),
+        })
+    }
+
+    /// The refresh token stored for `uuid`.
+    async fn stored_refresh(&self, uuid: &str) -> Result<Option<String>> {
+        let secrets = self.msa_secrets.clone();
+        let key = uuid.to_string();
+        tokio::task::spawn_blocking(move || load_refresh(&*secrets, &key))
+            .await
+            .unwrap_or_else(|_| Err(SecretError::Other("the credential store stopped".into())))
+            .map_err(|e| {
+                let phrase = secret_phrase(&e);
+                tracing::warn!("couldn't read the Microsoft sign-in: {phrase}");
+                LauncherError::auth(
+                    ErrorCode::SignInFailed,
+                    "Couldn't read your Microsoft sign-in on this computer.",
+                )
+                .with_detail(phrase)
+            })
+    }
+
+    /// Trade the refresh token for a new Minecraft token. The rotated refresh token is stored
+    /// before the new Minecraft token is kept or used; if it can't be, nothing is kept.
+    /// A refused refresh deletes nothing.
+    async fn refresh_minecraft(
+        &self,
+        msa: &dyn MsaApi,
+        uuid: &str,
+        refresh: String,
+    ) -> Result<(McToken, Option<String>)> {
+        let signed = match msa.refresh(refresh).await {
+            Ok(signed) => signed,
+            // Only after Minecraft accepted the Xbox token, so the client id is approved.
+            Err(e)
+                if matches!(
+                    e.code,
+                    ErrorCode::MinecraftNotOwned | ErrorCode::MinecraftNoProfile
+                ) =>
+            {
+                self.clear_msa_waiting().await;
+                return Err(e);
+            }
+            Err(e) => return Err(e),
+        };
+        self.clear_msa_waiting().await;
+        let secrets = self.msa_secrets.clone();
+        let (key, rotated) = (uuid.to_string(), signed.refresh_token);
+        tokio::task::spawn_blocking(move || save_refresh(&*secrets, &key, &rotated))
+            .await
+            .unwrap_or_else(|_| Err(SecretError::Other("the credential store stopped".into())))
+            .map_err(|e| {
+                let phrase = secret_phrase(&e);
+                tracing::warn!("couldn't keep the refreshed Microsoft sign-in: {phrase}");
+                LauncherError::auth(
+                    ErrorCode::SignInFailed,
+                    "Couldn't keep your Microsoft sign-in on this computer.",
+                )
+                .with_detail(phrase)
+            })?;
+        let kept = (signed.minecraft, signed.xuid);
+        self.msa_tokens
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(uuid.to_string(), kept.clone());
+        Ok(kept)
+    }
+
     /// Don't show the "offline accounts are gone" notice again.
     pub async fn account_dismiss_offline_notice(&self) -> Result<()> {
         self.accounts.lock().await.dismiss_offline_notice().await
@@ -349,6 +509,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Forget what a removed account kept: its Minecraft token and its refresh token. A
     /// credential store that fails is logged; the account is gone either way.
     pub(crate) async fn forget_microsoft(&self, uuid: &str) {
+        // A launch check under way could store a rotated refresh token: let it finish first.
+        let _held = self.msa_refresh.lock().await;
         self.msa_tokens
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -368,22 +530,27 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
 
     use launcher_core::{
-        accounts::{offline_account, Account, AccountsFile, BuildKind, Provider},
+        accounts::{offline_account, Account, AccountsFile, BuildKind, MsaWaiting, Provider},
         invite::Url,
         msa::{
-            minecraft::dashed,
-            secrets::{load_refresh, save_refresh},
+            minecraft::{dashed, McProfile, McToken},
+            secrets::{load_refresh, save_refresh, KeyedSecrets, MemorySecrets},
         },
+        perland::SecretError,
         ErrorCode, LauncherError, Result,
     };
 
     use crate::{
-        app::tests::{core, TestCore},
+        app::tests::{core, core_with_msa_secrets, TestCore},
         dto::PerlandSignInPhase,
         events::AppEvent,
+        restore::now_secs,
         testing::{signed_in, MS_CLIENT_ID},
     };
 
@@ -779,6 +946,355 @@ mod tests {
         assert_eq!(
             core.account_set_active(&steve).await.unwrap().active,
             Some(steve)
+        );
+    }
+
+    // ---- The check before every launch ----
+
+    /// Alex as a stored Microsoft account (the active one) with refresh token `refresh-Alex`,
+    /// and, with `expires_in`, Minecraft token `mc-cached` in memory for that many seconds.
+    async fn signed_alex(core: &TestCore, expires_in: Option<u64>) -> Account {
+        let account = Account {
+            provider: Provider::Microsoft,
+            username: "Alex".into(),
+            uuid: dashed(ALEX_ID),
+        };
+        core.accounts
+            .lock()
+            .await
+            .add_microsoft(account.clone())
+            .await
+            .unwrap();
+        save_refresh(&*core.msa_secrets, &account.uuid, "refresh-Alex").unwrap();
+        if let Some(secs) = expires_in {
+            core.msa_tokens.lock().unwrap().insert(
+                account.uuid.clone(),
+                (
+                    McToken {
+                        access_token: "mc-cached".into(),
+                        expires_at: now_secs() + secs,
+                    },
+                    Some("xuid-cached".into()),
+                ),
+            );
+        }
+        account
+    }
+
+    fn sign_in_again() -> LauncherError {
+        LauncherError::auth(ErrorCode::MicrosoftSignInAgain, "sign in again")
+    }
+
+    fn token_of(core: &TestCore, uuid: &str) -> Option<String> {
+        core.msa_tokens
+            .lock()
+            .unwrap()
+            .get(uuid)
+            .map(|(t, _)| t.access_token.clone())
+    }
+
+    #[tokio::test]
+    async fn fresh_token_skips_refresh_but_checks_profile() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, Some(7200)).await;
+        let session = core.session_for(alex).await.unwrap();
+        assert!(runner.msa.calls_to("refresh").is_empty());
+        let profiles = runner.msa.calls_to("profile");
+        assert_eq!(profiles.len(), 1, "the online check always runs");
+        assert_eq!(profiles[0].args, ["mc-cached"]);
+        assert_eq!(session.access_token, "mc-cached");
+    }
+
+    #[tokio::test]
+    async fn stale_token_refreshes_and_stores_rotated_token() {
+        for cached in [None, Some(600)] {
+            let (core, runner, _host, _t) = core(BuildKind::Release);
+            let alex = signed_alex(&core, cached).await;
+            let mut rotated = signed_in("Alex", ALEX_ID);
+            rotated.refresh_token = "refresh-rotated".into();
+            rotated.minecraft.access_token = "mc-new".into();
+            runner.msa.refreshes.lock().unwrap().push_back(Ok(rotated));
+            let session = core.session_for(alex.clone()).await.unwrap();
+            let refreshes = runner.msa.calls_to("refresh");
+            assert_eq!(refreshes.len(), 1, "{cached:?}");
+            assert_eq!(refreshes[0].args, ["refresh-Alex"]);
+            assert_eq!(
+                refresh_of(&core, &alex.uuid).as_deref(),
+                Some("refresh-rotated")
+            );
+            assert_eq!(token_of(&core, &alex.uuid).as_deref(), Some("mc-new"));
+            assert_eq!(runner.msa.calls_to("profile")[0].args, ["mc-new"]);
+            assert_eq!(session.access_token, "mc-new");
+            assert_eq!(session.xuid.as_deref(), Some("xuid-Alex"));
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_launches_share_one_refresh() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, None).await;
+        let gate = runner.msa.hold("refresh");
+        let launch = |core: &Arc<TestCore>, account: Account| {
+            let core = core.clone();
+            tokio::spawn(async move { core.session_for(account).await })
+        };
+        let first = launch(&core, alex.clone());
+        let second = launch(&core, alex.clone());
+        runner.msa.wait_for_calls("refresh", 1).await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        gate.add_permits(2);
+        let a = first.await.unwrap().unwrap();
+        let b = second.await.unwrap().unwrap();
+        assert_eq!(runner.msa.calls_to("refresh").len(), 1);
+        assert_eq!(
+            runner.msa.calls_to("profile").len(),
+            2,
+            "each launch checks"
+        );
+        assert_eq!(a.access_token, "mc-Alex");
+        assert_eq!(b.access_token, "mc-Alex");
+    }
+
+    #[tokio::test]
+    async fn refresh_refused_asks_to_sign_in_again() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, None).await;
+        runner
+            .msa
+            .refreshes
+            .lock()
+            .unwrap()
+            .push_back(Err(sign_in_again()));
+        let err = core.session_for(alex.clone()).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::MicrosoftSignInAgain);
+        assert!(runner.msa.calls_to("profile").is_empty());
+        assert_eq!(
+            refresh_of(&core, &alex.uuid).as_deref(),
+            Some("refresh-Alex"),
+            "nothing is deleted"
+        );
+        assert_eq!(core.accounts_list().await.unwrap().accounts, vec![alex]);
+    }
+
+    #[tokio::test]
+    async fn missing_refresh_token_asks_to_sign_in_again() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, Some(7200)).await;
+        launcher_core::msa::secrets::delete_refresh(&*core.msa_secrets, &alex.uuid).unwrap();
+        let err = core.session_for(alex).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::MicrosoftSignInAgain);
+        assert!(runner.msa.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn profile_401_refreshes_once() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, Some(7200)).await;
+        runner
+            .msa
+            .profiles
+            .lock()
+            .unwrap()
+            .push_back(Err(sign_in_again()));
+        let session = core.session_for(alex.clone()).await.unwrap();
+        assert_eq!(runner.msa.calls_to("refresh").len(), 1);
+        let profiles = runner.msa.calls_to("profile");
+        assert_eq!(profiles.len(), 2);
+        assert_eq!(profiles[1].args, ["mc-Alex"]);
+        assert_eq!(session.access_token, "mc-Alex");
+
+        // A second 401, after the refresh, is the end.
+        let (core, runner, _host, _t) = crate::app::tests::core(BuildKind::Release);
+        let alex = signed_alex(&core, Some(7200)).await;
+        {
+            let mut profiles = runner.msa.profiles.lock().unwrap();
+            profiles.push_back(Err(sign_in_again()));
+            profiles.push_back(Err(sign_in_again()));
+        }
+        let err = core.session_for(alex).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::MicrosoftSignInAgain);
+        assert_eq!(runner.msa.calls_to("refresh").len(), 1);
+        assert_eq!(runner.msa.calls_to("profile").len(), 2);
+    }
+
+    #[tokio::test]
+    async fn no_profile_is_not_owned() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, Some(7200)).await;
+        runner.msa.profiles.lock().unwrap().push_back(Ok(None));
+        let err = core.session_for(alex).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::MinecraftNotOwned);
+    }
+
+    #[tokio::test]
+    async fn network_failure_never_launches() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, Some(7200)).await;
+        runner
+            .msa
+            .profiles
+            .lock()
+            .unwrap()
+            .push_back(Err(LauncherError::network(
+                ErrorCode::HostUnreachable,
+                "Couldn't reach Minecraft",
+            )));
+        let err = core.session_for(alex).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::HostUnreachable);
+        assert!(runner.msa.calls_to("refresh").is_empty());
+
+        // The same on the refresh.
+        let (core, runner, _host, _t) = crate::app::tests::core(BuildKind::Release);
+        let alex = signed_alex(&core, None).await;
+        runner
+            .msa
+            .refreshes
+            .lock()
+            .unwrap()
+            .push_back(Err(LauncherError::network(
+                ErrorCode::HostUnreachable,
+                "Couldn't reach Microsoft",
+            )));
+        let err = core.session_for(alex).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::HostUnreachable);
+        assert!(runner.msa.calls_to("profile").is_empty());
+    }
+
+    #[tokio::test]
+    async fn msa_session_is_msa_with_xuid_and_clientid() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, Some(7200)).await;
+        let session = core.session_for(alex).await.unwrap();
+        assert_eq!(session.username, "Alex");
+        assert_eq!(session.uuid, ALEX_ID, "undashed");
+        assert_eq!(session.access_token, "mc-cached");
+        assert_eq!(session.user_type, "msa");
+        assert_eq!(session.xuid.as_deref(), Some("xuid-cached"));
+        assert_eq!(session.client_id.as_deref(), Some(MS_CLIENT_ID));
+        assert!(!format!("{session:?}").contains("mc-cached"));
+    }
+
+    #[tokio::test]
+    async fn offline_session_only_in_dev() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        let steve = offline_account("Steve").unwrap();
+        let session = core.session_for(steve.clone()).await.unwrap();
+        assert_eq!(session.user_type, "legacy");
+        assert_eq!(session.client_id, None);
+        assert!(runner.msa.calls.lock().unwrap().is_empty());
+
+        let (core, _runner, _host, _t) = crate::app::tests::core(BuildKind::Beta);
+        let err = core.session_for(steve).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::NoAccount);
+    }
+
+    #[tokio::test]
+    async fn renamed_profile_updates_the_account_and_keeps_active() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, Some(7200)).await;
+        let steve = Account {
+            provider: Provider::Microsoft,
+            username: "Steve".into(),
+            uuid: dashed(STEVE_ID),
+        };
+        core.accounts
+            .lock()
+            .await
+            .add_microsoft(steve.clone())
+            .await
+            .unwrap();
+        runner
+            .msa
+            .profiles
+            .lock()
+            .unwrap()
+            .push_back(Ok(Some(McProfile {
+                id: ALEX_ID.into(),
+                name: "Alexis".into(),
+            })));
+        let session = core.session_for(alex.clone()).await.unwrap();
+        assert_eq!(session.username, "Alexis");
+        let file = core.accounts_list().await.unwrap();
+        assert_eq!(file.active, Some(steve.uuid), "the active account stays");
+        let renamed = file.accounts.iter().find(|a| a.uuid == alex.uuid).unwrap();
+        assert_eq!(renamed.username, "Alexis");
+    }
+
+    #[tokio::test]
+    async fn refresh_clears_the_approval_wait() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, None).await;
+        let waiting = MsaWaiting {
+            client_id: MS_CLIENT_ID.into(),
+            at: 1,
+        };
+        core.accounts
+            .lock()
+            .await
+            .set_msa_waiting(Some(waiting))
+            .await
+            .unwrap();
+        core.session_for(alex).await.unwrap();
+        let file = core.accounts.lock().await.list().await.unwrap();
+        assert_eq!(file.msa_waiting, None, "Minecraft answered");
+    }
+
+    #[tokio::test]
+    async fn refresh_awaiting_approval_is_returned_and_not_remembered() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, None).await;
+        runner
+            .msa
+            .refreshes
+            .lock()
+            .unwrap()
+            .push_back(Err(awaiting()));
+        let err = core.session_for(alex).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::MicrosoftAwaitingApproval);
+        let file = core.accounts.lock().await.list().await.unwrap();
+        assert_eq!(file.msa_waiting, None, "only a sign-in remembers it");
+    }
+
+    /// Microsoft refresh tokens in memory, whose saves fail while `fail` is set.
+    #[derive(Default)]
+    struct FailingSaves {
+        inner: MemorySecrets,
+        fail: AtomicBool,
+    }
+
+    impl KeyedSecrets for FailingSaves {
+        fn load(&self, key: &str) -> std::result::Result<Option<String>, SecretError> {
+            self.inner.load(key)
+        }
+        fn save(&self, key: &str, value: &str) -> std::result::Result<(), SecretError> {
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(SecretError::Other("locked".into()));
+            }
+            self.inner.save(key, value)
+        }
+        fn delete(&self, key: &str) -> std::result::Result<(), SecretError> {
+            self.inner.delete(key)
+        }
+    }
+
+    #[tokio::test]
+    async fn rotated_token_that_cannot_be_kept_never_launches() {
+        let secrets = Arc::new(FailingSaves::default());
+        let (core, runner, _host, _t) = core_with_msa_secrets(BuildKind::Release, secrets.clone());
+        let alex = signed_alex(&core, Some(600)).await;
+        secrets.fail.store(true, Ordering::SeqCst);
+        let err = core.session_for(alex.clone()).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::SignInFailed);
+        assert_eq!(runner.msa.calls_to("refresh").len(), 1);
+        assert!(runner.msa.calls_to("profile").is_empty());
+        assert_eq!(
+            token_of(&core, &alex.uuid).as_deref(),
+            Some("mc-cached"),
+            "the new token is not used"
+        );
+        assert_eq!(
+            refresh_of(&core, &alex.uuid).as_deref(),
+            Some("refresh-Alex")
         );
     }
 }

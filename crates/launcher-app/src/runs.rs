@@ -12,7 +12,7 @@ use std::{
 };
 
 use launcher_core::{
-    accounts::{Provider, Session},
+    accounts::Session,
     events::{Event, EventSink},
     fsutil::write_atomic,
     instances::{unix_now, Instance, ServerAddress, ServerStatus, SourceRef, UpdatePolicy},
@@ -162,13 +162,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             LauncherError::auth(ErrorCode::NoAccount, "Add an account before playing")
                 .with_fix("Open Accounts and add one")
         })?;
-        if account.provider != Provider::Offline {
-            return Err(LauncherError::auth(
-                ErrorCode::NoAccount,
-                "Sign in with Microsoft to play",
-            ));
-        }
-        let session = account.offline_session();
+        let session = self.session_for(account).await?;
         let minimize = self.settings_get().await.minimize_on_play;
         let checks = self.checks_for_updates(&instance).await;
         self.start_run(
@@ -1224,6 +1218,136 @@ mod tests {
             core.play("alpha").await.unwrap_err().code,
             ErrorCode::NoAccount
         );
+    }
+
+    #[tokio::test]
+    async fn active_offline_in_beta_is_no_account() {
+        let (core, runner, host, _t) = core(BuildKind::Beta);
+        core.instance_create(NewInstance {
+            name: "Alpha".into(),
+            minecraft: "1.20.1".into(),
+            loader: None,
+        })
+        .await
+        .unwrap();
+        let steve = launcher_core::accounts::offline_account("Steve").unwrap();
+        let file = launcher_core::accounts::AccountsFile {
+            active: Some(steve.uuid.clone()),
+            accounts: vec![steve],
+            ..Default::default()
+        };
+        core.accounts.lock().await.save(&file).await.unwrap();
+        assert_eq!(
+            core.play("alpha").await.unwrap_err().code,
+            ErrorCode::NoAccount
+        );
+        assert!(host.states("alpha").is_empty(), "no run was queued");
+        assert!(runner.started_sessions.lock().unwrap().is_empty());
+    }
+
+    /// A Release core with Alex signed in with Microsoft (token `mc-secret-token` in memory)
+    /// and an instance `alpha`.
+    async fn signed_in_release() -> (
+        Arc<TestCore>,
+        Arc<FakeRunner>,
+        Arc<RecordingHost>,
+        tempfile::TempDir,
+    ) {
+        use launcher_core::{
+            accounts::{Account, Provider},
+            msa::{
+                minecraft::{dashed, McToken},
+                secrets::save_refresh,
+            },
+        };
+        let (core, runner, host, tmp) = core(BuildKind::Release);
+        core.instance_create(NewInstance {
+            name: "Alpha".into(),
+            minecraft: "1.20.1".into(),
+            loader: None,
+        })
+        .await
+        .unwrap();
+        let uuid = dashed("0123456789abcdef0123456789abcdef");
+        core.accounts
+            .lock()
+            .await
+            .add_microsoft(Account {
+                provider: Provider::Microsoft,
+                username: "Alex".into(),
+                uuid: uuid.clone(),
+            })
+            .await
+            .unwrap();
+        save_refresh(&*core.msa_secrets, &uuid, "refresh-Alex").unwrap();
+        core.msa_tokens.lock().unwrap().insert(
+            uuid,
+            (
+                McToken {
+                    access_token: "mc-secret-token".into(),
+                    expires_at: crate::restore::now_secs() + 7200,
+                },
+                Some("xuid-Alex".into()),
+            ),
+        );
+        (core, runner, host, tmp)
+    }
+
+    #[tokio::test]
+    async fn play_checks_the_microsoft_session() {
+        let (core, runner, host, _t) = signed_in_release().await;
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        assert_eq!(runner.msa.calls_to("profile").len(), 1);
+        let sessions = runner.started_sessions.lock().unwrap().clone();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].user_type, "msa");
+        assert_eq!(sessions[0].access_token, "mc-secret-token");
+        assert_eq!(
+            sessions[0].client_id.as_deref(),
+            Some(crate::testing::MS_CLIENT_ID)
+        );
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+    }
+
+    #[tokio::test]
+    async fn play_refuses_when_the_check_fails() {
+        let (core, runner, host, _t) = signed_in_release().await;
+        runner
+            .msa
+            .profiles
+            .lock()
+            .unwrap()
+            .push_back(Err(LauncherError::network(
+                ErrorCode::HostUnreachable,
+                "Couldn't reach Minecraft",
+            )));
+        assert_eq!(
+            core.play("alpha").await.unwrap_err().code,
+            ErrorCode::HostUnreachable
+        );
+        assert!(host.states("alpha").is_empty());
+        assert!(runner.started_sessions.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn access_token_is_redacted_in_game_log() {
+        let (core, runner, host, _t) = signed_in_release().await;
+        *runner.start_lines.lock().unwrap() =
+            vec!["[INFO] Setting user: Alex, token mc-secret-token".into()];
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
+        let kept = core.log_tail("alpha");
+        assert_eq!(kept, vec!["[INFO] Setting user: Alex, token <redacted>"]);
+        assert!(host
+            .log_lines("alpha")
+            .iter()
+            .all(|l| !l.contains("mc-secret-token")));
     }
 
     #[tokio::test]

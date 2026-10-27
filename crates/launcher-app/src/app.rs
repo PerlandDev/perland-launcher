@@ -151,7 +151,6 @@ pub struct AppCore<R: Runner, H: Host> {
     /// Per Microsoft account (by dashed uuid): its Minecraft token and xuid, in memory only.
     pub(crate) msa_tokens: Mutex<HashMap<String, (McToken, Option<String>)>>,
     /// Held across a refresh of the Minecraft token, so launches at once share one.
-    #[allow(dead_code)] // taken by the check before every launch
     pub(crate) msa_refresh: tokio::sync::Mutex<()>,
     /// The Microsoft sign-in waiting for the browser, if any: its cancel switch.
     pub(crate) msa_sign_in: Mutex<Option<watch::Sender<bool>>>,
@@ -886,6 +885,43 @@ pub(crate) mod tests {
         Arc<RecordingHost>,
         tempfile::TempDir,
     ) {
+        core_with_msa(
+            build,
+            secret,
+            panel,
+            Arc::new(launcher_core::msa::secrets::MemorySecrets::default()),
+        )
+    }
+
+    /// `core`, with Microsoft refresh tokens kept in `msa_secrets`.
+    pub(crate) fn core_with_msa_secrets(
+        build: BuildKind,
+        msa_secrets: Arc<dyn KeyedSecrets>,
+    ) -> (
+        Arc<TestCore>,
+        Arc<FakeRunner>,
+        Arc<RecordingHost>,
+        tempfile::TempDir,
+    ) {
+        core_with_msa(
+            build,
+            Arc::new(launcher_core::perland::MemoryStore::default()),
+            None,
+            msa_secrets,
+        )
+    }
+
+    fn core_with_msa(
+        build: BuildKind,
+        secret: Arc<dyn SecretStore>,
+        panel: Option<launcher_core::invite::Url>,
+        msa_secrets: Arc<dyn KeyedSecrets>,
+    ) -> (
+        Arc<TestCore>,
+        Arc<FakeRunner>,
+        Arc<RecordingHost>,
+        tempfile::TempDir,
+    ) {
         let tmp = tempfile::tempdir().unwrap();
         let dirs = LauncherDirs::new(tmp.path());
         let runner = FakeRunner::new();
@@ -906,7 +942,7 @@ pub(crate) mod tests {
             runner.clone(),
             host.clone(),
             secret,
-            Arc::new(launcher_core::msa::secrets::MemorySecrets::default()),
+            msa_secrets,
         );
         (core, runner, host, tmp)
     }

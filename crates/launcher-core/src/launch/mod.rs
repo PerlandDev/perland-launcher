@@ -242,7 +242,7 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
         ("auth_uuid", s.uuid.clone()),
         ("auth_access_token", s.access_token.clone()),
         ("auth_session", s.access_token.clone()),
-        ("clientid", String::new()),
+        ("clientid", s.client_id.clone().unwrap_or_default()),
         (
             "auth_xuid",
             s.xuid.clone().unwrap_or_else(|| "0".to_string()),
@@ -769,6 +769,32 @@ mod tests {
             join: None,
             world: Some(world),
         })
+    }
+
+    #[test]
+    fn clientid_comes_from_the_session() {
+        let dirs = LauncherDirs::new("/pl");
+        let resolved = vanilla("1.20.1.json", "1.20.1");
+        let mut session = offline_account("Steve").unwrap().offline_session();
+        let spec = |session: &Session| {
+            build_command(&LaunchSpec {
+                dirs: &dirs,
+                resolved: &resolved,
+                game_dir: Path::new("/pl/instances/x/minecraft"),
+                java: Path::new("/pl/java/x/bin/java"),
+                session,
+                memory_mb: 4096,
+                jvm_args: Vec::new(),
+                platform: WINDOWS_X64,
+                launcher_version: "0.1.0",
+                join: None,
+                world: None,
+            })
+            .unwrap()
+        };
+        assert_eq!(arg_after(&spec(&session).args, "--clientId"), "");
+        session.client_id = Some("client-1".into());
+        assert_eq!(arg_after(&spec(&session).args, "--clientId"), "client-1");
     }
 
     #[test]

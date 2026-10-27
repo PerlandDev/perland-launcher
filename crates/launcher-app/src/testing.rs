@@ -509,6 +509,8 @@ pub(crate) struct FakeRunner {
     pub player: Arc<FakePlayer>,
     pub stack: Arc<FakeStack>,
     pub msa: Arc<FakeMsa>,
+    /// The session each `start` was given.
+    pub started_sessions: Mutex<Vec<Session>>,
 }
 
 impl FakeRunner {
@@ -560,6 +562,7 @@ impl FakeRunner {
             player: FakePlayer::new(),
             stack: FakeStack::new(),
             msa: FakeMsa::new(),
+            started_sessions: Mutex::new(Vec::new()),
         })
     }
 
@@ -637,11 +640,14 @@ impl Runner for FakeRunner {
         &self,
         instance: Instance,
         _prepared: (),
-        _session: Session,
+        session: Session,
         join: Option<ServerAddress>,
         world: Option<String>,
         sink: EventSink,
     ) -> BoxFuture<Result<Box<dyn RunningGame>>> {
+        // The game's output goes through the redactor the real start uses.
+        let redactor = launcher_core::play::session_redactor(&instance, &session);
+        self.started_sessions.lock().unwrap().push(session);
         self.started_joins.lock().unwrap().push(join);
         self.started_worlds.lock().unwrap().push(world);
         let lines = self.start_lines.lock().unwrap().clone();
@@ -653,7 +659,9 @@ impl Runner for FakeRunner {
             .insert(instance.id.clone(), slot.clone());
         Box::pin(async move {
             for line in lines {
-                sink(Event::Log { line });
+                sink(Event::Log {
+                    line: redactor.redact(&line),
+                });
             }
             Ok(Box::new(FakeGame { rx, slot, sink }) as Box<dyn RunningGame>)
         })
