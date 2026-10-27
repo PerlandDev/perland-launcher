@@ -13,7 +13,10 @@ use launcher_core::{
     download::Downloader,
     install::Installer,
     meta::MetaClient,
-    msa::{secrets::KeyringSecrets, MsaEndpoints},
+    msa::{
+        secrets::{FallbackSecrets, KeyringSecrets},
+        MsaEndpoints,
+    },
     paths::LauncherDirs,
     platform::Platform,
 };
@@ -148,6 +151,10 @@ fn main() {
             commands::account_add_offline,
             commands::account_set_active,
             commands::account_remove,
+            commands::account_sign_in_microsoft,
+            commands::account_sign_in_cancel,
+            commands::account_ready,
+            commands::account_dismiss_offline_notice,
             commands::play,
             commands::continue_target,
             commands::play_continue,
@@ -332,7 +339,12 @@ fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> 
     let msa = Arc::new(CoreMsa::new(
         launcher_core::http::client_without_redirects(&version)?,
         MsaEndpoints::production(),
-        None,
+        // A dev run may point at its own Azure app; a shipped build uses the one it was built with.
+        launcher_core::msa::client_id(
+            std::env::var("PERLAND_MS_CLIENT_ID").ok().as_deref(),
+            option_env!("PERLAND_MS_CLIENT_ID"),
+            BuildKind::current(),
+        ),
     ));
     let mut runner = CoreRunner::new(installer, syncer, version.clone(), browse, msa);
     if let Some(site) = site_override(std::env::var("PERLAND_SITE_URL").ok().as_deref()) {
@@ -349,13 +361,13 @@ fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> 
             std::env::var("PERLAND_PANEL_URL").ok().as_deref(),
             option_env!("PERLAND_PANEL_URL"),
         ),
-        ms_client_id: None,
     };
     Ok(AppCore::new(
         config,
         meta,
         runner,
         host,
-        Arc::new(KeyringSecrets::new()),
+        // Where there is no credential store, the Microsoft sign-in lasts until the launcher closes.
+        Arc::new(FallbackSecrets::new(KeyringSecrets::new())),
     ))
 }

@@ -14,15 +14,15 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AppInfo, ArtChoice, Build, ContentFile, ContinueKind, ContinueTarget, EmailCodeSent,
-        FreeServerCard, FreeServerPage, FriendsCheck, IconChoice, ImportPreview, ImportRequest,
-        InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView, ManualProgress,
-        NameListView, NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice,
-        PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount,
-        PerlandSignInPhase, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard,
-        PublicServerPage, RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack,
-        ServerPlayers, ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary,
-        YourServerCard, YourServersPage,
+        AccountReady, AppInfo, ArtChoice, Build, ContentFile, ContinueKind, ContinueTarget,
+        EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice, ImportPreview,
+        ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
+        ManualProgress, NameListView, NewInstance, NewsChangesView, NewsPostView, OpenTarget,
+        OptionalChoice, PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate,
+        PerlandAccount, PerlandSignInPhase, PerlandStats, PerlandStatus, PlaytimeEntry,
+        PublicServerCard, PublicServerPage, RestorePointDto, RunSnapshot, ServerGame, ServerNews,
+        ServerPack, ServerPlayers, ServerStatsView, ServerStatusView, ServerTeam, SharePreview,
+        SyncSummary, YourServerCard, YourServersPage,
     },
     events::{AppEvent, CrashFix, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -758,6 +758,26 @@ fn contract_fixtures_are_current() {
             }),
             offline_notice_dismissed: false,
         },
+    );
+    check(
+        "account_ready",
+        vec![
+            AccountReady {
+                ready: true,
+                awaiting_approval: false,
+                offline_notice: false,
+            },
+            AccountReady {
+                ready: false,
+                awaiting_approval: true,
+                offline_notice: false,
+            },
+            AccountReady {
+                ready: false,
+                awaiting_approval: false,
+                offline_notice: true,
+            },
+        ],
     );
     check(
         "settings",

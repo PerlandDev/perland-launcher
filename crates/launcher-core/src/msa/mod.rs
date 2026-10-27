@@ -9,6 +9,7 @@ pub mod xbox;
 use std::fmt;
 
 use crate::{
+    accounts::BuildKind,
     error::{ErrorCode, LauncherError},
     http::HttpClient,
     invite::Url,
@@ -94,5 +95,88 @@ pub struct MsTokens {
 impl fmt::Debug for MsTokens {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("MsTokens { .. }")
+    }
+}
+
+/// The Azure application id Microsoft sign-in uses: `run` (the `PERLAND_MS_CLIENT_ID` of the
+/// running process) in a dev build only, else `built` (the value the release build was made
+/// with). Anything but a GUID is ignored, and only that fact is logged: the value could be
+/// anything.
+pub fn client_id(run: Option<&str>, built: Option<&str>, build: BuildKind) -> Option<String> {
+    let run = (build == BuildKind::Dev).then_some(run).flatten();
+    let raw = run.or(built).map(str::trim).filter(|raw| !raw.is_empty())?;
+    if is_guid(raw) {
+        Some(raw.to_string())
+    } else {
+        tracing::warn!("PERLAND_MS_CLIENT_ID isn't a GUID; ignored");
+        None
+    }
+}
+
+/// `8-4-4-4-12` hex digits.
+fn is_guid(s: &str) -> bool {
+    s.len() == 36
+        && s.split('-').map(str::len).eq([8, 4, 4, 4, 12])
+        && s.chars().all(|c| c == '-' || c.is_ascii_hexdigit())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const RUN: &str = "11111111-2222-3333-4444-555555555555";
+    const BUILT: &str = "AAAAAAAA-bbbb-CCCC-dddd-eeeeeeeeeeee";
+
+    #[test]
+    fn client_id_runtime_only_in_dev() {
+        assert_eq!(
+            client_id(Some(RUN), Some(BUILT), BuildKind::Dev).as_deref(),
+            Some(RUN)
+        );
+        assert_eq!(
+            client_id(Some(RUN), None, BuildKind::Dev).as_deref(),
+            Some(RUN)
+        );
+        for build in [BuildKind::Beta, BuildKind::Release] {
+            assert_eq!(
+                client_id(Some(RUN), Some(BUILT), build).as_deref(),
+                Some(BUILT)
+            );
+            assert_eq!(client_id(Some(RUN), None, build), None);
+        }
+    }
+
+    #[test]
+    fn client_id_rejects_non_guid() {
+        for bad in [
+            "",
+            "   ",
+            "not-a-guid",
+            "1111111122223333444455555555555555555",
+            "11111111-2222-3333-4444-55555555555",
+            "11111111-2222-3333-4444-5555555555555",
+            "1111111-12222-3333-4444-555555555555",
+            "g1111111-2222-3333-4444-555555555555",
+            "{11111111-2222-3333-4444-555555555555}",
+        ] {
+            assert_eq!(client_id(Some(bad), None, BuildKind::Dev), None, "{bad:?}");
+            assert_eq!(
+                client_id(None, Some(bad), BuildKind::Release),
+                None,
+                "{bad:?}"
+            );
+        }
+        // A bad runtime value doesn't fall back to the built one: it is the developer's mistake.
+        assert_eq!(client_id(Some("x"), Some(BUILT), BuildKind::Dev), None);
+    }
+
+    #[test]
+    fn client_id_built_value_used_in_release() {
+        assert_eq!(
+            client_id(None, Some(&format!("  {BUILT}\n")), BuildKind::Release).as_deref(),
+            Some(BUILT)
+        );
+        assert_eq!(client_id(None, None, BuildKind::Release), None);
+        assert_eq!(client_id(None, Some(""), BuildKind::Release), None);
     }
 }

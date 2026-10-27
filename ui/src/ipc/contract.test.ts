@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ZodType } from 'zod';
+import accountReadyFx from './contract/account_ready.json';
 import accounts from './contract/accounts.json';
 import artChoices from './contract/art_choices.json';
 import appInfo from './contract/app_info.json';
@@ -74,6 +75,7 @@ import * as s from './schema';
 
 const cases: [string, ZodType, unknown][] = [
   ['accounts', s.accountsFile, accounts],
+  ['account_ready', s.accountReady.array(), accountReadyFx],
   ['app_info', s.appInfo, appInfo],
   ['content_files', s.contentFile.array(), contentFiles],
   ['error', s.launcherError, errorFx],

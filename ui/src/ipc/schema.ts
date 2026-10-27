@@ -421,6 +421,12 @@ export const accountsFile = z.strictObject({
   msaWaiting: z.strictObject({ clientId: z.string(), at: z.number().int() }).nullable(),
   offlineNoticeDismissed: z.boolean(),
 });
+/** Whether the player can play, read without a network call (`account_ready`). */
+export const accountReady = z.strictObject({
+  ready: z.boolean(),
+  awaitingApproval: z.boolean(),
+  offlineNotice: z.boolean(),
+});
 
 export const lang = z.enum(['en', 'es']);
 export const channel = z.enum(['stable', 'beta']);
@@ -842,6 +848,7 @@ export type DamagedInstance = z.infer<typeof damagedInstance>;
 export type InstanceListing = z.infer<typeof instanceListing>;
 export type Account = z.infer<typeof account>;
 export type AccountsFile = z.infer<typeof accountsFile>;
+export type AccountReady = z.infer<typeof accountReady>;
 export type Lang = z.infer<typeof lang>;
 export type Channel = z.infer<typeof channel>;
 export type Theme = z.infer<typeof theme>;

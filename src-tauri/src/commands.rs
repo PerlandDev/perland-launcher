@@ -3,14 +3,14 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, ContinueTarget, EmailCodeSent,
-    FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstallPlanView,
-    InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
-    ManageChangeResult, ManageConsoleReply, ManageDetail, ManageDiagnosis, ManageListChange,
-    ManagePlayers, ManageSaved, ManageSettings, ManageSettingsSave, ManagedServer, ManualProgress,
-    NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus, PerlandAccount,
-    PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage, RestorePointDto, RunSnapshot,
-    SearchRequest, ServerNews, ServerStatusView, YourServersPage,
+    AccountReady, AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, ContinueTarget,
+    EmailCodeSent, FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest,
+    InstallPlanView, InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
+    LinkCodeView, ManageChangeResult, ManageConsoleReply, ManageDetail, ManageDiagnosis,
+    ManageListChange, ManagePlayers, ManageSaved, ManageSettings, ManageSettingsSave,
+    ManagedServer, ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents,
+    PackStatus, PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage,
+    RestorePointDto, RunSnapshot, SearchRequest, ServerNews, ServerStatusView, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -173,6 +173,37 @@ pub async fn account_set_active(core: CoreState<'_>, uuid: String) -> Res<Accoun
 #[tauri::command]
 pub async fn account_remove(core: CoreState<'_>, uuid: String) -> Res<AccountsFile> {
     logged("account_remove", core.account_remove(&uuid).await)
+}
+
+/// `None` when the player canceled.
+#[tauri::command]
+pub async fn account_sign_in_microsoft(
+    core: CoreState<'_>,
+    language: String,
+) -> Res<Option<AccountsFile>> {
+    logged(
+        "account_sign_in_microsoft",
+        core.account_sign_in_microsoft(&language).await,
+    )
+}
+
+#[tauri::command]
+pub async fn account_sign_in_cancel(core: CoreState<'_>) -> Res<()> {
+    core.account_sign_in_cancel();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn account_ready(core: CoreState<'_>) -> Res<AccountReady> {
+    logged("account_ready", core.account_ready().await)
+}
+
+#[tauri::command]
+pub async fn account_dismiss_offline_notice(core: CoreState<'_>) -> Res<()> {
+    logged(
+        "account_dismiss_offline_notice",
+        core.account_dismiss_offline_notice().await,
+    )
 }
 
 #[tauri::command]

@@ -6,7 +6,10 @@
 
 use std::{
     collections::HashMap,
-    sync::{Mutex, MutexGuard},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Mutex, MutexGuard,
+    },
 };
 
 use crate::perland::session::SecretError;
@@ -47,6 +50,58 @@ impl KeyedSecrets for MemorySecrets {
     fn delete(&self, key: &str) -> Result<(), SecretError> {
         self.values().remove(key);
         Ok(())
+    }
+}
+
+/// A primary store with memory behind it, for a computer with no credential store: once the
+/// primary answers `NoBackend`, everything stays in memory for the rest of the process (the
+/// player signs in again next time). Any other error passes through.
+pub struct FallbackSecrets<P> {
+    primary: P,
+    memory: MemorySecrets,
+    in_memory: AtomicBool,
+}
+
+impl<P: KeyedSecrets> FallbackSecrets<P> {
+    pub fn new(primary: P) -> Self {
+        Self {
+            primary,
+            memory: MemorySecrets::default(),
+            in_memory: AtomicBool::new(false),
+        }
+    }
+
+    /// Run `op` on the primary unless it already said it has no backend; on `NoBackend` switch
+    /// to memory (once, with a log line) and run `op` there.
+    fn run<T>(
+        &self,
+        op: impl Fn(&dyn KeyedSecrets) -> Result<T, SecretError>,
+    ) -> Result<T, SecretError> {
+        if !self.in_memory.load(Ordering::Relaxed) {
+            match op(&self.primary) {
+                Err(SecretError::NoBackend) => {
+                    if !self.in_memory.swap(true, Ordering::Relaxed) {
+                        tracing::info!(
+                            "no credential store: the Microsoft sign-in lasts until the launcher closes"
+                        );
+                    }
+                }
+                other => return other,
+            }
+        }
+        op(&self.memory)
+    }
+}
+
+impl<P: KeyedSecrets> KeyedSecrets for FallbackSecrets<P> {
+    fn load(&self, key: &str) -> Result<Option<String>, SecretError> {
+        self.run(|s| s.load(key))
+    }
+    fn save(&self, key: &str, value: &str) -> Result<(), SecretError> {
+        self.run(|s| s.save(key, value))
+    }
+    fn delete(&self, key: &str) -> Result<(), SecretError> {
+        self.run(|s| s.delete(key))
     }
 }
 
@@ -334,5 +389,71 @@ mod tests {
             load_refresh(&store, UUID).unwrap().as_deref(),
             Some("short")
         );
+    }
+
+    /// A primary with no credential store.
+    struct NoStore;
+
+    impl KeyedSecrets for NoStore {
+        fn load(&self, _: &str) -> Result<Option<String>, SecretError> {
+            Err(SecretError::NoBackend)
+        }
+        fn save(&self, _: &str, _: &str) -> Result<(), SecretError> {
+            Err(SecretError::NoBackend)
+        }
+        fn delete(&self, _: &str) -> Result<(), SecretError> {
+            Err(SecretError::NoBackend)
+        }
+    }
+
+    /// A primary whose saves fail with an error other than `NoBackend`.
+    struct Flaky {
+        inner: MemorySecrets,
+    }
+
+    impl KeyedSecrets for Flaky {
+        fn load(&self, key: &str) -> Result<Option<String>, SecretError> {
+            self.inner.load(key)
+        }
+        fn save(&self, _: &str, _: &str) -> Result<(), SecretError> {
+            Err(SecretError::Other("locked".into()))
+        }
+        fn delete(&self, key: &str) -> Result<(), SecretError> {
+            self.inner.delete(key)
+        }
+    }
+
+    #[test]
+    fn without_a_credential_store_the_token_lives_in_memory() {
+        let store = FallbackSecrets::new(NoStore);
+        // The load before any save also answers (nothing), without an error.
+        assert_eq!(load_refresh(&store, UUID).unwrap(), None);
+        save_refresh(&store, UUID, &token(2500)).unwrap();
+        assert_eq!(load_refresh(&store, UUID).unwrap(), Some(token(2500)));
+        delete_refresh(&store, UUID).unwrap();
+        assert_eq!(load_refresh(&store, UUID).unwrap(), None);
+    }
+
+    #[test]
+    fn a_working_primary_is_used_and_memory_stays_empty() {
+        let store = FallbackSecrets::new(MemorySecrets::default());
+        save_refresh(&store, UUID, "tok").unwrap();
+        assert_eq!(
+            store.primary.load(&chunk_key(UUID, 0)).unwrap().as_deref(),
+            Some("tok")
+        );
+        assert_eq!(store.memory.load(&chunk_key(UUID, 0)).unwrap(), None);
+    }
+
+    #[test]
+    fn other_errors_pass_through_and_do_not_switch_to_memory() {
+        let store = FallbackSecrets::new(Flaky {
+            inner: MemorySecrets::default(),
+        });
+        assert!(matches!(
+            store.save("k", "v"),
+            Err(SecretError::Other(why)) if why == "locked"
+        ));
+        assert_eq!(store.memory.load("k").unwrap(), None);
     }
 }

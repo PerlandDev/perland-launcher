@@ -68,8 +68,6 @@ pub struct AppConfig {
     /// The Perland panel (`launcher_core::perland::panel_url`), where the player manages the
     /// servers they own. Without one, Manage in Perland isn't offered.
     pub panel: Option<launcher_core::invite::Url>,
-    /// The Azure app Microsoft sign-in uses; `None` in a build without one.
-    pub ms_client_id: Option<String>,
 }
 
 /// The names a Java executable has. Anything else is never run.
@@ -936,7 +934,6 @@ pub(crate) mod tests {
                 system_memory_mb: 16384,
                 downloads_dir: Some(tmp.path().join("Downloads")),
                 panel,
-                ms_client_id: None,
             },
             meta,
             runner.clone(),
