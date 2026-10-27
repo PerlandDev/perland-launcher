@@ -1,10 +1,8 @@
 [
   {
-    "ready": true,
-    "offlineNotice": false
+    "ready": true
   },
   {
-    "ready": false,
-    "offlineNotice": true
+    "ready": false
   }
 ]

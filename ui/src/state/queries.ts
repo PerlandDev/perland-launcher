@@ -689,16 +689,6 @@ export function useAccountMutations(opts: Opts = {}) {
   };
 }
 
-/** Hide the "offline accounts are gone" notice for good. */
-export function useDismissOfflineNotice(opts: Opts = {}) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: commands.accountDismissOfflineNotice,
-    onSettled: () =>
-      Promise.all([qc.invalidateQueries({ queryKey: qk.accountReady }), qc.invalidateQueries({ queryKey: qk.accounts })]),
-    onError: onError(opts),
-  });
-}
 
 /** Remove a resource pack or shader. The list the core hands back replaces the cached one. */
 export function useContentRemove(id: string, kind: ContentKind, opts: Opts = {}) {

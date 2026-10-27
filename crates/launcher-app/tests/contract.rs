@@ -752,21 +752,11 @@ fn contract_fixtures_are_current() {
             active: Some(steve.uuid.clone()),
             accounts: vec![steve, alex],
             licensed_signin_seen: false,
-            offline_notice_dismissed: false,
         },
     );
     check(
         "account_ready",
-        vec![
-            AccountReady {
-                ready: true,
-                offline_notice: false,
-            },
-            AccountReady {
-                ready: false,
-                offline_notice: true,
-            },
-        ],
+        vec![AccountReady { ready: true }, AccountReady { ready: false }],
     );
     check(
         "settings",

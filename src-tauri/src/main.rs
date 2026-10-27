@@ -154,7 +154,6 @@ fn main() {
             commands::account_sign_in_microsoft,
             commands::account_sign_in_cancel,
             commands::account_ready,
-            commands::account_dismiss_offline_notice,
             commands::play,
             commands::continue_target,
             commands::play_continue,

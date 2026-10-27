@@ -62,8 +62,7 @@
     "deleteConfirm": "Borrar instancia",
     "continue": "Continuar",
     "continueTo": "Continuar: {{name}}",
-    "played": "{{time}} de juego",
-    "offlineGone": "Las cuentas sin conexión ya no existen. Perland Launcher ahora necesita una cuenta de Microsoft que tenga Minecraft: Java Edition."
+    "played": "{{time}} de juego"
   },
   "image": {
     "menu": "Cambiar imagen…",

@@ -126,7 +126,6 @@ export const commands = {
   accountSignInCancel: () => invoke<null>('account_sign_in_cancel'),
   /** Whether Play can start now, read without a network call. */
   accountReady: () => invoke<AccountReady>('account_ready'),
-  accountDismissOfflineNotice: () => invoke<null>('account_dismiss_offline_notice'),
   play: (id: string, join = false) => invoke<null>('play', { id, join }),
   /** Where Continue would take the player in this instance, or null (no Continue key). */
   continueTarget: (id: string) => invoke<ContinueTarget | null>('continue_target', { id }),

@@ -199,14 +199,6 @@ pub async fn account_ready(core: CoreState<'_>) -> Res<AccountReady> {
 }
 
 #[tauri::command]
-pub async fn account_dismiss_offline_notice(core: CoreState<'_>) -> Res<()> {
-    logged(
-        "account_dismiss_offline_notice",
-        core.account_dismiss_offline_notice().await,
-    )
-}
-
-#[tauri::command]
 pub async fn play(core: CoreState<'_>, id: String, join: Option<bool>) -> Res<()> {
     logged(
         "play",

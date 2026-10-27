@@ -143,9 +143,6 @@ pub struct AccountsFile {
     /// No longer read; kept so older files still parse and round-trip.
     #[serde(default)]
     pub licensed_signin_seen: bool,
-    /// Launcher state, not a setting: the UI writes `Settings` whole and would overwrite it.
-    #[serde(default)]
-    pub offline_notice_dismissed: bool,
 }
 
 /// What the player may see: outside dev builds, offline accounts are gone, and `active` is
@@ -161,15 +158,6 @@ pub fn visible(mut file: AccountsFile, build: BuildKind) -> AccountsFile {
         }
     }
     file
-}
-
-/// True when `visible` would hide at least one account.
-pub fn hides_offline(file: &AccountsFile, build: BuildKind) -> bool {
-    !offline_allowed(build)
-        && file
-            .accounts
-            .iter()
-            .any(|a| a.provider == Provider::Offline)
 }
 
 pub struct AccountStore {
@@ -240,12 +228,6 @@ impl AccountStore {
         account.username = username.to_string();
         self.save(&file).await?;
         Ok(true)
-    }
-
-    pub async fn dismiss_offline_notice(&self) -> Result<()> {
-        let mut file = self.load().await?;
-        file.offline_notice_dismissed = true;
-        self.save(&file).await
     }
 
     pub async fn active(&self) -> Result<Option<Account>> {
@@ -395,27 +377,11 @@ mod tests {
     }
 
     #[test]
-    fn hides_offline_only_outside_dev() {
-        let with_offline = AccountsFile {
-            accounts: vec![offline_account("Steve").unwrap()],
-            ..AccountsFile::default()
-        };
-        let without = AccountsFile {
-            accounts: vec![microsoft("Alex", "11111111-1111-1111-1111-111111111111")],
-            ..AccountsFile::default()
-        };
-        assert!(!hides_offline(&with_offline, BuildKind::Dev));
-        assert!(hides_offline(&with_offline, BuildKind::Beta));
-        assert!(hides_offline(&with_offline, BuildKind::Release));
-        assert!(!hides_offline(&without, BuildKind::Release));
-    }
-
-    #[test]
     fn old_file_parses() {
         let file: AccountsFile =
             serde_json::from_str(r#"{"accounts":[],"active":null,"licensedSigninSeen":true}"#)
                 .unwrap();
-        assert!(!file.offline_notice_dismissed);
+        assert!(file.licensed_signin_seen);
     }
 
     #[tokio::test]
@@ -470,19 +436,12 @@ mod tests {
         assert_eq!(store.load().await.unwrap(), file);
     }
 
-    #[tokio::test]
-    async fn notice_state_persists() {
-        let tmp = tempfile::tempdir().unwrap();
-        let store = AccountStore::new(tmp.path().join("accounts.json"));
-        store.dismiss_offline_notice().await.unwrap();
-        assert!(store.load().await.unwrap().offline_notice_dismissed);
-    }
-
-    /// A file written while the launcher remembered an approval wait still parses.
+    /// A file an earlier beta wrote, with the approval wait and the offline-accounts notice it
+    /// no longer keeps, still parses.
     #[test]
-    fn a_file_with_the_old_approval_wait_still_parses() {
+    fn a_file_with_retired_fields_still_parses() {
         let file: AccountsFile = serde_json::from_str(
-            r#"{"accounts":[],"active":null,"msaWaiting":{"clientId":"abc","at":42}}"#,
+            r#"{"accounts":[],"active":null,"msaWaiting":{"clientId":"abc","at":42},"offlineNoticeDismissed":true}"#,
         )
         .unwrap();
         assert_eq!(file, AccountsFile::default());

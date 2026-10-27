@@ -96,6 +96,8 @@ describe('Home', () => {
     expect(signInPromptSnapshot()).toBe(true);
     expect(routeSnapshot()).not.toEqual({ name: 'accounts' });
     expect(screen.queryByRole('button', { name: 'Add an account to play' })).toBeNull();
+    // The accounts file still holds offline accounts from an older beta: they are silently gone, nothing mentions them.
+    expect(screen.queryByText(/offline/i)).toBeNull();
   });
 
   it('offers community modpacks beside creating the first instance', async () => {

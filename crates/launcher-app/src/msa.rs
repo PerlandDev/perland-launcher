@@ -6,7 +6,7 @@
 use std::sync::Mutex;
 
 use launcher_core::{
-    accounts::{hides_offline, offline_allowed, visible, Account, AccountsFile, Provider, Session},
+    accounts::{offline_allowed, visible, Account, AccountsFile, Provider, Session},
     http::HttpClient,
     msa::{
         minecraft::{dashed, ownership, McProfile, McToken, SignedIn},
@@ -286,11 +286,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// Whether the player can play now, without a network call: the active account is a
     /// Microsoft account with a stored refresh token, or, in a dev build, an offline account.
-    /// Also whether the "offline accounts are gone" notice is due.
+    /// Outside dev builds offline accounts are simply not there: nothing is said about them.
     pub async fn account_ready(&self) -> Result<AccountReady> {
         let file = self.accounts.lock().await.list().await?;
-        let offline_notice =
-            hides_offline(&file, self.config.build) && !file.offline_notice_dismissed;
         let shown = visible(file, self.config.build);
         let active = shown
             .active
@@ -305,10 +303,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
             None => false,
         };
-        Ok(AccountReady {
-            ready,
-            offline_notice,
-        })
+        Ok(AccountReady { ready })
     }
 
     /// A refresh token is stored for `uuid`. A credential store that can't answer is no.
@@ -462,11 +457,6 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .unwrap_or_else(|e| e.into_inner())
             .insert(uuid.to_string(), kept.clone());
         Ok(kept)
-    }
-
-    /// Don't show the "offline accounts are gone" notice again.
-    pub async fn account_dismiss_offline_notice(&self) -> Result<()> {
-        self.accounts.lock().await.dismiss_offline_notice().await
     }
 
     /// Forget what a removed account kept: its Minecraft token and its refresh token. A
@@ -811,30 +801,6 @@ mod tests {
         };
         beta.accounts.lock().await.save(&file).await.unwrap();
         assert!(!beta.account_ready().await.unwrap().ready, "beta");
-    }
-
-    #[tokio::test]
-    async fn offline_notice_shows_until_dismissed() {
-        let (core, _runner, _host, _t) = core(BuildKind::Beta);
-        let steve = offline_account("Steve").unwrap();
-        let file = AccountsFile {
-            active: Some(steve.uuid.clone()),
-            accounts: vec![steve],
-            ..AccountsFile::default()
-        };
-        core.accounts.lock().await.save(&file).await.unwrap();
-        let ready = core.account_ready().await.unwrap();
-        assert!(ready.offline_notice);
-        assert!(!ready.ready, "a hidden offline account is no account");
-        core.account_dismiss_offline_notice().await.unwrap();
-        assert!(!core.account_ready().await.unwrap().offline_notice);
-    }
-
-    #[tokio::test]
-    async fn no_offline_notice_in_dev() {
-        let (core, _runner, _host, _t) = core(BuildKind::Dev);
-        core.account_add_offline("Steve").await.unwrap();
-        assert!(!core.account_ready().await.unwrap().offline_notice);
     }
 
     #[tokio::test]

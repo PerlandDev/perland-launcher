@@ -324,7 +324,6 @@ function seed(options: MockOptions) {
   const listing = clone(listingFx) as InstanceListing;
   const accounts = clone(accountsFx) as AccountsFile;
   const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, iconShape: options.iconShape ?? 'square', theme: options.theme ?? 'laminate', font: options.font ?? 'hyperlegible', language: null };
-  accounts.offlineNoticeDismissed = false;
   if (options.firstRun) {
     listing.instances = [];
     listing.damaged = [];
@@ -345,7 +344,6 @@ function seed(options: MockOptions) {
   };
   // Like the core's `visible`: a non-dev build never lists an offline account, and one in use reads as none. The real file
   // keeps them for a dev build on the same computer; the mock has no dev build to keep them for.
-  const offlineHidden = !appInfo.offlineAllowed && accounts.accounts.some((a) => a.provider === 'offline');
   if (!appInfo.offlineAllowed) {
     accounts.accounts = accounts.accounts.filter((a) => a.provider !== 'offline');
     if (!accounts.accounts.some((a) => a.uuid === accounts.active)) accounts.active = null;
@@ -471,8 +469,6 @@ function seed(options: MockOptions) {
     servers,
     restorePoints,
     accounts,
-    // The core's `hides_offline`: this build hid offline accounts the file still holds.
-    offlineHidden,
     microsoft: { scenario: options.microsoft ?? 'signedOut', cancel: null as (() => void) | null },
     settings,
     appInfo,
@@ -1050,12 +1046,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       return {
         // As the core: a Microsoft account, or an offline one in a dev build.
         ready: active?.provider === 'microsoft' || (active?.provider === 'offline' && state.appInfo.offlineAllowed),
-        offlineNotice: state.offlineHidden && !state.accounts.offlineNoticeDismissed,
       };
     }
-    case 'account_dismiss_offline_notice':
-      state.accounts.offlineNoticeDismissed = true;
-      return null;
     case 'play': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
       if (!state.accounts.active) fail('auth', 'no_account', 'Add an account before playing');

@@ -889,8 +889,6 @@ pub struct EmailCodeSent {
 pub struct AccountReady {
     /// The active account is a Microsoft account with a stored refresh token.
     pub ready: bool,
-    /// Offline accounts are hidden in this build and the player hasn't dismissed the notice.
-    pub offline_notice: bool,
 }
 
 /// Where a Discord sign-in is: waiting for the browser, or redeeming the code it brought back.

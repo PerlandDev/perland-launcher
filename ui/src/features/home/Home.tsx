@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Marquee } from '../../art/Marquee';
 import { artSeed } from '../../art/seed';
@@ -24,7 +24,6 @@ import { useInstanceActions } from './InstanceMenu';
 import { ServerPanel } from '../servers/ServerPanel';
 import { isPack, isServer, versionLine } from './labels';
 import { ManualDownloads } from './ManualDownloads';
-import { OfflineAccountsNotice } from './OfflineAccountsNotice';
 import { pick } from './pick';
 import { UpdateDialog } from './UpdateDialog';
 import { UpdatePlate } from './UpdatePlate';
@@ -114,8 +113,6 @@ function InstanceView({ instance }: { instance: Instance }) {
       <div
         className={`absolute inset-x-0 bottom-0 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-4 px-10 pt-6 pb-12 ${icon ? '@max-[64rem]:grid-cols-1 @max-[64rem]:gap-y-5' : '@max-[55rem]:grid-cols-1 @max-[55rem]:gap-y-5'}`}
       >
-        {/* Above everything in the column, on the art's dark floor, never over Image and Settings at the top. */}
-        <OfflineAccountsNotice className={`col-span-2 mb-2 ${icon ? '@max-[64rem]:col-span-1' : '@max-[55rem]:col-span-1'}`} />
         {/* The plate sits above both columns, so it reads on one line instead of wrapping in the name's. */}
         {isPack(instance) && (
           <div className={`col-span-2 min-w-0 ${icon ? '@max-[64rem]:col-span-1' : '@max-[55rem]:col-span-1'}`}>
@@ -185,21 +182,9 @@ export function Home({ id }: { id: string | null }) {
     case 'instance':
       return <InstanceView instance={picked.instance} />;
     case 'damaged':
-      return <WithNotice view={<DamagedView damaged={picked.damaged} />} />;
+      return <DamagedView damaged={picked.damaged} />;
     case 'empty':
-      return <WithNotice view={<EmptyState />} />;
+      return <EmptyState />;
   }
 }
 
-/** A centred view (no instance, a damaged one) with the offline-accounts notice in its own row above, so on a short window
- *  it pushes the view down instead of covering it. With no notice the row is empty and takes no room. */
-function WithNotice({ view }: { view: ReactNode }) {
-  return (
-    <div className="grid h-full grid-rows-[auto_minmax(0,1fr)]">
-      <div className="flex justify-center px-10 pt-6 empty:hidden">
-        <OfflineAccountsNotice className="w-full" />
-      </div>
-      <div className="min-h-0 overflow-auto">{view}</div>
-    </div>
-  );
-}

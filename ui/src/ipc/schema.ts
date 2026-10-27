@@ -418,7 +418,6 @@ export const accountsFile = z.strictObject({
   accounts: z.array(account),
   active: z.string().nullable(),
   licensedSigninSeen: z.boolean(),
-  offlineNoticeDismissed: z.boolean(),
 });
 /** The calls of the Microsoft sign-in chain, in order: Microsoft's code, Xbox Live, XSTS, Minecraft's login, the profile and
  *  ownership check. */
@@ -428,7 +427,6 @@ export type MsaStep = z.infer<typeof msaStep>;
 /** Whether the player can play, read without a network call (`account_ready`). */
 export const accountReady = z.strictObject({
   ready: z.boolean(),
-  offlineNotice: z.boolean(),
 });
 
 export const lang = z.enum(['en', 'es']);
