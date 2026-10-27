@@ -215,7 +215,7 @@ impl AccountStore {
         if !offline_allowed(build) {
             return Err(LauncherError::auth(
                 ErrorCode::OfflineLocked,
-                "Offline accounts are only available in development builds",
+                "Offline accounts are only available in development builds.",
             )
             .with_fix("Sign in with a Microsoft account that owns Minecraft"));
         }

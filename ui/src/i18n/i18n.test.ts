@@ -39,6 +39,12 @@ describe('translations', () => {
     }
   });
 
+  it('say offline accounts exist only in development builds, with no unlock to hint at', () => {
+    expect(flatEn['errors.offline_locked.message']).toBe('Offline accounts are only available in development builds.');
+    expect(flatEs['errors.offline_locked.message']).toBe('Las cuentas sin conexión solo están disponibles en las versiones de desarrollo.');
+    for (const flat of [flatEn, flatEs]) expect(flat['errors.offline_locked.message']).not.toMatch(/unlock|desbloque/i);
+  });
+
   it('never leave a Spanish string identical to a long English one by accident', () => {
     const same = Object.keys(flatEn).filter(
       (k) => flatEn[k] === flatEs[k] && (flatEn[k]?.length ?? 0) > 24 && !k.startsWith('app.'),

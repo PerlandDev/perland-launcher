@@ -6,6 +6,7 @@ import { createMockBackend, exitOf } from '../../ipc/mock';
 import type { PackStatus } from '../../ipc/schema';
 import { lastInstance, navigate, routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
+import { signInPromptSnapshot } from '../../state/signInPrompt';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
@@ -74,13 +75,27 @@ describe('Home', () => {
     expect(await screen.findByRole('heading', { name: 'No instances yet' })).toBeInTheDocument();
   });
 
-  it('disables Play without an account and links to Accounts', async () => {
+  it('disables Play without an account and, in a dev build, links to Accounts', async () => {
     const { backend, user } = renderApp(<Home id="creative-flat" />);
     backend.state.accounts.active = null;
     await screen.findByRole('heading', { name: 'Creative Flat' });
     expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
     await user.click(await screen.findByRole('button', { name: 'Add an account to play' }));
     expect(routeSnapshot()).toEqual({ name: 'accounts' });
+    expect(signInPromptSnapshot()).toBe(false);
+  });
+
+  it.each([{ beta: true }, { release: true }])('without an account outside dev builds, opens the sign-in prompt (%o)', async (build) => {
+    const { backend, user } = renderApp(<Home id="creative-flat" />, build);
+    backend.state.accounts.active = null;
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    const play = screen.getByRole('button', { name: 'Play' });
+    expect(play).toBeDisabled();
+    await vi.waitFor(() => expect(play).toHaveAccessibleDescription('Sign in to play'));
+    await user.click(await screen.findByRole('button', { name: 'Sign in to play' }));
+    expect(signInPromptSnapshot()).toBe(true);
+    expect(routeSnapshot()).not.toEqual({ name: 'accounts' });
+    expect(screen.queryByRole('button', { name: 'Add an account to play' })).toBeNull();
   });
 
   it('offers community modpacks beside creating the first instance', async () => {

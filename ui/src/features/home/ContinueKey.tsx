@@ -10,10 +10,13 @@ import { Map as WorldIcon, Server } from '../../ui/Icon';
 export function ContinueKey({
   id,
   disabled,
+  disabledReason,
   once,
 }: {
   id: string;
   disabled: boolean;
+  /** Why it's unavailable, as Play says it. */
+  disabledReason: string;
   /** Play's single-flight, shared so a Continue and a Play can't both start a run. */
   once: (start: (done: () => void) => void) => boolean;
 }) {
@@ -28,7 +31,7 @@ export function ContinueKey({
       disabled={disabled}
       aria-label={label}
       // Unavailable says why, the way Play does; otherwise the full name a long one may have cut.
-      title={disabled ? t('play.noAccount') : label}
+      title={disabled ? disabledReason : label}
       onClick={() => once((done) => void commands.playContinue(id).catch(pushError).finally(done))}
     >
       {/* The verb stays whole and the name gives way: a long world name ends in an ellipsis, never the verb. */}
