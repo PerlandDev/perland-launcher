@@ -1,0 +1,167 @@
+# Microsoft sign-in and the end of offline accounts: design
+
+Status: design approved in conversation on 2026-10-27; awaiting review of this document.
+
+## Why
+
+Mojang turned down the launcher's AppID review. The review form now says:
+
+> Applications must verify the user's game ownership and require authentication before enabling gameplay or access to servers or sites. Applications that bypass or disable authentication, ownership or license checks, or other safety features will not be approved. This requirement applies regardless of server configuration.
+
+Every public build so far (`v0.2.0-beta.5` to `beta.25`) is a beta built with `PERLAND_BUILD=beta`. In those builds `offline_allowed()` (`crates/launcher-core/src/accounts.rs`) lets anyone type a name and play, with no Microsoft account and no ownership check. Offline accounts are also the only way to play today: `runs.rs` refuses any account that is not offline, because Microsoft sign-in was never built.
+
+The goal is a launcher that passes the review. Every public build starts Minecraft only for a player signed in with a Microsoft account that owns it. We then re-apply once, after that build is public.
+
+## Goals
+
+- In beta and stable builds, the game starts only for a signed-in Microsoft account whose ownership was checked. Every route to Play counts: an instance, the public server list, a join link (`perland://join`) and Your servers.
+- The session is checked online before every launch, and refreshed when needed. The game never starts on an old, empty or made-up token.
+- Microsoft sign-in works end to end as soon as Mojang approves the client ID, with no new release.
+- Until then, the update installs and keeps working: instances, pack sync, Browse, settings, the server list to look at, and every Perland feature. Sign-in and Play say plainly that Microsoft sign-in is waiting on approval.
+- Public wording (README, `PRODUCT.md`, the UI strings in English and Spanish) no longer mentions offline accounts or "coming soon".
+
+## Non-goals
+
+- PerlandEngine and PerlandPanel are not touched. Whether Perland servers run in offline mode is outside the launcher's review.
+- Perland sign-in (Discord, GitHub, email) and the features behind it (Your servers, Create a server, managing servers) stay as they are. They need only a Perland sign-in.
+- Skins, capes and profile editing. Avatars stay generated from the UUID.
+- Playing without internet. See the anti-goals.
+- Releasing. Publishing the beta that carries this is the owner's call (every publish is public).
+
+## Anti-goals
+
+These would make the work a failure even if it technically worked:
+
+- **Any way into the game without a checked Microsoft session in a public build.** That includes an offline account surviving in some corner (import, the accounts file edited by hand, an old `active` pointing at one), a cached token used when the online check fails, and a "skip" on the sign-in step that leads to Play.
+- **Using another app's client ID.** That includes the official launcher's, or another approved launcher's.
+- **Tokens in logs, crash reports, error details, events sent to the UI, or the accounts file.**
+- **An embedded sign-in window.** The player signs in in their own browser.
+
+## Constraints
+
+- `launcher-core` holds the logic and `launcher-app` the state and run machine. Neither may depend on Tauri. `src-tauri` is wiring only.
+- TDD. Pure logic gets `#[cfg(test)]` unit tests. HTTP behaviour gets `tests/*.rs` with wiremock, with every Microsoft, Xbox and Minecraft base URL injectable. UI gets Vitest and Testing Library.
+- Errors shown to players are `LauncherError` with a stable `ErrorCode`. Every new code needs `errors.<code>.message` in both `ui/src/i18n/en.json` and `es.json` (neutral Latin American Spanish, informal "tú").
+- The IPC contract (`ui/src/ipc/contract/*.json`) is regenerated with `UPDATE_CONTRACT=1 cargo test -p launcher-app --test contract`, never edited by hand.
+- UI styling goes through the `/impeccable` skill and `DESIGN.md`.
+- Until Mojang approves the client ID, `POST api.minecraftservices.com/authentication/login_with_xbox` answers 403. Everything before it (Microsoft OAuth, Xbox Live, XSTS) works and can be tried with a real account.
+
+## Approaches considered
+
+How the player proves who they are to Microsoft:
+
+- **A. Browser sign-in returning to a loopback address, with PKCE (chosen).** It is the flow Perland sign-in already uses (`perland/loopback.rs`, `perland/pkce.rs`, `sign_in_in_browser` in `launcher-app/src/perland.rs`), it is Microsoft's recommended flow for desktop apps, and it gives reviewers nothing to question. The cost is one redirect address on the Azure app registration.
+- **B. Device code** (the player types a code at microsoft.com/link). It needs no local listener, but every player pays an extra step and it is a second flow beside Perland's.
+- **C. A sign-in window inside the launcher.** Microsoft discourages it, password managers don't fill it, and it looks like phishing to the reviewers.
+
+The owner chose A.
+
+## What the owner decided
+
+1. **Beta and stable builds have no offline accounts at all.** Only dev builds (`debug_assertions`, never distributed) keep them. The "unlock after one licensed sign-in" gate is dropped, not kept for stable. Prism Launcher's gate was considered and turned down: the form's wording and our history make it a likely second rejection.
+2. **While approval is pending, the update keeps the launcher installable and useful.** Sign-in and Play say that Microsoft sign-in is waiting on approval from Microsoft.
+3. **Perland features stay open with just a Perland sign-in.** Only starting the game (and so joining a server) needs the Microsoft account.
+4. **Sign-in is approach A.**
+
+## The design
+
+### Build configuration
+
+- The Microsoft client ID comes in at build time as `PERLAND_MS_CLIENT_ID`, read with `option_env!` the way `PERLAND_BUILD` is read. A runtime override is read the way `PERLAND_PANEL_URL` is, for local testing. It is not written in the source: Mojang approves a client ID, and forks of this public repository must not launch with Perland's.
+- The Release workflow passes it from a repository variable (`vars.PERLAND_MS_CLIENT_ID`).
+- A build without it answers every Microsoft sign-in with `microsoft_not_configured` ("Microsoft sign-in isn't set up in this build").
+- `offline_allowed(build)` is true only for `BuildKind::Dev`. `licensed_signin_seen` stops deciding anything. It stays readable in the file, so old files still parse.
+
+### The sign-in chain (launcher-core, new module `msa`)
+
+One attempt, from the player's click to a stored account:
+
+1. **Microsoft OAuth, authorization code with PKCE.**
+   - Open `login.microsoftonline.com/consumers/oauth2/v2.0/authorize` with `client_id`, `response_type=code`, `redirect_uri` (the loopback's), `scope=XboxLive.signin offline_access`, `code_challenge` (S256), `state` and `prompt=select_account`.
+   - Reuse `Pkce` and `Loopback` as they are. The callback page uses the existing English and Spanish pages.
+   - Redeem the code at `…/consumers/oauth2/v2.0/token`. The answer is a Microsoft access token and a refresh token.
+2. **Xbox Live user token.** `POST user.auth.xboxlive.com/user/authenticate` with `AuthMethod: RPS`, `SiteName: user.auth.xboxlive.com`, `RpsTicket: d=<access token>`, `RelyingParty: http://auth.xboxlive.com`, `TokenType: JWT`. Keep `Token` and `DisplayClaims.xui[0].uhs`.
+3. **XSTS token.** `POST xsts.auth.xboxlive.com/xsts/authorize` with `SandboxId: RETAIL`, the user token and `RelyingParty: rp://api.minecraftservices.com/`. Keep `Token` and the claims' `xid` (the xuid). A 401's `XErr` maps to player-facing codes:
+
+   | `XErr` | Meaning | Code |
+   |---|---|---|
+   | 2148916233 | No Xbox profile on this Microsoft account | `xbox_no_profile` |
+   | 2148916235 | Xbox Live isn't available in the player's country | `xbox_region_blocked` |
+   | 2148916236, 2148916237 | Adult verification needed (South Korea) | `xbox_age_verification` |
+   | 2148916238 | A child account, which must be added to a Microsoft family | `xbox_child_account` |
+
+4. **Minecraft token.** `POST api.minecraftservices.com/authentication/login_with_xbox` with `identityToken: XBL3.0 x=<uhs>;<xsts token>`. Keep `access_token` and `expires_in`.
+   - A **403** here is `microsoft_awaiting_approval`: Mojang has not approved the client ID.
+   - 429 is `microsoft_rate_limited`. Other failures are the existing network codes.
+5. **Ownership.** `GET …/entitlements/mcstore` and `GET …/minecraft/profile`, with the Minecraft token.
+   - Profile 200: the account owns Java Edition (Game Pass included) and has a name. It is accepted.
+   - Profile 404 with an entitlement for `game_minecraft` or `product_minecraft`: the player owns the game but has not chosen a name. `minecraft_no_profile` says to set one up on minecraft.net, and the account is not added.
+   - Profile 404 with no entitlement: `minecraft_not_owned`. The account is not added.
+6. **Store.** The account file gets `{provider: microsoft, username, uuid}` and the account becomes active. Secrets go to the OS credential store (below).
+
+Cancel, a second sign-in, a closed browser and the deadline behave like Perland sign-in: `Ok(None)`, no error. Events to the UI reuse the Perland sign-in phases (waiting, exchanging) under a Microsoft variant.
+
+### Secrets
+
+- One credential-store entry per Microsoft account: service `online.perland.launcher`, user `msa:<uuid>`. It holds JSON `{refresh_token, minecraft_token, minecraft_expires_at, xuid}`.
+- Use the existing `SecretStore` trait and `KeyringStore`. `MemoryStore` stays the fallback where there is no credential store, so such a player signs in again after each restart.
+- Removing an account deletes its entry.
+- No secret is ever placed in the accounts file, a log line, `LauncherError` detail, a UI event or a crash report. `Session`'s `Debug` already redacts the token. `launch/redact.rs` must also cover the Minecraft token on the game's command line.
+
+### Launching
+
+`runs.rs`, where a run takes the active account:
+
+- **No active account, or an active offline account in a non-dev build:** `no_account`. The UI answers it with the sign-in prompt, not an error card.
+- **A Microsoft account, before every launch:**
+  1. Load its secrets. If they are missing, the player signs in again (`microsoft_sign_in_again`).
+  2. If the Minecraft token has less than an hour left, run the refresh chain: Microsoft refresh grant, then steps 2 to 4. Store the rotated refresh token.
+  3. Always `GET /minecraft/profile` with the token. This is the online check: it proves the token works and the game is still owned, and it picks up a changed name.
+     - 401: refresh once and try again.
+     - Still refused, or the refresh is refused (`invalid_grant`): `microsoft_sign_in_again`.
+     - Any network failure: `offline`, and the game does not start.
+  4. Build `Session { username, uuid, access_token: minecraft token, user_type: "msa", xuid }` and pass the client ID as `clientid`.
+- **An offline account, in a dev build only:** as today.
+
+Every path to Play goes through this one place, so the join-link, server-list and Your servers flows need no gate of their own. A test checks each entry point refuses without an account.
+
+### Accounts and the old offline accounts
+
+- `AccountStore::list` and `active` leave out offline accounts in non-dev builds, and an `active` naming one reads as none. The entries stay in the file, so a dev build on the same computer still sees them.
+- `add_offline` refuses in non-dev builds, as now (`offline_locked`).
+- The import of other launchers' instances already leaves out accounts and credentials. A test pins that it still does.
+- `app_info.offline_allowed` stays, now true only in dev builds. The contract test is regenerated.
+
+### UI
+
+- **First run, account step:**
+  - Dev builds: the offline name, as now.
+  - Beta and stable: "Sign in with Microsoft" as the one primary action. A short line says why: the account must own Minecraft: Java Edition. "Skip" goes on to the first instance; Play will ask again.
+- **Accounts:** "Add Microsoft account" replaces the "coming soon" placeholder. "Add offline account" shows only in dev builds. Each Microsoft account shows its name, the generated avatar and Remove.
+- **Play without a signed-in owner:** the run is refused with `no_account` or `microsoft_sign_in_again`. The play surface shows a sign-in prompt in place of the error card, and it starts the same flow. Once signed in, the player presses Play again; nothing starts by itself.
+- **Waiting on approval:** `microsoft_awaiting_approval` is worded "Microsoft sign-in is waiting on approval from Microsoft. You'll be able to play as soon as it's ready." It has no fix button, because there is nothing for the player to do.
+- **New `ErrorCode`s:** `microsoft_not_configured`, `microsoft_awaiting_approval`, `microsoft_sign_in_again`, `microsoft_rate_limited`, `minecraft_not_owned`, `minecraft_no_profile`, `xbox_no_profile`, `xbox_region_blocked`, `xbox_age_verification`, `xbox_child_account`. Each gets `errors.<code>.message` (and `fix` where the player can act) in English and Spanish.
+- **Retired strings:** `MicrosoftUnavailable` ("Microsoft accounts arrive in a later version") and the "coming soon" strings go.
+
+### Wording outside the app
+
+- README and `PRODUCT.md`: the launcher needs a Microsoft account that owns Minecraft: Java Edition. Offline accounts exist only in local development builds. Remove "Microsoft sign-in comes in a later plan".
+- The two older specs (`2026-10-09-launcher-core-design.md`, `2026-10-10-launcher-desktop-ui-design.md`) get one line each pointing to this document where they describe the offline gate. Their history is not rewritten.
+- `CLAUDE.md` gets a line on `PERLAND_MS_CLIENT_ID` and the build rule for offline accounts.
+
+### Azure app registration (the owner, outside the code)
+
+- The app name must not contain Mojang, Minecraft, Microsoft, Live, Xbox, Discord or Hypixel.
+- Supported accounts: personal Microsoft accounts (the `consumers` endpoint).
+- A "Mobile and desktop applications" platform with the loopback redirect the launcher sends, `http://127.0.0.1:<port>/callback` (`Loopback::redirect_uri`). Microsoft ignores the port for loopback addresses. The builder confirms against Microsoft's current documentation how to register the `127.0.0.1` form (it may need the manifest rather than the portal form), or else switches the Microsoft flow to `localhost` while the listener stays bound to `127.0.0.1`.
+- Allow public client flows.
+- Homepage and privacy policy URLs. The privacy policy is a page on perland.online; writing it is not part of this work.
+
+## Left to the builder
+
+- Module layout inside `launcher-core` (`msa/` with `oauth.rs`, `xbox.rs`, `minecraft.rs`, or one file) and how the base URLs are injected for wiremock.
+- Whether `MemoryStore` or `KeyringStore` is chosen per platform at startup, following `perland/session.rs`.
+- How the Tauri command surface is named (`account_sign_in_microsoft`, `account_sign_in_cancel`, …), matching the existing `perland_sign_in_*` commands.
+- The exact refresh margin (an hour is the intent) and how concurrent launches share one refresh. One refresh at a time per account is the intent.
+- The visual design of the sign-in prompt, through `/impeccable`.
+- The mock backend (`pnpm --filter ui dev:mock`) answering the new commands, including a `microsoft_awaiting_approval` state.
