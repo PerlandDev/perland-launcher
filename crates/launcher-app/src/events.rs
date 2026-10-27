@@ -119,6 +119,9 @@ pub enum AppEvent {
     /// A Discord sign-in moved on: the browser is open (`waiting`), or the code it brought back
     /// is being redeemed (`exchanging`).
     PerlandSignIn { phase: PerlandSignInPhase },
+    /// A Microsoft sign-in moved on: the browser is open (`waiting`), or the code it brought
+    /// back is being redeemed (`exchanging`).
+    MicrosoftSignIn { phase: PerlandSignInPhase },
     /// New lines of a managed server's console log (`manage_console_open`), oldest first,
     /// cleaned of color codes.
     #[serde(rename_all = "camelCase")]
@@ -210,6 +213,13 @@ mod tests {
             })
             .unwrap(),
             serde_json::json!({ "type": "perland_sign_in", "phase": "exchanging" })
+        );
+        assert_eq!(
+            serde_json::to_value(AppEvent::MicrosoftSignIn {
+                phase: PerlandSignInPhase::Waiting
+            })
+            .unwrap(),
+            serde_json::json!({ "type": "microsoft_sign_in", "phase": "waiting" })
         );
     }
 

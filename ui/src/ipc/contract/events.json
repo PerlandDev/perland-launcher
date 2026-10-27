@@ -309,6 +309,14 @@
     "phase": "exchanging"
   },
   {
+    "type": "microsoft_sign_in",
+    "phase": "waiting"
+  },
+  {
+    "type": "microsoft_sign_in",
+    "phase": "exchanging"
+  },
+  {
     "type": "update",
     "state": {
       "state": "ready",

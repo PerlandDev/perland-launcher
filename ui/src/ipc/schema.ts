@@ -638,6 +638,8 @@ export const appEvent = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('deep_link') }),
   z.strictObject({ type: z.literal('update'), state: updateState }),
   z.strictObject({ type: z.literal('perland_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
+  /** A Microsoft sign-in moved on: the browser is open, or its code is being redeemed. */
+  z.strictObject({ type: z.literal('microsoft_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
   /** New lines of the server console being followed in Manage, without colour codes. */
   z.strictObject({ type: z.literal('server_log'), tenantId: z.string(), stack: z.string(), lines: z.array(z.string()) }),
   /** That console log stopped on its own: offer to reconnect. */

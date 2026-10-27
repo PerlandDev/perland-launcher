@@ -33,14 +33,15 @@ use launcher_core::{
     launch::GameExit,
     locks::InstanceLock,
     meta::loaders::LoaderKind,
+    msa::minecraft::{McProfile, McToken, SignedIn},
     news::NewsPage,
     perland::{
         Apply, BanList, ConsoleReply, CreateAllowance, CreateFreeServer, CreateServer,
         CreatedServer, Diagnosis, DiscordAccount, Disk, EmailStarted, EngineVersion, FreeLimits,
         FreeServer, FreeServerSettings, FreeServerState, Handoff, Lifecycle, LinkCode, ListKind,
-        Membership, MemoryLimits, NameList, NameResult, Online, Player, PlayerConfig, PlayerStats,
-        SessionJwt, SettingsDoc, SettingsSaved, SignInMethod, StackDetail, StackItem, TeamUsage,
-        TokenAnswer, YourServer,
+        Membership, MemoryLimits, NameList, NameResult, Online, Pkce, Player, PlayerConfig,
+        PlayerStats, SessionJwt, SettingsDoc, SettingsSaved, SignInMethod, StackDetail, StackItem,
+        TeamUsage, TokenAnswer, YourServer,
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
@@ -63,6 +64,7 @@ use crate::{
     dto::{NewInstance, PackUpdate},
     events::{AppEvent, ExitInfo, Host, RunStateKind},
     manage::StackApi,
+    msa::MsaApi,
     perland::PlayerApi,
     runner::{BoxFuture, Kill, Runner, RunningGame},
 };
@@ -506,6 +508,7 @@ pub(crate) struct FakeRunner {
     pub waiting: Arc<Notify>,
     pub player: Arc<FakePlayer>,
     pub stack: Arc<FakeStack>,
+    pub msa: Arc<FakeMsa>,
 }
 
 impl FakeRunner {
@@ -556,6 +559,7 @@ impl FakeRunner {
             waiting: Arc::new(Notify::new()),
             player: FakePlayer::new(),
             stack: FakeStack::new(),
+            msa: FakeMsa::new(),
         })
     }
 
@@ -909,6 +913,177 @@ impl Runner for FakeRunner {
 
     fn stack(&self) -> Arc<dyn StackApi> {
         self.stack.clone()
+    }
+
+    fn msa(&self) -> Arc<dyn MsaApi> {
+        self.msa.clone()
+    }
+}
+
+/// The client id `FakeMsa` has by default.
+pub(crate) const MS_CLIENT_ID: &str = "00000000-0000-4000-8000-0000000000aa";
+
+/// A finished Microsoft sign-in of `name` (profile id `id`): refresh token `refresh-<name>`,
+/// Minecraft token `mc-<name>` valid for an hour from now, xuid `xuid-<name>`.
+pub(crate) fn signed_in(name: &str, id: &str) -> SignedIn {
+    SignedIn {
+        profile: McProfile {
+            id: id.into(),
+            name: name.into(),
+        },
+        refresh_token: format!("refresh-{name}"),
+        minecraft: McToken {
+            access_token: format!("mc-{name}"),
+            expires_at: crate::restore::now_secs() + 3600,
+        },
+        xuid: Some(format!("xuid-{name}")),
+    }
+}
+
+/// One call `FakeMsa` saw: the method and its arguments.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct MsaCall {
+    pub method: &'static str,
+    pub args: Vec<String>,
+}
+
+/// Microsoft services, answered from what the test scripted. Each call is recorded.
+pub(crate) struct FakeMsa {
+    /// Default `MS_CLIENT_ID`; `None` makes every call answer `microsoft_not_configured`.
+    pub client_id: Mutex<Option<String>>,
+    /// What each `redeem` answers, in order; when none is left, Alex signed in.
+    pub redeems: Mutex<VecDeque<Result<SignedIn>>>,
+    /// What each `refresh` answers, in order; when none is left, Alex signed in.
+    pub refreshes: Mutex<VecDeque<Result<SignedIn>>>,
+    /// What each `profile` answers, in order; when none is left, Alex's profile.
+    pub profiles: Mutex<VecDeque<Result<Option<McProfile>>>>,
+    pub calls: Mutex<Vec<MsaCall>>,
+    /// Methods whose calls wait for a permit of their gate (see `hold`).
+    holds: Mutex<HashMap<&'static str, Arc<Semaphore>>>,
+}
+
+/// Alex's profile id.
+const FAKE_MSA_ID: &str = "0123456789abcdef0123456789abcdef";
+
+impl FakeMsa {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self {
+            client_id: Mutex::new(Some(MS_CLIENT_ID.into())),
+            redeems: Mutex::new(VecDeque::new()),
+            refreshes: Mutex::new(VecDeque::new()),
+            profiles: Mutex::new(VecDeque::new()),
+            calls: Mutex::new(Vec::new()),
+            holds: Mutex::new(HashMap::new()),
+        })
+    }
+
+    /// From now on each call to `method` is recorded at once but answers only after a permit
+    /// of the returned gate (`add_permits`).
+    pub fn hold(&self, method: &'static str) -> Arc<Semaphore> {
+        let gate = Arc::new(Semaphore::new(0));
+        self.holds.lock().unwrap().insert(method, gate.clone());
+        gate
+    }
+
+    /// Wait until `method` was called `n` times (panics after 5 s).
+    pub async fn wait_for_calls(&self, method: &str, n: usize) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while self.calls_to(method).len() < n {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "{method} was never called {n} times"
+            );
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    }
+
+    /// The calls made to `method`.
+    pub fn calls_to(&self, method: &str) -> Vec<MsaCall> {
+        self.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.method == method)
+            .cloned()
+            .collect()
+    }
+
+    fn configured(&self) -> Result<()> {
+        match *self.client_id.lock().unwrap() {
+            Some(_) => Ok(()),
+            None => Err(crate::msa::not_configured()),
+        }
+    }
+
+    fn answer<T: Send + 'static>(
+        &self,
+        method: &'static str,
+        args: &[&str],
+        scripted: &Mutex<VecDeque<Result<T>>>,
+        default: impl FnOnce() -> T,
+    ) -> BoxFuture<Result<T>> {
+        self.calls.lock().unwrap().push(MsaCall {
+            method,
+            args: args.iter().map(|a| a.to_string()).collect(),
+        });
+        let answer = match self.configured() {
+            Err(e) => Err(e),
+            Ok(()) => scripted
+                .lock()
+                .unwrap()
+                .pop_front()
+                .unwrap_or_else(|| Ok(default())),
+        };
+        let gate = self.holds.lock().unwrap().get(method).cloned();
+        Box::pin(async move {
+            if let Some(gate) = gate {
+                gate.acquire().await.expect("gate is never closed").forget();
+            }
+            answer
+        })
+    }
+}
+
+impl MsaApi for FakeMsa {
+    fn client_id(&self) -> Option<String> {
+        self.client_id.lock().unwrap().clone()
+    }
+
+    fn authorize_url(&self, redirect: &str, pkce: &Pkce) -> Result<String> {
+        self.configured()?;
+        let mut url = Url::parse("https://login.example.com/authorize").unwrap();
+        url.query_pairs_mut()
+            .append_pair("client_id", &self.client_id().unwrap_or_default())
+            .append_pair("redirect_uri", redirect)
+            .append_pair("code_challenge", &pkce.challenge)
+            .append_pair("state", &pkce.state);
+        Ok(url.to_string())
+    }
+
+    fn redeem(
+        &self,
+        code: String,
+        verifier: String,
+        redirect: String,
+    ) -> BoxFuture<Result<SignedIn>> {
+        self.answer(
+            "redeem",
+            &[&code, &verifier, &redirect],
+            &self.redeems,
+            || signed_in("Alex", FAKE_MSA_ID),
+        )
+    }
+
+    fn refresh(&self, refresh_token: String) -> BoxFuture<Result<SignedIn>> {
+        self.answer("refresh", &[&refresh_token], &self.refreshes, || {
+            signed_in("Alex", FAKE_MSA_ID)
+        })
+    }
+
+    fn profile(&self, token: McToken) -> BoxFuture<Result<Option<McProfile>>> {
+        self.answer("profile", &[&token.access_token], &self.profiles, || {
+            Some(signed_in("Alex", FAKE_MSA_ID).profile)
+        })
     }
 }
 

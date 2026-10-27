@@ -2,7 +2,7 @@
 use std::time::Duration;
 
 use launcher_core::{
-    perland::{Callback, Language, Loopback},
+    perland::{Callback, Language, Loopback, Page},
     ErrorCode,
 };
 use tokio::sync::watch;
@@ -20,7 +20,7 @@ async fn loopback_ignores_strays_then_accepts() {
     let base = lb.redirect_uri();
     assert!(base.starts_with("http://127.0.0.1:") && base.ends_with("/callback"));
     let (_tx, rx) = watch::channel(false);
-    let wait = tokio::spawn(lb.wait("right", Language::En, LONG, rx));
+    let wait = tokio::spawn(lb.wait("right", Language::En, Page::Success, LONG, rx));
     let root = base.trim_end_matches("/callback").to_string();
     let c = browser();
 
@@ -54,7 +54,7 @@ async fn one_callback(query: &str, lang: Language) -> (Callback, String) {
     let lb = Loopback::bind().unwrap();
     let base = lb.redirect_uri();
     let (_tx, rx) = watch::channel(false);
-    let wait = tokio::spawn(lb.wait("s", lang, LONG, rx));
+    let wait = tokio::spawn(lb.wait("s", lang, Page::Success, LONG, rx));
     let page = browser()
         .get(format!("{base}?{query}"))
         .send()
@@ -105,7 +105,13 @@ async fn loopback_deadline() {
     let lb = Loopback::bind().unwrap();
     let (_tx, rx) = watch::channel(false);
     let err = lb
-        .wait("s", Language::En, Duration::from_millis(50), rx)
+        .wait(
+            "s",
+            Language::En,
+            Page::Success,
+            Duration::from_millis(50),
+            rx,
+        )
         .await
         .unwrap_err();
     assert_eq!(err.code, ErrorCode::SignInTimedOut);
@@ -115,7 +121,7 @@ async fn loopback_deadline() {
 async fn loopback_cancel() {
     let lb = Loopback::bind().unwrap();
     let (tx, rx) = watch::channel(false);
-    let wait = tokio::spawn(lb.wait("s", Language::En, LONG, rx));
+    let wait = tokio::spawn(lb.wait("s", Language::En, Page::Success, LONG, rx));
     tokio::time::sleep(Duration::from_millis(20)).await;
     tx.send(true).unwrap();
     assert!(matches!(wait.await.unwrap().unwrap(), Callback::Canceled));
@@ -125,7 +131,7 @@ async fn loopback_cancel() {
 async fn loopback_cancel_when_sender_dropped() {
     let lb = Loopback::bind().unwrap();
     let (tx, rx) = watch::channel(false);
-    let wait = tokio::spawn(lb.wait("s", Language::En, LONG, rx));
+    let wait = tokio::spawn(lb.wait("s", Language::En, Page::Success, LONG, rx));
     drop(tx);
     assert!(matches!(wait.await.unwrap().unwrap(), Callback::Canceled));
 }
@@ -139,7 +145,7 @@ async fn a_silent_connection_does_not_block_the_real_callback() {
         .trim_end_matches("/callback")
         .to_string();
     let (_tx, rx) = watch::channel(false);
-    let wait = tokio::spawn(lb.wait("s", Language::En, LONG, rx));
+    let wait = tokio::spawn(lb.wait("s", Language::En, Page::Success, LONG, rx));
     // A browser's speculative connection: opens and says nothing.
     let _idle = tokio::net::TcpStream::connect(&addr).await.unwrap();
     browser()
@@ -190,7 +196,7 @@ async fn a_head_over_1_kib_still_gets_the_whole_page() {
     let lb = Loopback::bind().unwrap();
     let addr = addr_of(&lb);
     let (_tx, rx) = watch::channel(false);
-    let wait = tokio::spawn(lb.wait("s", Language::En, LONG, rx));
+    let wait = tokio::spawn(lb.wait("s", Language::En, Page::Success, LONG, rx));
     let answer = raw_request(&addr, &long_head("s", 4 << 10))
         .await
         .expect("no reset");
@@ -205,7 +211,7 @@ async fn a_head_over_the_cap_is_refused() {
     let lb = Loopback::bind().unwrap();
     let addr = addr_of(&lb);
     let (_tx, rx) = watch::channel(false);
-    let wait = tokio::spawn(lb.wait("s", Language::En, LONG, rx));
+    let wait = tokio::spawn(lb.wait("s", Language::En, Page::Success, LONG, rx));
     let answer = raw_request(&addr, &long_head("s", 12 << 10))
         .await
         .expect("no reset");
@@ -227,7 +233,7 @@ async fn the_answer_waits_for_the_end_of_the_head() {
     let lb = Loopback::bind().unwrap();
     let addr = addr_of(&lb);
     let (_tx, rx) = watch::channel(false);
-    let wait = tokio::spawn(lb.wait("s", Language::En, LONG, rx));
+    let wait = tokio::spawn(lb.wait("s", Language::En, Page::Success, LONG, rx));
     let mut stream = tokio::net::TcpStream::connect(&addr).await.unwrap();
     stream
         .write_all(b"GET /callback?state=s&code=ok HTTP/1.1\r\nHost: 127.0.0.1\r\n")
@@ -243,5 +249,24 @@ async fn the_answer_waits_for_the_end_of_the_head() {
     let mut answer = Vec::new();
     stream.read_to_end(&mut answer).await.expect("no reset");
     assert!(String::from_utf8_lossy(&answer).contains("signed in to Perland"));
+    assert!(matches!(wait.await.unwrap().unwrap(), Callback::Code(_)));
+}
+
+#[tokio::test]
+async fn loopback_shows_the_success_page_it_was_given() {
+    let lb = Loopback::bind().unwrap();
+    let base = lb.redirect_uri();
+    let (_tx, rx) = watch::channel(false);
+    let wait = tokio::spawn(lb.wait("s", Language::En, Page::MicrosoftContinue, LONG, rx));
+    let page = browser()
+        .get(format!("{base}?state=s&code=abc"))
+        .send()
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(page.contains("Go back to Perland Launcher to finish signing in"));
+    assert!(!page.contains("signed in to Perland"));
     assert!(matches!(wait.await.unwrap().unwrap(), Callback::Code(_)));
 }

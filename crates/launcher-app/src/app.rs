@@ -29,6 +29,7 @@ use launcher_core::{
     },
     mod_icons,
     mods::{self, LocalMod},
+    msa::{minecraft::McToken, secrets::KeyedSecrets},
     news_seen::{NewsSeen, NEWS_SEEN_FILE},
     paths::LauncherDirs,
     perland::{KeyringStore, SecretStore, SessionStore},
@@ -40,7 +41,7 @@ use launcher_core::{
     ErrorCode, LauncherError, Result,
 };
 use tokio::{
-    sync::{oneshot, Semaphore},
+    sync::{oneshot, watch, Semaphore},
     task::AbortHandle,
 };
 
@@ -67,6 +68,8 @@ pub struct AppConfig {
     /// The Perland panel (`launcher_core::perland::panel_url`), where the player manages the
     /// servers they own. Without one, Manage in Perland isn't offered.
     pub panel: Option<launcher_core::invite::Url>,
+    /// The Azure app Microsoft sign-in uses; `None` in a build without one.
+    pub ms_client_id: Option<String>,
 }
 
 /// The names a Java executable has. Anything else is never run.
@@ -143,6 +146,15 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) perland_store: Arc<SessionStore>,
     /// The Discord sign-in waiting for the browser, if any.
     pub(crate) perland_sign_in: Mutex<SignInSlot>,
+    /// Microsoft refresh tokens, one per account (see `msa.rs`).
+    pub(crate) msa_secrets: Arc<dyn KeyedSecrets>,
+    /// Per Microsoft account (by dashed uuid): its Minecraft token and xuid, in memory only.
+    pub(crate) msa_tokens: Mutex<HashMap<String, (McToken, Option<String>)>>,
+    /// Held across a refresh of the Minecraft token, so launches at once share one.
+    #[allow(dead_code)] // taken by the check before every launch
+    pub(crate) msa_refresh: tokio::sync::Mutex<()>,
+    /// The Microsoft sign-in waiting for the browser, if any: its cancel switch.
+    pub(crate) msa_sign_in: Mutex<Option<watch::Sender<bool>>>,
     /// Session JWTs for Manage (see `manage.rs`), cleared whenever the session is forgotten or
     /// replaced.
     pub(crate) jwts: launcher_core::perland::JwtCache,
@@ -186,8 +198,22 @@ fn valid_id(id: &str) -> Result<()> {
 }
 
 impl<R: Runner, H: Host> AppCore<R, H> {
-    pub fn new(config: AppConfig, meta: MetaClient, runner: Arc<R>, host: Arc<H>) -> Arc<Self> {
-        Self::with_secret_store(config, meta, runner, host, Arc::new(KeyringStore::new()))
+    /// `msa_secrets` keeps Microsoft refresh tokens (the OS credential store in the app).
+    pub fn new(
+        config: AppConfig,
+        meta: MetaClient,
+        runner: Arc<R>,
+        host: Arc<H>,
+        msa_secrets: Arc<dyn KeyedSecrets>,
+    ) -> Arc<Self> {
+        Self::with_secret_store(
+            config,
+            meta,
+            runner,
+            host,
+            Arc::new(KeyringStore::new()),
+            msa_secrets,
+        )
     }
 
     /// Like `new`, with the Perland token kept in `secret` instead of the OS credential store.
@@ -198,6 +224,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         runner: Arc<R>,
         host: Arc<H>,
         secret: Arc<dyn SecretStore>,
+        msa_secrets: Arc<dyn KeyedSecrets>,
     ) -> Arc<Self> {
         let root = config.dirs.root().to_path_buf();
         Arc::new(Self {
@@ -227,6 +254,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             perland: tokio::sync::Mutex::new(PerlandState::default()),
             perland_store: Arc::new(SessionStore::new(root.join(ACCOUNT_MARKER), secret)),
             perland_sign_in: Mutex::new(SignInSlot::default()),
+            msa_secrets,
+            msa_tokens: Mutex::new(HashMap::new()),
+            msa_refresh: tokio::sync::Mutex::new(()),
+            msa_sign_in: Mutex::new(None),
             jwts: launcher_core::perland::JwtCache::default(),
             console_stream: Mutex::new(None),
             console_closes: Mutex::new(Default::default()),
@@ -543,13 +574,25 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Ok(visible(store.list().await?, self.config.build))
     }
 
+    /// Only an account the player may see can become active (never an offline one outside
+    /// dev builds).
     pub async fn account_set_active(&self, uuid: &str) -> Result<AccountsFile> {
-        let file = self.accounts.lock().await.set_active(uuid).await?;
+        let store = self.accounts.lock().await;
+        let shown = visible(store.list().await?, self.config.build);
+        if !shown.accounts.iter().any(|a| a.uuid == uuid) {
+            return Err(LauncherError::auth(
+                ErrorCode::NoAccount,
+                "That account isn't on this computer anymore",
+            ));
+        }
+        let file = store.set_active(uuid).await?;
         Ok(visible(file, self.config.build))
     }
 
+    /// Forget an account, with its Microsoft sign-in.
     pub async fn account_remove(&self, uuid: &str) -> Result<AccountsFile> {
         let file = self.accounts.lock().await.remove(uuid).await?;
+        self.forget_microsoft(uuid).await;
         Ok(visible(file, self.config.build))
     }
 
@@ -857,11 +900,13 @@ pub(crate) mod tests {
                 system_memory_mb: 16384,
                 downloads_dir: Some(tmp.path().join("Downloads")),
                 panel,
+                ms_client_id: None,
             },
             meta,
             runner.clone(),
             host.clone(),
             secret,
+            Arc::new(launcher_core::msa::secrets::MemorySecrets::default()),
         );
         (core, runner, host, tmp)
     }

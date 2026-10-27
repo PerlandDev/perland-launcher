@@ -1051,6 +1051,12 @@ fn contract_fixtures_are_current() {
             AppEvent::PerlandSignIn {
                 phase: PerlandSignInPhase::Exchanging,
             },
+            AppEvent::MicrosoftSignIn {
+                phase: PerlandSignInPhase::Waiting,
+            },
+            AppEvent::MicrosoftSignIn {
+                phase: PerlandSignInPhase::Exchanging,
+            },
             AppEvent::Update {
                 state: UpdateState::Ready {
                     version: "0.2.0-beta.2".into(),

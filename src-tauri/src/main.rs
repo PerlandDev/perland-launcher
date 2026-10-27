@@ -7,10 +7,15 @@ mod updater;
 
 use std::{path::PathBuf, sync::Arc};
 
-use launcher_app::{AppConfig, AppCore, CoreRunner};
+use launcher_app::{AppConfig, AppCore, CoreMsa, CoreRunner};
 use launcher_core::{
-    accounts::BuildKind, download::Downloader, install::Installer, meta::MetaClient,
-    paths::LauncherDirs, platform::Platform,
+    accounts::BuildKind,
+    download::Downloader,
+    install::Installer,
+    meta::MetaClient,
+    msa::{secrets::KeyringSecrets, MsaEndpoints},
+    paths::LauncherDirs,
+    platform::Platform,
 };
 use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -323,7 +328,13 @@ fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> 
         launcher_core::browse::BrowseConfig::default(),
     );
     let syncer = launcher_core::sync::Syncer::for_installer(installer.clone(), http);
-    let mut runner = CoreRunner::new(installer, syncer, version.clone(), browse);
+    // Never follows a redirect: one would replay a code or refresh token to another host.
+    let msa = Arc::new(CoreMsa::new(
+        launcher_core::http::client_without_redirects(&version)?,
+        MsaEndpoints::production(),
+        None,
+    ));
+    let mut runner = CoreRunner::new(installer, syncer, version.clone(), browse, msa);
     if let Some(site) = site_override(std::env::var("PERLAND_SITE_URL").ok().as_deref()) {
         runner = runner.with_site(site);
     }
@@ -338,6 +349,13 @@ fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> 
             std::env::var("PERLAND_PANEL_URL").ok().as_deref(),
             option_env!("PERLAND_PANEL_URL"),
         ),
+        ms_client_id: None,
     };
-    Ok(AppCore::new(config, meta, runner, host))
+    Ok(AppCore::new(
+        config,
+        meta,
+        runner,
+        host,
+        Arc::new(KeyringSecrets::new()),
+    ))
 }
