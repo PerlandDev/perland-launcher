@@ -8,6 +8,7 @@ import {
   channelName,
   checkSignatureKeys,
   ciGate,
+  clientIdGate,
   findBundle,
   nextVersion,
   PLATFORMS,
@@ -38,6 +39,14 @@ switch (command) {
       encoding: 'utf8',
     });
     const { level, message } = ciGate(JSON.parse(json), { publish: mode === 'publish' });
+    console.log(level === 'ok' ? message : `::${level}::${message}`);
+    if (level === 'error') process.exitCode = 1;
+    break;
+  }
+  case 'client-id-check': {
+    // The value comes from the environment (PERLAND_MS_CLIENT_ID), never the command line.
+    const [mode] = args;
+    const { level, message } = clientIdGate(process.env.PERLAND_MS_CLIENT_ID, { publish: mode === 'publish' });
     console.log(level === 'ok' ? message : `::${level}::${message}`);
     if (level === 'error') process.exitCode = 1;
     break;

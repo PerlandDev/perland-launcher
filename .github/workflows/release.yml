@@ -62,6 +62,13 @@ jobs:
           GH_REPO: ${{ github.repository }}
           MODE: ${{ inputs.dry_run && 'dry-run' || 'publish' }}
         run: node scripts/release/cli.mjs ci-check "$GITHUB_SHA" "$MODE"
+      # Without it the build has no Microsoft sign-in and nobody could start the game: a publish
+      # stops, a dry run only warns.
+      - name: The Microsoft client ID is set
+        env:
+          PERLAND_MS_CLIENT_ID: ${{ vars.PERLAND_MS_CLIENT_ID }}
+          MODE: ${{ inputs.dry_run && 'dry-run' || 'publish' }}
+        run: node scripts/release/cli.mjs client-id-check "$MODE"
       - id: version
         env:
           CHANNEL: ${{ inputs.channel }}

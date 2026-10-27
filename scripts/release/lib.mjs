@@ -114,3 +114,17 @@ export function ciGate(runs, { publish }) {
   }
   return { level, message: 'CI has not run on this commit. Push it to main or to a branch with a pull request, and wait for CI to pass.' };
 }
+
+/** Whether the release can start the game: without the Microsoft client ID (the repository variable
+ *  PERLAND_MS_CLIENT_ID) Microsoft sign-in is unavailable, and outside dev builds nobody can play.
+ *  A publish stops; a dry run only warns. */
+export function clientIdGate(value, { publish }) {
+  if (typeof value === 'string' && value.trim() !== '') {
+    return { level: 'ok', message: 'The Microsoft client ID is set.' };
+  }
+  return {
+    level: publish ? 'error' : 'warning',
+    message:
+      'The repository variable PERLAND_MS_CLIENT_ID is empty: this build has no Microsoft sign-in, so nobody could start the game. Set it to the Azure app\'s client ID first.',
+  };
+}

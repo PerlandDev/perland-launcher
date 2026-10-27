@@ -175,7 +175,7 @@ Every path to Play goes through this one place, which stays the gate that counts
 
 - The app name must not contain Mojang, Minecraft, Microsoft, Live, Xbox, Discord or Hypixel.
 - Supported accounts: personal Microsoft accounts (the `consumers` endpoint).
-- A "Mobile and desktop applications" platform with the loopback redirect the launcher sends, `http://127.0.0.1:<port>/callback` (`Loopback::redirect_uri`). Microsoft ignores the port for loopback addresses. The builder confirms against Microsoft's current documentation how to register the `127.0.0.1` form (it may need the manifest rather than the portal form), or else switches the Microsoft flow to `localhost` while the listener stays bound to `127.0.0.1`.
+- A "Mobile and desktop applications" platform with the loopback redirect the launcher sends, `http://127.0.0.1:<port>/callback` (`Loopback::redirect_uri`). Microsoft ignores the port for loopback addresses. Confirmed against Microsoft's "Redirect URI (reply URL) best practices and limitations" (learn.microsoft.com/entra/identity-platform/reply-url, dated 2025-05-14): it recommends `127.0.0.1` over `localhost`, and the portal's Redirect URIs box refuses an `http` loopback address, so `http://127.0.0.1/callback` is added in the app manifest (`replyUrlsWithType`, type `InstalledClient`; `publicClient.redirectUris` in the Microsoft Graph format). README → Releasing → Azure app registration has the steps.
 - Allow public client flows.
 - Homepage and privacy policy URLs. The privacy policy is a page on perland.online; writing it is not part of this work.
 
