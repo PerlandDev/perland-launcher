@@ -217,7 +217,8 @@ describe('mock backend', () => {
     expect(beta.active).toBeNull();
     const dev = createMockBackend();
     expect(((await dev.handle('accounts_list')) as AccountsFile).accounts).toHaveLength(2);
-    expect(await dev.handle('account_ready')).toEqual({ ready: false, awaitingApproval: false, offlineNotice: false });
+    // A dev build plays with its offline account, as the core answers.
+    expect(await dev.handle('account_ready')).toEqual({ ready: true, awaitingApproval: false, offlineNotice: false });
     const signedIn = (await createMockBackend({ beta: true, microsoft: 'signedIn' }).handle('accounts_list')) as AccountsFile;
     expect(signedIn.accounts.map((a) => [a.provider, a.username])).toEqual([['microsoft', 'Alex']]);
   });

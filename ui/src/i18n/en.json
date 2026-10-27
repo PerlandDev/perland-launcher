@@ -62,7 +62,8 @@
     "deleteConfirm": "Delete instance",
     "continue": "Continue",
     "continueTo": "Continue: {{name}}",
-    "played": "{{time}} played"
+    "played": "{{time}} played",
+    "offlineGone": "Offline accounts are gone. Perland Launcher now needs a Microsoft account that owns Minecraft: Java Edition."
   },
   "image": {
     "menu": "Change image…",
@@ -355,6 +356,9 @@
     "microsoftWaiting": "Finish signing in in your browser.",
     "microsoftExchanging": "Signing you in…",
     "microsoftSignedIn": "Signed in as {{name}}.",
+    "promptTitle": "Sign in to play",
+    "promptBody": "Perland Launcher needs a Microsoft account that owns Minecraft: Java Edition.",
+    "promptSignedIn": "Signed in. Press Play again.",
     "offlineBadge": "Offline",
     "empty": "No accounts yet.",
     "totalPlayed": "Time played on this computer: {{time}}"

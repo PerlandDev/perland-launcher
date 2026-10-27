@@ -1039,7 +1039,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'account_ready': {
       const active = state.accounts.accounts.find((a) => a.uuid === state.accounts.active);
       return {
-        ready: active?.provider === 'microsoft',
+        // As the core: a Microsoft account, or an offline one in a dev build.
+        ready: active?.provider === 'microsoft' || (active?.provider === 'offline' && state.appInfo.offlineAllowed),
         awaitingApproval: state.accounts.msaWaiting !== null,
         offlineNotice: state.offlineHidden && !state.accounts.offlineNoticeDismissed,
       };

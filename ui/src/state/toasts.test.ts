@@ -1,7 +1,11 @@
 import { afterEach, expect, it, vi } from 'vitest';
+import { closeSignInPrompt, signInPromptSnapshot } from './signInPrompt';
 import { clearToasts, dismissToast, pushError, pushNotice, toastsSnapshot } from './toasts';
 
-afterEach(clearToasts);
+afterEach(() => {
+  clearToasts();
+  closeSignInPrompt();
+});
 
 it('queues and dismisses errors', () => {
   pushError({ category: 'disk', code: 'disk_io', message: 'x', fix: null, detail: null, params: {} });
@@ -21,4 +25,23 @@ it('keeps notices next to errors', () => {
   expect(error?.error).toBeDefined();
   notice?.notice?.action?.run();
   expect(run).toHaveBeenCalled();
+});
+
+const launcherError = (code: string) => ({ category: 'auth', code, message: 'm', fix: null, detail: null, params: {} });
+
+it('a refused Play for want of an account opens the sign-in prompt, not a toast', () => {
+  pushError(launcherError('no_account'));
+  expect(toastsSnapshot()).toHaveLength(0);
+  expect(signInPromptSnapshot()).toBe(true);
+  closeSignInPrompt();
+  pushError(launcherError('microsoft_sign_in_again'));
+  expect(toastsSnapshot()).toHaveLength(0);
+  expect(signInPromptSnapshot()).toBe(true);
+});
+
+it('any other error is a toast and leaves the prompt closed', () => {
+  pushError(launcherError('sign_in_failed'));
+  pushError(new Error('no_account'));
+  expect(toastsSnapshot()).toHaveLength(2);
+  expect(signInPromptSnapshot()).toBe(false);
 });

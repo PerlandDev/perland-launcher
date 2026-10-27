@@ -8,6 +8,7 @@ import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { endImport, importWatched } from './importProgress';
 import { manageLog } from './manageLog';
+import { requireAccount } from './requireAccount';
 import { pushError, pushNotice } from './toasts';
 
 export function createQueryClient() {
@@ -450,11 +451,14 @@ export function useImportInstance() {
   });
 }
 
+/** Add a server's instance. Without an account that can play it opens the sign-in prompt and adds nothing (answers null). */
 export function useJoinAdd(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (link: string) => commands.joinAdd(link),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.instances }),
+    mutationFn: async (link: string) => ((await requireAccount()) ? commands.joinAdd(link) : null),
+    onSuccess: (instance) => {
+      if (instance) return qc.invalidateQueries({ queryKey: qk.instances });
+    },
     onError: onError(opts),
   });
 }

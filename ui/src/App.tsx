@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Accounts } from './features/accounts/Accounts';
+import { SignInPrompt } from './features/accounts/SignInPrompt';
 import { ActivityDrawer } from './features/activity/ActivityDrawer';
 import { Browse } from './features/browse/Browse';
 import { CloseGuard } from './features/close-guard/CloseGuard';
@@ -130,6 +131,7 @@ export default function App() {
         <Shell />
       )}
       <Toasts />
+      <SignInPrompt />
       <CloseGuard />
     </>
   );

@@ -107,7 +107,7 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
     if (relinkFor) relink.mutate(link, { onSuccess: () => open(relinkFor) });
     else if (linkFor) linkTo.mutate(link, { onSuccess: () => open(linkFor) });
     else if (data.existing) open(data.existing);
-    else add.mutate(link, { onSuccess: (instance) => open(instance.id) });
+    else add.mutate(link, { onSuccess: (instance) => instance && open(instance.id) });
   };
   const label = relinkFor
     ? t('join.useLink')

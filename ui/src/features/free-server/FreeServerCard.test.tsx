@@ -4,6 +4,7 @@ import { createMockBackend } from '../../ipc/mock';
 import { inviteOf } from '../../ipc/mockServers';
 import type { PublicServerCard as Card } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
+import { signInPromptSnapshot } from '../../state/signInPrompt';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
@@ -80,6 +81,15 @@ describe('FreeServerCard', () => {
     // Never the public join path for the free server, and never a follow.
     expect(sent(calls, 'join_add')).toEqual([]);
     expect(sent(calls, 'your_servers_follow')).toEqual([]);
+  });
+
+  it('Play without an account that can play opens the sign-in prompt and never starts the server', async () => {
+    const { user, calls } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has', beta: true });
+    const card = await cardIn(await yours(), 'Weekend SMP');
+    await user.click(within(card).getByRole('button', { name: 'Play' }));
+    await vi.waitFor(() => expect(signInPromptSnapshot()).toBe(true));
+    expect(sent(calls, 'free_server_play')).toEqual([]);
+    expect(sent(calls, 'play')).toEqual([]);
   });
 
   it('an over-disk answer to Play is a toast', async () => {

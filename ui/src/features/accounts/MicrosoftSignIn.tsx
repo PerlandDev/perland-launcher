@@ -16,12 +16,15 @@ export interface MicrosoftSignInProps {
   /** `primary`: the lit large key of a step that is about signing in (First run, the sign-in prompt). `inline`: Accounts' add
    *  key, reading "Add Microsoft account". */
   variant: 'primary' | 'inline';
+  /** Off where the place around it already says why (the sign-in prompt, the offline-accounts notice). The approval wait is
+   *  still said. */
+  showWhy?: boolean;
 }
 
 /** Microsoft sign-in: the why line and the key, then the browser step (waiting, then exchanging) with Cancel. A failure is said
  *  inline under the key in the player's language. While Microsoft is still approving this build, the key reads Try again and the
  *  wait is said as info, not as a fault: there is nothing for the player to fix. */
-export function MicrosoftSignIn({ onSignedIn, variant }: MicrosoftSignInProps) {
+export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: MicrosoftSignInProps) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const ready = useAccountReady();
@@ -133,7 +136,7 @@ export function MicrosoftSignIn({ onSignedIn, variant }: MicrosoftSignInProps) {
           {t('errors.microsoft_awaiting_approval.message')}
         </p>
       ) : (
-        <p className="text-ink-dim">{t('accounts.microsoftWhy')}</p>
+        showWhy && <p className="text-ink-dim">{t('accounts.microsoftWhy')}</p>
       )}
       <Button
         ref={signInKey}

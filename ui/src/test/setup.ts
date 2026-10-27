@@ -13,6 +13,7 @@ import { resetImport } from '../state/importProgress';
 import { manageLog } from '../state/manageLog';
 import { resetRoute } from '../state/route';
 import { runStore } from '../state/runStore';
+import { closeSignInPrompt } from '../state/signInPrompt';
 import { clearToasts } from '../state/toasts';
 
 // Dates (event times) read in the computer's zone; pin it so the tests don't depend on where they run, even with
@@ -50,6 +51,7 @@ afterEach(async () => {
   runStore.reset();
   resetRoute();
   clearToasts();
+  closeSignInPrompt();
   resetActivity();
   resetBrowseSession();
   resetServersSession();

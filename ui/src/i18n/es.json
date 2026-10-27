@@ -62,7 +62,8 @@
     "deleteConfirm": "Borrar instancia",
     "continue": "Continuar",
     "continueTo": "Continuar: {{name}}",
-    "played": "{{time}} de juego"
+    "played": "{{time}} de juego",
+    "offlineGone": "Las cuentas sin conexión ya no existen. Perland Launcher ahora necesita una cuenta de Microsoft que tenga Minecraft: Java Edition."
   },
   "image": {
     "menu": "Cambiar imagen…",
@@ -355,6 +356,9 @@
     "microsoftWaiting": "Termina de iniciar sesión en tu navegador.",
     "microsoftExchanging": "Iniciando tu sesión…",
     "microsoftSignedIn": "Iniciaste sesión como {{name}}.",
+    "promptTitle": "Inicia sesión para jugar",
+    "promptBody": "Perland Launcher necesita una cuenta de Microsoft que tenga Minecraft: Java Edition.",
+    "promptSignedIn": "Iniciaste sesión. Presiona Jugar otra vez.",
     "offlineBadge": "Sin conexión",
     "empty": "Todavía no hay cuentas.",
     "totalPlayed": "Tiempo jugado en esta computadora: {{time}}"

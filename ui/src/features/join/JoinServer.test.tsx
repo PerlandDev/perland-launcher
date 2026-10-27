@@ -4,6 +4,7 @@ import { createMockBackend } from '../../ipc/mock';
 import { MOCK_INVITE, inviteOf } from '../../ipc/mockServers';
 import type { Instance } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
+import { signInPromptSnapshot } from '../../state/signInPrompt';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
@@ -22,6 +23,16 @@ describe('JoinServer', () => {
     await user.click(screen.getByRole('button', { name: 'Add server' }));
     expect(sent(calls, 'join_add')).toEqual([{ link: OTHER }]);
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival-2' }));
+  });
+
+  it('Add server without an account that can play opens the sign-in prompt and adds nothing', async () => {
+    const { user, calls } = renderApp(<JoinServer invite={OTHER} />, { server: 'online', beta: true });
+    await user.click(await screen.findByRole('button', { name: 'Add server' }));
+    await vi.waitFor(() => expect(signInPromptSnapshot()).toBe(true));
+    expect(sent(calls, 'join_add')).toEqual([]);
+    expect(routeSnapshot()).toEqual({ name: 'home', id: null });
+    // No error is shown: the prompt says what to do.
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('asks the launcher about the canonical link, so spellings of one link share a cache entry', async () => {
