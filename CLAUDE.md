@@ -12,4 +12,5 @@
 - Releases: the manual **Release** workflow (README → Releasing). Every publish is public, so ask the owner first.
 - License GPL-3.0-only. Never copy Modrinth branding or Mojang assets. Ported code keeps an attribution header and gets a `NOTICE` entry.
 - Before committing: `pnpm --filter ui build` (Tauri embeds `ui/dist`), `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `pnpm -r lint`, `pnpm -r typecheck`, `pnpm -r test`.
+- `PERLAND_MS_CLIENT_ID` is the built-in Microsoft client ID (runtime value read only in dev builds); offline accounts exist only in dev builds.
 - Issues by `perland-bot-eve` (label `discord`) were reported on Discord. When work touches one, keep the reporter posted through Perlita with the `reporter-updates` skill (`.claude/skills/reporter-updates/SKILL.md`; the same file is in PerlandEngine and PerlandPanel). This repository is public, so every comment here is too.

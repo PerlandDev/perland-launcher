@@ -39,7 +39,7 @@ This spec covers **only sub-project 1**. Where noted, it leaves extension points
 | Platforms | Windows + Linux in v1; macOS once an Apple Developer account exists |
 | Content sources | packwiz URL, `.mrpack`, and Modrinth browsing. CurseForge *entries inside packwiz packs* are supported; CurseForge *browsing* is out of scope |
 | Player-added mods in pack instances | **Lenient**: allowed, listed as "Your additions", never touched by sync |
-| Offline accounts | **Prism-style gate**: available only after a licensed Microsoft account has signed in on that install. Free in dev builds |
+| Offline accounts | **Prism-style gate**: available only after a licensed Microsoft account has signed in on that install. Free in dev builds. Superseded by `2026-10-27-microsoft-sign-in-design.md`: beta and stable builds have no offline accounts |
 | Visual direction | **Game-forward**: full-bleed pack art, a big Play button, an instance icon rail |
 | Styling process | `/impeccable` writes the launcher's `PRODUCT.md`/`DESIGN.md` and does styling and polish at implementation time |
 
@@ -180,6 +180,7 @@ For Modrinth and `.mrpack`, the launcher uses the project icon and featured gall
 - **Storage:** the MSA refresh token goes in the OS credential store (Windows Credential Manager, or Linux Secret Service). Without a Secret Service, it falls back to an encrypted file with a one-time notice. The Minecraft access token lives in memory only and is refreshed before it expires. Tokens are redacted from all logs.
 - **Multiple accounts**, with one active. The `Account` type has a `provider` field (`microsoft | offline`) so a `perland` provider (sub-project 3) can be added later.
 - **Offline accounts:** release builds unlock them after one successful licensed Microsoft sign-in on that install. Dev builds allow them freely.
+  Superseded by `2026-10-27-microsoft-sign-in-design.md`: beta and stable builds have no offline accounts.
 - The **Azure client ID** is injected at build time (CI secret or local `.env`) and is never committed.
 
 ### 4.1 Owner action items (outside the code, start now)
