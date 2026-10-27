@@ -3,10 +3,37 @@
 //! block in its own module (`oauth` here, `xbox` and `minecraft` after).
 pub mod oauth;
 pub mod secrets;
+pub mod xbox;
 
 use std::fmt;
 
-use crate::{http::HttpClient, invite::Url};
+use crate::{
+    error::{ErrorCode, LauncherError},
+    http::HttpClient,
+    invite::Url,
+};
+
+/// The most of an answer or error body from Microsoft or Xbox that is read.
+pub(super) const BODY_CAP: usize = 64 << 10;
+
+pub(super) fn rate_limited() -> LauncherError {
+    LauncherError::network(
+        ErrorCode::MicrosoftRateLimited,
+        "Microsoft is getting too many sign-ins right now. Try again in a minute.",
+    )
+}
+
+/// The generic refusal; `detail` is a short plain code from the service, never a token.
+pub(super) fn sign_in_failed(detail: Option<&str>) -> LauncherError {
+    let e = LauncherError::auth(
+        ErrorCode::SignInFailed,
+        "Couldn't sign you in with Microsoft. Try again.",
+    );
+    match detail {
+        Some(d) => e.with_detail(d),
+        None => e,
+    }
+}
 
 /// Where each step of the chain lives. Tests point these at a mock server.
 #[derive(Debug, Clone)]

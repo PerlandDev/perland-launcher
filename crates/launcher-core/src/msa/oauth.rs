@@ -3,7 +3,7 @@
 
 use serde::Deserialize;
 
-use super::{MsTokens, MsaClient};
+use super::{rate_limited, sign_in_failed, MsTokens, MsaClient, BODY_CAP};
 use crate::{
     error::{ErrorCode, LauncherError, Result},
     http::read_capped,
@@ -16,8 +16,6 @@ use crate::{
 
 /// What the launcher asks Microsoft for: Xbox sign-in, and a refresh token.
 const SCOPE: &str = "XboxLive.signin offline_access";
-/// The most of a token answer or error body that is read.
-const BODY_CAP: usize = 64 << 10;
 
 #[derive(Deserialize)]
 struct TokenAnswer {
@@ -35,24 +33,6 @@ fn sign_in_again() -> LauncherError {
         ErrorCode::MicrosoftSignInAgain,
         "Sign in with Microsoft again to keep playing.",
     )
-}
-
-fn rate_limited() -> LauncherError {
-    LauncherError::network(
-        ErrorCode::MicrosoftRateLimited,
-        "Microsoft is getting too many sign-ins right now. Try again in a minute.",
-    )
-}
-
-fn sign_in_failed(oauth_error: Option<&str>) -> LauncherError {
-    let e = LauncherError::auth(
-        ErrorCode::SignInFailed,
-        "Couldn't sign you in with Microsoft. Try again.",
-    );
-    match oauth_error {
-        Some(code) => e.with_detail(code),
-        None => e,
-    }
 }
 
 /// An OAuth `error` value is a short token like `invalid_client`; anything else isn't kept.
