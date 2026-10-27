@@ -72,6 +72,22 @@ struct Item {
     name: Option<String>,
 }
 
+/// The param that marks a sign-in chain error as coming after Minecraft accepted the Xbox
+/// token (`login_with_xbox`): from there on this build's client id is approved by Mojang.
+/// Never meant for the player; read and removed with [`take_approved`].
+const APPROVED_MARK: &str = "msa_approved";
+
+/// Mark `error` as coming after Minecraft accepted the Xbox token.
+pub fn mark_approved(error: LauncherError) -> LauncherError {
+    error.with_param(APPROVED_MARK, "true")
+}
+
+/// Whether a sign-in chain error came after Minecraft accepted the Xbox token; the mark is
+/// removed, so it never reaches the player.
+pub fn take_approved(error: &mut LauncherError) -> bool {
+    error.params.remove(APPROVED_MARK).is_some()
+}
+
 /// 32 hex characters to the 8-4-4-4-12 form, lower case. Anything else comes back unchanged.
 pub fn dashed(id: &str) -> String {
     if id.len() != 32 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -212,18 +228,26 @@ impl MsaClient {
     }
 
     /// Runs the chain after Microsoft's tokens: Xbox user, XSTS, Minecraft login, profile, and
-    /// the entitlements only when there is no profile to tell why.
+    /// the entitlements only when there is no profile to tell why. An error after the Minecraft
+    /// login carries the approval mark ([`take_approved`]).
     pub async fn finish(&self, ms: MsTokens, now: u64) -> Result<SignedIn> {
         let user = self.xbox_user(&ms.access_token).await?;
         let xsts = self.xsts(&user).await?;
         let minecraft = self.minecraft_login(&xsts, now).await?;
-        let profile = self.profile(&minecraft).await?;
-        let owns = match profile {
-            Some(_) => false,
-            None => self.owns_game(&minecraft).await?,
-        };
+        // Minecraft took the Xbox token: any failure from here on says the client id is
+        // approved, so the app can forget a remembered approval wait.
+        let profile = async {
+            let profile = self.profile(&minecraft).await?;
+            let owns = match profile {
+                Some(_) => false,
+                None => self.owns_game(&minecraft).await?,
+            };
+            ownership(profile, owns)
+        }
+        .await
+        .map_err(mark_approved)?;
         Ok(SignedIn {
-            profile: ownership(profile, owns)?,
+            profile,
             refresh_token: ms.refresh_token,
             minecraft,
             xuid: xsts.xuid,

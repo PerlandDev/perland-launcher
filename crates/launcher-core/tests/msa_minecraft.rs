@@ -2,7 +2,7 @@
 use launcher_core::{
     invite::Url,
     msa::{
-        minecraft::{dashed, ownership, McProfile, McToken},
+        minecraft::{dashed, ownership, take_approved, McProfile, McToken},
         MsTokens, MsaClient, MsaEndpoints,
     },
     ErrorCode,
@@ -336,4 +336,48 @@ async fn finish_propagates_step_errors() {
         .await;
     let err = client(&server).finish(ms(), 10).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::MicrosoftRateLimited);
+}
+
+/// An error after Minecraft accepted the Xbox token says so (the client id is approved), and
+/// the mark comes off once read; an earlier one carries no mark.
+#[tokio::test]
+async fn finish_marks_errors_that_come_after_minecraft_accepted() {
+    let server = MockServer::start().await;
+    mount_front(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/minecraft/profile"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let mut err = client(&server).finish(ms(), 10).await.unwrap_err();
+    let before = err.params.len();
+    assert!(take_approved(&mut err), "past login_with_xbox");
+    assert_eq!(err.params.len(), before - 1, "the mark is gone once read");
+    assert!(!take_approved(&mut err));
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/xbox"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+    let mut err = client(&server).finish(ms(), 10).await.unwrap_err();
+    assert!(!take_approved(&mut err), "stopped before Minecraft");
+
+    // Not owned is past it too.
+    let server = MockServer::start().await;
+    mount_front(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/minecraft/profile"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/entitlements/mcstore"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "items": [] })))
+        .mount(&server)
+        .await;
+    let mut err = client(&server).finish(ms(), 10).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::MinecraftNotOwned);
+    assert!(take_approved(&mut err));
 }

@@ -11,7 +11,7 @@ use launcher_core::{
     },
     http::HttpClient,
     msa::{
-        minecraft::{dashed, ownership, McProfile, McToken, SignedIn},
+        minecraft::{dashed, ownership, take_approved, McProfile, McToken, SignedIn},
         secrets::{delete_refresh, load_refresh, save_refresh},
         MsaClient, MsaEndpoints,
     },
@@ -66,6 +66,17 @@ fn sign_in_again() -> LauncherError {
         "Sign in with Microsoft again to keep playing.",
     )
     .with_fix("Sign in")
+}
+
+/// Whether a sign-in chain error came after Minecraft accepted the Xbox token (so this build's
+/// client id is approved). Takes the chain's mark off the error, so it never reaches the
+/// player. Not owned and no profile only come from there.
+fn past_xbox(error: &mut LauncherError) -> bool {
+    take_approved(error)
+        || matches!(
+            error.code,
+            ErrorCode::MinecraftNotOwned | ErrorCode::MinecraftNoProfile
+        )
 }
 
 /// `MsaApi` over `launcher_core::msa::MsaClient`.
@@ -224,18 +235,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 }
                 Err(e)
             }
-            // These come only after Minecraft accepted the Xbox token, so the client id is
-            // approved: the memo of a wait no longer holds.
-            Err(e)
-                if matches!(
-                    e.code,
-                    ErrorCode::MinecraftNotOwned | ErrorCode::MinecraftNoProfile
-                ) =>
-            {
-                self.clear_msa_waiting().await;
+            Err(mut e) => {
+                // Past Minecraft's Xbox login the client id is approved: the memo of a wait no
+                // longer holds, whatever failed after.
+                if past_xbox(&mut e) {
+                    self.clear_msa_waiting().await;
+                }
                 Err(e)
             }
-            Err(e) => Err(e),
         }
     }
 
@@ -422,6 +429,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 Err(e) => return Err(e),
             }
         };
+        // The token speaks for another Minecraft profile than the one this account was signed
+        // in as: never launch as someone else, and leave the stored account as it is.
+        if !dashed(&profile.id).eq_ignore_ascii_case(&uuid) {
+            tracing::warn!("the Microsoft sign-in answered for another Minecraft profile");
+            return Err(sign_in_again());
+        }
         if profile.name != account.username {
             if let Err(e) = self
                 .accounts
@@ -472,17 +485,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     ) -> Result<(McToken, Option<String>)> {
         let signed = match msa.refresh(refresh).await {
             Ok(signed) => signed,
-            // Only after Minecraft accepted the Xbox token, so the client id is approved.
-            Err(e)
-                if matches!(
-                    e.code,
-                    ErrorCode::MinecraftNotOwned | ErrorCode::MinecraftNoProfile
-                ) =>
-            {
-                self.clear_msa_waiting().await;
+            Err(mut e) => {
+                if past_xbox(&mut e) {
+                    self.clear_msa_waiting().await;
+                }
                 return Err(e);
             }
-            Err(e) => return Err(e),
         };
         self.clear_msa_waiting().await;
         let secrets = self.msa_secrets.clone();
@@ -545,7 +553,7 @@ mod tests {
         accounts::{offline_account, Account, AccountsFile, BuildKind, MsaWaiting, Provider},
         invite::Url,
         msa::{
-            minecraft::{dashed, McProfile, McToken},
+            minecraft::{dashed, mark_approved, McProfile, McToken},
             secrets::{load_refresh, save_refresh, KeyedSecrets, MemorySecrets},
         },
         perland::SecretError,
@@ -742,6 +750,89 @@ mod tests {
         let file = core.accounts.lock().await.list().await.unwrap();
         assert_eq!(file.msa_waiting, None);
         assert!(file.accounts.is_empty());
+    }
+
+    /// Any failure after Minecraft accepted the Xbox token (here a network failure on the
+    /// profile) proves the client id approved: the remembered wait goes, and the mark that
+    /// said so never reaches the player.
+    #[tokio::test]
+    async fn awaiting_approval_is_cleared_by_any_failure_past_xbox() {
+        let (core, runner, host, _t) = core(BuildKind::Release);
+        {
+            let mut redeems = runner.msa.redeems.lock().unwrap();
+            redeems.push_back(Err(awaiting()));
+            redeems.push_back(Err(mark_approved(LauncherError::network(
+                ErrorCode::HostUnreachable,
+                "Couldn't reach Minecraft",
+            ))));
+        }
+        let task = sign_in(&core);
+        let opened = host.wait_for_opened(1).await;
+        come_back(&opened[0], "code=c1").await;
+        finish(task).await.unwrap_err();
+        assert!(core.account_ready().await.unwrap().awaiting_approval);
+
+        let task = sign_in(&core);
+        let opened = host.wait_for_opened(2).await;
+        come_back(&opened[1], "code=c2").await;
+        let err = finish(task).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::HostUnreachable);
+        assert!(err.params.is_empty(), "no mark for the player");
+        assert!(!core.account_ready().await.unwrap().awaiting_approval);
+        let file = core.accounts.lock().await.list().await.unwrap();
+        assert_eq!(file.msa_waiting, None);
+    }
+
+    /// A failure before Minecraft answered (here the Microsoft token endpoint) proves nothing:
+    /// the wait stays.
+    #[tokio::test]
+    async fn awaiting_approval_stays_after_a_failure_before_minecraft() {
+        let (core, runner, host, _t) = core(BuildKind::Release);
+        {
+            let mut redeems = runner.msa.redeems.lock().unwrap();
+            redeems.push_back(Err(awaiting()));
+            redeems.push_back(Err(LauncherError::network(
+                ErrorCode::HostUnreachable,
+                "Couldn't reach Microsoft",
+            )));
+        }
+        for n in 1..=2 {
+            let task = sign_in(&core);
+            let opened = host.wait_for_opened(n).await;
+            come_back(&opened[n - 1], "code=c").await;
+            finish(task).await.unwrap_err();
+        }
+        assert!(core.account_ready().await.unwrap().awaiting_approval);
+    }
+
+    /// The launch check's refresh: the same rule.
+    #[tokio::test]
+    async fn refresh_failing_past_xbox_clears_the_approval_wait() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, None).await;
+        core.accounts
+            .lock()
+            .await
+            .set_msa_waiting(Some(MsaWaiting {
+                client_id: MS_CLIENT_ID.into(),
+                at: 1,
+            }))
+            .await
+            .unwrap();
+        runner
+            .msa
+            .refreshes
+            .lock()
+            .unwrap()
+            .push_back(Err(mark_approved(LauncherError::network(
+                ErrorCode::HostUnreachable,
+                "Couldn't reach Minecraft",
+            ))));
+        let err = core.session_for(alex).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::HostUnreachable);
+        assert!(err.params.is_empty(), "no mark for the player");
+        let file = core.accounts.lock().await.list().await.unwrap();
+        assert_eq!(file.msa_waiting, None);
     }
 
     #[tokio::test]
@@ -1235,6 +1326,30 @@ mod tests {
         assert_eq!(file.active, Some(steve.uuid), "the active account stays");
         let renamed = file.accounts.iter().find(|a| a.uuid == alex.uuid).unwrap();
         assert_eq!(renamed.username, "Alexis");
+    }
+
+    /// The token answers for another Minecraft profile than the stored account's: the account
+    /// can't be trusted to be the one the player signed in as, so no launch and no rename.
+    #[tokio::test]
+    async fn a_profile_of_another_player_asks_to_sign_in_again() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = signed_alex(&core, Some(7200)).await;
+        runner
+            .msa
+            .profiles
+            .lock()
+            .unwrap()
+            .push_back(Ok(Some(McProfile {
+                id: STEVE_ID.into(),
+                name: "Steve".into(),
+            })));
+        let err = core.session_for(alex.clone()).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::MicrosoftSignInAgain);
+        assert_eq!(
+            core.accounts_list().await.unwrap().accounts,
+            vec![alex],
+            "the stored account keeps its name"
+        );
     }
 
     #[tokio::test]
