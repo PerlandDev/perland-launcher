@@ -4,7 +4,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use launcher_core::{events::TaskId, launch::crash::Vendor, sync::ManualFile, LauncherError};
+use launcher_core::{
+    events::TaskId, launch::crash::Vendor, msa::MsaStep, sync::ManualFile, LauncherError,
+};
 use serde::Serialize;
 
 use crate::dto::{PackUpdate, PerlandSignInPhase, SyncSummary};
@@ -122,6 +124,10 @@ pub enum AppEvent {
     /// A Microsoft sign-in moved on: the browser is open (`waiting`), or the code it brought
     /// back is being redeemed (`exchanging`).
     MicrosoftSignIn { phase: PerlandSignInPhase },
+    /// A Microsoft sign-in started a call of its chain (redeeming the code, Xbox Live, XSTS,
+    /// Minecraft's login, the profile and ownership), so the window can show each one. A
+    /// failure stops the chain on the step reported last.
+    MicrosoftSignInStep { step: MsaStep },
     /// New lines of a managed server's console log (`manage_console_open`), oldest first,
     /// cleaned of color codes.
     #[serde(rename_all = "camelCase")]
@@ -220,6 +226,13 @@ mod tests {
             })
             .unwrap(),
             serde_json::json!({ "type": "microsoft_sign_in", "phase": "waiting" })
+        );
+        assert_eq!(
+            serde_json::to_value(AppEvent::MicrosoftSignInStep {
+                step: MsaStep::Xsts
+            })
+            .unwrap(),
+            serde_json::json!({ "type": "microsoft_sign_in_step", "step": "xsts" })
         );
     }
 

@@ -39,6 +39,7 @@ async function bootstrap() {
       microsoft: (
         ["signedOut", "signedIn", "awaiting", "notConfigured", "notOwned"] as const
       ).find((v) => v === params.get("microsoft")),
+      microsoftStepMs: Number(params.get("microsoftStepMs")) || undefined,
       update: mockUpdateState(params.get("update")),
       manual: params.has("manual"),
       noUpdate: params.has("noUpdate"),

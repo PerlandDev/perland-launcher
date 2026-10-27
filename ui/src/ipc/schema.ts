@@ -418,13 +418,16 @@ export const accountsFile = z.strictObject({
   accounts: z.array(account),
   active: z.string().nullable(),
   licensedSigninSeen: z.boolean(),
-  msaWaiting: z.strictObject({ clientId: z.string(), at: z.number().int() }).nullable(),
   offlineNoticeDismissed: z.boolean(),
 });
+/** The calls of the Microsoft sign-in chain, in order: Microsoft's code, Xbox Live, XSTS, Minecraft's login, the profile and
+ *  ownership check. */
+export const MSA_STEPS = ['microsoft', 'xbox', 'xsts', 'minecraft', 'profile'] as const;
+export const msaStep = z.enum(MSA_STEPS);
+export type MsaStep = z.infer<typeof msaStep>;
 /** Whether the player can play, read without a network call (`account_ready`). */
 export const accountReady = z.strictObject({
   ready: z.boolean(),
-  awaitingApproval: z.boolean(),
   offlineNotice: z.boolean(),
 });
 
@@ -646,6 +649,8 @@ export const appEvent = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('perland_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
   /** A Microsoft sign-in moved on: the browser is open, or its code is being redeemed. */
   z.strictObject({ type: z.literal('microsoft_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
+  /** A Microsoft sign-in started a call of its chain; a failure stops on the step reported last. */
+  z.strictObject({ type: z.literal('microsoft_sign_in_step'), step: msaStep }),
   /** New lines of the server console being followed in Manage, without colour codes. */
   z.strictObject({ type: z.literal('server_log'), tenantId: z.string(), stack: z.string(), lines: z.array(z.string()) }),
   /** That console log stopped on its own: offer to reconnect. */

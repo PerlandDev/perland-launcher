@@ -5,10 +5,11 @@ import { detectLang } from '../../i18n';
 import { commands } from '../../ipc/commands';
 import { describeError, isLauncherError } from '../../ipc/errors';
 import { onAppEvent } from '../../ipc/events';
-import type { AccountsFile } from '../../ipc/schema';
-import { qk, useAccountReady } from '../../state/queries';
+import type { AccountsFile, MsaStep } from '../../ipc/schema';
+import { qk } from '../../state/queries';
 import { Button } from '../../ui/Button';
 import { Clock, WarningDiamond } from '../../ui/Icon';
+import { SignInSteps } from './SignInSteps';
 
 export interface MicrosoftSignInProps {
   /** Called once the account is signed in and in use. */
@@ -16,20 +17,22 @@ export interface MicrosoftSignInProps {
   /** `primary`: the lit large key of a step that is about signing in (First run, the sign-in prompt). `inline`: Accounts' add
    *  key, reading "Add Microsoft account". */
   variant: 'primary' | 'inline';
-  /** Off where the place around it already says why (the sign-in prompt, the offline-accounts notice). The approval wait is
-   *  still said. */
+  /** Off where the place around it already says why (the sign-in prompt, the offline-accounts notice). A refusal is still said. */
   showWhy?: boolean;
 }
 
-/** Microsoft sign-in: the why line and the key, then the browser step (waiting, then exchanging) with Cancel. A failure is said
- *  inline under the key in the player's language. While Microsoft is still approving this build, the key reads Try again and the
- *  wait is said as info, not as a fault: there is nothing for the player to fix. */
+/** Microsoft sign-in: the why line and the key, then the browser step and each call of the chain (Microsoft, Xbox Live, XSTS,
+ *  Minecraft, the profile) as it runs, with Cancel. Every press runs the whole chain; nothing is skipped because an earlier one was
+ *  refused. After a refusal the steps stay, showing what passed and where it stopped. A failure is said inline under the key in
+ *  the player's language; Minecraft not having approved the app yet is said as info, not as a fault: there is nothing for the
+ *  player to fix. */
 export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: MicrosoftSignInProps) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
-  const ready = useAccountReady();
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<'waiting' | 'exchanging'>('waiting');
+  /** The call of the chain this sign-in reached; `null` before the browser opened (or after a cancel). */
+  const [reached, setReached] = useState<MsaStep | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [announce, setAnnounce] = useState('');
   /** Bumped by every start and by Cancel, so a sign-in left behind can't land later. */
@@ -43,7 +46,12 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
     let alive = true;
     let unlisten: (() => void) | undefined;
     void onAppEvent((event) => {
-      if (event.type === 'microsoft_sign_in') setPhase(event.phase);
+      if (event.type === 'microsoft_sign_in') {
+        setPhase(event.phase);
+        // The browser step is the Microsoft account step.
+        if (event.phase === 'waiting') setReached('microsoft');
+      }
+      if (event.type === 'microsoft_sign_in_step') setReached(event.step);
     }).then((stop) => {
       if (alive) unlisten = stop;
       else stop();
@@ -70,11 +78,13 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
     setError(null);
     setAnnounce('');
     setPhase('waiting');
+    setReached(null);
     setBusy(true);
     commands.accountSignInMicrosoft(detectLang(i18n.language)).then(
       (file: AccountsFile | null) => {
         if (mine !== attempt.current) return;
         setBusy(false);
+        setReached(null);
         if (!file) return; // canceled here or in the browser: back to the key, quietly
         qc.setQueryData(qk.accounts, file);
         void qc.invalidateQueries({ queryKey: qk.accountReady });
@@ -86,7 +96,6 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
         if (mine !== attempt.current) return;
         setBusy(false);
         setError(failure);
-        // An approval wait is now remembered; any other answer may have cleared one.
         void refresh();
       },
     );
@@ -95,6 +104,7 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
   const cancel = () => {
     attempt.current++;
     setBusy(false);
+    setReached(null);
     // A sign-in that finished just as the player pressed Cancel still counts: read the accounts again.
     void commands
       .accountSignInCancel()
@@ -102,11 +112,10 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
       .then(refresh);
   };
 
-  const failedAwaiting = isLauncherError(error) && error.code === 'microsoft_awaiting_approval';
-  const awaiting = failedAwaiting || (error === null && ready.data?.awaitingApproval === true);
-  const failure = error !== null && !failedAwaiting ? describeError(i18n, error) : null;
+  const awaiting = isLauncherError(error) && error.code === 'microsoft_awaiting_approval';
+  const failure = error !== null && !awaiting ? describeError(i18n, error) : null;
   const primary = variant === 'primary';
-  const label = awaiting ? t('common.retry') : primary ? t('accounts.microsoft') : t('accounts.microsoftAdd');
+  const label = primary ? t('accounts.microsoft') : t('accounts.microsoftAdd');
 
   const live = (
     <p aria-live="polite" className="sr-only">
@@ -120,6 +129,7 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
         <p aria-live="polite" className="font-semibold">
           {phase === 'exchanging' ? t('accounts.microsoftExchanging') : t('accounts.microsoftWaiting')}
         </p>
+        {reached && <SignInSteps reached={reached} end="running" />}
         <Button ref={cancelKey} variant="ghost" className="justify-self-start" onClick={cancel}>
           {t('common.cancel')}
         </Button>
@@ -130,6 +140,7 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
 
   return (
     <div className="grid gap-4">
+      {error !== null && reached && <SignInSteps reached={reached} end={awaiting ? 'waiting' : 'fault'} />}
       {awaiting ? (
         <p className="flex items-start gap-2 text-blue-ink">
           <Clock className="mt-0.5 h-[1.125rem] w-[1.125rem] flex-none" aria-hidden />

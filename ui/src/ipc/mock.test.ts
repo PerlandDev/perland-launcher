@@ -176,19 +176,21 @@ describe('mock backend', () => {
     await expect(handle('account_add_offline', { name: 'Steve' })).rejects.toMatchObject({ code: 'offline_locked' });
   });
 
-  it('the awaiting option rejects with microsoft_awaiting_approval and then accountReady says so', async () => {
+  it('the awaiting option runs the whole sign-in every time and is refused at Minecraft each time', async () => {
     const { handle } = createMockBackend({ beta: true, microsoft: 'awaiting' });
-    expect(await handle('account_ready')).toEqual({ ready: false, awaitingApproval: false, offlineNotice: true });
-    await expect(handle('account_sign_in_microsoft', { language: 'en' })).rejects.toMatchObject({ code: 'microsoft_awaiting_approval' });
-    expect(await handle('account_ready')).toMatchObject({ ready: false, awaitingApproval: true });
-  }, 10_000);
+    expect(await handle('account_ready')).toEqual({ ready: false, offlineNotice: true });
+    for (let n = 0; n < 2; n++) {
+      await expect(handle('account_sign_in_microsoft', { language: 'en' })).rejects.toMatchObject({ code: 'microsoft_awaiting_approval' });
+    }
+    expect(await handle('account_ready')).toEqual({ ready: false, offlineNotice: true });
+  }, 20_000);
 
   it('signs in with Microsoft as Alex, ready to play', async () => {
     const { handle } = createMockBackend({ beta: true });
     const file = (await handle('account_sign_in_microsoft', { language: 'en' })) as AccountsFile;
     expect(file.accounts).toEqual([{ provider: 'microsoft', username: 'Alex', uuid: expect.any(String) }]);
     expect(file.active).toBe(file.accounts[0]!.uuid);
-    expect(await handle('account_ready')).toEqual({ ready: true, awaitingApproval: false, offlineNotice: true });
+    expect(await handle('account_ready')).toEqual({ ready: true, offlineNotice: true });
     await handle('account_dismiss_offline_notice');
     expect(await handle('account_ready')).toMatchObject({ offlineNotice: false });
     expect(((await handle('accounts_list')) as AccountsFile).offlineNoticeDismissed).toBe(true);
@@ -218,7 +220,7 @@ describe('mock backend', () => {
     const dev = createMockBackend();
     expect(((await dev.handle('accounts_list')) as AccountsFile).accounts).toHaveLength(2);
     // A dev build plays with its offline account, as the core answers.
-    expect(await dev.handle('account_ready')).toEqual({ ready: true, awaitingApproval: false, offlineNotice: false });
+    expect(await dev.handle('account_ready')).toEqual({ ready: true, offlineNotice: false });
     const signedIn = (await createMockBackend({ beta: true, microsoft: 'signedIn' }).handle('accounts_list')) as AccountsFile;
     expect(signedIn.accounts.map((a) => [a.provider, a.username])).toEqual([['microsoft', 'Alex']]);
   });

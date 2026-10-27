@@ -889,8 +889,6 @@ pub struct EmailCodeSent {
 pub struct AccountReady {
     /// The active account is a Microsoft account with a stored refresh token.
     pub ready: bool,
-    /// The last sign-in found this build's client id still waiting on Mojang's approval.
-    pub awaiting_approval: bool,
     /// Offline accounts are hidden in this build and the player hasn't dismissed the notice.
     pub offline_notice: bool,
 }

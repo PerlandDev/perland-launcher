@@ -2,8 +2,8 @@
 use launcher_core::{
     invite::Url,
     msa::{
-        minecraft::{dashed, ownership, take_approved, McProfile, McToken},
-        MsTokens, MsaClient, MsaEndpoints,
+        minecraft::{dashed, ownership, McProfile, McToken},
+        MsTokens, MsaClient, MsaEndpoints, MsaStep,
     },
     ErrorCode,
 };
@@ -338,46 +338,47 @@ async fn finish_propagates_step_errors() {
     assert_eq!(err.code, ErrorCode::MicrosoftRateLimited);
 }
 
-/// An error after Minecraft accepted the Xbox token says so (the client id is approved), and
-/// the mark comes off once read; an earlier one carries no mark.
+/// Each call of the chain is reported as it starts, so the launcher can show the player (and a
+/// reviewer) every step it went through, and where a refusal stopped it.
 #[tokio::test]
-async fn finish_marks_errors_that_come_after_minecraft_accepted() {
+async fn finish_reports_each_step_as_it_starts() {
+    use std::sync::Mutex;
+
     let server = MockServer::start().await;
     mount_front(&server).await;
     Mock::given(method("GET"))
         .and(path("/minecraft/profile"))
-        .respond_with(ResponseTemplate::new(503))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({ "id": ID, "name": "Steve" })),
+        )
         .mount(&server)
         .await;
-    let mut err = client(&server).finish(ms(), 10).await.unwrap_err();
-    let before = err.params.len();
-    assert!(take_approved(&mut err), "past login_with_xbox");
-    assert_eq!(err.params.len(), before - 1, "the mark is gone once read");
-    assert!(!take_approved(&mut err));
+    let seen = Mutex::new(Vec::new());
+    client(&server)
+        .finish_with(ms(), 10, &|step| seen.lock().unwrap().push(step))
+        .await
+        .unwrap();
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [
+            MsaStep::Xbox,
+            MsaStep::Xsts,
+            MsaStep::Minecraft,
+            MsaStep::Profile
+        ]
+    );
 
+    // A refusal stops the chain on its step: nothing after it is asked.
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/xbox"))
         .respond_with(ResponseTemplate::new(503))
         .mount(&server)
         .await;
-    let mut err = client(&server).finish(ms(), 10).await.unwrap_err();
-    assert!(!take_approved(&mut err), "stopped before Minecraft");
-
-    // Not owned is past it too.
-    let server = MockServer::start().await;
-    mount_front(&server).await;
-    Mock::given(method("GET"))
-        .and(path("/minecraft/profile"))
-        .respond_with(ResponseTemplate::new(404))
-        .mount(&server)
-        .await;
-    Mock::given(method("GET"))
-        .and(path("/entitlements/mcstore"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "items": [] })))
-        .mount(&server)
-        .await;
-    let mut err = client(&server).finish(ms(), 10).await.unwrap_err();
-    assert_eq!(err.code, ErrorCode::MinecraftNotOwned);
-    assert!(take_approved(&mut err));
+    let seen = Mutex::new(Vec::new());
+    client(&server)
+        .finish_with(ms(), 10, &|step| seen.lock().unwrap().push(step))
+        .await
+        .unwrap_err();
+    assert_eq!(*seen.lock().unwrap(), [MsaStep::Xbox]);
 }

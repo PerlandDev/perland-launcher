@@ -6,7 +6,7 @@ import { closeSignInPrompt, signInPromptSnapshot } from './signInPrompt';
 afterEach(closeSignInPrompt);
 
 const answer = (ready: boolean) => () =>
-  mockIPC((cmd) => (cmd === 'account_ready' ? { ready, awaitingApproval: false, offlineNotice: false } : null));
+  mockIPC((cmd) => (cmd === 'account_ready' ? { ready, offlineNotice: false } : null));
 
 describe('requireAccount', () => {
   it('opens the prompt and answers false when no account can play', async () => {
@@ -36,7 +36,7 @@ describe('requireAccount', () => {
     mockIPC((cmd) => {
       if (cmd !== 'account_ready') return null;
       asked++;
-      return { ready, awaitingApproval: false, offlineNotice: false };
+      return { ready, offlineNotice: false };
     });
     expect(await requireAccount()).toBe(false);
     ready = true;

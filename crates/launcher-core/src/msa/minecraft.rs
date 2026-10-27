@@ -8,7 +8,7 @@ use reqwest::header::HeaderValue;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{rate_limited, sign_in_failed, xbox::Xsts, MsTokens, MsaClient, BODY_CAP};
+use super::{rate_limited, sign_in_failed, xbox::Xsts, MsTokens, MsaClient, MsaStep, BODY_CAP};
 use crate::{
     error::{ErrorCode, LauncherError, Result},
     http::read_capped,
@@ -70,22 +70,6 @@ struct Entitlements {
 #[derive(Deserialize)]
 struct Item {
     name: Option<String>,
-}
-
-/// The param that marks a sign-in chain error as coming after Minecraft accepted the Xbox
-/// token (`login_with_xbox`): from there on this build's client id is approved by Mojang.
-/// Never meant for the player; read and removed with [`take_approved`].
-const APPROVED_MARK: &str = "msa_approved";
-
-/// Mark `error` as coming after Minecraft accepted the Xbox token.
-pub fn mark_approved(error: LauncherError) -> LauncherError {
-    error.with_param(APPROVED_MARK, "true")
-}
-
-/// Whether a sign-in chain error came after Minecraft accepted the Xbox token; the mark is
-/// removed, so it never reaches the player.
-pub fn take_approved(error: &mut LauncherError) -> bool {
-    error.params.remove(APPROVED_MARK).is_some()
 }
 
 /// 32 hex characters to the 8-4-4-4-12 form, lower case. Anything else comes back unchanged.
@@ -228,26 +212,32 @@ impl MsaClient {
     }
 
     /// Runs the chain after Microsoft's tokens: Xbox user, XSTS, Minecraft login, profile, and
-    /// the entitlements only when there is no profile to tell why. An error after the Minecraft
-    /// login carries the approval mark ([`take_approved`]).
+    /// the entitlements only when there is no profile to tell why.
     pub async fn finish(&self, ms: MsTokens, now: u64) -> Result<SignedIn> {
+        self.finish_with(ms, now, &|_| {}).await
+    }
+
+    /// [`finish`](Self::finish), reporting each step to `step` as it starts.
+    pub async fn finish_with(
+        &self,
+        ms: MsTokens,
+        now: u64,
+        step: &(dyn Fn(MsaStep) + Send + Sync),
+    ) -> Result<SignedIn> {
+        step(MsaStep::Xbox);
         let user = self.xbox_user(&ms.access_token).await?;
+        step(MsaStep::Xsts);
         let xsts = self.xsts(&user).await?;
+        step(MsaStep::Minecraft);
         let minecraft = self.minecraft_login(&xsts, now).await?;
-        // Minecraft took the Xbox token: any failure from here on says the client id is
-        // approved, so the app can forget a remembered approval wait.
-        let profile = async {
-            let profile = self.profile(&minecraft).await?;
-            let owns = match profile {
-                Some(_) => false,
-                None => self.owns_game(&minecraft).await?,
-            };
-            ownership(profile, owns)
-        }
-        .await
-        .map_err(mark_approved)?;
+        step(MsaStep::Profile);
+        let profile = self.profile(&minecraft).await?;
+        let owns = match profile {
+            Some(_) => false,
+            None => self.owns_game(&minecraft).await?,
+        };
         Ok(SignedIn {
-            profile,
+            profile: ownership(profile, owns)?,
             refresh_token: ms.refresh_token,
             minecraft,
             xuid: xsts.xuid,

@@ -317,6 +317,26 @@
     "phase": "exchanging"
   },
   {
+    "type": "microsoft_sign_in_step",
+    "step": "microsoft"
+  },
+  {
+    "type": "microsoft_sign_in_step",
+    "step": "xbox"
+  },
+  {
+    "type": "microsoft_sign_in_step",
+    "step": "xsts"
+  },
+  {
+    "type": "microsoft_sign_in_step",
+    "step": "minecraft"
+  },
+  {
+    "type": "microsoft_sign_in_step",
+    "step": "profile"
+  },
+  {
     "type": "update",
     "state": {
       "state": "ready",

@@ -133,13 +133,6 @@ pub fn offline_allowed(build: BuildKind) -> bool {
 }
 
 /// The launcher's own record of an unfinished Microsoft sign-in (a browser window it opened).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MsaWaiting {
-    pub client_id: String,
-    pub at: u64,
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsFile {
@@ -151,8 +144,6 @@ pub struct AccountsFile {
     #[serde(default)]
     pub licensed_signin_seen: bool,
     /// Launcher state, not a setting: the UI writes `Settings` whole and would overwrite it.
-    #[serde(default)]
-    pub msa_waiting: Option<MsaWaiting>,
     #[serde(default)]
     pub offline_notice_dismissed: bool,
 }
@@ -249,12 +240,6 @@ impl AccountStore {
         account.username = username.to_string();
         self.save(&file).await?;
         Ok(true)
-    }
-
-    pub async fn set_msa_waiting(&self, waiting: Option<MsaWaiting>) -> Result<()> {
-        let mut file = self.load().await?;
-        file.msa_waiting = waiting;
-        self.save(&file).await
     }
 
     pub async fn dismiss_offline_notice(&self) -> Result<()> {
@@ -430,7 +415,6 @@ mod tests {
         let file: AccountsFile =
             serde_json::from_str(r#"{"accounts":[],"active":null,"licensedSigninSeen":true}"#)
                 .unwrap();
-        assert_eq!(file.msa_waiting, None);
         assert!(!file.offline_notice_dismissed);
     }
 
@@ -487,20 +471,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn waiting_and_notice_state_persist() {
+    async fn notice_state_persists() {
         let tmp = tempfile::tempdir().unwrap();
         let store = AccountStore::new(tmp.path().join("accounts.json"));
-        let waiting = MsaWaiting {
-            client_id: "abc".into(),
-            at: 42,
-        };
-        store.set_msa_waiting(Some(waiting.clone())).await.unwrap();
         store.dismiss_offline_notice().await.unwrap();
-        let file = store.load().await.unwrap();
-        assert_eq!(file.msa_waiting, Some(waiting));
-        assert!(file.offline_notice_dismissed);
-        store.set_msa_waiting(None).await.unwrap();
-        assert_eq!(store.load().await.unwrap().msa_waiting, None);
+        assert!(store.load().await.unwrap().offline_notice_dismissed);
+    }
+
+    /// A file written while the launcher remembered an approval wait still parses.
+    #[test]
+    fn a_file_with_the_old_approval_wait_still_parses() {
+        let file: AccountsFile = serde_json::from_str(
+            r#"{"accounts":[],"active":null,"msaWaiting":{"clientId":"abc","at":42}}"#,
+        )
+        .unwrap();
+        assert_eq!(file, AccountsFile::default());
     }
 
     #[tokio::test]

@@ -33,7 +33,10 @@ use launcher_core::{
     launch::GameExit,
     locks::InstanceLock,
     meta::loaders::LoaderKind,
-    msa::minecraft::{McProfile, McToken, SignedIn},
+    msa::{
+        minecraft::{McProfile, McToken, SignedIn},
+        MsaStep,
+    },
     news::NewsPage,
     perland::{
         Apply, BanList, ConsoleReply, CreateAllowance, CreateFreeServer, CreateServer,
@@ -1073,7 +1076,18 @@ impl MsaApi for FakeMsa {
         code: String,
         verifier: String,
         redirect: String,
+        step: crate::msa::StepReport,
     ) -> BoxFuture<Result<SignedIn>> {
+        // The fake reports every step of the chain, as a sign-in that got to the end would.
+        for each in [
+            MsaStep::Microsoft,
+            MsaStep::Xbox,
+            MsaStep::Xsts,
+            MsaStep::Minecraft,
+            MsaStep::Profile,
+        ] {
+            step(each);
+        }
         self.answer(
             "redeem",
             &[&code, &verifier, &redirect],

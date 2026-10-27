@@ -1,19 +1,17 @@
-//! Sign in with Microsoft (Microsoft sign-in spec): the browser sign-in, the memo of a client id
-//! still waiting on Mojang's approval, and what the app keeps of a signed-in account: the
-//! refresh token in the credential store, the Minecraft token and xuid in memory only.
+//! Sign in with Microsoft (Microsoft sign-in spec): the browser sign-in, each step of the chain
+//! reported to the window as it runs, and what the app keeps of a signed-in account: the
+//! refresh token in the credential store, the Minecraft token and xuid in memory only. Every
+//! sign-in runs the whole chain; nothing is remembered that would skip a step.
 //! Nothing here logs or formats a token, an authorization code or the PKCE verifier.
 use std::sync::Mutex;
 
 use launcher_core::{
-    accounts::{
-        hides_offline, offline_allowed, visible, Account, AccountsFile, MsaWaiting, Provider,
-        Session,
-    },
+    accounts::{hides_offline, offline_allowed, visible, Account, AccountsFile, Provider, Session},
     http::HttpClient,
     msa::{
-        minecraft::{dashed, ownership, take_approved, McProfile, McToken, SignedIn},
+        minecraft::{dashed, ownership, McProfile, McToken, SignedIn},
         secrets::{delete_refresh, load_refresh, save_refresh},
-        MsaClient, MsaEndpoints,
+        MsaClient, MsaEndpoints, MsaStep,
     },
     perland::{Callback, Language, Loopback, Page, Pkce, SecretError},
     ErrorCode, LauncherError, Result,
@@ -35,18 +33,23 @@ pub trait MsaApi: Send + Sync + 'static {
     fn client_id(&self) -> Option<String>;
     /// The page the browser opens to sign in.
     fn authorize_url(&self, redirect: &str, pkce: &Pkce) -> Result<String>;
-    /// Redeem the code the browser brought back and run the whole chain.
+    /// Redeem the code the browser brought back and run the whole chain, reporting each step
+    /// to `step` as it starts.
     fn redeem(
         &self,
         code: String,
         verifier: String,
         redirect: String,
+        step: StepReport,
     ) -> BoxFuture<Result<SignedIn>>;
     /// Trade a refresh token for a new one and run the whole chain.
     fn refresh(&self, refresh_token: String) -> BoxFuture<Result<SignedIn>>;
     /// The Minecraft profile the token belongs to; `None` when it owns no profile.
     fn profile(&self, token: McToken) -> BoxFuture<Result<Option<McProfile>>>;
 }
+
+/// Where a sign-in reports each step of the chain as it starts.
+pub type StepReport = std::sync::Arc<dyn Fn(MsaStep) + Send + Sync>;
 
 /// The refusal of a build that has no Microsoft client id.
 pub(crate) fn not_configured() -> LauncherError {
@@ -66,17 +69,6 @@ fn sign_in_again() -> LauncherError {
         "Sign in with Microsoft again to keep playing.",
     )
     .with_fix("Sign in")
-}
-
-/// Whether a sign-in chain error came after Minecraft accepted the Xbox token (so this build's
-/// client id is approved). Takes the chain's mark off the error, so it never reaches the
-/// player. Not owned and no profile only come from there.
-fn past_xbox(error: &mut LauncherError) -> bool {
-    take_approved(error)
-        || matches!(
-            error.code,
-            ErrorCode::MinecraftNotOwned | ErrorCode::MinecraftNoProfile
-        )
 }
 
 /// `MsaApi` over `launcher_core::msa::MsaClient`.
@@ -116,12 +108,14 @@ impl MsaApi for CoreMsa {
         code: String,
         verifier: String,
         redirect: String,
+        step: StepReport,
     ) -> BoxFuture<Result<SignedIn>> {
         let client = self.client();
         Box::pin(async move {
             let client = client?;
+            step(MsaStep::Microsoft);
             let tokens = client.redeem_code(&code, &verifier, &redirect).await?;
-            client.finish(tokens, now_secs()).await
+            client.finish_with(tokens, now_secs(), &*step).await
         })
     }
 
@@ -171,7 +165,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         // Take the slot first, so a Cancel (or another sign-in) before the browser opens counts.
         let (_attempt, cancel) = self.start_msa_sign_in();
         let msa = self.runner.msa();
-        let client_id = msa.client_id().ok_or_else(not_configured)?;
+        msa.client_id().ok_or_else(not_configured)?;
         let pkce = Pkce::new();
         let loopback = Loopback::bind().map_err(|e| {
             LauncherError::auth(ErrorCode::SignInFailed, "Couldn't listen for the sign-in.")
@@ -212,51 +206,24 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.host.emit(AppEvent::MicrosoftSignIn {
             phase: PerlandSignInPhase::Exchanging,
         });
-        let redeemed = msa.redeem(code, pkce.verifier.clone(), redirect).await;
+        // A sign-in canceled (or replaced by a newer one) stops reporting, so its late steps
+        // never show on the newer sign-in.
+        let (host, canceled) = (self.host.clone(), cancel.clone());
+        let report: StepReport = std::sync::Arc::new(move |step| {
+            if !*canceled.borrow() {
+                host.emit(AppEvent::MicrosoftSignInStep { step });
+            }
+        });
+        let redeemed = msa
+            .redeem(code, pkce.verifier.clone(), redirect, report)
+            .await;
         // Canceled while the code was redeemed: the player moved on, so keep nothing.
         if *cancel.borrow() {
             return Ok(None);
         }
         match redeemed {
             Ok(signed) => self.keep_microsoft(signed).await.map(Some),
-            Err(e) if e.code == ErrorCode::MicrosoftAwaitingApproval => {
-                let waiting = MsaWaiting {
-                    client_id,
-                    at: now_secs(),
-                };
-                if let Err(w) = self
-                    .accounts
-                    .lock()
-                    .await
-                    .set_msa_waiting(Some(waiting))
-                    .await
-                {
-                    tracing::warn!(code = ?w.code, "couldn't remember the approval wait");
-                }
-                Err(e)
-            }
-            Err(mut e) => {
-                // Past Minecraft's Xbox login the client id is approved: the memo of a wait no
-                // longer holds, whatever failed after.
-                if past_xbox(&mut e) {
-                    self.clear_msa_waiting().await;
-                }
-                Err(e)
-            }
-        }
-    }
-
-    /// Forget the approval wait, if one is remembered. A failure is only logged: the sign-in's
-    /// own answer matters more.
-    async fn clear_msa_waiting(&self) {
-        let store = self.accounts.lock().await;
-        let cleared = match store.list().await {
-            Ok(file) if file.msa_waiting.is_some() => store.set_msa_waiting(None).await,
-            Ok(_) => Ok(()),
             Err(e) => Err(e),
-        };
-        if let Err(e) = cleared {
-            tracing::warn!(code = ?e.code, "couldn't forget the approval wait");
         }
     }
 
@@ -265,9 +232,6 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     async fn keep_microsoft(&self, signed: SignedIn) -> Result<AccountsFile> {
         let uuid = dashed(&signed.profile.id);
         let store = self.accounts.lock().await;
-        if store.list().await?.msa_waiting.is_some() {
-            store.set_msa_waiting(None).await?;
-        }
         let secrets = self.msa_secrets.clone();
         let (key, refresh) = (uuid.clone(), signed.refresh_token);
         tokio::task::spawn_blocking(move || save_refresh(&*secrets, &key, &refresh))
@@ -322,16 +286,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// Whether the player can play now, without a network call: the active account is a
     /// Microsoft account with a stored refresh token, or, in a dev build, an offline account.
-    /// Also whether this build's client id is waiting on approval, and whether the "offline
-    /// accounts are gone" notice is due.
+    /// Also whether the "offline accounts are gone" notice is due.
     pub async fn account_ready(&self) -> Result<AccountReady> {
         let file = self.accounts.lock().await.list().await?;
         let offline_notice =
             hides_offline(&file, self.config.build) && !file.offline_notice_dismissed;
-        let awaiting_approval = match (&file.msa_waiting, self.runner.msa().client_id()) {
-            (Some(waiting), Some(id)) => waiting.client_id == id,
-            _ => false,
-        };
         let shown = visible(file, self.config.build);
         let active = shown
             .active
@@ -348,7 +307,6 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         Ok(AccountReady {
             ready,
-            awaiting_approval,
             offline_notice,
         })
     }
@@ -483,16 +441,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         uuid: &str,
         refresh: String,
     ) -> Result<(McToken, Option<String>)> {
-        let signed = match msa.refresh(refresh).await {
-            Ok(signed) => signed,
-            Err(mut e) => {
-                if past_xbox(&mut e) {
-                    self.clear_msa_waiting().await;
-                }
-                return Err(e);
-            }
-        };
-        self.clear_msa_waiting().await;
+        let signed = msa.refresh(refresh).await?;
         let secrets = self.msa_secrets.clone();
         let (key, rotated) = (uuid.to_string(), signed.refresh_token);
         tokio::task::spawn_blocking(move || save_refresh(&*secrets, &key, &rotated))
@@ -550,11 +499,12 @@ mod tests {
     };
 
     use launcher_core::{
-        accounts::{offline_account, Account, AccountsFile, BuildKind, MsaWaiting, Provider},
+        accounts::{offline_account, Account, AccountsFile, BuildKind, Provider},
         invite::Url,
         msa::{
-            minecraft::{dashed, mark_approved, McProfile, McToken},
+            minecraft::{dashed, McProfile, McToken},
             secrets::{load_refresh, save_refresh, KeyedSecrets, MemorySecrets},
+            MsaStep,
         },
         perland::SecretError,
         ErrorCode, LauncherError, Result,
@@ -687,8 +637,40 @@ mod tests {
         assert!(core.accounts_list().await.unwrap().accounts.is_empty());
     }
 
+    /// Every call of the chain reaches the window as it starts, after the browser step.
     #[tokio::test]
-    async fn awaiting_approval_is_remembered_then_cleared() {
+    async fn sign_in_reports_each_step_to_the_window() {
+        let (core, _runner, host, _t) = core(BuildKind::Release);
+        let task = sign_in(&core);
+        let opened = host.wait_for_opened(1).await;
+        come_back(&opened[0], "code=c").await;
+        finish(task).await.unwrap().expect("signed in");
+        let steps: Vec<_> = host
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e {
+                AppEvent::MicrosoftSignInStep { step } => Some(*step),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            steps,
+            [
+                MsaStep::Microsoft,
+                MsaStep::Xbox,
+                MsaStep::Xsts,
+                MsaStep::Minecraft,
+                MsaStep::Profile
+            ]
+        );
+    }
+
+    /// Minecraft turning the app down keeps nothing, and the next sign-in runs the whole chain
+    /// again: nothing is remembered that would skip it.
+    #[tokio::test]
+    async fn awaiting_approval_keeps_nothing_and_the_next_sign_in_tries_again() {
         let (core, runner, host, _t) = core(BuildKind::Release);
         runner
             .msa
@@ -701,162 +683,14 @@ mod tests {
         come_back(&opened[0], "code=c1").await;
         let err = finish(task).await.unwrap_err();
         assert_eq!(err.code, ErrorCode::MicrosoftAwaitingApproval);
-        let ready = core.account_ready().await.unwrap();
-        assert!(ready.awaiting_approval);
-        assert!(!ready.ready);
-        let file = core.accounts.lock().await.list().await.unwrap();
-        let waiting = file.msa_waiting.expect("remembered");
-        assert_eq!(waiting.client_id, MS_CLIENT_ID);
-        assert!(waiting.at > 0);
-        assert!(file.accounts.is_empty(), "no account is kept");
+        assert!(core.accounts_list().await.unwrap().accounts.is_empty());
+        assert!(!core.account_ready().await.unwrap().ready);
 
         let task = sign_in(&core);
         let opened = host.wait_for_opened(2).await;
         come_back(&opened[1], "code=c2").await;
         finish(task).await.unwrap().expect("signed in");
-        let ready = core.account_ready().await.unwrap();
-        assert!(!ready.awaiting_approval);
-        assert!(ready.ready);
-        let file = core.accounts.lock().await.list().await.unwrap();
-        assert_eq!(file.msa_waiting, None);
-    }
-
-    #[tokio::test]
-    async fn awaiting_approval_is_cleared_once_past_xbox() {
-        let (core, runner, host, _t) = core(BuildKind::Release);
-        {
-            let mut redeems = runner.msa.redeems.lock().unwrap();
-            redeems.push_back(Err(awaiting()));
-            redeems.push_back(Err(LauncherError::auth(
-                ErrorCode::MinecraftNotOwned,
-                "doesn't own Minecraft",
-            )));
-        }
-        let task = sign_in(&core);
-        let opened = host.wait_for_opened(1).await;
-        come_back(&opened[0], "code=c1").await;
-        finish(task).await.unwrap_err();
-        assert!(core.account_ready().await.unwrap().awaiting_approval);
-
-        let task = sign_in(&core);
-        let opened = host.wait_for_opened(2).await;
-        come_back(&opened[1], "code=c2").await;
-        let err = finish(task).await.unwrap_err();
-        assert_eq!(err.code, ErrorCode::MinecraftNotOwned);
-        assert!(
-            !core.account_ready().await.unwrap().awaiting_approval,
-            "Minecraft answered, so the app is approved"
-        );
-        let file = core.accounts.lock().await.list().await.unwrap();
-        assert_eq!(file.msa_waiting, None);
-        assert!(file.accounts.is_empty());
-    }
-
-    /// Any failure after Minecraft accepted the Xbox token (here a network failure on the
-    /// profile) proves the client id approved: the remembered wait goes, and the mark that
-    /// said so never reaches the player.
-    #[tokio::test]
-    async fn awaiting_approval_is_cleared_by_any_failure_past_xbox() {
-        let (core, runner, host, _t) = core(BuildKind::Release);
-        {
-            let mut redeems = runner.msa.redeems.lock().unwrap();
-            redeems.push_back(Err(awaiting()));
-            redeems.push_back(Err(mark_approved(LauncherError::network(
-                ErrorCode::HostUnreachable,
-                "Couldn't reach Minecraft",
-            ))));
-        }
-        let task = sign_in(&core);
-        let opened = host.wait_for_opened(1).await;
-        come_back(&opened[0], "code=c1").await;
-        finish(task).await.unwrap_err();
-        assert!(core.account_ready().await.unwrap().awaiting_approval);
-
-        let task = sign_in(&core);
-        let opened = host.wait_for_opened(2).await;
-        come_back(&opened[1], "code=c2").await;
-        let err = finish(task).await.unwrap_err();
-        assert_eq!(err.code, ErrorCode::HostUnreachable);
-        assert!(err.params.is_empty(), "no mark for the player");
-        assert!(!core.account_ready().await.unwrap().awaiting_approval);
-        let file = core.accounts.lock().await.list().await.unwrap();
-        assert_eq!(file.msa_waiting, None);
-    }
-
-    /// A failure before Minecraft answered (here the Microsoft token endpoint) proves nothing:
-    /// the wait stays.
-    #[tokio::test]
-    async fn awaiting_approval_stays_after_a_failure_before_minecraft() {
-        let (core, runner, host, _t) = core(BuildKind::Release);
-        {
-            let mut redeems = runner.msa.redeems.lock().unwrap();
-            redeems.push_back(Err(awaiting()));
-            redeems.push_back(Err(LauncherError::network(
-                ErrorCode::HostUnreachable,
-                "Couldn't reach Microsoft",
-            )));
-        }
-        for n in 1..=2 {
-            let task = sign_in(&core);
-            let opened = host.wait_for_opened(n).await;
-            come_back(&opened[n - 1], "code=c").await;
-            finish(task).await.unwrap_err();
-        }
-        assert!(core.account_ready().await.unwrap().awaiting_approval);
-    }
-
-    /// The launch check's refresh: the same rule.
-    #[tokio::test]
-    async fn refresh_failing_past_xbox_clears_the_approval_wait() {
-        let (core, runner, _host, _t) = core(BuildKind::Release);
-        let alex = signed_alex(&core, None).await;
-        core.accounts
-            .lock()
-            .await
-            .set_msa_waiting(Some(MsaWaiting {
-                client_id: MS_CLIENT_ID.into(),
-                at: 1,
-            }))
-            .await
-            .unwrap();
-        runner
-            .msa
-            .refreshes
-            .lock()
-            .unwrap()
-            .push_back(Err(mark_approved(LauncherError::network(
-                ErrorCode::HostUnreachable,
-                "Couldn't reach Minecraft",
-            ))));
-        let err = core.session_for(alex).await.unwrap_err();
-        assert_eq!(err.code, ErrorCode::HostUnreachable);
-        assert!(err.params.is_empty(), "no mark for the player");
-        let file = core.accounts.lock().await.list().await.unwrap();
-        assert_eq!(file.msa_waiting, None);
-    }
-
-    #[tokio::test]
-    async fn awaiting_approval_ignores_another_client_id() {
-        let (core, runner, host, _t) = core(BuildKind::Release);
-        runner
-            .msa
-            .redeems
-            .lock()
-            .unwrap()
-            .push_back(Err(awaiting()));
-        let task = sign_in(&core);
-        let opened = host.wait_for_opened(1).await;
-        come_back(&opened[0], "code=c1").await;
-        finish(task).await.unwrap_err();
-        assert!(core.account_ready().await.unwrap().awaiting_approval);
-
-        *runner.msa.client_id.lock().unwrap() = Some("another-client-id".into());
-        assert!(
-            !core.account_ready().await.unwrap().awaiting_approval,
-            "a build with another client id has its own approval"
-        );
-        *runner.msa.client_id.lock().unwrap() = None;
-        assert!(!core.account_ready().await.unwrap().awaiting_approval);
+        assert_eq!(runner.msa.calls_to("redeem").len(), 2);
     }
 
     #[tokio::test]
@@ -1353,26 +1187,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refresh_clears_the_approval_wait() {
-        let (core, _runner, _host, _t) = core(BuildKind::Release);
-        let alex = signed_alex(&core, None).await;
-        let waiting = MsaWaiting {
-            client_id: MS_CLIENT_ID.into(),
-            at: 1,
-        };
-        core.accounts
-            .lock()
-            .await
-            .set_msa_waiting(Some(waiting))
-            .await
-            .unwrap();
-        core.session_for(alex).await.unwrap();
-        let file = core.accounts.lock().await.list().await.unwrap();
-        assert_eq!(file.msa_waiting, None, "Minecraft answered");
-    }
-
-    #[tokio::test]
-    async fn refresh_awaiting_approval_is_returned_and_not_remembered() {
+    async fn refresh_awaiting_approval_is_returned() {
         let (core, runner, _host, _t) = core(BuildKind::Release);
         let alex = signed_alex(&core, None).await;
         runner
@@ -1383,8 +1198,6 @@ mod tests {
             .push_back(Err(awaiting()));
         let err = core.session_for(alex).await.unwrap_err();
         assert_eq!(err.code, ErrorCode::MicrosoftAwaitingApproval);
-        let file = core.accounts.lock().await.list().await.unwrap();
-        assert_eq!(file.msa_waiting, None, "only a sign-in remembers it");
     }
 
     /// Microsoft refresh tokens in memory, whose saves fail while `fail` is set.

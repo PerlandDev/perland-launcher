@@ -17,7 +17,7 @@ The goal is a launcher that passes the review. Every public build starts Minecra
 - In beta and stable builds, the game starts only for a signed-in Microsoft account whose ownership was checked. Every route to Play counts: an instance, the public server list, a join link (`perland://join`) and Your servers.
 - The session is checked online before every launch, and refreshed when needed. The game never starts on an old, empty or made-up token.
 - Microsoft sign-in works end to end as soon as Mojang approves the client ID, with no new release.
-- Until then, the update installs and keeps working: instances, pack sync, Browse, settings, the server list to look at, and every Perland feature. Sign-in and Play say plainly that Microsoft sign-in is waiting on approval.
+- Until then, the update installs and keeps working: instances, pack sync, Browse, settings, the server list to look at, and every Perland feature. Every sign-in runs the whole chain for real; when Minecraft turns it down, the player sees each step that passed and that Minecraft hasn't approved the launcher yet.
 - Public wording (README, `PRODUCT.md`, the UI strings in English and Spanish) no longer mentions offline accounts or "coming soon".
 
 ## Non-goals
@@ -59,7 +59,7 @@ The owner chose A.
 ## What the owner decided
 
 1. **Beta and stable builds have no offline accounts at all.** Only dev builds (`debug_assertions`, never distributed) keep them. The "unlock after one licensed sign-in" gate is dropped, not kept for stable. Prism Launcher's gate was considered and turned down: the form's wording and our history make it a likely second rejection.
-2. **While approval is pending, the update keeps the launcher installable and useful.** Sign-in and Play say that Microsoft sign-in is waiting on approval from Microsoft.
+2. **While approval is pending, the update keeps the launcher installable and useful.** Sign-in is never shown as disabled: every press runs the whole chain against Microsoft, Xbox and Minecraft, and only Minecraft's own refusal says the launcher isn't approved yet. *(Owner's call, 2026-10-27: Mojang should see the code in action.)*
 3. **Perland features stay open with just a Perland sign-in.** Only starting the game (and so joining a server) needs the Microsoft account.
 4. **Sign-in is approach A.**
 
@@ -100,15 +100,13 @@ One attempt, from the player's click to a stored account:
    - Profile 404 with no entitlement: `minecraft_not_owned`. The account is not added.
 6. **Store.** The account file gets `{provider: microsoft, username, uuid}` and the account becomes active. Secrets go to the OS credential store (below).
 
-Cancel, a second sign-in, a closed browser and the deadline behave like Perland sign-in: `Ok(None)`, no error. Events to the UI reuse the Perland sign-in phases (waiting, exchanging) under a Microsoft variant.
+Cancel, a second sign-in, a closed browser and the deadline behave like Perland sign-in: `Ok(None)`, no error. Events to the UI reuse the Perland sign-in phases (waiting, exchanging) under a Microsoft variant, and each call of the chain is reported as it starts (`microsoft_sign_in_step`: `microsoft`, `xbox`, `xsts`, `minecraft`, `profile`). The window lists the five steps with their state while they run, and keeps the list after a refusal so the player sees what passed and where it stopped. A canceled sign-in stops reporting.
 
 *(My call.)* The browser page shown after Microsoft's step does not say "signed in": the Xbox, ownership and approval checks still follow. It gets its own wording in English and Spanish: "Go back to Perland Launcher to finish signing in. You can close this tab." The Perland pages stay as they are.
 
-**Knowing approval is pending.** *(My call.)* The only signal is the 403 at step 4, so the launcher remembers it.
-- After a 403 it stores `{client_id, at}` in its settings, keyed by the client ID the build uses.
-- While that is stored, the sign-in places (first run, Accounts, the Play prompt) say up front that Microsoft sign-in is waiting on approval. The button stays enabled as "Try again", because only an attempt can find out that approval came.
-- Any attempt that gets past step 4 clears it. So does a build with another client ID, since the key no longer matches.
-- A fresh install knows nothing until its first attempt.
+**Knowing approval is pending.** The only signal is the 403 at step 4, and the launcher remembers nothing of it. *(Owner's call, 2026-10-27, replacing an earlier memo of the 403.)*
+- Every sign-in runs the whole chain: the browser, Microsoft's token, Xbox Live, XSTS and Minecraft's login. Nothing skips a step because an earlier attempt was refused, and nothing is said up front.
+- A 403 shows the steps that passed (Microsoft, Xbox Live, XSTS) and Minecraft's step as "waiting on approval", with "Minecraft hasn't approved Perland Launcher yet, so it turned the sign-in down. Your Microsoft account is fine: you'll be able to play as soon as it's approved." It is info, not a fault, and the key stays "Sign in with Microsoft".
 - Nothing is polled.
 
 ### Secrets
@@ -138,7 +136,7 @@ Cancel, a second sign-in, a closed browser and the deadline behave like Perland 
 Every path to Play goes through this one place, which stays the gate that counts. A test checks each entry point refuses without an account.
 
 *(My call, after review.)* Flows that do real work before they reach Play ask first, so nobody downloads a modpack or wakes a server only to be refused at the end. These are the join flow (creates an instance and installs the pack), the free server (`usePlayFreeServer` starts it) and the public server card (joins, then plays).
-- They call a cheap command, `account_ready`: whether the active account is a Microsoft account with a stored refresh token, plus the remembered approval state. It makes no network call.
+- They call a cheap command, `account_ready`: whether the active account is a Microsoft account with a stored refresh token. It makes no network call.
 - When it says no, they show the sign-in prompt before doing anything.
 - This check is a convenience: the launch check above still decides.
 
@@ -157,7 +155,7 @@ Every path to Play goes through this one place, which stays the gate that counts
 - **Accounts:** "Add Microsoft account" replaces the "coming soon" placeholder. "Add offline account" shows only in dev builds. Each Microsoft account shows its name, the generated avatar and Remove.
 - **Play without a signed-in owner:** the run is refused with `no_account` or `microsoft_sign_in_again`. *(My call.)* The global error handler (`pushError`) recognises those two codes and opens one shared sign-in prompt instead of an error card, so every place that plays gets it: Home, ContinueKey, InstanceMenu, PublicServerCard, the free server, CrashFixes repair and ManualDownloads. The prompt starts the same flow. Once signed in, the player presses Play again; nothing starts by itself.
 - **Players coming from an older beta:** *(My call.)* on the first start where offline accounts are hidden, Home shows one dismissible notice: "Offline accounts are gone. Perland Launcher now needs a Microsoft account that owns Minecraft: Java Edition." It carries the Sign in button. Dismissing it is remembered in settings. First run is not shown again.
-- **Waiting on approval:** `microsoft_awaiting_approval` is worded "Microsoft sign-in is waiting on approval from Microsoft. You'll be able to play as soon as it's ready." It has no fix button, because there is nothing for the player to do.
+- **Waiting on approval:** `microsoft_awaiting_approval` is worded "Minecraft hasn't approved Perland Launcher yet, so it turned the sign-in down. Your Microsoft account is fine: you'll be able to play as soon as it's approved." It has no fix button, because there is nothing for the player to do.
 - **New `ErrorCode`s:** `microsoft_not_configured`, `microsoft_awaiting_approval`, `microsoft_sign_in_again`, `microsoft_rate_limited`, `minecraft_not_owned`, `minecraft_no_profile`, `xbox_no_profile`, `xbox_region_blocked`, `xbox_age_verification`, `xbox_child_account`. Each gets `errors.<code>.message` (and `fix` where the player can act) in English and Spanish.
 - **Retired strings:** `MicrosoftUnavailable` ("Microsoft accounts arrive in a later version") and the "coming soon" strings go.
 
@@ -186,4 +184,4 @@ Every path to Play goes through this one place, which stays the gate that counts
 - How the Tauri command surface is named (`account_sign_in_microsoft`, `account_sign_in_cancel`, …), matching the existing `perland_sign_in_*` commands.
 - The exact refresh margin (an hour is the intent) and how concurrent launches share one refresh. One refresh at a time per account is the intent.
 - The visual design of the sign-in prompt, through `/impeccable`.
-- The mock backend (`pnpm --filter ui dev:mock`) answering the new commands, including a `microsoft_awaiting_approval` state.
+- The mock backend (`pnpm --filter ui dev:mock`) answering the new commands, including a `microsoft_awaiting_approval` state that runs every step and is refused at Minecraft's.

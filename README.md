@@ -49,7 +49,7 @@ Microsoft sign-in uses one Azure app (Microsoft Entra ID → App registrations),
 - **Redirect URI:** `http://127.0.0.1/callback`, as a public-client ("Mobile and desktop applications") redirect. The launcher listens on a random loopback port and sends `http://127.0.0.1:<port>/callback`; Microsoft ignores the port when it matches a loopback redirect, so the one entry covers every port. The portal's Redirect URIs box refuses an `http` loopback address, so add it in the app's **Manifest**: in the Azure AD Graph format (what apps registered with a personal Microsoft account show) as `{ "url": "http://127.0.0.1/callback", "type": "InstalledClient" }` in `replyUrlsWithType`; in the Microsoft Graph format under `publicClient.redirectUris`. It then shows under **Authentication → Mobile and desktop applications**. Don't add the same address again with another port, or as a Web redirect.
 - **Allow public client flows:** Yes (Authentication → Advanced settings). There is no client secret.
 - **API permissions:** none to add; the launcher asks for `XboxLive.signin offline_access` when the player signs in.
-- Then Mojang must approve the client ID for the Minecraft services (their AppID review). Until it does, sign-in stops after Xbox with "waiting on approval".
+- Then Mojang must approve the client ID for the Minecraft services (their AppID review). Until it does, every sign-in still runs the whole chain (browser, Microsoft, Xbox Live, XSTS, Minecraft) and Minecraft turns it down at its login; the launcher shows each step that passed and says Minecraft hasn't approved it yet.
 
 ## License
 

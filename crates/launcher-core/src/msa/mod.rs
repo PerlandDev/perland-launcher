@@ -8,6 +8,8 @@ pub mod xbox;
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     accounts::BuildKind,
     error::{ErrorCode, LauncherError},
@@ -35,6 +37,19 @@ pub(super) fn sign_in_failed(detail: Option<&str>) -> LauncherError {
         Some(d) => e.with_detail(d),
         None => e,
     }
+}
+
+/// One call of the sign-in chain, reported as it starts: redeeming Microsoft's code, the Xbox Live
+/// user token, the XSTS token for Minecraft, Minecraft's `login_with_xbox`, then the profile and
+/// ownership check. A refusal stops the chain on the step it was reported for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MsaStep {
+    Microsoft,
+    Xbox,
+    Xsts,
+    Minecraft,
+    Profile,
 }
 
 /// Where each step of the chain lives. Tests point these at a mock server.

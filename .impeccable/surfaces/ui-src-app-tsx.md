@@ -81,7 +81,7 @@ related_targets: ["ui/src"]
   - *Nothing when there's nowhere.* No place, a deleted world, a server off the list, a gone Perland server or a version that can't open a world: no key, no message. It steps aside while the instance runs, and is disabled with Play when there's no account.
 - **Microsoft sign-in, decided 2026-10-27:**
   - *One shared key.* First run, Accounts and the sign-in prompt draw the same `MicrosoftSignIn`: why line, one amber key, then Perland's browser step (status line, ghost Cancel). It replaces the "coming soon" tile; no Microsoft logo.
-  - *Approval is advice.* Waiting on Microsoft's approval is `blue-ink` with a pixel clock and "Try again", never coral; a real failure is the coral diamond line under the key, never a toast.
+  - *Approval is advice, after a real attempt.* Every press runs the whole chain and lists its five steps; Minecraft's "not approved yet" shows on its step as `blue-ink` with a pixel clock and a `blue-ink` line, never coral, and the key keeps its name. Nothing about approval shows before a sign-in. A real failure is the coral diamond on its step and the coral line under the key, never a toast.
   - *Accounts' amber moves.* Add Microsoft account is Accounts' one lit key; dev builds' Add offline account drops to raised.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 

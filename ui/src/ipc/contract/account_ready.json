@@ -1,17 +1,10 @@
 [
   {
     "ready": true,
-    "awaitingApproval": false,
     "offlineNotice": false
   },
   {
     "ready": false,
-    "awaitingApproval": true,
-    "offlineNotice": false
-  },
-  {
-    "ready": false,
-    "awaitingApproval": false,
     "offlineNotice": true
   }
 ]

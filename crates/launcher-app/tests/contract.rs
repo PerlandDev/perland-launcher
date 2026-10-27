@@ -752,10 +752,6 @@ fn contract_fixtures_are_current() {
             active: Some(steve.uuid.clone()),
             accounts: vec![steve, alex],
             licensed_signin_seen: false,
-            msa_waiting: Some(launcher_core::accounts::MsaWaiting {
-                client_id: "00000000-0000-0000-0000-000000000000".into(),
-                at: 1_700_000_000,
-            }),
             offline_notice_dismissed: false,
         },
     );
@@ -764,17 +760,10 @@ fn contract_fixtures_are_current() {
         vec![
             AccountReady {
                 ready: true,
-                awaiting_approval: false,
                 offline_notice: false,
             },
             AccountReady {
                 ready: false,
-                awaiting_approval: true,
-                offline_notice: false,
-            },
-            AccountReady {
-                ready: false,
-                awaiting_approval: false,
                 offline_notice: true,
             },
         ],
@@ -1076,6 +1065,21 @@ fn contract_fixtures_are_current() {
             },
             AppEvent::MicrosoftSignIn {
                 phase: PerlandSignInPhase::Exchanging,
+            },
+            AppEvent::MicrosoftSignInStep {
+                step: launcher_core::msa::MsaStep::Microsoft,
+            },
+            AppEvent::MicrosoftSignInStep {
+                step: launcher_core::msa::MsaStep::Xbox,
+            },
+            AppEvent::MicrosoftSignInStep {
+                step: launcher_core::msa::MsaStep::Xsts,
+            },
+            AppEvent::MicrosoftSignInStep {
+                step: launcher_core::msa::MsaStep::Minecraft,
+            },
+            AppEvent::MicrosoftSignInStep {
+                step: launcher_core::msa::MsaStep::Profile,
             },
             AppEvent::Update {
                 state: UpdateState::Ready {
