@@ -155,7 +155,7 @@ mod tests {
     /// An account and the 1.20.1 instance "alpha" (and `minecraft` for "old" when given).
     async fn ready() -> Ready {
         let (core, runner, host, tmp) = core(BuildKind::Dev);
-        core.account_add_offline("Steve").await.unwrap();
+        crate::testing::sign_in_alex(&core).await;
         for (name, minecraft) in [("Alpha", "1.20.1"), ("Old", "1.19.4")] {
             core.instance_create(NewInstance {
                 name: name.into(),

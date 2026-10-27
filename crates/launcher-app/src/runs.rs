@@ -1247,7 +1247,7 @@ mod tests {
         })
         .await
         .unwrap();
-        core.account_add_offline("Steve").await.unwrap();
+        crate::testing::sign_in_alex(&core).await;
         for name in ["Alpha", "Beta"] {
             core.instance_create(NewInstance {
                 name: name.into(),
@@ -2456,8 +2456,8 @@ mod tests {
             .expect("notified within 5 s");
     }
 
-    fn steve_knock() -> Vec<(ServerAddress, String)> {
-        vec![(address().unwrap(), "Steve".into())]
+    fn alex_knock() -> Vec<(ServerAddress, String)> {
+        vec![(address().unwrap(), "Alex".into())]
     }
 
     #[tokio::test]
@@ -2479,7 +2479,7 @@ mod tests {
             host.states(&id),
             vec![Checking, Queued, Syncing, Preparing, Waking, Running]
         );
-        assert_eq!(*runner.knocks.lock().unwrap(), steve_knock());
+        assert_eq!(*runner.knocks.lock().unwrap(), alex_knock());
         assert_eq!(*runner.waits.lock().unwrap(), vec![address().unwrap()]);
         assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
         core.stop("alpha").unwrap();
@@ -2501,7 +2501,7 @@ mod tests {
             vec![Checking, Queued, Syncing, Preparing, Running],
             "the game connects and the player reads the server's message"
         );
-        assert_eq!(*runner.knocks.lock().unwrap(), steve_knock());
+        assert_eq!(*runner.knocks.lock().unwrap(), alex_knock());
         assert!(runner.waits.lock().unwrap().is_empty());
         assert_eq!(*runner.started_joins.lock().unwrap(), vec![address()]);
         assert!(!host.warnings().contains(&ErrorCode::ServerWakeFailed));
@@ -2698,7 +2698,7 @@ mod tests {
         runner.open_gate(1);
         host.wait_for(&id, Running).await;
         notified(&runner.knocked).await;
-        assert_eq!(*runner.knocks.lock().unwrap(), steve_knock());
+        assert_eq!(*runner.knocks.lock().unwrap(), alex_knock());
         assert_eq!(
             host.states(&id),
             vec![Checking, Queued, Syncing, Preparing, Running]

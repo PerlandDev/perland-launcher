@@ -792,7 +792,7 @@ mod tests {
     async fn play_waits_for_a_content_install() {
         let (core, runner, _, _t) = core(BuildKind::Dev);
         let instance = fabric(&core).await;
-        let accounts = core.account_add_offline("Steve").await.unwrap();
+        let accounts = crate::testing::sign_in_alex(&core).await;
         core.account_set_active(&accounts.accounts[0].uuid)
             .await
             .unwrap();

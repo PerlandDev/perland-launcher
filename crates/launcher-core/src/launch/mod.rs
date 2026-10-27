@@ -707,10 +707,9 @@ fn spawn_with_log(
 mod tests {
     use super::*;
     use crate::{
-        accounts::offline_account,
         instances::ServerAddress,
         meta::{merge::merge, mojang::ArgValue},
-        test_support::{forge_resolved, version, LINUX_X64, WINDOWS_X64},
+        test_support::{self, forge_resolved, version, LINUX_X64, WINDOWS_X64},
     };
 
     fn build(resolved: &ResolvedVersion, platform: Platform) -> LaunchCommand {
@@ -732,7 +731,7 @@ mod tests {
         jvm_args: Vec<String>,
     ) -> LaunchCommand {
         let dirs = LauncherDirs::new("/pl");
-        let session = offline_account("Steve").unwrap().offline_session();
+        let session = test_support::session();
         build_command(&LaunchSpec {
             dirs: &dirs,
             resolved,
@@ -755,7 +754,7 @@ mod tests {
 
     fn build_world(resolved: &ResolvedVersion, world: &str) -> Result<LaunchCommand> {
         let dirs = LauncherDirs::new("/pl");
-        let session = offline_account("Steve").unwrap().offline_session();
+        let session = test_support::session();
         build_command(&LaunchSpec {
             dirs: &dirs,
             resolved,
@@ -775,7 +774,7 @@ mod tests {
     fn clientid_comes_from_the_session() {
         let dirs = LauncherDirs::new("/pl");
         let resolved = vanilla("1.20.1.json", "1.20.1");
-        let mut session = offline_account("Steve").unwrap().offline_session();
+        let mut session = test_support::session();
         let spec = |session: &Session| {
             build_command(&LaunchSpec {
                 dirs: &dirs,

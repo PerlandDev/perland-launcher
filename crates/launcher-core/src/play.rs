@@ -184,9 +184,8 @@ async fn java_major(spec: &StartSpec<'_>) -> Option<u32> {
 mod tests {
     use super::*;
     use crate::{
-        accounts::offline_account,
         instances::{GameSpec, InstanceStore, SourceRef},
-        test_support::version,
+        test_support::{self, version},
         ErrorCode,
     };
 
@@ -228,7 +227,7 @@ mod tests {
             },
             java,
         };
-        let session = offline_account("Steve").unwrap().offline_session();
+        let session = test_support::session();
         let game_dir = store.game_dir(&instance.id);
         let spec = StartSpec {
             dirs: &dirs,
@@ -275,7 +274,7 @@ mod tests {
             },
             java: tmp.path().join("java.exe"),
         };
-        let session = offline_account("Steve").unwrap().offline_session();
+        let session = test_support::session();
         let game_dir = store.game_dir(&instance.id);
         let spec = StartSpec {
             dirs: &dirs,
@@ -315,7 +314,7 @@ mod tests {
             },
             java: tmp.path().join("java.exe"),
         };
-        let session = offline_account("Steve").unwrap().offline_session();
+        let session = test_support::session();
         let game_dir = store.game_dir(&instance.id);
         let spec = StartSpec {
             dirs: &dirs,
@@ -360,7 +359,7 @@ mod tests {
             },
             java: tmp.path().join("java.exe"),
         };
-        let session = offline_account("Steve").unwrap().offline_session();
+        let session = test_support::session();
         let game_dir = store.game_dir(&instance.id);
         let spec = StartSpec {
             dirs: &dirs,

@@ -170,7 +170,7 @@ mod tests {
         tempfile::TempDir,
     ) {
         let (core, runner, host, tmp) = core(BuildKind::Dev);
-        core.account_add_offline("Steve").await.unwrap();
+        crate::testing::sign_in_alex(&core).await;
         (core, runner, host, tmp)
     }
 

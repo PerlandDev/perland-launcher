@@ -1588,8 +1588,9 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn accounts_add_switch_remove() {
         let (core, _, _, _t) = core(BuildKind::Dev);
-        let steve = core.account_add_offline("Steve").await.unwrap();
-        let file = core.account_add_offline("Alex").await.unwrap();
+        let steve =
+            crate::testing::sign_in_as(&core, "Steve", "fedcba9876543210fedcba9876543210").await;
+        let file = crate::testing::sign_in_alex(&core).await;
         assert_eq!(file.accounts.len(), 2);
         let steve_uuid = steve.accounts[0].uuid.clone();
         let file = core.account_set_active(&steve_uuid).await.unwrap();

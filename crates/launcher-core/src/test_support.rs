@@ -60,3 +60,15 @@ pub fn forge_resolved() -> crate::install::ResolvedVersion {
         }),
     }
 }
+
+/// A Microsoft session for Steve, as the launch check returns one, with no client ID.
+pub fn session() -> crate::accounts::Session {
+    crate::accounts::Session {
+        username: "Steve".into(),
+        uuid: "5627dd98e6be3c21b8a8e92344183641".into(),
+        access_token: "mc-token".into(),
+        user_type: "msa".into(),
+        xuid: None,
+        client_id: None,
+    }
+}

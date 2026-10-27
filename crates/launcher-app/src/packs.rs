@@ -781,7 +781,7 @@ mod tests {
     #[tokio::test]
     async fn pack_update_refuses_vanilla_and_busy_instances() {
         let (core, runner, host, _t) = core(BuildKind::Dev);
-        core.account_add_offline("Steve").await.unwrap();
+        crate::testing::sign_in_alex(&core).await;
         let plain = core
             .instance_create(NewInstance {
                 name: "Plain".into(),

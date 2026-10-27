@@ -11,6 +11,7 @@ use launcher_core::{
     instances::{ServerStatus, SourceRef},
     invite::{InviteClient, InviteTiming},
     meta::MetaClient,
+    msa::MsaEndpoints,
     paths::LauncherDirs,
     platform::Platform,
     sources::{SourceConfig, Sources},
@@ -26,7 +27,7 @@ use crate::{
     app::{AppConfig, AppCore},
     events::RunStateKind::{Idle, Syncing},
     runner::CoreRunner,
-    testing::RecordingHost,
+    testing::{sign_in_alex, RecordingHost, FAKE_MSA_ID, MS_CLIENT_ID},
 };
 
 const TOKEN: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -35,6 +36,29 @@ type LiveCore = AppCore<CoreRunner, RecordingHost>;
 
 /// A fresh launcher process on `root`: nothing in memory, only what is on disk.
 fn launcher(root: &Path, timing: InviteTiming) -> (Arc<LiveCore>, Arc<RecordingHost>) {
+    launcher_with(root, timing, MsaEndpoints::production(), None)
+}
+
+/// [`launcher`], with Minecraft's services answered by `minecraft` and a Microsoft client ID,
+/// so an account signed in with [`sign_in_alex`] can play.
+fn launcher_signed_in(
+    root: &Path,
+    timing: InviteTiming,
+    minecraft: &MockServer,
+) -> (Arc<LiveCore>, Arc<RecordingHost>) {
+    let endpoints = MsaEndpoints {
+        minecraft: minecraft.uri().parse().unwrap(),
+        ..MsaEndpoints::production()
+    };
+    launcher_with(root, timing, endpoints, Some(MS_CLIENT_ID.into()))
+}
+
+fn launcher_with(
+    root: &Path,
+    timing: InviteTiming,
+    endpoints: MsaEndpoints,
+    client_id: Option<String>,
+) -> (Arc<LiveCore>, Arc<RecordingHost>) {
     let dirs = LauncherDirs::new(root);
     let http = launcher_core::http::client("test").unwrap();
     let meta = MetaClient::new(http.clone(), dirs.meta());
@@ -64,8 +88,8 @@ fn launcher(root: &Path, timing: InviteTiming) -> (Arc<LiveCore>, Arc<RecordingH
     let syncer = Syncer::new(installer.clone(), sources, dirs.root());
     let msa = Arc::new(crate::msa::CoreMsa::new(
         launcher_core::http::client_without_redirects("test").unwrap(),
-        launcher_core::msa::MsaEndpoints::production(),
-        None,
+        endpoints,
+        client_id,
     ));
     let runner = Arc::new(CoreRunner::new(
         installer,
@@ -212,15 +236,24 @@ async fn stop_while_the_server_prepares_the_modpack_ends_the_run_at_once() {
     let tmp = tempfile::tempdir().unwrap();
     let site = site("pending").await;
     // The real poll and limit: only a wait that hears Stop ends within the test.
-    let (core, host) = launcher(
+    // Play checks Alex's Minecraft profile first.
+    Mock::given(method("GET"))
+        .and(path("/minecraft/profile"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({ "id": FAKE_MSA_ID, "name": "Alex" })),
+        )
+        .mount(&site)
+        .await;
+    let (core, host) = launcher_signed_in(
         tmp.path(),
         InviteTiming {
             pack_poll_every: Duration::from_secs(5),
             pack_poll_for: Duration::from_secs(180),
             ..InviteTiming::default()
         },
+        &site,
     );
-    core.account_add_offline("Steve").await.unwrap();
+    sign_in_alex(&core).await;
     let id = core
         .join_add(&format!("{}/{TOKEN}", site.uri()))
         .await

@@ -229,7 +229,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// Keep a finished sign-in: the refresh token in the credential store, the Minecraft token
     /// in memory, the account in the accounts file as the active one.
-    async fn keep_microsoft(&self, signed: SignedIn) -> Result<AccountsFile> {
+    pub(crate) async fn keep_microsoft(&self, signed: SignedIn) -> Result<AccountsFile> {
         let uuid = dashed(&signed.profile.id);
         let store = self.accounts.lock().await;
         let secrets = self.msa_secrets.clone();

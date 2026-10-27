@@ -974,7 +974,24 @@ pub(crate) struct FakeMsa {
 }
 
 /// Alex's profile id.
-const FAKE_MSA_ID: &str = "0123456789abcdef0123456789abcdef";
+pub(crate) const FAKE_MSA_ID: &str = "0123456789abcdef0123456789abcdef";
+
+/// Alex, signed in with Microsoft and active, kept the way a finished sign-in keeps it:
+/// a launch then only checks the profile, which `FakeMsa` answers as Alex's.
+pub(crate) async fn sign_in_alex<R: Runner, H: Host>(
+    core: &AppCore<R, H>,
+) -> launcher_core::accounts::AccountsFile {
+    sign_in_as(core, "Alex", FAKE_MSA_ID).await
+}
+
+/// `name` (profile id `id`), signed in with Microsoft and active.
+pub(crate) async fn sign_in_as<R: Runner, H: Host>(
+    core: &AppCore<R, H>,
+    name: &str,
+    id: &str,
+) -> launcher_core::accounts::AccountsFile {
+    core.keep_microsoft(signed_in(name, id)).await.unwrap()
+}
 
 impl FakeMsa {
     pub fn new() -> Arc<Self> {
