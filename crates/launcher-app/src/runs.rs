@@ -164,8 +164,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         })?;
         if account.provider != Provider::Offline {
             return Err(LauncherError::auth(
-                ErrorCode::MicrosoftUnavailable,
-                "Microsoft accounts arrive in a later version",
+                ErrorCode::NoAccount,
+                "Sign in with Microsoft to play",
             ));
         }
         let session = account.offline_session();

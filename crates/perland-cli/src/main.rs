@@ -265,9 +265,17 @@ async fn launch_instance(
     })?;
     if account.provider != Provider::Offline {
         return Err(LauncherError::auth(
-            ErrorCode::MicrosoftUnavailable,
-            "Microsoft accounts arrive in a later build",
-        ));
+            ErrorCode::OfflineLocked,
+            "The dev harness doesn't sign in with Microsoft",
+        )
+        .with_fix("This is a dev harness; use a debug build"));
+    }
+    if !launcher_core::accounts::offline_allowed(launcher_core::accounts::BuildKind::current()) {
+        return Err(LauncherError::auth(
+            ErrorCode::OfflineLocked,
+            "Offline accounts are only available in a debug build",
+        )
+        .with_fix("This is a dev harness; use a debug build"));
     }
     let session = account.offline_session();
     let mut instance = store.load(id).await?;
