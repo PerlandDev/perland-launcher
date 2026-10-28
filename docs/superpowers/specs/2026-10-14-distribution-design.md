@@ -1,5 +1,7 @@
 # Perland Launcher: Distribution (Plan 6), Design Addendum
 
+> **Note (2026-10-28):** offline accounts, which this document mentions, have since been removed from the launcher in every build, dev builds included. See `docs/superpowers/specs/2026-10-27-microsoft-sign-in-design.md`. What follows is kept as it was written.
+
 - **Date:** 2026-10-14
 - **Status:** Approved by the owner (2026-10-14); updated while planning with facts read from the `tauri-plugin-updater` 2.14 and `tauri-bundler` 2.10 sources (§4.7); aligned with what shipped on 2026-10-15 (the plugin is pinned at `=2.13.1`, and §4.7 was re-checked against that version)
 - **Parent spec:** `docs/superpowers/specs/2026-10-09-launcher-core-design.md` (§4 offline accounts, §5 Settings "launcher updates", §6 logs, diagnostics, self-update, installers, §7 release checklist).

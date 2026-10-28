@@ -1,6 +1,6 @@
 # Perland Launcher: agent guide
 
-- Design: `docs/superpowers/specs/2026-10-09-launcher-core-design.md` (core) and `docs/superpowers/specs/2026-10-10-launcher-desktop-ui-design.md` (desktop app). Plans: `docs/superpowers/plans/`.
+- Design: `docs/superpowers/specs/2026-10-09-launcher-core-design.md` (core) and `docs/superpowers/specs/2026-10-10-launcher-desktop-ui-design.md` (desktop app). New plans go in `docs/superpowers/plans/`; finished ones are kept in the team's private development repository.
 - `crates/launcher-core` holds all launcher logic. `crates/launcher-app` holds the app's state and run state machine. Neither may depend on Tauri or UI crates. `src-tauri` is wiring only and has no tests. `crates/perland-cli` is a dev harness. `ui/` is the React app.
 - TDD: write the failing test first. Pure logic gets `#[cfg(test)]` unit tests; HTTP behaviour gets `tests/*.rs` with wiremock; UI gets Vitest + Testing Library.
 - Never run fuzzing, stress or load tests locally. They run in CI only. Keep local test inputs tiny.

@@ -1,6 +1,6 @@
 # Microsoft sign-in and the end of offline accounts: design
 
-Status: design approved in conversation on 2026-10-27; awaiting review of this document.
+Status: design approved in conversation on 2026-10-27; awaiting review of this document. Updated 2026-10-28: offline accounts are removed from every build, dev builds included (decision 1).
 
 ## Why
 
@@ -32,7 +32,7 @@ The goal is a launcher that passes the review. Every public build starts Minecra
 
 These would make the work a failure even if it technically worked:
 
-- **Any way into the game without a checked Microsoft session in a public build.** That includes an offline account surviving in some corner (import, the accounts file edited by hand, an old `active` pointing at one), a cached token used when the online check fails, and a "skip" on the sign-in step that leads to Play.
+- **Any way into the game without a checked Microsoft session, in any build.** That includes an offline account surviving in some corner (import, the accounts file edited by hand, an old `active` pointing at one), a cached token used when the online check fails, and a "skip" on the sign-in step that leads to Play.
 - **Using another app's client ID.** That includes the official launcher's, or another approved launcher's.
 - **Tokens in logs, crash reports, error details, events sent to the UI, or the accounts file.**
 - **An embedded sign-in window.** The player signs in in their own browser.
@@ -58,7 +58,7 @@ The owner chose A.
 
 ## What the owner decided
 
-1. **Beta and stable builds have no offline accounts at all.** Only dev builds (`debug_assertions`, never distributed) keep them. The "unlock after one licensed sign-in" gate is dropped, not kept for stable. Prism Launcher's gate was considered and turned down: the form's wording and our history make it a likely second rejection.
+1. **No build has offline accounts, dev builds included.** *(Owner's call, 2026-10-28, replacing "only dev builds keep them".)* The code is gone from this repository: a reviewer reading the source finds no way to start the game without a checked Microsoft session. The "unlock after one licensed sign-in" gate is dropped too. Prism Launcher's gate was considered and turned down: the form's wording and our history make it a likely second rejection. The team's offline testing happens in a separate private repository that never produces a build for players; nothing here depends on it.
 2. **While approval is pending, the update keeps the launcher installable and useful.** Sign-in is never shown as disabled: every press runs the whole chain against Microsoft, Xbox and Minecraft, and only Minecraft's own refusal says the launcher isn't approved yet. *(Owner's call, 2026-10-27: Mojang should see the code in action.)*
 3. **Perland features stay open with just a Perland sign-in.** Only starting the game (and so joining a server) needs the Microsoft account.
 4. **Sign-in is approach A.**
@@ -71,7 +71,7 @@ The owner chose A.
 - The Release workflow passes it from a repository variable (`vars.PERLAND_MS_CLIENT_ID`).
 - *(My call.)* The runtime override is read **only in dev builds**. A beta or stable build always uses the ID it was built with, so nobody can run a public build under another app's client ID. To try the real chain with an optimized build, the owner builds with the variable set.
 - A build without it answers every Microsoft sign-in with `microsoft_not_configured` ("Microsoft sign-in isn't set up in this build").
-- `offline_allowed(build)` is true only for `BuildKind::Dev`. `licensed_signin_seen` stops deciding anything. It stays readable in the file, so old files still parse.
+- There is no offline gate. `licensed_signin_seen` stops deciding anything. It stays readable in the file, so old files still parse.
 
 ### The sign-in chain (launcher-core, new module `msa`)
 
@@ -122,7 +122,7 @@ Cancel, a second sign-in, a closed browser and the deadline behave like Perland 
 
 `runs.rs`, where a run takes the active account:
 
-- **No active account, or an active offline account in a non-dev build:** `no_account`. The UI answers it with the sign-in prompt, not an error card.
+- **No active account, or an active offline account an earlier beta left in the file:** `no_account`, in every build. The UI answers it with the sign-in prompt, not an error card.
 - **A Microsoft account, before every launch:**
   1. Load its refresh token. If it is missing, the player signs in again (`microsoft_sign_in_again`).
   2. If there is no Minecraft token in memory, or it has less than an hour left, run the refresh chain: Microsoft refresh grant, then steps 2 to 4. Store the rotated refresh token.
@@ -131,7 +131,6 @@ Cancel, a second sign-in, a closed browser and the deadline behave like Perland 
      - Still refused, or the refresh is refused (`invalid_grant`): `microsoft_sign_in_again`.
      - Any network failure: `offline`, and the game does not start.
   4. Build `Session { username, uuid, access_token: minecraft token, user_type: "msa", xuid }` and pass the client ID as `clientid`.
-- **An offline account, in a dev build only:** as today.
 
 Every path to Play goes through this one place, which stays the gate that counts. A test checks each entry point refuses without an account.
 
@@ -142,32 +141,30 @@ Every path to Play goes through this one place, which stays the gate that counts
 
 ### Accounts and the old offline accounts
 
-- `AccountStore::list` and `active` leave out offline accounts in non-dev builds, and an `active` naming one reads as none. The entries stay in the file, so a dev build on the same computer still sees them.
-- `add_offline` refuses in non-dev builds, as now (`offline_locked`).
+- An earlier beta's `accounts.json` may hold offline accounts. `Provider::Offline` stays in the file format only so such a file still parses. `visible` leaves those accounts out in every build, and an `active` naming one reads as none. The entries stay in the file, unread.
+- Nothing adds an offline account: there is no `add_offline`, no `account_add_offline` command, and the `offline_locked` and `offline_name_invalid` codes are retired.
 - The import of other launchers' instances already leaves out accounts and credentials. A test pins that it still does.
-- `app_info.offline_allowed` stays, now true only in dev builds. The contract test is regenerated.
+- `app_info` has no `offline_allowed`. The contract test is regenerated.
 
 ### UI
 
-- **First run, account step:**
-  - Dev builds: the offline name, as now.
-  - Beta and stable: "Sign in with Microsoft" as the one primary action. A short line says why: the account must own Minecraft: Java Edition. "Skip" goes on to the first instance; Play will ask again.
-- **Accounts:** "Add Microsoft account" replaces the "coming soon" placeholder. "Add offline account" shows only in dev builds. Each Microsoft account shows its name, the generated avatar and Remove.
+- **First run, account step**, in every build: "Sign in with Microsoft" as the one primary action. A short line says why: the account must own Minecraft: Java Edition. "Skip" goes on to the first instance; Play will ask again.
+- **Accounts:** "Add Microsoft account" replaces the "coming soon" placeholder, and it is the only way to add an account. Each Microsoft account shows its name, the generated avatar and Remove.
 - **Play without a signed-in owner:** the run is refused with `no_account` or `microsoft_sign_in_again`. *(My call.)* The global error handler (`pushError`) recognises those two codes and opens one shared sign-in prompt instead of an error card, so every place that plays gets it: Home, ContinueKey, InstanceMenu, PublicServerCard, the free server, CrashFixes repair and ManualDownloads. The prompt starts the same flow. Once signed in, the player presses Play again; nothing starts by itself.
-- **Players coming from an older beta:** offline accounts are dropped silently *(owner's call, 2026-10-27, replacing an earlier "offline accounts are gone" notice)*. The accounts they made simply aren't listed, nothing says they existed, and Play asks for a Microsoft sign-in like it does for anyone without an account. The accounts file keeps them only for a dev build on the same computer. First run is not shown again.
+- **Players coming from an older beta:** offline accounts are dropped silently *(owner's call, 2026-10-27, replacing an earlier "offline accounts are gone" notice)*. The accounts they made simply aren't listed, nothing says they existed, and Play asks for a Microsoft sign-in like it does for anyone without an account. The accounts file keeps the entries, unread. First run is not shown again.
 - **Waiting on approval:** `microsoft_awaiting_approval` is worded "Minecraft hasn't approved Perland Launcher yet, so it turned the sign-in down. Your Microsoft account is fine: you'll be able to play as soon as it's approved." It has no fix button, because there is nothing for the player to do.
 - **New `ErrorCode`s:** `microsoft_not_configured`, `microsoft_awaiting_approval`, `microsoft_sign_in_again`, `microsoft_rate_limited`, `minecraft_not_owned`, `minecraft_no_profile`, `xbox_no_profile`, `xbox_region_blocked`, `xbox_age_verification`, `xbox_child_account`. Each gets `errors.<code>.message` (and `fix` where the player can act) in English and Spanish.
 - **Retired strings:** `MicrosoftUnavailable` ("Microsoft accounts arrive in a later version") and the "coming soon" strings go.
 
 ### Wording outside the app
 
-- README and `PRODUCT.md`: the launcher needs a Microsoft account that owns Minecraft: Java Edition. Offline accounts exist only in local development builds. Remove "Microsoft sign-in comes in a later plan".
+- README and `PRODUCT.md`: the launcher needs a Microsoft account that owns Minecraft: Java Edition, in every build. Remove "Microsoft sign-in comes in a later plan".
 - The two older specs (`2026-10-09-launcher-core-design.md`, `2026-10-10-launcher-desktop-ui-design.md`) get one line each pointing to this document where they describe the offline gate. Their history is not rewritten.
-- `CLAUDE.md` gets a line on `PERLAND_MS_CLIENT_ID` and the build rule for offline accounts.
+- `CLAUDE.md` gets a line on `PERLAND_MS_CLIENT_ID` and on there being no offline accounts.
 
 ### The CLI (`perland-cli`)
 
-*(My call.)* It is a dev harness and is not distributed, so it gets no Microsoft sign-in. It follows the dev-build rule: a debug build plays with offline accounts as now, and a `--release` build refuses with `offline_locked`. It stops using the retired `MicrosoftUnavailable` code.
+*(My call.)* It is a dev harness and is not distributed, so it gets no Microsoft sign-in, and with offline accounts gone it no longer starts the game. It creates instances, adds and syncs packs, and `install` gets an instance ready to play (files and Java) without an account; Nightly uses `install` for its real-install checks. It stops using the retired `MicrosoftUnavailable` code.
 
 ### Azure app registration (the owner, outside the code)
 

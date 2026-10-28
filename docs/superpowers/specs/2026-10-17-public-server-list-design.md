@@ -1,5 +1,7 @@
 # Perland Launcher: Public Server List, Design
 
+> **Note (2026-10-28):** offline accounts, which this document mentions, have since been removed from the launcher in every build, dev builds included. See `docs/superpowers/specs/2026-10-27-microsoft-sign-in-design.md`. What follows is kept as it was written.
+
 - **Date:** 2026-10-17
 - **Issue:** PerlandDev/perland-launcher#50, part of the Perland integration roadmap (#47; snapshot `docs/superpowers/specs/2026-10-16-perland-integration-ideas.md`).
 - **Needs (merged):** PerlandDev/PerlandEngine#431 through PerlandDev/PerlandEngine#435: `GET /api/v1/public-servers`. Its contract is `docs/superpowers/specs/2026-10-16-public-server-listing-design.md` in PerlandEngine. This spec builds on that contract and never changes it.

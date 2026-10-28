@@ -2,7 +2,7 @@
 
 A free, open-source Minecraft launcher for Perland players, and anyone else. Packs stay in sync on their own: press Play and you're on the right version.
 
-> Status: early development. See `docs/superpowers/specs/` for the design and `docs/superpowers/plans/` for the build plans.
+> Status: early development. See `docs/superpowers/specs/` for the design.
 
 ## Develop
 
@@ -24,6 +24,8 @@ Set `PERLAND_SITE_URL` (an https origin, or http on this computer) to read the p
 Set `PERLAND_PANEL_URL` (https, or http on this computer) to the Perland panel, and the servers the player owns get **Manage in Perland**, which opens `<panel>/stacks/<name>` in the browser. The app reads it when it starts, else uses the value it was built with; without one there is no button.
 
 Microsoft sign-in needs the Azure app's id: the repository variable `PERLAND_MS_CLIENT_ID` (a GUID) is built into released launchers. A dev run (`tauri dev`) can set `PERLAND_MS_CLIENT_ID` in the environment instead; shipped builds ignore the runtime value. Without an id, signing in with Microsoft says it isn't set up in this build.
+
+Every build, dev builds included, plays only with a signed-in Microsoft account that owns Minecraft: Java Edition. The UI's mock (`dev:mock`) needs no account, and `perland-cli install` gets an instance ready without one. Testing the game without a Microsoft account happens in the team's private development repository, not here.
 
 ### Cloud (Linux)
 

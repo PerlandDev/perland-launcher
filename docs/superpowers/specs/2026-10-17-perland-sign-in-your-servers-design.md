@@ -1,5 +1,7 @@
 # Perland Launcher: Sign in with Perland and Your Servers, Design
 
+> **Note (2026-10-28):** offline accounts, which this document mentions, have since been removed from the launcher in every build, dev builds included. See `docs/superpowers/specs/2026-10-27-microsoft-sign-in-design.md`. What follows is kept as it was written.
+
 - **Date:** 2026-10-17
 - **Issue:** PerlandDev/perland-launcher#48, part of the Perland integration roadmap (#47; snapshot `docs/superpowers/specs/2026-10-16-perland-integration-ideas.md`, L1).
 - **Needs (merged):**

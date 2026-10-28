@@ -15,7 +15,7 @@ web
 
 ## Product Purpose
 
-Perland Launcher is a free, open-source Minecraft launcher. Perland's mission is to fill what Minecraft is missing, starting with free servers, and the launcher is how players get into those servers without managing files by hand. Today it installs and launches vanilla, Fabric, Quilt, Forge and NeoForge instances, installs and syncs packs, and updates itself. It needs a Microsoft account that owns Minecraft: Java Edition to launch; offline accounts exist only in local development builds.
+Perland Launcher is a free, open-source Minecraft launcher. Perland's mission is to fill what Minecraft is missing, starting with free servers, and the launcher is how players get into those servers without managing files by hand. Today it installs and launches vanilla, Fabric, Quilt, Forge and NeoForge instances, installs and syncs packs, and updates itself. It needs a Microsoft account that owns Minecraft: Java Edition to launch, in every build.
 
 Success means a new player goes from opening the launcher to playing in as few clicks as possible, and every failure tells them, in their language, what happened and what to do next.
 
@@ -38,7 +38,7 @@ Packs stay in sync automatically, so a Perland player never manages mod versions
   - vanilla/Fabric/Quilt install
   - Mojang's official Java runtimes
   - instances (validated slug ids)
-  - dev-build offline accounts (not in beta or stable builds)
+  - multiple accounts, one of them active
   - launch with redacted logs
   - typed errors (category, plain message, optional fix, technical detail)
 - **In this UI plan:**
@@ -53,7 +53,7 @@ Packs stay in sync automatically, so a Perland player never manages mod versions
   - Forge and NeoForge install and launch
   - the launcher's own updater and installers (the manual Release workflow)
   - import a whole instance from another launcher's folder (mods, worlds, settings and map data are copied; the original folder is only read)
-- **Accounts:** playing needs a Microsoft account that owns Minecraft: Java Edition. Offline accounts exist only in local development builds; beta and stable builds have none.
+- **Accounts:** playing needs a Microsoft account that owns Minecraft: Java Edition. There are no offline accounts in any build.
 - **Not built (never fake it):** anything not listed above is absent, not shown as a disabled control.
 - **Terminology:** "instance", "Play", "mods", "account", "loader" (Fabric, Quilt, Forge, NeoForge), "Minecraft version", "memory".
 - **Languages:** English and Spanish. Every string, including core error messages (translated by stable error code), exists in both.

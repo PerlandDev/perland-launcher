@@ -17,7 +17,7 @@ export interface MicrosoftSignInProps {
   /** `primary`: the lit large key of a step that is about signing in (First run, the sign-in prompt). `inline`: Accounts' add
    *  key, reading "Add Microsoft account". */
   variant: 'primary' | 'inline';
-  /** Off where the place around it already says why (the sign-in prompt, the offline-accounts notice). A refusal is still said. */
+  /** Off where the place around it already says why (the sign-in prompt). A refusal is still said. */
   showWhy?: boolean;
 }
 

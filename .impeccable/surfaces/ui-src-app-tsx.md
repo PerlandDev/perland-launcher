@@ -82,7 +82,7 @@ related_targets: ["ui/src"]
 - **Microsoft sign-in, decided 2026-10-27:**
   - *One shared key.* First run, Accounts and the sign-in prompt draw the same `MicrosoftSignIn`: why line, one amber key, then Perland's browser step (status line, ghost Cancel). It replaces the "coming soon" tile; no Microsoft logo.
   - *Approval is advice, after a real attempt.* Every press runs the whole chain and lists its five steps; Minecraft's "not approved yet" shows on its step as `blue-ink` with a pixel clock and a `blue-ink` line, never coral, and the key keeps its name. Nothing about approval shows before a sign-in. A real failure is the coral diamond on its step and the coral line under the key, never a toast.
-  - *Accounts' amber moves.* Add Microsoft account is Accounts' one lit key; dev builds' Add offline account drops to raised.
+  - *Accounts' amber moves.* Add Microsoft account is Accounts' one lit key.
 - **Unresolved:** final faces (candidates: Bungee-family signage display for marquee names; Atkinson Hyperlegible Next for body, chosen for legibility with young and non-native readers); exact neutrals; the vector redraw of the land-plot mark.
 
 ## Direction contract

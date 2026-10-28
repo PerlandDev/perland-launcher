@@ -1,6 +1,6 @@
 # Perland Launcher: agent guide
 
-- Design: `docs/superpowers/specs/2026-10-09-launcher-core-design.md` (core) and `docs/superpowers/specs/2026-10-10-launcher-desktop-ui-design.md` (desktop app). Plans: `docs/superpowers/plans/`.
+- Design: `docs/superpowers/specs/2026-10-09-launcher-core-design.md` (core) and `docs/superpowers/specs/2026-10-10-launcher-desktop-ui-design.md` (desktop app). New plans go in `docs/superpowers/plans/`; finished ones are kept in the team's private development repository.
 - `crates/launcher-core` holds all launcher logic. `crates/launcher-app` holds the app's state and run state machine. Neither may depend on Tauri or UI crates. `src-tauri` is wiring only and has no tests. `crates/perland-cli` is a dev harness. `ui/` is the React app.
 - TDD: write the failing test first. Pure logic gets `#[cfg(test)]` unit tests; HTTP behaviour gets `tests/*.rs` with wiremock; UI gets Vitest + Testing Library.
 - Never run fuzzing, stress or load tests locally. They run in CI only. Keep local test inputs tiny.
@@ -12,5 +12,5 @@
 - Releases: the manual **Release** workflow (README → Releasing). Every publish is public, so ask the owner first.
 - License GPL-3.0-only. Never copy Modrinth branding or Mojang assets. Ported code keeps an attribution header and gets a `NOTICE` entry.
 - Before committing: `pnpm --filter ui build` (Tauri embeds `ui/dist`), `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `pnpm -r lint`, `pnpm -r typecheck`, `pnpm -r test`.
-- `PERLAND_MS_CLIENT_ID` is the built-in Microsoft client ID (runtime value read only in dev builds); offline accounts exist only in dev builds.
+- `PERLAND_MS_CLIENT_ID` is the built-in Microsoft client ID (runtime value read only in dev builds). Every build needs a Microsoft account to play; this repository has no offline accounts and must never gain a way to start the game without one (Mojang's AppID review). Offline testing lives in the team's private development repository.
 - Issues by `perland-bot-eve` (label `discord`) were reported on Discord. When work touches one, keep the reporter posted through Perlita with the `reporter-updates` skill (`.claude/skills/reporter-updates/SKILL.md`; the same file is in PerlandEngine and PerlandPanel). This repository is public, so every comment here is too.

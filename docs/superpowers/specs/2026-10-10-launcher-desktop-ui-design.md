@@ -1,5 +1,7 @@
 # Perland Launcher: Desktop App (Plan 5 pulled forward), Design
 
+> **Note (2026-10-28):** offline accounts, which this document mentions, have since been removed from the launcher in every build, dev builds included. See `docs/superpowers/specs/2026-10-27-microsoft-sign-in-design.md`. What follows is kept as it was written.
+
 - **Date:** 2026-10-10
 - **Status:** Draft, awaiting owner review
 - **Parent spec:** `docs/superpowers/specs/2026-10-09-launcher-core-design.md` (§1.3 decisions, §5 UI)
@@ -41,7 +43,7 @@ Features from Plans 2–4 and 6 are either visibly "coming soon" or absent. They
 | Brand mark | The legacy PerlandDev pixel land plots, redrawn as a clean vector. |
 | Offline gate | Kept. Release builds show "Sign in with Microsoft · coming soon" and can't add offline accounts. Dev builds can. |
 
-Superseded by `2026-10-27-microsoft-sign-in-design.md`: beta and stable builds have no offline accounts.
+Superseded by `2026-10-27-microsoft-sign-in-design.md`: no build has offline accounts.
 
 ## 2. Screens
 
