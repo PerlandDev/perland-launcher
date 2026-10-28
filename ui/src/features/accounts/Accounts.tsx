@@ -1,45 +1,37 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Avatar } from '../../art/Avatar';
 import type { Account, AccountsFile } from '../../ipc/schema';
-import { useAccountMutations, useAccounts, useAppInfo, usePlaytime } from '../../state/queries';
+import { useAccountMutations, useAccounts, usePlaytime } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
-import { Field } from '../../ui/Field';
 import { Check, Trash } from '../../ui/Icon';
 import { formatPlaytime } from '../../ui/playtime';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { Medals } from '../medals/Medals';
 import { MicrosoftSignIn } from './MicrosoftSignIn';
-import { OFFLINE_NAME } from './offlineName';
 import { PerlandAccountCard } from './PerlandAccountCard';
 
 export function Accounts() {
   const { t } = useTranslation();
   const accounts = useAccounts();
-  const appInfo = useAppInfo();
   const playtime = usePlaytime();
   // Every instance's time on this computer, whoever played it: the launcher doesn't count per account.
   const totalPlayed = formatPlaytime(playtime.data?.reduce((sum, p) => sum + p.seconds, 0) ?? 0, t);
-  // A failed switch is a toast; adding and removing show their error where the player is looking.
+  // A failed switch is a toast; removing shows its error where the player is looking.
   const { setActive } = useAccountMutations();
-  const { addOffline: add, remove } = useAccountMutations({ inline: true });
-  const [name, setName] = useState('');
-  // The rule is only held against a name once the player has tried to add it or left the field with something in it.
-  const [checked, setChecked] = useState(false);
+  const { remove } = useAccountMutations({ inline: true });
   const [removing, setRemoving] = useState<Account | null>(null);
   // Who the player just switched to, for screen readers: the Use button they pressed is gone by then.
   const [switched, setSwitched] = useState<string | null>(null);
-  const nameInput = useRef<HTMLInputElement>(null);
   const addHeading = useRef<HTMLHeadingElement>(null);
   const accountList = useRef<HTMLUListElement>(null);
   // The account whose Remove button should take focus once the row that was removed is gone.
   const focusAfterRemove = useRef<{ uuid: string | null } | null>(null);
   const switchOnce = useSingleFlight();
-  const addOnce = useSingleFlight();
   const removeOnce = useSingleFlight();
 
   // Once the dialog is gone and the list is redrawn without the removed row, focus its stand-in.
@@ -47,33 +39,12 @@ export function Accounts() {
     const target = focusAfterRemove.current;
     if (!target || removing) return;
     const row = target.uuid && accountList.current?.querySelector<HTMLElement>(`[data-remove-for="${target.uuid}"]`);
-    (row || nameInput.current || addHeading.current)?.focus();
+    (row || addHeading.current)?.focus();
     focusAfterRemove.current = null;
   }, [removing, accounts.data]);
 
-  const showInvalid = checked && !OFFLINE_NAME.test(name);
-
   const announceActive = (file: AccountsFile) =>
     setSwitched(file.accounts.find((a) => a.uuid === file.active)?.username ?? null);
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (!OFFLINE_NAME.test(name)) {
-      setChecked(true);
-      nameInput.current?.focus();
-      return;
-    }
-    addOnce((done) =>
-      add.mutate(name, {
-        onSuccess: (file) => {
-          setName('');
-          setChecked(false);
-          announceActive(file);
-        },
-        onSettled: done,
-      }),
-    );
-  };
 
   const use = (account: Account) =>
     switchOnce((done) => setActive.mutate(account.uuid, { onSuccess: () => setSwitched(account.username), onSettled: done }));
@@ -97,14 +68,6 @@ export function Accounts() {
         onSettled: done,
       }),
     );
-  const offlineAllowed = appInfo.data?.offlineAllowed === true;
-  /** A Microsoft account comes back with a sign-in; an offline one only where offline accounts can still be added. */
-  const removeBody = (account: Account) =>
-    account.provider === 'microsoft'
-      ? t('accounts.removeBodyMicrosoft')
-      : offlineAllowed
-        ? t('accounts.removeBody')
-        : t('accounts.removeBodyPending');
   // Mirrors the core: removing the account in use promotes the first one left.
   const successor = removing && removing.uuid === accounts.data?.active ? list.find((a) => a.uuid !== removing.uuid) : undefined;
   const losesActive = removing !== null && removing.uuid === accounts.data?.active;
@@ -136,7 +99,6 @@ export function Accounts() {
                   <Avatar uuid={account.uuid} size={40} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold">{account.username}</p>
-                    {account.provider === 'offline' && <span className="badge mt-1">{t('accounts.offlineBadge')}</span>}
                   </div>
                   {inUse ? (
                     <span className="flex items-center gap-2 font-semibold text-lime">
@@ -168,31 +130,6 @@ export function Accounts() {
             {t('accounts.addTitle')}
           </h2>
           <MicrosoftSignIn variant="inline" />
-          {offlineAllowed && (
-            <form onSubmit={submit} className="flex items-start gap-3">
-              <div className="flex-1">
-                <Field
-                  label={t('accounts.offlineName')}
-                  hint={t('accounts.offlineHint')}
-                  error={showInvalid ? t('errors.offline_name_invalid.message') : null}
-                >
-                  <input
-                    ref={nameInput}
-                    className="field-input"
-                    value={name}
-                    maxLength={16}
-                    autoComplete="off"
-                    onChange={(e) => setName(e.target.value)}
-                    onBlur={() => name && setChecked(true)}
-                  />
-                </Field>
-              </div>
-              <Button type="submit" className="mt-7" aria-disabled={add.isPending || undefined}>
-                {t('accounts.addOffline')}
-              </Button>
-            </form>
-          )}
-          {add.isError && <ErrorCard error={add.error} />}
         </section>
       </div>
       {removing && (
@@ -209,7 +146,7 @@ export function Accounts() {
             </>
           }
         >
-          {removeBody(removing)}
+          {t('accounts.removeBodyMicrosoft')}
           {losesActive && (
             <p className="mt-2">{successor ? t('accounts.removeNext', { name: successor.username }) : t('accounts.removeNone')}</p>
           )}

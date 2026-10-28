@@ -1288,8 +1288,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn active_offline_in_beta_is_no_account() {
-        let (core, runner, host, _t) = core(BuildKind::Beta);
+    async fn an_old_offline_account_is_no_account_even_in_dev() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
         core.instance_create(NewInstance {
             name: "Alpha".into(),
             minecraft: "1.20.1".into(),
@@ -1297,12 +1297,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let steve = launcher_core::accounts::offline_account("Steve").unwrap();
-        let file = launcher_core::accounts::AccountsFile {
-            active: Some(steve.uuid.clone()),
-            accounts: vec![steve],
-            ..Default::default()
-        };
+        let file = crate::testing::old_offline_file();
         core.accounts.lock().await.save(&file).await.unwrap();
         assert_eq!(
             core.play("alpha").await.unwrap_err().code,
@@ -1404,6 +1399,8 @@ mod tests {
     #[tokio::test]
     async fn every_play_entry_point_needs_an_account_that_can_play() {
         for (build, offline) in [
+            (BuildKind::Dev, false),
+            (BuildKind::Dev, true),
             (BuildKind::Release, false),
             (BuildKind::Release, true),
             (BuildKind::Beta, false),
@@ -1419,12 +1416,7 @@ mod tests {
             .unwrap();
             if offline {
                 // An offline account left over from an older launcher, still marked active.
-                let steve = launcher_core::accounts::offline_account("Steve").unwrap();
-                let file = launcher_core::accounts::AccountsFile {
-                    active: Some(steve.uuid.clone()),
-                    accounts: vec![steve],
-                    ..Default::default()
-                };
+                let file = crate::testing::old_offline_file();
                 core.accounts.lock().await.save(&file).await.unwrap();
             }
             let join = ServerAddress::new("play.example.com", 25565).unwrap();

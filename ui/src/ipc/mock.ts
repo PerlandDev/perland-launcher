@@ -78,8 +78,7 @@ export interface MockOptions {
   /** The game crashes a few seconds into its first run, with this cause. */
   crash?: CrashScenario;
   release?: boolean;
-  /** An optimized beta build: About says so, and offline accounts are hidden as the real app hides them (Accounts and First run
-   *  then offer Microsoft sign-in only, and `account_ready` asks for the "offline accounts are gone" notice). */
+  /** An optimized beta build: About says so, and it starts with no account, as a player's first install does. */
   beta?: boolean;
   /** Microsoft sign-in: `signedOut` (default), `signedIn` (Alex, a Microsoft account, is in use), `awaiting` (every sign-in runs the
    *  chain and Minecraft's login refuses it with `microsoft_awaiting_approval`), `notConfigured` (a build without a client id) or
@@ -331,6 +330,12 @@ function seed(options: MockOptions) {
     accounts.active = null;
     settings.firstRunDone = false;
   }
+  // A dev build starts on a developer's computer, with the fixture's two Microsoft accounts signed in (Steve in use). Beta and
+  // release start as a player's first install, with none.
+  if (options.release || options.beta) {
+    accounts.accounts = [];
+    accounts.active = null;
+  }
   if (options.microsoft === 'signedIn') {
     accounts.accounts = [...accounts.accounts, { ...MOCK_MICROSOFT_ACCOUNT }];
     accounts.active = MOCK_MICROSOFT_ACCOUNT.uuid;
@@ -338,16 +343,8 @@ function seed(options: MockOptions) {
   const appInfo: AppInfo = {
     ...(clone(appInfoFx) as AppInfo),
     build: options.release ? 'release' : options.beta ? 'beta' : 'dev',
-    // Offline accounts are a dev-build thing only.
-    offlineAllowed: !options.release && !options.beta,
     panel: options.panel ?? true,
   };
-  // Like the core's `visible`: a non-dev build never lists an offline account, and one in use reads as none. The real file
-  // keeps them for a dev build on the same computer; the mock has no dev build to keep them for.
-  if (!appInfo.offlineAllowed) {
-    accounts.accounts = accounts.accounts.filter((a) => a.provider !== 'offline');
-    if (!accounts.accounts.some((a) => a.uuid === accounts.active)) accounts.active = null;
-  }
   const update: UpdateState = options.update ?? { state: options.release || options.beta ? 'idle' : 'off' };
   const mods = new Map<string, LocalMod[]>([['asalith-fields', clone(localModsFx) as LocalMod[]]]);
   const packs = new Map<string, MockPack>();
@@ -1019,15 +1016,6 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     }
     case 'accounts_list':
       return state.accounts;
-    case 'account_add_offline': {
-      if (!state.appInfo.offlineAllowed) fail('auth', 'offline_locked', 'Offline accounts are locked');
-      const name = String(args.name);
-      if (!/^\w{3,16}$/.test(name)) fail('auth', 'offline_name_invalid', 'bad name');
-      const uuid = `mock-${name.toLowerCase()}`;
-      state.accounts.accounts = [...state.accounts.accounts.filter((a) => a.uuid !== uuid), { provider: 'offline', username: name, uuid }];
-      state.accounts.active = uuid;
-      return state.accounts;
-    }
     case 'account_set_active':
       state.accounts.active = String(args.uuid);
       return state.accounts;
@@ -1043,10 +1031,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       return null;
     case 'account_ready': {
       const active = state.accounts.accounts.find((a) => a.uuid === state.accounts.active);
-      return {
-        // As the core: a Microsoft account, or an offline one in a dev build.
-        ready: active?.provider === 'microsoft' || (active?.provider === 'offline' && state.appInfo.offlineAllowed),
-      };
+      // As the core: a Microsoft account is in use.
+      return { ready: active?.provider === 'microsoft' };
     }
     case 'play': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');

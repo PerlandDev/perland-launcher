@@ -413,7 +413,7 @@ export const restorePoint = z.strictObject({
 export const damagedInstance = z.strictObject({ id: z.string(), error: launcherError });
 export const instanceListing = z.strictObject({ instances: z.array(instance), damaged: z.array(damagedInstance) });
 
-export const account = z.strictObject({ provider: z.enum(['microsoft', 'offline']), username: z.string(), uuid: z.string() });
+export const account = z.strictObject({ provider: z.enum(['microsoft']), username: z.string(), uuid: z.string() });
 export const accountsFile = z.strictObject({
   accounts: z.array(account),
   active: z.string().nullable(),
@@ -449,7 +449,6 @@ export const settings = z.strictObject({
 export const appInfo = z.strictObject({
   version: z.string(),
   build: z.enum(['dev', 'beta', 'release']),
-  offlineAllowed: z.boolean(),
   systemMemoryMb: z.number().int(),
   dataDir: z.string(),
   /** A Perland panel is configured: the servers the player owns offer Manage in Perland. */

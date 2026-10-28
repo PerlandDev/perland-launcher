@@ -94,8 +94,7 @@ export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: comm
 export const useUpdate = () => useQuery({ queryKey: qk.update, queryFn: commands.updateStatus });
 export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: commands.instancesList });
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
-/** Whether Play can start (a Microsoft account in use, signed in), whether Microsoft is still approving this build, and whether
- *  the "offline accounts are gone" notice is due. Every sign-in, remove and dismiss asks for it again. */
+/** Whether Play can start: a Microsoft account in use, signed in. Every sign-in and remove asks for it again. */
 export const useAccountReady = () => useQuery({ queryKey: qk.accountReady, queryFn: commands.accountReady });
 /** Time played per instance on this computer. Refreshed when a run ends and when an instance moves or goes. */
 export const usePlaytime = () => useQuery({ queryKey: qk.playtime, queryFn: commands.playtimeList });
@@ -683,7 +682,6 @@ export function useAccountMutations(opts: Opts = {}) {
     onError(opts)(error);
   };
   return {
-    addOffline: useMutation({ mutationFn: commands.accountAddOffline, onSuccess, onError: failed }),
     setActive: useMutation({ mutationFn: commands.accountSetActive, onSuccess, onError: failed }),
     remove: useMutation({ mutationFn: commands.accountRemove, onSuccess, onError: failed }),
   };

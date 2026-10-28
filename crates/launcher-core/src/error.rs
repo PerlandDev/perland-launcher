@@ -35,7 +35,7 @@ macro_rules! error_codes {
 
 error_codes! {
     // accounts
-    OfflineNameInvalid, AccountsDamaged, OfflineLocked, NoAccount,
+    AccountsDamaged, NoAccount,
     MicrosoftNotConfigured, MicrosoftAwaitingApproval, MicrosoftSignInAgain, MicrosoftRateLimited,
     MinecraftNotOwned, MinecraftNoProfile, XboxNoProfile, XboxRegionBlocked, XboxAgeVerification,
     XboxChildAccount,

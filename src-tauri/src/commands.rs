@@ -161,11 +161,6 @@ pub async fn accounts_list(core: CoreState<'_>) -> Res<AccountsFile> {
 }
 
 #[tauri::command]
-pub async fn account_add_offline(core: CoreState<'_>, name: String) -> Res<AccountsFile> {
-    logged("account_add_offline", core.account_add_offline(&name).await)
-}
-
-#[tauri::command]
 pub async fn account_set_active(core: CoreState<'_>, uuid: String) -> Res<AccountsFile> {
     logged("account_set_active", core.account_set_active(&uuid).await)
 }

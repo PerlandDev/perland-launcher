@@ -171,11 +171,6 @@ describe('mock backend', () => {
     await expect(handle('instance_art_set', { id: plain.id, choice: { kind: 'pack' } })).rejects.toMatchObject({ code: 'no_pack' });
   });
 
-  it('rejects offline accounts in a release-like build', async () => {
-    const { handle } = createMockBackend({ release: true });
-    await expect(handle('account_add_offline', { name: 'Steve' })).rejects.toMatchObject({ code: 'offline_locked' });
-  });
-
   it('the awaiting option runs the whole sign-in every time and is refused at Minecraft each time', async () => {
     const { handle } = createMockBackend({ beta: true, microsoft: 'awaiting' });
     expect(await handle('account_ready')).toEqual({ ready: false });
@@ -210,13 +205,18 @@ describe('mock backend', () => {
     });
   }, 10_000);
 
-  it('hides offline accounts in a beta build and keeps them in dev', async () => {
-    const beta = (await createMockBackend({ beta: true }).handle('accounts_list')) as AccountsFile;
-    expect(beta.accounts).toEqual([]);
-    expect(beta.active).toBeNull();
+  it("starts a dev build with the fixture's Microsoft accounts, and beta and release with none", async () => {
+    for (const build of [{ beta: true }, { release: true }]) {
+      const fresh = (await createMockBackend(build).handle('accounts_list')) as AccountsFile;
+      expect(fresh.accounts).toEqual([]);
+      expect(fresh.active).toBeNull();
+    }
     const dev = createMockBackend();
-    expect(((await dev.handle('accounts_list')) as AccountsFile).accounts).toHaveLength(2);
-    // A dev build plays with its offline account, as the core answers.
+    const file = (await dev.handle('accounts_list')) as AccountsFile;
+    expect(file.accounts.map((a) => [a.provider, a.username])).toEqual([
+      ['microsoft', 'Steve'],
+      ['microsoft', 'Alex_Builds'],
+    ]);
     expect(await dev.handle('account_ready')).toEqual({ ready: true });
     const signedIn = (await createMockBackend({ beta: true, microsoft: 'signedIn' }).handle('accounts_list')) as AccountsFile;
     expect(signedIn.accounts.map((a) => [a.provider, a.username])).toEqual([['microsoft', 'Alex']]);

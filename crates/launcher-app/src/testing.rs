@@ -951,6 +951,25 @@ pub(crate) fn signed_in(name: &str, id: &str) -> SignedIn {
     }
 }
 
+/// An offline account, Steve, as an earlier beta left it in the accounts file.
+pub(crate) fn old_offline_account() -> launcher_core::accounts::Account {
+    launcher_core::accounts::Account {
+        provider: launcher_core::accounts::Provider::Offline,
+        username: "Steve".into(),
+        uuid: "5627dd98-e6be-3c21-b8a8-e92344183641".into(),
+    }
+}
+
+/// An accounts file an earlier beta wrote: Steve's offline account, still active.
+pub(crate) fn old_offline_file() -> launcher_core::accounts::AccountsFile {
+    let steve = old_offline_account();
+    launcher_core::accounts::AccountsFile {
+        active: Some(steve.uuid.clone()),
+        accounts: vec![steve],
+        ..Default::default()
+    }
+}
+
 /// One call `FakeMsa` saw: the method and its arguments.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct MsaCall {

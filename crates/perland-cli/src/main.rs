@@ -1,19 +1,17 @@
-//! Developer harness for launcher-core: create instances, add offline accounts, install and launch.
+//! Developer harness for launcher-core: create instances, add and sync packs, install them.
 use std::{path::PathBuf, process::ExitCode, sync::Arc};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use launcher_core::{
-    accounts::{AccountStore, BuildKind, Provider},
     download::Downloader,
     events::{Event, EventSink},
     install::Installer,
     instances::{GameSpec, Instance, InstanceStore, LoaderSpec, SourceRef},
-    launch::Redactor,
     locks::InstanceLock,
     meta::{loaders::LoaderKind, MetaClient},
     paths::LauncherDirs,
     platform::Platform,
-    play::{self, Prepared, StartSpec},
+    play::{self, Prepared},
     sources::{PackInput, UpdateCheck},
     sync::{
         lockfile::{additions, Managed},
@@ -50,23 +48,10 @@ enum Cmd {
     },
     /// List instances
     List,
-    /// Add an offline account and make it active
-    Offline { name: String },
     /// Install an instance and bring its pack up to date, ready to play (needs no account)
     Install {
         #[arg(long)]
         instance: String,
-        /// Don't update the pack first
-        #[arg(long)]
-        no_sync: bool,
-    },
-    /// Install (if needed) and launch an instance with the active account
-    Launch {
-        #[arg(long)]
-        instance: String,
-        /// Build the command and check every file exists, without starting the game
-        #[arg(long)]
-        dry_run: bool,
         /// Don't update the pack first
         #[arg(long)]
         no_sync: bool,
@@ -149,7 +134,6 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
         })?;
     let dirs = LauncherDirs::new(root);
     let store = InstanceStore::new(dirs.instances());
-    let accounts = AccountStore::new(dirs.root().join("accounts.json"));
     match cli.cmd {
         Cmd::Create {
             name,
@@ -190,10 +174,6 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
             for i in store.list().await? {
                 println!("{}\t{}\t{}", i.id, i.name, i.game.minecraft);
             }
-        }
-        Cmd::Offline { name } => {
-            let account = accounts.add_offline(&name, BuildKind::current()).await?;
-            println!("{} {}", account.username, account.uuid);
         }
         Cmd::Pack {
             cmd: PackCmd::Add { input },
@@ -250,11 +230,6 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
             eprintln!();
             println!("installed; java: {}", prepared.java.display());
         }
-        Cmd::Launch {
-            instance,
-            dry_run,
-            no_sync,
-        } => launch_instance(&dirs, &store, &accounts, &instance, dry_run, no_sync).await?,
         Cmd::Java { cmd: JavaCmd::List } => {
             for java in launcher_core::java::detect_installed(Platform::current()).await {
                 println!("{}\t{}", java.major, java.path.display());
@@ -264,82 +239,8 @@ async fn run(cli: Cli) -> Result<(), LauncherError> {
     Ok(())
 }
 
-async fn launch_instance(
-    dirs: &LauncherDirs,
-    store: &InstanceStore,
-    accounts: &AccountStore,
-    id: &str,
-    dry_run: bool,
-    no_sync: bool,
-) -> Result<(), LauncherError> {
-    let account = accounts.active().await?.ok_or_else(|| {
-        LauncherError::auth(ErrorCode::NoAccount, "No account selected")
-            .with_fix("Run `perland-cli offline <name>` first")
-    })?;
-    if account.provider != Provider::Offline {
-        return Err(LauncherError::auth(
-            ErrorCode::OfflineLocked,
-            "The dev harness doesn't sign in with Microsoft",
-        )
-        .with_fix("This is a dev harness; use a debug build"));
-    }
-    if !launcher_core::accounts::offline_allowed(launcher_core::accounts::BuildKind::current()) {
-        return Err(LauncherError::auth(
-            ErrorCode::OfflineLocked,
-            "Offline accounts are only available in a debug build",
-        )
-        .with_fix("This is a dev harness; use a debug build"));
-    }
-    let session = account.offline_session();
-    let (instance, prepared, _lock) = install_instance(dirs, store, id, no_sync).await?;
-    let platform = Platform::current();
-    let sink = progress_sink();
-    eprintln!();
-    let game_dir = store.game_dir(&instance.id);
-    let spec = StartSpec {
-        dirs,
-        game_dir: &game_dir,
-        instance: &instance,
-        prepared: &prepared,
-        session: &session,
-        platform,
-        launcher_version: env!("CARGO_PKG_VERSION"),
-        join: None,
-        world: None,
-    };
-
-    if dry_run {
-        let cmd = play::command(&spec)?;
-        let redactor = Redactor::for_current_user().with_secret(session.access_token.clone());
-        println!(
-            "{}",
-            redactor.redact(&format!("{} {}", cmd.program.display(), cmd.args.join(" ")))
-        );
-        play::check_files(&cmd)?;
-        let len = launcher_core::launch::command_line_len(&cmd);
-        eprintln!(
-            "command line: {len} characters{}",
-            if len > launcher_core::launch::ARGFILE_THRESHOLD {
-                " (a real launch puts the JVM arguments in an argfile)"
-            } else {
-                ""
-            }
-        );
-        eprintln!(
-            "dry run OK: java and {} classpath entries present",
-            cmd.classpath.len()
-        );
-        return Ok(());
-    }
-
-    let game = play::start(&spec, sink).await?;
-    let exit = game.wait().await?;
-    eprintln!("game exited with {:?}", exit.code);
-    Ok(())
-}
-
 /// Sync `id` (unless `no_sync`) and install everything it needs. The returned lock keeps a sync
-/// from the app or another CLI out until it is dropped (for a launch, until the game exits).
+/// from the app or another CLI out until it is dropped.
 async fn install_instance(
     dirs: &LauncherDirs,
     store: &InstanceStore,

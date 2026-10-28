@@ -7,7 +7,6 @@ import { FirstRun } from './FirstRun';
 
 const failure = { category: 'storage', code: 'disk_io', message: 'nope', fix: null, detail: null, params: {} };
 const diskIo = "Couldn't read or write a launcher file.";
-const rule = 'Player names must be 3–16 letters, numbers or underscores.';
 
 /** Intercept one backend command: `hold` parks it until `release`, `fail` rejects it. */
 function intercept(backend: ReturnType<typeof renderApp>['backend'], command: string) {
@@ -26,10 +25,9 @@ it('walks a new player from welcome to their first instance', async () => {
   await user.click(await screen.findByRole('button', { name: "Let's go" }));
   await user.click(screen.getByRole('button', { name: 'Español' }));
   expect(await screen.findByRole('heading', { name: '¿Quién va a jugar?' })).toBeInTheDocument();
-  await user.type(screen.getByRole('textbox', { name: 'Nombre de jugador' }), 'Steve');
-  await user.click(screen.getByRole('button', { name: 'Continuar' }));
-  expect(sent(calls, 'account_add_offline')).toEqual([{ name: 'Steve' }]);
-  expect(await screen.findByRole('heading', { name: 'Tu primera instancia' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Iniciar sesión con Microsoft' }));
+  expect(await screen.findByRole('heading', { name: 'Tu primera instancia' }, { timeout: 4000 })).toBeInTheDocument();
+  expect(sent(calls, 'account_sign_in_microsoft')).toEqual([{ language: 'es' }]);
   const finish = await screen.findByRole('button', { name: 'A jugar' });
   await vi.waitFor(() => expect(finish).toBeEnabled()); // the version list has loaded
   await user.click(finish);
@@ -38,22 +36,27 @@ it('walks a new player from welcome to their first instance', async () => {
   expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { firstRunDone: true, language: 'es' } });
 });
 
-it('asks a beta build to sign in with Microsoft, with no name field', async () => {
-  const { user } = renderApp(<FirstRun />, { firstRun: true, beta: true });
+it.each([{}, { beta: true }, { release: true }])('asks for a Microsoft sign-in, with no name field (%o)', async (build) => {
+  const { user } = renderApp(<FirstRun />, { firstRun: true, ...build });
   await user.click(await screen.findByRole('button', { name: "Let's go" }));
   await user.click(screen.getByRole('button', { name: 'English' }));
   expect(await screen.findByRole('button', { name: 'Sign in with Microsoft' })).toBeInTheDocument();
   expect(screen.getByText('You need a Microsoft account that owns Minecraft: Java Edition.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Skip for now' })).toBeInTheDocument();
   expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
 });
 
-it('shows the name field in a dev build', async () => {
-  const { user } = renderApp(<FirstRun />, { firstRun: true });
+it('offers the sign-in without waiting for the build info', async () => {
+  const { user, backend, qc } = renderApp(<FirstRun />, { firstRun: true });
   await user.click(await screen.findByRole('button', { name: "Let's go" }));
+  intercept(backend, 'app_info').mode = 'hold';
+  act(() => {
+    void qc.resetQueries({ queryKey: ['appInfo'] }); // parked, so the answer never arrives
+  });
   await user.click(screen.getByRole('button', { name: 'English' }));
-  expect(await screen.findByRole('textbox', { name: 'Player name' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Sign in with Microsoft' })).not.toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Sign in with Microsoft' })).toBeInTheDocument();
+  expect(screen.queryByText('Loading…')).not.toBeInTheDocument();
 });
 
 it('lets a beta build skip the sign-in to the first instance', async () => {
@@ -87,68 +90,6 @@ it('leaves focus alone on the first screen and moves it to each new step heading
   expect(screen.getByRole('heading', { name: 'Pick your language' })).toHaveFocus();
   await user.click(screen.getByRole('button', { name: 'English' }));
   expect(await screen.findByRole('heading', { name: "Who's playing?" })).toHaveFocus();
-});
-
-it('announces an invalid name by moving focus to the field and sends nothing', async () => {
-  const { user, calls } = renderApp(<FirstRun />, { firstRun: true });
-  await user.click(await screen.findByRole('button', { name: "Let's go" }));
-  await user.click(screen.getByRole('button', { name: 'English' }));
-  const input = await screen.findByRole('textbox', { name: 'Player name' });
-  await user.type(input, 'no spaces!');
-  await user.click(screen.getByRole('button', { name: 'Continue' }));
-  expect(input).toHaveFocus();
-  expect(input).toHaveAccessibleDescription(rule);
-  expect(input).toHaveAttribute('aria-invalid', 'true');
-  expect(sent(calls, 'account_add_offline')).toHaveLength(0);
-});
-
-it('says why a failed add failed, then sends one add for a double click on Continue', async () => {
-  const { user, calls, backend } = renderApp(<FirstRun />, { firstRun: true });
-  const add = intercept(backend, 'account_add_offline');
-  await user.click(await screen.findByRole('button', { name: "Let's go" }));
-  await user.click(screen.getByRole('button', { name: 'English' }));
-  await user.type(await screen.findByRole('textbox', { name: 'Player name' }), 'Notch');
-  add.mode = 'fail';
-  await user.click(screen.getByRole('button', { name: 'Continue' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent(diskIo);
-  expect(screen.getByRole('heading', { name: "Who's playing?" })).toBeInTheDocument();
-
-  add.mode = 'hold';
-  await user.dblClick(screen.getByRole('button', { name: 'Continue' }));
-  expect(sent(calls, 'account_add_offline')).toHaveLength(2); // the failed one, then a single retry
-  await act(async () => add.release());
-  expect(await screen.findByRole('heading', { name: 'Your first instance' })).toBeInTheDocument();
-});
-
-it('shows neither form nor locked copy while it is unknown whether offline accounts are allowed', async () => {
-  const { user, backend, qc } = renderApp(<FirstRun />, { firstRun: true });
-  await user.click(await screen.findByRole('button', { name: "Let's go" }));
-  const info = intercept(backend, 'app_info');
-  info.mode = 'hold';
-  act(() => {
-    void qc.resetQueries({ queryKey: ['appInfo'] }); // parked, so the answer never arrives
-  });
-  await user.click(screen.getByRole('button', { name: 'English' }));
-  expect(await screen.findByRole('heading', { name: "Who's playing?" })).toBeInTheDocument();
-  expect(screen.getByText('Loading…')).toBeInTheDocument();
-  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Sign in with Microsoft' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Skip for now' })).not.toBeInTheDocument();
-});
-
-it('offers Try again when the build info fails to load', async () => {
-  const { user, backend, qc } = renderApp(<FirstRun />, { firstRun: true });
-  await user.click(await screen.findByRole('button', { name: "Let's go" }));
-  const info = intercept(backend, 'app_info');
-  info.mode = 'fail';
-  await act(async () => qc.resetQueries({ queryKey: ['appInfo'] }));
-  await user.click(screen.getByRole('button', { name: 'English' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent(diskIo);
-  expect(screen.queryByRole('button', { name: 'Sign in with Microsoft' })).not.toBeInTheDocument();
-  info.mode = 'pass';
-  await user.click(screen.getByRole('button', { name: 'Try again' }));
-  expect(await screen.findByRole('textbox', { name: 'Player name' })).toBeInTheDocument();
-  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
 it('never creates a second instance when saving the settings has to be retried', async () => {
@@ -238,7 +179,7 @@ it('shows the chosen language pressed, not lit', async () => {
   expect(spanish).not.toHaveClass('btn-primary');
 });
 
-/** Walk a release build (no account step to fill in) to step 3, in Spanish. */
+/** Walk a release build to step 3, skipping the sign-in, in Spanish. */
 async function toInstanceStep(rendered: ReturnType<typeof renderApp>) {
   const { user } = rendered;
   await user.click(await screen.findByRole('button', { name: "Let's go" }));

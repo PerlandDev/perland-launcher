@@ -6,7 +6,7 @@
 use std::sync::Mutex;
 
 use launcher_core::{
-    accounts::{offline_allowed, visible, Account, AccountsFile, Provider, Session},
+    accounts::{visible, Account, AccountsFile, Provider, Session},
     http::HttpClient,
     msa::{
         minecraft::{dashed, ownership, McProfile, McToken, SignedIn},
@@ -255,7 +255,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 uuid,
             })
             .await?;
-        Ok(visible(file, self.config.build))
+        Ok(visible(file))
     }
 
     /// Take the sign-in slot for a new Microsoft sign-in, canceling the one before.
@@ -285,23 +285,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Whether the player can play now, without a network call: the active account is a
-    /// Microsoft account with a stored refresh token, or, in a dev build, an offline account.
-    /// Outside dev builds offline accounts are simply not there: nothing is said about them.
+    /// Microsoft account with a stored refresh token.
     pub async fn account_ready(&self) -> Result<AccountReady> {
         let file = self.accounts.lock().await.list().await?;
-        let shown = visible(file, self.config.build);
+        let shown = visible(file);
         let active = shown
             .active
             .and_then(|uuid| shown.accounts.into_iter().find(|a| a.uuid == uuid));
-        // A dev build still plays offline; any other build has no offline account to show.
         let ready = match active {
             Some(account) if account.provider == Provider::Microsoft => {
                 self.has_refresh(account.uuid).await
             }
-            Some(account) => {
-                account.provider == Provider::Offline && offline_allowed(self.config.build)
-            }
-            None => false,
+            _ => false,
         };
         Ok(AccountReady { ready })
     }
@@ -322,15 +317,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
     }
 
-    /// The check before every launch: the session the game starts with. An offline account
-    /// plays only in a dev build. A Microsoft account always passes an online check of its
+    /// The check before every launch: the session the game starts with. Only a Microsoft
+    /// account plays, and it always passes an online check of its
     /// Minecraft token, refreshed first when it has less than an hour left; any failure,
     /// a network one included, is returned and the game doesn't start.
     pub(crate) async fn session_for(&self, account: Account) -> Result<Session> {
         match account.provider {
-            Provider::Offline if offline_allowed(self.config.build) => {
-                Ok(account.offline_session())
-            }
+            // Only an accounts file from an earlier beta holds one, and it never plays.
             Provider::Offline => Err(LauncherError::auth(
                 ErrorCode::NoAccount,
                 "Sign in with Microsoft to play",
@@ -489,7 +482,7 @@ mod tests {
     };
 
     use launcher_core::{
-        accounts::{offline_account, Account, AccountsFile, BuildKind, Provider},
+        accounts::{Account, AccountsFile, BuildKind, Provider},
         invite::Url,
         msa::{
             minecraft::{dashed, McProfile, McToken},
@@ -505,7 +498,7 @@ mod tests {
         dto::PerlandSignInPhase,
         events::AppEvent,
         restore::now_secs,
-        testing::{signed_in, MS_CLIENT_ID},
+        testing::{old_offline_account, old_offline_file, signed_in, MS_CLIENT_ID},
     };
 
     const ALEX_ID: &str = "0123456789abcdef0123456789abcdef";
@@ -784,23 +777,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ready_for_offline_account_in_dev_only() {
-        // A dev build plays with an offline account, as it always could.
-        let (dev, _runner, _host, _t) = core(BuildKind::Dev);
-        dev.account_add_offline("Steve").await.unwrap();
-        assert!(dev.account_ready().await.unwrap().ready, "dev");
-
-        // Any other build hides offline accounts, so an active one is no account.
-        let (beta, _runner, _host, _t) = core(BuildKind::Beta);
-        let steve = offline_account("Steve").unwrap();
-        save_refresh(&*beta.msa_secrets, &steve.uuid, "refresh").unwrap();
-        let file = AccountsFile {
-            active: Some(steve.uuid.clone()),
-            accounts: vec![steve],
-            ..AccountsFile::default()
-        };
-        beta.accounts.lock().await.save(&file).await.unwrap();
-        assert!(!beta.account_ready().await.unwrap().ready, "beta");
+    async fn an_old_offline_account_is_never_ready() {
+        for build in [BuildKind::Dev, BuildKind::Beta, BuildKind::Release] {
+            let (core, _runner, _host, _t) = core(build);
+            let file = old_offline_file();
+            save_refresh(
+                &*core.msa_secrets,
+                file.active.as_deref().unwrap(),
+                "refresh",
+            )
+            .unwrap();
+            core.accounts.lock().await.save(&file).await.unwrap();
+            assert!(!core.account_ready().await.unwrap().ready, "{build:?}");
+        }
     }
 
     #[tokio::test]
@@ -821,9 +810,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_active_refuses_a_hidden_offline_account() {
-        let (core, _runner, _host, _t) = core(BuildKind::Beta);
-        let steve = offline_account("Steve").unwrap();
+    async fn set_active_refuses_an_old_offline_account() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let steve = old_offline_account();
         let alex = Account {
             provider: Provider::Microsoft,
             username: "Alex".into(),
@@ -842,18 +831,6 @@ mod tests {
         assert_eq!(
             core.account_set_active(&alex.uuid).await.unwrap().active,
             Some(alex.uuid)
-        );
-    }
-
-    #[tokio::test]
-    async fn set_active_takes_an_offline_account_in_dev() {
-        let (core, _runner, _host, _t) = core(BuildKind::Dev);
-        core.account_add_offline("Steve").await.unwrap();
-        core.account_add_offline("Alex").await.unwrap();
-        let steve = offline_account("Steve").unwrap().uuid;
-        assert_eq!(
-            core.account_set_active(&steve).await.unwrap().active,
-            Some(steve)
         );
     }
 
@@ -1083,17 +1060,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn offline_session_only_in_dev() {
-        let (core, runner, _host, _t) = core(BuildKind::Dev);
-        let steve = offline_account("Steve").unwrap();
-        let session = core.session_for(steve.clone()).await.unwrap();
-        assert_eq!(session.user_type, "legacy");
-        assert_eq!(session.client_id, None);
-        assert!(runner.msa.calls.lock().unwrap().is_empty());
-
-        let (core, _runner, _host, _t) = crate::app::tests::core(BuildKind::Beta);
-        let err = core.session_for(steve).await.unwrap_err();
-        assert_eq!(err.code, ErrorCode::NoAccount);
+    async fn an_old_offline_account_never_gets_a_session() {
+        for build in [BuildKind::Dev, BuildKind::Beta, BuildKind::Release] {
+            let (core, runner, _host, _t) = core(build);
+            let err = core.session_for(old_offline_account()).await.unwrap_err();
+            assert_eq!(err.code, ErrorCode::NoAccount, "{build:?}");
+            assert!(runner.msa.calls.lock().unwrap().is_empty());
+        }
     }
 
     #[tokio::test]

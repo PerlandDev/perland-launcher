@@ -148,7 +148,6 @@ fn main() {
             commands::catalog_minecraft,
             commands::catalog_loaders,
             commands::accounts_list,
-            commands::account_add_offline,
             commands::account_set_active,
             commands::account_remove,
             commands::account_sign_in_microsoft,

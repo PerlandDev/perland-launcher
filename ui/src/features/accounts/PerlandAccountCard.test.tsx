@@ -38,7 +38,7 @@ describe('PerlandAccountCard', () => {
   it('hidden_when_off: shows nothing while the Engine has accounts closed', async () => {
     const { calls } = renderApp(<Accounts />, { perland: 'off' });
     await screen.findByText('Steve');
-    await screen.findByRole('button', { name: 'Add offline account' });
+    await screen.findByRole('button', { name: 'Add Microsoft account' });
     expect(sent(calls, 'perland_status')).toHaveLength(1);
     expect(screen.queryByText('Perland account')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Continue with Discord' })).not.toBeInTheDocument();

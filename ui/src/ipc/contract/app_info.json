@@ -1,7 +1,6 @@
 {
   "version": "0.1.0",
   "build": "dev",
-  "offlineAllowed": true,
   "systemMemoryMb": 16384,
   "dataDir": "C:/Users/player/AppData/Roaming/PerlandLauncher",
   "panel": true

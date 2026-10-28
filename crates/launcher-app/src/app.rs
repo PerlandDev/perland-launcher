@@ -315,7 +315,6 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Ok(AppInfo {
             version: self.config.launcher_version.clone(),
             build: self.config.build.into(),
-            offline_allowed: launcher_core::accounts::offline_allowed(self.config.build),
             system_memory_mb: self.config.system_memory_mb,
             data_dir: self.config.dirs.root().display().to_string(),
             panel: self.config.panel.is_some(),
@@ -551,13 +550,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         catalog::loader_versions(&self.meta, kind, mc).await
     }
 
-    /// The accounts the player may see: outside dev builds, offline ones are left out.
+    /// The accounts the player may see: Microsoft accounts only.
     pub async fn accounts_list(&self) -> Result<AccountsFile> {
         let file = self.accounts.lock().await.list().await?;
-        Ok(visible(file, self.config.build))
+        Ok(visible(file))
     }
 
-    /// The active account as the player sees it (never an offline one outside dev builds).
+    /// The active account as the player sees it.
     pub(crate) async fn active_account(&self) -> Result<Option<launcher_core::accounts::Account>> {
         let file = self.accounts_list().await?;
         Ok(file
@@ -565,17 +564,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .and_then(|uuid| file.accounts.into_iter().find(|a| a.uuid == uuid)))
     }
 
-    pub async fn account_add_offline(&self, name: &str) -> Result<AccountsFile> {
-        let store = self.accounts.lock().await;
-        store.add_offline(name, self.config.build).await?;
-        Ok(visible(store.list().await?, self.config.build))
-    }
-
-    /// Only an account the player may see can become active (never an offline one outside
-    /// dev builds).
+    /// Only an account the player may see can become active.
     pub async fn account_set_active(&self, uuid: &str) -> Result<AccountsFile> {
         let store = self.accounts.lock().await;
-        let shown = visible(store.list().await?, self.config.build);
+        let shown = visible(store.list().await?);
         if !shown.accounts.iter().any(|a| a.uuid == uuid) {
             return Err(LauncherError::auth(
                 ErrorCode::NoAccount,
@@ -583,14 +575,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             ));
         }
         let file = store.set_active(uuid).await?;
-        Ok(visible(file, self.config.build))
+        Ok(visible(file))
     }
 
     /// Forget an account, with its Microsoft sign-in.
     pub async fn account_remove(&self, uuid: &str) -> Result<AccountsFile> {
         let file = self.accounts.lock().await.remove(uuid).await?;
         self.forget_microsoft(uuid).await;
-        Ok(visible(file, self.config.build))
+        Ok(visible(file))
     }
 
     async fn game_dir(&self, id: &str) -> Result<PathBuf> {
@@ -961,38 +953,30 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn app_info_reflects_build_and_offline_gate() {
+    async fn app_info_reflects_build() {
         let (dev, _, _, _t1) = core(BuildKind::Dev);
         let info = dev.app_info().await.unwrap();
-        assert!(info.offline_allowed);
         assert_eq!(info.build, Build::Dev);
         assert_eq!(info.system_memory_mb, 16384);
-        for kind in [BuildKind::Release, BuildKind::Beta] {
-            let (locked, _, _, _t2) = core(kind);
-            assert!(!locked.app_info().await.unwrap().offline_allowed);
-            assert_eq!(
-                locked.account_add_offline("Steve").await.unwrap_err().code,
-                ErrorCode::OfflineLocked
-            );
-        }
         let (beta, _, _, _t3) = core(BuildKind::Beta);
         assert_eq!(beta.app_info().await.unwrap().build, Build::Beta);
     }
 
     #[tokio::test]
-    async fn outside_dev_offline_accounts_on_disk_are_hidden() {
-        let (dev, _, _, tmp) = core(BuildKind::Dev);
-        dev.account_add_offline("Steve").await.unwrap();
-        let (beta, _, _, _t) = core(BuildKind::Beta);
-        // Same file, other build.
-        std::fs::copy(
-            tmp.path().join("accounts.json"),
-            _t.path().join("accounts.json"),
-        )
-        .unwrap();
-        let shown = beta.accounts_list().await.unwrap();
-        assert!(shown.accounts.is_empty());
-        assert_eq!(shown.active, None);
+    async fn an_offline_account_an_old_beta_left_is_hidden_in_every_build() {
+        for build in [BuildKind::Dev, BuildKind::Beta, BuildKind::Release] {
+            let (core, _, _, _t) = core(build);
+            core.accounts
+                .lock()
+                .await
+                .save(&crate::testing::old_offline_file())
+                .await
+                .unwrap();
+            let shown = core.accounts_list().await.unwrap();
+            assert!(shown.accounts.is_empty(), "{build:?}");
+            assert_eq!(shown.active, None, "{build:?}");
+            assert_eq!(core.active_account().await.unwrap(), None, "{build:?}");
+        }
     }
 
     #[tokio::test]
@@ -1023,7 +1007,6 @@ pub(crate) mod tests {
         let (core, _, host, tmp) = core(BuildKind::Release);
         std::fs::write(tmp.path().join("accounts.json"), "{nope").unwrap();
         let info = core.app_info().await.unwrap();
-        assert!(!info.offline_allowed);
         assert_eq!(info.system_memory_mb, 16384);
         core.app_info().await.unwrap();
         assert_eq!(host.warnings(), vec![ErrorCode::AccountsDamaged]);

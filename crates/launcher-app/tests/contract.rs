@@ -34,7 +34,7 @@ use launcher_core::browse::{
     search::{SearchHit, SearchPage, SortIndex},
 };
 use launcher_core::{
-    accounts::{offline_account, AccountsFile},
+    accounts::{Account, AccountsFile, Provider},
     download::Hashes,
     events::TaskId,
     instances::{
@@ -744,8 +744,13 @@ fn contract_fixtures_are_current() {
             },
         ],
     );
-    let steve = offline_account("Steve").unwrap();
-    let alex = offline_account("Alex_Builds").unwrap();
+    let account = |username: &str, uuid: &str| Account {
+        provider: Provider::Microsoft,
+        username: username.into(),
+        uuid: uuid.into(),
+    };
+    let steve = account("Steve", "5627dd98-e6be-3c21-b8a8-e92344183641");
+    let alex = account("Alex_Builds", "e3dd11bd-c1cf-37d8-9de0-abcb98d0376b");
     check(
         "accounts",
         AccountsFile {
@@ -774,7 +779,6 @@ fn contract_fixtures_are_current() {
         AppInfo {
             version: "0.1.0".into(),
             build: Build::Dev,
-            offline_allowed: true,
             system_memory_mb: 16384,
             data_dir: "C:/Users/player/AppData/Roaming/PerlandLauncher".into(),
             panel: true,

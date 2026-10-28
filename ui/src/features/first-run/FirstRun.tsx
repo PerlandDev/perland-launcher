@@ -1,18 +1,16 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Marquee } from '../../art/Marquee';
 import mark from '../../assets/mark.svg';
 import { applyLanguage } from '../../i18n';
 import type { Instance, Lang } from '../../ipc/schema';
-import { useAccountMutations, useAppInfo, useCreateInstance, useSaveSettings, useSettings } from '../../state/queries';
+import { useCreateInstance, useSaveSettings, useSettings } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
-import { Field } from '../../ui/Field';
 import { Search } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { MicrosoftSignIn } from '../accounts/MicrosoftSignIn';
-import { OFFLINE_NAME } from '../accounts/offlineName';
 import { TitleBar } from '../titlebar/TitleBar';
 import { useVersionChoice } from '../new-instance/useVersionChoice';
 import { VersionFields } from '../new-instance/VersionFields';
@@ -33,23 +31,17 @@ function Steps({ current }: { current: number }) {
 
 export function FirstRun() {
   const { t, i18n } = useTranslation();
-  const appInfo = useAppInfo();
   const settings = useSettings();
   const saveSettings = useSaveSettings({ inline: true });
-  const { addOffline } = useAccountMutations({ inline: true });
   const create = useCreateInstance({ inline: true });
   const choice = useVersionChoice();
   const [step, setStep] = useState(0);
   const [lang, setLang] = useState<Lang>(i18n.language === 'es' ? 'es' : 'en');
-  const [name, setName] = useState('');
-  const [checked, setChecked] = useState(false);
   const [picking, setPicking] = useState(false);
   // Once the instance exists, a retry only saves the settings again: it must never make a second one.
   const [created, setCreated] = useState<Instance | null>(null);
-  const nameInput = useRef<HTMLInputElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const shownStep = useRef(step);
-  const continueOnce = useSingleFlight();
   const finishOnce = useSingleFlight();
 
   // A new step starts at its heading, so keyboard and screen-reader users know where they are.
@@ -64,16 +56,6 @@ export function FirstRun() {
     setLang(next);
     applyLanguage(next);
     setStep(2);
-  };
-  const showInvalid = checked && !OFFLINE_NAME.test(name);
-  const submitAccount = (event: FormEvent) => {
-    event.preventDefault();
-    if (!OFFLINE_NAME.test(name)) {
-      setChecked(true);
-      nameInput.current?.focus();
-      return;
-    }
-    continueOnce((done) => addOffline.mutate(name, { onSuccess: () => setStep(3), onSettled: done }));
   };
   const finish = () => {
     const { minecraft } = choice.resolved;
@@ -151,50 +133,11 @@ export function FirstRun() {
                 <h1 ref={heading} tabIndex={-1} className="font-display text-3xl leading-none outline-none">
                   {t('firstRun.accountTitle')}
                 </h1>
-                {appInfo.isError && (
-                  <ErrorCard
-                    error={appInfo.error}
-                    actions={
-                      <Button disabled={appInfo.isFetching} onClick={() => void appInfo.refetch()}>
-                        {t('common.retry')}
-                      </Button>
-                    }
-                  />
-                )}
-                {!appInfo.isError && !appInfo.data && <p className="text-ink-dim">{t('common.loading')}</p>}
-                {appInfo.data?.offlineAllowed && (
-                  <form onSubmit={submitAccount} className="grid gap-4">
-                    <p className="text-ink-dim">{t('firstRun.accountBody')}</p>
-                    <Field
-                      label={t('accounts.offlineName')}
-                      hint={t('accounts.offlineHint')}
-                      error={showInvalid ? t('errors.offline_name_invalid.message') : null}
-                    >
-                      <input
-                        ref={nameInput}
-                        className="field-input"
-                        value={name}
-                        maxLength={16}
-                        autoComplete="off"
-                        onChange={(e) => setName(e.target.value)}
-                        onBlur={() => name && setChecked(true)}
-                      />
-                    </Field>
-                    <Button type="submit" variant="primary" size="lg" aria-disabled={addOffline.isPending || undefined}>
-                      {t('common.continue')}
-                    </Button>
-                  </form>
-                )}
-                {appInfo.data && !appInfo.data.offlineAllowed && (
-                  <>
-                    <MicrosoftSignIn variant="primary" onSignedIn={() => setStep(3)} />
-                    <div className="grid justify-items-start gap-2">
-                      <p className="text-sm text-ink-dim">{t('firstRun.skipLater')}</p>
-                      <Button onClick={() => setStep(3)}>{t('firstRun.skip')}</Button>
-                    </div>
-                  </>
-                )}
-                {addOffline.isError && <ErrorCard error={addOffline.error} />}
+                <MicrosoftSignIn variant="primary" onSignedIn={() => setStep(3)} />
+                <div className="grid justify-items-start gap-2">
+                  <p className="text-sm text-ink-dim">{t('firstRun.skipLater')}</p>
+                  <Button onClick={() => setStep(3)}>{t('firstRun.skip')}</Button>
+                </div>
               </>
             )}
             {step === 3 && (

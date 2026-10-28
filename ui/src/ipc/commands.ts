@@ -118,7 +118,6 @@ export const commands = {
   catalogMinecraft: () => invoke<McVersion[]>('catalog_minecraft'),
   catalogLoaders: (kind: LoaderKind, mc: string) => invoke<LoaderVersion[]>('catalog_loaders', { kind, mc }),
   accountsList: () => invoke<AccountsFile>('accounts_list'),
-  accountAddOffline: (name: string) => invoke<AccountsFile>('account_add_offline', { name }),
   accountSetActive: (uuid: string) => invoke<AccountsFile>('account_set_active', { uuid }),
   accountRemove: (uuid: string) => invoke<AccountsFile>('account_remove', { uuid }),
   /** Sign in with Microsoft in the browser. Null when it was canceled (here or in the browser). */

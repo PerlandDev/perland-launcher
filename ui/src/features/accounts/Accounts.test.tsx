@@ -6,7 +6,6 @@ import { Accounts } from './Accounts';
 
 const failure = { category: 'storage', code: 'disk_io', message: 'nope', fix: null, detail: null, params: {} };
 const diskIo = "Couldn't read or write a launcher file.";
-const rule = 'Player names must be 3–16 letters, numbers or underscores.';
 
 /** Intercept one backend command: `hold` parks it until `release`, `fail` rejects it. */
 function intercept(backend: ReturnType<typeof renderApp>['backend'], command: string) {
@@ -20,44 +19,30 @@ function intercept(backend: ReturnType<typeof renderApp>['backend'], command: st
   return control;
 }
 
-it('switches, adds and removes offline accounts', async () => {
+it('switches and removes accounts', async () => {
   const { user, calls } = renderApp(<Accounts />);
   const alex = (await screen.findByText('Alex_Builds')).closest('li')!;
   expect(within(screen.getByText('Steve').closest('li')!).getByText('In use')).toBeInTheDocument();
   await user.click(within(alex).getByRole('button', { name: 'Use' }));
   expect(sent(calls, 'account_set_active')).toHaveLength(1);
 
-  const input = screen.getByRole('textbox', { name: 'Player name' });
-  await user.type(input, 'no spaces!');
-  await user.click(screen.getByRole('button', { name: 'Add offline account' }));
-  expect(screen.getByText('Player names must be 3–16 letters, numbers or underscores.')).toBeInTheDocument();
-  expect(sent(calls, 'account_add_offline')).toEqual([]);
-  await user.clear(input);
-  await user.type(input, 'Notch');
-  await user.click(screen.getByRole('button', { name: 'Add offline account' }));
-  expect(sent(calls, 'account_add_offline')).toEqual([{ name: 'Notch' }]);
-
   await user.click(within(alex).getByRole('button', { name: 'Remove Alex_Builds' }));
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
   expect(sent(calls, 'account_remove')).toHaveLength(1);
 });
 
-it('beta shows Add Microsoft account and never Add offline account', async () => {
-  renderApp(<Accounts />, { beta: true });
+it.each([{}, { beta: true }, { release: true }])('adds an account by Microsoft sign-in only (%o)', async (build) => {
+  renderApp(<Accounts />, build);
   expect(await screen.findByRole('button', { name: 'Add Microsoft account' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Add an account' })).toBeInTheDocument();
-  expect(screen.queryByText('Add offline account')).not.toBeInTheDocument();
-  expect(screen.queryByRole('textbox', { name: 'Player name' })).not.toBeInTheDocument();
-  // The fixture's offline accounts are hidden, as the real app hides them.
-  expect(screen.queryByText('Steve')).not.toBeInTheDocument();
+  expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
 });
 
-it('lists a Microsoft account with Remove and no offline badge', async () => {
+it('lists a Microsoft account with Remove', async () => {
   const { user, calls } = renderApp(<Accounts />, { beta: true, microsoft: 'signedIn' });
   const alex = (await screen.findByText('Alex')).closest('li')!;
   expect(within(alex).getByText('In use')).toBeInTheDocument();
-  expect(within(alex).queryByText('Offline')).not.toBeInTheDocument();
   await user.click(within(alex).getByRole('button', { name: 'Remove Alex' }));
   const dialog = screen.getByRole('dialog');
   expect(dialog).toHaveTextContent('You can sign in again any time. Your worlds stay where they are.');
@@ -72,44 +57,6 @@ it('adds a Microsoft account and says who is in use', async () => {
   expect(await screen.findByText('Alex', {}, { timeout: 4000 })).toBeInTheDocument();
   expect(sent(calls, 'account_sign_in_microsoft')).toEqual([{ language: 'en' }]);
   expect(screen.getByText('Signed in as Alex.')).toBeInTheDocument();
-});
-
-it('offers both kinds in a dev build', async () => {
-  renderApp(<Accounts />);
-  expect(await screen.findByRole('button', { name: 'Add Microsoft account' })).toBeInTheDocument();
-  expect(await screen.findByRole('button', { name: 'Add offline account' })).toBeInTheDocument();
-});
-
-it('does not say the name is wrong until the player has typed it and tried to add it', async () => {
-  const { user } = renderApp(<Accounts />);
-  const input = await screen.findByRole('textbox', { name: 'Player name' });
-  expect(screen.queryByText(rule)).not.toBeInTheDocument();
-  await user.type(input, 'ab');
-  expect(screen.queryByText(rule)).not.toBeInTheDocument();
-  expect(input).not.toHaveAttribute('aria-invalid');
-
-  await user.click(screen.getByRole('button', { name: 'Add offline account' }));
-  const message = screen.getByText(rule);
-  // Focus lands on the field, so its description is read and the player can fix it.
-  expect(input).toHaveFocus();
-  expect(input).toHaveAttribute('aria-invalid', 'true');
-  expect(input.getAttribute('aria-describedby')).toBe(message.id);
-
-  // The message follows the name: it goes away as soon as the name is fine.
-  await user.type(input, 'c');
-  expect(screen.queryByText(rule)).not.toBeInTheDocument();
-});
-
-it('shows the name rule when the player leaves a typed name, but not an empty field', async () => {
-  const { user } = renderApp(<Accounts />);
-  const input = await screen.findByRole('textbox', { name: 'Player name' });
-  await user.click(input);
-  await user.tab();
-  expect(screen.queryByText(rule)).not.toBeInTheDocument();
-  await user.click(input);
-  await user.type(input, 'a b');
-  await user.tab();
-  expect(screen.getByText(rule)).toBeInTheDocument();
 });
 
 it('sends one switch for a double click and says who is in use now', async () => {
@@ -134,44 +81,13 @@ it('asks for the list again after a failed switch so it never goes stale', async
   expect(screen.getByRole('status')).toBeEmptyDOMElement();
 });
 
-it('sends one add for a double click, clears the field, and shows a failed add under the form', async () => {
-  const { user, calls, backend } = renderApp(<Accounts />);
-  const add = intercept(backend, 'account_add_offline');
-  const input = await screen.findByRole('textbox', { name: 'Player name' });
-  await user.type(input, 'Notch');
-  add.mode = 'hold';
-  await user.dblClick(screen.getByRole('button', { name: 'Add offline account' }));
-  expect(sent(calls, 'account_add_offline')).toHaveLength(1);
-  await act(async () => add.release());
-  await waitFor(() => expect(input).toHaveValue(''));
-  expect(await screen.findByText('Notch')).toBeInTheDocument();
-
-  add.mode = 'fail';
-  await user.type(input, 'Herobrine');
-  await user.click(screen.getByRole('button', { name: 'Add offline account' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent(diskIo);
-  expect(input).toHaveValue('Herobrine');
-});
-
-it('keeps the add button focused while an add is in flight', async () => {
-  const { user, backend } = renderApp(<Accounts />);
-  intercept(backend, 'account_add_offline').mode = 'hold';
-  await user.type(await screen.findByRole('textbox', { name: 'Player name' }), 'Notch');
-  const button = screen.getByRole('button', { name: 'Add offline account' });
-  button.focus();
-  await user.keyboard('{Enter}');
-  expect(button).toHaveFocus();
-  expect(button).not.toBeDisabled();
-  expect(button).toHaveAttribute('aria-disabled', 'true');
-});
-
-it('says what removing loses and that it can be added again, and sends one remove for a double click', async () => {
+it('says what removing loses and that it can be signed in again, and sends one remove for a double click', async () => {
   const { user, calls, backend } = renderApp(<Accounts />);
   const remove = intercept(backend, 'account_remove');
   remove.mode = 'hold';
   await user.click(await screen.findByRole('button', { name: 'Remove Alex_Builds' }));
   const dialog = screen.getByRole('dialog', { name: 'Remove Alex_Builds?' });
-  expect(dialog).toHaveTextContent('You can add it again any time. Your worlds stay where they are.');
+  expect(dialog).toHaveTextContent('You can sign in again any time. Your worlds stay where they are.');
   await user.dblClick(within(dialog).getByRole('button', { name: 'Remove' }));
   expect(sent(calls, 'account_remove')).toHaveLength(1);
   await act(async () => remove.release());
@@ -209,21 +125,7 @@ it('offers Try again when the list fails to load', async () => {
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
-it('says nothing about adding it back while it is still unknown whether offline accounts are allowed', async () => {
-  const { user, backend, qc } = renderApp(<Accounts />);
-  await screen.findByText('Steve');
-  const info = intercept(backend, 'app_info');
-  info.mode = 'hold';
-  act(() => {
-    void qc.resetQueries({ queryKey: ['appInfo'] }); // parked, so the answer never arrives
-  });
-  await user.click(screen.getByRole('button', { name: 'Remove Alex_Builds' }));
-  const dialog = screen.getByRole('dialog');
-  expect(dialog).toHaveTextContent('Your worlds stay where they are.');
-  expect(dialog).not.toHaveTextContent(/add it again|Microsoft/);
-});
-
-it('moves focus to the next account after a remove, to the previous one at the end, and to the add field when none are left', async () => {
+it('moves focus to the next account after a remove, and to the add section when none are left', async () => {
   const { user } = renderApp(<Accounts />);
   const confirm = async (name: string) => {
     await user.click(await screen.findByRole('button', { name: `Remove ${name}` }));
@@ -233,7 +135,7 @@ it('moves focus to the next account after a remove, to the previous one at the e
   await confirm('Steve');
   expect(screen.getByRole('button', { name: 'Remove Alex_Builds' })).toHaveFocus();
   await confirm('Alex_Builds');
-  expect(screen.getByRole('textbox', { name: 'Player name' })).toHaveFocus();
+  expect(screen.getByRole('heading', { name: 'Add an account' })).toHaveFocus();
 });
 
 it('moves focus to the previous account when the last one is removed', async () => {
@@ -243,28 +145,18 @@ it('moves focus to the previous account when the last one is removed', async () 
   await waitFor(() => expect(screen.getByRole('button', { name: 'Remove Steve' })).toHaveFocus());
 });
 
-it('moves focus to the add section when no accounts are left and offline accounts are locked', async () => {
-  const { user } = renderApp(<Accounts />, { beta: true, microsoft: 'signedIn' });
-  await user.click(await screen.findByRole('button', { name: 'Remove Alex' }));
-  await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
-  await waitFor(() => expect(screen.getByRole('heading', { name: 'Add an account' })).toHaveFocus());
-});
-
-it('announces the new active account after an add and after removing the active one', async () => {
-  const { user } = renderApp(<Accounts />);
-  const input = await screen.findByRole('textbox', { name: 'Player name' });
-  await user.type(input, 'Notch');
-  await user.click(screen.getByRole('button', { name: 'Add offline account' }));
-  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Notch is now in use.'));
+it('announces the new active account after removing the active one', async () => {
+  const { user } = renderApp(<Accounts />, { microsoft: 'signedIn' });
+  // Alex is in use, after Steve and Alex_Builds.
 
   // Removing an account that is not in use changes nothing about who is.
-  await user.click(screen.getByRole('button', { name: 'Remove Steve' }));
+  await user.click(await screen.findByRole('button', { name: 'Remove Steve' }));
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-  expect(screen.getByRole('status')).toHaveTextContent('Notch is now in use.');
+  expect(screen.getByRole('status')).toBeEmptyDOMElement();
 
   // Removing the one in use hands over to the first one left.
-  await user.click(screen.getByRole('button', { name: 'Remove Notch' }));
+  await user.click(screen.getByRole('button', { name: 'Remove Alex' }));
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Alex_Builds is now in use.'));
 });

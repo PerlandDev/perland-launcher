@@ -46,7 +46,6 @@ impl From<BuildKind> for Build {
 pub struct AppInfo {
     pub version: String,
     pub build: Build,
-    pub offline_allowed: bool,
     pub system_memory_mb: u64,
     pub data_dir: String,
     /// A Perland panel is configured: the servers the player owns offer Manage in Perland.
@@ -1257,14 +1256,13 @@ mod tests {
         let info = AppInfo {
             version: "0.1.0".into(),
             build: Build::Dev,
-            offline_allowed: true,
             system_memory_mb: 16384,
             data_dir: "C:/x".into(),
             panel: false,
         };
         let json = serde_json::to_value(&info).unwrap();
-        assert_eq!(json["offlineAllowed"], true);
         assert_eq!(json["build"], "dev");
+        assert_eq!(json["dataDir"], "C:/x");
         assert_eq!(json["systemMemoryMb"], 16384);
     }
 

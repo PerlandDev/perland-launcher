@@ -75,17 +75,7 @@ describe('Home', () => {
     expect(await screen.findByRole('heading', { name: 'No instances yet' })).toBeInTheDocument();
   });
 
-  it('disables Play without an account and, in a dev build, links to Accounts', async () => {
-    const { backend, user } = renderApp(<Home id="creative-flat" />);
-    backend.state.accounts.active = null;
-    await screen.findByRole('heading', { name: 'Creative Flat' });
-    expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
-    await user.click(await screen.findByRole('button', { name: 'Add an account to play' }));
-    expect(routeSnapshot()).toEqual({ name: 'accounts' });
-    expect(signInPromptSnapshot()).toBe(false);
-  });
-
-  it.each([{ beta: true }, { release: true }])('without an account outside dev builds, opens the sign-in prompt (%o)', async (build) => {
+  it.each([{}, { beta: true }, { release: true }])('without an account, opens the sign-in prompt (%o)', async (build) => {
     const { backend, user } = renderApp(<Home id="creative-flat" />, build);
     backend.state.accounts.active = null;
     await screen.findByRole('heading', { name: 'Creative Flat' });
@@ -96,8 +86,6 @@ describe('Home', () => {
     expect(signInPromptSnapshot()).toBe(true);
     expect(routeSnapshot()).not.toEqual({ name: 'accounts' });
     expect(screen.queryByRole('button', { name: 'Add an account to play' })).toBeNull();
-    // The accounts file still holds offline accounts from an older beta: they are silently gone, nothing mentions them.
-    expect(screen.queryByText(/offline/i)).toBeNull();
   });
 
   it('offers community modpacks beside creating the first instance', async () => {
@@ -841,6 +829,6 @@ describe('Continue', () => {
     backend.state.accounts.active = null;
     const key = await screen.findByRole('button', { name: 'Continue: Asalith Fields' });
     expect(key).toBeDisabled();
-    expect(key).toHaveAttribute('title', 'Add an account to play');
+    expect(key).toHaveAttribute('title', 'Sign in to play');
   });
 });
