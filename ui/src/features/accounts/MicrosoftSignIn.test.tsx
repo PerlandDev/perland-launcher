@@ -29,7 +29,8 @@ describe('MicrosoftSignIn', () => {
     await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
     expect(sent(calls, 'account_sign_in_microsoft')).toEqual([{ language: 'en' }]);
     await vi.waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1), { timeout: 8000 });
-    expect(screen.getByText('Signed in as Alex.')).toBeInTheDocument();
+    // onSignedIn runs in the same callback that sets the line, which React draws a moment later.
+    expect(await screen.findByText('Signed in as Alex.')).toBeInTheDocument();
   }, 20_000);
 
   it('reads Add Microsoft account inline', async () => {
