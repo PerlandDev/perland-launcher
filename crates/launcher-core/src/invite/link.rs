@@ -12,6 +12,10 @@ pub const TOKEN_LEN: usize = 43;
 /// Longest input `parse` looks at, in UTF-8 bytes; anything longer can't be an invite link.
 const MAX_INPUT: usize = 512;
 
+/// Longest host, after IDNA: a DNS name is at most 253 characters (RFC 1035). It also keeps every
+/// canonical link under `MAX_INPUT`, so it parses again.
+const MAX_HOST: usize = 253;
+
 /// A parsed invite link. The token is a credential: `Debug` and `Display` print
 /// `https://<host>/<invite>` instead.
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -60,7 +64,7 @@ impl InviteLink {
         };
         let host = url
             .host_str()
-            .filter(|h| !h.is_empty())
+            .filter(|h| !h.is_empty() && h.len() <= MAX_HOST)
             .ok_or_else(link_invalid)?
             .to_ascii_lowercase();
         let token = url
@@ -251,6 +255,49 @@ mod tests {
             InviteLink::parse("nope").unwrap_err().code,
             ErrorCode::InviteLinkInvalid
         );
+    }
+
+    /// Fuzzing found a link of 512 bytes whose host IDNA turns into 466 characters: its
+    /// canonical form was too long to parse again. No real host is longer than 253.
+    #[test]
+    fn a_host_longer_than_a_dns_name_is_refused() {
+        let token = "A".repeat(TOKEN_LEN);
+        let fits = format!("{}.example", "a".repeat(245));
+        assert_eq!(fits.len(), 253);
+        assert!(InviteLink::parse(&format!("https://{fits}/{token}")).is_ok());
+        let long = format!("{}.example", "a".repeat(246));
+        assert!(InviteLink::parse(&format!("https://{long}/{token}")).is_err());
+        // A short raw host IDNA makes too long.
+        let unicode = format!("{}.example", "ñ".repeat(60));
+        assert!(unicode.len() < 253);
+        if let Ok(link) = InviteLink::parse(&format!("https://{unicode}/{token}")) {
+            assert!(link.host().len() <= 253);
+        }
+    }
+
+    #[test]
+    fn every_canonical_form_parses_again() {
+        let token = "A".repeat(TOKEN_LEN);
+        let fuzzed = format!(
+            "https:3zVVz1111VVVV5x505{}ˀxxxxxx5555{}hR*{}..00006171t{}(463971{}ˀx{}w{}(00003085{}..0000617140863971xxxx5555555555VVVVVVVV-VV:/0VViiVVVVVViiV-kVVVVVVVVVV_VVVVVVV_VVVVVVVV",
+            "x".repeat(7) + "5555" + &"1".repeat(7) + "7579240863971xxxx" + &"5".repeat(14) + "x50",
+            "1".repeat(18),
+            "1".repeat(24),
+            "1".repeat(5) + "0000031857775792",
+            "xxxx".to_string() + &"5".repeat(14) + "x505xxxxxxx5555" + &"1".repeat(7) + "7579240863971xxxx" + &"5".repeat(14) + "x50",
+            "78737961038281111",
+            "w".repeat(118) + &"1".repeat(7),
+            "5589368980519139",
+        );
+        for input in [
+            fuzzed,
+            format!("https://{}.example/{token}", "ñ".repeat(60)),
+        ] {
+            if let Ok(link) = InviteLink::parse(&input) {
+                let again = InviteLink::parse(&link.canonical());
+                assert_eq!(again.ok(), Some(link), "{input:?}");
+            }
+        }
     }
 
     #[test]
