@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { inviteCanonical } from '../../ipc/inviteLink';
 import type { Instance } from '../../ipc/schema';
-import { useDeleteInstance, useRenameInstance } from '../../state/queries';
+import { useDeleteInstance, useForget, useRenameInstance } from '../../state/queries';
+import { pushError } from '../../state/toasts';
+import { SwitchRow } from '../../ui/SwitchRow';
+import { useYours } from '../servers-list/yours';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
@@ -43,6 +47,14 @@ export function RenameDialog({ instance, onClose }: { instance: Instance; onClos
 export function DeleteDialog({ instance, onClose }: { instance: Instance; onClose: () => void }) {
   const { t } = useTranslation();
   const remove = useDeleteInstance();
+  const forget = useForget();
+  // The invited server this instance joins (by its invite link, so a list read before the instance existed still matches),
+  // while it is on Your servers: deleting the instance can take it off too.
+  const { servers } = useYours();
+  const joins = instance.source.kind === 'perland' ? inviteCanonical(instance.source.invite) : null;
+  const invited =
+    (joins !== null && servers?.find((s) => s.relation === 'invited' && s.invite !== null && inviteCanonical(s.invite) === joins)) || null;
+  const [alsoForget, setAlsoForget] = useState(true);
   return (
     <Dialog
       open
@@ -53,9 +65,11 @@ export function DeleteDialog({ instance, onClose }: { instance: Instance; onClos
           <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button
             variant="danger"
+            disabled={remove.isPending}
             onClick={() =>
               remove.mutate(instance.id, {
                 onSuccess: () => {
+                  if (invited && alsoForget) forget.mutate(invited.invite as string, { onError: pushError });
                   onClose();
                   navigate({ name: 'home', id: null });
                 },
@@ -67,7 +81,17 @@ export function DeleteDialog({ instance, onClose }: { instance: Instance; onClos
         </>
       }
     >
-      {t('home.deleteBody')}
+      <div className="grid gap-5">
+        <p>{t('home.deleteBody')}</p>
+        {invited && (
+          <SwitchRow
+            label={t('home.deleteForget')}
+            hint={t('home.deleteForgetHint', { name: invited.displayName || invited.name })}
+            checked={alsoForget}
+            onChange={setAlsoForget}
+          />
+        )}
+      </div>
     </Dialog>
   );
 }

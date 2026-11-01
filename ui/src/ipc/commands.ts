@@ -206,6 +206,8 @@ export const commands = {
   yourServersFollow: (invite: string) => invoke<null>('your_servers_follow', { invite }),
   yourServersUnfollow: (invite: string) => invoke<null>('your_servers_unfollow', { invite }),
   yourServersJoined: (invite: string) => invoke<null>('your_servers_joined', { invite }),
+  /** Takes the server off Your servers (its join and its follow); an owned one stays. */
+  yourServersForget: (invite: string) => invoke<null>('your_servers_forget', { invite }),
   /** The free-server page (limits, whether the player may create one, theirs), or null while signed out or when it's off. */
   freeServer: () => invoke<FreeServerPage | null>('free_server'),
   /** Takes up to 150 s. A timeout or a network failure may still have created it: read `freeServer` after. */

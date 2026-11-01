@@ -23,6 +23,7 @@ enum Call {
     Follow,
     Unfollow,
     Joined,
+    Forget,
 }
 
 impl Call {
@@ -31,6 +32,7 @@ impl Call {
             Self::Follow => "follow",
             Self::Unfollow => "unfollow",
             Self::Joined => "joined",
+            Self::Forget => "forget",
         }
     }
 }
@@ -220,6 +222,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.relation_call(Call::Unfollow, invite).await
     }
 
+    /// Take the server `invite` names off Your servers: the Engine drops the join and the follow
+    /// (an owned server stays). A skipped call (signed out, another Engine) is `Ok`.
+    pub async fn your_servers_forget(&self, invite: &str) -> Result<()> {
+        self.relation_call(Call::Forget, invite).await
+    }
+
     /// Tell the Engine the player joined the server `invite` names. Never fails.
     pub async fn your_servers_joined(&self, invite: &str) {
         self.quiet(Call::Joined, invite).await;
@@ -257,6 +265,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             Call::Follow => player.follow(engine, token, invite_token).await,
             Call::Unfollow => player.unfollow(engine, token, invite_token).await,
             Call::Joined => player.joined(engine, token, invite_token).await,
+            Call::Forget => player.forget(engine, token, invite_token).await,
         };
         if let Err(e) = &answer {
             if e.code == ErrorCode::PerlandSignedOut {
@@ -856,6 +865,45 @@ mod tests {
     async fn unfollow_signed_out_is_ok_and_sends_nothing() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         core.your_servers_unfollow(&invite('A')).await.unwrap();
+        assert!(runner.player.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn forget_sends_invite_token() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        core.your_servers_forget(&invite('A')).await.unwrap();
+        let calls = runner.player.calls_to("forget");
+        assert_eq!(calls[0].args, [player_token('s'), token('A')]);
+    }
+
+    #[tokio::test]
+    async fn forget_reports_errors() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        fail(&runner, ErrorCode::ForgetUnsupported);
+        let err = core.your_servers_forget(&invite('A')).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::ForgetUnsupported);
+        let err = core.your_servers_forget("not a link").await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::InviteLinkInvalid);
+    }
+
+    #[tokio::test]
+    async fn forget_after_401_forgets_the_session_and_reports() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        fail(&runner, ErrorCode::PerlandSignedOut);
+        let err = core.your_servers_forget(&invite('A')).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::PerlandSignedOut);
+        assert!(core.perland_session().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn forget_signed_out_or_on_another_engine_is_ok_and_sends_nothing() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        core.your_servers_forget(&invite('A')).await.unwrap();
+        sign_in(&core, "https://other.example.org");
+        core.your_servers_forget(&invite('A')).await.unwrap();
         assert!(runner.player.calls.lock().unwrap().is_empty());
     }
 

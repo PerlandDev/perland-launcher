@@ -349,6 +349,15 @@ export function useUnfollow() {
   });
 }
 
+/** Take a server off Your servers (the Engine drops its join and its follow). `quiet` leaves errors to the caller. */
+export function useForget() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (invite: string) => commands.yourServersForget(invite),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk.yourServers }),
+  });
+}
+
 /** What a free-server change touches: its own page, and Your servers (its card and the owner entry). */
 const invalidateFree = (qc: QueryClient) =>
   Promise.all([qc.invalidateQueries({ queryKey: qk.freeServer }), qc.invalidateQueries({ queryKey: qk.yourServers })]);

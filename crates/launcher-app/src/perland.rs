@@ -70,6 +70,7 @@ pub trait PlayerApi: Send + Sync + 'static {
     fn follow(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>>;
     fn unfollow(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>>;
     fn joined(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>>;
+    fn forget(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>>;
     /// The player's free server and what they may do; `None` while the feature is off.
     fn free_server(&self, engine: Url, token: String)
         -> BoxFuture<Result<Option<FreeServerState>>>;
@@ -195,6 +196,11 @@ impl PlayerApi for CorePlayer {
     fn joined(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>> {
         let client = self.client(engine);
         Box::pin(async move { client?.joined(&token, &invite_token).await })
+    }
+
+    fn forget(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>> {
+        let client = self.client(engine);
+        Box::pin(async move { client?.forget(&token, &invite_token).await })
     }
 
     fn free_server(

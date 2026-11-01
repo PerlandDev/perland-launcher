@@ -2,7 +2,6 @@ import type { TFunction } from 'i18next';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { FreeServerCard as FreeServer, PublicServerCard as Card } from '../../ipc/schema';
-import { Trash } from '../../ui/Icon';
 import { PublicServerCard } from '../servers-list/PublicServerCard';
 import { useManageItem, useManageKey } from '../servers-list/yours';
 import { DeleteServerDialog } from './DeleteServerDialog';
@@ -14,7 +13,7 @@ const UNPLAYABLE: readonly string[] = ['creating', 'deleting', 'stopped'];
 
 /** The player's own free server, first in Your servers: the public card tagged Owner, with its warning lines, its own status
  *  words while it is created or deleted, Play through `free_server_play`, Manage beside Play when the launcher can run it (else
- *  Manage in Perland in its menu, with a panel), and Delete server in its menu. */
+ *  Manage in Perland in its menu, with a panel), and Delete server as its ×. */
 export function FreeServerCard({ server, onDeleting }: { server: FreeServer; onDeleting?: (going: boolean) => void }) {
   const { t, i18n } = useTranslation();
   const [deleting, setDeleting] = useState(false);
@@ -41,11 +40,9 @@ export function FreeServerCard({ server, onDeleting }: { server: FreeServer; onD
         statusWord={statusWord(t, server.freeStatus)}
         onPlay={play.run}
         primary={manageKey(server.manage)}
-        menuItems={[
-          // With Manage on the card, More in Perland is on the Manage screen.
-          ...(server.manage ? [] : manage(server.name)),
-          { label: t('freeServer.delete.action'), icon: <Trash />, danger: true, disabled: busy, onSelect: () => setDeleting(true) },
-        ]}
+        // With Manage on the card, More in Perland is on the Manage screen.
+        menuItems={server.manage ? undefined : manage(server.name)}
+        remove={{ label: t('freeServer.delete.key', { name: server.displayName || server.name }), disabled: busy, onSelect: () => setDeleting(true) }}
       />
       {deleting && <DeleteServerDialog name={server.name} onClose={() => setDeleting(false)} onDeleting={onDeleting} />}
     </>

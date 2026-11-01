@@ -224,6 +224,7 @@ fn main() {
             commands::your_servers,
             commands::your_servers_follow,
             commands::your_servers_unfollow,
+            commands::your_servers_forget,
             commands::your_servers_joined,
             commands::free_server,
             commands::free_server_create,
