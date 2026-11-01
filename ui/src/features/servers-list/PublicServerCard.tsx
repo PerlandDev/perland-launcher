@@ -12,7 +12,7 @@ import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { copyText } from '../../ui/copyText';
 import { useOnScreen } from '../../ui/useOnScreen';
-import { Check, Copy, MinusBox, WarningDiamond } from '../../ui/Icon';
+import { Check, Close, Copy, MinusBox, WarningDiamond } from '../../ui/Icon';
 import { Menu, type MenuItem } from '../../ui/Menu';
 import { cardIconSize, useServerIconSize } from '../join/iconScale';
 import { NewsLine } from '../news/NewsLine';
@@ -27,7 +27,8 @@ import { ServerStatsLine } from './ServerStatsLine';
  *  `follow` (on by default, as on the public list) makes Play follow the server once it is added. The owner's free server adds
  *  `notes` (warning lines), `menuItems` (after Unfollow), `statusWord` (in place of the list's word) and `onPlay` (in place
  *  of the join). A server the player runs from the launcher passes `primary` (Manage): it takes the key that lights with the
- *  card, and Play stands raised beside it, so the card still lights one button. */
+ *  card, and Play stands raised beside it, so the card still lights one button. An invited server passes `onRemove`: a quiet
+ *  ghost × in the menu's corner that asks to take it off Your servers. */
 export function PublicServerCard({
   card,
   tag,
@@ -38,6 +39,7 @@ export function PublicServerCard({
   statusWord,
   onPlay,
   primary,
+  onRemove,
 }: {
   card: Card;
   tag?: 'owner' | 'invited';
@@ -48,6 +50,7 @@ export function PublicServerCard({
   statusWord?: string;
   onPlay?: () => Promise<void>;
   primary?: { label: string; onSelect(): void };
+  onRemove?: () => void;
 }) {
   const { t } = useTranslation();
   const nameId = useId();
@@ -93,7 +96,7 @@ export function PublicServerCard({
   );
   return (
     <article ref={ref} className="server-tile" aria-labelledby={nameId}>
-      <div className="server-tile-head" data-menu={hasItems ? '' : undefined}>
+      <div className="server-tile-head" data-menu={hasItems || onRemove ? '' : undefined}>
         <span className="server-icon">
           {src ? (
             <img src={src} alt="" style={{ width: size, height: size }} draggable={false} onError={() => setFailed(src)} />
@@ -111,6 +114,18 @@ export function PublicServerCard({
             {tag && <span className="tag">{t(`servers.yours.${tag}`)}</span>}
           </span>
         </div>
+        {onRemove && !hasItems && (
+          <div className="relative">
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={t('servers.yours.remove', { name: card.displayName || card.name })}
+              title={t('servers.yours.remove', { name: card.displayName || card.name })}
+              icon={<Close />}
+              onClick={onRemove}
+            />
+          </div>
+        )}
         {hasItems && (
           <Menu
             compact

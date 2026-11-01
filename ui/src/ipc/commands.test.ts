@@ -30,6 +30,7 @@ it('sends the argument names Rust expects', async () => {
   await commands.yourServersFollow('inv');
   await commands.yourServersUnfollow('inv');
   await commands.yourServersJoined('inv');
+  await commands.yourServersForget('inv');
   await commands.perlandLinkCode();
   await commands.perlandLinkPoll();
   await commands.perlandUnlink();
@@ -59,6 +60,7 @@ it('sends the argument names Rust expects', async () => {
     ['your_servers_follow', { invite: 'inv' }],
     ['your_servers_unfollow', { invite: 'inv' }],
     ['your_servers_joined', { invite: 'inv' }],
+    ['your_servers_forget', { invite: 'inv' }],
     ['perland_link_code', {}],
     ['perland_link_poll', {}],
     ['perland_unlink', {}],

@@ -1152,7 +1152,7 @@ pub(crate) struct FakePlayer {
     pub me: Mutex<Result<Player>>,
     pub sign_out: Mutex<Result<()>>,
     pub servers: Mutex<Result<Vec<YourServer>>>,
-    /// What `follow`, `unfollow` and `joined` answer.
+    /// What `follow`, `unfollow`, `joined` and `forget` answer.
     pub relation: Mutex<Result<()>>,
     /// What `free_server` answers. Default: the feature is off (`None`).
     pub free: Mutex<Result<Option<FreeServerState>>>,
@@ -1334,6 +1334,9 @@ impl PlayerApi for FakePlayer {
     }
     fn joined(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>> {
         self.record("joined", engine, &[&token, &invite_token], &self.relation)
+    }
+    fn forget(&self, engine: Url, token: String, invite_token: String) -> BoxFuture<Result<()>> {
+        self.record("forget", engine, &[&token, &invite_token], &self.relation)
     }
     fn link_code(&self, engine: Url, token: String) -> BoxFuture<Result<LinkCode>> {
         self.record("link_code", engine, &[&token], &self.link_code)

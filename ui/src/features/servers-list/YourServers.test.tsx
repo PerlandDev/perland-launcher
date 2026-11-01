@@ -242,6 +242,53 @@ describe('YourServers', () => {
     expect(within(section).getByRole('heading', { name: 'Quiet Cove' })).toBeInTheDocument();
   });
 
+  it('only an invited card has the remove key', async () => {
+    renderApp(<ServersScreen />, { perland: 'signedIn' });
+    const section = await yours();
+    expect(within(await cardIn(section, 'Friends')).getByRole('button', { name: 'Remove Friends from Your servers' })).toBeInTheDocument();
+    for (const name of ['My world', 'Quiet Cove']) {
+      expect(within(await cardIn(section, name)).queryByRole('button', { name: `Remove ${name} from Your servers` })).toBeNull();
+    }
+  });
+
+  it('remove asks first, and Cancel keeps the card', async () => {
+    const { user, calls } = renderApp(<ServersScreen />, { perland: 'signedIn' });
+    const section = await yours();
+    await user.click(within(await cardIn(section, 'Friends')).getByRole('button', { name: 'Remove Friends from Your servers' }));
+    const dialog = screen.getByRole('dialog', { name: 'Remove Friends from Your servers?' });
+    expect(within(dialog).getByText(/open its invite link again/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(sent(calls, 'your_servers_forget')).toEqual([]);
+    expect(within(section).getByRole('heading', { name: 'Friends' })).toBeInTheDocument();
+  });
+
+  it('remove takes the invited card off, and focus goes to the heading', async () => {
+    const { user, calls } = renderApp(<ServersScreen />, { perland: 'signedIn' });
+    const section = await yours();
+    await user.click(within(await cardIn(section, 'Friends')).getByRole('button', { name: 'Remove Friends from Your servers' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+    expect(sent(calls, 'your_servers_forget')).toEqual([{ invite: inviteOf('I') }]);
+    await vi.waitFor(() => expect(within(section).queryByRole('heading', { name: 'Friends' })).toBeNull());
+    await vi.waitFor(() => expect(document.activeElement).toBe(within(section).getByRole('heading', { name: 'Your servers' })));
+  });
+
+  it('a failed remove is a toast, and the card stays', async () => {
+    const backend = createMockBackend({ perland: 'signedIn' });
+    const { user } = renderWithProviders(<ServersScreen />, {
+      ipc: (cmd, args) =>
+        cmd === 'your_servers_forget'
+          ? Promise.reject({ category: 'network', code: 'forget_unsupported', message: 'x', fix: null, detail: null, params: { host: 'api.example.com' } })
+          : backend.handle(cmd, args),
+    });
+    const section = await yours();
+    await user.click(within(await cardIn(section, 'Friends')).getByRole('button', { name: 'Remove Friends from Your servers' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+    await vi.waitFor(() => expect(toastsSnapshot()).toHaveLength(1));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(within(section).getByRole('heading', { name: 'Friends' })).toBeInTheDocument();
+  });
+
   it('public_play_follows', async () => {
     const { user, calls } = renderApp(<ServersScreen />, { perland: 'signedIn' });
     await user.click(within(await cardIn(await publicList(), 'Creative Plots')).getByRole('button', { name: 'Play' }));

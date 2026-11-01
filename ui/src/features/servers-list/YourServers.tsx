@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { YourServerCard } from '../../ipc/schema';
-import { useCreatableTeams, useFreeServer, useUnfollow } from '../../state/queries';
+import { useCreatableTeams, useForget, useFreeServer, useUnfollow } from '../../state/queries';
+import { pushError } from '../../state/toasts';
+import { Button } from '../../ui/Button';
+import { Dialog } from '../../ui/Dialog';
 import { navigate } from '../../state/route';
 import { FreeServerCard } from '../free-server/FreeServerCard';
 import { FreeServerEntry } from '../free-server/FreeServerEntry';
@@ -22,6 +25,9 @@ export function YourServers() {
   // The teams the player may create a server on: with any, the entry is "Create a server" with Where.
   const teams = useCreatableTeams(status?.account != null).data ?? [];
   const unfollow = useUnfollow();
+  const forget = useForget();
+  // The invited card whose × was pressed, while its confirm is open.
+  const [removing, setRemoving] = useState<YourServerCard | null>(null);
   const manage = useManageItem();
   const manageKey = useManageKey();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -34,6 +40,15 @@ export function YourServers() {
         leaving.current = card.token;
         setUnfollowed((n) => n + 1);
       },
+    });
+  const onRemove = (card: YourServerCard) =>
+    forget.mutate(card.invite as string, {
+      onSuccess: () => {
+        leaving.current = card.token;
+        setUnfollowed((n) => n + 1);
+      },
+      onError: pushError,
+      onSettled: () => setRemoving(null),
     });
   // The card (and its menu, which held focus) is gone: focus would fall to the page, so it goes to this section's
   // heading, or to the public list's when the section went with it. Never taken from where the player moved it.
@@ -79,6 +94,7 @@ export function YourServers() {
         tag={tagOf(item)}
         follow={item.relation === 'followed'}
         menu={item.relation === 'followed' && item.invite ? { onUnfollow: () => onUnfollow(item) } : undefined}
+        onRemove={item.relation === 'invited' && item.invite ? () => setRemoving(item) : undefined}
         primary={manageKey(item.manage)}
         // With Manage on the card, More in Perland is on the Manage screen.
         menuItems={item.relation === 'owner' && !item.manage ? manage(item.name) : undefined}
@@ -106,6 +122,25 @@ export function YourServers() {
           ))}
           {others.map(card)}
         </ul>
+      )}
+      {removing && (
+        <Dialog
+          open
+          onClose={() => !forget.isPending && setRemoving(null)}
+          title={t('servers.yours.removeTitle', { name: removing.displayName || removing.name })}
+          actions={
+            <>
+              <Button disabled={forget.isPending} onClick={() => setRemoving(null)}>
+                {t('common.cancel')}
+              </Button>
+              <Button variant="danger" disabled={forget.isPending} onClick={() => onRemove(removing)}>
+                {t('servers.yours.removeConfirm')}
+              </Button>
+            </>
+          }
+        >
+          {t('servers.yours.removeBody')}
+        </Dialog>
       )}
     </section>
   );
