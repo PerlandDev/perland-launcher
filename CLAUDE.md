@@ -1,5 +1,9 @@
 # Perland Launcher: agent guide
 
+## Company knowledge: Dosu first
+
+The code settles how this repository works; it does not settle what production is today. Before answering or deciding anything about production infrastructure, hosts, costs, deployments, team decisions, incidents, ownership or other company context, check Dosu first, then the runbooks (`docs/runbooks/` in PerlandEngine; `production-hosts.md` for the hosts). Dated design specs are history, not current state. When Dosu and a repository doc disagree, say so and prefer the newer source. Details: the `company-knowledge` skill (`.claude/skills/company-knowledge/SKILL.md`; the same file is in PerlandEngine, PerlandPanel, PerlandDev-site and perland-launcher).
+
 - Design: `docs/superpowers/specs/2026-10-09-launcher-core-design.md` (core) and `docs/superpowers/specs/2026-10-10-launcher-desktop-ui-design.md` (desktop app). Plans: `docs/superpowers/plans/`.
 - `crates/launcher-core` holds all launcher logic. `crates/launcher-app` holds the app's state and run state machine. Neither may depend on Tauri or UI crates. `src-tauri` is wiring only and has no tests. `crates/perland-cli` is a dev harness. `ui/` is the React app.
 - TDD: write the failing test first. Pure logic gets `#[cfg(test)]` unit tests; HTTP behaviour gets `tests/*.rs` with wiremock; UI gets Vitest + Testing Library.
