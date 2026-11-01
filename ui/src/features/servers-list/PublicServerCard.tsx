@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { Fragment, useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PlotIcon } from '../../art/PlotIcon';
 import { commands } from '../../ipc/commands';
@@ -14,6 +14,7 @@ import { copyText } from '../../ui/copyText';
 import { useOnScreen } from '../../ui/useOnScreen';
 import { Check, Close, Copy, MinusBox, WarningDiamond } from '../../ui/Icon';
 import { Menu, type MenuItem } from '../../ui/Menu';
+import { useNameFit } from '../home/fitName';
 import { cardIconSize, useServerIconSize } from '../join/iconScale';
 import { NewsLine } from '../news/NewsLine';
 import { InviteOnly } from '../servers/InviteOnly';
@@ -68,7 +69,8 @@ export function PublicServerCard({
   // An Unfollow from this card's menu removes the menu once it goes through (the card stays, on the public list), and
   // focus would fall to the page: it goes to Play, or the name when Play is off. Never taken from where the player moved it.
   const playRef = useRef<HTMLButtonElement>(null);
-  const nameRef = useRef<HTMLHeadingElement>(null);
+  // A one-word name too wide for its column shrinks to the tile's floor before it may break.
+  const nameRef = useNameFit<HTMLHeadingElement>(card.displayName || card.name, TILE_NAME_FLOOR_PX);
   const unfollowing = useRef(false);
   const hasMenu = menu !== undefined;
   useEffect(() => {
@@ -107,7 +109,7 @@ export function PublicServerCard({
         </span>
         <div className="grid min-w-0 content-start gap-1">
           <h3 ref={nameRef} id={nameId} tabIndex={-1} className="server-tile-name">
-            {breakable(card.displayName || card.name)}
+            {card.displayName || card.name}
           </h3>
           <p className="tabular text-sm text-ink-dim">{gameLine(t, card)}</p>
           <span className="server-tile-status">
@@ -158,17 +160,8 @@ export function PublicServerCard({
   );
 }
 
-/** A server name with a break opportunity after each `_`, `.` or `-`, so a one-word name such as "asalith_fields" wraps at
- *  its seam ("asalith_ / fields") before the CSS falls back to breaking anywhere. */
-function breakable(name: string) {
-  const parts = name.split(/(?<=[_.-])/);
-  return parts.map((part, i) => (
-    <Fragment key={i}>
-      {part}
-      {i < parts.length - 1 && <wbr />}
-    </Fragment>
-  ));
-}
+/** 0.9375rem: how small a server tile's 1.25rem name may shrink before a long word breaks after all. */
+const TILE_NAME_FLOOR_PX = 15;
 
 /** Play: add the server (or find the instance that already joins it), start the game with join, open its Home. With `follow`,
  *  a successful add also follows the server, quietly. With `onPlay`, Play runs that instead (it handles its own errors). */
