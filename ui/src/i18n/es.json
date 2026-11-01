@@ -791,6 +791,7 @@
     },
     "delete": {
       "action": "Eliminar servidor",
+      "key": "Eliminar {{name}}",
       "title": "¿Eliminar {{name}}?",
       "body": "El mundo también se elimina. Después puedes crear un servidor nuevo.",
       "confirm": "Eliminar servidor",

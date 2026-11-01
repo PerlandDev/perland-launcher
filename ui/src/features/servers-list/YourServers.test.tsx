@@ -103,12 +103,13 @@ describe('YourServers', () => {
   });
 
   it('no Manage in Perland without a panel', async () => {
-    const { user } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has', panel: false, manage: 'none' });
+    renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has', panel: false, manage: 'none' });
     const section = await yours();
     expect(within(await cardIn(section, 'My world')).queryByRole('button', { name: /^More for/ })).toBeNull();
-    await user.click(within(await cardIn(section, 'Weekend SMP')).getByRole('button', { name: 'More for Weekend SMP' }));
-    expect(screen.getByRole('menuitem', { name: 'Delete server' })).toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: 'Manage in Perland' })).toBeNull();
+    // The free server's Delete is its ×, so without a panel it has no menu at all.
+    const free = await cardIn(section, 'Weekend SMP');
+    expect(within(free).getByRole('button', { name: 'Delete Weekend SMP' })).toBeInTheDocument();
+    expect(within(free).queryByRole('button', { name: /^More for/ })).toBeNull();
   });
 
   it('a refused Manage in Perland is a toast', async () => {
@@ -149,14 +150,13 @@ describe('YourServers', () => {
     expect(routeSnapshot()).toEqual({ name: 'manage', tenantId: 'team-mine', stack: 'my-world' });
   });
 
-  it('the free server card offers Manage and keeps Delete', async () => {
+  it('the free server card offers Manage and keeps Delete as its ×', async () => {
     const { user } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has' });
     const card = await cardIn(await yours(), 'Weekend SMP');
     expect(within(card).getByRole('button', { name: 'Play' })).toBeInTheDocument();
-    await user.click(within(card).getByRole('button', { name: 'More for Weekend SMP' }));
-    expect(screen.getByRole('menuitem', { name: 'Delete server' })).toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: 'Manage in Perland' })).toBeNull();
-    await user.keyboard('{Escape}');
+    expect(within(card).getByRole('button', { name: 'Delete Weekend SMP' })).toBeInTheDocument();
+    // With Manage on the card, nothing is left for a menu.
+    expect(within(card).queryByRole('button', { name: 'More for Weekend SMP' })).toBeNull();
     await user.click(within(card).getByRole('button', { name: 'Manage' }));
     expect(routeSnapshot()).toMatchObject({ name: 'manage', stack: 'Weekend SMP' });
   });

@@ -791,6 +791,7 @@
     },
     "delete": {
       "action": "Delete server",
+      "key": "Delete {{name}}",
       "title": "Delete {{name}}?",
       "body": "The world is deleted too. You can create a new server afterwards.",
       "confirm": "Delete server",

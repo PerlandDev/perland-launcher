@@ -94,7 +94,11 @@ export function YourServers() {
         tag={tagOf(item)}
         follow={item.relation === 'followed'}
         menu={item.relation === 'followed' && item.invite ? { onUnfollow: () => onUnfollow(item) } : undefined}
-        onRemove={item.relation === 'invited' && item.invite ? () => setRemoving(item) : undefined}
+        remove={
+          item.relation === 'invited' && item.invite
+            ? { label: t('servers.yours.remove', { name: item.displayName || item.name }), onSelect: () => setRemoving(item) }
+            : undefined
+        }
         primary={manageKey(item.manage)}
         // With Manage on the card, More in Perland is on the Manage screen.
         menuItems={item.relation === 'owner' && !item.manage ? manage(item.name) : undefined}

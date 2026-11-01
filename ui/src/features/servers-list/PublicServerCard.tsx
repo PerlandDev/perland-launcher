@@ -27,8 +27,9 @@ import { ServerStatsLine } from './ServerStatsLine';
  *  `follow` (on by default, as on the public list) makes Play follow the server once it is added. The owner's free server adds
  *  `notes` (warning lines), `menuItems` (after Unfollow), `statusWord` (in place of the list's word) and `onPlay` (in place
  *  of the join). A server the player runs from the launcher passes `primary` (Manage): it takes the key that lights with the
- *  card, and Play stands raised beside it, so the card still lights one button. An invited server passes `onRemove`: a quiet
- *  ghost × in the menu's corner that asks to take it off Your servers. */
+ *  card, and Play stands raised beside it, so the card still lights one button. `remove` is a quiet ghost × in the head's
+ *  top-right corner (after the ⋯ key when there is one): an invited server's asks to take it off Your servers, the free
+ *  server's asks to delete it. */
 export function PublicServerCard({
   card,
   tag,
@@ -39,7 +40,7 @@ export function PublicServerCard({
   statusWord,
   onPlay,
   primary,
-  onRemove,
+  remove,
 }: {
   card: Card;
   tag?: 'owner' | 'invited';
@@ -50,7 +51,7 @@ export function PublicServerCard({
   statusWord?: string;
   onPlay?: () => Promise<void>;
   primary?: { label: string; onSelect(): void };
-  onRemove?: () => void;
+  remove?: { label: string; onSelect(): void; disabled?: boolean };
 }) {
   const { t } = useTranslation();
   const nameId = useId();
@@ -96,7 +97,7 @@ export function PublicServerCard({
   );
   return (
     <article ref={ref} className="server-tile" aria-labelledby={nameId}>
-      <div className="server-tile-head" data-menu={hasItems || onRemove ? '' : undefined}>
+      <div className="server-tile-head" data-menu={hasItems || remove ? '' : undefined}>
         <span className="server-icon">
           {src ? (
             <img src={src} alt="" style={{ width: size, height: size }} draggable={false} onError={() => setFailed(src)} />
@@ -114,24 +115,19 @@ export function PublicServerCard({
             {tag && <span className="tag">{t(`servers.yours.${tag}`)}</span>}
           </span>
         </div>
-        {onRemove && !hasItems && (
-          <div className="relative">
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label={t('servers.yours.remove', { name: card.displayName || card.name })}
-              title={t('servers.yours.remove', { name: card.displayName || card.name })}
-              icon={<Close />}
-              onClick={onRemove}
-            />
+        {(hasItems || remove) && (
+          <div className="relative flex items-start">
+            {hasItems && (
+              <Menu
+                compact
+                label={t('servers.yours.more', { name: card.displayName || card.name })}
+                items={[...(menu ? [{ label: t('servers.yours.unfollow'), icon: <MinusBox />, onSelect: onUnfollow }] : []), ...(menuItems ?? [])]}
+              />
+            )}
+            {remove && (
+              <Button size="icon" variant="ghost" aria-label={remove.label} title={remove.label} icon={<Close />} disabled={remove.disabled} onClick={remove.onSelect} />
+            )}
           </div>
-        )}
-        {hasItems && (
-          <Menu
-            compact
-            label={t('servers.yours.more', { name: card.displayName || card.name })}
-            items={[...(menu ? [{ label: t('servers.yours.unfollow'), icon: <MinusBox />, onSelect: onUnfollow }] : []), ...(menuItems ?? [])]}
-          />
         )}
       </div>
       {notes?.map((note) => (
