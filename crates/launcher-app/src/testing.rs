@@ -945,7 +945,9 @@ pub(crate) fn signed_in(name: &str, id: &str) -> SignedIn {
         refresh_token: format!("refresh-{name}"),
         minecraft: McToken {
             access_token: format!("mc-{name}"),
-            expires_at: crate::restore::now_secs() + 3600,
+            // A day, as Minecraft's tokens last. Not 3600: that is exactly the life a cached token needs
+            // (`MIN_TOKEN_LIFE`), so one read a second later counted as stale and refreshed again.
+            expires_at: crate::restore::now_secs() + 86_400,
         },
         xuid: Some(format!("xuid-{name}")),
     }
