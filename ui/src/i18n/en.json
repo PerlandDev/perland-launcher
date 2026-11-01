@@ -638,7 +638,7 @@
       "removeTitle": "Remove {{name}} from Your servers?",
       "removeBody": "It stops showing here. Your instances stay as they are. To get it back, open its invite link again.",
       "removeConfirm": "Remove",
-      "removeFollowedBody": "You stop following it, so it stops showing here. Press Play on it in Public servers to follow it again.",
+      "removeFollowedBody": "You stop following it, so it stops showing here. Press Play on its card in Public servers to add it back.",
       "manage": "Manage in Perland",
       "manageHere": "Manage",
       "more": "More for {{name}}",

@@ -638,7 +638,7 @@
       "removeTitle": "¿Quitar {{name}} de Tus servidores?",
       "removeBody": "Deja de salir aquí. Tus instancias se quedan como están. Para recuperarlo, vuelve a abrir su enlace de invitación.",
       "removeConfirm": "Quitar",
-      "removeFollowedBody": "Dejas de seguirlo, así que deja de salir aquí. Presiona Jugar en él en Servidores públicos para volver a seguirlo.",
+      "removeFollowedBody": "Dejas de seguirlo, así que deja de salir aquí. Presiona Jugar en su tarjeta de Servidores públicos para volver a añadirlo.",
       "manage": "Administrar en Perland",
       "manageHere": "Administrar",
       "more": "Más opciones para {{name}}",
