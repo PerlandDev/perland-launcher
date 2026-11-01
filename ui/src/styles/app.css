@@ -2594,7 +2594,9 @@
     font-size: 1.25rem;
     font-weight: 400;
     line-height: 1.15;
-    overflow-wrap: break-word;
+    /* `anywhere`, not `break-word`: only it lowers the min-content width, so a one-word name such as
+       "asalith_fields" breaks inside its column instead of running under the × or ⋯ key (#105). */
+    overflow-wrap: anywhere;
   }
   .server-tile-facts {
     display: flex;

@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PlotIcon } from '../../art/PlotIcon';
 import { commands } from '../../ipc/commands';
@@ -107,7 +107,7 @@ export function PublicServerCard({
         </span>
         <div className="grid min-w-0 content-start gap-1">
           <h3 ref={nameRef} id={nameId} tabIndex={-1} className="server-tile-name">
-            {card.displayName || card.name}
+            {breakable(card.displayName || card.name)}
           </h3>
           <p className="tabular text-sm text-ink-dim">{gameLine(t, card)}</p>
           <span className="server-tile-status">
@@ -156,6 +156,18 @@ export function PublicServerCard({
       )}
     </article>
   );
+}
+
+/** A server name with a break opportunity after each `_`, `.` or `-`, so a one-word name such as "asalith_fields" wraps at
+ *  its seam ("asalith_ / fields") before the CSS falls back to breaking anywhere. */
+function breakable(name: string) {
+  const parts = name.split(/(?<=[_.-])/);
+  return parts.map((part, i) => (
+    <Fragment key={i}>
+      {part}
+      {i < parts.length - 1 && <wbr />}
+    </Fragment>
+  ));
 }
 
 /** Play: add the server (or find the instance that already joins it), start the game with join, open its Home. With `follow`,

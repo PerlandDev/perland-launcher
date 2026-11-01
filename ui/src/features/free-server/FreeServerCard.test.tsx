@@ -169,6 +169,15 @@ describe('PublicServerCard', () => {
     instance: null,
   };
 
+  it('a one-word name may break at its underscore and still reads whole', async () => {
+    const backend = createMockBackend({});
+    renderWithProviders(<PublicServerCard card={{ ...card, name: 'asalith_fields', displayName: 'asalith_fields' }} />, {
+      ipc: (cmd, args) => backend.handle(cmd, args),
+    });
+    const heading = await screen.findByRole('heading', { name: 'asalith_fields' });
+    expect(heading.innerHTML).toBe('asalith_<wbr>fields');
+  });
+
   it('public_card_unchanged_without_new_props', async () => {
     const backend = createMockBackend({});
     renderWithProviders(<PublicServerCard card={card} />, { ipc: (cmd, args) => backend.handle(cmd, args) });
