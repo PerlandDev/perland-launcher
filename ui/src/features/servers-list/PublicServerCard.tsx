@@ -29,7 +29,7 @@ import { ServerStatsLine } from './ServerStatsLine';
  *  `notes` (warning lines), `menuItems` (after Unfollow), `statusWord` (in place of the list's word) and `onPlay` (in place
  *  of the join). A server the player runs from the launcher passes `primary` (Manage): it takes the key that lights with the
  *  card, and Play stands raised beside it, so the card still lights one button. `remove` is a quiet ghost × in the head's
- *  top-right corner (after the ⋯ key when there is one): an invited server's asks to take it off Your servers, the free
+ *  top-right corner (with the ⋯ key under it when there is one): an invited server's asks to take it off Your servers, the free
  *  server's asks to delete it. */
 export function PublicServerCard({
   card,
@@ -118,16 +118,17 @@ export function PublicServerCard({
           </span>
         </div>
         {(hasItems || remove) && (
-          <div className="relative flex items-start">
+          // Stacked, × in the corner and ⋯ under it, so two keys take one key's width from the name.
+          <div className="relative flex flex-col items-end">
+            {remove && (
+              <Button size="icon" variant="ghost" aria-label={remove.label} title={remove.label} icon={<Close />} disabled={remove.disabled} onClick={remove.onSelect} />
+            )}
             {hasItems && (
               <Menu
                 compact
                 label={t('servers.yours.more', { name: card.displayName || card.name })}
                 items={[...(menu ? [{ label: t('servers.yours.unfollow'), icon: <MinusBox />, onSelect: onUnfollow }] : []), ...(menuItems ?? [])]}
               />
-            )}
-            {remove && (
-              <Button size="icon" variant="ghost" aria-label={remove.label} title={remove.label} icon={<Close />} disabled={remove.disabled} onClick={remove.onSelect} />
             )}
           </div>
         )}
