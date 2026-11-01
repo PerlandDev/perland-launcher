@@ -15,7 +15,7 @@ import { useManageItem, useManageKey, useYours } from './yours';
 /** The slot above Public servers: the free-server entry while free servers are on, then the player's own servers: their free
  *  server first, then the servers they run from the launcher (owner cards with Manage beside Play, then the ones only Manage
  *  knows), then Owner, Invited and followed as listed, each with the public card's Play, and Manage in Perland on owned cards
- *  without Manage while a panel is configured. Nothing while it loads or holds neither; signed out, one quiet line pointing to Accounts, only while accounts are on. */
+ *  without Manage while a panel is configured. Invited and followed cards come off the list with their ×, after a confirm. Nothing while it loads or holds neither; signed out, one quiet line pointing to Accounts, only while accounts are on. */
 export function YourServers() {
   const { t } = useTranslation();
   const { status, servers, managed } = useYours();
@@ -31,23 +31,18 @@ export function YourServers() {
   const manage = useManageItem();
   const manageKey = useManageKey();
   const heading = useRef<HTMLHeadingElement>(null);
-  // The token of a card whose Unfollow went through, until the card leaves; `unfollowed` re-runs the check below.
+  // The token of a card whose × went through, until the card leaves; `unfollowed` re-runs the check below.
   const leaving = useRef<string | null>(null);
   const [unfollowed, setUnfollowed] = useState(0);
-  const onUnfollow = (card: YourServerCard) =>
-    unfollow.mutate(card.invite as string, {
-      onSuccess: () => {
-        leaving.current = card.token;
-        setUnfollowed((n) => n + 1);
-      },
-    });
+  // A followed server is unfollowed; an invited one is forgotten (its join and its follow).
   const onRemove = (card: YourServerCard) =>
-    forget.mutate(card.invite as string, {
+    (card.relation === 'followed' ? unfollow : forget).mutate(card.invite as string, {
       onSuccess: () => {
         leaving.current = card.token;
         setUnfollowed((n) => n + 1);
       },
-      onError: pushError,
+      // Unfollow toasts its own failure.
+      onError: card.relation === 'followed' ? undefined : pushError,
       onSettled: () => setRemoving(null),
     });
   // The card (and its menu, which held focus) is gone: focus would fall to the page, so it goes to this section's
@@ -69,6 +64,7 @@ export function YourServers() {
     if (document.activeElement !== null && document.activeElement !== document.body) return;
     heading.current?.focus();
   }, [own]);
+  const busy = forget.isPending || unfollow.isPending;
   if (!status?.enabled) return null;
   if (!status.account) {
     return (
@@ -93,9 +89,8 @@ export function YourServers() {
         card={item}
         tag={tagOf(item)}
         follow={item.relation === 'followed'}
-        menu={item.relation === 'followed' && item.invite ? { onUnfollow: () => onUnfollow(item) } : undefined}
         remove={
-          item.relation === 'invited' && item.invite
+          item.relation !== 'owner' && item.invite
             ? { label: t('servers.yours.remove', { name: item.displayName || item.name }), onSelect: () => setRemoving(item) }
             : undefined
         }
@@ -130,20 +125,20 @@ export function YourServers() {
       {removing && (
         <Dialog
           open
-          onClose={() => !forget.isPending && setRemoving(null)}
+          onClose={() => !busy && setRemoving(null)}
           title={t('servers.yours.removeTitle', { name: removing.displayName || removing.name })}
           actions={
             <>
-              <Button disabled={forget.isPending} onClick={() => setRemoving(null)}>
+              <Button disabled={busy} onClick={() => setRemoving(null)}>
                 {t('common.cancel')}
               </Button>
-              <Button variant="danger" disabled={forget.isPending} onClick={() => onRemove(removing)}>
+              <Button variant="danger" disabled={busy} onClick={() => onRemove(removing)}>
                 {t('servers.yours.removeConfirm')}
               </Button>
             </>
           }
         >
-          {t('servers.yours.removeBody')}
+          {t(removing.relation === 'followed' ? 'servers.yours.removeFollowedBody' : 'servers.yours.removeBody')}
         </Dialog>
       )}
     </section>

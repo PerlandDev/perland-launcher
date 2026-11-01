@@ -75,14 +75,17 @@ describe('YourServers', () => {
     expect(within(await cardIn(section, 'Friends')).queryByText(/achievement/)).toBeNull();
   });
 
-  it('menu_only_on_followed', async () => {
-    // Without a panel, owned servers have nothing for a menu.
+  it('no card in Your servers has a menu without a panel', async () => {
+    // Without a panel, nothing is left for a menu: removing, unfollowing and deleting are each card's ×.
     renderApp(<ServersScreen />, { perland: 'signedIn', panel: false });
     const section = await yours();
     expect(within(await cardIn(section, 'My world')).queryByRole('button', { name: /^More for/ })).toBeNull();
     expect(within(await cardIn(section, 'Friends')).queryByRole('button', { name: /^More for/ })).toBeNull();
-    expect(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'More for Quiet Cove' })).toBeInTheDocument();
-    expect(within(await cardIn(section, 'Pure Vanilla')).getByRole('button', { name: 'More for Pure Vanilla' })).toBeInTheDocument();
+    for (const name of ['Quiet Cove', 'Pure Vanilla']) {
+      const followed = await cardIn(section, name);
+      expect(within(followed).queryByRole('button', { name: /^More for/ })).toBeNull();
+      expect(within(followed).getByRole('button', { name: `Remove ${name} from Your servers` })).toBeInTheDocument();
+    }
   });
 
   it('owned servers offer Manage in Perland', async () => {
@@ -98,8 +101,7 @@ describe('YourServers', () => {
     expect(sent(calls, 'perland_manage')).toEqual([{ stack: 'My world' }, { stack: 'Weekend SMP' }]);
     // Invited and followed servers are someone else's.
     expect(within(await cardIn(section, 'Friends')).queryByRole('button', { name: /^More for/ })).toBeNull();
-    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'More for Quiet Cove' }));
-    expect(screen.queryByRole('menuitem', { name: 'Manage in Perland' })).toBeNull();
+    expect(within(await cardIn(section, 'Quiet Cove')).queryByRole('button', { name: /^More for/ })).toBeNull();
   });
 
   it('no Manage in Perland without a panel', async () => {
@@ -191,8 +193,8 @@ describe('YourServers', () => {
   it('unfollow_removes_the_card', async () => {
     const { user, calls } = renderApp(<ServersScreen />, { perland: 'signedIn' });
     const section = await yours();
-    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'More for Quiet Cove' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Unfollow' }));
+    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'Remove Quiet Cove from Your servers' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Remove Quiet Cove from Your servers?' })).getByRole('button', { name: 'Remove' }));
     expect(sent(calls, 'your_servers_unfollow')).toEqual([{ invite: inviteOf('K') }]);
     await vi.waitFor(() => expect(within(section).queryByRole('heading', { name: 'Quiet Cove' })).toBeNull());
     expect(within(section).getByRole('heading', { name: 'My world' })).toBeInTheDocument();
@@ -201,8 +203,8 @@ describe('YourServers', () => {
   it('unfollow keeps focus on Your servers', async () => {
     const { user } = renderApp(<ServersScreen />, { perland: 'signedIn' });
     const section = await yours();
-    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'More for Quiet Cove' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Unfollow' }));
+    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'Remove Quiet Cove from Your servers' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Remove Quiet Cove from Your servers?' })).getByRole('button', { name: 'Remove' }));
     await vi.waitFor(() => expect(within(section).queryByRole('heading', { name: 'Quiet Cove' })).toBeNull());
     await vi.waitFor(() => expect(document.activeElement).toBe(within(section).getByRole('heading', { name: 'Your servers' })));
   });
@@ -211,8 +213,8 @@ describe('YourServers', () => {
     const { user, backend } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'off', manage: 'none' });
     backend.state.perland.servers = backend.state.perland.servers.filter((s) => s.name === 'Quiet Cove');
     const section = await yours();
-    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'More for Quiet Cove' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Unfollow' }));
+    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'Remove Quiet Cove from Your servers' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Remove Quiet Cove from Your servers?' })).getByRole('button', { name: 'Remove' }));
     await vi.waitFor(() => expect(screen.queryByRole('region', { name: 'Your servers' })).toBeNull());
     const list = await publicList();
     await vi.waitFor(() => expect(document.activeElement).toBe(within(list).getByRole('heading', { name: 'Public servers' })));
@@ -236,19 +238,30 @@ describe('YourServers', () => {
           : backend.handle(cmd, args),
     });
     const section = await yours();
-    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'More for Quiet Cove' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Unfollow' }));
+    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'Remove Quiet Cove from Your servers' }));
+    await user.click(within(screen.getByRole('dialog', { name: 'Remove Quiet Cove from Your servers?' })).getByRole('button', { name: 'Remove' }));
     await vi.waitFor(() => expect(toastsSnapshot()).toHaveLength(1));
     expect(within(section).getByRole('heading', { name: 'Quiet Cove' })).toBeInTheDocument();
   });
 
-  it('only an invited card has the remove key', async () => {
+  it('invited and followed cards have the remove key, an owned one does not', async () => {
     renderApp(<ServersScreen />, { perland: 'signedIn' });
     const section = await yours();
-    expect(within(await cardIn(section, 'Friends')).getByRole('button', { name: 'Remove Friends from Your servers' })).toBeInTheDocument();
-    for (const name of ['My world', 'Quiet Cove']) {
-      expect(within(await cardIn(section, name)).queryByRole('button', { name: `Remove ${name} from Your servers` })).toBeNull();
+    for (const name of ['Friends', 'Quiet Cove']) {
+      expect(within(await cardIn(section, name)).getByRole('button', { name: `Remove ${name} from Your servers` })).toBeInTheDocument();
     }
+    expect(within(await cardIn(section, 'My world')).queryByRole('button', { name: 'Remove My world from Your servers' })).toBeNull();
+  });
+
+  it('removing a followed card unfollows it, after saying so', async () => {
+    const { user, calls } = renderApp(<ServersScreen />, { perland: 'signedIn' });
+    const section = await yours();
+    await user.click(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'Remove Quiet Cove from Your servers' }));
+    const dialog = screen.getByRole('dialog', { name: 'Remove Quiet Cove from Your servers?' });
+    expect(within(dialog).getByText(/stop following it/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
+    expect(sent(calls, 'your_servers_unfollow')).toEqual([{ invite: inviteOf('K') }]);
+    expect(sent(calls, 'your_servers_forget')).toEqual([]);
   });
 
   it('remove asks first, and Cancel keeps the card', async () => {
@@ -374,7 +387,7 @@ describe('YourServers', () => {
     const section = await screen.findByRole('region', { name: 'Tus servidores' });
     expect(within(await cardIn(section, 'My world')).getByText('Dueño')).toBeInTheDocument();
     expect(within(await cardIn(section, 'Friends')).getByText('Invitado')).toBeInTheDocument();
-    expect(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'Más opciones para Quiet Cove' })).toBeInTheDocument();
+    expect(within(await cardIn(section, 'Quiet Cove')).getByRole('button', { name: 'Quitar Quiet Cove de Tus servidores' })).toBeInTheDocument();
     await user.click(within(await cardIn(section, 'My world')).getByRole('button', { name: 'Más opciones para My world' }));
     expect(screen.getByRole('menuitem', { name: 'Administrar en Perland' })).toBeInTheDocument();
   });
