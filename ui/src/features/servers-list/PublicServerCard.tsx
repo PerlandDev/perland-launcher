@@ -23,8 +23,8 @@ import { gameLine, listStatusWord } from './labels';
 import { ServerStatsLine } from './ServerStatsLine';
 
 /** One public server: icon, name, game line, status in words, its latest news, the player's stats there, and Play. Play is
- *  raised at rest and lights only while its card is under the pointer or holds focus, so a grid of cards is never a wall of
- *  amber. Your servers uses it too: `tag` labels an Owner or Invited server, `menu` gives a followed one Unfollow, and
+ *  raised at rest and lights only while the pointer or keyboard focus is on Play itself, so a grid of cards is never a wall of
+ *  amber and reaching for the × or ⋯ key leaves it raised. Your servers uses it too: `tag` labels an Owner or Invited server, `menu` gives a followed one Unfollow, and
  *  `follow` (on by default, as on the public list) makes Play follow the server once it is added. The owner's free server adds
  *  `notes` (warning lines), `menuItems` (after Unfollow), `statusWord` (in place of the list's word) and `onPlay` (in place
  *  of the join). A server the player runs from the launcher passes `primary` (Manage): it takes the key that lights with the
@@ -161,8 +161,9 @@ export function PublicServerCard({
   );
 }
 
-/** 0.9375rem: how small a server tile's 1.25rem name may shrink before a long word breaks after all. */
-const TILE_NAME_FLOOR_PX = 15;
+/** 0.8125rem: how small a server tile's 1.25rem name may shrink before a long word breaks after all. At the 960 px
+ *  window with the wide rail a column holds about 130 px, which a 14-letter one-word name ("asalith_fields") needs. */
+const TILE_NAME_FLOOR_PX = 13;
 
 /** Play: add the server (or find the instance that already joins it), start the game with join, open its Home. With `follow`,
  *  a successful add also follows the server, quietly. With `onPlay`, Play runs that instead (it handles its own errors). */

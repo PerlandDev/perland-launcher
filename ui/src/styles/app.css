@@ -2590,7 +2590,7 @@
     margin-top: 0.375rem;
   }
   /* Like the marquee name: it wraps only between words, and a word too wide for its column (a one-word
-     name such as "asalith_fields") shrinks the type (`--name-fit`, set by useNameFit) down to 0.9375rem
+     name such as "asalith_fields") shrinks the type (`--name-fit`, set by useNameFit) down to 0.8125rem
      rather than running under the × or ⋯ key (#105). Only at that floor may a word break. `min-width: 0`
      keeps the heading at its column's width, so the overflow shows in its scroll width. */
   .server-tile-name {
@@ -2684,14 +2684,12 @@
     font-weight: 650;
     letter-spacing: 0;
   }
-  /* Keyboard focus lights Play, a click's leftover focus doesn't: two cards never light at once. */
-  .server-tile:is(:hover, :has(:focus-visible)) .server-tile-play:not(:disabled) {
+  /* Play (or Manage) lights only while the pointer is on it or keyboard focus is on it, never for the card around it, so
+     reaching for the × or ⋯ key leaves it raised. A click's leftover focus doesn't light it: two cards never light at once. */
+  .server-tile-play:is(:hover, :focus-visible):not(:disabled, [aria-disabled='true']) {
     --face: var(--color-amber);
     --face-ink: var(--color-ground);
     --base: var(--color-dirt);
-  }
-  .server-tile:is(:hover, :has(:focus-visible)) .server-tile-play:hover:not(:disabled, [aria-disabled='true']) {
-    --face: var(--color-amber-hi);
   }
 
   /* Loading: the card's shape with nothing in it: the icon window and the slot Play will stand in. No shimmer. */
