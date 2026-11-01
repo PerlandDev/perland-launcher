@@ -103,9 +103,9 @@ jobs:
             CARGO_HOME,{{ DEV_DRIVE }}/.cargo
       - name: Linux webview build dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+        # Each apt call is capped and retried (scripts/ci/apt-install.sh); it normally takes under a minute.
+        timeout-minutes: 15
+        run: scripts/ci/apt-install.sh libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
