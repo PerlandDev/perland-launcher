@@ -27,6 +27,7 @@
     "restore": "Restore down",
     "close": "Close",
     "accounts": "Accounts",
+    "achievements": "Achievements",
     "settings": "Settings",
     "noAccount": "Add account",
     "updateReady": "Update ready · installs when you close",
@@ -1192,6 +1193,9 @@
   },
   "medals": {
     "title": "Medals",
+    "screenTitle": "Achievements",
+    "steps": "Tiers",
+    "hint": "Time played counts everything you play on this computer. The others are earned on servers made on Perland.",
     "tier1": "Copper",
     "tier2": "Iron",
     "tier3": "Gold",
@@ -1249,7 +1253,8 @@
       "name": "Wither summoner",
       "goal": "Summon the Wither"
     },
-    "servers": "Achievements by server"
+    "servers": "Achievements on Perland servers",
+    "serversHint": "What you've earned playing on servers made on Perland. Your single-player worlds don't count here."
   },
   "achievements": {
     "title": "Achievements on {{server}}",

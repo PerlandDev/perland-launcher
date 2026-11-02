@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AchievementsScreen } from './features/medals/AchievementsScreen';
 import { Accounts } from './features/accounts/Accounts';
 import { SignInPrompt } from './features/accounts/SignInPrompt';
 import { ActivityDrawer } from './features/activity/ActivityDrawer';
@@ -54,6 +55,8 @@ function Screen({ route }: { route: Route }) {
       return <ManageScreen key={`${route.tenantId}/${route.stack}`} tenantId={route.tenantId} stack={route.stack} />;
     case 'accounts':
       return <Accounts />;
+    case 'achievements':
+      return <AchievementsScreen />;
     case 'settings':
       return <Settings />;
   }

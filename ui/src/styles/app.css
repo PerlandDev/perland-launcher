@@ -3035,6 +3035,22 @@
   .medal-badge[data-locked] .medal-emblem {
     color: var(--color-ink-dim);
   }
+  /* A ladder's four steps: each tier's small badge over its threshold, earned ones in their metal, the rest as empty slots. */
+  .medal-steps {
+    display: grid;
+    grid-template-columns: repeat(4, 2.75rem);
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+  }
+  .medal-step {
+    display: grid;
+    justify-items: center;
+    gap: 0.125rem;
+    color: var(--color-ink);
+  }
+  .medal-step[data-locked] {
+    color: var(--color-ink-dim);
+  }
   .medal-meter {
     display: grid;
     gap: 0.25rem;

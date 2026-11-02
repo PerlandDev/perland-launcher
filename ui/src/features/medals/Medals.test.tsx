@@ -24,12 +24,12 @@ describe('Medals', () => {
     expect(await screen.findByText('Link your Minecraft account to earn the server medals.')).toBeInTheDocument();
     const dragon = medal('Dragon slayer');
     expect(dragon).toHaveTextContent('Locked: Defeat the Ender Dragon');
-    expect(screen.queryByText('Achievements by server')).toBeNull();
+    expect(screen.queryByText('Achievements on Perland servers')).toBeNull();
   });
 
   it('earns medals from the linked stats and lists the servers', async () => {
     renderApp(<Medals />, { perland: 'linked' });
-    await screen.findByText('Achievements by server');
+    await screen.findByText('Achievements on Perland servers');
     expect(screen.queryByText(/Link your Minecraft account/)).toBeNull();
     expect(medal('Dragon slayer')).toHaveTextContent('Diamond · Earned');
     expect(medal('Wither summoner')).toHaveTextContent('Locked: Summon the Wither');
@@ -40,7 +40,7 @@ describe('Medals', () => {
     expect(screen.getByRole('button', { name: 'See your achievements on My world' })).toHaveTextContent('12 achievements');
   });
 
-  it('opens a server’s achievements from Accounts', async () => {
+  it('opens a server’s achievements', async () => {
     const { user } = renderApp(<Medals />, { perland: 'linked' });
     await user.click(await screen.findByRole('button', { name: 'See your achievements on My world' }));
     const dialog = screen.getByRole('dialog', { name: 'Achievements on My world' });
@@ -49,5 +49,32 @@ describe('Medals', () => {
     expect(within(end).getByText('Free the End').closest('li')).toHaveAttribute('data-earned');
     expect(within(end).getByText('Sky\'s the Limit').closest('li')).not.toHaveAttribute('data-earned');
     expect(within(end).getByText('Sky\'s the Limit').closest('li')).toHaveTextContent('Not yet:');
+  });
+
+  it('shows every step of a ladder, the earned ones in their metal', async () => {
+    renderApp(<Medals />, { playtime: { 'asalith-fields': 12 * 3600 } });
+    await waitFor(() => expect(medal('Time played')).toHaveTextContent('Iron · 12 h'));
+    const steps = within(medal('Time played')).getByRole('list', { name: 'Tiers' });
+    const items = within(steps).getAllByRole('listitem');
+    expect(items.map((i) => i.textContent)).toEqual([
+      '1 hCopper, Earned',
+      '10 hIron, Earned',
+      '100 hGold, Locked',
+      '500 hDiamond, Locked',
+    ]);
+    expect(items.map((i) => i.hasAttribute('data-locked'))).toEqual([false, false, true, true]);
+  });
+
+  it('says which medals come from Perland servers', async () => {
+    renderApp(<Medals />);
+    expect(
+      await screen.findByText('Time played counts everything you play on this computer. The others are earned on servers made on Perland.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says the server list is only servers made on Perland', async () => {
+    renderApp(<Medals />, { perland: 'linked' });
+    expect(await screen.findByRole('heading', { name: 'Achievements on Perland servers' })).toBeInTheDocument();
+    expect(screen.getByText(/servers made on Perland\. Your single-player worlds don't count here\./)).toBeInTheDocument();
   });
 });
