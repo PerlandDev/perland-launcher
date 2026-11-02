@@ -21,6 +21,11 @@ pub const MAX_SLUG_LEN: usize = 48;
 pub const MAX_ID_LEN: usize = 64;
 pub const MIN_MEMORY_MB: u32 = 512;
 pub const MAX_MEMORY_MB: u32 = 65_536;
+/// The smallest game window, width and height: about what Minecraft's own menus still fit in.
+pub const MIN_WINDOW: (u32, u32) = (320, 240);
+/// The largest side of a game window: beyond any real screen, and small enough for the game's
+/// buffers.
+pub const MAX_WINDOW_SIDE: u32 = 16_384;
 
 /// The trimmed name, if it is 1–64 characters.
 pub fn validate_name(name: &str) -> Result<String> {
@@ -48,6 +53,26 @@ pub fn validate_memory(memory_mb: u32) -> Result<()> {
         .with_param("min", MIN_MEMORY_MB)
         .with_param("max", MAX_MEMORY_MB))
     }
+}
+
+/// A window size is `MIN_WINDOW` to `MAX_WINDOW_SIDE` on each side; the other modes have none.
+pub fn validate_window(window: &GameWindow) -> Result<()> {
+    let GameWindow::Size { width, height } = *window else {
+        return Ok(());
+    };
+    let (min_w, min_h) = MIN_WINDOW;
+    if (min_w..=MAX_WINDOW_SIDE).contains(&width) && (min_h..=MAX_WINDOW_SIDE).contains(&height) {
+        return Ok(());
+    }
+    Err(LauncherError::disk(
+        ErrorCode::WindowSizeInvalid,
+        format!(
+            "The window must be at least {min_w} × {min_h} and at most {MAX_WINDOW_SIDE} on each side"
+        ),
+    )
+    .with_param("minWidth", min_w)
+    .with_param("minHeight", min_h)
+    .with_param("max", MAX_WINDOW_SIDE))
 }
 
 pub fn validate_java(java: &JavaSettings) -> Result<()> {
@@ -368,6 +393,29 @@ pub enum IconMode {
     Auto,
 }
 
+/// How the game's window opens. `Default` passes nothing, so the game opens as it always has
+/// (its own size, or full screen when its options say so).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "lowercase")]
+pub enum GameWindow {
+    #[default]
+    Default,
+    Size {
+        width: u32,
+        height: u32,
+    },
+    Fullscreen,
+}
+
+/// `GameWindow`, or `Default` for anything it can't read (a newer launcher's mode, a hand
+/// edit), so the instance isn't marked damaged over a window size.
+fn lenient_window<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<GameWindow, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(value).unwrap_or_default())
+}
+
 /// Which point of a background picture stays in view when the marquee crops it, as percentages
 /// of its width and height (0 to 100, like CSS `object-position`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -394,6 +442,9 @@ pub struct Instance {
     pub optional_choices: BTreeMap<String, bool>,
     #[serde(default)]
     pub java: JavaSettings,
+    /// How the game's window opens.
+    #[serde(default, deserialize_with = "lenient_window")]
+    pub window: GameWindow,
     /// Set for server instances (`SourceRef::Perland`): what the invite view last said.
     #[serde(default)]
     pub server: Option<ServerLink>,
@@ -490,6 +541,7 @@ impl InstanceStore {
             update_policy: UpdatePolicy::Ask,
             optional_choices: BTreeMap::new(),
             java: JavaSettings::default(),
+            window: GameWindow::Default,
             server: None,
             art_seed: None,
             art: ArtMode::Auto,
@@ -592,6 +644,7 @@ impl InstanceStore {
         let mut instance = instance.clone();
         instance.name = validate_name(&instance.name)?;
         validate_java(&instance.java)?;
+        validate_window(&instance.window)?;
         self.load(&instance.id).await?;
         self.save(&instance).await?;
         Ok(instance)
@@ -1221,6 +1274,93 @@ mod tests {
         assert_eq!(back["bannerFocus"], serde_json::json!({ "x": 20, "y": 80 }));
         let again: Instance = serde_json::from_value(back).unwrap();
         assert_eq!(again.banner_focus, Some(Focus { x: 20, y: 80 }));
+    }
+
+    #[test]
+    fn old_instance_json_opens_the_window_as_before() {
+        let json =
+            r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"}}"#;
+        let instance: Instance = serde_json::from_str(json).unwrap();
+        assert_eq!(instance.window, GameWindow::Default);
+        assert_eq!(
+            serde_json::to_value(&instance).unwrap()["window"],
+            serde_json::json!({ "mode": "default" })
+        );
+    }
+
+    #[test]
+    fn the_window_round_trips_and_an_unknown_mode_loads_as_default() {
+        let size = GameWindow::Size {
+            width: 1920,
+            height: 1080,
+        };
+        let value = serde_json::to_value(size).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!({ "mode": "size", "width": 1920, "height": 1080 })
+        );
+        assert_eq!(serde_json::from_value::<GameWindow>(value).unwrap(), size);
+        assert_eq!(
+            serde_json::to_value(GameWindow::Fullscreen).unwrap(),
+            serde_json::json!({ "mode": "fullscreen" })
+        );
+        // A newer launcher's mode, or a hand-edited file, doesn't mark the instance damaged.
+        for window in [
+            r#"{"mode":"borderless"}"#,
+            r#"{"mode":"size","width":"big"}"#,
+            r#""size""#,
+        ] {
+            let json = format!(
+                r#"{{"id":"a","name":"A","source":{{"kind":"none"}},"game":{{"minecraft":"1.20.1"}},"window":{window}}}"#
+            );
+            let instance: Instance = serde_json::from_str(&json).unwrap();
+            assert_eq!(instance.window, GameWindow::Default, "{window}");
+        }
+    }
+
+    #[test]
+    fn window_sizes_are_validated() {
+        let size = |width, height| GameWindow::Size { width, height };
+        assert!(validate_window(&GameWindow::Default).is_ok());
+        assert!(validate_window(&GameWindow::Fullscreen).is_ok());
+        assert!(validate_window(&size(MIN_WINDOW.0, MIN_WINDOW.1)).is_ok());
+        assert!(validate_window(&size(MAX_WINDOW_SIDE, MAX_WINDOW_SIDE)).is_ok());
+        for (w, h) in [
+            (0, 0),
+            (MIN_WINDOW.0 - 1, 720),
+            (1280, MIN_WINDOW.1 - 1),
+            (MAX_WINDOW_SIDE + 1, 720),
+            (1280, MAX_WINDOW_SIDE + 1),
+        ] {
+            let err = validate_window(&size(w, h)).unwrap_err();
+            assert_eq!(err.code, ErrorCode::WindowSizeInvalid, "{w}x{h}");
+            assert_eq!(err.params["minWidth"], MIN_WINDOW.0.to_string());
+            assert_eq!(err.params["minHeight"], MIN_WINDOW.1.to_string());
+            assert_eq!(err.params["max"], MAX_WINDOW_SIDE.to_string());
+        }
+    }
+
+    #[tokio::test]
+    async fn update_refuses_a_bad_window_size() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = InstanceStore::new(tmp.path());
+        let mut instance = store.create("Pack", vanilla("1.21.1")).await.unwrap();
+        instance.window = GameWindow::Size {
+            width: 10,
+            height: 10,
+        };
+        let err = store.update(&instance).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::WindowSizeInvalid);
+        assert_eq!(
+            store.load("pack").await.unwrap().window,
+            GameWindow::Default
+        );
+        instance.window = GameWindow::Fullscreen;
+        store.update(&instance).await.unwrap();
+        assert_eq!(
+            store.load("pack").await.unwrap().window,
+            GameWindow::Fullscreen
+        );
     }
 
     #[test]

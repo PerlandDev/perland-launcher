@@ -42,6 +42,7 @@
   "memory_out_of_range",
   "art_file_invalid",
   "banner_focus_invalid",
+  "window_size_invalid",
   "java_unavailable",
   "java_start_failed",
   "java_path_missing",

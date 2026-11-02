@@ -381,6 +381,12 @@ export const deepLink = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('join'), invite: z.string() }),
 ]);
 export const inviteLinkCase = z.strictObject({ input: z.string(), canonical: z.string().nullable() });
+/** How the game's window opens: as the game decides (`default`), at a size, or full screen. */
+export const gameWindow = z.discriminatedUnion('mode', [
+  z.strictObject({ mode: z.literal('default') }),
+  z.strictObject({ mode: z.literal('size'), width: z.number().int(), height: z.number().int() }),
+  z.strictObject({ mode: z.literal('fullscreen') }),
+]);
 export const instance = z.strictObject({
   id: z.string(),
   name: z.string(),
@@ -389,6 +395,7 @@ export const instance = z.strictObject({
   updatePolicy: z.enum(['auto', 'ask', 'pinned']),
   optionalChoices: z.record(z.string(), z.boolean()),
   java: javaSettings,
+  window: gameWindow,
   server: serverLink.nullable(),
   artSeed: z.string().nullable(),
   art: z.enum(['auto', 'generated', 'custom']),
@@ -796,6 +803,7 @@ export type LoaderSpec = z.infer<typeof loaderSpec>;
 export type GameSpec = z.infer<typeof gameSpec>;
 export type SourceRef = z.infer<typeof sourceRef>;
 export type JavaSettings = z.infer<typeof javaSettings>;
+export type GameWindow = z.infer<typeof gameWindow>;
 export type ServerStatus = z.infer<typeof serverStatus>;
 export type ServerAddress = z.infer<typeof serverAddress>;
 export type ServerLink = z.infer<typeof serverLink>;

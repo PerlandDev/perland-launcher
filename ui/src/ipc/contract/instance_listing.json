@@ -20,6 +20,9 @@
         "memoryMb": 4096,
         "args": ""
       },
+      "window": {
+        "mode": "default"
+      },
       "server": null,
       "artSeed": null,
       "art": "auto",
@@ -45,6 +48,11 @@
         "path": "C:/Java/bin/java.exe",
         "memoryMb": 6144,
         "args": "-XX:+UseG1GC -Dperland.note=\"a b\""
+      },
+      "window": {
+        "mode": "size",
+        "width": 1920,
+        "height": 1080
       },
       "server": null,
       "artSeed": "creative-flat",

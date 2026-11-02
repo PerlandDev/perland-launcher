@@ -18,6 +18,9 @@
     "memoryMb": 4096,
     "args": ""
   },
+  "window": {
+    "mode": "default"
+  },
   "server": null,
   "artSeed": null,
   "art": "auto",

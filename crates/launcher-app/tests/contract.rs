@@ -38,7 +38,7 @@ use launcher_core::{
     download::Hashes,
     events::TaskId,
     instances::{
-        ArtMode, DamagedInstance, Focus, GameSpec, IconMode, Instance, InstanceListing,
+        ArtMode, DamagedInstance, Focus, GameSpec, GameWindow, IconMode, Instance, InstanceListing,
         JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdateHold,
         UpdatePolicy,
     },
@@ -128,6 +128,7 @@ fn fabric_instance() -> Instance {
             memory_mb: 4096,
             args: String::new(),
         },
+        window: GameWindow::Default,
         server: None,
         art_seed: None,
         art: ArtMode::Auto,
@@ -152,6 +153,10 @@ fn vanilla_instance() -> Instance {
             path: Some(PathBuf::from("C:/Java/bin/java.exe")),
             memory_mb: 6144,
             args: "-XX:+UseG1GC -Dperland.note=\"a b\"".into(),
+        },
+        window: GameWindow::Size {
+            width: 1920,
+            height: 1080,
         },
         server: None,
         art_seed: Some("creative-flat".into()),
@@ -515,6 +520,7 @@ fn server_instance() -> Instance {
             memory_mb: 4096,
             args: String::new(),
         },
+        window: GameWindow::Fullscreen,
         server: Some(ServerLink {
             address: Some(sample_address()),
             name: "survival".into(),

@@ -272,3 +272,55 @@ it('shows a refused argument under the field', async () => {
   expect(screen.queryByText(message)).not.toBeInTheDocument();
   expect(field).not.toHaveAttribute('aria-invalid');
 });
+
+it('opens the game window as before until the player picks a size', async () => {
+  const { user, calls } = renderApp(<InstanceSettings id="asalith-fields" />);
+  expect(await screen.findByRole('radio', { name: "Game's default" })).toBeChecked();
+  expect(screen.queryByRole('spinbutton', { name: 'Width' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  const saved = sent(calls, 'instance_update')[0] as { instance: Instance };
+  expect(saved.instance.window).toEqual({ mode: 'default' });
+});
+
+it('saves a window size, starting from 1280 × 720', async () => {
+  const { user, calls } = renderApp(<InstanceSettings id="asalith-fields" />);
+  await user.click(await screen.findByRole('radio', { name: 'Custom size' }));
+  const width = screen.getByRole('spinbutton', { name: 'Width' });
+  const height = screen.getByRole('spinbutton', { name: 'Height' });
+  expect(width).toHaveValue(1280);
+  expect(height).toHaveValue(720);
+  await user.clear(width);
+  await user.type(width, '1920');
+  await user.clear(height);
+  await user.type(height, '1080');
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  const saved = sent(calls, 'instance_update')[0] as { instance: Instance };
+  expect(saved.instance.window).toEqual({ mode: 'size', width: 1920, height: 1080 });
+});
+
+it('shows a saved size and saves full screen', async () => {
+  const { user, calls } = renderApp(<InstanceSettings id="creative-flat" />);
+  expect(await screen.findByRole('radio', { name: 'Custom size' })).toBeChecked();
+  expect(screen.getByRole('spinbutton', { name: 'Width' })).toHaveValue(1920);
+  await user.click(screen.getByRole('radio', { name: 'Full screen' }));
+  expect(screen.queryByRole('spinbutton', { name: 'Width' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Save' }));
+  const saved = sent(calls, 'instance_update')[0] as { instance: Instance };
+  expect(saved.instance.window).toEqual({ mode: 'fullscreen' });
+});
+
+it('holds Save while the size is out of range, and says the limits', async () => {
+  const { user } = renderApp(<InstanceSettings id="asalith-fields" />);
+  await user.click(await screen.findByRole('radio', { name: 'Custom size' }));
+  const width = screen.getByRole('spinbutton', { name: 'Width' });
+  await user.clear(width);
+  await user.type(width, '100');
+  expect(width).toHaveAttribute('aria-invalid', 'true');
+  expect(screen.getByText('Use at least 320 × 240 and at most 16384 on each side.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await user.clear(width);
+  expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+  await user.type(width, '800');
+  expect(width).not.toHaveAttribute('aria-invalid');
+  expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+});

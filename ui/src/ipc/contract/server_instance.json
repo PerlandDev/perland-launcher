@@ -20,6 +20,9 @@
     "memoryMb": 4096,
     "args": ""
   },
+  "window": {
+    "mode": "fullscreen"
+  },
   "server": {
     "address": {
       "host": "play.example.com",

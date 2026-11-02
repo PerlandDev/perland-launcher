@@ -16,6 +16,8 @@ import { ScreenFrame } from '../../ui/ScreenFrame';
 import { inviteOf, isPack, isServer, versionLine } from '../home/labels';
 import { useVersionChoice } from '../new-instance/useVersionChoice';
 import { VersionFields } from '../new-instance/VersionFields';
+import { GameWindowFields } from './GameWindowFields';
+import { windowDraft, windowOf } from './gameWindow';
 import { JavaPicker } from './JavaPicker';
 import { useJavaChoice } from './useJavaChoice';
 
@@ -30,6 +32,8 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
   const [name, setName] = useState(instance.name);
   const [memoryMb, setMemoryMb] = useState(instance.java.memoryMb);
   const [javaArgs, setJavaArgs] = useState(instance.java.args);
+  const [windowEdit, setWindowEdit] = useState(() => windowDraft(instance.window));
+  const gameWindow = windowOf(windowEdit);
   const argsField = useRef<HTMLTextAreaElement>(null);
   const update = useUpdateInstance({ inline: true });
 
@@ -54,7 +58,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
 
   // A refused argument belongs under its field; every other failure stays on the general card.
   const argsRefused = update.isError && isLauncherError(update.error) && update.error.code.startsWith('jvm_');
-  const ready = (pack || choice.resolved.ready) && java.ready;
+  const ready = (pack || choice.resolved.ready) && java.ready && gameWindow !== null;
   const save = () =>
     update.mutate(
       {
@@ -63,6 +67,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
         game: pack ? instance.game : { minecraft, loader: choice.resolved.loader },
         updatePolicy: policy,
         java: { memoryMb, path: java.value, args: javaArgs },
+        window: gameWindow ?? instance.window,
       },
       {
         // The Save bar is sticky, so a refusal under the field can sit off-screen; focusing it scrolls it into view.
@@ -148,6 +153,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
           )}
         </section>
       )}
+      <GameWindowFields draft={windowEdit} onChange={edit(setWindowEdit)} />
       <MemorySlider label={t('instanceSettings.memory')} valueMb={memoryMb} onChange={edit(setMemoryMb)} systemMb={systemMb} />
       <JavaPicker choice={java} />
       <Field
