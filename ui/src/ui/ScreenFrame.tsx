@@ -73,8 +73,10 @@ export function ScreenFrame({
         </div>
         {actions && <div className="flex flex-wrap gap-3">{actions}</div>}
       </header>
-      {/* Bottom padding lives inside the scroller's content, so a sticky action row meets the scroller's edge. */}
-      <div className="min-h-0 flex-1 overflow-auto px-10">
+      {/* Bottom padding lives inside the scroller's content, so a sticky action row meets the scroller's edge.
+          `relative` makes the scroller the containing block of visually hidden radios (`.sr-only` is absolute):
+          otherwise they belong to the shell's `main`, and focusing one scrolls the whole frame away (#121). */}
+      <div className="relative min-h-0 flex-1 overflow-auto px-10">
         <div className={`pb-10 ${wide ? 'max-w-[64rem]' : ''}`}>{children}</div>
       </div>
     </section>

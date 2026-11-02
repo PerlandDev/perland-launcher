@@ -20,6 +20,15 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Asalith Fields' })).toBeInTheDocument();
   });
 
+  it('never lets the frame around a screen scroll, so the screen and the activity drawer stay put (#121)', async () => {
+    renderApp(<App />);
+    await screen.findByRole('heading', { name: 'Asalith Fields' });
+    // `overflow: hidden` still scrolls when something inside takes focus; `clip` makes `main` no scroller at all.
+    const main = screen.getByRole('main');
+    expect(main).toHaveClass('overflow-clip');
+    expect(main).not.toHaveClass('overflow-hidden');
+  });
+
   it('asks before quitting while a game runs', async () => {
     const { user, calls } = renderApp(<App />);
     await screen.findByRole('heading', { name: 'Asalith Fields' });

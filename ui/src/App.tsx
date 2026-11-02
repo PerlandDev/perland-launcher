@@ -74,8 +74,10 @@ function Shell() {
       <TitleBar />
       <div className={`grid min-h-0 ${wide ? 'grid-cols-[15rem_1fr]' : 'grid-cols-[4.5rem_1fr]'}`}>
         <Rail />
-        {/* The open drawer is 18rem tall (ActivityDrawer); padding by the same keeps the screen above it. */}
-        <main className={`relative min-h-0 overflow-hidden ${activity.open ? 'pb-[18rem]' : 'pb-9'}`}>
+        {/* The open drawer is 18rem tall (ActivityDrawer); padding by the same keeps the screen above it.
+            `overflow-clip`, not `hidden`: a hidden box still scrolls to show a focused element, which would slide
+            the screen and the drawer up and leave the window half empty (#121). Screens scroll inside themselves. */}
+        <main className={`relative min-h-0 overflow-clip ${activity.open ? 'pb-[18rem]' : 'pb-9'}`}>
           <Screen route={route} />
           <ActivityDrawer />
         </main>
