@@ -17,6 +17,11 @@ function amount(medal: Medal, value: number, t: TFunction): string {
   return formatPlaytime(value, t) || t('time.minutes', { count: 0 });
 }
 
+/** A step's threshold, short enough for its column: whole hours for time ("100 h"), as the ladder defines them. */
+function stepLabel(medal: Medal, goal: number, t: TFunction): string {
+  return medal.unit === 'time' ? t('time.hours', { count: goal / 3600 }) : String(goal);
+}
+
 /** What earns the medal's next step, as a sentence: "Play 10 h on this computer", "Mine a diamond". */
 function goalLine(medal: Medal, t: TFunction): string {
   if (medal.kind === 'single') return t(`medals.${medal.id}.goal`);
@@ -44,6 +49,23 @@ function MedalItem({ medal }: { medal: Medal }) {
           {medal.tier === 0 && <span className="sr-only">{t('medals.locked')}: </span>}
           {stateLine(medal, t)}
         </p>
+        {medal.kind === 'ladder' && (
+          <ol className="medal-steps" aria-label={t('medals.steps')}>
+            {medal.steps.map((goal, i) => {
+              const step = i + 1;
+              const got = medal.tier >= step;
+              return (
+                <li key={step} className="medal-step" data-locked={got ? undefined : ''}>
+                  <MedalBadge id={medal.id} tier={got ? step : 0} size={24} />
+                  <span className="tabular text-xs">{stepLabel(medal, goal, t)}</span>
+                  <span className="sr-only">
+                    {tierName(step, t)}, {got ? t('medals.earned') : t('medals.locked')}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        )}
         {medal.kind === 'ladder' && medal.tier > 0 && (
           <p className="text-sm text-ink-dim">
             {medal.goal === null ? t('medals.top') : t('medals.next', { tier: tierName(medal.tier + 1, t), goal: amount(medal, medal.goal, t) })}
@@ -75,8 +97,9 @@ function ServerRow({ server }: { server: ServerStats }) {
   );
 }
 
-/** Accounts' medal case: the local time medal always, the server medals while Perland's stats are on (locked, with a line on
- *  linking, until a Minecraft account is linked), then the servers whose achievements can be opened. */
+/** The Achievements screen's content: the medal case (the local time medal always, the server medals while Perland's stats are
+ *  on, locked with a line on linking until a Minecraft account is linked), then the Perland servers whose achievements can be
+ *  opened. */
 export function Medals() {
   const { t } = useTranslation();
   const playtime = usePlaytime();
@@ -89,24 +112,28 @@ export function Medals() {
   const earned = list.filter((m) => m.tier > 0).length;
   const servers = (stats.data?.servers ?? []).filter((s) => s.advancementIds.length > 0);
   return (
-    <section className="grid gap-4" aria-labelledby="medals-heading">
-      <div className="flex items-baseline justify-between gap-4">
-        <h2 id="medals-heading" className="text-lg font-bold">
-          {t('medals.title')}
-        </h2>
-        <p className="tabular text-sm text-ink-dim">{t('medals.earnedCount', { earned, total: list.length })}</p>
-      </div>
-      {statsOn && !linked && <p className="text-sm text-ink-dim">{t('medals.linkToEarn')}</p>}
-      <ul className="medal-case panel">
-        {list.map((medal) => (
-          <MedalItem key={medal.id} medal={medal} />
-        ))}
-      </ul>
+    <div className="grid gap-10">
+      <section className="grid gap-4" aria-labelledby="medals-heading">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 id="medals-heading" className="text-lg font-bold">
+            {t('medals.title')}
+          </h2>
+          <p className="tabular text-sm text-ink-dim">{t('medals.earnedCount', { earned, total: list.length })}</p>
+        </div>
+        <p className="text-sm text-ink-dim">{t('medals.hint')}</p>
+        {statsOn && !linked && <p className="text-sm text-ink-dim">{t('medals.linkToEarn')}</p>}
+        <ul className="medal-case panel">
+          {list.map((medal) => (
+            <MedalItem key={medal.id} medal={medal} />
+          ))}
+        </ul>
+      </section>
       {servers.length > 0 && (
-        <section className="grid gap-2" aria-labelledby="medal-servers-heading">
-          <h3 id="medal-servers-heading" className="font-bold">
+        <section className="grid gap-3" aria-labelledby="medal-servers-heading">
+          <h2 id="medal-servers-heading" className="text-lg font-bold">
             {t('medals.servers')}
-          </h3>
+          </h2>
+          <p className="text-sm text-ink-dim">{t('medals.serversHint')}</p>
           <ul className="grid gap-1">
             {servers.map((server) => (
               <ServerRow key={server.token} server={server} />
@@ -114,6 +141,6 @@ export function Medals() {
           </ul>
         </section>
       )}
-    </section>
+    </div>
   );
 }

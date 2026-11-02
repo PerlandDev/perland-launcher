@@ -19,6 +19,18 @@ it('drives the window and shows the active account', async () => {
   expect(routeSnapshot()).toEqual({ name: 'accounts' });
 });
 
+it('opens Achievements from the trophy between the account and Settings', async () => {
+  const { user } = renderApp(<TitleBar />);
+  const account = await screen.findByRole('button', { name: /Steve/ });
+  const trophy = screen.getByRole('button', { name: 'Achievements' });
+  const buttons = screen.getAllByRole('button');
+  const at = (b: HTMLElement) => buttons.indexOf(b);
+  expect(at(trophy)).toBe(at(account) + 1);
+  expect(at(screen.getByRole('button', { name: 'Settings' }))).toBe(at(trophy) + 1);
+  await user.click(trophy);
+  expect(routeSnapshot()).toEqual({ name: 'achievements' });
+});
+
 it('draws the settings button as a cog', async () => {
   renderApp(<TitleBar />);
   const button = await screen.findByRole('button', { name: 'Settings' });

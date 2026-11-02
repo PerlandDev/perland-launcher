@@ -26,6 +26,8 @@ export interface Medal {
   unit: MedalUnit;
   /** False only for the local time ladder, which shows without Perland. */
   needsStats: boolean;
+  /** A ladder's four thresholds, rising; empty for singles. */
+  steps: readonly number[];
 }
 
 type Stats = NonNullable<MedalInput['stats']>;
@@ -86,6 +88,7 @@ export function medals(input: MedalInput): Medal[] {
       goal: ladder.tiers[tier] ?? null,
       unit: ladder.unit,
       needsStats: ladder.id !== 'time',
+      steps: ladder.tiers,
     };
   });
   const earned = new Set(stats?.servers.flatMap((s) => s.advancementIds) ?? []);
@@ -100,6 +103,7 @@ export function medals(input: MedalInput): Medal[] {
       goal: null,
       unit: 'count',
       needsStats: true,
+      steps: [],
     };
   });
   return [...ladders, ...singles];

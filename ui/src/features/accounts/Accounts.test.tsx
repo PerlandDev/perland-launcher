@@ -321,3 +321,10 @@ it('goes back to Home', async () => {
   await user.click(await screen.findByRole('button', { name: 'Back' }));
   expect(routeSnapshot()).toEqual({ name: 'home', id: null });
 });
+
+it('keeps medals on their own screen, so adding an account follows the account list', async () => {
+  renderApp(<Accounts />, { perland: 'linked' });
+  expect(await screen.findByRole('heading', { name: 'Add an account' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Medals' })).toBeNull();
+  expect(screen.queryByText('Achievements on Perland servers')).toBeNull();
+});

@@ -67,4 +67,11 @@ describe('medals', () => {
     for (const m of list.filter((m) => m.needsStats)) expect(m.tier, m.id).toBe(0);
     expect(find(list, 'time').tier).toBe(2);
   });
+
+  it('gives each ladder its four steps and each single none', () => {
+    const list = medals(input({}));
+    expect(find(list, 'time').steps).toEqual([HOUR, 10 * HOUR, 100 * HOUR, 500 * HOUR]);
+    expect(find(list, 'traveler').steps).toEqual([1, 2, 3, 5]);
+    expect(find(list, 'dragon').steps).toEqual([]);
+  });
 });

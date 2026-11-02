@@ -27,6 +27,7 @@
     "restore": "Restaurar",
     "close": "Cerrar",
     "accounts": "Cuentas",
+    "achievements": "Logros",
     "settings": "Configuración",
     "noAccount": "Agregar cuenta",
     "updateReady": "Actualización lista · se instala al cerrar",
@@ -1182,6 +1183,9 @@
   },
   "medals": {
     "title": "Medallas",
+    "screenTitle": "Logros",
+    "steps": "Niveles",
+    "hint": "Tiempo de juego cuenta todo lo que juegas en esta computadora. Las demás se ganan en servidores creados en Perland.",
     "tier1": "Cobre",
     "tier2": "Hierro",
     "tier3": "Oro",
@@ -1239,7 +1243,8 @@
       "name": "Invocador del Wither",
       "goal": "Invoca al Wither"
     },
-    "servers": "Logros por servidor"
+    "servers": "Logros en servidores de Perland",
+    "serversHint": "Lo que conseguiste jugando en servidores creados en Perland. Tus mundos de un jugador no cuentan aquí."
   },
   "achievements": {
     "title": "Logros en {{server}}",

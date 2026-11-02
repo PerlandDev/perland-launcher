@@ -17,6 +17,7 @@ export type Route =
   // A server the player runs, by its team and its name there.
   | { name: 'manage'; tenantId: string; stack: string }
   | { name: 'accounts' }
+  | { name: 'achievements' }
   | { name: 'settings' };
 
 const HOME: Route = { name: 'home', id: null };
