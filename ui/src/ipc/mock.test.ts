@@ -144,6 +144,18 @@ describe('mock backend', () => {
     await expect(handle('instance_icon_set', { id: plain.id, choice: { kind: 'pack' } })).rejects.toMatchObject({ code: 'no_pack' });
   });
 
+  it('drops the pictures of a deleted instance, so a new one with its name starts clean', async () => {
+    const { handle, state } = createMockBackend();
+    await handle('instance_icon_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/me.webp' } });
+    await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/view.png' } });
+    await handle('instance_delete', { id: 'sky-islands' });
+    expect(state.customIcon.has('sky-islands')).toBe(false);
+    expect(state.custom.has('sky-islands')).toBe(false);
+    const again = (await handle('instance_create', { request: { name: 'Sky Islands', minecraft: '1.21.1', loader: null } })) as Instance;
+    expect(again.id).toBe('sky-islands');
+    expect(await handle('instance_art', { id: again.id })).toEqual({ icon: null, banner: null });
+  });
+
   it('lets a round-1 upload fill both places until the background changes', async () => {
     const { handle, state } = createMockBackend();
     const art = (id: string) => handle('instance_art', { id }) as Promise<{ icon: string | null; banner: string | null }>;
