@@ -47,3 +47,21 @@ it('has no back key or shortcut without somewhere to go', async () => {
   render(<ScreenFrame title="Home">{null}</ScreenFrame>);
   expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument();
 });
+
+// A visually hidden radio is `position: absolute`, so it belongs to its nearest positioned ancestor. If that sits
+// outside the scroller, focusing the radio scrolls the shell's `main` instead and drags the whole screen off (#121).
+it('keeps a hidden control positioned inside its scroller, so focusing it scrolls the screen and not the shell', () => {
+  render(
+    <ScreenFrame title="Settings">
+      <label className="seg">
+        <input type="radio" className="sr-only" aria-label="Custom size" />
+        Custom size
+      </label>
+    </ScreenFrame>,
+  );
+  const radio = screen.getByRole('radio', { name: 'Custom size' });
+  const scroller = radio.closest('.overflow-auto');
+  const containingBlock = radio.parentElement?.closest('.relative, .absolute, .fixed, .sticky');
+  expect(scroller).not.toBeNull();
+  expect(containingBlock === scroller || scroller!.contains(containingBlock ?? null)).toBe(true);
+});
