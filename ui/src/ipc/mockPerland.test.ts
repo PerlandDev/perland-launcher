@@ -163,6 +163,21 @@ describe('mock Your servers', () => {
     expect(after.map((c) => c.token)).toEqual(before.map((c) => c.token).filter((t) => t !== followed.token));
   });
 
+  it('forgets an invited or followed server, and leaves an owned one alone', async () => {
+    const b = backend('signedIn');
+    const before = (await page(b))!.servers;
+    const invited = before.find((c) => c.relation === 'invited')!;
+    const followed = before.find((c) => c.relation === 'followed')!;
+    const owner = before.find((c) => c.relation === 'owner')!;
+    await b.handle('your_servers_forget', { invite: invited.invite });
+    await b.handle('your_servers_forget', { invite: followed.invite });
+    await b.handle('your_servers_forget', { invite: owner.invite });
+    const after = (await page(b))!.servers;
+    expect(after.map((c) => c.token)).toEqual(
+      before.map((c) => c.token).filter((t) => t !== invited.token && t !== followed.token),
+    );
+  });
+
   it('records a joined server as invited, once', async () => {
     const b = backend('empty');
     const target = MOCK_PUBLIC_SERVERS.find((p) => p.whitelisted)!;

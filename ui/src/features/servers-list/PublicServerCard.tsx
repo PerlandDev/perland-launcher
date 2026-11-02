@@ -12,8 +12,9 @@ import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { copyText } from '../../ui/copyText';
 import { useOnScreen } from '../../ui/useOnScreen';
-import { Check, Copy, MinusBox, WarningDiamond } from '../../ui/Icon';
+import { Check, Close, Copy, MinusBox, WarningDiamond } from '../../ui/Icon';
 import { Menu, type MenuItem } from '../../ui/Menu';
+import { useNameFit } from '../home/fitName';
 import { cardIconSize, useServerIconSize } from '../join/iconScale';
 import { NewsLine } from '../news/NewsLine';
 import { InviteOnly } from '../servers/InviteOnly';
@@ -22,12 +23,14 @@ import { gameLine, listStatusWord } from './labels';
 import { ServerStatsLine } from './ServerStatsLine';
 
 /** One public server: icon, name, game line, status in words, its latest news, the player's stats there, and Play. Play is
- *  raised at rest and lights only while its card is under the pointer or holds focus, so a grid of cards is never a wall of
- *  amber. Your servers uses it too: `tag` labels an Owner or Invited server, `menu` gives a followed one Unfollow, and
+ *  raised at rest and lights only while the pointer or keyboard focus is on Play itself, so a grid of cards is never a wall of
+ *  amber and reaching for the × or ⋯ key leaves it raised. Your servers uses it too: `tag` labels an Owner or Invited server, `menu` gives a followed one Unfollow, and
  *  `follow` (on by default, as on the public list) makes Play follow the server once it is added. The owner's free server adds
  *  `notes` (warning lines), `menuItems` (after Unfollow), `statusWord` (in place of the list's word) and `onPlay` (in place
  *  of the join). A server the player runs from the launcher passes `primary` (Manage): it takes the key that lights with the
- *  card, and Play stands raised beside it, so the card still lights one button. */
+ *  card, and Play stands raised beside it, so the card still lights one button. `remove` is a quiet ghost × in the head's
+ *  top-right corner (with the ⋯ key under it when there is one): an invited server's asks to take it off Your servers, the free
+ *  server's asks to delete it. */
 export function PublicServerCard({
   card,
   tag,
@@ -38,6 +41,7 @@ export function PublicServerCard({
   statusWord,
   onPlay,
   primary,
+  remove,
 }: {
   card: Card;
   tag?: 'owner' | 'invited';
@@ -48,6 +52,7 @@ export function PublicServerCard({
   statusWord?: string;
   onPlay?: () => Promise<void>;
   primary?: { label: string; onSelect(): void };
+  remove?: { label: string; onSelect(): void; disabled?: boolean };
 }) {
   const { t } = useTranslation();
   const nameId = useId();
@@ -64,7 +69,8 @@ export function PublicServerCard({
   // An Unfollow from this card's menu removes the menu once it goes through (the card stays, on the public list), and
   // focus would fall to the page: it goes to Play, or the name when Play is off. Never taken from where the player moved it.
   const playRef = useRef<HTMLButtonElement>(null);
-  const nameRef = useRef<HTMLHeadingElement>(null);
+  // A one-word name too wide for its column shrinks to the tile's floor before it may break.
+  const nameRef = useNameFit<HTMLHeadingElement>(card.displayName || card.name, TILE_NAME_FLOOR_PX);
   const unfollowing = useRef(false);
   const hasMenu = menu !== undefined;
   useEffect(() => {
@@ -93,7 +99,7 @@ export function PublicServerCard({
   );
   return (
     <article ref={ref} className="server-tile" aria-labelledby={nameId}>
-      <div className="server-tile-head" data-menu={hasItems ? '' : undefined}>
+      <div className="server-tile-head" data-menu={hasItems || remove ? '' : undefined}>
         <span className="server-icon">
           {src ? (
             <img src={src} alt="" style={{ width: size, height: size }} draggable={false} onError={() => setFailed(src)} />
@@ -111,12 +117,20 @@ export function PublicServerCard({
             {tag && <span className="tag">{t(`servers.yours.${tag}`)}</span>}
           </span>
         </div>
-        {hasItems && (
-          <Menu
-            compact
-            label={t('servers.yours.more', { name: card.displayName || card.name })}
-            items={[...(menu ? [{ label: t('servers.yours.unfollow'), icon: <MinusBox />, onSelect: onUnfollow }] : []), ...(menuItems ?? [])]}
-          />
+        {(hasItems || remove) && (
+          // Stacked, × in the corner and ⋯ under it, so two keys take one key's width from the name.
+          <div className="relative flex flex-col items-end">
+            {remove && (
+              <Button size="icon" variant="ghost" aria-label={remove.label} title={remove.label} icon={<Close />} disabled={remove.disabled} onClick={remove.onSelect} />
+            )}
+            {hasItems && (
+              <Menu
+                compact
+                label={t('servers.yours.more', { name: card.displayName || card.name })}
+                items={[...(menu ? [{ label: t('servers.yours.unfollow'), icon: <MinusBox />, onSelect: onUnfollow }] : []), ...(menuItems ?? [])]}
+              />
+            )}
+          </div>
         )}
       </div>
       {notes?.map((note) => (
@@ -146,6 +160,10 @@ export function PublicServerCard({
     </article>
   );
 }
+
+/** 0.8125rem: how small a server tile's 1.25rem name may shrink before a long word breaks after all. At the 960 px
+ *  window with the wide rail a column holds about 130 px, which a 14-letter one-word name ("asalith_fields") needs. */
+const TILE_NAME_FLOOR_PX = 13;
 
 /** Play: add the server (or find the instance that already joins it), start the game with join, open its Home. With `follow`,
  *  a successful add also follows the server, quietly. With `onPlay`, Play runs that instead (it handles its own errors). */

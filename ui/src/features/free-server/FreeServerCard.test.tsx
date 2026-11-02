@@ -134,7 +134,7 @@ describe('FreeServerCard', () => {
     await vi.waitFor(() => expect(sent(calls, 'free_server').length).toBeGreaterThan(0));
     expect(within(section).queryByRole('heading', { name: 'Weekend SMP' })).toBeNull();
     expect(within(section).queryByRole('button', { name: ENTRY })).toBeNull();
-    expect(screen.queryByRole('menuitem', { name: 'Delete server' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete Weekend SMP' })).toBeNull();
   });
 
   it('shows the card in Spanish', async () => {

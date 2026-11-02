@@ -10,8 +10,7 @@ const cardIn = async (section: HTMLElement, name: string) => (await within(secti
 
 const openDelete = async (user: ReturnType<typeof renderApp>['user']) => {
   const card = await cardIn(await yours(), 'Weekend SMP');
-  await user.click(within(card).getByRole('button', { name: 'More for Weekend SMP' }));
-  await user.click(screen.getByRole('menuitem', { name: 'Delete server' }));
+  await user.click(within(card).getByRole('button', { name: 'Delete Weekend SMP' }));
   return screen.getByRole('dialog', { name: 'Delete Weekend SMP?' });
 };
 
@@ -82,8 +81,7 @@ describe('DeleteServerDialog', () => {
     await i18n.changeLanguage('es');
     const { user } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has' });
     const card = await cardIn(await screen.findByRole('region', { name: 'Tus servidores' }), 'Weekend SMP');
-    await user.click(within(card).getByRole('button', { name: 'Más opciones para Weekend SMP' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Eliminar servidor' }));
+    await user.click(within(card).getByRole('button', { name: 'Eliminar Weekend SMP' }));
     const dialog = screen.getByRole('dialog', { name: '¿Eliminar Weekend SMP?' });
     expect(within(dialog).getByText('El mundo también se elimina. Después puedes crear un servidor nuevo.')).toBeInTheDocument();
   });

@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { nameFit } from './fitName';
 
 describe('nameFit', () => {
+  it('takes a smaller floor for a server tile', () => {
+    // A tile name at 20px shrinks to 15px before a word may break.
+    expect(nameFit({ available: 149, needed: 190, fontSize: 20, floorPx: 15 })).toEqual({ scale: 0.7789, floor: false });
+    expect(nameFit({ available: 101, needed: 190, fontSize: 20, floorPx: 15 })).toEqual({ scale: 0.75, floor: true });
+  });
+
   it('leaves a name whose longest word fits at full size', () => {
     expect(nameFit({ available: 300, needed: 300, fontSize: 46 })).toEqual({ scale: 1, floor: false });
     expect(nameFit({ available: 300, needed: 120, fontSize: 46 })).toEqual({ scale: 1, floor: false });

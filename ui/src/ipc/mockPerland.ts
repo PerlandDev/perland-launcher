@@ -298,6 +298,13 @@ export async function handlePerland(
       if (entry?.relation === 'followed') perland.servers = perland.servers.filter((c) => c !== entry);
       return null;
     }
+    case 'your_servers_forget': {
+      if (!on || !perland.account) return null;
+      const entry = find(perland, args.invite);
+      // The Engine drops the join and the follow; an owner's server stays.
+      if (entry && entry.relation !== 'owner') perland.servers = perland.servers.filter((c) => c !== entry);
+      return null;
+    }
     case 'your_servers_joined': {
       if (!on || !perland.account) return null;
       const known = publicCard(args.invite);

@@ -585,6 +585,30 @@ impl PlayerClient {
             .await
     }
 
+    /// `POST /servers/forget`: take an invited (or followed) server off Your servers. The
+    /// Engine's own 404 (an unknown or disabled invite) means there is nothing to forget; an
+    /// Engine without the route answers Gin's plain-text 404 instead, `forget_unsupported`.
+    pub async fn forget(&self, token: &str, invite_token: &str) -> Result<()> {
+        let body = json!({ "token": invite_token });
+        let reply = self
+            .send(
+                Method::POST,
+                "/servers/forget",
+                Some(token),
+                Some(&body),
+                BODY_CAP,
+            )
+            .await?;
+        if reply.status == 404 {
+            return if serde_json::from_slice::<Value>(&reply.body).is_ok_and(|v| v.is_object()) {
+                Ok(())
+            } else {
+                Err(forget_unsupported(&self.host()))
+            };
+        }
+        self.ok(&reply, Route::Servers)
+    }
+
     /// `GET /free-server`. An Engine without free servers (503 `free_servers_disabled`, or a
     /// 404) is `None`, so nothing of them shows.
     pub async fn free_server(&self, token: &str) -> Result<Option<FreeServerState>> {
@@ -941,6 +965,14 @@ pub(super) fn signed_out(host: &str) -> LauncherError {
     LauncherError::auth(
         ErrorCode::PerlandSignedOut,
         "You were signed out of Perland.",
+    )
+    .with_param("host", host)
+}
+
+fn forget_unsupported(host: &str) -> LauncherError {
+    LauncherError::network(
+        ErrorCode::ForgetUnsupported,
+        "This Perland can't remove servers from your list yet.",
     )
     .with_param("host", host)
 }

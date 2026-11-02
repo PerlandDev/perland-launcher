@@ -144,6 +144,7 @@
   "too_many_player_servers",
   "minecraft_link_closed",
   "account_disabled",
+  "forget_unsupported",
   "email_required",
   "free_server_exists",
   "too_many_free_servers",

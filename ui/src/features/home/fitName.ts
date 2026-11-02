@@ -1,24 +1,34 @@
 import { useLayoutEffect, useRef } from 'react';
 
 /** The smallest the marquee name may shrink to before a word may break after all: 1.125rem, the smallest
- *  Bungee step in the system (a Browse row name). */
+ *  Bungee step in the system (a Browse row name). A server tile's name passes its own, smaller floor. */
 const FLOOR_PX = 18;
 
 /** How far to scale the name's type so its longest word fits on one line: `needed` is the width that word
  *  takes at full size (the box's scroll width), `available` the box's width. Below the 1.125rem floor the word
  *  may break (`floor`), since a 64-letter name with no spaces has to fit somewhere. */
-export function nameFit({ available, needed, fontSize }: { available: number; needed: number; fontSize: number }) {
+export function nameFit({
+  available,
+  needed,
+  fontSize,
+  floorPx = FLOOR_PX,
+}: {
+  available: number;
+  needed: number;
+  fontSize: number;
+  floorPx?: number;
+}) {
   if (available <= 0 || needed <= available) return { scale: 1, floor: false };
   // A pixel to spare: the widths are rounded, and a word a fraction over would still wrap a letter.
   const scale = Math.floor(((available - 1) / needed) * 10000) / 10000;
-  const least = fontSize > 0 ? Math.min(1, FLOOR_PX / fontSize) : 0;
+  const least = fontSize > 0 ? Math.min(1, floorPx / fontSize) : 0;
   return scale < least ? { scale: least, floor: true } : { scale, floor: false };
 }
 
 /** Keeps the marquee name whole: it wraps only between words, and a word too wide for the column shrinks
  *  the type (`--name-fit`) instead of losing its last letters to a new line. It re-fits when the column's
  *  width, the name or the loaded fonts change. */
-export function useNameFit<T extends HTMLElement>(name: string) {
+export function useNameFit<T extends HTMLElement>(name: string, floorPx = FLOOR_PX) {
   const ref = useRef<T>(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -31,6 +41,7 @@ export function useNameFit<T extends HTMLElement>(name: string) {
         available: el.clientWidth,
         needed: el.scrollWidth,
         fontSize: parseFloat(getComputedStyle(el).fontSize),
+        floorPx,
       });
       if (scale < 1) el.style.setProperty('--name-fit', String(scale));
       if (floor) el.dataset.fit = 'floor';
@@ -52,6 +63,6 @@ export function useNameFit<T extends HTMLElement>(name: string) {
       live = false;
       observer.disconnect();
     };
-  }, [name]);
+  }, [name, floorPx]);
   return ref;
 }

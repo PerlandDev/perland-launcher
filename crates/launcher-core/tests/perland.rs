@@ -496,6 +496,80 @@ async fn joined_404_is_ok() {
 }
 
 #[tokio::test]
+async fn forget_posts_the_invite_token() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(route("/servers/forget")))
+        .and(header(
+            "authorization",
+            format!("Bearer {}", token()).as_str(),
+        ))
+        .and(body_json(json!({ "token": invite_token() })))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(envelope(json!({ "forgotten": true }))),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    client(&server)
+        .forget(&token(), &invite_token())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn forget_of_a_server_the_engine_doesnt_know_is_ok() {
+    // The Engine's own 404 (an unknown or disabled invite) is enveloped: nothing is left to forget.
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "POST",
+        "/servers/forget",
+        404,
+        json!({ "success": false, "data": null, "error": "not found", "meta": { "requestId": "r" } }),
+    )
+    .await;
+    client(&server)
+        .forget(&token(), &invite_token())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn forget_on_an_engine_without_the_route_is_forget_unsupported() {
+    // An older Engine has no such route: Gin answers its plain-text 404.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path(route("/servers/forget")))
+        .respond_with(ResponseTemplate::new(404).set_body_string("404 page not found"))
+        .mount(&server)
+        .await;
+    let e = client(&server)
+        .forget(&token(), &invite_token())
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::ForgetUnsupported);
+}
+
+#[tokio::test]
+async fn forget_reports_a_refusal() {
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "POST",
+        "/servers/forget",
+        503,
+        failure("player_servers_unavailable", json!({})),
+    )
+    .await;
+    let e = client(&server)
+        .forget(&token(), &invite_token())
+        .await
+        .unwrap_err();
+    assert_eq!(e.code, ErrorCode::PlayerServersClosed);
+}
+
+#[tokio::test]
 async fn follow_409_too_many() {
     let server = MockServer::start().await;
     answer(

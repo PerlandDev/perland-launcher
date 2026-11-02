@@ -90,7 +90,7 @@ error_codes! {
     // Perland account
     PlayerAccountsClosed, SignInUnavailable, SignInFailed, SignInTimedOut, InvalidEmail,
     InvalidCode, TooManyCodes, EmailUnavailable, PerlandSignedOut, PlayerServersClosed,
-    TooManyPlayerServers, MinecraftLinkClosed, AccountDisabled,
+    TooManyPlayerServers, MinecraftLinkClosed, AccountDisabled, ForgetUnsupported,
     // free servers
     EmailRequired, FreeServerExists, TooManyFreeServers, FreeServersFull, InvalidFreeServer,
     ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk, HostFull, FreeServersPaused,
@@ -345,6 +345,7 @@ mod tests {
             (ErrorCode::PerlandSignedOut, "perland_signed_out"),
             (ErrorCode::PlayerServersClosed, "player_servers_closed"),
             (ErrorCode::TooManyPlayerServers, "too_many_player_servers"),
+            (ErrorCode::ForgetUnsupported, "forget_unsupported"),
             (ErrorCode::MinecraftLinkClosed, "minecraft_link_closed"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);

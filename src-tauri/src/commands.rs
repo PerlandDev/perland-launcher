@@ -693,6 +693,14 @@ pub async fn your_servers_unfollow(core: CoreState<'_>, invite: String) -> Res<(
     )
 }
 
+#[tauri::command]
+pub async fn your_servers_forget(core: CoreState<'_>, invite: String) -> Res<()> {
+    logged(
+        "your_servers_forget",
+        core.your_servers_forget(&invite).await,
+    )
+}
+
 /// Fire and forget: never fails.
 #[tauri::command]
 pub async fn your_servers_joined(core: CoreState<'_>, invite: String) -> Res<()> {
