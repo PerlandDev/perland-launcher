@@ -259,10 +259,15 @@ function uploadUrl(path: string): string | null {
   return `data:image/${ext === 'jpg' ? 'jpeg' : ext};base64,${TINY_PNG}`;
 }
 
+/** Every id-keyed map of mock state: what lives in an instance's folder or is recorded for it. */
+function idMaps(state: MockState): Map<string, unknown>[] {
+  return [state.mods, state.packs, state.custom, state.customIcon, state.screenshots, state.browse.installed, state.playtime, state.lastPlayed, state.continueTargets] as Map<string, unknown>[];
+}
+
 /** Move every id-keyed piece of mock state to a renamed instance's new id. */
 function moveId(state: MockState, from: string, to: string) {
   state.order = state.order.map((id) => (id === from ? to : id));
-  for (const map of [state.mods, state.packs, state.custom, state.customIcon, state.screenshots, state.browse.installed, state.playtime, state.lastPlayed, state.continueTargets] as Map<string, unknown>[]) {
+  for (const map of idMaps(state)) {
     if (map.has(from)) {
       map.set(to, map.get(from));
       map.delete(from);
@@ -952,13 +957,15 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.listing.instances = state.listing.instances.map((i) => (i.id === target.id ? renamed : i));
       return renamed;
     }
-    case 'instance_delete':
-      state.listing.instances = state.listing.instances.filter((i) => i.id !== args.id);
-      state.listing.damaged = state.listing.damaged.filter((d) => d.id !== args.id);
-      state.playtime.delete(String(args.id));
-      state.continueTargets.delete(String(args.id));
-      state.lastPlayed.delete(String(args.id));
+    case 'instance_delete': {
+      const id = String(args.id);
+      state.listing.instances = state.listing.instances.filter((i) => i.id !== id);
+      state.listing.damaged = state.listing.damaged.filter((d) => d.id !== id);
+      // Like the core, which removes the whole folder: its pictures, files and records go with it.
+      for (const map of idMaps(state)) map.delete(id);
+      for (const key of [...state.content.keys()]) if (key.startsWith(`${id}:`)) state.content.delete(key);
       return null;
+    }
     case 'import_inspect':
       return {
         path: args.path as string,

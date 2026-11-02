@@ -561,8 +561,7 @@ export function useRenameInstance(opts: Opts = {}) {
         const next = routeFollowing(routeSnapshot(), id, renamed.id);
         if (next) navigate(next);
         else if (lastInstance() === id) rememberInstance(renamed.id);
-        void qc.invalidateQueries({ queryKey: qk.instanceArt(id) });
-        void qc.invalidateQueries({ queryKey: qk.serverStatus(id) });
+        forgetInstance(qc, id);
         void qc.invalidateQueries({ queryKey: qk.playtime });
       }
       return qc.invalidateQueries({ queryKey: qk.instances });
@@ -665,11 +664,38 @@ export function useReorderInstances(opts: Opts = {}) {
   });
 }
 
+/** Query keys that hold one instance's id, by their leading parts; the id follows them. Kept forever
+ *  (`staleTime: Infinity`) in places, so they must go when the id stops naming that instance. */
+const PER_INSTANCE: readonly (readonly string[])[] = [
+  ['continue'],
+  ['mods'],
+  ['content'],
+  ['pack', 'status'],
+  ['pack', 'contents'],
+  ['pack', 'manual'],
+  ['restore'],
+  ['instance', 'art'],
+  ['instance', 'screenshots'],
+  ['browse', 'installed'],
+  ['modIcon'],
+  ['server', 'status'],
+];
+
+/** Drop every cached query of instance `id`. A deleted instance's id (or a renamed one's old id) is
+ *  the next same-named instance's id, which would otherwise show the old instance's icon and files. */
+export function forgetInstance(qc: QueryClient, id: string) {
+  qc.removeQueries({
+    predicate: ({ queryKey }) =>
+      PER_INSTANCE.some((prefix) => prefix.every((part, i) => queryKey[i] === part) && queryKey[prefix.length] === id),
+  });
+}
+
 export function useDeleteInstance(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => commands.instanceDelete(id),
-    onSuccess: () => {
+    onSuccess: (_, id) => {
+      forgetInstance(qc, id);
       // The instance's time goes with it, so the Accounts total drops too.
       void qc.invalidateQueries({ queryKey: qk.playtime });
       return qc.invalidateQueries({ queryKey: qk.instances });
