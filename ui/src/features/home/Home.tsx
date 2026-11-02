@@ -143,6 +143,18 @@ function InstanceView({ instance }: { instance: Instance }) {
           </Button>
           <Menu ref={menu} label={t('home.more')} items={actions.items} />
           <div className="grid justify-items-end gap-3">
+            {/* Why Play is off heads the column (#116): it reads before the keys it explains, and Play's foot lines up
+                with the row beside it. Up here it lands on the art, so it rides a laminate plate, like the invite-only
+                line, and the art never decides its contrast. */}
+            {!hasAccount && accounts.isSuccess && (
+              <button
+                type="button"
+                className="marquee-plate text-sm text-blue-ink underline underline-offset-4"
+                onClick={() => (offlineAllowed ? navigate({ name: 'accounts' }) : openSignInPrompt())}
+              >
+                {noAccount}
+              </button>
+            )}
             {/* Secondary, above Play and right-aligned to it: one quiet way back to where the player was. */}
             {run.state === 'idle' && <ContinueKey id={instance.id} disabled={!hasAccount} disabledReason={noAccount} once={playOnce} />}
             <PlayButton
@@ -153,15 +165,6 @@ function InstanceView({ instance }: { instance: Instance }) {
               onPlay={() => playOnce((done) => void commands.play(instance.id).catch(pushError).finally(done))}
               onStop={() => void commands.stop(instance.id).catch(pushError)}
             />
-            {!hasAccount && accounts.isSuccess && (
-              <button
-                type="button"
-                className="text-sm text-blue-ink underline underline-offset-4"
-                onClick={() => (offlineAllowed ? navigate({ name: 'accounts' }) : openSignInPrompt())}
-              >
-                {noAccount}
-              </button>
-            )}
           </div>
         </div>
       </div>

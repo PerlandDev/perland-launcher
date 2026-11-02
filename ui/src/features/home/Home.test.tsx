@@ -79,8 +79,12 @@ describe('Home', () => {
     const { backend, user } = renderApp(<Home id="creative-flat" />);
     backend.state.accounts.active = null;
     await screen.findByRole('heading', { name: 'Creative Flat' });
-    expect(screen.getByRole('button', { name: 'Play' })).toBeDisabled();
-    await user.click(await screen.findByRole('button', { name: 'Add an account to play' }));
+    const play = screen.getByRole('button', { name: 'Play' });
+    expect(play).toBeDisabled();
+    const link = await screen.findByRole('button', { name: 'Add an account to play' });
+    // Read before Play, the way it sits on screen: above it (#116).
+    expect(link.compareDocumentPosition(play) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(link);
     expect(routeSnapshot()).toEqual({ name: 'accounts' });
     expect(signInPromptSnapshot()).toBe(false);
   });
@@ -842,5 +846,15 @@ describe('Continue', () => {
     const key = await screen.findByRole('button', { name: 'Continue: Asalith Fields' });
     expect(key).toBeDisabled();
     expect(key).toHaveAttribute('title', 'Add an account to play');
+  });
+
+  it('puts the sign-in link above the key and Play (#116)', async () => {
+    const { backend } = renderApp(<Home id="asalith-fields" />, { beta: true });
+    backend.state.accounts.active = null;
+    const key = await screen.findByRole('button', { name: 'Continue: Asalith Fields' });
+    const link = await screen.findByRole('button', { name: 'Sign in to play' });
+    const play = screen.getByRole('button', { name: 'Play' });
+    expect(link.compareDocumentPosition(key) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(key.compareDocumentPosition(play) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
