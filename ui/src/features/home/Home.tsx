@@ -11,7 +11,7 @@ import { useRun } from '../../state/runStore';
 import { openSignInPrompt } from '../../state/signInPrompt';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
-import { Package } from '../../ui/Icon';
+import { Login, Package, UserPlus } from '../../ui/Icon';
 import { Menu, type MenuHandle } from '../../ui/Menu';
 import { PlayButton } from '../../ui/PlayButton';
 import { formatPlaytime } from '../../ui/playtime';
@@ -144,16 +144,15 @@ function InstanceView({ instance }: { instance: Instance }) {
           <Menu ref={menu} label={t('home.more')} items={actions.items} />
           <div className="grid justify-items-end gap-3">
             {/* Why Play is off heads the column (#116): it reads before the keys it explains, and Play's foot lines up
-                with the row beside it. Up here it lands on the art, so it rides a laminate plate, like the invite-only
-                line, and the art never decides its contrast. */}
+                with the row beside it. A raised key like Continue, never lit, led by a pixel door (sign in) or a pixel
+                user-plus (dev builds: add an account). */}
             {!hasAccount && accounts.isSuccess && (
-              <button
-                type="button"
-                className="marquee-plate text-sm text-blue-ink underline underline-offset-4"
+              <Button
+                icon={offlineAllowed ? <UserPlus aria-hidden /> : <Login aria-hidden />}
                 onClick={() => (offlineAllowed ? navigate({ name: 'accounts' }) : openSignInPrompt())}
               >
                 {noAccount}
-              </button>
+              </Button>
             )}
             {/* Secondary, above Play and right-aligned to it: one quiet way back to where the player was. */}
             {run.state === 'idle' && <ContinueKey id={instance.id} disabled={!hasAccount} disabledReason={noAccount} once={playOnce} />}

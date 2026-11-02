@@ -857,4 +857,13 @@ describe('Continue', () => {
     expect(link.compareDocumentPosition(key) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(key.compareDocumentPosition(play) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it('makes sign-in a raised key like Continue, never lit, led by a decorative icon (#116)', async () => {
+    const { backend } = renderApp(<Home id="asalith-fields" />, { beta: true });
+    backend.state.accounts.active = null;
+    const key = await screen.findByRole('button', { name: 'Sign in to play' });
+    expect(key).toHaveClass('btn');
+    expect(key).not.toHaveClass('btn-primary');
+    expect(key.querySelector('svg')).toHaveAttribute('aria-hidden');
+  });
 });
