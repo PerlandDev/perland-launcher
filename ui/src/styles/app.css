@@ -610,6 +610,15 @@
   .field-input::placeholder {
     color: var(--color-ink-dim);
   }
+  /* A number is typed, not stepped: the browser's spin arrows belong to no part of the system. */
+  .field-input[type='number'] {
+    appearance: textfield;
+  }
+  .field-input[type='number']::-webkit-inner-spin-button,
+  .field-input[type='number']::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
   /* A locked choice: a flat panel face with a line ring, like a disabled key, so it reads as set, not as a field to fill. */
   .field-input:disabled {
     color: var(--color-ink-dim);

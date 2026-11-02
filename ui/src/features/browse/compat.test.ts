@@ -10,6 +10,7 @@ const instance = (minecraft: string, loader: Instance['game']['loader']): Instan
   updatePolicy: 'ask',
   optionalChoices: {},
   java: { path: null, memoryMb: 4096, args: '' },
+  window: { mode: 'default' },
   server: null,
   artSeed: null,
   art: 'auto',

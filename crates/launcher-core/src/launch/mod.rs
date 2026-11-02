@@ -26,7 +26,7 @@ use crate::{
     events::{Event, EventSink},
     fsutil::write_atomic,
     install::{classpath, ResolvedVersion},
-    instances::ServerAddress,
+    instances::{GameWindow, ServerAddress},
     meta::{
         mojang::{ArgValue, VersionJson, LEGACY_JVM_ARGS},
         rules::{resolve_args, RuleContext},
@@ -54,6 +54,8 @@ pub struct LaunchSpec<'a> {
     /// Open this world (a folder under `saves/`) once the game starts: quick play only. A
     /// version without it refuses, rather than open the title screen as if nothing was asked.
     pub world: Option<&'a str>,
+    /// How the window opens; see [`supports_window`] for the versions that read it.
+    pub window: GameWindow,
 }
 
 #[derive(Clone)]
@@ -189,6 +191,21 @@ pub const QUICK_PLAY_MULTIPLAYER: &str = "is_quick_play_multiplayer";
 /// The feature a version JSON declares when it takes `--quickPlaySingleplayer` (1.20 and later).
 pub const QUICK_PLAY_SINGLEPLAYER: &str = "is_quick_play_singleplayer";
 
+/// The feature a version JSON declares for `--width`/`--height` (1.13 and later).
+pub const CUSTOM_RESOLUTION: &str = "has_custom_resolution";
+
+/// Does the game read `--width`, `--height` and `--fullscreen`? Every version from 1.6 does:
+/// those start in `net.minecraft.client.main.Main`, with named options (`--username` …), directly
+/// or through a loader that hands the options on. Older ones start through an applet wrapper
+/// that takes its arguments by position and opens at its own size.
+pub fn supports_window(json: &VersionJson) -> bool {
+    match (&json.arguments, &json.minecraft_arguments) {
+        (Some(a), _) if !a.game.is_empty() => true,
+        (_, Some(legacy)) => legacy.split_whitespace().any(|t| t == "--username"),
+        _ => false,
+    }
+}
+
 /// Does the version (with its loader merged in) declare `feature` in a game-argument rule?
 pub fn declares_feature(json: &VersionJson, feature: &str) -> bool {
     json.arguments.as_ref().is_some_and(|a| {
@@ -218,6 +235,17 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
     }
     if spec.world.is_some() {
         ctx = ctx.with_feature(QUICK_PLAY_SINGLEPLAYER);
+    }
+    // The size goes through the version's own `--width`/`--height` where it declares them, and
+    // is added after the game arguments otherwise (1.6–1.12, or a JSON without the rule).
+    let window = if supports_window(json) {
+        spec.window
+    } else {
+        GameWindow::Default
+    };
+    let resolution_rule = declares_feature(json, CUSTOM_RESOLUTION);
+    if let (GameWindow::Size { .. }, true) = (window, resolution_rule) {
+        ctx = ctx.with_feature(CUSTOM_RESOLUTION);
     }
     let classpath = classpath(spec.resolved, spec.dirs, &ctx)?;
     let cp_string = classpath
@@ -272,6 +300,10 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
     if let Some(world) = spec.world {
         vars.insert("quickPlaySingleplayer", world.to_string());
     }
+    if let GameWindow::Size { width, height } = window {
+        vars.insert("resolution_width", width.to_string());
+        vars.insert("resolution_height", height.to_string());
+    }
 
     // The player's arguments come before the version's, so when a property repeats, the
     // launcher's own (library path, brand, log4j) is the last and wins.
@@ -313,6 +345,16 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
             "--port".to_string(),
             address.port.to_string(),
         ]);
+    }
+    match window {
+        GameWindow::Size { width, height } if !resolution_rule => args.extend([
+            "--width".to_string(),
+            width.to_string(),
+            "--height".to_string(),
+            height.to_string(),
+        ]),
+        GameWindow::Fullscreen => args.push("--fullscreen".to_string()),
+        _ => {}
     }
     Ok(LaunchCommand {
         program: spec.java.to_path_buf(),
@@ -708,7 +750,7 @@ mod tests {
     use super::*;
     use crate::{
         accounts::offline_account,
-        instances::ServerAddress,
+        instances::{GameWindow, ServerAddress},
         meta::{merge::merge, mojang::ArgValue},
         test_support::{forge_resolved, version, LINUX_X64, WINDOWS_X64},
     };
@@ -745,8 +787,136 @@ mod tests {
             launcher_version: "0.1.0",
             join,
             world: None,
+            window: GameWindow::Default,
         })
         .unwrap()
+    }
+
+    fn build_window(resolved: &ResolvedVersion, window: GameWindow) -> Vec<String> {
+        let dirs = LauncherDirs::new("/pl");
+        let session = offline_account("Steve").unwrap().offline_session();
+        build_command(&LaunchSpec {
+            dirs: &dirs,
+            resolved,
+            game_dir: Path::new("/pl/instances/x/minecraft"),
+            java: Path::new("/pl/java/x/bin/java"),
+            session: &session,
+            memory_mb: 4096,
+            jvm_args: Vec::new(),
+            platform: LINUX_X64,
+            launcher_version: "0.1.0",
+            join: None,
+            world: None,
+            window,
+        })
+        .unwrap()
+        .args
+    }
+
+    /// The game arguments: everything after the main class.
+    fn game_args(resolved: &ResolvedVersion, window: GameWindow) -> Vec<String> {
+        let args = build_window(resolved, window);
+        let main = args
+            .iter()
+            .position(|a| *a == resolved.json.main_class)
+            .unwrap();
+        args[main + 1..].to_vec()
+    }
+
+    const HD: GameWindow = GameWindow::Size {
+        width: 1920,
+        height: 1080,
+    };
+
+    #[test]
+    fn the_default_window_adds_nothing() {
+        for resolved in [
+            vanilla("1.20.1.json", "1.20.1"),
+            vanilla("1.12.2.json", "1.12.2"),
+        ] {
+            let args = game_args(&resolved, GameWindow::Default);
+            for flag in ["--width", "--height", "--fullscreen"] {
+                assert!(!args.iter().any(|a| a == flag), "{flag}");
+            }
+            assert!(!args.iter().any(|a| a.contains("${")), "{args:?}");
+        }
+    }
+
+    #[test]
+    fn a_window_size_goes_through_the_versions_own_resolution_arguments() {
+        let args = game_args(&vanilla("1.20.1.json", "1.20.1"), HD);
+        assert_eq!(arg_after(&args, "--width"), "1920");
+        assert_eq!(arg_after(&args, "--height"), "1080");
+        assert_eq!(args.iter().filter(|a| *a == "--width").count(), 1);
+        assert!(!args.iter().any(|a| a == "--fullscreen"));
+    }
+
+    #[test]
+    fn a_modern_version_without_the_resolution_feature_still_gets_the_size() {
+        let mut resolved = vanilla("1.20.1.json", "1.20.1");
+        resolved.json.arguments.as_mut().unwrap().game.retain(|arg| {
+            !matches!(arg, ArgValue::Conditional { rules, .. }
+                if rules.iter().any(|r| r.features.as_ref().is_some_and(|f| f.contains_key(CUSTOM_RESOLUTION))))
+        });
+        let args = game_args(&resolved, HD);
+        assert_eq!(arg_after(&args, "--width"), "1920");
+        assert_eq!(arg_after(&args, "--height"), "1080");
+    }
+
+    #[test]
+    fn fullscreen_opens_the_game_full_screen() {
+        for resolved in [
+            vanilla("1.20.1.json", "1.20.1"),
+            vanilla("1.12.2.json", "1.12.2"),
+        ] {
+            let args = game_args(&resolved, GameWindow::Fullscreen);
+            assert_eq!(args.iter().filter(|a| *a == "--fullscreen").count(), 1);
+            assert!(!args.iter().any(|a| a == "--width"));
+        }
+    }
+
+    #[test]
+    fn legacy_versions_from_1_6_take_the_size_flags() {
+        let args = game_args(&vanilla("1.12.2.json", "1.12.2"), HD);
+        assert_eq!(arg_after(&args, "--width"), "1920");
+        assert_eq!(arg_after(&args, "--height"), "1080");
+    }
+
+    #[test]
+    fn forge_takes_the_size_too() {
+        let modern = game_args(&forge_resolved(), HD);
+        assert_eq!(arg_after(&modern, "--width"), "1920");
+        // 1.12.2 Forge starts through launchwrapper, which hands the flags on to the game.
+        let launchwrapper = ResolvedVersion {
+            vanilla_id: "1.12.2".into(),
+            json: merge(
+                version("1.12.2.json"),
+                version("forge-1.12.2-14.23.5.2860-version.json"),
+            ),
+            forge: None,
+        };
+        let legacy = game_args(&launchwrapper, HD);
+        assert_eq!(arg_after(&legacy, "--width"), "1920");
+        assert_eq!(arg_after(&legacy, "--height"), "1080");
+    }
+
+    #[test]
+    fn versions_before_1_6_open_at_their_own_size() {
+        // 1.5.2 and older start through an applet wrapper that reads no options.
+        let mut resolved = vanilla("1.12.2.json", "1.12.2");
+        resolved.json.minecraft_arguments = Some(
+            "${auth_player_name} ${auth_session} --gameDir ${game_directory} --assetsDir ${game_assets}"
+                .into(),
+        );
+        assert!(!supports_window(&resolved.json));
+        for window in [HD, GameWindow::Fullscreen] {
+            let args = game_args(&resolved, window);
+            for flag in ["--width", "--height", "--fullscreen"] {
+                assert!(!args.iter().any(|a| a == flag), "{flag}");
+            }
+        }
+        assert!(supports_window(&vanilla("1.12.2.json", "1.12.2").json));
+        assert!(supports_window(&vanilla("1.20.1.json", "1.20.1").json));
     }
 
     fn server() -> ServerAddress {
@@ -768,6 +938,7 @@ mod tests {
             launcher_version: "0.1.0",
             join: None,
             world: Some(world),
+            window: GameWindow::Default,
         })
     }
 
@@ -789,6 +960,7 @@ mod tests {
                 launcher_version: "0.1.0",
                 join: None,
                 world: None,
+                window: GameWindow::Default,
             })
             .unwrap()
         };

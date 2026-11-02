@@ -104,6 +104,7 @@ pub fn command(spec: &StartSpec) -> Result<LaunchCommand> {
         launcher_version: spec.launcher_version,
         join: spec.join,
         world: spec.world,
+        window: spec.instance.window,
     })
 }
 

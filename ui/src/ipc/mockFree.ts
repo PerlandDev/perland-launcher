@@ -70,6 +70,7 @@ const modpack = (id: string, name: string, source: { projectId: string; versionI
   updatePolicy: 'ask',
   optionalChoices: {},
   java: { path: null, memoryMb: 6144, args: '' },
+  window: { mode: 'default' },
   server: null,
   artSeed: null,
   art: 'auto',
