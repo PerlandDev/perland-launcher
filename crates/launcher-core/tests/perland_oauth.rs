@@ -51,12 +51,18 @@ fn param<'a>(e: &'a LauncherError, key: &str) -> Option<&'a str> {
     e.params.get(key).map(String::as_str)
 }
 
-/// The error leaks none of the request's secrets.
+/// The error leaks none of the request's credentials. A failure names which marker leaked
+/// (by position) and never prints the error, so a leak is not repeated in the test output.
 fn clean(e: &LauncherError) {
     let shown = format!("{e:?}");
-    for secret in ["the-code", "the-verifier", "plt_"] {
-        assert!(!shown.contains(secret), "{secret} in {shown}");
-    }
+    let markers = ["the-code", "the-verifier", "plt_"];
+    let leaked: Vec<usize> = (0..markers.len())
+        .filter(|&i| shown.contains(markers[i]))
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "credential markers {leaked:?} appear in the error"
+    );
 }
 
 #[tokio::test]
