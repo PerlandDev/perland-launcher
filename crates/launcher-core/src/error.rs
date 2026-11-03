@@ -91,6 +91,7 @@ error_codes! {
     PlayerAccountsClosed, SignInUnavailable, SignInFailed, SignInTimedOut, InvalidEmail,
     InvalidCode, TooManyCodes, EmailUnavailable, PerlandSignedOut, PlayerServersClosed,
     TooManyPlayerServers, MinecraftLinkClosed, AccountDisabled, ForgetUnsupported,
+    SignInExpired, SignInClientRefused, SignInIncompatible, SignInCanceled,
     // free servers
     EmailRequired, FreeServerExists, TooManyFreeServers, FreeServersFull, InvalidFreeServer,
     ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk, HostFull, FreeServersPaused,

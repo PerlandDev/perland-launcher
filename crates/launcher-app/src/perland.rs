@@ -3,6 +3,13 @@
 //! credential store only on the first Perland command, never at start, so a player who never
 //! opens Accounts or Servers never touches it. Every later player call goes to the session's own
 //! Engine. Nothing here logs a token, an email code, the PKCE verifier or an authorization code.
+//!
+//! Signing in: when the Engine answers OAuth discovery, the one way in is the Perland page in
+//! the browser (`perland_sign_in`: authorization code + S256 PKCE as Perland Launcher's
+//! first-party client, back to a loopback redirect); the page offers GitHub, Discord and the
+//! email code itself. An Engine without discovery (an older or a self-hosted install without
+//! a panel) keeps the older routes (Discord, the email code, the panel's GitHub page) for as
+//! long as it has them.
 use std::{
     sync::Mutex,
     time::{Duration, Instant},
@@ -12,10 +19,12 @@ use launcher_core::{
     http::HttpClient,
     invite::{InviteClient, InviteLink, Url},
     perland::{
-        authorize_url, launcher_sign_in_url, Callback, CreateFreeServer, EmailStarted, FreeServer,
-        FreeServerSettings, FreeServerState, Language, LinkCode, Loopback, Page, Pkce, Player,
-        PlayerClient, PlayerConfig, PlayerStats, Profile, Session, SignInMethod, TokenAnswer,
-        YourServer,
+        authorize_url, launcher_sign_in_url,
+        oauth::{self, CLIENT_ID},
+        oauth_authorize_url, Callback, CreateFreeServer, Discovery, EmailStarted, FreeServer,
+        FreeServerSettings, FreeServerState, Language, LinkCode, Loopback, OAuthClient, Page, Pkce,
+        Player, PlayerClient, PlayerConfig, PlayerStats, Profile, Session, SignInMethod,
+        TokenAnswer, YourServer,
     },
     ErrorCode, LauncherError, Result,
 };
@@ -30,7 +39,7 @@ use crate::{
 
 /// The marker file under the data root that says a session exists (spec §5, Token storage).
 pub const ACCOUNT_MARKER: &str = "perland-account.json";
-/// How long a Discord sign-in waits for the browser: the Engine forgets its state after that.
+/// How long a sign-in in the browser waits for the player to come back.
 pub const SIGN_IN_DEADLINE: Duration = Duration::from_secs(10 * 60);
 /// `GET /me` is asked at most this often.
 pub const ME_EVERY: Duration = Duration::from_secs(60);
@@ -45,6 +54,18 @@ pub trait PlayerApi: Send + Sync + 'static {
     /// The Engine an invite's site names, found the way the invite flow finds it.
     fn engine_for(&self, link: InviteLink) -> BoxFuture<Result<Url>>;
     fn config(&self, engine: Url) -> BoxFuture<Result<PlayerConfig>>;
+    /// RFC 8414 discovery; `None` on an Engine without the OAuth sign-in.
+    fn discover(&self, engine: Url) -> BoxFuture<Result<Option<Discovery>>>;
+    /// Redeem an OAuth code at `POST /api/v1/oauth/token`.
+    fn oauth_token(
+        &self,
+        engine: Url,
+        code: String,
+        verifier: String,
+        redirect: String,
+    ) -> BoxFuture<Result<TokenAnswer>>;
+    /// End an OAuth session at `POST /api/v1/oauth/revoke`.
+    fn revoke(&self, engine: Url, token: String) -> BoxFuture<Result<()>>;
     fn token(
         &self,
         engine: Url,
@@ -119,6 +140,10 @@ impl CorePlayer {
     fn client(&self, engine: Url) -> Result<PlayerClient> {
         Ok(PlayerClient::new(self.http.clone()?, engine))
     }
+
+    fn oauth(&self, engine: Url) -> Result<OAuthClient> {
+        Ok(OAuthClient::new(self.http.clone()?, engine))
+    }
 }
 
 impl PlayerApi for CorePlayer {
@@ -135,6 +160,27 @@ impl PlayerApi for CorePlayer {
     fn config(&self, engine: Url) -> BoxFuture<Result<PlayerConfig>> {
         let client = self.client(engine);
         Box::pin(async move { client?.config().await })
+    }
+
+    fn discover(&self, engine: Url) -> BoxFuture<Result<Option<Discovery>>> {
+        let client = self.oauth(engine);
+        Box::pin(async move { client?.discover().await })
+    }
+
+    fn oauth_token(
+        &self,
+        engine: Url,
+        code: String,
+        verifier: String,
+        redirect: String,
+    ) -> BoxFuture<Result<TokenAnswer>> {
+        let client = self.oauth(engine);
+        Box::pin(async move { client?.token(&code, &verifier, &redirect).await })
+    }
+
+    fn revoke(&self, engine: Url, token: String) -> BoxFuture<Result<()>> {
+        let client = self.oauth(engine);
+        Box::pin(async move { client?.revoke(&token).await })
     }
 
     fn token(
@@ -280,7 +326,7 @@ pub(crate) struct PerlandState {
     email_engine: Option<Url>,
 }
 
-/// The Discord sign-in waiting for the browser, if any: one at a time.
+/// The sign-in waiting for the browser, if any: one at a time.
 #[derive(Default)]
 pub(crate) struct SignInSlot {
     next: u64,
@@ -358,10 +404,21 @@ impl PerlandStatus {
 
     /// Signed out, accounts that are on but offer no way in (none, or none the launcher
     /// knows) are off too: a "Sign in" with nothing behind it would be a dead end. `panel`:
-    /// whether the launcher knows a panel, which GitHub's sign-in page lives on.
-    fn signed_out(config: &PlayerConfig, panel: bool) -> Self {
+    /// whether the launcher knows a panel, which GitHub's sign-in page lives on. `oauth`: the
+    /// Engine answered discovery, so the one way in is the Perland page (`perland`).
+    fn signed_out(config: &PlayerConfig, panel: bool, oauth: bool) -> Self {
+        if !config.enabled {
+            return Self::off();
+        }
+        if oauth {
+            return Self {
+                enabled: true,
+                methods: vec![PERLAND_PAGE.into()],
+                account: None,
+            };
+        }
         let methods = offered(config, panel);
-        if !config.enabled || methods.is_empty() {
+        if methods.is_empty() {
             return Self::off();
         }
         Self {
@@ -370,6 +427,19 @@ impl PerlandStatus {
             account: None,
         }
     }
+}
+
+/// The method name of the OAuth sign-in on the Perland page, where the player picks GitHub,
+/// Discord or an email code.
+const PERLAND_PAGE: &str = "perland";
+
+/// What a sign-in in the browser opens and redeems at.
+enum Flow {
+    /// The Perland page (OAuth), redeemed at `/oauth/token`.
+    OAuth(Discovery),
+    /// An older route: Discord's authorize or the panel's GitHub page, redeemed at
+    /// `/player/token`.
+    Legacy(SignInMethod),
 }
 
 /// The ways in this launcher can run: the Engine's, less GitHub without a panel to open.
@@ -470,8 +540,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// sign-in replaced), so it doesn't hold one of the player's sessions on the Engine for
     /// months. In the background, at most `SIGN_OUT_LIMIT`, whatever the Engine answers: it
     /// never holds up the caller.
-    fn discard_token(&self, engine: Url, token: String) {
-        let call = self.runner.player().sign_out(engine, token);
+    fn discard_token(&self, engine: Url, token: String, client: Option<String>) {
+        let call = self.end_session(engine, token, client.as_deref());
         tokio::spawn(async move {
             match tokio::time::timeout(SIGN_OUT_LIMIT, call).await {
                 Ok(Ok(())) => {}
@@ -485,6 +555,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         });
     }
 
+    /// End a session on its Engine: an OAuth one is revoked, an older one signed out.
+    fn end_session(
+        &self,
+        engine: Url,
+        token: String,
+        client: Option<&str>,
+    ) -> BoxFuture<Result<()>> {
+        let player = self.runner.player();
+        match client {
+            Some(_) => player.revoke(engine, token),
+            None => player.sign_out(engine, token),
+        }
+    }
+
     /// Count a `/me` the session holding `token` just got as `perland_status`'s once-a-minute
     /// one.
     pub(crate) async fn mark_checked(&self, token: &str) {
@@ -495,16 +579,23 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Make `answer` the session, saved for the next launch when the store takes it.
-    async fn adopt(&self, engine: Url, answer: TokenAnswer) -> PerlandAccount {
+    /// `client` is the OAuth client the token was issued to, `None` for an older route's.
+    async fn adopt(
+        &self,
+        engine: Url,
+        answer: TokenAnswer,
+        client: Option<String>,
+    ) -> PerlandAccount {
         let session = Session {
             engine,
             token: answer.token,
             profile: Profile::from_player(&answer.player),
+            client,
         };
         let mut state = self.perland_state().await;
         // A session this one replaces is still live on its Engine: end it there.
         if let Some(old) = state.session.take().filter(|s| s.token != session.token) {
-            self.discard_token(old.engine, old.token);
+            self.discard_token(old.engine, old.token, old.client);
         }
         let (store, saved) = (self.perland_store.clone(), session.clone());
         match tokio::task::spawn_blocking(move || store.save(&saved)).await {
@@ -544,12 +635,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
         };
         let Some(session) = session else {
-            let config = match player.site_engine().await {
-                Ok(engine) => player.config(engine).await,
-                Err(e) => Err(e),
+            let engine = match player.site_engine().await {
+                Ok(engine) => engine,
+                Err(e) => {
+                    tracing::info!(code = ?e.code, "couldn't find Perland's Engine");
+                    return Ok(PerlandStatus::off());
+                }
             };
-            return Ok(match config {
-                Ok(config) => PerlandStatus::signed_out(&config, self.config.panel.is_some()),
+            return Ok(match player.config(engine.clone()).await {
+                Ok(config) => self.signed_out_status(&engine, &config).await,
                 Err(e) => {
                     tracing::info!(code = ?e.code, "couldn't read Perland's sign-in config");
                     PerlandStatus::off()
@@ -558,7 +652,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         let methods = match player.config(session.engine.clone()).await {
             Ok(config) if !config.enabled => return Ok(PerlandStatus::off()),
-            Ok(config) => PerlandStatus::signed_out(&config, self.config.panel.is_some()).methods,
+            Ok(config) => {
+                self.signed_out_status(&session.engine, &config)
+                    .await
+                    .methods
+            }
             Err(e) => {
                 tracing::info!(code = ?e.code, "couldn't read Perland's sign-in config");
                 vec![]
@@ -593,10 +691,38 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         })
     }
 
-    /// Sign in through Discord in the player's browser. `Ok(None)` when the player canceled
-    /// (on Discord's page, with Cancel, or by starting another sign-in).
+    /// What a signed-out card offers: the Perland page when the Engine answers discovery,
+    /// else the older methods.
+    async fn signed_out_status(&self, engine: &Url, config: &PlayerConfig) -> PerlandStatus {
+        let oauth = config.enabled && self.discovery(engine).await.is_some();
+        PerlandStatus::signed_out(config, self.config.panel.is_some(), oauth)
+    }
+
+    /// The Engine's OAuth discovery. A failure is no OAuth (logged): the older routes still
+    /// sign in during their deprecation window.
+    async fn discovery(&self, engine: &Url) -> Option<Discovery> {
+        match self.runner.player().discover(engine.clone()).await {
+            Ok(found) => found,
+            Err(e) => {
+                tracing::info!(code = ?e.code, "couldn't read Perland's OAuth discovery");
+                None
+            }
+        }
+    }
+
+    /// Sign in on the Perland page in the player's browser (OAuth code + PKCE), where the
+    /// player picks GitHub, Discord or an email code. `Ok(None)` when the player canceled
+    /// here (Cancel, or another sign-in); canceled on the page is `sign_in_canceled`. Refused
+    /// (`sign_in_unavailable`) on an Engine without discovery: the older methods are its way in.
+    pub async fn perland_sign_in(&self, language: &str) -> Result<Option<PerlandAccount>> {
+        self.sign_in_in_browser(None, language).await
+    }
+
+    /// Sign in through Discord in the player's browser, on an Engine without the OAuth
+    /// sign-in. `Ok(None)` when the player canceled (on Discord's page, with Cancel, or by
+    /// starting another sign-in).
     pub async fn perland_sign_in_discord(&self, language: &str) -> Result<Option<PerlandAccount>> {
-        self.sign_in_in_browser(SignInMethod::Discord, language)
+        self.sign_in_in_browser(Some(SignInMethod::Discord), language)
             .await
     }
 
@@ -604,15 +730,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// same loopback, PKCE and `POST /player/token` as Discord. Refused unless a panel is set
     /// and the Engine offers it.
     pub async fn perland_sign_in_github(&self, language: &str) -> Result<Option<PerlandAccount>> {
-        self.sign_in_in_browser(SignInMethod::GitHub, language)
+        self.sign_in_in_browser(Some(SignInMethod::GitHub), language)
             .await
     }
 
     /// A sign-in whose page opens in the browser and comes back to the loopback with a code.
-    /// `method` is Discord (the Engine's authorize page) or GitHub (the panel's page).
+    /// `method` is `None` for the Perland page (OAuth), else an older one: Discord (the
+    /// Engine's authorize page) or GitHub (the panel's page).
     async fn sign_in_in_browser(
         &self,
-        method: SignInMethod,
+        method: Option<SignInMethod>,
         language: &str,
     ) -> Result<Option<PerlandAccount>> {
         // Take the slot first, so a Cancel (or another sign-in) before the browser opens counts.
@@ -633,23 +760,41 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             return Err(accounts_closed(&engine));
         }
         let panel = self.config.panel.as_ref();
-        if !offered(&config, panel.is_some()).contains(&method) {
-            return Err(LauncherError::network(
+        let unavailable = |method: &str| {
+            LauncherError::network(
                 ErrorCode::SignInUnavailable,
                 "That way of signing in isn't available.",
             )
             .with_param("host", host_of(&engine))
-            .with_param("method", method_name(method)));
-        }
+            .with_param("method", method)
+        };
+        let flow = match method {
+            None => {
+                let found = self.discovery(&engine).await;
+                if *cancel.borrow() {
+                    return Ok(None);
+                }
+                Flow::OAuth(found.ok_or_else(|| unavailable(PERLAND_PAGE))?)
+            }
+            Some(method) if offered(&config, panel.is_some()).contains(&method) => {
+                Flow::Legacy(method)
+            }
+            Some(method) => return Err(unavailable(method_name(method))),
+        };
         let pkce = Pkce::new();
         let loopback = Loopback::bind().map_err(|e| {
             LauncherError::auth(ErrorCode::SignInFailed, "Couldn't listen for the sign-in.")
                 .with_detail(e)
         })?;
         let redirect = loopback.redirect_uri();
-        let url = match (method, panel) {
-            (SignInMethod::GitHub, Some(panel)) => launcher_sign_in_url(panel, &redirect, &pkce),
-            _ => authorize_url(&engine, &redirect, &pkce),
+        let url = match (&flow, panel) {
+            (Flow::OAuth(discovery), _) => {
+                oauth_authorize_url(discovery, &redirect, &pkce, language)
+            }
+            (Flow::Legacy(SignInMethod::GitHub), Some(panel)) => {
+                launcher_sign_in_url(panel, &redirect, &pkce)
+            }
+            (Flow::Legacy(_), _) => authorize_url(&engine, &redirect, &pkce),
         }
         .to_string();
         if !self.set_sign_in_url(&guard, &url) || *cancel.borrow() {
@@ -670,6 +815,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .await?;
         let code = match callback {
             Callback::Code(code) => code,
+            // Canceled on the Perland page: the card says so, apart from a Cancel here.
+            Callback::Denied if matches!(flow, Flow::OAuth(_)) => {
+                return Err(oauth::sign_in_canceled(host_of(&engine)))
+            }
             Callback::Denied | Callback::Canceled => return Ok(None),
             Callback::Failed(why) => {
                 return Err(LauncherError::auth(
@@ -686,19 +835,30 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.host.emit(AppEvent::PerlandSignIn {
             phase: PerlandSignInPhase::Exchanging,
         });
-        let answer = player
-            .token(engine.clone(), code, pkce.verifier.clone(), redirect)
-            .await?;
+        let (answer, client) = match flow {
+            Flow::OAuth(_) => (
+                player
+                    .oauth_token(engine.clone(), code, pkce.verifier.clone(), redirect)
+                    .await?,
+                Some(CLIENT_ID.to_string()),
+            ),
+            Flow::Legacy(_) => (
+                player
+                    .token(engine.clone(), code, pkce.verifier.clone(), redirect)
+                    .await?,
+                None,
+            ),
+        };
         // Canceled while the code was redeemed: the player moved on, so keep nothing, and end
         // the session the Engine just made.
         if *cancel.borrow() {
-            self.discard_token(engine, answer.token);
+            self.discard_token(engine, answer.token, client);
             return Ok(None);
         }
-        Ok(Some(self.adopt(engine, answer).await))
+        Ok(Some(self.adopt(engine, answer, client).await))
     }
 
-    /// Take the sign-in slot for a new Discord sign-in, canceling the one before.
+    /// Take the sign-in slot for a new sign-in in the browser, canceling the one before.
     fn start_sign_in(&self) -> (AttemptGuard<'_>, watch::Receiver<bool>) {
         let (cancel, canceled) = watch::channel(false);
         let mut slot = self
@@ -811,7 +971,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let answer = player
             .email_verify(engine.clone(), email.trim().to_string(), code)
             .await?;
-        Ok(self.adopt(engine, answer).await)
+        Ok(self.adopt(engine, answer, None).await)
     }
 
     /// Sign out: stop a waiting sign-in, tell the Engine (at most 5 s, whatever it answers),
@@ -821,10 +981,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let session = self.perland_session().await;
         let token = session.as_ref().map(|s| s.token.clone());
         if let Some(session) = session {
-            let call = self
-                .runner
-                .player()
-                .sign_out(session.engine.clone(), session.token.clone());
+            let call = self.end_session(
+                session.engine.clone(),
+                session.token.clone(),
+                session.client.as_deref(),
+            );
             match tokio::time::timeout(SIGN_OUT_LIMIT, call).await {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => tracing::info!(code = ?e.code, "the Engine didn't take the sign-out"),
@@ -874,6 +1035,7 @@ mod tests {
                 github: false,
                 minecraft: None,
             },
+            client: None,
         }
     }
 
@@ -1293,6 +1455,228 @@ mod tests {
         core.perland_sign_in_cancel();
         assert_eq!(finish(task).await.unwrap(), None);
         assert!(runner.player.calls_to("token").is_empty());
+    }
+
+    fn panel_discovery() -> Discovery {
+        Discovery {
+            authorization_endpoint: engine("https://panel.example.com/oauth/authorize"),
+        }
+    }
+
+    /// The Engine answers discovery: the OAuth sign-in is the way in.
+    fn with_oauth(runner: &crate::testing::FakeRunner) {
+        *runner.player.discovery.lock().unwrap() = Ok(Some(panel_discovery()));
+    }
+
+    fn oauth_sign_in(
+        core: &Arc<TestCore>,
+    ) -> tokio::task::JoinHandle<Result<Option<PerlandAccount>>> {
+        let core = core.clone();
+        tokio::spawn(async move { core.perland_sign_in("es-MX").await })
+    }
+
+    #[tokio::test]
+    async fn status_offers_the_perland_page_when_discovery_answers() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        with_oauth(&runner);
+        let status = core.perland_status().await.unwrap();
+        assert!(status.enabled);
+        assert_eq!(status.methods, ["perland"]);
+        // Even an Engine that lists no old method: the page offers its own.
+        *runner.player.config.lock().unwrap() = Ok(PlayerConfig {
+            enabled: true,
+            methods: vec![],
+        });
+        assert_eq!(core.perland_status().await.unwrap().methods, ["perland"]);
+        // Accounts closed stays closed.
+        *runner.player.config.lock().unwrap() = Ok(PlayerConfig::off());
+        assert!(!core.perland_status().await.unwrap().enabled);
+    }
+
+    #[tokio::test]
+    async fn status_falls_back_to_the_old_methods_without_discovery() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        assert_eq!(
+            core.perland_status().await.unwrap().methods,
+            ["discord", "email"]
+        );
+        // A discovery that fails is the same as none: the old routes still sign in.
+        *runner.player.discovery.lock().unwrap() =
+            Err(LauncherError::network(ErrorCode::HostTrouble, "trouble"));
+        assert_eq!(
+            core.perland_status().await.unwrap().methods,
+            ["discord", "email"]
+        );
+    }
+
+    #[tokio::test]
+    async fn oauth_sign_in_opens_the_panel_page_and_redeems_at_oauth_token() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        with_oauth(&runner);
+        let task = oauth_sign_in(&core);
+        let opened = host.wait_for_opened(1).await;
+        let url = &opened[0];
+        assert!(
+            url.starts_with("https://panel.example.com/oauth/authorize?response_type=code&"),
+            "{url}"
+        );
+        assert_eq!(query(url, "client_id"), CLIENT_ID);
+        assert_eq!(query(url, "scope"), "launcher");
+        assert_eq!(query(url, "ui_locales"), "es");
+        assert_eq!(query(url, "code_challenge_method"), "S256");
+        assert!(query(url, "redirect_uri").starts_with("http://127.0.0.1:"));
+        assert!(query(url, "redirect_uri").ends_with("/callback"));
+        core.perland_sign_in_reopen().unwrap();
+        assert_eq!(host.opened.lock().unwrap()[1], *url, "the same page again");
+        come_back(url, "code=c").await;
+        let account = finish(task).await.unwrap().expect("signed in");
+        assert_eq!(account.name, "Steve");
+        assert!(
+            runner.player.calls_to("token").is_empty(),
+            "not the old route"
+        );
+        let token = &runner.player.calls_to("oauth_token")[0];
+        assert_eq!(
+            token.engine,
+            engine("https://api.example.com"),
+            "redeemed at the Engine, never the panel"
+        );
+        assert_eq!(token.args[0], "c");
+        let challenge = Pkce::from_verifier(&token.args[1], "").challenge;
+        assert_eq!(challenge, query(url, "code_challenge"));
+        assert_eq!(token.args[2], query(url, "redirect_uri"), "exactly as sent");
+        let saved = core.perland_store.load().unwrap();
+        assert_eq!(saved.token, player_token('x'));
+        assert_eq!(saved.client.as_deref(), Some(CLIENT_ID));
+    }
+
+    #[tokio::test]
+    async fn oauth_sign_in_canceled_on_the_page_says_so() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        with_oauth(&runner);
+        let task = oauth_sign_in(&core);
+        let opened = host.wait_for_opened(1).await;
+        come_back(&opened[0], "error=access_denied").await;
+        let e = finish(task).await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::SignInCanceled);
+        assert!(runner.player.calls_to("oauth_token").is_empty());
+        assert!(core.perland_store.load().is_none());
+    }
+
+    #[tokio::test]
+    async fn oauth_sign_in_page_error_fails() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        with_oauth(&runner);
+        let task = oauth_sign_in(&core);
+        let opened = host.wait_for_opened(1).await;
+        come_back(&opened[0], "error=temporarily_unavailable").await;
+        let e = finish(task).await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::SignInFailed);
+        assert_eq!(e.detail.as_deref(), Some("temporarily_unavailable"));
+        assert!(runner.player.calls_to("oauth_token").is_empty());
+    }
+
+    #[tokio::test]
+    async fn oauth_sign_in_cancel_here_is_none() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        with_oauth(&runner);
+        let task = oauth_sign_in(&core);
+        host.wait_for_opened(1).await;
+        core.perland_sign_in_cancel();
+        assert_eq!(finish(task).await.unwrap(), None);
+        assert!(runner.player.calls_to("oauth_token").is_empty());
+    }
+
+    #[tokio::test]
+    async fn oauth_token_refusal_is_the_error() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        with_oauth(&runner);
+        *runner.player.token_answer.lock().unwrap() = Err(
+            launcher_core::perland::oauth::sign_in_expired("api.example.com"),
+        );
+        let task = oauth_sign_in(&core);
+        let opened = host.wait_for_opened(1).await;
+        come_back(&opened[0], "code=c").await;
+        assert_eq!(
+            finish(task).await.unwrap_err().code,
+            ErrorCode::SignInExpired
+        );
+        assert!(core.perland_store.load().is_none());
+    }
+
+    #[tokio::test]
+    async fn oauth_sign_in_without_discovery_is_unavailable() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        let e = core.perland_sign_in("en").await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::SignInUnavailable);
+        assert_eq!(e.params.get("method").map(String::as_str), Some("perland"));
+        assert!(host.opened.lock().unwrap().is_empty());
+        assert!(runner.player.calls_to("oauth_token").is_empty());
+    }
+
+    #[tokio::test]
+    async fn sign_out_of_an_oauth_session_revokes_it() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        core.perland_store
+            .save(&Session {
+                client: Some(CLIENT_ID.into()),
+                ..saved_session("https://api.example.com")
+            })
+            .unwrap();
+        core.perland_sign_out().await.unwrap();
+        let revoke = &runner.player.calls_to("revoke")[0];
+        assert_eq!(revoke.engine, engine("https://api.example.com"));
+        assert_eq!(revoke.args, [player_token('s')]);
+        assert!(runner.player.calls_to("sign_out").is_empty());
+        assert!(core.perland_store.load().is_none());
+    }
+
+    #[tokio::test]
+    async fn sign_out_forgets_an_oauth_session_even_when_revoke_fails() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        core.perland_store
+            .save(&Session {
+                client: Some(CLIENT_ID.into()),
+                ..saved_session("https://api.example.com")
+            })
+            .unwrap();
+        *runner.player.revoke.lock().unwrap() =
+            Err(LauncherError::network(ErrorCode::HostTrouble, "trouble"));
+        core.perland_sign_out().await.unwrap();
+        assert!(core.perland_store.load().is_none());
+    }
+
+    #[tokio::test]
+    async fn sign_out_of_an_old_session_uses_the_old_route() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        with_oauth(&runner);
+        core.perland_store
+            .save(&saved_session("https://api.example.com"))
+            .unwrap();
+        core.perland_sign_out().await.unwrap();
+        assert_eq!(runner.player.calls_to("sign_out").len(), 1);
+        assert!(runner.player.calls_to("revoke").is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_oauth_sign_in_replacing_a_session_ends_the_old_one() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        with_oauth(&runner);
+        core.perland_store
+            .save(&Session {
+                client: Some(CLIENT_ID.into()),
+                ..saved_session("https://api.example.com")
+            })
+            .unwrap();
+        let task = oauth_sign_in(&core);
+        let opened = host.wait_for_opened(1).await;
+        come_back(&opened[0], "code=c").await;
+        finish(task).await.unwrap().expect("signed in");
+        runner.player.wait_for_calls("revoke", 1).await;
+        assert_eq!(
+            runner.player.calls_to("revoke")[0].args,
+            [player_token('s')]
+        );
     }
 
     #[test]

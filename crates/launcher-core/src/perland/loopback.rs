@@ -336,6 +336,16 @@ fn clean_error(raw: &str) -> String {
     }
 }
 
+/// Whether `a` and `b` are equal, in time that depends on their lengths only, so the
+/// `state` check doesn't tell a caller how much of a guess was right.
+fn same_secret(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let diff = a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y));
+    std::hint::black_box(diff) == 0
+}
+
 /// Answers one connection. Returns the outcome only when the request ended the wait.
 async fn serve(
     mut stream: TcpStream,
@@ -357,7 +367,7 @@ async fn serve(
             error,
             state: got,
         } => {
-            if got.as_deref() != Some(state.as_str()) {
+            if !got.is_some_and(|got| same_secret(got.as_bytes(), state.as_bytes())) {
                 (
                     html_response("400 Bad Request", Page::OldLink, language),
                     None,
@@ -414,6 +424,15 @@ async fn drain(mut stream: TcpStream) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn same_secret_compares_whole_values() {
+        assert!(same_secret(b"abc", b"abc"));
+        assert!(same_secret(b"", b""));
+        assert!(!same_secret(b"abc", b"abd"));
+        assert!(!same_secret(b"abc", b"ab"));
+        assert!(!same_secret(b"", b"a"));
+    }
 
     #[test]
     fn parse_request_line_reads_code_and_state() {

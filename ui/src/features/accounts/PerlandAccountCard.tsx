@@ -20,10 +20,12 @@ type Step = 'idle' | 'browser' | 'email' | 'code';
 /** The ways to sign in, in the card's order; each shows only while the Engine offers it. The Engine's `github` is the panel's
  *  sign-in page, which signs in with the player's Perland account, so the card names it "Continue with Perland" and leads with it. */
 const METHODS = ['github', 'discord', 'email'] as const;
-/** The ways that finish in the browser, with the same waiting, reopen and cancel steps. */
-type BrowserMethod = 'discord' | 'github';
+/** The ways that finish in the browser, with the same waiting, reopen and cancel steps. `perland` is the OAuth sign-in on the Perland page,
+ *  the one way in when the Engine offers it; the others are the older routes, kept for an Engine without it. */
+type BrowserMethod = 'perland' | 'discord' | 'github';
 
-/** The Perland account on Accounts: sign in with Perland (the panel's page, while the Engine offers it), Discord or an email code, or who is signed in and Sign out.
+/** The Perland account on Accounts: sign in on the Perland page (OAuth, where the player picks GitHub, Discord or an email code), or on an Engine without it
+ *  with Perland (the panel's page), Discord or an email code; or who is signed in and Sign out.
  *  It renders nothing while the Engine has player accounts closed, so a player who never signs in sees no change. */
 export function PerlandAccountCard() {
   const { t, i18n } = useTranslation();
@@ -32,6 +34,8 @@ export function PerlandAccountCard() {
   const [step, setStep] = useState<Step>('idle');
   const [phase, setPhase] = useState<'waiting' | 'exchanging'>('waiting');
   const [error, setError] = useState<unknown>(null);
+  /** The player canceled on the Perland page: a quiet note, not an error. */
+  const [canceled, setCanceled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -106,6 +110,7 @@ export function PerlandAccountCard() {
     qc.removeQueries({ queryKey: qk.perlandStats });
     setStep('idle');
     setError(null);
+    setCanceled(false);
     setCode('');
     setAnnounce(account ? t('perland.signedIn', { name: shownName(account) }) : t('perland.signedOut'));
   };
@@ -113,9 +118,16 @@ export function PerlandAccountCard() {
   const startBrowser = (method: BrowserMethod) => {
     const mine = ++attempt.current;
     setError(null);
+    setCanceled(false);
     setPhase('waiting');
     setStep('browser');
-    (method === 'github' ? commands.perlandSignInGithub(language) : commands.perlandSignInDiscord(language)).then(
+    const signIn =
+      method === 'perland'
+        ? commands.perlandSignIn(language)
+        : method === 'github'
+          ? commands.perlandSignInGithub(language)
+          : commands.perlandSignInDiscord(language);
+    signIn.then(
       (account) => {
         if (mine !== attempt.current) return;
         if (account) switched(account);
@@ -123,12 +135,14 @@ export function PerlandAccountCard() {
       },
       (failure: unknown) => {
         if (mine !== attempt.current) return;
-        setError(failure);
+        if (isLauncherError(failure) && failure.code === 'sign_in_canceled') setCanceled(true);
+        else setError(failure);
         setStep('idle');
       },
     );
   };
 
+  const startPerland = () => startBrowser('perland');
   const startDiscord = () => startBrowser('discord');
   const startGithub = () => startBrowser('github');
 
@@ -208,13 +222,19 @@ export function PerlandAccountCard() {
     return describeError(i18n, failure).message;
   };
   const errorMessage = error === null ? null : errorText(error);
+  const errorFix = error === null ? null : describeError(i18n, error).fix;
   const errorLine = errorMessage && (
-    <p role="alert" className="flex items-start gap-2 text-sm text-coral">
-      <WarningDiamond className="mt-0.5 h-4 w-4 flex-none" aria-hidden />
-      {errorMessage}
-    </p>
+    <div role="alert" className="grid gap-1 text-sm">
+      <p className="flex items-start gap-2 font-semibold text-coral">
+        <WarningDiamond className="mt-0.5 h-4 w-4 flex-none" aria-hidden />
+        {errorMessage}
+      </p>
+      {errorFix && <p className="pl-6 text-ink-dim">{errorFix}</p>}
+    </div>
   );
   const pending = busy || undefined;
+  // The Engine offers the Perland page: it is the one way in, and the methods are chosen there.
+  const oauth = data.methods.includes('perland');
   const methods = METHODS.filter((m) => data.methods.includes(m));
   // Continue with Perland leads as the large key on its own row; Discord and email follow as the standard raised pair.
   const lead = methods.includes('github');
@@ -255,9 +275,12 @@ export function PerlandAccountCard() {
   } else if (step === 'browser') {
     body = (
       <div className="panel grid gap-4 p-5">
-        <p aria-live="polite" className="font-semibold">
-          {phase === 'exchanging' ? t('perland.exchanging') : t('perland.waiting')}
-        </p>
+        <div className="grid gap-1">
+          <p aria-live="polite" className="font-semibold">
+            {phase === 'exchanging' ? t('perland.exchanging') : t('perland.waiting')}
+          </p>
+          {oauth && phase === 'waiting' && <p className="text-sm text-ink-dim">{t('perland.waitingHint')}</p>}
+        </div>
         <div className="flex flex-wrap gap-3">
           {phase === 'waiting' && (
             <Button ref={(el) => void (firstControl.current = el)} onClick={() => void commands.perlandSignInReopen().catch(() => {})}>
@@ -322,6 +345,32 @@ export function PerlandAccountCard() {
           </Button>
         </div>
       </form>
+    );
+  } else if (oauth) {
+    // One way in: the Perland page in the browser. After a canceled, failed or timed-out try the same key says Try again.
+    const retry = canceled || error !== null;
+    body = (
+      <div className="panel grid gap-4 p-5">
+        <p className="text-ink-dim">{t('perland.pitch')}</p>
+        <div className="grid justify-items-start gap-2">
+          <Button
+            ref={(el) => void (firstControl.current = el)}
+            size="lg"
+            icon={<img src={mark} alt="" width={28} height={24} />}
+            onClick={startPerland}
+          >
+            {retry ? t('perland.tryAgain') : t('perland.withPerland')}
+          </Button>
+          {!retry && <p className="text-sm text-ink-dim">{t('perland.pagePitch')}</p>}
+        </div>
+        {canceled && (
+          <div role="status" className="grid gap-1 text-sm">
+            <p className="font-semibold">{t('errors.sign_in_canceled.message')}</p>
+            <p className="text-ink-dim">{t('perland.canceledHint')}</p>
+          </div>
+        )}
+        {errorLine}
+      </div>
     );
   } else {
     body = (

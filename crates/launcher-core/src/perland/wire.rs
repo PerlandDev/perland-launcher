@@ -155,6 +155,20 @@ impl Wire {
         finish(&host, request, cap).await
     }
 
+    /// A POST of an `application/x-www-form-urlencoded` body with no credential header (the
+    /// OAuth endpoints take everything in the body), answered like `send`.
+    pub async fn send_urlencoded(
+        &self,
+        timeout: Duration,
+        path: &str,
+        form: &[(&str, &str)],
+        cap: usize,
+    ) -> Result<Reply> {
+        let host = self.host();
+        let request = self.http.post(self.url(path)).timeout(timeout).form(form);
+        finish(&host, request, cap).await
+    }
+
     /// The `data` of a success. The parser's own message can quote the body, so it is never
     /// shown.
     pub fn data<T: DeserializeOwned>(&self, reply: &Reply) -> Result<T> {

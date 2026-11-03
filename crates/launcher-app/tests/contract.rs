@@ -1109,6 +1109,12 @@ fn contract_fixtures_are_current() {
     check(
         "perland_status",
         vec![
+            // The Engine answers OAuth discovery: one way in, the Perland page.
+            PerlandStatus {
+                enabled: true,
+                methods: vec!["perland".into()],
+                account: None,
+            },
             PerlandStatus {
                 enabled: true,
                 methods: vec!["discord".into(), "email".into(), "github".into()],

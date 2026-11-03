@@ -36,6 +36,34 @@ describe('mock Perland account', () => {
     });
   });
 
+  it('offers only the Perland page on an Engine with OAuth, and ends a sign-in as asked', async () => {
+    const st = await status(backend('oauth'));
+    expect(st).toEqual({ enabled: true, methods: ['perland'], account: null });
+    expect(s.perlandStatus.safeParse(st).success).toBe(true);
+    vi.useFakeTimers();
+    const ok = createMockBackend({ perland: 'oauth' });
+    const done = ok.handle('perland_sign_in', { language: 'en' });
+    await vi.runAllTimersAsync();
+    expect(((await done) as PerlandAccount).name).toBe('Steve');
+    for (const [outcome, code] of [
+      ['cancel', 'sign_in_canceled'],
+      ['timeout', 'sign_in_timed_out'],
+      ['fail', 'sign_in_failed'],
+      ['expired', 'sign_in_expired'],
+    ] as const) {
+      const b = createMockBackend({ perland: 'oauth', perlandSignIn: outcome });
+      const failed = b.handle('perland_sign_in', { language: 'en' });
+      const caught = expect(failed).rejects.toMatchObject({ code });
+      await vi.runAllTimersAsync();
+      await caught;
+    }
+    // An Engine without OAuth refuses it: its old methods are the way in.
+    await expect(backend().handle('perland_sign_in', { language: 'en' })).rejects.toMatchObject({
+      code: 'sign_in_unavailable',
+      params: { method: 'perland' },
+    });
+  });
+
   it('turns accounts off', async () => {
     const b = backend('off');
     expect(await status(b)).toEqual({ enabled: false, methods: [], account: null });

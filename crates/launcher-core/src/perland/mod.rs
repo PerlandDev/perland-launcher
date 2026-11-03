@@ -4,6 +4,7 @@ pub mod api;
 pub mod auth;
 pub mod log_stream;
 pub mod loopback;
+pub mod oauth;
 pub mod panel;
 pub mod pkce;
 pub mod session;
@@ -24,6 +25,7 @@ pub use log_stream::{
     SseParser,
 };
 pub use loopback::{Callback, Language, Loopback, Page};
+pub use oauth::{oauth_authorize_url, Discovery, OAuthClient, CLIENT_ID, SCOPE};
 pub use panel::{
     account_path, handoff_url, launcher_sign_in_url, manage_url, panel_page, panel_url,
     server_path, upgrade_path,

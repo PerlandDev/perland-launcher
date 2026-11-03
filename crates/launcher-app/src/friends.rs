@@ -270,6 +270,7 @@ mod tests {
                     github: false,
                     minecraft: None,
                 },
+                client: None,
             })
             .unwrap();
     }
