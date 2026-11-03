@@ -586,6 +586,11 @@ pub async fn perland_status(core: CoreState<'_>) -> Res<PerlandStatus> {
 }
 
 #[tauri::command]
+pub async fn perland_sign_in(core: CoreState<'_>, language: String) -> Res<Option<PerlandAccount>> {
+    logged("perland_sign_in", core.perland_sign_in(&language).await)
+}
+
+#[tauri::command]
 pub async fn perland_sign_in_discord(
     core: CoreState<'_>,
     language: String,

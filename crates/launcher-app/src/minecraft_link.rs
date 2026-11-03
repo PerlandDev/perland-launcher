@@ -187,6 +187,7 @@ mod tests {
                     github: false,
                     minecraft: minecraft.map(str::to_string),
                 },
+                client: None,
             })
             .unwrap();
     }

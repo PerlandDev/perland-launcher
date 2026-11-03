@@ -183,6 +183,8 @@ export const commands = {
   serverUnlink: (id: string) => invoke<Instance>('server_unlink', { id }),
   perlandStatus: () => invoke<PerlandStatus>('perland_status'),
   /** Opens the browser and waits for the player to finish; null when they canceled or said no. */
+  /** Signs in on the Perland page in the browser (OAuth), where the player picks GitHub, Discord or an email code. Null when canceled here. */
+  perlandSignIn: (language: string) => invoke<PerlandAccount | null>('perland_sign_in', { language }),
   perlandSignInDiscord: (language: string) => invoke<PerlandAccount | null>('perland_sign_in_discord', { language }),
   /** Signs in through the Perland panel's GitHub page in the browser, like Discord. */
   perlandSignInGithub: (language: string) => invoke<PerlandAccount | null>('perland_sign_in_github', { language }),

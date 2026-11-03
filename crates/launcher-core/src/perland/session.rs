@@ -66,6 +66,9 @@ pub struct Session {
     pub engine: Url,
     pub token: String,
     pub profile: Profile,
+    /// The OAuth client the token was issued to (`oauth::CLIENT_ID`), so sign-out revokes it;
+    /// `None` for a session from the older sign-in routes, which sign out at `/player/sign-out`.
+    pub client: Option<String>,
 }
 
 // Manual Debug: the token is a credential.
@@ -75,6 +78,7 @@ impl fmt::Debug for Session {
             .field("engine", &self.engine.host_str().unwrap_or(""))
             .field("token", &"<redacted>")
             .field("profile", &self.profile)
+            .field("client", &self.client)
             .finish()
     }
 }
@@ -241,6 +245,10 @@ struct Marker {
     /// Absent in a marker written before the Minecraft link existed.
     #[serde(default)]
     minecraft: Option<String>,
+    /// Absent in a marker written before the OAuth sign-in, or for a session from the older
+    /// sign-in routes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    client: Option<String>,
 }
 
 impl Marker {
@@ -252,6 +260,7 @@ impl Marker {
             discord: session.profile.discord,
             github: session.profile.github,
             minecraft: session.profile.minecraft.clone(),
+            client: session.client.clone(),
         }
     }
 }
@@ -312,6 +321,7 @@ impl SessionStore {
                     github: marker.github,
                     minecraft: marker.minecraft,
                 },
+                client: marker.client,
             }),
             Ok(None) => {
                 self.remove_marker();
@@ -421,6 +431,7 @@ mod tests {
                 github: false,
                 minecraft: None,
             },
+            client: None,
         }
     }
 
@@ -488,6 +499,34 @@ mod tests {
         assert_eq!(again.engine, session().engine);
         assert_eq!(again.token, TOKEN);
         assert_eq!(again.profile, session().profile);
+        assert_eq!(again.client, None);
+    }
+
+    #[test]
+    fn the_oauth_client_round_trips_and_an_old_marker_has_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let secret = Arc::new(MemoryStore::default());
+        let store = SessionStore::new(marker_in(&dir), secret.clone());
+        let oauth = Session {
+            client: Some("pcl_perlandlauncher0000000000".into()),
+            ..session()
+        };
+        store.save(&oauth).unwrap();
+        let again = SessionStore::new(marker_in(&dir), secret.clone())
+            .load()
+            .unwrap();
+        assert_eq!(
+            again.client.as_deref(),
+            Some("pcl_perlandlauncher0000000000")
+        );
+        // A marker from before the OAuth sign-in.
+        std::fs::write(
+            marker_in(&dir),
+            br#"{"engine":"https://engine.example.com/","name":"Eve","email":null,"discord":true}"#,
+        )
+        .unwrap();
+        let old = SessionStore::new(marker_in(&dir), secret).load().unwrap();
+        assert_eq!(old.client, None);
     }
 
     #[test]

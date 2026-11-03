@@ -20,7 +20,7 @@ import { APP_EVENT } from './events';
 import { inviteCanonical } from './inviteLink';
 import { handleFree, modrinthInstances, NOT_FREE, repeatsFreeServer, seedFree, type FreeScenario } from './mockFree';
 import { closeConsole, freeManageRef, handleManage, managedForYourServers, NOT_MANAGE, seedManage, type ManageScenario } from './mockManage';
-import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario } from './mockPerland';
+import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario, type PerlandSignInOutcome } from './mockPerland';
 import { mockCrash, type CrashScenario } from './mockCrash';
 import { handleTeams, NOT_TEAMS, type TeamsScenario } from './mockTeams';
 import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
@@ -100,6 +100,8 @@ export interface MockOptions {
   server?: ServerScenario;
   /** Perland account: `off` closes accounts; `signedOut` (default), `signedIn`, `empty` (signed in, no servers), `emailOnly`, `linked` (Minecraft linked, with stats) and `noAddon` (stats off). */
   perland?: PerlandScenario;
+  /** How the Perland page sign-in ends (`?perlandSignIn=`): `ok` (default), `cancel`, `timeout`, `fail` or `expired`. */
+  perlandSignIn?: PerlandSignInOutcome;
   /** Free server (only while `perland` is signed in): `none` (default, may create), `has`, `warned`, `overDisk`, `creating`, `exists`,
    *  `emailRequired`, `rateLimited`, `full` or `off`. Setting it, or signing in, adds a Cozy Pack and a Mega Pack (too heavy) Modrinth instance. */
   free?: FreeScenario;
@@ -429,7 +431,7 @@ function seed(options: MockOptions) {
     custom.set(castle.id, CASTLE_PICTURE);
   }
   // The create dialog picks a Modrinth modpack instance; only a free-server preview or a signed-in player has them.
-  const perland = seedPerland(options.perland, options.panel !== false);
+  const perland = seedPerland(options.perland, options.panel !== false, options.perlandSignIn);
   if (!options.firstRun && options.free !== 'off' && (options.free !== undefined || perland.account !== null)) {
     listing.instances = [...listing.instances, ...modrinthInstances()];
   }

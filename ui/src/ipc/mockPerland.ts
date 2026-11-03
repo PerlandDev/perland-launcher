@@ -15,16 +15,24 @@ import type {
   YourServersPage,
 } from './schema';
 
-/** `?perland=`: `off` closes accounts; `signedOut` (the default) offers Discord and email; `signedIn` has a player with
+/** `?perland=`: `off` closes accounts; `oauth` is signed out on an Engine with the OAuth sign-in (one Continue with Perland, the methods chosen on the
+ *  Perland page); `signedOut` (the default, an Engine without it) offers Discord and email; `signedIn` has a player with
  *  one owner, one invited and two followed servers, not linked to Minecraft; `empty` is signed in with none; `emailOnly` offers
  *  only email; `linked` is `signedIn` already linked as Steve, with stats; `noAddon` is `signedIn` with the Engine's stats add-on off;
  *  `github` is `signedIn` as a GitHub account with no Discord and no email. */
-export type PerlandScenario = 'off' | 'signedOut' | 'signedIn' | 'empty' | 'emailOnly' | 'linked' | 'noAddon' | 'github';
+export type PerlandScenario = 'off' | 'oauth' | 'signedOut' | 'signedIn' | 'empty' | 'emailOnly' | 'linked' | 'noAddon' | 'github';
 
-const SCENARIOS: readonly string[] = ['off', 'signedOut', 'signedIn', 'empty', 'emailOnly', 'linked', 'noAddon', 'github'];
+const SCENARIOS: readonly string[] = ['off', 'oauth', 'signedOut', 'signedIn', 'empty', 'emailOnly', 'linked', 'noAddon', 'github'];
 /** The `?perland=` preview param, or undefined for anything else (dev:mock only). */
 export const perlandScenario = (name: string | null): PerlandScenario | undefined =>
   name !== null && SCENARIOS.includes(name) ? (name as PerlandScenario) : undefined;
+
+/** `?perlandSignIn=`: how the mock's Perland page sign-in ends: `ok` (the default) signs in; `cancel` is canceled on the page; `timeout`, `fail` and
+ *  `expired` are the failures the real one can end in. */
+export type PerlandSignInOutcome = 'ok' | 'cancel' | 'timeout' | 'fail' | 'expired';
+const OUTCOMES: readonly string[] = ['ok', 'cancel', 'timeout', 'fail', 'expired'];
+export const perlandSignInOutcome = (name: string | null): PerlandSignInOutcome | undefined =>
+  name !== null && OUTCOMES.includes(name) ? (name as PerlandSignInOutcome) : undefined;
 
 /** The email code the mock accepts. */
 export const MOCK_EMAIL_CODE = '123456';
@@ -50,6 +58,8 @@ export interface MockPerland {
   cancel: (() => void) | null;
   /** A Perland panel is configured, so Sign in with GitHub is offered. */
   github: boolean;
+  /** How a Perland page sign-in ends. */
+  outcome: PerlandSignInOutcome;
 }
 
 interface Listing {
@@ -117,7 +127,7 @@ function seedServers(): YourServerCard[] {
   ];
 }
 
-export function seedPerland(scenario: PerlandScenario = 'signedOut', github = false): MockPerland {
+export function seedPerland(scenario: PerlandScenario = 'signedOut', github = false, outcome: PerlandSignInOutcome = 'ok'): MockPerland {
   const signedIn = scenario === 'signedIn' || scenario === 'empty' || scenario === 'linked' || scenario === 'noAddon';
   return {
     scenario,
@@ -127,6 +137,7 @@ export function seedPerland(scenario: PerlandScenario = 'signedOut', github = fa
     linkPolls: 0,
     cancel: null,
     github,
+    outcome,
   };
 }
 
@@ -140,7 +151,7 @@ const signedOut = (): never => fail('auth', 'perland_signed_out', 'You were sign
 
 /** GitHub is offered (last) only with a Perland panel, as the app does. */
 const methodsOf = ({ scenario, github }: MockPerland): string[] =>
-  scenario === 'off' ? [] : scenario === 'emailOnly' ? ['email'] : github ? ['discord', 'email', 'github'] : ['discord', 'email'];
+  scenario === 'off' ? [] : scenario === 'oauth' ? ['perland'] : scenario === 'emailOnly' ? ['email'] : github ? ['discord', 'email', 'github'] : ['discord', 'email'];
 
 export const NOT_PERLAND = Symbol('not a Perland command');
 
@@ -237,6 +248,35 @@ export async function handlePerland(
       if (!(await wait(MOCK_DISCORD_WAIT_MS, perland))) return null;
       emit({ type: 'perland_sign_in', phase: 'exchanging' });
       perland.account = { ...(method === 'github' ? OCTOCAT : STEVE), newPlayer: true };
+      return perland.account;
+    }
+    case 'perland_sign_in': {
+      if (!on) closed();
+      if (!methodsOf(perland).includes('perland')) {
+        fail('network', 'sign_in_unavailable', "That way of signing in isn't available.", { method: 'perland' });
+      }
+      emit({ type: 'perland_sign_in', phase: 'waiting' });
+      if (!(await wait(MOCK_DISCORD_WAIT_MS, perland))) return null;
+      const host = { host: 'api.perland.example' };
+      switch (perland.outcome) {
+        case 'cancel':
+          fail('auth', 'sign_in_canceled', 'Sign-in was canceled.', host);
+          break;
+        case 'timeout':
+          fail('auth', 'sign_in_timed_out', 'Sign-in took too long. Try again.');
+          break;
+        case 'fail':
+          fail('auth', 'sign_in_failed', "Couldn't sign you in. Try again.", host);
+          break;
+        case 'expired':
+          emit({ type: 'perland_sign_in', phase: 'exchanging' });
+          fail('auth', 'sign_in_expired', 'That sign-in expired before it finished. Try again.', host);
+          break;
+        case 'ok':
+          break;
+      }
+      emit({ type: 'perland_sign_in', phase: 'exchanging' });
+      perland.account = { ...STEVE, newPlayer: true };
       return perland.account;
     }
     case 'perland_sign_in_reopen':

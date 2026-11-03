@@ -23,7 +23,9 @@ async function bootstrap() {
   if (!import.meta.env.DEV) installBrowserGuard(document);
   if (import.meta.env.MODE === "mock") {
     const { installMock, mockUpdateState } = await import("./ipc/mock");
-    const { perlandScenario } = await import("./ipc/mockPerland");
+    const { perlandScenario, perlandSignInOutcome } = await import(
+      "./ipc/mockPerland"
+    );
     const { freeScenario } = await import("./ipc/mockFree");
     const { manageScenario } = await import("./ipc/mockManage");
     const { teamsScenario } = await import("./ipc/mockTeams");
@@ -45,6 +47,7 @@ async function bootstrap() {
       noUpdate: params.has("noUpdate"),
       link: params.get("link") ?? undefined,
       perland: perlandScenario(params.get("perland")),
+      perlandSignIn: perlandSignInOutcome(params.get("perlandSignIn")),
       free: freeScenario(params.get("free")),
       manage: manageScenario(params.get("manage")),
       teams: teamsScenario(params.get("teams")) ?? "some",

@@ -209,6 +209,7 @@ fn main() {
             commands::server_link,
             commands::server_unlink,
             commands::perland_status,
+            commands::perland_sign_in,
             commands::perland_sign_in_discord,
             commands::perland_sign_in_github,
             commands::perland_sign_in_reopen,
