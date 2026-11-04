@@ -1,6 +1,7 @@
 //! Perland Launcher's one-click Windows setup (design: docs/superpowers/specs/2026-11-04-branded-setup-design.md).
 //! Every decision lives in the platform-neutral modules; `win` is the Windows shell.
 
+pub mod draw;
 pub mod model;
 pub mod text;
 #[cfg(windows)]

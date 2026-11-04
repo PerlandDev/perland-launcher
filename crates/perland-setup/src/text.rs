@@ -110,10 +110,10 @@ pub fn strings(lang: Lang) -> &'static Strings {
 pub fn step_text(lang: Lang, step: Step) -> &'static str {
     match (lang, step) {
         (Lang::En, Step::GettingReady) => "Getting ready",
-        (Lang::En, Step::Installing) => "Installing",
+        (Lang::En, Step::Installing) => "Copying files",
         (Lang::En, Step::FinishingUp) => "Finishing up",
         (Lang::Es, Step::GettingReady) => "Preparando",
-        (Lang::Es, Step::Installing) => "Instalando",
+        (Lang::Es, Step::Installing) => "Copiando archivos",
         (Lang::Es, Step::FinishingUp) => "Terminando",
     }
 }
