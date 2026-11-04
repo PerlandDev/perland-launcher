@@ -2,6 +2,7 @@
 //! Every decision lives in the platform-neutral modules; `win` is the Windows shell.
 
 pub mod model;
+pub mod text;
 #[cfg(windows)]
 pub mod win;
 
