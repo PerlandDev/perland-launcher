@@ -1,0 +1,9 @@
+[package]
+name = "perland-setup"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Perland Launcher's one-click Windows setup"
+
+[dependencies]
+semver = { workspace = true }

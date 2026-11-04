@@ -3226,6 +3226,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "perland-setup"
+version = "0.2.0"
+dependencies = [
+ "semver",
+]
+
+[[package]]
 name = "phf"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

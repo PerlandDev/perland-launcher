@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/launcher-core", "crates/launcher-app", "crates/perland-cli", "src-tauri"]
+members = ["crates/launcher-core", "crates/launcher-app", "crates/perland-cli", "crates/perland-setup", "src-tauri"]
 exclude = ["fuzz"]
 
 [workspace.package]
@@ -35,6 +35,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
 keyring = { version = "3.6", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+semver = "1"
 regex = { version = "1", default-features = false, features = ["std", "perf", "unicode-perl", "unicode-case"] }
 
 # Hashing every pack file is ~10× slower unoptimized; keep dev runs and tests close to release.
