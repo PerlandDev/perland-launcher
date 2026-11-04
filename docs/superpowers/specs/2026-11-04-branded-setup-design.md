@@ -62,7 +62,7 @@ The window is 640 × 400 logical pixels, borderless, centred, not resizable, on 
 ```
 With an older version installed the button reads **UPDATE** and the small line names both versions.
 
-**Already installed** (same or newer version): the title reads "Perland Launcher is installed", the primary button is **OPEN**, and a quiet secondary text button reads **Reinstall**.
+**Already installed**: the title reads "Perland Launcher is installed" and the primary button is **OPEN**. With the same version installed, a quiet secondary text button reads **Reinstall** (a repair). With a **newer** version installed there is no Reinstall: the setup app never downgrades (the launcher's data may already be in a newer format, and the updater would only bring the newer version back). *Our call.*
 
 **Installing**
 ```
@@ -71,7 +71,7 @@ With an older version installed the button reads **UPDATE** and the small line n
 │   ███████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░    │  amber on raised, 6px tall
 │                   Copying files                          │  step text, ink-dim
 ```
-Steps: *Getting ready* (extracting the installer), *Installing* (NSIS running; this is also where WebView2 downloads on an older Windows 10 without it), *Finishing up*. While installing, the close button asks "Stop the install?" in the window before it does anything.
+Steps: *Getting ready* (extracting the installer), *Installing* (NSIS running; this is also where WebView2 downloads on an older Windows 10 without it), *Finishing up*. During *Getting ready* the close button asks "Stop the install?" in the window, and yes deletes the extracted payload and closes. Once the NSIS installer is running it is never killed (half an update could break a working install): the close button is disabled with the hint "Almost there, this can't be stopped now", and Esc does nothing. *Our call.*
 
 **Done**: "Opening Perland Launcher…", the launcher starts, and the setup window closes about a second later. If the launcher can't be started, the window stays with "Perland Launcher is installed" and an **OPEN** button.
 
@@ -79,7 +79,7 @@ Steps: *Getting ready* (extracting the installer), *Installing* (NSIS running; t
 
 **Error**: a plain sentence per error (§6.6), **TRY AGAIN**, and a quiet **Copy details** button that copies the log path and the error code.
 
-Keys: Enter presses the primary button, Esc closes (or asks, while installing), Tab moves between the buttons, and the focused button gets a visible ring.
+Keys: Enter presses the primary button, Esc closes (asks during Getting ready, does nothing while NSIS runs), Tab moves between the buttons, and the focused button gets a visible ring.
 
 ## 5. Look
 
@@ -115,7 +115,7 @@ At install time the payload is written to a fresh folder under `%TEMP%` (`perlan
 - Installed version and folder: read from the registry keys Tauri's NSIS template writes for a per-user install (the builder confirms the exact keys from the template). The same read after the install confirms success and gives the path of `perland-launcher.exe` to start.
 - Progress: Getting ready runs to 15% as the payload is written; Installing eases from 15% toward 90% over an expected 20 s and never passes 90% until the process exits; Finishing up goes to 100% once the registry read confirms the install. The text, not the bar, is what is promised.
 - Launch: start the installed exe detached, with no arguments, then close.
-- `/S` on the setup app's own command line runs the payload silently with no window (for admins and scripts) and exits with its code.
+- `/S` on the setup app's own command line runs the payload silently with no window (for admins and scripts). It applies the same checks as the window: a running launcher is never closed, it exits with code `2` instead; a newer installed version exits `0` without touching it; otherwise it exits with the NSIS installer's code (`0` success). It never starts the launcher afterwards. *Our call.*
 
 ### 6.4 The `.exe` itself
 
@@ -133,7 +133,7 @@ A plain log at `%TEMP%\perland-setup.log` (overwritten each run): steps, version
 In the Windows build job, after `pnpm tauri build`: find the NSIS installer, `cargo build -p perland-setup --release` with `PERLAND_SETUP_PAYLOAD` pointing at it, sign if signing is on, and stage it. Names (new, alongside today's):
 
 - Versioned release asset: `PerlandLauncher_<version>_x64-installer.exe`.
-- Channel fixed-name copy: `PerlandLauncher-<channel>-installer.exe`.
+- Channel fixed-name copy, following today's `channelName` pattern (no word for stable): `PerlandLauncher-installer.exe` for stable, `PerlandLauncher-beta-installer.exe` for beta. These become the download page's lasting links. *Our call, for consistency with the existing names.*
 
 `latest.json` is unchanged and never names the setup app. Its own `.sig` is not needed (the updater never fetches it). The naming helpers live in `scripts/release/lib.mjs` with `node:test` tests, like today's.
 
@@ -143,9 +143,9 @@ Each has a stable code and a sentence in both languages: `payload_missing` (buil
 
 ## 7. Testing
 
-- Unit tests (`#[cfg(test)]`) for the state machine, version decisions, progress easing, strings, layout (buttons inside the window, text not overflowing at either language's longest string), payload write and cleanup (to a temp dir), exit-code mapping, and the release-name helpers.
+- Unit tests (`#[cfg(test)]`) for the state machine (including no downgrade and no stop once NSIS runs), version decisions, the `/S` exit codes, progress easing, strings, layout (buttons inside the window, text not overflowing at either language's longest string), payload write and cleanup (to a temp dir), exit-code mapping, and the release-name helpers.
 - The render example's PNGs are reviewed by the owner before merge and go into the PR body.
-- A manual end-to-end on Windows from a dry-run release: fresh install, already installed, update over an older version, launcher running, Esc while installing, Spanish Windows, 150% scaling, Narrator reading the buttons; then an in-app update still works afterwards.
+- A manual end-to-end on Windows from a dry-run release: fresh install, already installed (same and newer), update over an older version, launcher running (window and `/S`), close during Getting ready and while installing, Spanish Windows, 150% scaling, Narrator reading the buttons; then an in-app update still works afterwards.
 
 ## 8. Left to the builder
 
