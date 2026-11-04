@@ -4,7 +4,7 @@
 use crate::draw::{self, Ui};
 use crate::model::{Action, Screen};
 use crate::text;
-use accesskit::{Node, NodeId, Rect, Role, TreeId, TreeInfo, TreeUpdate};
+use accesskit::{Live, Node, NodeId, Rect, Role, TreeId, TreeInfo, TreeUpdate};
 
 const ROOT: NodeId = NodeId(1);
 const STATUS: NodeId = NodeId(2);
@@ -51,15 +51,22 @@ pub fn tree(screen: &Screen, ui: &Ui, scale: f64) -> TreeUpdate {
         words = format!("{words} {footer}");
     }
     status.set_value(words);
+    // Screen readers announce each change of screen; errors interrupt.
+    status.set_live(if matches!(screen, Screen::Error(_)) {
+        Live::Assertive
+    } else {
+        Live::Polite
+    });
     nodes.push((STATUS, status));
 
     if let Screen::Installing {
         progress,
         confirm_stop: false,
-        ..
+        step,
     } = screen
     {
         let mut bar = Node::new(Role::ProgressIndicator);
+        bar.set_label(text::step_text(ui.lang, *step));
         bar.set_min_numeric_value(0.0);
         bar.set_max_numeric_value(100.0);
         bar.set_numeric_value((*progress as f64 * 100.0).round());

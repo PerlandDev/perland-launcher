@@ -39,7 +39,9 @@ const PRIMARY: (f32, f32, f32) = (200.0, 52.0, 256.0); // width, height, top
 const PRIMARY_LABEL: f32 = 18.0;
 const SECONDARY_TOP: f32 = 318.0;
 const SECONDARY_SIZE: f32 = 15.0;
-const BAR: (f32, f32, f32) = (400.0, 6.0, 270.0); // width, height, top
+/// The progress bar's width (logical px); the shell redraws a tick only when the fill moves a pixel.
+pub const BAR_WIDTH: f32 = 400.0;
+const BAR: (f32, f32, f32) = (BAR_WIDTH, 6.0, 270.0); // width, height, top
 const FOOTER_Y: f32 = 374.0;
 const FOOTER_SIZE: f32 = 13.0;
 const TEXT_MAX: f32 = 600.0;
@@ -375,8 +377,23 @@ fn draw_text(pixmap: &mut Pixmap, line: &Line, center_x: f32, alpha: f32, scale:
     }
 }
 
-/// The pinwheel `width` device pixels wide (the brand file is 512 × 433), box-filtered down.
+/// The pinwheel `width` device pixels wide, kept for the last width asked (it is redrawn every
+/// animation frame at the same scale).
 fn logo(width: u32) -> Pixmap {
+    static CACHE: std::sync::Mutex<Option<Pixmap>> = std::sync::Mutex::new(None);
+    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    match cache.as_ref() {
+        Some(p) if p.width() == width => p.clone(),
+        _ => {
+            let p = scaled_logo(width);
+            *cache = Some(p.clone());
+            p
+        }
+    }
+}
+
+/// The pinwheel `width` device pixels wide (the brand file is 512 × 433), box-filtered down.
+fn scaled_logo(width: u32) -> Pixmap {
     static SOURCE: OnceLock<Pixmap> = OnceLock::new();
     let src = SOURCE.get_or_init(|| {
         Pixmap::decode_png(include_bytes!("../assets/pinwheel-on-dark-512.png"))

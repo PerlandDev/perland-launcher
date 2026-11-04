@@ -44,6 +44,38 @@ impl PayloadDir {
     pub fn dir(&self) -> &Path {
         &self.dir
     }
+
+    /// Removes the folder now, retrying for about a second (an antivirus may still hold the
+    /// just-run installer), and says whether it worked.
+    pub fn remove(self) -> io::Result<()> {
+        let mut last = Ok(());
+        for attempt in 0..5 {
+            if attempt > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            last = match std::fs::remove_dir_all(&self.dir) {
+                Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+                other => other,
+            };
+            if last.is_ok() {
+                break;
+            }
+        }
+        last
+    }
+}
+
+/// The installed launcher from its registry values, only while its exe is on disk: a folder
+/// deleted by hand leaves the uninstall entry behind, and that is not an install.
+pub fn installed_entry(
+    version: Option<String>,
+    location: Option<String>,
+    binary: Option<String>,
+    exists: impl Fn(&Path) -> bool,
+) -> Option<(String, PathBuf)> {
+    let (version, location) = (version?, location?);
+    let exe = installed_exe(&location, binary.as_deref());
+    exists(&exe).then_some((version, exe))
 }
 
 /// The launcher's exe from the registry's `InstallLocation` (Tauri writes it in quotes) and
@@ -135,6 +167,40 @@ mod tests {
         assert_eq!(
             installed_exe("C:\\x", Some("other.exe")),
             Path::new("C:\\x").join("other.exe")
+        );
+    }
+
+    #[test]
+    fn remove_deletes_the_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let payload = PayloadDir::write(b"a", root.path()).unwrap();
+        let dir = payload.dir().to_path_buf();
+        payload.remove().unwrap();
+        assert!(!dir.exists());
+    }
+
+    #[test]
+    fn installed_entry_needs_the_exe() {
+        let entry = |exists: bool| {
+            installed_entry(Some("0.2.0".into()), Some("\"C:\\x\"".into()), None, |_| {
+                exists
+            })
+        };
+        assert_eq!(
+            entry(true),
+            Some((
+                "0.2.0".into(),
+                Path::new("C:\\x").join("perland-launcher.exe")
+            ))
+        );
+        assert_eq!(entry(false), None);
+        assert_eq!(
+            installed_entry(None, Some("C:\\x".into()), None, |_| true),
+            None
+        );
+        assert_eq!(
+            installed_entry(Some("0.2.0".into()), None, None, |_| true),
+            None
         );
     }
 

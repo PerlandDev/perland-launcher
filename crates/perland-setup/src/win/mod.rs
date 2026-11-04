@@ -7,7 +7,7 @@ mod system;
 
 use crate::draw::{self, Ui, HEIGHT, WIDTH};
 use crate::model::{
-    offer, silent_plan, Action, Effect, ErrorCode, Event, Machine, Screen, SilentPlan,
+    offer, silent_plan, Action, Effect, ErrorCode, Event, Machine, Pacer, Screen, SilentPlan,
 };
 use crate::payload::{embedded, PayloadDir};
 use crate::{text, VERSION};
@@ -20,6 +20,8 @@ use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, NamedKey};
+use winit::platform::windows::IconExtWindows;
+use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use winit::window::{CursorIcon, Icon, Window, WindowId};
 
 const FRAME: Duration = Duration::from_millis(16);
@@ -41,6 +43,11 @@ impl From<accesskit_winit::Event> for UserEvent {
 
 /// Runs the setup and returns the process exit code.
 pub fn run() -> i32 {
+    // One setup at a time: two would run the installer into the same folder at once.
+    let Some(_instance) = system::SingleInstance::claim() else {
+        system::focus_window(text::strings(system::ui_lang()).window_title);
+        return 0;
+    };
     log::line(&format!("Perland Launcher Setup {VERSION}"));
     if std::env::args()
         .skip(1)
@@ -94,7 +101,15 @@ fn run_silent() -> i32 {
     };
     let code = run_installer(&payload);
     log::line(&format!("silent: installer exited {code}"));
+    remove_payload(payload);
     code
+}
+
+fn remove_payload(payload: PayloadDir) {
+    let dir = payload.dir().to_path_buf();
+    if let Err(e) = payload.remove() {
+        log::line(&format!("could not remove {}: {e}", dir.display()));
+    }
 }
 
 fn run_installer(payload: &PayloadDir) -> i32 {
@@ -123,7 +138,9 @@ struct App {
     pressed: Option<Action>,
     shift: bool,
     cursor_y: f32,
-    last_tick: Instant,
+    pacer: Pacer,
+    /// The progress bar's width in whole pixels when last drawn, so a tick redraws only on change.
+    drawn_progress: i32,
     /// When the Opening screen starts fading, and when the window closes.
     closing: Option<Instant>,
 }
@@ -147,7 +164,8 @@ impl App {
             pressed: None,
             shift: false,
             cursor_y: f32::MAX,
-            last_tick: Instant::now(),
+            pacer: Pacer::default(),
+            drawn_progress: -1,
             closing: None,
         }
     }
@@ -197,9 +215,12 @@ impl App {
     }
 
     fn handle(&mut self, event_loop: &ActiveEventLoop, event: Event) {
-        log::line(&format!("event {event:?}"));
+        let tick = matches!(event, Event::Tick(_));
+        if !tick {
+            log::line(&format!("event {event:?}"));
+        }
         let effects = self.machine.on(event);
-        if !matches!(event, Event::Tick(_)) {
+        if !tick {
             log::line(&format!(
                 "screen {:?}, effects {effects:?}",
                 self.machine.screen
@@ -211,7 +232,14 @@ impl App {
         for effect in effects {
             self.run(event_loop, effect);
         }
-        self.redraw();
+        let progress = match self.machine.screen {
+            Screen::Installing { progress, .. } => (progress * draw::BAR_WIDTH).round() as i32,
+            _ => -1,
+        };
+        if !tick || progress != self.drawn_progress {
+            self.drawn_progress = progress;
+            self.redraw();
+        }
     }
 
     fn send_later(&self, work: impl FnOnce() -> Event + Send + 'static) {
@@ -247,7 +275,7 @@ impl App {
                 });
             }
             Effect::RunInstaller => {
-                self.last_tick = Instant::now();
+                self.pacer = Pacer::default();
                 let slot = self.payload.clone();
                 self.send_later(move || {
                     let guard = slot.lock().expect("payload lock");
@@ -267,8 +295,10 @@ impl App {
                 Event::Launched(launched)
             }),
             Effect::DeletePayload => {
-                // Dropping the folder removes it. The installer has exited by now, so nothing holds it.
-                self.payload.lock().expect("payload lock").take();
+                // The installer has exited, or the writer has reported, so nothing else holds it.
+                if let Some(payload) = self.payload.lock().expect("payload lock").take() {
+                    remove_payload(payload);
+                }
             }
             Effect::CopyDetails => {
                 let code = self.error.map(|e| e.code()).unwrap_or("unknown");
@@ -280,13 +310,24 @@ impl App {
                     },
                     log::path().display()
                 );
-                system::copy_to_clipboard(&details);
+                // The clipboard needs an owner window, or SetClipboardData fails.
+                let owner = self.graphics.as_ref().and_then(|g| {
+                    match g.window.window_handle().ok()?.as_raw() {
+                        RawWindowHandle::Win32(h) => Some(h.hwnd.get()),
+                        _ => None,
+                    }
+                });
+                if !owner.is_some_and(|hwnd| system::copy_to_clipboard(hwnd, &details)) {
+                    log::line("could not copy the details to the clipboard");
+                }
             }
             Effect::Exit => {
                 if matches!(self.machine.screen, Screen::Opening) {
                     self.closing = Some(Instant::now() + OPENING_HOLD);
                 } else {
-                    self.payload.lock().expect("payload lock").take();
+                    if let Some(payload) = self.payload.lock().expect("payload lock").take() {
+                        remove_payload(payload);
+                    }
                     event_loop.exit();
                 }
             }
@@ -370,19 +411,9 @@ impl App {
     }
 }
 
+/// The exe's own icon (`src-tauri/icons/icon.ico`, resource 1, embedded by build.rs).
 fn window_icon() -> Option<Icon> {
-    let pixmap =
-        tiny_skia::Pixmap::decode_png(include_bytes!("../../assets/pinwheel-on-dark-512.png"))
-            .ok()?;
-    let rgba: Vec<u8> = pixmap
-        .pixels()
-        .iter()
-        .flat_map(|p| {
-            let c = p.demultiply();
-            [c.red(), c.green(), c.blue(), c.alpha()]
-        })
-        .collect();
-    Icon::from_rgba(rgba, pixmap.width(), pixmap.height()).ok()
+    Icon::from_resource(1, None).ok()
 }
 
 impl ApplicationHandler<UserEvent> for App {
@@ -497,18 +528,29 @@ impl ApplicationHandler<UserEvent> for App {
                 event_loop.exit();
                 return;
             }
-            if now >= fade_at {
-                self.ui.fade = 1.0 - (now - fade_at).as_secs_f32() / FADE.as_secs_f32();
-                self.redraw();
+            if now < fade_at {
+                event_loop.set_control_flow(ControlFlow::WaitUntil(fade_at));
+                return;
             }
-            event_loop.set_control_flow(ControlFlow::WaitUntil(now + FRAME));
+            // A redraw request wakes the loop at once, so frames are paced here, not by the wake.
+            match self.pacer.frame(now, FRAME) {
+                Ok(_) => {
+                    self.ui.fade = 1.0 - (now - fade_at).as_secs_f32() / FADE.as_secs_f32();
+                    self.redraw();
+                    event_loop.set_control_flow(ControlFlow::WaitUntil(now + FRAME));
+                }
+                Err(next) => event_loop.set_control_flow(ControlFlow::WaitUntil(next)),
+            }
             return;
         }
         if matches!(self.machine.screen, Screen::Installing { .. }) {
-            let dt = now - self.last_tick;
-            self.last_tick = now;
-            self.handle(event_loop, Event::Tick(dt));
-            event_loop.set_control_flow(ControlFlow::WaitUntil(now + FRAME));
+            match self.pacer.frame(now, FRAME) {
+                Ok(dt) => {
+                    self.handle(event_loop, Event::Tick(dt));
+                    event_loop.set_control_flow(ControlFlow::WaitUntil(now + FRAME));
+                }
+                Err(next) => event_loop.set_control_flow(ControlFlow::WaitUntil(next)),
+            }
         } else {
             event_loop.set_control_flow(ControlFlow::Wait);
         }

@@ -1,12 +1,13 @@
 //! The Windows calls the setup needs: the registry, processes, the UI language, the clipboard and
 //! starting the launcher.
 
-use crate::payload::installed_exe;
+use crate::payload::installed_entry;
 use crate::text::{lang_from_langid, Lang};
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GlobalFree, ERROR_SUCCESS, INVALID_HANDLE_VALUE,
+    CloseHandle, GetLastError, GlobalFree, ERROR_ALREADY_EXISTS, ERROR_SUCCESS, HANDLE,
+    INVALID_HANDLE_VALUE,
 };
 use windows_sys::Win32::Globalization::GetUserDefaultUILanguage;
 use windows_sys::Win32::System::DataExchange::{
@@ -17,7 +18,10 @@ use windows_sys::Win32::System::Diagnostics::ToolHelp::{
 };
 use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
 use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_SZ};
-use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS};
+use windows_sys::Win32::System::Threading::{
+    CreateMutexW, CREATE_NEW_PROCESS_GROUP, DETACHED_PROCESS,
+};
+use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowW, SetForegroundWindow};
 
 /// Where Tauri's NSIS template records a per-user install (tauri-bundler 2.x `UNINSTKEY`).
 const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Perland Launcher";
@@ -55,10 +59,12 @@ fn uninstall_value(name: &str) -> Option<String> {
 
 /// The installed launcher's version and exe, from the registry.
 pub fn installed() -> Option<(String, PathBuf)> {
-    let version = uninstall_value("DisplayVersion")?;
-    let location = uninstall_value("InstallLocation")?;
-    let binary = uninstall_value("MainBinaryName");
-    Some((version, installed_exe(&location, binary.as_deref())))
+    installed_entry(
+        uninstall_value("DisplayVersion"),
+        uninstall_value("InstallLocation"),
+        uninstall_value("MainBinaryName"),
+        |exe| exe.is_file(),
+    )
 }
 
 /// Whether a `perland-launcher.exe` runs, from anywhere. The NSIS installer would force-close it.
@@ -103,12 +109,13 @@ pub fn launch(exe: &Path) -> bool {
         .is_ok()
 }
 
-pub fn copy_to_clipboard(text: &str) -> bool {
+/// Puts `text` on the clipboard, owned by the window `hwnd` (with no owner, SetClipboardData fails).
+pub fn copy_to_clipboard(hwnd: isize, text: &str) -> bool {
     let data = wide(text);
     // SAFETY: the clipboard is opened and closed on this thread; the global memory is filled while
     // locked and handed to the clipboard, which then owns it (freed by us only if that fails).
     unsafe {
-        if OpenClipboard(std::ptr::null_mut()) == 0 {
+        if OpenClipboard(hwnd as _) == 0 {
             return false;
         }
         EmptyClipboard();
@@ -128,5 +135,48 @@ pub fn copy_to_clipboard(text: &str) -> bool {
         }
         CloseClipboard();
         ok
+    }
+}
+
+/// A named mutex held while this setup runs, so a second copy can step aside.
+pub struct SingleInstance(HANDLE);
+
+impl SingleInstance {
+    pub fn claim() -> Option<SingleInstance> {
+        let name = wide("Local\\PerlandLauncherSetup");
+        // SAFETY: the name is a valid NUL-terminated string; the handle is closed in Drop.
+        unsafe {
+            let handle = CreateMutexW(std::ptr::null(), 0, name.as_ptr());
+            if handle.is_null() {
+                // Without a mutex there is no way to tell; run rather than refuse.
+                return Some(SingleInstance(handle));
+            }
+            if GetLastError() == ERROR_ALREADY_EXISTS {
+                CloseHandle(handle);
+                return None;
+            }
+            Some(SingleInstance(handle))
+        }
+    }
+}
+
+impl Drop for SingleInstance {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            // SAFETY: the handle came from CreateMutexW and is closed once.
+            unsafe { CloseHandle(self.0) };
+        }
+    }
+}
+
+/// Brings the other setup's window forward, found by its title.
+pub fn focus_window(title: &str) {
+    let title = wide(title);
+    // SAFETY: the title is a valid NUL-terminated string; a null result is checked.
+    unsafe {
+        let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+        if !hwnd.is_null() {
+            SetForegroundWindow(hwnd);
+        }
     }
 }

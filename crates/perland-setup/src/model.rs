@@ -117,6 +117,8 @@ pub struct Machine {
     payload_present: bool,
     /// Set while a running-launcher check is in flight, so a second click starts nothing.
     checking: bool,
+    /// Stop was confirmed while the payload was being written: exit once the writer reports.
+    stopping: bool,
     elapsed: Duration,
 }
 
@@ -126,6 +128,7 @@ impl Machine {
             screen: Screen::Ready(offer),
             payload_present,
             checking: false,
+            stopping: false,
             elapsed: Duration::ZERO,
         }
     }
@@ -153,6 +156,11 @@ impl Machine {
 
     pub fn on(&mut self, event: Event) -> Vec<Effect> {
         use Action::*;
+        if self.checking && matches!(event, Event::Pressed(Primary | Secondary)) {
+            // One answer at a time: an Open pressed while the running check is out could start
+            // the launcher just before the installer force-closes it.
+            return vec![];
+        }
         match (&self.screen, event) {
             (Screen::Ready(Offer::Install | Offer::Update { .. }), Event::Pressed(Primary))
             | (Screen::Ready(Offer::Reinstall), Event::Pressed(Secondary))
@@ -199,13 +207,25 @@ impl Machine {
                         };
                         vec![]
                     }
-                    (Primary, true) => vec![Effect::DeletePayload, Effect::Exit],
+                    (Primary, true) => {
+                        self.stopping = true;
+                        vec![]
+                    }
                     (Secondary, true) => {
                         self.installing(Step::GettingReady, progress);
                         vec![]
                     }
                     _ => vec![],
                 }
+            }
+            (
+                Screen::Installing {
+                    step: Step::GettingReady,
+                    ..
+                },
+                Event::PayloadWritten | Event::PayloadFailed(_),
+            ) if self.stopping => {
+                vec![Effect::DeletePayload, Effect::Exit]
             }
             (
                 Screen::Installing {
@@ -283,6 +303,29 @@ impl Machine {
 pub fn installing_progress(elapsed: Duration) -> f32 {
     let t = elapsed.as_secs_f32();
     (0.15 + 0.75 * (1.0 - (-3.0 * t / 20.0).exp())).min(0.90)
+}
+
+/// Paces animation frames: at most one per `every`, whatever wakes the event loop in between.
+#[derive(Debug, Default)]
+pub struct Pacer {
+    last: Option<std::time::Instant>,
+}
+
+impl Pacer {
+    /// `Ok(time since the last frame)` when a frame is due, else `Err(when the next one is)`.
+    pub fn frame(
+        &mut self,
+        now: std::time::Instant,
+        every: Duration,
+    ) -> Result<Duration, std::time::Instant> {
+        match self.last {
+            Some(last) if now < last + every => Err(last + every),
+            last => {
+                self.last = Some(now);
+                Ok(last.map_or(Duration::ZERO, |l| now - l))
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -465,7 +508,32 @@ mod tests {
             }
         ));
         press(&mut m, Action::Close);
-        assert_eq!(press(&mut m, Action::Primary), vec![DeletePayload, Exit]);
+        // The writer is still running: wait for it, so its folder is removed before exiting.
+        assert_eq!(press(&mut m, Action::Primary), vec![]);
+        assert_eq!(m.on(PayloadWritten), vec![DeletePayload, Exit]);
+    }
+
+    #[test]
+    fn stop_waits_for_a_failed_write_too() {
+        let mut m = Machine::new(Offer::Install, true);
+        press(&mut m, Action::Primary);
+        m.on(RunningChecked(false));
+        press(&mut m, Action::Close);
+        press(&mut m, Action::Primary);
+        assert_eq!(
+            m.on(PayloadFailed(ErrorCode::TempUnwritable)),
+            vec![DeletePayload, Exit]
+        );
+    }
+
+    #[test]
+    fn presses_while_checking_start_nothing() {
+        // Reinstall, then OPEN before the running check answers: the launcher must not open,
+        // or the installer would force-close it.
+        let mut m = Machine::new(Offer::Reinstall, true);
+        assert_eq!(press(&mut m, Action::Secondary), vec![CheckRunning]);
+        assert_eq!(press(&mut m, Action::Primary), vec![]);
+        assert_eq!(m.on(RunningChecked(false)), vec![WritePayload]);
     }
 
     #[test]
@@ -577,6 +645,26 @@ mod tests {
         assert!((progress - installing_progress(Duration::from_secs(10))).abs() < 1e-6);
         m.on(InstallerExited(0));
         assert!(matches!(m.screen, Screen::Installing { progress, .. } if progress == 1.0));
+    }
+
+    #[test]
+    fn pacer_spaces_frames() {
+        let every = Duration::from_millis(16);
+        let t0 = std::time::Instant::now();
+        let mut pacer = Pacer::default();
+        assert_eq!(pacer.frame(t0, every), Ok(Duration::ZERO));
+        assert_eq!(
+            pacer.frame(t0 + Duration::from_millis(3), every),
+            Err(t0 + every)
+        );
+        assert_eq!(
+            pacer.frame(t0 + Duration::from_millis(20), every),
+            Ok(Duration::from_millis(20))
+        );
+        assert_eq!(
+            pacer.frame(t0 + Duration::from_millis(21), every),
+            Err(t0 + Duration::from_millis(36))
+        );
     }
 
     #[test]
