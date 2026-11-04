@@ -16,6 +16,11 @@ pub fn node_of(action: Action) -> NodeId {
         Action::Secondary => NodeId(11),
         Action::Close => NodeId(12),
         Action::CopyDetails => NodeId(13),
+        Action::Options => NodeId(14),
+        Action::ChangeFolder => NodeId(15),
+        Action::ToggleStartMenu => NodeId(16),
+        Action::ToggleDesktop => NodeId(17),
+        Action::Back => NodeId(18),
     }
 }
 
@@ -25,6 +30,11 @@ pub fn action_of(node: NodeId) -> Option<Action> {
         Action::Secondary,
         Action::Close,
         Action::CopyDetails,
+        Action::Options,
+        Action::ChangeFolder,
+        Action::ToggleStartMenu,
+        Action::ToggleDesktop,
+        Action::Back,
     ]
     .into_iter()
     .find(|a| node_of(*a) == node)

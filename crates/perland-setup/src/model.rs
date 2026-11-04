@@ -1,6 +1,8 @@
 //! What the setup window shows and what it does next. Pure: the Windows shell feeds it events and
 //! runs the effects it returns.
 
+use crate::options::{Choice, FolderProblem};
+use std::path::PathBuf;
 use std::time::Duration;
 
 /// What the first screen offers, from the installed version and the one inside this setup.
@@ -67,6 +69,11 @@ impl ErrorCode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Screen {
     Ready(Offer),
+    /// The install options view, opened from a Ready screen (`offer` is that screen's).
+    Options {
+        offer: Offer,
+        problem: Option<FolderProblem>,
+    },
     LauncherRunning,
     Installing {
         step: Step,
@@ -85,9 +92,14 @@ pub enum Action {
     Secondary,
     Close,
     CopyDetails,
+    Options,
+    ChangeFolder,
+    ToggleStartMenu,
+    ToggleDesktop,
+    Back,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     Pressed(Action),
     RunningChecked(bool),
@@ -98,9 +110,12 @@ pub enum Event {
     Confirmed(bool),
     Launched(bool),
     Tick(Duration),
+    /// The folder picker closed: the folder picked, or `None` when cancelled.
+    FolderPicked(Option<PathBuf>),
+    FolderResolved(Result<PathBuf, FolderProblem>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
     CheckRunning,
     WritePayload,
@@ -110,6 +125,10 @@ pub enum Effect {
     DeletePayload,
     CopyDetails,
     Exit,
+    PickFolder,
+    ResolveFolder(PathBuf),
+    /// After a fresh install: delete the one shortcut the player unticked.
+    RemoveShortcuts,
 }
 
 pub struct Machine {
@@ -120,16 +139,25 @@ pub struct Machine {
     /// Stop was confirmed while the payload was being written: exit once the writer reports.
     stopping: bool,
     elapsed: Duration,
+    fresh: bool,
+    pub choice: Choice,
 }
 
 impl Machine {
+    /// A fresh install (nothing installed): only then can the folder and shortcuts be chosen.
+    pub fn fresh(&self) -> bool {
+        self.fresh
+    }
+
     pub fn new(offer: Offer, payload_present: bool) -> Machine {
         Machine {
-            screen: Screen::Ready(offer),
+            screen: Screen::Ready(offer.clone()),
             payload_present,
             checking: false,
             stopping: false,
             elapsed: Duration::ZERO,
+            fresh: offer == Offer::Install,
+            choice: Choice::default(),
         }
     }
 
@@ -162,6 +190,44 @@ impl Machine {
             return vec![];
         }
         match (&self.screen, event) {
+            (Screen::Ready(offer), Event::Pressed(Options)) if *offer != Offer::Newer => {
+                self.screen = Screen::Options {
+                    offer: offer.clone(),
+                    problem: None,
+                };
+                vec![]
+            }
+            (Screen::Options { offer, .. }, Event::Pressed(Back | Close)) => {
+                self.screen = Screen::Ready(offer.clone());
+                vec![]
+            }
+            (Screen::Options { .. }, Event::Pressed(ChangeFolder)) if self.fresh => {
+                vec![Effect::PickFolder]
+            }
+            (Screen::Options { .. }, Event::Pressed(ToggleStartMenu)) if self.fresh => {
+                self.choice.start_menu = !self.choice.start_menu;
+                vec![]
+            }
+            (Screen::Options { .. }, Event::Pressed(ToggleDesktop)) if self.fresh => {
+                self.choice.desktop = !self.choice.desktop;
+                vec![]
+            }
+            (Screen::Options { .. }, Event::FolderPicked(Some(path))) => {
+                vec![Effect::ResolveFolder(path)]
+            }
+            (Screen::Options { offer, .. }, Event::FolderResolved(result)) => {
+                let offer = offer.clone();
+                let problem = match result {
+                    Ok(folder) => {
+                        self.choice.folder = Some(folder);
+                        None
+                    }
+                    Err(problem) => Some(problem),
+                };
+                self.screen = Screen::Options { offer, problem };
+                vec![]
+            }
+            (Screen::Options { problem: None, .. }, Event::Pressed(Primary)) => self.check(),
             (Screen::Ready(Offer::Install | Offer::Update { .. }), Event::Pressed(Primary))
             | (Screen::Ready(Offer::Reinstall), Event::Pressed(Secondary))
             | (Screen::LauncherRunning | Screen::Error(_), Event::Pressed(Primary)) => self.check(),
@@ -268,7 +334,12 @@ impl Machine {
             ) => {
                 if code == 0 {
                     self.installing(Step::FinishingUp, 1.0);
-                    vec![Effect::ConfirmInstall, Effect::DeletePayload]
+                    let confirm = vec![Effect::ConfirmInstall, Effect::DeletePayload];
+                    if self.fresh {
+                        [vec![Effect::RemoveShortcuts], confirm].concat()
+                    } else {
+                        confirm
+                    }
                 } else {
                     self.screen = Screen::Error(ErrorCode::InstallerFailed(code));
                     vec![Effect::DeletePayload]
@@ -348,6 +419,8 @@ pub fn silent_plan(installed: Option<&str>, payload: &str, running: bool) -> Sil
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::options::{Choice, FolderProblem};
+    use std::path::PathBuf;
     use Effect::*;
     use Event::*;
 
@@ -414,7 +487,7 @@ mod tests {
         assert_eq!(installing(&m), Some(Step::Installing));
         assert_eq!(
             m.on(InstallerExited(0)),
-            vec![ConfirmInstall, DeletePayload]
+            vec![RemoveShortcuts, ConfirmInstall, DeletePayload]
         );
         assert_eq!(installing(&m), Some(Step::FinishingUp));
         assert_eq!(m.on(Confirmed(true)), vec![Launch]);
@@ -664,6 +737,128 @@ mod tests {
         assert_eq!(
             pacer.frame(t0 + Duration::from_millis(21), every),
             Err(t0 + Duration::from_millis(36))
+        );
+    }
+
+    fn options_of(m: &Machine) -> Option<Option<FolderProblem>> {
+        match &m.screen {
+            Screen::Options { problem, .. } => Some(*problem),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn options_opens_and_back_returns() {
+        let mut m = Machine::new(Offer::Install, true);
+        assert_eq!(press(&mut m, Action::Options), vec![]);
+        assert_eq!(options_of(&m), Some(None));
+        assert_eq!(press(&mut m, Action::Back), vec![]);
+        assert_eq!(m.screen, Screen::Ready(Offer::Install));
+        press(&mut m, Action::Options);
+        assert_eq!(press(&mut m, Action::Close), vec![]);
+        assert_eq!(m.screen, Screen::Ready(Offer::Install));
+    }
+
+    #[test]
+    fn change_folder_picks_then_resolves() {
+        let mut m = Machine::new(Offer::Install, true);
+        press(&mut m, Action::Options);
+        assert_eq!(press(&mut m, Action::ChangeFolder), vec![PickFolder]);
+        let picked = PathBuf::from("D:\\Games");
+        assert_eq!(
+            m.on(FolderPicked(Some(picked.clone()))),
+            vec![ResolveFolder(picked)]
+        );
+        let resolved = PathBuf::from("D:\\Games\\Perland Launcher");
+        assert_eq!(m.on(FolderResolved(Ok(resolved.clone()))), vec![]);
+        assert_eq!(m.choice.folder, Some(resolved));
+        assert_eq!(options_of(&m), Some(None));
+    }
+
+    #[test]
+    fn cancelled_picker_changes_nothing() {
+        let mut m = Machine::new(Offer::Install, true);
+        press(&mut m, Action::Options);
+        press(&mut m, Action::ChangeFolder);
+        assert_eq!(m.on(FolderPicked(None)), vec![]);
+        assert_eq!(m.choice, Choice::default());
+    }
+
+    #[test]
+    fn refused_folder_blocks_install() {
+        let mut m = Machine::new(Offer::Install, true);
+        press(&mut m, Action::Options);
+        m.on(FolderResolved(Err(FolderProblem::NotEmpty)));
+        assert_eq!(options_of(&m), Some(Some(FolderProblem::NotEmpty)));
+        assert_eq!(m.choice.folder, None);
+        assert_eq!(press(&mut m, Action::Primary), vec![]);
+        m.on(FolderResolved(Ok(PathBuf::from("E:\\PL"))));
+        assert_eq!(press(&mut m, Action::Primary), vec![CheckRunning]);
+        assert_eq!(m.on(RunningChecked(false)), vec![WritePayload]);
+    }
+
+    #[test]
+    fn update_cannot_change_folder_or_shortcuts() {
+        let mut m = Machine::new(
+            Offer::Update {
+                from: "0.1.0".into(),
+            },
+            true,
+        );
+        assert!(!m.fresh());
+        press(&mut m, Action::Options);
+        assert_eq!(options_of(&m), Some(None));
+        assert_eq!(press(&mut m, Action::ChangeFolder), vec![]);
+        press(&mut m, Action::ToggleDesktop);
+        assert!(m.choice.desktop);
+        assert_eq!(press(&mut m, Action::Primary), vec![CheckRunning]);
+    }
+
+    #[test]
+    fn newer_has_no_options() {
+        let mut m = Machine::new(Offer::Newer, true);
+        assert_eq!(press(&mut m, Action::Options), vec![]);
+        assert_eq!(m.screen, Screen::Ready(Offer::Newer));
+    }
+
+    #[test]
+    fn toggles_flip_on_fresh_install() {
+        let mut m = Machine::new(Offer::Install, true);
+        assert!(m.fresh());
+        press(&mut m, Action::Options);
+        press(&mut m, Action::ToggleDesktop);
+        press(&mut m, Action::ToggleStartMenu);
+        assert!(!m.choice.desktop && !m.choice.start_menu);
+        press(&mut m, Action::ToggleDesktop);
+        assert!(m.choice.desktop);
+    }
+
+    #[test]
+    fn fresh_install_removes_shortcuts_after_success() {
+        let mut m = Machine::new(Offer::Install, true);
+        press(&mut m, Action::Primary);
+        m.on(RunningChecked(false));
+        m.on(PayloadWritten);
+        assert_eq!(
+            m.on(InstallerExited(0)),
+            vec![RemoveShortcuts, ConfirmInstall, DeletePayload]
+        );
+    }
+
+    #[test]
+    fn update_does_not_remove_shortcuts() {
+        let mut m = Machine::new(
+            Offer::Update {
+                from: "0.1.0".into(),
+            },
+            true,
+        );
+        press(&mut m, Action::Primary);
+        m.on(RunningChecked(false));
+        m.on(PayloadWritten);
+        assert_eq!(
+            m.on(InstallerExited(0)),
+            vec![ConfirmInstall, DeletePayload]
         );
     }
 

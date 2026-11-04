@@ -321,6 +321,8 @@ impl App {
                     log::line("could not copy the details to the clipboard");
                 }
             }
+            // Task 5 of the options plan implements these.
+            Effect::PickFolder | Effect::ResolveFolder(_) | Effect::RemoveShortcuts => {}
             Effect::Exit => {
                 if matches!(self.machine.screen, Screen::Opening) {
                     self.closing = Some(Instant::now() + OPENING_HOLD);
