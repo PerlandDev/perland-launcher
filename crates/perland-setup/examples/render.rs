@@ -4,7 +4,7 @@
 use perland_setup::draw::{render, Paths, Ui};
 use perland_setup::model::{Action, ErrorCode, Offer, Screen, Step};
 use perland_setup::options::FolderProblem;
-use perland_setup::text::Lang;
+use perland_setup::text::{uninstall_words, Lang};
 use perland_setup::uninstall::{UScreen, UStep};
 
 fn main() {
@@ -112,13 +112,25 @@ fn main() {
             "21-uninstall-failed",
             Screen::Uninstall(UScreen::Failed {
                 code: 0,
-                not_deleted: vec!["Saved sign-ins".into()],
+                // Replaced per language below, as the app does.
+                not_deleted: vec![String::new()],
             }),
             None,
         ),
     ];
     for lang in [Lang::En, Lang::Es] {
         for (name, screen, hover) in &screens {
+            let localized;
+            let screen = match screen {
+                Screen::Uninstall(UScreen::Failed { code, .. }) => {
+                    localized = Screen::Uninstall(UScreen::Failed {
+                        code: *code,
+                        not_deleted: vec![uninstall_words(lang).sign_ins.into()],
+                    });
+                    &localized
+                }
+                other => other,
+            };
             let ui = Ui {
                 lang,
                 payload_version: perland_setup::VERSION.into(),
