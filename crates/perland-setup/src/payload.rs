@@ -23,14 +23,18 @@ pub struct PayloadDir {
 
 impl PayloadDir {
     pub fn write(bytes: &[u8], temp_root: &Path) -> io::Result<PayloadDir> {
+        Self::write_named(bytes, temp_root, "PerlandLauncherSetup.exe")
+    }
+
+    pub fn write_named(bytes: &[u8], temp_root: &Path, name: &str) -> io::Result<PayloadDir> {
         let mut random = [0u8; 8];
         getrandom::fill(&mut random).map_err(|e| io::Error::other(e.to_string()))?;
-        let name: String = random.iter().map(|b| format!("{b:02x}")).collect();
-        let dir = temp_root.join(format!("perland-setup-{name}"));
+        let hex: String = random.iter().map(|b| format!("{b:02x}")).collect();
+        let dir = temp_root.join(format!("perland-setup-{hex}"));
         std::fs::create_dir(&dir)?;
         // From here on, dropping `payload` removes the folder, also when the write fails.
         let payload = PayloadDir {
-            exe: dir.join("PerlandLauncherSetup.exe"),
+            exe: dir.join(name),
             dir,
         };
         std::fs::write(&payload.exe, bytes)?;
@@ -125,6 +129,13 @@ mod tests {
         let dir = payload.dir().to_path_buf();
         drop(payload);
         assert!(!dir.exists());
+    }
+
+    #[test]
+    fn write_named_uses_the_name() {
+        let root = tempfile::tempdir().unwrap();
+        let copy = PayloadDir::write_named(b"MZ", root.path(), "perland-uninstall.exe").unwrap();
+        assert_eq!(copy.exe().file_name().unwrap(), "perland-uninstall.exe");
     }
 
     #[test]

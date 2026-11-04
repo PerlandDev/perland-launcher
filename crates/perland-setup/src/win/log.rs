@@ -21,8 +21,15 @@ fn log() -> &'static Mutex<Log> {
     })
 }
 
+static NAME: OnceLock<&'static str> = OnceLock::new();
+
+/// Names the log file (`perland-setup.log` unless set); call before the first line.
+pub fn set_name(name: &'static str) {
+    let _ = NAME.set(name);
+}
+
 pub fn path() -> PathBuf {
-    std::env::temp_dir().join("perland-setup.log")
+    std::env::temp_dir().join(NAME.get().copied().unwrap_or("perland-setup.log"))
 }
 
 pub fn line(message: &str) {

@@ -143,7 +143,11 @@ pub struct SingleInstance(HANDLE);
 
 impl SingleInstance {
     pub fn claim() -> Option<SingleInstance> {
-        let name = wide("Local\\PerlandLauncherSetup");
+        Self::claim_named("Local\\PerlandLauncherSetup")
+    }
+
+    pub fn claim_named(name: &str) -> Option<SingleInstance> {
+        let name = wide(name);
         // SAFETY: the name is a valid NUL-terminated string; the handle is closed in Drop.
         unsafe {
             let handle = CreateMutexW(std::ptr::null(), 0, name.as_ptr());
@@ -179,4 +183,117 @@ pub fn focus_window(title: &str) {
             SetForegroundWindow(hwnd);
         }
     }
+}
+
+/// A known Windows folder (`SHGetKnownFolderPath`).
+fn known_folder(id: &windows_sys::core::GUID) -> Option<PathBuf> {
+    use windows_sys::Win32::System::Com::CoTaskMemFree;
+    use windows_sys::Win32::UI::Shell::{SHGetKnownFolderPath, KF_FLAG_DEFAULT};
+    let mut raw: windows_sys::core::PWSTR = std::ptr::null_mut();
+    // SAFETY: `raw` receives a CoTaskMem string that is read once and freed here.
+    unsafe {
+        let hr = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT as u32, std::ptr::null_mut(), &mut raw);
+        if hr < 0 || raw.is_null() {
+            if !raw.is_null() {
+                CoTaskMemFree(raw as *const _);
+            }
+            return None;
+        }
+        let len = (0..).take_while(|&i| *raw.add(i) != 0).count();
+        let path = String::from_utf16_lossy(std::slice::from_raw_parts(raw, len));
+        CoTaskMemFree(raw as *const _);
+        Some(PathBuf::from(path))
+    }
+}
+
+/// The folders the setup and the uninstaller name, from Windows.
+pub struct Folders {
+    pub local_appdata: PathBuf,
+    pub roaming_appdata: PathBuf,
+    pub desktop: PathBuf,
+    pub programs: PathBuf,
+}
+
+pub fn folders() -> Folders {
+    use windows_sys::Win32::UI::Shell::{
+        FOLDERID_Desktop, FOLDERID_LocalAppData, FOLDERID_Programs, FOLDERID_RoamingAppData,
+    };
+    let env = |name: &str| {
+        std::env::var_os(name)
+            .map(PathBuf::from)
+            .unwrap_or_default()
+    };
+    Folders {
+        local_appdata: known_folder(&FOLDERID_LocalAppData).unwrap_or_else(|| env("LOCALAPPDATA")),
+        roaming_appdata: known_folder(&FOLDERID_RoamingAppData).unwrap_or_else(|| env("APPDATA")),
+        desktop: known_folder(&FOLDERID_Desktop)
+            .unwrap_or_else(|| env("USERPROFILE").join("Desktop")),
+        programs: known_folder(&FOLDERID_Programs)
+            .unwrap_or_else(|| env("APPDATA").join("Microsoft\\Windows\\Start Menu\\Programs")),
+    }
+}
+
+/// Folders a per-user install can't write to without admin: Program Files (both) and Windows.
+pub fn protected_roots() -> Vec<PathBuf> {
+    use windows_sys::Win32::UI::Shell::{
+        FOLDERID_ProgramFiles, FOLDERID_ProgramFilesX86, FOLDERID_Windows,
+    };
+    [
+        &FOLDERID_ProgramFiles,
+        &FOLDERID_ProgramFilesX86,
+        &FOLDERID_Windows,
+    ]
+    .into_iter()
+    .filter_map(known_folder)
+    .collect()
+}
+
+/// Deletes every Credential Manager entry matching `filter`; how many, or why it failed.
+pub fn delete_credentials(filter: &str) -> Result<usize, String> {
+    use windows_sys::Win32::Foundation::ERROR_NOT_FOUND;
+    use windows_sys::Win32::Security::Credentials::{
+        CredDeleteW, CredEnumerateW, CredFree, CREDENTIALW,
+    };
+    let filter = wide(filter);
+    let mut count = 0u32;
+    let mut creds: *mut *mut CREDENTIALW = std::ptr::null_mut();
+    // SAFETY: CredEnumerateW fills `count` pointers to valid entries, freed once with CredFree;
+    // each entry's TargetName is a NUL-terminated string owned by that buffer.
+    unsafe {
+        if CredEnumerateW(filter.as_ptr(), 0, &mut count, &mut creds) == 0 {
+            return if GetLastError() == ERROR_NOT_FOUND {
+                Ok(0)
+            } else {
+                Err(format!("CredEnumerateW failed ({})", GetLastError()))
+            };
+        }
+        let mut deleted = 0;
+        let mut failed = 0;
+        for i in 0..count as usize {
+            let cred = *creds.add(i);
+            if CredDeleteW((*cred).TargetName, (*cred).Type, 0) != 0 {
+                deleted += 1;
+            } else {
+                failed += 1;
+            }
+        }
+        CredFree(creds as *const _);
+        if failed > 0 {
+            Err(format!(
+                "{failed} of {count} credentials could not be deleted"
+            ))
+        } else {
+            Ok(deleted)
+        }
+    }
+}
+
+/// Starts a hidden helper (no console window), not waiting for it.
+pub fn spawn_hidden(program: &str, args: &[String]) -> bool {
+    use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+    std::process::Command::new(program)
+        .args(args)
+        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+        .spawn()
+        .is_ok()
 }

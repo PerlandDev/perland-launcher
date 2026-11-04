@@ -668,6 +668,19 @@ fn confirm_layout(ui: &Ui) -> Layout {
     }
 }
 
+/// What a screen reader says for a screen: its lines in order (controls name themselves).
+pub fn spoken(screen: &Screen, ui: &Ui) -> String {
+    let lines: Vec<String> = layout(screen, ui)
+        .lines
+        .into_iter()
+        .map(|l| l.text)
+        .collect();
+    format!("{}.", lines.join(". "))
+        .replace(":.", ":")
+        .replace("..", ".")
+        .replace("….", "…")
+}
+
 pub fn buttons(screen: &Screen, ui: &Ui) -> Vec<Button> {
     layout(screen, ui).buttons
 }
@@ -1309,6 +1322,25 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn spoken_reads_what_the_screen_shows() {
+        let u = ui(Lang::En);
+        let said = spoken(&options(Offer::Install), &u);
+        assert!(
+            said.starts_with(
+                "INSTALL OPTIONS. Install to. C:\\Users\\ana\\AppData\\Local\\Perland Launcher."
+            ),
+            "{said}"
+        );
+        assert!(said.contains("Microsoft WebView2"), "{said}");
+        let confirm = spoken(&Screen::Uninstall(UScreen::Confirm), &u);
+        assert!(
+            confirm
+                .contains("Removes the app from. C:\\Users\\ana\\AppData\\Local\\Perland Launcher"),
+            "{confirm}"
+        );
     }
 
     #[test]
