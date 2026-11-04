@@ -3,6 +3,7 @@
 
 pub mod draw;
 pub mod model;
+pub mod options;
 pub mod payload;
 pub mod text;
 #[cfg(windows)]

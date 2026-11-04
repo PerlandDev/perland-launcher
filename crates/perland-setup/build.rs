@@ -30,6 +30,7 @@ const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(has_payload)");
     println!("cargo::rerun-if-env-changed=PERLAND_SETUP_PAYLOAD");
+    println!("cargo::rerun-if-env-changed=PERLAND_SETUP_INSTALLED_BYTES");
     if let Some(path) = std::env::var_os("PERLAND_SETUP_PAYLOAD").filter(|p| !p.is_empty()) {
         let path = PathBuf::from(path);
         println!("cargo::rerun-if-changed={}", path.display());
