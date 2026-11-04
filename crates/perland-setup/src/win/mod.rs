@@ -20,7 +20,7 @@ use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::keyboard::{Key, NamedKey};
-use winit::platform::windows::IconExtWindows;
+use winit::platform::windows::{IconExtWindows, WindowAttributesExtWindows};
 use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use winit::window::{CursorIcon, Icon, Window, WindowId};
 
@@ -367,6 +367,8 @@ impl App {
             .with_decorations(false)
             .with_resizable(false)
             .with_visible(false)
+            // Without a frame Windows draws no shadow, and the window would sit flat on the desktop.
+            .with_undecorated_shadow(true)
             .with_window_icon(window_icon());
         if let Some(monitor) = event_loop.primary_monitor() {
             let scale = monitor.scale_factor();
