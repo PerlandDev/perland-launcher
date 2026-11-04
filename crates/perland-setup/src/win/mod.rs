@@ -153,6 +153,8 @@ impl App {
             hover: None,
             focus: None,
             fade: 1.0,
+            // Task 5 of the options plan fills these from Windows.
+            paths: crate::draw::Paths::preview(),
         };
         App {
             machine,

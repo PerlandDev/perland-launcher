@@ -139,7 +139,7 @@ impl UMachine {
                 } else {
                     self.set(Removing {
                         step: UStep::RemovingApp,
-                        progress: 0.0,
+                        progress: 0.35,
                     });
                     vec![UEffect::RunUninstaller]
                 }
@@ -160,7 +160,7 @@ impl UMachine {
                 } else if self.delete_data {
                     self.set(Removing {
                         step: UStep::DeletingData,
-                        progress: 0.6,
+                        progress: 0.75,
                     });
                     vec![UEffect::DeleteData]
                 } else {
@@ -188,7 +188,7 @@ impl UMachine {
             (Screen::Uninstall(Failed { .. }), UEvent::Pressed(CopyDetails)) => {
                 vec![UEffect::CopyDetails]
             }
-            (Screen::Uninstall(Done { .. }), UEvent::Pressed(Primary))
+            (Screen::Uninstall(Done { .. } | Failed { .. }), UEvent::Pressed(Primary))
             | (Screen::Uninstall(Confirm), UEvent::Pressed(Secondary)) => vec![UEffect::Exit],
             (
                 Screen::Uninstall(Confirm | Done { .. } | Failed { .. }) | Screen::LauncherRunning,
@@ -394,6 +394,15 @@ mod tests {
         );
         assert_eq!(m.on(Pressed(Action::CopyDetails)), vec![CopyDetails]);
         assert_eq!(m.on(Pressed(Action::Close)), vec![Exit]);
+    }
+
+    #[test]
+    fn failed_close_button_exits() {
+        let mut m = UMachine::new();
+        m.on(Pressed(Action::Primary));
+        m.on(RunningChecked(false));
+        m.on(UninstallerExited(5));
+        assert_eq!(m.on(Pressed(Action::Primary)), vec![Exit]);
     }
 
     #[test]

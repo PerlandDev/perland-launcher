@@ -1,9 +1,11 @@
 //! Writes every setup screen in both languages to PNG, for review and the PR's screenshots:
 //! `cargo run -p perland-setup --example render` → `target/setup-renders/`.
 
-use perland_setup::draw::{render, Ui};
+use perland_setup::draw::{render, Paths, Ui};
 use perland_setup::model::{Action, ErrorCode, Offer, Screen, Step};
+use perland_setup::options::FolderProblem;
 use perland_setup::text::Lang;
+use perland_setup::uninstall::{UScreen, UStep};
 
 fn main() {
     let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/setup-renders");
@@ -57,6 +59,63 @@ fn main() {
             Screen::Error(ErrorCode::InstallerFailed(2)),
             None,
         ),
+        (
+            "14-options",
+            Screen::Options {
+                offer: Offer::Install,
+                problem: None,
+            },
+            None,
+        ),
+        (
+            "15-options-folder-problem",
+            Screen::Options {
+                offer: Offer::Install,
+                problem: Some(FolderProblem::NeedsAdmin),
+            },
+            None,
+        ),
+        (
+            "16-options-update",
+            Screen::Options {
+                offer: Offer::Update {
+                    from: "0.1.4".into(),
+                },
+                problem: None,
+            },
+            None,
+        ),
+        (
+            "17-uninstall-confirm",
+            Screen::Uninstall(UScreen::Confirm),
+            None,
+        ),
+        (
+            "18-uninstall-delete-ticked",
+            Screen::Uninstall(UScreen::Confirm),
+            None,
+        ),
+        (
+            "19-uninstalling",
+            Screen::Uninstall(UScreen::Removing {
+                step: UStep::RemovingApp,
+                progress: 0.35,
+            }),
+            None,
+        ),
+        (
+            "20-uninstalled-kept",
+            Screen::Uninstall(UScreen::Done { kept_data: true }),
+            None,
+        ),
+        (
+            "21-uninstall-failed",
+            Screen::Uninstall(UScreen::Failed {
+                code: 0,
+                not_deleted: vec!["Saved sign-ins".into()],
+            }),
+            None,
+        ),
     ];
     for lang in [Lang::En, Lang::Es] {
         for (name, screen, hover) in &screens {
@@ -66,6 +125,10 @@ fn main() {
                 hover: *hover,
                 focus: None,
                 fade: 1.0,
+                paths: Paths {
+                    delete_data: name.contains("delete-ticked"),
+                    ..Paths::preview()
+                },
             };
             for scale in [1.0, 2.0] {
                 let lang_name = if lang == Lang::En { "en" } else { "es" };
