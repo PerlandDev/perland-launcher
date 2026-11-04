@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // CLI for the release workflow. Every decision is in lib.mjs.
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import {
   buildManifest,
@@ -10,9 +10,12 @@ import {
   ciGate,
   clientIdGate,
   findBundle,
+  findSetup,
   nextVersion,
   PLATFORMS,
   releaseName,
+  setupChannelName,
+  setupReleaseName,
   setWorkspaceVersion,
 } from './lib.mjs';
 
@@ -55,8 +58,9 @@ switch (command) {
     writeFileSync(cargoPath, setWorkspaceVersion(readFileSync(cargoPath, 'utf8'), args[0]));
     break;
   case 'stage': {
-    // Copy each built installer and its .sig to outDir under its release name.
-    const [version, inDir, outDir] = args;
+    // Copy each built installer and its .sig to outDir under its release name, and the setup app
+    // (an optional fourth argument, Windows only; it has no .sig: the updater never fetches it).
+    const [version, inDir, outDir, setup] = args;
     mkdirSync(outDir, { recursive: true });
     const paths = walk(inDir);
     let staged = 0;
@@ -69,6 +73,11 @@ switch (command) {
       staged += 1;
     }
     if (staged === 0) throw new Error(`No installers under ${inDir}`);
+    if (setup) {
+      if (!findSetup([setup])) throw new Error(`${setup} is not perland-setup.exe`);
+      copyFileSync(setup, join(outDir, setupReleaseName(version)));
+      console.log(`${setup} -> ${setupReleaseName(version)}`);
+    }
     break;
   }
   case 'manifest': {
@@ -88,6 +97,9 @@ switch (command) {
     mkdirSync(outDir, { recursive: true });
     for (const platform of PLATFORMS) {
       copyFileSync(join(dir, releaseName(platform, version)), join(outDir, channelName(platform, channel)));
+    }
+    if (existsSync(join(dir, setupReleaseName(version)))) {
+      copyFileSync(join(dir, setupReleaseName(version)), join(outDir, setupChannelName(channel)));
     }
     break;
   }

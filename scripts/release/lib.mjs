@@ -45,6 +45,19 @@ export function channelName(platform, channel) {
   return `PerlandLauncher${channel === 'beta' ? '-beta' : ''}${SUFFIX[platform].channel}`;
 }
 
+/** The one-click setup app (crates/perland-setup): a Windows download only, never in latest.json. */
+export function setupReleaseName(version) {
+  return `PerlandLauncher_${version}_x64-installer.exe`;
+}
+
+export function setupChannelName(channel) {
+  return `PerlandLauncher${channel === 'beta' ? '-beta' : ''}-installer.exe`;
+}
+
+export function findSetup(paths) {
+  return paths.find((p) => /(^|[\\/])perland-setup\.exe$/.test(p));
+}
+
 export function findBundle(paths, platform) {
   return paths.find((p) => SUFFIX[platform].bundle.test(p));
 }

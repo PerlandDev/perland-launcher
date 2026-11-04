@@ -12,6 +12,9 @@ import {
   PLATFORMS,
   releaseName,
   setWorkspaceVersion,
+  findSetup,
+  setupChannelName,
+  setupReleaseName,
 } from './lib.mjs';
 
 test('the first beta of a base version is beta.1', () => {
@@ -162,4 +165,20 @@ test('a set Microsoft client ID lets the release through', () => {
   for (const publish of [true, false]) {
     assert.equal(clientIdGate('00000000-0000-4000-8000-0000000000aa', { publish }).level, 'ok');
   }
+});
+
+test('the setup app has its own release and channel names', () => {
+  assert.equal(setupReleaseName('0.2.0-beta.1'), 'PerlandLauncher_0.2.0-beta.1_x64-installer.exe');
+  assert.equal(setupChannelName('stable'), 'PerlandLauncher-installer.exe');
+  assert.equal(setupChannelName('beta'), 'PerlandLauncher-beta-installer.exe');
+});
+
+test('findSetup finds the built setup exe and nothing else', () => {
+  const paths = [
+    'target/release/perland-setup.pdb',
+    'target/release/bundle/nsis/Perland Launcher_0.2.0_x64-setup.exe',
+    'target/release/perland-setup.exe',
+  ];
+  assert.equal(findSetup(paths), 'target/release/perland-setup.exe');
+  assert.equal(findSetup(['target/release/perland-launcher.exe']), undefined);
 });
