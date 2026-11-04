@@ -7,5 +7,12 @@ description = "Perland Launcher's one-click Windows setup"
 
 [dependencies]
 semver = { workspace = true }
+getrandom = { workspace = true }
 tiny-skia = { version = "0.11", default-features = false, features = ["std", "simd", "png-format"] }
 fontdue = "0.9"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[build-dependencies]
+winresource = "0.1"
