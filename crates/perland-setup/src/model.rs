@@ -83,6 +83,8 @@ pub enum Screen {
     Opening,
     /// Installed, but the launcher couldn't be opened: offers OPEN.
     Installed,
+    /// The uninstaller's own screens (it shares `LauncherRunning` with the setup).
+    Uninstall(crate::uninstall::UScreen),
     Error(ErrorCode),
 }
 
@@ -97,6 +99,7 @@ pub enum Action {
     ToggleStartMenu,
     ToggleDesktop,
     Back,
+    ToggleDeleteData,
 }
 
 #[derive(Debug, Clone, PartialEq)]

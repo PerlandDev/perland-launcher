@@ -171,7 +171,7 @@ pub fn headline(lang: Lang, screen: &Screen) -> &'static str {
     let s = strings(lang);
     match screen {
         Screen::Ready(_) => s.brand,
-        Screen::Options { .. } => s.brand,
+        Screen::Options { .. } | Screen::Uninstall(_) => s.brand,
         Screen::LauncherRunning => s.running_title,
         Screen::Installing {
             confirm_stop: true, ..
@@ -189,7 +189,7 @@ pub fn detail(lang: Lang, screen: &Screen) -> String {
     match screen {
         Screen::Ready(Offer::Install | Offer::Update { .. }) => s.tagline.into(),
         Screen::Ready(Offer::Reinstall | Offer::Newer) => s.already_installed.into(),
-        Screen::Options { .. } => s.tagline.into(),
+        Screen::Options { .. } | Screen::Uninstall(_) => s.tagline.into(),
         Screen::LauncherRunning => s.running_detail.into(),
         Screen::Installing {
             confirm_stop: true, ..
@@ -218,7 +218,7 @@ pub fn button_labels(lang: Lang, screen: &Screen) -> (Option<&'static str>, Opti
     let s = strings(lang);
     match screen {
         Screen::Ready(Offer::Install) => (Some(s.install), None),
-        Screen::Options { .. } => (Some(s.install), None),
+        Screen::Options { .. } | Screen::Uninstall(_) => (Some(s.install), None),
         Screen::Ready(Offer::Update { .. }) => (Some(s.update), None),
         Screen::Ready(Offer::Reinstall) => (Some(s.open), Some(s.reinstall)),
         Screen::Ready(Offer::Newer) | Screen::Installed => (Some(s.open), None),

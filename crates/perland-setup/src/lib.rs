@@ -6,6 +6,7 @@ pub mod model;
 pub mod options;
 pub mod payload;
 pub mod text;
+pub mod uninstall;
 #[cfg(windows)]
 pub mod win;
 

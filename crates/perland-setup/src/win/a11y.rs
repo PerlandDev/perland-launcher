@@ -21,6 +21,7 @@ pub fn node_of(action: Action) -> NodeId {
         Action::ToggleStartMenu => NodeId(16),
         Action::ToggleDesktop => NodeId(17),
         Action::Back => NodeId(18),
+        Action::ToggleDeleteData => NodeId(19),
     }
 }
 
@@ -35,6 +36,7 @@ pub fn action_of(node: NodeId) -> Option<Action> {
         Action::ToggleStartMenu,
         Action::ToggleDesktop,
         Action::Back,
+        Action::ToggleDeleteData,
     ]
     .into_iter()
     .find(|a| node_of(*a) == node)
