@@ -139,6 +139,8 @@ pub struct Machine {
     payload_present: bool,
     /// Set while a running-launcher check is in flight, so a second click starts nothing.
     checking: bool,
+    /// Set while a picked folder is being checked: the choice still holds the old folder.
+    resolving: bool,
     /// Stop was confirmed while the payload was being written: exit once the writer reports.
     stopping: bool,
     elapsed: Duration,
@@ -157,6 +159,7 @@ impl Machine {
             screen: Screen::Ready(offer.clone()),
             payload_present,
             checking: false,
+            resolving: false,
             stopping: false,
             elapsed: Duration::ZERO,
             fresh: offer == Offer::Install,
@@ -192,6 +195,13 @@ impl Machine {
             // the launcher just before the installer force-closes it.
             return vec![];
         }
+        if self.resolving && matches!(event, Event::Pressed(Primary)) {
+            // Installing now would use the folder chosen before this pick.
+            return vec![];
+        }
+        if matches!(event, Event::FolderResolved(_)) {
+            self.resolving = false;
+        }
         match (&self.screen, event) {
             (Screen::Ready(offer), Event::Pressed(Options)) if *offer != Offer::Newer => {
                 self.screen = Screen::Options {
@@ -216,6 +226,7 @@ impl Machine {
                 vec![]
             }
             (Screen::Options { .. }, Event::FolderPicked(Some(path))) => {
+                self.resolving = true;
                 vec![Effect::ResolveFolder(path)]
             }
             (Screen::Options { offer, .. }, Event::FolderResolved(result)) => {
@@ -776,6 +787,22 @@ mod tests {
         assert_eq!(m.on(FolderResolved(Ok(resolved.clone()))), vec![]);
         assert_eq!(m.choice.folder, Some(resolved));
         assert_eq!(options_of(&m), Some(None));
+    }
+
+    #[test]
+    fn install_waits_for_a_folder_check() {
+        let mut m = Machine::new(Offer::Install, true);
+        press(&mut m, Action::Options);
+        press(&mut m, Action::ChangeFolder);
+        m.on(FolderPicked(Some(PathBuf::from("D:\\Games"))));
+        // The old folder is still the choice until the check answers.
+        assert_eq!(press(&mut m, Action::Primary), vec![]);
+        press(&mut m, Action::Back);
+        assert_eq!(press(&mut m, Action::Primary), vec![]);
+        m.on(FolderResolved(Ok(PathBuf::from(
+            "D:\\Games\\Perland Launcher",
+        ))));
+        assert_eq!(press(&mut m, Action::Primary), vec![CheckRunning]);
     }
 
     #[test]

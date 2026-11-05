@@ -10,11 +10,12 @@ use crate::draw::{self, Ui, HEIGHT, WIDTH};
 use crate::model::{
     offer, silent_plan, Action, Effect, ErrorCode, Event, Machine, Pacer, Screen, SilentPlan,
 };
-use crate::options::{installer_args, resolve_folder, shortcuts_to_remove, Choice};
+use crate::options::{installer_command_line, resolve_folder, shortcuts_to_remove, Choice};
 use crate::payload::{embedded, PayloadDir};
 use crate::uninstall::{
-    cleanup_command, credential_filter, data_targets, delete_paths, dir_size, mode,
-    uninstaller_args, Mode, UEffect, UEvent, UMachine, UScreen, CREDENTIAL_SERVICE,
+    cleanup_command_line, command_line_tail, data_targets, delete_paths, dir_size,
+    is_our_credential, is_own_temp, mode, uninstaller_command_line, Mode, UEffect, UEvent,
+    UMachine, UScreen, REMEMBERED_FOLDER_KEY,
 };
 use crate::{text, VERSION};
 use std::num::NonZeroU32;
@@ -122,7 +123,7 @@ fn run_silent() -> i32 {
     };
     let code = run_installer(
         &payload,
-        &installer_args(&Choice::default(), installed.is_none()),
+        &installer_command_line(&Choice::default(), installed.is_none()),
     );
     log::line(&format!("silent: installer exited {code}"));
     remove_payload(payload);
@@ -136,10 +137,12 @@ fn remove_payload(payload: PayloadDir) {
     }
 }
 
-fn run_installer(payload: &PayloadDir, args: &[String]) -> i32 {
-    log::line(&format!("installer arguments: {args:?}"));
+fn run_installer(payload: &PayloadDir, line: &str) -> i32 {
+    use std::os::windows::process::CommandExt;
+    log::line(&format!("installer arguments: {line}"));
+    // raw_arg, never args: see `installer_command_line`.
     match std::process::Command::new(payload.exe())
-        .args(args)
+        .raw_arg(line)
         .status()
     {
         Ok(status) => status.code().unwrap_or(-1),
@@ -297,6 +300,7 @@ impl App {
         for effect in effects {
             self.run(event_loop, effect);
         }
+        self.drop_stale_focus();
         let progress = match self.screen() {
             Screen::Installing { progress, .. } => (progress * draw::BAR_WIDTH).round() as i32,
             _ => -1,
@@ -322,6 +326,7 @@ impl App {
         for effect in effects {
             self.run_uninstall_effect(event_loop, effect);
         }
+        self.drop_stale_focus();
         self.redraw();
     }
 
@@ -351,7 +356,10 @@ impl App {
                 let sign_ins = text::uninstall_words(self.ui.lang).sign_ins;
                 self.send_uninstall_later(move || {
                     let mut not_deleted = delete_paths(&targets);
-                    match system::delete_credentials(&credential_filter(CREDENTIAL_SERVICE)) {
+                    if !system::delete_tree(REMEMBERED_FOLDER_KEY) {
+                        log::line("could not clear the remembered install folder");
+                    }
+                    match system::delete_credentials(is_our_credential) {
                         Ok(n) => log::line(&format!("deleted {n} saved sign-ins")),
                         Err(e) => {
                             log::line(&format!("saved sign-ins: {e}"));
@@ -377,10 +385,7 @@ impl App {
             }
             UEffect::Exit => {
                 if let Some(temp) = &u.own_temp {
-                    let (program, args) = cleanup_command(temp);
-                    if !system::spawn_hidden(&program, &args) {
-                        log::line("could not start the temp folder cleanup");
-                    }
+                    clean_up_own_temp(temp);
                 }
                 event_loop.exit();
             }
@@ -437,7 +442,7 @@ impl App {
                 self.pacer = Pacer::default();
                 let slot = self.payload.clone();
                 let args = match &self.flow {
-                    Flow::Setup(m) => installer_args(&m.choice, m.fresh()),
+                    Flow::Setup(m) => installer_command_line(&m.choice, m.fresh()),
                     Flow::Uninstall(_) => return,
                 };
                 self.send_later(move || {
@@ -528,6 +533,19 @@ impl App {
         match self.flow {
             Flow::Setup(_) => self.handle(event_loop, Event::Pressed(action)),
             Flow::Uninstall(_) => self.handle_uninstall(event_loop, UEvent::Pressed(action)),
+        }
+    }
+
+    /// After a screen change, focus on a button the new screen lacks goes back to none, so
+    /// Enter presses that screen's primary button again (as it does before any Tab).
+    fn drop_stale_focus(&mut self) {
+        if let Some(focus) = self.ui.focus {
+            if !draw::buttons(self.screen(), &self.ui)
+                .iter()
+                .any(|b| b.action == focus)
+            {
+                self.ui.focus = None;
+            }
         }
     }
 
@@ -759,10 +777,12 @@ impl ApplicationHandler<UserEvent> for App {
 
 /// Runs NSIS's uninstaller in place for `dir` and waits; then removes what it leaves behind.
 fn remove_app(dir: &Path) -> i32 {
+    use std::os::windows::process::CommandExt;
     let exe = dir.join("uninstall.exe");
-    let args = uninstaller_args(dir);
-    log::line(&format!("running {} {args:?}", exe.display()));
-    let code = match std::process::Command::new(&exe).args(&args).status() {
+    let line = uninstaller_command_line(dir);
+    log::line(&format!("running {} {line}", exe.display()));
+    // raw_arg, never args: see `uninstaller_command_line`.
+    let code = match std::process::Command::new(&exe).raw_arg(&line).status() {
         Ok(status) => status.code().unwrap_or(-1),
         Err(e) => {
             log::line(&format!("uninstaller did not start: {e}"));
@@ -791,19 +811,38 @@ fn finish_removal(dir: &Path) {
     }
 }
 
+/// Removes the uninstaller's own temp folder a few seconds after it exits, through a hidden
+/// `cmd`. Only for a folder `is_own_temp` accepts.
+fn clean_up_own_temp(temp: &Path) {
+    if !system::spawn_hidden_raw("cmd", &cleanup_command_line(temp), &std::env::temp_dir()) {
+        log::line("could not start the temp folder cleanup");
+    }
+}
+
+/// The folder this exe runs from, when it is a temp folder the uninstaller made for itself.
+/// Decided from where the exe is, never from the command line, so nothing else is ever deleted.
+fn own_temp_folder(exe_dir: &Path) -> Option<PathBuf> {
+    let canon_dir = std::fs::canonicalize(exe_dir).ok()?;
+    let canon_temp = std::fs::canonicalize(std::env::temp_dir()).ok()?;
+    is_own_temp(&canon_dir, &canon_temp).then(|| exe_dir.to_path_buf())
+}
+
 /// The branded uninstaller (`perland-uninstall.exe`): see `uninstall::mode` for how it starts.
 pub fn run_uninstall() -> i32 {
+    use std::os::windows::process::CommandExt;
     log::set_name("perland-uninstall.log");
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let full = system::command_line();
     let exe = std::env::current_exe().unwrap_or_default();
     let exe_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
-    let mode = mode(&args, &exe_dir);
+    let mode = mode(&args, command_line_tail(&full), &exe_dir);
     log::line(&format!("Perland Launcher Uninstall {VERSION}: {mode:?}"));
     match mode {
         Mode::Handoff { dir, args } => {
-            // Tauri's own wizard asked: run its uninstaller exactly as it would have.
+            // Tauri's own wizard asked: run its uninstaller exactly as it would have, with the
+            // command line as it came (its `_?=` is unquoted and may hold spaces).
             let exe = dir.join("uninstall.exe");
-            match std::process::Command::new(&exe).args(&args).status() {
+            match std::process::Command::new(&exe).raw_arg(&args).status() {
                 Ok(status) => status.code().unwrap_or(-1),
                 Err(e) => {
                     log::line(&format!("handoff: {e}"));
@@ -821,20 +860,21 @@ pub fn run_uninstall() -> i32 {
             PayloadDir::write_named(&bytes, &std::env::temp_dir(), "perland-uninstall.exe")
         }) {
             Ok(copy) => {
-                // The copy must outlive this process: keep the folder; the copy removes it.
-                let (copy_exe, copy_dir) = (copy.exe().to_path_buf(), copy.dir().to_path_buf());
-                std::mem::forget(copy);
-                let started = std::process::Command::new(&copy_exe)
+                // The copy works in its own folder, so the install folder is not held as anyone's
+                // working directory and can be removed.
+                let started = std::process::Command::new(copy.exe())
                     .arg("--from-temp")
                     .arg(&dir)
-                    .arg("--own-temp")
-                    .arg(&copy_dir)
+                    .current_dir(copy.dir())
                     .spawn()
                     .is_ok();
                 if started {
+                    // The copy must outlive this process: keep the folder; the copy removes it.
+                    std::mem::forget(copy);
                     0
                 } else {
                     log::line("could not start the temp copy; running in place");
+                    drop(copy);
                     uninstall_window(dir, None)
                 }
             }
@@ -843,14 +883,7 @@ pub fn run_uninstall() -> i32 {
                 uninstall_window(dir, None)
             }
         },
-        Mode::Window { dir } => {
-            let own_temp = args
-                .iter()
-                .position(|a| a == "--own-temp")
-                .and_then(|i| args.get(i + 1))
-                .map(PathBuf::from);
-            uninstall_window(dir, own_temp)
-        }
+        Mode::Window { dir } => uninstall_window(dir, own_temp_folder(&exe_dir)),
     }
 }
 
@@ -860,6 +893,9 @@ fn uninstall_window(dir: PathBuf, own_temp: Option<PathBuf>) -> i32 {
     let Some(_instance) = system::SingleInstance::claim_named("Local\\PerlandLauncherUninstall")
     else {
         system::focus_window(title);
+        if let Some(temp) = &own_temp {
+            clean_up_own_temp(temp);
+        }
         return 0;
     };
     let folders = system::folders();

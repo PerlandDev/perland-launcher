@@ -10,6 +10,9 @@ use windows_sys::Win32::Foundation::{
     INVALID_HANDLE_VALUE,
 };
 use windows_sys::Win32::Globalization::GetUserDefaultUILanguage;
+use windows_sys::Win32::Security::Credentials::{
+    CredDeleteW, CredEnumerateW, CredFree, CREDENTIALW, CRED_TYPE_GENERIC,
+};
 use windows_sys::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
 };
@@ -249,50 +252,95 @@ pub fn protected_roots() -> Vec<PathBuf> {
 }
 
 /// Deletes every Credential Manager entry matching `filter`; how many, or why it failed.
-pub fn delete_credentials(filter: &str) -> Result<usize, String> {
+pub fn delete_credentials(ours: fn(&str) -> bool) -> Result<usize, String> {
+    // CredEnumerateW's filter only takes a prefix followed by `*`, and ours share a suffix
+    // (`<user>.online.perland.launcher`), so list every generic credential and pick ours.
+    let targets = credential_targets(ours)?;
+    let mut deleted = 0;
+    for target in &targets {
+        let name = wide(target);
+        // SAFETY: `name` is a NUL-terminated UTF-16 string that outlives the call.
+        if unsafe { CredDeleteW(name.as_ptr(), CRED_TYPE_GENERIC, 0) } != 0 {
+            deleted += 1;
+        }
+    }
+    // Check, rather than trust the calls: a sign-in left behind must be reported.
+    let left = credential_targets(ours)?.len();
+    if left > 0 {
+        Err(format!(
+            "{left} of {} credentials are still there",
+            targets.len()
+        ))
+    } else {
+        Ok(deleted)
+    }
+}
+
+/// The TargetNames of the generic credentials `ours` accepts.
+fn credential_targets(ours: fn(&str) -> bool) -> Result<Vec<String>, String> {
     use windows_sys::Win32::Foundation::ERROR_NOT_FOUND;
-    use windows_sys::Win32::Security::Credentials::{
-        CredDeleteW, CredEnumerateW, CredFree, CREDENTIALW,
-    };
-    let filter = wide(filter);
     let mut count = 0u32;
     let mut creds: *mut *mut CREDENTIALW = std::ptr::null_mut();
     // SAFETY: CredEnumerateW fills `count` pointers to valid entries, freed once with CredFree;
-    // each entry's TargetName is a NUL-terminated string owned by that buffer.
+    // each entry's TargetName is a NUL-terminated string owned by that buffer, read before the
+    // free.
     unsafe {
-        if CredEnumerateW(filter.as_ptr(), 0, &mut count, &mut creds) == 0 {
+        if CredEnumerateW(std::ptr::null(), 0, &mut count, &mut creds) == 0 {
             return if GetLastError() == ERROR_NOT_FOUND {
-                Ok(0)
+                Ok(Vec::new())
             } else {
                 Err(format!("CredEnumerateW failed ({})", GetLastError()))
             };
         }
-        let mut deleted = 0;
-        let mut failed = 0;
+        let mut targets = Vec::new();
         for i in 0..count as usize {
             let cred = *creds.add(i);
-            if CredDeleteW((*cred).TargetName, (*cred).Type, 0) != 0 {
-                deleted += 1;
-            } else {
-                failed += 1;
+            if (*cred).Type != CRED_TYPE_GENERIC || (*cred).TargetName.is_null() {
+                continue;
+            }
+            let name = (*cred).TargetName;
+            let len = (0..).take_while(|&j| *name.add(j) != 0).count();
+            let target = String::from_utf16_lossy(std::slice::from_raw_parts(name, len));
+            if ours(&target) {
+                targets.push(target);
             }
         }
         CredFree(creds as *const _);
-        if failed > 0 {
-            Err(format!(
-                "{failed} of {count} credentials could not be deleted"
-            ))
-        } else {
-            Ok(deleted)
-        }
+        Ok(targets)
     }
 }
 
-/// Starts a hidden helper (no console window), not waiting for it.
-pub fn spawn_hidden(program: &str, args: &[String]) -> bool {
+/// This process's command line as Windows has it, quotes and all.
+pub fn command_line() -> String {
+    use windows_sys::Win32::System::Environment::GetCommandLineW;
+    // SAFETY: GetCommandLineW returns a NUL-terminated string owned by the process.
+    unsafe {
+        let line = GetCommandLineW();
+        if line.is_null() {
+            return String::new();
+        }
+        let len = (0..).take_while(|&j| *line.add(j) != 0).count();
+        String::from_utf16_lossy(std::slice::from_raw_parts(line, len))
+    }
+}
+
+/// Deletes an HKCU key and everything under it; a missing key counts as done.
+pub fn delete_tree(subkey: &str) -> bool {
+    use windows_sys::Win32::Foundation::ERROR_FILE_NOT_FOUND;
+    use windows_sys::Win32::System::Registry::RegDeleteTreeW;
+    let key = wide(subkey);
+    // SAFETY: `key` is a NUL-terminated UTF-16 string that outlives the call.
+    let status = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, key.as_ptr()) };
+    status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND
+}
+
+/// Starts a hidden helper (no console window) with a command line passed as is, in `cwd`, not
+/// waiting for it.
+pub fn spawn_hidden_raw(program: &str, line: &str, cwd: &Path) -> bool {
     use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
     std::process::Command::new(program)
-        .args(args)
+        .raw_arg(line)
+        .current_dir(cwd)
         .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
         .spawn()
         .is_ok()

@@ -90,26 +90,38 @@ fn writable(target: &Path) -> bool {
     let Some(existing) = target.ancestors().find(|a| a.is_dir()) else {
         return false;
     };
-    let probe = existing.join(".perland-write-test");
-    let ok = std::fs::write(&probe, b"").is_ok();
-    let _ = std::fs::remove_file(&probe);
+    // A folder, not a file: a standard user may create folders but not files in `C:\`, where
+    // NSIS can still install into a new subfolder. A fresh random name never touches anything
+    // the player has.
+    let mut random = [0u8; 8];
+    if getrandom::fill(&mut random).is_err() {
+        return false;
+    }
+    let hex: String = random.iter().map(|b| format!("{b:02x}")).collect();
+    let probe = existing.join(format!(".perland-write-test-{hex}"));
+    let ok = std::fs::create_dir(&probe).is_ok();
+    if ok {
+        let _ = std::fs::remove_dir(&probe);
+    }
     ok
 }
 
-/// Arguments for the NSIS installer. `/D=` must be last and unquoted (NSIS's rule).
-pub fn installer_args(choice: &Choice, fresh: bool) -> Vec<String> {
+/// The NSIS installer's command line, to be passed as is (`raw_arg`), never through
+/// `Command::args`: Rust would quote `/D=` when the folder has a space, and NSIS only reads
+/// `/D=` when a space comes right before it. `/D=` must be last and unquoted (NSIS's rule).
+pub fn installer_command_line(choice: &Choice, fresh: bool) -> String {
     let mut args = vec!["/S".to_string()];
     if !fresh {
         args.push("/UPDATE".into());
-        return args;
+    } else {
+        if !choice.start_menu && !choice.desktop {
+            args.push("/NS".into());
+        }
+        if let Some(folder) = &choice.folder {
+            args.push(format!("/D={}", folder.display()));
+        }
     }
-    if !choice.start_menu && !choice.desktop {
-        args.push("/NS".into());
-    }
-    if let Some(folder) = &choice.folder {
-        args.push(format!("/D={}", folder.display()));
-    }
-    args
+    args.join(" ")
 }
 
 /// Shortcuts to delete after a fresh install where exactly one of the two was unticked
@@ -249,8 +261,19 @@ mod tests {
     }
 
     #[test]
+    fn probe_leaves_a_players_file_alone() {
+        let t = tmp();
+        let dir = t.path().join("Games");
+        fs::create_dir(&dir).unwrap();
+        fs::write(dir.join(".perland-write-test"), b"mine").unwrap();
+        resolve_folder(&dir, &[]).unwrap();
+        assert_eq!(fs::read(dir.join(".perland-write-test")).unwrap(), b"mine");
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+    }
+
+    #[test]
     fn args_default_install() {
-        assert_eq!(installer_args(&Choice::default(), true), vec!["/S"]);
+        assert_eq!(installer_command_line(&Choice::default(), true), "/S");
     }
 
     #[test]
@@ -260,8 +283,8 @@ mod tests {
             ..Choice::default()
         };
         assert_eq!(
-            installer_args(&choice, true),
-            vec!["/S", "/D=D:\\My Games\\Perland Launcher"]
+            installer_command_line(&choice, true),
+            "/S /D=D:\\My Games\\Perland Launcher"
         );
     }
 
@@ -272,17 +295,17 @@ mod tests {
             desktop: false,
             ..Choice::default()
         };
-        assert_eq!(installer_args(&none, true), vec!["/S", "/NS"]);
+        assert_eq!(installer_command_line(&none, true), "/S /NS");
         let both = Choice {
             folder: Some(PathBuf::from("E:\\PL")),
             ..none
         };
-        assert_eq!(installer_args(&both, true), vec!["/S", "/NS", "/D=E:\\PL"]);
+        assert_eq!(installer_command_line(&both, true), "/S /NS /D=E:\\PL");
         let one = Choice {
             desktop: false,
             ..Choice::default()
         };
-        assert_eq!(installer_args(&one, true), vec!["/S"]);
+        assert_eq!(installer_command_line(&one, true), "/S");
     }
 
     #[test]
@@ -292,7 +315,7 @@ mod tests {
             start_menu: false,
             desktop: false,
         };
-        assert_eq!(installer_args(&choice, false), vec!["/S", "/UPDATE"]);
+        assert_eq!(installer_command_line(&choice, false), "/S /UPDATE");
     }
 
     #[test]

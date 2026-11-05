@@ -10,8 +10,9 @@ pub const CREDENTIAL_SERVICE: &str = "online.perland.launcher";
 /// How the uninstaller was started.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Mode {
-    /// Tauri's own wizard runs the registry's UninstallString with `_?=<dir>`: pass it through.
-    Handoff { dir: PathBuf, args: Vec<String> },
+    /// Tauri's own wizard runs the registry's UninstallString with `_?=<dir>`: run the
+    /// `uninstall.exe` in `dir` (our own folder) with `args`, the raw command line as it came.
+    Handoff { dir: PathBuf, args: String },
     /// `/S`: remove the app silently, never the data.
     Silent { dir: PathBuf },
     /// Started from the install folder: copy to temp and restart from there.
@@ -20,11 +21,15 @@ pub enum Mode {
     Window { dir: PathBuf },
 }
 
-pub fn mode(args: &[String], exe_dir: &Path) -> Mode {
-    if let Some(dir) = args.iter().find_map(|a| a.strip_prefix("_?=")) {
+/// `args` are the parsed arguments, `tail` the raw command line after the program name
+/// ([`command_line_tail`]): Tauri's wizard passes `_?=<dir>` unquoted, so a folder with a space
+/// arrives split across arguments and only the raw text keeps it whole.
+pub fn mode(args: &[String], tail: &str, exe_dir: &Path) -> Mode {
+    let starts_handoff = tail.starts_with("_?=") || tail.contains(" _?=") || tail.contains("\t_?=");
+    if starts_handoff && !args.iter().any(|a| a == "--from-temp") {
         return Mode::Handoff {
-            dir: PathBuf::from(dir),
-            args: args.to_vec(),
+            dir: exe_dir.to_path_buf(),
+            args: tail.to_string(),
         };
     }
     if args.iter().any(|a| a.eq_ignore_ascii_case("/S")) {
@@ -207,11 +212,16 @@ impl Default for UMachine {
 
 /// The player's data: games, worlds and settings, then the webview's two folders.
 pub fn data_targets(appdata: &Path, local_appdata: &Path) -> Vec<PathBuf> {
-    vec![
-        appdata.join("PerlandLauncher"),
-        appdata.join("dev.perland.launcher"),
-        local_appdata.join("dev.perland.launcher"),
-    ]
+    // A root Windows could not name would make these relative to the working directory.
+    let mut targets = Vec::new();
+    if appdata.is_absolute() {
+        targets.push(appdata.join("PerlandLauncher"));
+        targets.push(appdata.join("dev.perland.launcher"));
+    }
+    if local_appdata.is_absolute() {
+        targets.push(local_appdata.join("dev.perland.launcher"));
+    }
+    targets
 }
 
 /// Deletes each path (a missing one is fine) and returns those that could not be deleted.
@@ -242,22 +252,68 @@ pub fn dir_size(path: &Path) -> u64 {
 }
 
 /// `CredEnumerateW` filter for the launcher's credentials (keyring names them `<user>.<service>`).
-pub fn credential_filter(service: &str) -> String {
-    format!("*.{service}")
+/// Where Tauri's NSIS installer remembers the install folder: `Software\<manufacturer>\<product>`
+/// under HKCU, the manufacturer being the identifier's second part (`dev.perland.launcher`).
+/// Deleted with the player's data, as Tauri's own "delete app data" does.
+pub const REMEMBERED_FOLDER_KEY: &str = "Software\\perland\\Perland Launcher";
+
+/// Whether a Credential Manager entry is one of the launcher's. The keyring crate names a
+/// Windows credential `<user>.<service>`, so ours end in `.online.perland.launcher`.
+/// `CredEnumerateW` only takes a prefix filter, so the uninstaller lists every entry and keeps
+/// these.
+pub fn is_our_credential(target: &str) -> bool {
+    let t = target.to_ascii_lowercase();
+    t == CREDENTIAL_SERVICE || t.ends_with(&format!(".{CREDENTIAL_SERVICE}"))
 }
 
-/// Arguments for NSIS's `uninstall.exe`, run in place so it waits instead of relaunching.
-pub fn uninstaller_args(dir: &Path) -> Vec<String> {
-    vec!["/S".into(), format!("_?={}", dir.display())]
+/// The raw command line after the program name, as Windows hands it over: the program is a
+/// quoted string or runs to the first space or tab.
+pub fn command_line_tail(full: &str) -> &str {
+    let rest = if let Some(after) = full.strip_prefix('"') {
+        match after.find('"') {
+            Some(i) => &after[i + 1..],
+            None => "",
+        }
+    } else {
+        match full.find([' ', '\t']) {
+            Some(i) => &full[i..],
+            None => "",
+        }
+    };
+    rest.trim_start_matches([' ', '\t'])
 }
 
-/// A hidden command that removes the uninstaller's own temp folder a few seconds after it exits.
-pub fn cleanup_command(temp_dir: &Path) -> (String, Vec<String>) {
-    let script = format!(
-        "ping -n 4 127.0.0.1 >nul & rmdir /s /q \"{}\"",
+/// NSIS's `uninstall.exe` command line, run in place so it waits instead of relaunching.
+/// Passed as is (`raw_arg`): NSIS only reads `_?=` after a space, and runs to the end of the
+/// line, so it must not be quoted.
+pub fn uninstaller_command_line(dir: &Path) -> String {
+    format!("/S _?={}", dir.display())
+}
+
+/// Whether `dir` is a folder the setup or the uninstaller made for itself: directly in `temp`
+/// and named `perland-setup-<16 lowercase hex>`. The only folder the cleanup may delete.
+pub fn is_own_temp(dir: &Path, temp: &Path) -> bool {
+    if dir.parent() != Some(temp) {
+        return false;
+    }
+    let Some(name) = dir.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    name.strip_prefix("perland-setup-").is_some_and(|hex| {
+        hex.len() == 16
+            && hex
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
+}
+
+/// `cmd`'s command line (passed as is, `raw_arg`) that removes the uninstaller's temp folder a
+/// few seconds after it exits. Only for a folder [`is_own_temp`] accepts.
+pub fn cleanup_command_line(temp_dir: &Path) -> String {
+    format!(
+        "/c ping -n 4 127.0.0.1 >nul & rmdir /s /q \"{}\"",
         temp_dir.display()
-    );
-    ("cmd".into(), vec!["/c".into(), script])
+    )
 }
 
 #[cfg(test)]
@@ -273,27 +329,69 @@ mod tests {
 
     #[test]
     fn mode_handoff() {
-        let exe = Path::new("C:\\PL");
+        let exe = Path::new("C:\\Users\\ana\\AppData\\Local\\Perland Launcher");
+        // Tauri's wizard passes `_?=` unquoted, so a folder with a space splits in two.
+        let tail = "/UPDATE /P _?=C:\\Users\\ana\\AppData\\Local\\Perland Launcher";
         assert_eq!(
-            mode(&s(&["_?=C:\\X"]), exe),
+            mode(
+                &s(&[
+                    "/UPDATE",
+                    "/P",
+                    "_?=C:\\Users\\ana\\AppData\\Local\\Perland",
+                    "Launcher"
+                ]),
+                tail,
+                exe
+            ),
             Mode::Handoff {
-                dir: PathBuf::from("C:\\X"),
-                args: s(&["_?=C:\\X"])
+                dir: exe.to_path_buf(),
+                args: tail.to_string()
             }
         );
         assert_eq!(
-            mode(&s(&["/P", "_?=C:\\My Folder"]), exe),
+            mode(&s(&["_?=C:\\X"]), "_?=C:\\X", exe),
             Mode::Handoff {
-                dir: PathBuf::from("C:\\My Folder"),
-                args: s(&["/P", "_?=C:\\My Folder"])
+                dir: exe.to_path_buf(),
+                args: "_?=C:\\X".to_string()
             }
         );
     }
 
     #[test]
+    fn handoff_needs_the_marker_at_an_argument_start() {
+        assert_eq!(
+            mode(
+                &s(&["--from-temp", "D:\\a_?=b"]),
+                "--from-temp \"D:\\a_?=b\"",
+                Path::new("C:\\Temp\\x")
+            ),
+            Mode::Window {
+                dir: PathBuf::from("D:\\a_?=b")
+            }
+        );
+    }
+
+    #[test]
+    fn tail_skips_the_program() {
+        assert_eq!(
+            command_line_tail(
+                "\"C:\\Perland Launcher\\perland-uninstall.exe\" /P _?=C:\\Perland Launcher"
+            ),
+            "/P _?=C:\\Perland Launcher"
+        );
+        assert_eq!(
+            command_line_tail("C:\\PL\\perland-uninstall.exe   /S"),
+            "/S"
+        );
+        assert_eq!(command_line_tail("perland-uninstall.exe"), "");
+        assert_eq!(command_line_tail("\"C:\\a b\\x.exe\""), "");
+        assert_eq!(command_line_tail(""), "");
+    }
+
+    #[test]
     fn mode_silent() {
         assert_eq!(
-            mode(&s(&["/s"]), Path::new("C:\\PL")),
+            mode(&s(&["/s"]), "/s", Path::new("C:\\PL")),
             Mode::Silent {
                 dir: PathBuf::from("C:\\PL")
             }
@@ -305,6 +403,7 @@ mod tests {
         assert_eq!(
             mode(
                 &s(&["--from-temp", "D:\\Games\\Perland Launcher"]),
+                "--from-temp \"D:\\Games\\Perland Launcher\"",
                 Path::new("C:\\Temp\\x")
             ),
             Mode::Window {
@@ -316,14 +415,14 @@ mod tests {
     #[test]
     fn mode_default_relaunches() {
         assert_eq!(
-            mode(&[], Path::new("C:\\PL")),
+            mode(&[], "", Path::new("C:\\PL")),
             Mode::Relaunch {
                 dir: PathBuf::from("C:\\PL")
             }
         );
         // `--from-temp` without a folder is not a window run.
         assert_eq!(
-            mode(&s(&["--from-temp"]), Path::new("C:\\PL")),
+            mode(&s(&["--from-temp"]), "--from-temp", Path::new("C:\\PL")),
             Mode::Relaunch {
                 dir: PathBuf::from("C:\\PL")
             }
@@ -460,15 +559,26 @@ mod tests {
 
     #[test]
     fn data_targets_names_three_folders() {
-        let (a, l) = (Path::new("R"), Path::new("L"));
+        let base = std::env::temp_dir();
+        let (a, l) = (base.join("R"), base.join("L"));
         assert_eq!(
-            data_targets(a, l),
+            data_targets(&a, &l),
             vec![
                 a.join("PerlandLauncher"),
                 a.join("dev.perland.launcher"),
                 l.join("dev.perland.launcher")
             ]
         );
+    }
+
+    #[test]
+    fn data_targets_never_relative() {
+        let a = std::env::temp_dir().join("R");
+        assert_eq!(
+            data_targets(&a, Path::new("")),
+            vec![a.join("PerlandLauncher"), a.join("dev.perland.launcher")]
+        );
+        assert!(data_targets(Path::new("R"), Path::new("L")).is_empty());
     }
 
     #[test]
@@ -496,31 +606,51 @@ mod tests {
     }
 
     #[test]
-    fn credential_filter_is_the_service() {
+    fn our_credentials_only() {
+        assert!(is_our_credential("ana@example.com.online.perland.launcher"));
+        assert!(is_our_credential("SESSION.Online.Perland.Launcher"));
+        assert!(is_our_credential("online.perland.launcher"));
+        assert!(!is_our_credential("notonline.perland.launcher"));
+        assert!(!is_our_credential("ana.online.perland.launcher.evil"));
+        assert!(!is_our_credential("git:https://github.com"));
+        assert!(!is_our_credential(""));
+    }
+
+    #[test]
+    fn uninstaller_runs_in_place_unquoted() {
         assert_eq!(
-            credential_filter(CREDENTIAL_SERVICE),
-            "*.online.perland.launcher"
+            uninstaller_command_line(Path::new("D:\\My Games\\PL")),
+            "/S _?=D:\\My Games\\PL"
         );
     }
 
     #[test]
-    fn uninstaller_args_in_place() {
-        assert_eq!(
-            uninstaller_args(Path::new("D:\\My Games\\PL")),
-            s(&["/S", "_?=D:\\My Games\\PL"])
-        );
+    fn own_temp_is_a_setup_folder_directly_in_temp() {
+        let temp = Path::new("/t");
+        assert!(is_own_temp(
+            &temp.join("perland-setup-0123456789abcdef"),
+            temp
+        ));
+        assert!(!is_own_temp(
+            &temp.join("perland-setup-0123456789ABCDEF"),
+            temp
+        ));
+        assert!(!is_own_temp(&temp.join("perland-setup-0123"), temp));
+        assert!(!is_own_temp(&temp.join("other-0123456789abcdef"), temp));
+        assert!(!is_own_temp(
+            &temp.join("x").join("perland-setup-0123456789abcdef"),
+            temp
+        ));
+        assert!(!is_own_temp(temp, temp));
+        assert!(!is_own_temp(Path::new("/"), temp));
     }
 
     #[test]
-    fn cleanup_command_quotes_the_folder() {
-        let (program, args) = cleanup_command(Path::new("C:\\Temp\\perland uninstall"));
-        assert_eq!(program, "cmd");
-        assert_eq!(args[0], "/c");
-        assert!(
-            args[1].contains("rmdir /s /q \"C:\\Temp\\perland uninstall\""),
-            "{}",
-            args[1]
+    fn cleanup_line_quotes_the_folder_for_cmd() {
+        let line = cleanup_command_line(Path::new("C:\\Temp\\perland-setup-0123456789abcdef"));
+        assert_eq!(
+            line,
+            "/c ping -n 4 127.0.0.1 >nul & rmdir /s /q \"C:\\Temp\\perland-setup-0123456789abcdef\""
         );
-        assert!(args[1].starts_with("ping -n 4 127.0.0.1"));
     }
 }
