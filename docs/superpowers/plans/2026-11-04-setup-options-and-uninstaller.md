@@ -49,11 +49,11 @@
   - `pub fn installed_bytes() -> Option<u64>` (from `option_env!("PERLAND_SETUP_INSTALLED_BYTES")`; `build.rs` adds `rerun-if-env-changed`).
   - `pub fn size_text(bytes: u64) -> String` → `"About N MB"`-style number only: `"25 MB"` (rounded up to whole MB; under 1 MB → `"1 MB"`).
 
-- [ ] **Step 1: Failing tests** (tempdir-backed): `empty_folder_used_as_is`, `new_folder_used_as_is` (a path that doesn't exist yet, parent writable), `folder_with_launcher_used_as_is` (contains `perland-launcher.exe`), `other_folder_gets_subfolder` (`D:\Games` with a file → `…\Games\Perland Launcher`), `drive_like_root_gets_subfolder` (non-empty tempdir root → `<root>\Perland Launcher`), `subfolder_with_other_files_is_refused` (`NotEmpty`), `subfolder_with_launcher_is_fine`, `protected_root_needs_admin` (a `protected` entry `<tmp>\ProgramFiles`, picked `<tmp>\programfiles\X` → `NeedsAdmin`), `unwritable_is_refused` (`#[cfg(unix)]`, mode 0o555 dir → `NotWritable`; skip when running as root, `nix`-free check via trying a write first), `args_default_install` (`["/S"]`), `args_custom_folder_last_unquoted` (`Choice{folder: Some("D:\\My Games\\Perland Launcher")}` → `["/S", "/D=D:\\My Games\\Perland Launcher"]`), `args_no_shortcuts` (`["/S", "/NS"]`, and with a folder `/NS` comes before `/D=`), `args_update` (`fresh: false` → `["/S", "/UPDATE"]` whatever the choice), `remove_one_shortcut` (desktop off → `[desktop]`; start menu off → `[start_menu]`; both off or both on → `[]`; `fresh: false` → `[]`), `size_text_rounds_up` (`25_000_001` → `"25 MB"`, `100` → `"1 MB"`; MB = 1_000_000).
-- [ ] **Step 2: Run** `cargo test -p perland-setup options` → FAIL (missing items).
-- [ ] **Step 3: Implement** `options.rs`.
-- [ ] **Step 4: Run** → PASS.
-- [ ] **Step 5: Commit** `feat(setup): install folder rules and installer arguments`.
+- [x] **Step 1: Failing tests** (tempdir-backed): `empty_folder_used_as_is`, `new_folder_used_as_is` (a path that doesn't exist yet, parent writable), `folder_with_launcher_used_as_is` (contains `perland-launcher.exe`), `other_folder_gets_subfolder` (`D:\Games` with a file → `…\Games\Perland Launcher`), `drive_like_root_gets_subfolder` (non-empty tempdir root → `<root>\Perland Launcher`), `subfolder_with_other_files_is_refused` (`NotEmpty`), `subfolder_with_launcher_is_fine`, `protected_root_needs_admin` (a `protected` entry `<tmp>\ProgramFiles`, picked `<tmp>\programfiles\X` → `NeedsAdmin`), `unwritable_is_refused` (`#[cfg(unix)]`, mode 0o555 dir → `NotWritable`; skip when running as root, `nix`-free check via trying a write first), `args_default_install` (`["/S"]`), `args_custom_folder_last_unquoted` (`Choice{folder: Some("D:\\My Games\\Perland Launcher")}` → `["/S", "/D=D:\\My Games\\Perland Launcher"]`), `args_no_shortcuts` (`["/S", "/NS"]`, and with a folder `/NS` comes before `/D=`), `args_update` (`fresh: false` → `["/S", "/UPDATE"]` whatever the choice), `remove_one_shortcut` (desktop off → `[desktop]`; start menu off → `[start_menu]`; both off or both on → `[]`; `fresh: false` → `[]`), `size_text_rounds_up` (`25_000_001` → `"25 MB"`, `100` → `"1 MB"`; MB = 1_000_000).
+- [x] **Step 2: Run** `cargo test -p perland-setup options` → FAIL (missing items).
+- [x] **Step 3: Implement** `options.rs`.
+- [x] **Step 4: Run** → PASS.
+- [x] **Step 5: Commit** `feat(setup): install folder rules and installer arguments`.
 
 ### Task 2: The Options screen in the setup's state machine
 
@@ -65,11 +65,11 @@
 - `Machine` gains `pub choice: Choice` and `pub fn fresh(&self) -> bool` (the offer was `Install`).
 - Rules: Ready + `Options` → `Options{problem: None}`. Options + `Back` or `Close` → back to the Ready screen it came from (Close here never exits). Options + `ChangeFolder` → `[PickFolder]` only when `fresh()`. `FolderPicked(Some(p))` → `[ResolveFolder(p)]`; `FolderPicked(None)` → nothing. `FolderResolved(Ok(p))` → `choice.folder = Some(p)`, problem cleared; `Err(e)` → `problem: Some(e)`, folder unchanged. `ToggleStartMenu` / `ToggleDesktop` flip only when `fresh()`. Options + `Primary` → the install starts exactly as Ready + Primary does (CheckRunning), but is refused (no effects) while `problem` is `Some`. After `InstallerExited(0)` on a fresh install, effects are `[RemoveShortcuts, ConfirmInstall, DeletePayload]`; otherwise unchanged.
 
-- [ ] **Step 1: Failing tests:** `options_opens_and_back_returns` (Ready(Install) → Options → Back → Ready(Install); Close in Options also returns, never `Exit`), `change_folder_picks_then_resolves` (ChangeFolder → `[PickFolder]`; `FolderPicked(Some(p))` → `[ResolveFolder(p)]`; `FolderResolved(Ok(q))` → `m.choice.folder == Some(q)`), `cancelled_picker_changes_nothing`, `refused_folder_blocks_install` (`FolderResolved(Err(NotEmpty))` → `Options{problem: Some(NotEmpty)}`, Primary → `[]`; a later `Ok` clears it and Primary → `[CheckRunning]`), `update_cannot_change_folder_or_shortcuts` (Ready(Update) → Options; ChangeFolder → `[]`; ToggleDesktop leaves `choice.desktop == true`), `toggles_flip_on_fresh_install`, `fresh_install_removes_shortcuts_after_success` (InstallerExited(0) → `[RemoveShortcuts, ConfirmInstall, DeletePayload]`), `update_does_not_remove_shortcuts` (Update path → `[ConfirmInstall, DeletePayload]`). Existing tests keep passing (adjust only for `Event` no longer `Copy`).
-- [ ] **Step 2: Run** `cargo test -p perland-setup model` → FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** `cargo test -p perland-setup` → PASS.
-- [ ] **Step 5: Commit** `feat(setup): options screen in the state machine`.
+- [x] **Step 1: Failing tests:** `options_opens_and_back_returns` (Ready(Install) → Options → Back → Ready(Install); Close in Options also returns, never `Exit`), `change_folder_picks_then_resolves` (ChangeFolder → `[PickFolder]`; `FolderPicked(Some(p))` → `[ResolveFolder(p)]`; `FolderResolved(Ok(q))` → `m.choice.folder == Some(q)`), `cancelled_picker_changes_nothing`, `refused_folder_blocks_install` (`FolderResolved(Err(NotEmpty))` → `Options{problem: Some(NotEmpty)}`, Primary → `[]`; a later `Ok` clears it and Primary → `[CheckRunning]`), `update_cannot_change_folder_or_shortcuts` (Ready(Update) → Options; ChangeFolder → `[]`; ToggleDesktop leaves `choice.desktop == true`), `toggles_flip_on_fresh_install`, `fresh_install_removes_shortcuts_after_success` (InstallerExited(0) → `[RemoveShortcuts, ConfirmInstall, DeletePayload]`), `update_does_not_remove_shortcuts` (Update path → `[ConfirmInstall, DeletePayload]`). Existing tests keep passing (adjust only for `Event` no longer `Copy`).
+- [x] **Step 2: Run** `cargo test -p perland-setup model` → FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** `cargo test -p perland-setup` → PASS.
+- [x] **Step 5: Commit** `feat(setup): options screen in the state machine`.
 
 ### Task 3: Uninstaller logic
 
@@ -90,11 +90,11 @@
 - Produces in `model.rs`: `Screen::Uninstall(UScreen)` with `pub enum UScreen { Confirm, Removing { step: UStep, progress: f32 }, Done { kept_data: bool }, Failed { code: i32, not_deleted: Vec<String> } }`; `Screen` loses nothing. `Action` gains `ToggleDeleteData`. The uninstaller reuses `Screen::LauncherRunning`.
 - Rules: Confirm + `ToggleDeleteData` flips; Confirm + `Primary` → `[CheckRunning]` (once, as the setup's guard); `RunningChecked(true)` → LauncherRunning (Primary there → CheckRunning again); `RunningChecked(false)` → Removing{RemovingApp, 0.0} + `[RunUninstaller]`; `UninstallerExited(0)` → with `delete_data` Removing{DeletingData, 0.6} + `[DeleteData]`, else `Done{kept_data: true}`; non-zero → `Failed{code, not_deleted: []}`; `DataDeleted([])` → `Done{kept_data: false}`; `DataDeleted(list)` → `Failed{code: 0, not_deleted: list}`; `DataSize(n)` stores `data_bytes`. Close on Confirm/LauncherRunning/Done/Failed → `[Exit]`; Done + Primary (CLOSE) → `[Exit]`; Failed + CopyDetails → `[CopyDetails]`. Close while Removing does nothing.
 
-- [ ] **Step 1: Failing tests:** `mode_handoff` (`["_?=C:\\X"]` → Handoff{dir: "C:\\X", args: ["_?=C:\\X"]}; also with `/P` before it), `mode_silent`, `mode_from_temp_opens_window`, `mode_default_relaunches`, `keep_data_path` (Primary, RunningChecked(false) → [RunUninstaller]; UninstallerExited(0) → []; screen Done{kept_data: true}), `delete_data_path` (toggle, …, UninstallerExited(0) → [DeleteData]; DataDeleted([]) → Done{kept_data: false}), `uninstaller_failure`, `data_not_deleted_is_reported`, `running_launcher_blocks_uninstall`, `close_while_removing_does_nothing`, `data_targets_names_three_folders`, `delete_paths_missing_is_fine` (tempdir, one existing dir with a file and one missing → `[]`, existing gone), `dir_size_counts_files` (two files of 3 and 4 bytes → 7), `credential_filter_is_the_service`, `uninstaller_args_in_place`, `cleanup_command_quotes_the_folder` (path with a space appears inside quotes).
-- [ ] **Step 2: Run** `cargo test -p perland-setup uninstall` → FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** `cargo test -p perland-setup` → PASS.
-- [ ] **Step 5: Commit** `feat(setup): uninstaller modes, state machine and data targets`.
+- [x] **Step 1: Failing tests:** `mode_handoff` (`["_?=C:\\X"]` → Handoff{dir: "C:\\X", args: ["_?=C:\\X"]}; also with `/P` before it), `mode_silent`, `mode_from_temp_opens_window`, `mode_default_relaunches`, `keep_data_path` (Primary, RunningChecked(false) → [RunUninstaller]; UninstallerExited(0) → []; screen Done{kept_data: true}), `delete_data_path` (toggle, …, UninstallerExited(0) → [DeleteData]; DataDeleted([]) → Done{kept_data: false}), `uninstaller_failure`, `data_not_deleted_is_reported`, `running_launcher_blocks_uninstall`, `close_while_removing_does_nothing`, `data_targets_names_three_folders`, `delete_paths_missing_is_fine` (tempdir, one existing dir with a file and one missing → `[]`, existing gone), `dir_size_counts_files` (two files of 3 and 4 bytes → 7), `credential_filter_is_the_service`, `uninstaller_args_in_place`, `cleanup_command_quotes_the_folder` (path with a space appears inside quotes).
+- [x] **Step 2: Run** `cargo test -p perland-setup uninstall` → FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** `cargo test -p perland-setup` → PASS.
+- [x] **Step 5: Commit** `feat(setup): uninstaller modes, state machine and data targets`.
 
 ### Task 4: Words and drawing for Options and the uninstaller
 
@@ -111,9 +111,9 @@
 - Layout (logical px, no logo on Options): title Bungee 20 at y 40; "Install to" label 13 at 72; path 15 at 94 (`ellipsize_middle` to 440) with **Change…** secondary button right-aligned, 96×30, top 80; size or problem line 13 at 118 (problem in ink, prefixed by a 3px amber bar); data label 13 at 146, data path 15 at 166 (ellipsized to 560); list label 13 at 196, items 14 at 216/236/256/276 with a 4px bullet; checkboxes (18×18, 2px line border, amber fill and ground tick when on) at y 300 with labels, or the "stay as they are" line; primary 200×48 at top 336, x centred minus 50; **Back** text button right of it. Uninstall Confirm: logo as Ready; headline at 176; "Removes the app from" 13 at 204; path 15 at 224; second sentence 13 at 246; checkbox at 272 with label; data path · size 13 at 296; primary 260×48 at top 322, x 140 (wider for UNINSTALL AND DELETE / DESINSTALAR Y BORRAR), with the **Cancel** text button right of it, as Back on Options.
 - `buttons()` returns checkboxes as `Button`s with their actions (`ToggleStartMenu`, `ToggleDesktop`, `ToggleDeleteData`) and the Options link and Change… as secondary buttons.
 
-- [ ] **Step 1: Failing tests:** extend `buttons_inside_window`, `no_text_overflows`, `every_character_has_a_glyph` and `every_screen_has_words_in_both_languages` to the new screens (via `all_screens`); add `ellipsize_keeps_both_ends` (a 200-character path → width ≤ max, starts with `C:\Users`, ends with `Perland Launcher`), `long_paths_fit_options_view` (Ui with a 260-character install path in both languages: `no_text_overflows` holds), `options_link_on_ready` (`hit` on the link's rect → `Some(Options)`), `checkboxes_are_hit` (Options: `ToggleDesktop` rect hit → `Some(ToggleDesktop)`; Uninstall Confirm: `ToggleDeleteData`), `update_options_have_no_checkboxes`, `delete_button_label_follows_the_box` (Confirm with `delete_data: true` → primary label `UNINSTALL AND DELETE`), `no_overlap_in_options` (every pair of drawn rects — text lines' boxes and buttons — on Options in both languages doesn't intersect).
-- [ ] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** `cargo test -p perland-setup` → PASS; `cargo run -p perland-setup --example render` also writes `14-options-en/es`, `15-options-folder-problem`, `16-options-update`, `17-uninstall-confirm`, `18-uninstall-delete-ticked`, `19-uninstalling`, `20-uninstalled-kept`, `21-uninstall-failed`; open each and check.
-- [ ] **Step 5: Commit** `feat(setup): draw the options view and the uninstaller`.
+- [x] **Step 1: Failing tests:** extend `buttons_inside_window`, `no_text_overflows`, `every_character_has_a_glyph` and `every_screen_has_words_in_both_languages` to the new screens (via `all_screens`); add `ellipsize_keeps_both_ends` (a 200-character path → width ≤ max, starts with `C:\Users`, ends with `Perland Launcher`), `long_paths_fit_options_view` (Ui with a 260-character install path in both languages: `no_text_overflows` holds), `options_link_on_ready` (`hit` on the link's rect → `Some(Options)`), `checkboxes_are_hit` (Options: `ToggleDesktop` rect hit → `Some(ToggleDesktop)`; Uninstall Confirm: `ToggleDeleteData`), `update_options_have_no_checkboxes`, `delete_button_label_follows_the_box` (Confirm with `delete_data: true` → primary label `UNINSTALL AND DELETE`), `no_overlap_in_options` (every pair of drawn rects — text lines' boxes and buttons — on Options in both languages doesn't intersect).
+- [x] **Step 2: Run** → FAIL. **Step 3: Implement.** **Step 4: Run** `cargo test -p perland-setup` → PASS; `cargo run -p perland-setup --example render` also writes `14-options-en/es`, `15-options-folder-problem`, `16-options-update`, `17-uninstall-confirm`, `18-uninstall-delete-ticked`, `19-uninstalling`, `20-uninstalled-kept`, `21-uninstall-failed`; open each and check.
+- [x] **Step 5: Commit** `feat(setup): draw the options view and the uninstaller`.
 
 ### Task 5: Windows shell for options and the uninstaller
 
@@ -132,9 +132,9 @@
 - a11y: checkbox nodes `Role::CheckBox` with `set_toggled(Toggled::True/False)`; the Options link and Change… as buttons; the problem line in the live status.
 - Window title for the uninstaller: "Uninstall Perland Launcher" (single-instance mutex name `Local\PerlandLauncherUninstall`).
 
-- [ ] **Step 1:** Implement; `cargo clippy -p perland-setup --target x86_64-pc-windows-msvc --all-targets -- -D warnings` clean (Windows layer: no unit tests, as before; its decisions are Tasks 1–4).
-- [ ] **Step 2:** `cargo test --workspace` and Linux clippy pass; `cargo build -p perland-setup --bins` builds both binaries on Linux (they print and exit).
-- [ ] **Step 3: Commit** `feat(setup): options and uninstaller in the Windows shell`.
+- [x] **Step 1:** Implement; `cargo clippy -p perland-setup --target x86_64-pc-windows-msvc --all-targets -- -D warnings` clean (Windows layer: no unit tests, as before; its decisions are Tasks 1–4).
+- [x] **Step 2:** `cargo test --workspace` and Linux clippy pass; `cargo build -p perland-setup --bins` builds both binaries on Linux (they print and exit).
+- [x] **Step 3: Commit** `feat(setup): options and uninstaller in the Windows shell`.
 
 ### Task 6: Hook, release workflow and docs
 
@@ -150,10 +150,10 @@
   ```
 - `release.yml` Windows job, before "Build and sign the updater artifacts": a step `Build the uninstaller` (`cargo build -p perland-setup --release --bin perland-uninstall`, signed like the setup when signing is on); the build step adds, on Windows only, `--config '{"bundle":{"resources":{"../target/release/perland-uninstall.exe":"perland-uninstall.exe"},"windows":{"nsis":{"installerHooks":"windows/hooks.nsh"}}}}'`. The setup step sets `PERLAND_SETUP_INSTALLED_BYTES` to the byte sum of `target/release/perland-launcher.exe` and `target/release/perland-uninstall.exe`.
 - Verification: `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/release.yml'))"`; the `--config` JSON parses (`node -e 'JSON.parse(process.argv[1])' '<json>'`).
-- [ ] **Step 1:** Write the hook and workflow changes. **Step 2:** Verify as above. **Step 3: Commit** `ci(release): bundle the branded uninstaller and point Windows at it`.
+- [x] **Step 1:** Write the hook and workflow changes. **Step 2:** Verify as above. **Step 3: Commit** `ci(release): bundle the branded uninstaller and point Windows at it`.
 
 ### Task 7: Renders, desktop mock-ups, PR and final checks
 
-- [ ] Full pre-commit list; renders of every new screen in both languages, opened and checked.
-- [ ] Desktop mock-ups (as before): the Options view open, the uninstaller from a simulated Settings → Apps, the uninstall done screen.
-- [ ] Publish to `pr-assets/branded-setup` (a new commit; links by SHA), update PR #143's body (screens, what changed, the extended Windows checklist from spec §7), send the images to the owner.
+- [x] Full pre-commit list; renders of every new screen in both languages, opened and checked.
+- [x] Desktop mock-ups (as before): the Options view open, the uninstaller from a simulated Settings → Apps, the uninstall done screen.
+- [x] Publish to `pr-assets/branded-setup` (a new commit; links by SHA), update PR #143's body (screens, what changed, the extended Windows checklist from spec §7), send the images to the owner.
