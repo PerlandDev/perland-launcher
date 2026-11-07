@@ -1,0 +1,30 @@
+[
+  {
+    "id": "1762500000123",
+    "taken": 1762500000,
+    "reason": "restored",
+    "worn": false,
+    "current": true
+  },
+  {
+    "id": "1762400000456",
+    "taken": 1762400000,
+    "reason": "worn",
+    "worn": true,
+    "current": false
+  },
+  {
+    "id": "1762300000789",
+    "taken": 1762300000,
+    "reason": "edited",
+    "worn": false,
+    "current": false
+  },
+  {
+    "id": "1762200000000",
+    "taken": 1762200000,
+    "reason": "exported",
+    "worn": false,
+    "current": false
+  }
+]

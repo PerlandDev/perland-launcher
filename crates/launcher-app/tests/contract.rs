@@ -724,6 +724,39 @@ fn contract_fixtures_are_current() {
         ],
     );
     check(
+        "skin_versions",
+        vec![
+            launcher_core::skins_library::SkinVersion {
+                id: "1762500000123".into(),
+                taken: 1_762_500_000,
+                reason: launcher_core::skins_library::VersionReason::Restored,
+                worn: false,
+                current: true,
+            },
+            launcher_core::skins_library::SkinVersion {
+                id: "1762400000456".into(),
+                taken: 1_762_400_000,
+                reason: launcher_core::skins_library::VersionReason::Worn,
+                worn: true,
+                current: false,
+            },
+            launcher_core::skins_library::SkinVersion {
+                id: "1762300000789".into(),
+                taken: 1_762_300_000,
+                reason: launcher_core::skins_library::VersionReason::Edited,
+                worn: false,
+                current: false,
+            },
+            launcher_core::skins_library::SkinVersion {
+                id: "1762200000000".into(),
+                taken: 1_762_200_000,
+                reason: launcher_core::skins_library::VersionReason::Exported,
+                worn: false,
+                current: false,
+            },
+        ],
+    );
+    check(
         "current_skin",
         vec![
             Some(launcher_app::skins::CurrentSkin {

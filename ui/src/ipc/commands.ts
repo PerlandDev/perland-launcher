@@ -4,6 +4,7 @@ import type {
   AccountsFile,
   CurrentSkin,
   SkinEntry,
+  SkinVersion,
   SkinModel,
   AppInfo,
   ArtChoice,
@@ -135,6 +136,14 @@ export const commands = {
   skinDuplicate: (id: string, name: string) => invoke<SkinEntry>('skin_duplicate', { id, name }),
   skinDelete: (id: string) => invoke<null>('skin_delete', { id }),
   skinExport: (id: string, path: string) => invoke<string>('skin_export', { id, path }),
+  /** A skin's kept versions, newest first. */
+  skinVersions: (id: string) => invoke<SkinVersion[]>('skin_versions', { id }),
+  skinVersionTexture: (id: string, version: string) => invoke<string>('skin_version_texture', { id, version }),
+  /** Makes a version the skin's texture; the texture it replaces is kept as a version first. */
+  skinRestore: (id: string, version: string) => invoke<SkinEntry>('skin_restore', { id, version }),
+  skinVersionCopy: (id: string, version: string, name: string) => invoke<SkinEntry>('skin_version_copy', { id, version, name }),
+  /** Keeps the skin's texture now as a version (the player left a skin they changed). */
+  skinCheckpoint: (id: string) => invoke<null>('skin_checkpoint', { id }),
   /** The skin a Microsoft account wears now; null for an offline account or no skin. */
   skinCurrent: (uuid: string) => invoke<CurrentSkin | null>('skin_current', { uuid }),
   skinWear: (id: string, uuid: string) => invoke<SkinEntry[]>('skin_wear', { id, uuid }),

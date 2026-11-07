@@ -6,7 +6,7 @@ use launcher_core::{
     accounts::{Account, Provider},
     msa::minecraft::McToken,
     skins,
-    skins_library::{SkinEntry, SkinModel},
+    skins_library::{SkinEntry, SkinModel, SkinVersion, VersionReason},
     skins_png, ErrorCategory, ErrorCode, LauncherError, Result,
 };
 use serde::Serialize;
@@ -119,7 +119,41 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let png = self.skins.texture(id).await?;
         let path = png_path(path);
         launcher_core::fsutil::write_atomic(&path, &png).await?;
+        if let Err(e) = self.skins.checkpoint(id, VersionReason::Exported).await {
+            tracing::debug!(code = ?e.code, "couldn't keep the exported version");
+        }
         Ok(path)
+    }
+
+    /// The kept versions of `id`, newest first.
+    pub async fn skin_versions(&self, id: &str) -> Result<Vec<SkinVersion>> {
+        self.skins.versions(id).await
+    }
+
+    pub async fn skin_version_texture(&self, id: &str, version: &str) -> Result<String> {
+        Ok(skins_png::data_url(
+            &self.skins.version_texture(id, version).await?,
+        ))
+    }
+
+    /// Makes `version` the texture of `id`, keeping the one it replaces.
+    pub async fn skin_restore(&self, id: &str, version: &str) -> Result<SkinEntry> {
+        self.skins.restore(id, version).await
+    }
+
+    /// A new skin from `version` of `id`.
+    pub async fn skin_version_copy(
+        &self,
+        id: &str,
+        version: &str,
+        name: &str,
+    ) -> Result<SkinEntry> {
+        self.skins.copy_version(id, version, name).await
+    }
+
+    /// Keeps the texture of `id` now: the player left a skin they changed.
+    pub async fn skin_checkpoint(&self, id: &str) -> Result<()> {
+        self.skins.checkpoint(id, VersionReason::Edited).await
     }
 
     async fn account(&self, uuid: &str) -> Result<Account> {
@@ -228,7 +262,7 @@ mod tests {
             minecraft::{dashed, McToken},
             secrets::save_refresh,
         },
-        skins_library::SkinModel,
+        skins_library::{SkinModel, VersionReason},
         skins_png, ErrorCode,
     };
 
@@ -429,6 +463,68 @@ mod tests {
         assert_eq!(
             std::fs::read(&out).unwrap(),
             skins_png::from_data_url(&texture()).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn export_keeps_an_exported_version() {
+        let (core, _runner, _host, t) = core(BuildKind::Release);
+        let entry = core
+            .skin_create("Mine", SkinModel::Classic, &texture())
+            .await
+            .unwrap();
+        core.skin_export(&entry.id, t.path().join("mine"))
+            .await
+            .unwrap();
+        let versions = core.skin_versions(&entry.id).await.unwrap();
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].reason, VersionReason::Exported);
+        assert!(versions[0].current);
+    }
+
+    #[tokio::test]
+    async fn wearing_keeps_a_worn_version() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let alex = alex(&core).await;
+        let entry = core
+            .skin_create("Mine", SkinModel::Slim, &texture())
+            .await
+            .unwrap();
+        core.skin_wear(&entry.id, &alex.uuid).await.unwrap();
+        let versions = core.skin_versions(&entry.id).await.unwrap();
+        assert!(versions[0].worn);
+    }
+
+    #[tokio::test]
+    async fn restore_and_copy_from_a_version() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let entry = core
+            .skin_create("Mine", SkinModel::Slim, &texture())
+            .await
+            .unwrap();
+        core.skin_checkpoint(&entry.id).await.unwrap();
+        let mut image = RgbaImage::new(64, 64);
+        image.put_pixel(8, 8, Rgba([7, 7, 7, 255]));
+        let painted = skins_png::data_url(&skins_png::encode(&image).unwrap());
+        core.skin_save(&entry.id, &painted).await.unwrap();
+        let first = core.skin_versions(&entry.id).await.unwrap().pop().unwrap();
+        assert_eq!(
+            core.skin_version_texture(&entry.id, &first.id)
+                .await
+                .unwrap(),
+            texture()
+        );
+        core.skin_restore(&entry.id, &first.id).await.unwrap();
+        assert_eq!(core.skin_texture(&entry.id).await.unwrap(), texture());
+        let copy = core
+            .skin_version_copy(&entry.id, &first.id, "Old")
+            .await
+            .unwrap();
+        assert_eq!(copy.model, SkinModel::Slim);
+        assert_eq!(core.skin_texture(&copy.id).await.unwrap(), texture());
+        assert_eq!(
+            core.skin_restore(&entry.id, "1").await.unwrap_err().code,
+            ErrorCode::SkinVersionNotFound
         );
     }
 }

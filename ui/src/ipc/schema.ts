@@ -435,6 +435,16 @@ export const skinEntry = z.strictObject({
   updated: z.number().int(),
   wornBy: z.string().optional(),
 });
+/** Why a skin version was kept. */
+export const skinVersionReason = z.enum(['edited', 'worn', 'exported', 'restored']);
+/** One kept version of a wardrobe skin. `taken` is Unix seconds; `current` marks the version the skin is now. */
+export const skinVersion = z.strictObject({
+  id: z.string(),
+  taken: z.number().int(),
+  reason: skinVersionReason,
+  worn: z.boolean(),
+  current: z.boolean(),
+});
 /** The skin a Microsoft account wears now: a PNG `data:` URL and its arm model. */
 export const currentSkin = z.strictObject({ texture: z.string(), model: skinModel });
 /** The calls of the Microsoft sign-in chain, in order: Microsoft's code, Xbox Live, XSTS, Minecraft's login, the profile and
@@ -873,6 +883,8 @@ export type AccountsFile = z.infer<typeof accountsFile>;
 export type SkinModel = z.infer<typeof skinModel>;
 export type SkinEntry = z.infer<typeof skinEntry>;
 export type CurrentSkin = z.infer<typeof currentSkin>;
+export type SkinVersion = z.infer<typeof skinVersion>;
+export type SkinVersionReason = z.infer<typeof skinVersionReason>;
 export type AccountReady = z.infer<typeof accountReady>;
 export type Lang = z.infer<typeof lang>;
 export type Channel = z.infer<typeof channel>;
