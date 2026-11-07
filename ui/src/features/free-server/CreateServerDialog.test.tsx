@@ -548,6 +548,8 @@ describe('CreateServerDialog without a verified email', () => {
     await user.click(within(box).getByRole('button', { name: 'Create' }));
     expect(await within(box).findByRole('heading', { name: 'Add an email' })).toBeInTheDocument();
     expect(within(box).queryByLabelText('Server name')).toBeNull();
+    // The step's own field has focus, not the dialog body.
+    expect(within(box).getByRole('textbox', { name: 'Email' })).toHaveFocus();
     await user.type(within(box).getByRole('textbox', { name: 'Email' }), 'a@b.co');
     await user.click(within(box).getByRole('button', { name: 'Send code' }));
     await user.type(await within(box).findByRole('textbox', { name: 'Code' }), '123 456');

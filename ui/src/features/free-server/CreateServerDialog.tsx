@@ -115,7 +115,8 @@ export function CreateServerDialog({
 
   const play = usePlayFreeServer(onClose);
   useLostPoll(step.kind === 'creating' && step.lost, (server) => setStep({ kind: 'ready', server }), onClose);
-  // A new step replaces the control that had focus (Create): focus goes to the step's own content.
+  // A new step replaces the control that had focus (Create): focus goes to the step's own content. The email step puts it on
+  // its own field (its effect runs first), so the body leaves it there; back from the email step, the body takes it.
   const body = useRef<HTMLDivElement>(null);
   const first = useRef(true);
   useEffect(() => {
@@ -123,14 +124,8 @@ export function CreateServerDialog({
       first.current = false;
       return;
     }
-    body.current?.focus();
-  }, [step.kind]);
-  // Back from the email step, focus goes to the form (the email step puts it on its own field).
-  const wasAddingEmail = useRef(false);
-  useEffect(() => {
-    if (wasAddingEmail.current && !addingEmail) body.current?.focus();
-    wasAddingEmail.current = addingEmail;
-  }, [addingEmail]);
+    if (!addingEmail) body.current?.focus();
+  }, [step.kind, addingEmail]);
 
   let title: string;
   let actions: ReactNode;

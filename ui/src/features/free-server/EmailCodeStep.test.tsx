@@ -81,8 +81,10 @@ describe('EmailCodeStep', () => {
     );
     await sendCode(user, 'a@b.co');
     await tryCode(user, '123456');
-    expect(await screen.findByRole('alert')).toHaveTextContent('That email is already on another Perland account.');
-    expect(screen.getByText('Use another email, or sign in with that account.')).toBeInTheDocument();
+    // The fix is announced with the message.
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('That email is already on another Perland account.');
+    expect(alert).toHaveTextContent('Use another email, or sign in with that account.');
   });
 
   it('Use another email goes back to the email field, with the email kept', async () => {

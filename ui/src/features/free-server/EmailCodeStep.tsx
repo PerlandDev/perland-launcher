@@ -103,7 +103,6 @@ export function EmailCodeStep({ onVerified, onCancel }: { onVerified: (email: st
   const errorFix = error === null ? null : describeError(i18n, error).fix;
   const pending = busy || undefined;
   const waitLeft = Math.max(0, Math.ceil((resendAt - now) / 1000));
-  const fix = errorFix && <p className="text-sm text-ink-dim">{errorFix}</p>;
   const cancel = (
     <Button variant="ghost" onClick={onCancel}>
       {t('common.cancel')}
@@ -114,7 +113,7 @@ export function EmailCodeStep({ onVerified, onCancel }: { onVerified: (email: st
     return (
       <form onSubmit={submitEmail} className="grid gap-4" noValidate>
         <p>{t('freeServer.email.lead')}</p>
-        <Field label={t('freeServer.email.emailLabel')} error={errorMessage} alert>
+        <Field label={t('freeServer.email.emailLabel')} error={errorMessage} fix={errorFix} alert>
           <input
             ref={field}
             className="field-input text-ink"
@@ -125,7 +124,6 @@ export function EmailCodeStep({ onVerified, onCancel }: { onVerified: (email: st
             onChange={(e) => setEmail(e.target.value)}
           />
         </Field>
-        {fix}
         <div className="flex flex-wrap gap-3">
           <Button type="submit" aria-disabled={pending}>
             {t('freeServer.email.sendCode')}
@@ -138,7 +136,7 @@ export function EmailCodeStep({ onVerified, onCancel }: { onVerified: (email: st
   return (
     <form onSubmit={(e) => void submitCode(e)} className="grid gap-4">
       <p>{t('freeServer.email.codeSent', { email })}</p>
-      <Field label={t('freeServer.email.codeLabel')} error={errorMessage} alert>
+      <Field label={t('freeServer.email.codeLabel')} error={errorMessage} fix={errorFix} alert>
         <input
           ref={field}
           className="field-input tabular max-w-48 tracking-widest text-ink"
@@ -150,7 +148,6 @@ export function EmailCodeStep({ onVerified, onCancel }: { onVerified: (email: st
           onChange={(e) => setCode(e.target.value)}
         />
       </Field>
-      {fix}
       <div className="flex flex-wrap gap-3">
         <Button type="submit" aria-disabled={pending}>
           {t('freeServer.email.verify')}
