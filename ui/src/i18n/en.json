@@ -956,8 +956,10 @@
     "deleteBody": "It's removed from this computer. A skin you're wearing in Minecraft stays on your account.",
     "deleteConfirm": "Delete",
     "arms": "Arms",
-    "outerLayer": "Outer layer",
     "parts": "Parts",
+    "opacity": "Opacity",
+    "opacityValue": "{{value}}%",
+    "layerEverywhere": "{{layer}} on every part",
     "layer": {
       "base": "Skin",
       "outer": "Outer"

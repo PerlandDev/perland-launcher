@@ -956,8 +956,10 @@
     "deleteBody": "Se borra de esta computadora. Si la tienes puesta en Minecraft, se queda en tu cuenta.",
     "deleteConfirm": "Borrar",
     "arms": "Brazos",
-    "outerLayer": "Capa exterior",
     "parts": "Partes",
+    "opacity": "Opacidad",
+    "opacityValue": "{{value}} %",
+    "layerEverywhere": "{{layer}} en todas las partes",
     "layer": {
       "base": "Skin",
       "outer": "Exterior"

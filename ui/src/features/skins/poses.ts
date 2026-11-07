@@ -10,17 +10,22 @@ export type Joint = 'torso' | 'head' | 'rightArm' | 'leftArm' | 'rightLeg' | 'le
 
 export interface Rig {
   joints: Record<Joint, Vec3>;
-  /** Where the whole figure stands, relative to its spot on the plinth. */
+  /** Where the whole figure stands, relative to its spot on the stage floor. */
   offset: Vec3;
   /** The whole figure's tilt (a rocking boat). */
   tilt: Vec3;
+}
+
+/** Whether the pose moves over time. Standing doesn't, so the stage stops redrawing until something changes. */
+export function animated(pose: Pose): boolean {
+  return pose !== 'still';
 }
 
 /** The time a reduced-motion stage freezes each pose at: mid-stride for the gaits. */
 export const POSE_STILL_T = 0.22;
 
 /** The rider's hips sit this high on the horse's back. */
-export const SADDLE_Y = 27;
+export const SADDLE_Y = 22;
 
 const zero = (): Vec3 => [0, 0, 0];
 
@@ -35,12 +40,11 @@ export function rigAt(pose: Pose, t: number): Rig {
   };
   const offset = zero();
   const tilt = zero();
-  const breathe = Math.sin(t * 1.6) * 0.03;
   switch (pose) {
     case 'still':
-      joints.rightArm = [0, 0, -0.06 - breathe];
-      joints.leftArm = [0, 0, 0.06 + breathe];
-      joints.head = [Math.sin(t * 0.7) * 0.04, Math.sin(t * 0.45) * 0.12, 0];
+      // Standing is the painting pose: arms a little out from the sides, nothing moving under the brush.
+      joints.rightArm = [0, 0, -0.06];
+      joints.leftArm = [0, 0, 0.06];
       break;
     case 'walk':
     case 'run': {
@@ -72,7 +76,7 @@ export function rigAt(pose: Pose, t: number): Rig {
       break;
     }
     case 'sit':
-      // Sitting on the plinth, legs out, hands on the knees, looking around.
+      // Sitting on the floor, legs out, hands on the knees, looking around.
       joints.rightLeg = [-Math.PI / 2, 0.12, 0];
       joints.leftLeg = [-Math.PI / 2, -0.12, 0];
       joints.rightArm = [-0.62, 0, -0.08];
@@ -86,14 +90,15 @@ export function rigAt(pose: Pose, t: number): Rig {
       joints.head = [-0.08, -0.15, -0.08];
       break;
     case 'boat': {
-      // Rowing: both arms pull together while the boat rocks on the water.
+      // Rowing: both arms pull together while the boat rocks.
       const row = Math.sin(t * Math.PI * 2 * 0.6);
-      joints.rightLeg = [-1.35, 0.15, 0];
-      joints.leftLeg = [-1.35, -0.15, 0];
+      joints.rightLeg = [-1.45, 0.15, 0];
+      joints.leftLeg = [-1.45, -0.15, 0];
       joints.rightArm = [-0.85 + row * 0.45, 0, -0.18];
       joints.leftArm = [-0.85 + row * 0.45, 0, 0.18];
       joints.torso = [-0.08 + row * 0.08, 0, 0];
-      offset[1] = -7 + Math.sin(t * 1.3) * 0.35;
+      offset[1] = -5 + Math.sin(t * 1.3) * 0.35;
+      offset[2] = -2;
       tilt[2] = Math.sin(t * 1.1) * 0.05;
       tilt[0] = Math.sin(t * 0.9) * 0.025;
       break;

@@ -75,6 +75,18 @@ export function shade(c: Rgba, darken: boolean): Rgba {
   return [clamp(f(c[0])), clamp(f(c[1])), clamp(f(c[2])), c[3]];
 }
 
+/** `color` laid over `under` at `opacity` (0–1), the way paint goes on: over nothing it keeps its own colour, part
+ *  see-through; over an opaque texel it mixes and stays opaque. */
+export function blend(under: Rgba, color: Rgba, opacity: number): Rgba {
+  const top = (opacity * color[3]) / 255;
+  if (top >= 1) return color;
+  const below = (under[3] / 255) * (1 - top);
+  const alpha = top + below;
+  if (alpha <= 0) return TRANSPARENT;
+  const mix = (k: number) => clamp((color[k]! * top + under[k]! * below) / alpha);
+  return [mix(0), mix(1), mix(2), clamp(alpha * 255)];
+}
+
 export function noise(c: Rgba, rand: () => number): Rgba {
   if (c[3] === 0) return c;
   const d = (rand() * 2 - 1) * NOISE_SPREAD;
@@ -87,6 +99,8 @@ export interface ToolOptions {
   mirror: boolean;
   /** Shade darkens instead of lightening. */
   darken?: boolean;
+  /** How strongly Pencil, Fill and Eraser apply, 0–1 (default 1). Below 1 they mix with what is there. */
+  opacity?: number;
   rand?: () => number;
 }
 
@@ -155,21 +169,26 @@ export function applyTool(
 ): Change[] {
   if (tool === 'picker' || !faceAt(model, x, y)) return [];
   const rand = opts.rand ?? Math.random;
+  const opacity = Math.max(0, Math.min(1, opts.opacity ?? 1));
+  // Tools that build on the texel's own colour reach each texel once a stroke, so a drag doesn't pile up.
+  const once = tool === 'shade' || tool === 'noise' || opacity < 1;
   const changes: Change[] = [];
   for (const [tx, ty] of targets(px, model, tool, x, y, opts.mirror, mirrorOf)) {
     const key = ty * SKIN_SIZE + tx;
-    if ((tool === 'shade' || tool === 'noise') && touched?.has(key)) continue;
+    if (once && touched?.has(key)) continue;
     touched?.add(key);
     const before = px.get(tx, ty);
     let after: Rgba;
     switch (tool) {
       case 'pencil':
       case 'fill':
-        after = opts.color;
+        after = blend(before, opts.color, opacity);
         break;
-      case 'eraser':
-        after = TRANSPARENT;
+      case 'eraser': {
+        const alpha = clamp(before[3] * (1 - opacity));
+        after = alpha === 0 ? TRANSPARENT : [before[0], before[1], before[2], alpha];
         break;
+      }
       case 'shade':
         after = shade(before, opts.darken ?? false);
         break;

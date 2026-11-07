@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { celebration, CELEBRATE_S, POSE_STILL_T, POSES, rigAt, SADDLE_Y } from './poses';
+import { animated, celebration, CELEBRATE_S, POSE_STILL_T, POSES, rigAt, SADDLE_Y } from './poses';
 
 describe('poses', () => {
   it('walk swings the legs against each other and the arms against the legs', () => {
@@ -9,7 +9,7 @@ describe('poses', () => {
     expect(Math.sign(rig.joints.rightArm[0])).toBe(-Math.sign(rig.joints.rightLeg[0]));
   });
 
-  it('sit puts the legs straight out in front and the figure down on the plinth', () => {
+  it('sit puts the legs straight out in front and the figure down on the floor', () => {
     const rig = rigAt('sit', 0);
     expect(rig.joints.rightLeg[0]).toBeCloseTo(-Math.PI / 2);
     expect(rig.offset[1]).toBe(-9.5);
@@ -20,6 +20,12 @@ describe('poses', () => {
     expect(rig.offset[1]).toBeCloseTo(SADDLE_Y - 12);
     expect(rig.joints.rightLeg[2]).toBeLessThan(0);
     expect(rig.joints.leftLeg[2]).toBeGreaterThan(0);
+  });
+
+  it('standing holds perfectly still, so painting on it is steady', () => {
+    expect(rigAt('still', 0)).toEqual(rigAt('still', 3.7));
+    expect(animated('still')).toBe(false);
+    expect(POSES.filter((p) => p !== 'still').every(animated)).toBe(true);
   });
 
   it('wave raises the right arm above the head', () => {

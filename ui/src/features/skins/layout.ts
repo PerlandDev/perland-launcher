@@ -38,6 +38,18 @@ export interface Box {
   faces: Face[];
 }
 
+/** How far each outer layer stands off its part: half a texel on the head, a quarter elsewhere. The limbs' sleeves
+ *  overlap the jacket (and each other) where the parts meet, so each sits a hair inside the last: their surfaces never
+ *  share a plane, and the overlaps draw cleanly instead of flickering stripes. */
+const OUTER_INFLATE: Record<Part, number> = {
+  head: 0.5,
+  body: 0.25,
+  rightArm: 0.24,
+  leftArm: 0.24,
+  rightLeg: 0.23,
+  leftLeg: 0.22,
+};
+
 /** The texture origin of each part's box, base and outer. */
 const ORIGINS: Record<Part, Record<Layer, [number, number]>> = {
   head: { base: [0, 0], outer: [32, 0] },
@@ -105,7 +117,7 @@ export function boxes(model: SkinModel): Box[] {
     LAYERS.map((layer): Box => {
       const size = partSize(part, model);
       const center = partCenter(part, model);
-      const inflate = layer === 'base' ? 0 : part === 'head' ? 0.5 : 0.25;
+      const inflate = layer === 'base' ? 0 : OUTER_INFLATE[part];
       const [u, v] = ORIGINS[part][layer];
       return { part, layer, size, center, inflate, faces: faces(u, v, size, center, inflate) };
     }),

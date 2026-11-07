@@ -1,16 +1,28 @@
-// Undo and redo, one stroke at a time.
+// Undo and redo, one step at a time: a stroke, or a switch of arm model with the texels it redrew.
+import type { SkinModel } from '../../ipc/schema';
 import type { Change, Pixels } from './paint';
 
 export const HISTORY_CAP = 200;
 
-export class History {
-  private done: Change[][] = [];
-  private undone: Change[][] = [];
+/** A switch of arm model that a step makes. */
+export interface ModelSwap {
+  before: SkinModel;
+  after: SkinModel;
+}
 
-  /** Records a finished stroke. A new stroke clears what was undone. */
-  push(stroke: Change[]) {
-    if (stroke.length === 0) return;
-    this.done.push(stroke);
+interface Step {
+  changes: Change[];
+  model?: ModelSwap;
+}
+
+export class History {
+  private done: Step[] = [];
+  private undone: Step[] = [];
+
+  /** Records a finished step. A new step clears what was undone. */
+  push(changes: Change[], model?: ModelSwap) {
+    if (changes.length === 0 && !model) return;
+    this.done.push({ changes, model });
     if (this.done.length > HISTORY_CAP) this.done.shift();
     this.undone = [];
   }
@@ -23,19 +35,22 @@ export class History {
     return this.undone.length > 0;
   }
 
-  undo(px: Pixels): boolean {
-    const stroke = this.done.pop();
-    if (!stroke) return false;
-    for (const c of [...stroke].reverse()) px.set(c.x, c.y, c.before);
-    this.undone.push(stroke);
+  /** Undoes the last step; `onModel` hears the arm model to go back to, when the step switched it. */
+  undo(px: Pixels, onModel?: (model: SkinModel) => void): boolean {
+    const step = this.done.pop();
+    if (!step) return false;
+    for (const c of [...step.changes].reverse()) px.set(c.x, c.y, c.before);
+    if (step.model) onModel?.(step.model.before);
+    this.undone.push(step);
     return true;
   }
 
-  redo(px: Pixels): boolean {
-    const stroke = this.undone.pop();
-    if (!stroke) return false;
-    for (const c of stroke) px.set(c.x, c.y, c.after);
-    this.done.push(stroke);
+  redo(px: Pixels, onModel?: (model: SkinModel) => void): boolean {
+    const step = this.undone.pop();
+    if (!step) return false;
+    for (const c of step.changes) px.set(c.x, c.y, c.after);
+    if (step.model) onModel?.(step.model.after);
+    this.done.push(step);
     return true;
   }
 
