@@ -6,7 +6,7 @@ use std::fmt;
 use serde::Deserialize;
 use serde_json::json;
 
-use super::{rate_limited, sign_in_failed, MsaClient, BODY_CAP};
+use super::{rate_limited, sign_in_failed, MsaApp, MsaClient, BODY_CAP};
 use crate::{
     error::{ErrorCode, LauncherError, Result},
     http::read_capped,
@@ -98,13 +98,18 @@ fn xerr_error(code: ErrorCode) -> LauncherError {
 }
 
 impl MsaClient {
-    /// Trades the Microsoft access token for an Xbox Live user token.
+    /// Trades the Microsoft access token for an Xbox Live user token. An Azure app's token goes
+    /// with the `d=` prefix; the Minecraft Launcher's (scope `service::…::MBI_SSL`) goes bare.
     pub async fn xbox_user(&self, ms_access: &str) -> Result<XboxUser> {
+        let ticket = match self.app {
+            MsaApp::Azure(_) => format!("d={ms_access}"),
+            MsaApp::Live => ms_access.to_string(),
+        };
         let body = json!({
             "Properties": {
                 "AuthMethod": "RPS",
                 "SiteName": "user.auth.xboxlive.com",
-                "RpsTicket": format!("d={ms_access}"),
+                "RpsTicket": ticket,
             },
             "RelyingParty": "http://auth.xboxlive.com",
             "TokenType": "JWT",

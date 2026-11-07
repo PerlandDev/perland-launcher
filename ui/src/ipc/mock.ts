@@ -544,7 +544,8 @@ async function signInMicrosoft(state: MockState) {
   state.microsoft.cancel?.();
   const { scenario } = state.microsoft;
   if (scenario === 'notConfigured') fail('auth', 'microsoft_not_configured', "Microsoft sign-in isn't set up in this build.");
-  event({ type: 'microsoft_sign_in', phase: 'waiting' });
+  // Builds without an Azure app sign in in the launcher's own Microsoft window.
+  event({ type: 'microsoft_sign_in', phase: 'window' });
   if (!(await microsoftWait(state, MOCK_MICROSOFT_WAIT_MS))) return null;
   event({ type: 'microsoft_sign_in', phase: 'exchanging' });
   const stopAt: MsaStep | null = scenario === 'awaiting' ? 'minecraft' : scenario === 'notOwned' ? 'profile' : null;

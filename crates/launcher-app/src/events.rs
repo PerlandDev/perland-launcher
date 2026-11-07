@@ -9,7 +9,10 @@ use launcher_core::{
 };
 use serde::Serialize;
 
-use crate::dto::{PackUpdate, PerlandSignInPhase, SyncSummary};
+use crate::{
+    dto::{MicrosoftSignInPhase, PackUpdate, PerlandSignInPhase, SyncSummary},
+    runner::BoxFuture,
+};
 
 /// Progress for one task reaches the UI at most this often (first and last updates always do).
 pub const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
@@ -121,9 +124,9 @@ pub enum AppEvent {
     /// A Discord sign-in moved on: the browser is open (`waiting`), or the code it brought back
     /// is being redeemed (`exchanging`).
     PerlandSignIn { phase: PerlandSignInPhase },
-    /// A Microsoft sign-in moved on: the browser is open (`waiting`), or the code it brought
-    /// back is being redeemed (`exchanging`).
-    MicrosoftSignIn { phase: PerlandSignInPhase },
+    /// A Microsoft sign-in moved on: the browser is open (`waiting`), the launcher's Microsoft
+    /// window is (`window`), or the code it brought back is being redeemed (`exchanging`).
+    MicrosoftSignIn { phase: MicrosoftSignInPhase },
     /// A Microsoft sign-in started a call of its chain (redeeming the code, Xbox Live, XSTS,
     /// Minecraft's login, the profile and ownership), so the window can show each one. A
     /// failure stops the chain on the step reported last.
@@ -150,6 +153,23 @@ pub trait Host: Send + Sync + 'static {
     /// Open `url` in the player's browser. Only ever an http(s) URL to a Perland Engine that the
     /// app built itself, never one from the window.
     fn open_url(&self, url: &str);
+    /// Open `window.url` in a window of the launcher's own, and answer with the first URL it
+    /// navigates to for which `window.done` holds, without loading it; `None` when the player
+    /// closed the window first (or it couldn't open). Opening one closes the one before.
+    /// Dropping the answer closes this window, and never a newer one.
+    fn open_sign_in_window(&self, window: SignInWindow) -> BoxFuture<Option<String>>;
+}
+
+/// A sign-in page the launcher shows in its own window, for a sign-in whose redirect the
+/// launcher can't receive itself (the Minecraft Launcher's client on login.live.com).
+#[derive(Clone, Copy)]
+pub struct SignInWindow<'a> {
+    /// An https URL the app built itself, never one from the window.
+    pub url: &'a str,
+    pub title: &'static str,
+    /// Whether a navigation is the redirect that ends the sign-in. The URL may carry the code:
+    /// it is never logged.
+    pub done: fn(&str) -> bool,
 }
 
 /// Drops progress updates that arrive faster than the UI can usefully show them.
@@ -222,10 +242,17 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_value(AppEvent::MicrosoftSignIn {
-                phase: PerlandSignInPhase::Waiting
+                phase: MicrosoftSignInPhase::Waiting
             })
             .unwrap(),
             serde_json::json!({ "type": "microsoft_sign_in", "phase": "waiting" })
+        );
+        assert_eq!(
+            serde_json::to_value(AppEvent::MicrosoftSignIn {
+                phase: MicrosoftSignInPhase::Window
+            })
+            .unwrap(),
+            serde_json::json!({ "type": "microsoft_sign_in", "phase": "window" })
         );
         assert_eq!(
             serde_json::to_value(AppEvent::MicrosoftSignInStep {

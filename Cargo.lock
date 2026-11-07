@@ -3681,6 +3681,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "tokio",
  "tracing",
  "zbus 5.19.0",
 ]

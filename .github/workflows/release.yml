@@ -62,13 +62,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
           MODE: ${{ inputs.dry_run && 'dry-run' || 'publish' }}
         run: node scripts/release/cli.mjs ci-check "$GITHUB_SHA" "$MODE"
-      # Without it the build has no Microsoft sign-in and nobody could start the game: a publish
-      # stops, a dry run only warns.
-      - name: The Microsoft client ID is set
+      # Without it the build signs in with the Minecraft Launcher's client; with it, with that
+      # Azure app, which Minecraft turns down until Mojang approves it (a warning).
+      - name: Which Microsoft app signs in
         env:
           PERLAND_MS_CLIENT_ID: ${{ vars.PERLAND_MS_CLIENT_ID }}
-          MODE: ${{ inputs.dry_run && 'dry-run' || 'publish' }}
-        run: node scripts/release/cli.mjs client-id-check "$MODE"
+        run: node scripts/release/cli.mjs client-id-check
       - id: version
         env:
           CHANNEL: ${{ inputs.channel }}

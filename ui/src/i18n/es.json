@@ -366,6 +366,7 @@
     "microsoftAdd": "Agregar cuenta de Microsoft",
     "microsoftWhy": "Necesitas una cuenta de Microsoft que tenga Minecraft: Java Edition.",
     "microsoftWaiting": "Termina de iniciar sesión en tu navegador.",
+    "microsoftWindow": "Termina de iniciar sesión en la ventana de Microsoft.",
     "microsoftExchanging": "Iniciando tu sesión…",
     "microsoftSignedIn": "Iniciaste sesión como {{name}}.",
     "steps": {

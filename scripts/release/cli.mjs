@@ -48,8 +48,7 @@ switch (command) {
   }
   case 'client-id-check': {
     // The value comes from the environment (PERLAND_MS_CLIENT_ID), never the command line.
-    const [mode] = args;
-    const { level, message } = clientIdGate(process.env.PERLAND_MS_CLIENT_ID, { publish: mode === 'publish' });
+    const { level, message } = clientIdGate(process.env.PERLAND_MS_CLIENT_ID);
     console.log(level === 'ok' ? message : `::${level}::${message}`);
     if (level === 'error') process.exitCode = 1;
     break;

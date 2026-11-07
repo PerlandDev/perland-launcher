@@ -48,6 +48,8 @@ fn main() {
         .plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED)
+                // The Microsoft sign-in window opens centred each time.
+                .with_filter(|label| !host::is_sign_in_window(label))
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
@@ -342,12 +344,13 @@ fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> 
     let msa = Arc::new(CoreMsa::new(
         launcher_core::http::client_without_redirects(&version)?,
         MsaEndpoints::production(),
-        // A dev run may point at its own Azure app; a shipped build uses the one it was built with.
-        launcher_core::msa::client_id(
+        // The Azure app when the build has one (a dev run may point at its own; a shipped build
+        // uses the one it was built with), else the Minecraft Launcher's client.
+        Some(launcher_core::msa::app(
             std::env::var("PERLAND_MS_CLIENT_ID").ok().as_deref(),
             option_env!("PERLAND_MS_CLIENT_ID"),
             BuildKind::current(),
-        ),
+        )),
     ));
     let mut runner = CoreRunner::new(installer, syncer, version.clone(), browse, msa);
     if let Some(site) = site_override(std::env::var("PERLAND_SITE_URL").ok().as_deref()) {

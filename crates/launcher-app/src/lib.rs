@@ -37,7 +37,7 @@ mod your_servers;
 
 pub use app::{AppConfig, AppCore};
 pub use browser::{Browser, CoreBrowser};
-pub use events::{AppEvent, ExitInfo, Host, RunStateKind};
+pub use events::{AppEvent, ExitInfo, Host, RunStateKind, SignInWindow};
 pub use manage::{CoreStack, StackApi};
 pub use msa::{CoreMsa, MsaApi};
 pub use perland::{CorePlayer, PlayerApi};

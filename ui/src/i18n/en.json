@@ -366,6 +366,7 @@
     "microsoftAdd": "Add Microsoft account",
     "microsoftWhy": "You need a Microsoft account that owns Minecraft: Java Edition.",
     "microsoftWaiting": "Finish signing in in your browser.",
+    "microsoftWindow": "Finish signing in in the Microsoft window.",
     "microsoftExchanging": "Signing you in…",
     "microsoftSignedIn": "Signed in as {{name}}.",
     "steps": {

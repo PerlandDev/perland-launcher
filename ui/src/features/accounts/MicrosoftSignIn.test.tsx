@@ -42,7 +42,7 @@ describe('MicrosoftSignIn', () => {
     const onSignedIn = vi.fn();
     const { user, calls } = renderApp(<MicrosoftSignIn variant="primary" onSignedIn={onSignedIn} />, { beta: true });
     await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
-    expect(await screen.findByText('Finish signing in in your browser.')).toBeInTheDocument();
+    expect(await screen.findByText('Finish signing in in the Microsoft window.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign in with Microsoft' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(sent(calls, 'account_sign_in_cancel')).toHaveLength(1);
@@ -54,10 +54,20 @@ describe('MicrosoftSignIn', () => {
   it('says when the sign-in is being finished', async () => {
     const { user } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true });
     await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
-    await screen.findByText('Finish signing in in your browser.');
+    await screen.findByText('Finish signing in in the Microsoft window.');
     await act(() => emit(APP_EVENT, { type: 'microsoft_sign_in', phase: 'exchanging' }));
     expect(await screen.findByText('Signing you in…')).toBeInTheDocument();
     // Stop the mock's chain, so its steps can't reach the next test.
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+  });
+
+  it('says the browser when the sign-in opened there', async () => {
+    const { user } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true });
+    await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
+    await screen.findByText('Finish signing in in the Microsoft window.');
+    await act(() => emit(APP_EVENT, { type: 'microsoft_sign_in', phase: 'waiting' }));
+    expect(await screen.findByText('Finish signing in in your browser.')).toBeInTheDocument();
+    expect((await stepRows())[0]).toBe('Microsoft account: in progress');
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
   });
 
