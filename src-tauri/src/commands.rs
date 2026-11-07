@@ -1060,3 +1060,91 @@ pub fn diagnostics_reveal(app: AppHandle, core: CoreState<'_>) -> Res<()> {
     }
     Ok(())
 }
+
+// The Skins screen (see `launcher_app::skins`). Textures cross as PNG `data:` URLs.
+
+#[tauri::command]
+pub async fn skins_list(core: CoreState<'_>) -> Res<Vec<launcher_core::skins_library::SkinEntry>> {
+    logged("skins_list", core.skins_list().await)
+}
+
+#[tauri::command]
+pub async fn skin_texture(core: CoreState<'_>, id: String) -> Res<String> {
+    logged("skin_texture", core.skin_texture(&id).await)
+}
+
+#[tauri::command]
+pub async fn skin_create(
+    core: CoreState<'_>,
+    name: String,
+    model: launcher_core::skins_library::SkinModel,
+    texture: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged(
+        "skin_create",
+        core.skin_create(&name, model, &texture).await,
+    )
+}
+
+#[tauri::command]
+pub async fn skin_import(
+    core: CoreState<'_>,
+    path: PathBuf,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged("skin_import", core.skin_import(path).await)
+}
+
+#[tauri::command]
+pub async fn skin_save(
+    core: CoreState<'_>,
+    id: String,
+    texture: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged("skin_save", core.skin_save(&id, &texture).await)
+}
+
+#[tauri::command]
+pub async fn skin_update(
+    core: CoreState<'_>,
+    id: String,
+    name: Option<String>,
+    model: Option<launcher_core::skins_library::SkinModel>,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged("skin_update", core.skin_update(&id, name, model).await)
+}
+
+#[tauri::command]
+pub async fn skin_duplicate(
+    core: CoreState<'_>,
+    id: String,
+    name: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged("skin_duplicate", core.skin_duplicate(&id, &name).await)
+}
+
+#[tauri::command]
+pub async fn skin_delete(core: CoreState<'_>, id: String) -> Res<()> {
+    logged("skin_delete", core.skin_delete(&id).await)
+}
+
+#[tauri::command]
+pub async fn skin_export(core: CoreState<'_>, id: String, path: PathBuf) -> Res<String> {
+    logged("skin_export", core.skin_export(&id, path).await).map(|p| p.display().to_string())
+}
+
+#[tauri::command]
+pub async fn skin_current(
+    core: CoreState<'_>,
+    uuid: String,
+) -> Res<Option<launcher_app::skins::CurrentSkin>> {
+    logged("skin_current", core.skin_current(&uuid).await)
+}
+
+#[tauri::command]
+pub async fn skin_wear(
+    core: CoreState<'_>,
+    id: String,
+    uuid: String,
+) -> Res<Vec<launcher_core::skins_library::SkinEntry>> {
+    logged("skin_wear", core.skin_wear(&id, &uuid).await)
+}

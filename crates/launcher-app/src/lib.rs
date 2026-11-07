@@ -29,6 +29,7 @@ pub mod runner;
 mod runs;
 mod servers;
 mod share;
+pub mod skins;
 mod team_create;
 #[cfg(test)]
 pub(crate) mod testing;

@@ -24,7 +24,8 @@ fn endpoints(server: &MockServer) -> MsaEndpoints {
         xsts: base.join("/xsts").unwrap(),
         live_authorize: base.join("/live/authorize").unwrap(),
         live_token: base.join("/live/token").unwrap(),
-        minecraft: base,
+        minecraft: base.clone(),
+        textures: base,
     }
 }
 

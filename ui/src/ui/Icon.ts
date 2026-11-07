@@ -41,6 +41,7 @@ export {
   SettingsCog,
   Share,
   Shield,
+  Shirt,
   Skull,
   Square,
   Terminal,

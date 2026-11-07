@@ -148,7 +148,7 @@ Unsigned installers trigger SmartScreen ("Windows protected your PC", passable t
     - `install(Arc<Update>, Arc<Vec<u8>>, relaunch) -> Result<()>`.
   - `Updates<S: UpdateSource, H: Host>`: holds the state, emits `AppEvent::Update(UpdateState)`, and exposes `start()`, `check_now()`, `restart_now(busy: bool)`, `on_quit(busy: bool)`, `set_channel()`.
   - `fn endpoint(channel: Channel) -> &'static str` (§3.3).
-- **`src-tauri/src/updater.rs`** (wiring only): `TauriUpdateSource` over `tauri-plugin-updater` (pinned `=2.13.1`), building an updater per check with `updater_builder().endpoints(vec![endpoint(channel)])`. The public key comes from config. Windows install mode is `passive`.
+- **`src-tauri/src/updater.rs`** (wiring only): `TauriUpdateSource` over `tauri-plugin-updater` (pinned `=2.13.1`), building an updater per check with `updater_builder().endpoints(vec![endpoint(channel)])`. The public key comes from config. Windows install mode is `passive`. *Changed to `quiet` on 2026-11-07 (owner): passive showed NSIS's stock progress window on every update, which looked nothing like the branded setup; quiet shows no window and still relaunches with `/R`.*
 - The webview gets **no** updater capability. The UI talks to our commands only.
 
 ### 4.2 States
@@ -204,7 +204,7 @@ A new section in Settings, above About, styled through `/impeccable` and `DESIGN
 
 1. **Relaunching on Windows is controllable.** The NSIS template relaunches only in passive or silent mode **and** when `/R` is passed; the plugin passes `/R` unless the updater was built with `restart_after_install(false)`. In 2.13.1 the choice is also per update: `Update::restart_after_install(bool)` sets it on the found update, and the installer arguments read it. So install-on-quit installs the downloaded, already verified bytes with `restart_after_install(false)`, and **Restart now** installs the same bytes with `restart_after_install(true)`. There is no second check. `Update::install` on Windows starts the installer and calls `std::process::exit(0)`.
 2. **`.deb` installs update themselves.** The plugin installs a `.deb` with `pkexec dpkg -i` (falling back to a zenity or kdialog password prompt, then `sudo`), so a `.deb` player is asked for their password when an update installs. An AppImage replaces the file at `$APPIMAGE`. Linux never relaunches by itself, so Restart now calls `AppHandle::restart()` after installing. The bundle type comes from a marker `tauri build` patches into each package's binary.
-3. **Traps:** `UpdaterBuilder::on_before_exit` replaces the default hook that runs `cleanup_before_exit`, so it is never set. Plugin-level `installer_args` are dropped unless `plugins.updater.windows` exists, so that section is present (`installMode: "passive"`).
+3. **Traps:** `UpdaterBuilder::on_before_exit` replaces the default hook that runs `cleanup_before_exit`, so it is never set. Plugin-level `installer_args` are dropped unless `plugins.updater.windows` exists, so that section is present (`installMode: "passive"`, `"quiet"` since 2026-11-07).
 4. **Prerelease versions are fine for NSIS:** `0.2.0-beta.1` becomes `VIProductVersion 0.2.0.0` with the full string as the display version, and the installer compares versions with semver. MSI would fail on a prerelease, which is one more reason MSI isn't built (`bundle.targets` lists `nsis`, `appimage` and `deb` only).
 
 ## 5. Logs and diagnostics

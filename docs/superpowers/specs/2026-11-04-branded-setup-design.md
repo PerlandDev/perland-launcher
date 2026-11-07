@@ -20,7 +20,7 @@ A player's first contact with Perland Launcher is the Windows installer. Today t
 - **A branded uninstaller** in the same window and look (owner, amendment): what it removes and where, and a clear choice to also delete the player's games, worlds, settings and saved sign-ins.
 
 **Non-goals**
-- Updates. They keep running the plain NSIS installer in passive mode, exactly as today (`latest.json`, `/R` relaunch, install-on-quit).
+- Updates. They keep running the plain NSIS installer in passive mode, exactly as today (`latest.json`, `/R` relaunch, install-on-quit). *Since 2026-11-07 (owner) they run it in quiet mode instead, so no NSIS window appears; everything else is unchanged.*
 - Linux. AppImage and `.deb` have no installer UI.
 - Options beyond the folder and the two shortcuts (start with Windows, file associations, per-machine installs).
 - Changing the download page (PerlandDev-site) or the private dev repository's dev installer. Both are follow-ups once a release carries the setup app.

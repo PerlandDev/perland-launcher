@@ -4,6 +4,7 @@
 pub mod minecraft;
 pub mod oauth;
 pub mod secrets;
+pub mod skins;
 pub mod xbox;
 
 use std::fmt;
@@ -64,6 +65,8 @@ pub struct MsaEndpoints {
     pub live_token: Url,
     /// The Minecraft services base, without a path.
     pub minecraft: Url,
+    /// Where skin textures live (`textures.minecraft.net`); the only host a texture is read from.
+    pub textures: Url,
 }
 
 impl MsaEndpoints {
@@ -77,6 +80,7 @@ impl MsaEndpoints {
             live_authorize: url("https://login.live.com/oauth20_authorize.srf"),
             live_token: url("https://login.live.com/oauth20_token.srf"),
             minecraft: url("https://api.minecraftservices.com"),
+            textures: url("https://textures.minecraft.net"),
         }
     }
 }

@@ -267,6 +267,17 @@ fn main() {
             commands::share_preview,
             commands::share_export,
             commands::share_reveal,
+            commands::skins_list,
+            commands::skin_texture,
+            commands::skin_create,
+            commands::skin_import,
+            commands::skin_save,
+            commands::skin_update,
+            commands::skin_duplicate,
+            commands::skin_delete,
+            commands::skin_export,
+            commands::skin_current,
+            commands::skin_wear,
             commands::quit,
         ])
         .build(tauri::generate_context!())

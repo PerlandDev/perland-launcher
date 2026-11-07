@@ -188,5 +188,9 @@
   "invalid_team_server",
   "share_path_invalid",
   "share_too_large",
+  "skin_invalid",
+  "skin_not_found",
+  "skin_rejected",
+  "skin_offline_account",
   "internal"
 ]
