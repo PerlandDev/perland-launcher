@@ -203,16 +203,15 @@ export const commands = {
   serverLink: (id: string, link: string) => invoke<Instance>('server_link', { id, link }),
   serverUnlink: (id: string) => invoke<Instance>('server_unlink', { id }),
   perlandStatus: () => invoke<PerlandStatus>('perland_status'),
-  /** Opens the browser and waits for the player to finish; null when they canceled or said no. */
   /** Signs in on the Perland page in the browser (OAuth), where the player picks GitHub, Discord or an email code. Null when canceled here. */
   perlandSignIn: (language: string) => invoke<PerlandAccount | null>('perland_sign_in', { language }),
-  perlandSignInDiscord: (language: string) => invoke<PerlandAccount | null>('perland_sign_in_discord', { language }),
-  /** Signs in through the Perland panel's GitHub page in the browser, like Discord. */
-  perlandSignInGithub: (language: string) => invoke<PerlandAccount | null>('perland_sign_in_github', { language }),
   perlandSignInReopen: () => invoke<null>('perland_sign_in_reopen'),
   perlandSignInCancel: () => invoke<null>('perland_sign_in_cancel'),
-  perlandEmailStart: (email: string, language: string) => invoke<EmailCodeSent>('perland_email_start', { email, language }),
-  perlandEmailVerify: (email: string, code: string) => invoke<PerlandAccount>('perland_email_verify', { email, code }),
+  /** Sends a code to `email` to put it on the signed-in account (a free server needs one). */
+  perlandAccountEmailStart: (email: string, language: string) =>
+    invoke<EmailCodeSent>('perland_account_email_start', { email, language }),
+  /** Checks the code; answers the account with the email on it. */
+  perlandAccountEmailVerify: (email: string, code: string) => invoke<PerlandAccount>('perland_account_email_verify', { email, code }),
   perlandSignOut: () => invoke<null>('perland_sign_out'),
   /** Manage in Perland: the panel's page for a server the player owns, in the browser. */
   perlandManage: (stack: string) => invoke<null>('perland_manage', { stack }),

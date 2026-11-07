@@ -1,24 +1,26 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { commands } from '../../ipc/commands';
 import type { CreatableTeam, FreeServerPage } from '../../ipc/schema';
-import { useAppInfo } from '../../state/queries';
-import { pushError } from '../../state/toasts';
+import { qk } from '../../state/queries';
 import { Button } from '../../ui/Button';
+import { Dialog } from '../../ui/Dialog';
 import { CreateServerDialog } from './CreateServerDialog';
+import { EmailCodeStep } from './EmailCodeStep';
 import { reasonLine } from './freeServer';
 
 /** The slot in Your servers where a new server starts. With teams the player may create on, "Create a server", whose dialog
  *  asks Where (the free server while they can make it, or a team). Without, the free server's slot: "Create a server for
  *  friends", or one line saying why the player can't now, and nothing once they have one (its card shows). The dialog stays
- *  open after the server appears, until closed. Missing an email, the slot also offers "Add an email", which opens the panel's
- *  account page, while a panel is configured. `page` is null while free servers are off. */
+ *  open after the server appears, until closed. Missing an email, the slot also offers "Add an email", which opens the email
+ *  step in the launcher; once verified, the free server's page is read again. `page` is null while free servers are off. */
 export function FreeServerEntry({ page, teams = [] }: { page: FreeServerPage | null; teams?: CreatableTeam[] }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const hasServer = page?.server != null;
   const reason = page ? reasonLine(t, page.create, hasServer) : null;
-  const panel = useAppInfo().data?.panel === true;
+  const qc = useQueryClient();
+  const [addingEmail, setAddingEmail] = useState(false);
   // Kept from when the dialog opened, so it outlives the free server's entry once the server exists.
   const freeOpen = page && !hasServer && page.create.allowed ? page.limits : null;
   const [openLimits, setOpenLimits] = useState(freeOpen);
@@ -49,11 +51,11 @@ export function FreeServerEntry({ page, teams = [] }: { page: FreeServerPage | n
         >{t('freeServer.entry.create')}</Button>
       </div>
     );
-  } else if (reason && panel && page?.create.reason === 'email_required') {
+  } else if (reason && page?.create.reason === 'email_required') {
     slot = (
       <div className="empty-slot free-entry">
         <p>{reason}</p>
-        <Button onClick={() => void commands.perlandOpenAccount().catch(pushError)}>{t('freeServer.entry.addEmail')}</Button>
+        <Button onClick={() => setAddingEmail(true)}>{t('freeServer.entry.addEmail')}</Button>
       </div>
     );
   } else if (reason) {
@@ -63,6 +65,18 @@ export function FreeServerEntry({ page, teams = [] }: { page: FreeServerPage | n
     <>
       {slot}
       {open && <CreateServerDialog limits={openLimits} teams={teams} onClose={() => setOpen(false)} />}
+      {addingEmail && (
+        <Dialog open onClose={() => setAddingEmail(false)} title={t('freeServer.email.title')}>
+          <EmailCodeStep
+            onVerified={() => {
+              void qc.invalidateQueries({ queryKey: qk.freeServer });
+              void qc.invalidateQueries({ queryKey: qk.perland });
+              setAddingEmail(false);
+            }}
+            onCancel={() => setAddingEmail(false)}
+          />
+        </Dialog>
+      )}
     </>
   );
 }

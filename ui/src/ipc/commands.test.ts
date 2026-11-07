@@ -23,10 +23,9 @@ it('sends the argument names Rust expects', async () => {
   await commands.catalogLoaders('quilt', '1.20.1');
   await commands.instanceArt('pack');
   await commands.instanceArtSet('pack', { kind: 'generated', seed: 'dunes' });
-  await commands.perlandSignInDiscord('es');
   await commands.accountSignInMicrosoft('es');
-  await commands.perlandEmailStart('a@b.c', 'en');
-  await commands.perlandEmailVerify('a@b.c', '123456');
+  await commands.perlandAccountEmailStart('a@b.c', 'en');
+  await commands.perlandAccountEmailVerify('a@b.c', '123456');
   await commands.yourServersFollow('inv');
   await commands.yourServersUnfollow('inv');
   await commands.yourServersJoined('inv');
@@ -53,10 +52,9 @@ it('sends the argument names Rust expects', async () => {
     ['catalog_loaders', { kind: 'quilt', mc: '1.20.1' }],
     ['instance_art', { id: 'pack' }],
     ['instance_art_set', { id: 'pack', choice: { kind: 'generated', seed: 'dunes' } }],
-    ['perland_sign_in_discord', { language: 'es' }],
     ['account_sign_in_microsoft', { language: 'es' }],
-    ['perland_email_start', { email: 'a@b.c', language: 'en' }],
-    ['perland_email_verify', { email: 'a@b.c', code: '123456' }],
+    ['perland_account_email_start', { email: 'a@b.c', language: 'en' }],
+    ['perland_account_email_verify', { email: 'a@b.c', code: '123456' }],
     ['your_servers_follow', { invite: 'inv' }],
     ['your_servers_unfollow', { invite: 'inv' }],
     ['your_servers_joined', { invite: 'inv' }],
@@ -89,7 +87,6 @@ it('sends Manage arguments as Rust names them', async () => {
     version: null,
     apply: 'now',
   } as const;
-  await commands.perlandSignInGithub('es');
   await commands.managedServers();
   await commands.manageDetail('t', 'w');
   await commands.manageAction('t', 'w', 'restart');
@@ -104,7 +101,6 @@ it('sends Manage arguments as Rust names them', async () => {
   await commands.manageOpenPanel('t', 'w');
   await commands.manageOpenPanel('t', null);
   expect(calls).toEqual([
-    ['perland_sign_in_github', { language: 'es' }],
     ['managed_servers', {}],
     ['manage_detail', { tenantId: 't', stack: 'w' }],
     ['manage_action', { tenantId: 't', stack: 'w', action: 'restart' }],

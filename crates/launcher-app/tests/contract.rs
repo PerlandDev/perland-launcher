@@ -1149,12 +1149,7 @@ fn contract_fixtures_are_current() {
             },
             PerlandStatus {
                 enabled: true,
-                methods: vec!["discord".into(), "email".into(), "github".into()],
-                account: None,
-            },
-            PerlandStatus {
-                enabled: true,
-                methods: vec!["discord".into(), "email".into()],
+                methods: vec!["perland".into()],
                 account: Some(PerlandAccount {
                     name: "Steve".into(),
                     display_name: "Steve".into(),
@@ -1167,7 +1162,7 @@ fn contract_fixtures_are_current() {
             },
             PerlandStatus {
                 enabled: true,
-                methods: vec!["email".into()],
+                methods: vec!["perland".into()],
                 account: Some(PerlandAccount {
                     name: "alex@example.com".into(),
                     display_name: "".into(),

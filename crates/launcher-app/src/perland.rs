@@ -774,6 +774,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             // Canceled on the Perland page: the card says so, apart from a Cancel here.
             Callback::Denied => return Err(oauth::sign_in_canceled(host_of(&engine))),
             Callback::Canceled => return Ok(None),
+            // The Engine would make an account this launcher can't: it must update first.
+            Callback::Failed(why) if why == "launcher_update_required" => {
+                return Err(launcher_core::perland::api::launcher_update_required(
+                    host_of(&engine),
+                ))
+            }
             Callback::Failed(why) => {
                 return Err(LauncherError::auth(
                     ErrorCode::SignInFailed,
@@ -1299,6 +1305,23 @@ mod tests {
         assert_eq!(e.code, ErrorCode::SignInFailed);
         assert_eq!(e.detail.as_deref(), Some("temporarily_unavailable"));
         assert!(runner.player.calls_to("oauth_token").is_empty());
+    }
+
+    #[tokio::test]
+    async fn oauth_sign_in_page_says_launcher_update_required() {
+        let (core, runner, host, _t) = core(BuildKind::Dev);
+        with_oauth(&runner);
+        let task = oauth_sign_in(&core);
+        let opened = host.wait_for_opened(1).await;
+        come_back(&opened[0], "error=launcher_update_required").await;
+        let e = finish(task).await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::LauncherUpdateRequired);
+        assert_eq!(
+            e.fix.as_deref(),
+            Some("Update Perland Launcher from Settings.")
+        );
+        assert!(runner.player.calls_to("oauth_token").is_empty());
+        assert!(core.perland_store.load().is_none());
     }
 
     #[tokio::test]

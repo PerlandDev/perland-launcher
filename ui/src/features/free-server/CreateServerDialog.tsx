@@ -1,13 +1,16 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { isLauncherError } from '../../ipc/errors';
 import type { CreatableTeam, FreeLimits, FreeServerKind } from '../../ipc/schema';
-import { useFreeServerCreate, useInstances, usePerlandStatus } from '../../state/queries';
+import { qk, useFreeServerCreate, useInstances, usePerlandStatus } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { Field } from '../../ui/Field';
 import { useVersionChoice } from '../new-instance/useVersionChoice';
 import { VersionFields } from '../new-instance/VersionFields';
+import { EmailCodeStep } from './EmailCodeStep';
 import { engineLanguage, isServerName, limitsText, maybeCreated, prefillName } from './freeServer';
 import { ServerOptions } from './ServerOptions';
 import { isOptionField, useServerOptions } from './optionRules';
@@ -26,8 +29,9 @@ const TEAM_FORM_ID = 'team-server-pick';
  *  can make it) or one of their teams. The free server in three steps: pick (vanilla on a Minecraft version or a modpack, the
  *  name and, closed by default, the Options, under the limits), creating, and share (the invite link with Copy, and Play now).
  *  A team server: its form (`TeamServerForm`), creating, and ready, which leads to Manage. A refusal brings the player back to
- *  the first step with the reason inline and what they typed kept. Mount it only while it is open: closing unmounts it, so it
- *  starts over. */
+ *  the first step with the reason inline and what they typed kept; a refusal for a missing email shows the email step instead,
+ *  and a verified email brings the player back to the form to press Create again. Mount it only while it is open: closing
+ *  unmounts it, so it starts over. */
 export function CreateServerDialog({
   limits: freeLimits,
   teams = [],
@@ -55,6 +59,10 @@ export function CreateServerDialog({
   const [nameError, setNameError] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [versionError, setVersionError] = useState<string | null>(null);
+  /** The Engine refused the create for want of a verified email: the email step stands in for the form. */
+  const [addingEmail, setAddingEmail] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const qc = useQueryClient();
   const create = useFreeServerCreate({ inline: true });
   const options = useServerOptions(limits);
   // The version picker shows only on an Engine that checks the version (the same `limits.settings` as the Options).
@@ -73,6 +81,7 @@ export function CreateServerDialog({
     if (!options.check() || !nameOk) return;
     setVersionError(null);
     setRefusal(null);
+    setEmailVerified(false);
     setStep({ kind: 'creating', lost: false });
     create.mutate(
       {
@@ -97,6 +106,7 @@ export function CreateServerDialog({
           if (optionField) options.refuse(field, text);
           const placed = field === 'name' || (field === 'version' && picksVersion) || optionField;
           setRefusal(placed ? null : text);
+          if (isLauncherError(error) && error.code === 'email_required') setAddingEmail(true);
           setStep({ kind: 'pick' });
         },
       },
@@ -115,6 +125,12 @@ export function CreateServerDialog({
     }
     body.current?.focus();
   }, [step.kind]);
+  // Back from the email step, focus goes to the form (the email step puts it on its own field).
+  const wasAddingEmail = useRef(false);
+  useEffect(() => {
+    if (wasAddingEmail.current && !addingEmail) body.current?.focus();
+    wasAddingEmail.current = addingEmail;
+  }, [addingEmail]);
 
   let title: string;
   let actions: ReactNode;
@@ -136,7 +152,7 @@ export function CreateServerDialog({
       formId={TEAM_FORM_ID}
       tenantId={team.tenantId}
       instance={null}
-      hidden={step.kind !== 'pick'}
+      hidden={step.kind !== 'pick' || addingEmail}
       onCreating={() => setStep({ kind: 'creating', lost: false })}
       onCreated={(server) => setStep({ kind: 'teamReady', server })}
       onRefused={() => setStep({ kind: 'pick' })}
@@ -156,6 +172,20 @@ export function CreateServerDialog({
     ));
   } else if (step.kind !== 'pick') {
     ({ title, actions, content } = serverStep(t, step, play, onClose));
+  } else if (addingEmail) {
+    title = t('freeServer.email.title');
+    actions = null;
+    content = (
+      <EmailCodeStep
+        onVerified={() => {
+          void qc.invalidateQueries({ queryKey: qk.freeServer });
+          setRefusal(null);
+          setEmailVerified(true);
+          setAddingEmail(false);
+        }}
+        onCancel={() => setAddingEmail(false)}
+      />
+    );
   } else if (team) {
     title = t('teamServer.title');
     actions = (
@@ -247,6 +277,11 @@ export function CreateServerDialog({
           />
         </Field>
         <ServerOptions options={options} />
+        {emailVerified && (
+          <p role="status" className="text-sm">
+            {t('freeServer.email.verified')}
+          </p>
+        )}
         {refusal && (
           <p role="alert" className="text-sm text-coral">
             {refusal}

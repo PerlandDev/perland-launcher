@@ -530,3 +530,50 @@ const fakeCard = {
   inviteUrl: MOCK_FREE_INVITE as string | null,
   joinUrl: null,
 };
+
+describe('CreateServerDialog without a verified email', () => {
+  it('a create refused with email_required shows the email step, and a verified email goes back to the form, name kept', async () => {
+    let refused = false;
+    const app = renderWith((cmd) => {
+      if (cmd !== 'free_server_create' || refused) return undefined;
+      refused = true;
+      return Promise.reject({ category: 'auth', code: 'email_required', message: 'x', fix: null, detail: null, params: {} });
+    });
+    const { user, calls } = app;
+    await user.click(await screen.findByRole('button', { name: ENTRY }));
+    const box = await dialog();
+    const name = within(box).getByLabelText('Server name');
+    await user.clear(name);
+    await user.type(name, 'my-world');
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    expect(await within(box).findByRole('heading', { name: 'Add an email' })).toBeInTheDocument();
+    expect(within(box).queryByLabelText('Server name')).toBeNull();
+    await user.type(within(box).getByRole('textbox', { name: 'Email' }), 'a@b.co');
+    await user.click(within(box).getByRole('button', { name: 'Send code' }));
+    await user.type(await within(box).findByRole('textbox', { name: 'Code' }), '123 456');
+    await user.click(within(box).getByRole('button', { name: 'Verify' }));
+    expect(await within(box).findByRole('heading', { name: 'Create a server for friends' })).toBeInTheDocument();
+    expect(within(box).getByLabelText('Server name')).toHaveValue('my-world');
+    expect(within(box).getByRole('status')).toHaveTextContent('Your email is verified. Press Create to make your server.');
+    expect(sent(calls, 'perland_account_email_verify')).toEqual([{ email: 'a@b.co', code: '123 456' }]);
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    await vi.waitFor(() => expect(sent(calls, 'free_server_create')).toHaveLength(2));
+    expect(sent(calls, 'free_server_create')[1]).toMatchObject({ name: 'my-world' });
+  });
+
+  it('Cancel on the email step goes back to the form', async () => {
+    const app = renderWith((cmd) =>
+      cmd === 'free_server_create'
+        ? Promise.reject({ category: 'auth', code: 'email_required', message: 'x', fix: null, detail: null, params: {} })
+        : undefined,
+    );
+    const { user } = app;
+    await user.click(await screen.findByRole('button', { name: ENTRY }));
+    const box = await dialog();
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    await within(box).findByRole('heading', { name: 'Add an email' });
+    await user.click(within(box).getByRole('button', { name: 'Cancel' }));
+    expect(await within(box).findByLabelText('Server name')).toHaveValue('Steve');
+    expect(within(box).getByRole('alert')).toHaveTextContent('Free servers need a verified email on your Perland account. Add one, then try again.');
+  });
+});

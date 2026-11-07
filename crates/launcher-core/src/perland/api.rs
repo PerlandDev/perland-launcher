@@ -937,7 +937,7 @@ fn sign_in_unavailable(host: &str, method: Option<&str>) -> LauncherError {
 
 /// The Engine would make an account here, which only the Perland page does now: an older
 /// launcher's sign-in, or a route that predates the page.
-pub(super) fn launcher_update_required(host: &str) -> LauncherError {
+pub fn launcher_update_required(host: &str) -> LauncherError {
     LauncherError::auth(
         ErrorCode::LauncherUpdateRequired,
         "Update Perland Launcher to sign up.",
