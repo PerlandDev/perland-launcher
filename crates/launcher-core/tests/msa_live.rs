@@ -201,10 +201,17 @@ async fn live_errors_never_carry_tokens() {
             .redeem_live_code("code-secret")
             .await
             .unwrap_err();
+        // A failure names which marker leaked (by position), never the marker or the error, so
+        // a leak isn't repeated in the test output.
         let shown = format!("{err:?} {}", serde_json::to_string(&err).unwrap());
-        for secret in ["fake-access", "fake-refresh", "code-secret"] {
-            assert!(!shown.contains(secret), "{status}: leaked {secret}");
-        }
+        let markers = ["fake-access", "fake-refresh", "code-secret"];
+        let leaked: Vec<usize> = (0..markers.len())
+            .filter(|&i| shown.contains(markers[i]))
+            .collect();
+        assert!(
+            leaked.is_empty(),
+            "{status}: credential markers {leaked:?} appear in the error"
+        );
     }
 }
 
