@@ -24,7 +24,7 @@ afterEach(async () => {
 describe('MicrosoftSignIn', () => {
   it('says why, and signs in with the launcher language', async () => {
     const onSignedIn = vi.fn();
-    const { user, calls } = renderApp(<MicrosoftSignIn variant="primary" onSignedIn={onSignedIn} />, { beta: true });
+    const { user, calls } = renderApp(<MicrosoftSignIn variant="primary" onSignedIn={onSignedIn} />, { beta: true, offlineLocked: true });
     expect(await screen.findByText('You need a Microsoft account that owns Minecraft: Java Edition.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Sign in with Microsoft' }));
     expect(sent(calls, 'account_sign_in_microsoft')).toEqual([{ language: 'en' }]);
@@ -40,7 +40,7 @@ describe('MicrosoftSignIn', () => {
 
   it('shows the waiting state, and Cancel calls account_sign_in_cancel', async () => {
     const onSignedIn = vi.fn();
-    const { user, calls } = renderApp(<MicrosoftSignIn variant="primary" onSignedIn={onSignedIn} />, { beta: true });
+    const { user, calls } = renderApp(<MicrosoftSignIn variant="primary" onSignedIn={onSignedIn} />, { beta: true, offlineLocked: true });
     await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
     expect(await screen.findByText('Finish signing in in the Microsoft window.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Sign in with Microsoft' })).not.toBeInTheDocument();
@@ -52,7 +52,7 @@ describe('MicrosoftSignIn', () => {
   });
 
   it('says when the sign-in is being finished', async () => {
-    const { user } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true });
+    const { user } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true, offlineLocked: true });
     await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
     await screen.findByText('Finish signing in in the Microsoft window.');
     await act(() => emit(APP_EVENT, { type: 'microsoft_sign_in', phase: 'exchanging' }));
@@ -62,7 +62,7 @@ describe('MicrosoftSignIn', () => {
   });
 
   it('says the browser when the sign-in opened there', async () => {
-    const { user } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true });
+    const { user } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true, offlineLocked: true });
     await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
     await screen.findByText('Finish signing in in the Microsoft window.');
     await act(() => emit(APP_EVENT, { type: 'microsoft_sign_in', phase: 'waiting' }));
@@ -72,7 +72,7 @@ describe('MicrosoftSignIn', () => {
   });
 
   it('runs every step and shows each one while it runs', async () => {
-    const { user } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true });
+    const { user } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true, offlineLocked: true });
     await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
     // In the browser: the Microsoft account step runs, the others wait.
     expect(await stepRows()).toEqual([
@@ -97,7 +97,7 @@ describe('MicrosoftSignIn', () => {
   });
 
   it('a refusal at Minecraft shows the steps that passed and where it stopped, as info, and offers the full sign-in again', async () => {
-    const { user, calls } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true, microsoft: 'awaiting' });
+    const { user, calls } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true, offlineLocked: true, microsoft: 'awaiting' });
     await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
     expect(await screen.findByText(awaiting, {}, { timeout: 8000 })).toBeInTheDocument();
     expect(await stepRows()).toEqual([
@@ -115,14 +115,14 @@ describe('MicrosoftSignIn', () => {
   }, 20_000);
 
   it('says nothing about approval before a sign-in', async () => {
-    renderApp(<MicrosoftSignIn variant="inline" />, { beta: true, microsoft: 'awaiting' });
+    renderApp(<MicrosoftSignIn variant="inline" />, { beta: true, offlineLocked: true, microsoft: 'awaiting' });
     expect(await screen.findByRole('button', { name: 'Add Microsoft account' })).toBeInTheDocument();
     expect(screen.queryByText(awaiting)).not.toBeInTheDocument();
     expect(screen.queryByRole('list', { name: 'Sign-in steps' })).not.toBeInTheDocument();
   });
 
   it('a minecraft_not_owned failure shows its translated message', async () => {
-    const { user } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true, microsoft: 'notOwned' });
+    const { user } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true, offlineLocked: true, microsoft: 'notOwned' });
     await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
     const alert = await screen.findByRole('alert', {}, { timeout: 8000 });
     expect(alert).toHaveTextContent("This Microsoft account doesn't own Minecraft: Java Edition.");
@@ -133,7 +133,7 @@ describe('MicrosoftSignIn', () => {
 
   it('says it in Spanish', async () => {
     await i18n.changeLanguage('es');
-    const { user, calls } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true, microsoft: 'notConfigured' });
+    const { user, calls } = renderApp(<MicrosoftSignIn variant="primary" />, { beta: true, offlineLocked: true, microsoft: 'notConfigured' });
     await user.click(await screen.findByRole('button', { name: 'Iniciar sesión con Microsoft' }));
     expect(sent(calls, 'account_sign_in_microsoft')).toEqual([{ language: 'es' }]);
     expect(await screen.findByRole('alert')).toHaveTextContent('El inicio de sesión con Microsoft no está configurado en esta versión.');

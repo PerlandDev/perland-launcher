@@ -12,7 +12,7 @@ afterEach(closeSignInPrompt);
 
 describe('SignInPrompt', () => {
   it('shows nothing until opened', async () => {
-    renderApp(<SignInPrompt />, { beta: true });
+    renderApp(<SignInPrompt />, { beta: true, offlineLocked: true });
     expect(screen.queryByRole('dialog')).toBeNull();
     act(openSignInPrompt);
     expect(await screen.findByRole('dialog', { name: 'Sign in to play' })).toBeInTheDocument();
@@ -22,7 +22,7 @@ describe('SignInPrompt', () => {
   });
 
   it('signs in, closes, and says to press Play again', async () => {
-    const { user, calls } = renderApp(<SignInPrompt />, { beta: true });
+    const { user, calls } = renderApp(<SignInPrompt />, { beta: true, offlineLocked: true });
     act(openSignInPrompt);
     await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
     expect(sent(calls, 'account_sign_in_microsoft')).toHaveLength(1);
@@ -32,7 +32,7 @@ describe('SignInPrompt', () => {
   });
 
   it('Close closes it without signing in', async () => {
-    const { user, calls } = renderApp(<SignInPrompt />, { beta: true });
+    const { user, calls } = renderApp(<SignInPrompt />, { beta: true, offlineLocked: true });
     act(openSignInPrompt);
     await user.click(await screen.findByRole('button', { name: 'Close' }));
     expect(signInPromptSnapshot()).toBe(false);
@@ -41,7 +41,7 @@ describe('SignInPrompt', () => {
   });
 
   it('is mounted by the app, so a refused Play opens it on any screen', async () => {
-    renderApp(<App />, { beta: true });
+    renderApp(<App />, { beta: true, offlineLocked: true });
     await screen.findByRole('button', { name: 'Servers' });
     act(() => pushError({ category: 'auth', code: 'no_account', message: 'm', fix: null, detail: null, params: {} }));
     expect(await screen.findByRole('dialog', { name: 'Sign in to play' })).toBeInTheDocument();

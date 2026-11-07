@@ -26,7 +26,7 @@ describe('JoinServer', () => {
   });
 
   it('Add server without an account that can play opens the sign-in prompt and adds nothing', async () => {
-    const { user, calls } = renderApp(<JoinServer invite={OTHER} />, { server: 'online', beta: true });
+    const { user, calls } = renderApp(<JoinServer invite={OTHER} />, { server: 'online', beta: true, offlineLocked: true });
     await user.click(await screen.findByRole('button', { name: 'Add server' }));
     await vi.waitFor(() => expect(signInPromptSnapshot()).toBe(true));
     expect(sent(calls, 'join_add')).toEqual([]);

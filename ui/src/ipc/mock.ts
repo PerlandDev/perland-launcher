@@ -78,9 +78,12 @@ export interface MockOptions {
   /** The game crashes a few seconds into its first run, with this cause. */
   crash?: CrashScenario;
   release?: boolean;
-  /** An optimized beta build: About says so, and offline accounts are hidden as the real app hides them (Accounts and First run
-   *  then offer Microsoft sign-in only, and `account_ready` asks for the "offline accounts are gone" notice). */
+  /** An optimized beta build: About says so. */
   beta?: boolean;
+  /** A build whose offline accounts are locked, as every shipped build's were before 2026-11-07 (the core's `offline_allowed`
+   *  can lock them again): they are hidden as the real app hides them, Accounts and First run offer Microsoft sign-in only, and
+   *  `account_ready` asks for the "offline accounts are gone" notice. Every build allows them now. */
+  offlineLocked?: boolean;
   /** Microsoft sign-in: `signedOut` (default), `signedIn` (Alex, a Microsoft account, is in use), `awaiting` (every sign-in runs the
    *  chain and Minecraft's login refuses it with `microsoft_awaiting_approval`), `notConfigured` (a build without a client id) or
    *  `notOwned` (the account doesn't own Minecraft). A sign-in waits 1.5 s, as if in the browser, then runs each step of the chain
@@ -345,11 +348,11 @@ function seed(options: MockOptions) {
   const appInfo: AppInfo = {
     ...(clone(appInfoFx) as AppInfo),
     build: options.release ? 'release' : options.beta ? 'beta' : 'dev',
-    // Offline accounts are a dev-build thing only.
-    offlineAllowed: !options.release && !options.beta,
+    // Every build allows offline accounts unless a test locks them.
+    offlineAllowed: !options.offlineLocked,
     panel: options.panel ?? true,
   };
-  // Like the core's `visible`: a non-dev build never lists an offline account, and one in use reads as none. The real file
+  // Like the core's `visible`: a build with offline accounts locked never lists one, and one in use reads as none. The real file
   // keeps them for a dev build on the same computer; the mock has no dev build to keep them for.
   if (!appInfo.offlineAllowed) {
     accounts.accounts = accounts.accounts.filter((a) => a.provider !== 'offline');

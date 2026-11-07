@@ -1067,23 +1067,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ready_for_offline_account_in_dev_only() {
-        // A dev build plays with an offline account, as it always could.
-        let (dev, _runner, _host, _t) = core(BuildKind::Dev);
-        dev.account_add_offline("Steve").await.unwrap();
-        assert!(dev.account_ready().await.unwrap().ready, "dev");
-
-        // Any other build hides offline accounts, so an active one is no account.
-        let (beta, _runner, _host, _t) = core(BuildKind::Beta);
-        let steve = offline_account("Steve").unwrap();
-        save_refresh(&*beta.msa_secrets, &steve.uuid, "refresh").unwrap();
-        let file = AccountsFile {
-            active: Some(steve.uuid.clone()),
-            accounts: vec![steve],
-            ..AccountsFile::default()
-        };
-        beta.accounts.lock().await.save(&file).await.unwrap();
-        assert!(!beta.account_ready().await.unwrap().ready, "beta");
+    async fn ready_for_offline_account_in_every_build() {
+        for build in [BuildKind::Dev, BuildKind::Beta, BuildKind::Release] {
+            let (core, _runner, _host, _t) = core(build);
+            core.account_add_offline("Steve").await.unwrap();
+            assert!(core.account_ready().await.unwrap().ready, "{build:?}");
+        }
     }
 
     #[tokio::test]
@@ -1104,7 +1093,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_active_refuses_a_hidden_offline_account() {
+    async fn set_active_takes_an_offline_account_in_a_shipped_build() {
         let (core, _runner, _host, _t) = core(BuildKind::Beta);
         let steve = offline_account("Steve").unwrap();
         let alex = Account {
@@ -1118,10 +1107,10 @@ mod tests {
             ..AccountsFile::default()
         };
         core.accounts.lock().await.save(&file).await.unwrap();
-        let err = core.account_set_active(&steve.uuid).await.unwrap_err();
-        assert_eq!(err.code, ErrorCode::NoAccount);
-        let stored = core.accounts.lock().await.list().await.unwrap();
-        assert_eq!(stored.active, Some(alex.uuid.clone()), "nothing changed");
+        assert_eq!(
+            core.account_set_active(&steve.uuid).await.unwrap().active,
+            Some(steve.uuid)
+        );
         assert_eq!(
             core.account_set_active(&alex.uuid).await.unwrap().active,
             Some(alex.uuid)
@@ -1366,17 +1355,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn offline_session_only_in_dev() {
-        let (core, runner, _host, _t) = core(BuildKind::Dev);
+    async fn offline_session_in_every_build() {
         let steve = offline_account("Steve").unwrap();
-        let session = core.session_for(steve.clone()).await.unwrap();
-        assert_eq!(session.user_type, "legacy");
-        assert_eq!(session.client_id, None);
-        assert!(runner.msa.calls.lock().unwrap().is_empty());
-
-        let (core, _runner, _host, _t) = crate::app::tests::core(BuildKind::Beta);
-        let err = core.session_for(steve).await.unwrap_err();
-        assert_eq!(err.code, ErrorCode::NoAccount);
+        for build in [BuildKind::Dev, BuildKind::Beta, BuildKind::Release] {
+            let (core, runner, _host, _t) = core(build);
+            let session = core.session_for(steve.clone()).await.unwrap();
+            assert_eq!(session.user_type, "legacy", "{build:?}");
+            assert_eq!(session.client_id, None);
+            assert!(runner.msa.calls.lock().unwrap().is_empty());
+        }
     }
 
     #[tokio::test]

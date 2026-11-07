@@ -43,7 +43,7 @@ it('switches, adds and removes offline accounts', async () => {
 });
 
 it('beta shows Add Microsoft account and never Add offline account', async () => {
-  renderApp(<Accounts />, { beta: true });
+  renderApp(<Accounts />, { beta: true, offlineLocked: true });
   expect(await screen.findByRole('button', { name: 'Add Microsoft account' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Add an account' })).toBeInTheDocument();
   expect(screen.queryByText('Add offline account')).not.toBeInTheDocument();
@@ -54,7 +54,7 @@ it('beta shows Add Microsoft account and never Add offline account', async () =>
 });
 
 it('lists a Microsoft account with Remove and no offline badge', async () => {
-  const { user, calls } = renderApp(<Accounts />, { beta: true, microsoft: 'signedIn' });
+  const { user, calls } = renderApp(<Accounts />, { beta: true, offlineLocked: true, microsoft: 'signedIn' });
   const alex = (await screen.findByText('Alex')).closest('li')!;
   expect(within(alex).getByText('In use')).toBeInTheDocument();
   expect(within(alex).queryByText('Offline')).not.toBeInTheDocument();
@@ -67,7 +67,7 @@ it('lists a Microsoft account with Remove and no offline badge', async () => {
 });
 
 it('adds a Microsoft account and says who is in use', async () => {
-  const { user, calls } = renderApp(<Accounts />, { beta: true });
+  const { user, calls } = renderApp(<Accounts />, { beta: true, offlineLocked: true });
   await user.click(await screen.findByRole('button', { name: 'Add Microsoft account' }));
   expect(await screen.findByText('Alex', {}, { timeout: 4000 })).toBeInTheDocument();
   expect(sent(calls, 'account_sign_in_microsoft')).toEqual([{ language: 'en' }]);
@@ -244,7 +244,7 @@ it('moves focus to the previous account when the last one is removed', async () 
 });
 
 it('moves focus to the add section when no accounts are left and offline accounts are locked', async () => {
-  const { user } = renderApp(<Accounts />, { beta: true, microsoft: 'signedIn' });
+  const { user } = renderApp(<Accounts />, { beta: true, offlineLocked: true, microsoft: 'signedIn' });
   await user.click(await screen.findByRole('button', { name: 'Remove Alex' }));
   await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Add an account' })).toHaveFocus());

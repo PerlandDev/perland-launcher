@@ -241,7 +241,7 @@ it('shows it when a link cannot be opened', async () => {
 });
 
 it('labels a beta build in About', async () => {
-  renderApp(<Settings />, { beta: true });
+  renderApp(<Settings />, { beta: true, offlineLocked: true });
   expect(await screen.findByText(/Version .* · Beta build/)).toBeInTheDocument();
 });
 
