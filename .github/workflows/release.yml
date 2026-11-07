@@ -62,13 +62,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
           MODE: ${{ inputs.dry_run && 'dry-run' || 'publish' }}
         run: node scripts/release/cli.mjs ci-check "$GITHUB_SHA" "$MODE"
-      # Without it the build has no Microsoft sign-in and nobody could start the game: a publish
-      # stops, a dry run only warns.
-      - name: The Microsoft client ID is set
+      # Without it the build signs in with the Minecraft Launcher's client; with it, with that
+      # Azure app, which Minecraft turns down until Mojang approves it (a warning).
+      - name: Which Microsoft app signs in
         env:
           PERLAND_MS_CLIENT_ID: ${{ vars.PERLAND_MS_CLIENT_ID }}
-          MODE: ${{ inputs.dry_run && 'dry-run' || 'publish' }}
-        run: node scripts/release/cli.mjs client-id-check "$MODE"
+        run: node scripts/release/cli.mjs client-id-check
       - id: version
         env:
           CHANNEL: ${{ inputs.channel }}
@@ -131,6 +130,24 @@ jobs:
       - name: Install the signing tool
         if: runner.os == 'Windows' && vars.AZURE_TRUSTED_SIGNING == 'true'
         run: cargo install trusted-signing-cli --locked
+      # The branded uninstaller (design §6.7) is built first so the NSIS bundle can carry it.
+      - name: Build the uninstaller
+        if: runner.os == 'Windows'
+        shell: bash
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
+        env:
+          SIGN_WINDOWS: ${{ vars.AZURE_TRUSTED_SIGNING == 'true' }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          cargo build -p perland-setup --release --bin perland-uninstall
+          if [ "$SIGN_WINDOWS" = "true" ]; then
+            trusted-signing-cli -e "$AZURE_SIGNING_ENDPOINT" -a "$AZURE_SIGNING_ACCOUNT" -c "$AZURE_SIGNING_PROFILE" -d PerlandLauncher target/release/perland-uninstall.exe
+          fi
       - name: Build and sign the updater artifacts
         shell: bash
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
@@ -154,13 +171,43 @@ jobs:
             sign="trusted-signing-cli -e $AZURE_SIGNING_ENDPOINT -a $AZURE_SIGNING_ACCOUNT -c $AZURE_SIGNING_PROFILE -d PerlandLauncher %1"
             args+=(--config "{\"bundle\":{\"windows\":{\"signCommand\":\"$sign\"}}}")
           fi
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            # Release builds only: the bundle carries the branded uninstaller and the hook that
+            # points Windows' Uninstall at it. tauri.conf.json stays as it is for local builds.
+            args+=(--config '{"bundle":{"resources":{"../target/release/perland-uninstall.exe":"perland-uninstall.exe"},"windows":{"nsis":{"installerHooks":"windows/hooks.nsh"}}}}')
+          fi
           pnpm tauri build "${args[@]}"
+      # The one-click setup app (docs/superpowers/specs/2026-11-04-branded-setup-design.md) carries
+      # the NSIS installer just built, signed when signing is on. latest.json never names it.
+      - name: Build the setup app
+        if: runner.os == 'Windows'
+        shell: bash
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
+        env:
+          SIGN_WINDOWS: ${{ vars.AZURE_TRUSTED_SIGNING == 'true' }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+        run: |
+          shopt -s nullglob
+          nsis=(target/release/bundle/nsis/*_x64-setup.exe)
+          if [ "${#nsis[@]}" -ne 1 ]; then echo "::error::Expected one NSIS installer, found ${#nsis[@]}"; exit 1; fi
+          # "About N MB" in the setup's options: what the install puts on disk.
+          installed=$(( $(wc -c < target/release/perland-launcher.exe) + $(wc -c < target/release/perland-uninstall.exe) ))
+          PERLAND_SETUP_INSTALLED_BYTES="$installed" PERLAND_SETUP_PAYLOAD="$PWD/${nsis[0]}" cargo build -p perland-setup --release --bin perland-setup
+          if [ "$SIGN_WINDOWS" = "true" ]; then
+            trusted-signing-cli -e "$AZURE_SIGNING_ENDPOINT" -a "$AZURE_SIGNING_ACCOUNT" -c "$AZURE_SIGNING_PROFILE" -d PerlandLauncher target/release/perland-setup.exe
+          fi
       - name: Stage the installers
         shell: bash
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
         env:
           VERSION: ${{ needs.plan.outputs.version }}
-        run: node scripts/release/cli.mjs stage "$VERSION" target/release/bundle "$GITHUB_WORKSPACE/dist"
+          SETUP: ${{ runner.os == 'Windows' && 'target/release/perland-setup.exe' || '' }}
+        run: node scripts/release/cli.mjs stage "$VERSION" target/release/bundle "$GITHUB_WORKSPACE/dist" $SETUP
       - uses: actions/upload-artifact@v4
         with:
           name: bundles-${{ runner.os }}

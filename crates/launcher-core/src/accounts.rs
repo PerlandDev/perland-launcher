@@ -126,10 +126,12 @@ impl BuildKind {
     }
 }
 
-/// Offline accounts exist only in dev builds. Mojang's review requires every shipped build
-/// to need a Microsoft account that owns Minecraft.
-pub fn offline_allowed(build: BuildKind) -> bool {
-    build == BuildKind::Dev
+/// Whether a build may list, add and play offline accounts. Every build may now: the owner
+/// re-enabled them for shipped launchers on 2026-11-07, after they were dev-only while Perland's
+/// Azure app waited on Mojang's review. Making this `false` for a build locks them again: they
+/// then vanish from what the player sees (`visible`) and can't be added (`offline_locked`).
+pub fn offline_allowed(_build: BuildKind) -> bool {
+    true
 }
 
 /// The launcher's own record of an unfinished Microsoft sign-in (a browser window it opened).
@@ -344,13 +346,13 @@ mod tests {
 
     #[test]
     fn offline_gate() {
-        assert!(offline_allowed(BuildKind::Dev));
-        assert!(!offline_allowed(BuildKind::Beta));
-        assert!(!offline_allowed(BuildKind::Release));
+        for build in [BuildKind::Dev, BuildKind::Beta, BuildKind::Release] {
+            assert!(offline_allowed(build), "{build:?}");
+        }
     }
 
     #[test]
-    fn visible_drops_offline_and_clears_active() {
+    fn visible_keeps_offline_accounts_in_every_build() {
         let steve = offline_account("Steve").unwrap();
         let alex = microsoft("Alex", "11111111-1111-1111-1111-111111111111");
         let file = AccountsFile {
@@ -358,12 +360,9 @@ mod tests {
             active: Some(steve.uuid.clone()),
             ..AccountsFile::default()
         };
-        for build in [BuildKind::Beta, BuildKind::Release] {
-            let shown = visible(file.clone(), build);
-            assert_eq!(shown.accounts, vec![alex.clone()]);
-            assert_eq!(shown.active, None);
+        for build in [BuildKind::Dev, BuildKind::Beta, BuildKind::Release] {
+            assert_eq!(visible(file.clone(), build), file, "{build:?}");
         }
-        assert_eq!(visible(file.clone(), BuildKind::Dev), file);
 
         // An active Microsoft account stays active.
         let file = AccountsFile {
@@ -448,7 +447,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn add_offline_refused_in_beta_even_after_licensed_signin() {
+    async fn add_offline_works_in_shipped_builds() {
         let tmp = tempfile::tempdir().unwrap();
         let store = AccountStore::new(tmp.path().join("accounts.json"));
         store
@@ -458,23 +457,17 @@ mod tests {
             })
             .await
             .unwrap();
-        for build in [BuildKind::Beta, BuildKind::Release] {
-            let err = store.add_offline("Steve", build).await.unwrap_err();
-            assert_eq!(err.code, ErrorCode::OfflineLocked);
-        }
-        assert!(store.load().await.unwrap().accounts.is_empty());
+        let steve = store.add_offline("Steve", BuildKind::Beta).await.unwrap();
+        let alex = store.add_offline("Alex", BuildKind::Release).await.unwrap();
+        let file = store.load().await.unwrap();
+        assert_eq!(file.accounts, vec![steve, alex.clone()]);
+        assert_eq!(file.active, Some(alex.uuid));
     }
 
     #[tokio::test]
-    async fn store_gates_and_activates() {
+    async fn store_adds_and_activates() {
         let tmp = tempfile::tempdir().unwrap();
         let store = AccountStore::new(tmp.path().join("accounts.json"));
-        let err = store
-            .add_offline("Steve", BuildKind::Release)
-            .await
-            .unwrap_err();
-        assert_eq!(err.category, ErrorCategory::Auth);
-        assert!(err.fix.is_some());
         let a = store.add_offline("Steve", BuildKind::Dev).await.unwrap();
         store.add_offline("Steve", BuildKind::Dev).await.unwrap();
         assert_eq!(

@@ -294,6 +294,18 @@ pub async fn content_remove(
 #[tauri::command]
 pub async fn open_folder(app: AppHandle, core: CoreState<'_>, target: OpenTarget) -> Res<()> {
     let path = logged("open_folder", core.folder(target).await)?;
+    // On Linux, xdg-open can pick the web browser for a folder; ask the file manager first.
+    #[cfg(target_os = "linux")]
+    {
+        let folder = path.clone();
+        match tauri::async_runtime::spawn_blocking(move || crate::folders::show_folder(&folder))
+            .await
+        {
+            Ok(Ok(())) => return Ok(()),
+            Ok(Err(e)) => tracing::info!(error = %e, "no file manager answered; using xdg-open"),
+            Err(e) => tracing::warn!(error = %e, "the file manager call did not finish"),
+        }
+    }
     logged(
         "open_folder",
         app.opener()

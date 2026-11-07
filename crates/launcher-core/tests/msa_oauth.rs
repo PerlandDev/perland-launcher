@@ -2,7 +2,7 @@
 //! Fake tokens only.
 use launcher_core::{
     invite::Url,
-    msa::{MsaClient, MsaEndpoints},
+    msa::{MsaApp, MsaClient, MsaEndpoints},
     perland::Pkce,
     ErrorCode,
 };
@@ -22,13 +22,19 @@ fn endpoints(server: &MockServer) -> MsaEndpoints {
         token: base.join("/token").unwrap(),
         xbox_user: base.join("/xbox").unwrap(),
         xsts: base.join("/xsts").unwrap(),
+        live_authorize: base.join("/live/authorize").unwrap(),
+        live_token: base.join("/live/token").unwrap(),
         minecraft: base,
     }
 }
 
 fn client(server: &MockServer) -> MsaClient {
     let http = launcher_core::http::client("test").unwrap();
-    MsaClient::new(http, endpoints(server), CLIENT_ID.to_string())
+    MsaClient::new(
+        http,
+        endpoints(server),
+        MsaApp::Azure(CLIENT_ID.to_string()),
+    )
 }
 
 fn tokens_body() -> serde_json::Value {
@@ -61,7 +67,7 @@ fn production_endpoints_are_the_documented_ones() {
 fn authorize_url_carries_pkce_and_scope() {
     let server_less = MsaEndpoints::production();
     let http = launcher_core::http::client("test").unwrap();
-    let c = MsaClient::new(http, server_less, CLIENT_ID.to_string());
+    let c = MsaClient::new(http, server_less, MsaApp::Azure(CLIENT_ID.to_string()));
     let pkce = Pkce::from_verifier("verifier", "state-1");
     let url = c.authorize_url(REDIRECT, &pkce);
     assert_eq!(url.path(), "/consumers/oauth2/v2.0/authorize");
@@ -204,7 +210,7 @@ async fn a_dead_host_is_offline() {
     let mut e = endpoints(&server);
     e.token = Url::parse("http://127.0.0.1:1/token").unwrap();
     let http = launcher_core::http::client("test").unwrap();
-    let err = MsaClient::new(http, e, CLIENT_ID.to_string())
+    let err = MsaClient::new(http, e, MsaApp::Azure(CLIENT_ID.to_string()))
         .refresh("r")
         .await
         .unwrap_err();

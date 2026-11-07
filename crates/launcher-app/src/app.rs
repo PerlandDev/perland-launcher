@@ -967,32 +967,33 @@ pub(crate) mod tests {
         assert!(info.offline_allowed);
         assert_eq!(info.build, Build::Dev);
         assert_eq!(info.system_memory_mb, 16384);
+        // Shipped builds allow offline accounts too.
         for kind in [BuildKind::Release, BuildKind::Beta] {
-            let (locked, _, _, _t2) = core(kind);
-            assert!(!locked.app_info().await.unwrap().offline_allowed);
-            assert_eq!(
-                locked.account_add_offline("Steve").await.unwrap_err().code,
-                ErrorCode::OfflineLocked
-            );
+            let (shipped, _, _, _t2) = core(kind);
+            assert!(shipped.app_info().await.unwrap().offline_allowed);
+            let file = shipped.account_add_offline("Steve").await.unwrap();
+            assert_eq!(file.accounts.len(), 1, "{kind:?}");
         }
         let (beta, _, _, _t3) = core(BuildKind::Beta);
         assert_eq!(beta.app_info().await.unwrap().build, Build::Beta);
     }
 
     #[tokio::test]
-    async fn outside_dev_offline_accounts_on_disk_are_hidden() {
+    async fn offline_accounts_on_disk_show_in_every_build() {
         let (dev, _, _, tmp) = core(BuildKind::Dev);
-        dev.account_add_offline("Steve").await.unwrap();
-        let (beta, _, _, _t) = core(BuildKind::Beta);
-        // Same file, other build.
-        std::fs::copy(
-            tmp.path().join("accounts.json"),
-            _t.path().join("accounts.json"),
-        )
-        .unwrap();
-        let shown = beta.accounts_list().await.unwrap();
-        assert!(shown.accounts.is_empty());
-        assert_eq!(shown.active, None);
+        let added = dev.account_add_offline("Steve").await.unwrap();
+        for build in [BuildKind::Beta, BuildKind::Release] {
+            let (other, _, _, t) = core(build);
+            // Same file, other build.
+            std::fs::copy(
+                tmp.path().join("accounts.json"),
+                t.path().join("accounts.json"),
+            )
+            .unwrap();
+            let shown = other.accounts_list().await.unwrap();
+            assert_eq!(shown.accounts, added.accounts, "{build:?}");
+            assert_eq!(shown.active, added.active, "{build:?}");
+        }
     }
 
     #[tokio::test]
@@ -1023,7 +1024,7 @@ pub(crate) mod tests {
         let (core, _, host, tmp) = core(BuildKind::Release);
         std::fs::write(tmp.path().join("accounts.json"), "{nope").unwrap();
         let info = core.app_info().await.unwrap();
-        assert!(!info.offline_allowed);
+        assert!(info.offline_allowed);
         assert_eq!(info.system_memory_mb, 16384);
         core.app_info().await.unwrap();
         assert_eq!(host.warnings(), vec![ErrorCode::AccountsDamaged]);

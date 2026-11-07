@@ -8,6 +8,7 @@ mod crash_fixes;
 pub mod deep_link;
 pub mod dto;
 pub mod events;
+pub mod folders;
 mod free_servers;
 mod friends;
 mod import;
@@ -36,7 +37,7 @@ mod your_servers;
 
 pub use app::{AppConfig, AppCore};
 pub use browser::{Browser, CoreBrowser};
-pub use events::{AppEvent, ExitInfo, Host, RunStateKind};
+pub use events::{AppEvent, ExitInfo, Host, RunStateKind, SignInWindow};
 pub use manage::{CoreStack, StackApi};
 pub use msa::{CoreMsa, MsaApi};
 pub use perland::{CorePlayer, PlayerApi};

@@ -1,6 +1,7 @@
 //! What matters from the app's events goes to the launcher log, then on to the window.
 use crate::{
-    events::{AppEvent, Host, RunStateKind},
+    events::{AppEvent, Host, RunStateKind, SignInWindow},
+    runner::BoxFuture,
     updates::UpdateState,
 };
 
@@ -19,6 +20,9 @@ impl<H: Host> Host for LoggedHost<H> {
     }
     fn open_url(&self, url: &str) {
         self.0.open_url(url)
+    }
+    fn open_sign_in_window(&self, window: SignInWindow) -> BoxFuture<Option<String>> {
+        self.0.open_sign_in_window(window)
     }
 }
 

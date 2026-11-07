@@ -39,7 +39,7 @@ it('walks a new player from welcome to their first instance', async () => {
 });
 
 it('asks a beta build to sign in with Microsoft, with no name field', async () => {
-  const { user } = renderApp(<FirstRun />, { firstRun: true, beta: true });
+  const { user } = renderApp(<FirstRun />, { firstRun: true, beta: true, offlineLocked: true });
   await user.click(await screen.findByRole('button', { name: "Let's go" }));
   await user.click(screen.getByRole('button', { name: 'English' }));
   expect(await screen.findByRole('button', { name: 'Sign in with Microsoft' })).toBeInTheDocument();
@@ -57,7 +57,7 @@ it('shows the name field in a dev build', async () => {
 });
 
 it('lets a beta build skip the sign-in to the first instance', async () => {
-  const { user, calls } = renderApp(<FirstRun />, { firstRun: true, beta: true });
+  const { user, calls } = renderApp(<FirstRun />, { firstRun: true, beta: true, offlineLocked: true });
   await user.click(await screen.findByRole('button', { name: "Let's go" }));
   await user.click(screen.getByRole('button', { name: 'English' }));
   await user.click(await screen.findByRole('button', { name: 'Skip for now' }));
@@ -66,7 +66,7 @@ it('lets a beta build skip the sign-in to the first instance', async () => {
 });
 
 it('goes on to the first instance once the Microsoft sign-in is done', async () => {
-  const { user, calls } = renderApp(<FirstRun />, { firstRun: true, beta: true });
+  const { user, calls } = renderApp(<FirstRun />, { firstRun: true, beta: true, offlineLocked: true });
   await user.click(await screen.findByRole('button', { name: "Let's go" }));
   await user.click(screen.getByRole('button', { name: 'English' }));
   await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
@@ -152,7 +152,7 @@ it('offers Try again when the build info fails to load', async () => {
 });
 
 it('never creates a second instance when saving the settings has to be retried', async () => {
-  const { user, calls, backend } = renderApp(<FirstRun />, { firstRun: true, release: true });
+  const { user, calls, backend } = renderApp(<FirstRun />, { firstRun: true, release: true, offlineLocked: true });
   const save = intercept(backend, 'settings_set');
   await user.click(await screen.findByRole('button', { name: "Let's go" }));
   await user.click(screen.getByRole('button', { name: 'English' }));
@@ -173,7 +173,7 @@ it('never creates a second instance when saving the settings has to be retried',
 });
 
 it('sends one create for a double click on the finish button and keeps its focus', async () => {
-  const { user, calls, backend } = renderApp(<FirstRun />, { firstRun: true, release: true });
+  const { user, calls, backend } = renderApp(<FirstRun />, { firstRun: true, release: true, offlineLocked: true });
   const create = intercept(backend, 'instance_create');
   await user.click(await screen.findByRole('button', { name: "Let's go" }));
   await user.click(screen.getByRole('button', { name: 'English' }));
@@ -197,7 +197,7 @@ it('says which language is selected', async () => {
 });
 
 it('offers Try again on the instance step when the version list fails, without picking a version', async () => {
-  const { user, backend, qc } = renderApp(<FirstRun />, { firstRun: true, release: true });
+  const { user, backend, qc } = renderApp(<FirstRun />, { firstRun: true, release: true, offlineLocked: true });
   const versions = intercept(backend, 'catalog_minecraft');
   versions.mode = 'fail';
   await act(async () => qc.resetQueries({ queryKey: ['catalog', 'minecraft'] }));
@@ -215,7 +215,7 @@ it('offers Try again on the instance step when the version list fails, without p
 });
 
 it('shows one error card, not two, when the version list fails while picking a version', async () => {
-  const { user, backend, qc } = renderApp(<FirstRun />, { firstRun: true, release: true });
+  const { user, backend, qc } = renderApp(<FirstRun />, { firstRun: true, release: true, offlineLocked: true });
   await user.click(await screen.findByRole('button', { name: "Let's go" }));
   await user.click(screen.getByRole('button', { name: 'English' }));
   await user.click(await screen.findByRole('button', { name: 'Skip for now' }));
@@ -248,7 +248,7 @@ async function toInstanceStep(rendered: ReturnType<typeof renderApp>) {
 }
 
 it('finishes first run for a community modpack without creating an instance', async () => {
-  const rendered = renderApp(<FirstRun />, { firstRun: true, release: true });
+  const rendered = renderApp(<FirstRun />, { firstRun: true, release: true, offlineLocked: true });
   const { user, calls } = rendered;
   const browse = await toInstanceStep(rendered);
   expect(browse).toBeEnabled();
@@ -260,7 +260,7 @@ it('finishes first run for a community modpack without creating an instance', as
 });
 
 it('saves the settings once for a double click on Browse modpacks', async () => {
-  const rendered = renderApp(<FirstRun />, { firstRun: true, release: true });
+  const rendered = renderApp(<FirstRun />, { firstRun: true, release: true, offlineLocked: true });
   const { user, calls, backend } = rendered;
   const save = intercept(backend, 'settings_set');
   const browse = await toInstanceStep(rendered);
@@ -273,7 +273,7 @@ it('saves the settings once for a double click on Browse modpacks', async () => 
 });
 
 it('keeps first run open and shows why when saving fails on the way to Browse', async () => {
-  const rendered = renderApp(<FirstRun />, { firstRun: true, release: true });
+  const rendered = renderApp(<FirstRun />, { firstRun: true, release: true, offlineLocked: true });
   const { user, calls, backend } = rendered;
   const save = intercept(backend, 'settings_set');
   const browse = await toInstanceStep(rendered);
@@ -288,7 +288,7 @@ it('keeps first run open and shows why when saving fails on the way to Browse', 
 });
 
 it('opens Browse in the app shell once first run is done', async () => {
-  const rendered = renderApp(<App />, { firstRun: true, release: true });
+  const rendered = renderApp(<App />, { firstRun: true, release: true, offlineLocked: true });
   const browse = await toInstanceStep(rendered);
   await rendered.user.click(browse);
   expect(await screen.findByRole('heading', { name: 'Explorar' })).toBeInTheDocument();

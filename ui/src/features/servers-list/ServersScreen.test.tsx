@@ -109,7 +109,7 @@ describe('ServersScreen', () => {
   });
 
   it('Play without an account that can play opens the sign-in prompt and never joins', async () => {
-    const { user, calls } = renderApp(<ServersScreen />, { beta: true });
+    const { user, calls } = renderApp(<ServersScreen />, { beta: true, offlineLocked: true });
     await user.click(within(await card('Creative Plots')).getByRole('button', { name: 'Play' }));
     await vi.waitFor(() => expect(signInPromptSnapshot()).toBe(true));
     expect(sent(calls, 'join_add')).toEqual([]);

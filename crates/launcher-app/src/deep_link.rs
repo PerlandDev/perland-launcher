@@ -133,6 +133,25 @@ mod tests {
     }
 
     #[test]
+    fn the_deb_desktop_entry_hands_links_over() {
+        // The .deb registers the scheme through its desktop entry. Tauri's default entry runs
+        // `Exec=perland-launcher` with no `%u`, so a browser starts the launcher without the link.
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../../../src-tauri/tauri.conf.json")).unwrap();
+        assert_eq!(
+            conf["bundle"]["linux"]["deb"]["desktopTemplate"],
+            "linux/perland-launcher.desktop"
+        );
+        let entry = include_str!("../../../src-tauri/linux/perland-launcher.desktop");
+        let exec = entry
+            .lines()
+            .find(|l| l.starts_with("Exec="))
+            .expect("an Exec line");
+        assert_eq!(exec, "Exec={{exec}} %u");
+        assert!(entry.contains("MimeType={{mime_type}}"), "{entry}");
+    }
+
+    #[test]
     fn deep_links_accept_only_https_pack_links() {
         let asalith = "https://perlanddev.github.io/asalith-modpack/pack.toml";
         for good in [

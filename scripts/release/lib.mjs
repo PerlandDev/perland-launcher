@@ -45,6 +45,19 @@ export function channelName(platform, channel) {
   return `PerlandLauncher${channel === 'beta' ? '-beta' : ''}${SUFFIX[platform].channel}`;
 }
 
+/** The one-click setup app (crates/perland-setup): a Windows download only, never in latest.json. */
+export function setupReleaseName(version) {
+  return `PerlandLauncher_${version}_x64-installer.exe`;
+}
+
+export function setupChannelName(channel) {
+  return `PerlandLauncher${channel === 'beta' ? '-beta' : ''}-installer.exe`;
+}
+
+export function findSetup(paths) {
+  return paths.find((p) => /(^|[\\/])perland-setup\.exe$/.test(p));
+}
+
 export function findBundle(paths, platform) {
   return paths.find((p) => SUFFIX[platform].bundle.test(p));
 }
@@ -115,16 +128,16 @@ export function ciGate(runs, { publish }) {
   return { level, message: 'CI has not run on this commit. Push it to main or to a branch with a pull request, and wait for CI to pass.' };
 }
 
-/** Whether the release can start the game: without the Microsoft client ID (the repository variable
- *  PERLAND_MS_CLIENT_ID) Microsoft sign-in is unavailable, and outside dev builds nobody can play.
- *  A publish stops; a dry run only warns. */
-export function clientIdGate(value, { publish }) {
+/** Which Microsoft app the release signs in with. Without the repository variable PERLAND_MS_CLIENT_ID it is the
+ *  Minecraft Launcher's public client, which Minecraft accepts. With it, it is that Azure app, whose sign-ins Minecraft
+ *  turns down until Mojang approves it: a warning, so a release isn't built with it by mistake. */
+export function clientIdGate(value) {
   if (typeof value === 'string' && value.trim() !== '') {
-    return { level: 'ok', message: 'The Microsoft client ID is set.' };
+    return {
+      level: 'warning',
+      message:
+        "PERLAND_MS_CLIENT_ID is set, so this build signs in with that Azure app. Minecraft accepts its sign-ins only once Mojang has approved it; clear the variable to sign in with the Minecraft Launcher's client.",
+    };
   }
-  return {
-    level: publish ? 'error' : 'warning',
-    message:
-      'The repository variable PERLAND_MS_CLIENT_ID is empty: this build has no Microsoft sign-in, so nobody could start the game. Set it to the Azure app\'s client ID first.',
-  };
+  return { level: 'ok', message: "No PERLAND_MS_CLIENT_ID: this build signs in with the Minecraft Launcher's client." };
 }

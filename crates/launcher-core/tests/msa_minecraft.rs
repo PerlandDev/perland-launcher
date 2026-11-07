@@ -3,7 +3,7 @@ use launcher_core::{
     invite::Url,
     msa::{
         minecraft::{dashed, ownership, McProfile, McToken},
-        MsTokens, MsaClient, MsaEndpoints, MsaStep,
+        MsTokens, MsaApp, MsaClient, MsaEndpoints, MsaStep,
     },
     ErrorCode,
 };
@@ -20,10 +20,12 @@ fn client(server: &MockServer) -> MsaClient {
         token: base.join("/token").unwrap(),
         xbox_user: base.join("/xbox").unwrap(),
         xsts: base.join("/xsts").unwrap(),
+        live_authorize: base.join("/live/authorize").unwrap(),
+        live_token: base.join("/live/token").unwrap(),
         minecraft: base,
     };
     let http = launcher_core::http::client("test").unwrap();
-    MsaClient::new(http, endpoints, "client-123".to_string())
+    MsaClient::new(http, endpoints, MsaApp::Azure("client-123".to_string()))
 }
 
 fn xsts() -> launcher_core::msa::xbox::Xsts {

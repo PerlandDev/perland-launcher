@@ -314,6 +314,10 @@
   },
   {
     "type": "microsoft_sign_in",
+    "phase": "window"
+  },
+  {
+    "type": "microsoft_sign_in",
     "phase": "exchanging"
   },
   {

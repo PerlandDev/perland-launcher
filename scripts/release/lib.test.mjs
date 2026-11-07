@@ -12,6 +12,9 @@ import {
   PLATFORMS,
   releaseName,
   setWorkspaceVersion,
+  findSetup,
+  setupChannelName,
+  setupReleaseName,
 } from './lib.mjs';
 
 test('the first beta of a base version is beta.1', () => {
@@ -144,22 +147,33 @@ test('a dry run only warns about CI', () => {
   assert.equal(ciGate([], { publish: false }).level, 'warning');
 });
 
-test('a publish without the Microsoft client ID stops, since that build could not start the game', () => {
+test('without a Microsoft client ID the build signs in with the Minecraft Launcher client', () => {
   for (const value of [undefined, '', '   ']) {
-    const gate = clientIdGate(value, { publish: true });
-    assert.equal(gate.level, 'error');
-    assert.match(gate.message, /PERLAND_MS_CLIENT_ID/);
+    const gate = clientIdGate(value);
+    assert.equal(gate.level, 'ok');
+    assert.match(gate.message, /Minecraft Launcher/);
   }
 });
 
-test('a dry run only warns about a missing Microsoft client ID', () => {
-  const gate = clientIdGate('', { publish: false });
+test('a set Microsoft client ID warns that Minecraft needs to approve that app', () => {
+  const gate = clientIdGate('00000000-0000-4000-8000-0000000000aa');
   assert.equal(gate.level, 'warning');
   assert.match(gate.message, /PERLAND_MS_CLIENT_ID/);
+  assert.match(gate.message, /approved/);
 });
 
-test('a set Microsoft client ID lets the release through', () => {
-  for (const publish of [true, false]) {
-    assert.equal(clientIdGate('00000000-0000-4000-8000-0000000000aa', { publish }).level, 'ok');
-  }
+test('the setup app has its own release and channel names', () => {
+  assert.equal(setupReleaseName('0.2.0-beta.1'), 'PerlandLauncher_0.2.0-beta.1_x64-installer.exe');
+  assert.equal(setupChannelName('stable'), 'PerlandLauncher-installer.exe');
+  assert.equal(setupChannelName('beta'), 'PerlandLauncher-beta-installer.exe');
+});
+
+test('findSetup finds the built setup exe and nothing else', () => {
+  const paths = [
+    'target/release/perland-setup.pdb',
+    'target/release/bundle/nsis/Perland Launcher_0.2.0_x64-setup.exe',
+    'target/release/perland-setup.exe',
+  ];
+  assert.equal(findSetup(paths), 'target/release/perland-setup.exe');
+  assert.equal(findSetup(['target/release/perland-launcher.exe']), undefined);
 });

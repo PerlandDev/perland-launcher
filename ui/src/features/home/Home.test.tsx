@@ -89,7 +89,7 @@ describe('Home', () => {
     expect(signInPromptSnapshot()).toBe(false);
   });
 
-  it.each([{ beta: true }, { release: true }])('without an account outside dev builds, opens the sign-in prompt (%o)', async (build) => {
+  it.each([{ beta: true, offlineLocked: true }, { release: true, offlineLocked: true }])('without an account outside dev builds, opens the sign-in prompt (%o)', async (build) => {
     const { backend, user } = renderApp(<Home id="creative-flat" />, build);
     backend.state.accounts.active = null;
     await screen.findByRole('heading', { name: 'Creative Flat' });
@@ -849,7 +849,7 @@ describe('Continue', () => {
   });
 
   it('puts the sign-in link above the key and Play (#116)', async () => {
-    const { backend } = renderApp(<Home id="asalith-fields" />, { beta: true });
+    const { backend } = renderApp(<Home id="asalith-fields" />, { beta: true, offlineLocked: true });
     backend.state.accounts.active = null;
     const key = await screen.findByRole('button', { name: 'Continue: Asalith Fields' });
     const link = await screen.findByRole('button', { name: 'Sign in to play' });
@@ -859,7 +859,7 @@ describe('Continue', () => {
   });
 
   it('makes sign-in a raised key like Continue, never lit, led by a decorative icon (#116)', async () => {
-    const { backend } = renderApp(<Home id="asalith-fields" />, { beta: true });
+    const { backend } = renderApp(<Home id="asalith-fields" />, { beta: true, offlineLocked: true });
     backend.state.accounts.active = null;
     const key = await screen.findByRole('button', { name: 'Sign in to play' });
     expect(key).toHaveClass('btn');
