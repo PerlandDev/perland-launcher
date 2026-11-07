@@ -1,6 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { routeSnapshot } from '../../state/route';
+import { MOCK_MICROSOFT_ACCOUNT, MOCK_SKIN_FACE } from '../../ipc/mock';
 import { renderApp, sent } from '../../test/backend';
 import { Accounts } from './Accounts';
 
@@ -64,6 +65,35 @@ it('lists a Microsoft account with Remove and no offline badge', async () => {
   await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
   expect(sent(calls, 'account_remove')).toHaveLength(1);
   await waitFor(() => expect(screen.queryByText('Alex')).not.toBeInTheDocument());
+});
+
+it("shows a Microsoft account's own skin face and the generated face for offline accounts", async () => {
+  const { calls } = renderApp(<Accounts />, { microsoft: 'signedIn' });
+  const alex = (await screen.findByText('Alex')).closest('li')!;
+  await waitFor(() => expect(alex.querySelector('img')).toHaveAttribute('src', MOCK_SKIN_FACE));
+  const steve = screen.getByText('Steve').closest('li')!;
+  expect(steve.querySelector('img')).toBeNull();
+  expect(steve.querySelector('svg rect')).not.toBeNull();
+  expect(sent(calls, 'account_face')).toEqual([{ uuid: MOCK_MICROSOFT_ACCOUNT.uuid }]);
+});
+
+it('keeps the generated face when the skin face cannot be shown', async () => {
+  const { backend } = renderApp(<Accounts />, { microsoft: 'signedIn' });
+  const handle = backend.handle;
+  vi.spyOn(backend, 'handle').mockImplementation((cmd, args) =>
+    cmd === 'account_face' ? Promise.resolve('data:image/png;base64,broken') : handle(cmd, args),
+  );
+  const alex = (await screen.findByText('Alex')).closest('li')!;
+  const img = await waitFor(() => {
+    const found = alex.querySelector('img');
+    expect(found).not.toBeNull();
+    return found!;
+  });
+  act(() => {
+    img.dispatchEvent(new Event('error'));
+  });
+  expect(alex.querySelector('img')).toBeNull();
+  expect(alex.querySelector('svg rect')).not.toBeNull();
 });
 
 it('adds a Microsoft account and says who is in use', async () => {

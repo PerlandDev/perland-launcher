@@ -1,7 +1,7 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Avatar } from '../../art/Avatar';
+import { AccountAvatar } from '../accounts/AccountAvatar';
 import mark from '../../assets/mark.svg';
 import { commands } from '../../ipc/commands';
 import { useAccounts, useUpdate } from '../../state/queries';
@@ -78,7 +78,7 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
             <button type="button" className="tb-btn flex shrink-0" onClick={() => navigate({ name: 'accounts' })}>
               {active ? (
                 <>
-                  <Avatar uuid={active.uuid} size={20} />
+                  <AccountAvatar account={active} size={20} />
                   <span className="font-semibold text-ink">{active.username}</span>
                 </>
               ) : (
