@@ -1,4 +1,5 @@
-// Mock skin wardrobe for `pnpm --filter ui dev:mock` and the tests: in memory, with a scripted current skin and upload.
+// Mock skin wardrobes for `pnpm --filter ui dev:mock` and the tests: in memory, one per account (`owner`), with a scripted
+// current skin and upload. Like the core, the active account adopts loose skins when it lists its wardrobe.
 import skinEntriesFx from './contract/skin_entries.json';
 import { encodeTexture } from '../features/skins/codec';
 import { blankSkin, starterSkin } from '../features/skins/starter';
@@ -6,8 +7,10 @@ import type { AccountsFile, CurrentSkin, LauncherError, SkinEntry, SkinModel } f
 
 export const NOT_SKINS = Symbol('not a skin command');
 
-/** `?skins=`: `seeded` (the default: two skins), `empty`, or `rejected` (every upload is refused). */
-export type SkinsScenario = 'seeded' | 'empty' | 'rejected';
+/** `?skins=`: `seeded` (the default: two skins in Steve's wardrobe, and a Microsoft account wears its own skin), `empty`,
+ *  `rejected` (every upload is refused), `loose` (only an untouched Perlander saved with no account signed in, from before
+ *  per-account wardrobes) or `default` (a Microsoft account wears Minecraft's default skin). */
+export type SkinsScenario = 'seeded' | 'empty' | 'rejected' | 'loose' | 'default';
 
 export interface SkinsState {
   entries: SkinEntry[];
@@ -34,10 +37,30 @@ function drawn(kind: 'starter' | 'blank', model: SkinModel): string {
   }
 }
 
+/** The skin the mock Microsoft account really wears: the Perlander in a purple shirt, so it can't be mistaken for him. */
+function accountSkin(): string {
+  try {
+    const px = starterSkin('slim').data;
+    for (let i = 0; i < px.length; i += 4) {
+      const [r, g, b] = [px[i]!, px[i + 1]!, px[i + 2]!];
+      if (g > r && g > b) [px[i + 1], px[i + 2]] = [b, g];
+    }
+    return encodeTexture(px);
+  } catch {
+    return `${PNG_URL}REAL`;
+  }
+}
+
 export function seedSkins(scenario: SkinsScenario = 'seeded'): SkinsState {
-  const entries = scenario === 'empty' ? [] : (skinEntriesFx as SkinEntry[]).map((e) => ({ ...e }));
+  const entries: SkinEntry[] =
+    scenario === 'empty' || scenario === 'default'
+      ? []
+      : scenario === 'loose'
+        ? [{ id: 'skin-00000000aaaa', name: 'The Perlander', model: 'classic', updated: 1_762_300_000 }]
+        : (skinEntriesFx as SkinEntry[]).map((e) => ({ ...e }));
   const textures = new Map(entries.map((e, i) => [e.id, drawn(i === 0 ? 'starter' : 'blank', e.model)]));
-  return { entries, textures, scenario, current: null, uploads: [], seq: 0 };
+  const current = scenario === 'default' ? null : { texture: accountSkin(), model: 'slim' as const };
+  return { entries, textures, scenario, current, uploads: [], seq: 0 };
 }
 
 function find(state: SkinsState, id: unknown): SkinEntry {
@@ -59,17 +82,35 @@ function checkName(name: unknown): string {
   return trimmed;
 }
 
-function sorted(state: SkinsState) {
-  return [...state.entries].sort((a, b) => b.updated - a.updated);
+/** `owner`'s wardrobe (the loose skins for null): the skin it wears first, then the newest. */
+function wardrobe(state: SkinsState, owner: string | null) {
+  const wears = (e: SkinEntry) => owner !== null && e.wornBy === owner;
+  return state.entries
+    .filter((e) => (e.owner ?? null) === owner)
+    .sort((a, b) => Number(wears(b)) - Number(wears(a)) || b.updated - a.updated)
+    .map((e) => ({ ...e }));
 }
 
-function add(state: SkinsState, name: string, model: SkinModel, texture: string): SkinEntry {
+function ownerArg(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function wornBy(state: SkinsState, id: string, uuid: string) {
+  for (const e of state.entries) {
+    if (e.id === id) e.wornBy = uuid;
+    else if (e.wornBy === uuid) delete e.wornBy;
+  }
+}
+
+function add(state: SkinsState, name: string, model: SkinModel, texture: string, owner: string | null, seeded = false): SkinEntry {
   state.seq += 1;
   const entry: SkinEntry = {
     id: `skin-${state.seq.toString(16).padStart(12, '0')}`,
     name,
     model,
     updated: Math.floor(Date.now() / 1000) + state.seq,
+    ...(owner ? { owner } : {}),
+    ...(seeded ? { seeded } : {}),
   };
   state.entries.push(entry);
   state.textures.set(entry.id, texture);
@@ -77,23 +118,33 @@ function add(state: SkinsState, name: string, model: SkinModel, texture: string)
 }
 
 function touch(entry: SkinEntry) {
+  delete entry.seeded;
   entry.updated = Math.max(Math.floor(Date.now() / 1000), entry.updated + 1);
 }
 
 export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: string, args: Record<string, unknown>): unknown {
   switch (cmd) {
-    case 'skins_list':
-      return sorted(state);
+    case 'skins_list': {
+      const owner = ownerArg(args.owner);
+      if (owner && owner === accounts.active) {
+        // An untouched starter is dropped, not adopted: one marked seeded, or one never worn that is the starter exactly.
+        const starter = typeof args.starter === 'string' ? args.starter : null;
+        const untouched = (e: SkinEntry) => e.seeded || (!e.wornBy && starter !== null && state.textures.get(e.id) === starter);
+        state.entries = state.entries.filter((e) => e.owner !== undefined || !untouched(e));
+        for (const e of state.entries) e.owner ??= owner;
+      }
+      return wardrobe(state, owner);
+    }
     case 'skin_texture':
       find(state, args.id);
       return state.textures.get(String(args.id));
     case 'skin_create':
-      return add(state, checkName(args.name), args.model as SkinModel, checkTexture(args.texture));
+      return add(state, checkName(args.name), args.model as SkinModel, checkTexture(args.texture), ownerArg(args.owner), args.seeded === true);
     case 'skin_import': {
       const path = String(args.path);
       if (!path.toLowerCase().endsWith('.png')) fail('integrity', 'skin_invalid', "That file isn't a Minecraft skin.");
       const stem = path.split(/[\\/]/).pop()!.replace(/\.png$/i, '') || 'Skin';
-      return add(state, stem, 'classic', drawn('blank', 'classic'));
+      return add(state, stem, 'classic', drawn('blank', 'classic'), ownerArg(args.owner));
     }
     case 'skin_save': {
       const entry = find(state, args.id);
@@ -110,7 +161,7 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
     }
     case 'skin_duplicate': {
       const entry = find(state, args.id);
-      return add(state, checkName(args.name), entry.model, state.textures.get(entry.id)!);
+      return add(state, checkName(args.name), entry.model, state.textures.get(entry.id)!, entry.owner ?? null);
     }
     case 'skin_delete':
       find(state, args.id);
@@ -125,6 +176,18 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       if (!account) fail('auth', 'no_account', "That account isn't in the launcher anymore.");
       return account.provider === 'microsoft' ? state.current : null;
     }
+    case 'skin_sync_current': {
+      const uuid = String(args.uuid);
+      const account = accounts.accounts.find((a) => a.uuid === uuid);
+      if (!account) fail('auth', 'no_account', "That account isn't in the launcher anymore.");
+      const current = state.current;
+      if (account.provider !== 'microsoft' || !current) return null;
+      const found =
+        state.entries.find((e) => e.owner === uuid && e.model === current.model && state.textures.get(e.id) === current.texture) ??
+        add(state, checkName(args.name), current.model, current.texture, uuid);
+      wornBy(state, found.id, uuid);
+      return { ...found };
+    }
     case 'skin_wear': {
       const entry = find(state, args.id);
       const uuid = String(args.uuid);
@@ -135,12 +198,9 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       }
       if (state.scenario === 'rejected') fail('auth', 'skin_rejected', "Minecraft didn't accept this skin.");
       state.uploads.push({ id: entry.id, uuid, model: entry.model });
-      for (const e of state.entries) {
-        if (e.id === entry.id) e.wornBy = uuid;
-        else if (e.wornBy === uuid) delete e.wornBy;
-      }
+      wornBy(state, entry.id, uuid);
       state.current = { texture: state.textures.get(entry.id)!, model: entry.model };
-      return sorted(state);
+      return wardrobe(state, uuid);
     }
     default:
       return NOT_SKINS;
