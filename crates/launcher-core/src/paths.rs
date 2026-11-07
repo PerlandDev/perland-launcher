@@ -67,6 +67,10 @@ impl LauncherDirs {
     pub fn mod_icons(&self) -> PathBuf {
         self.root.join("cache").join("mod-icons")
     }
+    /// Microsoft accounts' skin textures, by profile id (see `skins`).
+    pub fn skins(&self) -> PathBuf {
+        self.root.join("cache").join("skins")
+    }
     /// Locked while shared game files are installed, across every launcher process.
     pub fn install_lock(&self) -> PathBuf {
         self.root.join(".install.lock")
