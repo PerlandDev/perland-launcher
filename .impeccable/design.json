@@ -211,7 +211,7 @@
       "**Don't** set sentences, labels or errors in Bungee. Don't set the log or paths in anything but Atkinson Hyperlegible Mono.",
       "**Don't** use any hue as the only carrier of status. Pair it with a label, an icon or a shape.",
       "**Don't** use amber for a status or a notice (sleeping, invite only). Amber only ever means act.",
-      "**Don't** reuse the PerlandDev Panel's cyan chamfered mark or HUD language, Modrinth branding or Mojang artwork. Marquees, plot icons and avatars are generated.",
+      "**Don't** reuse the PerlandDev Panel's cyan chamfered mark or HUD language, Modrinth branding or Mojang artwork. Marquees, plot icons and avatars are generated, except a Microsoft account's face from the player's own skin.",
       "**Don't** show Modrinth branding in Browse. Show only a project's own title, summary, icon and gallery.",
       "**Don't** box Browse results in cards or give a tag a step. Tags are flat ringed labels."
     ]

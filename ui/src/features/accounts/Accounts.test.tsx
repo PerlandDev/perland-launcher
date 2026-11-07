@@ -1,5 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
+import i18n from '../../i18n';
 import { routeSnapshot } from '../../state/route';
 import { MOCK_MICROSOFT_ACCOUNT, MOCK_SKIN_FACE } from '../../ipc/mock';
 import { renderApp, sent } from '../../test/backend';
@@ -54,11 +55,28 @@ it('beta shows Add Microsoft account and never Add offline account', async () =>
   expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
 });
 
-it('lists a Microsoft account with Remove and no offline badge', async () => {
+it('says under each name which kind of account it is (#157)', async () => {
+  renderApp(<Accounts />, { microsoft: 'signedIn' });
+  const alex = (await screen.findByText('Alex')).closest('li')!;
+  const steve = screen.getByText('Steve').closest('li')!;
+  expect(within(alex).getByText('Microsoft account')).toBeInTheDocument();
+  expect(within(alex).queryByText('Offline account')).not.toBeInTheDocument();
+  expect(within(steve).getByText('Offline account')).toBeInTheDocument();
+  expect(within(steve).queryByText('Microsoft account')).not.toBeInTheDocument();
+});
+
+it('says the kind in Spanish too', async () => {
+  renderApp(<Accounts />, { microsoft: 'signedIn' });
+  await act(() => i18n.changeLanguage('es'));
+  const alex = (await screen.findByText('Alex')).closest('li')!;
+  expect(within(alex).getByText('Cuenta de Microsoft')).toBeInTheDocument();
+  expect(within(screen.getByText('Steve').closest('li')!).getByText('Cuenta sin conexión')).toBeInTheDocument();
+});
+
+it('lists a Microsoft account with Remove', async () => {
   const { user, calls } = renderApp(<Accounts />, { beta: true, offlineLocked: true, microsoft: 'signedIn' });
   const alex = (await screen.findByText('Alex')).closest('li')!;
   expect(within(alex).getByText('In use')).toBeInTheDocument();
-  expect(within(alex).queryByText('Offline')).not.toBeInTheDocument();
   await user.click(within(alex).getByRole('button', { name: 'Remove Alex' }));
   const dialog = screen.getByRole('dialog');
   expect(dialog).toHaveTextContent('You can sign in again any time. Your worlds stay where they are.');

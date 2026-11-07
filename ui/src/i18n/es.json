@@ -381,7 +381,8 @@
     "promptTitle": "Inicia sesión para jugar",
     "promptBody": "Perland Launcher necesita una cuenta de Microsoft que tenga Minecraft: Java Edition.",
     "promptSignedIn": "Iniciaste sesión. Presiona Jugar otra vez.",
-    "offlineBadge": "Sin conexión",
+    "kindMicrosoft": "Cuenta de Microsoft",
+    "kindOffline": "Cuenta sin conexión",
     "empty": "Todavía no hay cuentas.",
     "totalPlayed": "Tiempo jugado en esta computadora: {{time}}"
   },
