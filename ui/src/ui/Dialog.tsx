@@ -12,7 +12,8 @@ export function Dialog({
   onClose: () => void;
   title: string;
   children?: ReactNode;
-  actions: ReactNode;
+  /** The keys under the body; none when the body carries its own (a form step with its buttons). */
+  actions?: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -43,7 +44,7 @@ export function Dialog({
             {title}
           </h2>
           {children && <div className="mt-2 text-ink-dim">{children}</div>}
-          <div className="mt-6 flex justify-end gap-3">{actions}</div>
+          {actions != null && <div className="mt-6 flex justify-end gap-3">{actions}</div>}
         </>
       )}
     </dialog>

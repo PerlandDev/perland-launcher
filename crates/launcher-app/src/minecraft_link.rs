@@ -19,7 +19,7 @@ use crate::{
 };
 
 /// What a call that needs a session answers without one: what the Engine's 401 answers.
-fn signed_out() -> LauncherError {
+pub(crate) fn signed_out() -> LauncherError {
     LauncherError::auth(
         ErrorCode::PerlandSignedOut,
         "You were signed out of Perland.",
@@ -28,12 +28,12 @@ fn signed_out() -> LauncherError {
 
 impl<R: Runner, H: Host> AppCore<R, H> {
     /// The session, or `perland_signed_out` without one.
-    async fn signed_in(&self) -> Result<Session> {
+    pub(crate) async fn signed_in(&self) -> Result<Session> {
         self.perland_session().await.ok_or_else(signed_out)
     }
 
     /// `answer` as it is, after forgetting `session` when it is a 401.
-    async fn forget_on_401<T>(&self, session: &Session, answer: Result<T>) -> Result<T> {
+    pub(crate) async fn forget_on_401<T>(&self, session: &Session, answer: Result<T>) -> Result<T> {
         if answer
             .as_ref()
             .is_err_and(|e| e.code == ErrorCode::PerlandSignedOut)

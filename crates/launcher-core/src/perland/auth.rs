@@ -1,7 +1,8 @@
-//! The Engine's auth routes (`/api/v1/auth`): the launcher's device session token (`plt_…`)
-//! becomes a short-lived session JWT, which lists the player's servers' tenants and scopes to
-//! one. The device token, every JWT and every handoff code are credentials: they travel in
-//! headers or bodies only, and nothing here prints one.
+//! The Engine's auth routes (`/api/v1/auth`): with the launcher's device session token
+//! (`plt_…`, sent as a bearer) they list the player's servers' tenants and mint a short-lived
+//! session JWT scoped to one. The launcher never calls the deprecated `/player-session`. The
+//! device token, every JWT and every handoff code are credentials: they travel in headers or
+//! bodies only, and nothing here prints one.
 
 use std::fmt;
 
@@ -10,7 +11,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::{
-    api::{accounts_closed, signed_out},
+    api::{accounts_closed, launcher_update_required, signed_out},
     wire::{failure, status_fallback, Credential, Reply, Wire},
 };
 use crate::{
@@ -167,31 +168,14 @@ impl AuthClient {
         self.wire.data(reply)
     }
 
-    /// `POST /player-session`: the device token for a session JWT. An Engine without the
-    /// route (404) is one without player accounts.
-    pub async fn player_session(&self, device: &str) -> Result<SessionJwt> {
-        let reply = self
-            .send(
-                Method::POST,
-                "/player-session",
-                Credential::Bearer(device),
-                None,
-            )
-            .await?;
-        if reply.status == 404 {
-            return Err(accounts_closed(&self.host()));
-        }
-        self.ok(&reply)?;
-        self.data::<TokenData>(&reply).map(|d| SessionJwt(d.token))
-    }
-
-    /// `GET /memberships`: the servers the player belongs to.
-    pub async fn memberships(&self, jwt: &SessionJwt) -> Result<Vec<Membership>> {
+    /// `GET /memberships`, with the device token: the servers the player belongs to. A 401
+    /// means the device session no longer works.
+    pub async fn memberships(&self, device: &str) -> Result<Vec<Membership>> {
         let reply = self
             .send(
                 Method::GET,
                 "/memberships",
-                Credential::UserToken(jwt.as_str()),
+                Credential::Bearer(device),
                 None,
             )
             .await?;
@@ -217,14 +201,15 @@ impl AuthClient {
             .collect())
     }
 
-    /// `POST /select-tenant`: a JWT scoped to one server.
-    pub async fn select_tenant(&self, jwt: &SessionJwt, tenant_id: &str) -> Result<SessionJwt> {
+    /// `POST /select-tenant`, with the device token: a session JWT scoped to one server. A 401
+    /// means the device session no longer works.
+    pub async fn select_tenant(&self, device: &str, tenant_id: &str) -> Result<SessionJwt> {
         let body = json!({ "tenantId": tenant_id });
         let reply = self
             .send(
                 Method::POST,
                 "/select-tenant",
-                Credential::UserToken(jwt.as_str()),
+                Credential::Bearer(device),
                 Some(&body),
             )
             .await?;
@@ -273,6 +258,7 @@ impl AuthClient {
         let code = failure(reply).code;
         match code.as_deref() {
             Some("player_accounts_disabled") => return accounts_closed(&host),
+            Some("launcher_update_required") => return launcher_update_required(&host),
             // The session no longer works.
             Some("account_disabled") => return signed_out(&host),
             _ => {}

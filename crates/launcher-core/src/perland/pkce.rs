@@ -1,11 +1,10 @@
-//! PKCE (RFC 7636) for the Discord sign-in: a verifier the launcher keeps, the challenge the
+//! PKCE (RFC 7636) for the OAuth sign-in: a verifier the launcher keeps, the challenge the
 //! Engine sees first, and a `state` that ties the browser's return to this attempt. The
 //! verifier is a secret until the code is exchanged, so nothing here prints it.
 
 use std::fmt;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-use reqwest::Url;
 use sha2::{Digest, Sha256};
 
 /// One sign-in attempt's secrets.
@@ -52,24 +51,6 @@ impl Default for Pkce {
     }
 }
 
-/// `{engine}/api/v1/player/discord/authorize?redirect_uri=…&code_challenge=…&code_challenge_method=S256&state=…`.
-/// Built here, never taken from the UI: the browser only ever opens the Engine.
-pub fn authorize_url(engine: &Url, redirect: &str, pkce: &Pkce) -> Url {
-    let mut url = engine.clone();
-    if let Ok(mut segments) = url.path_segments_mut() {
-        segments
-            .pop_if_empty()
-            .extend(["api", "v1", "player", "discord", "authorize"]);
-    }
-    url.set_query(None);
-    url.query_pairs_mut()
-        .append_pair("redirect_uri", redirect)
-        .append_pair("code_challenge", &pkce.challenge)
-        .append_pair("code_challenge_method", "S256")
-        .append_pair("state", &pkce.state);
-    url
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,39 +75,6 @@ mod tests {
         let q = Pkce::new();
         assert_ne!(p.verifier, q.verifier);
         assert_ne!(p.state, q.state);
-    }
-
-    #[test]
-    fn authorize_url_encodes() {
-        let p = Pkce::from_verifier("v", "st ate");
-        let engine = Url::parse("https://engine.example/").unwrap();
-        let url = authorize_url(&engine, "http://127.0.0.1:5000/callback", &p);
-        assert_eq!(url.path(), "/api/v1/player/discord/authorize");
-        let q = url.query().unwrap();
-        assert!(q.contains("redirect_uri=http%3A%2F%2F127.0.0.1%3A5000%2Fcallback"));
-        let pairs: Vec<(String, String)> = url
-            .query_pairs()
-            .map(|(k, v)| (k.into_owned(), v.into_owned()))
-            .collect();
-        assert_eq!(pairs.len(), 4);
-        assert_eq!(
-            pairs[0],
-            (
-                "redirect_uri".into(),
-                "http://127.0.0.1:5000/callback".into()
-            )
-        );
-        assert_eq!(pairs[1], ("code_challenge".into(), p.challenge.clone()));
-        assert_eq!(pairs[2], ("code_challenge_method".into(), "S256".into()));
-        assert_eq!(pairs[3], ("state".into(), "st ate".into()));
-    }
-
-    #[test]
-    fn authorize_url_keeps_an_engine_path_prefix() {
-        let p = Pkce::from_verifier("v", "s");
-        let engine = Url::parse("https://example.org/engine").unwrap();
-        let url = authorize_url(&engine, "http://127.0.0.1:5000/callback", &p);
-        assert_eq!(url.path(), "/engine/api/v1/player/discord/authorize");
     }
 
     #[test]

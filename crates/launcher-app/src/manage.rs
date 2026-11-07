@@ -1,8 +1,10 @@
 //! Manage your server (Manage your server spec §5.2): the servers a signed-in player owns or
 //! helps run, read and run from the launcher through the Engine's `/api/v1/stacks` routes.
-//! Every call carries a session JWT scoped to the server's team, minted from the device session
-//! token and kept in `AppCore::jwts`. The device token, every JWT and every handoff code are
-//! credentials: nothing here logs one, and the panel URL that holds a code is only opened.
+//! Every call carries a session JWT scoped to the server's team, minted by `select-tenant` from
+//! the device session token and kept in `AppCore::jwts`; the team list (`memberships`) is read
+//! with the device token itself. The deprecated `player-session` route is never called. The
+//! device token, every JWT and every handoff code are credentials: nothing here logs one, and
+//! the panel URL that holds a code is only opened.
 
 use std::{
     collections::BTreeMap,
@@ -49,15 +51,13 @@ pub type LogJwt =
 /// The Engine's auth and server routes for Manage. Every call names the Engine it goes to (the
 /// session's) and the credential it carries. The real one is `CoreStack`; tests use `FakeStack`.
 pub trait StackApi: Send + Sync + 'static {
-    /// The device token (`plt_…`) for a session JWT.
-    fn player_session(&self, engine: Url, device: String) -> BoxFuture<Result<SessionJwt>>;
-    /// The teams the player belongs to.
-    fn memberships(&self, engine: Url, jwt: SessionJwt) -> BoxFuture<Result<Vec<Membership>>>;
-    /// A JWT scoped to one team.
+    /// The teams the player belongs to, with the device token (`plt_…`).
+    fn memberships(&self, engine: Url, device: String) -> BoxFuture<Result<Vec<Membership>>>;
+    /// A JWT scoped to one team, minted from the device token.
     fn select_tenant(
         &self,
         engine: Url,
-        jwt: SessionJwt,
+        device: String,
         tenant: String,
     ) -> BoxFuture<Result<SessionJwt>>;
     /// A one-time panel sign-in code; `None` on an Engine without the route.
@@ -196,24 +196,19 @@ impl CoreStack {
 }
 
 impl StackApi for CoreStack {
-    fn player_session(&self, engine: Url, device: String) -> BoxFuture<Result<SessionJwt>> {
+    fn memberships(&self, engine: Url, device: String) -> BoxFuture<Result<Vec<Membership>>> {
         let client = self.auth(engine);
-        Box::pin(async move { client?.player_session(&device).await })
-    }
-
-    fn memberships(&self, engine: Url, jwt: SessionJwt) -> BoxFuture<Result<Vec<Membership>>> {
-        let client = self.auth(engine);
-        Box::pin(async move { client?.memberships(&jwt).await })
+        Box::pin(async move { client?.memberships(&device).await })
     }
 
     fn select_tenant(
         &self,
         engine: Url,
-        jwt: SessionJwt,
+        device: String,
         tenant: String,
     ) -> BoxFuture<Result<SessionJwt>> {
         let client = self.auth(engine);
-        Box::pin(async move { client?.select_tenant(&jwt, &tenant).await })
+        Box::pin(async move { client?.select_tenant(&device, &tenant).await })
     }
 
     fn handoff(
@@ -412,16 +407,14 @@ impl StackApi for CoreStack {
 }
 
 /// Fresh JWTs for `JwtCache`, from the session's Engine and device token. It notes whether
-/// `player-session` refused the device token, so the caller can sign the player out: a refused
-/// scoped call alone doesn't mean the device session ended.
+/// `select-tenant` refused the device token, so the caller can check with `/me` and sign the
+/// player out.
 struct SessionSource {
     api: Arc<dyn StackApi>,
     engine: Url,
     device: String,
-    /// `player-session` refused the device token.
+    /// `select-tenant` refused the device token.
     signed_out: AtomicBool,
-    /// `player-session` was asked: the base JWT is new, so replacing it again won't help.
-    minted_base: AtomicBool,
 }
 
 impl SessionSource {
@@ -431,19 +424,20 @@ impl SessionSource {
             engine: session.engine.clone(),
             device: session.token.clone(),
             signed_out: AtomicBool::new(false),
-            minted_base: AtomicBool::new(false),
         }
     }
 }
 
 impl JwtSource for SessionSource {
-    fn player_session(&self) -> launcher_core::sync::BoxFuture<'_, Result<SessionJwt>> {
+    fn select_tenant<'a>(
+        &'a self,
+        tenant: &'a str,
+    ) -> launcher_core::sync::BoxFuture<'a, Result<SessionJwt>> {
         // Asked only when awaited: the cache builds this future even when its JWT is fresh.
         Box::pin(async move {
-            self.minted_base.store(true, Ordering::SeqCst);
             let answer = self
                 .api
-                .player_session(self.engine.clone(), self.device.clone())
+                .select_tenant(self.engine.clone(), self.device.clone(), tenant.to_string())
                 .await;
             if answer
                 .as_ref()
@@ -452,18 +446,6 @@ impl JwtSource for SessionSource {
                 self.signed_out.store(true, Ordering::SeqCst);
             }
             answer
-        })
-    }
-
-    fn select_tenant<'a>(
-        &'a self,
-        base: &'a SessionJwt,
-        tenant: &'a str,
-    ) -> launcher_core::sync::BoxFuture<'a, Result<SessionJwt>> {
-        Box::pin(async move {
-            self.api
-                .select_tenant(self.engine.clone(), base.clone(), tenant.to_string())
-                .await
         })
     }
 }
@@ -654,28 +636,19 @@ fn patch_settings(
 }
 
 impl<R: Runner, H: Host> AppCore<R, H> {
-    /// A fresh JWT: scoped to `tenant`, or the base one with `None`. Through the cache; a
-    /// refused `player-session` signs the player out. A cached base JWT that `select-tenant`
-    /// refuses is replaced once (the Engine may have ended it while the device session lives);
-    /// a base minted for this call is not.
-    async fn fresh_jwt(&self, tenant: Option<&str>) -> Result<(Session, SessionJwt)> {
-        let session = self.perland_session().await.ok_or_else(signed_out)?;
-        let api = self.runner.stack();
-        let mut source = SessionSource::new(api.clone(), &session);
-        let mut jwt = match tenant {
-            Some(tenant) => self.jwts.jwt_for(&source, tenant, now_secs()).await,
-            None => self.jwts.base(&source, now_secs()).await,
-        };
-        if let (Some(tenant), Err(e)) = (tenant, &jwt) {
-            let stale_base =
-                e.code == ErrorCode::PerlandSignedOut && !source.minted_base.load(Ordering::SeqCst);
-            if stale_base {
-                self.jwts.forget_base();
-                source = SessionSource::new(api, &session);
-                jwt = self.jwts.jwt_for(&source, tenant, now_secs()).await;
-            }
+    /// The session and a JWT scoped to `tenant`, through the cache. A `select-tenant` that
+    /// refuses the device token signs the player out.
+    pub(crate) async fn manage_jwt(&self, tenant: &str) -> Result<(Session, SessionJwt)> {
+        // No server has a blank id; asking for one would only mint JWTs for nothing.
+        if tenant.trim().is_empty() {
+            return Err(LauncherError::network(
+                ErrorCode::ServerNotFound,
+                "That server wasn't found.",
+            ));
         }
-        match jwt {
+        let session = self.perland_session().await.ok_or_else(signed_out)?;
+        let source = SessionSource::new(self.runner.stack(), &session);
+        match self.jwts.jwt_for(&source, tenant, now_secs()).await {
             Ok(jwt) => {
                 // A sign-out or a new sign-in while the JWT was minted: it may be the old
                 // player's, so keep none of them.
@@ -688,27 +661,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
             Err(e) => {
                 if source.signed_out.load(Ordering::SeqCst) {
-                    self.drop_session(&session.token).await;
+                    self.drop_if_signed_out(&session).await;
                 }
                 Err(e)
             }
         }
     }
 
-    /// The session and a JWT scoped to `tenant`.
-    pub(crate) async fn manage_jwt(&self, tenant: &str) -> Result<(Session, SessionJwt)> {
-        // No server has a blank id; asking for one would only mint JWTs for nothing.
-        if tenant.trim().is_empty() {
-            return Err(LauncherError::network(
-                ErrorCode::ServerNotFound,
-                "That server wasn't found.",
-            ));
-        }
-        self.fresh_jwt(Some(tenant)).await
-    }
-
     /// Run `call` with the session's Engine and a JWT for `tenant`. A 401 drops that JWT and
-    /// the base one and retries once with fresh ones; a second 401 is returned as is (the device session may
+    /// retries once with a fresh one; a second 401 is returned as is (the device session may
     /// still be fine).
     pub(crate) async fn with_jwt<T>(
         &self,
@@ -718,9 +679,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let (session, jwt) = self.manage_jwt(tenant).await?;
         match call(session.engine, jwt).await {
             Err(e) if e.code == ErrorCode::PerlandSignedOut => {
-                // The base JWT it was minted from may be what the Engine ended: replace both.
                 self.jwts.forget(tenant);
-                self.jwts.forget_base();
                 let (session, jwt) = self.manage_jwt(tenant).await?;
                 call(session.engine, jwt).await
             }
@@ -728,23 +687,41 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
     }
 
-    /// The teams the player belongs to, with the base JWT; a 401 retries once with a fresh one.
-    pub(crate) async fn memberships(&self) -> Result<Vec<Membership>> {
-        let api = self.runner.stack();
-        let (session, jwt) = self.fresh_jwt(None).await?;
-        match api.memberships(session.engine, jwt).await {
-            Err(e) if e.code == ErrorCode::PerlandSignedOut => {
-                self.jwts.clear();
-                let (session, jwt) = self.fresh_jwt(None).await?;
-                api.memberships(session.engine, jwt).await
-            }
-            answer => answer,
+    /// After a route refused the device token: sign the player out only when `/me` refuses it
+    /// too. An Engine whose route doesn't take the device token yet answers 401 as well, and
+    /// that is no reason to end the session. Any other `/me` failure keeps it.
+    async fn drop_if_signed_out(&self, session: &Session) {
+        let me = self
+            .runner
+            .player()
+            .me(session.engine.clone(), session.token.clone())
+            .await;
+        if me.is_err_and(|e| e.code == ErrorCode::PerlandSignedOut) {
+            self.drop_session(&session.token).await;
         }
+    }
+
+    /// The teams the player belongs to, with the device token. A 401 that `/me` confirms means
+    /// the device session ended: the player is signed out.
+    pub(crate) async fn memberships(&self) -> Result<Vec<Membership>> {
+        let session = self.perland_session().await.ok_or_else(signed_out)?;
+        let answer = self
+            .runner
+            .stack()
+            .memberships(session.engine.clone(), session.token.clone())
+            .await;
+        if answer
+            .as_ref()
+            .is_err_and(|e| e.code == ErrorCode::PerlandSignedOut)
+        {
+            self.drop_if_signed_out(&session).await;
+        }
+        answer
     }
 
     /// Every server of every team the player owns or is a member of (never a viewer's): the
     /// free team first, then teams by name, servers by name. A team whose list fails is left
-    /// out. Signed out, or on an Engine without player sessions: none.
+    /// out. Signed out, or on an Engine without player accounts: none.
     pub async fn managed_servers(&self) -> Result<Vec<ManagedServer>> {
         if self.perland_session().await.is_none() {
             return Ok(vec![]);
@@ -1277,12 +1254,17 @@ mod tests {
             fake.calls_for_tenant("get_all", "t-v").is_empty(),
             "a viewer's team is never listed"
         );
-        assert_eq!(fake.calls_to("player_session").len(), 1, "one base JWT");
-        assert_eq!(
-            fake.calls_to("player_session")[0].args,
-            [player_token('s')],
-            "the device token mints it"
-        );
+        let lists = fake.calls_to("memberships");
+        assert_eq!(lists.len(), 1);
+        assert_eq!(lists[0].args, [player_token('s')], "the device token asks");
+        assert_eq!(lists[0].jwt, None, "no JWT");
+        for select in fake.calls_to("select_tenant") {
+            assert_eq!(
+                select.args[0],
+                player_token('s'),
+                "minted from the device token"
+            );
+        }
     }
 
     #[tokio::test]
@@ -1313,7 +1295,7 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         sign_in(&core);
         let fake = stack(&runner);
-        *fake.player_session.lock().unwrap() = Err(LauncherError::network(
+        *fake.memberships.lock().unwrap() = Err(LauncherError::network(
             ErrorCode::PlayerAccountsClosed,
             "Perland accounts aren't open yet.",
         ));
@@ -1377,7 +1359,6 @@ mod tests {
         let fake = stack(&runner);
         core.manage_action("t1", "survival", "start").await.unwrap();
         core.manage_action("t1", "survival", "stop").await.unwrap();
-        assert_eq!(fake.calls_to("player_session").len(), 1);
         assert_eq!(fake.calls_to("select_tenant").len(), 1);
         let calls = fake.calls_to("lifecycle");
         assert_eq!(calls[0].args, ["survival", "Start"]);
@@ -1386,84 +1367,122 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn player_session_401_signs_out() {
+    async fn select_tenant_401_signs_out() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         sign_in(&core);
         let fake = stack(&runner);
-        *fake.player_session.lock().unwrap() = Err(unauthorized());
+        fake.fail_next("select_tenant", unauthorized());
+        *runner.player.me.lock().unwrap() = Err(unauthorized());
         let e = core
             .manage_action("t1", "survival", "restart")
             .await
             .unwrap_err();
         assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+        let selects = fake.calls_to("select_tenant");
+        assert_eq!(selects.len(), 1, "a refused device token isn't asked again");
+        assert_eq!(selects[0].args, [player_token('s'), "t1".to_string()]);
+        let me = runner.player.calls_to("me");
+        assert_eq!(me.len(), 1, "/me confirms the sign-out");
+        assert_eq!(me[0].args, [player_token('s')]);
         assert!(core.perland_session().await.is_none(), "signed out");
         assert!(fake.calls_to("lifecycle").is_empty());
     }
 
     #[tokio::test]
-    async fn a_scoped_401_alone_keeps_the_session() {
+    async fn select_tenant_401_with_me_ok_keeps_the_session() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         sign_in(&core);
         let fake = stack(&runner);
         fake.fail_next("select_tenant", unauthorized());
+        let e = core
+            .manage_action("t1", "survival", "restart")
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::PerlandSignedOut, "the route's answer");
+        assert_eq!(runner.player.calls_to("me").len(), 1);
+        assert!(core.perland_session().await.is_some(), "still signed in");
+        assert!(fake.calls_to("lifecycle").is_empty());
+    }
+
+    #[tokio::test]
+    async fn select_tenant_401_with_me_failing_keeps_the_session() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        fake.fail_next("select_tenant", unauthorized());
+        *runner.player.me.lock().unwrap() =
+            Err(LauncherError::network(ErrorCode::Offline, "offline"));
+        let e = core
+            .manage_action("t1", "survival", "restart")
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+        assert!(core.perland_session().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn memberships_401_signs_out() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.memberships.lock().unwrap() = Err(unauthorized());
+        *runner.player.me.lock().unwrap() = Err(unauthorized());
+        let e = core.managed_servers().await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+        assert_eq!(fake.calls_to("memberships").len(), 1, "not asked again");
+        assert_eq!(runner.player.calls_to("me").len(), 1, "/me confirms it");
+        assert!(core.perland_session().await.is_none(), "signed out");
+        assert!(fake.calls_to("select_tenant").is_empty());
+    }
+
+    #[tokio::test]
+    async fn memberships_401_with_me_ok_keeps_the_session() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.memberships.lock().unwrap() = Err(unauthorized());
+        let e = core.managed_servers().await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::PerlandSignedOut, "the route's answer");
+        assert_eq!(runner.player.calls_to("me").len(), 1);
+        assert!(core.perland_session().await.is_some(), "still signed in");
+    }
+
+    #[tokio::test]
+    async fn memberships_401_with_me_failing_keeps_the_session() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.memberships.lock().unwrap() = Err(unauthorized());
+        *runner.player.me.lock().unwrap() =
+            Err(LauncherError::network(ErrorCode::Offline, "offline"));
+        core.managed_servers().await.unwrap_err();
+        assert!(core.perland_session().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn listing_servers_never_asks_me() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        core.managed_servers().await.unwrap();
+        core.manage_action("t1", "survival", "start").await.unwrap();
+        assert!(
+            runner.player.calls_to("me").is_empty(),
+            "off the happy path"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_route_401_alone_keeps_the_session() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        fake.fail_next("lifecycle", unauthorized());
+        fake.fail_next("lifecycle", unauthorized());
         let e = core.manage_action("t1", "s", "start").await.unwrap_err();
         assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+        assert_eq!(fake.calls_to("lifecycle").len(), 2, "one retry");
+        assert_eq!(fake.calls_to("select_tenant").len(), 2, "with a new JWT");
         assert!(core.perland_session().await.is_some());
-    }
-
-    #[tokio::test]
-    async fn a_refused_base_jwt_is_replaced_on_retry() {
-        let (core, runner, _host, _t) = core(BuildKind::Dev);
-        sign_in(&core);
-        let fake = stack(&runner);
-        core.manage_action("t1", "s", "start").await.unwrap();
-        let old_base = fake.calls_to("select_tenant")[0].jwt.clone();
-        // The cached base JWT is refused when a new team's JWT is minted from it.
-        fake.fail_next("select_tenant", unauthorized());
-        core.manage_action("t2", "s", "start").await.unwrap();
-        let selects = fake.calls_to("select_tenant");
-        assert_eq!(selects.len(), 3);
-        assert_eq!(selects[1].jwt, old_base, "first tried with the cached base");
-        assert_ne!(selects[2].jwt, old_base, "then with a fresh one");
-        assert_eq!(fake.calls_to("player_session").len(), 2);
-        assert!(core.perland_session().await.is_some());
-
-        // A route's 401 replaces the base JWT too, not only the team's.
-        fake.fail_next("lifecycle", unauthorized());
-        core.manage_action("t2", "s", "stop").await.unwrap();
-        assert_eq!(fake.calls_to("player_session").len(), 3);
-        let selects = fake.calls_to("select_tenant");
-        assert_eq!(selects.len(), 4);
-        assert_ne!(selects[3].jwt, selects[2].jwt, "minted from the new base");
-    }
-
-    #[tokio::test]
-    async fn a_refused_base_jwt_is_replaced_once_only() {
-        let (core, runner, _host, _t) = core(BuildKind::Dev);
-        sign_in(&core);
-        let fake = stack(&runner);
-        core.manage_action("t1", "s", "start").await.unwrap();
-        for _ in 0..3 {
-            fake.fail_next("select_tenant", unauthorized());
-        }
-        let e = core.manage_action("t2", "s", "start").await.unwrap_err();
-        assert_eq!(e.code, ErrorCode::PerlandSignedOut);
-        assert_eq!(fake.calls_to("select_tenant").len(), 3, "t1, then t2 twice");
-        assert_eq!(fake.calls_to("player_session").len(), 2, "one replacement");
-        assert!(
-            core.perland_session().await.is_some(),
-            "the device session stays"
-        );
-
-        // A base JWT minted for this very call is not replaced again.
-        let (fresh, runner, _host, _t2) = crate::app::tests::core(BuildKind::Dev);
-        sign_in(&fresh);
-        let fake = stack(&runner);
-        fake.fail_next("select_tenant", unauthorized());
-        let e = fresh.manage_action("t1", "s", "start").await.unwrap_err();
-        assert_eq!(e.code, ErrorCode::PerlandSignedOut);
-        assert_eq!(fake.calls_to("select_tenant").len(), 1);
-        assert_eq!(fake.calls_to("player_session").len(), 1);
     }
 
     #[tokio::test]
@@ -1484,8 +1503,7 @@ mod tests {
         core.perland_sign_out().await.unwrap();
         let source = SessionSource::new(runner.stack(), &session);
         core.jwts.jwt_for(&source, "t1", now_secs()).await.unwrap();
-        assert_eq!(fake.calls_to("player_session").len(), 2, "nothing was kept");
-        assert_eq!(fake.calls_to("select_tenant").len(), 2);
+        assert_eq!(fake.calls_to("select_tenant").len(), 2, "nothing was kept");
     }
 
     #[tokio::test]
@@ -1494,15 +1512,20 @@ mod tests {
         sign_in(&core);
         let fake = stack(&runner);
         core.manage_action("t1", "s", "start").await.unwrap();
-        core.perland_email_verify("steve@example.com", "123456")
-            .await
-            .unwrap();
+        // A new sign-in on the Perland page finishes.
+        let answer = runner.player.token_answer.lock().unwrap().clone().unwrap();
+        core.adopt(
+            Url::parse("https://api.example.com/").unwrap(),
+            answer,
+            Some(launcher_core::perland::CLIENT_ID.into()),
+        )
+        .await;
         core.manage_action("t1", "s", "start").await.unwrap();
-        let sessions = fake.calls_to("player_session");
-        assert_eq!(sessions.len(), 2);
+        let selects = fake.calls_to("select_tenant");
+        assert_eq!(selects.len(), 2);
         assert_eq!(
-            sessions[1].args,
-            [player_token('x')],
+            selects[1].args[0],
+            player_token('x'),
             "the new session's token"
         );
     }
@@ -1633,7 +1656,6 @@ mod tests {
                     .unwrap_err();
             assert_eq!(e.code, ErrorCode::ServerNotFound);
         }
-        assert!(fake.calls_to("player_session").is_empty());
         assert!(fake.calls_to("select_tenant").is_empty());
     }
 

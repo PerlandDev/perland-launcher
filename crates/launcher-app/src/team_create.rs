@@ -155,7 +155,7 @@ fn not_on_modrinth(names: &[String]) -> LauncherError {
 
 impl<R: Runner, H: Host> AppCore<R, H> {
     /// The teams the player may create a server on: owner or member, never a viewer's, and not
-    /// the free team. By name. Signed out, or on an Engine without player sessions: none.
+    /// the free team. By name. Signed out, or on an Engine without player accounts: none.
     pub async fn creatable_teams(&self) -> Result<Vec<CreatableTeam>> {
         if self.perland_session().await.is_none() {
             return Ok(vec![]);

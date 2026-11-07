@@ -616,28 +616,6 @@ pub async fn perland_sign_in(core: CoreState<'_>, language: String) -> Res<Optio
 }
 
 #[tauri::command]
-pub async fn perland_sign_in_discord(
-    core: CoreState<'_>,
-    language: String,
-) -> Res<Option<PerlandAccount>> {
-    logged(
-        "perland_sign_in_discord",
-        core.perland_sign_in_discord(&language).await,
-    )
-}
-
-#[tauri::command]
-pub async fn perland_sign_in_github(
-    core: CoreState<'_>,
-    language: String,
-) -> Res<Option<PerlandAccount>> {
-    logged(
-        "perland_sign_in_github",
-        core.perland_sign_in_github(&language).await,
-    )
-}
-
-#[tauri::command]
 pub async fn perland_sign_in_reopen(core: CoreState<'_>) -> Res<()> {
     logged("perland_sign_in_reopen", core.perland_sign_in_reopen())
 }
@@ -646,30 +624,6 @@ pub async fn perland_sign_in_reopen(core: CoreState<'_>) -> Res<()> {
 pub async fn perland_sign_in_cancel(core: CoreState<'_>) -> Res<()> {
     core.perland_sign_in_cancel();
     Ok(())
-}
-
-#[tauri::command]
-pub async fn perland_email_start(
-    core: CoreState<'_>,
-    email: String,
-    language: String,
-) -> Res<EmailCodeSent> {
-    logged(
-        "perland_email_start",
-        core.perland_email_start(&email, &language).await,
-    )
-}
-
-#[tauri::command]
-pub async fn perland_email_verify(
-    core: CoreState<'_>,
-    email: String,
-    code: String,
-) -> Res<PerlandAccount> {
-    logged(
-        "perland_email_verify",
-        core.perland_email_verify(&email, &code).await,
-    )
 }
 
 /// Opened from Rust, like `open_link`, so the webview's opener scope stays as narrow as it was.
@@ -681,6 +635,30 @@ pub async fn perland_manage(core: CoreState<'_>, stack: String) -> Res<()> {
 #[tauri::command]
 pub async fn perland_sign_out(core: CoreState<'_>) -> Res<()> {
     logged("perland_sign_out", core.perland_sign_out().await)
+}
+
+#[tauri::command]
+pub async fn perland_account_email_start(
+    core: CoreState<'_>,
+    email: String,
+    language: String,
+) -> Res<EmailCodeSent> {
+    logged(
+        "perland_account_email_start",
+        core.perland_account_email_start(&email, &language).await,
+    )
+}
+
+#[tauri::command]
+pub async fn perland_account_email_verify(
+    core: CoreState<'_>,
+    email: String,
+    code: String,
+) -> Res<PerlandAccount> {
+    logged(
+        "perland_account_email_verify",
+        core.perland_account_email_verify(&email, &code).await,
+    )
 }
 
 #[tauri::command]

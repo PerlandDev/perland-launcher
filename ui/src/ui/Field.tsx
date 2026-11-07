@@ -7,12 +7,15 @@ export function Field({
   label,
   hint,
   error,
+  fix,
   alert = false,
   children,
 }: {
   label: string;
   hint?: string | null;
   error?: string | null;
+  /** What to do about the error, read out with it (inside the same note). */
+  fix?: string | null;
   /** Announce the error the moment it appears, for an error that comes back from a request rather than from typing. */
   alert?: boolean;
   children: ReactElement<InputProps>;
@@ -33,6 +36,7 @@ export function Field({
       {note && (
         <p id={noteId} role={error && alert ? 'alert' : undefined} className={error ? 'text-sm text-coral' : 'text-sm text-ink-dim'}>
           {note}
+          {error && fix && <span className="block text-ink-dim">{fix}</span>}
         </p>
       )}
     </div>
