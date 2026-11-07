@@ -1,5 +1,5 @@
-// Mock Perland account for `pnpm --filter ui dev:mock` and the tests: the sign-in methods, the
-// Discord and email flows, and the player's Your servers set. Fake tokens and addresses only.
+// Mock Perland account for `pnpm --filter ui dev:mock` and the tests: the Perland page sign-in, adding an email to the
+// account, and the player's Your servers set. Fake tokens and addresses only.
 import { inviteCanonical } from './inviteLink';
 import { inviteOf, joinedInstance, MOCK_INVITE, MOCK_PUBLIC_SERVERS } from './mockServers';
 import type {
@@ -15,14 +15,13 @@ import type {
   YourServersPage,
 } from './schema';
 
-/** `?perland=`: `off` closes accounts; `oauth` is signed out on an Engine with the OAuth sign-in (one Continue with Perland, the methods chosen on the
- *  Perland page); `signedOut` (the default, an Engine without it) offers Discord and email; `signedIn` has a player with
- *  one owner, one invited and two followed servers, not linked to Minecraft; `empty` is signed in with none; `emailOnly` offers
- *  only email; `linked` is `signedIn` already linked as Steve, with stats; `noAddon` is `signedIn` with the Engine's stats add-on off;
- *  `github` is `signedIn` as a GitHub account with no Discord and no email. */
-export type PerlandScenario = 'off' | 'oauth' | 'signedOut' | 'signedIn' | 'empty' | 'emailOnly' | 'linked' | 'noAddon' | 'github';
+/** `?perland=`: `off` closes accounts; `signedOut` (the default) offers the one way in, Continue with Perland (the methods are
+ *  chosen on the Perland page); `signedIn` has a player with one owner, one invited and two followed servers, not linked to
+ *  Minecraft; `empty` is signed in with none; `linked` is `signedIn` already linked as Steve, with stats; `noAddon` is
+ *  `signedIn` with the Engine's stats add-on off; `github` is `signedIn` as a GitHub account with no Discord and no email. */
+export type PerlandScenario = 'off' | 'signedOut' | 'signedIn' | 'empty' | 'linked' | 'noAddon' | 'github';
 
-const SCENARIOS: readonly string[] = ['off', 'oauth', 'signedOut', 'signedIn', 'empty', 'emailOnly', 'linked', 'noAddon', 'github'];
+const SCENARIOS: readonly string[] = ['off', 'signedOut', 'signedIn', 'empty', 'linked', 'noAddon', 'github'];
 /** The `?perland=` preview param, or undefined for anything else (dev:mock only). */
 export const perlandScenario = (name: string | null): PerlandScenario | undefined =>
   name !== null && SCENARIOS.includes(name) ? (name as PerlandScenario) : undefined;
@@ -36,8 +35,8 @@ export const perlandSignInOutcome = (name: string | null): PerlandSignInOutcome 
 
 /** The email code the mock accepts. */
 export const MOCK_EMAIL_CODE = '123456';
-/** How long the mock Discord sign-in waits on "Finish in your browser". */
-export const MOCK_DISCORD_WAIT_MS = 1500;
+/** How long the mock Perland page sign-in waits on "Finish in your browser". */
+export const MOCK_SIGN_IN_WAIT_MS = 1500;
 /** The Minecraft link code the mock hands out. */
 export const MOCK_LINK_CODE = 'ABCD-EFGH';
 /** The link poll that finds the code typed in game: the first ones answer null. */
@@ -54,10 +53,8 @@ export interface MockPerland {
   attemptsLeft: number;
   /** Link polls answered since the last code. */
   linkPolls: number;
-  /** Ends the Discord (or GitHub) step waiting in the browser, as the player's Cancel does. */
+  /** Ends the Perland page step waiting in the browser, as the player's Cancel does. */
   cancel: (() => void) | null;
-  /** A Perland panel is configured, so Sign in with GitHub is offered. */
-  github: boolean;
   /** How a Perland page sign-in ends. */
   outcome: PerlandSignInOutcome;
 }
@@ -127,7 +124,7 @@ function seedServers(): YourServerCard[] {
   ];
 }
 
-export function seedPerland(scenario: PerlandScenario = 'signedOut', github = false, outcome: PerlandSignInOutcome = 'ok'): MockPerland {
+export function seedPerland(scenario: PerlandScenario = 'signedOut', outcome: PerlandSignInOutcome = 'ok'): MockPerland {
   const signedIn = scenario === 'signedIn' || scenario === 'empty' || scenario === 'linked' || scenario === 'noAddon';
   return {
     scenario,
@@ -136,7 +133,6 @@ export function seedPerland(scenario: PerlandScenario = 'signedOut', github = fa
     attemptsLeft: ATTEMPTS,
     linkPolls: 0,
     cancel: null,
-    github,
     outcome,
   };
 }
@@ -149,9 +145,8 @@ const closed = (): never => fail('network', 'player_accounts_closed', "Perland a
 /** What a call that needs a session answers without one, as the real backend does. */
 const signedOut = (): never => fail('auth', 'perland_signed_out', 'You were signed out of Perland.');
 
-/** GitHub is offered (last) only with a Perland panel, as the app does. */
-const methodsOf = ({ scenario, github }: MockPerland): string[] =>
-  scenario === 'off' ? [] : scenario === 'oauth' ? ['perland'] : scenario === 'emailOnly' ? ['email'] : github ? ['discord', 'email', 'github'] : ['discord', 'email'];
+/** The Perland page is the one way in, as the app has it. */
+const methodsOf = ({ scenario }: MockPerland): string[] => (scenario === 'off' ? [] : ['perland']);
 
 export const NOT_PERLAND = Symbol('not a Perland command');
 
@@ -237,26 +232,10 @@ export async function handlePerland(
   switch (cmd) {
     case 'perland_status':
       return { enabled: on, methods: methodsOf(perland), account: on ? perland.account : null } satisfies PerlandStatus;
-    case 'perland_sign_in_discord':
-    case 'perland_sign_in_github': {
-      if (!on) closed();
-      const method = cmd === 'perland_sign_in_github' ? 'github' : 'discord';
-      if (!methodsOf(perland).includes(method)) {
-        fail('network', 'sign_in_unavailable', "That way of signing in isn't available.", { method });
-      }
-      emit({ type: 'perland_sign_in', phase: 'waiting' });
-      if (!(await wait(MOCK_DISCORD_WAIT_MS, perland))) return null;
-      emit({ type: 'perland_sign_in', phase: 'exchanging' });
-      perland.account = { ...(method === 'github' ? OCTOCAT : STEVE), newPlayer: true };
-      return perland.account;
-    }
     case 'perland_sign_in': {
       if (!on) closed();
-      if (!methodsOf(perland).includes('perland')) {
-        fail('network', 'sign_in_unavailable', "That way of signing in isn't available.", { method: 'perland' });
-      }
       emit({ type: 'perland_sign_in', phase: 'waiting' });
-      if (!(await wait(MOCK_DISCORD_WAIT_MS, perland))) return null;
+      if (!(await wait(MOCK_SIGN_IN_WAIT_MS, perland))) return null;
       const host = { host: 'api.perland.example' };
       switch (perland.outcome) {
         case 'cancel':
@@ -284,21 +263,21 @@ export async function handlePerland(
     case 'perland_sign_in_cancel':
       perland.cancel?.();
       return null;
-    case 'perland_email_start': {
+    case 'perland_account_email_start': {
       if (!on) closed();
-      if (!methodsOf(perland).includes('email')) fail('network', 'sign_in_unavailable', "That way of signing in isn't available.", { method: 'email' });
+      if (!perland.account) signedOut();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(args.email ?? '').trim())) fail('auth', 'invalid_email', 'Check the email address.');
       perland.attemptsLeft = ATTEMPTS;
       return { resendIn: RESEND_IN };
     }
-    case 'perland_email_verify': {
+    case 'perland_account_email_verify': {
       if (!on) closed();
-      const email = String(args.email ?? '').trim();
+      const account = perland.account ?? signedOut();
       if (String(args.code ?? '').replace(/\s+/g, '') !== MOCK_EMAIL_CODE) {
         perland.attemptsLeft = Math.max(0, perland.attemptsLeft - 1);
         fail('auth', 'invalid_code', "That code isn't right.", { attemptsLeft: String(perland.attemptsLeft) });
       }
-      perland.account = { name: email, displayName: '', email, discord: false, github: false, newPlayer: true, minecraft: null };
+      perland.account = { ...account, email: String(args.email ?? '').trim() };
       return perland.account;
     }
     case 'perland_sign_out':

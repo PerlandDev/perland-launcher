@@ -91,9 +91,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             let team = team.clone();
             Box::pin(async move {
                 if refused {
-                    // The Engine ended this JWT (or the base one it came from): mint both again.
+                    // The Engine ended this JWT: mint a new one.
                     core.jwts.forget(&team);
-                    core.jwts.forget_base();
                 }
                 core.manage_jwt(&team).await.map(|(_, jwt)| jwt)
             })
@@ -626,9 +625,14 @@ mod tests {
         let (core, runner, host, _t) = core(BuildKind::Dev);
         sign_in(&core);
         core.manage_console_open("t1", "survival").await.unwrap();
-        core.perland_email_verify("steve@example.com", "123456")
-            .await
-            .unwrap();
+        // A new sign-in on the Perland page finishes.
+        let answer = runner.player.token_answer.lock().unwrap().clone().unwrap();
+        core.adopt(
+            Url::parse("https://api.example.com/").unwrap(),
+            answer,
+            Some(launcher_core::perland::CLIENT_ID.into()),
+        )
+        .await;
         assert!(*runner.stack.log_streams.lock().unwrap()[0].stop.borrow());
         assert!(core.console_stream.lock().unwrap().is_none());
         runner.stack.log_lines(0, &["a"]);

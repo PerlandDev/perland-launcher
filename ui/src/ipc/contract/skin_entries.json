@@ -4,12 +4,13 @@
     "name": "Beach day",
     "model": "slim",
     "updated": 1762500000,
-    "wornBy": "069a79f4-44e9-4726-a5be-fca90e38aaf5"
+    "owner": "5627dd98-e6be-3c21-b8a8-e92344183641"
   },
   {
     "id": "skin-ffeeddccbbaa",
     "name": "Miner",
     "model": "classic",
-    "updated": 1762400000
+    "updated": 1762400000,
+    "owner": "5627dd98-e6be-3c21-b8a8-e92344183641"
   }
 ]

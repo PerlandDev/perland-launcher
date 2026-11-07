@@ -19,10 +19,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::{
-    api::{Player, TokenAnswer},
+    api::{launcher_update_required, Player, TokenAnswer},
     panel::panel_url,
     pkce::Pkce,
-    wire::{Reply, Wire},
+    wire::{failure, Reply, Wire},
 };
 use crate::{
     error::{ErrorCode, LauncherError, Result},
@@ -161,7 +161,7 @@ impl OAuthClient {
 
     /// `GET /.well-known/oauth-authorization-server`. `Ok(None)` when the Engine has no OAuth
     /// sign-in (404: no panel configured, or an Engine from before it) or answers metadata the
-    /// launcher can't use; then the older sign-in routes are the way in.
+    /// launcher can't use; then the launcher offers no Perland sign-in.
     pub async fn discover(&self) -> Result<Option<Discovery>> {
         let reply = self
             .wire
@@ -237,6 +237,11 @@ impl OAuthClient {
         let host = self.host();
         if reply.status == 429 {
             return rate_limited(&host);
+        }
+        // Not RFC 6749: the Engine's own envelope, for a sign-in that would make an account
+        // an older launcher can't finish.
+        if failure(reply).code.as_deref() == Some("launcher_update_required") {
+            return launcher_update_required(&host);
         }
         let error = serde_json::from_slice::<Value>(&reply.body)
             .ok()

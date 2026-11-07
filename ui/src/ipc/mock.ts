@@ -102,7 +102,7 @@ export interface MockOptions {
   link?: string;
   /** Seeds the `survival` Perland server and picks how its invite answers. */
   server?: ServerScenario;
-  /** Perland account: `off` closes accounts; `signedOut` (default), `signedIn`, `empty` (signed in, no servers), `emailOnly`, `linked` (Minecraft linked, with stats) and `noAddon` (stats off). */
+  /** Perland account: `off` closes accounts; `signedOut` (default), `signedIn`, `empty` (signed in, no servers), `linked` (Minecraft linked, with stats) and `noAddon` (stats off). */
   perland?: PerlandScenario;
   /** How the Perland page sign-in ends (`?perlandSignIn=`): `ok` (default), `cancel`, `timeout`, `fail` or `expired`. */
   perlandSignIn?: PerlandSignInOutcome;
@@ -442,7 +442,7 @@ function seed(options: MockOptions) {
     custom.set(castle.id, CASTLE_PICTURE);
   }
   // The create dialog picks a Modrinth modpack instance; only a free-server preview or a signed-in player has them.
-  const perland = seedPerland(options.perland, options.panel !== false, options.perlandSignIn);
+  const perland = seedPerland(options.perland, options.perlandSignIn);
   if (!options.firstRun && options.free !== 'off' && (options.free !== undefined || perland.account !== null)) {
     listing.instances = [...listing.instances, ...modrinthInstances()];
   }
@@ -1576,7 +1576,11 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         (c) => repeatsFreeServer(state.free, c),
         () => managedForYourServers(state.manage, state.perland.account, state.free.server),
       );
-      if (perlandServed !== NOT_PERLAND) return perlandServed;
+      if (perlandServed !== NOT_PERLAND) {
+        // The account has a verified email now, so the Engine lets it make a free server.
+        if (cmd === 'perland_account_email_verify' && state.free.scenario === 'emailRequired') state.free.scenario = 'none';
+        return perlandServed;
+      }
       const teamsServed = await handleTeams(state.teams, state.manage, state.perland.account, find, cmd, args);
       if (teamsServed !== NOT_TEAMS) return teamsServed;
       const manageServed = handleManage(state.manage, state.perland.account, state.free.server, cmd, args);

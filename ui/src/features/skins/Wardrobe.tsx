@@ -2,10 +2,11 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { commands } from '../../ipc/commands';
-import type { SkinEntry } from '../../ipc/schema';
+import type { Account, SkinEntry } from '../../ipc/schema';
+import { AccountAvatar } from '../accounts/AccountAvatar';
 import { Button } from '../../ui/Button';
 import { Menu, type MenuHandle, type MenuItem } from '../../ui/Menu';
-import { Plus, Upload } from '../../ui/Icon';
+import { ChevronDown, Plus, Upload } from '../../ui/Icon';
 
 /** A skin's face, read straight off its texture: the head's front with the hat over it. */
 function Face({ id, updated }: { id: string; updated: number }) {
@@ -26,7 +27,43 @@ function Face({ id, updated }: { id: string; updated: number }) {
   return <canvas ref={canvas} width={8} height={8} className="wardrobe-face" aria-hidden />;
 }
 
+/** Whose wardrobe is shown: a key with the account's face and name that opens a menu of every account. */
+function AccountSwitch({ accounts, owner, onOwner }: { accounts: Account[]; owner: Account; onOwner: (uuid: string) => void }) {
+  const { t } = useTranslation();
+  const menu = useRef<MenuHandle>(null);
+  return (
+    <>
+      <Button
+        className="wardrobe-owner"
+        aria-haspopup="menu"
+        aria-label={t('skins.wardrobeOf', { name: owner.username })}
+        title={t('skins.wardrobeOf', { name: owner.username })}
+        icon={<AccountAvatar account={owner} size={20} />}
+        onClick={(e) => menu.current?.openAt(e.currentTarget)}
+      >
+        <span className="min-w-0 flex-1 truncate text-left">{owner.username}</span>
+        <ChevronDown aria-hidden />
+      </Button>
+      <Menu
+        ref={menu}
+        label={t('skins.switchAccount')}
+        trigger={false}
+        className="contents"
+        items={accounts.map((a) => ({
+          id: a.uuid,
+          label: a.username,
+          icon: a.uuid === owner.uuid ? <span className="lamp" aria-hidden /> : <AccountAvatar account={a} size={16} />,
+          onSelect: () => onOwner(a.uuid),
+        }))}
+      />
+    </>
+  );
+}
+
 export function Wardrobe({
+  accounts,
+  owner,
+  onOwner,
   entries,
   selected,
   wearer,
@@ -36,6 +73,11 @@ export function Wardrobe({
   onImport,
   menuFor,
 }: {
+  /** Every account, for the switch; it's left out while none is signed in. */
+  accounts: Account[];
+  /** The account whose wardrobe this is (null: the skins made with no account). */
+  owner: Account | null;
+  onOwner: (uuid: string) => void;
   entries: SkinEntry[];
   selected: string | null;
   /** The account whose worn skin gets the lamp. */
@@ -50,7 +92,8 @@ export function Wardrobe({
   const { t } = useTranslation();
   const newMenu = useRef<MenuHandle>(null);
   return (
-    <aside className="wardrobe" aria-labelledby="wardrobe-title">
+    <aside className="wardrobe" aria-labelledby="wardrobe-title" data-switch={owner ? true : undefined}>
+      {owner && <AccountSwitch accounts={accounts} owner={owner} onOwner={onOwner} />}
       <div className="flex items-center justify-between gap-2">
         <h2 id="wardrobe-title" className="font-bold">
           {t('skins.wardrobe')}

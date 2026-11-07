@@ -21,92 +21,37 @@ fn client(server: &MockServer) -> AuthClient {
     AuthClient::new(http, Url::parse(&server.uri()).unwrap())
 }
 
-async fn session(server: &MockServer) -> SessionJwt {
-    Mock::given(method("POST"))
-        .and(path("/api/v1/auth/player-session"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(envelope(
-            json!({ "token": "eyJ.a.b", "user": {}, "newUser": false }),
-        )))
+/// `/player-session` is deprecated: nothing may call it. Wiremock checks on drop.
+async fn never_player_session(server: &MockServer) {
+    Mock::given(path("/api/v1/auth/player-session"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
         .mount(server)
         .await;
-    client(server).player_session(DEVICE).await.unwrap()
+}
+
+/// Every request carried the device token as a bearer, and no `X-User-Token`.
+async fn only_bearer_device(server: &MockServer) {
+    let requests = server.received_requests().await.unwrap();
+    assert!(!requests.is_empty());
+    for r in requests {
+        assert_eq!(
+            r.headers.get("authorization").and_then(|v| v.to_str().ok()),
+            Some("Bearer plt_abc"),
+            "{}",
+            r.url
+        );
+        assert!(r.headers.get("x-user-token").is_none(), "{}", r.url);
+    }
 }
 
 #[tokio::test]
-async fn player_session_sends_the_device_token_as_bearer() {
+async fn memberships_send_the_device_token_as_bearer_and_read_plan() {
     let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/api/v1/auth/player-session"))
-        .and(header("authorization", "Bearer plt_abc"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(envelope(
-            json!({ "token": "eyJ.a.b", "user": {}, "newUser": false }),
-        )))
-        .expect(1)
-        .mount(&server)
-        .await;
-    let jwt = client(&server).player_session(DEVICE).await.unwrap();
-    assert_eq!(jwt.as_str(), "eyJ.a.b");
-}
-
-#[tokio::test]
-async fn player_session_401_is_signed_out() {
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/api/v1/auth/player-session"))
-        .respond_with(ResponseTemplate::new(401))
-        .mount(&server)
-        .await;
-    let e = client(&server).player_session(DEVICE).await.unwrap_err();
-    assert_eq!(e.code, ErrorCode::PerlandSignedOut);
-}
-
-#[tokio::test]
-async fn player_session_disabled_account_is_signed_out() {
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/api/v1/auth/player-session"))
-        .respond_with(ResponseTemplate::new(403).set_body_json(
-            json!({ "success": false, "data": { "code": "account_disabled" }, "error": "no" }),
-        ))
-        .mount(&server)
-        .await;
-    let e = client(&server).player_session(DEVICE).await.unwrap_err();
-    assert_eq!(e.code, ErrorCode::PerlandSignedOut);
-}
-
-#[tokio::test]
-async fn player_session_404_is_accounts_closed() {
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/api/v1/auth/player-session"))
-        .respond_with(ResponseTemplate::new(404))
-        .mount(&server)
-        .await;
-    let e = client(&server).player_session(DEVICE).await.unwrap_err();
-    assert_eq!(e.code, ErrorCode::PlayerAccountsClosed);
-}
-
-#[tokio::test]
-async fn player_session_503_accounts_disabled_is_accounts_closed() {
-    let server = MockServer::start().await;
-    Mock::given(method("POST"))
-        .and(path("/api/v1/auth/player-session"))
-        .respond_with(ResponseTemplate::new(503).set_body_json(
-            json!({ "success": false, "data": { "code": "player_accounts_disabled" }, "error": "no" }),
-        ))
-        .mount(&server)
-        .await;
-    let e = client(&server).player_session(DEVICE).await.unwrap_err();
-    assert_eq!(e.code, ErrorCode::PlayerAccountsClosed);
-}
-
-#[tokio::test]
-async fn memberships_send_the_jwt_in_x_user_token_and_read_plan() {
-    let server = MockServer::start().await;
-    let jwt = session(&server).await;
+    never_player_session(&server).await;
     Mock::given(method("GET"))
         .and(path("/api/v1/auth/memberships"))
-        .and(header("x-user-token", "Bearer eyJ.a.b"))
+        .and(header("authorization", "Bearer plt_abc"))
         .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
             "memberships": [
                 {
@@ -123,7 +68,8 @@ async fn memberships_send_the_jwt_in_x_user_token_and_read_plan() {
         .expect(1)
         .mount(&server)
         .await;
-    let list = client(&server).memberships(&jwt).await.unwrap();
+    let list = client(&server).memberships(DEVICE).await.unwrap();
+    only_bearer_device(&server).await;
     assert_eq!(list.len(), 2);
     assert_eq!(list[0].tenant_id, "t-1");
     assert_eq!(list[0].tenant_name, "perland-t1");
@@ -137,23 +83,23 @@ async fn memberships_send_the_jwt_in_x_user_token_and_read_plan() {
 #[tokio::test]
 async fn memberships_401_is_signed_out() {
     let server = MockServer::start().await;
-    let jwt = session(&server).await;
+    never_player_session(&server).await;
     Mock::given(method("GET"))
         .and(path("/api/v1/auth/memberships"))
         .respond_with(ResponseTemplate::new(401))
         .mount(&server)
         .await;
-    let e = client(&server).memberships(&jwt).await.unwrap_err();
+    let e = client(&server).memberships(DEVICE).await.unwrap_err();
     assert_eq!(e.code, ErrorCode::PerlandSignedOut);
 }
 
 #[tokio::test]
-async fn select_tenant_posts_the_tenant_id() {
+async fn select_tenant_posts_the_tenant_id_with_the_device_token() {
     let server = MockServer::start().await;
-    let jwt = session(&server).await;
+    never_player_session(&server).await;
     Mock::given(method("POST"))
         .and(path("/api/v1/auth/select-tenant"))
-        .and(header("x-user-token", "Bearer eyJ.a.b"))
+        .and(header("authorization", "Bearer plt_abc"))
         .and(body_json(json!({ "tenantId": "t-1" })))
         .respond_with(
             ResponseTemplate::new(200).set_body_json(envelope(json!({ "token": "eyJ.c.d" }))),
@@ -161,7 +107,8 @@ async fn select_tenant_posts_the_tenant_id() {
         .expect(1)
         .mount(&server)
         .await;
-    let scoped = client(&server).select_tenant(&jwt, "t-1").await.unwrap();
+    let scoped = client(&server).select_tenant(DEVICE, "t-1").await.unwrap();
+    only_bearer_device(&server).await;
     assert_eq!(scoped.as_str(), "eyJ.c.d");
 }
 
@@ -264,7 +211,7 @@ async fn handoff_401_is_signed_out() {
 #[tokio::test]
 async fn debug_never_prints_tokens() {
     let server = MockServer::start().await;
-    let jwt = session(&server).await;
+    let jwt = SessionJwt::new("eyJ.a.b");
     let shown = format!("{jwt:?}");
     assert!(!shown.contains("eyJ"), "{shown}");
     let handoff = Handoff {
@@ -280,14 +227,14 @@ async fn debug_never_prints_tokens() {
 #[tokio::test]
 async fn select_tenant_401_is_signed_out() {
     let server = MockServer::start().await;
-    let jwt = session(&server).await;
+    never_player_session(&server).await;
     Mock::given(method("POST"))
         .and(path("/api/v1/auth/select-tenant"))
         .respond_with(ResponseTemplate::new(401))
         .mount(&server)
         .await;
     let e = client(&server)
-        .select_tenant(&jwt, "t-1")
+        .select_tenant(DEVICE, "t-1")
         .await
         .unwrap_err();
     assert_eq!(e.code, ErrorCode::PerlandSignedOut);
@@ -297,11 +244,14 @@ async fn select_tenant_401_is_signed_out() {
 async fn a_200_without_data_is_unexpected() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
-        .and(path("/api/v1/auth/player-session"))
+        .and(path("/api/v1/auth/select-tenant"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "success": true })))
         .mount(&server)
         .await;
-    let e = client(&server).player_session(DEVICE).await.unwrap_err();
+    let e = client(&server)
+        .select_tenant(DEVICE, "t-1")
+        .await
+        .unwrap_err();
     assert_ne!(e.code, ErrorCode::PerlandSignedOut);
     assert!(!e.message.contains("plt_"));
 }
@@ -309,7 +259,7 @@ async fn a_200_without_data_is_unexpected() {
 #[tokio::test]
 async fn select_tenant_403_is_forbidden_not_host_trouble() {
     let server = MockServer::start().await;
-    let jwt = session(&server).await;
+    never_player_session(&server).await;
     Mock::given(method("POST"))
         .and(path("/api/v1/auth/select-tenant"))
         .respond_with(
@@ -320,7 +270,7 @@ async fn select_tenant_403_is_forbidden_not_host_trouble() {
         .mount(&server)
         .await;
     let e = client(&server)
-        .select_tenant(&jwt, "t-1")
+        .select_tenant(DEVICE, "t-1")
         .await
         .unwrap_err();
     assert_eq!(e.code, ErrorCode::ManageForbidden);
@@ -329,7 +279,7 @@ async fn select_tenant_403_is_forbidden_not_host_trouble() {
 #[tokio::test]
 async fn select_tenant_disabled_account_stays_signed_out() {
     let server = MockServer::start().await;
-    let jwt = session(&server).await;
+    never_player_session(&server).await;
     Mock::given(method("POST"))
         .and(path("/api/v1/auth/select-tenant"))
         .respond_with(ResponseTemplate::new(403).set_body_json(
@@ -338,8 +288,37 @@ async fn select_tenant_disabled_account_stays_signed_out() {
         .mount(&server)
         .await;
     let e = client(&server)
-        .select_tenant(&jwt, "t-1")
+        .select_tenant(DEVICE, "t-1")
         .await
         .unwrap_err();
     assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+}
+
+#[tokio::test]
+async fn memberships_disabled_account_is_signed_out() {
+    let server = MockServer::start().await;
+    never_player_session(&server).await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/auth/memberships"))
+        .respond_with(ResponseTemplate::new(403).set_body_json(
+            json!({ "success": false, "data": { "code": "account_disabled" }, "error": "no" }),
+        ))
+        .mount(&server)
+        .await;
+    let e = client(&server).memberships(DEVICE).await.unwrap_err();
+    assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+}
+
+#[tokio::test]
+async fn memberships_accounts_disabled_is_accounts_closed() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/v1/auth/memberships"))
+        .respond_with(ResponseTemplate::new(503).set_body_json(
+            json!({ "success": false, "data": { "code": "player_accounts_disabled" }, "error": "no" }),
+        ))
+        .mount(&server)
+        .await;
+    let e = client(&server).memberships(DEVICE).await.unwrap_err();
+    assert_eq!(e.code, ErrorCode::PlayerAccountsClosed);
 }

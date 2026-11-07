@@ -151,6 +151,8 @@
   "sign_in_client_refused",
   "sign_in_incompatible",
   "sign_in_canceled",
+  "launcher_update_required",
+  "email_in_use",
   "email_required",
   "free_server_exists",
   "too_many_free_servers",
