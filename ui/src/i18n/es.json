@@ -551,7 +551,7 @@
     "start": "Empezar",
     "languageTitle": "Elige tu idioma",
     "accountTitle": "¿Quién va a jugar?",
-    "accountBody": "Elige el nombre que verán los demás jugadores.",
+    "offlineTitle": "O juega sin conexión",
     "skip": "Omitir por ahora",
     "skipLater": "Puedes iniciar sesión después. Te lo pediremos cuando vayas a jugar.",
     "instanceTitle": "Tu primera instancia",

@@ -1,4 +1,4 @@
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { routeSnapshot } from '../../state/route';
 import { renderApp, sent } from '../../test/backend';
@@ -48,12 +48,29 @@ it('asks a beta build to sign in with Microsoft, with no name field', async () =
   expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
 });
 
-it('shows the name field in a dev build', async () => {
+it('offers Microsoft sign-in first, then the offline name, when offline accounts are allowed', async () => {
   const { user } = renderApp(<FirstRun />, { firstRun: true });
   await user.click(await screen.findByRole('button', { name: "Let's go" }));
   await user.click(screen.getByRole('button', { name: 'English' }));
-  expect(await screen.findByRole('textbox', { name: 'Player name' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Sign in with Microsoft' })).not.toBeInTheDocument();
+  const microsoft = await screen.findByRole('button', { name: 'Sign in with Microsoft' });
+  const offline = screen.getByRole('region', { name: 'Or play offline' });
+  const name = within(offline).getByRole('textbox', { name: 'Player name' });
+  expect(microsoft.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // Microsoft's is the step's one lit key: the offline Continue stays raised.
+  expect(microsoft).toHaveClass('btn-primary');
+  expect(within(offline).getByRole('button', { name: 'Continue' })).not.toHaveClass('btn-primary');
+  // Skip is only for a build without offline accounts: here the name is the way on without Microsoft.
+  expect(screen.queryByRole('button', { name: 'Skip for now' })).not.toBeInTheDocument();
+});
+
+it('goes on to the first instance after a Microsoft sign-in when offline accounts are allowed too', async () => {
+  const { user, calls } = renderApp(<FirstRun />, { firstRun: true });
+  await user.click(await screen.findByRole('button', { name: "Let's go" }));
+  await user.click(screen.getByRole('button', { name: 'Español' }));
+  await user.click(await screen.findByRole('button', { name: 'Iniciar sesión con Microsoft' }));
+  expect(await screen.findByRole('heading', { name: 'Tu primera instancia' }, { timeout: 4000 })).toBeInTheDocument();
+  expect(sent(calls, 'account_sign_in_microsoft')).toEqual([{ language: 'es' }]);
+  expect(sent(calls, 'account_add_offline')).toHaveLength(0);
 });
 
 it('lets a beta build skip the sign-in to the first instance', async () => {
