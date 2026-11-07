@@ -27,7 +27,7 @@ import {
 import type { SkinModel } from '../../ipc/schema';
 import { boxes, SKIN_SIZE, type Box, type Layer, type Part, type Vec3 } from './layout';
 import { outerWalls, type Wall } from './outerWalls';
-import { animated, celebration, CELEBRATE_S, POSE_STILL_T, rigAt, type Joint, type Pose } from './poses';
+import { AnimationClock, celebration, CELEBRATE_S, POSE_STILL_T, rigAt, type Joint, type Pose } from './poses';
 
 /** How bright each face direction is, like the game's block shading. */
 function brightness([x, y, z]: Vec3): number {
@@ -278,6 +278,8 @@ export interface Stage {
   /** The layer `pick` paints on. */
   setPaintLayer(layer: Layer): void;
   setPose(pose: Pose): void;
+  /** Holds the figure (and its boat or horse) on the current moment, or lets it move on from there. */
+  setPaused(paused: boolean): void;
   /** A hop and a turn, when a skin goes on. */
   celebrate(): void;
   /** The texel under a point of the canvas (client coordinates), on the paint layer; null over empty stage. */
@@ -382,13 +384,13 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   const view = { ...START };
   let fit = { half: Math.tan((32 * Math.PI) / 360), aspect: 1 };
   let frame = 0;
-  const started = performance.now();
+  const clock = new AnimationClock(performance.now());
   let celebratedAt = -Infinity;
 
   const still = () => motion?.matches === true;
 
   const place = (now: number) => {
-    const t = still() ? POSE_STILL_T : (now - started) / 1000;
+    const t = still() ? POSE_STILL_T : clock.at(now);
     const rig = rigAt(pose, t);
     for (const j of JOINTS) {
       const pivot = pivotOf(j, model);
@@ -429,10 +431,10 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     );
     camera.lookAt(0, framing.target, 0);
     renderer.render(scene, camera);
-    // Moving poses and the celebration keep drawing; standing holds still (it's the painting pose), and so does
-    // reduced motion. A still stage redraws only when something changes.
+    // The figure is always a little alive (breathing, looking around) until the player pauses it; the celebration
+    // plays even then. Reduced motion holds it still. A still stage redraws only when something changes.
     const celebrating = now - celebratedAt < CELEBRATE_S * 1000;
-    if (!still() && (animated(pose) || celebrating)) frame = requestAnimationFrame(draw);
+    if (!still() && (!clock.paused || celebrating)) frame = requestAnimationFrame(draw);
   };
   const invalidate = () => {
     if (!frame) frame = requestAnimationFrame(draw);
@@ -504,6 +506,12 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     },
     setPose(next) {
       pose = next;
+      invalidate();
+    },
+    setPaused(paused) {
+      const now = performance.now();
+      if (paused) clock.pause(now);
+      else clock.resume(now);
       invalidate();
     },
     celebrate() {

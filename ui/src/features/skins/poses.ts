@@ -16,9 +16,33 @@ export interface Rig {
   tilt: Vec3;
 }
 
-/** Whether the pose moves over time. Standing doesn't, so the stage stops redrawing until something changes. */
-export function animated(pose: Pose): boolean {
-  return pose !== 'still';
+/** The stage's animation time, in seconds, which the player can pause: paused, it holds the moment it stopped at,
+ *  and resumed, it goes on from there without a jump. Times in are milliseconds (`performance.now()`). */
+export class AnimationClock {
+  private base = 0;
+  private since: number | null;
+
+  constructor(now: number) {
+    this.since = now;
+  }
+
+  get paused() {
+    return this.since === null;
+  }
+
+  at(now: number): number {
+    return (this.base + (this.since === null ? 0 : now - this.since)) / 1000;
+  }
+
+  pause(now: number) {
+    if (this.since === null) return;
+    this.base += now - this.since;
+    this.since = null;
+  }
+
+  resume(now: number) {
+    if (this.since === null) this.since = now;
+  }
 }
 
 /** The time a reduced-motion stage freezes each pose at: mid-stride for the gaits. */
@@ -40,11 +64,12 @@ export function rigAt(pose: Pose, t: number): Rig {
   };
   const offset = zero();
   const tilt = zero();
+  const breathe = Math.sin(t * 1.6) * 0.03;
   switch (pose) {
     case 'still':
-      // Standing is the painting pose: arms a little out from the sides, nothing moving under the brush.
-      joints.rightArm = [0, 0, -0.06];
-      joints.leftArm = [0, 0, 0.06];
+      joints.rightArm = [0, 0, -0.06 - breathe];
+      joints.leftArm = [0, 0, 0.06 + breathe];
+      joints.head = [Math.sin(t * 0.7) * 0.04, Math.sin(t * 0.45) * 0.12, 0];
       break;
     case 'walk':
     case 'run': {

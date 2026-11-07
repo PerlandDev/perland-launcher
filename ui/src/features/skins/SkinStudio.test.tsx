@@ -221,3 +221,15 @@ it('switching arms redraws them into the new layout, and one undo puts both back
   await waitFor(() => expect(sent(calls, 'skin_update').at(-1)).toMatchObject({ model: 'classic' }));
   expect(screen.getByRole('radio', { name: 'Classic arms' })).toHaveAttribute('aria-checked', 'true');
 });
+
+it('the figure can be paused and resumed, and stays paused across poses', async () => {
+  const { user } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  await user.click(screen.getByRole('button', { name: 'Pause' }));
+  expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: /^Pose/ }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Walking' }));
+  expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Resume' }));
+  expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+});

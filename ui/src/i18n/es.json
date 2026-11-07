@@ -973,6 +973,8 @@
       "leftLeg": "Pierna izquierda"
     },
     "poseLabel": "Pose",
+    "pauseMotion": "Pausar",
+    "playMotion": "Reanudar",
     "pose": {"still": "De pie", "walk": "Caminando", "run": "Corriendo", "crouch": "Agachado", "sit": "Sentado", "wave": "Saludando", "boat": "En un bote", "horse": "A caballo"},
     "paintOn": "Pintar en",
     "zoomIn": "Acercar",

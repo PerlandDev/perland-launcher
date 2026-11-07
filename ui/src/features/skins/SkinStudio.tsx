@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { HumanArmsUp, ZoomIn, ZoomOut } from 'pixelarticons/react';
+import { HumanArmsUp, Pause, Play, ZoomIn, ZoomOut } from 'pixelarticons/react';
 import { commands } from '../../ipc/commands';
 import type { SkinEntry, SkinModel } from '../../ipc/schema';
 import { useAccounts } from '../../state/queries';
@@ -79,6 +79,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const [darken, setDarken] = useState(true);
   const [paintLayer, setPaintLayer] = useState<Layer>('base');
   const [pose, setPose] = useState<Pose>('still');
+  // Pausing holds the figure on its current moment, whichever pose it takes next, until it's played again.
+  const [paused, setPaused] = useState(false);
   const poseMenu = useRef<MenuHandle>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<[number, number] | null>(null);
@@ -314,6 +316,9 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               className="contents"
               items={POSES.map((p) => ({ id: p, label: t(`skins.pose.${p}`), icon: p === pose ? <span className="lamp" aria-hidden /> : undefined, onSelect: () => setPose(p) }))}
             />
+            <Button icon={paused ? <Play /> : <Pause />} title={paused ? t('skins.playMotion') : t('skins.pauseMotion')} onClick={() => setPaused((p) => !p)}>
+              <span className="btn-label">{paused ? t('skins.playMotion') : t('skins.pauseMotion')}</span>
+            </Button>
           </div>
 
           <div className="stage-well">
@@ -324,6 +329,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               hidden={hidden}
               paintLayer={paintLayer}
               pose={pose}
+              paused={paused}
               hover={hover}
               onHover={setHover}
               onBegin={doc.begin}

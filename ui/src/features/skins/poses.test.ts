@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { animated, celebration, CELEBRATE_S, POSE_STILL_T, POSES, rigAt, SADDLE_Y } from './poses';
+import { AnimationClock, celebration, CELEBRATE_S, POSE_STILL_T, POSES, rigAt, SADDLE_Y } from './poses';
 
 describe('poses', () => {
   it('walk swings the legs against each other and the arms against the legs', () => {
@@ -22,10 +22,23 @@ describe('poses', () => {
     expect(rig.joints.leftLeg[2]).toBeGreaterThan(0);
   });
 
-  it('standing holds perfectly still, so painting on it is steady', () => {
-    expect(rigAt('still', 0)).toEqual(rigAt('still', 3.7));
-    expect(animated('still')).toBe(false);
-    expect(POSES.filter((p) => p !== 'still').every(animated)).toBe(true);
+  it('standing breathes and looks around', () => {
+    expect(rigAt('still', 0)).not.toEqual(rigAt('still', 1.5));
+  });
+
+  it('the clock stops while paused and goes on from the same moment', () => {
+    const clock = new AnimationClock(1000);
+    expect(clock.at(3000)).toBeCloseTo(2);
+    clock.pause(3000);
+    expect(clock.at(9000)).toBeCloseTo(2);
+    // Pausing twice changes nothing.
+    clock.pause(9500);
+    expect(clock.at(9500)).toBeCloseTo(2);
+    clock.resume(10000);
+    expect(clock.at(10500)).toBeCloseTo(2.5);
+    clock.resume(11000);
+    expect(clock.at(11000)).toBeCloseTo(3);
+    expect(clock.paused).toBe(false);
   });
 
   it('wave raises the right arm above the head', () => {

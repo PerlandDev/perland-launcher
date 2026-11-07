@@ -39,6 +39,7 @@ export function Stage({
   hidden,
   paintLayer,
   pose,
+  paused,
   hover,
   onHover,
   onBegin,
@@ -52,6 +53,7 @@ export function Stage({
   hidden: Set<string>;
   paintLayer: Layer;
   pose: Pose;
+  paused: boolean;
   hover: [number, number] | null;
   onHover: (texel: [number, number] | null) => void;
   onBegin: () => void;
@@ -82,6 +84,7 @@ export function Stage({
   }, []);
   useImperativeHandle(ref, () => ({ resetView: () => scene?.resetView(), zoom: (f) => scene?.zoom(f), celebrate: () => scene?.celebrate() }), [scene]);
   useEffect(() => scene?.setPose(pose), [scene, pose]);
+  useEffect(() => scene?.setPaused(paused), [scene, paused]);
 
   useEffect(() => scene?.setModel(model), [scene, model]);
   useEffect(() => scene?.setPaintLayer(paintLayer), [scene, paintLayer]);
