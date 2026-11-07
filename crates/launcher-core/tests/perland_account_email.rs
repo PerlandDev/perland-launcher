@@ -214,8 +214,8 @@ async fn launcher_update_required_is_its_own_code() {
     answer(&server, "POST", START, 403, update_required()).await;
     answer(
         &server,
-        "POST",
-        "/api/v1/auth/player-session",
+        "GET",
+        "/api/v1/auth/memberships",
         403,
         update_required(),
     )
@@ -237,5 +237,5 @@ async fn launcher_update_required_is_its_own_code() {
             .unwrap_err(),
     );
     let auth = launcher_core::perland::AuthClient::new(http, engine);
-    is_update_required(&auth.player_session(&token()).await.unwrap_err());
+    is_update_required(&auth.memberships(&token()).await.unwrap_err());
 }

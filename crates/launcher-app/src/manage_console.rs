@@ -91,9 +91,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             let team = team.clone();
             Box::pin(async move {
                 if refused {
-                    // The Engine ended this JWT (or the base one it came from): mint both again.
+                    // The Engine ended this JWT: mint a new one.
                     core.jwts.forget(&team);
-                    core.jwts.forget_base();
                 }
                 core.manage_jwt(&team).await.map(|(_, jwt)| jwt)
             })

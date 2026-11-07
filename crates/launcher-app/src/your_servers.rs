@@ -682,7 +682,7 @@ mod tests {
 
     #[tokio::test]
     async fn managed_failure_keeps_your_servers() {
-        for failure in ["player_session", "memberships"] {
+        for failure in ["select_tenant", "memberships"] {
             let (core, runner, _host, _t) = core(BuildKind::Dev);
             sign_in(&core, "https://api.example.com");
             serve_servers(
@@ -695,7 +695,7 @@ mod tests {
             manages(&runner, &[("t-a", "alpha", vec![item("Survival", None)])]);
             let trouble = LauncherError::network(ErrorCode::HostTrouble, "trouble");
             match failure {
-                "player_session" => *runner.stack.player_session.lock().unwrap() = Err(trouble),
+                "select_tenant" => runner.stack.fail_next("select_tenant", trouble),
                 _ => *runner.stack.memberships.lock().unwrap() = Err(trouble),
             }
             let page = core.your_servers().await.unwrap().unwrap();

@@ -1604,7 +1604,7 @@ pub(crate) struct StackCall {
     pub route: &'static str,
     pub engine: Url,
     pub jwt: Option<String>,
-    /// The team the JWT was scoped to; `None` for the base JWT or no JWT.
+    /// The team the JWT was scoped to; `None` with no JWT.
     pub tenant: Option<String>,
     pub args: Vec<String>,
 }
@@ -1619,11 +1619,10 @@ pub(crate) fn fake_jwt(n: usize) -> String {
 /// A version list's `(type, minecraft)`.
 pub(crate) type VersionsKey = (String, Option<String>);
 
-/// The Engine's auth and server routes, answered from what the test scripted. `player_session`
-/// and `select_tenant` mint a new JWT per call; every call is recorded.
+/// The Engine's auth and server routes, answered from what the test scripted. `select_tenant`
+/// mints a new JWT per call; every call is recorded. `memberships` and `select_tenant` record
+/// the device token first in `args`.
 pub(crate) struct FakeStack {
-    /// Default: a fresh JWT. A scripted error is answered instead.
-    pub player_session: Mutex<Result<()>>,
     /// Default: no teams.
     pub memberships: Mutex<Result<Vec<Membership>>>,
     /// Default: no handoff route (`None`).
@@ -1665,7 +1664,6 @@ pub(crate) struct FakeStack {
 impl FakeStack {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            player_session: Mutex::new(Ok(())),
             memberships: Mutex::new(Ok(vec![])),
             handoff: Mutex::new(Ok(None)),
             get_all: Mutex::new(HashMap::new()),
@@ -1820,28 +1818,20 @@ impl FakeStack {
 }
 
 impl StackApi for FakeStack {
-    fn player_session(&self, engine: Url, device: String) -> BoxFuture<Result<SessionJwt>> {
-        let answer = match self.note("player_session", engine, None, &[&device]) {
+    fn memberships(&self, engine: Url, device: String) -> BoxFuture<Result<Vec<Membership>>> {
+        let answer = match self.note("memberships", engine, None, &[&device]) {
             Some(e) => Err(e),
-            None => self
-                .player_session
-                .lock()
-                .unwrap()
-                .clone()
-                .map(|()| self.mint()),
+            None => self.memberships.lock().unwrap().clone(),
         };
         Box::pin(async move { answer })
-    }
-    fn memberships(&self, engine: Url, jwt: SessionJwt) -> BoxFuture<Result<Vec<Membership>>> {
-        self.answer("memberships", engine, jwt, &[], &self.memberships)
     }
     fn select_tenant(
         &self,
         engine: Url,
-        jwt: SessionJwt,
+        device: String,
         tenant: String,
     ) -> BoxFuture<Result<SessionJwt>> {
-        let answer = match self.note("select_tenant", engine, Some(&jwt), &[&tenant]) {
+        let answer = match self.note("select_tenant", engine, None, &[&device, &tenant]) {
             Some(e) => Err(e),
             None => {
                 let scoped = self.mint();
