@@ -8,6 +8,7 @@ mod crash_fixes;
 pub mod deep_link;
 pub mod dto;
 pub mod events;
+pub mod folders;
 mod free_servers;
 mod friends;
 mod import;

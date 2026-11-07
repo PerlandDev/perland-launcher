@@ -28,3 +28,7 @@ tauri-plugin-updater = "=2.13.1"
 serde_json.workspace = true
 tracing.workspace = true
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+
+# Opens folders in the file manager over D-Bus (the same zbus the opener plugin uses).
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = "5.9"
