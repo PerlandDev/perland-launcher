@@ -1,0 +1,481 @@
+// The Skins screen: a fitting room. The wardrobe at left, the figure on its stage in the middle, the flat texture and
+// colours at right, and the tools in a hotbar along the bottom (keys 1–9).
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { open, save } from '@tauri-apps/plugin-dialog';
+import { Eye, EyeOff, Human, ZoomIn, ZoomOut } from 'pixelarticons/react';
+import { commands } from '../../ipc/commands';
+import type { SkinEntry, SkinModel } from '../../ipc/schema';
+import { useAccounts } from '../../state/queries';
+import { navigate } from '../../state/route';
+import { pushError, pushNotice } from '../../state/toasts';
+import { Button } from '../../ui/Button';
+import { Dialog } from '../../ui/Dialog';
+import { Field } from '../../ui/Field';
+import { ChevronDown, Copy, Download, Pencil, Reload, Shirt, Trash } from '../../ui/Icon';
+import type { MenuItem } from '../../ui/Menu';
+import { useSingleFlight } from '../../ui/useSingleFlight';
+import { encodeTexture } from './codec';
+import { ColourPanel } from './ColourPanel';
+import { Hotbar } from './Hotbar';
+import { SLOT_TOOLS } from './tools';
+import { PARTS, type Layer } from './layout';
+import { toHex, type Rgba, type Tool } from './paint';
+import { Stage, type StageHandle } from './Stage';
+import { blankSkin, starterSkin } from './starter';
+import { TexturePanel } from './TexturePanel';
+import { useSkinDoc } from './useSkinDoc';
+import { Wardrobe } from './Wardrobe';
+import './skins.css';
+
+const SKINS_KEY = ['skins'] as const;
+const RECENT_MAX = 9;
+
+function typing(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    (target instanceof HTMLTextAreaElement || target.isContentEditable || (target instanceof HTMLInputElement && target.type !== 'checkbox' && target.type !== 'radio'))
+  );
+}
+
+export default function SkinStudio({ skin, account }: { skin?: string; account?: string }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const entries = useQuery({ queryKey: SKINS_KEY, queryFn: commands.skinsList });
+  const accounts = useAccounts();
+  const wearer = useMemo(() => {
+    const list = accounts.data?.accounts ?? [];
+    return list.find((a) => a.uuid === (account ?? accounts.data?.active)) ?? null;
+  }, [accounts.data, account]);
+  const list = useMemo(() => entries.data ?? [], [entries.data]);
+  const [picked, setPicked] = useState<string | null>(skin ?? null);
+  const selected = list.find((e) => e.id === picked) ?? list[0] ?? null;
+  const model: SkinModel = selected?.model ?? 'classic';
+  const refresh = () => void qc.invalidateQueries({ queryKey: SKINS_KEY });
+  const doc = useSkinDoc(selected?.id ?? null, model, refresh);
+
+  const [tool, setTool] = useState<Tool>('pencil');
+  const [color, setColorState] = useState<Rgba>([108, 171, 60, 255]);
+  const [recent, setRecent] = useState<string[]>([]);
+  const [mirror, setMirror] = useState(false);
+  const [darken, setDarken] = useState(true);
+  const [paintLayer, setPaintLayer] = useState<Layer>('base');
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [hover, setHover] = useState<[number, number] | null>(null);
+  const [partsOpen, setPartsOpen] = useState(false);
+  const [renaming, setRenaming] = useState<SkinEntry | null>(null);
+  const [newName, setNewName] = useState('');
+  const [deleting, setDeleting] = useState<SkinEntry | null>(null);
+  const [wearing, setWearing] = useState(false);
+  const stage = useRef<StageHandle | null>(null);
+  const partsBox = useRef<HTMLDivElement>(null);
+  // The parts panel closes on a click outside it or Escape, like a menu.
+  useEffect(() => {
+    if (!partsOpen) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!partsBox.current?.contains(e.target as Node)) setPartsOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setPartsOpen(false);
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [partsOpen]);
+  const once = useSingleFlight();
+  const outerShown = PARTS.some((p) => !hidden.has(`${p}:outer`));
+
+  const setColor = (c: Rgba) => {
+    setColorState(c);
+    const hex = toHex(c);
+    setRecent((r) => [hex, ...r.filter((x) => x !== hex)].slice(0, RECENT_MAX));
+  };
+
+  const create = async (name: string, model: SkinModel, texture: string) => {
+    const entry = await commands.skinCreate(name, model, texture);
+    qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [entry, ...(old ?? [])]);
+    setPicked(entry.id);
+    return entry;
+  };
+
+  const fromAccount = async () => {
+    if (!wearer) return;
+    const current = await commands.skinCurrent(wearer.uuid);
+    if (!current) {
+      pushNotice({ title: t('skins.noCurrent') });
+      return;
+    }
+    await create(t('skins.currentName', { name: wearer.username }), current.model, current.texture);
+  };
+
+  // A first visit finds an empty wardrobe. A Microsoft account starts from the skin it really wears, never a made-up
+  // one: if that can't be read, or the account wears Minecraft's default, the wardrobe stays empty and says so.
+  // Offline, the Perlander gets the player started.
+  const seeded = useRef(false);
+  const [defaultSkin, setDefaultSkin] = useState(false);
+  useEffect(() => {
+    if (!entries.isSuccess || list.length > 0 || seeded.current || !accounts.isSuccess) return;
+    seeded.current = true;
+    void (async () => {
+      try {
+        if (wearer?.provider === 'microsoft') {
+          const current = await commands.skinCurrent(wearer.uuid);
+          if (current) await create(t('skins.currentName', { name: wearer.username }), current.model, current.texture);
+          else setDefaultSkin(true);
+        } else {
+          await create(t('skins.starterName'), 'classic', encodeTexture(starterSkin().data));
+        }
+      } catch (error) {
+        pushError(error);
+      }
+    })();
+    // create and t are stable enough for a one-time seed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entries.isSuccess, list.length, accounts.isSuccess, wearer]);
+
+  const newItems: MenuItem[] = [
+    ...(wearer?.provider === 'microsoft'
+      ? [{ id: 'current', label: t('skins.newFromAccount'), onSelect: () => void fromAccount().catch(pushError) }]
+      : []),
+    { id: 'starter', label: t('skins.newStarter'), onSelect: () => void create(t('skins.starterName'), 'classic', encodeTexture(starterSkin().data)).catch(pushError) },
+    { id: 'blank', label: t('skins.newBlank'), onSelect: () => void create(t('skins.blankName'), 'classic', encodeTexture(blankSkin().data)).catch(pushError) },
+  ];
+
+  const importSkin = async () => {
+    const path = await open({ multiple: false, filters: [{ name: t('skins.pngFilter'), extensions: ['png'] }] });
+    if (typeof path !== 'string') return;
+    const entry = await commands.skinImport(path);
+    qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [entry, ...(old ?? [])]);
+    setPicked(entry.id);
+  };
+
+  const exportSkin = async (entry: SkinEntry) => {
+    await doc.flush();
+    const path = await save({ defaultPath: `${entry.name.replace(/[<>:"/\\|?*]/g, '-')}.png`, filters: [{ name: t('skins.pngFilter'), extensions: ['png'] }] });
+    if (!path) return;
+    await commands.skinExport(entry.id, path);
+    pushNotice({ title: t('skins.exported', { name: entry.name }) });
+  };
+
+  const menuFor = (entry: SkinEntry): MenuItem[] => [
+    { id: 'rename', label: t('skins.rename'), icon: <Pencil />, onSelect: () => (setNewName(entry.name), setRenaming(entry)) },
+    {
+      id: 'duplicate',
+      label: t('skins.duplicate'),
+      icon: <Copy />,
+      onSelect: () =>
+        void doc
+          .flush()
+          .then(() => commands.skinDuplicate(entry.id, t('skins.copyName', { name: entry.name }).slice(0, 64)))
+          .then((copy) => {
+            qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [copy, ...(old ?? [])]);
+            setPicked(copy.id);
+          })
+          .catch(pushError),
+    },
+    { id: 'export', label: t('skins.export'), icon: <Download />, onSelect: () => void exportSkin(entry).catch(pushError) },
+    { id: 'delete', label: t('skins.delete'), icon: <Trash />, danger: true, onSelect: () => setDeleting(entry) },
+  ];
+
+  const setModel = (next: SkinModel) => {
+    if (!selected || selected.model === next) return;
+    commands
+      .skinUpdate(selected.id, { model: next })
+      .then((entry) => qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => old?.map((e) => (e.id === entry.id ? entry : e))))
+      .catch(pushError);
+  };
+
+  const toggleOuter = () =>
+    setHidden((h) => {
+      const next = new Set(h);
+      for (const p of PARTS) {
+        if (outerShown) next.add(`${p}:outer`);
+        else next.delete(`${p}:outer`);
+      }
+      return next;
+    });
+  const togglePart = (key: string) =>
+    setHidden((h) => {
+      const next = new Set(h);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  const strokeOpts = { tool, color, mirror, darken };
+  const paintAt = (x: number, y: number, joined: boolean) => {
+    if (tool === 'picker') {
+      const c = doc.pixels?.get(x, y);
+      if (c && c[3] > 0) setColor([c[0], c[1], c[2], 255]);
+      return;
+    }
+    doc.paint(x, y, strokeOpts, joined);
+  };
+
+  const wear = () => {
+    if (!selected || !wearer) return;
+    once((done) => {
+      setWearing(true);
+      void doc
+        .flush()
+        .then(() => commands.skinWear(selected.id, wearer.uuid))
+        .then((next) => {
+          qc.setQueryData(SKINS_KEY, next);
+          void qc.invalidateQueries({ queryKey: ['accountFace'] });
+          pushNotice({ title: t('skins.worn', { name: selected.name }), body: t('skins.wornBody') });
+        })
+        .catch(pushError)
+        .finally(() => {
+          setWearing(false);
+          done();
+        });
+    });
+  };
+
+  // Keys: 1–9 press the hotbar, Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes, Shift held makes Shade lighten.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.type === 'keyup') {
+        if (event.key === 'Shift') setDarken(true);
+        return;
+      }
+      if (event.key === 'Shift') setDarken(false);
+      if (typing(event.target) || document.querySelector('dialog[open]') || event.altKey) return;
+      const ctrl = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      if (ctrl && (key === 'y' || (key === 'z' && event.shiftKey))) {
+        event.preventDefault();
+        doc.redo();
+      } else if (ctrl && key === 'z') {
+        event.preventDefault();
+        doc.undo();
+      } else if (!ctrl && /^[1-9]$/.test(event.key)) {
+        const n = Number(event.key);
+        if (n <= SLOT_TOOLS.length) setTool(SLOT_TOOLS[n - 1]!);
+        else if (n === 7) setMirror((m) => !m);
+        else if (n === 8) doc.undo();
+        else doc.redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKey);
+    };
+  }, [doc]);
+
+  const saveLabel = doc.save === 'saved' ? t('skins.saved') : t('skins.saving');
+
+  return (
+    <section className="skins-screen" aria-labelledby="skins-title">
+      <header className="skins-head">
+        <Button variant="ghost" size="icon" aria-label={t('common.back')} title={t('common.back')} icon={<ChevronDown className="rotate-90" />} onClick={() => navigate({ name: 'home', id: null })} />
+        <h1 id="skins-title" className="font-display text-[2rem] leading-none">
+          {t('skins.title')}
+        </h1>
+        {selected && (
+          <p className="min-w-0 truncate text-lg font-bold" title={selected.name}>
+            {selected.name}
+          </p>
+        )}
+        <p className="ml-auto text-sm text-ink-dim" role="status">
+          {selected ? saveLabel : ''}
+        </p>
+      </header>
+
+      <div className="skins-body">
+        <Wardrobe
+          entries={list}
+          selected={selected?.id ?? null}
+          wearer={wearer?.uuid ?? null}
+          onSelect={(id) => void doc.flush().then(() => setPicked(id))}
+          emptyNote={defaultSkin ? t('skins.emptyDefault') : t('skins.empty')}
+          newItems={newItems}
+          onImport={() => void importSkin().catch(pushError)}
+          menuFor={menuFor}
+        />
+
+        <div className="stage">
+          <div className="stage-bar">
+            <div role="radiogroup" aria-label={t('skins.arms')} className="flex gap-2">
+              {(['classic', 'slim'] as const).map((m) => (
+                <button key={m} type="button" role="radio" aria-checked={model === m} className="seg seg-sm" data-checked={model === m || undefined} onClick={() => setModel(m)}>
+                  {t(`skins.model.${m}`)}
+                </button>
+              ))}
+            </div>
+            <Button size="md" aria-pressed={outerShown} title={t('skins.outerLayer')} icon={outerShown ? <Eye /> : <EyeOff />} onClick={toggleOuter}>
+              <span className="btn-label">{t('skins.outerLayer')}</span>
+            </Button>
+            <div className="relative" ref={partsBox}>
+              <Button icon={<Human />} title={t('skins.parts')} aria-expanded={partsOpen} onClick={() => setPartsOpen((o) => !o)}>
+                <span className="btn-label">{t('skins.parts')}</span>
+              </Button>
+              {partsOpen && (
+                <div className="parts-pop panel" role="group" aria-label={t('skins.parts')}>
+                  <div className="parts-grid">
+                    <span />
+                    <span className="text-xs text-ink-dim">{t('skins.layer.base')}</span>
+                    <span className="text-xs text-ink-dim">{t('skins.layer.outer')}</span>
+                    {PARTS.map((part) => (
+                      <div key={part} className="contents">
+                        <span className="text-sm">{t(`skins.part.${part}`)}</span>
+                        {(['base', 'outer'] as const).map((layer) => (
+                          <input
+                            key={layer}
+                            type="checkbox"
+                            className="check"
+                            aria-label={`${t(`skins.part.${part}`)} · ${t(`skins.layer.${layer}`)}`}
+                            checked={!hidden.has(`${part}:${layer}`)}
+                            onChange={() => togglePart(`${part}:${layer}`)}
+                          />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="stage-well">
+            <Stage
+              pixels={doc.pixels}
+              rev={doc.rev}
+              model={model}
+              hidden={hidden}
+              paintLayer={paintLayer}
+              hover={hover}
+              onHover={setHover}
+              onBegin={doc.begin}
+              onPaint={(x, y) => paintAt(x, y, false)}
+              onEnd={doc.end}
+              ref={stage}
+            />
+            <div className="stage-view">
+              <Button variant="ghost" size="icon" aria-label={t('skins.zoomIn')} title={t('skins.zoomIn')} icon={<ZoomIn />} onClick={() => stage.current?.zoom(1 / 1.15)} />
+              <Button variant="ghost" size="icon" aria-label={t('skins.zoomOut')} title={t('skins.zoomOut')} icon={<ZoomOut />} onClick={() => stage.current?.zoom(1.15)} />
+              <Button variant="ghost" size="icon" aria-label={t('skins.resetView')} title={t('skins.resetView')} icon={<Reload />} onClick={() => stage.current?.resetView()} />
+            </div>
+            <p className="stage-hint text-sm text-ink-dim">{t('skins.stageHint')}</p>
+            <div className="stage-wear">
+              {wearer?.provider === 'microsoft' ? (
+                <Button variant="primary" size="lg" icon={<Shirt />} aria-disabled={wearing || undefined} disabled={!selected} onClick={wear}>
+                  {wearing ? t('skins.wearingNow') : t('skins.wear')}
+                </Button>
+              ) : (
+                <p className="stage-offline">{wearer ? t('skins.offlineNote') : t('skins.noAccountNote')}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <aside className="skins-side" aria-label={t('skins.texture')}>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="sr-only">{t('skins.texture')}</h2>
+            <span className="text-sm text-ink-dim" aria-hidden>
+              {t('skins.paintOn')}
+            </span>
+            <div role="radiogroup" aria-label={t('skins.paintOn')} className="flex items-center gap-2">
+              {(['base', 'outer'] as const).map((layer) => (
+                <button key={layer} type="button" role="radio" aria-checked={paintLayer === layer} title={`${t('skins.paintOn')}: ${t(`skins.layer.${layer}`)}`} className="seg seg-sm" data-checked={paintLayer === layer || undefined} onClick={() => setPaintLayer(layer)}>
+                  {t(`skins.layer.${layer}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <TexturePanel
+            pixels={doc.pixels}
+            rev={doc.rev}
+            model={model}
+            hover={hover}
+            paintLayer={paintLayer}
+            onHover={setHover}
+            onBegin={doc.begin}
+            onPaint={paintAt}
+            onEnd={doc.end}
+          />
+          <ColourPanel color={color} recent={recent} onColor={setColor} />
+        </aside>
+      </div>
+
+      <Hotbar
+        tool={tool}
+        onTool={setTool}
+        mirror={mirror}
+        onMirror={() => setMirror((m) => !m)}
+        canUndo={doc.canUndo}
+        canRedo={doc.canRedo}
+        onUndo={doc.undo}
+        onRedo={doc.redo}
+      />
+
+      <Dialog
+        open={renaming !== null}
+        onClose={() => setRenaming(null)}
+        title={t('skins.renameTitle')}
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setRenaming(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              disabled={newName.trim().length === 0}
+              onClick={() => {
+                const target = renaming;
+                if (!target) return;
+                commands
+                  .skinUpdate(target.id, { name: newName })
+                  .then((entry) => qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => old?.map((e) => (e.id === entry.id ? entry : e))))
+                  .catch(pushError)
+                  .finally(() => setRenaming(null));
+              }}
+            >
+              {t('skins.renameSave')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('skins.name')}>
+          <input className="field-input" value={newName} maxLength={64} onChange={(e) => setNewName(e.target.value)} />
+        </Field>
+      </Dialog>
+
+      <Dialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title={t('skins.deleteTitle', { name: deleting?.name ?? '' })}
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setDeleting(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                const target = deleting;
+                if (!target) return;
+                commands
+                  .skinDelete(target.id)
+                  .then(() => {
+                    qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => old?.filter((e) => e.id !== target.id));
+                    if (picked === target.id) setPicked(null);
+                  })
+                  .catch(pushError)
+                  .finally(() => setDeleting(null));
+              }}
+            >
+              {t('skins.deleteConfirm')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-ink-dim">{t('skins.deleteBody')}</p>
+      </Dialog>
+    </section>
+  );
+}

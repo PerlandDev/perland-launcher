@@ -26,7 +26,7 @@ export class History {
   undo(px: Pixels): boolean {
     const stroke = this.done.pop();
     if (!stroke) return false;
-    for (let i = stroke.length - 1; i >= 0; i--) px.set(stroke[i].x, stroke[i].y, stroke[i].before);
+    for (const c of [...stroke].reverse()) px.set(c.x, c.y, c.before);
     this.undone.push(stroke);
     return true;
   }

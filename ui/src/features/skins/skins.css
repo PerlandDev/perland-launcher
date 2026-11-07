@@ -1,0 +1,458 @@
+/* The Skins screen: a fitting room inside the Arcade Cabinet. Raised keys on dirt steps, notched corners,
+   the lime lamp for a chosen tool, amber only on Wear this skin. */
+@reference '../../styles/app.css';
+
+.skins-screen {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  padding: 0 1.5rem;
+}
+
+.skins-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+  padding: 1.25rem 0 1rem;
+}
+
+.skins-body {
+  display: grid;
+  grid-template-columns: clamp(11.5rem, 15vw, 14rem) minmax(0, 1fr) clamp(16.5rem, 22vw, 20rem);
+  gap: 1rem;
+  min-height: 0;
+}
+
+/* Wardrobe */
+.wardrobe {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-content: start;
+  gap: 0.75rem;
+  min-height: 0;
+}
+.wardrobe .btn {
+  padding: 0 0.625rem;
+  min-width: 0;
+}
+.wardrobe-list {
+  display: grid;
+  align-content: start;
+  gap: 0.375rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 2px 6px;
+}
+.wardrobe-item {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding-right: 0.25rem;
+  background: var(--color-panel);
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+}
+.wardrobe-item[data-selected] {
+  background: var(--color-ground);
+  box-shadow:
+    inset 0 2px 0 rgb(0 0 0 / 0.45),
+    inset 0 0 0 1px var(--color-line);
+}
+.wardrobe-pick {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+  padding: 0.5rem 0.5rem 0.5rem 0.625rem;
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  cursor: pointer;
+}
+.wardrobe-item:not([data-selected]):hover {
+  background: color-mix(in oklab, var(--color-panel), white 5%);
+}
+.wardrobe-face {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  image-rendering: pixelated;
+  background: var(--color-ground);
+  border-radius: 3px;
+  corner-shape: notch;
+  box-shadow: 0 3px 0 var(--color-dirt-deep);
+}
+.lamp {
+  display: inline-block;
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--color-lime);
+}
+
+/* Stage */
+.stage {
+  container: stage / inline-size;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.75rem;
+  min-width: 0;
+  min-height: 0;
+}
+.stage-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.625rem 0.75rem;
+  padding-bottom: 4px;
+}
+.seg-sm {
+  min-height: 2.25rem;
+  padding: 0 0.875rem;
+  font-size: 0.875rem;
+}
+.stage-well {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-panel);
+  border-radius: 6px;
+  corner-shape: notch;
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 0.4),
+    inset 0 0 0 1px var(--color-line);
+}
+/* The floor line the plinth stands on: a 2px pixel rule of seam-line blocks, like the description rule. */
+.stage-well::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 22% 0;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, var(--color-line) 0 4px, transparent 4px 8px);
+  pointer-events: none;
+  opacity: 0.6;
+}
+.stage-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+  touch-action: none;
+}
+.stage-view {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  z-index: 2;
+  display: grid;
+  gap: 0.25rem;
+}
+.stage-hint {
+  position: absolute;
+  left: 1rem;
+  bottom: 0.875rem;
+  z-index: 2;
+  max-width: 15rem;
+  pointer-events: none;
+  text-wrap: pretty;
+}
+.stage-wear {
+  position: absolute;
+  right: 1rem;
+  bottom: 1.125rem;
+  z-index: 2;
+}
+.stage-offline {
+  max-width: 17rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  color: var(--color-ink-dim);
+  text-wrap: pretty;
+  background: color-mix(in oklab, var(--color-ground) 88%, transparent);
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow: inset 0 0 0 1px var(--color-line);
+}
+.parts-pop {
+  position: absolute;
+  top: calc(100% + 0.75rem);
+  left: 0;
+  z-index: 20;
+  padding: 0.875rem 1rem;
+  box-shadow: 0 6px 0 var(--color-dirt-deep);
+}
+.parts-grid {
+  display: grid;
+  grid-template-columns: auto 3.25rem 3.25rem;
+  align-items: center;
+  justify-items: center;
+  gap: 0.375rem 0.5rem;
+  white-space: nowrap;
+}
+.parts-grid > span:nth-child(3n + 1),
+.parts-grid .text-sm {
+  justify-self: start;
+}
+.check {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--color-lime);
+  cursor: pointer;
+}
+
+/* Texture and colours */
+.skins-side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 2px 6px;
+}
+.skins-side > * {
+  flex: none;
+}
+.texture-sheet {
+  position: relative;
+  aspect-ratio: 1;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 6px;
+  corner-shape: notch;
+  /* Transparent texels read as a quiet checker of the room's own ground and panel, 2 texels a square. */
+  background-color: var(--color-ground);
+  background-image: repeating-conic-gradient(var(--color-panel) 0 25%, transparent 0 50%);
+  background-size: 6.25% 6.25%;
+  box-shadow: inset 0 0 0 1px var(--color-line);
+}
+.texture-canvas,
+.texture-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+.texture-overlay {
+  cursor: crosshair;
+  touch-action: none;
+}
+.texture-face {
+  fill: none;
+  stroke: color-mix(in oklab, var(--color-ink-dim) 55%, transparent);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+.texture-face-off {
+  stroke: color-mix(in oklab, var(--color-ink-dim) 22%, transparent);
+  stroke-dasharray: 2 3;
+}
+.texture-hover {
+  fill: none;
+  stroke: var(--color-ink);
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+.colour-well {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: var(--color-raised);
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow: 0 4px 0 var(--color-dirt-deep);
+  cursor: pointer;
+}
+.colour-well:active {
+  translate: 0 4px;
+  box-shadow: none;
+}
+.colour-well:has(input:focus-visible) {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 3px;
+}
+.colour-chip {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 3px;
+  corner-shape: notch;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.35);
+}
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 4px;
+  padding: 3px;
+}
+.swatches-presets {
+  border-top: 1px solid var(--color-line);
+  padding-top: 0.5rem;
+}
+.colour-swatch {
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border-radius: 3px;
+  corner-shape: notch;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.35);
+  cursor: pointer;
+}
+.colour-swatch:hover {
+  translate: 0 -1px;
+}
+.colour-swatch[aria-pressed='true'] {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 1px;
+}
+
+/* Hotbar: nine raised keys numbered 1–9; the chosen tool presses into its slot with the lime lamp. */
+.hotbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.875rem 0 1rem;
+}
+.hotbar-group {
+  display: flex;
+  gap: 0.5rem;
+}
+.hotbar-seam {
+  align-self: center;
+  width: 1px;
+  height: 2.5rem;
+  margin: 0 0.25rem;
+  background: var(--color-line);
+}
+.hotbar-slot {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0.1875rem;
+  width: 4.25rem;
+  height: 3.5rem;
+  color: var(--color-ink);
+  background: var(--color-raised);
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow: 0 4px 0 var(--color-dirt-deep);
+  cursor: pointer;
+  transition:
+    translate 180ms steps(2, end),
+    box-shadow 180ms steps(2, end);
+}
+.hotbar-slot svg {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+.hotbar-slot:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--color-raised), white 7%);
+}
+.hotbar-slot:active:not(:disabled),
+.hotbar-slot[aria-checked='true'],
+.hotbar-slot[aria-pressed='true'] {
+  translate: 0 4px;
+  background: var(--color-ground);
+  box-shadow:
+    inset 0 2px 0 rgb(0 0 0 / 0.45),
+    inset 0 0 0 1px var(--color-line);
+}
+.hotbar-slot[aria-checked='true']::after,
+.hotbar-slot[aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  top: 0.375rem;
+  right: 0.375rem;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  background: var(--color-lime);
+}
+.hotbar-slot:disabled {
+  color: var(--color-ink-dim);
+  background: var(--color-panel);
+  translate: 0 4px;
+  box-shadow: inset 0 0 0 1px var(--color-line);
+  cursor: not-allowed;
+}
+.hotbar-key {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.4375rem;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  line-height: 1;
+  color: var(--color-ink-dim);
+}
+.hotbar-label {
+  max-width: 100%;
+  padding: 0 0.25rem;
+  overflow: hidden;
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A narrow stage (the 960 px window): the bar's keys drop their words, the hint gives way to the wear key. */
+@container stage (width < 34rem) {
+  .stage-bar .btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .stage-bar .btn {
+    min-width: 2.5rem;
+    padding: 0 0.625rem;
+  }
+  .stage-hint {
+    display: none;
+  }
+  .stage-wear {
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .stage-offline {
+    max-width: none;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+}
+@media (width < 1200px) {
+  .skins-screen {
+    padding: 0 1rem;
+  }
+  .skins-head {
+    padding: 0.875rem 0 0.75rem;
+  }
+  .skins-body {
+    grid-template-columns: 11rem minmax(0, 1fr) 15rem;
+    gap: 0.75rem;
+  }
+  .hotbar {
+    padding: 0.625rem 0 0.75rem;
+  }
+  .hotbar-slot {
+    width: 4rem;
+    height: 3.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hotbar-slot {
+    transition: none;
+  }
+}

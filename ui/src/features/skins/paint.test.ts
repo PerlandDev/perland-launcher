@@ -202,7 +202,7 @@ describe('starter skins', () => {
           }
         }
         // The outer layer starts empty.
-        const hat = boxOf(model, 'head', 'outer').faces[0];
+        const hat = boxOf(model, 'head', 'outer').faces[0]!;
         expect(px.get(hat.x, hat.y)[3]).toBe(0);
       }
     }

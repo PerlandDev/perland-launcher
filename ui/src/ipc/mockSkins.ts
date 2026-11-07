@@ -1,5 +1,7 @@
 // Mock skin wardrobe for `pnpm --filter ui dev:mock` and the tests: in memory, with a scripted current skin and upload.
 import skinEntriesFx from './contract/skin_entries.json';
+import { encodeTexture } from '../features/skins/codec';
+import { blankSkin, starterSkin } from '../features/skins/starter';
 import type { AccountsFile, CurrentSkin, LauncherError, SkinEntry, SkinModel } from './schema';
 
 export const NOT_SKINS = Symbol('not a skin command');
@@ -23,22 +25,18 @@ function fail(category: LauncherError['category'], code: string, message: string
   throw { category, code, message, fix: null, detail: null, params } satisfies LauncherError;
 }
 
-/** A 64 × 64 PNG of one colour, drawn on a canvas when there is one (dev:mock), else a placeholder data URL. */
-function swatchSkin(rgb: string): string {
-  if (typeof document === 'undefined') return `${PNG_URL}AAAA`;
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext?.('2d');
-  if (!ctx) return `${PNG_URL}AAAA`;
-  ctx.fillStyle = rgb;
-  ctx.fillRect(0, 0, 64, 64);
-  return canvas.toDataURL('image/png');
+/** A skin drawn by the starter code (dev:mock has a canvas), else a placeholder data URL (tests). */
+function drawn(kind: 'starter' | 'blank', model: SkinModel): string {
+  try {
+    return encodeTexture((kind === 'starter' ? starterSkin(model) : blankSkin(model)).data);
+  } catch {
+    return `${PNG_URL}AAAA`;
+  }
 }
 
 export function seedSkins(scenario: SkinsScenario = 'seeded'): SkinsState {
   const entries = scenario === 'empty' ? [] : (skinEntriesFx as SkinEntry[]).map((e) => ({ ...e }));
-  const textures = new Map(entries.map((e, i) => [e.id, swatchSkin(i === 0 ? '#3a7a5a' : '#7a4a2a')]));
+  const textures = new Map(entries.map((e, i) => [e.id, drawn(i === 0 ? 'starter' : 'blank', e.model)]));
   return { entries, textures, scenario, current: null, uploads: [], seq: 0 };
 }
 
@@ -95,7 +93,7 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       const path = String(args.path);
       if (!path.toLowerCase().endsWith('.png')) fail('integrity', 'skin_invalid', "That file isn't a Minecraft skin.");
       const stem = path.split(/[\\/]/).pop()!.replace(/\.png$/i, '') || 'Skin';
-      return add(state, stem, 'classic', swatchSkin('#5b636d'));
+      return add(state, stem, 'classic', drawn('blank', 'classic'));
     }
     case 'skin_save': {
       const entry = find(state, args.id);

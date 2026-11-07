@@ -17,6 +17,8 @@ export type Route =
   // A server the player runs, by its team and its name there.
   | { name: 'manage'; tenantId: string; stack: string }
   | { name: 'accounts' }
+  // The Skins screen: the wardrobe, opened on a skin and wearing it on an account (the active one by default).
+  | { name: 'skins'; skin?: string; account?: string }
   | { name: 'achievements' }
   | { name: 'settings' };
 

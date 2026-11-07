@@ -26,7 +26,7 @@ export class Pixels {
   get(x: number, y: number): Rgba {
     const i = (y * SKIN_SIZE + x) * 4;
     const d = this.data;
-    return [d[i], d[i + 1], d[i + 2], d[i + 3]];
+    return [d[i]!, d[i + 1]!, d[i + 2]!, d[i + 3]!];
   }
 
   set(x: number, y: number, [r, g, b, a]: Rgba) {
