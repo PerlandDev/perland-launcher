@@ -296,6 +296,17 @@ where
     }
 }
 
+/// Remembers `texture` as the skin `uuid` wears now (after the launcher put it on), so the
+/// account's face shows it at once instead of when the remembered one expires.
+pub async fn remember_texture(cache_dir: &Path, uuid: &str, texture: &[u8]) -> Result<()> {
+    let Some(id) = profile_id(uuid) else {
+        return Ok(());
+    };
+    write_atomic(&cache_dir.join(format!("{id}.png")), texture).await?;
+    let _ = tokio::fs::remove_file(cache_dir.join(format!("{id}.{NONE_EXT}"))).await;
+    Ok(())
+}
+
 /// How long ago `path` was written, or `None` when it isn't there.
 async fn age(path: &Path) -> Option<Duration> {
     let modified = tokio::fs::metadata(path).await.ok()?.modified().ok()?;

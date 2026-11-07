@@ -48,6 +48,7 @@ use launcher_core::{
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
+    skins_library::SkinModel,
     sources::{
         DesiredState, FileMode, FileSource, OptionalFile, PackAbout, PackFile, PackInput, Side,
         UpdateCheck,
@@ -1079,6 +1080,10 @@ pub(crate) struct FakeMsa {
     pub refreshes: Mutex<VecDeque<Result<SignedIn>>>,
     /// What each `profile` answers, in order; when none is left, Alex's profile.
     pub profiles: Mutex<VecDeque<Result<Option<McProfile>>>>,
+    /// What each `skin_model` answers, in order; when none is left, no skin.
+    pub skin_models: Mutex<VecDeque<Result<Option<SkinModel>>>>,
+    /// What each `upload_skin` answers, in order; when none is left, it works.
+    pub uploads: Mutex<VecDeque<Result<()>>>,
     pub calls: Mutex<Vec<MsaCall>>,
     /// Methods whose calls wait for a permit of their gate (see `hold`).
     holds: Mutex<HashMap<&'static str, Arc<Semaphore>>>,
@@ -1095,6 +1100,8 @@ impl FakeMsa {
             redeems: Mutex::new(VecDeque::new()),
             refreshes: Mutex::new(VecDeque::new()),
             profiles: Mutex::new(VecDeque::new()),
+            skin_models: Mutex::new(VecDeque::new()),
+            uploads: Mutex::new(VecDeque::new()),
             calls: Mutex::new(Vec::new()),
             holds: Mutex::new(HashMap::new()),
         })
@@ -1249,6 +1256,25 @@ impl MsaApi for FakeMsa {
         self.answer("profile", &[&token.access_token], &self.profiles, || {
             Some(signed_in("Alex", FAKE_MSA_ID).profile)
         })
+    }
+
+    fn skin_model(&self, token: McToken) -> BoxFuture<Result<Option<SkinModel>>> {
+        self.answer(
+            "skin_model",
+            &[&token.access_token],
+            &self.skin_models,
+            || None,
+        )
+    }
+
+    fn upload_skin(&self, token: McToken, png: Vec<u8>, model: SkinModel) -> BoxFuture<Result<()>> {
+        let size = png.len().to_string();
+        self.answer(
+            "upload_skin",
+            &[&token.access_token, model.variant(), &size],
+            &self.uploads,
+            || (),
+        )
     }
 }
 

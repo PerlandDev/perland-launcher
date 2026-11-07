@@ -8,7 +8,7 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { Check, Trash } from '../../ui/Icon';
+import { Check, Shirt, Trash } from '../../ui/Icon';
 import { formatPlaytime } from '../../ui/playtime';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useSingleFlight } from '../../ui/useSingleFlight';
@@ -145,6 +145,14 @@ export function Accounts() {
                   ) : (
                     <Button onClick={() => use(account)}>{t('accounts.use')}</Button>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t('accounts.editSkinLabel', { name: account.username })}
+                    title={t('accounts.editSkin')}
+                    icon={<Shirt />}
+                    onClick={() => navigate({ name: 'skins', account: account.uuid })}
+                  />
                   <Button
                     variant="ghost"
                     size="icon"

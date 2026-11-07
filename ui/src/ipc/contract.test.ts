@@ -58,6 +58,8 @@ import serverInstanceFx from './contract/server_instance.json';
 import serverNews from './contract/server_news.json';
 import serverStatusFx from './contract/server_status.json';
 import settingsFx from './contract/settings.json';
+import skinEntriesFx from './contract/skin_entries.json';
+import currentSkinFx from './contract/current_skin.json';
 import shareChoiceFx from './contract/share_choice.json';
 import sharePreviewFx from './contract/share_preview.json';
 import friendsCheckFx from './contract/friends_check.json';
@@ -75,6 +77,8 @@ import * as s from './schema';
 
 const cases: [string, ZodType, unknown][] = [
   ['accounts', s.accountsFile, accounts],
+  ['skin_entries', s.skinEntry.array(), skinEntriesFx],
+  ['current_skin', s.currentSkin.nullable().array(), currentSkinFx],
   ['account_ready', s.accountReady.array(), accountReadyFx],
   ['app_info', s.appInfo, appInfo],
   ['content_files', s.contentFile.array(), contentFiles],

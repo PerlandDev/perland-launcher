@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AchievementsScreen } from './features/medals/AchievementsScreen';
 import { Accounts } from './features/accounts/Accounts';
@@ -28,6 +28,9 @@ import { ErrorCard } from './ui/ErrorCard';
 import { Toasts } from './ui/Toasts';
 import { useSingleFlight } from './ui/useSingleFlight';
 
+// three.js stays out of the start bundle: the Skins screen loads on first visit.
+const SkinStudio = lazy(() => import('./features/skins/SkinStudio'));
+
 function Screen({ route }: { route: Route }) {
   switch (route.name) {
     case 'home':
@@ -55,6 +58,12 @@ function Screen({ route }: { route: Route }) {
       return <ManageScreen key={`${route.tenantId}/${route.stack}`} tenantId={route.tenantId} stack={route.stack} />;
     case 'accounts':
       return <Accounts />;
+    case 'skins':
+      return (
+        <Suspense fallback={null}>
+          <SkinStudio skin={route.skin} account={route.account} />
+        </Suspense>
+      );
     case 'achievements':
       return <AchievementsScreen />;
     case 'settings':

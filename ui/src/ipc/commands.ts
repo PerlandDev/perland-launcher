@@ -2,6 +2,9 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   AccountReady,
   AccountsFile,
+  CurrentSkin,
+  SkinEntry,
+  SkinModel,
   AppInfo,
   ArtChoice,
   BrowsePlanRequest,
@@ -121,6 +124,20 @@ export const commands = {
   accountAddOffline: (name: string) => invoke<AccountsFile>('account_add_offline', { name }),
   accountSetActive: (uuid: string) => invoke<AccountsFile>('account_set_active', { uuid }),
   accountRemove: (uuid: string) => invoke<AccountsFile>('account_remove', { uuid }),
+  // The Skins screen. Textures cross as PNG `data:` URLs.
+  skinsList: () => invoke<SkinEntry[]>('skins_list'),
+  skinTexture: (id: string) => invoke<string>('skin_texture', { id }),
+  skinCreate: (name: string, model: SkinModel, texture: string) => invoke<SkinEntry>('skin_create', { name, model, texture }),
+  skinImport: (path: string) => invoke<SkinEntry>('skin_import', { path }),
+  skinSave: (id: string, texture: string) => invoke<SkinEntry>('skin_save', { id, texture }),
+  skinUpdate: (id: string, change: { name?: string; model?: SkinModel }) =>
+    invoke<SkinEntry>('skin_update', { id, name: change.name ?? null, model: change.model ?? null }),
+  skinDuplicate: (id: string, name: string) => invoke<SkinEntry>('skin_duplicate', { id, name }),
+  skinDelete: (id: string) => invoke<null>('skin_delete', { id }),
+  skinExport: (id: string, path: string) => invoke<string>('skin_export', { id, path }),
+  /** The skin a Microsoft account wears now; null for an offline account or no skin. */
+  skinCurrent: (uuid: string) => invoke<CurrentSkin | null>('skin_current', { uuid }),
+  skinWear: (id: string, uuid: string) => invoke<SkinEntry[]>('skin_wear', { id, uuid }),
   /** Sign in with Microsoft in the browser. Null when it was canceled (here or in the browser). */
   accountSignInMicrosoft: (language: string) => invoke<AccountsFile | null>('account_sign_in_microsoft', { language }),
   accountSignInCancel: () => invoke<null>('account_sign_in_cancel'),

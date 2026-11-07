@@ -22,7 +22,8 @@ fn client(server: &MockServer) -> MsaClient {
         xsts: base.join("/xsts").unwrap(),
         live_authorize: base.join("/live/authorize").unwrap(),
         live_token: base.join("/live/token").unwrap(),
-        minecraft: base,
+        minecraft: base.clone(),
+        textures: base,
     };
     let http = launcher_core::http::client("test").unwrap();
     MsaClient::new(http, endpoints, MsaApp::Azure("client-123".to_string()))

@@ -114,7 +114,7 @@ fn sign_in_again() -> LauncherError {
 }
 
 impl MsaClient {
-    fn mc_url(&self, path: &str) -> Result<Url> {
+    pub(super) fn mc_url(&self, path: &str) -> Result<Url> {
         let host = self
             .endpoints
             .minecraft
@@ -126,7 +126,7 @@ impl MsaClient {
             .map_err(|_| unexpected(host, "the Minecraft services address isn't valid"))
     }
 
-    fn mc_host(&self) -> String {
+    pub(super) fn mc_host(&self) -> String {
         self.endpoints
             .minecraft
             .host_str()
@@ -246,7 +246,12 @@ impl MsaClient {
 
     /// One authenticated GET: the body on 200, `None` on 404 (only the profile route cares), 401
     /// as "sign in again".
-    async fn mc_get(&self, host: &str, url: Url, mc: &McToken) -> Result<Option<Vec<u8>>> {
+    pub(super) async fn mc_get(
+        &self,
+        host: &str,
+        url: Url,
+        mc: &McToken,
+    ) -> Result<Option<Vec<u8>>> {
         let mut auth = HeaderValue::from_str(&format!("Bearer {}", mc.access_token))
             .map_err(|_| unexpected(host, "the credential isn't a valid header"))?;
         auth.set_sensitive(true);
