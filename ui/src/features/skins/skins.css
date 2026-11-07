@@ -401,8 +401,118 @@
   white-space: nowrap;
 }
 
+/* Version history: the texture column turns into the skin's kept versions, rows like the wardrobe's. */
+.history {
+  overflow: hidden;
+}
+.history .btn-icon,
+.history > div .btn {
+  margin-right: -0.25rem;
+}
+.history-list {
+  display: grid;
+  flex: 1 1 auto;
+  align-content: start;
+  gap: 0.375rem;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 2px 6px;
+}
+.history-empty {
+  padding: 0.75rem 0.875rem;
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow: inset 0 0 0 1px var(--color-line);
+}
+.history-figure {
+  flex: none;
+  width: 1.5rem;
+  height: 3rem;
+  image-rendering: pixelated;
+}
+/* The version the skin is now: a quiet seam-ringed tag, never lit. */
+.history-now {
+  flex: none;
+  padding: 0.125rem 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-ink);
+  border-radius: 3px;
+  corner-shape: notch;
+  box-shadow: inset 0 0 0 1px var(--color-line);
+}
+/* Previewing a version: a ground plate across the foot of the well, in place of the hint and Wear. */
+.stage-preview {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.625rem 1rem;
+  padding: 0.625rem 0.625rem 0.625rem 0.875rem;
+  background: color-mix(in oklab, var(--color-ground) 92%, transparent);
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow:
+    inset 0 0 0 1px var(--color-line),
+    0 4px 0 var(--color-dirt-deep);
+}
+.stage-preview-note {
+  display: grid;
+  min-width: 0;
+  font-size: 0.875rem;
+  text-wrap: pretty;
+}
+.stage-preview .preview-short {
+  display: none;
+}
+.stage-preview-keys {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
 /* A narrow stage (the 960 px window): the bar's keys drop their words, the hint gives way to the wear key. */
 @container stage (width < 34rem) {
+  .stage-preview {
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  }
+  .stage-preview {
+    flex-wrap: nowrap;
+  }
+  .stage-preview-note {
+    flex: 1;
+  }
+  .stage-preview .preview-long {
+    display: none;
+  }
+  .stage-preview .preview-short {
+    display: inline;
+  }
+  .stage-preview-keys {
+    flex-wrap: nowrap;
+  }
+  .stage-preview .btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .stage-preview .btn:not(.btn-primary) {
+    min-width: 2.5rem;
+    padding: 0 0.625rem;
+  }
   .stage-bar .btn-label {
     position: absolute;
     width: 1px;

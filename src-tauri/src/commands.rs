@@ -1133,6 +1133,49 @@ pub async fn skin_export(core: CoreState<'_>, id: String, path: PathBuf) -> Res<
 }
 
 #[tauri::command]
+pub async fn skin_versions(
+    core: CoreState<'_>,
+    id: String,
+) -> Res<Vec<launcher_core::skins_library::SkinVersion>> {
+    logged("skin_versions", core.skin_versions(&id).await)
+}
+
+#[tauri::command]
+pub async fn skin_version_texture(core: CoreState<'_>, id: String, version: String) -> Res<String> {
+    logged(
+        "skin_version_texture",
+        core.skin_version_texture(&id, &version).await,
+    )
+}
+
+#[tauri::command]
+pub async fn skin_restore(
+    core: CoreState<'_>,
+    id: String,
+    version: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged("skin_restore", core.skin_restore(&id, &version).await)
+}
+
+#[tauri::command]
+pub async fn skin_version_copy(
+    core: CoreState<'_>,
+    id: String,
+    version: String,
+    name: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged(
+        "skin_version_copy",
+        core.skin_version_copy(&id, &version, &name).await,
+    )
+}
+
+#[tauri::command]
+pub async fn skin_checkpoint(core: CoreState<'_>, id: String) -> Res<()> {
+    logged("skin_checkpoint", core.skin_checkpoint(&id).await)
+}
+
+#[tauri::command]
 pub async fn skin_current(
     core: CoreState<'_>,
     uuid: String,

@@ -6,27 +6,29 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { Eye, EyeOff, Human, HumanArmsUp, ZoomIn, ZoomOut } from 'pixelarticons/react';
 import { commands } from '../../ipc/commands';
-import type { SkinEntry, SkinModel } from '../../ipc/schema';
+import type { SkinEntry, SkinModel, SkinVersion } from '../../ipc/schema';
 import { useAccounts } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { pushError, pushNotice } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { Field } from '../../ui/Field';
-import { ChevronDown, Copy, Download, Pencil, Reload, Shirt, Trash } from '../../ui/Icon';
+import { ChevronDown, Clock, Close, Copy, Download, Pencil, Reload, Shirt, Trash } from '../../ui/Icon';
 import { Menu, type MenuHandle, type MenuItem } from '../../ui/Menu';
 import { useSingleFlight } from '../../ui/useSingleFlight';
-import { encodeTexture } from './codec';
+import { decodeTexture, encodeTexture } from './codec';
 import { ColourPanel } from './ColourPanel';
 import { Hotbar } from './Hotbar';
 import { POSES, type Pose } from './poses';
 import { SLOT_TOOLS } from './tools';
 import { PARTS, type Layer } from './layout';
-import { toHex, type Rgba, type Tool } from './paint';
+import { Pixels, toHex, type Rgba, type Tool } from './paint';
 import { Stage, type StageHandle } from './Stage';
 import { blankSkin, starterSkin } from './starter';
 import { TexturePanel } from './TexturePanel';
+import { HistoryPanel } from './HistoryPanel';
 import { useSkinDoc } from './useSkinDoc';
+import { whenLabel } from './when';
 import { Wardrobe } from './Wardrobe';
 import './skins.css';
 
@@ -41,7 +43,7 @@ function typing(target: EventTarget | null) {
 }
 
 export default function SkinStudio({ skin, account }: { skin?: string; account?: string }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const entries = useQuery({ queryKey: SKINS_KEY, queryFn: commands.skinsList });
   const accounts = useAccounts();
@@ -71,6 +73,13 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const [newName, setNewName] = useState('');
   const [deleting, setDeleting] = useState<SkinEntry | null>(null);
   const [wearing, setWearing] = useState(false);
+  // Version history: the panel in the texture column, and the version shown on the stage instead of the skin.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [preview, setPreview] = useState<{ skin: string; version: SkinVersion; pixels: Pixels; seq: number } | null>(null);
+  const previewSeq = useRef(0);
+  const versionsKey = ['skinVersions', selected?.id ?? null] as const;
+  const versions = useQuery({ queryKey: versionsKey, queryFn: () => commands.skinVersions(selected!.id), enabled: historyOpen && !!selected });
+  const refreshVersions = () => void qc.invalidateQueries({ queryKey: ['skinVersions'] });
   const stage = useRef<StageHandle | null>(null);
   const partsBox = useRef<HTMLDivElement>(null);
   // The parts panel closes on a click outside it or Escape, like a menu.
@@ -88,6 +97,9 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     };
   }, [partsOpen]);
   const once = useSingleFlight();
+  // A preview belongs to one skin while the history is open; switching skins or closing the history ends it.
+  const shown = preview && historyOpen && preview.skin === selected?.id ? preview : null;
+  const previewing = shown !== null;
   const outerShown = PARTS.some((p) => !hidden.has(`${p}:outer`));
 
   const setColor = (c: Rgba) => {
@@ -159,6 +171,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     const path = await save({ defaultPath: `${entry.name.replace(/[<>:"/\\|?*]/g, '-')}.png`, filters: [{ name: t('skins.pngFilter'), extensions: ['png'] }] });
     if (!path) return;
     await commands.skinExport(entry.id, path);
+    refreshVersions();
     pushNotice({ title: t('skins.exported', { name: entry.name }) });
   };
 
@@ -209,6 +222,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
 
   const strokeOpts = { tool, color, mirror, darken };
   const paintAt = (x: number, y: number, joined: boolean) => {
+    if (previewing) return;
     if (tool === 'picker') {
       const c = doc.pixels?.get(x, y);
       if (c && c[3] > 0) setColor([c[0], c[1], c[2], 255]);
@@ -226,6 +240,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         .then(() => commands.skinWear(selected.id, wearer.uuid))
         .then((next) => {
           qc.setQueryData(SKINS_KEY, next);
+          refreshVersions();
           void qc.invalidateQueries({ queryKey: ['accountFace'] });
           stage.current?.celebrate();
           pushNotice({ title: t('skins.worn', { name: selected.name }), body: t('skins.wornBody') });
@@ -238,6 +253,53 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     });
   };
 
+  const pickVersion = (version: SkinVersion) => {
+    if (!selected) return;
+    const skin = selected.id;
+    void doc
+      .flush()
+      .then(() => commands.skinVersionTexture(skin, version.id))
+      .then(decodeTexture)
+      .then((data) => setPreview({ skin, version, pixels: new Pixels(data), seq: (previewSeq.current += 1) }))
+      .catch(pushError);
+  };
+
+  const restore = () => {
+    if (!selected || !shown) return;
+    const { version, pixels } = shown;
+    once((done) => {
+      void doc
+        .flush()
+        .then(() => commands.skinRestore(selected.id, version.id))
+        .then((entry) => {
+          qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => old?.map((e) => (e.id === entry.id ? entry : e)));
+          doc.replace(pixels.data);
+          setPreview(null);
+          refreshVersions();
+          pushNotice({ title: t('skins.history.restored'), body: t('skins.history.restoredBody', { when: whenLabel(version.taken, i18n.language, t) }) });
+        })
+        .catch(pushError)
+        .finally(done);
+    });
+  };
+
+  const copyVersion = () => {
+    if (!selected || !shown) return;
+    const { version } = shown;
+    const name = t('skins.history.copyName', { name: selected.name, when: whenLabel(version.taken, i18n.language, t) }).slice(0, 64);
+    once((done) => {
+      void commands
+        .skinVersionCopy(selected.id, version.id, name)
+        .then((copy) => {
+          qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [copy, ...(old ?? [])]);
+          setHistoryOpen(false);
+          setPicked(copy.id);
+        })
+        .catch(pushError)
+        .finally(done);
+    });
+  };
+
   // Keys: 1–9 press the hotbar, Ctrl+Z undoes, Ctrl+Shift+Z or Ctrl+Y redoes, Shift held makes Shade lighten.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -247,6 +309,10 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
       }
       if (event.key === 'Shift') setDarken(false);
       if (typing(event.target) || document.querySelector('dialog[open]') || event.altKey) return;
+      if (event.key === 'Escape' && previewing) {
+        setPreview(null);
+        return;
+      }
       const ctrl = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
       if (ctrl && (key === 'y' || (key === 'z' && event.shiftKey))) {
@@ -269,7 +335,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
     };
-  }, [doc]);
+  }, [doc, previewing]);
 
   const saveLabel = doc.save === 'saved' ? t('skins.saved') : t('skins.saving');
 
@@ -288,6 +354,9 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         <p className="ml-auto text-sm text-ink-dim" role="status">
           {selected ? saveLabel : ''}
         </p>
+        <Button variant="ghost" icon={<Clock />} aria-pressed={historyOpen} disabled={!selected} onClick={() => setHistoryOpen((o) => !o)}>
+          {t('skins.history.title')}
+        </Button>
       </header>
 
       <div className="skins-body">
@@ -357,8 +426,9 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
 
           <div className="stage-well">
             <Stage
-              pixels={doc.pixels}
-              rev={doc.rev}
+              pixels={previewing ? shown.pixels : doc.pixels}
+              // A preview gets its own (negative) revisions, so the figure redraws on every switch.
+              rev={previewing ? -shown.seq : doc.rev}
               model={model}
               hidden={hidden}
               paintLayer={paintLayer}
@@ -375,8 +445,30 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               <Button variant="ghost" size="icon" aria-label={t('skins.zoomOut')} title={t('skins.zoomOut')} icon={<ZoomOut />} onClick={() => stage.current?.zoom(1.15)} />
               <Button variant="ghost" size="icon" aria-label={t('skins.resetView')} title={t('skins.resetView')} icon={<Reload />} onClick={() => stage.current?.resetView()} />
             </div>
-            <p className="stage-hint text-sm text-ink-dim">{t('skins.stageHint')}</p>
-            <div className="stage-wear">
+            {previewing ? (
+              <div className="stage-preview" role="group" aria-label={t('skins.history.previewing', { when: whenLabel(shown.version.taken, i18n.language, t) })}>
+                <p className="stage-preview-note">
+                  <span className="preview-long truncate font-bold">{t('skins.history.previewing', { when: whenLabel(shown.version.taken, i18n.language, t) })}</span>
+                  <span className="preview-short truncate font-bold tabular">{whenLabel(shown.version.taken, i18n.language, t)}</span>
+                  <span className="preview-long text-ink-dim">{t('skins.history.previewNote')}</span>
+                </p>
+                <div className="stage-preview-keys">
+                  <Button variant="ghost" icon={<Close />} title={t('skins.history.back')} onClick={() => setPreview(null)}>
+                    <span className="btn-label">{t('skins.history.back')}</span>
+                  </Button>
+                  <Button icon={<Copy />} title={t('skins.history.copy')} onClick={copyVersion}>
+                    <span className="btn-label">{t('skins.history.copy')}</span>
+                  </Button>
+                  <Button variant="primary" icon={<Reload />} disabled={shown.version.current} aria-label={t('skins.history.restore')} title={t('skins.history.restore')} onClick={restore}>
+                    <span className="preview-long">{t('skins.history.restore')}</span>
+                    <span className="preview-short">{t('skins.history.restoreShort')}</span>
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="stage-hint text-sm text-ink-dim">{t('skins.stageHint')}</p>
+            )}
+            <div className="stage-wear" hidden={previewing}>
               {wearer?.provider === 'microsoft' ? (
                 <Button variant="primary" size="lg" icon={<Shirt />} aria-disabled={wearing || undefined} disabled={!selected} onClick={wear}>
                   {wearing ? t('skins.wearingNow') : t('skins.wear')}
@@ -388,6 +480,9 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
           </div>
         </div>
 
+        {historyOpen && selected ? (
+          <HistoryPanel skin={selected.id} model={model} versions={versions.data} picked={shown?.version.id ?? null} onPick={pickVersion} onClose={() => setHistoryOpen(false)} />
+        ) : (
         <aside className="skins-side" aria-label={t('skins.texture')}>
           <div className="flex items-center justify-between gap-2">
             <h2 className="sr-only">{t('skins.texture')}</h2>
@@ -415,6 +510,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
           />
           <ColourPanel color={color} recent={recent} onColor={setColor} />
         </aside>
+        )}
       </div>
 
       <Hotbar

@@ -107,7 +107,7 @@ error_codes! {
     // sharing an instance
     SharePathInvalid, ShareTooLarge,
     // skins
-    SkinInvalid, SkinNotFound, SkinRejected, SkinOfflineAccount,
+    SkinInvalid, SkinNotFound, SkinRejected, SkinOfflineAccount, SkinVersionNotFound,
     // anything unexpected
     Internal,
 }
