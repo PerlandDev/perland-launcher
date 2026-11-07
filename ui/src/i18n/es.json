@@ -1005,7 +1005,33 @@
     "saved": "Guardada",
     "saving": "Guardando…",
     "pngFilter": "PNG de skin",
-    "exported": "{{name}} exportada"
+    "exported": "{{name}} exportada",
+    "history": {
+      "title": "Historial",
+      "close": "Cerrar historial",
+      "list": "Versiones anteriores",
+      "about": "Se guarda una versión cuando empiezas a editar, dejas una skin que cambiaste, te la pones o la exportas.",
+      "empty": "Todavía no hay versiones anteriores. Se guarda una en cuanto cambies esta skin.",
+      "now": "Ahora",
+      "today": "Hoy, {{time}}",
+      "yesterday": "Ayer, {{time}}",
+      "onDay": "{{date}}, {{time}}",
+      "reason": {
+        "edited": "Editada",
+        "worn": "Puesta",
+        "exported": "Exportada",
+        "restored": "Restaurada"
+      },
+      "previewing": "Versión de {{when}}",
+      "previewNote": "Revísala. No puedes pintar hasta que vuelvas.",
+      "back": "Volver a ahora",
+      "copy": "Hacer una copia",
+      "restore": "Restaurar esta versión",
+      "restoreShort": "Restaurar",
+      "restored": "Versión restaurada",
+      "restoredBody": "Tu skin volvió a {{when}}. Deshacer lo revierte.",
+      "copyName": "{{name}} ({{when}})"
+    }
   },
   "errors": {
     "team_server_too_big": { "message": "El plan de tu equipo no tiene espacio para un servidor de este tamaño." },
@@ -1094,6 +1120,7 @@
     "skin_not_found": { "message": "Esa skin ya no está en tu guardarropa." },
     "skin_rejected": { "message": "Minecraft no aceptó esta skin.", "fix": "Vuelve a intentarlo en un minuto. Si sigue pasando, exporta el PNG y revisa que sea de 64 × 64." },
     "skin_offline_account": { "message": "Las cuentas sin conexión no pueden cambiar su skin en Minecraft.", "fix": "Exporta el PNG, o cambia a una cuenta de Microsoft para usarlo." },
+    "skin_version_not_found": { "message": "Esa versión de la skin ya no está guardada." },
     "mod_not_jar": { "message": "Solo se pueden agregar archivos .jar como mods." },
     "mod_exists": { "message": "{{file}} ya está en esta instancia." },
     "mod_not_found": { "message": "{{file}} ya no está en esta instancia." },

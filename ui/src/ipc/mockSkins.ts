@@ -1,9 +1,10 @@
 // Mock skin wardrobes for `pnpm --filter ui dev:mock` and the tests: in memory, one per account (`owner`), with a scripted
 // current skin and upload. Like the core, the active account adopts loose skins when it lists its wardrobe.
 import skinEntriesFx from './contract/skin_entries.json';
+import skinVersionsFx from './contract/skin_versions.json';
 import { encodeTexture } from '../features/skins/codec';
 import { blankSkin, starterSkin } from '../features/skins/starter';
-import type { AccountsFile, CurrentSkin, LauncherError, SkinEntry, SkinModel } from './schema';
+import type { AccountsFile, CurrentSkin, LauncherError, SkinEntry, SkinModel, SkinVersion, SkinVersionReason } from './schema';
 
 export const NOT_SKINS = Symbol('not a skin command');
 
@@ -19,8 +20,22 @@ export interface SkinsState {
   /** What `skin_current` answers for a Microsoft account. */
   current: CurrentSkin | null;
   uploads: { id: string; uuid: string; model: SkinModel }[];
+  /** Each skin's kept versions, oldest first, with their textures. */
+  versions: Map<string, KeptVersion[]>;
   seq: number;
 }
+
+interface KeptVersion {
+  id: string;
+  taken: number;
+  reason: SkinVersionReason;
+  worn: boolean;
+  texture: string;
+}
+
+/** A save this long after the skin's last change starts a new editing session (as in Rust). */
+const IDLE_SECS = 5 * 60;
+const VERSIONS_CAP = 30;
 
 const PNG_URL = 'data:image/png;base64,';
 
@@ -51,6 +66,28 @@ function accountSkin(): string {
   }
 }
 
+/** The Perlander with its shirt in another colour (dev:mock has a canvas), else a placeholder named after `seed`. */
+function variant(seed: number, model: SkinModel): string {
+  try {
+    const px = starterSkin(model);
+    const shirts: [number, number, number][] = [[78, 140, 214], [214, 92, 74], [232, 190, 60], [150, 96, 200]];
+    const [r, g, b] = shirts[seed % shirts.length]!;
+    const d = px.data;
+    for (let i = 0; i < d.length; i += 4) {
+      // The lime shirt: green well above red and blue.
+      if (d[i + 3]! > 0 && d[i + 1]! > d[i]! + 30 && d[i + 1]! > d[i + 2]! + 30) {
+        const k = d[i + 1]! / 171;
+        d[i] = Math.min(255, r * k);
+        d[i + 1] = Math.min(255, g * k);
+        d[i + 2] = Math.min(255, b * k);
+      }
+    }
+    return encodeTexture(d);
+  } catch {
+    return `${PNG_URL}VERSION${seed}`;
+  }
+}
+
 export function seedSkins(scenario: SkinsScenario = 'seeded'): SkinsState {
   const entries: SkinEntry[] =
     scenario === 'empty' || scenario === 'default'
@@ -60,7 +97,41 @@ export function seedSkins(scenario: SkinsScenario = 'seeded'): SkinsState {
         : (skinEntriesFx as SkinEntry[]).map((e) => ({ ...e }));
   const textures = new Map(entries.map((e, i) => [e.id, drawn(i === 0 ? 'starter' : 'blank', e.model)]));
   const current = scenario === 'default' ? null : { texture: accountSkin(), model: 'slim' as const };
-  return { entries, textures, scenario, current, uploads: [], seq: 0 };
+  const versions = new Map<string, KeptVersion[]>();
+  const first = entries[0];
+  if (first) {
+    // The fixture's versions, newest first; the newest is the skin as it is now.
+    // Times count back from now (20 minutes, a day, three days, four days), so the list reads like a real one.
+    const ago = [20 * 60, 26 * 3600, 3 * 86400 + 5000, 4 * 86400 + 9000];
+    const now = Math.floor(Date.now() / 1000);
+    const kept = (skinVersionsFx as SkinVersion[]).map(({ current, ...v }, i) => ({
+      ...v,
+      taken: now - (ago[i] ?? 0),
+      texture: current ? textures.get(first.id)! : variant(i, first.model),
+    }));
+    versions.set(first.id, kept.reverse());
+  }
+  return { entries, textures, scenario, current, uploads: [], versions, seq: 0 };
+}
+
+function keep(state: SkinsState, entry: SkinEntry, texture: string, reason: SkinVersionReason, taken = entry.updated) {
+  const list = state.versions.get(entry.id) ?? [];
+  const newest = list[list.length - 1];
+  if (newest && newest.texture === texture) {
+    if (reason === 'worn') newest.worn = true;
+    return;
+  }
+  const last = newest ? Number(newest.id) : 0;
+  list.push({ id: String(Math.max(Date.now(), last + 1)), taken, reason, worn: reason === 'worn', texture });
+  const unworn = list.filter((v) => !v.worn);
+  const drop = new Set(unworn.slice(0, Math.max(0, unworn.length - VERSIONS_CAP)).map((v) => v.id));
+  state.versions.set(entry.id, list.filter((v) => !drop.has(v.id)));
+}
+
+function findVersion(state: SkinsState, entry: SkinEntry, version: unknown): KeptVersion {
+  const found = state.versions.get(entry.id)?.find((v) => v.id === version);
+  if (!found) fail('disk', 'skin_version_not_found', "That version of the skin isn't kept anymore.", { id: entry.id, version: String(version) });
+  return found;
 }
 
 function find(state: SkinsState, id: unknown): SkinEntry {
@@ -130,6 +201,7 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
         // An untouched starter is dropped, not adopted: one marked seeded, or one never worn that is the starter exactly.
         const starter = typeof args.starter === 'string' ? args.starter : null;
         const untouched = (e: SkinEntry) => e.seeded || (!e.wornBy && starter !== null && state.textures.get(e.id) === starter);
+        for (const e of state.entries) if (e.owner === undefined && untouched(e)) state.versions.delete(e.id);
         state.entries = state.entries.filter((e) => e.owner !== undefined || !untouched(e));
         for (const e of state.entries) e.owner ??= owner;
       }
@@ -148,7 +220,10 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
     }
     case 'skin_save': {
       const entry = find(state, args.id);
-      state.textures.set(entry.id, checkTexture(args.texture));
+      const texture = checkTexture(args.texture);
+      const fresh = (state.versions.get(entry.id) ?? []).length === 0;
+      if (fresh || Date.now() / 1000 - entry.updated >= IDLE_SECS) keep(state, entry, state.textures.get(entry.id)!, 'edited');
+      state.textures.set(entry.id, texture);
       touch(entry);
       return { ...entry };
     }
@@ -167,10 +242,45 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       find(state, args.id);
       state.entries = state.entries.filter((e) => e.id !== args.id);
       state.textures.delete(String(args.id));
+      state.versions.delete(String(args.id));
       return null;
-    case 'skin_export':
-      find(state, args.id);
+    case 'skin_versions': {
+      const entry = find(state, args.id);
+      // Only the newest version with the texture now is current, as in Rust.
+      let now = state.textures.get(entry.id);
+      return [...(state.versions.get(entry.id) ?? [])].reverse().map(({ texture, ...v }) => {
+        const current = texture === now;
+        if (current) now = undefined;
+        return { ...v, current } satisfies SkinVersion;
+      });
+    }
+    case 'skin_version_texture':
+      return findVersion(state, find(state, args.id), args.version).texture;
+    case 'skin_restore': {
+      const entry = find(state, args.id);
+      const version = findVersion(state, entry, args.version);
+      keep(state, entry, state.textures.get(entry.id)!, 'edited');
+      state.textures.set(entry.id, version.texture);
+      touch(entry);
+      keep(state, entry, version.texture, 'restored');
+      return { ...entry };
+    }
+    case 'skin_version_copy': {
+      const entry = find(state, args.id);
+      const version = findVersion(state, entry, args.version);
+      // The copy stays in the source's wardrobe and is never seeded, as in Rust.
+      return add(state, checkName(args.name), entry.model, version.texture, entry.owner ?? null);
+    }
+    case 'skin_checkpoint': {
+      const entry = find(state, args.id);
+      keep(state, entry, state.textures.get(entry.id)!, 'edited');
+      return null;
+    }
+    case 'skin_export': {
+      const entry = find(state, args.id);
+      keep(state, entry, state.textures.get(entry.id)!, 'exported');
       return String(args.path).toLowerCase().endsWith('.png') ? args.path : `${String(args.path)}.png`;
+    }
     case 'skin_current': {
       const account = accounts.accounts.find((a) => a.uuid === args.uuid);
       if (!account) fail('auth', 'no_account', "That account isn't in the launcher anymore.");
@@ -200,6 +310,7 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       state.uploads.push({ id: entry.id, uuid, model: entry.model });
       wornBy(state, entry.id, uuid);
       state.current = { texture: state.textures.get(entry.id)!, model: entry.model };
+      keep(state, entry, state.textures.get(entry.id)!, 'worn');
       return wardrobe(state, uuid);
     }
     default:
