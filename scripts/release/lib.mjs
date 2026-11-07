@@ -45,6 +45,19 @@ export function channelName(platform, channel) {
   return `PerlandLauncher${channel === 'beta' ? '-beta' : ''}${SUFFIX[platform].channel}`;
 }
 
+/** The one-click setup app (crates/perland-setup): a Windows download only, never in latest.json. */
+export function setupReleaseName(version) {
+  return `PerlandLauncher_${version}_x64-installer.exe`;
+}
+
+export function setupChannelName(channel) {
+  return `PerlandLauncher${channel === 'beta' ? '-beta' : ''}-installer.exe`;
+}
+
+export function findSetup(paths) {
+  return paths.find((p) => /(^|[\\/])perland-setup\.exe$/.test(p));
+}
+
 export function findBundle(paths, platform) {
   return paths.find((p) => SUFFIX[platform].bundle.test(p));
 }
@@ -115,18 +128,18 @@ export function ciGate(runs, { publish }) {
   return { level, message: 'CI has not run on this commit. Push it to main or to a branch with a pull request, and wait for CI to pass.' };
 }
 
-/** Whether the release can start the game: without the Microsoft client ID (the repository variable
- *  PERLAND_MS_CLIENT_ID) Microsoft sign-in is unavailable, and outside dev builds nobody can play.
- *  A publish stops; a dry run only warns. */
-export function clientIdGate(value, { publish }) {
+/** Which Microsoft app the release signs in with. Without the repository variable PERLAND_MS_CLIENT_ID it is the
+ *  Minecraft Launcher's public client, which Minecraft accepts. With it, it is that Azure app, whose sign-ins Minecraft
+ *  turns down until Mojang approves it: a warning, so a release isn't built with it by mistake. */
+export function clientIdGate(value) {
   if (typeof value === 'string' && value.trim() !== '') {
-    return { level: 'ok', message: 'The Microsoft client ID is set.' };
+    return {
+      level: 'warning',
+      message:
+        "PERLAND_MS_CLIENT_ID is set, so this build signs in with that Azure app. Minecraft accepts its sign-ins only once Mojang has approved it; clear the variable to sign in with the Minecraft Launcher's client.",
+    };
   }
-  return {
-    level: publish ? 'error' : 'warning',
-    message:
-      'The repository variable PERLAND_MS_CLIENT_ID is empty: this build has no Microsoft sign-in, so nobody could start the game. Set it to the Azure app\'s client ID first.',
-  };
+  return { level: 'ok', message: "No PERLAND_MS_CLIENT_ID: this build signs in with the Minecraft Launcher's client." };
 }
 
 /** Whether a Windows PE file already carries an Authenticode signature: its certificate table (data
@@ -145,14 +158,26 @@ export function hasAuthenticodeSignature(buf) {
   return buf.readUInt32LE(security + 4) > 0;
 }
 
-/** What a file Tauri hands the Windows sign command is: an NSIS plugin DLL, the final installer, or one
- *  of our binaries (the launcher .exe, the uninstaller). */
+/** What a file handed to the Windows sign command is: an NSIS plugin DLL, the NSIS installer, the
+ *  one-click setup app, or one of our binaries (the launcher .exe and the two uninstallers). */
 export function signRole(path) {
   const p = String(path).replaceAll('\\', '/').toLowerCase();
   if (p.includes('/plugins/x86-unicode/')) return 'plugin';
   if (p.includes('/bundle/nsis/') && p.endsWith('-setup.exe')) return 'installer';
+  if (/(^|\/)perland-setup\.exe$/.test(p)) return 'setup';
   return 'binary';
 }
+
+const baseName = (file) => file.replaceAll('\\', '/').split('/').pop().toLowerCase();
+
+/** Every file a signed Windows release must have signed itself, as [label, role, file name or null]. */
+const MUST_SIGN = [
+  ['perland-launcher.exe', 'binary', 'perland-launcher.exe'],
+  ['the NSIS uninstaller', 'binary', 'uninstall.exe'],
+  ['perland-uninstall.exe', 'binary', 'perland-uninstall.exe'],
+  ['the NSIS installer', 'installer', null],
+  ['the setup app', 'setup', 'perland-setup.exe'],
+];
 
 /** Check a Windows build's signing ledger (`<role> <outcome> <file>` per sign command call). makensis
  *  ignores the exit code of the uninstaller's sign command, so a failure there only shows up here. */
@@ -166,9 +191,8 @@ export function checkSignLedger(lines) {
     });
   const failed = entries.filter((e) => e.outcome !== 'signed' && e.outcome !== 'already-signed');
   if (failed.length > 0) throw new Error(`Signing failed for ${failed.map((e) => e.file).join(', ')}`);
-  const signedBy = (role) => entries.filter((e) => e.role === role && e.outcome === 'signed').length;
-  if (signedBy('binary') < 2) {
-    throw new Error(`Signed ${signedBy('binary')} of our binaries; expected the launcher and the uninstaller`);
-  }
-  if (signedBy('installer') < 1) throw new Error('The installer was never signed');
+  const missing = MUST_SIGN.filter(
+    ([, role, name]) => !entries.some((e) => e.role === role && e.outcome === 'signed' && (!name || baseName(e.file) === name)),
+  ).map(([label]) => label);
+  if (missing.length > 0) throw new Error(`This build never signed: ${missing.join(', ')}`);
 }

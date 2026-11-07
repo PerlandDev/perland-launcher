@@ -899,6 +899,17 @@ pub enum PerlandSignInPhase {
     Exchanging,
 }
 
+/// Where a Microsoft sign-in stands: the player's browser is open (`waiting`, the Azure app),
+/// the launcher's Microsoft window is open (`window`, the Minecraft Launcher's client), or the
+/// code it brought back is being redeemed (`exchanging`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MicrosoftSignInPhase {
+    Waiting,
+    Window,
+    Exchanging,
+}
+
 /// A server a Manage call is about: its team and its name there.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

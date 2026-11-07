@@ -51,14 +51,14 @@ it('asks for an account when there is none', async () => {
 });
 
 it('shows a quiet note with Restart now when an update is ready', async () => {
-  const { user, calls } = renderApp(<TitleBar />, { beta: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
+  const { user, calls } = renderApp(<TitleBar />, { beta: true, offlineLocked: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
   expect(await screen.findByText('Update ready · installs when you close')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Restart now' }));
   expect(sent(calls, 'update_restart')).toHaveLength(1);
 });
 
 it('sends one restart for a double click', async () => {
-  const { user, backend, calls } = renderApp(<TitleBar />, { beta: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
+  const { user, backend, calls } = renderApp(<TitleBar />, { beta: true, offlineLocked: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
   // A real restart never answers: the launcher closes. Park it, so the second click lands while it's in flight.
   const handle = backend.handle;
   vi.spyOn(backend, 'handle').mockImplementation((cmd, args) => (cmd === 'update_restart' ? new Promise(() => {}) : handle(cmd, args)));
@@ -67,7 +67,7 @@ it('sends one restart for a double click', async () => {
 });
 
 it('disables Restart now while a game runs and says why in the note', async () => {
-  renderApp(<TitleBar />, { beta: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
+  renderApp(<TitleBar />, { beta: true, offlineLocked: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
   const restart = await screen.findByRole('button', { name: 'Restart now' });
   expect(restart).toBeEnabled();
   expect(restart).not.toHaveAccessibleDescription();
@@ -80,7 +80,7 @@ it('disables Restart now while a game runs and says why in the note', async () =
 });
 
 it('disables Restart now while a Browse install runs', async () => {
-  renderApp(<TitleBar />, { beta: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
+  renderApp(<TitleBar />, { beta: true, offlineLocked: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
   expect(await screen.findByRole('button', { name: 'Restart now' })).toBeEnabled();
   let end = () => {};
   act(() => {
@@ -93,11 +93,11 @@ it('disables Restart now while a Browse install runs', async () => {
 });
 
 it('shows no note when nothing is ready, and none in the minimal bar', async () => {
-  const { unmount } = renderApp(<TitleBar />, { beta: true, update: { state: 'up_to_date' } });
+  const { unmount } = renderApp(<TitleBar />, { beta: true, offlineLocked: true, update: { state: 'up_to_date' } });
   await screen.findByRole('button', { name: 'Close' });
   expect(screen.queryByText('Update ready · installs when you close')).not.toBeInTheDocument();
   unmount();
-  renderApp(<TitleBar minimal />, { beta: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
+  renderApp(<TitleBar minimal />, { beta: true, offlineLocked: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
   await screen.findByRole('button', { name: 'Close' });
   expect(screen.queryByText('Update ready · installs when you close')).not.toBeInTheDocument();
 });

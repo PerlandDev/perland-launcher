@@ -21,8 +21,8 @@ export interface MicrosoftSignInProps {
   showWhy?: boolean;
 }
 
-/** Microsoft sign-in: the why line and the key, then the browser step and each call of the chain (Microsoft, Xbox Live, XSTS,
- *  Minecraft, the profile) as it runs, with Cancel. Every press runs the whole chain; nothing is skipped because an earlier one was
+/** Microsoft sign-in: the why line and the key, then the page step (the launcher's Microsoft window, or the browser) and each
+ *  call of the chain (Microsoft, Xbox Live, XSTS, Minecraft, the profile) as it runs, with Cancel. Every press runs the whole chain; nothing is skipped because an earlier one was
  *  refused. After a refusal the steps stay, showing what passed and where it stopped. A failure is said inline under the key in
  *  the player's language; Minecraft not having approved the app yet is said as info, not as a fault: there is nothing for the
  *  player to fix. */
@@ -30,7 +30,7 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
-  const [phase, setPhase] = useState<'waiting' | 'exchanging'>('waiting');
+  const [phase, setPhase] = useState<'waiting' | 'window' | 'exchanging'>('window');
   /** The call of the chain this sign-in reached; `null` before the browser opened (or after a cancel). */
   const [reached, setReached] = useState<MsaStep | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -41,15 +41,16 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
   const cancelKey = useRef<HTMLButtonElement | null>(null);
   const shownBusy = useRef(busy);
 
-  // The browser step reports its phase: waiting on the player, then the launcher finishing the sign-in.
+  // The page step reports its phase: waiting on the player in the browser or in the launcher's Microsoft window, then the
+  // launcher finishing the sign-in.
   useEffect(() => {
     let alive = true;
     let unlisten: (() => void) | undefined;
     void onAppEvent((event) => {
       if (event.type === 'microsoft_sign_in') {
         setPhase(event.phase);
-        // The browser step is the Microsoft account step.
-        if (event.phase === 'waiting') setReached('microsoft');
+        // The page step is the Microsoft account step.
+        if (event.phase !== 'exchanging') setReached('microsoft');
       }
       if (event.type === 'microsoft_sign_in_step') setReached(event.step);
     }).then((stop) => {
@@ -77,7 +78,7 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
     const mine = ++attempt.current;
     setError(null);
     setAnnounce('');
-    setPhase('waiting');
+    setPhase('window');
     setReached(null);
     setBusy(true);
     commands.accountSignInMicrosoft(detectLang(i18n.language)).then(
@@ -127,7 +128,11 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
     return (
       <div className={primary ? 'grid gap-4' : 'panel grid gap-4 p-5'}>
         <p aria-live="polite" className="font-semibold">
-          {phase === 'exchanging' ? t('accounts.microsoftExchanging') : t('accounts.microsoftWaiting')}
+          {phase === 'exchanging'
+            ? t('accounts.microsoftExchanging')
+            : phase === 'waiting'
+              ? t('accounts.microsoftWaiting')
+              : t('accounts.microsoftWindow')}
         </p>
         {reached && <SignInSteps reached={reached} end="running" />}
         <Button ref={cancelKey} variant="ghost" className="justify-self-start" onClick={cancel}>

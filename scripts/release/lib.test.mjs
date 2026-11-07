@@ -8,11 +8,14 @@ import {
   ciGate,
   clientIdGate,
   findBundle,
+  findSetup,
   hasAuthenticodeSignature,
   keyIdOf,
   nextVersion,
   PLATFORMS,
   releaseName,
+  setupChannelName,
+  setupReleaseName,
   setWorkspaceVersion,
   signRole,
 } from './lib.mjs';
@@ -147,24 +150,35 @@ test('a dry run only warns about CI', () => {
   assert.equal(ciGate([], { publish: false }).level, 'warning');
 });
 
-test('a publish without the Microsoft client ID stops, since that build could not start the game', () => {
+test('without a Microsoft client ID the build signs in with the Minecraft Launcher client', () => {
   for (const value of [undefined, '', '   ']) {
-    const gate = clientIdGate(value, { publish: true });
-    assert.equal(gate.level, 'error');
-    assert.match(gate.message, /PERLAND_MS_CLIENT_ID/);
+    const gate = clientIdGate(value);
+    assert.equal(gate.level, 'ok');
+    assert.match(gate.message, /Minecraft Launcher/);
   }
 });
 
-test('a dry run only warns about a missing Microsoft client ID', () => {
-  const gate = clientIdGate('', { publish: false });
+test('a set Microsoft client ID warns that Minecraft needs to approve that app', () => {
+  const gate = clientIdGate('00000000-0000-4000-8000-0000000000aa');
   assert.equal(gate.level, 'warning');
   assert.match(gate.message, /PERLAND_MS_CLIENT_ID/);
+  assert.match(gate.message, /approved/);
 });
 
-test('a set Microsoft client ID lets the release through', () => {
-  for (const publish of [true, false]) {
-    assert.equal(clientIdGate('00000000-0000-4000-8000-0000000000aa', { publish }).level, 'ok');
-  }
+test('the setup app has its own release and channel names', () => {
+  assert.equal(setupReleaseName('0.2.0-beta.1'), 'PerlandLauncher_0.2.0-beta.1_x64-installer.exe');
+  assert.equal(setupChannelName('stable'), 'PerlandLauncher-installer.exe');
+  assert.equal(setupChannelName('beta'), 'PerlandLauncher-beta-installer.exe');
+});
+
+test('findSetup finds the built setup exe and nothing else', () => {
+  const paths = [
+    'target/release/perland-setup.pdb',
+    'target/release/bundle/nsis/Perland Launcher_0.2.0_x64-setup.exe',
+    'target/release/perland-setup.exe',
+  ];
+  assert.equal(findSetup(paths), 'target/release/perland-setup.exe');
+  assert.equal(findSetup(['target/release/perland-launcher.exe']), undefined);
 });
 
 /** A minimal PE image: MZ header, PE signature, COFF header, optional header with 16 data directories.
@@ -209,15 +223,26 @@ test('files Tauri hands the sign command get a role', () => {
   assert.equal(signRole(`${nsis}\\Plugins\\x86-unicode\\System.dll`), 'plugin');
   assert.equal(signRole(`${nsis}\\Plugins\\x86-unicode\\additional\\nsis_tauri_utils.dll`), 'plugin');
   assert.equal(signRole('D:/a/perland-launcher/target/release/bundle/nsis/Perland Launcher_0.2.0-beta.32_x64-setup.exe'), 'installer');
+  assert.equal(signRole('target/release/perland-uninstall.exe'), 'binary');
+  assert.equal(signRole('target/release/perland-setup.exe'), 'setup');
+  assert.equal(signRole('D:\\a\\perland-launcher\\target\\release\\perland-setup.exe'), 'setup');
 });
 
 const ledger = [
+  'binary signed target/release/perland-uninstall.exe',
   'plugin signed C:/t/nsis/Plugins/x86-unicode/System.dll',
   'plugin already-signed C:/t/nsis/Plugins/x86-unicode/additional/nsis_tauri_utils.dll',
   'binary signed D:/a/target/release/perland-launcher.exe',
   'binary signed C:/t/nsis/uninstall.exe',
   'installer signed D:/a/target/release/bundle/nsis/Perland Launcher_1.0.0_x64-setup.exe',
+  'setup signed target/release/perland-setup.exe',
 ];
+
+test('a build that never signed the setup app fails', () => {
+  assert.throws(() => checkSignLedger(ledger.filter((l) => !l.startsWith('setup'))), /setup app/);
+  const failed = ledger.map((l) => (l.startsWith('setup') ? 'setup error target/release/perland-setup.exe' : l));
+  assert.throws(() => checkSignLedger(failed), /perland-setup\.exe/);
+});
 
 test('a build that signed the launcher, the uninstaller and the installer passes', () => {
   assert.doesNotThrow(() => checkSignLedger(ledger));
@@ -229,15 +254,16 @@ test('a signing failure makensis swallowed still fails the build', () => {
   assert.throws(() => checkSignLedger(lines), /uninstall\.exe/);
 });
 
-test('a build that never signed the uninstaller or the installer fails', () => {
-  assert.throws(() => checkSignLedger(ledger.filter((l) => !l.includes('uninstall.exe'))), /launcher and the uninstaller/);
-  assert.throws(() => checkSignLedger(ledger.filter((l) => !l.startsWith('installer'))), /installer/);
-  assert.throws(() => checkSignLedger([]), /launcher and the uninstaller/);
+test('a build that never signed one of the uninstallers or the installer fails', () => {
+  assert.throws(() => checkSignLedger(ledger.filter((l) => !l.includes('nsis/uninstall.exe'))), /never signed: the NSIS uninstaller/);
+  assert.throws(() => checkSignLedger(ledger.filter((l) => !l.includes('perland-uninstall.exe'))), /never signed: perland-uninstall\.exe/);
+  assert.throws(() => checkSignLedger(ledger.filter((l) => !l.startsWith('installer'))), /never signed: the NSIS installer/);
+  assert.throws(() => checkSignLedger([]), /never signed: perland-launcher\.exe, the NSIS uninstaller, perland-uninstall\.exe/);
 });
 
 test('our own binaries must be signed by us, not found already signed', () => {
   const lines = ledger.map((l) =>
     l.includes('perland-launcher.exe') ? 'binary already-signed D:/a/target/release/perland-launcher.exe' : l,
   );
-  assert.throws(() => checkSignLedger(lines), /launcher and the uninstaller/);
+  assert.throws(() => checkSignLedger(lines), /never signed: perland-launcher\.exe/);
 });

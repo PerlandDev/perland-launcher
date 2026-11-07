@@ -1,7 +1,9 @@
-# Checks the Authenticode signatures of a signed Windows installer and of what it installs.
-# Runs on the Windows release runner only: it installs the launcher for the current user.
+# Checks the Authenticode signatures of a signed Windows installer and of what it installs, and of
+# any -Also files (checked, not run). Runs on the Windows release runner only: it installs the
+# launcher for the current user.
 param(
-  [Parameter(Mandatory)] [string] $Installer
+  [Parameter(Mandatory)] [string] $Installer,
+  [string[]] $Also = @()
 )
 $ErrorActionPreference = 'Stop'
 $failures = @()
@@ -18,6 +20,7 @@ function Test-File([string] $Path) {
 }
 
 $failures += Test-File $Installer
+foreach ($file in $Also) { $failures += Test-File $file }
 
 # Tauri's per-user NSIS installer installs to $LOCALAPPDATA\<productName>.
 $installDir = Join-Path $env:LOCALAPPDATA 'Perland Launcher'

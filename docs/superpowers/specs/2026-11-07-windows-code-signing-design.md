@@ -24,6 +24,11 @@ Tauri's `bundle.windows.signCommand` is `node scripts/release/cli.mjs sign %1`, 
 
 Only after that does Tauri write the updater `.sig`, so the `.sig` covers the signed installer. One build pass, no artifact round trips.
 
+The branded setup (`2026-11-04-branded-setup-design.md`) adds two binaries, which the workflow signs with the same `cli.mjs sign`:
+
+- `perland-uninstall.exe`, before `tauri build` bundles it;
+- `perland-setup.exe`, the one-click setup app that carries the signed NSIS installer, after it is built.
+
 `cli.mjs sign`:
 
 - skips a file that already has an Authenticode signature. ssign refuses one, and Tauri passes the plugins along unchecked. Only plugins may come signed.
@@ -31,7 +36,7 @@ Only after that does Tauri write the updater `.sig`, so the `.sig` covers the si
 - checks the file is signed afterwards;
 - appends `<role> <outcome> <file>` to `$SIGN_DIR/ledger.log`.
 
-makensis ignores the exit code of the uninstaller's sign command, so a failure there would ship an unsigned uninstaller silently. After the build, `cli.mjs sign-check` fails on any `error` line. It also fails unless the launcher, the uninstaller and the installer were each signed by us. Then `verify-authenticode.ps1` installs the result on the runner and checks that the installer, the launcher and `uninstall.exe` carry a valid Certum signature with a timestamp.
+makensis ignores the exit code of the uninstaller's sign command, so a failure there would ship an unsigned uninstaller silently. After the build, `cli.mjs sign-check` fails on any `error` line. It also fails unless each of these was signed by us: the launcher, both uninstallers, the NSIS installer and the setup app. Then `verify-authenticode.ps1` checks the setup app and the NSIS installer. It installs the NSIS installer on the runner and checks every installed `.exe`, each for a valid Certum signature with a timestamp.
 
 The NSIS plugin DLLs are signed too: they ship inside our installer, and Tauri signs them for that reason.
 

@@ -1288,7 +1288,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn active_offline_in_beta_is_no_account() {
+    async fn active_offline_in_beta_plays() {
         let (core, runner, host, _t) = core(BuildKind::Beta);
         core.instance_create(NewInstance {
             name: "Alpha".into(),
@@ -1304,12 +1304,19 @@ mod tests {
             ..Default::default()
         };
         core.accounts.lock().await.save(&file).await.unwrap();
-        assert_eq!(
-            core.play("alpha").await.unwrap_err().code,
-            ErrorCode::NoAccount
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        let sessions = runner.started_sessions.lock().unwrap().clone();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(sessions[0].user_type, "legacy");
+        assert_eq!(sessions[0].username, "Steve");
+        assert!(
+            runner.msa.calls.lock().unwrap().is_empty(),
+            "no Microsoft call"
         );
-        assert!(host.states("alpha").is_empty(), "no run was queued");
-        assert!(runner.started_sessions.lock().unwrap().is_empty());
+        runner.finish("alpha", exit(Some(0)));
+        host.wait_for("alpha", Idle).await;
     }
 
     /// A Release core with Alex signed in with Microsoft (token `mc-secret-token` in memory)
@@ -1403,12 +1410,7 @@ mod tests {
     /// any run is queued or any session reaches the runner.
     #[tokio::test]
     async fn every_play_entry_point_needs_an_account_that_can_play() {
-        for (build, offline) in [
-            (BuildKind::Release, false),
-            (BuildKind::Release, true),
-            (BuildKind::Beta, false),
-            (BuildKind::Beta, true),
-        ] {
+        for build in [BuildKind::Release, BuildKind::Beta] {
             let (core, runner, host, _t) = core(build);
             core.instance_create(NewInstance {
                 name: "Alpha".into(),
@@ -1417,16 +1419,6 @@ mod tests {
             })
             .await
             .unwrap();
-            if offline {
-                // An offline account left over from an older launcher, still marked active.
-                let steve = launcher_core::accounts::offline_account("Steve").unwrap();
-                let file = launcher_core::accounts::AccountsFile {
-                    active: Some(steve.uuid.clone()),
-                    accounts: vec![steve],
-                    ..Default::default()
-                };
-                core.accounts.lock().await.save(&file).await.unwrap();
-            }
             let join = ServerAddress::new("play.example.com", 25565).unwrap();
             let answers = [
                 ("play", core.play("alpha").await),
@@ -1442,7 +1434,7 @@ mod tests {
                 assert_eq!(
                     answer.unwrap_err().code,
                     ErrorCode::NoAccount,
-                    "{entry}, {build:?}, offline account: {offline}"
+                    "{entry}, {build:?}"
                 );
             }
             assert!(host.states("alpha").is_empty(), "no run was queued");

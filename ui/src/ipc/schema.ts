@@ -653,7 +653,7 @@ export const appEvent = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('update'), state: updateState }),
   z.strictObject({ type: z.literal('perland_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
   /** A Microsoft sign-in moved on: the browser is open, or its code is being redeemed. */
-  z.strictObject({ type: z.literal('microsoft_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
+  z.strictObject({ type: z.literal('microsoft_sign_in'), phase: z.enum(['waiting', 'window', 'exchanging']) }),
   /** A Microsoft sign-in started a call of its chain; a failure stops on the step reported last. */
   z.strictObject({ type: z.literal('microsoft_sign_in_step'), step: msaStep }),
   /** New lines of the server console being followed in Manage, without colour codes. */

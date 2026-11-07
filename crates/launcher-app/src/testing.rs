@@ -267,6 +267,34 @@ pub(crate) struct RecordingHost {
     pub on_emit: Mutex<Option<EmitHook>>,
     /// Every URL the app asked the browser to open.
     pub opened: Mutex<Vec<String>>,
+    /// Every sign-in window the app opened: its URL, title and `done` test.
+    pub windows: Mutex<Vec<OpenedWindow>>,
+    /// The answer of the sign-in window open now (see `land_window`).
+    window_answer: Mutex<Option<oneshot::Sender<Option<String>>>>,
+    /// How many sign-in windows the app dropped before they answered (which closes them).
+    pub windows_closed: Arc<AtomicUsize>,
+}
+
+/// Counts a sign-in window dropped before it answered.
+struct WindowGuard {
+    closed: Arc<AtomicUsize>,
+    answered: bool,
+}
+
+impl Drop for WindowGuard {
+    fn drop(&mut self) {
+        if !self.answered {
+            self.closed.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
+/// A sign-in window `RecordingHost` was asked to open.
+#[derive(Clone)]
+pub(crate) struct OpenedWindow {
+    pub url: String,
+    pub title: &'static str,
+    pub done: fn(&str) -> bool,
 }
 
 pub(crate) type EmitHook = Arc<dyn Fn(&AppEvent) + Send + Sync>;
@@ -370,6 +398,35 @@ impl RecordingHost {
     }
 
     /// Wait until the app has opened `n` URLs, and return them (panics after 5 s).
+    /// Wait until `n` sign-in windows were opened (panics after 5 s).
+    pub async fn wait_for_windows(&self, n: usize) -> Vec<OpenedWindow> {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let windows = self.windows.lock().unwrap().clone();
+            if windows.len() >= n {
+                return windows;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "only {} sign-in windows were opened",
+                windows.len()
+            );
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    }
+
+    /// Plays the sign-in window open now: it navigated to `url` (one its `done` accepted), or
+    /// the player closed it (`None`).
+    pub fn land_window(&self, url: Option<&str>) {
+        let answer = self
+            .window_answer
+            .lock()
+            .unwrap()
+            .take()
+            .expect("a sign-in window is open");
+        let _ = answer.send(url.map(str::to_string));
+    }
+
     pub async fn wait_for_opened(&self, n: usize) -> Vec<String> {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
         loop {
@@ -429,6 +486,31 @@ impl Host for RecordingHost {
     }
     fn open_url(&self, url: &str) {
         self.opened.lock().unwrap().push(url.to_string());
+    }
+    fn open_sign_in_window(
+        &self,
+        window: crate::events::SignInWindow,
+    ) -> BoxFuture<Option<String>> {
+        let (answer, answered) = oneshot::channel();
+        // As the real window: a new one replaces the one before, which answers `None`.
+        if let Some(old) = self.window_answer.lock().unwrap().replace(answer) {
+            let _ = old.send(None);
+        }
+        self.windows.lock().unwrap().push(OpenedWindow {
+            url: window.url.to_string(),
+            title: window.title,
+            done: window.done,
+        });
+        let closed = WindowGuard {
+            closed: self.windows_closed.clone(),
+            answered: false,
+        };
+        Box::pin(async move {
+            let mut closed = closed;
+            let landed = answered.await.ok().flatten();
+            closed.answered = true;
+            landed
+        })
     }
 }
 
@@ -976,6 +1058,9 @@ pub(crate) struct MsaCall {
 pub(crate) struct FakeMsa {
     /// Default `MS_CLIENT_ID`; `None` makes every call answer `microsoft_not_configured`.
     pub client_id: Mutex<Option<String>>,
+    /// Signs in in the launcher's window on login.live.com (the Minecraft Launcher's client)
+    /// instead of the browser. Default off.
+    pub live: AtomicBool,
     /// What each `redeem` answers, in order; when none is left, Alex signed in.
     pub redeems: Mutex<VecDeque<Result<SignedIn>>>,
     /// What each `refresh` answers, in order; when none is left, Alex signed in.
@@ -994,6 +1079,7 @@ impl FakeMsa {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             client_id: Mutex::new(Some(MS_CLIENT_ID.into())),
+            live: AtomicBool::new(false),
             redeems: Mutex::new(VecDeque::new()),
             refreshes: Mutex::new(VecDeque::new()),
             profiles: Mutex::new(VecDeque::new()),
@@ -1069,9 +1155,40 @@ impl FakeMsa {
     }
 }
 
+/// The page `FakeMsa` opens for a sign-in in the launcher's window.
+pub(crate) const FAKE_LIVE_AUTHORIZE: &str = "https://login.example.com/live?client_id=live";
+
 impl MsaApi for FakeMsa {
     fn client_id(&self) -> Option<String> {
         self.client_id.lock().unwrap().clone()
+    }
+
+    fn live(&self) -> bool {
+        self.live.load(Ordering::SeqCst)
+    }
+
+    fn live_authorize_url(&self) -> Result<String> {
+        self.configured()?;
+        Ok(FAKE_LIVE_AUTHORIZE.into())
+    }
+
+    fn redeem_live(
+        &self,
+        code: String,
+        step: crate::msa::StepReport,
+    ) -> BoxFuture<Result<SignedIn>> {
+        for each in [
+            MsaStep::Microsoft,
+            MsaStep::Xbox,
+            MsaStep::Xsts,
+            MsaStep::Minecraft,
+            MsaStep::Profile,
+        ] {
+            step(each);
+        }
+        self.answer("redeem_live", &[&code], &self.redeems, || {
+            signed_in("Alex", FAKE_MSA_ID)
+        })
     }
 
     fn authorize_url(&self, redirect: &str, pkce: &Pkce) -> Result<String> {

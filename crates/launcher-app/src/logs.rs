@@ -100,6 +100,12 @@ mod tests {
         fn minimize(&self) {}
         fn restore(&self) {}
         fn open_url(&self, _url: &str) {}
+        fn open_sign_in_window(
+            &self,
+            _window: crate::events::SignInWindow,
+        ) -> crate::runner::BoxFuture<Option<String>> {
+            Box::pin(async { None })
+        }
     }
 
     #[tokio::test(start_paused = true)]

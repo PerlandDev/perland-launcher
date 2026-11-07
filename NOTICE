@@ -20,3 +20,7 @@ Bundled fonts (SIL Open Font License 1.1):
   Atkinson Hyperlegible Next and Atkinson Hyperlegible Mono, by the Braille Institute of America
 
 Icons: pixelarticons by Gerrit Halfmann (MIT License)
+
+Perland Launcher Setup (crates/perland-setup) bundles, in crates/perland-setup/assets:
+  Bungee-Regular.ttf and AtkinsonHyperlegibleNext.ttf (SIL Open Font License 1.1, licence texts
+  beside them), and the Perland pinwheel from the Perland brand kit (PerlandDev/perland-brand).

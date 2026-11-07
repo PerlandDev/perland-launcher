@@ -10,8 +10,9 @@ use launcher_core::{
     http::HttpClient,
     msa::{
         minecraft::{dashed, ownership, McProfile, McToken, SignedIn},
+        oauth::{is_live_redirect, live_callback},
         secrets::{delete_refresh, load_refresh, save_refresh},
-        MsaClient, MsaEndpoints, MsaStep,
+        MsaApp, MsaClient, MsaEndpoints, MsaStep,
     },
     perland::{Callback, Language, Loopback, Page, Pkce, SecretError},
     ErrorCode, LauncherError, Result,
@@ -20,8 +21,8 @@ use tokio::sync::watch;
 
 use crate::{
     app::AppCore,
-    dto::{AccountReady, PerlandSignInPhase},
-    events::{AppEvent, Host},
+    dto::{AccountReady, MicrosoftSignInPhase},
+    events::{AppEvent, Host, SignInWindow},
     perland::SIGN_IN_DEADLINE,
     restore::now_secs,
     runner::{BoxFuture, Runner},
@@ -29,9 +30,17 @@ use crate::{
 
 /// Microsoft, Xbox and Minecraft services. The real one is `CoreMsa`; tests use `FakeMsa`.
 pub trait MsaApi: Send + Sync + 'static {
-    /// The Azure app this build signs in with; `None` when the build has none.
+    /// The client id this build signs in with; `None` when the build has none.
     fn client_id(&self) -> Option<String>;
-    /// The page the browser opens to sign in.
+    /// The sign-in runs in the launcher's window on login.live.com (the Minecraft Launcher's
+    /// client), not in the browser.
+    fn live(&self) -> bool;
+    /// The page the launcher's window opens to sign in (`live`).
+    fn live_authorize_url(&self) -> Result<String>;
+    /// Redeem the code read off the desktop redirect and run the whole chain (`live`),
+    /// reporting each step to `step` as it starts.
+    fn redeem_live(&self, code: String, step: StepReport) -> BoxFuture<Result<SignedIn>>;
+    /// The page the browser opens to sign in (the Azure app).
     fn authorize_url(&self, redirect: &str, pkce: &Pkce) -> Result<String>;
     /// Redeem the code the browser brought back and run the whole chain, reporting each step
     /// to `step` as it starts.
@@ -74,18 +83,14 @@ fn sign_in_again() -> LauncherError {
 /// `MsaApi` over `launcher_core::msa::MsaClient`.
 pub struct CoreMsa {
     client: Option<MsaClient>,
-    client_id: Option<String>,
 }
 
 impl CoreMsa {
     /// `http` should never follow a redirect (one would replay a code or refresh token to
-    /// another host). Without `client_id` every call answers `microsoft_not_configured`.
-    pub fn new(http: HttpClient, endpoints: MsaEndpoints, client_id: Option<String>) -> Self {
+    /// another host). Without an `app` every call answers `microsoft_not_configured`.
+    pub fn new(http: HttpClient, endpoints: MsaEndpoints, app: Option<MsaApp>) -> Self {
         Self {
-            client: client_id
-                .clone()
-                .map(|id| MsaClient::new(http, endpoints, id)),
-            client_id,
+            client: app.map(|app| MsaClient::new(http, endpoints, app)),
         }
     }
 
@@ -96,7 +101,29 @@ impl CoreMsa {
 
 impl MsaApi for CoreMsa {
     fn client_id(&self) -> Option<String> {
-        self.client_id.clone()
+        self.client
+            .as_ref()
+            .map(|c| c.app().client_id().to_string())
+    }
+
+    fn live(&self) -> bool {
+        self.client
+            .as_ref()
+            .is_some_and(|c| *c.app() == MsaApp::Live)
+    }
+
+    fn live_authorize_url(&self) -> Result<String> {
+        Ok(self.client()?.live_authorize_url().to_string())
+    }
+
+    fn redeem_live(&self, code: String, step: StepReport) -> BoxFuture<Result<SignedIn>> {
+        let client = self.client();
+        Box::pin(async move {
+            let client = client?;
+            step(MsaStep::Microsoft);
+            let tokens = client.redeem_live_code(&code).await?;
+            client.finish_with(tokens, now_secs(), &*step).await
+        })
     }
 
     fn authorize_url(&self, redirect: &str, pkce: &Pkce) -> Result<String> {
@@ -157,15 +184,99 @@ fn secret_phrase(e: &SecretError) -> String {
     }
 }
 
+/// What the sign-in page brought back: from the browser through the loopback (the Azure app),
+/// or read off the desktop redirect in the launcher's window (the Minecraft Launcher's client).
+enum Brought {
+    Browser {
+        code: String,
+        verifier: String,
+        redirect: String,
+    },
+    Window(String),
+}
+
+/// The title of the launcher's Microsoft window.
+fn window_title(language: Language) -> &'static str {
+    match language {
+        Language::En => "Sign in with Microsoft",
+        Language::Es => "Iniciar sesión con Microsoft",
+    }
+}
+
+/// The code a sign-in page answered with; `None` when the player said no or gave up.
+fn code_of(callback: Callback) -> Result<Option<String>> {
+    match callback {
+        Callback::Code(code) => Ok(Some(code)),
+        Callback::Denied | Callback::Canceled => Ok(None),
+        Callback::Failed(why) => Err(LauncherError::auth(
+            ErrorCode::SignInFailed,
+            "Couldn't sign you in with Microsoft. Try again.",
+        )
+        .with_detail(why)),
+    }
+}
+
 impl<R: Runner, H: Host> AppCore<R, H> {
-    /// Sign in with Microsoft in the player's browser. `Ok(None)` when the player canceled (on
-    /// Microsoft's page, with Cancel, or by starting another sign-in). The account becomes the
-    /// active one; the answer is the accounts the player may see.
+    /// Sign in with Microsoft: in the player's browser (the Azure app), or in a window of the
+    /// launcher's own on login.live.com (the Minecraft Launcher's client). `Ok(None)` when the
+    /// player canceled (on Microsoft's page, by closing the window, with Cancel, or by starting
+    /// another sign-in). The account becomes the active one; the answer is the accounts the
+    /// player may see.
     pub async fn account_sign_in_microsoft(&self, language: &str) -> Result<Option<AccountsFile>> {
-        // Take the slot first, so a Cancel (or another sign-in) before the browser opens counts.
+        // Take the slot first, so a Cancel (or another sign-in) before the page opens counts.
         let (_attempt, cancel) = self.start_msa_sign_in();
         let msa = self.runner.msa();
         msa.client_id().ok_or_else(not_configured)?;
+        let language = Language::parse(language);
+        let brought = if msa.live() {
+            self.window_code(&*msa, language, &cancel)
+                .await?
+                .map(Brought::Window)
+        } else {
+            self.browser_code(&*msa, language, &cancel).await?
+        };
+        let Some(brought) = brought else {
+            return Ok(None);
+        };
+        if *cancel.borrow() {
+            return Ok(None);
+        }
+        self.host.emit(AppEvent::MicrosoftSignIn {
+            phase: MicrosoftSignInPhase::Exchanging,
+        });
+        // A sign-in canceled (or replaced by a newer one) stops reporting, so its late steps
+        // never show on the newer sign-in.
+        let (host, canceled) = (self.host.clone(), cancel.clone());
+        let report: StepReport = std::sync::Arc::new(move |step| {
+            if !*canceled.borrow() {
+                host.emit(AppEvent::MicrosoftSignInStep { step });
+            }
+        });
+        let redeemed = match brought {
+            Brought::Browser {
+                code,
+                verifier,
+                redirect,
+            } => msa.redeem(code, verifier, redirect, report).await,
+            Brought::Window(code) => msa.redeem_live(code, report).await,
+        };
+        // Canceled while the code was redeemed: the player moved on, so keep nothing.
+        if *cancel.borrow() {
+            return Ok(None);
+        }
+        match redeemed {
+            Ok(signed) => self.keep_microsoft(signed).await.map(Some),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// The Azure app's page in the player's browser, back through a loopback redirect.
+    async fn browser_code(
+        &self,
+        msa: &dyn MsaApi,
+        language: Language,
+        cancel: &watch::Receiver<bool>,
+    ) -> Result<Option<Brought>> {
         let pkce = Pkce::new();
         let loopback = Loopback::bind().map_err(|e| {
             LauncherError::auth(ErrorCode::SignInFailed, "Couldn't listen for the sign-in.")
@@ -178,53 +289,68 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
         self.host.open_url(&url);
         self.host.emit(AppEvent::MicrosoftSignIn {
-            phase: PerlandSignInPhase::Waiting,
+            phase: MicrosoftSignInPhase::Waiting,
         });
         let callback = loopback
             .wait(
                 &pkce.state,
-                Language::parse(language),
+                language,
                 Page::MicrosoftContinue,
                 SIGN_IN_DEADLINE,
                 cancel.clone(),
             )
             .await?;
-        let code = match callback {
-            Callback::Code(code) => code,
-            Callback::Denied | Callback::Canceled => return Ok(None),
-            Callback::Failed(why) => {
+        Ok(code_of(callback)?.map(|code| Brought::Browser {
+            code,
+            verifier: pkce.verifier.clone(),
+            redirect,
+        }))
+    }
+
+    /// The Minecraft Launcher's page on login.live.com in the launcher's own window, which
+    /// answers with the desktop redirect it was sent to. Cancel or the deadline closes the
+    /// window; a newer sign-in's window takes its place.
+    async fn window_code(
+        &self,
+        msa: &dyn MsaApi,
+        language: Language,
+        cancel: &watch::Receiver<bool>,
+    ) -> Result<Option<String>> {
+        let url = msa.live_authorize_url()?;
+        if *cancel.borrow() {
+            return Ok(None);
+        }
+        let window = self.host.open_sign_in_window(SignInWindow {
+            url: &url,
+            title: window_title(language),
+            done: is_live_redirect,
+        });
+        self.host.emit(AppEvent::MicrosoftSignIn {
+            phase: MicrosoftSignInPhase::Window,
+        });
+        // Returning before the window answered drops it, which closes it.
+        let mut canceled = cancel.clone();
+        let landed = tokio::select! {
+            landed = window => landed,
+            _ = canceled.wait_for(|c| *c) => return Ok(None),
+            () = tokio::time::sleep(SIGN_IN_DEADLINE) => {
                 return Err(LauncherError::auth(
-                    ErrorCode::SignInFailed,
-                    "Couldn't sign you in with Microsoft. Try again.",
-                )
-                .with_detail(why))
+                    ErrorCode::SignInTimedOut,
+                    "Sign-in took too long. Try again.",
+                ));
             }
+        };
+        // Closed by the player, or it couldn't open.
+        let Some(landed) = landed else {
+            return Ok(None);
         };
         if *cancel.borrow() {
             return Ok(None);
         }
-        self.host.emit(AppEvent::MicrosoftSignIn {
-            phase: PerlandSignInPhase::Exchanging,
-        });
-        // A sign-in canceled (or replaced by a newer one) stops reporting, so its late steps
-        // never show on the newer sign-in.
-        let (host, canceled) = (self.host.clone(), cancel.clone());
-        let report: StepReport = std::sync::Arc::new(move |step| {
-            if !*canceled.borrow() {
-                host.emit(AppEvent::MicrosoftSignInStep { step });
-            }
-        });
-        let redeemed = msa
-            .redeem(code, pkce.verifier.clone(), redirect, report)
-            .await;
-        // Canceled while the code was redeemed: the player moved on, so keep nothing.
-        if *cancel.borrow() {
-            return Ok(None);
-        }
-        match redeemed {
-            Ok(signed) => self.keep_microsoft(signed).await.map(Some),
-            Err(e) => Err(e),
-        }
+        // `done` held for it, so it is the redirect; anything else is the window's mistake.
+        let callback =
+            live_callback(&landed).unwrap_or_else(|| Callback::Failed("not_the_redirect".into()));
+        code_of(callback)
     }
 
     /// Keep a finished sign-in: the refresh token in the credential store, the Minecraft token
@@ -502,10 +628,10 @@ mod tests {
 
     use crate::{
         app::tests::{core, core_with_msa_secrets, TestCore},
-        dto::PerlandSignInPhase,
+        dto::MicrosoftSignInPhase,
         events::AppEvent,
         restore::now_secs,
-        testing::{signed_in, MS_CLIENT_ID},
+        testing::{signed_in, FAKE_LIVE_AUTHORIZE, MS_CLIENT_ID},
     };
 
     const ALEX_ID: &str = "0123456789abcdef0123456789abcdef";
@@ -611,7 +737,10 @@ mod tests {
             .collect();
         assert_eq!(
             phases,
-            [PerlandSignInPhase::Waiting, PerlandSignInPhase::Exchanging]
+            [
+                MicrosoftSignInPhase::Waiting,
+                MicrosoftSignInPhase::Exchanging
+            ]
         );
         assert!(core.account_ready().await.unwrap().ready);
     }
@@ -625,6 +754,160 @@ mod tests {
         assert_eq!(finish(task).await.unwrap(), None);
         assert!(runner.msa.calls_to("redeem").is_empty());
         assert!(core.accounts_list().await.unwrap().accounts.is_empty());
+    }
+
+    /// The desktop redirect of the Minecraft Launcher's client, carrying `params`.
+    fn desktop_redirect(params: &str) -> String {
+        format!("{}?{params}", launcher_core::msa::oauth::LIVE_REDIRECT)
+    }
+
+    /// A core whose sign-in runs in the launcher's window (the Minecraft Launcher's client).
+    fn live_core() -> (
+        Arc<TestCore>,
+        Arc<crate::testing::FakeRunner>,
+        Arc<crate::testing::RecordingHost>,
+        tempfile::TempDir,
+    ) {
+        let (core, runner, host, t) = core(BuildKind::Release);
+        runner.msa.live.store(true, Ordering::SeqCst);
+        (core, runner, host, t)
+    }
+
+    #[tokio::test]
+    async fn window_sign_in_stores_account_and_secret() {
+        let (core, runner, host, _t) = live_core();
+        let task = sign_in(&core);
+        let windows = host.wait_for_windows(1).await;
+        assert_eq!(windows[0].url, FAKE_LIVE_AUTHORIZE);
+        assert_eq!(windows[0].title, "Sign in with Microsoft");
+        // The window's test is the desktop redirect's, and nothing on the way there.
+        assert!((windows[0].done)(&desktop_redirect("code=x")));
+        assert!(!(windows[0].done)(
+            "https://login.live.com/oauth20_authorize.srf?client_id=00000000402b5328"
+        ));
+        assert!(host.opened.lock().unwrap().is_empty(), "no browser");
+        host.land_window(Some(&desktop_redirect("code=the-code&lc=1033")));
+        let file = finish(task).await.unwrap().expect("signed in");
+
+        let uuid = dashed(ALEX_ID);
+        assert_eq!(file.active.as_deref(), Some(uuid.as_str()));
+        assert_eq!(refresh_of(&core, &uuid).as_deref(), Some("refresh-Alex"));
+        let redeem = runner.msa.calls_to("redeem_live");
+        assert_eq!(redeem.len(), 1);
+        assert_eq!(redeem[0].args, ["the-code"]);
+        assert!(runner.msa.calls_to("redeem").is_empty());
+
+        let phases: Vec<_> = host
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|e| match e {
+                AppEvent::MicrosoftSignIn { phase } => Some(*phase),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            phases,
+            [
+                MicrosoftSignInPhase::Window,
+                MicrosoftSignInPhase::Exchanging
+            ]
+        );
+        let steps = host
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| matches!(e, AppEvent::MicrosoftSignInStep { .. }))
+            .count();
+        assert_eq!(steps, 5);
+        assert!(core.account_ready().await.unwrap().ready);
+    }
+
+    #[tokio::test]
+    async fn the_window_is_titled_in_the_players_language() {
+        let (core, _runner, host, _t) = live_core();
+        let task = {
+            let core = core.clone();
+            tokio::spawn(async move { core.account_sign_in_microsoft("es-MX").await })
+        };
+        let windows = host.wait_for_windows(1).await;
+        assert_eq!(windows[0].title, "Iniciar sesión con Microsoft");
+        host.land_window(None);
+        assert_eq!(finish(task).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn closing_the_window_keeps_nothing() {
+        let (core, runner, host, _t) = live_core();
+        let task = sign_in(&core);
+        host.wait_for_windows(1).await;
+        host.land_window(None);
+        assert_eq!(finish(task).await.unwrap(), None);
+        assert!(runner.msa.calls_to("redeem_live").is_empty());
+        assert!(core.accounts_list().await.unwrap().accounts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn denied_in_the_window_keeps_nothing() {
+        let (core, runner, host, _t) = live_core();
+        let task = sign_in(&core);
+        host.wait_for_windows(1).await;
+        host.land_window(Some(&desktop_redirect(
+            "error=access_denied&error_description=The+user+has+denied+access",
+        )));
+        assert_eq!(finish(task).await.unwrap(), None);
+        assert!(runner.msa.calls_to("redeem_live").is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_error_in_the_window_is_sign_in_failed() {
+        let (core, runner, host, _t) = live_core();
+        let task = sign_in(&core);
+        host.wait_for_windows(1).await;
+        host.land_window(Some(&desktop_redirect("error=server_error")));
+        let err = finish(task).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::SignInFailed);
+        assert_eq!(err.detail.as_deref(), Some("server_error"));
+        assert!(runner.msa.calls_to("redeem_live").is_empty());
+    }
+
+    #[tokio::test]
+    async fn cancel_closes_the_window() {
+        let (core, runner, host, _t) = live_core();
+        let task = sign_in(&core);
+        host.wait_for_windows(1).await;
+        core.account_sign_in_cancel();
+        assert_eq!(finish(task).await.unwrap(), None);
+        assert_eq!(host.windows_closed.load(Ordering::SeqCst), 1);
+        assert!(runner.msa.calls_to("redeem_live").is_empty());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_window_closes_at_the_deadline() {
+        let (core, runner, host, _t) = live_core();
+        let task = sign_in(&core);
+        host.wait_for_windows(1).await;
+        let err = task.await.unwrap().unwrap_err();
+        assert_eq!(err.code, ErrorCode::SignInTimedOut);
+        assert_eq!(host.windows_closed.load(Ordering::SeqCst), 1);
+        assert!(runner.msa.calls_to("redeem_live").is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_new_sign_in_replaces_the_window() {
+        let (core, runner, host, _t) = live_core();
+        let first = sign_in(&core);
+        host.wait_for_windows(1).await;
+        let second = sign_in(&core);
+        host.wait_for_windows(2).await;
+        assert_eq!(finish(first).await.unwrap(), None);
+        host.land_window(Some(&desktop_redirect("code=second")));
+        finish(second).await.unwrap().expect("signed in");
+        let redeem = runner.msa.calls_to("redeem_live");
+        assert_eq!(redeem.len(), 1);
+        assert_eq!(redeem[0].args, ["second"]);
     }
 
     /// Every call of the chain reaches the window as it starts, after the browser step.
@@ -784,23 +1067,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ready_for_offline_account_in_dev_only() {
-        // A dev build plays with an offline account, as it always could.
-        let (dev, _runner, _host, _t) = core(BuildKind::Dev);
-        dev.account_add_offline("Steve").await.unwrap();
-        assert!(dev.account_ready().await.unwrap().ready, "dev");
-
-        // Any other build hides offline accounts, so an active one is no account.
-        let (beta, _runner, _host, _t) = core(BuildKind::Beta);
-        let steve = offline_account("Steve").unwrap();
-        save_refresh(&*beta.msa_secrets, &steve.uuid, "refresh").unwrap();
-        let file = AccountsFile {
-            active: Some(steve.uuid.clone()),
-            accounts: vec![steve],
-            ..AccountsFile::default()
-        };
-        beta.accounts.lock().await.save(&file).await.unwrap();
-        assert!(!beta.account_ready().await.unwrap().ready, "beta");
+    async fn ready_for_offline_account_in_every_build() {
+        for build in [BuildKind::Dev, BuildKind::Beta, BuildKind::Release] {
+            let (core, _runner, _host, _t) = core(build);
+            core.account_add_offline("Steve").await.unwrap();
+            assert!(core.account_ready().await.unwrap().ready, "{build:?}");
+        }
     }
 
     #[tokio::test]
@@ -821,7 +1093,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_active_refuses_a_hidden_offline_account() {
+    async fn set_active_takes_an_offline_account_in_a_shipped_build() {
         let (core, _runner, _host, _t) = core(BuildKind::Beta);
         let steve = offline_account("Steve").unwrap();
         let alex = Account {
@@ -835,10 +1107,10 @@ mod tests {
             ..AccountsFile::default()
         };
         core.accounts.lock().await.save(&file).await.unwrap();
-        let err = core.account_set_active(&steve.uuid).await.unwrap_err();
-        assert_eq!(err.code, ErrorCode::NoAccount);
-        let stored = core.accounts.lock().await.list().await.unwrap();
-        assert_eq!(stored.active, Some(alex.uuid.clone()), "nothing changed");
+        assert_eq!(
+            core.account_set_active(&steve.uuid).await.unwrap().active,
+            Some(steve.uuid)
+        );
         assert_eq!(
             core.account_set_active(&alex.uuid).await.unwrap().active,
             Some(alex.uuid)
@@ -1083,17 +1355,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn offline_session_only_in_dev() {
-        let (core, runner, _host, _t) = core(BuildKind::Dev);
+    async fn offline_session_in_every_build() {
         let steve = offline_account("Steve").unwrap();
-        let session = core.session_for(steve.clone()).await.unwrap();
-        assert_eq!(session.user_type, "legacy");
-        assert_eq!(session.client_id, None);
-        assert!(runner.msa.calls.lock().unwrap().is_empty());
-
-        let (core, _runner, _host, _t) = crate::app::tests::core(BuildKind::Beta);
-        let err = core.session_for(steve).await.unwrap_err();
-        assert_eq!(err.code, ErrorCode::NoAccount);
+        for build in [BuildKind::Dev, BuildKind::Beta, BuildKind::Release] {
+            let (core, runner, _host, _t) = core(build);
+            let session = core.session_for(steve.clone()).await.unwrap();
+            assert_eq!(session.user_type, "legacy", "{build:?}");
+            assert_eq!(session.client_id, None);
+            assert!(runner.msa.calls.lock().unwrap().is_empty());
+        }
     }
 
     #[tokio::test]

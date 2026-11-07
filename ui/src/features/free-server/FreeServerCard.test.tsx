@@ -84,7 +84,7 @@ describe('FreeServerCard', () => {
   });
 
   it('Play without an account that can play opens the sign-in prompt and never starts the server', async () => {
-    const { user, calls } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has', beta: true });
+    const { user, calls } = renderApp(<ServersScreen />, { perland: 'signedIn', free: 'has', beta: true, offlineLocked: true });
     const card = await cardIn(await yours(), 'Weekend SMP');
     await user.click(within(card).getByRole('button', { name: 'Play' }));
     await vi.waitFor(() => expect(signInPromptSnapshot()).toBe(true));

@@ -59,6 +59,9 @@ pub struct MsaEndpoints {
     pub token: Url,
     pub xbox_user: Url,
     pub xsts: Url,
+    /// The Minecraft Launcher's sign-in on login.live.com (`MsaApp::Live`).
+    pub live_authorize: Url,
+    pub live_token: Url,
     /// The Minecraft services base, without a path.
     pub minecraft: Url,
 }
@@ -71,9 +74,41 @@ impl MsaEndpoints {
             token: url("https://login.microsoftonline.com/consumers/oauth2/v2.0/token"),
             xbox_user: url("https://user.auth.xboxlive.com/user/authenticate"),
             xsts: url("https://xsts.auth.xboxlive.com/xsts/authorize"),
+            live_authorize: url("https://login.live.com/oauth20_authorize.srf"),
+            live_token: url("https://login.live.com/oauth20_token.srf"),
             minecraft: url("https://api.minecraftservices.com"),
         }
     }
+}
+
+/// The public client id of the official Minecraft Launcher on login.live.com. It has no secret,
+/// takes only the desktop redirect (`oauth::LIVE_REDIRECT`), and Minecraft's services accept it.
+pub const LIVE_CLIENT_ID: &str = "00000000402b5328";
+
+/// Which Microsoft app signs the player in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MsaApp {
+    /// Perland's own Azure app (`PERLAND_MS_CLIENT_ID`): the browser and a loopback redirect,
+    /// with PKCE. Minecraft takes its sign-ins only once Mojang has approved the app.
+    Azure(String),
+    /// The Minecraft Launcher's client (`LIVE_CLIENT_ID`): Microsoft's page in a window of the
+    /// launcher, which reads the code off the desktop redirect.
+    Live,
+}
+
+impl MsaApp {
+    pub fn client_id(&self) -> &str {
+        match self {
+            Self::Azure(id) => id,
+            Self::Live => LIVE_CLIENT_ID,
+        }
+    }
+}
+
+/// The app a build signs in with: the Azure app when it has a client id (see [`client_id`]),
+/// else the Minecraft Launcher's client.
+pub fn app(run: Option<&str>, built: Option<&str>, build: BuildKind) -> MsaApp {
+    client_id(run, built, build).map_or(MsaApp::Live, MsaApp::Azure)
 }
 
 /// Talks to Microsoft, Xbox and Minecraft services.
@@ -81,16 +116,20 @@ impl MsaEndpoints {
 pub struct MsaClient {
     pub(crate) http: HttpClient,
     pub(crate) endpoints: MsaEndpoints,
-    pub(crate) client_id: String,
+    pub(crate) app: MsaApp,
 }
 
 impl MsaClient {
-    pub fn new(http: HttpClient, endpoints: MsaEndpoints, client_id: String) -> Self {
+    pub fn new(http: HttpClient, endpoints: MsaEndpoints, app: MsaApp) -> Self {
         Self {
             http,
             endpoints,
-            client_id,
+            app,
         }
+    }
+
+    pub fn app(&self) -> &MsaApp {
+        &self.app
     }
 }
 

@@ -5,7 +5,7 @@ import { renderApp, sent } from '../../test/backend';
 import { Settings } from './Settings';
 
 it('saves diagnostics where the player picks and offers Show in folder', async () => {
-  const { user, calls } = renderApp(<Settings />, { beta: true });
+  const { user, calls } = renderApp(<Settings />, { beta: true, offlineLocked: true });
   await user.click(await screen.findByRole('button', { name: 'Export diagnostics' }));
   await waitFor(() => expect(sent(calls, 'diagnostics_export')).toHaveLength(1));
   expect(sent(calls, 'diagnostics_export')[0]).toMatchObject({ path: expect.stringMatching(/\.zip$/) });
@@ -15,7 +15,7 @@ it('saves diagnostics where the player picks and offers Show in folder', async (
 });
 
 it('does nothing when the save dialog is cancelled', async () => {
-  const { user, calls } = renderApp(<Settings />, { beta: true, savePath: null });
+  const { user, calls } = renderApp(<Settings />, { beta: true, offlineLocked: true, savePath: null });
   await user.click(await screen.findByRole('button', { name: 'Export diagnostics' }));
   await new Promise((r) => setTimeout(r, 20));
   expect(sent(calls, 'diagnostics_export')).toHaveLength(0);
@@ -28,7 +28,7 @@ it("names the file with the player's local date, not the UTC one", async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
       vi.setSystemTime(new Date(2026, 9, 15, hour, 30));
-      const { user, calls, unmount } = renderApp(<Settings />, { beta: true });
+      const { user, calls, unmount } = renderApp(<Settings />, { beta: true, offlineLocked: true });
       await user.click(await screen.findByRole('button', { name: 'Export diagnostics' }));
       await waitFor(() => expect(sent(calls, 'plugin:dialog|save')).toHaveLength(1));
       expect(JSON.stringify(sent(calls, 'plugin:dialog|save')[0])).toContain('perland-diagnostics-2026-10-15.zip');
