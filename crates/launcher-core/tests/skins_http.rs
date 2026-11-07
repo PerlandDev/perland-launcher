@@ -57,7 +57,7 @@ fn skin_png() -> Vec<u8> {
 }
 
 #[tokio::test]
-async fn active_skin_reads_slim_variant_and_texture() {
+async fn active_skin_reads_slim_variant() {
     let server = MockServer::start().await;
     let texture = format!("{}/texture/abc", server.uri());
     Mock::given(method("GET"))
@@ -73,20 +73,9 @@ async fn active_skin_reads_slim_variant_and_texture() {
         .expect(1)
         .mount(&server)
         .await;
-    Mock::given(method("GET"))
-        .and(path("/texture/abc"))
-        .respond_with(ResponseTemplate::new(200).set_body_bytes(skin_png()))
-        .expect(1)
-        .mount(&server)
-        .await;
-    let client = client(&server);
-    let active = client.active_skin(&mc()).await.unwrap().unwrap();
+    let active = client(&server).active_skin(&mc()).await.unwrap().unwrap();
     assert_eq!(active.model, SkinModel::Slim);
-    let png = client.skin_texture(&active.url).await.unwrap();
-    assert_eq!(
-        png,
-        launcher_core::skins_png::normalise(&skin_png()).unwrap()
-    );
+    assert_eq!(active.url, texture);
 }
 
 #[tokio::test]
@@ -98,16 +87,6 @@ async fn no_skins_is_none() {
         .mount(&server)
         .await;
     assert!(client(&server).active_skin(&mc()).await.unwrap().is_none());
-}
-
-#[tokio::test]
-async fn texture_from_other_host_is_refused() {
-    let server = MockServer::start().await;
-    let e = client(&server)
-        .skin_texture("https://evil.example/skin.png")
-        .await
-        .unwrap_err();
-    assert_eq!(e.code, ErrorCode::SkinInvalid);
 }
 
 #[tokio::test]

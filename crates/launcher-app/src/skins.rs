@@ -5,12 +5,17 @@ use std::path::PathBuf;
 use launcher_core::{
     accounts::{Account, Provider},
     msa::minecraft::McToken,
+    skins,
     skins_library::{SkinEntry, SkinModel},
     skins_png, ErrorCategory, ErrorCode, LauncherError, Result,
 };
 use serde::Serialize;
 
-use crate::{app::AppCore, events::Host, runner::Runner};
+use crate::{
+    app::{AppCore, SKIN_MAX_AGE},
+    events::Host,
+    runner::Runner,
+};
 
 /// The skin an account wears now, ready for the editor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -150,14 +155,34 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }))
     }
 
-    /// The one place the current skin is read. When the avatar work (`launcher_core::skins`,
-    /// with its `cache/skins/<uuid>.png`) lands, switch the texture read to that cache here.
-    async fn current_skin(&self, account: Account) -> Result<Option<crate::msa::SkinTexture>> {
+    /// The skin `account` wears: the texture from the same cache as the account's face (no
+    /// token needed), the arm model from the Minecraft profile, or read off the texture when the
+    /// profile can't be asked.
+    async fn current_skin(&self, account: Account) -> Result<Option<(Vec<u8>, SkinModel)>> {
         if account.provider != Provider::Microsoft {
             return Ok(None);
         }
-        let token = self.minecraft_token(account).await?;
-        self.runner.msa().active_skin(token).await
+        let runner = self.runner.clone();
+        let Some(texture) = skins::cached_texture(
+            &self.config.dirs.skins(),
+            &account.uuid,
+            SKIN_MAX_AGE,
+            |id| runner.skin_texture(id),
+        )
+        .await
+        else {
+            return Ok(None);
+        };
+        let png = skins_png::normalise(&texture)?;
+        let asked = match self.minecraft_token(account).await {
+            Ok(token) => self.runner.msa().skin_model(token).await.ok().flatten(),
+            Err(_) => None,
+        };
+        let model = match asked {
+            Some(model) => model,
+            None => skins_png::guess_model(&skins_png::decode(&png)?),
+        };
+        Ok(Some((png, model)))
     }
 
     /// Uploads skin `id` to the Microsoft account `uuid` and marks it worn.
@@ -181,8 +206,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             })?;
         let png = self.skins.texture(id).await?;
         let token = self.minecraft_token(account).await?;
-        self.runner.msa().upload_skin(token, png, model).await?;
+        self.runner
+            .msa()
+            .upload_skin(token, png.clone(), model)
+            .await?;
         self.skins.mark_worn(id, uuid).await?;
+        // The account's face shows the new skin at once, not when the remembered one expires.
+        if let Err(e) = skins::remember_texture(&self.config.dirs.skins(), uuid, &png).await {
+            tracing::debug!(code = ?e.code, "couldn't remember the skin just worn");
+        }
         self.skins.list().await
     }
 }
@@ -314,15 +346,48 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Release);
         let alex = alex(&core).await;
         let png = skins_png::from_data_url(&texture()).unwrap();
+        *runner.skin.lock().unwrap() = Some(Ok(Some(png)));
         runner
             .msa
-            .active_skins
+            .skin_models
             .lock()
             .unwrap()
-            .push_back(Ok(Some((png, SkinModel::Slim))));
+            .push_back(Ok(Some(SkinModel::Slim)));
         let current = core.skin_current(&alex.uuid).await.unwrap().unwrap();
         assert_eq!(current.model, SkinModel::Slim);
         assert_eq!(current.texture, texture());
+    }
+
+    #[tokio::test]
+    async fn current_reads_the_model_off_the_texture_without_a_profile() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = alex(&core).await;
+        // Classic: the column slim arms leave empty is painted.
+        let mut image = RgbaImage::new(64, 64);
+        for y in 20..32 {
+            image.put_pixel(54, y, Rgba([9, 9, 9, 255]));
+        }
+        *runner.skin.lock().unwrap() = Some(Ok(Some(skins_png::encode(&image).unwrap())));
+        runner.msa.skin_models.lock().unwrap().push_back(Err(
+            launcher_core::LauncherError::network(ErrorCode::HostUnreachable, "down"),
+        ));
+        assert_eq!(
+            core.skin_current(&alex.uuid).await.unwrap().unwrap().model,
+            SkinModel::Classic
+        );
+    }
+
+    #[tokio::test]
+    async fn wearing_updates_the_accounts_face() {
+        let (core, _runner, _host, t) = core(BuildKind::Release);
+        let alex = alex(&core).await;
+        let entry = core
+            .skin_create("Mine", SkinModel::Slim, &texture())
+            .await
+            .unwrap();
+        core.skin_wear(&entry.id, &alex.uuid).await.unwrap();
+        let id = launcher_core::skins::profile_id(&alex.uuid).unwrap();
+        assert!(t.path().join(format!("cache/skins/{id}.png")).is_file());
     }
 
     #[tokio::test]

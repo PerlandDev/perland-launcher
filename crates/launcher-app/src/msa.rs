@@ -56,14 +56,11 @@ pub trait MsaApi: Send + Sync + 'static {
     fn refresh(&self, refresh_token: String) -> BoxFuture<Result<SignedIn>>;
     /// The Minecraft profile the token belongs to; `None` when it owns no profile.
     fn profile(&self, token: McToken) -> BoxFuture<Result<Option<McProfile>>>;
-    /// The skin the account wears (its texture, normalised, and arm model); `None` for none.
-    fn active_skin(&self, token: McToken) -> BoxFuture<Result<Option<SkinTexture>>>;
+    /// The arm model of the skin the account wears; `None` when it wears none of its own.
+    fn skin_model(&self, token: McToken) -> BoxFuture<Result<Option<SkinModel>>>;
     /// Makes `png` the account's skin, drawn for `model`.
     fn upload_skin(&self, token: McToken, png: Vec<u8>, model: SkinModel) -> BoxFuture<Result<()>>;
 }
-
-/// A skin texture (normalised PNG bytes) and the arm model it is drawn for.
-pub type SkinTexture = (Vec<u8>, SkinModel);
 
 /// Where a sign-in reports each step of the chain as it starts.
 pub type StepReport = std::sync::Arc<dyn Fn(MsaStep) + Send + Sync>;
@@ -168,16 +165,9 @@ impl MsaApi for CoreMsa {
         Box::pin(async move { client?.profile(&token).await })
     }
 
-    fn active_skin(&self, token: McToken) -> BoxFuture<Result<Option<SkinTexture>>> {
+    fn skin_model(&self, token: McToken) -> BoxFuture<Result<Option<SkinModel>>> {
         let client = self.client();
-        Box::pin(async move {
-            let client = client?;
-            let Some(active) = client.active_skin(&token).await? else {
-                return Ok(None);
-            };
-            let png = client.skin_texture(&active.url).await?;
-            Ok(Some((png, active.model)))
-        })
+        Box::pin(async move { Ok(client?.active_skin(&token).await?.map(|s| s.model)) })
     }
 
     fn upload_skin(&self, token: McToken, png: Vec<u8>, model: SkinModel) -> BoxFuture<Result<()>> {

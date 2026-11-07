@@ -193,6 +193,12 @@ pub async fn account_sign_in_cancel(core: CoreState<'_>) -> Res<()> {
     Ok(())
 }
 
+/// A Microsoft account's face from its skin, as a `data:` URL; `None` draws the generated one.
+#[tauri::command]
+pub async fn account_face(core: CoreState<'_>, uuid: String) -> Res<Option<String>> {
+    logged("account_face", core.account_face(&uuid).await)
+}
+
 #[tauri::command]
 pub async fn account_ready(core: CoreState<'_>) -> Res<AccountReady> {
     logged("account_ready", core.account_ready().await)

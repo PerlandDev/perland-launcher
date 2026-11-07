@@ -555,6 +555,10 @@ pub(crate) struct FakeRunner {
     pub repairs: Mutex<Vec<bool>>,
     /// What `invite_icon` answers.
     pub icon: Mutex<Option<Vec<u8>>>,
+    /// What `skin_texture` answers (none: no skin of its own).
+    pub skin: Mutex<Option<Result<Option<Vec<u8>>>>>,
+    /// The profiles `skin_texture` was asked for.
+    pub skin_asks: Mutex<Vec<String>>,
     /// What `public_page` answers (none: `server_list_closed`).
     pub public_page: Mutex<Option<Result<FetchedPage>>>,
     /// The queries `public_page` was asked.
@@ -625,6 +629,8 @@ impl FakeRunner {
             engine_hints: Mutex::new(Vec::new()),
             repairs: Mutex::new(Vec::new()),
             icon: Mutex::new(None),
+            skin: Mutex::new(None),
+            skin_asks: Mutex::new(Vec::new()),
             public_page: Mutex::new(None),
             public_queries: Mutex::new(Vec::new()),
             public_invites: Mutex::new(true),
@@ -1024,6 +1030,12 @@ impl Runner for FakeRunner {
     fn msa(&self) -> Arc<dyn MsaApi> {
         self.msa.clone()
     }
+
+    fn skin_texture(&self, uuid: String) -> BoxFuture<Result<Option<Vec<u8>>>> {
+        self.skin_asks.lock().unwrap().push(uuid);
+        let answer = self.skin.lock().unwrap().clone().unwrap_or(Ok(None));
+        Box::pin(async move { answer })
+    }
 }
 
 /// The client id `FakeMsa` has by default.
@@ -1068,8 +1080,8 @@ pub(crate) struct FakeMsa {
     pub refreshes: Mutex<VecDeque<Result<SignedIn>>>,
     /// What each `profile` answers, in order; when none is left, Alex's profile.
     pub profiles: Mutex<VecDeque<Result<Option<McProfile>>>>,
-    /// What each `active_skin` answers, in order; when none is left, no skin.
-    pub active_skins: Mutex<VecDeque<Result<Option<crate::msa::SkinTexture>>>>,
+    /// What each `skin_model` answers, in order; when none is left, no skin.
+    pub skin_models: Mutex<VecDeque<Result<Option<SkinModel>>>>,
     /// What each `upload_skin` answers, in order; when none is left, it works.
     pub uploads: Mutex<VecDeque<Result<()>>>,
     pub calls: Mutex<Vec<MsaCall>>,
@@ -1088,7 +1100,7 @@ impl FakeMsa {
             redeems: Mutex::new(VecDeque::new()),
             refreshes: Mutex::new(VecDeque::new()),
             profiles: Mutex::new(VecDeque::new()),
-            active_skins: Mutex::new(VecDeque::new()),
+            skin_models: Mutex::new(VecDeque::new()),
             uploads: Mutex::new(VecDeque::new()),
             calls: Mutex::new(Vec::new()),
             holds: Mutex::new(HashMap::new()),
@@ -1246,11 +1258,11 @@ impl MsaApi for FakeMsa {
         })
     }
 
-    fn active_skin(&self, token: McToken) -> BoxFuture<Result<Option<crate::msa::SkinTexture>>> {
+    fn skin_model(&self, token: McToken) -> BoxFuture<Result<Option<SkinModel>>> {
         self.answer(
-            "active_skin",
+            "skin_model",
             &[&token.access_token],
-            &self.active_skins,
+            &self.skin_models,
             || None,
         )
     }

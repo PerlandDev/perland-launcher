@@ -187,6 +187,11 @@ function mockModIcon(file: string): string | null {
   );
 }
 
+/** A Microsoft account's face as the core sends it: an 8×8 picture (an original one here, never a Mojang skin). */
+export const MOCK_SKIN_FACE = svg(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" shape-rendering="crispEdges"><rect width="8" height="8" fill="#c98f63"/><rect width="8" height="2" fill="#2f5d8a"/><rect y="2" width="1" height="2" fill="#2f5d8a"/><rect x="7" y="2" width="1" height="2" fill="#2f5d8a"/><rect x="1" y="4" width="2" height="1" fill="#f4f1ea"/><rect x="2" y="4" width="1" height="1" fill="#1d2b3a"/><rect x="5" y="4" width="2" height="1" fill="#f4f1ea"/><rect x="5" y="4" width="1" height="1" fill="#1d2b3a"/><rect x="3" y="6" width="2" height="1" fill="#8a5a3c"/></svg>`,
+);
+
 /** A player's uploaded background: a 4:3 picture taller than the marquee, so its position matters. */
 const CASTLE_PICTURE = svg(
   '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" shape-rendering="crispEdges"><rect width="800" height="600" fill="#2b3a67"/><rect y="360" width="800" height="240" fill="#3f6b3a"/><rect y="480" width="800" height="120" fill="#5a4030"/><rect x="120" y="80" width="120" height="300" fill="#8a8f98"/><rect x="100" y="60" width="40" height="40" fill="#8a8f98"/><rect x="160" y="60" width="40" height="40" fill="#8a8f98"/><rect x="220" y="60" width="40" height="40" fill="#8a8f98"/><rect x="160" y="160" width="40" height="60" fill="#181410"/><rect x="240" y="240" width="320" height="140" fill="#6f747d"/><rect x="560" y="200" width="100" height="180" fill="#8a8f98"/><rect x="380" y="300" width="60" height="80" fill="#181410"/><rect x="600" y="80" width="40" height="40" fill="#ffc233"/></svg>',
@@ -1061,6 +1066,10 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'account_sign_in_cancel':
       state.microsoft.cancel?.();
       return null;
+    case 'account_face': {
+      const account = state.accounts.accounts.find((a) => a.uuid === String(args.uuid));
+      return account?.provider === 'microsoft' ? MOCK_SKIN_FACE : null;
+    }
     case 'account_ready': {
       const active = state.accounts.accounts.find((a) => a.uuid === state.accounts.active);
       return {

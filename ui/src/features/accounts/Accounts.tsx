@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Avatar } from '../../art/Avatar';
+import { AccountAvatar } from './AccountAvatar';
 import type { Account, AccountsFile } from '../../ipc/schema';
 import { useAccountMutations, useAccounts, useAppInfo, usePlaytime } from '../../state/queries';
 import { navigate } from '../../state/route';
@@ -132,7 +132,7 @@ export function Accounts() {
               const inUse = account.uuid === accounts.data?.active;
               return (
                 <li key={account.uuid} className="panel flex items-center gap-4 px-4 py-3">
-                  <Avatar uuid={account.uuid} size={40} />
+                  <AccountAvatar account={account} size={40} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold">{account.username}</p>
                     {account.provider === 'offline' && <span className="badge mt-1">{t('accounts.offlineBadge')}</span>}

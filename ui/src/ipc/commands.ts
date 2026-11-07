@@ -141,6 +141,8 @@ export const commands = {
   /** Sign in with Microsoft in the browser. Null when it was canceled (here or in the browser). */
   accountSignInMicrosoft: (language: string) => invoke<AccountsFile | null>('account_sign_in_microsoft', { language }),
   accountSignInCancel: () => invoke<null>('account_sign_in_cancel'),
+  /** A Microsoft account's face from the skin it wears, as a `data:` URL; null draws the generated face. */
+  accountFace: (uuid: string) => invoke<string | null>('account_face', { uuid }),
   /** Whether Play can start now, read without a network call. */
   accountReady: () => invoke<AccountReady>('account_ready'),
   play: (id: string, join = false) => invoke<null>('play', { id, join }),

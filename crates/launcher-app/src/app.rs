@@ -6,12 +6,12 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex,
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
-    accounts::{visible, AccountStore, AccountsFile, BuildKind},
+    accounts::{visible, AccountStore, AccountsFile, BuildKind, Provider},
     browse::{compat::ContentKind, images::ImageKind},
     content,
     diagnostics::{self, SystemInfo},
@@ -37,6 +37,7 @@ use launcher_core::{
     playtime,
     restore::{self, Change, ChangeCtx},
     settings::{Channel, Settings, SettingsStore},
+    skins,
     sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
     ErrorCode, LauncherError, Result,
 };
@@ -69,6 +70,10 @@ pub struct AppConfig {
     /// servers they own. Without one, Manage in Perland isn't offered.
     pub panel: Option<launcher_core::invite::Url>,
 }
+
+/// How long a fetched skin is shown before it is asked again: a skin changed on minecraft.net
+/// shows up within this, and the session server is asked at most this often per account.
+pub const SKIN_MAX_AGE: Duration = Duration::from_secs(30 * 60);
 
 /// The names a Java executable has. Anything else is never run.
 const JAVA_NAMES: [&str; 4] = ["java", "javaw", "java.exe", "javaw.exe"];
@@ -260,7 +265,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             jwts: launcher_core::perland::JwtCache::default(),
             console_stream: Mutex::new(None),
             console_closes: Mutex::new(Default::default()),
-            skins: launcher_core::skins_library::SkinLibrary::new(config.dirs.skins()),
+            skins: launcher_core::skins_library::SkinLibrary::new(config.dirs.skin_library()),
             #[cfg(test)]
             import_fail_move: AtomicBool::new(false),
             #[cfg(test)]
@@ -558,6 +563,34 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     pub async fn accounts_list(&self) -> Result<AccountsFile> {
         let file = self.accounts.lock().await.list().await?;
         Ok(visible(file, self.config.build))
+    }
+
+    /// A Microsoft account's face, from the skin it wears, as a `data:image/png` URL (the CSP
+    /// allows no remote images). `None` for an offline account, an account without a skin of
+    /// its own, or one never fetched: the UI draws the generated picture then. The skin is asked
+    /// again once the remembered one is older than [`SKIN_MAX_AGE`].
+    pub async fn account_face(&self, uuid: &str) -> Result<Option<String>> {
+        let file = self.accounts_list().await?;
+        let microsoft = file
+            .accounts
+            .iter()
+            .any(|a| a.uuid == uuid && a.provider == Provider::Microsoft);
+        if !microsoft {
+            return Ok(None);
+        }
+        let runner = self.runner.clone();
+        let texture = skins::cached_texture(&self.config.dirs.skins(), uuid, SKIN_MAX_AGE, |id| {
+            runner.skin_texture(id)
+        })
+        .await;
+        let face = match texture {
+            Some(texture) => tokio::task::spawn_blocking(move || skins::face(&texture))
+                .await
+                .ok()
+                .flatten(),
+            None => None,
+        };
+        Ok(face.map(|png| format!("data:image/png;base64,{}", STANDARD.encode(png))))
     }
 
     /// The active account as the player sees it (never an offline one outside dev builds).
@@ -1137,6 +1170,94 @@ pub(crate) mod tests {
             .await
             .unwrap();
         assert!(list.is_empty());
+    }
+
+    /// A 64×64 skin PNG whose face is all `rgb`.
+    fn skin_png(rgb: [u8; 3]) -> Vec<u8> {
+        let mut image = image::RgbaImage::new(64, 64);
+        for y in 8..16 {
+            for x in 8..16 {
+                image.put_pixel(x, y, image::Rgba([rgb[0], rgb[1], rgb[2], 255]));
+            }
+        }
+        let mut out = Vec::new();
+        image::DynamicImage::ImageRgba8(image)
+            .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+            .unwrap();
+        out
+    }
+
+    async fn add_microsoft(core: &TestCore, name: &str, uuid: &str) {
+        use launcher_core::accounts::Account;
+        core.accounts
+            .lock()
+            .await
+            .add_microsoft(Account {
+                provider: Provider::Microsoft,
+                username: name.into(),
+                uuid: uuid.into(),
+            })
+            .await
+            .unwrap();
+    }
+
+    const STEVE_UUID: &str = "0123456789ab4def8123456789abcdef";
+
+    #[tokio::test]
+    async fn a_microsoft_accounts_face_comes_from_its_skin() {
+        let (core, runner, _, tmp) = core(BuildKind::Dev);
+        add_microsoft(&core, "Steve", STEVE_UUID).await;
+        *runner.skin.lock().unwrap() = Some(Ok(Some(skin_png([10, 200, 30]))));
+        let face = core.account_face(STEVE_UUID).await.unwrap().unwrap();
+        let png = STANDARD
+            .decode(face.strip_prefix("data:image/png;base64,").unwrap())
+            .unwrap();
+        let image = image::load_from_memory(&png).unwrap().to_rgba8();
+        assert_eq!(image.dimensions(), (8, 8));
+        assert_eq!(*image.get_pixel(3, 3), image::Rgba([10, 200, 30, 255]));
+        assert!(tmp.path().join("cache/skins").is_dir());
+
+        // Remembered: the second ask doesn't reach the network.
+        core.account_face(STEVE_UUID).await.unwrap().unwrap();
+        assert_eq!(
+            *runner.skin_asks.lock().unwrap(),
+            vec![STEVE_UUID.to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn no_face_without_a_skin_of_its_own_or_for_an_offline_account() {
+        let (core, runner, _, _tmp) = core(BuildKind::Dev);
+        add_microsoft(&core, "Steve", STEVE_UUID).await;
+        assert_eq!(core.account_face(STEVE_UUID).await.unwrap(), None);
+
+        *runner.skin.lock().unwrap() = Some(Ok(Some(skin_png([1, 2, 3]))));
+        let offline = core.account_add_offline("Alex").await.unwrap();
+        let alex = offline
+            .accounts
+            .iter()
+            .find(|a| a.username == "Alex")
+            .unwrap();
+        assert_eq!(core.account_face(&alex.uuid).await.unwrap(), None);
+        assert_eq!(core.account_face("not-an-account").await.unwrap(), None);
+        assert_eq!(
+            *runner.skin_asks.lock().unwrap(),
+            vec![STEVE_UUID.to_string()],
+            "only a Microsoft account's skin is asked for"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_skin_that_cant_be_fetched_is_no_face_not_an_error() {
+        let (core, runner, _, _tmp) = core(BuildKind::Dev);
+        add_microsoft(&core, "Steve", STEVE_UUID).await;
+        *runner.skin.lock().unwrap() = Some(Err(LauncherError::network(
+            ErrorCode::HostUnreachable,
+            "offline",
+        )));
+        assert_eq!(core.account_face(STEVE_UUID).await.unwrap(), None);
+        *runner.skin.lock().unwrap() = Some(Ok(Some(b"\x89PNG\r\n\x1a\nbroken".to_vec())));
+        assert_eq!(core.account_face(STEVE_UUID).await.unwrap(), None);
     }
 
     #[tokio::test]

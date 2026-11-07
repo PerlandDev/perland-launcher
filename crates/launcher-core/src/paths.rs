@@ -60,7 +60,7 @@ impl LauncherDirs {
         self.root.join("cache").join("objects")
     }
     /// The player's skin wardrobe (`skins_library`).
-    pub fn skins(&self) -> PathBuf {
+    pub fn skin_library(&self) -> PathBuf {
         self.root.join("skins")
     }
     /// Browse's image cache (project icons and gallery images), pruned by size.
@@ -70,6 +70,10 @@ impl LauncherDirs {
     /// Icons read from mod jars, by jar fingerprint (see `mod_icons`), pruned by size.
     pub fn mod_icons(&self) -> PathBuf {
         self.root.join("cache").join("mod-icons")
+    }
+    /// Microsoft accounts' skin textures, by profile id (see `skins`).
+    pub fn skins(&self) -> PathBuf {
+        self.root.join("cache").join("skins")
     }
     /// Locked while shared game files are installed, across every launcher process.
     pub fn install_lock(&self) -> PathBuf {

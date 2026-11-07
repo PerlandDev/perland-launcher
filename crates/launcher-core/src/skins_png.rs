@@ -96,6 +96,17 @@ fn from_legacy(old: &RgbaImage) -> RgbaImage {
     image
 }
 
+/// The arm model a skin is drawn for, read off its texels: slim arms leave the last column of
+/// the right arm's back face (x 54, y 20–31) empty, which a classic skin paints.
+pub fn guess_model(image: &RgbaImage) -> crate::skins_library::SkinModel {
+    let empty = (20..32).all(|y| image.get_pixel(54, y)[3] == 0);
+    if empty {
+        crate::skins_library::SkinModel::Slim
+    } else {
+        crate::skins_library::SkinModel::Classic
+    }
+}
+
 /// `png` as a `data:` URL the webview can show.
 pub fn data_url(png: &[u8]) -> String {
     format!("{PNG_URL}{}", STANDARD.encode(png))
@@ -181,6 +192,17 @@ mod tests {
             .unwrap();
         let out = decode(&normalise(&bytes).unwrap()).unwrap();
         assert_eq!(*out.get_pixel(0, 0), Rgba([90, 90, 90, 255]));
+    }
+
+    #[test]
+    fn guess_model_reads_the_slim_gap() {
+        use crate::skins_library::SkinModel;
+        let mut image = RgbaImage::new(64, 64);
+        assert_eq!(guess_model(&image), SkinModel::Slim);
+        for y in 20..32 {
+            image.put_pixel(54, y, Rgba([1, 1, 1, 255]));
+        }
+        assert_eq!(guess_model(&image), SkinModel::Classic);
     }
 
     #[test]
