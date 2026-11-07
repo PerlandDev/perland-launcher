@@ -185,6 +185,91 @@ it('a Microsoft account wearing the default skin gets no made-up one', async () 
   expect(sent(calls, 'skin_create')).toEqual([]);
 });
 
+it('parts sit under the colours, and the Outer head switches the whole outer layer', async () => {
+  const { user } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  expect(screen.queryByRole('button', { name: 'Parts' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Outer layer' })).not.toBeInTheDocument();
+  const parts = screen.getByRole('region', { name: 'Parts' });
+  const outer = within(parts).getByRole('button', { name: 'Outer on every part' });
+  expect(outer).toHaveAttribute('aria-pressed', 'true');
+  await user.click(outer);
+  expect(outer).toHaveAttribute('aria-pressed', 'false');
+  for (const box of within(parts).getAllByRole('checkbox', { name: /· Outer$/ })) expect(box).not.toBeChecked();
+  for (const box of within(parts).getAllByRole('checkbox', { name: /· Skin$/ })) expect(box).toBeChecked();
+  // One part back on lights the head again.
+  await user.click(within(parts).getByRole('checkbox', { name: 'Head · Outer' }));
+  expect(outer).toHaveAttribute('aria-pressed', 'true');
+});
+
+it('choosing a recent colour leaves the recent row in its order', async () => {
+  const { user } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  const presets = screen.getAllByRole('button', { name: /^Colour #/ });
+  await user.click(presets[0]!);
+  await user.click(presets[1]!);
+  const row = () => within(screen.getByRole('group', { name: 'Recent' })).getAllByRole('button').map((b) => b.title);
+  const before = row();
+  expect(before).toHaveLength(2);
+  await user.click(within(screen.getByRole('group', { name: 'Recent' })).getAllByRole('button')[1]!);
+  expect(row()).toEqual(before);
+});
+
+it('a colour being typed joins the recent row only once it settles', async () => {
+  renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const hex = screen.getByRole('textbox', { name: 'Hex colour' });
+  fireEvent.change(hex, { target: { value: '#112233' } });
+  fireEvent.change(hex, { target: { value: '#445566' } });
+  expect(screen.queryByRole('group', { name: 'Recent' })).not.toBeInTheDocument();
+  await act(() => vi.advanceTimersByTimeAsync(600));
+  const row = within(screen.getByRole('group', { name: 'Recent' })).getAllByRole('button');
+  expect(row.map((b) => b.title)).toEqual(['#445566']);
+});
+
+it('the brush opacity starts full and can be turned down', async () => {
+  renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  const slider = screen.getByRole('slider', { name: 'Opacity' });
+  expect(slider).toHaveValue('100');
+  fireEvent.change(slider, { target: { value: '40' } });
+  expect(slider).toHaveAttribute('aria-valuetext', '40%');
+});
+
+it('switching arms redraws them into the new layout, and one undo puts both back', async () => {
+  const { user, calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  await waitFor(() => expect(sent(calls, 'skin_texture').length).toBeGreaterThan(0));
+  // Beach day is flagged slim, but the test texture is drawn for classic arms: going classic only fixes the flag.
+  await user.click(screen.getByRole('radio', { name: 'Classic arms' }));
+  await waitFor(() => expect(sent(calls, 'skin_update')).toEqual([{ id: 'skin-0a1b2c3d4e5f', name: null, model: 'classic' }]));
+  expect(screen.getByRole('radio', { name: 'Classic arms' })).toHaveAttribute('aria-checked', 'true');
+  expect(screen.getByText('Saved')).toBeInTheDocument();
+  // Back to slim, the classic arms are redrawn as slim ones, and saved.
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  await user.click(screen.getByRole('radio', { name: 'Slim arms' }));
+  expect(screen.getByText('Saving…')).toBeInTheDocument();
+  await act(() => vi.advanceTimersByTimeAsync(700));
+  await waitFor(() => expect(sent(calls, 'skin_save')).toHaveLength(1));
+  // Undo returns to classic arms in one step.
+  await user.keyboard('{Control>}z{/Control}');
+  await waitFor(() => expect(sent(calls, 'skin_update').at(-1)).toMatchObject({ model: 'classic' }));
+  expect(screen.getByRole('radio', { name: 'Classic arms' })).toHaveAttribute('aria-checked', 'true');
+});
+
+it('the figure can be paused and resumed, and stays paused across poses', async () => {
+  const { user } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  await user.click(screen.getByRole('button', { name: 'Pause' }));
+  expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: /^Pose/ }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Walking' }));
+  expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Resume' }));
+  expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+});
+
 it("switching accounts shows each account's own wardrobe", async () => {
   const { user, calls } = renderApp(<SkinStudio />, { microsoft: 'signedIn' });
   const wardrobe = () => screen.getByRole('list', { name: 'Wardrobe' });

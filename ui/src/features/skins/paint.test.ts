@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { History, HISTORY_CAP, mergeStroke } from './history';
 import { boxes, boxOf, faceAt } from './layout';
 import { mirrorTexel } from './mirror';
-import { applyTool, floodRegion, fromHex, line, noise, Pixels, shade, toHex, type Rgba } from './paint';
+import { applyTool, blend, floodRegion, fromHex, line, noise, Pixels, shade, toHex, type Rgba } from './paint';
 import { blankSkin, starterSkin } from './starter';
 
 const RED: Rgba = [200, 0, 0, 255];
@@ -136,6 +136,42 @@ describe('tools', () => {
     expect(px.get(9, 9)).toEqual(shade(before, true));
   });
 
+  it('blend lays a part-opaque colour over what is there', () => {
+    // Half red over opaque white: a pink, still opaque.
+    expect(blend([255, 255, 255, 255], [200, 0, 0, 255], 0.5)).toEqual([228, 128, 128, 255]);
+    // Over nothing it keeps its own colour at the brush's opacity.
+    expect(blend([0, 0, 0, 0], [200, 0, 0, 255], 0.5)).toEqual([200, 0, 0, 128]);
+    // Full opacity is the plain colour.
+    expect(blend([1, 2, 3, 255], RED, 1)).toEqual(RED);
+  });
+
+  it('pencil at half opacity mixes once per stroke', () => {
+    const px = blankSkin();
+    const before = px.get(10, 10);
+    const touched = new Set<number>();
+    applyTool(px, 'classic', 'pencil', 10, 10, { ...opts, opacity: 0.5 }, mirrorTexel, touched);
+    const once = px.get(10, 10);
+    expect(once).toEqual(blend(before, RED, 0.5));
+    // Dragging back over the texel in the same stroke doesn't pile the colour on.
+    expect(applyTool(px, 'classic', 'pencil', 10, 10, { ...opts, opacity: 0.5 }, mirrorTexel, touched)).toEqual([]);
+    expect(px.get(10, 10)).toEqual(once);
+  });
+
+  it('fill at half opacity mixes the whole region', () => {
+    const px = blankSkin();
+    const before = px.get(10, 10);
+    applyTool(px, 'classic', 'fill', 10, 10, { ...opts, opacity: 0.5 }, mirrorTexel);
+    expect(px.get(8, 8)).toEqual(blend(before, RED, 0.5));
+    expect(px.get(15, 15)).toEqual(blend(before, RED, 0.5));
+  });
+
+  it('eraser at half opacity halves what is there', () => {
+    const px = starterSkin();
+    const [r, g, b] = px.get(9, 9);
+    applyTool(px, 'classic', 'eraser', 9, 9, { ...opts, opacity: 0.5 }, mirrorTexel);
+    expect(px.get(9, 9)).toEqual([r, g, b, 128]);
+  });
+
   it('line has no gaps', () => {
     expect(line(0, 0, 3, 1)).toEqual([[0, 0], [1, 0], [2, 1], [3, 1]]);
     expect(line(2, 2, 2, 2)).toEqual([[2, 2]]);
@@ -177,6 +213,17 @@ describe('history', () => {
     let undone = 0;
     while (h.undo(px)) undone++;
     expect(undone).toBe(HISTORY_CAP);
+  });
+
+  it('a step can carry a change of arms, undone and redone with its texels', () => {
+    const px = new Pixels();
+    const h = new History();
+    h.push(applyTool(px, 'classic', 'pencil', 9, 9, opts, mirrorTexel), { before: 'classic', after: 'slim' });
+    const models: string[] = [];
+    expect(h.undo(px, (m) => models.push(m))).toBe(true);
+    expect(px.get(9, 9)[3]).toBe(0);
+    expect(h.redo(px, (m) => models.push(m))).toBe(true);
+    expect(models).toEqual(['classic', 'slim']);
   });
 
   it('mergeStroke keeps first before and last after', () => {

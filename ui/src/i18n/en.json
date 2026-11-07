@@ -961,8 +961,10 @@
     "deleteBody": "It's removed from this computer. A skin you're wearing in Minecraft stays on your account.",
     "deleteConfirm": "Delete",
     "arms": "Arms",
-    "outerLayer": "Outer layer",
     "parts": "Parts",
+    "opacity": "Opacity",
+    "opacityValue": "{{value}}%",
+    "layerEverywhere": "{{layer}} on every part",
     "layer": {
       "base": "Skin",
       "outer": "Outer"
@@ -976,6 +978,8 @@
       "leftLeg": "Left leg"
     },
     "poseLabel": "Pose",
+    "pauseMotion": "Pause",
+    "playMotion": "Resume",
     "pose": {"still": "Standing", "walk": "Walking", "run": "Running", "crouch": "Crouching", "sit": "Sitting", "wave": "Waving", "boat": "In a boat", "horse": "On a horse"},
     "paintOn": "Paint on",
     "zoomIn": "Zoom in",

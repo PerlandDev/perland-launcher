@@ -5,6 +5,7 @@ import { commands } from '../../ipc/commands';
 import type { SkinModel } from '../../ipc/schema';
 import { pushError } from '../../state/toasts';
 import { decodeTexture, encodeTexture } from './codec';
+import { convertArms, fitsModel } from './armModel';
 import { History, mergeStroke } from './history';
 import { mirrorTexel } from './mirror';
 import { applyTool, line, Pixels, sameColor, type Change, type Rgba, type Tool, type Touched } from './paint';
@@ -35,6 +36,8 @@ export interface SkinDoc {
   end(): void;
   undo(): void;
   redo(): void;
+  /** Switches the arm model, redrawing the arms into the new layout unless the skin already fits it; one undo step. */
+  switchModel(to: SkinModel): void;
   /** Saves now if a save is waiting (before switching skins, exporting or wearing). */
   flush(): Promise<void>;
   /** Shows `data` (already saved, e.g. a restored version) as one undoable step. */
@@ -142,12 +145,21 @@ class DocStore {
     return true;
   }
 
-  undo(): boolean {
-    return !!this.pixels && this.history.undo(this.pixels);
+  undo(onModel: (model: SkinModel) => void): boolean {
+    return !!this.pixels && this.history.undo(this.pixels, onModel);
   }
 
-  redo(): boolean {
-    return !!this.pixels && this.history.redo(this.pixels);
+  redo(onModel: (model: SkinModel) => void): boolean {
+    return !!this.pixels && this.history.redo(this.pixels, onModel);
+  }
+
+  /** Switches the arms from `from` to `to`; true when texels changed. */
+  switchModel(from: SkinModel, to: SkinModel): boolean {
+    const px = this.pixels;
+    if (!px || from === to) return false;
+    const changes = fitsModel(px, to) ? [] : convertArms(px, from, to);
+    this.history.push(changes, { before: from, after: to });
+    return changes.length > 0;
   }
 
   async saveNow() {
@@ -173,7 +185,8 @@ class DocStore {
   }
 }
 
-export function useSkinDoc(id: string | null, model: SkinModel, onSaved: () => void): SkinDoc {
+/** `onModel` stores a new arm model for the open skin: after a switch, and when undo or redo crosses one. */
+export function useSkinDoc(id: string | null, model: SkinModel, onSaved: () => void, onModel: (model: SkinModel) => void): SkinDoc {
   const [store] = useState(() => new DocStore());
   const [rev, setRev] = useState(0);
   const [loaded, setLoaded] = useState<string | null>(null);
@@ -221,16 +234,24 @@ export function useSkinDoc(id: string | null, model: SkinModel, onSaved: () => v
     }
   };
   const undo = () => {
-    if (open && store.undo()) {
+    if (open && store.undo(onModel)) {
       bump();
       schedule();
     }
   };
   const redo = () => {
-    if (open && store.redo()) {
+    if (open && store.redo(onModel)) {
       bump();
       schedule();
     }
+  };
+  const switchModel = (to: SkinModel) => {
+    if (to === model) return;
+    if (open) {
+      if (store.switchModel(model, to)) schedule();
+      bump();
+    }
+    onModel(to);
   };
 
   const save: SaveState = saveOf && saveOf.id === id ? saveOf.state : 'saved';
@@ -245,6 +266,7 @@ export function useSkinDoc(id: string | null, model: SkinModel, onSaved: () => v
     end,
     undo,
     redo,
+    switchModel,
     flush: () => store.saveNow(),
     replace: (data: Uint8ClampedArray) => {
       if (open && store.replace(data)) bump();

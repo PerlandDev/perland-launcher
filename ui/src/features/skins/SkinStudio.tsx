@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { Eye, EyeOff, Human, HumanArmsUp, ZoomIn, ZoomOut } from 'pixelarticons/react';
+import { HumanArmsUp, Pause, Play, ZoomIn, ZoomOut } from 'pixelarticons/react';
 import { commands } from '../../ipc/commands';
 import type { SkinEntry, SkinModel, SkinVersion } from '../../ipc/schema';
 import { useAccounts } from '../../state/queries';
@@ -23,6 +23,8 @@ import { POSES, type Pose } from './poses';
 import { SLOT_TOOLS } from './tools';
 import { PARTS, type Layer } from './layout';
 import { Pixels, toHex, type Rgba, type Tool } from './paint';
+import { PartsPanel } from './PartsPanel';
+import { remember } from './recent';
 import { Stage, type StageHandle } from './Stage';
 import { blankSkin, starterSkin } from './starter';
 import { TexturePanel } from './TexturePanel';
@@ -72,19 +74,34 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const selected = waiting ? null : (list.find((e) => e.id === picked) ?? list[0] ?? null);
   const model: SkinModel = selected?.model ?? 'classic';
   const refresh = () => void qc.invalidateQueries({ queryKey: SKINS_KEY });
-  const doc = useSkinDoc(selected?.id ?? null, model, refresh);
+  // Stores the open skin's arm model: shown at once, then saved (a refused save puts the wardrobe back as it is).
+  const storeModel = (next: SkinModel) => {
+    if (!selected) return;
+    const id = selected.id;
+    qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => old?.map((e) => (e.id === id ? { ...e, model: next } : e)));
+    commands
+      .skinUpdate(id, { model: next })
+      .then((entry) => qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => old?.map((e) => (e.id === entry.id ? entry : e))))
+      .catch((error) => {
+        pushError(error);
+        refresh();
+      });
+  };
+  const doc = useSkinDoc(selected?.id ?? null, model, refresh, storeModel);
 
   const [tool, setTool] = useState<Tool>('pencil');
   const [color, setColorState] = useState<Rgba>([108, 171, 60, 255]);
+  const [opacity, setOpacity] = useState(100);
   const [recent, setRecent] = useState<string[]>([]);
   const [mirror, setMirror] = useState(false);
   const [darken, setDarken] = useState(true);
   const [paintLayer, setPaintLayer] = useState<Layer>('base');
   const [pose, setPose] = useState<Pose>('still');
+  // Pausing holds the figure on its current moment, whichever pose it takes next, until it's played again.
+  const [paused, setPaused] = useState(false);
   const poseMenu = useRef<MenuHandle>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<[number, number] | null>(null);
-  const [partsOpen, setPartsOpen] = useState(false);
   const [renaming, setRenaming] = useState<SkinEntry | null>(null);
   const [newName, setNewName] = useState('');
   const [deleting, setDeleting] = useState<SkinEntry | null>(null);
@@ -97,31 +114,16 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const versions = useQuery({ queryKey: versionsKey, queryFn: () => commands.skinVersions(selected!.id), enabled: historyOpen && !!selected });
   const refreshVersions = () => void qc.invalidateQueries({ queryKey: ['skinVersions'] });
   const stage = useRef<StageHandle | null>(null);
-  const partsBox = useRef<HTMLDivElement>(null);
-  // The parts panel closes on a click outside it or Escape, like a menu.
-  useEffect(() => {
-    if (!partsOpen) return;
-    const onPointer = (e: PointerEvent) => {
-      if (!partsBox.current?.contains(e.target as Node)) setPartsOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setPartsOpen(false);
-    document.addEventListener('pointerdown', onPointer);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onPointer);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [partsOpen]);
   const once = useSingleFlight();
   // A preview belongs to one skin while the history is open; switching skins or closing the history ends it.
   const previewShown = preview && historyOpen && preview.skin === selected?.id ? preview : null;
   const previewing = previewShown !== null;
-  const outerShown = PARTS.some((p) => !hidden.has(`${p}:outer`));
 
+  /** Chooses a colour for good: a new one joins the front of the recent row, one already in it stays put. */
   const setColor = (c: Rgba) => {
     setColorState(c);
     const hex = toHex(c);
-    setRecent((r) => [hex, ...r.filter((x) => x !== hex)].slice(0, RECENT_MAX));
+    setRecent((r) => remember(r, hex, RECENT_MAX));
   };
 
   const create = async (name: string, model: SkinModel, texture: string, seeded = false) => {
@@ -225,20 +227,13 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     { id: 'delete', label: t('skins.delete'), icon: <Trash />, danger: true, onSelect: () => setDeleting(entry) },
   ];
 
-  const setModel = (next: SkinModel) => {
-    if (!selected || selected.model === next) return;
-    commands
-      .skinUpdate(selected.id, { model: next })
-      .then((entry) => qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => old?.map((e) => (e.id === entry.id ? entry : e))))
-      .catch(pushError);
-  };
 
-  const toggleOuter = () =>
+  const showLayer = (layer: Layer, show: boolean) =>
     setHidden((h) => {
       const next = new Set(h);
       for (const p of PARTS) {
-        if (outerShown) next.add(`${p}:outer`);
-        else next.delete(`${p}:outer`);
+        if (show) next.delete(`${p}:${layer}`);
+        else next.add(`${p}:${layer}`);
       }
       return next;
     });
@@ -250,7 +245,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
       return next;
     });
 
-  const strokeOpts = { tool, color, mirror, darken };
+  const strokeOpts = { tool, color, mirror, darken, opacity: opacity / 100 };
   const paintAt = (x: number, y: number, joined: boolean) => {
     if (previewing) return;
     if (tool === 'picker') {
@@ -408,14 +403,11 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
           <div className="stage-bar">
             <div role="radiogroup" aria-label={t('skins.arms')} className="flex gap-2">
               {(['classic', 'slim'] as const).map((m) => (
-                <button key={m} type="button" role="radio" aria-checked={model === m} className="seg seg-sm" data-checked={model === m || undefined} onClick={() => setModel(m)}>
+                <button key={m} type="button" role="radio" aria-checked={model === m} className="seg seg-sm" data-checked={model === m || undefined} onClick={() => selected && doc.switchModel(m)}>
                   {t(`skins.model.${m}`)}
                 </button>
               ))}
             </div>
-            <Button size="md" aria-pressed={outerShown} title={t('skins.outerLayer')} icon={outerShown ? <Eye /> : <EyeOff />} onClick={toggleOuter}>
-              <span className="btn-label">{t('skins.outerLayer')}</span>
-            </Button>
             <Button icon={<HumanArmsUp />} aria-haspopup="menu" aria-label={`${t('skins.poseLabel')}: ${t(`skins.pose.${pose}`)}`} title={t('skins.poseLabel')} onClick={(e) => poseMenu.current?.openAt(e.currentTarget)}>
               <span className="btn-label">{t(`skins.pose.${pose}`)}</span>
             </Button>
@@ -426,35 +418,9 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               className="contents"
               items={POSES.map((p) => ({ id: p, label: t(`skins.pose.${p}`), icon: p === pose ? <span className="lamp" aria-hidden /> : undefined, onSelect: () => setPose(p) }))}
             />
-            <div className="relative" ref={partsBox}>
-              <Button icon={<Human />} title={t('skins.parts')} aria-expanded={partsOpen} onClick={() => setPartsOpen((o) => !o)}>
-                <span className="btn-label">{t('skins.parts')}</span>
-              </Button>
-              {partsOpen && (
-                <div className="parts-pop panel" role="group" aria-label={t('skins.parts')}>
-                  <div className="parts-grid">
-                    <span />
-                    <span className="text-xs text-ink-dim">{t('skins.layer.base')}</span>
-                    <span className="text-xs text-ink-dim">{t('skins.layer.outer')}</span>
-                    {PARTS.map((part) => (
-                      <div key={part} className="contents">
-                        <span className="text-sm">{t(`skins.part.${part}`)}</span>
-                        {(['base', 'outer'] as const).map((layer) => (
-                          <input
-                            key={layer}
-                            type="checkbox"
-                            className="check"
-                            aria-label={`${t(`skins.part.${part}`)} · ${t(`skins.layer.${layer}`)}`}
-                            checked={!hidden.has(`${part}:${layer}`)}
-                            onChange={() => togglePart(`${part}:${layer}`)}
-                          />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            <Button icon={paused ? <Play /> : <Pause />} title={paused ? t('skins.playMotion') : t('skins.pauseMotion')} onClick={() => setPaused((p) => !p)}>
+              <span className="btn-label">{paused ? t('skins.playMotion') : t('skins.pauseMotion')}</span>
+            </Button>
           </div>
 
           <div className="stage-well">
@@ -466,6 +432,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               hidden={hidden}
               paintLayer={paintLayer}
               pose={pose}
+              paused={paused}
               hover={hover}
               onHover={setHover}
               onBegin={doc.begin}
@@ -541,7 +508,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
             onPaint={paintAt}
             onEnd={doc.end}
           />
-          <ColourPanel color={color} recent={recent} onColor={setColor} />
+          <ColourPanel color={color} opacity={opacity} recent={recent} onColor={setColor} onPreview={setColorState} onOpacity={setOpacity} />
+          <PartsPanel hidden={hidden} onToggle={togglePart} onLayer={showLayer} />
         </aside>
         )}
       </div>

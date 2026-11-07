@@ -10,10 +10,39 @@ export type Joint = 'torso' | 'head' | 'rightArm' | 'leftArm' | 'rightLeg' | 'le
 
 export interface Rig {
   joints: Record<Joint, Vec3>;
-  /** Where the whole figure stands, relative to its spot on the plinth. */
+  /** Where the whole figure stands, relative to its spot on the stage floor. */
   offset: Vec3;
   /** The whole figure's tilt (a rocking boat). */
   tilt: Vec3;
+}
+
+/** The stage's animation time, in seconds, which the player can pause: paused, it holds the moment it stopped at,
+ *  and resumed, it goes on from there without a jump. Times in are milliseconds (`performance.now()`). */
+export class AnimationClock {
+  private base = 0;
+  private since: number | null;
+
+  constructor(now: number) {
+    this.since = now;
+  }
+
+  get paused() {
+    return this.since === null;
+  }
+
+  at(now: number): number {
+    return (this.base + (this.since === null ? 0 : now - this.since)) / 1000;
+  }
+
+  pause(now: number) {
+    if (this.since === null) return;
+    this.base += now - this.since;
+    this.since = null;
+  }
+
+  resume(now: number) {
+    if (this.since === null) this.since = now;
+  }
 }
 
 /** The time a reduced-motion stage freezes each pose at: mid-stride for the gaits. */
@@ -72,7 +101,7 @@ export function rigAt(pose: Pose, t: number): Rig {
       break;
     }
     case 'sit':
-      // Sitting on the plinth, legs out, hands on the knees, looking around.
+      // Sitting on the floor, legs out, hands on the knees, looking around.
       joints.rightLeg = [-Math.PI / 2, 0.12, 0];
       joints.leftLeg = [-Math.PI / 2, -0.12, 0];
       joints.rightArm = [-0.62, 0, -0.08];
@@ -86,14 +115,15 @@ export function rigAt(pose: Pose, t: number): Rig {
       joints.head = [-0.08, -0.15, -0.08];
       break;
     case 'boat': {
-      // Rowing: both arms pull together while the boat rocks on the water.
-      const row = Math.sin(t * Math.PI * 2 * 0.6);
+      // Sitting in the boat, legs out in front, hands resting on the rim either side while it rocks. Seated high
+      // enough that the feet stay inside the hull (there's no water to hide them), and still on the seat, so the
+      // hands stay on the rim as the boat moves.
       joints.rightLeg = [-1.35, 0.15, 0];
       joints.leftLeg = [-1.35, -0.15, 0];
-      joints.rightArm = [-0.85 + row * 0.45, 0, -0.18];
-      joints.leftArm = [-0.85 + row * 0.45, 0, 0.18];
-      joints.torso = [-0.08 + row * 0.08, 0, 0];
-      offset[1] = -7 + Math.sin(t * 1.3) * 0.35;
+      joints.rightArm = [-0.15, 0, -0.1];
+      joints.leftArm = [-0.15, 0, 0.1];
+      joints.head = [0, Math.sin(t * 0.5) * 0.3, 0];
+      offset[1] = -5.5;
       tilt[2] = Math.sin(t * 1.1) * 0.05;
       tilt[0] = Math.sin(t * 0.9) * 0.025;
       break;
