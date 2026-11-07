@@ -32,6 +32,7 @@ impl SkinModel {
 
 /// One skin in the wardrobe.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SkinEntry {
     pub id: String,
     pub name: String,

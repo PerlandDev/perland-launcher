@@ -160,6 +160,8 @@ pub struct AppCore<R: Runner, H: Host> {
     /// How many times each server's console was closed (see `manage_console.rs`): an open
     /// still waiting when its server's count moves was closed meanwhile, and starts nothing.
     pub(crate) console_closes: Mutex<crate::manage_console::CloseCounts>,
+    /// The player's skin wardrobe (see `skins.rs`).
+    pub(crate) skins: launcher_core::skins_library::SkinLibrary,
     /// Makes the next import fail while it moves the copied files into the new instance.
     #[cfg(test)]
     pub(crate) import_fail_move: AtomicBool,
@@ -258,6 +260,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             jwts: launcher_core::perland::JwtCache::default(),
             console_stream: Mutex::new(None),
             console_closes: Mutex::new(Default::default()),
+            skins: launcher_core::skins_library::SkinLibrary::new(config.dirs.skins()),
             #[cfg(test)]
             import_fail_move: AtomicBool::new(false),
             #[cfg(test)]

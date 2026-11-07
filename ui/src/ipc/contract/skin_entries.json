@@ -1,0 +1,15 @@
+[
+  {
+    "id": "skin-0a1b2c3d4e5f",
+    "name": "Beach day",
+    "model": "slim",
+    "updated": 1762500000,
+    "wornBy": "069a79f4-44e9-4726-a5be-fca90e38aaf5"
+  },
+  {
+    "id": "skin-ffeeddccbbaa",
+    "name": "Miner",
+    "model": "classic",
+    "updated": 1762400000
+  }
+]

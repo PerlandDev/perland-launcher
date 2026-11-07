@@ -15,6 +15,7 @@ use launcher_core::{
         MsaApp, MsaClient, MsaEndpoints, MsaStep,
     },
     perland::{Callback, Language, Loopback, Page, Pkce, SecretError},
+    skins_library::SkinModel,
     ErrorCode, LauncherError, Result,
 };
 use tokio::sync::watch;
@@ -55,6 +56,10 @@ pub trait MsaApi: Send + Sync + 'static {
     fn refresh(&self, refresh_token: String) -> BoxFuture<Result<SignedIn>>;
     /// The Minecraft profile the token belongs to; `None` when it owns no profile.
     fn profile(&self, token: McToken) -> BoxFuture<Result<Option<McProfile>>>;
+    /// The skin the account wears (its texture, normalised, and arm model); `None` for none.
+    fn active_skin(&self, token: McToken) -> BoxFuture<Result<Option<(Vec<u8>, SkinModel)>>>;
+    /// Makes `png` the account's skin, drawn for `model`.
+    fn upload_skin(&self, token: McToken, png: Vec<u8>, model: SkinModel) -> BoxFuture<Result<()>>;
 }
 
 /// Where a sign-in reports each step of the chain as it starts.
@@ -158,6 +163,23 @@ impl MsaApi for CoreMsa {
     fn profile(&self, token: McToken) -> BoxFuture<Result<Option<McProfile>>> {
         let client = self.client();
         Box::pin(async move { client?.profile(&token).await })
+    }
+
+    fn active_skin(&self, token: McToken) -> BoxFuture<Result<Option<(Vec<u8>, SkinModel)>>> {
+        let client = self.client();
+        Box::pin(async move {
+            let client = client?;
+            let Some(active) = client.active_skin(&token).await? else {
+                return Ok(None);
+            };
+            let png = client.skin_texture(&active.url).await?;
+            Ok(Some((png, active.model)))
+        })
+    }
+
+    fn upload_skin(&self, token: McToken, png: Vec<u8>, model: SkinModel) -> BoxFuture<Result<()>> {
+        let client = self.client();
+        Box::pin(async move { client?.upload_skin(&token, png, model).await })
     }
 }
 
