@@ -307,11 +307,17 @@ pub fn is_own_temp(dir: &Path, temp: &Path) -> bool {
     })
 }
 
-/// `cmd`'s command line (passed as is, `raw_arg`) that removes the uninstaller's temp folder a
+/// How the cleanup's `cmd` is started: `CREATE_NO_WINDOW` alone. It gives cmd a console nobody
+/// sees, which the `ping` it runs shares. With `DETACHED_PROCESS` cmd has no console, and Windows
+/// opens a new, visible one for `ping`.
+pub const CLEANUP_CREATION_FLAGS: u32 = 0x0800_0000;
+
+/// `cmd`'s command line (passed as is, `raw_arg`); `/d` skips any AutoRun command the player's
+/// registry sets for cmd. that removes the uninstaller's temp folder a
 /// few seconds after it exits. Only for a folder [`is_own_temp`] accepts.
 pub fn cleanup_command_line(temp_dir: &Path) -> String {
     format!(
-        "/c ping -n 4 127.0.0.1 >nul & rmdir /s /q \"{}\"",
+        "/d /c ping -n 4 127.0.0.1 >nul & rmdir /s /q \"{}\"",
         temp_dir.display()
     )
 }
@@ -650,7 +656,19 @@ mod tests {
         let line = cleanup_command_line(Path::new("C:\\Temp\\perland-setup-0123456789abcdef"));
         assert_eq!(
             line,
-            "/c ping -n 4 127.0.0.1 >nul & rmdir /s /q \"C:\\Temp\\perland-setup-0123456789abcdef\""
+            "/d /c ping -n 4 127.0.0.1 >nul & rmdir /s /q \"C:\\Temp\\perland-setup-0123456789abcdef\""
         );
+    }
+
+    #[test]
+    fn cleanup_console_stays_hidden() {
+        // DETACHED_PROCESS left cmd without a console, so Windows opened a visible one for the
+        // `ping` it runs (#148). CREATE_NO_WINDOW gives cmd a hidden console its children share.
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+        assert_eq!(CLEANUP_CREATION_FLAGS & CREATE_NO_WINDOW, CREATE_NO_WINDOW);
+        assert_eq!(CLEANUP_CREATION_FLAGS & DETACHED_PROCESS, 0);
+        assert_eq!(CLEANUP_CREATION_FLAGS & CREATE_NEW_CONSOLE, 0);
     }
 }

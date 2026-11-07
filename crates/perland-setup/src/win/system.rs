@@ -334,14 +334,15 @@ pub fn delete_tree(subkey: &str) -> bool {
     status == ERROR_SUCCESS || status == ERROR_FILE_NOT_FOUND
 }
 
-/// Starts a hidden helper (no console window) with a command line passed as is, in `cwd`, not
-/// waiting for it.
+/// Starts a console helper whose console, and its children's, never shows, with a command line
+/// passed as is, in `cwd`, not waiting for it.
 pub fn spawn_hidden_raw(program: &str, line: &str, cwd: &Path) -> bool {
     use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+    debug_assert_eq!(crate::uninstall::CLEANUP_CREATION_FLAGS, CREATE_NO_WINDOW);
     std::process::Command::new(program)
         .raw_arg(line)
         .current_dir(cwd)
-        .creation_flags(CREATE_NO_WINDOW | DETACHED_PROCESS)
+        .creation_flags(crate::uninstall::CLEANUP_CREATION_FLAGS)
         .spawn()
         .is_ok()
 }
