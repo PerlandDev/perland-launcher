@@ -384,7 +384,8 @@
     "promptTitle": "Sign in to play",
     "promptBody": "Perland Launcher needs a Microsoft account that owns Minecraft: Java Edition.",
     "promptSignedIn": "Signed in. Press Play again.",
-    "offlineBadge": "Offline",
+    "kindMicrosoft": "Microsoft account",
+    "kindOffline": "Offline account",
     "empty": "No accounts yet.",
     "totalPlayed": "Time played on this computer: {{time}}"
   },

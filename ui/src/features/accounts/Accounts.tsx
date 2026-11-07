@@ -135,7 +135,10 @@ export function Accounts() {
                   <AccountAvatar account={account} size={40} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold">{account.username}</p>
-                    {account.provider === 'offline' && <span className="badge mt-1">{t('accounts.offlineBadge')}</span>}
+                    {/* Every row says its kind in words, like the Perland card's second line: a face alone can't tell them apart (#157). */}
+                    <p className="truncate text-sm text-ink-dim">
+                      {account.provider === 'microsoft' ? t('accounts.kindMicrosoft') : t('accounts.kindOffline')}
+                    </p>
                   </div>
                   {inUse ? (
                     <span className="flex items-center gap-2 font-semibold text-lime">
