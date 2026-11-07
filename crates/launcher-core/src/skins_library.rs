@@ -356,17 +356,30 @@ impl SkinLibrary {
         self.write(&file).await
     }
 
-    /// Moves every loose skin into the wardrobe of `uuid`, except a seeded starter never changed
-    /// (dropped instead); answers how many moved.
-    pub async fn adopt_loose(&self, uuid: &str) -> Result<usize> {
+    /// Moves every loose skin into the wardrobe of `uuid`, except a starter the player never
+    /// changed, which is dropped instead: one marked seeded, or one never worn whose texels are
+    /// exactly `starter` (the launcher's starter as a PNG: entries from before the mark existed).
+    /// Answers how many moved.
+    pub async fn adopt_loose(&self, uuid: &str, starter: Option<&[u8]>) -> Result<usize> {
+        let starter = starter.and_then(|png| skins_png::decode(png).ok());
         let _held = self.lock.lock().await;
         let mut file = self.read().await?;
-        let dropped: Vec<String> = file
-            .skins
-            .iter()
-            .filter(|s| s.owner.is_none() && s.seeded)
-            .map(|s| s.id.clone())
-            .collect();
+        let mut dropped = Vec::new();
+        for skin in file.skins.iter().filter(|s| s.owner.is_none()) {
+            let untouched = skin.seeded
+                || match &starter {
+                    Some(starter) if skin.worn_by.is_none() => {
+                        match tokio::fs::read(self.png(&skin.id)).await {
+                            Ok(bytes) => skins_png::decode(&bytes).is_ok_and(|t| &t == starter),
+                            Err(_) => false,
+                        }
+                    }
+                    _ => false,
+                };
+            if untouched {
+                dropped.push(skin.id.clone());
+            }
+        }
         file.skins.retain(|s| !dropped.contains(&s.id));
         let mut moved = 0;
         for skin in file.skins.iter_mut().filter(|s| s.owner.is_none()) {
@@ -713,11 +726,11 @@ mod tests {
         lib.create("Theirs", SkinModel::Classic, &skin([0; 4]), Some("u2"))
             .await
             .unwrap();
-        assert_eq!(lib.adopt_loose("u1").await.unwrap(), 1);
+        assert_eq!(lib.adopt_loose("u1", None).await.unwrap(), 1);
         assert_eq!(lib.list(Some("u1")).await.unwrap()[0].id, loose.id);
         assert!(lib.list(None).await.unwrap().is_empty());
         assert_eq!(lib.list(Some("u2")).await.unwrap().len(), 1);
-        assert_eq!(lib.adopt_loose("u1").await.unwrap(), 0);
+        assert_eq!(lib.adopt_loose("u1", None).await.unwrap(), 0);
     }
 
     #[tokio::test]
@@ -747,7 +760,7 @@ mod tests {
             .unwrap();
         assert!(!made.seeded);
 
-        assert_eq!(lib.adopt_loose("u1").await.unwrap(), 3);
+        assert_eq!(lib.adopt_loose("u1", None).await.unwrap(), 3);
         let mut mine: Vec<_> = lib
             .list(Some("u1"))
             .await
@@ -761,6 +774,49 @@ mod tests {
         assert_eq!(mine, want);
         assert!(lib.list(None).await.unwrap().is_empty());
         assert!(!lib.png(&seeded.id).exists());
+    }
+
+    #[tokio::test]
+    async fn a_version_one_starter_left_untouched_is_dropped_too() {
+        let (_dir, lib) = library();
+        tokio::fs::create_dir_all(lib.dir()).await.unwrap();
+        let starter = skin([108, 171, 60, 255]);
+        tokio::fs::write(lib.png("skin-aa"), &starter)
+            .await
+            .unwrap();
+        tokio::fs::write(lib.png("skin-bb"), skin([1, 1, 1, 255]))
+            .await
+            .unwrap();
+        tokio::fs::write(lib.png("skin-cc"), &starter)
+            .await
+            .unwrap();
+        let v1 = r#"{"skins":[
+            {"id":"skin-aa","name":"The Perlander","model":"classic","updated":3},
+            {"id":"skin-bb","name":"Painted","model":"classic","updated":2},
+            {"id":"skin-cc","name":"Worn one","model":"classic","updated":1,"wornBy":"u2"}
+        ]}"#;
+        tokio::fs::write(lib.dir().join(LIST), v1).await.unwrap();
+        assert_eq!(lib.adopt_loose("u1", Some(&starter)).await.unwrap(), 1);
+        let mine: Vec<_> = lib
+            .list(Some("u1"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(mine, vec!["skin-bb"]);
+        assert!(!lib.png("skin-aa").exists());
+        // Worn, so it went to its account and is kept, starter or not.
+        assert_eq!(lib.list(Some("u2")).await.unwrap()[0].id, "skin-cc");
+    }
+
+    #[tokio::test]
+    async fn a_starter_that_isnt_a_skin_drops_nothing() {
+        let (_dir, lib) = library();
+        lib.create("A", SkinModel::Classic, &skin([0; 4]), None)
+            .await
+            .unwrap();
+        assert_eq!(lib.adopt_loose("u1", Some(b"nope")).await.unwrap(), 1);
     }
 
     #[tokio::test]

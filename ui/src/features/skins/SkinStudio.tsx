@@ -58,7 +58,13 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   // that's been asked: a list fetched meanwhile would miss it.
   const [ready, setReady] = useState<ReadonlySet<string>>(new Set());
   const waiting = wearer?.provider === 'microsoft' && !ready.has(wearer.uuid);
-  const entries = useQuery({ queryKey: SKINS_KEY, queryFn: () => commands.skinsList(owner), enabled: accounts.isSuccess && !waiting });
+  // The active account adopts loose skins as it lists them; the starter lets it drop an untouched one instead.
+  const adopting = owner !== null && owner === accounts.data?.active;
+  const entries = useQuery({
+    queryKey: SKINS_KEY,
+    queryFn: () => commands.skinsList(owner, adopting ? encodeTexture(starterSkin().data) : null),
+    enabled: accounts.isSuccess && !waiting,
+  });
   const list = useMemo(() => entries.data ?? [], [entries.data]);
   const [picked, setPicked] = useState<string | null>(skin ?? null);
   const selected = waiting ? null : (list.find((e) => e.id === picked) ?? list[0] ?? null);

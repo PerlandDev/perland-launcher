@@ -1067,8 +1067,12 @@ pub fn diagnostics_reveal(app: AppHandle, core: CoreState<'_>) -> Res<()> {
 pub async fn skins_list(
     core: CoreState<'_>,
     owner: Option<String>,
+    starter: Option<String>,
 ) -> Res<Vec<launcher_core::skins_library::SkinEntry>> {
-    logged("skins_list", core.skins_list(owner.as_deref()).await)
+    logged(
+        "skins_list",
+        core.skins_list(owner.as_deref(), starter.as_deref()).await,
+    )
 }
 
 #[tauri::command]

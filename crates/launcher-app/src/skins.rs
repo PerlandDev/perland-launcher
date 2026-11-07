@@ -59,12 +59,19 @@ fn png_path(path: PathBuf) -> PathBuf {
 
 impl<R: Runner, H: Host> AppCore<R, H> {
     /// The wardrobe of `owner`. The active account first adopts any loose skins: those made with
-    /// no account signed in, or kept from when every account shared one wardrobe.
-    pub async fn skins_list(&self, owner: Option<&str>) -> Result<Vec<SkinEntry>> {
+    /// no account signed in, or kept from when every account shared one wardrobe. A starter left
+    /// untouched is dropped instead; `starter` is the launcher's starter (a PNG data URL, drawn
+    /// by the UI) to recognise one saved before starters were marked.
+    pub async fn skins_list(
+        &self,
+        owner: Option<&str>,
+        starter: Option<&str>,
+    ) -> Result<Vec<SkinEntry>> {
         if let Some(owner) = owner {
             let active = self.accounts.lock().await.list().await?.active;
             if active.as_deref() == Some(owner) {
-                self.skins.adopt_loose(owner).await?;
+                let starter = starter.and_then(|url| skins_png::from_data_url(url).ok());
+                self.skins.adopt_loose(owner, starter.as_deref()).await?;
             }
         }
         self.skins.list(owner).await
@@ -234,7 +241,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if let Err(e) = skins::remember_texture(&self.config.dirs.skins(), uuid, &png).await {
             tracing::debug!(code = ?e.code, "couldn't remember the skin just worn");
         }
-        self.skins_list(Some(uuid)).await
+        self.skins_list(Some(uuid), None).await
     }
 }
 
@@ -342,7 +349,7 @@ mod tests {
             )));
         let e = core.skin_wear(&entry.id, &alex.uuid).await.unwrap_err();
         assert_eq!(e.code, ErrorCode::SkinRejected);
-        assert!(core.skins_list(Some(&alex.uuid)).await.unwrap()[0]
+        assert!(core.skins_list(Some(&alex.uuid), None).await.unwrap()[0]
             .worn_by
             .is_none());
     }
@@ -454,7 +461,10 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(again.id, first.id);
-        assert_eq!(core.skins_list(Some(&alex.uuid)).await.unwrap().len(), 1);
+        assert_eq!(
+            core.skins_list(Some(&alex.uuid), None).await.unwrap().len(),
+            1
+        );
     }
 
     #[tokio::test]
@@ -468,7 +478,11 @@ mod tests {
         let alex = alex(&core).await;
         *runner.skin.lock().unwrap() = Some(Ok(None));
         assert_eq!(core.skin_sync_current(&alex.uuid, "x").await.unwrap(), None);
-        assert!(core.skins_list(Some(&alex.uuid)).await.unwrap().is_empty());
+        assert!(core
+            .skins_list(Some(&alex.uuid), None)
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]
@@ -480,11 +494,15 @@ mod tests {
             .unwrap();
         let steve = steve(&core).await;
         let alex = alex(&core).await; // now the active account
-        assert!(core.skins_list(Some(&steve.uuid)).await.unwrap().is_empty());
-        assert_eq!(core.skins_list(None).await.unwrap().len(), 1);
-        let mine = core.skins_list(Some(&alex.uuid)).await.unwrap();
+        assert!(core
+            .skins_list(Some(&steve.uuid), None)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(core.skins_list(None, None).await.unwrap().len(), 1);
+        let mine = core.skins_list(Some(&alex.uuid), None).await.unwrap();
         assert_eq!(mine[0].id, loose.id);
-        assert!(core.skins_list(None).await.unwrap().is_empty());
+        assert!(core.skins_list(None, None).await.unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -500,7 +518,7 @@ mod tests {
             .unwrap();
         let alex = alex(&core).await;
         let ids: Vec<_> = core
-            .skins_list(Some(&alex.uuid))
+            .skins_list(Some(&alex.uuid), None)
             .await
             .unwrap()
             .into_iter()
@@ -511,6 +529,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_starter_passed_in_recognises_an_old_untouched_one() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let old = core
+            .skin_create("The Perlander", SkinModel::Classic, &texture(), None, false)
+            .await
+            .unwrap();
+        let alex = alex(&core).await;
+        let list = core
+            .skins_list(Some(&alex.uuid), Some(&texture()))
+            .await
+            .unwrap();
+        assert!(list.is_empty());
+        assert!(core.skin_texture(&old.id).await.is_err());
+    }
+
+    #[tokio::test]
     async fn new_skins_go_to_the_wardrobe_shown() {
         let (core, _runner, _host, t) = core(BuildKind::Release);
         let steve = steve(&core).await;
@@ -518,7 +552,13 @@ mod tests {
         std::fs::write(&path, skins_png::encode(&RgbaImage::new(64, 64)).unwrap()).unwrap();
         let imported = core.skin_import(path, Some(&steve.uuid)).await.unwrap();
         assert_eq!(imported.owner.as_deref(), Some(steve.uuid.as_str()));
-        assert_eq!(core.skins_list(Some(&steve.uuid)).await.unwrap().len(), 1);
+        assert_eq!(
+            core.skins_list(Some(&steve.uuid), None)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]

@@ -125,8 +125,9 @@ export const commands = {
   accountSetActive: (uuid: string) => invoke<AccountsFile>('account_set_active', { uuid }),
   accountRemove: (uuid: string) => invoke<AccountsFile>('account_remove', { uuid }),
   // The Skins screen. Textures cross as PNG `data:` URLs.
-  /** The wardrobe of `owner` (an account uuid), or the loose skins for null. */
-  skinsList: (owner: string | null) => invoke<SkinEntry[]>('skins_list', { owner }),
+  /** The wardrobe of `owner` (an account uuid), or the loose skins for null. `starter` (the launcher's starter as a PNG
+   *  data URL) lets the active account recognise an untouched starter among the loose skins and drop it. */
+  skinsList: (owner: string | null, starter: string | null = null) => invoke<SkinEntry[]>('skins_list', { owner, starter }),
   skinTexture: (id: string) => invoke<string>('skin_texture', { id }),
   /** `seeded`: the launcher puts this starter in an empty wardrobe by itself (dropped, not adopted, if never changed). */
   skinCreate: (name: string, model: SkinModel, texture: string, owner: string | null, seeded = false) =>

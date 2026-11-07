@@ -8,8 +8,8 @@ import type { AccountsFile, CurrentSkin, LauncherError, SkinEntry, SkinModel } f
 export const NOT_SKINS = Symbol('not a skin command');
 
 /** `?skins=`: `seeded` (the default: two skins in Steve's wardrobe, and a Microsoft account wears its own skin), `empty`,
- *  `rejected` (every upload is refused), `loose` (only a Perlander made with no account signed in, as before per-account
- *  wardrobes) or `default` (a Microsoft account wears Minecraft's default skin). */
+ *  `rejected` (every upload is refused), `loose` (only an untouched Perlander saved with no account signed in, from before
+ *  per-account wardrobes) or `default` (a Microsoft account wears Minecraft's default skin). */
 export type SkinsScenario = 'seeded' | 'empty' | 'rejected' | 'loose' | 'default';
 
 export interface SkinsState {
@@ -56,7 +56,7 @@ export function seedSkins(scenario: SkinsScenario = 'seeded'): SkinsState {
     scenario === 'empty' || scenario === 'default'
       ? []
       : scenario === 'loose'
-        ? [{ id: 'skin-00000000aaaa', name: 'The Perlander', model: 'classic', updated: 1_762_300_000, seeded: true }]
+        ? [{ id: 'skin-00000000aaaa', name: 'The Perlander', model: 'classic', updated: 1_762_300_000 }]
         : (skinEntriesFx as SkinEntry[]).map((e) => ({ ...e }));
   const textures = new Map(entries.map((e, i) => [e.id, drawn(i === 0 ? 'starter' : 'blank', e.model)]));
   const current = scenario === 'default' ? null : { texture: accountSkin(), model: 'slim' as const };
@@ -127,8 +127,10 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
     case 'skins_list': {
       const owner = ownerArg(args.owner);
       if (owner && owner === accounts.active) {
-        // An untouched seeded starter is dropped, not adopted.
-        state.entries = state.entries.filter((e) => e.owner !== undefined || !e.seeded);
+        // An untouched starter is dropped, not adopted: one marked seeded, or one never worn that is the starter exactly.
+        const starter = typeof args.starter === 'string' ? args.starter : null;
+        const untouched = (e: SkinEntry) => e.seeded || (!e.wornBy && starter !== null && state.textures.get(e.id) === starter);
+        state.entries = state.entries.filter((e) => e.owner !== undefined || !untouched(e));
         for (const e of state.entries) e.owner ??= owner;
       }
       return wardrobe(state, owner);

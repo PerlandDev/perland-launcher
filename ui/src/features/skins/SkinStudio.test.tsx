@@ -149,13 +149,16 @@ it("an offline account's empty wardrobe starts with the Perlander", async () => 
 });
 
 it('a Microsoft account opens on the skin it wears, even with a Perlander made before signing in', async () => {
-  const { calls } = renderApp(<SkinStudio />, { microsoft: 'signedIn', skins: 'loose' });
+  const { calls, backend } = renderApp(<SkinStudio />, { microsoft: 'signedIn', skins: 'loose' });
+  // The Perlander saved before starters were marked: its texels are the starter's, and nothing else marks it.
+  backend.state.skins.textures.set('skin-00000000aaaa', 'data:image/png;base64,ENCODED');
   const current = await screen.findByRole('button', { name: /Alex's skin/, current: true });
   const list = screen.getByRole('list', { name: 'Wardrobe' });
   expect(within(list).getAllByRole('button', { current: true })).toEqual([current]);
   expect(within(list).getAllByRole('listitem')[0]).toContainElement(current);
   expect(sent(calls, 'skin_sync_current')).toEqual([{ uuid: ALEX, name: "Alex's skin" }]);
-  // The untouched Perlander seeded with no account signed in isn't carried into Alex's wardrobe.
+  // The old untouched Perlander saved with no account signed in is recognised by its texture and not carried over.
+  expect(sent(calls, 'skins_list')).toContainEqual({ owner: ALEX, starter: 'data:image/png;base64,ENCODED' });
   expect(within(list).queryByText('The Perlander')).not.toBeInTheDocument();
   expect(within(list).getAllByRole('listitem')).toHaveLength(1);
   expect(sent(calls, 'skin_create')).toEqual([]);
@@ -191,7 +194,7 @@ it("switching accounts shows each account's own wardrobe", async () => {
   await user.click(await screen.findByRole('menuitem', { name: 'Steve' }));
   expect(await screen.findByRole('button', { name: /Beach day/, current: true })).toBeInTheDocument();
   expect(within(wardrobe()).queryByText("Alex's skin")).not.toBeInTheDocument();
-  expect(sent(calls, 'skins_list')).toContainEqual({ owner: STEVE });
+  expect(sent(calls, 'skins_list')).toContainEqual({ owner: STEVE, starter: null });
   expect(screen.getByText(/Offline accounts can't change their skin in Minecraft/)).toBeInTheDocument();
 
   await user.click(screen.getByRole('button', { name: 'Wardrobe of Steve' }));
