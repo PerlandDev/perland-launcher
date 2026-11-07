@@ -41,6 +41,12 @@ describe('poses', () => {
     expect(clock.paused).toBe(false);
   });
 
+  it('boat sits with the hands resting on the rim, no rowing', () => {
+    expect(rigAt('boat', 0).joints.rightArm).toEqual(rigAt('boat', 0.8).joints.rightArm);
+    expect(rigAt('boat', 0).joints.rightArm[2]).toBeLessThan(-0.3);
+    expect(rigAt('boat', 0).joints.leftArm[2]).toBeGreaterThan(0.3);
+  });
+
   it('wave raises the right arm above the head', () => {
     expect(rigAt('wave', 0).joints.rightArm[2]).toBeLessThan(-2);
   });

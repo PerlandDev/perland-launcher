@@ -1,7 +1,8 @@
 // The 3D figure on the Skins stage, drawn with three.js. Faces are lit the way the game lights blocks (top brightest,
 // sides darker), with no lights to ease between; the texture is nearest-filtered so every texel stays a crisp square.
 // The figure is a jointed rig that poses (walk, run, crouch, sit, wave, row a boat, ride a horse); the boat and the
-// horse are block props shaped like the game's, drawn here in the launcher's own colours, not Mojang's textures. The
+// horse are block props shaped like the game's (the Alpha boat, the 1.6 horse), drawn here in the launcher's own
+// colours, not Mojang's textures. The
 // outer layer is drawn in 3D: each painted texel a small block standing on the body (see outerWalls).
 // Kept behind this small adapter so the screen can be tested without WebGL.
 import {
@@ -192,73 +193,81 @@ function block(size: Vec3, center: Vec3, color: number, top = color, kind: Surfa
   return new Mesh(makeGeometry(positions, uvs, colors, index), surface(kind));
 }
 
-/** A rowing boat shaped like the game's: a flat bottom, low sides and ends, and a paddle on each side. Oak-toned
+/** A boat shaped like Minecraft Alpha's: a low box of planks, a flat bottom and four sides, no paddles. Oak-toned
  *  planks drawn here, not Mojang's texture. It floats on the empty stage, no water under it. */
-function boat(): { group: Group; oars: Group[] } {
+function boat(): Group {
   const group = new Group();
   const plank = 0x9c7446;
   const plankTop = 0xb08550;
   const plankDark = 0x6e5030;
-  group.add(block([16, 3, 28], [0, 1.5, 0], plankDark, plank, 'planks'));
-  for (const side of [-1, 1]) group.add(block([2, 9, 28], [side * 9, 4.5, 0], plank, plankTop, 'planks'));
-  group.add(block([16, 6, 2], [0, 6, 13], plank, plankTop, 'planks'));
-  group.add(block([16, 6, 2], [0, 6, -13], plank, plankTop, 'planks'));
-  const oars: Group[] = [];
+  // The bottom stops a hair inside the walls, so their faces never share a plane and flicker.
+  group.add(block([15.96, 4, 23.96], [0, 2, 0], plankDark, plank, 'planks'));
   for (const side of [-1, 1]) {
-    const oar = new Group();
-    // Pinned on the rail, the shaft runs back and out, the blade at its end.
-    oar.position.set(side * 10, 8, 3);
-    oar.add(block([2, 2, 18], [0, 0, -8], plankTop, plankTop, 'planks'));
-    oar.add(block([1, 6, 7], [0, 0, -18], plank, plankTop, 'planks'));
-    oar.rotation.set(0, side * 0.35, side * 0.75);
-    group.add(oar);
-    oars.push(oar);
+    group.add(block([2, 6, 20], [side * 9, 5, 0], plank, plankTop, 'planks'));
+    group.add(block([20, 6, 2], [0, 5, side * 11], plank, plankTop, 'planks'));
   }
-  return { group, oars };
+  return group;
 }
 
-/** A horse shaped like the game's: legs, a long body, a neck raised forward with the head and muzzle at its top, a
- *  mane and a tail, and a saddle. A chestnut coat drawn here, not Mojang's texture. */
+/** A horse shaped like the 1.6 one: a long body, legs in three pieces (thick thighs behind), a tall neck with its mane,
+ *  a head with a two-piece muzzle and ears, a three-piece tail held out behind, and a saddle. A chestnut coat drawn
+ *  here, not Mojang's texture. */
 function horse(): { group: Group; legs: Group[]; head: Group; tail: Group } {
   const group = new Group();
   const coat = 0x8a5a34;
   const coatTop = 0x9c6a3e;
+  const coatDark = 0x7a4b2c;
   const mane = 0x3a2516;
   const hoof = 0x2b1d14;
   const leather = 0x4a2c1c;
-  group.add(block([10, 10, 22], [0, 16, 0], coat, coatTop, 'hair'));
+  group.add(block([10, 10, 24], [0, 16, -2], coat, coatTop, 'hair'));
   // The saddle on its back, with stirrups hanging either side.
-  group.add(block([10.4, 1, 9], [0, 21.5, -1], leather, 0x5a3624, 'flat'));
-  group.add(block([6, 1.5, 1.5], [0, 22.5, 2.6], leather, 0x5a3624, 'flat'));
+  group.add(block([10.4, 1, 8], [0, 21.5, -2], leather, 0x5a3624, 'flat'));
+  group.add(block([4, 1.5, 1.5], [0, 22.5, 1.6], leather, 0x5a3624, 'flat'));
+  group.add(block([6, 1.5, 1.5], [0, 22.5, -5.6], leather, 0x5a3624, 'flat'));
   for (const side of [-1, 1]) {
-    group.add(block([0.4, 6, 0.4], [side * 5.3, 18, -1], hoof, hoof, 'flat'));
-    group.add(block([1, 0.8, 2], [side * 5.4, 14.8, -1], 0x9aa0a6, 0xb8bec4, 'flat'));
+    group.add(block([0.4, 6, 0.4], [side * 5.3, 18, -2], hoof, hoof, 'flat'));
+    group.add(block([1, 0.8, 2], [side * 5.4, 14.8, -2], 0x9aa0a6, 0xb8bec4, 'flat'));
   }
+  // Legs hang from a pivot level with the belly: front legs slim, hind legs with a thick thigh, each on a hoof.
   const legs: Group[] = [];
-  for (const [x, z] of [[-3, 8.5], [3, 8.5], [-3, -8.5], [3, -8.5]] as const) {
+  for (const [x, z, hind] of [[-3, 7.5, false], [3, 7.5, false], [-3, -11, true], [3, -11, true]] as const) {
     const leg = new Group();
-    leg.position.set(x, 11, z);
-    leg.add(block([4, 11, 4], [0, -5.5, 0], coat, coatTop, 'hair'));
-    leg.add(block([4.2, 2, 4.2], [0, -10, 0], hoof, hoof));
+    leg.position.set(x, 13, z);
+    if (hind) leg.add(block([4, 9, 5], [0, 0.5, 0], coat, coatTop, 'hair'));
+    else leg.add(block([3, 8, 4], [0, -1, 0], coat, coatTop, 'hair'));
+    leg.add(block([3, 5, 3], [0, -7.5, 0], coat, coatTop, 'hair'));
+    leg.add(block([4, 3, 4], [0, -11.5, 0], hoof, hoof));
     group.add(leg);
     legs.push(leg);
   }
   const head = new Group();
-  head.position.set(0, 20, 10);
-  head.add(block([4, 12, 7], [0, 5, -1.5], coat, coatTop, 'hair'));
-  head.add(block([6, 5, 7], [0, 8.5, 3.5], coat, coatTop, 'hair'));
-  head.add(block([4, 5, 5], [0, 8.5, 9.5], 0x7a4b2c, 0x8a5a34, 'hair'));
-  head.add(block([2, 16, 2], [0, 3, -6], mane, mane, 'hair'));
+  head.position.set(0, 18, 9);
+  head.add(block([4, 14, 8], [0, 6, -1], coat, coatTop, 'hair'));
+  head.add(block([2, 16, 4], [0, 6, -6], mane, mane, 'hair'));
+  head.add(block([5, 5, 7], [0, 13.5, 2.5], coat, coatTop, 'hair'));
+  head.add(block([4, 3, 6], [0, 13, 9], coatDark, coat, 'hair'));
+  head.add(block([4, 2, 5], [0, 10.5, 8.5], coatDark, coatDark, 'hair'));
   for (const side of [-1, 1]) {
-    head.add(block([2, 3, 1], [side * 2, 12.5, 0.5], coat, coatTop));
-    head.add(block([0.3, 1, 1], [side * 3.05, 9.5, 4.5], 0x14100c, 0x14100c, 'flat'));
-    head.add(block([0.3, 0.3, 7], [side * 2.2, 7, 6], hoof, hoof, 'flat'));
+    head.add(block([2, 3, 1], [side * 1.5, 17.5, 0], coat, coatTop));
+    head.add(block([0.3, 1, 1], [side * 2.55, 14.5, 3.5], 0x14100c, 0x14100c, 'flat'));
+    head.add(block([0.3, 0.3, 8], [side * 2.2, 12, 6], hoof, hoof, 'flat'));
   }
   group.add(head);
+  // The tail sets out from the rump and arcs back and down.
   const tail = new Group();
-  tail.position.set(0, 20, -11);
-  tail.add(block([3, 14, 4], [0, -7, -2], mane, mane, 'hair'));
-  tail.rotation.x = 0.3;
+  tail.position.set(0, 20, -14);
+  tail.add(block([2, 2, 3], [0, 0, -1.5], mane, mane, 'hair'));
+  const tip = new Group();
+  tip.position.set(0, 0, -2.5);
+  tip.add(block([3, 4, 7], [0, -1, -3.5], mane, mane, 'hair'));
+  const end = new Group();
+  end.position.set(0, -1, -6.5);
+  end.rotation.x = -0.35;
+  end.add(block([3, 4, 7], [0, 0, -3.5], mane, mane, 'hair'));
+  tip.add(end);
+  tail.add(tip);
+  tail.rotation.x = -0.75;
   group.add(tail);
   return { group, legs, head, tail };
 }
@@ -356,7 +365,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   world.add(ride);
   const theBoat = boat();
   const theHorse = horse();
-  ride.add(theBoat.group, theHorse.group);
+  ride.add(theBoat, theHorse.group);
   const figure = new Group();
   ride.add(figure);
 
@@ -400,12 +409,8 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     }
     figure.position.set(...rig.offset);
     ride.rotation.set(...rig.tilt);
-    theBoat.group.visible = pose === 'boat';
+    theBoat.visible = pose === 'boat';
     theHorse.group.visible = pose === 'horse';
-    if (pose === 'boat') {
-      const row = Math.sin(t * Math.PI * 2 * 0.6);
-      theBoat.oars.forEach((oar, i) => (oar.rotation.y = (i === 0 ? -1 : 1) * (0.35 + row * 0.45)));
-    }
     if (pose === 'horse') {
       const gait = Math.sin(t * Math.PI * 2 * 1.05);
       theHorse.legs.forEach((leg, i) => (leg.rotation.x = (i === 0 || i === 3 ? 1 : -1) * gait * 0.45));
