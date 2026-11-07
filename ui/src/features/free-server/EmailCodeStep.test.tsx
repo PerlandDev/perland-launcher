@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import i18n from '../../i18n';
 import en from '../../i18n/en.json';
 import es from '../../i18n/es.json';
+import { qk } from '../../state/queries';
 import { renderApp, sent } from '../../test/backend';
 import { EmailCodeStep } from './EmailCodeStep';
 
@@ -120,5 +121,34 @@ describe('EmailCodeStep', () => {
     const english = keys(((en as unknown as Tree).freeServer as Tree).email as Tree);
     expect(english.length).toBeGreaterThan(0);
     expect(keys(((es as unknown as Tree).freeServer as Tree).email as Tree).sort()).toEqual(english.sort());
+  });
+
+  it.each(['perland_account_email_start', 'perland_account_email_verify'])('reads the account again when %s says signed out', async (refused) => {
+    const { user, backend, qc } = setup();
+    const handle = backend.handle;
+    vi.spyOn(backend, 'handle').mockImplementation((cmd, args) =>
+      cmd === refused
+        ? Promise.reject({ category: 'auth', code: 'perland_signed_out', message: 'x', fix: null, detail: null, params: {} })
+        : handle(cmd, args),
+    );
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    if (refused === 'perland_account_email_start') {
+      await user.type(await screen.findByRole('textbox', { name: 'Email' }), 'a@b.co');
+      await user.click(screen.getByRole('button', { name: 'Send code' }));
+    } else {
+      await sendCode(user, 'a@b.co');
+      await tryCode(user, '123456');
+    }
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.perland });
+  });
+
+  it('keeps the account query on other errors', async () => {
+    const { user, qc } = setup();
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    await sendCode(user, 'a@b.co');
+    await tryCode(user, '000000');
+    await screen.findByRole('alert');
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: qk.perland });
   });
 });

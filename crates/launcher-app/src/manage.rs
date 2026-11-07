@@ -407,7 +407,8 @@ impl StackApi for CoreStack {
 }
 
 /// Fresh JWTs for `JwtCache`, from the session's Engine and device token. It notes whether
-/// `select-tenant` refused the device token, so the caller can sign the player out.
+/// `select-tenant` refused the device token, so the caller can check with `/me` and sign the
+/// player out.
 struct SessionSource {
     api: Arc<dyn StackApi>,
     engine: Url,
@@ -660,7 +661,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
             Err(e) => {
                 if source.signed_out.load(Ordering::SeqCst) {
-                    self.drop_session(&session.token).await;
+                    self.drop_if_signed_out(&session).await;
                 }
                 Err(e)
             }
@@ -686,8 +687,22 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
     }
 
-    /// The teams the player belongs to, with the device token. A 401 means the device session
-    /// ended: the player is signed out.
+    /// After a route refused the device token: sign the player out only when `/me` refuses it
+    /// too. An Engine whose route doesn't take the device token yet answers 401 as well, and
+    /// that is no reason to end the session. Any other `/me` failure keeps it.
+    async fn drop_if_signed_out(&self, session: &Session) {
+        let me = self
+            .runner
+            .player()
+            .me(session.engine.clone(), session.token.clone())
+            .await;
+        if me.is_err_and(|e| e.code == ErrorCode::PerlandSignedOut) {
+            self.drop_session(&session.token).await;
+        }
+    }
+
+    /// The teams the player belongs to, with the device token. A 401 that `/me` confirms means
+    /// the device session ended: the player is signed out.
     pub(crate) async fn memberships(&self) -> Result<Vec<Membership>> {
         let session = self.perland_session().await.ok_or_else(signed_out)?;
         let answer = self
@@ -699,7 +714,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .as_ref()
             .is_err_and(|e| e.code == ErrorCode::PerlandSignedOut)
         {
-            self.drop_session(&session.token).await;
+            self.drop_if_signed_out(&session).await;
         }
         answer
     }
@@ -1357,6 +1372,7 @@ mod tests {
         sign_in(&core);
         let fake = stack(&runner);
         fake.fail_next("select_tenant", unauthorized());
+        *runner.player.me.lock().unwrap() = Err(unauthorized());
         let e = core
             .manage_action("t1", "survival", "restart")
             .await
@@ -1365,8 +1381,43 @@ mod tests {
         let selects = fake.calls_to("select_tenant");
         assert_eq!(selects.len(), 1, "a refused device token isn't asked again");
         assert_eq!(selects[0].args, [player_token('s'), "t1".to_string()]);
+        let me = runner.player.calls_to("me");
+        assert_eq!(me.len(), 1, "/me confirms the sign-out");
+        assert_eq!(me[0].args, [player_token('s')]);
         assert!(core.perland_session().await.is_none(), "signed out");
         assert!(fake.calls_to("lifecycle").is_empty());
+    }
+
+    #[tokio::test]
+    async fn select_tenant_401_with_me_ok_keeps_the_session() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        fake.fail_next("select_tenant", unauthorized());
+        let e = core
+            .manage_action("t1", "survival", "restart")
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::PerlandSignedOut, "the route's answer");
+        assert_eq!(runner.player.calls_to("me").len(), 1);
+        assert!(core.perland_session().await.is_some(), "still signed in");
+        assert!(fake.calls_to("lifecycle").is_empty());
+    }
+
+    #[tokio::test]
+    async fn select_tenant_401_with_me_failing_keeps_the_session() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        fake.fail_next("select_tenant", unauthorized());
+        *runner.player.me.lock().unwrap() =
+            Err(LauncherError::network(ErrorCode::Offline, "offline"));
+        let e = core
+            .manage_action("t1", "survival", "restart")
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::PerlandSignedOut);
+        assert!(core.perland_session().await.is_some());
     }
 
     #[tokio::test]
@@ -1375,11 +1426,49 @@ mod tests {
         sign_in(&core);
         let fake = stack(&runner);
         *fake.memberships.lock().unwrap() = Err(unauthorized());
+        *runner.player.me.lock().unwrap() = Err(unauthorized());
         let e = core.managed_servers().await.unwrap_err();
         assert_eq!(e.code, ErrorCode::PerlandSignedOut);
         assert_eq!(fake.calls_to("memberships").len(), 1, "not asked again");
+        assert_eq!(runner.player.calls_to("me").len(), 1, "/me confirms it");
         assert!(core.perland_session().await.is_none(), "signed out");
         assert!(fake.calls_to("select_tenant").is_empty());
+    }
+
+    #[tokio::test]
+    async fn memberships_401_with_me_ok_keeps_the_session() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.memberships.lock().unwrap() = Err(unauthorized());
+        let e = core.managed_servers().await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::PerlandSignedOut, "the route's answer");
+        assert_eq!(runner.player.calls_to("me").len(), 1);
+        assert!(core.perland_session().await.is_some(), "still signed in");
+    }
+
+    #[tokio::test]
+    async fn memberships_401_with_me_failing_keeps_the_session() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.memberships.lock().unwrap() = Err(unauthorized());
+        *runner.player.me.lock().unwrap() =
+            Err(LauncherError::network(ErrorCode::Offline, "offline"));
+        core.managed_servers().await.unwrap_err();
+        assert!(core.perland_session().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn listing_servers_never_asks_me() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        core.managed_servers().await.unwrap();
+        core.manage_action("t1", "survival", "start").await.unwrap();
+        assert!(
+            runner.player.calls_to("me").is_empty(),
+            "off the happy path"
+        );
     }
 
     #[tokio::test]

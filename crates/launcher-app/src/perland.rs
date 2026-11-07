@@ -1703,6 +1703,10 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(account.email.as_deref(), Some("new@example.com"));
+        assert!(
+            runner.player.calls_to("me").is_empty(),
+            "the verified email comes from the verify answer, not /me"
+        );
         let call = &runner.player.calls_to("account_email_verify")[0];
         assert_eq!(call.args[2], "123456");
         let saved = core.perland_store.load().unwrap();
@@ -1712,6 +1716,38 @@ mod tests {
             status.account.unwrap().email.as_deref(),
             Some("new@example.com")
         );
+    }
+
+    #[tokio::test]
+    async fn account_email_verify_name_follows_the_email_until_one_is_chosen() {
+        // A name equal to the old email is the fallback: it becomes the new email.
+        let (fallback, _runner, _host, _t) = core(BuildKind::Dev);
+        let mut session = saved_session("https://api.example.com");
+        session.profile.name = "alex@example.com".into();
+        fallback.perland_store.save(&session).unwrap();
+        let account = fallback
+            .perland_account_email_verify("new@example.com", "123456")
+            .await
+            .unwrap();
+        assert_eq!(account.name, "new@example.com");
+        let saved = fallback.perland_store.load().unwrap();
+        assert_eq!(saved.profile.name, "new@example.com");
+        assert_eq!(saved.profile.email.as_deref(), Some("new@example.com"));
+
+        // A chosen name stays.
+        let (chosen, _runner, _host, _t) = core(BuildKind::Dev);
+        chosen
+            .perland_store
+            .save(&saved_session("https://api.example.com"))
+            .unwrap();
+        let account = chosen
+            .perland_account_email_verify("new@example.com", "123456")
+            .await
+            .unwrap();
+        assert_eq!(account.name, "Alex");
+        let saved = chosen.perland_store.load().unwrap();
+        assert_eq!(saved.profile.name, "Alex");
+        assert_eq!(saved.profile.email.as_deref(), Some("new@example.com"));
     }
 
     #[tokio::test]

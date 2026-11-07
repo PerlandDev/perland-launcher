@@ -11,8 +11,8 @@ import { Field } from '../../ui/Field';
 
 /** Put a verified email on the signed-in Perland account, which a free server needs: the email, Send code, then the code
  *  with Verify, Send a new code (after a countdown) and Use another email. Errors go under the field they are about. On a
- *  verified email the Perland status is read again (so the account shows it) and `onVerified` gets the email. Mount it only
- *  while shown: it always starts at the email field. */
+ *  verified email, or a signed-out answer, the Perland status is read again (so the account shows it); a verified email
+ *  also goes to `onVerified`. Mount it only while shown: it always starts at the email field. */
 export function EmailCodeStep({ onVerified, onCancel }: { onVerified: (email: string) => void; onCancel: () => void }) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
@@ -45,6 +45,12 @@ export function EmailCodeStep({ onVerified, onCancel }: { onVerified: (email: st
     if (error !== null) field.current?.focus();
   }, [error]);
 
+  /** Show `failure` on the field. A signed-out answer also reads the Perland status again, so the account card updates. */
+  const fail = (failure: unknown) => {
+    if (isLauncherError(failure) && failure.code === 'perland_signed_out') void qc.invalidateQueries({ queryKey: qk.perland });
+    setError(failure);
+  };
+
   const sendCode = async () => {
     setBusy(true);
     setError(null);
@@ -57,7 +63,7 @@ export function EmailCodeStep({ onVerified, onCancel }: { onVerified: (email: st
       setCode('');
       setStep('code');
     } catch (failure) {
-      setError(failure);
+      fail(failure);
     } finally {
       setBusy(false);
     }
@@ -79,7 +85,7 @@ export function EmailCodeStep({ onVerified, onCancel }: { onVerified: (email: st
       void qc.invalidateQueries({ queryKey: qk.perland });
       onVerified(email);
     } catch (failure) {
-      setError(failure);
+      fail(failure);
     } finally {
       setBusy(false);
     }
