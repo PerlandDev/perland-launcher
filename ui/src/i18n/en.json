@@ -551,7 +551,7 @@
     "start": "Let's go",
     "languageTitle": "Pick your language",
     "accountTitle": "Who's playing?",
-    "accountBody": "Pick the name other players will see.",
+    "offlineTitle": "Or play offline",
     "skip": "Skip for now",
     "skipLater": "You can sign in later. Play will ask you then.",
     "instanceTitle": "Your first instance",
