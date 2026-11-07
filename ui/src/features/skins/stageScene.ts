@@ -1,8 +1,7 @@
 // The 3D figure on the Skins stage, drawn with three.js. Faces are lit the way the game lights blocks (top brightest,
 // sides darker), with no lights to ease between; the texture is nearest-filtered so every texel stays a crisp square.
 // The figure is a jointed rig that poses (walk, run, crouch, sit, wave, row a boat, ride a horse); the boat and the
-// horse are box models built like the game's entities, each texel of them painted here in the launcher's own colours
-// (see props), not Mojang's textures. The
+// horse are simple block props built here in the launcher's own palette, not anything of Mojang's. The
 // outer layer is drawn in 3D: each painted texel a small block standing on the body (see outerWalls).
 // Kept behind this small adapter so the screen can be tested without WebGL.
 import {
@@ -17,6 +16,7 @@ import {
   NearestFilter,
   PerspectiveCamera,
   Raycaster,
+  RepeatWrapping,
   RGBAFormat,
   Scene,
   SRGBColorSpace,
@@ -27,8 +27,7 @@ import {
 import type { SkinModel } from '../../ipc/schema';
 import { boxes, SKIN_SIZE, type Box, type Face, type Layer, type Part, type Vec3 } from './layout';
 import { outerWalls, type Wall } from './outerWalls';
-import { AnimationClock, celebration, CELEBRATE_S, HANDLE, OARLOCK, paddleAt, POSE_STILL_T, rigAt, type Joint, type Pose } from './poses';
-import { bake, fromFront, fur, hair, hash, hex, leather, metal, mul, over, planks, type Painter, type Piece } from './props';
+import { AnimationClock, celebration, CELEBRATE_S, POSE_STILL_T, rigAt, type Joint, type Pose } from './poses';
 
 /** How bright each face direction is, like the game's block shading. */
 function brightness([x, y, z]: Vec3): number {
@@ -94,173 +93,185 @@ function wallGeometry(walls: Wall[], pivot: Vec3): BufferGeometry {
   return makeGeometry(positions, uvs, colors, index);
 }
 
-/** A prop under construction: each piece hangs from a group (a joint that animates, or the prop itself). */
-type PropParts = { group: Group; piece: Piece }[];
+/** The pixel surfaces the props are made of, 16 × 16 texels of light and shade multiplied over each block's colour,
+ *  one texel a model unit, so a prop reads at the same pixel scale as the skin. */
+type Surface = 'grain' | 'planks' | 'hair' | 'flat';
 
-/** Bakes a prop's pieces onto one painted atlas and hangs their meshes from their groups. */
-function buildProp(parts: PropParts): void {
-  const { atlas, faces } = bake(parts.map((p) => p.piece));
-  const texture = new DataTexture(atlas.data, atlas.width, atlas.height, RGBAFormat, UnsignedByteType);
+/** A small deterministic hash, so every prop looks the same each time. */
+function hash(x: number, y: number, seed: number): number {
+  let h = (x * 374761393 + y * 668265263 + seed * 2147483647) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+
+function surfaceTexture(kind: Surface): DataTexture {
+  const n = 16;
+  const data = new Uint8Array(n * n * 4);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const r = hash(x, y, 7);
+      let v: number;
+      switch (kind) {
+        case 'grain':
+          // Speckled: mostly mid, some darker pits and lighter flecks.
+          v = r < 0.15 ? 0.74 : r > 0.88 ? 1 : 0.84 + hash(x >> 1, y >> 1, 3) * 0.1;
+          break;
+        case 'planks': {
+          // Four planks a tile, a dark seam under each, staggered end joints, grain streaks along the boards.
+          const row = y % 4;
+          const board = y >> 2;
+          const joint = (x + board * 5) % 16 === 0;
+          v = row === 3 || joint ? 0.62 : 0.86 + hash(board, 0, 11) * 0.1 + (hash(x >> 2, y, 5) - 0.5) * 0.08;
+          break;
+        }
+        case 'hair':
+          // Strands: each column its own shade, a little variation down it.
+          v = 0.72 + hash(x, 0, 17) * 0.24 + (r - 0.5) * 0.08;
+          break;
+        case 'flat':
+          v = 1;
+          break;
+      }
+      const c = Math.round(Math.max(0, Math.min(1, v)) * 255);
+      data.set([c, c, c, 255], (y * n + x) * 4);
+    }
+  }
+  const texture = new DataTexture(data, n, n, RGBAFormat, UnsignedByteType);
   texture.magFilter = NearestFilter;
   texture.minFilter = NearestFilter;
-  texture.colorSpace = SRGBColorSpace;
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = RepeatWrapping;
   texture.needsUpdate = true;
-  const material = new MeshBasicMaterial({ map: texture, vertexColors: true, side: FrontSide });
-  parts.forEach(({ group }, n) => group.add(new Mesh(geometryFor({ faces: faces[n]! }, [0, 0, 0], atlas.width, atlas.height), material)));
+  return texture;
 }
 
-const OAK = hex(0xa47b4a);
-const OAK_LIGHT = hex(0xb8915c);
-
-/** The paddle's grip: the last few texels at its inboard (+z) end, wrapped darker. */
-const grip: Painter = (face, put) => {
-  for (let j = 0; j < face.h; j++) {
-    for (let i = 0; i < face.w; i++) {
-      const end =
-        face.name === 'front' ||
-        ((face.name === 'top' || face.name === 'bottom') && j >= face.h - 3) ||
-        ((face.name === 'right' || face.name === 'left') && fromFront(face, i) < 3);
-      if (end) put(i, j, mul(OAK, 0.62 + ((i + j) % 2) * 0.06));
-    }
+const surfaces = new Map<Surface, MeshBasicMaterial>();
+function surface(kind: Surface): MeshBasicMaterial {
+  let material = surfaces.get(kind);
+  if (!material) {
+    material = new MeshBasicMaterial({ map: surfaceTexture(kind), vertexColors: true, side: FrontSide });
+    surfaces.set(kind, material);
   }
-};
+  return material;
+}
+let blockSeed = 0;
 
-/** A rowing boat shaped like the game's: a flat bottom, low sides and ends of oak planks, and a paddle pinned on each
- *  rail that the rider pulls. Painted here, not Mojang's texture; no water under it. */
-function boat(): { group: Group; paddles: Group[] } {
-  const group = new Group();
-  const parts: PropParts = [
-    { group, piece: { size: [16, 3, 28], center: [0, 1.5, 0], paint: planks(mul(OAK, 0.88), 5) } },
-    { group, piece: { size: [2, 6, 28], center: [-9, 6, 0], paint: planks(OAK, 6) } },
-    { group, piece: { size: [2, 6, 28], center: [9, 6, 0], paint: planks(OAK, 7) } },
-    { group, piece: { size: [20, 6, 2], center: [0, 6, -15], paint: planks(OAK, 8) } },
-    { group, piece: { size: [20, 6, 2], center: [0, 6, 15], paint: planks(OAK, 9) } },
+/** A block prop: its six faces shaded like the figure's, in one colour (0xRRGGBB) over a pixel surface. */
+function block(size: Vec3, center: Vec3, color: number, top = color, kind: Surface = 'grain'): Mesh {
+  const [hx, hy, hz] = size.map((s) => s / 2) as Vec3;
+  const [cx, cy, cz] = center;
+  const p = (x: number, y: number, z: number): Vec3 => [cx + x * hx, cy + y * hy, cz + z * hz];
+  const faces: [Vec3, Vec3, Vec3, Vec3, Vec3][] = [
+    [p(-1, 1, -1), p(1, 1, -1), p(-1, 1, 1), p(1, 1, 1), [0, 1, 0]],
+    [p(-1, -1, 1), p(1, -1, 1), p(-1, -1, -1), p(1, -1, -1), [0, -1, 0]],
+    [p(-1, 1, 1), p(1, 1, 1), p(-1, -1, 1), p(1, -1, 1), [0, 0, 1]],
+    [p(1, 1, -1), p(-1, 1, -1), p(1, -1, -1), p(-1, -1, -1), [0, 0, -1]],
+    [p(-1, 1, -1), p(-1, 1, 1), p(-1, -1, -1), p(-1, -1, 1), [-1, 0, 0]],
+    [p(1, 1, 1), p(1, 1, -1), p(1, -1, 1), p(1, -1, -1), [1, 0, 0]],
   ];
-  const paddles: Group[] = [];
-  for (const side of [-1, 1] as const) {
-    parts.push({ group, piece: { size: [1.6, 1, 1.6], center: [side * OARLOCK.x, 9.5, OARLOCK.z], paint: metal(hex(0x8e9398)) } });
-    const paddle = new Group();
-    paddle.position.set(side * OARLOCK.x, OARLOCK.y, OARLOCK.z);
-    paddle.rotation.order = 'YXZ';
-    // The shaft crosses the rail: the handle reaches HANDLE inboard (+z), the rest runs out to the blade.
-    parts.push({ group: paddle, piece: { size: [2, 2, 18], center: [0, 0, HANDLE - 9], paint: over(planks(OAK_LIGHT, 10 + side), grip) } });
-    parts.push({ group: paddle, piece: { size: [1, 6, 7], center: [0, 0, HANDLE - 21.5], paint: planks(OAK, 12 + side) } });
-    group.add(paddle);
-    paddles.push(paddle);
-  }
-  buildProp(parts);
-  return { group, paddles };
-}
-
-const COAT = hex(0xa0673a);
-const MANE = hex(0x3a2416);
-const HOOF = hex(0x3b332d);
-const SOCK = hex(0xe9e2d3);
-const BLAZE = hex(0xf0e9dc);
-const TACK = hex(0x5c3722);
-const IRON = hex(0x9ea3a8);
-
-/** A leg: coat down to a hoof (its top row a lighter band), with a white sock above it on some legs. */
-function leg(sock: boolean): Painter {
-  return over(fur(COAT, 21), (face, put) => {
-    for (let j = 0; j < face.h; j++) {
-      for (let i = 0; i < face.w; i++) {
-        const up = face.name === 'bottom' ? 0 : face.name === 'top' ? 99 : face.h - 1 - j;
-        if (up < 3) put(i, j, mul(HOOF, up === 2 ? 1.25 : 0.95 + hash(i, j, 22) * 0.1));
-        else if (sock && up < 6) put(i, j, mul(SOCK, 0.94 + hash(face.x + i, j, 23) * 0.08));
-      }
-    }
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const colors: number[] = [];
+  const index: number[] = [];
+  blockSeed += 1;
+  faces.forEach(([a, b, c, d, normal], i) => {
+    for (const q of [a, b, c, d]) positions.push(...q);
+    // One texel a unit, from a different spot of the tile on every face, so repeats never line up.
+    const w = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) / 16;
+    const h = Math.hypot(c[0] - a[0], c[1] - a[1], c[2] - a[2]) / 16;
+    const u = Math.floor(hash(blockSeed, i, 1) * 16) / 16;
+    const v = Math.floor(hash(i, blockSeed, 2) * 16) / 16;
+    uvs.push(u, v, u + w, v, u, v + h, u + w, v + h);
+    const hex = normal[1] > 0 ? top : color;
+    const light = brightness(normal);
+    const rgb = [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255].map((v) => Math.pow(v / 255, 2.2) * light);
+    for (let k = 0; k < 4; k++) colors.push(rgb[0]!, rgb[1]!, rgb[2]!);
+    const base = i * 4;
+    index.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
   });
+  return new Mesh(makeGeometry(positions, uvs, colors, index), surface(kind));
 }
 
-/** The head: eyes on its sides near the front, a white blaze down the face. */
-const skull: Painter = over(fur(COAT, 24), (face, put) => {
-  if (face.name === 'right' || face.name === 'left') {
-    for (let i = 0; i < face.w; i++) {
-      const k = fromFront(face, i);
-      if (k === 2) put(i, 1, hex(0x1a130e));
-      if (k === 3) put(i, 1, hex(0x2e2118));
-      if (k === 2 || k === 3) put(i, 2, mul(COAT, 0.8));
-    }
+/** A rowing boat: planks, a raised rim and two oars. It floats on the empty stage, no water under it. */
+function boat(): { group: Group; oars: Group[] } {
+  const group = new Group();
+  const plank = 0x8a5a34;
+  const plankDark = 0x6b4024;
+  group.add(block([12, 2, 22], [0, 1, 0], plankDark, plank, 'planks'));
+  group.add(block([2, 4, 22], [-7, 3, 0], plank, 0x9c6a3e, 'planks'));
+  group.add(block([2, 4, 22], [7, 3, 0], plank, 0x9c6a3e, 'planks'));
+  group.add(block([16, 4, 2], [0, 3, 12], plank, 0x9c6a3e, 'planks'));
+  group.add(block([16, 4, 2], [0, 3, -12], plank, 0x9c6a3e, 'planks'));
+  group.add(block([16.4, 1, 2.4], [0, 5.5, 12], 0x4e2e19, 0x5e3820));
+  group.add(block([2.4, 1, 22.4], [-7, 5.5, 0], 0x4e2e19, 0x5e3820));
+  group.add(block([2.4, 1, 22.4], [7, 5.5, 0], 0x4e2e19, 0x5e3820));
+  group.add(block([16.4, 1, 2.4], [0, 5.5, -12], 0x4e2e19, 0x5e3820));
+  group.add(block([12, 1, 4], [0, 4.5, -4], plankDark, plank, 'planks'));
+  const oars: Group[] = [];
+  for (const side of [-1, 1]) {
+    const oar = new Group();
+    oar.position.set(side * 8, 6, 2);
+    oar.add(block([1, 1, 16], [side * 3, -2, 0], 0x9c6a3e, 0x9c6a3e, 'planks'));
+    oar.add(block([1, 2.5, 5], [side * 3, -2, -9], 0x6b4024, 0x6b4024, 'planks'));
+    oar.rotation.z = side * 0.5;
+    group.add(oar);
+    oars.push(oar);
   }
-  const mid = (i: number) => Math.abs(i - (face.w - 1) / 2) <= 0.5;
-  if (face.name === 'front') for (let j = 0; j < face.h; j++) for (let i = 0; i < face.w; i++) if (mid(i)) put(i, j, BLAZE);
-  if (face.name === 'top') for (let j = face.h - 3; j < face.h; j++) for (let i = 0; i < face.w; i++) if (mid(i)) put(i, j, BLAZE);
-});
+  return { group, oars };
+}
 
-/** The muzzle: the blaze over its top, nostrils and a mouth line in front, the mouth carried along its sides. */
-const muzzle: Painter = over(fur(mul(COAT, 0.92), 25), (face, put) => {
-  const mid = (i: number) => Math.abs(i - (face.w - 1) / 2) <= 0.5;
-  if (face.name === 'top') for (let j = 0; j < face.h; j++) for (let i = 0; i < face.w; i++) if (mid(i)) put(i, j, BLAZE);
-  if (face.name === 'front') {
-    for (let i = 0; i < face.w; i++) {
-      if (mid(i)) put(i, 0, BLAZE);
-      put(i, 3, mul(COAT, 0.62));
-    }
-    put(0, 1, hex(0x24180f));
-    put(face.w - 1, 1, hex(0x24180f));
-  }
-  if (face.name === 'right' || face.name === 'left') for (let i = 0; i < face.w; i++) if (fromFront(face, i) < 3) put(i, 3, mul(COAT, 0.62));
-});
-
-/** An ear: its inside shaded. */
-const ear: Painter = over(fur(COAT, 26), (face, put) => {
-  if (face.name === 'front') for (let j = 1; j < face.h; j++) for (let i = 0; i < face.w; i++) put(i, j, mul(COAT, 0.66));
-});
-
-/** The saddle's seat: leather wrapped over the back, with the girth strap down each side. */
-const saddle: Painter = over(leather(TACK, 27), (face, put) => {
-  if (face.name === 'right' || face.name === 'left') {
-    for (let j = 0; j < face.h; j++) for (let i = 0; i < face.w; i++) if (Math.abs(fromFront(face, i) - (face.w - 1) / 2) <= 1) put(i, j, mul(TACK, 0.68));
-  }
-});
-
-/** A horse shaped like the game's: a long body on four legs, a raised neck with its mane, a head with a muzzle and
- *  ears, and a tail; saddled and bridled. A chestnut coat with a white blaze and two white socks, painted here, not
- *  Mojang's texture. */
+/** A block horse in chestnut with a dark mane: body, four legs, neck and head. */
 function horse(): { group: Group; legs: Group[]; head: Group; tail: Group } {
   const group = new Group();
-  const parts: PropParts = [
-    { group, piece: { size: [10, 10, 22], center: [0, 16, 0], paint: fur(COAT, 20) } },
-    { group, piece: { size: [10.8, 6.2, 9], center: [0, 19, -1], paint: saddle } },
-    { group, piece: { size: [3, 2, 1.6], center: [0, 23, 2.6], paint: leather(mul(TACK, 1.1), 28) } },
-    { group, piece: { size: [7, 2, 1.6], center: [0, 23, -4.6], paint: leather(mul(TACK, 1.1), 29) } },
-  ];
+  const coat = 0x8a5a34;
+  const coatTop = 0x9c6a3e;
+  const mane = 0x2b1d14;
+  const sock = 0xe9e0cf;
+  group.add(block([10, 10, 22], [0, 21, 0], coat, coatTop));
+  // A saddle on a coral blanket, with stirrups hanging either side.
+  group.add(block([10.6, 0.6, 9], [0, 26.3, -1], 0xb5473a, 0xc4574a, 'flat'));
+  group.add(block([10.8, 4, 0.8], [0, 24.4, -5.2], 0xb5473a, 0xb5473a, 'flat'));
+  group.add(block([10.8, 4, 0.8], [0, 24.4, 3.2], 0xb5473a, 0xb5473a, 'flat'));
+  group.add(block([9, 1.6, 7], [0, 27.4, -1], 0x3b2416, 0x4a2c1c));
+  group.add(block([9, 2.4, 1.4], [0, 28.4, 2.2], 0x3b2416, 0x4a2c1c));
   for (const side of [-1, 1]) {
-    parts.push({ group, piece: { size: [0.4, 4, 0.8], center: [side * 5.6, 14, -1], paint: leather(mul(TACK, 0.8), 30) } });
-    parts.push({ group, piece: { size: [1, 1, 2.4], center: [side * 5.7, 11.5, -1], paint: metal(IRON) } });
+    group.add(block([0.4, 7, 0.4], [side * 5.6, 22, 0], 0x2b1d14));
+    group.add(block([1.2, 0.8, 2], [side * 5.8, 18.4, 0], 0x9aa0a6, 0xb8bec4, 'flat'));
   }
   const legs: Group[] = [];
-  for (const [x, z, sock] of [[-3, 8.5, true], [3, 8.5, false], [-3, -8.5, false], [3, -8.5, true]] as const) {
-    const g = new Group();
-    g.position.set(x, 11, z);
-    parts.push({ group: g, piece: { size: [4, 11, 4], center: [0, -5.5, 0], paint: leg(sock) } });
-    group.add(g);
-    legs.push(g);
+  for (const [x, z] of [[-3, 8], [3, 8], [-3, -8], [3, -8]] as const) {
+    const leg = new Group();
+    leg.position.set(x, 16, z);
+    leg.add(block([4, 16, 4], [0, -8, 0], coat, coatTop));
+    leg.add(block([4.2, 2.6, 4.2], [0, -12.2, 0], sock, sock, 'hair'));
+    leg.add(block([4.3, 2, 4.3], [0, -15, 0], 0x2b1d14));
+    group.add(leg);
+    legs.push(leg);
   }
   const head = new Group();
-  head.position.set(0, 20, 10);
-  parts.push(
-    { group: head, piece: { size: [4, 12, 7], center: [0, 5, -1.5], paint: fur(COAT, 31) } },
-    { group: head, piece: { size: [2, 16, 2], center: [0, 4, -6], paint: hair(MANE, 32) } },
-    { group: head, piece: { size: [6, 5, 7], center: [0, 8.5, 3.5], paint: skull } },
-    { group: head, piece: { size: [4, 5, 5], center: [0, 8.5, 9.5], paint: muzzle } },
-    { group: head, piece: { size: [3, 1.5, 2.5], center: [0, 11.75, 1.4], paint: hair(MANE, 33) } },
-    // The bridle: a band round the head behind the eyes, a noseband round the muzzle, the bit's rings.
-    { group: head, piece: { size: [6.4, 5.4, 0.8], center: [0, 8.5, 1], paint: leather(TACK, 34) } },
-    { group: head, piece: { size: [4.4, 1.2, 5], center: [0, 8, 9.8], paint: leather(TACK, 35) } },
-  );
+  head.position.set(0, 24, 9);
+  head.add(block([6, 12, 7], [0, 5, 0], coat, coatTop));
+  head.add(block([2, 14, 2], [0, 6, -4], mane, mane, 'hair'));
+  head.add(block([6, 6, 11], [0, 12, 3], coat, coatTop));
+  // A white blaze down the face, dark eyes, a muzzle with nostrils, ears and a forelock.
+  head.add(block([2, 0.3, 7], [0, 15.1, 4], sock, sock, 'flat'));
+  head.add(block([2, 3, 0.3], [0, 12.5, 8.6], sock, sock, 'flat'));
   for (const side of [-1, 1]) {
-    parts.push({ group: head, piece: { size: [2, 3, 1], center: [side * 2, 12.5, 0.5], paint: ear } });
-    parts.push({ group: head, piece: { size: [0.6, 1.2, 1.2], center: [side * 2.4, 7.4, 11], paint: metal(IRON) } });
+    head.add(block([0.3, 1.2, 1.2], [side * 3.1, 13.2, 1.6], 0x14100c, 0x14100c, 'flat'));
+    head.add(block([0.3, 0.6, 0.6], [side * 3.15, 13.6, 1.3], 0xf6f1e7, 0xf6f1e7, 'flat'));
+    head.add(block([2, 3, 2], [side * 2, 16.5, -1], coat, coatTop));
+    head.add(block([0.8, 0.8, 0.3], [side * 1.6, 10.6, 9.25], 0x2b1d14, 0x2b1d14, 'flat'));
   }
+  head.add(block([6.2, 3.2, 4], [0, 10.6, 7.2], 0x6b4024, 0x7a4b30));
+  head.add(block([2.4, 2, 3], [0, 15.4, 0.6], mane, mane, 'hair'));
+  // Reins from the muzzle back toward the rider's hands.
+  for (const side of [-1, 1]) head.add(block([0.3, 0.3, 9], [side * 3.2, 9.6, 3], 0x2b1d14, 0x2b1d14, 'flat'));
   group.add(head);
   const tail = new Group();
-  tail.position.set(0, 20, -11);
-  parts.push({ group: tail, piece: { size: [3, 14, 4], center: [0, -7, -2], paint: hair(MANE, 36) } });
-  tail.rotation.x = 0.4;
+  tail.position.set(0, 24, -11);
+  tail.add(block([3, 12, 3], [0, -5, -1.5], mane, mane, 'hair'));
+  tail.rotation.x = -0.35;
   group.add(tail);
-  buildProp(parts);
   return { group, legs, head, tail };
 }
 
@@ -337,8 +348,8 @@ const FRAMING: Record<Pose, { target: number; height: number; width: number }> =
   crouch: { target: 12, height: 48, width: 30 },
   sit: { target: 8, height: 42, width: 34 },
   wave: { target: 15, height: 54, width: 32 },
-  boat: { target: 9, height: 44, width: 56 },
-  horse: { target: 22, height: 60, width: 50 },
+  boat: { target: 8, height: 44, width: 40 },
+  horse: { target: 25, height: 72, width: 46 },
 };
 
 const START = { yaw: -0.55, pitch: 0.14, zoom: 1 };
@@ -402,17 +413,15 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     figure.position.set(...rig.offset);
     ride.rotation.set(...rig.tilt);
     theBoat.group.visible = pose === 'boat';
-    if (pose === 'boat') {
-      theBoat.paddles.forEach((paddle, i) => {
-        const { yaw, dip } = paddleAt(t, i === 0 ? -1 : 1);
-        paddle.rotation.set(dip, yaw, 0, 'YXZ');
-      });
-    }
     theHorse.group.visible = pose === 'horse';
+    if (pose === 'boat') {
+      const row = Math.sin(t * Math.PI * 2 * 0.6);
+      theBoat.oars.forEach((oar, i) => (oar.rotation.y = (i === 0 ? 1 : -1) * row * 0.5));
+    }
     if (pose === 'horse') {
       const gait = Math.sin(t * Math.PI * 2 * 1.05);
       theHorse.legs.forEach((leg, i) => (leg.rotation.x = (i === 0 || i === 3 ? 1 : -1) * gait * 0.45));
-      theHorse.head.rotation.x = 0.52 + Math.sin(t * Math.PI * 2 * 1.05 * 2) * 0.05;
+      theHorse.head.rotation.x = 0.45 + Math.sin(t * Math.PI * 2 * 1.05 * 2) * 0.05;
       theHorse.group.position.y = Math.abs(gait) * 0.5;
       theHorse.tail.rotation.z = Math.sin(t * Math.PI * 2 * 0.8) * 0.18;
     }

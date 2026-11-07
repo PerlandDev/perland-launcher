@@ -16,72 +16,6 @@ export interface Rig {
   tilt: Vec3;
 }
 
-/** How far below the shoulder a hand grips, along the arm. */
-export const ARM_REACH = 9.5;
-
-/** Where each paddle is pinned on the boat's rail (x by side), and how far its handle reaches inboard. */
-export const OARLOCK = { x: 10, y: 8.5, z: 4 };
-export const HANDLE = 5;
-/** A stroke a second and a bit. */
-const STROKE_HZ = 0.6;
-
-/** A paddle's turn at time t: `yaw` round the oarlock (it starts across the boat, outward), `dip` down toward the
- *  water (negative lowers the blade). Both paddles pull together, mirrored. */
-export function paddleAt(t: number, side: -1 | 1): { yaw: number; dip: number } {
-  const phase = t * Math.PI * 2 * STROKE_HZ;
-  const sweep = 0.42 * Math.sin(phase);
-  // The blade goes in deep while it pulls back and lifts on the way forward.
-  const dip = -0.3 - 0.16 * Math.cos(phase);
-  return { yaw: -side * (Math.PI / 2 + sweep), dip };
-}
-
-/** The paddle handle on `side` at time t, in the boat's space. */
-export function handleAt(t: number, side: -1 | 1): Vec3 {
-  const { yaw, dip } = paddleAt(t, side);
-  const r = HANDLE * Math.cos(dip);
-  return [side * OARLOCK.x + r * Math.sin(yaw), OARLOCK.y - HANDLE * Math.sin(dip), OARLOCK.z + r * Math.cos(yaw)];
-}
-
-/** The torso's pivot and each shoulder's place on it, in the figure's space. */
-const TORSO_PIVOT_Y = 12;
-const SHOULDER_UP = 10;
-
-/** Rowing: the torso leans in and out with the stroke so the arms (which don't bend) reach the handles, and each
- *  arm points at its handle. Returns the torso lean and each arm's x and z turn, relative to the torso. */
-function row(t: number, offset: Vec3): { lean: number; right: Vec3; left: Vec3 } {
-  const grips = { right: handleAt(t, -1), left: handleAt(t, 1) };
-  const shoulder = (side: number, lean: number): Vec3 => [
-    side * 6 + offset[0],
-    offset[1] + TORSO_PIVOT_Y + SHOULDER_UP * Math.cos(lean),
-    offset[2] + SHOULDER_UP * Math.sin(lean),
-  ];
-  const gap = (lean: number) => {
-    const s = shoulder(-1, lean);
-    const g = grips.right;
-    return Math.hypot(g[0] - s[0], g[1] - s[1], g[2] - s[2]) - ARM_REACH;
-  };
-  // Leaning forward closes the gap: find the lean where the arm just reaches.
-  let lo = -0.35;
-  let hi = 0.6;
-  for (let k = 0; k < 24; k++) {
-    const mid = (lo + hi) / 2;
-    if (gap(mid) > 0) lo = mid;
-    else hi = mid;
-  }
-  const lean = (lo + hi) / 2;
-  const aim = (side: number, grip: Vec3): Vec3 => {
-    const s = shoulder(side, lean);
-    const d = [grip[0] - s[0], grip[1] - s[1], grip[2] - s[2]];
-    const n = Math.hypot(d[0]!, d[1]!, d[2]!);
-    // Into the torso's frame (undo its lean round x), then the arm's turns: down (-y) carried to d.
-    const x = d[0]! / n;
-    const y = (d[1]! * Math.cos(lean) + d[2]! * Math.sin(lean)) / n;
-    const z = (-d[1]! * Math.sin(lean) + d[2]! * Math.cos(lean)) / n;
-    return [Math.atan2(-z, -y), 0, Math.asin(Math.max(-1, Math.min(1, x)))];
-  };
-  return { lean, right: aim(-1, grips.right), left: aim(1, grips.left) };
-}
-
 /** The stage's animation time, in seconds, which the player can pause: paused, it holds the moment it stopped at,
  *  and resumed, it goes on from there without a jump. Times in are milliseconds (`performance.now()`). */
 export class AnimationClock {
@@ -115,7 +49,7 @@ export class AnimationClock {
 export const POSE_STILL_T = 0.22;
 
 /** The rider's hips sit this high on the horse's back. */
-export const SADDLE_Y = 22;
+export const SADDLE_Y = 27;
 
 const zero = (): Vec3 => [0, 0, 0];
 
@@ -181,18 +115,17 @@ export function rigAt(pose: Pose, t: number): Rig {
       joints.head = [-0.08, -0.15, -0.08];
       break;
     case 'boat': {
-      // Rowing: legs out in front, both hands on the paddle handles, leaning into each stroke while the boat rocks.
-      joints.rightLeg = [-1.45, 0.15, 0];
-      joints.leftLeg = [-1.45, -0.15, 0];
-      offset[1] = -5;
-      offset[2] = -2;
-      const stroke = row(t, offset);
-      joints.torso = [stroke.lean, 0, 0];
-      joints.rightArm = stroke.right;
-      joints.leftArm = stroke.left;
-      joints.head = [-stroke.lean, 0, 0];
-      tilt[2] = Math.sin(t * 1.1) * 0.04;
-      tilt[0] = Math.sin(t * 0.9) * 0.02;
+      // Rowing: both arms pull together while the boat rocks.
+      const row = Math.sin(t * Math.PI * 2 * 0.6);
+      joints.rightLeg = [-1.35, 0.15, 0];
+      joints.leftLeg = [-1.35, -0.15, 0];
+      joints.rightArm = [-0.85 + row * 0.45, 0, -0.18];
+      joints.leftArm = [-0.85 + row * 0.45, 0, 0.18];
+      joints.torso = [-0.08 + row * 0.08, 0, 0];
+      // Seated high enough that the feet stay inside the hull: there's no water left to hide them.
+      offset[1] = -5.5 + Math.sin(t * 1.3) * 0.35;
+      tilt[2] = Math.sin(t * 1.1) * 0.05;
+      tilt[0] = Math.sin(t * 0.9) * 0.025;
       break;
     }
     case 'horse': {
