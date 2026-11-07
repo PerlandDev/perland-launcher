@@ -91,7 +91,8 @@ it('New → The Perlander adds a skin and opens it', async () => {
   await user.click(screen.getByRole('button', { name: 'New' }));
   await user.click(await screen.findByRole('menuitem', { name: 'The Perlander' }));
   await waitFor(() => expect(sent(calls, 'skin_create')).toHaveLength(1));
-  expect(sent(calls, 'skin_create')[0]).toMatchObject({ name: 'The Perlander', model: 'classic' });
+  // Chosen by the player, so it's theirs to keep: not a seeded starter.
+  expect(sent(calls, 'skin_create')[0]).toMatchObject({ name: 'The Perlander', model: 'classic', seeded: false });
   expect(await screen.findByRole('button', { name: /The Perlander/, current: true })).toBeInTheDocument();
 });
 
@@ -144,7 +145,7 @@ it('import adds the picked PNG to the wardrobe', async () => {
 it("an offline account's empty wardrobe starts with the Perlander", async () => {
   const { calls } = renderApp(<SkinStudio />, { skins: 'empty' });
   await waitFor(() => expect(sent(calls, 'skin_create')).toHaveLength(1));
-  expect(sent(calls, 'skin_create')[0]).toMatchObject({ name: 'The Perlander', owner: STEVE });
+  expect(sent(calls, 'skin_create')[0]).toMatchObject({ name: 'The Perlander', owner: STEVE, seeded: true });
 });
 
 it('a Microsoft account opens on the skin it wears, even with a Perlander made before signing in', async () => {
@@ -154,8 +155,9 @@ it('a Microsoft account opens on the skin it wears, even with a Perlander made b
   expect(within(list).getAllByRole('button', { current: true })).toEqual([current]);
   expect(within(list).getAllByRole('listitem')[0]).toContainElement(current);
   expect(sent(calls, 'skin_sync_current')).toEqual([{ uuid: ALEX, name: "Alex's skin" }]);
-  // The Perlander made with no account signed in moved into Alex's wardrobe, and no second one is made.
-  expect(within(list).getByText('The Perlander')).toBeInTheDocument();
+  // The untouched Perlander seeded with no account signed in isn't carried into Alex's wardrobe.
+  expect(within(list).queryByText('The Perlander')).not.toBeInTheDocument();
+  expect(within(list).getAllByRole('listitem')).toHaveLength(1);
   expect(sent(calls, 'skin_create')).toEqual([]);
   expect(within(current).getByText('Wearing')).toBeInTheDocument();
 });

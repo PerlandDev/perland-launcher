@@ -75,15 +75,21 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// A new skin from `texture`, a PNG data URL (the starter, a blank or the current skin).
+    /// `seeded`: the launcher put it in an empty wardrobe by itself (see `create_seeded`).
     pub async fn skin_create(
         &self,
         name: &str,
         model: SkinModel,
         texture: &str,
         owner: Option<&str>,
+        seeded: bool,
     ) -> Result<SkinEntry> {
         let png = skins_png::from_data_url(texture)?;
-        self.skins.create(name, model, &png, owner).await
+        if seeded {
+            self.skins.create_seeded(name, model, &png, owner).await
+        } else {
+            self.skins.create(name, model, &png, owner).await
+        }
     }
 
     /// A new skin from a PNG file the player picked, named after the file.
@@ -300,7 +306,7 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Release);
         let alex = alex(&core).await;
         let entry = core
-            .skin_create("Mine", SkinModel::Slim, &texture(), Some(&alex.uuid))
+            .skin_create("Mine", SkinModel::Slim, &texture(), Some(&alex.uuid), false)
             .await
             .unwrap();
         let list = core.skin_wear(&entry.id, &alex.uuid).await.unwrap();
@@ -316,7 +322,13 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Release);
         let alex = alex(&core).await;
         let entry = core
-            .skin_create("Mine", SkinModel::Classic, &texture(), Some(&alex.uuid))
+            .skin_create(
+                "Mine",
+                SkinModel::Classic,
+                &texture(),
+                Some(&alex.uuid),
+                false,
+            )
             .await
             .unwrap();
         runner
@@ -340,7 +352,13 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Release);
         let steve = steve(&core).await;
         let entry = core
-            .skin_create("Mine", SkinModel::Classic, &texture(), Some(&steve.uuid))
+            .skin_create(
+                "Mine",
+                SkinModel::Classic,
+                &texture(),
+                Some(&steve.uuid),
+                false,
+            )
             .await
             .unwrap();
         let e = core.skin_wear(&entry.id, &steve.uuid).await.unwrap_err();
@@ -397,7 +415,7 @@ mod tests {
         let (core, _runner, _host, t) = core(BuildKind::Release);
         let alex = alex(&core).await;
         let entry = core
-            .skin_create("Mine", SkinModel::Slim, &texture(), Some(&alex.uuid))
+            .skin_create("Mine", SkinModel::Slim, &texture(), Some(&alex.uuid), false)
             .await
             .unwrap();
         core.skin_wear(&entry.id, &alex.uuid).await.unwrap();
@@ -457,7 +475,7 @@ mod tests {
     async fn the_active_account_adopts_loose_skins_and_others_dont() {
         let (core, _runner, _host, _t) = core(BuildKind::Release);
         let loose = core
-            .skin_create("Loose", SkinModel::Classic, &texture(), None)
+            .skin_create("Loose", SkinModel::Classic, &texture(), None, false)
             .await
             .unwrap();
         let steve = steve(&core).await;
@@ -467,6 +485,29 @@ mod tests {
         let mine = core.skins_list(Some(&alex.uuid)).await.unwrap();
         assert_eq!(mine[0].id, loose.id);
         assert!(core.skins_list(None).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn signing_in_drops_the_untouched_starter_made_with_no_account() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let starter = core
+            .skin_create("The Perlander", SkinModel::Classic, &texture(), None, true)
+            .await
+            .unwrap();
+        let mine = core
+            .skin_create("Mine", SkinModel::Classic, &texture(), None, false)
+            .await
+            .unwrap();
+        let alex = alex(&core).await;
+        let ids: Vec<_> = core
+            .skins_list(Some(&alex.uuid))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(ids, vec![mine.id]);
+        assert!(core.skin_texture(&starter.id).await.is_err());
     }
 
     #[tokio::test]
@@ -508,7 +549,7 @@ mod tests {
     async fn export_adds_png_extension() {
         let (core, _runner, _host, t) = core(BuildKind::Release);
         let entry = core
-            .skin_create("Mine", SkinModel::Classic, &texture(), None)
+            .skin_create("Mine", SkinModel::Classic, &texture(), None, false)
             .await
             .unwrap();
         let out = core

@@ -47,6 +47,10 @@ pub struct SkinEntry {
     /// The account (dashed uuid) whose wardrobe it's in; `None` while it's loose.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
+    /// Put in an empty wardrobe by the launcher and never changed since: an account adopting
+    /// loose skins drops it rather than keep a starter the player never chose.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub seeded: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -197,6 +201,28 @@ impl SkinLibrary {
         png: &[u8],
         owner: Option<&str>,
     ) -> Result<SkinEntry> {
+        self.add(name, model, png, owner, false).await
+    }
+
+    /// Like [`Self::create`], for the starter the launcher puts in an empty wardrobe by itself.
+    pub async fn create_seeded(
+        &self,
+        name: &str,
+        model: SkinModel,
+        png: &[u8],
+        owner: Option<&str>,
+    ) -> Result<SkinEntry> {
+        self.add(name, model, png, owner, true).await
+    }
+
+    async fn add(
+        &self,
+        name: &str,
+        model: SkinModel,
+        png: &[u8],
+        owner: Option<&str>,
+        seeded: bool,
+    ) -> Result<SkinEntry> {
         let name = validate_name(name)?;
         let png = skins_png::normalise(png)?;
         let _held = self.lock.lock().await;
@@ -208,6 +234,7 @@ impl SkinLibrary {
             updated: now(),
             worn_by: None,
             owner: owner.map(str::to_string),
+            seeded,
         };
         write_atomic(&self.png(&entry.id), &png).await?;
         file.skins.push(entry.clone());
@@ -239,6 +266,7 @@ impl SkinLibrary {
             .find(|s| s.id == id)
             .ok_or_else(|| not_found(id))?;
         edit(entry);
+        entry.seeded = false;
         entry.updated = now().max(entry.updated + 1);
         let entry = entry.clone();
         Ok((file, entry))
@@ -295,6 +323,7 @@ impl SkinLibrary {
             updated: now(),
             worn_by: None,
             owner: source.owner.clone(),
+            seeded: false,
         };
         write_atomic(&self.png(&entry.id), &png).await?;
         file.skins.push(entry.clone());
@@ -327,17 +356,28 @@ impl SkinLibrary {
         self.write(&file).await
     }
 
-    /// Moves every loose skin into the wardrobe of `uuid`; answers how many moved.
+    /// Moves every loose skin into the wardrobe of `uuid`, except a seeded starter never changed
+    /// (dropped instead); answers how many moved.
     pub async fn adopt_loose(&self, uuid: &str) -> Result<usize> {
         let _held = self.lock.lock().await;
         let mut file = self.read().await?;
+        let dropped: Vec<String> = file
+            .skins
+            .iter()
+            .filter(|s| s.owner.is_none() && s.seeded)
+            .map(|s| s.id.clone())
+            .collect();
+        file.skins.retain(|s| !dropped.contains(&s.id));
         let mut moved = 0;
         for skin in file.skins.iter_mut().filter(|s| s.owner.is_none()) {
             skin.owner = Some(uuid.to_string());
             moved += 1;
         }
-        if moved > 0 {
+        if moved > 0 || !dropped.is_empty() {
             self.write(&file).await?;
+        }
+        for id in dropped {
+            let _ = tokio::fs::remove_file(self.png(&id)).await;
         }
         Ok(moved)
     }
@@ -381,6 +421,7 @@ impl SkinLibrary {
                     updated: now(),
                     worn_by: None,
                     owner: Some(uuid.to_string()),
+                    seeded: false,
                 };
                 write_atomic(&self.png(&entry.id), &png).await?;
                 let id = entry.id.clone();
@@ -677,6 +718,49 @@ mod tests {
         assert!(lib.list(None).await.unwrap().is_empty());
         assert_eq!(lib.list(Some("u2")).await.unwrap().len(), 1);
         assert_eq!(lib.adopt_loose("u1").await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn an_untouched_seeded_starter_is_dropped_not_adopted() {
+        let (_dir, lib) = library();
+        let seeded = lib
+            .create_seeded("The Perlander", SkinModel::Classic, &skin([0; 4]), None)
+            .await
+            .unwrap();
+        assert!(seeded.seeded);
+        let edited = lib
+            .create_seeded("Edited", SkinModel::Classic, &skin([0; 4]), None)
+            .await
+            .unwrap();
+        let edited = lib.save_texture(&edited.id, &skin([7; 4])).await.unwrap();
+        assert!(!edited.seeded, "an edit makes it the player's own");
+        let renamed = lib
+            .create_seeded("Renamed", SkinModel::Classic, &skin([0; 4]), None)
+            .await
+            .unwrap();
+        lib.update(&renamed.id, Some("Mine now"), None)
+            .await
+            .unwrap();
+        let made = lib
+            .create("Made", SkinModel::Classic, &skin([0; 4]), None)
+            .await
+            .unwrap();
+        assert!(!made.seeded);
+
+        assert_eq!(lib.adopt_loose("u1").await.unwrap(), 3);
+        let mut mine: Vec<_> = lib
+            .list(Some("u1"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        mine.sort();
+        let mut want = vec![edited.id, renamed.id, made.id];
+        want.sort();
+        assert_eq!(mine, want);
+        assert!(lib.list(None).await.unwrap().is_empty());
+        assert!(!lib.png(&seeded.id).exists());
     }
 
     #[tokio::test]

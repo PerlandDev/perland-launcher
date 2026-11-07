@@ -106,8 +106,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     setRecent((r) => [hex, ...r.filter((x) => x !== hex)].slice(0, RECENT_MAX));
   };
 
-  const create = async (name: string, model: SkinModel, texture: string) => {
-    const entry = await commands.skinCreate(name, model, texture, owner);
+  const create = async (name: string, model: SkinModel, texture: string, seeded = false) => {
+    const entry = await commands.skinCreate(name, model, texture, owner, seeded);
     qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [entry, ...(old ?? [])]);
     setPicked(entry.id);
     return entry;
@@ -149,7 +149,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   useEffect(() => {
     if (!entries.isSuccess || list.length > 0 || wearer?.provider === 'microsoft' || seeded.current.has(owner)) return;
     seeded.current.add(owner);
-    create(t('skins.starterName'), 'classic', encodeTexture(starterSkin().data)).catch(pushError);
+    // Seeded: left untouched, it isn't carried into the wardrobe of the account the player signs in with next.
+    create(t('skins.starterName'), 'classic', encodeTexture(starterSkin().data), true).catch(pushError);
     // create and t are stable enough for a one-time seed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries.isSuccess, list.length, wearer, owner]);

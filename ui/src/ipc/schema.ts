@@ -436,6 +436,8 @@ export const skinEntry = z.strictObject({
   wornBy: z.string().optional(),
   /** The account whose wardrobe it's in; absent while it's loose (made with no account signed in). */
   owner: z.string().optional(),
+  /** Put in an empty wardrobe by the launcher and never changed: an account adopting loose skins drops it. */
+  seeded: z.boolean().optional(),
 });
 /** The skin a Microsoft account wears now: a PNG `data:` URL and its arm model. */
 export const currentSkin = z.strictObject({ texture: z.string(), model: skinModel });

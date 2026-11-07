@@ -56,7 +56,7 @@ export function seedSkins(scenario: SkinsScenario = 'seeded'): SkinsState {
     scenario === 'empty' || scenario === 'default'
       ? []
       : scenario === 'loose'
-        ? [{ id: 'skin-00000000aaaa', name: 'The Perlander', model: 'classic', updated: 1_762_300_000 }]
+        ? [{ id: 'skin-00000000aaaa', name: 'The Perlander', model: 'classic', updated: 1_762_300_000, seeded: true }]
         : (skinEntriesFx as SkinEntry[]).map((e) => ({ ...e }));
   const textures = new Map(entries.map((e, i) => [e.id, drawn(i === 0 ? 'starter' : 'blank', e.model)]));
   const current = scenario === 'default' ? null : { texture: accountSkin(), model: 'slim' as const };
@@ -102,7 +102,7 @@ function wornBy(state: SkinsState, id: string, uuid: string) {
   }
 }
 
-function add(state: SkinsState, name: string, model: SkinModel, texture: string, owner: string | null): SkinEntry {
+function add(state: SkinsState, name: string, model: SkinModel, texture: string, owner: string | null, seeded = false): SkinEntry {
   state.seq += 1;
   const entry: SkinEntry = {
     id: `skin-${state.seq.toString(16).padStart(12, '0')}`,
@@ -110,6 +110,7 @@ function add(state: SkinsState, name: string, model: SkinModel, texture: string,
     model,
     updated: Math.floor(Date.now() / 1000) + state.seq,
     ...(owner ? { owner } : {}),
+    ...(seeded ? { seeded } : {}),
   };
   state.entries.push(entry);
   state.textures.set(entry.id, texture);
@@ -117,6 +118,7 @@ function add(state: SkinsState, name: string, model: SkinModel, texture: string,
 }
 
 function touch(entry: SkinEntry) {
+  delete entry.seeded;
   entry.updated = Math.max(Math.floor(Date.now() / 1000), entry.updated + 1);
 }
 
@@ -124,14 +126,18 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
   switch (cmd) {
     case 'skins_list': {
       const owner = ownerArg(args.owner);
-      if (owner && owner === accounts.active) for (const e of state.entries) e.owner ??= owner;
+      if (owner && owner === accounts.active) {
+        // An untouched seeded starter is dropped, not adopted.
+        state.entries = state.entries.filter((e) => e.owner !== undefined || !e.seeded);
+        for (const e of state.entries) e.owner ??= owner;
+      }
       return wardrobe(state, owner);
     }
     case 'skin_texture':
       find(state, args.id);
       return state.textures.get(String(args.id));
     case 'skin_create':
-      return add(state, checkName(args.name), args.model as SkinModel, checkTexture(args.texture), ownerArg(args.owner));
+      return add(state, checkName(args.name), args.model as SkinModel, checkTexture(args.texture), ownerArg(args.owner), args.seeded === true);
     case 'skin_import': {
       const path = String(args.path);
       if (!path.toLowerCase().endsWith('.png')) fail('integrity', 'skin_invalid', "That file isn't a Minecraft skin.");

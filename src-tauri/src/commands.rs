@@ -1083,11 +1083,18 @@ pub async fn skin_create(
     model: launcher_core::skins_library::SkinModel,
     texture: String,
     owner: Option<String>,
+    seeded: Option<bool>,
 ) -> Res<launcher_core::skins_library::SkinEntry> {
     logged(
         "skin_create",
-        core.skin_create(&name, model, &texture, owner.as_deref())
-            .await,
+        core.skin_create(
+            &name,
+            model,
+            &texture,
+            owner.as_deref(),
+            seeded.unwrap_or(false),
+        )
+        .await,
     )
 }
 

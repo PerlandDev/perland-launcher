@@ -31,6 +31,10 @@ Perlander.
   player was using, so their skins land where they expect. With no account signed in, the loose skins are the
   wardrobe shown.
 - The same rule covers skins made with no account and kept after signing in.
+- Except the starter the launcher seeds by itself: an entry marked `seeded` (never edited or renamed since) is dropped
+  instead of adopted, so signing in after opening Skins with no account doesn't bring the Perlander along. A Perlander
+  the player picks from New, or edits, is theirs and is adopted. Entries from a version 1 list carry no such mark, so
+  an old untouched Perlander is still adopted once; the player can delete it.
 
 ## Behaviour
 

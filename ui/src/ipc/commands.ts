@@ -128,8 +128,9 @@ export const commands = {
   /** The wardrobe of `owner` (an account uuid), or the loose skins for null. */
   skinsList: (owner: string | null) => invoke<SkinEntry[]>('skins_list', { owner }),
   skinTexture: (id: string) => invoke<string>('skin_texture', { id }),
-  skinCreate: (name: string, model: SkinModel, texture: string, owner: string | null) =>
-    invoke<SkinEntry>('skin_create', { name, model, texture, owner }),
+  /** `seeded`: the launcher puts this starter in an empty wardrobe by itself (dropped, not adopted, if never changed). */
+  skinCreate: (name: string, model: SkinModel, texture: string, owner: string | null, seeded = false) =>
+    invoke<SkinEntry>('skin_create', { name, model, texture, owner, seeded }),
   skinImport: (path: string, owner: string | null) => invoke<SkinEntry>('skin_import', { path, owner }),
   skinSave: (id: string, texture: string) => invoke<SkinEntry>('skin_save', { id, texture }),
   skinUpdate: (id: string, change: { name?: string; model?: SkinModel }) =>
