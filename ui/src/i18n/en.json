@@ -927,6 +927,8 @@
     "undo": "Undo",
     "redo": "Redo",
     "wardrobe": "Wardrobe",
+    "wardrobeOf": "Wardrobe of {{name}}",
+    "switchAccount": "Show the wardrobe of",
     "new": "New",
     "import": "Import",
     "newStarter": "The Perlander",

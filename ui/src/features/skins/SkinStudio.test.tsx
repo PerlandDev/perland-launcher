@@ -1,7 +1,9 @@
+import { QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
+import { MOCK_MICROSOFT_ACCOUNT } from '../../ipc/mock';
 import { starterSkin } from './starter';
 import SkinStudio from './SkinStudio';
 
@@ -26,6 +28,9 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
 });
+
+const STEVE = '5627dd98-e6be-3c21-b8a8-e92344183641';
+const ALEX = MOCK_MICROSOFT_ACCOUNT.uuid;
 
 const texel = (x: number, y: number) => ({ clientX: x * 4 + 2, clientY: y * 4 + 2, button: 0, pointerId: 1 });
 
@@ -109,11 +114,17 @@ it('an offline account gets the explanation and no Wear key', async () => {
 
 it('a Microsoft account wears the skin and gets the lamp', async () => {
   const { user, calls } = renderApp(<SkinStudio />, { microsoft: 'signedIn' });
-  await user.click(await screen.findByRole('button', { name: 'Wear this skin' }));
+  await screen.findByRole('button', { name: /Alex's skin/, current: true });
+  await user.click(screen.getByRole('button', { name: 'New' }));
+  await user.click(await screen.findByRole('menuitem', { name: 'The Perlander' }));
+  await screen.findByRole('button', { name: /The Perlander/, current: true });
+  await user.click(screen.getByRole('button', { name: 'Wear this skin' }));
   await waitFor(() => expect(sent(calls, 'skin_wear')).toHaveLength(1));
-  expect(sent(calls, 'skin_wear')[0]).toMatchObject({ id: 'skin-0a1b2c3d4e5f' });
-  await waitFor(() => expect(toastsSnapshot().map((t) => t.notice?.title)).toContain("You're wearing Beach day"));
-  expect(within(screen.getByRole('list', { name: 'Wardrobe' })).getByText('Wearing')).toBeInTheDocument();
+  expect(sent(calls, 'skin_wear')[0]).toMatchObject({ uuid: ALEX });
+  await waitFor(() => expect(toastsSnapshot().map((t) => t.notice?.title)).toContain("You're wearing The Perlander"));
+  const list = screen.getByRole('list', { name: 'Wardrobe' });
+  expect(within(list).getAllByText('Wearing')).toHaveLength(1);
+  expect(within(within(list).getAllByRole('listitem')[0]!).getByText('The Perlander')).toBeInTheDocument();
 });
 
 it('a refused upload shows the translated error', async () => {
@@ -126,25 +137,70 @@ it('import adds the picked PNG to the wardrobe', async () => {
   const { user, calls } = renderApp(<SkinStudio />);
   await screen.findByRole('list', { name: 'Wardrobe' });
   await user.click(screen.getByRole('button', { name: 'Import' }));
-  await waitFor(() => expect(sent(calls, 'skin_import')).toEqual([{ path: 'C:/Users/player/Pictures/castle.png' }]));
+  await waitFor(() => expect(sent(calls, 'skin_import')).toEqual([{ path: 'C:/Users/player/Pictures/castle.png', owner: STEVE }]));
   expect(await within(screen.getByRole('list', { name: 'Wardrobe' })).findByText('castle')).toBeInTheDocument();
 });
 
-it('an empty wardrobe starts with the Perlander', async () => {
+it("an offline account's empty wardrobe starts with the Perlander", async () => {
   const { calls } = renderApp(<SkinStudio />, { skins: 'empty' });
   await waitFor(() => expect(sent(calls, 'skin_create')).toHaveLength(1));
-  expect(sent(calls, 'skin_create')[0]).toMatchObject({ name: 'The Perlander' });
+  expect(sent(calls, 'skin_create')[0]).toMatchObject({ name: 'The Perlander', owner: STEVE });
 });
 
-it("a Microsoft account's empty wardrobe starts from the skin it wears", async () => {
-  const { backend, calls } = renderApp(<SkinStudio />, { microsoft: 'signedIn', skins: 'empty' });
-  backend.state.skins.current = { texture: 'data:image/png;base64,REAL', model: 'slim' };
-  await waitFor(() => expect(sent(calls, 'skin_create')).toHaveLength(1));
-  expect(sent(calls, 'skin_create')[0]).toMatchObject({ model: 'slim', texture: 'data:image/png;base64,REAL' });
+it('a Microsoft account opens on the skin it wears, even with a Perlander made before signing in', async () => {
+  const { calls } = renderApp(<SkinStudio />, { microsoft: 'signedIn', skins: 'loose' });
+  const current = await screen.findByRole('button', { name: /Alex's skin/, current: true });
+  const list = screen.getByRole('list', { name: 'Wardrobe' });
+  expect(within(list).getAllByRole('button', { current: true })).toEqual([current]);
+  expect(within(list).getAllByRole('listitem')[0]).toContainElement(current);
+  expect(sent(calls, 'skin_sync_current')).toEqual([{ uuid: ALEX, name: "Alex's skin" }]);
+  // The Perlander made with no account signed in moved into Alex's wardrobe, and no second one is made.
+  expect(within(list).getByText('The Perlander')).toBeInTheDocument();
+  expect(sent(calls, 'skin_create')).toEqual([]);
+  expect(within(current).getByText('Wearing')).toBeInTheDocument();
+});
+
+it("reopening the screen doesn't add the account's skin twice", async () => {
+  const { backend, calls, qc, rerender } = renderApp(<SkinStudio key="first" />, { microsoft: 'signedIn' });
+  await screen.findByRole('button', { name: /Alex's skin/, current: true });
+  rerender(
+    <QueryClientProvider client={qc}>
+      <SkinStudio key="again" />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(sent(calls, 'skin_sync_current')).toHaveLength(2));
+  await screen.findByRole('button', { name: /Alex's skin/, current: true });
+  expect(backend.state.skins.entries.filter((e) => e.owner === ALEX)).toHaveLength(1);
 });
 
 it('a Microsoft account wearing the default skin gets no made-up one', async () => {
-  const { calls } = renderApp(<SkinStudio />, { microsoft: 'signedIn', skins: 'empty' });
+  const { calls } = renderApp(<SkinStudio />, { microsoft: 'signedIn', skins: 'default' });
   expect(await screen.findByText(/wears Minecraft's default skin/)).toBeInTheDocument();
   expect(sent(calls, 'skin_create')).toEqual([]);
+});
+
+it("switching accounts shows each account's own wardrobe", async () => {
+  const { user, calls } = renderApp(<SkinStudio />, { microsoft: 'signedIn' });
+  const wardrobe = () => screen.getByRole('list', { name: 'Wardrobe' });
+  await screen.findByRole('button', { name: /Alex's skin/, current: true });
+  expect(within(wardrobe()).queryByText('Beach day')).not.toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: 'Wardrobe of Alex' }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Steve' }));
+  expect(await screen.findByRole('button', { name: /Beach day/, current: true })).toBeInTheDocument();
+  expect(within(wardrobe()).queryByText("Alex's skin")).not.toBeInTheDocument();
+  expect(sent(calls, 'skins_list')).toContainEqual({ owner: STEVE });
+  expect(screen.getByText(/Offline accounts can't change their skin in Minecraft/)).toBeInTheDocument();
+
+  await user.click(screen.getByRole('button', { name: 'Wardrobe of Steve' }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Alex' }));
+  expect(await screen.findByRole('button', { name: /Alex's skin/, current: true })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Wear this skin' })).toBeInTheDocument();
+});
+
+it("Edit skin on an account opens that account's wardrobe", async () => {
+  renderApp(<SkinStudio account={STEVE} />, { microsoft: 'signedIn' });
+  const list = await screen.findByRole('list', { name: 'Wardrobe' });
+  expect(await within(list).findByText('Beach day')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Wardrobe of Steve' })).toBeInTheDocument();
 });

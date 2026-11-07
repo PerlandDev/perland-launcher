@@ -712,7 +712,8 @@ fn contract_fixtures_are_current() {
                 name: "Beach day".into(),
                 model: launcher_core::skins_library::SkinModel::Slim,
                 updated: 1_762_500_000,
-                worn_by: Some("069a79f4-44e9-4726-a5be-fca90e38aaf5".into()),
+                worn_by: None,
+                owner: Some("5627dd98-e6be-3c21-b8a8-e92344183641".into()),
             },
             launcher_core::skins_library::SkinEntry {
                 id: "skin-ffeeddccbbaa".into(),
@@ -720,6 +721,7 @@ fn contract_fixtures_are_current() {
                 model: launcher_core::skins_library::SkinModel::Classic,
                 updated: 1_762_400_000,
                 worn_by: None,
+                owner: Some("5627dd98-e6be-3c21-b8a8-e92344183641".into()),
             },
         ],
     );

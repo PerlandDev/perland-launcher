@@ -30,7 +30,8 @@ import { useSkinDoc } from './useSkinDoc';
 import { Wardrobe } from './Wardrobe';
 import './skins.css';
 
-const SKINS_KEY = ['skins'] as const;
+/** One wardrobe per account; `null` is the skins made with no account signed in. */
+const skinsKey = (owner: string | null) => ['skins', owner] as const;
 const RECENT_MAX = 9;
 
 function typing(target: EventTarget | null) {
@@ -43,15 +44,24 @@ function typing(target: EventTarget | null) {
 export default function SkinStudio({ skin, account }: { skin?: string; account?: string }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const entries = useQuery({ queryKey: SKINS_KEY, queryFn: commands.skinsList });
   const accounts = useAccounts();
-  const wearer = useMemo(() => {
-    const list = accounts.data?.accounts ?? [];
-    return list.find((a) => a.uuid === (account ?? accounts.data?.active)) ?? null;
-  }, [accounts.data, account]);
+  // Whose wardrobe is shown: the account Edit skin opened, then the one picked here, else the active account.
+  const [shown, setShown] = useState<string | undefined>(account);
+  const allAccounts = useMemo(() => accounts.data?.accounts ?? [], [accounts.data]);
+  const wearer = useMemo(
+    () => allAccounts.find((a) => a.uuid === shown) ?? allAccounts.find((a) => a.uuid === accounts.data?.active) ?? null,
+    [allAccounts, shown, accounts.data?.active],
+  );
+  const owner = wearer?.uuid ?? null;
+  const SKINS_KEY = skinsKey(owner);
+  // A Microsoft wardrobe opens on the skin the account really wears, so it's read (and nothing is picked) only once
+  // that's been asked: a list fetched meanwhile would miss it.
+  const [ready, setReady] = useState<ReadonlySet<string>>(new Set());
+  const waiting = wearer?.provider === 'microsoft' && !ready.has(wearer.uuid);
+  const entries = useQuery({ queryKey: SKINS_KEY, queryFn: () => commands.skinsList(owner), enabled: accounts.isSuccess && !waiting });
   const list = useMemo(() => entries.data ?? [], [entries.data]);
   const [picked, setPicked] = useState<string | null>(skin ?? null);
-  const selected = list.find((e) => e.id === picked) ?? list[0] ?? null;
+  const selected = waiting ? null : (list.find((e) => e.id === picked) ?? list[0] ?? null);
   const model: SkinModel = selected?.model ?? 'classic';
   const refresh = () => void qc.invalidateQueries({ queryKey: SKINS_KEY });
   const doc = useSkinDoc(selected?.id ?? null, model, refresh);
@@ -97,7 +107,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   };
 
   const create = async (name: string, model: SkinModel, texture: string) => {
-    const entry = await commands.skinCreate(name, model, texture);
+    const entry = await commands.skinCreate(name, model, texture, owner);
     qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [entry, ...(old ?? [])]);
     setPicked(entry.id);
     return entry;
@@ -113,30 +123,43 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     await create(t('skins.currentName', { name: wearer.username }), current.model, current.texture);
   };
 
-  // A first visit finds an empty wardrobe. A Microsoft account starts from the skin it really wears, never a made-up
-  // one: if that can't be read, or the account wears Minecraft's default, the wardrobe stays empty and says so.
-  // Offline, the Perlander gets the player started.
-  const seeded = useRef(false);
-  const [defaultSkin, setDefaultSkin] = useState(false);
+  // Every time a Microsoft account's wardrobe is shown (opening the screen, adding or switching accounts), the skin it
+  // really wears is put in it (once: a matching entry is reused) and opened. One wearing Minecraft's default gets no
+  // made-up skin, and an empty wardrobe says so.
+  const synced = useRef(new Set<string>());
+  const [defaults, setDefaults] = useState<ReadonlySet<string>>(new Set());
   useEffect(() => {
-    if (!entries.isSuccess || list.length > 0 || seeded.current || !accounts.isSuccess) return;
-    seeded.current = true;
-    void (async () => {
-      try {
-        if (wearer?.provider === 'microsoft') {
-          const current = await commands.skinCurrent(wearer.uuid);
-          if (current) await create(t('skins.currentName', { name: wearer.username }), current.model, current.texture);
-          else setDefaultSkin(true);
-        } else {
-          await create(t('skins.starterName'), 'classic', encodeTexture(starterSkin().data));
-        }
-      } catch (error) {
-        pushError(error);
-      }
-    })();
+    if (wearer?.provider !== 'microsoft' || synced.current.has(wearer.uuid)) return;
+    const { uuid, username } = wearer;
+    synced.current.add(uuid);
+    void commands
+      .skinSyncCurrent(uuid, t('skins.currentName', { name: username }))
+      .then(async (entry) => {
+        if (entry) {
+          await qc.invalidateQueries({ queryKey: skinsKey(uuid) });
+          setPicked(entry.id);
+        } else setDefaults((d) => new Set(d).add(uuid));
+      })
+      .catch(pushError)
+      .finally(() => setReady((r) => new Set(r).add(uuid)));
+  }, [wearer, qc, t]);
+
+  // An offline account's empty wardrobe, or the one used with no account, starts from the Perlander, once per wardrobe.
+  const seeded = useRef(new Set<string | null>());
+  useEffect(() => {
+    if (!entries.isSuccess || list.length > 0 || wearer?.provider === 'microsoft' || seeded.current.has(owner)) return;
+    seeded.current.add(owner);
+    create(t('skins.starterName'), 'classic', encodeTexture(starterSkin().data)).catch(pushError);
     // create and t are stable enough for a one-time seed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entries.isSuccess, list.length, accounts.isSuccess, wearer]);
+  }, [entries.isSuccess, list.length, wearer, owner]);
+  const defaultSkin = wearer !== null && defaults.has(wearer.uuid);
+
+  const showWardrobeOf = (uuid: string) =>
+    void doc.flush().then(() => {
+      setShown(uuid);
+      setPicked(null);
+    });
 
   const newItems: MenuItem[] = [
     ...(wearer?.provider === 'microsoft'
@@ -149,7 +172,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const importSkin = async () => {
     const path = await open({ multiple: false, filters: [{ name: t('skins.pngFilter'), extensions: ['png'] }] });
     if (typeof path !== 'string') return;
-    const entry = await commands.skinImport(path);
+    const entry = await commands.skinImport(path, owner);
     qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [entry, ...(old ?? [])]);
     setPicked(entry.id);
   };
@@ -292,6 +315,9 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
 
       <div className="skins-body">
         <Wardrobe
+          accounts={allAccounts}
+          owner={wearer}
+          onOwner={showWardrobeOf}
           entries={list}
           selected={selected?.id ?? null}
           wearer={wearer?.uuid ?? null}

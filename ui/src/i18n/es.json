@@ -927,6 +927,8 @@
     "undo": "Deshacer",
     "redo": "Rehacer",
     "wardrobe": "Guardarropa",
+    "wardrobeOf": "Guardarropa de {{name}}",
+    "switchAccount": "Mostrar el guardarropa de",
     "new": "Nueva",
     "import": "Importar",
     "newStarter": "El Perlander",
