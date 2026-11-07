@@ -46,6 +46,7 @@ const OVERALL = rgb(0x7a4a2a);
 const OVERALL_SHADE = rgb(0x5e3820);
 const BUCKLE = rgb(0xe8b04a);
 const BOOT = rgb(0x2e261f);
+const LACE = rgb(0x8c7b69);
 
 /** The Perlander: brown hair, a lime shirt, dirt-brown overalls with amber buckles and dark boots. */
 export function starterSkin(model: SkinModel = 'classic'): Pixels {
@@ -60,15 +61,21 @@ export function starterSkin(model: SkinModel = 'classic'): Pixels {
   face(px, model, 'head', 'front', (c, r) => {
     if (r < 2) return (c + r) % 3 === 0 ? HAIR_HI : HAIR;
     if (r === 2) return c === 0 || c === 7 || c === 3 ? HAIR : SKIN;
+    if (r === 3 && (c === 1 || c === 2 || c === 5 || c === 6)) return HAIR;
     if (r === 4) {
       if (c === 1 || c === 6) return EYE_WHITE;
       if (c === 2 || c === 5) return EYE;
     }
+    if (r === 5 && (c === 3 || c === 4)) return SKIN_SHADE;
     if (r === 6 && (c === 3 || c === 4)) return MOUTH;
+    if (r === 6 && (c === 2 || c === 5)) return SKIN_SHADE;
     return SKIN;
   });
   // Body: a lime shirt under overall straps, the bib below.
   face(px, model, 'body', 'front', (c, r) => {
+    if (r === 0 && c >= 2 && c <= 5) return SHIRT_SHADE;
+    if (r >= 8 && r <= 9 && c >= 3 && c <= 4) return r === 8 ? OVERALL_SHADE : OVERALL_SHADE;
+    if (r === 11 && (c === 3 || c === 4)) return OVERALL_SHADE;
     if (r >= 6) return r === 6 && (c === 1 || c === 6) ? BUCKLE : OVERALL;
     if (c === 1 || c === 6) return r === 5 ? BUCKLE : OVERALL;
     return SHIRT;
@@ -91,10 +98,31 @@ export function starterSkin(model: SkinModel = 'classic'): Pixels {
   for (const leg of ['rightLeg', 'leftLeg'] as const) {
     for (const name of ['front', 'back', 'right', 'left'] as const) {
       const shadow = name !== 'front';
-      face(px, model, leg, name, (_c, r) => (r >= 10 ? BOOT : shadow ? OVERALL_SHADE : OVERALL));
+      face(px, model, leg, name, (c, r) => {
+        if (r === 10 && name === 'front' && (c === 1 || c === 2)) return LACE;
+        if (r >= 10) return BOOT;
+        if (r === 9) return OVERALL_SHADE;
+        return shadow ? OVERALL_SHADE : OVERALL;
+      });
     }
     face(px, model, leg, 'top', OVERALL);
     face(px, model, leg, 'bottom', BOOT);
   }
+  grain(px);
   return px;
+}
+
+/** A texel-scale grain over every painted texel, the hand-painted noise skins are made of. Deterministic. */
+function grain(px: Pixels) {
+  for (let y = 0; y < 64; y++) {
+    for (let x = 0; x < 64; x++) {
+      const c = px.get(x, y);
+      if (c[3] === 0) continue;
+      let h = Math.imul(x * 73856093 ^ y * 19349663, 2654435761) >>> 0;
+      h ^= h >>> 15;
+      const d = ((h % 1000) / 1000 - 0.5) * 18;
+      const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v + d)));
+      px.set(x, y, [clamp(c[0]), clamp(c[1]), clamp(c[2]), 255]);
+    }
+  }
 }

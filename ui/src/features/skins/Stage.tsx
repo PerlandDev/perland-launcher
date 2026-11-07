@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { SkinModel } from '../../ipc/schema';
 import { SKIN_SIZE, type Layer, type Part } from './layout';
 import type { Pixels } from './paint';
+import type { Pose } from './poses';
 import { createStage, type Stage as Scene } from './stageScene';
 
 /** Hover tint: the texel under the pointer, lifted toward white so it reads on any colour. */
@@ -27,6 +28,7 @@ function tryStage(canvas: HTMLCanvasElement): Scene | null {
 export interface StageHandle {
   resetView(): void;
   zoom(factor: number): void;
+  celebrate(): void;
 }
 
 /** The 3D figure. Drag on it to paint; drag the empty stage, or right-drag anywhere, to turn it; the wheel zooms. */
@@ -36,6 +38,7 @@ export function Stage({
   model,
   hidden,
   paintLayer,
+  pose,
   hover,
   onHover,
   onBegin,
@@ -48,6 +51,7 @@ export function Stage({
   model: SkinModel;
   hidden: Set<string>;
   paintLayer: Layer;
+  pose: Pose;
   hover: [number, number] | null;
   onHover: (texel: [number, number] | null) => void;
   onBegin: () => void;
@@ -76,7 +80,8 @@ export function Stage({
       setScene(null);
     };
   }, []);
-  useImperativeHandle(ref, () => ({ resetView: () => scene?.resetView(), zoom: (f) => scene?.zoom(f) }), [scene]);
+  useImperativeHandle(ref, () => ({ resetView: () => scene?.resetView(), zoom: (f) => scene?.zoom(f), celebrate: () => scene?.celebrate() }), [scene]);
+  useEffect(() => scene?.setPose(pose), [scene, pose]);
 
   useEffect(() => scene?.setModel(model), [scene, model]);
   useEffect(() => scene?.setPaintLayer(paintLayer), [scene, paintLayer]);

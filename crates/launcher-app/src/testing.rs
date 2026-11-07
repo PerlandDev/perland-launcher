@@ -1069,7 +1069,7 @@ pub(crate) struct FakeMsa {
     /// What each `profile` answers, in order; when none is left, Alex's profile.
     pub profiles: Mutex<VecDeque<Result<Option<McProfile>>>>,
     /// What each `active_skin` answers, in order; when none is left, no skin.
-    pub active_skins: Mutex<VecDeque<Result<Option<(Vec<u8>, SkinModel)>>>>,
+    pub active_skins: Mutex<VecDeque<Result<Option<crate::msa::SkinTexture>>>>,
     /// What each `upload_skin` answers, in order; when none is left, it works.
     pub uploads: Mutex<VecDeque<Result<()>>>,
     pub calls: Mutex<Vec<MsaCall>>,
@@ -1246,7 +1246,7 @@ impl MsaApi for FakeMsa {
         })
     }
 
-    fn active_skin(&self, token: McToken) -> BoxFuture<Result<Option<(Vec<u8>, SkinModel)>>> {
+    fn active_skin(&self, token: McToken) -> BoxFuture<Result<Option<crate::msa::SkinTexture>>> {
         self.answer(
             "active_skin",
             &[&token.access_token],

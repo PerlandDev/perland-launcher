@@ -24,6 +24,20 @@ on, a screen that loses a player's work, or one that pretends offline accounts c
   (keys 1–9). Chosen over "Painter's bench" (flat texture first) and "Library first" (grid then
   editor).
 
+## Owner feedback during the build (2026-11-07)
+
+- "Nice animations that look cool", and "people could see their character walking, sitting, crouching, going in a
+  boat… or on a horse": the stage got a **Pose** menu (standing, walking, running, crouching, sitting, waving, in a
+  boat, on a horse), a figure that is always a little alive, and a hop-and-turn when a skin is worn. The boat and
+  horse are original block props drawn in code. Reduced motion holds each pose still.
+- "More detail and noise in the models": the props use 16-texel pixel surfaces (grain, planks, water, strands)
+  and the Perlander starter has texel grain and more features.
+- A player with a paid account (via Discord): "the launcher should detect your skin, not give you a random one".
+  A Microsoft account's empty wardrobe starts only from the skin it really wears; if that can't be read the error
+  shows and nothing made-up is added, and if it wears the default skin the wardrobe says so. Only offline players
+  start from the Perlander. (The generated title-bar avatar is replaced by the real face on the avatar branch.)
+- The title-bar entry is its own shirt key after the account, so the account button still opens Accounts.
+
 ## Goals
 
 - 3D figure with classic (4px) and slim (3px) arms, the outer layer shown or hidden, each body
@@ -41,7 +55,7 @@ on, a screen that loses a player's work, or one that pretends offline accounts c
 
 ## Non-goals
 
-- Capes, animations, poses beyond a standing figure, HD (128×128) skins, Bedrock skins.
+- Capes, HD (128×128) skins, Bedrock skins, posing the figure by hand.
 - A shared/online skin gallery or skin search (the launcher has no such service).
 - Layers beyond Minecraft's own two (base and outer).
 

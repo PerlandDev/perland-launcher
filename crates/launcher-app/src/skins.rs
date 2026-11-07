@@ -152,7 +152,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// The one place the current skin is read. When the avatar work (`launcher_core::skins`,
     /// with its `cache/skins/<uuid>.png`) lands, switch the texture read to that cache here.
-    async fn current_skin(&self, account: Account) -> Result<Option<(Vec<u8>, SkinModel)>> {
+    async fn current_skin(&self, account: Account) -> Result<Option<crate::msa::SkinTexture>> {
         if account.provider != Provider::Microsoft {
             return Ok(None);
         }

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { Eye, EyeOff, Human, ZoomIn, ZoomOut } from 'pixelarticons/react';
+import { Eye, EyeOff, Human, HumanArmsUp, ZoomIn, ZoomOut } from 'pixelarticons/react';
 import { commands } from '../../ipc/commands';
 import type { SkinEntry, SkinModel } from '../../ipc/schema';
 import { useAccounts } from '../../state/queries';
@@ -14,11 +14,12 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { Field } from '../../ui/Field';
 import { ChevronDown, Copy, Download, Pencil, Reload, Shirt, Trash } from '../../ui/Icon';
-import type { MenuItem } from '../../ui/Menu';
+import { Menu, type MenuHandle, type MenuItem } from '../../ui/Menu';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { encodeTexture } from './codec';
 import { ColourPanel } from './ColourPanel';
 import { Hotbar } from './Hotbar';
+import { POSES, type Pose } from './poses';
 import { SLOT_TOOLS } from './tools';
 import { PARTS, type Layer } from './layout';
 import { toHex, type Rgba, type Tool } from './paint';
@@ -61,6 +62,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const [mirror, setMirror] = useState(false);
   const [darken, setDarken] = useState(true);
   const [paintLayer, setPaintLayer] = useState<Layer>('base');
+  const [pose, setPose] = useState<Pose>('still');
+  const poseMenu = useRef<MenuHandle>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<[number, number] | null>(null);
   const [partsOpen, setPartsOpen] = useState(false);
@@ -224,6 +227,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         .then((next) => {
           qc.setQueryData(SKINS_KEY, next);
           void qc.invalidateQueries({ queryKey: ['accountFace'] });
+          stage.current?.celebrate();
           pushNotice({ title: t('skins.worn', { name: selected.name }), body: t('skins.wornBody') });
         })
         .catch(pushError)
@@ -310,6 +314,16 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
             <Button size="md" aria-pressed={outerShown} title={t('skins.outerLayer')} icon={outerShown ? <Eye /> : <EyeOff />} onClick={toggleOuter}>
               <span className="btn-label">{t('skins.outerLayer')}</span>
             </Button>
+            <Button icon={<HumanArmsUp />} aria-haspopup="menu" aria-label={`${t('skins.poseLabel')}: ${t(`skins.pose.${pose}`)}`} title={t('skins.poseLabel')} onClick={(e) => poseMenu.current?.openAt(e.currentTarget)}>
+              <span className="btn-label">{t(`skins.pose.${pose}`)}</span>
+            </Button>
+            <Menu
+              ref={poseMenu}
+              label={t('skins.poseLabel')}
+              trigger={false}
+              className="contents"
+              items={POSES.map((p) => ({ id: p, label: t(`skins.pose.${p}`), icon: p === pose ? <span className="lamp" aria-hidden /> : undefined, onSelect: () => setPose(p) }))}
+            />
             <div className="relative" ref={partsBox}>
               <Button icon={<Human />} title={t('skins.parts')} aria-expanded={partsOpen} onClick={() => setPartsOpen((o) => !o)}>
                 <span className="btn-label">{t('skins.parts')}</span>
@@ -348,6 +362,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               model={model}
               hidden={hidden}
               paintLayer={paintLayer}
+              pose={pose}
               hover={hover}
               onHover={setHover}
               onBegin={doc.begin}

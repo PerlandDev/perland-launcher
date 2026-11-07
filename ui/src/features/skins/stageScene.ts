@@ -1,5 +1,7 @@
 // The 3D figure on the Skins stage, drawn with three.js. Faces are lit the way the game lights blocks (top brightest,
 // sides darker), with no lights to ease between; the texture is nearest-filtered so every texel stays a crisp square.
+// The figure is a jointed rig that poses (walk, run, crouch, sit, wave, row a boat, ride a horse); the boat and the
+// horse are simple block props built here in the launcher's own palette, not anything of Mojang's.
 // Kept behind this small adapter so the screen can be tested without WebGL.
 import {
   BufferAttribute,
@@ -13,6 +15,7 @@ import {
   NearestFilter,
   PerspectiveCamera,
   Raycaster,
+  RepeatWrapping,
   RGBAFormat,
   Scene,
   SRGBColorSpace,
@@ -22,6 +25,7 @@ import {
 } from 'three';
 import type { SkinModel } from '../../ipc/schema';
 import { boxes, SKIN_SIZE, type Box, type Layer, type Part, type Vec3 } from './layout';
+import { celebration, POSE_STILL_T, rigAt, type Joint, type Pose } from './poses';
 
 /** How bright each face direction is, like the game's block shading. */
 function brightness([x, y, z]: Vec3): number {
@@ -31,7 +35,17 @@ function brightness([x, y, z]: Vec3): number {
   return x !== 0 ? 0.7 : 1;
 }
 
-function geometryFor(box: Box): BufferGeometry {
+function makeGeometry(positions: number[], uvs: number[], colors: number[], index: number[]) {
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
+  geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uvs), 2));
+  geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
+  geometry.setIndex(index);
+  return geometry;
+}
+
+/** A skin box's faces, placed relative to the joint it hangs from. */
+function geometryFor(box: Box, pivot: Vec3): BufferGeometry {
   const positions: number[] = [];
   const uvs: number[] = [];
   const colors: number[] = [];
@@ -42,7 +56,7 @@ function geometryFor(box: Box): BufferGeometry {
     const u1 = (face.x + face.w) / SKIN_SIZE;
     const v0 = face.y / SKIN_SIZE;
     const v1 = (face.y + face.h) / SKIN_SIZE;
-    for (const p of [lt, rt, lb, rb]) positions.push(...p);
+    for (const p of [lt, rt, lb, rb]) positions.push(p[0] - pivot[0], p[1] - pivot[1], p[2] - pivot[2]);
     uvs.push(u0, v0, u1, v0, u0, v1, u1, v1);
     const b = brightness(face.normal);
     for (let k = 0; k < 4; k++) colors.push(b, b, b);
@@ -55,62 +69,218 @@ function geometryFor(box: Box): BufferGeometry {
     if (outward) index.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
     else index.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
   });
-  const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
-  geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uvs), 2));
-  geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
-  geometry.setIndex(index);
-  return geometry;
+  return makeGeometry(positions, uvs, colors, index);
 }
 
-/** The dirt plinth the figure stands on: a pixel block in the launcher's own art palette. */
-function plinth(): Mesh {
-  const size = 8;
-  const data = new Uint8Array(size * size * 4);
-  for (let i = 0; i < size * size; i++) {
-    const deep = (i * 7 + (i >> 3) * 3) % 5 < 2;
-    const [r, g, b] = deep ? [0x4e, 0x2e, 0x19] : [0x5e, 0x38, 0x20];
-    data.set([r, g, b, 255], i * 4);
+/** The pixel surfaces the props are made of, 16 × 16 texels of light and shade multiplied over each block's colour,
+ *  one texel a model unit, so a prop reads at the same pixel scale as the skin. */
+type Surface = 'grain' | 'planks' | 'water' | 'hair' | 'flat';
+
+/** A small deterministic hash, so every prop looks the same each time. */
+function hash(x: number, y: number, seed: number): number {
+  let h = (x * 374761393 + y * 668265263 + seed * 2147483647) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+
+function surfaceTexture(kind: Surface): DataTexture {
+  const n = 16;
+  const data = new Uint8Array(n * n * 4);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const r = hash(x, y, 7);
+      let v: number;
+      switch (kind) {
+        case 'grain':
+          // Speckled: mostly mid, some darker pits and lighter flecks.
+          v = r < 0.15 ? 0.74 : r > 0.88 ? 1 : 0.84 + hash(x >> 1, y >> 1, 3) * 0.1;
+          break;
+        case 'planks': {
+          // Four planks a tile, a dark seam under each, staggered end joints, grain streaks along the boards.
+          const row = y % 4;
+          const board = y >> 2;
+          const joint = (x + board * 5) % 16 === 0;
+          v = row === 3 || joint ? 0.62 : 0.86 + hash(board, 0, 11) * 0.1 + (hash(x >> 2, y, 5) - 0.5) * 0.08;
+          break;
+        }
+        case 'water': {
+          // Lighter ripple runs drifting across darker water.
+          const run = hash(Math.floor((x + y * 3) / 4), y, 13) > 0.72;
+          v = run ? 1 : 0.8 + r * 0.08;
+          break;
+        }
+        case 'hair':
+          // Strands: each column its own shade, a little variation down it.
+          v = 0.72 + hash(x, 0, 17) * 0.24 + (r - 0.5) * 0.08;
+          break;
+        case 'flat':
+          v = 1;
+          break;
+      }
+      const c = Math.round(Math.max(0, Math.min(1, v)) * 255);
+      data.set([c, c, c, 255], (y * n + x) * 4);
+    }
   }
-  const texture = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  const texture = new DataTexture(data, n, n, RGBAFormat, UnsignedByteType);
   texture.magFilter = NearestFilter;
   texture.minFilter = NearestFilter;
-  texture.colorSpace = SRGBColorSpace;
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = RepeatWrapping;
   texture.needsUpdate = true;
-  const h = 1.5;
-  const w = 10;
-  const corners = (y: number): [Vec3, Vec3, Vec3, Vec3] => [
-    [-w, y, -w],
-    [w, y, -w],
-    [-w, y, w],
-    [w, y, w],
-  ];
-  const [a, b, c, d] = corners(0);
-  const [e, f, g, k] = corners(-h);
-  const quads: [Vec3, Vec3, Vec3, Vec3, number][] = [
-    [a, b, c, d, 1],
-    [c, d, g, k, 0.62],
-    [d, b, k, f, 0.5],
-    [a, c, e, g, 0.5],
-    [b, a, f, e, 0.45],
+  return texture;
+}
+
+const surfaces = new Map<Surface, MeshBasicMaterial>();
+function surface(kind: Surface): MeshBasicMaterial {
+  let material = surfaces.get(kind);
+  if (!material) {
+    material = new MeshBasicMaterial({ map: surfaceTexture(kind), vertexColors: true, side: FrontSide });
+    surfaces.set(kind, material);
+  }
+  return material;
+}
+let blockSeed = 0;
+
+/** A block prop: its six faces shaded like the figure's, in one colour (0xRRGGBB) over a pixel surface. */
+function block(size: Vec3, center: Vec3, color: number, top = color, kind: Surface = 'grain'): Mesh {
+  const [hx, hy, hz] = size.map((s) => s / 2) as Vec3;
+  const [cx, cy, cz] = center;
+  const p = (x: number, y: number, z: number): Vec3 => [cx + x * hx, cy + y * hy, cz + z * hz];
+  const faces: [Vec3, Vec3, Vec3, Vec3, Vec3][] = [
+    [p(-1, 1, -1), p(1, 1, -1), p(-1, 1, 1), p(1, 1, 1), [0, 1, 0]],
+    [p(-1, -1, 1), p(1, -1, 1), p(-1, -1, -1), p(1, -1, -1), [0, -1, 0]],
+    [p(-1, 1, 1), p(1, 1, 1), p(-1, -1, 1), p(1, -1, 1), [0, 0, 1]],
+    [p(1, 1, -1), p(-1, 1, -1), p(1, -1, -1), p(-1, -1, -1), [0, 0, -1]],
+    [p(-1, 1, -1), p(-1, 1, 1), p(-1, -1, -1), p(-1, -1, 1), [-1, 0, 0]],
+    [p(1, 1, 1), p(1, 1, -1), p(1, -1, 1), p(1, -1, -1), [1, 0, 0]],
   ];
   const positions: number[] = [];
   const uvs: number[] = [];
   const colors: number[] = [];
   const index: number[] = [];
-  quads.forEach(([p0, p1, p2, p3, light], i) => {
-    for (const p of [p0, p1, p2, p3]) positions.push(...p);
-    uvs.push(0, 0, 1, 0, 0, i === 0 ? 1 : 0.2, 1, i === 0 ? 1 : 0.2);
-    for (let j = 0; j < 4; j++) colors.push(light, light, light);
+  blockSeed += 1;
+  faces.forEach(([a, b, c, d, normal], i) => {
+    for (const q of [a, b, c, d]) positions.push(...q);
+    // One texel a unit, from a different spot of the tile on every face, so repeats never line up.
+    const w = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) / 16;
+    const h = Math.hypot(c[0] - a[0], c[1] - a[1], c[2] - a[2]) / 16;
+    const u = Math.floor(hash(blockSeed, i, 1) * 16) / 16;
+    const v = Math.floor(hash(i, blockSeed, 2) * 16) / 16;
+    uvs.push(u, v, u + w, v, u, v + h, u + w, v + h);
+    const hex = normal[1] > 0 ? top : color;
+    const light = brightness(normal);
+    const rgb = [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255].map((v) => Math.pow(v / 255, 2.2) * light);
+    for (let k = 0; k < 4; k++) colors.push(rgb[0]!, rgb[1]!, rgb[2]!);
     const base = i * 4;
     index.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
   });
-  const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3));
-  geometry.setAttribute('uv', new BufferAttribute(new Float32Array(uvs), 2));
-  geometry.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
-  geometry.setIndex(index);
-  return new Mesh(geometry, new MeshBasicMaterial({ map: texture, vertexColors: true, side: DoubleSide }));
+  return new Mesh(makeGeometry(positions, uvs, colors, index), surface(kind));
+}
+
+/** The dirt plinth the figure stands on: a pixel block in the launcher's own art palette. */
+function plinth(): Group {
+  const group = new Group();
+  for (let x = -5; x < 5; x++) {
+    for (let z = -5; z < 5; z++) {
+      const r = hash(x + 9, z + 9, 21);
+      const top = r < 0.3 ? 0x4e2e19 : r < 0.8 ? 0x5e3820 : 0x6b4024;
+      group.add(block([2, 1.5, 2], [x * 2 + 1, -0.75, z * 2 + 1], 0x4e2e19, top));
+      if (hash(x + 9, z + 9, 33) > 0.9) group.add(block([0.8, 0.4, 0.8], [x * 2 + 1.2, 0.2, z * 2 + 0.8], 0x7a6a5a, 0x8c7b69));
+    }
+  }
+  return group;
+}
+
+/** A rowing boat on a square of water: planks, a raised rim and two oars. */
+function boat(): { group: Group; oars: Group[] } {
+  const group = new Group();
+  const plank = 0x8a5a34;
+  const plankDark = 0x6b4024;
+  for (let x = -6; x < 6; x++) {
+    for (let z = -6; z < 6; z++) {
+      const lit = hash(x + 6, z + 6, 41) > 0.7;
+      group.add(block([2, 1, 2], [x * 2 + 1, -0.5, z * 2 + 1], 0x1a5e94, lit ? 0x2f86c4 : 0x2186cb, 'water'));
+    }
+  }
+  group.add(block([12, 2, 22], [0, 1, 0], plankDark, plank, 'planks'));
+  group.add(block([2, 4, 22], [-7, 3, 0], plank, 0x9c6a3e, 'planks'));
+  group.add(block([2, 4, 22], [7, 3, 0], plank, 0x9c6a3e, 'planks'));
+  group.add(block([16, 4, 2], [0, 3, 12], plank, 0x9c6a3e, 'planks'));
+  group.add(block([16, 4, 2], [0, 3, -12], plank, 0x9c6a3e, 'planks'));
+  group.add(block([16.4, 1, 2.4], [0, 5.5, 12], 0x4e2e19, 0x5e3820));
+  group.add(block([2.4, 1, 22.4], [-7, 5.5, 0], 0x4e2e19, 0x5e3820));
+  group.add(block([2.4, 1, 22.4], [7, 5.5, 0], 0x4e2e19, 0x5e3820));
+  group.add(block([16.4, 1, 2.4], [0, 5.5, -12], 0x4e2e19, 0x5e3820));
+  group.add(block([12, 1, 4], [0, 4.5, -4], plankDark, plank, 'planks'));
+  // Foam where the hull meets the water.
+  for (const z of [-11, -5, 3, 9]) group.add(block([1.5, 0.3, 1.5], [-8.5, 0.15, z], 0xcfe6f2, 0xe8f3f8, 'flat'));
+  for (const z of [-8, 0, 6, 12]) group.add(block([1.5, 0.3, 1.5], [8.5, 0.15, z], 0xcfe6f2, 0xe8f3f8, 'flat'));
+  const oars: Group[] = [];
+  for (const side of [-1, 1]) {
+    const oar = new Group();
+    oar.position.set(side * 8, 6, 2);
+    oar.add(block([1, 1, 16], [side * 3, -2, 0], 0x9c6a3e, 0x9c6a3e, 'planks'));
+    oar.add(block([1, 2.5, 5], [side * 3, -2, -9], 0x6b4024, 0x6b4024, 'planks'));
+    oar.rotation.z = side * 0.5;
+    group.add(oar);
+    oars.push(oar);
+  }
+  return { group, oars };
+}
+
+/** A block horse in chestnut with a dark mane: body, four legs, neck and head. */
+function horse(): { group: Group; legs: Group[]; head: Group; tail: Group } {
+  const group = new Group();
+  const coat = 0x8a5a34;
+  const coatTop = 0x9c6a3e;
+  const mane = 0x2b1d14;
+  const sock = 0xe9e0cf;
+  group.add(block([10, 10, 22], [0, 21, 0], coat, coatTop));
+  // A saddle on a coral blanket, with stirrups hanging either side.
+  group.add(block([10.6, 0.6, 9], [0, 26.3, -1], 0xb5473a, 0xc4574a, 'flat'));
+  group.add(block([10.8, 4, 0.8], [0, 24.4, -5.2], 0xb5473a, 0xb5473a, 'flat'));
+  group.add(block([10.8, 4, 0.8], [0, 24.4, 3.2], 0xb5473a, 0xb5473a, 'flat'));
+  group.add(block([9, 1.6, 7], [0, 27.4, -1], 0x3b2416, 0x4a2c1c));
+  group.add(block([9, 2.4, 1.4], [0, 28.4, 2.2], 0x3b2416, 0x4a2c1c));
+  for (const side of [-1, 1]) {
+    group.add(block([0.4, 7, 0.4], [side * 5.6, 22, 0], 0x2b1d14));
+    group.add(block([1.2, 0.8, 2], [side * 5.8, 18.4, 0], 0x9aa0a6, 0xb8bec4, 'flat'));
+  }
+  const legs: Group[] = [];
+  for (const [x, z] of [[-3, 8], [3, 8], [-3, -8], [3, -8]] as const) {
+    const leg = new Group();
+    leg.position.set(x, 16, z);
+    leg.add(block([4, 16, 4], [0, -8, 0], coat, coatTop));
+    leg.add(block([4.2, 2.6, 4.2], [0, -12.2, 0], sock, sock, 'hair'));
+    leg.add(block([4.3, 2, 4.3], [0, -15, 0], 0x2b1d14));
+    group.add(leg);
+    legs.push(leg);
+  }
+  const head = new Group();
+  head.position.set(0, 24, 9);
+  head.add(block([6, 12, 7], [0, 5, 0], coat, coatTop));
+  head.add(block([2, 14, 2], [0, 6, -4], mane, mane, 'hair'));
+  head.add(block([6, 6, 11], [0, 12, 3], coat, coatTop));
+  // A white blaze down the face, dark eyes, a muzzle with nostrils, ears and a forelock.
+  head.add(block([2, 0.3, 7], [0, 15.1, 4], sock, sock, 'flat'));
+  head.add(block([2, 3, 0.3], [0, 12.5, 8.6], sock, sock, 'flat'));
+  for (const side of [-1, 1]) {
+    head.add(block([0.3, 1.2, 1.2], [side * 3.1, 13.2, 1.6], 0x14100c, 0x14100c, 'flat'));
+    head.add(block([0.3, 0.6, 0.6], [side * 3.15, 13.6, 1.3], 0xf6f1e7, 0xf6f1e7, 'flat'));
+    head.add(block([2, 3, 2], [side * 2, 16.5, -1], coat, coatTop));
+    head.add(block([0.8, 0.8, 0.3], [side * 1.6, 10.6, 9.25], 0x2b1d14, 0x2b1d14, 'flat'));
+  }
+  head.add(block([6.2, 3.2, 4], [0, 10.6, 7.2], 0x6b4024, 0x7a4b30));
+  head.add(block([2.4, 2, 3], [0, 15.4, 0.6], mane, mane, 'hair'));
+  // Reins from the muzzle back toward the rider's hands.
+  for (const side of [-1, 1]) head.add(block([0.3, 0.3, 9], [side * 3.2, 9.6, 3], 0x2b1d14, 0x2b1d14, 'flat'));
+  group.add(head);
+  const tail = new Group();
+  tail.position.set(0, 24, -11);
+  tail.add(block([3, 12, 3], [0, -5, -1.5], mane, mane, 'hair'));
+  tail.rotation.x = -0.35;
+  group.add(tail);
+  return { group, legs, head, tail };
 }
 
 export interface Hit {
@@ -127,6 +297,9 @@ export interface Stage {
   setVisible(part: Part, layer: Layer, visible: boolean): void;
   /** The layer `pick` paints on. */
   setPaintLayer(layer: Layer): void;
+  setPose(pose: Pose): void;
+  /** A hop and a turn, when a skin goes on. */
+  celebrate(): void;
   /** The texel under a point of the canvas (client coordinates), on the paint layer; null over empty stage. */
   pick(clientX: number, clientY: number): Hit | null;
   orbit(dx: number, dy: number): void;
@@ -136,22 +309,79 @@ export interface Stage {
   dispose(): void;
 }
 
-const TARGET: Vec3 = [0, 13, 0];
-/** `zoom` scales the distance that fits the whole figure in the stage. */
-const START = { yaw: -0.5, pitch: 0.14, zoom: 1 };
-/** What must fit: the figure with its plinth, in texels. */
-const FIT_HEIGHT = 50;
-const FIT_WIDTH = 30;
+/** Where each joint turns, in model space. */
+function pivotOf(joint: Joint, model: SkinModel): Vec3 {
+  const arm = model === 'slim' ? 5.5 : 6;
+  switch (joint) {
+    case 'torso':
+      return [0, 12, 0];
+    case 'head':
+      return [0, 24, 0];
+    case 'rightArm':
+      return [-arm, 22, 0];
+    case 'leftArm':
+      return [arm, 22, 0];
+    case 'rightLeg':
+      return [-2, 12, 0];
+    case 'leftLeg':
+      return [2, 12, 0];
+  }
+}
+
+const JOINT_OF: Record<Part, Joint> = {
+  head: 'head',
+  body: 'torso',
+  rightArm: 'rightArm',
+  leftArm: 'leftArm',
+  rightLeg: 'rightLeg',
+  leftLeg: 'leftLeg',
+};
+const JOINTS: Joint[] = ['torso', 'head', 'rightArm', 'leftArm', 'rightLeg', 'leftLeg'];
+const PARENT: Record<Joint, Joint | null> = {
+  torso: null,
+  head: 'torso',
+  rightArm: 'torso',
+  leftArm: 'torso',
+  rightLeg: null,
+  leftLeg: null,
+};
+
+/** What each pose frames: the camera's target height and how much must fit. */
+const FRAMING: Record<Pose, { target: number; height: number; width: number }> = {
+  still: { target: 13, height: 50, width: 30 },
+  walk: { target: 13, height: 50, width: 30 },
+  run: { target: 13.5, height: 51, width: 32 },
+  crouch: { target: 12, height: 48, width: 30 },
+  sit: { target: 8, height: 42, width: 34 },
+  wave: { target: 15, height: 54, width: 32 },
+  boat: { target: 8, height: 44, width: 40 },
+  horse: { target: 25, height: 72, width: 46 },
+};
+
+const START = { yaw: -0.55, pitch: 0.14, zoom: 1 };
 
 export function createStage(canvas: HTMLCanvasElement): Stage {
   const renderer = new WebGLRenderer({ canvas, antialias: false, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0x000000, 0);
   const scene = new Scene();
-  const camera = new PerspectiveCamera(32, 1, 1, 400);
+  const camera = new PerspectiveCamera(32, 1, 1, 600);
+  const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+
+  const world = new Group();
+  scene.add(world);
+  const ground = plinth();
+  world.add(ground);
+  const ride = new Group();
+  world.add(ride);
+  const theBoat = boat();
+  const theHorse = horse();
+  ride.add(theBoat.group, theHorse.group);
   const figure = new Group();
-  scene.add(figure);
-  scene.add(plinth());
+  ride.add(figure);
+
+  const joints = Object.fromEntries(JOINTS.map((j) => [j, new Group()])) as Record<Joint, Group>;
+  for (const j of JOINTS) (PARENT[j] ? joints[PARENT[j]] : figure).add(joints[j]);
 
   const data = new Uint8Array(SKIN_SIZE * SKIN_SIZE * 4);
   const texture = new DataTexture(data, SKIN_SIZE, SKIN_SIZE, RGBAFormat, UnsignedByteType);
@@ -165,35 +395,77 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   let meshes: { mesh: Mesh; box: Box }[] = [];
   const hidden = new Set<string>();
   let paintLayer: Layer = 'base';
+  let pose: Pose = 'still';
+  let model: SkinModel = 'classic';
   const view = { ...START };
-  let fitDistance = 80;
+  let fit = { half: Math.tan((32 * Math.PI) / 360), aspect: 1 };
   let frame = 0;
+  const started = performance.now();
+  let celebratedAt = -Infinity;
 
-  const draw = () => {
+  const still = () => motion?.matches === true;
+
+  const place = (now: number) => {
+    const t = still() ? POSE_STILL_T : (now - started) / 1000;
+    const rig = rigAt(pose, t);
+    for (const j of JOINTS) {
+      const pivot = pivotOf(j, model);
+      const parent = PARENT[j] ? pivotOf(PARENT[j], model) : ([0, 0, 0] as Vec3);
+      joints[j].position.set(pivot[0] - parent[0], pivot[1] - parent[1], pivot[2] - parent[2]);
+      joints[j].rotation.set(...rig.joints[j], 'XYZ');
+    }
+    figure.position.set(...rig.offset);
+    ride.rotation.set(...rig.tilt);
+    theBoat.group.visible = pose === 'boat';
+    theHorse.group.visible = pose === 'horse';
+    ground.visible = pose !== 'boat';
+    if (pose === 'boat') {
+      const row = Math.sin(t * Math.PI * 2 * 0.6);
+      theBoat.oars.forEach((oar, i) => (oar.rotation.y = (i === 0 ? 1 : -1) * row * 0.5));
+    }
+    if (pose === 'horse') {
+      const gait = Math.sin(t * Math.PI * 2 * 1.05);
+      theHorse.legs.forEach((leg, i) => (leg.rotation.x = (i === 0 || i === 3 ? 1 : -1) * gait * 0.45));
+      theHorse.head.rotation.x = 0.45 + Math.sin(t * Math.PI * 2 * 1.05 * 2) * 0.05;
+      theHorse.group.position.y = Math.abs(gait) * 0.5;
+      theHorse.tail.rotation.z = Math.sin(t * Math.PI * 2 * 0.8) * 0.18;
+    }
+    const party = still() ? null : celebration((now - celebratedAt) / 1000);
+    world.rotation.y = party?.spin ?? 0;
+    world.position.y = party?.lift ?? 0;
+  };
+
+  const draw = (now: number) => {
     frame = 0;
+    place(now);
+    const framing = FRAMING[pose];
+    const distance = Math.max(framing.height / 2 / fit.half, framing.width / 2 / (fit.half * fit.aspect)) * view.zoom;
     const { yaw, pitch } = view;
-    const distance = fitDistance * view.zoom;
     camera.position.set(
-      TARGET[0] + distance * Math.cos(pitch) * Math.sin(yaw),
-      TARGET[1] + distance * Math.sin(pitch),
-      TARGET[2] + distance * Math.cos(pitch) * Math.cos(yaw),
+      distance * Math.cos(pitch) * Math.sin(yaw),
+      framing.target + distance * Math.sin(pitch),
+      distance * Math.cos(pitch) * Math.cos(yaw),
     );
-    camera.lookAt(TARGET[0], TARGET[1], TARGET[2]);
+    camera.lookAt(0, framing.target, 0);
     renderer.render(scene, camera);
+    // The figure is always a little alive (breathing, looking around); reduced motion holds it still.
+    if (!still()) frame = requestAnimationFrame(draw);
   };
   const invalidate = () => {
     if (!frame) frame = requestAnimationFrame(draw);
   };
 
-  const build = (model: SkinModel) => {
+  const build = (next: SkinModel) => {
+    model = next;
     for (const { mesh } of meshes) {
-      figure.remove(mesh);
+      mesh.removeFromParent();
       mesh.geometry.dispose();
     }
-    meshes = boxes(model).map((box) => {
-      const mesh = new Mesh(geometryFor(box), box.layer === 'base' ? baseMaterial : outerMaterial);
+    meshes = boxes(next).map((box) => {
+      const joint = JOINT_OF[box.part];
+      const mesh = new Mesh(geometryFor(box, pivotOf(joint, next)), box.layer === 'base' ? baseMaterial : outerMaterial);
       mesh.visible = !hidden.has(`${box.part}:${box.layer}`);
-      figure.add(mesh);
+      joints[joint].add(mesh);
       return { mesh, box };
     });
     invalidate();
@@ -202,6 +474,8 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
 
   const raycaster = new Raycaster();
   const pointer = new Vector2();
+  const onMotion = () => invalidate();
+  motion?.addEventListener?.('change', onMotion);
 
   return {
     setTexture(next) {
@@ -220,10 +494,19 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     setPaintLayer(layer) {
       paintLayer = layer;
     },
+    setPose(next) {
+      pose = next;
+      invalidate();
+    },
+    celebrate() {
+      celebratedAt = performance.now();
+      invalidate();
+    },
     pick(clientX, clientY) {
       const rect = canvas.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return null;
       pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+      scene.updateMatrixWorld();
       raycaster.setFromCamera(pointer, camera);
       const targets = meshes.filter(({ mesh, box }) => mesh.visible && box.layer === paintLayer);
       const hit = raycaster.intersectObjects(targets.map((t) => t.mesh), false)[0];
@@ -256,12 +539,12 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      const half = Math.tan((camera.fov * Math.PI) / 360);
-      fitDistance = Math.max(FIT_HEIGHT / 2 / half, FIT_WIDTH / 2 / (half * camera.aspect));
+      fit = { half: Math.tan((camera.fov * Math.PI) / 360), aspect: camera.aspect };
       invalidate();
     },
     dispose() {
       if (frame) cancelAnimationFrame(frame);
+      motion?.removeEventListener?.('change', onMotion);
       for (const { mesh } of meshes) mesh.geometry.dispose();
       texture.dispose();
       baseMaterial.dispose();
@@ -270,3 +553,4 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     },
   };
 }
+
