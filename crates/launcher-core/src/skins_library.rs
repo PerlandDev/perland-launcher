@@ -13,6 +13,9 @@ use crate::fsutil::write_atomic;
 use crate::instances::validate_name;
 use crate::skins_png;
 
+mod versions;
+pub use versions::{SkinVersion, VersionReason};
+
 /// The arm width a skin is drawn for: classic arms are 4 texels wide, slim ones 3.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -276,7 +279,9 @@ impl SkinLibrary {
     pub async fn save_texture(&self, id: &str, png: &[u8]) -> Result<SkinEntry> {
         let png = skins_png::normalise(png)?;
         let _held = self.lock.lock().await;
-        let (file, entry) = self.change(id, |_| {}).await?;
+        let mut last_change = 0;
+        let (file, entry) = self.change(id, |e| last_change = e.updated).await?;
+        self.keep_before_save(id, last_change).await?;
         write_atomic(&self.png(id), &png).await?;
         self.write(&file).await?;
         Ok(entry)
@@ -342,6 +347,7 @@ impl SkinLibrary {
         }
         self.write(&file).await?;
         let _ = tokio::fs::remove_file(self.png(id)).await;
+        self.forget_versions(id).await;
         Ok(())
     }
 
@@ -353,7 +359,8 @@ impl SkinLibrary {
             return Err(not_found(id));
         }
         worn(&mut file, id, uuid);
-        self.write(&file).await
+        self.write(&file).await?;
+        self.keep_now(id, VersionReason::Worn).await
     }
 
     /// Moves every loose skin into the wardrobe of `uuid`, except a starter the player never
@@ -391,6 +398,7 @@ impl SkinLibrary {
         }
         for id in dropped {
             let _ = tokio::fs::remove_file(self.png(&id)).await;
+            self.forget_versions(&id).await;
         }
         Ok(moved)
     }

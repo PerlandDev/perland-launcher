@@ -1001,7 +1001,33 @@
     "saved": "Saved",
     "saving": "Saving…",
     "pngFilter": "Skin PNG",
-    "exported": "{{name}} exported"
+    "exported": "{{name}} exported",
+    "history": {
+      "title": "History",
+      "close": "Close history",
+      "list": "Earlier versions",
+      "about": "A version is kept when you start editing, leave a skin you changed, wear it or export it.",
+      "empty": "No earlier versions yet. One is kept as soon as you change this skin.",
+      "now": "Now",
+      "today": "Today, {{time}}",
+      "yesterday": "Yesterday, {{time}}",
+      "onDay": "{{date}}, {{time}}",
+      "reason": {
+        "edited": "Edited",
+        "worn": "Worn",
+        "exported": "Exported",
+        "restored": "Restored"
+      },
+      "previewing": "Version from {{when}}",
+      "previewNote": "Look it over. Painting is off until you go back.",
+      "back": "Back to now",
+      "copy": "Make a copy",
+      "restore": "Restore this version",
+      "restoreShort": "Restore",
+      "restored": "Version restored",
+      "restoredBody": "Your skin is back to {{when}}. Undo takes it back.",
+      "copyName": "{{name}} ({{when}})"
+    }
   },
   "errors": {
     "team_server_too_big": { "message": "Your team's plan has no room for a server this size." },
@@ -1090,6 +1116,7 @@
     "skin_not_found": { "message": "That skin isn't in your wardrobe anymore." },
     "skin_rejected": { "message": "Minecraft didn't accept this skin.", "fix": "Try again in a minute. If it keeps happening, export the PNG and check it's 64 × 64." },
     "skin_offline_account": { "message": "Offline accounts can't change their skin in Minecraft.", "fix": "Export the PNG, or switch to a Microsoft account to wear it." },
+    "skin_version_not_found": { "message": "That version of the skin isn't kept anymore." },
     "mod_not_jar": { "message": "Only .jar files can be added as mods." },
     "mod_exists": { "message": "{{file}} is already in this instance." },
     "mod_not_found": { "message": "{{file}} isn't in this instance anymore." },

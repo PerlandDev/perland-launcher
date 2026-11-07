@@ -1,4 +1,5 @@
 // The skin being edited: its texels, the stroke in progress, undo/redo, and an autosave shortly after each stroke.
+// Leaving a skin that was changed keeps a version of it (see the version history spec).
 import { useEffect, useState } from 'react';
 import { commands } from '../../ipc/commands';
 import type { SkinModel } from '../../ipc/schema';
@@ -6,7 +7,8 @@ import { pushError } from '../../state/toasts';
 import { decodeTexture, encodeTexture } from './codec';
 import { History, mergeStroke } from './history';
 import { mirrorTexel } from './mirror';
-import { applyTool, line, Pixels, type Change, type Rgba, type Tool, type Touched } from './paint';
+import { applyTool, line, Pixels, sameColor, type Change, type Rgba, type Tool, type Touched } from './paint';
+import { SKIN_SIZE } from './layout';
 
 /** The quiet wait after a stroke before the skin is saved. */
 export const AUTOSAVE_MS = 600;
@@ -35,6 +37,8 @@ export interface SkinDoc {
   redo(): void;
   /** Saves now if a save is waiting (before switching skins, exporting or wearing). */
   flush(): Promise<void>;
+  /** Shows `data` (already saved, e.g. a restored version) as one undoable step. */
+  replace(data: Uint8ClampedArray): void;
 }
 
 /** Everything that changes without a render of its own: the views redraw on `rev`. */
@@ -46,6 +50,8 @@ class DocStore {
   touched: Touched = new Set();
   last: [number, number] | null = null;
   timer: ReturnType<typeof setTimeout> | null = null;
+  /** A save went through since the skin was opened or last kept as a version. */
+  dirty = false;
   onSaved: () => void = () => {};
   onState: (id: string, state: SaveState) => void = () => {};
 
@@ -58,6 +64,39 @@ class DocStore {
     this.id = id;
     this.pixels = new Pixels(data);
     this.history.clear();
+    this.dirty = false;
+  }
+
+  /** Writes a waiting save, then keeps a version if the skin was changed while it was open. */
+  async leave() {
+    const id = this.id;
+    await this.saveNow();
+    if (!id || !this.dirty || this.id !== id) return;
+    this.dirty = false;
+    try {
+      await commands.skinCheckpoint(id);
+    } catch (error) {
+      pushError(error);
+    }
+  }
+
+  /** Swaps in `data` as one stroke, so Undo takes it back (and autosaves the texture it replaced). */
+  replace(data: Uint8ClampedArray): boolean {
+    const px = this.pixels;
+    if (!px) return false;
+    const next = new Pixels(data);
+    const changes: Change[] = [];
+    for (let y = 0; y < SKIN_SIZE; y++) {
+      for (let x = 0; x < SKIN_SIZE; x++) {
+        const before = px.get(x, y);
+        const after = next.get(x, y);
+        if (!sameColor(before, after)) changes.push({ x, y, before, after });
+      }
+    }
+    if (changes.length === 0) return false;
+    for (const c of changes) px.set(c.x, c.y, c.after);
+    this.history.push(changes);
+    return true;
   }
 
   /** Starts the save timer; false when no skin is open. */
@@ -124,6 +163,7 @@ class DocStore {
     this.onState(id, 'saving');
     try {
       await commands.skinSave(id, encodeTexture(px.data));
+      if (this.id === id) this.dirty = true;
       this.onSaved();
     } catch (error) {
       pushError(error);
@@ -161,8 +201,8 @@ export function useSkinDoc(id: string | null, model: SkinModel, onSaved: () => v
       .catch((error) => live && pushError(error));
     return () => {
       live = false;
-      // A waiting save belongs to the skin being left: write it before the next one opens.
-      void store.saveNow();
+      // A waiting save belongs to the skin being left: write it before the next one opens, and keep a version.
+      void store.leave();
     };
   }, [id, store]);
 
@@ -206,5 +246,8 @@ export function useSkinDoc(id: string | null, model: SkinModel, onSaved: () => v
     undo,
     redo,
     flush: () => store.saveNow(),
+    replace: (data: Uint8ClampedArray) => {
+      if (open && store.replace(data)) bump();
+    },
   };
 }
