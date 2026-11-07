@@ -40,11 +40,11 @@ use launcher_core::{
     news::NewsPage,
     perland::{
         Apply, BanList, ConsoleReply, CreateAllowance, CreateFreeServer, CreateServer,
-        CreatedServer, Diagnosis, DiscordAccount, Discovery, Disk, EngineVersion, FreeLimits,
-        FreeServer, FreeServerSettings, FreeServerState, Handoff, Lifecycle, LinkCode, ListKind,
-        Membership, MemoryLimits, NameList, NameResult, Online, Pkce, Player, PlayerConfig,
-        PlayerStats, SessionJwt, SettingsDoc, SettingsSaved, SignInMethod, StackDetail, StackItem,
-        TeamUsage, TokenAnswer, YourServer,
+        CreatedServer, Diagnosis, DiscordAccount, Discovery, Disk, EmailStarted, EngineVersion,
+        FreeLimits, FreeServer, FreeServerSettings, FreeServerState, Handoff, Lifecycle, LinkCode,
+        ListKind, Membership, MemoryLimits, NameList, NameResult, Online, Pkce, Player,
+        PlayerConfig, PlayerStats, SessionJwt, SettingsDoc, SettingsSaved, SignInMethod,
+        StackDetail, StackItem, TeamUsage, TokenAnswer, YourServer,
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
@@ -1345,6 +1345,10 @@ pub(crate) struct FakePlayer {
     pub unlink: Mutex<Result<()>>,
     /// Default: no Minecraft account linked, no servers.
     pub stats: Mutex<Result<Option<PlayerStats>>>,
+    /// Default: a code that may be asked for again in 60 s.
+    pub email_started: Mutex<Result<EmailStarted>>,
+    /// Default: `new@example.com`.
+    pub email_verified: Mutex<Result<String>>,
     pub calls: Mutex<Vec<PlayerCall>>,
     /// Routes whose calls wait for a permit of their gate (see `hold`).
     holds: Mutex<HashMap<&'static str, Arc<Semaphore>>>,
@@ -1385,6 +1389,11 @@ impl FakePlayer {
             })),
             unlink: Mutex::new(Ok(())),
             stats: Mutex::new(Ok(Some(PlayerStats::default()))),
+            email_started: Mutex::new(Ok(EmailStarted {
+                expires_in: 600,
+                resend_in: 60,
+            })),
+            email_verified: Mutex::new(Ok("new@example.com".into())),
             calls: Mutex::new(Vec::new()),
             holds: Mutex::new(HashMap::new()),
         })
@@ -1504,6 +1513,34 @@ impl PlayerApi for FakePlayer {
     }
     fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>> {
         self.record("stats", engine, &[&token], &self.stats)
+    }
+    fn account_email_start(
+        &self,
+        engine: Url,
+        token: String,
+        email: String,
+        language: String,
+    ) -> BoxFuture<Result<EmailStarted>> {
+        self.record(
+            "account_email_start",
+            engine,
+            &[&token, &email, &language],
+            &self.email_started,
+        )
+    }
+    fn account_email_verify(
+        &self,
+        engine: Url,
+        token: String,
+        email: String,
+        code: String,
+    ) -> BoxFuture<Result<String>> {
+        self.record(
+            "account_email_verify",
+            engine,
+            &[&token, &email, &code],
+            &self.email_verified,
+        )
     }
     fn free_server(
         &self,

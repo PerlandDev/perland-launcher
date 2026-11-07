@@ -220,6 +220,8 @@ fn main() {
             commands::perland_sign_in_cancel,
             commands::perland_manage,
             commands::perland_sign_out,
+            commands::perland_account_email_start,
+            commands::perland_account_email_verify,
             commands::perland_link_code,
             commands::perland_link_poll,
             commands::perland_unlink,

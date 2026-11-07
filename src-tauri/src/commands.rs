@@ -4,13 +4,13 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
     AccountReady, AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, ContinueTarget,
-    FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest, InstallPlanView,
-    InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
-    ManageChangeResult, ManageConsoleReply, ManageDetail, ManageDiagnosis, ManageListChange,
-    ManagePlayers, ManageSaved, ManageSettings, ManageSettingsSave, ManagedServer, ManualProgress,
-    NewInstance, OpenTarget, PackAddRequest, PackContents, PackStatus, PerlandAccount,
-    PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage, RestorePointDto, RunSnapshot,
-    SearchRequest, ServerNews, ServerStatusView, YourServersPage,
+    EmailCodeSent, FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest,
+    InstallPlanView, InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
+    LinkCodeView, ManageChangeResult, ManageConsoleReply, ManageDetail, ManageDiagnosis,
+    ManageListChange, ManagePlayers, ManageSaved, ManageSettings, ManageSettingsSave,
+    ManagedServer, ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents,
+    PackStatus, PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage,
+    RestorePointDto, RunSnapshot, SearchRequest, ServerNews, ServerStatusView, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -635,6 +635,30 @@ pub async fn perland_manage(core: CoreState<'_>, stack: String) -> Res<()> {
 #[tauri::command]
 pub async fn perland_sign_out(core: CoreState<'_>) -> Res<()> {
     logged("perland_sign_out", core.perland_sign_out().await)
+}
+
+#[tauri::command]
+pub async fn perland_account_email_start(
+    core: CoreState<'_>,
+    email: String,
+    language: String,
+) -> Res<EmailCodeSent> {
+    logged(
+        "perland_account_email_start",
+        core.perland_account_email_start(&email, &language).await,
+    )
+}
+
+#[tauri::command]
+pub async fn perland_account_email_verify(
+    core: CoreState<'_>,
+    email: String,
+    code: String,
+) -> Res<PerlandAccount> {
+    logged(
+        "perland_account_email_verify",
+        core.perland_account_email_verify(&email, &code).await,
+    )
 }
 
 #[tauri::command]

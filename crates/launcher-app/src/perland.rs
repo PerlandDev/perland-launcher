@@ -19,9 +19,9 @@ use launcher_core::{
     invite::{InviteClient, InviteLink, Url},
     perland::{
         oauth::{self, CLIENT_ID},
-        oauth_authorize_url, Callback, CreateFreeServer, Discovery, FreeServer, FreeServerSettings,
-        FreeServerState, Language, LinkCode, Loopback, OAuthClient, Page, Pkce, Player,
-        PlayerClient, PlayerConfig, PlayerStats, Profile, Session, TokenAnswer, YourServer,
+        oauth_authorize_url, Callback, CreateFreeServer, Discovery, EmailStarted, FreeServer,
+        FreeServerSettings, FreeServerState, Language, LinkCode, Loopback, OAuthClient, Page, Pkce,
+        Player, PlayerClient, PlayerConfig, PlayerStats, Profile, Session, TokenAnswer, YourServer,
     },
     ErrorCode, LauncherError, Result,
 };
@@ -29,8 +29,9 @@ use tokio::sync::{watch, MutexGuard};
 
 use crate::{
     app::AppCore,
-    dto::{PerlandAccount, PerlandSignInPhase, PerlandStatus},
+    dto::{EmailCodeSent, PerlandAccount, PerlandSignInPhase, PerlandStatus},
     events::{AppEvent, Host},
+    minecraft_link::signed_out as signed_out_error,
     runner::{BoxFuture, Runner},
 };
 
@@ -94,6 +95,22 @@ pub trait PlayerApi: Send + Sync + 'static {
     fn link_code(&self, engine: Url, token: String) -> BoxFuture<Result<LinkCode>>;
     fn unlink(&self, engine: Url, token: String) -> BoxFuture<Result<()>>;
     fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>>;
+    /// Email a one-time code that adds `email` to the signed-in account.
+    fn account_email_start(
+        &self,
+        engine: Url,
+        token: String,
+        email: String,
+        language: String,
+    ) -> BoxFuture<Result<EmailStarted>>;
+    /// Check the emailed code; the answer is the verified email.
+    fn account_email_verify(
+        &self,
+        engine: Url,
+        token: String,
+        email: String,
+        code: String,
+    ) -> BoxFuture<Result<String>>;
 }
 
 /// `PlayerApi` over `launcher_core::perland::PlayerClient`.
@@ -255,6 +272,28 @@ impl PlayerApi for CorePlayer {
     fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>> {
         let client = self.client(engine);
         Box::pin(async move { client?.stats(&token).await })
+    }
+
+    fn account_email_start(
+        &self,
+        engine: Url,
+        token: String,
+        email: String,
+        language: String,
+    ) -> BoxFuture<Result<EmailStarted>> {
+        let client = self.client(engine);
+        Box::pin(async move { client?.account_email_start(&token, &email, &language).await })
+    }
+
+    fn account_email_verify(
+        &self,
+        engine: Url,
+        token: String,
+        email: String,
+        code: String,
+    ) -> BoxFuture<Result<String>> {
+        let client = self.client(engine);
+        Box::pin(async move { client?.account_email_verify(&token, &email, &code).await })
     }
 }
 
@@ -594,6 +633,64 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 .as_ref()
                 .map(|s| account(&s.profile, state.new_player)),
         })
+    }
+
+    /// Email a code that adds `email` to the signed-in Perland account.
+    pub async fn perland_account_email_start(
+        &self,
+        email: &str,
+        language: &str,
+    ) -> Result<EmailCodeSent> {
+        let session = self.signed_in().await?;
+        let answer = self
+            .runner
+            .player()
+            .account_email_start(
+                session.engine.clone(),
+                session.token.clone(),
+                email.trim().to_string(),
+                language_tag(language).to_string(),
+            )
+            .await;
+        let started = self.forget_on_401(&session, answer).await?;
+        Ok(EmailCodeSent {
+            resend_in: started.resend_in,
+        })
+    }
+
+    /// Check the emailed code (spaces ignored). The account then has the verified email, in the
+    /// saved profile too.
+    pub async fn perland_account_email_verify(
+        &self,
+        email: &str,
+        code: &str,
+    ) -> Result<PerlandAccount> {
+        let session = self.signed_in().await?;
+        let code: String = code.chars().filter(|c| !c.is_whitespace()).collect();
+        let answer = self
+            .runner
+            .player()
+            .account_email_verify(
+                session.engine.clone(),
+                session.token.clone(),
+                email.trim().to_string(),
+                code,
+            )
+            .await;
+        let verified = self.forget_on_401(&session, answer).await?;
+        self.edit_profile(&session.token, |profile| {
+            // `Profile.name` falls back to the email until a name is picked.
+            if profile.email.as_deref() == Some(profile.name.as_str()) {
+                profile.name = verified.clone();
+            }
+            profile.email = Some(verified.clone());
+        })
+        .await;
+        let state = self.perland.lock().await;
+        match state.session.as_ref().filter(|s| s.token == session.token) {
+            Some(s) => Ok(account(&s.profile, state.new_player)),
+            None => Err(signed_out_error()),
+        }
     }
 
     /// What a signed-out card offers: the Perland page when the Engine answers discovery,
@@ -1538,5 +1635,78 @@ mod tests {
             ErrorCode::InviteSiteUnreachable,
             "an invite site without an Engine is an unreachable invite site, not a closed list"
         );
+    }
+
+    #[tokio::test]
+    async fn account_email_start_needs_a_session() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        let err = core
+            .perland_account_email_start("a@b.co", "en")
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::PerlandSignedOut);
+        assert!(runner.player.calls_to("account_email_start").is_empty());
+    }
+
+    #[tokio::test]
+    async fn account_email_start_sends_the_language_tag_and_answers_the_wait() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        core.perland_store
+            .save(&saved_session("https://api.example.com"))
+            .unwrap();
+        let sent = core
+            .perland_account_email_start(" new@example.com ", "es-MX")
+            .await
+            .unwrap();
+        assert_eq!(sent.resend_in, 60);
+        let call = &runner.player.calls_to("account_email_start")[0];
+        assert_eq!(
+            call.args,
+            [player_token('s'), "new@example.com".into(), "es".into()]
+        );
+    }
+
+    #[tokio::test]
+    async fn account_email_verify_strips_spaces_and_updates_the_profile() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        core.perland_store
+            .save(&saved_session("https://api.example.com"))
+            .unwrap();
+        let mut me = crate::testing::sample_player();
+        me.email = Some("new@example.com".into());
+        *runner.player.me.lock().unwrap() = Ok(me);
+        let account = core
+            .perland_account_email_verify("new@example.com", "123 456")
+            .await
+            .unwrap();
+        assert_eq!(account.email.as_deref(), Some("new@example.com"));
+        let call = &runner.player.calls_to("account_email_verify")[0];
+        assert_eq!(call.args[2], "123456");
+        let saved = core.perland_store.load().unwrap();
+        assert_eq!(saved.profile.email.as_deref(), Some("new@example.com"));
+        let status = core.perland_status().await.unwrap();
+        assert_eq!(
+            status.account.unwrap().email.as_deref(),
+            Some("new@example.com")
+        );
+    }
+
+    #[tokio::test]
+    async fn account_email_verify_401_forgets_the_session() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        core.perland_store
+            .save(&saved_session("https://api.example.com"))
+            .unwrap();
+        *runner.player.email_verified.lock().unwrap() = Err(LauncherError::auth(
+            ErrorCode::PerlandSignedOut,
+            "You were signed out of Perland.",
+        ));
+        let err = core
+            .perland_account_email_verify("new@example.com", "123456")
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, ErrorCode::PerlandSignedOut);
+        assert!(core.perland_store.load().is_none());
+        assert!(core.perland_session().await.is_none());
     }
 }
