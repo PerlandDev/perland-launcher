@@ -426,6 +426,17 @@ export const accountsFile = z.strictObject({
   active: z.string().nullable(),
   licensedSigninSeen: z.boolean(),
 });
+export const skinModel = z.enum(['classic', 'slim']);
+/** One skin in the player's wardrobe. `wornBy` is the account that last wore it from the launcher. */
+export const skinEntry = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  model: skinModel,
+  updated: z.number().int(),
+  wornBy: z.string().optional(),
+});
+/** The skin a Microsoft account wears now: a PNG `data:` URL and its arm model. */
+export const currentSkin = z.strictObject({ texture: z.string(), model: skinModel });
 /** The calls of the Microsoft sign-in chain, in order: Microsoft's code, Xbox Live, XSTS, Minecraft's login, the profile and
  *  ownership check. */
 export const MSA_STEPS = ['microsoft', 'xbox', 'xsts', 'minecraft', 'profile'] as const;
@@ -859,6 +870,9 @@ export type DamagedInstance = z.infer<typeof damagedInstance>;
 export type InstanceListing = z.infer<typeof instanceListing>;
 export type Account = z.infer<typeof account>;
 export type AccountsFile = z.infer<typeof accountsFile>;
+export type SkinModel = z.infer<typeof skinModel>;
+export type SkinEntry = z.infer<typeof skinEntry>;
+export type CurrentSkin = z.infer<typeof currentSkin>;
 export type AccountReady = z.infer<typeof accountReady>;
 export type Lang = z.infer<typeof lang>;
 export type Channel = z.infer<typeof channel>;

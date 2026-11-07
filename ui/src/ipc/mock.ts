@@ -23,6 +23,7 @@ import { closeConsole, freeManageRef, handleManage, managedForYourServers, NOT_M
 import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario, type PerlandSignInOutcome } from './mockPerland';
 import { mockCrash, type CrashScenario } from './mockCrash';
 import { handleTeams, NOT_TEAMS, type TeamsScenario } from './mockTeams';
+import { handleSkins, NOT_SKINS, seedSkins, type SkinsScenario } from './mockSkins';
 import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
 import { MSA_STEPS, type MsaStep } from './schema';
 import type {
@@ -114,6 +115,8 @@ export interface MockOptions {
   /** Teams the player may create a server on (only while `perland` is signed in): `none` (the default here; dev:mock starts
    *  on `some`) or `some` (Builders with room, Night Shift with none, Starter Club whose plan has no modded servers). */
   teams?: TeamsScenario;
+  /** The skin wardrobe: `seeded` (default: two skins), `empty`, or `rejected` (every upload is refused). */
+  skins?: SkinsScenario;
   /** What Share… finds: `some` (default: two mods not on Modrinth), `all` (every mod on Modrinth) or `error` (Modrinth unreachable). */
   share?: 'some' | 'all' | 'error';
   /** What Play this with friends finds: `ok` (default: every mod on Modrinth, fits), `missing` (two mods aren't on Modrinth) or
@@ -476,6 +479,7 @@ function seed(options: MockOptions) {
     // `empty` is a player with no servers at all, so none to manage either.
     manage: seedManage(options.manage ?? (options.perland === 'empty' ? 'none' : undefined), event),
     teams: options.teams ?? 'none',
+    skins: seedSkins(options.skins),
     // The player's own order, like instance-order.json. Existing instances start A-Z, so a new one lands above them.
     order: [...listing.instances].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map((i) => i.id),
     servers,
@@ -1546,6 +1550,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'plugin:window|is_maximized':
       return false;
     default: {
+      const skinsServed = handleSkins(state.skins, state.accounts, cmd, args);
+      if (skinsServed !== NOT_SKINS) return skinsServed;
       const extra = [...state.perland.servers, ...(state.free.server ? [state.free.server] : [])];
       const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite }, extra) as Instance;
       const freeServed = await handleFree(state.free, state.perland.account, state.listing, cmd, args, join, (card) =>
