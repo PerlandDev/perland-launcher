@@ -125,10 +125,13 @@ export const commands = {
   accountSetActive: (uuid: string) => invoke<AccountsFile>('account_set_active', { uuid }),
   accountRemove: (uuid: string) => invoke<AccountsFile>('account_remove', { uuid }),
   // The Skins screen. Textures cross as PNG `data:` URLs.
-  skinsList: () => invoke<SkinEntry[]>('skins_list'),
+  /** The wardrobe of `owner` (an account uuid), or the loose skins for null. */
+  skinsList: (owner: string | null) => invoke<SkinEntry[]>('skins_list', { owner }),
   skinTexture: (id: string) => invoke<string>('skin_texture', { id }),
-  skinCreate: (name: string, model: SkinModel, texture: string) => invoke<SkinEntry>('skin_create', { name, model, texture }),
-  skinImport: (path: string) => invoke<SkinEntry>('skin_import', { path }),
+  /** `seeded`: the launcher puts this starter in an empty wardrobe by itself (dropped, not adopted, if never changed). */
+  skinCreate: (name: string, model: SkinModel, texture: string, owner: string | null, seeded = false) =>
+    invoke<SkinEntry>('skin_create', { name, model, texture, owner, seeded }),
+  skinImport: (path: string, owner: string | null) => invoke<SkinEntry>('skin_import', { path, owner }),
   skinSave: (id: string, texture: string) => invoke<SkinEntry>('skin_save', { id, texture }),
   skinUpdate: (id: string, change: { name?: string; model?: SkinModel }) =>
     invoke<SkinEntry>('skin_update', { id, name: change.name ?? null, model: change.model ?? null }),
@@ -137,6 +140,9 @@ export const commands = {
   skinExport: (id: string, path: string) => invoke<string>('skin_export', { id, path }),
   /** The skin a Microsoft account wears now; null for an offline account or no skin. */
   skinCurrent: (uuid: string) => invoke<CurrentSkin | null>('skin_current', { uuid }),
+  /** Puts the skin a Microsoft account wears in its wardrobe (reusing a matching entry, else a new one named `name`) and
+   *  marks it worn; null for an offline account or one wearing Minecraft's default. */
+  skinSyncCurrent: (uuid: string, name: string) => invoke<SkinEntry | null>('skin_sync_current', { uuid, name }),
   skinWear: (id: string, uuid: string) => invoke<SkinEntry[]>('skin_wear', { id, uuid }),
   /** Sign in with Microsoft in the browser. Null when it was canceled (here or in the browser). */
   accountSignInMicrosoft: (language: string) => invoke<AccountsFile | null>('account_sign_in_microsoft', { language }),

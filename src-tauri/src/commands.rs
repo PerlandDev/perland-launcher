@@ -1064,8 +1064,11 @@ pub fn diagnostics_reveal(app: AppHandle, core: CoreState<'_>) -> Res<()> {
 // The Skins screen (see `launcher_app::skins`). Textures cross as PNG `data:` URLs.
 
 #[tauri::command]
-pub async fn skins_list(core: CoreState<'_>) -> Res<Vec<launcher_core::skins_library::SkinEntry>> {
-    logged("skins_list", core.skins_list().await)
+pub async fn skins_list(
+    core: CoreState<'_>,
+    owner: Option<String>,
+) -> Res<Vec<launcher_core::skins_library::SkinEntry>> {
+    logged("skins_list", core.skins_list(owner.as_deref()).await)
 }
 
 #[tauri::command]
@@ -1079,10 +1082,19 @@ pub async fn skin_create(
     name: String,
     model: launcher_core::skins_library::SkinModel,
     texture: String,
+    owner: Option<String>,
+    seeded: Option<bool>,
 ) -> Res<launcher_core::skins_library::SkinEntry> {
     logged(
         "skin_create",
-        core.skin_create(&name, model, &texture).await,
+        core.skin_create(
+            &name,
+            model,
+            &texture,
+            owner.as_deref(),
+            seeded.unwrap_or(false),
+        )
+        .await,
     )
 }
 
@@ -1090,8 +1102,12 @@ pub async fn skin_create(
 pub async fn skin_import(
     core: CoreState<'_>,
     path: PathBuf,
+    owner: Option<String>,
 ) -> Res<launcher_core::skins_library::SkinEntry> {
-    logged("skin_import", core.skin_import(path).await)
+    logged(
+        "skin_import",
+        core.skin_import(path, owner.as_deref()).await,
+    )
 }
 
 #[tauri::command]
@@ -1138,6 +1154,18 @@ pub async fn skin_current(
     uuid: String,
 ) -> Res<Option<launcher_app::skins::CurrentSkin>> {
     logged("skin_current", core.skin_current(&uuid).await)
+}
+
+#[tauri::command]
+pub async fn skin_sync_current(
+    core: CoreState<'_>,
+    uuid: String,
+    name: String,
+) -> Res<Option<launcher_core::skins_library::SkinEntry>> {
+    logged(
+        "skin_sync_current",
+        core.skin_sync_current(&uuid, &name).await,
+    )
 }
 
 #[tauri::command]

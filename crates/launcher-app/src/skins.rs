@@ -1,5 +1,6 @@
-//! The Skins screen: the wardrobe on disk, an account's current skin, and wearing a skin.
-//! Textures cross to the webview as `data:image/png;base64,` URLs.
+//! The Skins screen: each account's wardrobe on disk, an account's current skin, and wearing a
+//! skin. Textures cross to the webview as `data:image/png;base64,` URLs. `owner` is the account
+//! whose wardrobe is shown; `None` is the loose wardrobe, used while no account is signed in.
 use std::path::PathBuf;
 
 use launcher_core::{
@@ -57,8 +58,16 @@ fn png_path(path: PathBuf) -> PathBuf {
 }
 
 impl<R: Runner, H: Host> AppCore<R, H> {
-    pub async fn skins_list(&self) -> Result<Vec<SkinEntry>> {
-        self.skins.list().await
+    /// The wardrobe of `owner`. The active account first adopts any loose skins: those made with
+    /// no account signed in, or kept from when every account shared one wardrobe.
+    pub async fn skins_list(&self, owner: Option<&str>) -> Result<Vec<SkinEntry>> {
+        if let Some(owner) = owner {
+            let active = self.accounts.lock().await.list().await?.active;
+            if active.as_deref() == Some(owner) {
+                self.skins.adopt_loose(owner).await?;
+            }
+        }
+        self.skins.list(owner).await
     }
 
     pub async fn skin_texture(&self, id: &str) -> Result<String> {
@@ -66,18 +75,25 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// A new skin from `texture`, a PNG data URL (the starter, a blank or the current skin).
+    /// `seeded`: the launcher put it in an empty wardrobe by itself (see `create_seeded`).
     pub async fn skin_create(
         &self,
         name: &str,
         model: SkinModel,
         texture: &str,
+        owner: Option<&str>,
+        seeded: bool,
     ) -> Result<SkinEntry> {
         let png = skins_png::from_data_url(texture)?;
-        self.skins.create(name, model, &png).await
+        if seeded {
+            self.skins.create_seeded(name, model, &png, owner).await
+        } else {
+            self.skins.create(name, model, &png, owner).await
+        }
     }
 
     /// A new skin from a PNG file the player picked, named after the file.
-    pub async fn skin_import(&self, path: PathBuf) -> Result<SkinEntry> {
+    pub async fn skin_import(&self, path: PathBuf, owner: Option<&str>) -> Result<SkinEntry> {
         let meta = tokio::fs::metadata(&path).await?;
         if !meta.is_file() || meta.len() > skins_png::MAX_SKIN_BYTES as u64 {
             return Err(skins_png::normalise(&[]).unwrap_err());
@@ -89,7 +105,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .map(|s| s.to_string_lossy().trim().chars().take(64).collect())
             .filter(|s: &String| !s.is_empty())
             .unwrap_or_else(|| "Skin".to_string());
-        self.skins.create(&name, SkinModel::Classic, &png).await
+        self.skins
+            .create(&name, SkinModel::Classic, &png, owner)
+            .await
     }
 
     pub async fn skin_save(&self, id: &str, texture: &str) -> Result<SkinEntry> {
@@ -155,6 +173,19 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }))
     }
 
+    /// Puts the skin the Microsoft account `uuid` wears in its wardrobe, named `name` when it's
+    /// new (an entry with the same texture and arm model is reused), and marks it worn. `None`
+    /// for an offline account or one wearing Minecraft's default skin.
+    pub async fn skin_sync_current(&self, uuid: &str, name: &str) -> Result<Option<SkinEntry>> {
+        let account = self.account(uuid).await?;
+        let Some((png, model)) = self.current_skin(account).await? else {
+            return Ok(None);
+        };
+        Ok(Some(
+            self.skins.record_current(uuid, name, model, &png).await?,
+        ))
+    }
+
     /// The skin `account` wears: the texture from the same cache as the account's face (no
     /// token needed), the arm model from the Minecraft profile, or read off the texture when the
     /// profile can't be asked.
@@ -191,19 +222,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if account.provider != Provider::Microsoft {
             return Err(offline_account());
         }
-        let model = self
-            .skins
-            .list()
-            .await?
-            .into_iter()
-            .find(|s| s.id == id)
-            .map(|s| s.model)
-            .ok_or_else(|| {
-                LauncherError::disk(
-                    ErrorCode::SkinNotFound,
-                    "That skin isn't in your wardrobe anymore.",
-                )
-            })?;
+        let model = self.skins.entry(id).await?.model;
         let png = self.skins.texture(id).await?;
         let token = self.minecraft_token(account).await?;
         self.runner
@@ -215,7 +234,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if let Err(e) = skins::remember_texture(&self.config.dirs.skins(), uuid, &png).await {
             tracing::debug!(code = ?e.code, "couldn't remember the skin just worn");
         }
-        self.skins.list().await
+        self.skins_list(Some(uuid)).await
     }
 }
 
@@ -287,7 +306,7 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Release);
         let alex = alex(&core).await;
         let entry = core
-            .skin_create("Mine", SkinModel::Slim, &texture())
+            .skin_create("Mine", SkinModel::Slim, &texture(), Some(&alex.uuid), false)
             .await
             .unwrap();
         let list = core.skin_wear(&entry.id, &alex.uuid).await.unwrap();
@@ -303,7 +322,13 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Release);
         let alex = alex(&core).await;
         let entry = core
-            .skin_create("Mine", SkinModel::Classic, &texture())
+            .skin_create(
+                "Mine",
+                SkinModel::Classic,
+                &texture(),
+                Some(&alex.uuid),
+                false,
+            )
             .await
             .unwrap();
         runner
@@ -317,7 +342,9 @@ mod tests {
             )));
         let e = core.skin_wear(&entry.id, &alex.uuid).await.unwrap_err();
         assert_eq!(e.code, ErrorCode::SkinRejected);
-        assert!(core.skins_list().await.unwrap()[0].worn_by.is_none());
+        assert!(core.skins_list(Some(&alex.uuid)).await.unwrap()[0]
+            .worn_by
+            .is_none());
     }
 
     #[tokio::test]
@@ -325,7 +352,13 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Release);
         let steve = steve(&core).await;
         let entry = core
-            .skin_create("Mine", SkinModel::Classic, &texture())
+            .skin_create(
+                "Mine",
+                SkinModel::Classic,
+                &texture(),
+                Some(&steve.uuid),
+                false,
+            )
             .await
             .unwrap();
         let e = core.skin_wear(&entry.id, &steve.uuid).await.unwrap_err();
@@ -382,12 +415,110 @@ mod tests {
         let (core, _runner, _host, t) = core(BuildKind::Release);
         let alex = alex(&core).await;
         let entry = core
-            .skin_create("Mine", SkinModel::Slim, &texture())
+            .skin_create("Mine", SkinModel::Slim, &texture(), Some(&alex.uuid), false)
             .await
             .unwrap();
         core.skin_wear(&entry.id, &alex.uuid).await.unwrap();
         let id = launcher_core::skins::profile_id(&alex.uuid).unwrap();
         assert!(t.path().join(format!("cache/skins/{id}.png")).is_file());
+    }
+
+    fn real_skin(core_runner: &crate::testing::FakeRunner) {
+        let png = skins_png::from_data_url(&texture()).unwrap();
+        *core_runner.skin.lock().unwrap() = Some(Ok(Some(png)));
+        core_runner
+            .msa
+            .skin_models
+            .lock()
+            .unwrap()
+            .push_back(Ok(Some(SkinModel::Slim)));
+    }
+
+    #[tokio::test]
+    async fn sync_current_adds_a_microsoft_accounts_skin_once() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = alex(&core).await;
+        real_skin(&runner);
+        let first = core
+            .skin_sync_current(&alex.uuid, "Alex's skin")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(first.model, SkinModel::Slim);
+        assert_eq!(first.worn_by.as_deref(), Some(alex.uuid.as_str()));
+        assert_eq!(core.skin_texture(&first.id).await.unwrap(), texture());
+        real_skin(&runner);
+        let again = core
+            .skin_sync_current(&alex.uuid, "Alex's skin")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(again.id, first.id);
+        assert_eq!(core.skins_list(Some(&alex.uuid)).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn sync_current_is_none_offline_or_wearing_the_default() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let steve = steve(&core).await;
+        assert_eq!(
+            core.skin_sync_current(&steve.uuid, "x").await.unwrap(),
+            None
+        );
+        let alex = alex(&core).await;
+        *runner.skin.lock().unwrap() = Some(Ok(None));
+        assert_eq!(core.skin_sync_current(&alex.uuid, "x").await.unwrap(), None);
+        assert!(core.skins_list(Some(&alex.uuid)).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_active_account_adopts_loose_skins_and_others_dont() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let loose = core
+            .skin_create("Loose", SkinModel::Classic, &texture(), None, false)
+            .await
+            .unwrap();
+        let steve = steve(&core).await;
+        let alex = alex(&core).await; // now the active account
+        assert!(core.skins_list(Some(&steve.uuid)).await.unwrap().is_empty());
+        assert_eq!(core.skins_list(None).await.unwrap().len(), 1);
+        let mine = core.skins_list(Some(&alex.uuid)).await.unwrap();
+        assert_eq!(mine[0].id, loose.id);
+        assert!(core.skins_list(None).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn signing_in_drops_the_untouched_starter_made_with_no_account() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let starter = core
+            .skin_create("The Perlander", SkinModel::Classic, &texture(), None, true)
+            .await
+            .unwrap();
+        let mine = core
+            .skin_create("Mine", SkinModel::Classic, &texture(), None, false)
+            .await
+            .unwrap();
+        let alex = alex(&core).await;
+        let ids: Vec<_> = core
+            .skins_list(Some(&alex.uuid))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(ids, vec![mine.id]);
+        assert!(core.skin_texture(&starter.id).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn new_skins_go_to_the_wardrobe_shown() {
+        let (core, _runner, _host, t) = core(BuildKind::Release);
+        let steve = steve(&core).await;
+        let path = t.path().join("castle.png");
+        std::fs::write(&path, skins_png::encode(&RgbaImage::new(64, 64)).unwrap()).unwrap();
+        let imported = core.skin_import(path, Some(&steve.uuid)).await.unwrap();
+        assert_eq!(imported.owner.as_deref(), Some(steve.uuid.as_str()));
+        assert_eq!(core.skins_list(Some(&steve.uuid)).await.unwrap().len(), 1);
     }
 
     #[tokio::test]
@@ -396,7 +527,7 @@ mod tests {
         let path = t.path().join("old skin.png");
         let legacy = skins_png::encode(&RgbaImage::new(64, 32)).unwrap();
         std::fs::write(&path, legacy).unwrap();
-        let entry = core.skin_import(path).await.unwrap();
+        let entry = core.skin_import(path, None).await.unwrap();
         assert_eq!(entry.name, "old skin");
         let url = core.skin_texture(&entry.id).await.unwrap();
         let image = skins_png::decode(&skins_png::from_data_url(&url).unwrap()).unwrap();
@@ -409,7 +540,7 @@ mod tests {
         let path = t.path().join("photo.png");
         std::fs::write(&path, b"not a png").unwrap();
         assert_eq!(
-            core.skin_import(path).await.unwrap_err().code,
+            core.skin_import(path, None).await.unwrap_err().code,
             ErrorCode::SkinInvalid
         );
     }
@@ -418,7 +549,7 @@ mod tests {
     async fn export_adds_png_extension() {
         let (core, _runner, _host, t) = core(BuildKind::Release);
         let entry = core
-            .skin_create("Mine", SkinModel::Classic, &texture())
+            .skin_create("Mine", SkinModel::Classic, &texture(), None, false)
             .await
             .unwrap();
         let out = core
