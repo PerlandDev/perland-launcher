@@ -1494,9 +1494,14 @@ mod tests {
         sign_in(&core);
         let fake = stack(&runner);
         core.manage_action("t1", "s", "start").await.unwrap();
-        core.perland_email_verify("steve@example.com", "123456")
-            .await
-            .unwrap();
+        // A new sign-in on the Perland page finishes.
+        let answer = runner.player.token_answer.lock().unwrap().clone().unwrap();
+        core.adopt(
+            Url::parse("https://api.example.com/").unwrap(),
+            answer,
+            Some(launcher_core::perland::CLIENT_ID.into()),
+        )
+        .await;
         core.manage_action("t1", "s", "start").await.unwrap();
         let sessions = fake.calls_to("player_session");
         assert_eq!(sessions.len(), 2);

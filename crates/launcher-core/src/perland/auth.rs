@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::{
-    api::{accounts_closed, signed_out},
+    api::{accounts_closed, launcher_update_required, signed_out},
     wire::{failure, status_fallback, Credential, Reply, Wire},
 };
 use crate::{
@@ -273,6 +273,7 @@ impl AuthClient {
         let code = failure(reply).code;
         match code.as_deref() {
             Some("player_accounts_disabled") => return accounts_closed(&host),
+            Some("launcher_update_required") => return launcher_update_required(&host),
             // The session no longer works.
             Some("account_disabled") => return signed_out(&host),
             _ => {}

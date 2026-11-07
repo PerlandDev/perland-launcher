@@ -626,9 +626,14 @@ mod tests {
         let (core, runner, host, _t) = core(BuildKind::Dev);
         sign_in(&core);
         core.manage_console_open("t1", "survival").await.unwrap();
-        core.perland_email_verify("steve@example.com", "123456")
-            .await
-            .unwrap();
+        // A new sign-in on the Perland page finishes.
+        let answer = runner.player.token_answer.lock().unwrap().clone().unwrap();
+        core.adopt(
+            Url::parse("https://api.example.com/").unwrap(),
+            answer,
+            Some(launcher_core::perland::CLIENT_ID.into()),
+        )
+        .await;
         assert!(*runner.stack.log_streams.lock().unwrap()[0].stop.borrow());
         assert!(core.console_stream.lock().unwrap().is_none());
         runner.stack.log_lines(0, &["a"]);

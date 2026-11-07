@@ -27,10 +27,9 @@ pub use log_stream::{
 pub use loopback::{Callback, Language, Loopback, Page};
 pub use oauth::{oauth_authorize_url, Discovery, OAuthClient, CLIENT_ID, SCOPE};
 pub use panel::{
-    account_path, handoff_url, launcher_sign_in_url, manage_url, panel_page, panel_url,
-    server_path, upgrade_path,
+    account_path, handoff_url, manage_url, panel_page, panel_url, server_path, upgrade_path,
 };
-pub use pkce::{authorize_url, Pkce};
+pub use pkce::Pkce;
 pub use session::{
     KeyringStore, MemoryStore, Profile, SecretError, SecretStore, Session, SessionStore,
 };

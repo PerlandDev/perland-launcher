@@ -1,6 +1,6 @@
-//! The Engine's player routes (`/api/v1/player`): sign-in, the profile, and Your servers. The
-//! bearer token goes in a header, never in a URL; request bodies hold the PKCE verifier, the
-//! authorization code and the email code, so none of them is ever printed.
+//! The Engine's player routes (`/api/v1/player`): the profile and Your servers, plus the
+//! account's email (`/api/v1/auth/me/email`). The bearer token goes in a header, never in a
+//! URL; request bodies hold the email code, so none of them is ever printed.
 
 use std::{fmt, time::Duration};
 
@@ -449,6 +449,11 @@ struct DeletedData {
 }
 
 #[derive(Deserialize)]
+struct VerifiedEmail {
+    email: String,
+}
+
+#[derive(Deserialize)]
 struct ServersData {
     #[serde(default)]
     servers: Vec<YourServer>,
@@ -458,10 +463,6 @@ struct ServersData {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Route {
     Plain,
-    /// `POST /token`: the player typed no code, so a refused one is a failed sign-in.
-    Token,
-    /// The email sign-in routes: no session yet, so a disabled account is said as such.
-    SignIn,
     /// Your servers: a 404 is an Engine that doesn't have them.
     Servers,
 }
@@ -511,34 +512,36 @@ impl PlayerClient {
         }
     }
 
-    /// `POST /token`: redeem the code the loopback redirect delivered.
-    pub async fn token(&self, code: &str, verifier: &str, redirect: &str) -> Result<TokenAnswer> {
-        let body = json!({ "code": code, "codeVerifier": verifier, "redirectUri": redirect });
-        let reply = self
-            .send(Method::POST, "/token", None, Some(&body), BODY_CAP)
-            .await?;
-        self.ok(&reply, Route::Token)?;
-        self.data(&reply)
-    }
-
-    /// `POST /email/start`: email a one-time code.
-    pub async fn email_start(&self, email: &str, language: &str) -> Result<EmailStarted> {
+    /// `POST /api/v1/auth/me/email/start`: email a one-time code to add `email` to the
+    /// signed-in account. `language` is `en` or `es`.
+    pub async fn account_email_start(
+        &self,
+        token: &str,
+        email: &str,
+        language: &str,
+    ) -> Result<EmailStarted> {
         let body = json!({ "email": email, "language": language });
         let reply = self
-            .send(Method::POST, "/email/start", None, Some(&body), BODY_CAP)
+            .send_auth(Method::POST, "/me/email/start", token, Some(&body))
             .await?;
-        self.ok(&reply, Route::SignIn)?;
+        self.ok(&reply, Route::Plain)?;
         self.data(&reply)
     }
 
-    /// `POST /email/verify`: trade the emailed code for a token.
-    pub async fn email_verify(&self, email: &str, code: &str) -> Result<TokenAnswer> {
+    /// `POST /api/v1/auth/me/email/verify`: the emailed code puts `email` on the account. The
+    /// answer is the verified email. One already on another account is `email_in_use`.
+    pub async fn account_email_verify(
+        &self,
+        token: &str,
+        email: &str,
+        code: &str,
+    ) -> Result<String> {
         let body = json!({ "email": email, "code": code });
         let reply = self
-            .send(Method::POST, "/email/verify", None, Some(&body), BODY_CAP)
+            .send_auth(Method::POST, "/me/email/verify", token, Some(&body))
             .await?;
-        self.ok(&reply, Route::SignIn)?;
-        self.data(&reply)
+        self.ok(&reply, Route::Plain)?;
+        Ok(self.data::<VerifiedEmail>(&reply)?.email)
     }
 
     /// `GET /me`. A 401 is `perland_signed_out`.
@@ -793,6 +796,27 @@ impl PlayerClient {
             .await
     }
 
+    /// One request to the Engine's auth routes (`/api/v1/auth{route}`), with the player's
+    /// token.
+    async fn send_auth(
+        &self,
+        method: Method,
+        route: &str,
+        token: &str,
+        body: Option<&Value>,
+    ) -> Result<Reply> {
+        self.wire
+            .send(
+                self.timeout,
+                method,
+                &format!("/api/v1/auth{route}"),
+                Credential::Bearer(token),
+                body,
+                BODY_CAP,
+            )
+            .await
+    }
+
     /// `send` with its own timeout.
     async fn send_within(
         &self,
@@ -840,18 +864,15 @@ impl PlayerClient {
         };
         match failure.code.as_deref() {
             Some("player_accounts_disabled") => return accounts_closed(&host),
-            // Signing in to a disabled account: say so, there is no session to end.
-            Some("account_disabled") if matches!(route, Route::Token | Route::SignIn) => {
-                return account_disabled(&host)
-            }
+            Some("launcher_update_required") => return launcher_update_required(&host),
             // A disabled player user: the session is no use any more.
             Some("account_disabled") => return signed_out(&host),
             Some("sign_in_method_unavailable") => {
                 return sign_in_unavailable(&host, param("method").as_deref())
             }
             Some("invalid_email") => return invalid_email(&host),
-            Some("invalid_code") if route == Route::Token => return sign_in_failed(&host),
             Some("invalid_code") => return invalid_code(&host, param("attemptsLeft")),
+            Some("email_in_use") => return email_in_use(&host),
             Some("too_many_codes") => return too_many_codes(&host, param("retryAfter")),
             Some("email_unavailable") => return email_unavailable(&host),
             Some("player_servers_unavailable") => return servers_closed(&host),
@@ -914,9 +935,24 @@ fn sign_in_unavailable(host: &str, method: Option<&str>) -> LauncherError {
     }
 }
 
-fn sign_in_failed(host: &str) -> LauncherError {
-    LauncherError::auth(ErrorCode::SignInFailed, "Couldn't sign you in. Try again.")
-        .with_param("host", host)
+/// The Engine would make an account here, which only the Perland page does now: an older
+/// launcher's sign-in, or a route that predates the page.
+pub(super) fn launcher_update_required(host: &str) -> LauncherError {
+    LauncherError::auth(
+        ErrorCode::LauncherUpdateRequired,
+        "Update Perland Launcher to sign up.",
+    )
+    .with_fix("Update Perland Launcher from Settings.")
+    .with_param("host", host)
+}
+
+fn email_in_use(host: &str) -> LauncherError {
+    LauncherError::auth(
+        ErrorCode::EmailInUse,
+        "That email is already on another Perland account.",
+    )
+    .with_fix("Use another email, or sign in with that account.")
+    .with_param("host", host)
 }
 
 fn invalid_email(host: &str) -> LauncherError {
@@ -949,15 +985,6 @@ fn email_unavailable(host: &str) -> LauncherError {
         ErrorCode::EmailUnavailable,
         "The email couldn't be sent. Try again in a moment.",
     )
-    .with_param("host", host)
-}
-
-fn account_disabled(host: &str) -> LauncherError {
-    LauncherError::auth(
-        ErrorCode::AccountDisabled,
-        "This Perland account is turned off.",
-    )
-    .with_fix("Contact Perland support.")
     .with_param("host", host)
 }
 

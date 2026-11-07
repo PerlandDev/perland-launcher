@@ -1136,6 +1136,8 @@
     "sign_in_client_refused": { "message": "This Perland doesn't accept sign-ins from this launcher." },
     "sign_in_incompatible": { "message": "This Perland signs in a way this launcher doesn't support yet.", "fix": "Update the launcher" },
     "sign_in_canceled": { "message": "Sign-in was canceled." },
+    "launcher_update_required": { "message": "Update Perland Launcher to sign up.", "fix": "Update Perland Launcher from Settings." },
+    "email_in_use": { "message": "That email is already on another Perland account.", "fix": "Use another email, or sign in with that account." },
     "invalid_email": { "message": "Check the email address." },
     "invalid_code": { "message": "That code isn't right." },
     "too_many_codes": { "message": "Wait {{retryAfter}} seconds before asking for another code." },

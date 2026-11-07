@@ -40,11 +40,11 @@ use launcher_core::{
     news::NewsPage,
     perland::{
         Apply, BanList, ConsoleReply, CreateAllowance, CreateFreeServer, CreateServer,
-        CreatedServer, Diagnosis, DiscordAccount, Discovery, Disk, EmailStarted, EngineVersion,
-        FreeLimits, FreeServer, FreeServerSettings, FreeServerState, Handoff, Lifecycle, LinkCode,
-        ListKind, Membership, MemoryLimits, NameList, NameResult, Online, Pkce, Player,
-        PlayerConfig, PlayerStats, SessionJwt, SettingsDoc, SettingsSaved, SignInMethod,
-        StackDetail, StackItem, TeamUsage, TokenAnswer, YourServer,
+        CreatedServer, Diagnosis, DiscordAccount, Discovery, Disk, EngineVersion, FreeLimits,
+        FreeServer, FreeServerSettings, FreeServerState, Handoff, Lifecycle, LinkCode, ListKind,
+        Membership, MemoryLimits, NameList, NameResult, Online, Pkce, Player, PlayerConfig,
+        PlayerStats, SessionJwt, SettingsDoc, SettingsSaved, SignInMethod, StackDetail, StackItem,
+        TeamUsage, TokenAnswer, YourServer,
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
@@ -1314,13 +1314,12 @@ pub(crate) struct FakePlayer {
     pub site: Mutex<Result<Url>>,
     /// Default: accounts on, Discord and email.
     pub config: Mutex<Result<PlayerConfig>>,
-    /// What `token`, `oauth_token` and `email_verify` answer. Default: Steve,
-    /// `player_token('x')`, new.
+    /// What `oauth_token` answers. Default: Steve, `player_token('x')`, new.
     pub token_answer: Mutex<Result<TokenAnswer>>,
-    /// What `discover` answers. Default: no OAuth sign-in (`None`), an Engine from before it.
+    /// What `discover` answers. Default: the Perland page at
+    /// `https://panel.example.com/oauth/authorize`.
     pub discovery: Mutex<Result<Option<Discovery>>>,
     pub revoke: Mutex<Result<()>>,
-    pub email_started: Mutex<Result<EmailStarted>>,
     /// Default: Steve.
     pub me: Mutex<Result<Player>>,
     pub sign_out: Mutex<Result<()>>,
@@ -1364,12 +1363,11 @@ impl FakePlayer {
                 player: sample_player(),
                 new_player: true,
             })),
-            discovery: Mutex::new(Ok(None)),
+            discovery: Mutex::new(Ok(Some(Discovery {
+                authorization_endpoint: Url::parse("https://panel.example.com/oauth/authorize")
+                    .unwrap(),
+            }))),
             revoke: Mutex::new(Ok(())),
-            email_started: Mutex::new(Ok(EmailStarted {
-                expires_in: 600,
-                resend_in: 60,
-            })),
             me: Mutex::new(Ok(sample_player())),
             sign_out: Mutex::new(Ok(())),
             servers: Mutex::new(Ok(vec![])),
@@ -1457,20 +1455,6 @@ impl PlayerApi for FakePlayer {
     fn config(&self, engine: Url) -> BoxFuture<Result<PlayerConfig>> {
         self.record("config", engine, &[], &self.config)
     }
-    fn token(
-        &self,
-        engine: Url,
-        code: String,
-        verifier: String,
-        redirect: String,
-    ) -> BoxFuture<Result<TokenAnswer>> {
-        self.record(
-            "token",
-            engine,
-            &[&code, &verifier, &redirect],
-            &self.token_answer,
-        )
-    }
     fn discover(&self, engine: Url) -> BoxFuture<Result<Option<Discovery>>> {
         self.record("discover", engine, &[], &self.discovery)
     }
@@ -1490,27 +1474,6 @@ impl PlayerApi for FakePlayer {
     }
     fn revoke(&self, engine: Url, token: String) -> BoxFuture<Result<()>> {
         self.record("revoke", engine, &[&token], &self.revoke)
-    }
-    fn email_start(
-        &self,
-        engine: Url,
-        email: String,
-        language: String,
-    ) -> BoxFuture<Result<EmailStarted>> {
-        self.record(
-            "email_start",
-            engine,
-            &[&email, &language],
-            &self.email_started,
-        )
-    }
-    fn email_verify(
-        &self,
-        engine: Url,
-        email: String,
-        code: String,
-    ) -> BoxFuture<Result<TokenAnswer>> {
-        self.record("email_verify", engine, &[&email, &code], &self.token_answer)
     }
     fn me(&self, engine: Url, token: String) -> BoxFuture<Result<Player>> {
         self.record("me", engine, &[&token], &self.me)

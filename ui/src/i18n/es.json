@@ -1136,6 +1136,8 @@
     "sign_in_client_refused": { "message": "Este Perland no acepta inicios de sesión desde este launcher." },
     "sign_in_incompatible": { "message": "Este Perland inicia sesión de una forma que este launcher todavía no admite.", "fix": "Actualiza el launcher" },
     "sign_in_canceled": { "message": "Cancelaste el inicio de sesión." },
+    "launcher_update_required": { "message": "Actualiza Perland Launcher para registrarte.", "fix": "Actualiza Perland Launcher desde Configuración." },
+    "email_in_use": { "message": "Ese correo ya está en otra cuenta de Perland.", "fix": "Usa otro correo o inicia sesión con esa cuenta." },
     "invalid_email": { "message": "Revisa el correo electrónico." },
     "invalid_code": { "message": "Ese código no es correcto." },
     "too_many_codes": { "message": "Espera {{retryAfter}} segundos antes de pedir otro código." },
