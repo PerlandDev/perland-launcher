@@ -59,6 +59,10 @@ impl LauncherDirs {
     pub fn objects(&self) -> PathBuf {
         self.root.join("cache").join("objects")
     }
+    /// The player's skin wardrobe (`skins_library`).
+    pub fn skins(&self) -> PathBuf {
+        self.root.join("skins")
+    }
     /// Browse's image cache (project icons and gallery images), pruned by size.
     pub fn images(&self) -> PathBuf {
         self.root.join("cache").join("images")

@@ -36,6 +36,8 @@ pub mod server_list;
 pub mod server_wake;
 pub mod settings;
 pub mod share;
+pub mod skins_library;
+pub mod skins_png;
 pub mod sources;
 pub mod sync;
 #[cfg(test)]

@@ -106,6 +106,8 @@ error_codes! {
     TeamServerTooBig, ServerNameTaken, InvalidTeamServer,
     // sharing an instance
     SharePathInvalid, ShareTooLarge,
+    // skins
+    SkinInvalid, SkinNotFound, SkinRejected, SkinOfflineAccount,
     // anything unexpected
     Internal,
 }
