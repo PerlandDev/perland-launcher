@@ -118,6 +118,25 @@ describe('JoinServer', () => {
     expect(await screen.findByRole('heading', { name: 'survival' })).toBeInTheDocument();
   });
 
+  it("reads a server's copied modpack link as its invite", async () => {
+    const { user, calls } = renderApp(<JoinServer invite="" />, { server: 'online' });
+    await user.type(screen.getByRole('textbox', { name: 'Invite link' }), `https://api.example.com/api/v1/invites/${'B'.repeat(43)}/pack`);
+    await user.click(screen.getByRole('button', { name: 'Check link' }));
+    expect(await screen.findByRole('heading', { name: 'survival' })).toBeInTheDocument();
+    expect(sent(calls, 'join_preview')).toEqual([{ link: OTHER }]);
+    await user.click(screen.getByRole('button', { name: 'Add server' }));
+    expect(sent(calls, 'join_add')).toEqual([{ link: OTHER }]);
+  });
+
+  it('says to use the invite page for a modpack link from a server it cannot place', async () => {
+    const { user, calls } = renderApp(<JoinServer invite="" />, { server: 'online' });
+    await user.type(screen.getByRole('textbox', { name: 'Invite link' }), `https://api.other.example/api/v1/invites/${'B'.repeat(43)}/pack`);
+    await user.click(screen.getByRole('button', { name: 'Check link' }));
+    expect(await screen.findByText("That's a server's modpack link, not its invite link.")).toBeInTheDocument();
+    expect(screen.queryByText("That isn't a Perland invite link.")).toBeNull();
+    expect(sent(calls, 'join_preview')).toEqual([]);
+  });
+
   it('relinks, warning when the link is for another server', async () => {
     const { user, calls } = renderApp(<JoinServer invite="" relinkFor="survival" />, { server: 'vanilla' });
     expect(await screen.findByRole('heading', { name: 'Use a new invite link' })).toBeInTheDocument();

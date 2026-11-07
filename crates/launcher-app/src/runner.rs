@@ -114,6 +114,10 @@ pub trait Runner: Send + Sync + 'static {
     fn public_icon(&self, token: String, icon_version: String) -> BoxFuture<Option<Vec<u8>>>;
     /// The invite Play joins for a listed server.
     fn public_invite(&self, server: &PublicServer) -> Option<InviteLink>;
+    /// The invite an Engine link (the invite page's Copy modpack link) stands for on the
+    /// Perland site, or `None` when `input` isn't one. See
+    /// `PublicListClient::invite_for_engine_link`.
+    fn engine_invite(&self, input: String) -> BoxFuture<Result<Option<InviteLink>>>;
     /// One page of a server's news, or `None` ("no news here"). See `NewsClient::page`.
     fn news_page(
         &self,
@@ -328,6 +332,11 @@ impl Runner for CoreRunner {
 
     fn public_invite(&self, server: &PublicServer) -> Option<InviteLink> {
         self.public.invite_for(server)
+    }
+
+    fn engine_invite(&self, input: String) -> BoxFuture<Result<Option<InviteLink>>> {
+        let public = self.public.clone();
+        Box::pin(async move { public.invite_for_engine_link(&input).await })
     }
 
     fn news_page(

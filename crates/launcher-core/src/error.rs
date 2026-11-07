@@ -75,7 +75,7 @@ error_codes! {
     ContentConflict, ContentNeedsLoader, ContentAlreadyInstalled, ContentBusy,
     ContentInstalling, ContentPlanExpired, ImageRefused, LinkRefused,
     // server invites (join by link)
-    InviteLinkInvalid, InviteGone, InviteUnsupported, InviteSiteUnreachable, InviteRateLimited,
+    InviteLinkInvalid, InvitePackLink, InviteGone, InviteUnsupported, InviteSiteUnreachable, InviteRateLimited,
     LinkHasPack,
     ServerPackUnavailable, ServerPackPending, ServerAddressUnknown, ServerListFailed, ServerListClosed,
     ServerWakeFailed,
@@ -316,6 +316,7 @@ mod tests {
     fn invite_codes_exist() {
         for (code, wire) in [
             (ErrorCode::InviteLinkInvalid, "invite_link_invalid"),
+            (ErrorCode::InvitePackLink, "invite_pack_link"),
             (ErrorCode::InviteGone, "invite_gone"),
             (ErrorCode::InviteUnsupported, "invite_unsupported"),
             (ErrorCode::InviteSiteUnreachable, "invite_site_unreachable"),

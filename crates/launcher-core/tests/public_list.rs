@@ -432,3 +432,73 @@ fn site_urls_are_checked_and_reduced_to_their_origin() {
     assert!(site_url("https://example.com/#x").is_none());
     assert!(site_url("not a url").is_none());
 }
+
+// ---- The invite page's Copy modpack link, pasted where an invite belongs ----
+
+#[tokio::test]
+async fn a_modpack_link_on_the_site_engine_is_the_site_invite() {
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    let client = client(&server);
+    for suffix in ["/pack", "/pack/zip", ""] {
+        let pasted = format!("{}/api/v1/invites/{TOKEN}{suffix}", server.uri());
+        let invite = client.invite_for_engine_link(&pasted).await.unwrap();
+        assert_eq!(
+            invite.map(|l| l.canonical()),
+            Some(format!("{}/{TOKEN}", server.uri())),
+            "{suffix:?}"
+        );
+    }
+    // Only the site's config.json is read: never the pack itself.
+    let paths: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|r| r.url.path().to_string())
+        .collect();
+    assert_eq!(paths, ["/config.json"]);
+}
+
+#[tokio::test]
+async fn other_links_ask_nothing() {
+    let server = MockServer::start().await;
+    let client = client(&server);
+    for input in [
+        "https://perlanddev.github.io/asalith-modpack/pack.toml".to_string(),
+        format!("https://play.example.com/{TOKEN}"),
+        "modrinth:sodium".into(),
+    ] {
+        assert_eq!(client.invite_for_engine_link(&input).await.unwrap(), None);
+    }
+    assert!(server.received_requests().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_modpack_link_on_another_engine_says_to_use_the_invite_page() {
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    let pasted = format!("https://api.other.example/api/v1/invites/{TOKEN}/pack");
+    let err = client(&server)
+        .invite_for_engine_link(&pasted)
+        .await
+        .unwrap_err();
+    assert_eq!(err.code, ErrorCode::InvitePackLink);
+    assert!(!format!("{err:?}").contains(TOKEN));
+}
+
+#[tokio::test]
+async fn an_unreachable_site_fails_the_modpack_link() {
+    // A port nobody listens on.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let site = site_url(&format!("http://127.0.0.1:{port}")).unwrap();
+    let http = launcher_core::http::client("test").unwrap();
+    let client = PublicListClient::new(InviteClient::new(http), site);
+    let pasted = format!("http://127.0.0.1:{port}/api/v1/invites/{TOKEN}/pack");
+    let err = client.invite_for_engine_link(&pasted).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::Offline);
+}

@@ -1020,6 +1020,7 @@
     "sync_cancelled": { "message": "Se canceló la actualización." },
     "update_download_failed": { "message": "No se pudo descargar la actualización. Sigues teniendo la {{version}}.", "fix": "Intenta actualizar más tarde." },
     "invite_link_invalid": { "message": "Eso no es un enlace de invitación de Perland.", "fix": "Los enlaces de invitación se ven como https://play.example.com/ seguido de un código largo." },
+    "invite_pack_link": { "message": "Ese es el enlace del modpack de un servidor, no su enlace de invitación.", "fix": "En la página de invitación del servidor, elige Abrir en Perland Launcher o copia la dirección de la página." },
     "invite_gone": { "message": "Este enlace de invitación ya no funciona. Pídele uno nuevo al dueño.", "fix": "Usa un nuevo enlace de invitación." },
     "invite_unsupported": { "message": "Todavía no puedes unirte a este servidor desde el launcher. Únete con la dirección {{address}}." },
     "invite_site_unreachable": { "message": "No se pudo conectar con el sitio de Perland del servidor en {{host}}.", "fix": "Revisa el enlace o inténtalo más tarde." },

@@ -495,6 +495,13 @@ pub fn open_link(app: AppHandle, url: String) -> Res<()> {
     )
 }
 
+/// The canonical invite a pasted link stands for (an invite, or the invite page's Copy modpack
+/// link), or `None`. Its errors never quote the link, which holds the token.
+#[tauri::command]
+pub async fn invite_from_link(core: CoreState<'_>, link: String) -> Res<Option<String>> {
+    logged("invite_from_link", core.invite_from_link(&link).await)
+}
+
 #[tauri::command]
 pub async fn join_preview(core: CoreState<'_>, link: String) -> Res<JoinPreview> {
     logged("join_preview", core.join_preview(&link).await)

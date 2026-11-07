@@ -5,7 +5,15 @@ import { commands } from '../../ipc/commands';
 import { isLauncherError } from '../../ipc/errors';
 import { inviteCanonical, isInviteLink } from '../../ipc/inviteLink';
 import type { Instance, JoinPreview, LauncherError } from '../../ipc/schema';
-import { recordYourServer, useInstances, useJoinAdd, useJoinPreview, useServerLink, useServerRelink } from '../../state/queries';
+import {
+  recordYourServer,
+  useInstances,
+  useInviteFromLink,
+  useJoinAdd,
+  useJoinPreview,
+  useServerLink,
+  useServerRelink,
+} from '../../state/queries';
 import { navigate } from '../../state/route';
 import { gameLine, versionWord } from '../servers-list/labels';
 import { useLinkSuggestions } from '../servers-list/yours';
@@ -61,6 +69,7 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
   const valid = isInviteLink(link);
   // The canonical spelling keys the cache, so every spelling of one link shares an entry.
   const preview = useJoinPreview(valid ? (inviteCanonical(link) ?? link) : '');
+  const resolve = useInviteFromLink();
   const add = useJoinAdd({ inline: true });
   const relink = useServerRelink(relinkFor ?? '', { inline: true });
   const linkTo = useServerLink(linkFor ?? '', { inline: true });
@@ -86,9 +95,23 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
   };
   const check = (event: FormEvent) => {
     event.preventDefault();
-    checkLink(draft.trim());
+    const next = draft.trim();
+    resolve.reset();
+    if (!next || isInviteLink(next)) {
+      checkLink(next);
+      return;
+    }
+    // A server's copied modpack link stands for its invite: show that instead. Anything else is not an invite.
+    resolve.mutate(next, {
+      onSuccess: (invite) => {
+        if (invite) setDraft(invite);
+        checkLink(invite ?? next);
+      },
+      onError: () => checkLink(''),
+    });
   };
   const suggest = (invite: string) => {
+    resolve.reset();
     setDraft(invite);
     checkLink(invite);
   };
@@ -141,7 +164,7 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
               />
             </Field>
             {/* Until a server is on screen, checking the link is the act; then the screen's own button is. */}
-            <Button type="submit" variant={data ? 'secondary' : 'primary'} disabled={!draft.trim()}>
+            <Button type="submit" variant={data ? 'secondary' : 'primary'} disabled={!draft.trim() || resolve.isPending}>
               {t('join.check')}
             </Button>
           </form>
@@ -168,6 +191,7 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
             </ul>
           </div>
         )}
+        {resolve.isError && <ErrorCard error={resolve.error} />}
         {link && !valid && <ErrorCard error={notAnInvite} />}
         {preview.isError && (
           <ErrorCard

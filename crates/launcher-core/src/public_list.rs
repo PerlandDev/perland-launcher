@@ -20,10 +20,10 @@ use crate::{
             check_engine_url, host_of, host_trouble, rate_limited, request_failed,
             server_list_closed, unexpected,
         },
-        invite_route,
+        invite_route, pack_link_refused,
         view::modrinth_ref,
-        InviteAddress, InviteClient, InviteGame, InviteLink, InviteModrinth, InvitePack,
-        InvitePlayers, Url,
+        EngineInviteLink, InviteAddress, InviteClient, InviteGame, InviteLink, InviteModrinth,
+        InvitePack, InvitePlayers, Url,
     },
     sources::perland::joinable_game,
 };
@@ -343,6 +343,24 @@ impl PublicListClient {
             .iter()
             .find(|(k, _)| k == key)
             .map(|(_, png)| png.clone())
+    }
+
+    /// The invite an Engine link stands for (the invite page's **Copy modpack link** gives
+    /// `<engine>/api/v1/invites/<token>/pack`): `<site>/<token>` when that Engine is the one
+    /// this site's `config.json` names. `None` when `input` isn't an Engine link, without a
+    /// request; `invite_pack_link` when it is on another Engine, whose invite page the launcher
+    /// can't know.
+    pub async fn invite_for_engine_link(&self, input: &str) -> Result<Option<InviteLink>> {
+        let Some(link) = EngineInviteLink::parse(input) else {
+            return Ok(None);
+        };
+        let engine = self.invites.engine_for_site(&self.site).await?;
+        if !link.is_on(&engine) {
+            return Err(pack_link_refused());
+        }
+        self.site_link(link.token())
+            .map(Some)
+            .ok_or_else(pack_link_refused)
     }
 
     /// The invite Play joins: the server's own `inviteUrl` when it is one, else the site's

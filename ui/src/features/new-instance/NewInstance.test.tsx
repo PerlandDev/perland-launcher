@@ -190,6 +190,26 @@ it('sends an invite link pasted as a pack link to Join server', async () => {
   expect(sent(calls, 'pack_add')).toEqual([]);
 });
 
+it("sends a server's copied modpack link to Join server with its invite", async () => {
+  const { user, calls } = renderApp(<NewInstance />);
+  await user.click(await screen.findByRole('radio', { name: 'Paste a pack link' }));
+  const token = 'B'.repeat(43);
+  await user.type(screen.getByRole('textbox', { name: 'Pack link' }), `https://api.example.com/api/v1/invites/${token}/pack`);
+  await user.click(screen.getByRole('button', { name: 'Add pack' }));
+  await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'joinServer', invite: `https://play.example.com/${token}` }));
+  expect(sent(calls, 'pack_add')).toEqual([]);
+});
+
+it('says to use the invite page for a modpack link from a server it cannot place', async () => {
+  const { user, calls } = renderApp(<NewInstance />);
+  await user.click(await screen.findByRole('radio', { name: 'Paste a pack link' }));
+  await user.type(screen.getByRole('textbox', { name: 'Pack link' }), `https://api.other.example/api/v1/invites/${'B'.repeat(43)}/pack`);
+  await user.click(screen.getByRole('button', { name: 'Add pack' }));
+  expect(await screen.findByText("That's a server's modpack link, not its invite link.")).toBeInTheDocument();
+  expect(sent(calls, 'pack_add')).toEqual([]);
+  expect(routeSnapshot()).toEqual({ name: 'home', id: null });
+});
+
 it('offers a fourth mode that imports from another launcher', async () => {
   const { user } = renderApp(<NewInstance />);
   await user.click(await screen.findByRole('radio', { name: 'From another launcher' }));

@@ -27,8 +27,8 @@ use launcher_core::{
     events::{Event, EventSink, TaskId},
     instances::{GameSpec, Instance, InstanceStore, ServerAddress, SourceRef, UpdatePolicy},
     invite::{
-        EngineView, InviteAddress, InviteGame, InviteLink, InviteModrinth, InvitePack,
-        InvitePlayers, InviteTeam, InviteView, Url,
+        pack_link_refused, EngineInviteLink, EngineView, InviteAddress, InviteGame, InviteLink,
+        InviteModrinth, InvitePack, InvitePlayers, InviteTeam, InviteView, Url,
     },
     launch::GameExit,
     locks::InstanceLock,
@@ -476,7 +476,8 @@ pub(crate) struct FakeRunner {
     pub public_page: Mutex<Option<Result<FetchedPage>>>,
     /// The queries `public_page` was asked.
     pub public_queries: Mutex<Vec<ListQuery>>,
-    /// Whether `public_invite` finds a link (it builds `play.example.com/<token>`).
+    /// Whether `public_invite` and `engine_invite` find a link (they build
+    /// `play.example.com/<token>`); `engine_invite` otherwise answers `invite_pack_link`.
     pub public_invites: Mutex<bool>,
     /// What `news_page` answers (none: no news here).
     pub news_page: Mutex<Option<Result<Option<NewsPage>>>>,
@@ -848,6 +849,17 @@ impl Runner for FakeRunner {
             return None;
         }
         InviteLink::parse(&format!("https://play.example.com/{}", server.token)).ok()
+    }
+
+    fn engine_invite(&self, input: String) -> BoxFuture<Result<Option<InviteLink>>> {
+        let answer = match EngineInviteLink::parse(&input) {
+            None => Ok(None),
+            Some(link) if *self.public_invites.lock().unwrap() => {
+                Ok(InviteLink::parse(&format!("https://play.example.com/{}", link.token())).ok())
+            }
+            Some(_) => Err(pack_link_refused()),
+        };
+        Box::pin(async move { answer })
     }
 
     fn news_page(

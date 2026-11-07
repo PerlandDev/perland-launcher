@@ -71,6 +71,17 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }))
     }
 
+    /// The canonical invite `link` stands for: itself when it is an invite, the Perland site's
+    /// invite when it is the invite page's Copy modpack link, `None` for anything else (a pack
+    /// link). New instance and Join server ask this before treating a link as a pack.
+    pub async fn invite_from_link(&self, link: &str) -> Result<Option<String>> {
+        if let Ok(invite) = InviteLink::parse(link) {
+            return Ok(Some(invite.canonical()));
+        }
+        let invite = self.runner.engine_invite(link.trim().to_string()).await?;
+        Ok(invite.map(|l| l.canonical()))
+    }
+
     /// What Join server shows: the view and the icon. Nothing else is downloaded, and nothing
     /// is written.
     pub async fn join_preview(&self, link: &str) -> Result<JoinPreview> {
@@ -352,6 +363,38 @@ mod tests {
             let text = format!("{err:?} {}", serde_json::to_string(&err).unwrap());
             assert!(!text.contains(&token), "{text}");
         }
+    }
+
+    #[tokio::test]
+    async fn invite_from_link_keeps_an_invite_and_reads_a_modpack_link_as_one() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        let token = "A".repeat(43);
+        // An invite is answered as it is, canonical.
+        assert_eq!(
+            core.invite_from_link(&format!(" https://PLAY.example.com/{token}/ "))
+                .await
+                .unwrap(),
+            Some(invite('A'))
+        );
+        // The invite page's Copy modpack link stands for the site's invite.
+        let pasted = format!("https://api.example.com/api/v1/invites/{token}/pack");
+        assert_eq!(
+            core.invite_from_link(&pasted).await.unwrap(),
+            Some(invite('A'))
+        );
+        // Anything else isn't a server: the caller adds it as a pack.
+        assert_eq!(
+            core.invite_from_link("https://perlanddev.github.io/asalith-modpack/pack.toml")
+                .await
+                .unwrap(),
+            None
+        );
+        // A modpack link on an Engine that isn't the site's can't be joined.
+        *runner.public_invites.lock().unwrap() = false;
+        assert_eq!(
+            core.invite_from_link(&pasted).await.unwrap_err().code,
+            ErrorCode::InvitePackLink
+        );
     }
 
     #[tokio::test]
