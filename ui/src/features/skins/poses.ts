@@ -115,15 +115,15 @@ export function rigAt(pose: Pose, t: number): Rig {
       joints.head = [-0.08, -0.15, -0.08];
       break;
     case 'boat': {
-      // Rowing: both arms pull together while the boat rocks.
-      const row = Math.sin(t * Math.PI * 2 * 0.6);
+      // Sitting in the boat, legs out in front, hands resting on the rim either side while it rocks. Seated high
+      // enough that the feet stay inside the hull (there's no water to hide them), and still on the seat, so the
+      // hands stay on the rim as the boat moves.
       joints.rightLeg = [-1.35, 0.15, 0];
       joints.leftLeg = [-1.35, -0.15, 0];
-      joints.rightArm = [-0.85 + row * 0.45, 0, -0.18];
-      joints.leftArm = [-0.85 + row * 0.45, 0, 0.18];
-      joints.torso = [-0.08 + row * 0.08, 0, 0];
-      // Seated high enough that the feet stay inside the hull: there's no water left to hide them.
-      offset[1] = -5.5 + Math.sin(t * 1.3) * 0.35;
+      joints.rightArm = [-0.15, 0, -0.1];
+      joints.leftArm = [-0.15, 0, 0.1];
+      joints.head = [0, Math.sin(t * 0.5) * 0.3, 0];
+      offset[1] = -5.5;
       tilt[2] = Math.sin(t * 1.1) * 0.05;
       tilt[0] = Math.sin(t * 0.9) * 0.025;
       break;

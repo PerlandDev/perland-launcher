@@ -1,6 +1,6 @@
 // The 3D figure on the Skins stage, drawn with three.js. Faces are lit the way the game lights blocks (top brightest,
 // sides darker), with no lights to ease between; the texture is nearest-filtered so every texel stays a crisp square.
-// The figure is a jointed rig that poses (walk, run, crouch, sit, wave, row a boat, ride a horse); the boat and the
+// The figure is a jointed rig that poses (walk, run, crouch, sit, wave, sit in a boat, ride a horse); the boat and the
 // horse are simple block props built here in the launcher's own palette, not anything of Mojang's. The
 // outer layer is drawn in 3D: each painted texel a small block standing on the body (see outerWalls).
 // Kept behind this small adapter so the screen can be tested without WebGL.
@@ -207,6 +207,7 @@ function boat(): { group: Group; oars: Group[] } {
   group.add(block([2.4, 1, 22.4], [7, 5.5, 0], 0x4e2e19, 0x5e3820));
   group.add(block([16.4, 1, 2.4], [0, 5.5, -12], 0x4e2e19, 0x5e3820));
   group.add(block([12, 1, 4], [0, 4.5, -4], plankDark, plank, 'planks'));
+  // The oars rest in their locks along the rim: the rider's hands are on the rim, not rowing.
   const oars: Group[] = [];
   for (const side of [-1, 1]) {
     const oar = new Group();
@@ -414,10 +415,6 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     ride.rotation.set(...rig.tilt);
     theBoat.group.visible = pose === 'boat';
     theHorse.group.visible = pose === 'horse';
-    if (pose === 'boat') {
-      const row = Math.sin(t * Math.PI * 2 * 0.6);
-      theBoat.oars.forEach((oar, i) => (oar.rotation.y = (i === 0 ? 1 : -1) * row * 0.5));
-    }
     if (pose === 'horse') {
       const gait = Math.sin(t * Math.PI * 2 * 1.05);
       theHorse.legs.forEach((leg, i) => (leg.rotation.x = (i === 0 || i === 3 ? 1 : -1) * gait * 0.45));

@@ -41,6 +41,26 @@ describe('poses', () => {
     expect(clock.paused).toBe(false);
   });
 
+  it('in the boat the hands rest on the rim, not in the air', () => {
+    for (const t of [0, 0.4, 1.3, 2.9]) {
+      const rig = rigAt('boat', t);
+      expect(rig.joints.torso).toEqual([0, 0, 0]);
+      for (const side of [-1, 1]) {
+        const [rx, , rz] = side < 0 ? rig.joints.rightArm : rig.joints.leftArm;
+        // The hand's end, 10 below the shoulder pivot (side × 6, 22) along the turned arm (x, then z).
+        const x = side * 6 + 10 * Math.sin(rz) + rig.offset[0];
+        const y = 22 - 10 * Math.cos(rz) * Math.cos(rx) + rig.offset[1];
+        const z = -10 * Math.cos(rz) * Math.sin(rx) + rig.offset[2];
+        // The rim runs along each side at x = ±7 (2.4 wide), its top at y = 6.
+        expect(Math.abs(x)).toBeGreaterThan(6.2);
+        expect(Math.abs(x)).toBeLessThan(7.8);
+        expect(y).toBeGreaterThan(6);
+        expect(y).toBeLessThan(6.8);
+        expect(Math.abs(z)).toBeLessThan(8);
+      }
+    }
+  });
+
   it('wave raises the right arm above the head', () => {
     expect(rigAt('wave', 0).joints.rightArm[2]).toBeLessThan(-2);
   });
