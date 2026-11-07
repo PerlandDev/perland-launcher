@@ -1,22 +1,26 @@
 #!/usr/bin/env node
 // CLI for the release workflow. Every decision is in lib.mjs.
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   buildManifest,
   channelName,
   checkSignatureKeys,
+  checkSignLedger,
   ciGate,
   clientIdGate,
   findBundle,
   findSetup,
+  hasAuthenticodeSignature,
   nextVersion,
   PLATFORMS,
   releaseName,
   setupChannelName,
   setupReleaseName,
   setWorkspaceVersion,
+  signRole,
 } from './lib.mjs';
 
 const root = new URL('../../', import.meta.url);
@@ -100,6 +104,53 @@ switch (command) {
     if (existsSync(join(dir, setupReleaseName(version)))) {
       copyFileSync(join(dir, setupReleaseName(version)), join(outDir, setupChannelName(channel)));
     }
+    break;
+  }
+  case 'sign': {
+    // Tauri's bundle.windows.signCommand: signs one file in place with the Certum cloud certificate
+    // through ssign, which reads CERTUM_EMAIL and CERTUM_OTP from the environment (never pass them as
+    // arguments). makensis ignores this command's exit code for the uninstaller, so every call also
+    // goes to $SIGN_DIR/ledger.log, which `sign-check` reads after the build.
+    const [file] = args;
+    const dir = process.env.SIGN_DIR;
+    if (!dir) throw new Error('SIGN_DIR is not set');
+    mkdirSync(dir, { recursive: true });
+    const role = signRole(file);
+    let outcome = 'error';
+    try {
+      if (hasAuthenticodeSignature(readFileSync(file))) {
+        // ssign refuses a signed file. Only NSIS plugins may come signed; sign-check fails on ours.
+        outcome = 'already-signed';
+      } else {
+        execFileSync(process.env.SSIGN || 'ssign', ['-n', 'Perland Launcher', '-u', 'https://perland.online/launcher', file], {
+          stdio: 'inherit',
+        });
+        if (!hasAuthenticodeSignature(readFileSync(file))) throw new Error(`ssign left ${file} unsigned`);
+        outcome = 'signed';
+      }
+    } finally {
+      appendFileSync(join(dir, 'ledger.log'), `${role} ${outcome} ${file}\n`);
+      console.log(`${role} ${outcome} ${file}`);
+    }
+    break;
+  }
+  case 'sign-check': {
+    // After the Windows build: print the ledger and fail on anything makensis swallowed.
+    const dir = process.env.SIGN_DIR;
+    if (!dir) throw new Error('SIGN_DIR is not set');
+    const ledgerPath = join(dir, 'ledger.log');
+    const lines = existsSync(ledgerPath) ? readFileSync(ledgerPath, 'utf8').split('\n') : [];
+    console.log(lines.join('\n'));
+    checkSignLedger(lines);
+    break;
+  }
+  case 'sign-config': {
+    // A --config file for `tauri build` that sets `sign` above as the signCommand. A file, not inline
+    // JSON, so no shell (pnpm's cmd shim included) gets to re-quote it or touch `%1`.
+    const [out] = args;
+    const self = fileURLToPath(import.meta.url).replaceAll('\\', '/');
+    const config = { bundle: { windows: { signCommand: { cmd: 'node', args: [self, 'sign', '%1'] } } } };
+    writeFileSync(out, `${JSON.stringify(config, null, 2)}\n`);
     break;
   }
   default:
