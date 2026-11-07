@@ -197,6 +197,7 @@ fn main() {
             commands::browse_plan,
             commands::browse_install,
             commands::open_link,
+            commands::invite_from_link,
             commands::join_preview,
             commands::servers_list,
             commands::servers_icon,

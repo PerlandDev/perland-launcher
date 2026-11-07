@@ -506,6 +506,17 @@ export function handleServer(
       const known = page?.posts.some((p) => p.id === args.postId && p.imageVersion === args.imageVersion);
       return known ? MOCK_SERVER_ICON : null;
     }
+    case 'invite_from_link': {
+      // As the core answers: an invite as itself, api.example.com's modpack link as play.example.com's invite.
+      const link = String(args.link ?? '').trim();
+      const canonical = inviteCanonical(link);
+      if (canonical) return canonical;
+      const route = /^https:\/\/([^/?#@]+)\/api\/v1\/invites\/([A-Za-z0-9_-]{43})(?:\/|\/pack\/?|\/pack\/zip)?$/.exec(link);
+      const [, host, token] = route ?? [];
+      if (!host || !token) return null;
+      if (host.toLowerCase() !== 'api.example.com') fail('pack', 'invite_pack_link', "That's a server's modpack link, not its invite link");
+      return `https://play.example.com/${token}`;
+    }
     case 'join_preview':
     case 'join_add': {
       const canonical = inviteCanonical(String(args.link ?? '')) ?? fail('pack', 'invite_link_invalid', "That isn't a Perland invite link");

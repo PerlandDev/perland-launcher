@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isInviteLink } from '../../ipc/inviteLink';
-import { useAddPack } from '../../state/queries';
+import { useAddPack, useInviteFromLink } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
@@ -36,16 +36,24 @@ export function PackLinkForm({ initial }: { initial?: string }) {
   const { t } = useTranslation();
   const [url, setUrl] = useState(initial ?? '');
   const add = useAddPack({ inline: true });
+  const resolve = useInviteFromLink();
   const host = hostOf(url);
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!url.trim()) return;
+    const link = url.trim();
+    if (!link || resolve.isPending) return;
     // A server invite isn't a pack link: confirm the server first (spec §2.3).
-    if (isInviteLink(url)) {
-      navigate({ name: 'joinServer', invite: url.trim() });
+    if (isInviteLink(link)) {
+      navigate({ name: 'joinServer', invite: link });
       return;
     }
-    add.mutate({ kind: 'link', url: url.trim() }, { onSuccess: (instance) => navigate({ name: 'home', id: instance.id }) });
+    // Nor is a server's copied modpack link: the launcher turns it into the server's invite.
+    resolve.mutate(link, {
+      onSuccess: (invite) => {
+        if (invite) navigate({ name: 'joinServer', invite });
+        else add.mutate({ kind: 'link', url: link }, { onSuccess: (instance) => navigate({ name: 'home', id: instance.id }) });
+      },
+    });
   };
   // noValidate: a bad link gets the launcher's pack_link_invalid message, not the webview's tooltip.
   return (
@@ -60,12 +68,14 @@ export function PackLinkForm({ initial }: { initial?: string }) {
           placeholder={t('newInstance.linkPlaceholder')}
           onChange={(e) => {
             add.reset();
+            resolve.reset();
             setUrl(e.target.value);
           }}
         />
       </Field>
+      {resolve.isError && <ErrorCard error={resolve.error} />}
       {add.isError && <ErrorCard error={add.error} />}
-      <AddBar disabled={!url.trim()} pending={add.isPending} />
+      <AddBar disabled={!url.trim()} pending={resolve.isPending || add.isPending} />
     </form>
   );
 }

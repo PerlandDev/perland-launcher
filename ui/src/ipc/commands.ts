@@ -168,6 +168,8 @@ export const commands = {
   instanceIconSet: (id: string, choice: IconChoice) => invoke<Instance>('instance_icon_set', { id, choice }),
   instanceBannerFocusSet: (id: string, focus: Focus | null) => invoke<Instance>('instance_banner_focus_set', { id, focus }),
   deepLinkTake: () => invoke<DeepLink | null>('deep_link_take'),
+  /** The canonical invite a pasted link stands for (an invite, or a server's copied modpack link), or null for a pack link. */
+  inviteFromLink: (link: string) => invoke<string | null>('invite_from_link', { link }),
   joinPreview: (link: string) => invoke<JoinPreview>('join_preview', { link }),
   joinAdd: (link: string) => invoke<Instance>('join_add', { link }),
   serverStatus: (id: string) => invoke<ServerStatusView>('server_status', { id }),

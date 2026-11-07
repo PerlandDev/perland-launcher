@@ -19,7 +19,7 @@ use crate::{
     events::{noop_sink, EventSink},
     fsutil::path_key,
     instances::{LoaderSpec, SourceRef, UpdatePolicy},
-    invite::{InviteClient, InviteLink},
+    invite::{EngineInviteLink, InviteClient, InviteLink},
     meta::{loaders::LoaderKind, MetaClient},
     sync::Cancel,
 };
@@ -201,6 +201,10 @@ impl PackInput {
         // Before the packwiz rule: an invite is also an https URL, but never ends in pack.toml.
         if let Ok(link) = InviteLink::parse(s) {
             return Ok(PackInput::Perland { link });
+        }
+        // The invite page's Copy modpack link: an `.mrpack` on the Engine, never a pack.toml.
+        if EngineInviteLink::parse(s).is_some() {
+            return Err(crate::invite::pack_link_refused());
         }
         if s.starts_with("http://") || s.starts_with("https://") {
             check_pack_url(s)?;
@@ -520,6 +524,18 @@ mod tests {
             PackInput::parse("http://127.0.0.1:8080/pack.toml"),
             Ok(PackInput::Packwiz { .. })
         ));
+    }
+
+    /// The invite page's Copy modpack link is an `.mrpack`, never a `pack.toml`: reading it as
+    /// packwiz only failed. Callers turn it into the invite first (`invite_for_engine_link`).
+    #[test]
+    fn pack_input_refuses_an_engine_modpack_link() {
+        let token = "A".repeat(43);
+        let err = PackInput::parse(&format!(
+            "https://api.example.com/api/v1/invites/{token}/pack"
+        ))
+        .unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvitePackLink);
     }
 
     fn versions(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {

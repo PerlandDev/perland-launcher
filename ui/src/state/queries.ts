@@ -432,6 +432,11 @@ export function useAddPack(opts: Opts = {}) {
   });
 }
 
+/** The invite a pasted link stands for, or null for a pack link. The form shows the error itself. */
+export function useInviteFromLink() {
+  return useMutation({ mutationFn: (link: string) => commands.inviteFromLink(link) });
+}
+
 /** What a folder from another launcher holds. The form shows the error itself. */
 export function useImportInspect() {
   return useMutation({ mutationFn: (path: string) => commands.importInspect(path) });
