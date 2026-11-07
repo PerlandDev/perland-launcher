@@ -128,3 +128,47 @@ export function clientIdGate(value, { publish }) {
       'The repository variable PERLAND_MS_CLIENT_ID is empty: this build has no Microsoft sign-in, so nobody could start the game. Set it to the Azure app\'s client ID first.',
   };
 }
+
+/** Whether a Windows PE file already carries an Authenticode signature: its certificate table (data
+ *  directory 4) is non-empty. Tauri hands the sign command NSIS plugin DLLs without checking, and ssign
+ *  refuses a signed file, so the sign command skips these. */
+export function hasAuthenticodeSignature(buf) {
+  const notPe = () => new Error('This is not a Windows executable (no PE header)');
+  if (buf.length < 0x40 || buf.toString('latin1', 0, 2) !== 'MZ') throw notPe();
+  const pe = buf.readUInt32LE(0x3c);
+  const optional = pe + 24;
+  if (optional + 2 > buf.length || buf.toString('latin1', pe, pe + 4) !== 'PE\0\0') throw notPe();
+  const magic = buf.readUInt16LE(optional);
+  if (magic !== 0x10b && magic !== 0x20b) throw notPe();
+  const security = optional + (magic === 0x20b ? 112 : 96) + 4 * 8;
+  if (security + 8 > buf.length) throw notPe();
+  return buf.readUInt32LE(security + 4) > 0;
+}
+
+/** What a file Tauri hands the Windows sign command is: an NSIS plugin DLL, the final installer, or one
+ *  of our binaries (the launcher .exe, the uninstaller). */
+export function signRole(path) {
+  const p = String(path).replaceAll('\\', '/').toLowerCase();
+  if (p.includes('/plugins/x86-unicode/')) return 'plugin';
+  if (p.includes('/bundle/nsis/') && p.endsWith('-setup.exe')) return 'installer';
+  return 'binary';
+}
+
+/** Check a Windows build's signing ledger (`<role> <outcome> <file>` per sign command call). makensis
+ *  ignores the exit code of the uninstaller's sign command, so a failure there only shows up here. */
+export function checkSignLedger(lines) {
+  const entries = lines
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [role, outcome, ...file] = line.split(' ');
+      return { role, outcome, file: file.join(' ') };
+    });
+  const failed = entries.filter((e) => e.outcome !== 'signed' && e.outcome !== 'already-signed');
+  if (failed.length > 0) throw new Error(`Signing failed for ${failed.map((e) => e.file).join(', ')}`);
+  const signedBy = (role) => entries.filter((e) => e.role === role && e.outcome === 'signed').length;
+  if (signedBy('binary') < 2) {
+    throw new Error(`Signed ${signedBy('binary')} of our binaries; expected the launcher and the uninstaller`);
+  }
+  if (signedBy('installer') < 1) throw new Error('The installer was never signed');
+}

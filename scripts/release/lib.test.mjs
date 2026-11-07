@@ -4,14 +4,17 @@ import {
   buildManifest,
   channelName,
   checkSignatureKeys,
+  checkSignLedger,
   ciGate,
   clientIdGate,
   findBundle,
+  hasAuthenticodeSignature,
   keyIdOf,
   nextVersion,
   PLATFORMS,
   releaseName,
   setWorkspaceVersion,
+  signRole,
 } from './lib.mjs';
 
 test('the first beta of a base version is beta.1', () => {
@@ -162,4 +165,79 @@ test('a set Microsoft client ID lets the release through', () => {
   for (const publish of [true, false]) {
     assert.equal(clientIdGate('00000000-0000-4000-8000-0000000000aa', { publish }).level, 'ok');
   }
+});
+
+/** A minimal PE image: MZ header, PE signature, COFF header, optional header with 16 data directories.
+ *  `security` is the certificate table entry (data directory 4): [file offset, size]. */
+function pe({ magic = 0x20b, security = [0, 0] } = {}) {
+  const lfanew = 0x80;
+  const optional = lfanew + 24;
+  const dirs = optional + (magic === 0x20b ? 112 : 96);
+  const buf = Buffer.alloc(dirs + 16 * 8);
+  buf.write('MZ', 0, 'latin1');
+  buf.writeUInt32LE(lfanew, 0x3c);
+  buf.write('PE\0\0', lfanew, 'latin1');
+  buf.writeUInt16LE(magic, optional);
+  buf.writeUInt32LE(security[0], dirs + 4 * 8);
+  buf.writeUInt32LE(security[1], dirs + 4 * 8 + 4);
+  return buf;
+}
+
+test('a PE file with a certificate table is already signed', () => {
+  assert.equal(hasAuthenticodeSignature(pe({ security: [0x4000, 0x2a8] })), true);
+  assert.equal(hasAuthenticodeSignature(pe({ magic: 0x10b, security: [0x4000, 0x2a8] })), true);
+});
+
+test('a PE file without a certificate table is unsigned', () => {
+  assert.equal(hasAuthenticodeSignature(pe()), false);
+  assert.equal(hasAuthenticodeSignature(pe({ magic: 0x10b })), false);
+});
+
+test('anything that is not a PE file is refused rather than guessed', () => {
+  assert.throws(() => hasAuthenticodeSignature(Buffer.from('not a binary')), /not a Windows executable/);
+  const broken = pe();
+  broken.write('XX', 0x80, 'latin1');
+  assert.throws(() => hasAuthenticodeSignature(broken), /not a Windows executable/);
+  assert.throws(() => hasAuthenticodeSignature(pe({ magic: 0x107 })), /not a Windows executable/);
+  assert.throws(() => hasAuthenticodeSignature(pe().subarray(0, 0x90)), /not a Windows executable/);
+});
+
+test('files Tauri hands the sign command get a role', () => {
+  const nsis = 'C:\\Users\\runneradmin\\AppData\\Local\\Temp\\.tmpAbc\\nsis';
+  assert.equal(signRole('D:\\a\\perland-launcher\\target\\release\\perland-launcher.exe'), 'binary');
+  assert.equal(signRole(`${nsis}\\uninstall.exe`), 'binary');
+  assert.equal(signRole(`${nsis}\\Plugins\\x86-unicode\\System.dll`), 'plugin');
+  assert.equal(signRole(`${nsis}\\Plugins\\x86-unicode\\additional\\nsis_tauri_utils.dll`), 'plugin');
+  assert.equal(signRole('D:/a/perland-launcher/target/release/bundle/nsis/Perland Launcher_0.2.0-beta.32_x64-setup.exe'), 'installer');
+});
+
+const ledger = [
+  'plugin signed C:/t/nsis/Plugins/x86-unicode/System.dll',
+  'plugin already-signed C:/t/nsis/Plugins/x86-unicode/additional/nsis_tauri_utils.dll',
+  'binary signed D:/a/target/release/perland-launcher.exe',
+  'binary signed C:/t/nsis/uninstall.exe',
+  'installer signed D:/a/target/release/bundle/nsis/Perland Launcher_1.0.0_x64-setup.exe',
+];
+
+test('a build that signed the launcher, the uninstaller and the installer passes', () => {
+  assert.doesNotThrow(() => checkSignLedger(ledger));
+  assert.doesNotThrow(() => checkSignLedger([...ledger, '', '  ']));
+});
+
+test('a signing failure makensis swallowed still fails the build', () => {
+  const lines = ledger.map((l) => (l.includes('uninstall.exe') ? 'binary error C:/t/nsis/uninstall.exe' : l));
+  assert.throws(() => checkSignLedger(lines), /uninstall\.exe/);
+});
+
+test('a build that never signed the uninstaller or the installer fails', () => {
+  assert.throws(() => checkSignLedger(ledger.filter((l) => !l.includes('uninstall.exe'))), /launcher and the uninstaller/);
+  assert.throws(() => checkSignLedger(ledger.filter((l) => !l.startsWith('installer'))), /installer/);
+  assert.throws(() => checkSignLedger([]), /launcher and the uninstaller/);
+});
+
+test('our own binaries must be signed by us, not found already signed', () => {
+  const lines = ledger.map((l) =>
+    l.includes('perland-launcher.exe') ? 'binary already-signed D:/a/target/release/perland-launcher.exe' : l,
+  );
+  assert.throws(() => checkSignLedger(lines), /launcher and the uninstaller/);
 });

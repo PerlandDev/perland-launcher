@@ -34,11 +34,22 @@ Microsoft sign-in needs the Azure app's id: the repository variable `PERLAND_MS_
 Releases come from the manual **Release** workflow: Actions → **Release** → Run workflow. Pick `beta` or `stable`, and untick **Dry run** to publish. Beta may run from any branch; stable only from `main`. Every publish is public, so ask the owner first.
 
 - The version is computed: `<base>-beta.N` for beta, `<base>` for stable. The base is `[workspace.package] version` in `Cargo.toml`; after a stable release it is bumped in a PR.
-- The required secrets are `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The public key in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`) must match that signing key, or installed launchers will reject every update. The workflow enforces this: its manifest step (`cli.mjs manifest`) reads the 8-byte minisign key id of every `.sig` and of the committed public key, and stops before anything is published if any differ. After a key rotation, commit the new public key before releasing. The repository variable `PERLAND_PANEL_URL` is built into released launchers (see Develop); unset, they offer no Manage in Perland. `PERLAND_MS_CLIENT_ID` is built in the same way; unset, Microsoft sign-in is unavailable in that build and nobody could start the game, so a publish stops before building (a dry run only warns). See Azure app registration below. Authenticode signing turns on with the variable `AZURE_TRUSTED_SIGNING=true` plus the `AZURE_*` secrets and variables named in the workflow.
+- The required secrets are `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The public key in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`) must match that signing key, or installed launchers will reject every update. The workflow enforces this: its manifest step (`cli.mjs manifest`) reads the 8-byte minisign key id of every `.sig` and of the committed public key, and stops before anything is published if any differ. After a key rotation, commit the new public key before releasing. The repository variable `PERLAND_PANEL_URL` is built into released launchers (see Develop); unset, they offer no Manage in Perland. `PERLAND_MS_CLIENT_ID` is built in the same way; unset, Microsoft sign-in is unavailable in that build and nobody could start the game, so a publish stops before building (a dry run only warns). See Azure app registration below. Windows code signing is described under Windows code signing below.
 - Each release is a public, versioned GitHub Release. `channel-beta` and `channel-stable` hold `latest.json` and fixed-name installers; perland.online/launcher links those.
 - A dry run's installers are downloadable from the run's artifacts. That replaces the old tester build.
 - A publish needs CI green on the exact commit being released: push it to `main` or to a branch with a pull request and wait for CI first. A dry run only warns.
 - The versioned release stays a draft until every installer is uploaded. If a publish fails partway, re-run the failed jobs: the publish job picks up the draft it left, or skips a release that is already out.
+
+### Windows code signing
+
+The Windows build is signed with the owner's Certum Open Source Code Signing in the Cloud certificate, through [ssign](https://github.com/Le-Syl21/ssign). Design: `docs/superpowers/specs/2026-11-07-windows-code-signing-design.md`.
+
+- **On or off:** the repository variable `CERTUM_SIGNING=true`. Off, releases build unsigned and their notes say so.
+- **When it signs:** every publish, and a dry run with **Sign this dry run's Windows installer too** ticked. Either waits for the owner to approve the `signing` environment.
+- **Secrets:** `CERTUM_EMAIL` and `CERTUM_OTP` are environment secrets of `signing` (Settings → Environments → `signing`, with the owner as required reviewer), never repository secrets. `CERTUM_OTP` is the TOTP seed behind the SimplySign QR code: base32, or the whole `otpauth://` URI. It signs as the owner, so treat it like a private key. If it leaks, re-issue the QR code from Certum.
+- **What the build checks:** `cli.mjs sign-check` fails if any signing call failed, including the uninstaller's, whose failures makensis ignores. `verify-authenticode.ps1` installs the build on the runner and checks every signature.
+- **Upgrading ssign:** change `SSIGN_VERSION` and `SSIGN_SHA256` in `release.yml` together. The SHA-256 is the release asset's digest: `gh api repos/Le-Syl21/ssign/releases/tags/v<version> --jq '.assets[] | select(.name=="ssign-windows-x86_64.zip") | .digest'`.
+- **If ssign breaks:** run a dry run unsigned, sign its installer by hand with SimplySign Desktop, and publish that file.
 
 ### Azure app registration
 

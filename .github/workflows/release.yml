@@ -14,6 +14,10 @@ on:
         description: Dry run (build only, publish nothing)
         type: boolean
         default: true
+      sign_dry_run:
+        description: Sign this dry run's Windows installer too (needs your approval)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -89,6 +93,18 @@ jobs:
             bundles: appimage,deb
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    # Windows code signing (docs/superpowers/specs/2026-11-07-windows-code-signing-design.md): with
+    # the repository variable CERTUM_SIGNING=true, every publish and any dry run with "Sign this dry
+    # run" ticked signs the Windows build with the Certum cloud certificate. That job runs in the `signing` environment, which waits for the owner's
+    # approval and is the only place the CERTUM_EMAIL and CERTUM_OTP secrets can be read. The same
+    # condition is written twice because `environment` cannot read `env`.
+    environment: ${{ (matrix.os == 'windows-latest' && vars.CERTUM_SIGNING == 'true' && (!inputs.dry_run || inputs.sign_dry_run)) && 'signing' || '' }}
+    env:
+      SIGN_WINDOWS: ${{ matrix.os == 'windows-latest' && vars.CERTUM_SIGNING == 'true' && (!inputs.dry_run || inputs.sign_dry_run) }}
+      # ssign (https://github.com/Le-Syl21/ssign, MIT) signs through Certum's cloud API. Pinned by
+      # version and by the SHA-256 GitHub recorded for the release asset.
+      SSIGN_VERSION: 0.1.11
+      SSIGN_SHA256: 3dacba75082d2949bae332f6dfac342843a85838db75deba9721b40b43fe73f0
     steps:
       - uses: actions/checkout@v4
       # Rust builds much faster on a Dev Drive (ReFS) than on C:, so the Windows job builds in a
@@ -126,11 +142,35 @@ jobs:
         env:
           VERSION: ${{ needs.plan.outputs.version }}
         run: node scripts/release/cli.mjs set-version "$VERSION"
-      # Authenticode signing stays off until Azure Trusted Signing exists (spec §3.5): set the
-      # repository variable AZURE_TRUSTED_SIGNING=true and the AZURE_* secrets to turn it on.
-      - name: Install the signing tool
-        if: runner.os == 'Windows' && vars.AZURE_TRUSTED_SIGNING == 'true'
-        run: cargo install trusted-signing-cli --locked
+      # Fail before the long build when signing is on but the secrets aren't there.
+      - name: The Certum signing secrets are set
+        if: env.SIGN_WINDOWS == 'true'
+        shell: bash
+        env:
+          CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
+        run: |
+          if [ -z "$CERTUM_EMAIL" ] || [ -z "$CERTUM_OTP" ]; then
+            echo "::error::Add the CERTUM_EMAIL and CERTUM_OTP secrets to the signing environment first."
+            exit 1
+          fi
+      - name: Install ssign
+        if: env.SIGN_WINDOWS == 'true'
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'ssign.zip'
+          Invoke-WebRequest "https://github.com/Le-Syl21/ssign/releases/download/v$env:SSIGN_VERSION/ssign-windows-x86_64.zip" -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne $env:SSIGN_SHA256) {
+            Write-Host "::error::ssign $env:SSIGN_VERSION has SHA-256 $hash, not the pinned $env:SSIGN_SHA256."
+            exit 1
+          }
+          $dir = Join-Path $env:RUNNER_TEMP 'ssign'
+          Expand-Archive $zip -DestinationPath $dir
+          $exe = Get-ChildItem $dir -Recurse -Filter ssign.exe | Select-Object -First 1
+          if (-not $exe) { Write-Host '::error::The ssign archive has no ssign.exe.'; exit 1 }
+          & $exe.FullName --version
+          "SSIGN=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Build and sign the updater artifacts
         shell: bash
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
@@ -141,20 +181,34 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           BUNDLES: ${{ matrix.bundles }}
-          SIGN_WINDOWS: ${{ runner.os == 'Windows' && vars.AZURE_TRUSTED_SIGNING == 'true' }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
-          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
-          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          # Empty outside the signing environment. ssign reads them from the environment.
+          CERTUM_EMAIL: ${{ secrets.CERTUM_EMAIL }}
+          CERTUM_OTP: ${{ secrets.CERTUM_OTP }}
         run: |
           args=(--bundles "$BUNDLES" --config '{"bundle":{"createUpdaterArtifacts":true}}')
           if [ "$SIGN_WINDOWS" = "true" ]; then
-            sign="trusted-signing-cli -e $AZURE_SIGNING_ENDPOINT -a $AZURE_SIGNING_ACCOUNT -c $AZURE_SIGNING_PROFILE -d PerlandLauncher %1"
-            args+=(--config "{\"bundle\":{\"windows\":{\"signCommand\":\"$sign\"}}}")
+            # Tauri signs the launcher, the NSIS plugins, the uninstaller and then the installer, all
+            # through `cli.mjs sign`, before it writes the updater .sig over the signed installer.
+            export SIGN_DIR="$RUNNER_TEMP/sign"
+            node scripts/release/cli.mjs sign-config "$RUNNER_TEMP/sign.json"
+            args+=(--config "$RUNNER_TEMP/sign.json")
           fi
           pnpm tauri build "${args[@]}"
+      # makensis ignores the uninstaller's sign command failing, so read what every call did.
+      - name: Every signing call succeeded
+        if: env.SIGN_WINDOWS == 'true'
+        shell: bash
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
+        run: SIGN_DIR="$RUNNER_TEMP/sign" node scripts/release/cli.mjs sign-check
+      - name: The installer and what it installs are signed
+        if: env.SIGN_WINDOWS == 'true'
+        shell: pwsh
+        working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
+        timeout-minutes: 10
+        run: |
+          $installer = @(Get-ChildItem target/release/bundle/nsis -Filter *-setup.exe)
+          if ($installer.Count -ne 1) { Write-Host "::error::Expected one installer, found $($installer.Count)."; exit 1 }
+          ./scripts/release/verify-authenticode.ps1 -Installer $installer[0].FullName
       - name: Stage the installers
         shell: bash
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
@@ -181,6 +235,8 @@ jobs:
       CHANNEL: ${{ inputs.channel }}
       REPO: ${{ github.repository }}
       SHA: ${{ github.sha }}
+      # A publish signs the Windows build whenever signing is on.
+      SIGNED: ${{ vars.CERTUM_SIGNING == 'true' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -200,7 +256,8 @@ jobs:
         run: |
           tag="v$VERSION"
           title="Perland Launcher $VERSION"
-          notes="Closed beta. Download it from https://perland.online/launcher. The installers aren't code-signed yet, so Windows may warn before it runs."
+          notes="Closed beta. Download it from https://perland.online/launcher."
+          if [ "$SIGNED" != "true" ]; then notes="$notes The installers aren't code-signed yet, so Windows may warn before it runs."; fi
           if state=$(gh release view "$tag" --repo "$REPO" --json isDraft --jq .isDraft 2>&1); then :
           elif grep -q "release not found" <<<"$state"; then state=none
           else echo "$state"; exit 1
