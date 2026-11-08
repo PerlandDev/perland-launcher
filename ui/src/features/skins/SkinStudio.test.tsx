@@ -257,6 +257,14 @@ it('the picker takes a see-through texel at its own opacity', async () => {
   await user.keyboard('4');
   await paintTexel(41, 9);
   expect(slider).toHaveValue('40');
+  // Painted back over itself with the pencil and picked again, it is still 40%: the strokes don't pile up.
+  await user.keyboard('1');
+  await paintTexel(41, 9);
+  await paintTexel(41, 9);
+  await user.keyboard('4');
+  fireEvent.change(slider, { target: { value: '100' } });
+  await paintTexel(41, 9);
+  expect(slider).toHaveValue('40');
 });
 
 const wardrobeNames = () => within(screen.getByRole('list', { name: 'Wardrobe' })).getAllByRole('listitem').map((li) => within(li).getAllByText(/./)[0]!.textContent);
