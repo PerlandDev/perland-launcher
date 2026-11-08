@@ -65,13 +65,11 @@ export function rigAt(pose: Pose, t: number): Rig {
       break;
     }
     case 'crouch': {
-      // Leaning in over bent legs, the way the game sneaks: a slow idle bob.
+      // Leaning in over legs that stay straight down, the way the game sneaks: a slow idle bob.
       joints.torso = [0.5, 0, 0];
       joints.head = [-0.45 + Math.sin(t * 1.4) * 0.04, 0, 0];
       joints.rightArm = [-0.25, 0, -0.08];
       joints.leftArm = [-0.25, 0, 0.08];
-      joints.rightLeg = [0.12, 0, 0];
-      joints.leftLeg = [0.12, 0, 0];
       offset[1] = -1.5 + Math.sin(t * 1.4) * 0.15;
       offset[2] = -1.5;
       break;
