@@ -9,14 +9,15 @@ const look = (id: string, en: string, es: string, tags: string[] = [], retired =
   id, name: { en, es }, tags, model: 'classic', pieces: [], thumb: '', retired,
 });
 const manifest: CatalogManifest = {
-  formatVersion: 1, version: 'v', license: 'CC0-1.0', slots: [], tags: [],
+  formatVersion: 1, version: 'v', license: 'CC0-1.0', slots: [],
+  tags: [{ id: 'fantasy', name: { en: 'Fantasy', es: 'Fantasía' } }, { id: 'sports', name: { en: 'Sports', es: 'Deporte' } }],
   pieces: [
     piece('tee', 'top', 'Tee', 'Camiseta', ['casual']),
     piece('tank', 'top', 'Tank', 'Tirantes', ['summer']),
     piece('old', 'top', 'Old tee', 'Camiseta vieja', [], true),
     piece('cap', 'hat', 'Cap', 'Gorra'),
   ],
-  looks: [look('l1', 'Pirate', 'Pirata', ['fantasy']), look('l2', 'Cafe', 'Café', ['casual']), look('l3', 'Gone', 'Ido', [], true)],
+  looks: [look('l1', 'Pirate', 'Pirata', ['fantasy']), look('l4', 'Runner', 'Corredora', ['sports']), look('l2', 'Cafe', 'Café', ['casual']), look('l3', 'Gone', 'Ido', [], true)],
 };
 
 describe('catalog search', () => {
@@ -40,6 +41,16 @@ describe('catalog search', () => {
   test('retired pieces are hidden unless worn', () => {
     expect(searchPieces(manifest, 'top', '', 'en').map((p) => p.id)).toEqual(['tee', 'tank']);
     expect(searchPieces(manifest, 'top', '', 'en', new Set(['old'])).map((p) => p.id)).toEqual(['tee', 'tank', 'old']);
-    expect(searchLooks(manifest, '', '', 'en').map((l) => l.id)).toEqual(['l1', 'l2']);
+    expect(searchLooks(manifest, '', '', 'en').map((l) => l.id)).toEqual(['l1', 'l4', 'l2']);
+  });
+
+  test('matches tag names in the current language', () => {
+    expect(searchLooks(manifest, 'deporte', '', 'es').map((l) => l.id)).toEqual(['l4']);
+    expect(searchLooks(manifest, 'fantasia', '', 'es').map((l) => l.id)).toEqual(['l1']);
+    expect(searchLooks(manifest, 'Fantasía', '', 'es').map((l) => l.id)).toEqual(['l1']);
+    // The other language's tag names don't count.
+    expect(searchLooks(manifest, 'deporte', '', 'en')).toEqual([]);
+    // Tag ids still match in any language.
+    expect(searchLooks(manifest, 'sports', '', 'es').map((l) => l.id)).toEqual(['l4']);
   });
 });
