@@ -3,6 +3,7 @@
 //! Every account has its own wardrobe (an entry's `owner`); a skin made with no account signed
 //! in is loose until an account adopts it. A damaged list is set aside and the wardrobe starts
 //! empty, so the screen always opens. See `docs/superpowers/specs/2026-11-07-per-account-wardrobes-design.md`.
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,7 @@ use tokio::sync::Mutex;
 use crate::error::{ErrorCode, LauncherError, Result};
 use crate::fsutil::write_atomic;
 use crate::instances::validate_name;
+use crate::skin_catalog::Manifest;
 use crate::skins_png;
 
 mod versions;
@@ -35,6 +37,56 @@ impl SkinModel {
     }
 }
 
+/// A catalog piece a skin wears, with the colours picked for its areas.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WornPiece {
+    pub id: String,
+    /// Area id → `#rrggbb`.
+    pub colours: BTreeMap<String, String>,
+}
+
+/// How a skin was put together from the catalog. `<id>.png` is the finished image; the
+/// player's own painting, when there is one, is kept beside it as `<id>.paint.png`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkinLook {
+    pub pieces: Vec<WornPiece>,
+    pub painting: bool,
+}
+
+/// Most pieces one look may wear.
+const MAX_PIECES: usize = 16;
+
+fn look_invalid(why: &str) -> LauncherError {
+    LauncherError::new(
+        crate::error::ErrorCategory::Integrity,
+        ErrorCode::SkinInvalid,
+        "That look can't be saved.",
+    )
+    .with_detail(why.to_string())
+}
+
+fn valid_colour(c: &str) -> bool {
+    c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|x| x.is_ascii_hexdigit())
+}
+
+fn check_look(look: &SkinLook) -> Result<()> {
+    if look.pieces.len() > MAX_PIECES {
+        return Err(look_invalid("too many pieces"));
+    }
+    let mut seen = BTreeSet::new();
+    for piece in &look.pieces {
+        if !seen.insert(piece.id.as_str()) {
+            return Err(look_invalid("a piece is worn twice"));
+        }
+        if piece.colours.values().any(|c| !valid_colour(c)) {
+            return Err(look_invalid("a colour isn't #rrggbb"));
+        }
+    }
+    Ok(())
+}
+
 /// One skin in the wardrobe.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,6 +106,9 @@ pub struct SkinEntry {
     /// loose skins drops it rather than keep a starter the player never chose.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub seeded: bool,
+    /// The catalog pieces it was built from, when it was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look: Option<SkinLook>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -126,6 +181,10 @@ impl SkinLibrary {
 
     fn png(&self, id: &str) -> PathBuf {
         self.dir.join(format!("{id}.png"))
+    }
+
+    fn paint_png(&self, id: &str) -> PathBuf {
+        self.dir.join(format!("{id}.paint.png"))
     }
 
     async fn read(&self) -> Result<LibraryFile> {
@@ -238,6 +297,7 @@ impl SkinLibrary {
             worn_by: None,
             owner: owner.map(str::to_string),
             seeded,
+            look: None,
         };
         write_atomic(&self.png(&entry.id), &png).await?;
         file.skins.push(entry.clone());
@@ -287,6 +347,89 @@ impl SkinLibrary {
         Ok(entry)
     }
 
+    /// Saves the look of `id`: the finished `texture` (`<id>.png`) and, when the player painted
+    /// on it, their `painting` (`<id>.paint.png`; removed when `None`). A history version of the
+    /// finished image is taken as `save_texture` does.
+    pub async fn save_look(
+        &self,
+        id: &str,
+        mut look: SkinLook,
+        painting: Option<&[u8]>,
+        texture: &[u8],
+    ) -> Result<SkinEntry> {
+        check_look(&look)?;
+        let texture = skins_png::normalise(texture)?;
+        let painting = painting.map(skins_png::normalise).transpose()?;
+        look.painting = painting.is_some();
+        let _held = self.lock.lock().await;
+        let mut last_change = 0;
+        let (file, entry) = self
+            .change(id, |e| {
+                last_change = e.updated;
+                e.look = Some(look);
+            })
+            .await?;
+        self.keep_before_save(id, last_change).await?;
+        match &painting {
+            Some(bytes) => write_atomic(&self.paint_png(id), bytes).await?,
+            None => {
+                let _ = tokio::fs::remove_file(self.paint_png(id)).await;
+            }
+        }
+        write_atomic(&self.png(id), &texture).await?;
+        self.write(&file).await?;
+        Ok(entry)
+    }
+
+    /// Drops the look of `id` and its painting; `<id>.png` stays as a plain skin.
+    pub async fn clear_look(&self, id: &str) -> Result<SkinEntry> {
+        let _held = self.lock.lock().await;
+        let (file, entry) = self.change(id, |e| e.look = None).await?;
+        self.write(&file).await?;
+        let _ = tokio::fs::remove_file(self.paint_png(id)).await;
+        Ok(entry)
+    }
+
+    /// The player's own painting of `id`, if it has one.
+    pub async fn painting(&self, id: &str) -> Result<Option<Vec<u8>>> {
+        if !valid_id(id) {
+            return Err(not_found(id));
+        }
+        match tokio::fs::read(self.paint_png(id)).await {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                self.entry(id).await?;
+                Ok(None)
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Every catalog file of every piece any skin's look wears, across all owners. Pieces the
+    /// manifest doesn't list are skipped.
+    pub async fn look_hashes(&self, manifest: &Manifest) -> BTreeSet<String> {
+        let _held = self.lock.lock().await;
+        let mut out = BTreeSet::new();
+        let Ok(file) = self.read().await else {
+            return out;
+        };
+        for piece in file
+            .skins
+            .iter()
+            .filter_map(|s| s.look.as_ref())
+            .flat_map(|l| l.pieces.iter())
+        {
+            if let Some(found) = manifest.pieces.iter().find(|p| p.id == piece.id) {
+                out.insert(found.thumb.clone());
+                for files in found.files.values() {
+                    out.insert(files.art.clone());
+                    out.insert(files.mask.clone());
+                }
+            }
+        }
+        out
+    }
+
     /// Renames `id` and/or changes its arm model.
     pub async fn update(
         &self,
@@ -329,8 +472,17 @@ impl SkinLibrary {
             worn_by: None,
             owner: source.owner.clone(),
             seeded: false,
+            look: source.look.clone(),
+        };
+        let paint = if entry.look.as_ref().is_some_and(|l| l.painting) {
+            tokio::fs::read(self.paint_png(id)).await.ok()
+        } else {
+            None
         };
         write_atomic(&self.png(&entry.id), &png).await?;
+        if let Some(paint) = paint {
+            write_atomic(&self.paint_png(&entry.id), &paint).await?;
+        }
         file.skins.push(entry.clone());
         self.write(&file).await?;
         Ok(entry)
@@ -347,6 +499,7 @@ impl SkinLibrary {
         }
         self.write(&file).await?;
         let _ = tokio::fs::remove_file(self.png(id)).await;
+        let _ = tokio::fs::remove_file(self.paint_png(id)).await;
         self.forget_versions(id).await;
         Ok(())
     }
@@ -398,6 +551,7 @@ impl SkinLibrary {
         }
         for id in dropped {
             let _ = tokio::fs::remove_file(self.png(&id)).await;
+            let _ = tokio::fs::remove_file(self.paint_png(&id)).await;
             self.forget_versions(&id).await;
         }
         Ok(moved)
@@ -443,6 +597,7 @@ impl SkinLibrary {
                     worn_by: None,
                     owner: Some(uuid.to_string()),
                     seeded: false,
+                    look: None,
                 };
                 write_atomic(&self.png(&entry.id), &png).await?;
                 let id = entry.id.clone();
@@ -885,5 +1040,248 @@ mod tests {
             .unwrap();
         tokio::fs::remove_file(lib.png(&entry.id)).await.unwrap();
         assert!(lib.list(None).await.unwrap().is_empty());
+    }
+    fn look_of(ids: &[&str]) -> SkinLook {
+        SkinLook {
+            pieces: ids
+                .iter()
+                .map(|id| WornPiece {
+                    id: id.to_string(),
+                    colours: BTreeMap::from([("main".to_string(), "#aabbcc".to_string())]),
+                })
+                .collect(),
+            painting: false,
+        }
+    }
+
+    fn paint_path(lib: &SkinLibrary, id: &str) -> PathBuf {
+        lib.dir().join(format!("{id}.paint.png"))
+    }
+
+    fn texel_at(png: &[u8]) -> Rgba<u8> {
+        *skins_png::decode(png).unwrap().get_pixel(8, 8)
+    }
+
+    #[tokio::test]
+    async fn save_look_writes_three_files_together() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), Some("u"))
+            .await
+            .unwrap();
+        let entry = lib
+            .save_look(
+                &a.id,
+                look_of(&["hat-a"]),
+                Some(&skin([9, 9, 9, 255])),
+                &skin([2, 2, 2, 255]),
+            )
+            .await
+            .unwrap();
+        assert!(entry.look.as_ref().unwrap().painting);
+        assert_eq!(
+            texel_at(&lib.texture(&a.id).await.unwrap()),
+            Rgba([2, 2, 2, 255])
+        );
+        assert_eq!(
+            texel_at(&lib.painting(&a.id).await.unwrap().unwrap()),
+            Rgba([9, 9, 9, 255])
+        );
+        assert_eq!(lib.entry(&a.id).await.unwrap().look, entry.look);
+        assert_eq!(lib.versions(&a.id).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn save_look_without_painting_removes_paint_file() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        lib.save_look(
+            &a.id,
+            look_of(&[]),
+            Some(&skin([9, 9, 9, 255])),
+            &skin([2, 2, 2, 255]),
+        )
+        .await
+        .unwrap();
+        assert!(paint_path(&lib, &a.id).exists());
+        let entry = lib
+            .save_look(&a.id, look_of(&["x"]), None, &skin([3, 3, 3, 255]))
+            .await
+            .unwrap();
+        assert!(!entry.look.unwrap().painting);
+        assert!(!paint_path(&lib, &a.id).exists());
+        assert_eq!(lib.painting(&a.id).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn save_look_validates() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        let many: Vec<String> = (0..17).map(|i| format!("p{i}")).collect();
+        let many: Vec<&str> = many.iter().map(String::as_str).collect();
+        for bad in [look_of(&many), look_of(&["a", "a"])] {
+            let e = lib
+                .save_look(&a.id, bad, None, &skin([2; 4]))
+                .await
+                .unwrap_err();
+            assert_eq!(e.code, ErrorCode::SkinInvalid);
+        }
+        let mut bad = look_of(&["a"]);
+        bad.pieces[0].colours.insert("main".into(), "red".into());
+        let e = lib
+            .save_look(&a.id, bad, None, &skin([2; 4]))
+            .await
+            .unwrap_err();
+        assert_eq!(e.code, ErrorCode::SkinInvalid);
+        assert_eq!(lib.entry(&a.id).await.unwrap().look, None);
+    }
+
+    #[tokio::test]
+    async fn clear_look_keeps_finished_png() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        lib.save_look(
+            &a.id,
+            look_of(&["a"]),
+            Some(&skin([9, 9, 9, 255])),
+            &skin([2, 2, 2, 255]),
+        )
+        .await
+        .unwrap();
+        let entry = lib.clear_look(&a.id).await.unwrap();
+        assert_eq!(entry.look, None);
+        assert!(!paint_path(&lib, &a.id).exists());
+        assert_eq!(
+            texel_at(&lib.texture(&a.id).await.unwrap()),
+            Rgba([2, 2, 2, 255])
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_removes_paint_file() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        lib.save_look(
+            &a.id,
+            look_of(&["a"]),
+            Some(&skin([9, 9, 9, 255])),
+            &skin([2, 2, 2, 255]),
+        )
+        .await
+        .unwrap();
+        lib.delete(&a.id).await.unwrap();
+        assert!(!paint_path(&lib, &a.id).exists());
+    }
+
+    #[tokio::test]
+    async fn duplicate_copies_look_and_painting() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        lib.save_look(
+            &a.id,
+            look_of(&["a"]),
+            Some(&skin([9, 9, 9, 255])),
+            &skin([2, 2, 2, 255]),
+        )
+        .await
+        .unwrap();
+        let b = lib.duplicate(&a.id, "B").await.unwrap();
+        assert_eq!(b.look, lib.entry(&a.id).await.unwrap().look);
+        assert_eq!(
+            texel_at(&lib.painting(&b.id).await.unwrap().unwrap()),
+            Rgba([9, 9, 9, 255])
+        );
+    }
+
+    #[tokio::test]
+    async fn old_list_without_look_loads() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), Some("u"))
+            .await
+            .unwrap();
+        let raw = std::fs::read_to_string(lib.dir().join(LIST)).unwrap();
+        assert!(!raw.contains("look"));
+        assert!(raw.contains("\"version\": 2"));
+        assert_eq!(lib.entry(&a.id).await.unwrap().look, None);
+    }
+
+    #[tokio::test]
+    async fn look_hashes_cover_all_owners() {
+        use crate::skin_catalog::{CatalogFiles, CatalogPiece, CatalogText};
+        let h = |c: char| c.to_string().repeat(64);
+        let piece = |id: &str, c: char| CatalogPiece {
+            id: id.into(),
+            slot: "hat".into(),
+            name: CatalogText {
+                en: "A".into(),
+                es: "A".into(),
+            },
+            tags: vec![],
+            areas: vec![],
+            files: BTreeMap::from([
+                (
+                    "classic".into(),
+                    CatalogFiles {
+                        art: h(c),
+                        mask: h((c as u8 + 1) as char),
+                    },
+                ),
+                (
+                    "slim".into(),
+                    CatalogFiles {
+                        art: h((c as u8 + 2) as char),
+                        mask: h((c as u8 + 3) as char),
+                    },
+                ),
+            ]),
+            thumb: h('f'),
+            retired: false,
+        };
+        let manifest = Manifest {
+            format_version: 1,
+            version: h('0'),
+            license: "CC0-1.0".into(),
+            slots: vec![],
+            tags: vec![],
+            pieces: vec![piece("one", 'a'), piece("two", 'm'), piece("unworn", 'w')],
+            looks: vec![],
+        };
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1; 4]), Some("u1"))
+            .await
+            .unwrap();
+        let b = lib
+            .create("B", SkinModel::Classic, &skin([1; 4]), Some("u2"))
+            .await
+            .unwrap();
+        lib.save_look(&a.id, look_of(&["one", "gone"]), None, &skin([2; 4]))
+            .await
+            .unwrap();
+        lib.save_look(&b.id, look_of(&["two"]), None, &skin([2; 4]))
+            .await
+            .unwrap();
+        let hashes = lib.look_hashes(&manifest).await;
+        let want: BTreeSet<String> = ['a', 'b', 'c', 'd', 'm', 'n', 'o', 'p', 'f']
+            .iter()
+            .map(|c| h(*c))
+            .collect();
+        assert_eq!(hashes, want);
     }
 }
