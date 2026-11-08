@@ -139,6 +139,8 @@ export const commands = {
     invoke<SkinEntry>('skin_update', { id, name: change.name ?? null, model: change.model ?? null }),
   skinDuplicate: (id: string, name: string) => invoke<SkinEntry>('skin_duplicate', { id, name }),
   skinDelete: (id: string) => invoke<null>('skin_delete', { id }),
+  /** Puts `owner`'s wardrobe in the order of `ids`; answers the wardrobe as it now stands. */
+  skinReorder: (owner: string | null, ids: string[]) => invoke<SkinEntry[]>('skin_reorder', { owner, ids }),
   skinExport: (id: string, path: string) => invoke<string>('skin_export', { id, path }),
   /** A skin's kept versions, newest first. */
   skinVersions: (id: string) => invoke<SkinVersion[]>('skin_versions', { id }),

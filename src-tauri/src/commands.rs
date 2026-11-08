@@ -1121,6 +1121,18 @@ pub async fn skin_duplicate(
 }
 
 #[tauri::command]
+pub async fn skin_reorder(
+    core: CoreState<'_>,
+    owner: Option<String>,
+    ids: Vec<String>,
+) -> Res<Vec<launcher_core::skins_library::SkinEntry>> {
+    logged(
+        "skin_reorder",
+        core.skin_reorder(owner.as_deref(), &ids).await,
+    )
+}
+
+#[tauri::command]
 pub async fn skin_delete(core: CoreState<'_>, id: String) -> Res<()> {
     logged("skin_delete", core.skin_delete(&id).await)
 }

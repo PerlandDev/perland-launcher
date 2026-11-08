@@ -272,6 +272,7 @@ fn main() {
             commands::skin_save,
             commands::skin_update,
             commands::skin_duplicate,
+            commands::skin_reorder,
             commands::skin_versions,
             commands::skin_version_texture,
             commands::skin_restore,

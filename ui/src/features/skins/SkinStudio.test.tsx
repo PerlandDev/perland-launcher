@@ -3,7 +3,8 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
-import { MOCK_MICROSOFT_ACCOUNT } from '../../ipc/mock';
+import { createMockBackend, MOCK_MICROSOFT_ACCOUNT } from '../../ipc/mock';
+import { renderWithProviders } from '../../test/render';
 import { blankSkin, starterSkin } from './starter';
 import SkinStudio from './SkinStudio';
 
@@ -256,6 +257,82 @@ it('the picker takes a see-through texel at its own opacity', async () => {
   await user.keyboard('4');
   await paintTexel(41, 9);
   expect(slider).toHaveValue('40');
+});
+
+const wardrobeNames = () => within(screen.getByRole('list', { name: 'Wardrobe' })).getAllByRole('listitem').map((li) => within(li).getAllByText(/./)[0]!.textContent);
+
+it('Alt+arrows move the focused skin in the wardrobe, and the order is saved', async () => {
+  const { user, calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  expect(wardrobeNames()).toEqual(['Beach day', 'Miner']);
+  const list = screen.getByRole('list', { name: 'Wardrobe' });
+  within(list).getByRole('button', { name: /^Miner/ }).focus();
+  await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+  await waitFor(() => expect(sent(calls, 'skin_reorder')).toEqual([{ owner: STEVE, ids: ['skin-ffeeddccbbaa', 'skin-0a1b2c3d4e5f'] }]));
+  expect(wardrobeNames()).toEqual(['Miner', 'Beach day']);
+  expect(screen.getByText('Miner moved to position 1 of 2')).toBeInTheDocument();
+  // Focus stays on the skin that moved, and the open skin doesn't change.
+  expect(within(list).getByRole('button', { name: /^Miner/ })).toHaveFocus();
+  expect(screen.getByRole('heading', { level: 1 }).parentElement).toHaveTextContent('Beach day');
+  // Already on top, it goes no further.
+  await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+  expect(sent(calls, 'skin_reorder')).toHaveLength(1);
+});
+
+it('a skin dragged in the wardrobe lands where it is dropped, without opening it', async () => {
+  const { calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  const list = screen.getByRole('list', { name: 'Wardrobe' });
+  const miner = within(list).getByRole('button', { name: /^Miner/ });
+  // Every row measures the same in jsdom (midpoints at 128): above them is the top slot.
+  fireEvent.pointerDown(miner, { button: 0, pointerId: 1, clientX: 50, clientY: 140 });
+  fireEvent.pointerMove(miner, { pointerId: 1, clientX: 50, clientY: 60 });
+  expect(miner.closest('li')).toHaveAttribute('data-carry');
+  fireEvent.pointerUp(miner, { pointerId: 1, clientX: 50, clientY: 60 });
+  fireEvent.click(miner);
+  await waitFor(() => expect(sent(calls, 'skin_reorder')).toEqual([{ owner: STEVE, ids: ['skin-ffeeddccbbaa', 'skin-0a1b2c3d4e5f'] }]));
+  expect(wardrobeNames()).toEqual(['Miner', 'Beach day']);
+  expect(miner.closest('li')).not.toHaveAttribute('data-carry');
+  // The press that ended the drag isn't a click: Beach day stays open.
+  expect(miner).not.toHaveAttribute('aria-current');
+});
+
+it('a short press on a wardrobe skin still opens it', async () => {
+  const { calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  const miner = within(screen.getByRole('list', { name: 'Wardrobe' })).getByRole('button', { name: /^Miner/ });
+  fireEvent.pointerDown(miner, { button: 0, pointerId: 1, clientX: 50, clientY: 140 });
+  fireEvent.pointerMove(miner, { pointerId: 1, clientX: 51, clientY: 141 });
+  fireEvent.pointerUp(miner, { pointerId: 1, clientX: 51, clientY: 141 });
+  fireEvent.click(miner);
+  await waitFor(() => expect(miner).toHaveAttribute('aria-current', 'true'));
+  expect(sent(calls, 'skin_reorder')).toHaveLength(0);
+});
+
+it('the skin menu moves a skin up or down', async () => {
+  const { user, calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  await user.click(screen.getByRole('button', { name: 'More for Beach day' }));
+  // The top skin can't go up.
+  expect(screen.queryByRole('menuitem', { name: 'Move up' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('menuitem', { name: 'Move down' }));
+  await waitFor(() => expect(sent(calls, 'skin_reorder')).toEqual([{ owner: STEVE, ids: ['skin-ffeeddccbbaa', 'skin-0a1b2c3d4e5f'] }]));
+  expect(wardrobeNames()).toEqual(['Miner', 'Beach day']);
+});
+
+it('a refused reorder puts the wardrobe back as it is', async () => {
+  const backend = createMockBackend();
+  const { user } = renderWithProviders(<SkinStudio />, {
+    ipc: (cmd, args) =>
+      cmd === 'skin_reorder'
+        ? Promise.reject({ category: 'disk', code: 'disk_write_failed', message: "The skin list couldn't be saved", fix: null, detail: null, params: {} })
+        : backend.handle(cmd, args),
+  });
+  await screen.findByText('Saved');
+  within(screen.getByRole('list', { name: 'Wardrobe' })).getByRole('button', { name: /^Miner/ }).focus();
+  await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+  await waitFor(() => expect(toastsSnapshot().length).toBeGreaterThan(0));
+  await waitFor(() => expect(wardrobeNames()).toEqual(['Beach day', 'Miner']));
 });
 
 it('switching to slim arms and straight back gives back the very same arms', async () => {

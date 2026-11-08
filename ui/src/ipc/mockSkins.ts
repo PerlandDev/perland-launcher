@@ -153,13 +153,9 @@ function checkName(name: unknown): string {
   return trimmed;
 }
 
-/** `owner`'s wardrobe (the loose skins for null): the skin it wears first, then the newest. */
+/** `owner`'s wardrobe (the loose skins for null), in the player's order: the order of `entries`, as in Rust. */
 function wardrobe(state: SkinsState, owner: string | null) {
-  const wears = (e: SkinEntry) => owner !== null && e.wornBy === owner;
-  return state.entries
-    .filter((e) => (e.owner ?? null) === owner)
-    .sort((a, b) => Number(wears(b)) - Number(wears(a)) || b.updated - a.updated)
-    .map((e) => ({ ...e }));
+  return state.entries.filter((e) => (e.owner ?? null) === owner).map((e) => ({ ...e }));
 }
 
 function ownerArg(value: unknown): string | null {
@@ -173,7 +169,8 @@ function wornBy(state: SkinsState, id: string, uuid: string) {
   }
 }
 
-function add(state: SkinsState, name: string, model: SkinModel, texture: string, owner: string | null, seeded = false): SkinEntry {
+/** A new skin goes on top of its wardrobe; a copy (`after` its source) right below the source. */
+function add(state: SkinsState, name: string, model: SkinModel, texture: string, owner: string | null, seeded = false, after?: SkinEntry): SkinEntry {
   state.seq += 1;
   const entry: SkinEntry = {
     id: `skin-${state.seq.toString(16).padStart(12, '0')}`,
@@ -183,7 +180,7 @@ function add(state: SkinsState, name: string, model: SkinModel, texture: string,
     ...(owner ? { owner } : {}),
     ...(seeded ? { seeded } : {}),
   };
-  state.entries.push(entry);
+  state.entries.splice(after ? state.entries.indexOf(after) + 1 : 0, 0, entry);
   state.textures.set(entry.id, texture);
   return entry;
 }
@@ -236,7 +233,23 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
     }
     case 'skin_duplicate': {
       const entry = find(state, args.id);
-      return add(state, checkName(args.name), entry.model, state.textures.get(entry.id)!, entry.owner ?? null);
+      return add(state, checkName(args.name), entry.model, state.textures.get(entry.id)!, entry.owner ?? null, false, entry);
+    }
+    case 'skin_reorder': {
+      // As in Rust: the wardrobe's skins fill their own places in the list, those named first, the rest after them.
+      const owner = ownerArg(args.owner);
+      const ids = Array.isArray(args.ids) ? args.ids.map(String) : [];
+      const mine = (e: SkinEntry) => (e.owner ?? null) === owner;
+      const places = state.entries.flatMap((e, i) => (mine(e) ? [i] : []));
+      const rest = places.map((i) => state.entries[i]!);
+      const order: SkinEntry[] = [];
+      for (const id of ids) {
+        const at = rest.findIndex((e) => e.id === id);
+        if (at >= 0) order.push(...rest.splice(at, 1));
+      }
+      order.push(...rest);
+      places.forEach((i, k) => (state.entries[i] = order[k]!));
+      return wardrobe(state, owner);
     }
     case 'skin_delete':
       find(state, args.id);
