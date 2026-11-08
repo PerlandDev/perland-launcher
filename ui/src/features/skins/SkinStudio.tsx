@@ -13,7 +13,8 @@ import { pushError, pushNotice } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { Field } from '../../ui/Field';
-import { ChevronDown, Clock, Close, Copy, Download, Pencil, Reload, Shirt, Trash } from '../../ui/Icon';
+import { ArrowDown, ArrowUp, ChevronDown, Clock, Close, Copy, Download, Pencil, Reload, Shirt, Trash } from '../../ui/Icon';
+import { moveItem } from '../rail/reorder';
 import { Menu, type MenuHandle, type MenuItem } from '../../ui/Menu';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { decodeTexture, encodeTexture } from './codec';
@@ -22,7 +23,7 @@ import { Hotbar } from './Hotbar';
 import { POSES, type Pose } from './poses';
 import { SLOT_TOOLS } from './tools';
 import { PARTS, type Layer } from './layout';
-import { Pixels, toHex, type Rgba, type Tool } from './paint';
+import { pickPaint, Pixels, toHex, type Rgba, type Tool } from './paint';
 import { PartsPanel } from './PartsPanel';
 import { remember } from './recent';
 import { Stage, type StageHandle } from './Stage';
@@ -207,6 +208,22 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     pushNotice({ title: t('skins.exported', { name: entry.name }) });
   };
 
+  /** Moves the skin at `from` to `to` in the wardrobe: shown at once, then saved (a refused save puts it back). */
+  const moveSkin = (from: number, to: number) => {
+    const ids = moveItem(list.map((e) => e.id), from, to);
+    const key = SKINS_KEY;
+    // The open skin stays open: with none picked, the screen shows the top one, so pin it first.
+    if (selected && picked !== selected.id) setPicked(selected.id);
+    qc.setQueryData<SkinEntry[]>(key, (old) => old && ids.map((id) => old.find((e) => e.id === id)!).filter(Boolean));
+    commands
+      .skinReorder(owner, ids)
+      .then((next) => qc.setQueryData(key, next))
+      .catch((error) => {
+        pushError(error);
+        void qc.invalidateQueries({ queryKey: key });
+      });
+  };
+
   const menuFor = (entry: SkinEntry): MenuItem[] => [
     { id: 'rename', label: t('skins.rename'), icon: <Pencil />, onSelect: () => (setNewName(entry.name), setRenaming(entry)) },
     {
@@ -218,11 +235,18 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
           .flush()
           .then(() => commands.skinDuplicate(entry.id, t('skins.copyName', { name: entry.name }).slice(0, 64)))
           .then((copy) => {
-            qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [copy, ...(old ?? [])]);
+            // As the wardrobe keeps it: right below its source.
+            qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => {
+              const next = [...(old ?? [])];
+              next.splice(next.findIndex((e) => e.id === entry.id) + 1, 0, copy);
+              return next;
+            });
             setPicked(copy.id);
           })
           .catch(pushError),
     },
+    ...(list.indexOf(entry) > 0 ? [{ id: 'up', label: t('skins.moveUp'), icon: <ArrowUp />, onSelect: () => moveSkin(list.indexOf(entry), list.indexOf(entry) - 1) }] : []),
+    ...(list.indexOf(entry) < list.length - 1 ? [{ id: 'down', label: t('skins.moveDown'), icon: <ArrowDown />, onSelect: () => moveSkin(list.indexOf(entry), list.indexOf(entry) + 1) }] : []),
     { id: 'export', label: t('skins.export'), icon: <Download />, onSelect: () => void exportSkin(entry).catch(pushError) },
     { id: 'delete', label: t('skins.delete'), icon: <Trash />, danger: true, onSelect: () => setDeleting(entry) },
   ];
@@ -249,8 +273,11 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const paintAt = (x: number, y: number, joined: boolean) => {
     if (previewing) return;
     if (tool === 'picker') {
-      const c = doc.pixels?.get(x, y);
-      if (c && c[3] > 0) setColor([c[0], c[1], c[2], 255]);
+      const picked = doc.pixels && pickPaint(doc.pixels.get(x, y));
+      if (picked) {
+        setColor(picked.color);
+        setOpacity(picked.opacity);
+      }
       return;
     }
     doc.paint(x, y, strokeOpts, joined);
@@ -397,6 +424,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
           newItems={newItems}
           onImport={() => void importSkin().catch(pushError)}
           menuFor={menuFor}
+          onMove={moveSkin}
         />
 
         <div className="stage">

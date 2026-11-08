@@ -207,6 +207,13 @@ export function pick(px: Pixels, x: number, y: number): Rgba {
   return px.get(x, y);
 }
 
+/** What the picker sets from a texel: its colour, opaque, and its opacity on the brush (1–100, the slider's range), so
+ *  the paint picked lands as the same texel. Null for an empty texel. */
+export function pickPaint([r, g, b, a]: Rgba): { color: Rgba; opacity: number } | null {
+  if (a === 0) return null;
+  return { color: [r, g, b, 255], opacity: Math.max(1, Math.round((a * 100) / 255)) };
+}
+
 /** The texels on the line from (x0, y0) to (x1, y1), both ends included, so a fast drag leaves no gaps. */
 export function line(x0: number, y0: number, x1: number, y1: number): [number, number][] {
   const out: [number, number][] = [];

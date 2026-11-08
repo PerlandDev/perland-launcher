@@ -5,11 +5,11 @@ import { commands } from '../../ipc/commands';
 import type { SkinModel } from '../../ipc/schema';
 import { pushError } from '../../state/toasts';
 import { decodeTexture, encodeTexture } from './codec';
-import { convertArms, fitsModel } from './armModel';
+import { convertArms, fitsModel, restoreArms } from './armModel';
 import { History, mergeStroke } from './history';
 import { mirrorTexel } from './mirror';
 import { applyTool, line, Pixels, sameColor, type Change, type Rgba, type Tool, type Touched } from './paint';
-import { SKIN_SIZE } from './layout';
+import { faceAt, SKIN_SIZE } from './layout';
 
 /** The quiet wait after a stroke before the skin is saved. */
 export const AUTOSAVE_MS = 600;
@@ -44,6 +44,14 @@ export interface SkinDoc {
   replace(data: Uint8ClampedArray): void;
 }
 
+/** Whether (x, y) is an arm texel, in either arm model's layout. */
+function onArm(x: number, y: number): boolean {
+  return (['classic', 'slim'] as const).some((model) => {
+    const part = faceAt(model, x, y)?.box.part;
+    return part === 'rightArm' || part === 'leftArm';
+  });
+}
+
 /** Everything that changes without a render of its own: the views redraw on `rev`. */
 class DocStore {
   id: string | null = null;
@@ -55,6 +63,8 @@ class DocStore {
   timer: ReturnType<typeof setTimeout> | null = null;
   /** A save went through since the skin was opened or last kept as a version. */
   dirty = false;
+  /** The last switch of arm model that redrew the arms, while switching straight back can still undo it exactly. */
+  lastSwitch: { from: SkinModel; to: SkinModel; changes: Change[] } | null = null;
   onSaved: () => void = () => {};
   onState: (id: string, state: SaveState) => void = () => {};
 
@@ -68,6 +78,7 @@ class DocStore {
     this.pixels = new Pixels(data);
     this.history.clear();
     this.dirty = false;
+    this.lastSwitch = null;
   }
 
   /** Writes a waiting save, then keeps a version if the skin was changed while it was open. */
@@ -99,6 +110,7 @@ class DocStore {
     if (changes.length === 0) return false;
     for (const c of changes) px.set(c.x, c.y, c.after);
     this.history.push(changes);
+    this.lastSwitch = null;
     return true;
   }
 
@@ -142,14 +154,17 @@ class DocStore {
     this.last = null;
     if (!done || done.length === 0) return false;
     this.history.push(mergeStroke(done));
+    if (done.some((c) => onArm(c.x, c.y))) this.lastSwitch = null;
     return true;
   }
 
   undo(onModel: (model: SkinModel) => void): boolean {
+    this.lastSwitch = null;
     return !!this.pixels && this.history.undo(this.pixels, onModel);
   }
 
   redo(onModel: (model: SkinModel) => void): boolean {
+    this.lastSwitch = null;
     return !!this.pixels && this.history.redo(this.pixels, onModel);
   }
 
@@ -157,7 +172,11 @@ class DocStore {
   switchModel(from: SkinModel, to: SkinModel): boolean {
     const px = this.pixels;
     if (!px || from === to) return false;
-    const changes = fitsModel(px, to) ? [] : convertArms(px, from, to);
+    // Straight back from a switch that redrew the arms, with them untouched since: the very texels come back.
+    const last = this.lastSwitch;
+    const back = last && last.from === to && last.to === from ? restoreArms(px, last.changes) : null;
+    const changes = back ?? (fitsModel(px, to) ? [] : convertArms(px, from, to));
+    this.lastSwitch = back || changes.length === 0 ? null : { from, to, changes };
     this.history.push(changes, { before: from, after: to });
     return changes.length > 0;
   }

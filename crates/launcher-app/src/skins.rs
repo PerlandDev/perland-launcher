@@ -135,6 +135,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.skins.duplicate(id, name).await
     }
 
+    /// Puts `owner`'s wardrobe in the order of `ids`, and answers it as it now stands.
+    pub async fn skin_reorder(
+        &self,
+        owner: Option<&str>,
+        ids: &[String],
+    ) -> Result<Vec<SkinEntry>> {
+        self.skins.reorder(owner, ids).await
+    }
+
     pub async fn skin_delete(&self, id: &str) -> Result<()> {
         self.skins.delete(id).await
     }
@@ -356,6 +365,38 @@ mod tests {
         assert_eq!(calls[0].args[0], "mc-cached");
         assert_eq!(calls[0].args[1], "slim");
         assert_eq!(list[0].worn_by.as_deref(), Some(alex.uuid.as_str()));
+    }
+
+    #[tokio::test]
+    async fn reorder_sets_the_wardrobe_order() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let alex = alex(&core).await;
+        let mut made = Vec::new();
+        for name in ["A", "B"] {
+            made.push(
+                core.skin_create(
+                    name,
+                    SkinModel::Classic,
+                    &texture(),
+                    Some(&alex.uuid),
+                    false,
+                )
+                .await
+                .unwrap()
+                .id,
+            );
+        }
+        let list = core.skin_reorder(Some(&alex.uuid), &made).await.unwrap();
+        let ids: Vec<String> = list.into_iter().map(|e| e.id).collect();
+        assert_eq!(ids, made);
+        let listed: Vec<String> = core
+            .skins_list(Some(&alex.uuid), None)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(listed, made);
     }
 
     #[tokio::test]

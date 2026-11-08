@@ -3,16 +3,22 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
-import { MOCK_MICROSOFT_ACCOUNT } from '../../ipc/mock';
+import { createMockBackend, MOCK_MICROSOFT_ACCOUNT } from '../../ipc/mock';
+import { renderWithProviders } from '../../test/render';
 import { blankSkin, starterSkin } from './starter';
 import SkinStudio from './SkinStudio';
 
 // jsdom has no canvas or WebGL: the codec hands back the starter skin, and the 3D stage is unavailable (the screen
 // keeps working on the flat texture, as it would without WebGL).
+// A test that needs to tell saved textures apart turns `tagged` on: each texture then encodes to a digest of its texels.
+const encoding = vi.hoisted(() => ({
+  tagged: false,
+  digest: (data: Uint8ClampedArray) => `data:image/png;base64,DIGEST-${data.reduce((h, v, i) => (h * 31 + v * (i + 1)) % 1_000_000_007, 7)}`,
+}));
 vi.mock('./codec', () => ({
   // A kept version decodes to the blank figure, so restoring one changes texels.
   decodeTexture: (url: string) => Promise.resolve(url.includes('VERSION') ? blankSkin().data : starterSkin().data),
-  encodeTexture: () => 'data:image/png;base64,ENCODED',
+  encodeTexture: (data: Uint8ClampedArray) => (encoding.tagged ? encoding.digest(data) : 'data:image/png;base64,ENCODED'),
 }));
 vi.mock('./stageScene', () => ({
   createStage: () => {
@@ -28,6 +34,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
+  encoding.tagged = false;
 });
 
 const STEVE = '5627dd98-e6be-3c21-b8a8-e92344183641';
@@ -235,6 +242,117 @@ it('the brush opacity starts full and can be turned down', async () => {
   expect(slider).toHaveValue('100');
   fireEvent.change(slider, { target: { value: '40' } });
   expect(slider).toHaveAttribute('aria-valuetext', '40%');
+});
+
+it('the picker takes a see-through texel at its own opacity', async () => {
+  const { user } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  const slider = screen.getByRole('slider', { name: 'Opacity' });
+  // A texel of the empty outer layer painted at 40%…
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Paint on' })).getByRole('radio', { name: 'Outer' }));
+  fireEvent.change(slider, { target: { value: '40' } });
+  await paintTexel(41, 9);
+  // …picked with full opacity set: the picker sets the slider back to 40%.
+  fireEvent.change(slider, { target: { value: '100' } });
+  await user.keyboard('4');
+  await paintTexel(41, 9);
+  expect(slider).toHaveValue('40');
+});
+
+const wardrobeNames = () => within(screen.getByRole('list', { name: 'Wardrobe' })).getAllByRole('listitem').map((li) => within(li).getAllByText(/./)[0]!.textContent);
+
+it('Alt+arrows move the focused skin in the wardrobe, and the order is saved', async () => {
+  const { user, calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  expect(wardrobeNames()).toEqual(['Beach day', 'Miner']);
+  const list = screen.getByRole('list', { name: 'Wardrobe' });
+  within(list).getByRole('button', { name: /^Miner/ }).focus();
+  await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+  await waitFor(() => expect(sent(calls, 'skin_reorder')).toEqual([{ owner: STEVE, ids: ['skin-ffeeddccbbaa', 'skin-0a1b2c3d4e5f'] }]));
+  expect(wardrobeNames()).toEqual(['Miner', 'Beach day']);
+  expect(screen.getByText('Miner moved to position 1 of 2')).toBeInTheDocument();
+  // Focus stays on the skin that moved, and the open skin doesn't change.
+  expect(within(list).getByRole('button', { name: /^Miner/ })).toHaveFocus();
+  expect(screen.getByRole('heading', { level: 1 }).parentElement).toHaveTextContent('Beach day');
+  // Already on top, it goes no further.
+  await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+  expect(sent(calls, 'skin_reorder')).toHaveLength(1);
+});
+
+it('a skin dragged in the wardrobe lands where it is dropped, without opening it', async () => {
+  const { calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  const list = screen.getByRole('list', { name: 'Wardrobe' });
+  const miner = within(list).getByRole('button', { name: /^Miner/ });
+  // Every row measures the same in jsdom (midpoints at 128): above them is the top slot.
+  fireEvent.pointerDown(miner, { button: 0, pointerId: 1, clientX: 50, clientY: 140 });
+  fireEvent.pointerMove(miner, { pointerId: 1, clientX: 50, clientY: 60 });
+  expect(miner.closest('li')).toHaveAttribute('data-carry');
+  fireEvent.pointerUp(miner, { pointerId: 1, clientX: 50, clientY: 60 });
+  fireEvent.click(miner);
+  await waitFor(() => expect(sent(calls, 'skin_reorder')).toEqual([{ owner: STEVE, ids: ['skin-ffeeddccbbaa', 'skin-0a1b2c3d4e5f'] }]));
+  expect(wardrobeNames()).toEqual(['Miner', 'Beach day']);
+  expect(miner.closest('li')).not.toHaveAttribute('data-carry');
+  // The press that ended the drag isn't a click: Beach day stays open.
+  expect(miner).not.toHaveAttribute('aria-current');
+});
+
+it('a short press on a wardrobe skin still opens it', async () => {
+  const { calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  const miner = within(screen.getByRole('list', { name: 'Wardrobe' })).getByRole('button', { name: /^Miner/ });
+  fireEvent.pointerDown(miner, { button: 0, pointerId: 1, clientX: 50, clientY: 140 });
+  fireEvent.pointerMove(miner, { pointerId: 1, clientX: 51, clientY: 141 });
+  fireEvent.pointerUp(miner, { pointerId: 1, clientX: 51, clientY: 141 });
+  fireEvent.click(miner);
+  await waitFor(() => expect(miner).toHaveAttribute('aria-current', 'true'));
+  expect(sent(calls, 'skin_reorder')).toHaveLength(0);
+});
+
+it('the skin menu moves a skin up or down', async () => {
+  const { user, calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  await user.click(screen.getByRole('button', { name: 'More for Beach day' }));
+  // The top skin can't go up.
+  expect(screen.queryByRole('menuitem', { name: 'Move up' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('menuitem', { name: 'Move down' }));
+  await waitFor(() => expect(sent(calls, 'skin_reorder')).toEqual([{ owner: STEVE, ids: ['skin-ffeeddccbbaa', 'skin-0a1b2c3d4e5f'] }]));
+  expect(wardrobeNames()).toEqual(['Miner', 'Beach day']);
+});
+
+it('a refused reorder puts the wardrobe back as it is', async () => {
+  const backend = createMockBackend();
+  const { user } = renderWithProviders(<SkinStudio />, {
+    ipc: (cmd, args) =>
+      cmd === 'skin_reorder'
+        ? Promise.reject({ category: 'disk', code: 'disk_write_failed', message: "The skin list couldn't be saved", fix: null, detail: null, params: {} })
+        : backend.handle(cmd, args),
+  });
+  await screen.findByText('Saved');
+  within(screen.getByRole('list', { name: 'Wardrobe' })).getByRole('button', { name: /^Miner/ }).focus();
+  await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+  await waitFor(() => expect(toastsSnapshot().length).toBeGreaterThan(0));
+  await waitFor(() => expect(wardrobeNames()).toEqual(['Beach day', 'Miner']));
+});
+
+it('switching to slim arms and straight back gives back the very same arms', async () => {
+  encoding.tagged = true;
+  const { user, calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  await waitFor(() => expect(sent(calls, 'skin_texture').length).toBeGreaterThan(0));
+  const saved = () => sent(calls, 'skin_save').map((c) => (c as { texture: string }).texture);
+  const original = encoding.digest(starterSkin().data);
+  // Beach day's test texture is drawn for classic arms: first put its flag right.
+  await user.click(screen.getByRole('radio', { name: 'Classic arms' }));
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  await user.click(screen.getByRole('radio', { name: 'Slim arms' }));
+  await act(() => vi.advanceTimersByTimeAsync(700));
+  await waitFor(() => expect(saved()).toHaveLength(1));
+  expect(saved()[0]).not.toBe(original);
+  await user.click(screen.getByRole('radio', { name: 'Classic arms' }));
+  await act(() => vi.advanceTimersByTimeAsync(700));
+  await waitFor(() => expect(saved()).toHaveLength(2));
+  expect(saved()[1]).toBe(original);
 });
 
 it('switching arms redraws them into the new layout, and one undo puts both back', async () => {

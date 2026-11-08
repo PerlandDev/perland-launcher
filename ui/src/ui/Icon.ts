@@ -2,6 +2,8 @@
 export {
   ArrowBarLeft,
   ArrowBarRight,
+  ArrowDown,
+  ArrowUp,
   Calendar,
   Check,
   ChevronDown,

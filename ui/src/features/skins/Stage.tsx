@@ -31,7 +31,8 @@ export interface StageHandle {
   celebrate(): void;
 }
 
-/** The 3D figure. Drag on it to paint; drag the empty stage, or right-drag anywhere, to turn it; the wheel zooms. */
+/** The 3D figure. Drag on it to paint; drag the empty stage, or right-drag anywhere, to turn it; middle-drag or
+ *  Shift-drag to slide it; the wheel zooms toward the pointer. */
 export function Stage({
   pixels,
   rev,
@@ -64,7 +65,7 @@ export function Stage({
   const { t } = useTranslation();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [scene, setScene] = useState<Scene | null>(null);
-  const drag = useRef<{ mode: 'paint' | 'orbit'; x: number; y: number } | null>(null);
+  const drag = useRef<{ mode: 'paint' | 'orbit' | 'pan'; x: number; y: number } | null>(null);
 
   useEffect(() => {
     const el = canvas.current;
@@ -100,9 +101,14 @@ export function Stage({
   }, [scene, pixels, rev, hover, model]);
 
   const down = (event: PointerEvent<HTMLCanvasElement>) => {
-    const hit = event.button === 0 ? scene?.pick(event.clientX, event.clientY) : null;
+    const panning = event.button === 1 || (event.button === 0 && event.shiftKey);
+    const hit = event.button === 0 && !panning ? scene?.pick(event.clientX, event.clientY) : null;
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    if (hit) {
+    if (panning) {
+      // The middle button would otherwise start the browser's autoscroll.
+      event.preventDefault();
+      drag.current = { mode: 'pan', x: event.clientX, y: event.clientY };
+    } else if (hit) {
       drag.current = { mode: 'paint', x: event.clientX, y: event.clientY };
       onBegin();
       onPaint(hit.x, hit.y);
@@ -114,8 +120,9 @@ export function Stage({
     const s = scene;
     if (!s) return;
     const d = drag.current;
-    if (d?.mode === 'orbit') {
-      s.orbit(event.clientX - d.x, event.clientY - d.y);
+    if (d?.mode === 'orbit' || d?.mode === 'pan') {
+      if (d.mode === 'orbit') s.orbit(event.clientX - d.x, event.clientY - d.y);
+      else s.pan(event.clientX - d.x, event.clientY - d.y);
       d.x = event.clientX;
       d.y = event.clientY;
       return;
@@ -128,7 +135,7 @@ export function Stage({
     if (drag.current?.mode === 'paint') onEnd();
     drag.current = null;
   };
-  const wheel = (event: WheelEvent) => scene?.zoom(event.deltaY > 0 ? 1.1 : 1 / 1.1);
+  const wheel = (event: WheelEvent) => scene?.zoom(event.deltaY > 0 ? 1.1 : 1 / 1.1, event.clientX, event.clientY);
 
   return (
     <canvas
@@ -138,6 +145,7 @@ export function Stage({
       role="img"
       aria-label={t('skins.stageLabel')}
       onPointerDown={down}
+      onMouseDown={(e) => e.button === 1 && e.preventDefault()}
       onPointerMove={move}
       onPointerUp={up}
       onPointerCancel={up}

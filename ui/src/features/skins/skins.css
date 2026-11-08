@@ -620,3 +620,65 @@
     transition: none;
   }
 }
+
+/* Reordering the wardrobe, as the rail does it (DESIGN.md, Reordering the rail). The rows between the carried skin's
+   place and where it would land snap one place over (a snap, never a slide). */
+.wardrobe-item {
+  position: relative;
+}
+.wardrobe-item[data-shift] {
+  translate: 0 var(--shift, 0);
+}
+/* The carried row leaves its place as the open slot: a recessed ground socket that follows the landing place. */
+/* (Hovered too: the pointer stays on it, and its hover face would cover the row that snaps into its place.) */
+.wardrobe-item[data-carry],
+.wardrobe-item[data-carry]:hover {
+  z-index: 1;
+  padding-right: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.wardrobe-item[data-carry]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  translate: 0 var(--socket, 0);
+  pointer-events: none;
+  background: var(--color-ground);
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow:
+    inset 0 2px 0 rgb(0 0 0 / 0.45),
+    inset 0 0 0 1px var(--color-line);
+}
+/* The amber drop line, an insertion caret in the gap above the open slot, once the landing place differs. Unlike the
+   rail's, it runs under the held skin, so it never strikes through a name. */
+.wardrobe-item[data-carry][data-drop]::after {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  top: -5px;
+  inset-inline: 0;
+  height: 4px;
+  translate: 0 var(--socket, 0);
+  background: var(--color-amber);
+  box-shadow: 0 2px 0 var(--color-dirt);
+  border-radius: 2px;
+  corner-shape: notch;
+  pointer-events: none;
+}
+/* Held: the skin rides the pointer 1:1 as a raised face, the whole row wide, on the card step inside a dim-ink seam
+   ring, so it never reads as the open skin at rest. Its ⋯ key stays out of the drag. */
+.wardrobe-item[data-carry] .wardrobe-pick {
+  position: relative;
+  z-index: 1;
+  translate: 0 var(--lift, 0);
+  background: var(--color-raised);
+  box-shadow:
+    inset 0 0 0 1px var(--color-ink-dim),
+    0 8px 0 var(--color-dirt-deep);
+  cursor: grabbing;
+}
+.wardrobe-item[data-carry] > :not(.wardrobe-pick) {
+  display: none;
+}
