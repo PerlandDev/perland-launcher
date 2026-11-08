@@ -48,6 +48,7 @@ function VersionFigure({ skin, version, model }: { skin: string; version: string
 export function HistoryPanel({
   skin,
   model,
+  hasLook = false,
   versions,
   picked,
   onPick,
@@ -55,6 +56,8 @@ export function HistoryPanel({
 }: {
   skin: string;
   model: SkinModel;
+  /** The open skin wears catalog pieces, which a restored version leaves behind. */
+  hasLook?: boolean;
   versions: SkinVersion[] | undefined;
   picked: string | null;
   onPick: (version: SkinVersion) => void;
@@ -71,6 +74,7 @@ export function HistoryPanel({
         <Button variant="ghost" size="icon" aria-label={t('skins.history.close')} title={t('skins.history.close')} icon={<Close />} onClick={onClose} />
       </div>
       <p className="text-sm text-ink-dim text-pretty">{t('skins.history.about')}</p>
+      {hasLook && <p className="history-plain text-sm text-pretty">{t('skins.history.plainNote')}</p>}
       {versions && versions.length === 0 ? (
         <p className="history-empty text-sm text-ink-dim">{t('skins.history.empty')}</p>
       ) : (

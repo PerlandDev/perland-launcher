@@ -1063,6 +1063,7 @@
     "stageLabel": "Tu figura en 3D. Arrastra sobre ella para pintar y alrededor para girarla.",
     "stageHint": "Arrastra sobre la figura para pintar. Arrastra alrededor, o con clic derecho, para girarla.",
     "stageHintTurn": "Arrastra la figura, o arrastra con el botón derecho, para girarla.",
+    "piecesOnTop": "Las piezas están encima. Quítalas o hazlas parte de la skin para pintar sobre ellas.",
     "stageLabelTurn": "Tu figura en 3D. Arrástrala para girarla.",
     "wear": "Ponerme esta skin",
     "wearingNow": "Poniéndola…",
@@ -1107,7 +1108,11 @@
       "restoreShort": "Restaurar",
       "restored": "Versión restaurada",
       "restoredBody": "Tu skin volvió a {{when}}. Deshacer lo revierte.",
-      "copyName": "{{name}} ({{when}})"
+      "copyName": "{{name}} ({{when}})",
+      "plainTitle": "¿Restaurar como skin pintada?",
+      "plainBody": "Esta skin lleva piezas del catálogo. La versión se vuelve una skin pintada: lo que llevaba queda pintado y sus piezas ya no se pueden cambiar en Crear. Deshacer lo revierte.",
+      "plainConfirm": "Restaurar",
+      "plainNote": "Restaurar una versión la vuelve una skin pintada, sin sus piezas."
     }
   },
   "errors": {

@@ -122,6 +122,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const [newName, setNewName] = useState('');
   const [deleting, setDeleting] = useState<SkinEntry | null>(null);
   const [wearing, setWearing] = useState(false);
+  // Restoring a version of a skin with pieces asks first: it becomes a plain painted skin.
+  const [confirmPlain, setConfirmPlain] = useState(false);
   // Version history: the panel in the texture column, and the version shown on the stage instead of the skin.
   const [historyOpen, setHistoryOpen] = useState(false);
   const [preview, setPreview] = useState<{ skin: string; version: SkinVersion; pixels: Pixels; seq: number } | null>(null);
@@ -317,6 +319,16 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   };
 
   const restore = () => {
+    if (!selected || !previewShown) return;
+    if (doc.look) {
+      setConfirmPlain(true);
+      return;
+    }
+    restoreNow();
+  };
+
+  const restoreNow = () => {
+    setConfirmPlain(false);
     if (!selected || !previewShown) return;
     const { version, pixels } = previewShown;
     once((done) => {
@@ -548,7 +560,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
             </div>
 
             {historyOpen && selected ? (
-              <HistoryPanel skin={selected.id} model={model} versions={versions.data} picked={previewShown?.version.id ?? null} onPick={pickVersion} onClose={() => setHistoryOpen(false)} />
+              <HistoryPanel skin={selected.id} model={model} hasLook={doc.look !== null} versions={versions.data} picked={previewShown?.version.id ?? null} onPick={pickVersion} onClose={() => setHistoryOpen(false)} />
             ) : tab === 'create' ? (
               <CreatePanel key={selected?.id ?? ''} catalog={catalog} look={editor.look} editor={editor} lang={lang} />
             ) : (
@@ -577,6 +589,11 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
                 onPaint={paintAt}
                 onEnd={doc.end}
               />
+              {doc.covered && (
+                <p className="paint-covered" role="status">
+                  {t('skins.piecesOnTop')}
+                </p>
+              )}
               <ColourPanel color={color} opacity={opacity} recent={recent} onColor={setColor} onPreview={setColorState} onOpacity={setOpacity} />
               <PartsPanel hidden={hidden} onToggle={togglePart} onLayer={showLayer} />
             </aside>
@@ -662,6 +679,24 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         }
       >
         <p className="text-ink-dim">{t('skins.deleteBody')}</p>
+      </Dialog>
+
+      <Dialog
+        open={confirmPlain}
+        onClose={() => setConfirmPlain(false)}
+        title={t('skins.history.plainTitle')}
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmPlain(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="primary" icon={<Reload />} onClick={restoreNow}>
+              {t('skins.history.plainConfirm')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-ink-dim text-pretty">{t('skins.history.plainBody')}</p>
       </Dialog>
     </section>
   );

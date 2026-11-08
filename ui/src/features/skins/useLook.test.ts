@@ -167,3 +167,82 @@ it('undo while a change is loading holds, and the change lands on what is left',
   await waitFor(() => expect(ids(got.editor!.look)).toEqual(['body-plain']));
   expect(got.editor!.look!.pieces[0]!.colours.skin).toBe('#d9a27c');
 });
+
+const RED = [255, 0, 0, 255];
+const pencil = { tool: 'pencil' as const, color: [255, 0, 0, 255] as [number, number, number, number], mirror: false, darken: false };
+const at = (data: Uint8ClampedArray | null | undefined, x: number, y: number) => (data ? Array.from(data.slice((y * 64 + x) * 4, (y * 64 + x) * 4 + 4)) : null);
+const TEE: WornPiece = { id: 'top-tee', colours: { main: '#e8e4dc', trim: '#3a6ea5' } };
+const BODY: WornPiece = { id: 'body-plain', colours: { skin: '#d9a27c' } };
+
+function stroke(doc: SkinDoc, x: number, y: number) {
+  act(() => {
+    doc.begin();
+    doc.paint(x, y, pencil, false);
+    doc.end();
+  });
+}
+
+it('painting a skin with pieces edits the painting under them', async () => {
+  const { got } = open({ pieces: [BODY, TEE], painting: false });
+  await waitFor(() => expect(got.ready && got.doc!.piecesReady).toBe(true));
+  // Under the T-shirt (the fake top covers rows 32–35) and where nothing is worn (row 40).
+  stroke(got.doc!, 10, 33);
+  stroke(got.doc!, 10, 40);
+  expect(at(got.editor!.painting, 10, 33)).toEqual(RED);
+  expect(at(got.editor!.painting, 10, 40)).toEqual(RED);
+  expect(got.editor!.look!.painting).toBe(true);
+  expect(ids(got.editor!.look)).toEqual(['body-plain', 'top-tee']);
+  // The finished skin keeps the shirt on top, and shows the stroke where nothing covers it.
+  expect(at(got.doc!.pixels!.data, 10, 33)).toEqual([0xe8, 0xe4, 0xdc, 255]);
+  expect(at(got.doc!.pixels!.data, 10, 40)).toEqual(RED);
+  // A later change in Create recomposes from the painting, so the strokes stay.
+  act(() => got.editor!.setColour('top-tee', 'main', '#112233'));
+  await waitFor(() => expect(got.editor!.look!.pieces[1]!.colours.main).toBe('#112233'));
+  expect(at(got.doc!.pixels!.data, 10, 40)).toEqual(RED);
+  expect(at(got.doc!.pixels!.data, 10, 33)).toEqual([0x11, 0x22, 0x33, 255]);
+  // Each stroke is one undo step.
+  act(() => got.doc!.undo());
+  act(() => got.doc!.undo());
+  expect(at(got.editor!.painting, 10, 40)).not.toEqual(RED);
+  expect(at(got.editor!.painting, 10, 33)).toEqual(RED);
+  act(() => got.doc!.undo());
+  expect(at(got.editor!.painting, 10, 33)).not.toEqual(RED);
+});
+
+it('a stroke hidden by a piece marks the pieces as on top', async () => {
+  const { got } = open({ pieces: [BODY, TEE], painting: false });
+  await waitFor(() => expect(got.ready && got.doc!.piecesReady).toBe(true));
+  stroke(got.doc!, 10, 33);
+  expect(got.doc!.covered).toBe(true);
+  stroke(got.doc!, 10, 40);
+  expect(got.doc!.covered).toBe(false);
+  // The body is under the painting, so painting over it shows.
+  stroke(got.doc!, 10, 1);
+  expect(got.doc!.covered).toBe(false);
+});
+
+it('strokes on a skin with pieces save the painting through skin_look_save', async () => {
+  const { got, calls } = open({ pieces: [BODY, TEE], painting: false });
+  await waitFor(() => expect(got.ready && got.doc!.piecesReady).toBe(true));
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  stroke(got.doc!, 10, 40);
+  await act(() => vi.advanceTimersByTimeAsync(700));
+  const saves = sent(calls, 'skin_look_save') as { look: SkinLook; painting: string | null }[];
+  expect(saves).toHaveLength(1);
+  expect(saves[0]!.look.pieces.map((p) => p.id)).toEqual(['body-plain', 'top-tee']);
+  expect(saves[0]!.painting).toMatch(/^data:image\/png;base64,SUM/);
+  expect(sent(calls, 'skin_save')).toEqual([]);
+});
+
+it('skins without a look paint exactly as before', async () => {
+  const { got, calls } = open();
+  await waitFor(() => expect(got.ready).toBe(true));
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  stroke(got.doc!, 10, 33);
+  expect(at(got.doc!.pixels!.data, 10, 33)).toEqual(RED);
+  expect(got.doc!.look).toBeNull();
+  expect(got.doc!.covered).toBe(false);
+  await act(() => vi.advanceTimersByTimeAsync(700));
+  expect(sent(calls, 'skin_save')).toHaveLength(1);
+  expect(sent(calls, 'skin_look_save')).toEqual([]);
+});

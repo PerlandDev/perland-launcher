@@ -299,6 +299,9 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       state.textures.set(entry.id, version.texture);
       touch(entry);
       keep(state, entry, version.texture, 'restored');
+      // As the core does: a restored version is a plain painted skin.
+      delete entry.look;
+      state.paintings.delete(entry.id);
       return { ...entry };
     }
     case 'skin_version_copy': {

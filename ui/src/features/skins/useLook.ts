@@ -88,6 +88,24 @@ export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catal
     });
   };
 
+  // Loads the open look's pieces for the doc, so a Paint stroke is composed under them. Only a full set is handed
+  // over: a piece missing from the catalog would otherwise vanish from the finished skin at the next stroke.
+  const shown = doc.look?.look ?? null;
+  const ready = doc.piecesReady;
+  useEffect(() => {
+    if (!id || !shown || ready || !catalog.manifest) return;
+    let live = true;
+    catalog
+      .layers(shown, model)
+      .then((layers) => {
+        if (live && layers.length === shown.pieces.length) latest.current.doc.setLayers(shown, model, layers);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [id, shown, ready, model, catalog]);
+
   const pieces = () => latest.current.catalog.manifest?.pieces ?? [];
   const withLook = (state: LookState, look: SkinLook): LookState => ({ look: { ...look, painting: state.painting !== null }, painting: state.painting });
 

@@ -1143,3 +1143,16 @@
     transition: none;
   }
 }
+/* Under the texture: a stroke went under the pieces worn on top of it. */
+.paint-covered {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-ink);
+  text-wrap: pretty;
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow: inset 0 0 0 1px var(--color-line), inset 3px 0 0 var(--color-blue);
+}
+.history-plain {
+  color: var(--color-ink-dim);
+}

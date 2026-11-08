@@ -1063,6 +1063,7 @@
     "stageLabel": "Your figure in 3D. Drag on it to paint, drag around it to turn it.",
     "stageHint": "Drag the figure to paint. Drag around it, or right-drag, to turn it.",
     "stageHintTurn": "Drag the figure, or right-drag, to turn it.",
+    "piecesOnTop": "Pieces are on top. Take them off or make them part of the skin to paint over them.",
     "stageLabelTurn": "Your figure in 3D. Drag it to turn it.",
     "wear": "Wear this skin",
     "wearingNow": "Putting it on…",
@@ -1107,7 +1108,11 @@
       "restoreShort": "Restore",
       "restored": "Version restored",
       "restoredBody": "Your skin is back to {{when}}. Undo takes it back.",
-      "copyName": "{{name}} ({{when}})"
+      "copyName": "{{name}} ({{when}})",
+      "plainTitle": "Restore as a plain painted skin?",
+      "plainBody": "This skin wears catalog pieces. The version becomes a plain painted skin: what it wore is painted in, and its pieces can't be changed in Create any more. Undo takes it back.",
+      "plainConfirm": "Restore",
+      "plainNote": "Restoring a version makes this a plain painted skin, without its pieces."
     }
   },
   "errors": {
