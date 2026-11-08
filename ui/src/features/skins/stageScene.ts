@@ -29,7 +29,7 @@ import type { SkinModel } from '../../ipc/schema';
 import { boxes, SKIN_SIZE, type Box, type Face, type Layer, type Part, type Vec3 } from './layout';
 import { cameraPosition, orbit as orbitView, pan as panView, startView, targetOf, zoomAt } from './camera';
 import { outerWalls, type Wall } from './outerWalls';
-import { AnimationClock, celebration, CELEBRATE_S, POSE_STILL_T, rigAt, type Joint, type Pose } from './poses';
+import { celebration, CELEBRATE_S, POSE_STILL_T, rigAt, STRAIGHT, type Joint, type Pose } from './poses';
 
 /** How bright each face direction is, like the game's block shading. */
 function brightness([x, y, z]: Vec3): number {
@@ -298,8 +298,8 @@ export interface Stage {
   /** The layer `pick` paints on. */
   setPaintLayer(layer: Layer): void;
   setPose(pose: Pose): void;
-  /** Holds the figure (and its boat or horse) on the current moment, or lets it move on from there. */
-  setPaused(paused: boolean): void;
+  /** Stands the figure straight and still for painting (no props), or lets it take its pose again. */
+  setStraight(straight: boolean): void;
   /** A hop and a turn, when a skin goes on. */
   celebrate(): void;
   /** The texel under a point of the canvas (client coordinates), on the paint layer; null over empty stage. */
@@ -406,7 +406,8 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   let view = startView();
   let fit = { half: Math.tan((32 * Math.PI) / 360), aspect: 1 };
   let frame = 0;
-  const clock = new AnimationClock(performance.now());
+  const started = performance.now();
+  let straight = false;
   let celebratedAt = -Infinity;
 
   const still = () => motion?.matches === true;
@@ -414,8 +415,8 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   const pointer = new Vector2();
 
   const place = (now: number) => {
-    const t = still() ? POSE_STILL_T : clock.at(now);
-    const rig = rigAt(pose, t);
+    const t = still() ? POSE_STILL_T : (now - started) / 1000;
+    const rig = straight ? STRAIGHT : rigAt(pose, t);
     for (const j of JOINTS) {
       const pivot = pivotOf(j, model);
       const parent = PARENT[j] ? pivotOf(PARENT[j], model) : ([0, 0, 0] as Vec3);
@@ -424,9 +425,9 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     }
     figure.position.set(...rig.offset);
     ride.rotation.set(...rig.tilt);
-    theBoat.group.visible = pose === 'boat';
-    theHorse.group.visible = pose === 'horse';
-    if (pose === 'horse') {
+    theBoat.group.visible = !straight && pose === 'boat';
+    theHorse.group.visible = !straight && pose === 'horse';
+    if (!straight && pose === 'horse') {
       const gait = Math.sin(t * Math.PI * 2 * 1.05);
       theHorse.legs.forEach((leg, i) => (leg.rotation.x = (i === 0 || i === 3 ? 1 : -1) * gait * 0.45));
       theHorse.head.rotation.x = 0.45 + Math.sin(t * Math.PI * 2 * 1.05 * 2) * 0.05;
@@ -446,7 +447,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     // The figure is always a little alive (breathing, looking around) until the player pauses it; the celebration
     // plays even then. Reduced motion holds it still. A still stage redraws only when something changes.
     const celebrating = now - celebratedAt < CELEBRATE_S * 1000;
-    if (!still() && (!clock.paused || celebrating)) frame = requestAnimationFrame(draw);
+    if (!still() && (!straight || celebrating)) frame = requestAnimationFrame(draw);
   };
   /** The pose's centre, and the distance at which the whole pose fits the stage. */
   const framed = () => {
@@ -545,10 +546,8 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       pose = next;
       invalidate();
     },
-    setPaused(paused) {
-      const now = performance.now();
-      if (paused) clock.pause(now);
-      else clock.resume(now);
+    setStraight(next) {
+      straight = next;
       invalidate();
     },
     celebrate() {

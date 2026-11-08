@@ -10,7 +10,7 @@ const scene = {
   setVisible: vi.fn(),
   setPaintLayer: vi.fn(),
   setPose: vi.fn(),
-  setPaused: vi.fn(),
+  setStraight: vi.fn(),
   celebrate: vi.fn(),
   pick: vi.fn(() => null),
   orbit: vi.fn(),
@@ -27,10 +27,21 @@ beforeEach(() => vi.clearAllMocks());
 function renderStage() {
   const onPaint = vi.fn();
   const view = render(
-    <Stage pixels={starterSkin()} rev={0} model="classic" hidden={new Set()} paintLayer="base" pose="still" paused={false} hover={null} onHover={() => {}} onBegin={() => {}} onPaint={onPaint} onEnd={() => {}} />,
+    <Stage pixels={starterSkin()} rev={0} model="classic" hidden={new Set()} paintLayer="base" pose="still" straight={false} hover={null} onHover={() => {}} onBegin={() => {}} onPaint={onPaint} onEnd={() => {}} />,
   );
   return { canvas: view.getByTestId('stage'), onPaint };
 }
+
+it('the straight pose reaches the scene', () => {
+  const view = render(
+    <Stage pixels={starterSkin()} rev={0} model="classic" hidden={new Set()} paintLayer="base" pose="walk" straight hover={null} onHover={() => {}} onBegin={() => {}} onPaint={() => {}} onEnd={() => {}} />,
+  );
+  expect(scene.setStraight).toHaveBeenLastCalledWith(true);
+  view.rerender(
+    <Stage pixels={starterSkin()} rev={0} model="classic" hidden={new Set()} paintLayer="base" pose="walk" straight={false} hover={null} onHover={() => {}} onBegin={() => {}} onPaint={() => {}} onEnd={() => {}} />,
+  );
+  expect(scene.setStraight).toHaveBeenLastCalledWith(false);
+});
 
 it('the wheel zooms toward the pointer', () => {
   const { canvas } = renderStage();

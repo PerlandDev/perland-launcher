@@ -1,6 +1,7 @@
 // How the figure moves on the stage: each pose gives every joint's rotation (radians, x then y then z) and the figure's
 // offset at time t (seconds). The figure faces +z: a negative x rotation swings a limb forward. Pure, so it is tested
-// without WebGL; under reduced motion the stage shows each pose's still frame (t = POSE_STILL_T).
+// without WebGL; under reduced motion the stage shows each pose's still frame (t = POSE_STILL_T). The straight pose
+// (STRAIGHT) stands the figure square for painting.
 import type { Vec3 } from './layout';
 
 export const POSES = ['still', 'walk', 'run', 'crouch', 'sit', 'wave', 'boat', 'horse'] as const;
@@ -16,35 +17,6 @@ export interface Rig {
   tilt: Vec3;
 }
 
-/** The stage's animation time, in seconds, which the player can pause: paused, it holds the moment it stopped at,
- *  and resumed, it goes on from there without a jump. Times in are milliseconds (`performance.now()`). */
-export class AnimationClock {
-  private base = 0;
-  private since: number | null;
-
-  constructor(now: number) {
-    this.since = now;
-  }
-
-  get paused() {
-    return this.since === null;
-  }
-
-  at(now: number): number {
-    return (this.base + (this.since === null ? 0 : now - this.since)) / 1000;
-  }
-
-  pause(now: number) {
-    if (this.since === null) return;
-    this.base += now - this.since;
-    this.since = null;
-  }
-
-  resume(now: number) {
-    if (this.since === null) this.since = now;
-  }
-}
-
 /** The time a reduced-motion stage freezes each pose at: mid-stride for the gaits. */
 export const POSE_STILL_T = 0.22;
 
@@ -52,6 +24,14 @@ export const POSE_STILL_T = 0.22;
 export const SADDLE_Y = 27;
 
 const zero = (): Vec3 => [0, 0, 0];
+
+/** The figure stood straight for painting: every joint square, nothing turned into anything else (standing, the arms
+ *  turn out about a point below their top, so their tops sink into the torso), and nothing moving. */
+export const STRAIGHT: Rig = {
+  joints: { torso: zero(), head: zero(), rightArm: zero(), leftArm: zero(), rightLeg: zero(), leftLeg: zero() },
+  offset: zero(),
+  tilt: zero(),
+};
 
 export function rigAt(pose: Pose, t: number): Rig {
   const joints: Record<Joint, Vec3> = {

@@ -982,8 +982,8 @@
       "leftLeg": "Left leg"
     },
     "poseLabel": "Pose",
-    "pauseMotion": "Pause",
-    "playMotion": "Resume",
+    "straight": "Straight pose",
+    "straightHint": "Stand the figure straight and still, nothing overlapping, to paint it.",
     "pose": {"still": "Standing", "walk": "Walking", "run": "Running", "crouch": "Crouching", "sit": "Sitting", "wave": "Waving", "boat": "In a boat", "horse": "On a horse"},
     "paintOn": "Paint on",
     "zoomIn": "Zoom in",

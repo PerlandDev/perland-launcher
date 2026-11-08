@@ -982,8 +982,8 @@
       "leftLeg": "Pierna izquierda"
     },
     "poseLabel": "Pose",
-    "pauseMotion": "Pausar",
-    "playMotion": "Reanudar",
+    "straight": "Postura recta",
+    "straightHint": "Pon la figura recta y quieta, sin nada que se solape, para pintarla.",
     "pose": {"still": "De pie", "walk": "Caminando", "run": "Corriendo", "crouch": "Agachado", "sit": "Sentado", "wave": "Saludando", "boat": "En un bote", "horse": "A caballo"},
     "paintOn": "Pintar en",
     "zoomIn": "Acercar",
