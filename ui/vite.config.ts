@@ -15,8 +15,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    // themes.test.ts reads app.css as raw text; every other stylesheet stays out of tests.
-    css: { include: [/styles\/app\.css/] },
+    // themes.test.ts reads app.css, and narrowWindow.test.tsx skins.css, as raw text; every other stylesheet stays out of tests.
+    css: { include: [/styles\/app\.css/, /skins\/skins\.css/] },
     restoreMocks: true,
     // Event times read in the computer's zone: every test runs in UTC, whatever TZ the shell exports.
     env: { TZ: 'UTC' },
