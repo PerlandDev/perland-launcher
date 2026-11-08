@@ -3,7 +3,7 @@ import type { CatalogLook, CatalogManifest, CatalogPiece } from '../../ipc/schem
 
 export type Lang = 'en' | 'es';
 
-const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 function matches(name: string, tags: readonly string[], query: string): boolean {
   const q = fold(query);

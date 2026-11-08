@@ -1,9 +1,9 @@
 // Edits a skin's look: the catalog pieces it wears and their colours.
 import type { CatalogLook, CatalogPiece, SkinLook, WornPiece } from '../../ipc/schema';
-import type { Rgba } from './recolour';
+import type { PixelBuffer } from './recolour';
 
-/** Wears `piece`, replacing the one in its slot. `catalog` lets worn pieces be matched by slot; without it only the same id is replaced. */
-export function putOn(look: SkinLook, piece: CatalogPiece, catalog: readonly CatalogPiece[] = []): SkinLook {
+/** Wears `piece`, replacing the one in its slot. `catalog` is needed to find the slots of the worn pieces. */
+export function putOn(look: SkinLook, piece: CatalogPiece, catalog: readonly CatalogPiece[]): SkinLook {
   const slotOf = new Map(catalog.map((p) => [p.id, p.slot]));
   const colours: Record<string, string> = {};
   for (const a of piece.areas) colours[a.id] = a.default;
@@ -27,6 +27,6 @@ export function applyLook(look: SkinLook, catalogLook: CatalogLook): SkinLook {
 }
 
 /** Turns everything worn into the player's own painting. */
-export function bakeAll(_painting: Rgba | null, composed: Rgba): { painting: Rgba; look: SkinLook } {
+export function bakeAll(_painting: PixelBuffer | null, composed: PixelBuffer): { painting: PixelBuffer; look: SkinLook } {
   return { painting: composed, look: { pieces: [], painting: true } };
 }

@@ -16,7 +16,7 @@ const empty: SkinLook = { pieces: [], painting: true };
 
 describe('look', () => {
   test('putOn starts with the area defaults', () => {
-    const l = putOn(empty, piece('tee', 'top', [['main', '#112233'], ['trim', '#ffffff']]));
+    const l = putOn(empty, piece('tee', 'top', [['main', '#112233'], ['trim', '#ffffff']]), []);
     expect(l.pieces).toEqual([{ id: 'tee', colours: { main: '#112233', trim: '#ffffff' } }]);
     expect(l.painting).toBe(true);
   });
@@ -28,12 +28,12 @@ describe('look', () => {
     const all = [a, b, hat];
     const l = putOn(putOn(putOn(empty, a, all), hat, all), b, all);
     expect(l.pieces.map((p) => p.id).sort()).toEqual(['cap', 'hoodie']);
-    // wearing the same piece again resets it, with or without the catalog
-    expect(putOn(putOn(empty, a), a).pieces).toHaveLength(1);
+    // wearing the same piece again resets it,
+    expect(putOn(putOn(empty, a, [a]), a, [a]).pieces).toHaveLength(1);
   });
 
   test('takeOff and setColour', () => {
-    const l = putOn(putOn(empty, piece('tee', 'top')), piece('cap', 'hat'));
+    const l = putOn(putOn(empty, piece('tee', 'top'), []), piece('cap', 'hat'), []);
     expect(takeOff(l, 'tee').pieces.map((p) => p.id)).toEqual(['cap']);
     expect(setColour(l, 'tee', 'main', '#ff0000').pieces[0]!.colours.main).toBe('#ff0000');
     expect(l.pieces[0]!.colours.main).toBe('#112233');

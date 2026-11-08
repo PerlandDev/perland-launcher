@@ -33,6 +33,14 @@ describe('compose', () => {
     expect(first(out)).toEqual([100, 50, 25, 255]);
   });
 
+  test('recolours grey art through its mask and colours', () => {
+    const mask = solid(85, 0, 0);
+    const out = compose(null, [{ slot: 'top', art: solid(128, 128, 128), mask, colours: ['#c0392b'] }]);
+    expect(first(out)).toEqual([192, 57, 43, 255]);
+    const noColour = compose(null, [{ slot: 'top', art: solid(128, 128, 128), mask, colours: [] }]);
+    expect(first(noColour)).toEqual([128, 128, 128, 255]);
+  });
+
   test('nothing gives transparent', () => {
     expect(first(compose(null, []))).toEqual([0, 0, 0, 0]);
   });

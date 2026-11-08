@@ -2,7 +2,7 @@
 // Must match the Engine's recolour exactly (float64, floor(v + 0.5)).
 
 /** 64 × 64 × 4 texels, rows top first. */
-export type Rgba = Uint8ClampedArray;
+export type PixelBuffer = Uint8ClampedArray;
 
 const AREA_OF: Record<number, number> = { 85: 0, 170: 1, 255: 2 };
 
@@ -19,7 +19,7 @@ function shade(c: number, g: number): number {
   return Math.floor(v + 0.5);
 }
 
-export function recolour(art: Rgba, mask: Rgba, colours: readonly (string | undefined)[]): Rgba {
+export function recolour(art: PixelBuffer, mask: PixelBuffer, colours: readonly (string | undefined)[]): PixelBuffer {
   const out = new Uint8ClampedArray(art);
   for (let i = 0; i + 3 < art.length; i += 4) {
     const area = AREA_OF[mask[i]!];
