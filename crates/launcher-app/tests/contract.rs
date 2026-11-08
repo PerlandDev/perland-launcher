@@ -134,6 +134,8 @@ fn fabric_instance() -> Instance {
         art: ArtMode::Auto,
         icon: None,
         banner_focus: Some(Focus { x: 30, y: 60 }),
+        banner_zoom: None,
+        banner_edges: None,
         update_hold: None,
     }
 }
@@ -163,6 +165,8 @@ fn vanilla_instance() -> Instance {
         art: ArtMode::Generated,
         icon: Some(IconMode::Generated),
         banner_focus: None,
+        banner_zoom: None,
+        banner_edges: None,
         update_hold: None,
     }
 }
@@ -534,6 +538,8 @@ fn server_instance() -> Instance {
         art: ArtMode::Auto,
         icon: None,
         banner_focus: None,
+        banner_zoom: None,
+        banner_edges: None,
         update_hold: Some(UpdateHold {
             since: 1_791_720_000,
             version: "1.0.3".into(),

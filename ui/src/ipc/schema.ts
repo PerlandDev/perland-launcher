@@ -402,6 +402,8 @@ export const instance = z.strictObject({
   icon: z.enum(['auto', 'generated', 'custom']).nullable(),
   /** Which point of a picture background stays in view, in percent of its width and height; null is the default (bottom middle). */
   bannerFocus: z.strictObject({ x: z.number().int(), y: z.number().int() }).nullable(),
+  bannerZoom: z.number().int().nullable(),
+  bannerEdges: z.enum(['dark', 'pixel']).nullable(),
   /** Set after going back on an instance that checks for updates: Play skips the check until "Update again". Absent when not held. */
   updateHold: z.strictObject({ since: z.number().int(), version: z.string() }).optional(),
 });

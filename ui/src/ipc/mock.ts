@@ -395,6 +395,8 @@ function seed(options: MockOptions) {
       art: 'auto',
       icon: null,
       bannerFocus: null,
+      bannerZoom: null,
+      bannerEdges: null,
     };
     listing.instances = [...listing.instances, sky];
     const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
@@ -437,6 +439,8 @@ function seed(options: MockOptions) {
       art: 'custom',
       icon: 'generated',
       bannerFocus: null,
+      bannerZoom: null,
+      bannerEdges: null,
     };
     listing.instances = [...listing.instances, castle];
     custom.set(castle.id, CASTLE_PICTURE);
@@ -944,6 +948,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         art: 'auto',
         icon: null,
         bannerFocus: null,
+        bannerZoom: null,
+        bannerEdges: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       return created;
@@ -1282,6 +1288,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         art: 'auto',
         icon: null,
         bannerFocus: null,
+        bannerZoom: null,
+        bannerEdges: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });
