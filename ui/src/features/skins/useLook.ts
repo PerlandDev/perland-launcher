@@ -1,15 +1,15 @@
 // Edits the open skin's look from the Create tab: put a piece on, take it off, recolour an area, apply a catalog look,
 // make everything part of the skin. Each change composes the finished skin at once and goes through the skin doc, so
 // it is one undo step (with the stroke history) and autosaves like a stroke.
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CatalogLook, CatalogPiece, SkinLook, SkinModel } from '../../ipc/schema';
 import { pushError } from '../../state/toasts';
 import { convertArms, fitsModel } from './armModel';
-import { compose } from './compose';
+import { compose, FACE_SLOTS, type ComposeLayer } from './compose';
 import type { LookState } from './history';
 import { applyLook, bakeAll, putOn, setColour, takeOff } from './look';
 import { Pixels } from './paint';
-import type { PixelBuffer } from './recolour';
+import { recolour, type PixelBuffer } from './recolour';
 import type { Catalog } from './useCatalog';
 import type { SkinDoc } from './useSkinDoc';
 
@@ -27,6 +27,13 @@ export interface LookEditor {
   bakeAll(): void;
   /** Switches the arms: the painting is redrawn for them and the pieces use their art for them. */
   switchModel(to: SkinModel): void;
+  /**
+   * The last change put on or recoloured a face or body piece (body, eyes, brows, mouth, face details, beard) that the
+   * painting covers, so nothing changed where it sits. Cleared by the next change that shows.
+   */
+  paintingCovers: boolean;
+  /** Resolves once every change asked for so far has landed (or been dropped); wait on it before saving or leaving. */
+  settled(): Promise<void>;
 }
 
 /** A plain skin starts a look with its own texels as the painting, so the player's work stays under the pieces. */
@@ -34,7 +41,26 @@ function startOf(look: LookState | null, pixels: Pixels): LookState {
   return look ?? { look: { pieces: [], painting: true }, painting: new Uint8ClampedArray(pixels.data) };
 }
 
-type Change = (state: LookState) => { next: LookState; key?: string; to?: SkinModel } | null;
+/** `piece` names the piece the change is about, so a face piece hidden under the painting can be told. */
+type Change = (state: LookState) => { next: LookState; key?: string; to?: SkinModel; piece?: string } | null;
+
+/**
+ * Whether `piece`'s layer is a face or body piece the painting hides: where the piece draws, the finished skin didn't
+ * change (`before` → `after`), though the painting has paint there. False when the change shows or isn't about one.
+ */
+function hiddenByPainting(piece: string | undefined, layers: readonly ComposeLayer[], painting: PixelBuffer | null, before: PixelBuffer, after: PixelBuffer): boolean {
+  if (!piece || !painting) return false;
+  const layer = layers.find((l) => l.id === piece);
+  if (!layer || !FACE_SLOTS.includes(layer.slot)) return false;
+  const drawn = recolour(layer.art, layer.mask, layer.colours);
+  let painted = false;
+  for (let i = 3; i < drawn.length; i += 4) {
+    if (drawn[i] === 0) continue;
+    for (let c = i - 3; c <= i; c++) if (before[c] !== after[c]) return false;
+    if (painting[i]! > 0) painted = true;
+  }
+  return painted;
+}
 
 export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catalog: Catalog): LookEditor {
   const latest = useRef({ id, model, doc, catalog });
@@ -45,6 +71,7 @@ export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catal
   const queue = useRef<Promise<void>>(Promise.resolve());
   // Live colour changes waiting for their turn, by key: a newer one replaces the waiting one instead of queueing.
   const waiting = useRef(new Map<string, { change: Change }>());
+  const [covers, setCovers] = useState<{ id: string | null; hidden: boolean }>({ id: null, hidden: false });
 
   /**
    * Runs `change` on the look as it is when its turn comes, then composes and records what it returns. When the skin
@@ -73,13 +100,20 @@ export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catal
           if (!now) return;
           const result = entry.change(startOf(now.look, now.pixels));
           if (!result) return;
-          const { next, key, to } = result;
-          const layers = await c.layers(next.look, to ?? m);
+          const { next, key, to, piece } = result;
+          const drawnFor = to ?? m;
+          const layers = await c.layers(next.look, drawnFor);
           const after = latest.current.doc.current(forId);
           // Another skin opened meanwhile: drop the change.
           if (!after) return;
           if (after.version !== now.version) continue;
-          latest.current.doc.changeLook(next, compose(next.painting, layers), { key, model: to && to !== m ? { before: m, after: to } : undefined });
+          const composed = compose(next.painting, layers);
+          const hidden = hiddenByPainting(piece, layers, next.painting, now.pixels.data, composed);
+          const d2 = latest.current.doc;
+          // The doc keeps the pieces, so strokes after this change still go under them (only a full set, as below).
+          if (layers.length === next.look.pieces.length) d2.setLayers(next.look, drawnFor, layers);
+          d2.changeLook(next, composed, { key, model: to && to !== m ? { before: m, after: to } : undefined });
+          setCovers({ id: forId, hidden });
           return;
         }
       } catch (error) {
@@ -114,13 +148,13 @@ export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catal
   return {
     look: state?.look ?? null,
     painting: state?.painting ?? null,
-    putOn: (piece) => run((s) => ({ next: withLook(s, putOn(s.look, piece, pieces())) })),
+    putOn: (piece) => run((s) => ({ next: withLook(s, putOn(s.look, piece, pieces())), piece: piece.id })),
     takeOff: (pieceId) => run((s) => (s.look.pieces.some((w) => w.id === pieceId) ? { next: withLook(s, takeOff(s.look, pieceId)) } : null)),
     setColour: (pieceId, areaId, hex, live = false) =>
       run((s) => {
         const worn = s.look.pieces.find((w) => w.id === pieceId);
         if (!worn || worn.colours[areaId]?.toLowerCase() === hex.toLowerCase()) return null;
-        return { next: withLook(s, setColour(s.look, pieceId, areaId, hex)), key: live ? `colour:${pieceId}:${areaId}` : undefined };
+        return { next: withLook(s, setColour(s.look, pieceId, areaId, hex)), key: live ? `colour:${pieceId}:${areaId}` : undefined, piece: pieceId };
       }, live ? `colour:${pieceId}:${areaId}` : undefined),
     applyLook: (catalogLook) => run((s) => ({ next: withLook(s, applyLook(s.look, catalogLook)) })),
     bakeAll: () => {
@@ -135,6 +169,7 @@ export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catal
         const baked = bakeAll(now.look?.painting ?? null, composed);
         // The finished skin is unchanged, so nothing waits on the catalog.
         d.changeLook({ look: baked.look, painting: baked.painting }, composed);
+        setCovers({ id: forId, hidden: false });
       });
     },
     switchModel: (to) =>
@@ -149,5 +184,14 @@ export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catal
         }
         return { next: { look: s.look, painting }, to };
       }),
+    paintingCovers: covers.hidden && covers.id === id,
+    settled: async () => {
+      // A change can queue another while it runs: wait until the queue stops growing.
+      for (;;) {
+        const q = queue.current;
+        await q.catch(() => {});
+        if (q === queue.current) return;
+      }
+    },
   };
 }

@@ -99,7 +99,7 @@ export function useCatalog(): Catalog {
       return Promise.all(
         worn.map(async ({ piece, files, worn: w }): Promise<ComposeLayer> => {
           const [art, mask] = await Promise.all([pixels(files.art), pixels(files.mask)]);
-          return { slot: piece.slot, art, mask, colours: piece.areas.map((a) => w.colours[a.id] ?? a.default) };
+          return { slot: piece.slot, id: piece.id, art, mask, colours: piece.areas.map((a) => w.colours[a.id] ?? a.default) };
         }),
       );
     },

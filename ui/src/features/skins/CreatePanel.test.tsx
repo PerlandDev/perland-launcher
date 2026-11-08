@@ -5,6 +5,9 @@ import type { SkinLook } from '../../ipc/schema';
 import { sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
 import SkinStudio from './SkinStudio';
+import { CreatePanel } from './CreatePanel';
+import type { Catalog } from './useCatalog';
+import type { LookEditor } from './useLook';
 
 vi.mock('./codec', async () => (await import('../../test/skinFakes')).fakeCodec());
 vi.mock('./Stage', async () => ({ Stage: (await import('../../test/skinFakes')).FakeStage }));
@@ -23,8 +26,16 @@ const TEE = { id: 'top-tee', colours: { main: '#e8e4dc', trim: '#3a6ea5' } };
 const BODY = { id: 'body-plain', colours: { skin: '#d9a27c' } };
 
 /** The Skins screen on its first skin, wearing `look`, opened on the Create tab. */
-async function openCreate(look?: SkinLook, { catalog = 'fresh' }: { catalog?: 'fresh' | 'unavailable' | 'never' } = {}) {
-  const backend = createMockBackend();
+async function openCreate(
+  look?: SkinLook,
+  {
+    catalog = 'fresh',
+    microsoft = false,
+    files,
+    listOnce = false,
+  }: { catalog?: 'fresh' | 'unavailable' | 'never'; microsoft?: boolean; files?: { held: Promise<void> | null }; listOnce?: boolean } = {},
+) {
+  const backend = createMockBackend(microsoft ? { microsoft: 'signedIn' } : {});
   if (look) backend.state.skins.entries.find((e) => e.id === ID)!.look = look;
   if (catalog === 'unavailable') backend.state.skins.catalogStatus = 'unavailable';
   const calls: [string, unknown][] = [];
@@ -33,6 +44,11 @@ async function openCreate(look?: SkinLook, { catalog = 'fresh' }: { catalog?: 'f
       calls.push([cmd, args]);
       // 'never': the catalog is still loading for the whole test.
       if (cmd === 'skin_catalog' && catalog === 'never') return new Promise(() => {});
+      // listOnce: the wardrobe is listed once, and every later listing never answers.
+      if (cmd === 'skins_list' && listOnce && calls.filter(([c]) => c === 'skins_list').length > 1) return new Promise(() => {});
+      // A held gate keeps the catalog's files loading.
+      const held = files?.held;
+      if (cmd === 'skin_catalog_file' && held) return held.then(() => backend.handle(cmd, args));
       return backend.handle(cmd, args);
     },
   });
@@ -113,7 +129,7 @@ it('a catalog look asks before replacing worn pieces, and keeps the painting', a
   expect(chips()).not.toContain('T-shirt');
 });
 
-it('build from pieces starts with the plain body', async () => {
+it('build from pieces starts with the plain body and a simple face', async () => {
   const backend = createMockBackend();
   const calls: [string, unknown][] = [];
   const { user } = renderWithProviders(<SkinStudio />, {
@@ -129,12 +145,20 @@ it('build from pieces starts with the plain body', async () => {
   const [created] = sent(calls, 'skin_create') as { name: string; model: string; owner: string | null; texture: string }[];
   expect(created).toMatchObject({ name: 'My character', model: 'classic', owner: '5627dd98-e6be-3c21-b8a8-e92344183641' });
   const [save] = sent(calls, 'skin_look_save') as { look: SkinLook; painting: string | null; texture: string }[];
-  expect(save!.look).toEqual({ pieces: [{ id: 'body-plain', colours: { skin: '#d9a27c' } }], painting: false });
+  expect(save!.look).toEqual({
+    pieces: [
+      { id: 'body-plain', colours: { skin: '#d9a27c' } },
+      { id: 'eyes-round', colours: { iris: '#4a3324' } },
+      { id: 'brows-straight', colours: { main: '#3b2618' } },
+      { id: 'mouth-smile', colours: {} },
+    ],
+    painting: false,
+  });
   expect(save!.painting).toBeNull();
   expect(save!.texture).toBe(created!.texture);
-  // It opens in Create, wearing the body.
+  // It opens in Create, wearing the body and a face.
   expect(await screen.findByRole('tab', { name: 'Create', selected: true })).toBeInTheDocument();
-  await waitFor(() => expect(chips()).toEqual(['Plain body']));
+  await waitFor(() => expect(chips()).toEqual(['Plain body', 'Round eyes', 'Straight brows', 'Smile']));
 });
 
 it('a piece missing from the catalog stays worn and is labelled unavailable', async () => {
@@ -179,4 +203,92 @@ it('without the catalog, a skin wearing pieces keeps them and its arms', async (
   const slim = screen.getByRole('radio', { name: 'Slim arms' });
   expect(slim).toBeDisabled();
   expect(slim).toHaveAttribute('title', expect.stringContaining("Perland's catalog"));
+});
+
+/** Holds the catalog's file reads while closed. */
+function gate() {
+  let release: () => void = () => {};
+  const g = {
+    held: null as Promise<void> | null,
+    close() {
+      g.held = new Promise((r) => (release = r));
+    },
+    open() {
+      g.held = null;
+      release();
+    },
+  };
+  return g;
+}
+
+it('Wear during a put-on still loading uploads the skin with the piece', async () => {
+  const files = gate();
+  const { user, calls } = await openCreate(undefined, { microsoft: true, files });
+  await user.click(screen.getByRole('button', { name: 'Accessories' }));
+  files.close();
+  // No other test here (nor any catalog look) loads the scarf's files, so the put-on waits on them.
+  await user.click(within(screen.getByRole('list', { name: 'Neck' })).getByRole('button', { name: /Scarf/ }));
+  await user.click(screen.getByRole('button', { name: 'Wear this skin' }));
+  await act(() => new Promise((r) => setTimeout(r, 30)));
+  expect(sent(calls, 'skin_wear')).toEqual([]);
+  files.open();
+  await waitFor(() => expect(sent(calls, 'skin_wear')).toHaveLength(1));
+  const order = calls.map(([c]) => c).filter((c) => c === 'skin_look_save' || c === 'skin_wear');
+  expect(order).toEqual(['skin_look_save', 'skin_wear']);
+  const [save] = sent(calls, 'skin_look_save') as { id: string; look: SkinLook }[];
+  expect(save!.look.pieces.map((p) => p.id)).toEqual(['neck-scarf']);
+  expect(save!.id).toBe((sent(calls, 'skin_wear')[0] as { id: string }).id);
+});
+
+it('picking another skin during a change still loading keeps the change', async () => {
+  const files = gate();
+  const { user, calls } = await openCreate({ pieces: [BODY], painting: false }, { files });
+  await user.click(screen.getByRole('button', { name: 'Accessories' }));
+  files.close();
+  // No other test here (nor any catalog look) loads the glasses' files.
+  await user.click(within(screen.getByRole('list', { name: 'Glasses' })).getByRole('button', { name: /Round glasses/ }));
+  await user.click(within(screen.getByRole('list', { name: 'Wardrobe' })).getByText('Miner'));
+  files.open();
+  await waitFor(() => expect(sent(calls, 'skin_look_save')).toHaveLength(1));
+  const [save] = sent(calls, 'skin_look_save') as { id: string; look: SkinLook }[];
+  expect(save!.id).toBe(ID);
+  expect(save!.look.pieces.map((p) => p.id)).toEqual(['body-plain', 'glasses-round']);
+});
+
+it('a face piece the painting covers shows the hint, whose button builds from pieces', async () => {
+  const { manifest } = (await import('../../ipc/mockCatalog')).mockCatalog();
+  const catalog: Catalog = { manifest, status: 'fresh', loading: false, image: () => undefined, pixels: () => new Promise(() => {}), layers: async () => [] };
+  const noop = () => {};
+  const editor: LookEditor = {
+    look: { pieces: [{ id: 'eyes-round', colours: { iris: '#4a3324' } }], painting: true },
+    painting: null,
+    putOn: noop,
+    takeOff: noop,
+    setColour: noop,
+    applyLook: noop,
+    bakeAll: noop,
+    switchModel: noop,
+    paintingCovers: true,
+    settled: () => Promise.resolve(),
+  };
+  const build = vi.fn();
+  const { user, rerender } = renderWithProviders(<CreatePanel catalog={catalog} look={editor.look} editor={editor} lang="en" onBuildFromPieces={build} />);
+  expect(screen.getByText('Your painting covers this piece. Build a new skin from pieces to start clean.')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Build from pieces' }));
+  expect(build).toHaveBeenCalledTimes(1);
+  // Gone once a change shows.
+  rerender(<CreatePanel catalog={catalog} look={editor.look} editor={{ ...editor, paintingCovers: false }} lang="en" onBuildFromPieces={build} />);
+  expect(screen.queryByText(/Your painting covers this piece/)).not.toBeInTheDocument();
+});
+
+it('a skin reopened before the wardrobe is listed again shows the look it saved', async () => {
+  const { user, calls } = await openCreate({ pieces: [BODY, TEE], painting: false }, { listOnce: true });
+  await user.click(screen.getByRole('button', { name: 'Hats' }));
+  await user.click(within(screen.getByRole('list', { name: 'Hats' })).getByRole('button', { name: /^Cap/ }));
+  await waitFor(() => expect(chips()).toEqual(['Plain body', 'T-shirt', 'Cap']));
+  await waitFor(() => expect(sent(calls, 'skin_look_save')).toHaveLength(1), { timeout: 2000 });
+  const list = screen.getByRole('list', { name: 'Wardrobe' });
+  await user.click(within(list).getByText('Miner'));
+  await user.click(within(list).getByText('Beach day'));
+  await waitFor(() => expect(chips()).toEqual(['Plain body', 'T-shirt', 'Cap']));
 });

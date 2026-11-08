@@ -838,6 +838,11 @@
   width: 1.5rem;
   height: 1.5rem;
 }
+.create-covered {
+  display: grid;
+  justify-items: start;
+  gap: 0.5rem;
+}
 .create-actions {
   position: sticky;
   bottom: -1rem;

@@ -6,7 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { HumanArmsUp, Pause, Play, Redo, Undo, ZoomIn, ZoomOut } from 'pixelarticons/react';
 import { commands } from '../../ipc/commands';
-import type { SkinEntry, SkinModel, SkinVersion } from '../../ipc/schema';
+import type { SkinEntry, SkinLook, SkinModel, SkinVersion } from '../../ipc/schema';
 import { useAccounts } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { pushError, pushNotice } from '../../state/toasts';
@@ -56,6 +56,9 @@ function typing(target: EventTarget | null) {
   );
 }
 
+/** What Build from pieces starts wearing, in order. */
+const STARTER_PIECES = ['body-plain', 'eyes-round', 'brows-straight', 'mouth-smile'] as const;
+
 export default function SkinStudio({ skin, account }: { skin?: string; account?: string }) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
@@ -98,7 +101,13 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         refresh();
       });
   };
-  const doc = useSkinDoc(selected?.id ?? null, model, refresh, storeModel, selected?.look);
+  // A save answers the entry as stored: every wardrobe list shows it at once, so reopening the skin reads its new look
+  // even before the list is fetched again.
+  const saved = (entry: SkinEntry) => {
+    qc.setQueriesData<SkinEntry[]>({ queryKey: ['skins'] }, (old) => old?.map((e) => (e.id === entry.id ? entry : e)));
+    refresh();
+  };
+  const doc = useSkinDoc(selected?.id ?? null, model, saved, storeModel, selected?.look);
   const catalog = useCatalog();
   const editor = useLook(selected?.id ?? null, model, doc, catalog);
   const lang: Lang = i18n.language.startsWith('es') ? 'es' : 'en';
@@ -194,17 +203,23 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   }, [entries.isSuccess, list.length, wearer, owner]);
   const defaultSkin = wearer !== null && defaults.has(wearer.uuid);
 
+  // Saves now, after any Create change still loading has landed, so leaving, wearing or exporting keeps it.
+  const flush = () => editor.settled().then(() => doc.flush());
+
   const showWardrobeOf = (uuid: string) =>
-    void doc.flush().then(() => {
+    void flush().then(() => {
       setShown(uuid);
       setPicked(null);
     });
 
-  // A new skin wearing only the catalog's plain body, in its own colour, opened in Create.
+  // A new skin wearing the catalog's plain body and a simple face (round eyes, straight brows, a smile), each in its own
+  // colours, opened in Create. A face piece the catalog no longer has is left out; without the body there is nothing.
   const plainBody = catalog.manifest?.pieces.find((p) => p.id === 'body-plain' && !p.retired);
   const buildFromPieces = async () => {
-    if (!plainBody || !catalog.manifest) return;
-    const look = putOn({ pieces: [], painting: false }, plainBody, catalog.manifest.pieces);
+    const manifest = catalog.manifest;
+    if (!plainBody || !manifest) return;
+    const starting = STARTER_PIECES.flatMap((id) => manifest.pieces.filter((p) => p.id === id && !p.retired));
+    const look = starting.reduce((l, piece) => putOn(l, piece, manifest.pieces), { pieces: [], painting: false } as SkinLook);
     const texture = encodeTexture(compose(null, await catalog.layers(look, 'classic')));
     const entry = await commands.skinCreate(t('skins.piecesName'), 'classic', texture, owner);
     addedFromCatalog(await commands.skinLookSave(entry.id, look, null, texture));
@@ -228,7 +243,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   };
 
   const exportSkin = async (entry: SkinEntry) => {
-    await doc.flush();
+    await flush();
     const path = await save({ defaultPath: `${entry.name.replace(/[<>:"/\\|?*]/g, '-')}.png`, filters: [{ name: t('skins.pngFilter'), extensions: ['png'] }] });
     if (!path) return;
     await commands.skinExport(entry.id, path);
@@ -243,8 +258,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
       label: t('skins.duplicate'),
       icon: <Copy />,
       onSelect: () =>
-        void doc
-          .flush()
+        void flush()
           .then(() => commands.skinDuplicate(entry.id, t('skins.copyName', { name: entry.name }).slice(0, 64)))
           .then((copy) => {
             qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [copy, ...(old ?? [])]);
@@ -289,8 +303,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     if (!selected || !wearer) return;
     once((done) => {
       setWearing(true);
-      void doc
-        .flush()
+      void flush()
         .then(() => commands.skinWear(selected.id, wearer.uuid))
         .then((next) => {
           qc.setQueryData(SKINS_KEY, next);
@@ -310,8 +323,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const pickVersion = (version: SkinVersion) => {
     if (!selected) return;
     const skin = selected.id;
-    void doc
-      .flush()
+    void flush()
       .then(() => commands.skinVersionTexture(skin, version.id))
       .then(decodeTexture)
       .then((data) => setPreview({ skin, version, pixels: new Pixels(data), seq: (previewSeq.current += 1) }))
@@ -332,8 +344,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     if (!selected || !previewShown) return;
     const { version, pixels } = previewShown;
     once((done) => {
-      void doc
-        .flush()
+      void flush()
         .then(() => commands.skinRestore(selected.id, version.id))
         .then((entry) => {
           qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => old?.map((e) => (e.id === entry.id ? entry : e)));
@@ -403,7 +414,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
 
   // A look added from the catalog opens in Create, in the wardrobe it went into.
   const addedFromCatalog = (entry: SkinEntry) =>
-    void doc.flush().then(() => {
+    void flush().then(() => {
       qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [entry, ...(old ?? []).filter((e) => e.id !== entry.id)]);
       setPicked(entry.id);
       setTab('create');
@@ -448,7 +459,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
           entries={list}
           selected={selected?.id ?? null}
           wearer={wearer?.uuid ?? null}
-          onSelect={(id) => void doc.flush().then(() => setPicked(id))}
+          onSelect={(id) => void flush().then(() => setPicked(id))}
           emptyNote={defaultSkin ? t('skins.emptyDefault') : t('skins.empty')}
           newItems={newItems}
           onImport={() => void importSkin().catch(pushError)}
@@ -562,7 +573,14 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
             {historyOpen && selected ? (
               <HistoryPanel skin={selected.id} model={model} hasLook={doc.look !== null} versions={versions.data} picked={previewShown?.version.id ?? null} onPick={pickVersion} onClose={() => setHistoryOpen(false)} />
             ) : tab === 'create' ? (
-              <CreatePanel key={selected?.id ?? ''} catalog={catalog} look={editor.look} editor={editor} lang={lang} />
+              <CreatePanel
+                key={selected?.id ?? ''}
+                catalog={catalog}
+                look={editor.look}
+                editor={editor}
+                lang={lang}
+                onBuildFromPieces={plainBody ? () => void buildFromPieces().catch(pushError) : undefined}
+              />
             ) : (
             <aside className="skins-side" aria-label={t('skins.texture')}>
               <div className="flex items-center justify-between gap-2">

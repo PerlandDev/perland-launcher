@@ -1,8 +1,8 @@
 import { act, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
-import type { SkinLook, WornPiece } from '../../ipc/schema';
+import type { CatalogPiece, SkinLook, WornPiece } from '../../ipc/schema';
 import { sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
 import { useCatalog } from './useCatalog';
@@ -41,13 +41,14 @@ function open(look?: SkinLook, files = gate(), noCatalog = false) {
   if (noCatalog) backend.state.skins.catalogStatus = 'unavailable';
   if (look) backend.state.skins.entries.find((e) => e.id === ID)!.look = look;
   const calls: [string, unknown][] = [];
-  const got: { doc?: SkinDoc; editor?: LookEditor; ready?: boolean } = {};
+  const got: { doc?: SkinDoc; editor?: LookEditor; ready?: boolean; renders: { ids: string[] | undefined; piecesReady: boolean }[] } = { renders: [] };
   function Harness() {
     const doc = useSkinDoc(ID, 'classic', noop, noop, look);
     const catalog = useCatalog();
     got.doc = doc;
     got.editor = useLook(ID, 'classic', doc, catalog);
     got.ready = doc.pixels !== null && catalog.manifest !== null;
+    got.renders.push({ ids: doc.look?.look.pieces.map((p) => p.id), piecesReady: doc.piecesReady });
     return null;
   }
   renderWithProviders(createElement(Harness), {
@@ -63,6 +64,12 @@ function open(look?: SkinLook, files = gate(), noCatalog = false) {
 
 const ids = (look: SkinLook | null | undefined) => look?.pieces.map((p) => p.id);
 const catalogPiece = async (id: string) => (await import('../../ipc/mockCatalog')).mockCatalog().manifest.pieces.find((p) => p.id === id)!;
+let EYES_PIECE: CatalogPiece | undefined;
+let TEE_PIECE: CatalogPiece | undefined;
+let BOOTS_PIECE: CatalogPiece | undefined;
+beforeAll(async () => {
+  [EYES_PIECE, TEE_PIECE, BOOTS_PIECE] = await Promise.all([catalogPiece('eyes-round'), catalogPiece('top-tee'), catalogPiece('shoes-moon-boots')]);
+});
 
 it('putting on a top replaces the previous top', async () => {
   const { got } = open({ pieces: [{ id: 'body-plain', colours: { skin: '#d9a27c' } }, { id: 'top-tee', colours: { main: '#e8e4dc', trim: '#3a6ea5' } }], painting: false });
@@ -313,4 +320,63 @@ it('without the pieces, a shade reads the painting, never the pieces on top', as
   expect(at(got.doc!.pixels!.data, 5, 22)![3]).toBe(255);
   strokeWith(got.doc!, 5, 22, { tool: 'shade', darken: true });
   expect(at(got.editor!.painting, 5, 22)?.[3] ?? 0).toBe(0);
+});
+
+const opaque = (rgba: number[]) => {
+  const out = new Uint8ClampedArray(64 * 64 * 4);
+  for (let i = 0; i < out.length; i += 4) out.set(rgba, i);
+  return out;
+};
+
+it('a face piece the painting covers raises the hint, and the next change that shows clears it', async () => {
+  const { got } = open();
+  await waitFor(() => expect(got.ready).toBe(true));
+  // A painting that covers the whole skin.
+  const red = opaque(RED);
+  act(() => got.doc!.changeLook({ look: { pieces: [], painting: true }, painting: red }, red));
+  expect(got.editor!.paintingCovers).toBe(false);
+  act(() => got.editor!.putOn(EYES_PIECE!));
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['eyes-round']));
+  expect(got.editor!.paintingCovers).toBe(true);
+  // A recolour under the painting changes nothing either.
+  act(() => got.editor!.setColour('eyes-round', 'iris', '#00ff00'));
+  await waitFor(() => expect(got.editor!.look!.pieces[0]!.colours.iris).toBe('#00ff00'));
+  expect(got.editor!.paintingCovers).toBe(true);
+  // A top is drawn over the painting, so it shows.
+  act(() => got.editor!.putOn(TEE_PIECE!));
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['eyes-round', 'top-tee']));
+  expect(got.editor!.paintingCovers).toBe(false);
+});
+
+it('a face piece that shows raises no hint', async () => {
+  const { got } = open({ pieces: [BODY], painting: false });
+  await waitFor(() => expect(got.ready).toBe(true));
+  act(() => got.editor!.putOn(EYES_PIECE!));
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['body-plain', 'eyes-round']));
+  expect(got.editor!.paintingCovers).toBe(false);
+});
+
+it('after a change the doc keeps the pieces, so strokes go under them at once', async () => {
+  const { got } = open({ pieces: [BODY], painting: false });
+  await waitFor(() => expect(got.ready && got.doc!.piecesReady).toBe(true));
+  act(() => got.editor!.putOn(TEE_PIECE!));
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['body-plain', 'top-tee']));
+  // No render showed the new look without its pieces.
+  expect(got.renders.filter((r) => r.ids?.includes('top-tee')).every((r) => r.piecesReady)).toBe(true);
+});
+
+it('settled waits for a change still loading', async () => {
+  const files = gate();
+  const { got } = open({ pieces: [BODY], painting: false }, files);
+  await waitFor(() => expect(got.ready && got.doc!.piecesReady).toBe(true));
+  files.close();
+  // No other test here loads the moon boots' files, so the change waits on them.
+  act(() => got.editor!.putOn(BOOTS_PIECE!));
+  let done = false;
+  const settled = got.editor!.settled().then(() => (done = true));
+  await act(() => new Promise((r) => setTimeout(r, 30)));
+  expect(done).toBe(false);
+  files.open();
+  await act(() => settled);
+  expect(ids(got.doc!.look?.look)).toEqual(['body-plain', 'shoes-moon-boots']);
 });

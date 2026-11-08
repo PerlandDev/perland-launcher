@@ -6,6 +6,8 @@ export const FACE_SLOTS: readonly string[] = ['body', 'eyes', 'brows', 'mouth', 
 
 export interface ComposeLayer {
   slot: string;
+  /** The catalog piece this layer draws, when known. */
+  id?: string;
   art: PixelBuffer;
   mask: PixelBuffer;
   colours: string[];

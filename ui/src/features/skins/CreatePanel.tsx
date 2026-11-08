@@ -1,5 +1,6 @@
 // The Create tab's column: categories at left, the pieces of the open category with an On badge for worn ones, and the
-// picked worn piece's colour areas with Take off and Make part of the skin. Looks applies a whole catalog look.
+// picked worn piece's colour areas with Take off and Make part of the skin. Looks applies a whole catalog look. A face
+// piece the painting hides gets a hint with a way to start clean from pieces.
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogLook, CatalogPiece, SkinLook } from '../../ipc/schema';
@@ -64,7 +65,20 @@ function LooksGrid({ looks, lang, catalog, onPick }: { looks: readonly CatalogLo
   );
 }
 
-export function CreatePanel({ catalog, look, editor, lang }: { catalog: Catalog; look: SkinLook | null; editor: LookEditor; lang: Lang }) {
+/** `onBuildFromPieces` starts a new skin from pieces (absent when the catalog can't build one). */
+export function CreatePanel({
+  catalog,
+  look,
+  editor,
+  lang,
+  onBuildFromPieces,
+}: {
+  catalog: Catalog;
+  look: SkinLook | null;
+  editor: LookEditor;
+  lang: Lang;
+  onBuildFromPieces?: () => void;
+}) {
   const { t } = useTranslation();
   const [category, setCategory] = useState('tops');
   const [picked, setPicked] = useState<string | null>(null);
@@ -141,6 +155,13 @@ export function CreatePanel({ catalog, look, editor, lang }: { catalog: Catalog;
             ) : (
               <p className="text-sm text-ink-dim">{t('skins.create.pick')}</p>
             ))}
+
+          {editor.paintingCovers && (
+            <div className="create-covered" role="status">
+              <p className="info-line">{t('skins.create.paintingCovers')}</p>
+              {onBuildFromPieces && <Button onClick={onBuildFromPieces}>{t('skins.create.paintingCoversAction')}</Button>}
+            </div>
+          )}
 
           {(shownWorn || worn.length > 0) && (
             <div className="create-actions">

@@ -8,7 +8,7 @@
 // taken off the finished skin because their files are missing.
 import { useEffect, useRef, useState } from 'react';
 import { commands } from '../../ipc/commands';
-import type { SkinLook, SkinModel } from '../../ipc/schema';
+import type { SkinEntry, SkinLook, SkinModel } from '../../ipc/schema';
 import { compose, FACE_SLOTS, type ComposeLayer } from './compose';
 import { pushError } from '../../state/toasts';
 import { decodeTexture, encodeTexture } from './codec';
@@ -92,10 +92,10 @@ class DocStore {
   covered = false;
   /** A save went through since the skin was opened or last kept as a version. */
   dirty = false;
-  onSaved: () => void = () => {};
+  onSaved: (entry: SkinEntry) => void = () => {};
   onState: (id: string, state: SaveState) => void = () => {};
 
-  wire(onSaved: () => void, onState: (id: string, state: SaveState) => void) {
+  wire(onSaved: (entry: SkinEntry) => void, onState: (id: string, state: SaveState) => void) {
     this.onSaved = onSaved;
     this.onState = onState;
   }
@@ -326,18 +326,19 @@ class DocStore {
     this.onState(id, 'saving');
     try {
       const texture = encodeTexture(px.data);
+      let entry: SkinEntry;
       if (look) {
-        await commands.skinLookSave(id, look.look, look.painting ? encodeTexture(look.painting) : null, texture);
+        entry = await commands.skinLookSave(id, look.look, look.painting ? encodeTexture(look.painting) : null, texture);
         if (this.id === id) this.savedLook = true;
       } else {
         if (this.savedLook) {
           await commands.skinLookClear(id);
           if (this.id === id) this.savedLook = false;
         }
-        await commands.skinSave(id, texture);
+        entry = await commands.skinSave(id, texture);
       }
       if (this.id === id) this.dirty = true;
-      this.onSaved();
+      this.onSaved(entry);
     } catch (error) {
       pushError(error);
     } finally {
@@ -355,13 +356,14 @@ async function openLook(id: string, look: SkinLook | undefined): Promise<LookSta
 }
 
 /**
- * `onModel` stores a new arm model for the open skin: after a switch, and when undo or redo crosses one. `look` is the
- * open skin's look as its wardrobe entry has it (read as the skin opens).
+ * `onSaved` gets the wardrobe entry each save answers, so the wardrobe can show it (and its look) at once. `onModel`
+ * stores a new arm model for the open skin: after a switch, and when undo or redo crosses one. `look` is the open
+ * skin's look as its wardrobe entry has it (read as the skin opens).
  */
 export function useSkinDoc(
   id: string | null,
   model: SkinModel,
-  onSaved: () => void,
+  onSaved: (entry: SkinEntry) => void,
   onModel: (model: SkinModel) => void,
   look?: SkinLook,
 ): SkinDoc {
