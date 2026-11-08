@@ -99,6 +99,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const [paintLayer, setPaintLayer] = useState<Layer>('base');
   const [pose, setPose] = useState<Pose>('still');
   // Animation on, the figure takes its pose; off, it stands square and still for painting, until a pose is picked.
+  // It is the player's own switch: the system's reduced-motion setting leaves it alone.
   const [animated, setAnimated] = useState(true);
   const poseMenu = useRef<MenuHandle>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -429,13 +430,12 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
 
         <div className="stage">
           <div className="stage-bar">
-            <div role="radiogroup" aria-label={t('skins.arms')} className="flex gap-2">
-              {(['classic', 'slim'] as const).map((m) => (
-                <button key={m} type="button" role="radio" aria-checked={model === m} className="seg seg-sm" data-checked={model === m || undefined} onClick={() => selected && doc.switchModel(m)}>
-                  {t(`skins.model.${m}`)}
-                </button>
-              ))}
-            </div>
+            <Button
+              title={t(model === 'classic' ? 'skins.toSlim' : 'skins.toClassic')}
+              onClick={() => selected && doc.switchModel(model === 'classic' ? 'slim' : 'classic')}
+            >
+              {t(`skins.model.${model}`)}
+            </Button>
             <Button icon={<HumanArmsUp />} aria-haspopup="menu" aria-label={`${t('skins.poseLabel')}: ${t(`skins.pose.${pose}`)}`} title={t('skins.poseLabel')} onClick={(e) => poseMenu.current?.openAt(e.currentTarget)}>
               <span className="btn-label">{t(`skins.pose.${pose}`)}</span>
             </Button>

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { celebration, CELEBRATE_S, POSE_STILL_T, POSES, rigAt, SADDLE_Y, STRAIGHT } from './poses';
+import { celebration, CELEBRATE_S, POSES, rigAt, SADDLE_Y, STRAIGHT } from './poses';
 
 describe('poses', () => {
   it('walk swings the legs against each other and the arms against the legs', () => {
-    const rig = rigAt('walk', POSE_STILL_T);
+    const rig = rigAt('walk', 0.22);
     expect(rig.joints.rightLeg[0]).toBeGreaterThan(0.3);
     expect(rig.joints.leftLeg[0]).toBeCloseTo(-rig.joints.rightLeg[0]);
     expect(Math.sign(rig.joints.rightArm[0])).toBe(-Math.sign(rig.joints.rightLeg[0]));
@@ -31,6 +31,15 @@ describe('poses', () => {
     const { joints } = rigAt('still', 0);
     expect(joints.rightArm[2]).not.toBe(0);
     expect(joints.leftArm[2]).not.toBe(0);
+  });
+
+  it('crouching leans the torso over legs that stay straight down, as the game sneaks', () => {
+    for (const t of [0, 0.5, 1.3]) {
+      const { joints } = rigAt('crouch', t);
+      expect(joints.torso[0]).toBeGreaterThan(0);
+      expect(joints.rightLeg).toEqual([0, 0, 0]);
+      expect(joints.leftLeg).toEqual([0, 0, 0]);
+    }
   });
 
   it('the straight pose holds every joint square, the figure on its spot, nothing moving', () => {

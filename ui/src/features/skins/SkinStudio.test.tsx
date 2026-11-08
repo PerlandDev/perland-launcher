@@ -54,8 +54,8 @@ it('opens the newest skin and lists the wardrobe', async () => {
   const list = await screen.findByRole('list', { name: 'Wardrobe' });
   expect(within(list).getByText('Beach day')).toBeInTheDocument();
   expect(within(list).getByText('Miner')).toBeInTheDocument();
-  // Beach day is slim, so Slim arms is the chosen model.
-  expect(await screen.findByRole('radio', { name: 'Slim arms' })).toHaveAttribute('aria-checked', 'true');
+  // Beach day is slim, so the arms key says Slim arms.
+  expect(await screen.findByRole('button', { name: 'Slim arms' })).toHaveAttribute('title', 'Switch to classic arms');
 });
 
 it('hotbar keys choose tools, toggle mirror, and undo and redo strokes', async () => {
@@ -267,6 +267,9 @@ it('the picker takes a see-through texel at its own opacity', async () => {
   expect(slider).toHaveValue('40');
 });
 
+/** The one arms key: it says the model the skin has, and a press switches to the other. */
+const armsKey = () => screen.getByRole('button', { name: /^(Classic|Slim) arms$/ });
+
 const wardrobeNames = () => within(screen.getByRole('list', { name: 'Wardrobe' })).getAllByRole('listitem').map((li) => within(li).getAllByText(/./)[0]!.textContent);
 
 it('Alt+arrows move the focused skin in the wardrobe, and the order is saved', async () => {
@@ -351,13 +354,13 @@ it('switching to slim arms and straight back gives back the very same arms', asy
   const saved = () => sent(calls, 'skin_save').map((c) => (c as { texture: string }).texture);
   const original = encoding.digest(starterSkin().data);
   // Beach day's test texture is drawn for classic arms: first put its flag right.
-  await user.click(screen.getByRole('radio', { name: 'Classic arms' }));
+  await user.click(armsKey());
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  await user.click(screen.getByRole('radio', { name: 'Slim arms' }));
+  await user.click(armsKey());
   await act(() => vi.advanceTimersByTimeAsync(700));
   await waitFor(() => expect(saved()).toHaveLength(1));
   expect(saved()[0]).not.toBe(original);
-  await user.click(screen.getByRole('radio', { name: 'Classic arms' }));
+  await user.click(armsKey());
   await act(() => vi.advanceTimersByTimeAsync(700));
   await waitFor(() => expect(saved()).toHaveLength(2));
   expect(saved()[1]).toBe(original);
@@ -368,20 +371,59 @@ it('switching arms redraws them into the new layout, and one undo puts both back
   await screen.findByText('Saved');
   await waitFor(() => expect(sent(calls, 'skin_texture').length).toBeGreaterThan(0));
   // Beach day is flagged slim, but the test texture is drawn for classic arms: going classic only fixes the flag.
-  await user.click(screen.getByRole('radio', { name: 'Classic arms' }));
+  await user.click(armsKey());
   await waitFor(() => expect(sent(calls, 'skin_update')).toEqual([{ id: 'skin-0a1b2c3d4e5f', name: null, model: 'classic' }]));
-  expect(screen.getByRole('radio', { name: 'Classic arms' })).toHaveAttribute('aria-checked', 'true');
+  expect(armsKey()).toHaveTextContent('Classic arms');
   expect(screen.getByText('Saved')).toBeInTheDocument();
   // Back to slim, the classic arms are redrawn as slim ones, and saved.
   vi.useFakeTimers({ shouldAdvanceTime: true });
-  await user.click(screen.getByRole('radio', { name: 'Slim arms' }));
+  await user.click(armsKey());
   expect(screen.getByText('Saving…')).toBeInTheDocument();
   await act(() => vi.advanceTimersByTimeAsync(700));
   await waitFor(() => expect(sent(calls, 'skin_save')).toHaveLength(1));
   // Undo returns to classic arms in one step.
   await user.keyboard('{Control>}z{/Control}');
   await waitFor(() => expect(sent(calls, 'skin_update').at(-1)).toMatchObject({ model: 'classic' }));
-  expect(screen.getByRole('radio', { name: 'Classic arms' })).toHaveAttribute('aria-checked', 'true');
+  expect(armsKey()).toHaveTextContent('Classic arms');
+});
+
+it('one arms key switches classic and slim, each press to the other', async () => {
+  const { user, calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  expect(armsKey()).toHaveTextContent('Slim arms');
+  await user.click(armsKey());
+  expect(armsKey()).toHaveTextContent('Classic arms');
+  expect(armsKey()).toHaveAttribute('title', 'Switch to slim arms');
+  await waitFor(() => expect(sent(calls, 'skin_update').at(-1)).toMatchObject({ model: 'classic' }));
+  await user.click(armsKey());
+  expect(armsKey()).toHaveTextContent('Slim arms');
+  await waitFor(() => expect(sent(calls, 'skin_update').at(-1)).toMatchObject({ model: 'slim' }));
+  expect(screen.queryByRole('radiogroup', { name: 'Arms' })).not.toBeInTheDocument();
+});
+
+it('the stage bar reads arms, then the pose, then Animation', async () => {
+  renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  const bar = armsKey().parentElement!;
+  const keys = within(bar).getAllByRole('button').map((b) => b.textContent?.trim());
+  expect(keys).toEqual(['Slim arms', 'Standing', 'Animation']);
+});
+
+it("the system's reduced-motion setting doesn't turn Animation off: the switch is the player's", async () => {
+  // jsdom has no matchMedia: stand one in that answers yes to reduced motion.
+  const original = window.matchMedia;
+  window.matchMedia = ((query: string) =>
+    ({ matches: query.includes('prefers-reduced-motion'), media: query, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList) as typeof window.matchMedia;
+  try {
+    const { user } = renderApp(<SkinStudio />);
+    await screen.findByText('Saved');
+    const animation = screen.getByRole('button', { name: 'Animation' });
+    expect(animation).toHaveAttribute('aria-pressed', 'true');
+    await user.click(animation);
+    expect(animation).toHaveAttribute('aria-pressed', 'false');
+  } finally {
+    window.matchMedia = original;
+  }
 });
 
 it('Animation is on until turned off, which stands the figure straight; picking a pose turns it back on', async () => {

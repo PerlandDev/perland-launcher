@@ -29,7 +29,7 @@ import type { SkinModel } from '../../ipc/schema';
 import { boxes, SKIN_SIZE, type Box, type Face, type Layer, type Part, type Vec3 } from './layout';
 import { cameraPosition, orbit as orbitView, pan as panView, startView, targetOf, zoomAt } from './camera';
 import { outerWalls, type Wall } from './outerWalls';
-import { celebration, CELEBRATE_S, POSE_STILL_T, rigAt, STRAIGHT, type Joint, type Pose } from './poses';
+import { celebration, CELEBRATE_S, rigAt, STRAIGHT, type Joint, type Pose } from './poses';
 
 /** How bright each face direction is, like the game's block shading. */
 function brightness([x, y, z]: Vec3): number {
@@ -370,7 +370,6 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   renderer.setClearColor(0x000000, 0);
   const scene = new Scene();
   const camera = new PerspectiveCamera(32, 1, 1, 600);
-  const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 
   const world = new Group();
   scene.add(world);
@@ -410,12 +409,11 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   let straight = false;
   let celebratedAt = -Infinity;
 
-  const still = () => motion?.matches === true;
   const raycaster = new Raycaster();
   const pointer = new Vector2();
 
   const place = (now: number) => {
-    const t = still() ? POSE_STILL_T : (now - started) / 1000;
+    const t = (now - started) / 1000;
     const rig = straight ? STRAIGHT : rigAt(pose, t);
     for (const j of JOINTS) {
       const pivot = pivotOf(j, model);
@@ -434,7 +432,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       theHorse.group.position.y = Math.abs(gait) * 0.5;
       theHorse.tail.rotation.z = Math.sin(t * Math.PI * 2 * 0.8) * 0.18;
     }
-    const party = still() ? null : celebration((now - celebratedAt) / 1000);
+    const party = celebration((now - celebratedAt) / 1000);
     world.rotation.y = party?.spin ?? 0;
     world.position.y = party?.lift ?? 0;
   };
@@ -444,10 +442,11 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     place(now);
     aim();
     renderer.render(scene, camera);
-    // The figure is always a little alive (breathing, looking around) until the player pauses it; the celebration
-    // plays even then. Reduced motion holds it still. A still stage redraws only when something changes.
+    // The figure is a little alive (breathing, looking around) while Animation is on; that switch is the player's,
+    // so the system's reduced-motion setting doesn't stop it. The celebration plays either way. A still stage
+    // redraws only when something changes.
     const celebrating = now - celebratedAt < CELEBRATE_S * 1000;
-    if (!still() && (!straight || celebrating)) frame = requestAnimationFrame(draw);
+    if (!straight || celebrating) frame = requestAnimationFrame(draw);
   };
   /** The pose's centre, and the distance at which the whole pose fits the stage. */
   const framed = () => {
@@ -520,9 +519,6 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     for (let o = object; o; o = o.parent) if (!o.visible) return false;
     return true;
   };
-
-  const onMotion = () => invalidate();
-  motion?.addEventListener?.('change', onMotion);
 
   return {
     setTexture(next) {
@@ -610,7 +606,6 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     },
     dispose() {
       if (frame) cancelAnimationFrame(frame);
-      motion?.removeEventListener?.('change', onMotion);
       for (const { mesh } of [...meshes, ...wallMeshes]) mesh.geometry.dispose();
       texture.dispose();
       baseMaterial.dispose();
