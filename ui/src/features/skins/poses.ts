@@ -1,7 +1,6 @@
 // How the figure moves on the stage: each pose gives every joint's rotation (radians, x then y then z) and the figure's
 // offset at time t (seconds). The figure faces +z: a negative x rotation swings a limb forward. Pure, so it is tested
-// without WebGL; under reduced motion the stage shows each pose's still frame (t = POSE_STILL_T). The straight pose
-// (STRAIGHT) stands the figure square for painting.
+// without WebGL. The straight pose (STRAIGHT) stands the figure square for painting, with Animation off.
 import type { Vec3 } from './layout';
 
 export const POSES = ['still', 'walk', 'run', 'crouch', 'sit', 'wave', 'boat', 'horse'] as const;
@@ -16,9 +15,6 @@ export interface Rig {
   /** The whole figure's tilt (a rocking boat). */
   tilt: Vec3;
 }
-
-/** The time a reduced-motion stage freezes each pose at: mid-stride for the gaits. */
-export const POSE_STILL_T = 0.22;
 
 /** The rider's hips sit this high on the horse's back. */
 export const SADDLE_Y = 27;

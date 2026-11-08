@@ -39,6 +39,10 @@ import './skins.css';
 const skinsKey = (owner: string | null) => ['skins', owner] as const;
 const RECENT_MAX = 9;
 
+function prefersReducedMotion() {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
 function typing(target: EventTarget | null) {
   return (
     target instanceof HTMLElement &&
@@ -99,7 +103,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const [paintLayer, setPaintLayer] = useState<Layer>('base');
   const [pose, setPose] = useState<Pose>('still');
   // Animation on, the figure takes its pose; off, it stands square and still for painting, until a pose is picked.
-  const [animated, setAnimated] = useState(true);
+  // It starts off when the system asks for less motion; turned on, the player has asked for the motion.
+  const [animated, setAnimated] = useState(() => !prefersReducedMotion());
   const poseMenu = useRef<MenuHandle>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<[number, number] | null>(null);
@@ -429,13 +434,15 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
 
         <div className="stage">
           <div className="stage-bar">
-            <div role="radiogroup" aria-label={t('skins.arms')} className="flex gap-2">
-              {(['classic', 'slim'] as const).map((m) => (
-                <button key={m} type="button" role="radio" aria-checked={model === m} className="seg seg-sm" data-checked={model === m || undefined} onClick={() => selected && doc.switchModel(m)}>
-                  {t(`skins.model.${m}`)}
-                </button>
-              ))}
-            </div>
+            <Button
+              title={t(model === 'classic' ? 'skins.toSlim' : 'skins.toClassic')}
+              onClick={() => selected && doc.switchModel(model === 'classic' ? 'slim' : 'classic')}
+            >
+              {t(`skins.model.${model}`)}
+            </Button>
+            <button type="button" className="seg seg-sm" aria-pressed={animated} data-checked={animated || undefined} title={t('skins.animationHint')} onClick={() => setAnimated((a) => !a)}>
+              {t('skins.animation')}
+            </button>
             <Button icon={<HumanArmsUp />} aria-haspopup="menu" aria-label={`${t('skins.poseLabel')}: ${t(`skins.pose.${pose}`)}`} title={t('skins.poseLabel')} onClick={(e) => poseMenu.current?.openAt(e.currentTarget)}>
               <span className="btn-label">{t(`skins.pose.${pose}`)}</span>
             </Button>
@@ -450,9 +457,6 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
                 },
               }))}
             />
-            <button type="button" className="seg seg-sm" aria-pressed={animated} data-checked={animated || undefined} title={t('skins.animationHint')} onClick={() => setAnimated((a) => !a)}>
-              {t('skins.animation')}
-            </button>
           </div>
 
           <div className="stage-well">

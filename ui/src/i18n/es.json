@@ -964,7 +964,6 @@
     "deleteTitle": "¿Borrar {{name}}?",
     "deleteBody": "Se borra de esta computadora. Si la tienes puesta en Minecraft, se queda en tu cuenta.",
     "deleteConfirm": "Borrar",
-    "arms": "Brazos",
     "parts": "Partes",
     "opacity": "Opacidad",
     "opacityValue": "{{value}} %",
@@ -982,6 +981,8 @@
       "leftLeg": "Pierna izquierda"
     },
     "poseLabel": "Pose",
+    "toSlim": "Cambiar a brazos delgados",
+    "toClassic": "Cambiar a brazos clásicos",
     "animation": "Animación",
     "animationHint": "Apágala para dejar la figura recta y quieta, sin nada que se solape, lista para pintar.",
     "pose": {"still": "De pie", "walk": "Caminando", "run": "Corriendo", "crouch": "Agachado", "sit": "Sentado", "wave": "Saludando", "boat": "En un bote", "horse": "A caballo"},

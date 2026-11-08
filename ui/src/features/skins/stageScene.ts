@@ -29,7 +29,7 @@ import type { SkinModel } from '../../ipc/schema';
 import { boxes, SKIN_SIZE, type Box, type Face, type Layer, type Part, type Vec3 } from './layout';
 import { cameraPosition, orbit as orbitView, pan as panView, startView, targetOf, zoomAt } from './camera';
 import { outerWalls, type Wall } from './outerWalls';
-import { celebration, CELEBRATE_S, POSE_STILL_T, rigAt, STRAIGHT, type Joint, type Pose } from './poses';
+import { celebration, CELEBRATE_S, rigAt, STRAIGHT, type Joint, type Pose } from './poses';
 
 /** How bright each face direction is, like the game's block shading. */
 function brightness([x, y, z]: Vec3): number {
@@ -415,7 +415,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   const pointer = new Vector2();
 
   const place = (now: number) => {
-    const t = still() ? POSE_STILL_T : (now - started) / 1000;
+    const t = (now - started) / 1000;
     const rig = straight ? STRAIGHT : rigAt(pose, t);
     for (const j of JOINTS) {
       const pivot = pivotOf(j, model);
@@ -444,10 +444,11 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     place(now);
     aim();
     renderer.render(scene, camera);
-    // The figure is always a little alive (breathing, looking around) until the player pauses it; the celebration
-    // plays even then. Reduced motion holds it still. A still stage redraws only when something changes.
-    const celebrating = now - celebratedAt < CELEBRATE_S * 1000;
-    if (!still() && (!straight || celebrating)) frame = requestAnimationFrame(draw);
+    // The figure is a little alive (breathing, looking around) while Animation is on, which is the player's own
+    // choice: under reduced motion the screen starts with it off. The celebration plays either way, except under
+    // reduced motion. A still stage redraws only when something changes.
+    const celebrating = !still() && now - celebratedAt < CELEBRATE_S * 1000;
+    if (!straight || celebrating) frame = requestAnimationFrame(draw);
   };
   /** The pose's centre, and the distance at which the whole pose fits the stage. */
   const framed = () => {

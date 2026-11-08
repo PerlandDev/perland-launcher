@@ -964,7 +964,6 @@
     "deleteTitle": "Delete {{name}}?",
     "deleteBody": "It's removed from this computer. A skin you're wearing in Minecraft stays on your account.",
     "deleteConfirm": "Delete",
-    "arms": "Arms",
     "parts": "Parts",
     "opacity": "Opacity",
     "opacityValue": "{{value}}%",
@@ -982,6 +981,8 @@
       "leftLeg": "Left leg"
     },
     "poseLabel": "Pose",
+    "toSlim": "Switch to slim arms",
+    "toClassic": "Switch to classic arms",
     "animation": "Animation",
     "animationHint": "Turn it off to stand the figure straight and still, nothing overlapping, for painting.",
     "pose": {"still": "Standing", "walk": "Walking", "run": "Running", "crouch": "Crouching", "sit": "Sitting", "wave": "Waving", "boat": "In a boat", "horse": "On a horse"},
