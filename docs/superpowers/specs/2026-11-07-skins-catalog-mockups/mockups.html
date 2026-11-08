@@ -1,0 +1,163 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Skins mockups</title>
+<style>
+:root{--ground:#181410;--panel:#221c17;--raised:#2e261f;--line:#463a2f;--ink:#f6f1e7;--dim:#c5b9a8;--amber:#ffc233;--lime:#c9cc2a;--dirt:#7a4a2a;--dirtd:#4e2e19;--blue:#5cb3f0}
+*{box-sizing:border-box;margin:0}
+body{background:var(--ground);color:var(--ink);font:15px/1.5 "Atkinson Hyperlegible Next",system-ui,sans-serif;width:1280px;height:800px;overflow:hidden}
+.disp{font-family:"Bungee",Impact,"Arial Black",system-ui;letter-spacing:.02em;text-transform:uppercase}
+.titlebar{height:36px;background:#120f0c;display:flex;align-items:center;padding:0 14px;gap:10px;color:var(--dim);font-size:13px}
+.app{display:grid;grid-template-columns:72px 1fr;height:764px}
+.rail{background:#14110e;border-right:1px solid #2a221b;display:flex;flex-direction:column;align-items:center;padding-top:14px;gap:12px}
+.rail i{width:40px;height:40px;background:var(--raised);border-radius:4px;display:block}
+.rail i.on{outline:2px solid var(--lime)}
+.screen{padding:0 24px;display:grid;grid-template-rows:auto 1fr auto;min-height:0}
+.head{display:flex;align-items:center;gap:16px;padding:18px 0 14px}
+.head h1{font-size:28px;line-height:1}
+.tabs{display:flex;gap:6px;margin-left:24px}
+.tab{padding:8px 14px;background:var(--raised);border-radius:4px;font-weight:650;font-size:14px;color:var(--dim);box-shadow:0 3px 0 var(--dirtd)}
+.tab.on{background:var(--ground);color:var(--ink);box-shadow:inset 0 2px 0 rgba(0,0,0,.5),inset 0 0 0 1px var(--line)}
+.tab.on::before{content:"";display:inline-block;width:8px;height:8px;background:var(--lime);margin-right:8px;border-radius:1px}
+.body{display:grid;gap:16px;min-height:0}
+.col{background:var(--panel);border-radius:6px;padding:14px;min-height:0;overflow:hidden}
+.lbl{font-size:12px;font-weight:650;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 14px;background:var(--raised);border-radius:4px;font-weight:650;font-size:14px;box-shadow:0 3px 0 var(--dirtd)}
+.btn.amber{background:var(--amber);color:var(--ground);box-shadow:0 3px 0 #a3741a;height:44px;font-family:"Bungee",Impact,system-ui;font-size:17px;padding:0 22px}
+.stage{background:radial-gradient(ellipse at 50% 85%,#3a2c20 0,#221c17 60%);border-radius:6px;position:relative;display:flex;align-items:center;justify-content:center}
+.stage .floor{position:absolute;bottom:56px;left:20%;right:20%;height:18px;background:#5a3a22;border-top:4px solid #6f8f2e;border-radius:2px}
+.stage .wear{position:absolute;bottom:12px;left:50%;transform:translateX(-50%)}
+.pose{position:absolute;top:12px;right:12px}
+.ward{display:grid;gap:6px;align-content:start}
+.wi{display:flex;align-items:center;gap:10px;background:var(--raised);padding:6px 8px;border-radius:4px;font-size:14px}
+.wi.sel{background:var(--ground);box-shadow:inset 0 0 0 1px var(--line)}
+.face{width:32px;height:32px;border-radius:2px;flex:none}
+.cats{display:grid;gap:4px;align-content:start}
+.cat{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:4px;font-size:14px;font-weight:600;color:var(--dim)}
+.cat.on{background:var(--ground);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line)}
+.cat.on::before{content:"";width:6px;height:6px;background:var(--lime)}
+.grid{display:grid;gap:8px}
+.card{background:var(--raised);border-radius:4px;padding:6px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--dim);position:relative}
+.card.on{outline:2px solid var(--lime);background:var(--ground);color:var(--ink)}
+.card .on-badge{position:absolute;top:4px;right:4px;font-size:10px;background:var(--lime);color:var(--ground);padding:0 4px;border-radius:2px;font-weight:700}
+.swrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.sw{width:22px;height:22px;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.4)}
+.sw.on{outline:2px solid var(--ink);outline-offset:2px}
+.area{display:grid;grid-template-columns:70px 1fr;align-items:center;gap:8px;margin-bottom:10px;font-size:13px;color:var(--dim)}
+.hex{font-family:ui-monospace,monospace;font-size:12px;background:var(--ground);padding:3px 6px;border-radius:3px;color:var(--ink)}
+.search{height:34px;background:var(--ground);border-radius:4px;box-shadow:inset 0 2px 0 rgba(0,0,0,.5),inset 0 0 0 1px var(--line);display:flex;align-items:center;padding:0 10px;color:#8a7f70;font-size:14px}
+.chip{padding:3px 10px;border-radius:12px;background:var(--raised);font-size:12px;font-weight:600;color:var(--dim)}
+.chip.on{background:var(--lime);color:var(--ground)}
+.hotbar{display:grid;grid-template-columns:repeat(9,1fr);gap:6px;padding:12px 0 16px}
+.key{height:46px;background:var(--raised);border-radius:4px;box-shadow:0 4px 0 var(--dirtd);font-size:11px;color:var(--dim);display:flex;align-items:flex-end;justify-content:center;padding-bottom:4px}
+.foot{padding:12px 0 16px;display:flex;gap:10px;align-items:center;color:var(--dim);font-size:13px}
+.worn{display:flex;gap:6px;flex-wrap:wrap}
+.worn span{background:var(--raised);padding:3px 8px;border-radius:3px;font-size:12px}
+.worn span b{color:var(--dim);font-weight:400;margin-left:6px}
+.note{position:absolute;bottom:8px;right:12px;background:#000a;padding:4px 10px;border-radius:4px;font-size:12px;color:var(--amber)}
+</style></head>
+<body>
+<div class="titlebar"><b style="color:var(--ink)">Perland Launcher</b><span style="margin-left:auto">Steve_Builder ▾</span></div>
+<div class="app"><div class="rail"><i></i><i></i><i class="on"></i><i></i></div>
+<div class="screen" id="screen"></div></div>
+<script>
+// A pixel figure drawn as SVG from a look.
+function fig(l, s=12){
+  const W=16*s,H=32*s, r=(x,y,w,h,c)=>`<rect x="${x*s}" y="${y*s}" width="${w*s}" height="${h*s}" fill="${c}"/>`;
+  let o='';
+  const skin=l.skin||'#d9a07a', top=l.top||'#3a7bd5', trim=l.trim||'#f6f1e7', pants=l.pants||'#2d3a55', shoe=l.shoe||'#222';
+  // head
+  o+=r(4,0,8,8,skin); o+=r(4,0,8,l.hairLen||2,l.hair||'#4a2a14'); o+=r(4,0,1,4,l.hair||'#4a2a14');o+=r(11,0,1,4,l.hair||'#4a2a14');
+  o+=r(5,4,2,1,'#fff');o+=r(9,4,2,1,'#fff');o+=r(6,4,1,1,l.eye||'#3b6bd6');o+=r(9,4,1,1,l.eye||'#3b6bd6');
+  o+=r(6,6,4,1,l.mouth||'#8a4a3a');
+  if(l.hat) o+=r(3,-0.6,10,2.4,l.hat)+r(3,1.6,11,0.8,l.hatb||l.hat);
+  if(l.glasses) o+=r(4.6,3.6,2.8,1.8,l.glasses)+r(8.6,3.6,2.8,1.8,l.glasses)+r(7.4,4,1.2,.6,l.glasses);
+  // body + arms
+  o+=r(4,8,8,12,top); o+=r(0,8,4,12,top); o+=r(12,8,4,12,top);
+  o+=r(0,17,4,3,skin); o+=r(12,17,4,3,skin);
+  if(l.jacket){o+=r(4,8,3,12,l.jacket)+r(9,8,3,12,l.jacket)+r(0,8,4,9,l.jacket)+r(12,8,4,9,l.jacket)+r(7.5,8,1,12,trim);}
+  else o+=r(4,8,8,1,trim);
+  if(l.scarf) o+=r(4,8,8,2,l.scarf)+r(9,10,2,3,l.scarf);
+  o+=r(4,18.5,8,1,l.belt||'#3b2a1c');
+  // legs
+  o+=r(4,20,4,12,pants); o+=r(8,20,4,12,pants); o+=r(7.8,20,.4,12,'rgba(0,0,0,.25)');
+  o+=r(4,29,4,3,shoe); o+=r(8,29,4,3,shoe); o+=r(4,31,8,1,l.sole||'#eee');
+  // shading
+  o+=r(0,8,1,12,'rgba(0,0,0,.18)')+r(15,8,1,12,'rgba(0,0,0,.18)');
+  const pad=l.hat?s:0;
+  return `<svg width="${W}" height="${H+pad}" viewBox="0 ${-pad} ${W} ${H+pad}" shape-rendering="crispEdges">${o}</svg>`;
+}
+const looks={
+ me:{skin:'#c98d68',hair:'#2b1a10',top:'#e9e2d0',jacket:'#c0392b',trim:'#ffd76e',pants:'#2d3a55',shoe:'#f6f1e7',sole:'#c0392b',eye:'#4a8a3a'},
+ knight:{skin:'#e2b08a',hair:'#d9b04a',top:'#9aa3ad',trim:'#ffc233',pants:'#6d7680',shoe:'#4e555c',hat:'#9aa3ad',hatb:'#6d7680'},
+ astro:{skin:'#8a5a3c',hair:'#111',top:'#f2f2f2',trim:'#ff5a5f',pants:'#e6e6e6',shoe:'#aaa',glasses:'#5cb3f0'},
+ pirate:{skin:'#e8b894',hair:'#111',top:'#f6f1e7',jacket:'#5a1e1e',trim:'#ffc233',pants:'#3b2a1c',shoe:'#111',hat:'#222',hatb:'#ffc233'},
+ chef:{skin:'#f0c8a4',hair:'#7a4a2a',top:'#ffffff',trim:'#222',pants:'#2a2a2a',shoe:'#111',hat:'#ffffff'},
+ wizard:{skin:'#e8c09a',hair:'#ddd',top:'#4b2a8a',trim:'#ffc233',pants:'#3a2070',shoe:'#2a1550',hat:'#4b2a8a',hatb:'#ffc233'},
+ cyber:{skin:'#b07a5a',hair:'#ff3fa4',top:'#151515',jacket:'#2a2a2a',trim:'#00e5ff',pants:'#1a1a1a',shoe:'#00e5ff',glasses:'#00e5ff'},
+ sport:{skin:'#6e4630',hair:'#111',top:'#2186cb',trim:'#fff',pants:'#111',shoe:'#fff',sole:'#2186cb'},
+ school:{skin:'#f2c9a6',hair:'#3a2210',top:'#fff',trim:'#2d3a55',pants:'#2d3a55',shoe:'#111',scarf:'#c0392b'},
+ farmer:{skin:'#d9a07a',hair:'#8a5a2a',top:'#c0392b',trim:'#fff',pants:'#3a6bd5',shoe:'#5a3a22',hat:'#e2c27a'},
+ explorer:{skin:'#c98d68',hair:'#3a2210',top:'#a8925a',trim:'#5a3a22',pants:'#6b5a3a',shoe:'#3b2a1c',hat:'#a8925a',hatb:'#5a3a22',scarf:'#c0392b'},
+ punk:{skin:'#f0d0b0',hair:'#6f2bd9',top:'#111',jacket:'#222',trim:'#aaa',pants:'#3a3a55',shoe:'#111'},
+};
+const thumb=(l,s=4)=>fig(l,s);
+const piece=(c,c2,kind)=>{ // tiny item icon
+  const p={jacket:'M2 2h12v12H2z',hood:'M3 1h10v13H3z'};
+  return `<svg width="56" height="56" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect x="3" y="3" width="10" height="10" fill="${c}"/><rect x="${kind==='j'?7.5:3}" y="3" width="${kind==='j'?1:10}" height="${kind==='j'?10:1.5}" fill="${c2}"/><rect x="1" y="3" width="2" height="7" fill="${c}"/><rect x="13" y="3" width="2" height="7" fill="${c}"/><rect x="1" y="3" width="1" height="7" fill="rgba(0,0,0,.25)"/></svg>`;
+};
+const ward=`<div class="col ward"><div class="lbl">My wardrobe</div><div style="display:flex;gap:6px;margin-bottom:6px"><span class="btn" style="flex:1">New</span><span class="btn" style="flex:1">Import</span></div>
+ <div class="wi sel"><span class="face" style="background:#c98d68;box-shadow:inset 0 6px 0 #2b1a10"></span>Red jacket look</div>
+ <div class="wi"><span class="face" style="background:#e2b08a;box-shadow:inset 0 6px 0 #9aa3ad"></span>Knight</div>
+ <div class="wi"><span class="face" style="background:#8a5a3c;box-shadow:inset 0 6px 0 #111"></span>From my account</div></div>`;
+const stage=(l)=>`<div class="stage"><div class="pose btn">Pose: Standing ▾</div><div class="floor"></div><div style="position:relative;z-index:1;margin-bottom:40px">${fig(l,13)}</div><div class="wear"><span class="btn amber">Wear this skin</span></div></div>`;
+const hot=`<div class="hotbar">${['1 Pencil','2 Eraser','3 Fill','4 Pick','5 Shade','6 Noise','7 Mirror','8 Undo','9 Redo'].map(k=>`<div class="key">${k}</div>`).join('')}</div>`;
+const v=new URLSearchParams(location.search).get('v')||'a';
+const S=document.getElementById('screen');
+const tabs=(on)=>`<div class="tabs">${['Create','Paint','Catalog'].map(t=>`<span class="tab ${t===on?'on':''}">${t}</span>`).join('')}</div>`;
+
+if(v==='a'){ // Create tab: character creator
+ const cats=['Looks','Body','Face','Hair','Tops','Bottoms','Shoes','Hats','Accessories'];
+ const tops=[['Hoodie','#2186cb','#fff','h'],['Bomber','#c0392b','#ffd76e','j'],['Denim','#3a6bd5','#c5b9a8','j'],['Tee','#e9e2d0','#c0392b','h'],['Puffer','#6f8f2e','#222','j'],['Blazer','#2d3a55','#fff','j'],['Overalls','#3a6bd5','#ffc233','h'],['Kimono','#ff5a5f','#ffd76e','j'],['Armour','#9aa3ad','#ffc233','h']];
+ S.innerHTML=`<div class="head"><h1 class="disp">Skins</h1>${tabs('Create')}</div>
+ <div class="body" style="grid-template-columns:200px 1fr 400px">${ward}${stage(looks.me)}
+ <div class="col" style="display:grid;grid-template-columns:118px 1fr;gap:12px">
+  <div class="cats">${cats.map(c=>`<div class="cat ${c==='Tops'?'on':''}">${c}</div>`).join('')}</div>
+  <div style="min-width:0"><div class="lbl">Tops · 20</div>
+   <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:12px">${tops.map((t,i)=>`<div class="card ${i===1?'on':''}">${i===1?'<span class="on-badge">ON</span>':''}${piece(t[1],t[2],t[3])}${t[0]}</div>`).join('')}</div>
+   <div class="lbl">Bomber colours</div>
+   ${[['Body','#c0392b',['#c0392b','#2186cb','#6f8f2e','#222','#e9e2d0','#6f2bd9']],['Trim','#ffd76e',['#ffd76e','#fff','#222','#c0392b']],['Zip','#c5b9a8',['#c5b9a8','#ffc233','#222']]].map(a=>`<div class="area"><span>${a[0]}</span><div class="swrow">${a[2].map((c,i)=>`<span class="sw ${i===0?'on':''}" style="background:${c}"></span>`).join('')}<span class="sw" style="background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"></span><span class="hex">${a[1]}</span></div></div>`).join('')}
+   <div style="display:flex;gap:8px"><span class="btn">Take off</span><span class="btn">Make part of the skin</span></div>
+  </div></div></div>
+ <div class="foot">Wearing: <div class="worn"><span>Bomber jacket<b>×</b></span><span>Jeans<b>×</b></span><span>Sneakers<b>×</b></span><span>Short hair<b>×</b></span></div><span style="margin-left:auto">Saved</span></div>`;
+}
+if(v==='b'){ // Catalog tab: browse looks
+ const names={me:'Street',knight:'Knight',astro:'Astronaut',pirate:'Pirate',chef:'Chef',wizard:'Wizard',cyber:'Neon runner',sport:'Footballer',school:'School day',farmer:'Farmer',explorer:'Explorer',punk:'Punk'};
+ S.innerHTML=`<div class="head"><h1 class="disp">Skins</h1>${tabs('Catalog')}</div>
+ <div class="body" style="grid-template-columns:200px 1fr 330px">${ward}
+ <div class="col" style="display:grid;grid-template-rows:auto auto 1fr;gap:10px">
+  <div class="search">Search looks and pieces…</div>
+  <div class="swrow">${['All','New','Fantasy','Sport','Jobs','Sci-fi','Casual','Spooky'].map((c,i)=>`<span class="chip ${i===0?'on':''}">${c}</span>`).join('')}</div>
+  <div class="grid" style="grid-template-columns:repeat(6,1fr);align-content:start">${Object.keys(looks).map((k,i)=>`<div class="card ${k==='pirate'?'on':''}" style="padding:10px 6px 6px">${thumb(looks[k],4.2)}<span style="color:var(--ink)">${names[k]}</span></div>`).join('')}</div>
+ </div>
+ <div class="col" style="display:grid;grid-template-rows:auto 1fr auto auto;gap:10px">
+  <div><div class="disp" style="font-size:18px">Pirate</div><div style="color:var(--dim);font-size:13px">By Perland · Fantasy</div></div>
+  <div class="stage" style="min-height:300px"><div style="margin-bottom:10px">${fig(looks.pirate,9)}</div></div>
+  <div class="worn"><span>Tricorn hat</span><span>Long coat</span><span>Shirt</span><span>Trousers</span><span>Boots</span><span>Long hair</span></div>
+  <div style="display:grid;gap:8px"><span class="btn amber" style="font-size:15px">Add to my wardrobe</span><span style="color:var(--dim);font-size:12px;text-align:center">Every piece and colour stays editable</span></div>
+ </div></div><div class="foot"></div>`;
+}
+if(v==='c'){ // Body / face customisation
+ const parts=[['Eyes','#3b6bd6'],['Brows','#2b1a10'],['Mouth','#8a4a3a'],['Freckles','#a0583a'],['Beard','#2b1a10']];
+ S.innerHTML=`<div class="head"><h1 class="disp">Skins</h1>${tabs('Create')}</div>
+ <div class="body" style="grid-template-columns:200px 1fr 400px">${ward}${stage(looks.me)}
+ <div class="col" style="display:grid;grid-template-columns:118px 1fr;gap:12px">
+  <div class="cats">${['Looks','Body','Face','Hair','Tops','Bottoms','Shoes','Hats','Accessories'].map(c=>`<div class="cat ${c==='Face'?'on':''}">${c}</div>`).join('')}</div>
+  <div><div class="lbl">Eyes · 8 styles</div>
+   <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:12px">${[0,1,2,3,4,5,6,7].map(i=>`<div class="card ${i===2?'on':''}" style="padding:10px 4px"><svg width="40" height="16" viewBox="0 0 16 6" shape-rendering="crispEdges"><rect width="16" height="6" fill="#c98d68"/><rect x="2" y="${i%3?2:1}" width="${3+(i%2)}" height="${2+(i>4?1:0)}" fill="#fff"/><rect x="${3+(i%2)}" y="2" width="1" height="${1+(i>3?1:0)}" fill="#3b6bd6"/><rect x="${10-(i%2)}" y="${i%3?2:1}" width="${3+(i%2)}" height="${2+(i>4?1:0)}" fill="#fff"/><rect x="10" y="2" width="1" height="${1+(i>3?1:0)}" fill="#3b6bd6"/></svg></div>`).join('')}</div>
+   <div class="lbl">Colours</div>
+   <div class="area"><span>Skin tone</span><div class="swrow">${['#f6d5b8','#f0c8a4','#d9a07a','#c98d68','#a8714e','#8a5a3c','#6e4630','#4a2e1e'].map((c,i)=>`<span class="sw ${i===3?'on':''}" style="background:${c}"></span>`).join('')}<span class="sw" style="background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"></span></div></div>
+   <div class="area"><span>Eyes</span><div class="swrow">${['#3b6bd6','#4a8a3a','#7a4a2a','#222','#9a5ad6'].map((c,i)=>`<span class="sw ${i===1?'on':''}" style="background:${c}"></span>`).join('')}<span class="sw" style="background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red)"></span></div></div>
+   <div class="area"><span>Freckles</span><div class="swrow"><span class="chip">Off</span><span class="chip on">Light</span><span class="chip">Lots</span></div></div>
+  </div></div></div>
+ <div class="foot">Wearing: <div class="worn"><span>Bomber jacket<b>×</b></span><span>Jeans<b>×</b></span><span>Sneakers<b>×</b></span><span>Short hair<b>×</b></span></div><span style="margin-left:auto">Saved</span></div>`;
+}
+</script></body></html>
