@@ -43,7 +43,7 @@ pub trait CatalogApi: Send + Sync {
 impl CatalogApi for Arc<SkinCatalog<CatalogClient>> {
     fn load(&self) -> BoxFuture<(Option<Manifest>, CatalogStatus)> {
         let this = self.clone();
-        Box::pin(async move { this.as_ref().load().await })
+        Box::pin(async move { this.load().await })
     }
     fn file(&self, sha256: String) -> BoxFuture<Result<Vec<u8>>> {
         let this = self.clone();

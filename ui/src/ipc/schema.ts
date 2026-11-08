@@ -486,7 +486,7 @@ export const catalogManifest = z.strictObject({
 });
 /** How the catalog was reached: the Engine (`fresh`), the cache (`cached`), neither (`unavailable`), or an Engine newer than
  *  this launcher reads (`too_new`). */
-export const catalogStatus = z.enum(['fresh', 'cached', 'unavailable', 'too_new']);
+export const catalogStatus = z.enum(['fresh', 'refreshing', 'cached', 'unavailable', 'too_new']);
 export const catalogAnswer = z.strictObject({ manifest: catalogManifest.nullable(), status: catalogStatus });
 /** Why a skin version was kept. */
 export const skinVersionReason = z.enum(['edited', 'worn', 'exported', 'restored']);

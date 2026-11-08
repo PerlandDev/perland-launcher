@@ -16,6 +16,12 @@ function fetchFile(qc: ReturnType<typeof useQueryClient>, sha256: string): Promi
   return qc.ensureQueryData({ queryKey: fileKey(sha256), queryFn: () => commands.skinCatalogFile(sha256), staleTime: Infinity, gcTime: Infinity });
 }
 
+/** Files that failed to load this session: not asked for again on every draw. */
+const failedFiles = new Set<string>();
+
+/** While the catalog is shown from the cache and refreshed in the background, it is asked again this often. */
+export const REFRESH_POLL_MS = 500;
+
 /** Decoded texels by hash; shared by every mount, as the hashes are. */
 const decoded = new Map<string, Promise<PixelBuffer>>();
 
@@ -34,7 +40,14 @@ export interface Catalog {
 
 export function useCatalog(): Catalog {
   const qc = useQueryClient();
-  const answer = useQuery({ queryKey: ['skinCatalog'], queryFn: commands.skinCatalog, staleTime: 5 * 60_000, retry: false });
+  // A cached catalog answers at once as `refreshing`: it is asked again until the background refresh's answer is in.
+  const answer = useQuery({
+    queryKey: ['skinCatalog'],
+    queryFn: commands.skinCatalog,
+    staleTime: 5 * 60_000,
+    retry: false,
+    refetchInterval: (query) => (query.state.data?.status === 'refreshing' ? REFRESH_POLL_MS : false),
+  });
   const manifest = answer.data?.manifest ?? null;
   // The catalog command answers even with no network, so a failed call is the same as nothing to show.
   const status: CatalogStatus = answer.data?.status ?? 'unavailable';
@@ -44,13 +57,17 @@ export function useCatalog(): Catalog {
   const image = useCallback(
     (sha256: string) => {
       const url = qc.getQueryData<string>(fileKey(sha256));
-      if (url !== undefined || asked.has(sha256)) return url;
+      if (url !== undefined || asked.has(sha256) || failedFiles.has(sha256)) return url;
       asked.add(sha256);
-      // Started after this render, never during it.
+      // Started after this render, never during it. A failure is remembered for the session, so a missing thumbnail
+      // isn't fetched again on every draw.
       queueMicrotask(() =>
         void fetchFile(qc, sha256)
           .then(() => landed((n) => n + 1))
-          .catch(() => asked.delete(sha256)),
+          .catch(() => {
+            failedFiles.add(sha256);
+            asked.delete(sha256);
+          }),
       );
       return undefined;
     },

@@ -1,7 +1,13 @@
 //! The skin catalog's offline cache: the newest manifest and the PNGs it names, kept under one
 //! folder. Files are named by their SHA-256 and re-verified on every read.
 
-use std::{collections::BTreeSet, future::Future, path::PathBuf};
+use std::{
+    collections::BTreeSet,
+    future::Future,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -21,6 +27,9 @@ use crate::{
 pub enum CatalogStatus {
     /// The Engine answered and the manifest is current.
     Fresh,
+    /// The cached manifest is shown while the Engine is asked in the background: load again
+    /// shortly for the answer.
+    Refreshing,
     /// The Engine could not be reached; the cached manifest is shown.
     Cached,
     /// Nothing cached and the Engine could not be reached.
@@ -138,24 +147,71 @@ impl CatalogCache {
     }
 }
 
-/// The catalog as the launcher uses it: the Engine first, the cache when it cannot be reached.
+/// How long a background refresh's answer is handed to the next [`SkinCatalog::load`]; after
+/// that, the next load asks the Engine again.
+const REFRESH_KEPT: Duration = Duration::from_secs(30);
+
+type Loaded = (Option<Manifest>, CatalogStatus);
+
+/// The background refresh that [`SkinCatalog::load`] starts while it answers from the cache.
+enum Refresh {
+    Idle,
+    Running,
+    Done(Loaded, Instant),
+}
+
+/// The catalog as the launcher uses it. With a cached manifest it answers from the cache at once
+/// (`Refreshing`) and asks the Engine in the background; the next load hands over that answer.
+/// With nothing cached it waits for the Engine.
 pub struct SkinCatalog<C = CatalogClient> {
     client: C,
     cache: CatalogCache,
+    refresh: Mutex<Refresh>,
 }
 
-impl<C: CatalogSource> SkinCatalog<C> {
+impl<C: CatalogSource + 'static> SkinCatalog<C> {
     pub fn new(client: C, cache: CatalogCache) -> Self {
-        Self { client, cache }
+        Self {
+            client,
+            cache,
+            refresh: Mutex::new(Refresh::Idle),
+        }
     }
 
-    pub async fn load(&self) -> (Option<Manifest>, CatalogStatus) {
+    pub async fn load(self: &Arc<Self>) -> Loaded {
         // A cached manifest newer than this launcher reads (after a downgrade) is no cache.
         let mut cached_too_new = false;
         let cached = self.cache.manifest().await.filter(|m| {
             cached_too_new = m.format_version > FORMAT_VERSION;
             !cached_too_new
         });
+        if cached.is_none() {
+            return self.fetch(None, cached_too_new).await;
+        }
+        let mut refresh = self.refresh.lock().unwrap_or_else(|e| e.into_inner());
+        match &*refresh {
+            Refresh::Done(loaded, at) if at.elapsed() < REFRESH_KEPT => {
+                let loaded = loaded.clone();
+                *refresh = Refresh::Idle;
+                return loaded;
+            }
+            Refresh::Running => return (cached, CatalogStatus::Refreshing),
+            _ => {}
+        }
+        *refresh = Refresh::Running;
+        drop(refresh);
+        let this = Arc::clone(self);
+        let shown = cached.clone();
+        tokio::spawn(async move {
+            let loaded = this.fetch(shown, false).await;
+            *this.refresh.lock().unwrap_or_else(|e| e.into_inner()) =
+                Refresh::Done(loaded, Instant::now());
+        });
+        (cached, CatalogStatus::Refreshing)
+    }
+
+    /// Asks the Engine, with `cached` as what is shown when it can't say anything newer.
+    async fn fetch(&self, cached: Option<Manifest>, cached_too_new: bool) -> Loaded {
         let etag = cached.as_ref().map(|m| m.version.clone());
         let nothing = |too_new: bool| {
             (
@@ -172,6 +228,7 @@ impl<C: CatalogSource> SkinCatalog<C> {
                 Some(m) => (Some(m), CatalogStatus::Fresh),
                 None => nothing(cached_too_new),
             },
+            Ok(Fetched::TooNew) => (cached, CatalogStatus::TooNew),
             Ok(Fetched::Manifest(m)) if m.format_version > FORMAT_VERSION => {
                 (cached, CatalogStatus::TooNew)
             }
@@ -276,8 +333,28 @@ mod tests {
         }
     }
 
-    fn catalog(dir: &std::path::Path, fake: Fake) -> SkinCatalog<Fake> {
-        SkinCatalog::new(fake, CatalogCache::new(dir))
+    fn catalog(dir: &std::path::Path, fake: Fake) -> Arc<SkinCatalog<Fake>> {
+        Arc::new(SkinCatalog::new(fake, CatalogCache::new(dir)))
+    }
+
+    /// Waits for the background refresh a load started.
+    async fn settle(cat: &SkinCatalog<Fake>) {
+        for _ in 0..200 {
+            if matches!(*cat.refresh.lock().unwrap(), Refresh::Done(..)) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        panic!("the refresh never finished");
+    }
+
+    /// The first load answers from the cache at once; the next hands over the refresh's answer.
+    async fn load_twice(cat: &Arc<SkinCatalog<Fake>>) -> Loaded {
+        let (m, status) = cat.load().await;
+        assert_eq!(status, CatalogStatus::Refreshing);
+        assert!(m.is_some());
+        settle(cat).await;
+        cat.load().await
     }
 
     #[tokio::test]
@@ -285,8 +362,69 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cache = CatalogCache::new(dir.path());
         cache.store_manifest(&manifest("v1", 1)).await.unwrap();
-        let (m, status) = catalog(dir.path(), Fake::new(None)).load().await;
+        let (m, status) = load_twice(&catalog(dir.path(), Fake::new(None))).await;
         assert_eq!(status, CatalogStatus::Cached);
+        assert_eq!(m.unwrap().version, "v1");
+    }
+
+    #[tokio::test]
+    async fn a_cached_catalog_answers_at_once_and_refreshes_in_the_background() {
+        let dir = tempfile::tempdir().unwrap();
+        CatalogCache::new(dir.path())
+            .store_manifest(&manifest("v1", 1))
+            .await
+            .unwrap();
+        let fake = Fake::new(Some(Ok(Fetched::Manifest(manifest("v2", 1)))));
+        let cat = catalog(dir.path(), fake);
+        let (m, status) = cat.load().await;
+        assert_eq!(status, CatalogStatus::Refreshing);
+        assert_eq!(m.unwrap().version, "v1");
+        settle(&cat).await;
+        let (m, status) = cat.load().await;
+        assert_eq!(status, CatalogStatus::Fresh);
+        assert_eq!(m.unwrap().version, "v2");
+        assert_eq!(
+            CatalogCache::new(dir.path())
+                .manifest()
+                .await
+                .unwrap()
+                .version,
+            "v2"
+        );
+        // The answer is handed over once: the next load asks again.
+        let (m, status) = cat.load().await;
+        assert_eq!(status, CatalogStatus::Refreshing);
+        assert_eq!(m.unwrap().version, "v2");
+    }
+
+    #[tokio::test]
+    async fn a_load_during_a_refresh_starts_no_second_one() {
+        let dir = tempfile::tempdir().unwrap();
+        CatalogCache::new(dir.path())
+            .store_manifest(&manifest("v1", 1))
+            .await
+            .unwrap();
+        let cat = catalog(dir.path(), Fake::new(None));
+        *cat.refresh.lock().unwrap() = Refresh::Running;
+        let (m, status) = cat.load().await;
+        assert_eq!(status, CatalogStatus::Refreshing);
+        assert_eq!(m.unwrap().version, "v1");
+        assert!(matches!(*cat.refresh.lock().unwrap(), Refresh::Running));
+    }
+
+    #[tokio::test]
+    async fn a_stale_refresh_answer_is_not_handed_over() {
+        let dir = tempfile::tempdir().unwrap();
+        CatalogCache::new(dir.path())
+            .store_manifest(&manifest("v1", 1))
+            .await
+            .unwrap();
+        let cat = catalog(dir.path(), Fake::new(None));
+        let old = Instant::now() - REFRESH_KEPT - Duration::from_secs(1);
+        *cat.refresh.lock().unwrap() =
+            Refresh::Done((Some(manifest("v0", 1)), CatalogStatus::Fresh), old);
+        let (m, status) = cat.load().await;
+        assert_eq!(status, CatalogStatus::Refreshing);
         assert_eq!(m.unwrap().version, "v1");
     }
 
@@ -304,7 +442,7 @@ mod tests {
         let cache = CatalogCache::new(dir.path());
         cache.store_manifest(&manifest("v1", 1)).await.unwrap();
         let fake = Fake::new(Some(Ok(Fetched::Manifest(manifest("v2", 2)))));
-        let (m, status) = catalog(dir.path(), fake).load().await;
+        let (m, status) = load_twice(&catalog(dir.path(), fake)).await;
         assert_eq!(status, CatalogStatus::TooNew);
         assert_eq!(m.unwrap().version, "v1");
         assert_eq!(cache.manifest().await.unwrap().version, "v1");
@@ -335,9 +473,28 @@ mod tests {
             .await
             .unwrap();
         let fake = Fake::new(Some(Ok(Fetched::NotModified)));
-        let (m, status) = catalog(dir.path(), fake).load().await;
+        let (m, status) = load_twice(&catalog(dir.path(), fake)).await;
         assert_eq!(status, CatalogStatus::Fresh);
         assert_eq!(m.unwrap().version, "v1");
+    }
+
+    #[tokio::test]
+    async fn too_new_from_the_engine_keeps_the_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = CatalogCache::new(dir.path());
+        cache.store_manifest(&manifest("v1", 1)).await.unwrap();
+        let (m, status) =
+            load_twice(&catalog(dir.path(), Fake::new(Some(Ok(Fetched::TooNew))))).await;
+        assert_eq!(status, CatalogStatus::TooNew);
+        assert_eq!(m.unwrap().version, "v1");
+        let (m, status) = catalog(
+            tempfile::tempdir().unwrap().path(),
+            Fake::new(Some(Ok(Fetched::TooNew))),
+        )
+        .load()
+        .await;
+        assert!(m.is_none());
+        assert_eq!(status, CatalogStatus::TooNew);
     }
 
     #[tokio::test]

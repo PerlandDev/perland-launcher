@@ -7,7 +7,7 @@ use reqwest::header::IF_NONE_MATCH;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use super::manifest::Manifest;
+use super::manifest::{Manifest, FORMAT_VERSION};
 use crate::{
     error::{ErrorCode, LauncherError, Result},
     http::read_capped,
@@ -19,6 +19,8 @@ use crate::{
 
 /// The longest manifest read, in bytes.
 const MANIFEST_CAP: usize = 1 << 20;
+/// The most distinct files a manifest may name.
+const FILES_CAP: usize = 4000;
 /// The largest catalog file read, in bytes.
 const FILE_CAP: usize = 64 << 10;
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
@@ -29,11 +31,20 @@ pub enum Fetched {
     /// The version asked about is still current.
     NotModified,
     Manifest(Manifest),
+    /// The Engine's catalog is a newer format than this launcher reads.
+    TooNew,
 }
 
 #[derive(Deserialize)]
-struct Envelope {
-    data: Option<Manifest>,
+struct Envelope<T> {
+    data: Option<T>,
+}
+
+/// Only the format of a manifest, read first so a newer format is recognised even when the rest of it changed shape.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FormatProbe {
+    format_version: u32,
 }
 
 fn unavailable(host: &str, why: &str) -> LauncherError {
@@ -84,10 +95,9 @@ impl CatalogClient {
         Self { invites, site }
     }
 
-    /// The manifest, or `NotModified` when `etag` (the manifest's `version`) is still current.
-    ///
-    /// A manifest of any `format_version` is returned as the Engine sent it: the caller must
-    /// check `format_version` against [`FORMAT_VERSION`](super::FORMAT_VERSION).
+    /// The manifest, or `NotModified` when `etag` (the manifest's `version`) is still current, or
+    /// `TooNew` when its `formatVersion` is newer than [`FORMAT_VERSION`]. A manifest naming more
+    /// than 4000 distinct files is refused.
     pub async fn manifest(&self, etag: Option<&str>) -> Result<Fetched> {
         let engine = self
             .invites
@@ -162,12 +172,22 @@ impl CatalogClient {
             .map_err(|e| request_failed(host, e))?
             .ok_or_else(|| unavailable(host, "the manifest is too large"))?;
         // The parser's own message can quote the body, so it is never shown.
-        let envelope: Envelope = serde_json::from_slice(&body)
+        let probe: Envelope<FormatProbe> = serde_json::from_slice(&body)
             .map_err(|_| unavailable(host, "the manifest isn't valid"))?;
-        envelope
+        match probe.data {
+            None => return Err(unavailable(host, "the manifest is empty")),
+            Some(p) if p.format_version > FORMAT_VERSION => return Ok(Fetched::TooNew),
+            Some(_) => {}
+        }
+        let envelope: Envelope<Manifest> = serde_json::from_slice(&body)
+            .map_err(|_| unavailable(host, "the manifest isn't valid"))?;
+        let manifest = envelope
             .data
-            .map(Fetched::Manifest)
-            .ok_or_else(|| unavailable(host, "the manifest is empty"))
+            .ok_or_else(|| unavailable(host, "the manifest is empty"))?;
+        if manifest.hashes().len() > FILES_CAP {
+            return Err(unavailable(host, "the manifest names too many files"));
+        }
+        Ok(Fetched::Manifest(manifest))
     }
 
     async fn fetch_file(&self, url: Url, host: &str, sha256: &str) -> Result<Vec<u8>> {

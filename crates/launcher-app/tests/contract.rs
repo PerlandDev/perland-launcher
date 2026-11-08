@@ -132,6 +132,10 @@ fn skin_catalog_answers() -> Vec<launcher_app::skins::CatalogAnswer> {
             status: CatalogStatus::Fresh,
         },
         launcher_app::skins::CatalogAnswer {
+            manifest: Some(manifest.clone()),
+            status: CatalogStatus::Refreshing,
+        },
+        launcher_app::skins::CatalogAnswer {
             manifest: Some(manifest),
             status: CatalogStatus::Cached,
         },

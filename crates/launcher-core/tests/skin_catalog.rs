@@ -80,7 +80,7 @@ async fn manifest_is_read_from_the_envelope() {
             assert!(m.hashes().len() > 40);
             assert_eq!(m.looks[2].painting, None);
         }
-        Fetched::NotModified => panic!("expected a manifest"),
+        other => panic!("expected a manifest, got {other:?}"),
     }
 }
 
@@ -192,4 +192,71 @@ async fn engine_down_is_unavailable_naming_the_host() {
     let host = Url::parse(&server.uri()).unwrap();
     assert_eq!(err.params.get("host").map(String::as_str), host.host_str());
     assert_eq!(err.params.len(), 1);
+}
+
+async fn mount_manifest(server: &MockServer, data: Value) {
+    Mock::given(method("GET"))
+        .and(path(ROUTE))
+        .respond_with(ResponseTemplate::new(200).set_body_json(envelope(data)))
+        .mount(server)
+        .await;
+}
+
+#[tokio::test]
+async fn a_newer_format_is_too_new_even_when_its_shape_changed() {
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    // A future manifest that no longer parses as this launcher's format.
+    mount_manifest(
+        &server,
+        json!({ "formatVersion": FORMAT_VERSION + 1, "version": "v9", "everything": "else" }),
+    )
+    .await;
+    assert_eq!(
+        client(&server).manifest(None).await.unwrap(),
+        Fetched::TooNew
+    );
+}
+
+#[tokio::test]
+async fn a_newer_format_that_still_parses_is_too_new() {
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    let mut data = manifest_json();
+    data["formatVersion"] = json!(FORMAT_VERSION + 1);
+    mount_manifest(&server, data).await;
+    assert_eq!(
+        client(&server).manifest(None).await.unwrap(),
+        Fetched::TooNew
+    );
+}
+
+#[tokio::test]
+async fn a_manifest_naming_more_than_4000_files_is_refused() {
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    let mut data = manifest_json();
+    // Small looks, so the manifest stays under the size cap: only the file count is over.
+    let looks: Vec<Value> = (0..4001)
+        .map(|i| {
+            json!({ "id": format!("l{i}"), "name": { "en": "", "es": "" }, "tags": [],
+                "model": "classic", "pieces": [], "thumb": format!("{i:064x}"), "retired": false })
+        })
+        .collect();
+    data["looks"] = Value::Array(looks);
+    assert!(serde_json::to_vec(&envelope(data.clone())).unwrap().len() < 1 << 20);
+    mount_manifest(&server, data).await;
+    let err = client(&server).manifest(None).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::SkinCatalogUnavailable);
+}
+
+#[tokio::test]
+async fn a_manifest_naming_4000_files_or_fewer_is_read() {
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_manifest(&server, manifest_json()).await;
+    assert!(matches!(
+        client(&server).manifest(None).await.unwrap(),
+        Fetched::Manifest(_)
+    ));
 }

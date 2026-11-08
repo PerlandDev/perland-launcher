@@ -190,7 +190,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.skins.checkpoint(id, VersionReason::Edited).await
     }
 
-    /// The skin catalog: the Engine's, else the cached one. After a manifest new to this run,
+    /// The skin catalog: the cached one at once (`Refreshing`) while the Engine is asked in the
+    /// background, and the Engine's answer at the next call; with nothing cached, the Engine's
+    /// answer. After a manifest new to this run,
     /// catalog files nothing wears or lists anymore are pruned in the background.
     pub async fn skin_catalog(&self) -> CatalogAnswer {
         let catalog = self.runner.catalog();
