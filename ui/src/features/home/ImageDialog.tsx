@@ -1,27 +1,27 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { open } from '@tauri-apps/plugin-dialog';
-import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useId, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { InstanceIcon } from '../../art/InstanceIcon';
 import { Marquee } from '../../art/Marquee';
 import { artSeed, presetSeeds } from '../../art/seed';
 import { pixelUpscale } from '../../art/upscale';
-import type { ArtChoice, Focus, IconChoice, Instance, InstanceListing } from '../../ipc/schema';
+import type { ArtChoice, BannerView, IconChoice, Instance, InstanceListing } from '../../ipc/schema';
 import {
   qk,
   useInstanceArt,
   useInstanceScreenshot,
   useInstanceScreenshots,
-  usePreviewBannerFocus,
-  useSetBannerFocus,
+  usePreviewBannerView,
+  useSetBannerView,
   useSetInstanceArt,
   useSetInstanceIcon,
 } from '../../state/queries';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
-import { Package, Upload } from '../../ui/Icon';
-import { FocusPicker, type FocusPickerHandle } from './FocusPicker';
+import { Crop, Package, Upload } from '../../ui/Icon';
+import { BannerAdjust } from './BannerAdjust';
 import { isPack } from './labels';
 
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
@@ -103,7 +103,7 @@ const STEPS: Partial<Record<string, number>> = {
 
 /** A labelled group of choices, one tab stop: arrow keys, Home and End move between them, and Space or
  *  Enter picks. Moving never picks, because every pick saves at once and an Upload key opens the file picker. */
-function ChoiceGroup({ label, busy, children }: { label: string; busy: boolean; children: ReactNode }) {
+function ChoiceGroup({ label, busy, aside, children }: { label: string; busy: boolean; aside?: ReactNode; children: ReactNode }) {
   const id = useId();
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const radios = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')];
@@ -117,9 +117,18 @@ function ChoiceGroup({ label, busy, children }: { label: string; busy: boolean; 
   };
   return (
     <div role="radiogroup" aria-labelledby={id} aria-busy={busy || undefined} className="art-section" onKeyDown={onKeyDown}>
-      <h3 id={id} className="art-section-label">
-        {label}
-      </h3>
+      {aside ? (
+        <div className="art-section-head">
+          <h3 id={id} className="art-section-label">
+            {label}
+          </h3>
+          {aside}
+        </div>
+      ) : (
+        <h3 id={id} className="art-section-label">
+          {label}
+        </h3>
+      )}
       {children}
     </div>
   );
@@ -200,13 +209,15 @@ function PictureKey({
 /** "Change image…": two groups in one dialog. Icon: the initials, the pack's icon (packs only) or an
  *  uploaded picture. Background: six generated landscapes, the pack's art (packs only), an uploaded
  *  picture or one of the instance's screenshots. A choice applies at once; the lit key follows it, and the rail and marquee behind the dialog
- *  change with it. While either saves, both groups wait: two saves at once would race on instance.json. */
+ *  change with it. While either saves, both groups wait: two saves at once would race on instance.json.
+ *  With a picture background, Adjust… turns the same dialog into "Adjust the background" (`BannerAdjust`). */
 export function ImageDialog({ instance, onClose }: { instance: Instance; onClose: () => void }) {
   const { t } = useTranslation();
   const setArt = useSetInstanceArt({ inline: true });
   const setIcon = useSetInstanceIcon({ inline: true });
-  const setFocus = useSetBannerFocus({ inline: true });
-  const previewFocus = usePreviewBannerFocus();
+  const setView = useSetBannerView({ inline: true });
+  const previewView = usePreviewBannerView();
+  const [step, setStep] = useState<'choose' | 'adjust'>('choose');
   const art = useInstanceArt(instance.id);
   const screenshots = useInstanceScreenshots(instance.id);
   const [allScreenshots, setAllScreenshots] = useState(false);
@@ -215,23 +226,19 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
   const [shot, setShot] = useState<string | null>(null);
   const [pickError, setPickError] = useState<unknown>(null);
   const qc = useQueryClient();
-  // When a new background lands or a position is refused, Position starts again from what is saved now. The
-  // cache has it before this dialog's `instance` does.
-  const [restart, setRestart] = useState<{
-    n: number;
-    focus: Focus | null;
-  } | null>(null);
-  const restartFocus = () =>
+  // A refused view starts the adjust view again from what is saved now. The cache has it before this dialog's
+  // `instance` does.
+  const [restart, setRestart] = useState<{ n: number; instance: Instance } | null>(null);
+  const restartView = () =>
     setRestart((last) => ({
       n: (last?.n ?? 0) + 1,
-      focus: qc.getQueryData<InstanceListing>(qk.instances)?.instances.find((i) => i.id === instance.id)?.bannerFocus ?? null,
+      instance: qc.getQueryData<InstanceListing>(qk.instances)?.instances.find((i) => i.id === instance.id) ?? instance,
     }));
-  const focusPicker = useRef<FocusPickerHandle>(null);
   const pack = isPack(instance);
   const background = currentBackground(instance);
   const icon = currentIcon(instance, art.data && art.data.icon);
   const pictureBusy = setArt.isPending || setIcon.isPending;
-  const busy = pictureBusy || setFocus.isPending;
+  const busy = pictureBusy || setView.isPending;
   // The icon and the background come back apart, each shown on its own current key.
   const iconPicture = art.data?.icon ?? null;
   const bannerPicture = art.data?.banner ?? null;
@@ -245,19 +252,18 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
     setPickError(null);
     setArt.reset();
     setIcon.reset();
-    setFocus.reset();
+    setView.reset();
   };
   const chooseBackground = (choice: ArtChoice) => {
     if (busy) return;
     fresh();
-    // A new background starts from the default position, so a position still waiting to be saved goes.
-    focusPicker.current?.cancel();
     setArt.mutate(
       { id: instance.id, choice },
       {
         onSuccess: () => {
           setShot(choice.kind === 'screenshot' ? choice.name : null);
-          restartFocus();
+          // A new background starts from the default view.
+          setRestart(null);
         },
       },
     );
@@ -265,13 +271,11 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
   const chooseIcon = (choice: IconChoice) => {
     if (busy) return;
     fresh();
-    // Saves run one after another, so a position still waiting lands first.
-    focusPicker.current?.flush();
     setIcon.mutate({ id: instance.id, choice });
   };
-  const saveFocus = (focus: Focus | null) => {
+  const saveView = (view: BannerView) => {
     fresh();
-    setFocus.mutate({ id: instance.id, focus }, { onError: restartFocus });
+    setView.mutate({ id: instance.id, view }, { onError: restartView });
   };
   const upload = async (apply: (path: string) => void) => {
     if (busy) return;
@@ -288,7 +292,34 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
       setPickError(error);
     }
   };
-  const error = pickError ?? (setIcon.isError ? setIcon.error : setArt.isError ? setArt.error : setFocus.isError ? setFocus.error : null);
+  const error = pickError ?? (setIcon.isError ? setIcon.error : setArt.isError ? setArt.error : setView.isError ? setView.error : null);
+  // Only a picture is cropped by the marquee; a landscape is drawn to fit.
+  const adjustable = bannerPicture !== null && (background === 'upload' || background === 'pack');
+
+  if (step === 'adjust' && adjustable) {
+    return (
+      <Dialog
+        open
+        onClose={onClose}
+        title={t('image.adjustTitle')}
+        description={t('image.adjustHint')}
+        back={{ label: t('common.back'), onBack: () => setStep('choose') }}
+      >
+        <div className="mt-4 grid gap-4">
+          <BannerAdjust
+            key={restart?.n ?? 0}
+            instance={restart?.instance ?? instance}
+            picture={bannerPicture}
+            disabled={pictureBusy}
+            onPreview={(view) => previewView(instance.id, view)}
+            onSave={saveView}
+            onDone={onClose}
+          />
+          {error !== null && <ErrorCard error={error} />}
+        </div>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open onClose={onClose} title={t('image.title')} actions={<Button onClick={onClose}>{t('image.done')}</Button>}>
@@ -332,7 +363,17 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
             </div>
           </ChoiceGroup>
           <div className="art-column">
-            <ChoiceGroup label={t('image.backgroundSection')} busy={busy}>
+            <ChoiceGroup
+            label={t('image.backgroundSection')}
+            busy={busy}
+            aside={
+              adjustable && (
+                <Button variant="ghost" icon={<Crop />} onClick={() => setStep('adjust')}>
+                  {t('image.adjust')}
+                </Button>
+              )
+            }
+          >
               <div className="art-tiles">
                 {presetSeeds(instance).map((seed, index) => {
                   const lit = typeof background === 'object' && background.seed === seed;
@@ -409,18 +450,6 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
                 </div>
               )}
             </ChoiceGroup>
-            {/* Only a picture is cropped by the marquee; a landscape is drawn to fit. */}
-            {bannerPicture && (background === 'upload' || background === 'pack') && (
-              <FocusPicker
-                key={`${background}-${restart?.n ?? 0}`}
-                ref={focusPicker}
-                picture={bannerPicture}
-                focus={restart ? restart.focus : instance.bannerFocus}
-                disabled={pictureBusy}
-                onPreview={(focus) => previewFocus(instance.id, focus)}
-                onSave={saveFocus}
-              />
-            )}
           </div>
         </div>
         {error !== null && <ErrorCard error={error} />}

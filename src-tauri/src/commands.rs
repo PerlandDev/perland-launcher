@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AccountReady, AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, ContinueTarget,
+    AccountReady, AppInfo, ArtChoice, BannerView, BrowsePlanRequest, ContentFile, ContinueTarget,
     EmailCodeSent, FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest,
     InstallPlanView, InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
     LinkCodeView, ManageChangeResult, ManageConsoleReply, ManageDetail, ManageDiagnosis,
@@ -21,7 +21,7 @@ use launcher_core::{
         project::{ProjectDetail, VersionInfo},
         search::SearchPage,
     },
-    instances::{Focus, Instance, InstanceListing},
+    instances::{Instance, InstanceListing},
     meta::{
         catalog::{LoaderVersion, McVersion},
         loaders::LoaderKind,
@@ -437,14 +437,14 @@ pub async fn instance_icon_set(
 }
 
 #[tauri::command]
-pub async fn instance_banner_focus_set(
+pub async fn instance_banner_view_set(
     core: CoreState<'_>,
     id: String,
-    focus: Option<Focus>,
+    view: BannerView,
 ) -> Res<Instance> {
     logged(
-        "instance_banner_focus_set",
-        core.instance_banner_focus_set(&id, focus).await,
+        "instance_banner_view_set",
+        core.instance_banner_view_set(&id, view).await,
     )
 }
 

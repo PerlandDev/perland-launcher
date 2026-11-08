@@ -30,7 +30,9 @@
       "bannerFocus": {
         "x": 30,
         "y": 60
-      }
+      },
+      "bannerZoom": 150,
+      "bannerEdges": "pixel"
     },
     {
       "id": "creative-flat",
@@ -58,7 +60,9 @@
       "artSeed": "creative-flat",
       "art": "generated",
       "icon": "generated",
-      "bannerFocus": null
+      "bannerFocus": null,
+      "bannerZoom": null,
+      "bannerEdges": null
     }
   ],
   "damaged": [

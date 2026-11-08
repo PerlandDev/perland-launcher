@@ -37,7 +37,7 @@ import type {
   ContentKind,
   DeepLink,
   ExitInfo,
-  Focus,
+  BannerView,
   IconChoice,
   InstallPlanView,
   InstallResult,
@@ -395,6 +395,8 @@ function seed(options: MockOptions) {
       art: 'auto',
       icon: null,
       bannerFocus: null,
+      bannerZoom: null,
+      bannerEdges: null,
     };
     listing.instances = [...listing.instances, sky];
     const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
@@ -437,6 +439,8 @@ function seed(options: MockOptions) {
       art: 'custom',
       icon: 'generated',
       bannerFocus: null,
+      bannerZoom: null,
+      bannerEdges: null,
     };
     listing.instances = [...listing.instances, castle];
     custom.set(castle.id, CASTLE_PICTURE);
@@ -944,6 +948,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         art: 'auto',
         icon: null,
         bannerFocus: null,
+        bannerZoom: null,
+        bannerEdges: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       return created;
@@ -1205,13 +1211,13 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       let updated: Instance;
       if (choice.kind === 'generated') {
         state.custom.delete(target.id);
-        updated = { ...target, art: 'generated', artSeed: choice.seed, icon, bannerFocus: null };
+        updated = { ...target, art: 'generated', artSeed: choice.seed, icon, bannerFocus: null, bannerZoom: null, bannerEdges: null };
       } else if (choice.kind === 'pack') {
         state.custom.delete(target.id);
-        updated = { ...target, art: 'auto', icon, bannerFocus: null };
+        updated = { ...target, art: 'auto', icon, bannerFocus: null, bannerZoom: null, bannerEdges: null };
       } else {
         state.custom.set(target.id, upload ?? invalid());
-        updated = { ...target, art: 'custom', icon, bannerFocus: null };
+        updated = { ...target, art: 'custom', icon, bannerFocus: null, bannerZoom: null, bannerEdges: null };
       }
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
@@ -1242,14 +1248,17 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
     }
-    case 'instance_banner_focus_set': {
+    case 'instance_banner_view_set': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
       if (state.runs.has(target.id)) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: target.id });
-      const focus = (args.focus ?? null) as Focus | null;
+      const view = args.view as BannerView;
+      const focus = view.focus ?? null;
       if (focus && [focus.x, focus.y].some((n) => !Number.isInteger(n) || n < 0 || n > 100)) {
         fail('disk', 'banner_focus_invalid', 'That position is outside the picture');
       }
-      const updated: Instance = { ...target, bannerFocus: focus };
+      const zoom = view.zoom ?? null;
+      if (zoom !== null && (!Number.isInteger(zoom) || zoom < 25 || zoom > 300)) fail('disk', 'banner_zoom_invalid', 'That zoom is out of range');
+      const updated: Instance = { ...target, bannerFocus: focus, bannerZoom: zoom, bannerEdges: view.edges ?? null };
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
     }
@@ -1282,6 +1291,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         art: 'auto',
         icon: null,
         bannerFocus: null,
+        bannerZoom: null,
+        bannerEdges: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });

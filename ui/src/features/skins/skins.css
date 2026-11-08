@@ -39,6 +39,16 @@
   padding: 0 0.625rem;
   min-width: 0;
 }
+/* New and Import share a row while both labels fit, and take a row each when the column is too narrow (the 960 px
+   window, or Spanish's longer words): a key never shrinks below its own label. */
+.wardrobe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.wardrobe-actions > .btn {
+  flex: 1 0 auto;
+}
 .wardrobe-owner {
   justify-content: flex-start;
   gap: 0.5rem;
@@ -182,7 +192,8 @@
 }
 .parts-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 4.75rem 4.75rem;
+  /* The names are never cut: their column is the longest name, and the two layer columns share what is left. */
+  grid-template-columns: max-content minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   justify-items: center;
   gap: 0.25rem 0.25rem;
@@ -193,19 +204,18 @@
   font-weight: 700;
 }
 .parts-name {
-  justify-self: start;
-  min-width: 0;
-  overflow: hidden;
+  justify-self: stretch;
   font-size: 0.875rem;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 /* A column's switch: flat until hovered, the eye shut and the label dim while its layer is hidden everywhere. */
 .parts-head {
   display: inline-flex;
+  /* Too narrow for the eye beside the label (the 960 px window), the eye goes above it. */
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 0.25rem;
+  gap: 0 0.25rem;
   width: 100%;
   min-height: 2rem;
   padding: 0 0.25rem;

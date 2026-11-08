@@ -144,6 +144,21 @@ describe('mock backend', () => {
     await expect(handle('instance_icon_set', { id: plain.id, choice: { kind: 'pack' } })).rejects.toMatchObject({ code: 'no_pack' });
   });
 
+  it('saves a background view, refuses a zoom out of range and starts a new background from the default view', async () => {
+    const { handle } = createMockBackend();
+    const view = { focus: { x: 70, y: 40 }, zoom: 60, edges: 'pixel' };
+    const set = (await handle('instance_banner_view_set', { id: 'sky-islands', view })) as Instance;
+    expect([set.bannerFocus, set.bannerZoom, set.bannerEdges]).toEqual([{ x: 70, y: 40 }, 60, 'pixel']);
+    for (const zoom of [24, 301]) {
+      await expect(handle('instance_banner_view_set', { id: 'sky-islands', view: { ...view, zoom } })).rejects.toMatchObject({ code: 'banner_zoom_invalid' });
+    }
+    await expect(handle('instance_banner_view_set', { id: 'sky-islands', view: { ...view, focus: { x: 101, y: 0 } } })).rejects.toMatchObject({
+      code: 'banner_focus_invalid',
+    });
+    const fresh = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/view.png' } })) as Instance;
+    expect([fresh.bannerFocus, fresh.bannerZoom, fresh.bannerEdges]).toEqual([null, null, null]);
+  });
+
   it('drops the pictures of a deleted instance, so a new one with its name starts clean', async () => {
     const { handle, state } = createMockBackend();
     await handle('instance_icon_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/me.webp' } });

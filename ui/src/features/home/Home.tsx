@@ -24,6 +24,7 @@ import { useInstanceActions } from './InstanceMenu';
 import { ServerPanel } from '../servers/ServerPanel';
 import { isPack, isServer, versionLine } from './labels';
 import { ManualDownloads } from './ManualDownloads';
+import { HeroPreview } from './heroPreview';
 import { pick } from './pick';
 import { UpdateDialog } from './UpdateDialog';
 import { UpdatePlate } from './UpdatePlate';
@@ -53,7 +54,9 @@ function IconPlate({ src }: { src: string }) {
   );
 }
 
-function InstanceView({ instance }: { instance: Instance }) {
+/** An instance's Home: its marquee, name, controls and dialogs. As a `preview` it is a still copy of the header for
+ *  "Adjust the background": no dialogs, and it is not the header that `[data-home-hero]` finds. */
+function InstanceView({ instance, preview = false }: { instance: Instance; preview?: boolean }) {
   const { t } = useTranslation();
   const run = useRun(instance.id);
   const accounts = useAccounts();
@@ -77,6 +80,7 @@ function InstanceView({ instance }: { instance: Instance }) {
   return (
     // Home measures its own width (`@container`), not the window's, so the wide rail narrows it honestly.
     <section
+      data-home-hero={preview ? undefined : ''}
       className="@container relative h-full overflow-hidden"
       aria-labelledby="instance-name"
       // A right-click anywhere on the instance opens the ⋯ menu where it was clicked: a shortcut, never the only way.
@@ -94,6 +98,8 @@ function InstanceView({ instance }: { instance: Instance }) {
         dimmed={run.state !== 'idle'}
         banner={banner}
         focus={instance.bannerFocus}
+        zoom={instance.bannerZoom}
+        edges={instance.bannerEdges}
         className="absolute inset-0"
       />
       {/* The two things a newcomer looks for first, out in the open at the top right, away from Play's corner.
@@ -167,14 +173,21 @@ function InstanceView({ instance }: { instance: Instance }) {
           </div>
         </div>
       </div>
-      {actions.dialogs}
-      {run.state === 'asking' && run.update && <UpdateDialog instance={instance} update={run.update} />}
-      {run.state === 'idle' && run.lastExit && run.lastExit.manual.length > 0 && (
+      {!preview && actions.dialogs}
+      {!preview && run.state === 'asking' && run.update && <UpdateDialog instance={instance} update={run.update} />}
+      {!preview && run.state === 'idle' && run.lastExit && run.lastExit.manual.length > 0 && (
         <ManualDownloads instance={instance} files={run.lastExit.manual} updateOnly={run.lastExit.updateOnly} />
       )}
     </section>
   );
 }
+
+/** A still copy of an instance's Home header, for the background preview (`HeroPreview`). */
+export function HeroCopy({ instance }: { instance: Instance }) {
+  return <InstanceView instance={instance} preview />;
+}
+
+const heroCopy = (instance: Instance) => <HeroCopy instance={instance} />;
 
 export function Home({ id }: { id: string | null }) {
   const listing = useInstances();
@@ -182,7 +195,11 @@ export function Home({ id }: { id: string | null }) {
   const picked = pick(listing.data, id);
   switch (picked.kind) {
     case 'instance':
-      return <InstanceView instance={picked.instance} />;
+      return (
+        <HeroPreview.Provider value={heroCopy}>
+          <InstanceView instance={picked.instance} />
+        </HeroPreview.Provider>
+      );
     case 'damaged':
       return <DamagedView damaged={picked.damaged} />;
     case 'empty':

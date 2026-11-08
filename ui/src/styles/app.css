@@ -1066,94 +1066,110 @@
     font-weight: 600;
     line-height: 1.25;
   }
-  /* Background's column: its radio group, then Position under it while a picture is the background. */
+  /* Background's column: its radio group, landscapes, keys and screenshots. */
   .art-column {
     display: grid;
     gap: 1.25rem;
     min-width: 0;
   }
 
-  /* Position: the whole picture in a recessed well, letterboxed on `ground`, with a crosshair on the point
-     that stays in view. The crosshair's centre is the lime lamp in its ground socket, as on the tiles: it
-     marks what is in use. The words and Center sit beside the well, so the dialog grows by one row. */
-  .focus-picker {
-    display: grid;
-    gap: 0.75rem;
-  }
-  .focus-row {
-    display: grid;
-    grid-template-columns: 12rem minmax(0, 1fr);
-    align-items: start;
+  /* A group heading with a key at its end (Background's Adjust…): the key is a ghost, so the row keeps the
+     heading's rhythm, pulled up by the key's own padding. */
+  .art-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 1rem;
+    margin-block: -0.5rem;
   }
-  .focus-frame {
-    /* Room for the lamp's socket when the point sits on an edge (the default sits on the bottom one). */
+
+  /* Adjust the background: Home's header, scaled into a recessed well that fills the dialog, then the zoom and
+     the edges in two rows. The well is the preview; a transparent surface over it takes the pointer. */
+  .dialog:has(.banner-adjust) {
+    width: min(46rem, calc(100vw - 4rem));
+  }
+  .banner-well {
+    position: relative;
     padding: 0.5rem;
     background: var(--color-ground);
     border-radius: var(--radius-step);
     corner-shape: notch;
     box-shadow: inset 0 0 0 1px var(--color-line);
-    cursor: crosshair;
-    touch-action: none;
-    user-select: none;
-  }
-  .focus-frame[data-disabled] {
-    cursor: progress;
   }
   /* The range inputs are visually hidden; their keyboard focus rings the well instead. */
-  .focus-picker:has(input:focus-visible) .focus-frame {
+  .banner-well:has(input:focus-visible) {
     outline: 2px solid var(--color-amber);
     outline-offset: 2px;
   }
-  .focus-stage {
+  /* The header's shape, as wide as the well allows but never taller than the dialog leaves room for at 960 × 600. */
+  .banner-stage {
     position: relative;
-    aspect-ratio: 16 / 9;
+    max-width: 100%;
+    /* 24rem is the dialog's own chrome, words and controls: at 600 px tall the whole view fits without scrolling. */
+    max-height: min(18rem, calc(100dvh - 24rem));
+    margin-inline: auto;
   }
-  .focus-picture {
+  .banner-preview {
     position: absolute;
+    inset: 0;
+    overflow: hidden;
   }
-  .focus-picture img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-  }
-  .focus-picture img[data-upscale] {
-    image-rendering: pixelated;
-  }
-  /* Hairlines across the whole picture, ink over a hard dark edge so they read on light and dark art alike. */
-  .focus-line {
+  .banner-preview-scale {
     position: absolute;
-    pointer-events: none;
-    background: color-mix(in srgb, var(--color-ink) 80%, transparent);
-  }
-  .focus-line-across {
-    left: 0;
-    right: 0;
-    height: 1px;
-    translate: 0 -0.5px;
-    box-shadow: 0 1px 0 color-mix(in srgb, var(--color-ground) 70%, transparent);
-  }
-  .focus-line-down {
     top: 0;
-    bottom: 0;
-    width: 1px;
-    translate: -0.5px 0;
-    box-shadow: 1px 0 0 color-mix(in srgb, var(--color-ground) 70%, transparent);
+    left: 0;
+    transform-origin: 0 0;
   }
-  .focus-mark {
+  /* Home's own controls, dimmed: they show what the picture sits behind without reading as live. */
+  .banner-preview-scale section > :not(.marquee) {
+    opacity: 0.4;
+  }
+  .banner-preview-drag {
     position: absolute;
-    width: 0.5rem;
-    height: 0.5rem;
-    translate: -50% -50%;
-    pointer-events: none;
-    background: var(--color-lime);
-    box-shadow: 0 0 0 3px var(--color-ground);
+    inset: 0;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
   }
-  .focus-side {
+  .banner-preview-drag[data-dragging] {
+    cursor: grabbing;
+  }
+  .banner-preview-drag[data-disabled] {
+    cursor: progress;
+  }
+  .banner-probe {
+    display: none;
+  }
+  .banner-controls {
     display: grid;
-    justify-items: start;
-    gap: 0.75rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 1rem;
+    row-gap: 0.75rem;
+    margin-top: 1rem;
+  }
+  .banner-control-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .banner-zoom {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .banner-zoom > .range {
+    flex: 1;
+    min-width: 0;
+  }
+  .banner-zoom-value {
+    min-width: 3.5rem;
+    text-align: right;
+    color: var(--color-ink-dim);
+    font-size: 0.875rem;
+  }
+  /* Its label and its segments sit in the grid's two columns. */
+  .banner-edges-row {
+    display: contents;
   }
 
   .menu {
@@ -1234,6 +1250,21 @@
     height: 100%;
     object-fit: cover;
     object-position: center bottom;
+  }
+  /* A zoomed banner is sized and placed inline (left, top, width, height): the box is the picture. */
+  .marquee-banner[data-zoomed] {
+    inset: auto;
+    object-fit: fill;
+  }
+  /* Around a banner zoomed below 100, the pixel edges: the same picture as big dark blocks, never a blur. */
+  .marquee-edges {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    image-rendering: pixelated;
+    filter: brightness(0.4);
   }
   .marquee-banner[data-upscale],
   .rail-art[data-upscale] {

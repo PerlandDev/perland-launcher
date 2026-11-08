@@ -191,7 +191,7 @@ fn main() {
             commands::instance_screenshots,
             commands::instance_screenshot,
             commands::instance_icon_set,
-            commands::instance_banner_focus_set,
+            commands::instance_banner_view_set,
             commands::deep_link_take,
             commands::browse_search,
             commands::browse_categories,

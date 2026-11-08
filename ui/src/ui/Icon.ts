@@ -11,6 +11,7 @@ export {
   Clock,
   Close,
   Copy,
+  Crop,
   Crown,
   DiamondGem,
   Download,

@@ -402,6 +402,10 @@ export const instance = z.strictObject({
   icon: z.enum(['auto', 'generated', 'custom']).nullable(),
   /** Which point of a picture background stays in view, in percent of its width and height; null is the default (bottom middle). */
   bannerFocus: z.strictObject({ x: z.number().int(), y: z.number().int() }).nullable(),
+  /** How big a picture background is drawn, in percent of the size that just covers the marquee; null is 100. */
+  bannerZoom: z.number().int().nullable(),
+  /** What fills the marquee around a picture zoomed out below 100; null is dark. */
+  bannerEdges: z.enum(['dark', 'pixel']).nullable(),
   /** Set after going back on an instance that checks for updates: Play skips the check until "Update again". Absent when not held. */
   updateHold: z.strictObject({ since: z.number().int(), version: z.string() }).optional(),
 });
@@ -704,6 +708,12 @@ export const artChoice = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('upload'), path: z.string() }),
   z.strictObject({ kind: z.literal('screenshot'), name: z.string() }),
 ]);
+/** "Adjust the background": the three banner settings, saved together. */
+export const bannerView = z.strictObject({
+  focus: z.strictObject({ x: z.number().int(), y: z.number().int() }).nullable(),
+  zoom: z.number().int().nullable(),
+  edges: z.enum(['dark', 'pixel']).nullable(),
+});
 export const iconChoice = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('generated') }),
   z.strictObject({ kind: z.literal('pack') }),
@@ -880,6 +890,8 @@ export type ServerStatusView = z.infer<typeof serverStatusView>;
 export type DeepLink = z.infer<typeof deepLink>;
 export type Instance = z.infer<typeof instance>;
 export type Focus = NonNullable<Instance['bannerFocus']>;
+export type BannerEdges = NonNullable<Instance['bannerEdges']>;
+export type BannerView = z.infer<typeof bannerView>;
 export type DamagedInstance = z.infer<typeof damagedInstance>;
 export type InstanceListing = z.infer<typeof instanceListing>;
 export type Account = z.infer<typeof account>;

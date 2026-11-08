@@ -28,5 +28,7 @@
   "bannerFocus": {
     "x": 30,
     "y": 60
-  }
+  },
+  "bannerZoom": 150,
+  "bannerEdges": "pixel"
 }

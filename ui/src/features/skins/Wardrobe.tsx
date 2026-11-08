@@ -240,7 +240,7 @@ export function Wardrobe({
         </h2>
         <span className="text-sm text-ink-dim tabular">{entries.length}</span>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="wardrobe-actions">
         <Button icon={<Plus />} aria-haspopup="menu" onClick={(e) => newMenu.current?.openAt(e.currentTarget)}>
           {t('skins.new')}
         </Button>
