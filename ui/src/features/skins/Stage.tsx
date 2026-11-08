@@ -135,7 +135,11 @@ export function Stage({
     if (drag.current?.mode === 'paint') onEnd();
     drag.current = null;
   };
-  const wheel = (event: WheelEvent) => scene?.zoom(event.deltaY > 0 ? 1.1 : 1 / 1.1, event.clientX, event.clientY);
+  const wheel = (event: WheelEvent) => {
+    // Only the wheel's own turn zooms: tilting it sideways (or a sideways swipe) scrolls horizontally, deltaY 0.
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    scene?.zoom(event.deltaY > 0 ? 1.1 : 1 / 1.1, event.clientX, event.clientY);
+  };
 
   return (
     <canvas

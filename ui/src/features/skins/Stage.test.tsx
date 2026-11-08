@@ -40,6 +40,18 @@ it('the wheel zooms toward the pointer', () => {
   expect(scene.zoom).toHaveBeenLastCalledWith(1.1, 5, 6);
 });
 
+it('tilting the wheel sideways (a horizontal scroll) does not zoom', () => {
+  const { canvas } = renderStage();
+  fireEvent.wheel(canvas, { deltaX: 120, deltaY: 0, clientX: 40, clientY: 60 });
+  fireEvent.wheel(canvas, { deltaX: -120, deltaY: 0, clientX: 40, clientY: 60 });
+  // A trackpad swipe that is mostly sideways doesn't zoom either.
+  fireEvent.wheel(canvas, { deltaX: 80, deltaY: 3, clientX: 40, clientY: 60 });
+  expect(scene.zoom).not.toHaveBeenCalled();
+  // The wheel itself still zooms.
+  fireEvent.wheel(canvas, { deltaX: 0, deltaY: 100, clientX: 40, clientY: 60 });
+  expect(scene.zoom).toHaveBeenCalledWith(1.1, 40, 60);
+});
+
 it('a middle-drag or a Shift-drag slides the view, even over the figure, and paints nothing', () => {
   const { canvas, onPaint } = renderStage();
   scene.pick.mockReturnValue({ x: 9, y: 9, part: 'head', layer: 'base' } as never);
