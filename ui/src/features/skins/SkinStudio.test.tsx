@@ -384,20 +384,20 @@ it('switching arms redraws them into the new layout, and one undo puts both back
   expect(screen.getByRole('radio', { name: 'Classic arms' })).toHaveAttribute('aria-checked', 'true');
 });
 
-it('Straight pose stands the figure straight until a pose is picked', async () => {
+it('Animation is on until turned off, which stands the figure straight; picking a pose turns it back on', async () => {
   const { user } = renderApp(<SkinStudio />);
   await screen.findByText('Saved');
-  const straight = screen.getByRole('button', { name: 'Straight pose' });
-  expect(straight).toHaveAttribute('aria-pressed', 'false');
-  await user.click(straight);
-  expect(straight).toHaveAttribute('aria-pressed', 'true');
-  await user.click(straight);
-  expect(straight).toHaveAttribute('aria-pressed', 'false');
-  // Picking a pose (even the one shown) lets the figure move again.
-  await user.click(straight);
+  const animation = screen.getByRole('button', { name: 'Animation' });
+  expect(animation).toHaveAttribute('aria-pressed', 'true');
+  await user.click(animation);
+  expect(animation).toHaveAttribute('aria-pressed', 'false');
+  await user.click(animation);
+  expect(animation).toHaveAttribute('aria-pressed', 'true');
+  // Off, then a pose picked (even the one shown): the figure moves again.
+  await user.click(animation);
   await user.click(screen.getByRole('button', { name: /^Pose/ }));
   await user.click(await screen.findByRole('menuitem', { name: 'Walking' }));
-  expect(straight).toHaveAttribute('aria-pressed', 'false');
+  expect(animation).toHaveAttribute('aria-pressed', 'true');
   expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();
 });
 

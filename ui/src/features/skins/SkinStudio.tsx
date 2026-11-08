@@ -98,8 +98,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const [darken, setDarken] = useState(true);
   const [paintLayer, setPaintLayer] = useState<Layer>('base');
   const [pose, setPose] = useState<Pose>('still');
-  // Straight pose stands the figure square and still for painting, until it's turned off or a pose is picked.
-  const [straight, setStraight] = useState(false);
+  // Animation on, the figure takes its pose; off, it stands square and still for painting, until a pose is picked.
+  const [animated, setAnimated] = useState(true);
   const poseMenu = useRef<MenuHandle>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<[number, number] | null>(null);
@@ -446,12 +446,12 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               className="contents"
               items={POSES.map((p) => ({ id: p, label: t(`skins.pose.${p}`), icon: p === pose ? <span className="lamp" aria-hidden /> : undefined, onSelect: () => {
                   setPose(p);
-                  setStraight(false);
+                  setAnimated(true);
                 },
               }))}
             />
-            <button type="button" className="seg seg-sm" aria-pressed={straight} data-checked={straight || undefined} title={t('skins.straightHint')} onClick={() => setStraight((s) => !s)}>
-              {t('skins.straight')}
+            <button type="button" className="seg seg-sm" aria-pressed={animated} data-checked={animated || undefined} title={t('skins.animationHint')} onClick={() => setAnimated((a) => !a)}>
+              {t('skins.animation')}
             </button>
           </div>
 
@@ -464,7 +464,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               hidden={hidden}
               paintLayer={paintLayer}
               pose={pose}
-              straight={straight}
+              straight={!animated}
               hover={hover}
               onHover={setHover}
               onBegin={doc.begin}
