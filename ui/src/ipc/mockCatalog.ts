@@ -50,12 +50,13 @@ export function solidPng(width: number, height: number, rgba: [number, number, n
   return PNG_URL + btoa(String.fromCharCode(...png));
 }
 
-/** A stand-in for a SHA-256: 64 lower-case hex characters made from `seed`. */
+/** A stand-in for a SHA-256: 64 lower-case hex characters made from `seed` (each 8-character word hashes the whole seed,
+ *  so seeds that differ anywhere differ everywhere). */
 function fakeHash(seed: string): string {
-  let h = 2166136261;
   let out = '';
-  for (let i = 0; out.length < 64; i++) {
-    h = Math.imul(h ^ (seed.charCodeAt(i % seed.length) + i), 16777619) >>> 0;
+  for (let round = 0; out.length < 64; round++) {
+    let h = (2166136261 ^ Math.imul(round + 1, 0x9e3779b1)) >>> 0;
+    for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619) >>> 0;
     out += h.toString(16).padStart(8, '0');
   }
   return out.slice(0, 64);

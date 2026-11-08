@@ -916,6 +916,27 @@
     }
   },
   "skins": {
+    "tab": { "create": "Create", "paint": "Paint", "catalog": "Catalog" },
+    "createSoon": "Building a skin from pieces comes here soon. For now, add a look from the Catalog or paint in Paint.",
+    "catalog": {
+      "search": "Search looks",
+      "searchPlaceholder": "Search looks…",
+      "tags": "Tags",
+      "all": "All",
+      "looks": "Looks",
+      "none": "No looks match that search.",
+      "by": "By Perland",
+      "byTag": "By Perland · {{tag}}",
+      "pieces": "Pieces",
+      "figure": "{{name}} on a figure. Drag around it to turn it.",
+      "add": "Add to my wardrobe",
+      "adding": "Adding…",
+      "addNote": "Every piece and colour stays editable",
+      "loading": "Loading the catalog…",
+      "unavailable": "Perland's skin catalog can't be reached right now. Try again when you're online.",
+      "cached": "Showing the saved catalog",
+      "tooNew": "Update the launcher to see the newest pieces."
+    },
     "title": "Skins",
     "hotbar": "Tools",
     "tools": "Tool",

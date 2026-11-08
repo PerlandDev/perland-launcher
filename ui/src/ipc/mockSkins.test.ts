@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createMockBackend } from './mock';
+import { mockCatalog } from './mockCatalog';
 import type { CatalogAnswer, SkinEntry, SkinLook } from './schema';
 
 const PNG = 'data:image/png;base64,';
@@ -37,4 +38,14 @@ describe('mock skin catalog', () => {
     expect(cleared.look).toBeUndefined();
     expect(await handle('skin_painting', { id: skin.id })).toBeNull();
   });
+});
+
+it('the mock catalog gives every file its own hash', () => {
+  const { manifest, files } = mockCatalog();
+  const named = [
+    ...manifest.pieces.flatMap((p) => [p.thumb, ...Object.values(p.files).flatMap((f) => [f.art, f.mask])]),
+    ...manifest.looks.flatMap((l) => [l.thumb, ...(l.painting ? [l.painting] : [])]),
+  ];
+  expect(new Set(named).size).toBe(named.length);
+  expect(files.size).toBe(named.length);
 });

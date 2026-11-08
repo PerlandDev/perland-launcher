@@ -45,6 +45,7 @@ export function Stage({
   onBegin,
   onPaint,
   onEnd,
+  label,
   ref,
 }: {
   pixels: Pixels | null;
@@ -59,6 +60,8 @@ export function Stage({
   onBegin: () => void;
   onPaint: (x: number, y: number) => void;
   onEnd: () => void;
+  /** The figure's accessible name; the editor's (drag to paint) by default. */
+  label?: string;
   ref?: Ref<StageHandle>;
 }) {
   const { t } = useTranslation();
@@ -136,7 +139,7 @@ export function Stage({
       className="stage-canvas"
       data-testid="stage"
       role="img"
-      aria-label={t('skins.stageLabel')}
+      aria-label={label ?? t('skins.stageLabel')}
       onPointerDown={down}
       onPointerMove={move}
       onPointerUp={up}

@@ -27,6 +27,7 @@ import { PartsPanel } from './PartsPanel';
 import { remember } from './recent';
 import { Stage, type StageHandle } from './Stage';
 import { blankSkin, starterSkin } from './starter';
+import { CatalogPanel } from './CatalogPanel';
 import { TexturePanel } from './TexturePanel';
 import { HistoryPanel } from './HistoryPanel';
 import { useSkinDoc } from './useSkinDoc';
@@ -37,6 +38,9 @@ import './skins.css';
 /** One wardrobe per account; `null` is the skins made with no account signed in. */
 const skinsKey = (owner: string | null) => ['skins', owner] as const;
 const RECENT_MAX = 9;
+/** The studio's tabs: build from pieces, paint by hand, or pick a look from Perland's catalog. */
+const TABS = ['create', 'paint', 'catalog'] as const;
+type Tab = (typeof TABS)[number];
 
 function typing(target: EventTarget | null) {
   return (
@@ -89,6 +93,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   };
   const doc = useSkinDoc(selected?.id ?? null, model, refresh, storeModel);
 
+  const [tab, setTab] = useState<Tab>('paint');
   const [tool, setTool] = useState<Tool>('pencil');
   const [color, setColorState] = useState<Rgba>([108, 171, 60, 255]);
   const [opacity, setOpacity] = useState(100);
@@ -333,7 +338,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         return;
       }
       if (event.key === 'Shift') setDarken(false);
-      if (typing(event.target) || document.querySelector('dialog[open]') || event.altKey) return;
+      if (tab !== 'paint' || typing(event.target) || document.querySelector('dialog[open]') || event.altKey) return;
       if (event.key === 'Escape' && previewing) {
         setPreview(null);
         return;
@@ -360,7 +365,15 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
     };
-  }, [doc, previewing]);
+  }, [doc, previewing, tab]);
+
+  // A look added from the catalog opens in Create, in the wardrobe it went into.
+  const addedFromCatalog = (entry: SkinEntry) =>
+    void doc.flush().then(() => {
+      qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [entry, ...(old ?? []).filter((e) => e.id !== entry.id)]);
+      setPicked(entry.id);
+      setTab('create');
+    });
 
   const saveLabel = doc.save === 'saved' ? t('skins.saved') : t('skins.saving');
 
@@ -371,20 +384,29 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         <h1 id="skins-title" className="font-display text-[2rem] leading-none">
           {t('skins.title')}
         </h1>
-        {selected && (
+        <div role="tablist" aria-labelledby="skins-title" className="skins-tabs">
+          {TABS.map((id) => (
+            <button key={id} type="button" role="tab" id={`skins-tab-${id}`} aria-selected={tab === id} aria-controls="skins-tabpanel" className="seg" data-checked={tab === id || undefined} onClick={() => setTab(id)}>
+              {t(`skins.tab.${id}`)}
+            </button>
+          ))}
+        </div>
+        {selected && tab !== 'catalog' && (
           <p className="min-w-0 truncate text-lg font-bold" title={selected.name}>
             {selected.name}
           </p>
         )}
         <p className="ml-auto text-sm text-ink-dim" role="status">
-          {selected ? saveLabel : ''}
+          {selected && tab !== 'catalog' ? saveLabel : ''}
         </p>
-        <Button variant="ghost" icon={<Clock />} aria-pressed={historyOpen} disabled={!selected} onClick={() => setHistoryOpen((o) => !o)}>
-          {t('skins.history.title')}
-        </Button>
+        {tab !== 'catalog' && (
+          <Button variant="ghost" icon={<Clock />} aria-pressed={historyOpen} disabled={!selected} onClick={() => setHistoryOpen((o) => !o)}>
+            {t('skins.history.title')}
+          </Button>
+        )}
       </header>
 
-      <div className="skins-body">
+      <div className="skins-body" role="tabpanel" id="skins-tabpanel" aria-labelledby={`skins-tab-${tab}`}>
         <Wardrobe
           accounts={allAccounts}
           owner={wearer}
@@ -399,131 +421,143 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
           menuFor={menuFor}
         />
 
-        <div className="stage">
-          <div className="stage-bar">
-            <div role="radiogroup" aria-label={t('skins.arms')} className="flex gap-2">
-              {(['classic', 'slim'] as const).map((m) => (
-                <button key={m} type="button" role="radio" aria-checked={model === m} className="seg seg-sm" data-checked={model === m || undefined} onClick={() => selected && doc.switchModel(m)}>
-                  {t(`skins.model.${m}`)}
-                </button>
-              ))}
-            </div>
-            <Button icon={<HumanArmsUp />} aria-haspopup="menu" aria-label={`${t('skins.poseLabel')}: ${t(`skins.pose.${pose}`)}`} title={t('skins.poseLabel')} onClick={(e) => poseMenu.current?.openAt(e.currentTarget)}>
-              <span className="btn-label">{t(`skins.pose.${pose}`)}</span>
-            </Button>
-            <Menu
-              ref={poseMenu}
-              label={t('skins.poseLabel')}
-              trigger={false}
-              className="contents"
-              items={POSES.map((p) => ({ id: p, label: t(`skins.pose.${p}`), icon: p === pose ? <span className="lamp" aria-hidden /> : undefined, onSelect: () => setPose(p) }))}
-            />
-            <Button icon={paused ? <Play /> : <Pause />} title={paused ? t('skins.playMotion') : t('skins.pauseMotion')} onClick={() => setPaused((p) => !p)}>
-              <span className="btn-label">{paused ? t('skins.playMotion') : t('skins.pauseMotion')}</span>
-            </Button>
-          </div>
+        {tab === 'catalog' ? (
+          <CatalogPanel owner={owner} onAdded={addedFromCatalog} />
+        ) : (
+          <>
+            <div className="stage">
+              <div className="stage-bar">
+                <div role="radiogroup" aria-label={t('skins.arms')} className="flex gap-2">
+                  {(['classic', 'slim'] as const).map((m) => (
+                    <button key={m} type="button" role="radio" aria-checked={model === m} className="seg seg-sm" data-checked={model === m || undefined} onClick={() => selected && doc.switchModel(m)}>
+                      {t(`skins.model.${m}`)}
+                    </button>
+                  ))}
+                </div>
+                <Button icon={<HumanArmsUp />} aria-haspopup="menu" aria-label={`${t('skins.poseLabel')}: ${t(`skins.pose.${pose}`)}`} title={t('skins.poseLabel')} onClick={(e) => poseMenu.current?.openAt(e.currentTarget)}>
+                  <span className="btn-label">{t(`skins.pose.${pose}`)}</span>
+                </Button>
+                <Menu
+                  ref={poseMenu}
+                  label={t('skins.poseLabel')}
+                  trigger={false}
+                  className="contents"
+                  items={POSES.map((p) => ({ id: p, label: t(`skins.pose.${p}`), icon: p === pose ? <span className="lamp" aria-hidden /> : undefined, onSelect: () => setPose(p) }))}
+                />
+                <Button icon={paused ? <Play /> : <Pause />} title={paused ? t('skins.playMotion') : t('skins.pauseMotion')} onClick={() => setPaused((p) => !p)}>
+                  <span className="btn-label">{paused ? t('skins.playMotion') : t('skins.pauseMotion')}</span>
+                </Button>
+              </div>
 
-          <div className="stage-well">
-            <Stage
-              pixels={previewing ? previewShown.pixels : doc.pixels}
-              // A preview gets its own (negative) revisions, so the figure redraws on every switch.
-              rev={previewing ? -previewShown.seq : doc.rev}
-              model={model}
-              hidden={hidden}
-              paintLayer={paintLayer}
-              pose={pose}
-              paused={paused}
-              hover={hover}
-              onHover={setHover}
-              onBegin={doc.begin}
-              onPaint={(x, y) => paintAt(x, y, false)}
-              onEnd={doc.end}
-              ref={stage}
-            />
-            <div className="stage-view">
-              <Button variant="ghost" size="icon" aria-label={t('skins.zoomIn')} title={t('skins.zoomIn')} icon={<ZoomIn />} onClick={() => stage.current?.zoom(1 / 1.15)} />
-              <Button variant="ghost" size="icon" aria-label={t('skins.zoomOut')} title={t('skins.zoomOut')} icon={<ZoomOut />} onClick={() => stage.current?.zoom(1.15)} />
-              <Button variant="ghost" size="icon" aria-label={t('skins.resetView')} title={t('skins.resetView')} icon={<Reload />} onClick={() => stage.current?.resetView()} />
-            </div>
-            {previewing ? (
-              <div className="stage-preview" role="group" aria-label={t('skins.history.previewing', { when: whenLabel(previewShown.version.taken, i18n.language, t) })}>
-                <p className="stage-preview-note">
-                  <span className="preview-long truncate font-bold">{t('skins.history.previewing', { when: whenLabel(previewShown.version.taken, i18n.language, t) })}</span>
-                  <span className="preview-short truncate font-bold tabular">{whenLabel(previewShown.version.taken, i18n.language, t)}</span>
-                  <span className="preview-long text-ink-dim">{t('skins.history.previewNote')}</span>
-                </p>
-                <div className="stage-preview-keys">
-                  <Button variant="ghost" icon={<Close />} title={t('skins.history.back')} onClick={() => setPreview(null)}>
-                    <span className="btn-label">{t('skins.history.back')}</span>
-                  </Button>
-                  <Button icon={<Copy />} title={t('skins.history.copy')} onClick={copyVersion}>
-                    <span className="btn-label">{t('skins.history.copy')}</span>
-                  </Button>
-                  <Button variant="primary" icon={<Reload />} disabled={previewShown.version.current} aria-label={t('skins.history.restore')} title={t('skins.history.restore')} onClick={restore}>
-                    <span className="preview-long">{t('skins.history.restore')}</span>
-                    <span className="preview-short">{t('skins.history.restoreShort')}</span>
-                  </Button>
+              <div className="stage-well">
+                <Stage
+                  pixels={previewing ? previewShown.pixels : doc.pixels}
+                  // A preview gets its own (negative) revisions, so the figure redraws on every switch.
+                  rev={previewing ? -previewShown.seq : doc.rev}
+                  model={model}
+                  hidden={hidden}
+                  paintLayer={paintLayer}
+                  pose={pose}
+                  paused={paused}
+                  hover={hover}
+                  onHover={setHover}
+                  onBegin={doc.begin}
+                  onPaint={(x, y) => paintAt(x, y, false)}
+                  onEnd={doc.end}
+                  ref={stage}
+                />
+                <div className="stage-view">
+                  <Button variant="ghost" size="icon" aria-label={t('skins.zoomIn')} title={t('skins.zoomIn')} icon={<ZoomIn />} onClick={() => stage.current?.zoom(1 / 1.15)} />
+                  <Button variant="ghost" size="icon" aria-label={t('skins.zoomOut')} title={t('skins.zoomOut')} icon={<ZoomOut />} onClick={() => stage.current?.zoom(1.15)} />
+                  <Button variant="ghost" size="icon" aria-label={t('skins.resetView')} title={t('skins.resetView')} icon={<Reload />} onClick={() => stage.current?.resetView()} />
+                </div>
+                {previewing ? (
+                  <div className="stage-preview" role="group" aria-label={t('skins.history.previewing', { when: whenLabel(previewShown.version.taken, i18n.language, t) })}>
+                    <p className="stage-preview-note">
+                      <span className="preview-long truncate font-bold">{t('skins.history.previewing', { when: whenLabel(previewShown.version.taken, i18n.language, t) })}</span>
+                      <span className="preview-short truncate font-bold tabular">{whenLabel(previewShown.version.taken, i18n.language, t)}</span>
+                      <span className="preview-long text-ink-dim">{t('skins.history.previewNote')}</span>
+                    </p>
+                    <div className="stage-preview-keys">
+                      <Button variant="ghost" icon={<Close />} title={t('skins.history.back')} onClick={() => setPreview(null)}>
+                        <span className="btn-label">{t('skins.history.back')}</span>
+                      </Button>
+                      <Button icon={<Copy />} title={t('skins.history.copy')} onClick={copyVersion}>
+                        <span className="btn-label">{t('skins.history.copy')}</span>
+                      </Button>
+                      <Button variant="primary" icon={<Reload />} disabled={previewShown.version.current} aria-label={t('skins.history.restore')} title={t('skins.history.restore')} onClick={restore}>
+                        <span className="preview-long">{t('skins.history.restore')}</span>
+                        <span className="preview-short">{t('skins.history.restoreShort')}</span>
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="stage-hint text-sm text-ink-dim">{t('skins.stageHint')}</p>
+                )}
+                <div className="stage-wear" hidden={previewing}>
+                  {wearer?.provider === 'microsoft' ? (
+                    <Button variant="primary" size="lg" icon={<Shirt />} aria-disabled={wearing || undefined} disabled={!selected} onClick={wear}>
+                      {wearing ? t('skins.wearingNow') : t('skins.wear')}
+                    </Button>
+                  ) : (
+                    <p className="stage-offline">{wearer ? t('skins.offlineNote') : t('skins.noAccountNote')}</p>
+                  )}
                 </div>
               </div>
-            ) : (
-              <p className="stage-hint text-sm text-ink-dim">{t('skins.stageHint')}</p>
-            )}
-            <div className="stage-wear" hidden={previewing}>
-              {wearer?.provider === 'microsoft' ? (
-                <Button variant="primary" size="lg" icon={<Shirt />} aria-disabled={wearing || undefined} disabled={!selected} onClick={wear}>
-                  {wearing ? t('skins.wearingNow') : t('skins.wear')}
-                </Button>
-              ) : (
-                <p className="stage-offline">{wearer ? t('skins.offlineNote') : t('skins.noAccountNote')}</p>
-              )}
             </div>
-          </div>
-        </div>
 
-        {historyOpen && selected ? (
-          <HistoryPanel skin={selected.id} model={model} versions={versions.data} picked={previewShown?.version.id ?? null} onPick={pickVersion} onClose={() => setHistoryOpen(false)} />
-        ) : (
-        <aside className="skins-side" aria-label={t('skins.texture')}>
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="sr-only">{t('skins.texture')}</h2>
-            <span className="text-sm text-ink-dim" aria-hidden>
-              {t('skins.paintOn')}
-            </span>
-            <div role="radiogroup" aria-label={t('skins.paintOn')} className="flex items-center gap-2">
-              {(['base', 'outer'] as const).map((layer) => (
-                <button key={layer} type="button" role="radio" aria-checked={paintLayer === layer} title={`${t('skins.paintOn')}: ${t(`skins.layer.${layer}`)}`} className="seg seg-sm" data-checked={paintLayer === layer || undefined} onClick={() => setPaintLayer(layer)}>
-                  {t(`skins.layer.${layer}`)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <TexturePanel
-            pixels={doc.pixels}
-            rev={doc.rev}
-            model={model}
-            hover={hover}
-            paintLayer={paintLayer}
-            onHover={setHover}
-            onBegin={doc.begin}
-            onPaint={paintAt}
-            onEnd={doc.end}
-          />
-          <ColourPanel color={color} opacity={opacity} recent={recent} onColor={setColor} onPreview={setColorState} onOpacity={setOpacity} />
-          <PartsPanel hidden={hidden} onToggle={togglePart} onLayer={showLayer} />
-        </aside>
+            {historyOpen && selected ? (
+              <HistoryPanel skin={selected.id} model={model} versions={versions.data} picked={previewShown?.version.id ?? null} onPick={pickVersion} onClose={() => setHistoryOpen(false)} />
+            ) : tab === 'create' ? (
+              <aside className="skins-side" aria-label={t('skins.tab.create')}>
+                <p className="note-plate text-sm">{t('skins.createSoon')}</p>
+              </aside>
+            ) : (
+            <aside className="skins-side" aria-label={t('skins.texture')}>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="sr-only">{t('skins.texture')}</h2>
+                <span className="text-sm text-ink-dim" aria-hidden>
+                  {t('skins.paintOn')}
+                </span>
+                <div role="radiogroup" aria-label={t('skins.paintOn')} className="flex items-center gap-2">
+                  {(['base', 'outer'] as const).map((layer) => (
+                    <button key={layer} type="button" role="radio" aria-checked={paintLayer === layer} title={`${t('skins.paintOn')}: ${t(`skins.layer.${layer}`)}`} className="seg seg-sm" data-checked={paintLayer === layer || undefined} onClick={() => setPaintLayer(layer)}>
+                      {t(`skins.layer.${layer}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <TexturePanel
+                pixels={doc.pixels}
+                rev={doc.rev}
+                model={model}
+                hover={hover}
+                paintLayer={paintLayer}
+                onHover={setHover}
+                onBegin={doc.begin}
+                onPaint={paintAt}
+                onEnd={doc.end}
+              />
+              <ColourPanel color={color} opacity={opacity} recent={recent} onColor={setColor} onPreview={setColorState} onOpacity={setOpacity} />
+              <PartsPanel hidden={hidden} onToggle={togglePart} onLayer={showLayer} />
+            </aside>
+            )}
+          </>
         )}
       </div>
 
-      <Hotbar
-        tool={tool}
-        onTool={setTool}
-        mirror={mirror}
-        onMirror={() => setMirror((m) => !m)}
-        canUndo={doc.canUndo}
-        canRedo={doc.canRedo}
-        onUndo={doc.undo}
-        onRedo={doc.redo}
-      />
+      {tab === 'paint' && (
+        <Hotbar
+          tool={tool}
+          onTool={setTool}
+          mirror={mirror}
+          onMirror={() => setMirror((m) => !m)}
+          canUndo={doc.canUndo}
+          canRedo={doc.canRedo}
+          onUndo={doc.undo}
+          onRedo={doc.redo}
+        />
+      )}
 
       <Dialog
         open={renaming !== null}

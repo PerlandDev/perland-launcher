@@ -363,3 +363,45 @@ it('leaving a skin that was changed keeps a version of it', async () => {
   await waitFor(() => expect(sent(calls, 'skin_texture').length).toBeGreaterThan(2));
   expect(sent(calls, 'skin_checkpoint')).toHaveLength(1);
 });
+
+it('tabs switch between Create, Paint and Catalog', async () => {
+  const { user, calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  const tabs = screen.getByRole('tablist', { name: 'Skins' });
+  expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Create', 'Paint', 'Catalog']);
+  // Paint is today's editor.
+  expect(screen.getByRole('tab', { name: 'Paint' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByTestId('texture-panel')).toBeInTheDocument();
+  expect(screen.getByRole('toolbar', { name: 'Tools' })).toBeInTheDocument();
+
+  await user.click(screen.getByRole('tab', { name: 'Catalog' }));
+  expect(await screen.findByRole('list', { name: 'Looks' })).toBeInTheDocument();
+  expect(screen.queryByTestId('texture-panel')).not.toBeInTheDocument();
+  expect(screen.queryByRole('toolbar', { name: 'Tools' })).not.toBeInTheDocument();
+  // The wardrobe stays.
+  expect(screen.getByRole('list', { name: 'Wardrobe' })).toBeInTheDocument();
+
+  await user.click(screen.getByRole('tab', { name: 'Create' }));
+  expect(screen.getByRole('tab', { name: 'Create' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.queryByRole('list', { name: 'Looks' })).not.toBeInTheDocument();
+
+  // Adding a catalog look puts it in the shown account's wardrobe, opens it and goes to Create.
+  await user.click(screen.getByRole('tab', { name: 'Catalog' }));
+  await user.click(await screen.findByRole('button', { name: 'Add to my wardrobe' }));
+  expect(await screen.findByRole('button', { name: /^Street/, current: true })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Create' })).toHaveAttribute('aria-selected', 'true');
+  expect(sent(calls, 'skin_create').at(-1)).toMatchObject({ name: 'Street', owner: STEVE });
+  expect(sent(calls, 'skin_look_save')).toHaveLength(1);
+});
+
+it('unavailable without cache shows the message and Paint still works', async () => {
+  const { user } = renderApp(<SkinStudio />, { skins: 'nocatalog' });
+  await screen.findByText('Saved');
+  await user.click(screen.getByRole('tab', { name: 'Catalog' }));
+  expect(await screen.findByText("Perland's skin catalog can't be reached right now. Try again when you're online.")).toBeInTheDocument();
+  await user.click(screen.getByRole('tab', { name: 'Paint' }));
+  await waitFor(() => expect(screen.getByTestId('texture-panel')).toBeInTheDocument());
+  const undo = screen.getByRole('button', { name: 'Undo' });
+  await act(() => paintTexel(10, 10));
+  expect(undo).toBeEnabled();
+});

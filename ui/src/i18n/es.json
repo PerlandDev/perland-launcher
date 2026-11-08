@@ -916,6 +916,27 @@
     }
   },
   "skins": {
+    "tab": { "create": "Crear", "paint": "Pintar", "catalog": "Catálogo" },
+    "createSoon": "Pronto podrás armar una skin con piezas aquí. Por ahora, agrega un estilo del Catálogo o pinta en Pintar.",
+    "catalog": {
+      "search": "Buscar estilos",
+      "searchPlaceholder": "Buscar estilos…",
+      "tags": "Etiquetas",
+      "all": "Todos",
+      "looks": "Estilos",
+      "none": "Ningún estilo coincide con esa búsqueda.",
+      "by": "De Perland",
+      "byTag": "De Perland · {{tag}}",
+      "pieces": "Piezas",
+      "figure": "{{name}} en una figura. Arrastra alrededor para girarla.",
+      "add": "Agregar a mi guardarropa",
+      "adding": "Agregando…",
+      "addNote": "Cada pieza y color sigue siendo editable",
+      "loading": "Cargando el catálogo…",
+      "unavailable": "No se puede conectar con el catálogo de skins de Perland ahora. Vuelve a intentarlo cuando tengas conexión.",
+      "cached": "Mostrando el catálogo guardado",
+      "tooNew": "Actualiza el launcher para ver las piezas más nuevas."
+    },
     "title": "Skins",
     "hotbar": "Herramientas",
     "tools": "Herramienta",
