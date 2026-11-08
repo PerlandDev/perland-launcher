@@ -85,6 +85,9 @@ impl CatalogClient {
     }
 
     /// The manifest, or `NotModified` when `etag` (the manifest's `version`) is still current.
+    ///
+    /// A manifest of any `format_version` is returned as the Engine sent it: the caller must
+    /// check `format_version` against [`FORMAT_VERSION`](super::FORMAT_VERSION).
     pub async fn manifest(&self, etag: Option<&str>) -> Result<Fetched> {
         let engine = self
             .invites

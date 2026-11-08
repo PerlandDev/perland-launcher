@@ -36,10 +36,7 @@ async fn mount_config(server: &MockServer) {
 }
 
 fn manifest_json() -> Value {
-    serde_json::from_str(include_str!(
-        "../../../.superpowers/sdd/2026-11-08-skins-catalog/engine-manifest.json"
-    ))
-    .unwrap()
+    serde_json::from_str(include_str!("fixtures/skin-catalog-manifest.json")).unwrap()
 }
 
 fn envelope(data: Value) -> Value {
