@@ -19,6 +19,8 @@ import { Stage } from './Stage';
 import { useCatalog, type Catalog } from './useCatalog';
 
 const NO_PARTS_HIDDEN = new Set<string>();
+/** The face every look starts from: not listed among its pieces, which name what it wears. */
+const BASE_SLOTS = new Set(['body', 'eyes', 'brows', 'mouth']);
 const noop = () => {};
 
 /** A catalog look as a wardrobe look: its pieces with their colours. */
@@ -60,8 +62,10 @@ function LookPreview({ catalog, manifest, look, lang, owner, onAdded }: { catalo
   }, [catalog, look]);
 
   const tagName = new Map(manifest.tags.map((tag) => [tag.id, tag.name[lang]]));
-  const firstTag = look.tags.map((id) => tagName.get(id)).find((n) => n !== undefined);
-  const pieceName = new Map(manifest.pieces.map((p) => [p.id, p.name[lang]]));
+  // The byline names what kind of look it is; "New" says when, so it comes last.
+  const kind = [...look.tags.filter((id) => id !== 'new'), ...look.tags.filter((id) => id === 'new')];
+  const firstTag = kind.map((id) => tagName.get(id)).find((n) => n !== undefined);
+  const pieceName = new Map(manifest.pieces.filter((p) => !BASE_SLOTS.has(p.slot)).map((p) => [p.id, p.name[lang]]));
   const name = look.name[lang];
 
   const add = () =>

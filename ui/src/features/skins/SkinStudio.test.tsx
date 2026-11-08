@@ -388,9 +388,9 @@ it('tabs switch between Create, Paint and Catalog', async () => {
   // Adding a catalog look puts it in the shown account's wardrobe, opens it and goes to Create.
   await user.click(screen.getByRole('tab', { name: 'Catalog' }));
   await user.click(await screen.findByRole('button', { name: 'Add to my wardrobe' }));
-  expect(await screen.findByRole('button', { name: /^Street/, current: true })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: /^Astronaut/, current: true })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: 'Create' })).toHaveAttribute('aria-selected', 'true');
-  expect(sent(calls, 'skin_create').at(-1)).toMatchObject({ name: 'Street', owner: STEVE });
+  expect(sent(calls, 'skin_create').at(-1)).toMatchObject({ name: 'Astronaut', owner: STEVE });
   expect(sent(calls, 'skin_look_save')).toHaveLength(1);
 });
 

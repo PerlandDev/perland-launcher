@@ -1,0 +1,1176 @@
+{
+  "formatVersion": 1,
+  "version": "60f573c45b9fc8115fa680f5516ce12c6c307ed7f1a848b5210dd477ef1a40ed",
+  "license": "CC0-1.0",
+  "slots": [
+    "body",
+    "eyes",
+    "brows",
+    "mouth",
+    "face_detail",
+    "beard",
+    "bottom",
+    "shoes",
+    "top",
+    "belt",
+    "hands",
+    "neck",
+    "back",
+    "hair",
+    "glasses",
+    "hat"
+  ],
+  "tags": [
+    {
+      "id": "casual",
+      "name": {
+        "en": "Casual",
+        "es": "Casual"
+      }
+    },
+    {
+      "id": "fantasy",
+      "name": {
+        "en": "Fantasy",
+        "es": "Fantasía"
+      }
+    },
+    {
+      "id": "jobs",
+      "name": {
+        "en": "Jobs",
+        "es": "Oficios"
+      }
+    },
+    {
+      "id": "new",
+      "name": {
+        "en": "New",
+        "es": "Nuevo"
+      }
+    },
+    {
+      "id": "sci-fi",
+      "name": {
+        "en": "Sci-fi",
+        "es": "Ciencia ficción"
+      }
+    },
+    {
+      "id": "spooky",
+      "name": {
+        "en": "Spooky",
+        "es": "De miedo"
+      }
+    },
+    {
+      "id": "sport",
+      "name": {
+        "en": "Sport",
+        "es": "Deporte"
+      }
+    }
+  ],
+  "pieces": [
+    {
+      "id": "back-cape",
+      "slot": "back",
+      "name": {
+        "en": "Cape",
+        "es": "Capa"
+      },
+      "tags": [
+        "new",
+        "fantasy",
+        "spooky"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#7a1f2b"
+        },
+        {
+          "id": "trim",
+          "name": {
+            "en": "Trim",
+            "es": "Ribete"
+          },
+          "default": "#d4af37"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "4f3f33f229627e1d4f04d70cdc1330e84be03b5b35b19c7aa2b79c7e2c2fffe6",
+          "mask": "dc629760272431db255af012b49a5dc398661c01e59cbc7ee1c415c540d8a876"
+        },
+        "slim": {
+          "art": "4f3f33f229627e1d4f04d70cdc1330e84be03b5b35b19c7aa2b79c7e2c2fffe6",
+          "mask": "dc629760272431db255af012b49a5dc398661c01e59cbc7ee1c415c540d8a876"
+        }
+      },
+      "thumb": "bf56349f4fe0e6985f8e32f4de4d9652802f77f7e8cae3dd6409b2765b7d209e",
+      "retired": false
+    },
+    {
+      "id": "body-plain",
+      "slot": "body",
+      "name": {
+        "en": "Plain body",
+        "es": "Cuerpo sencillo"
+      },
+      "tags": [
+        "new"
+      ],
+      "areas": [
+        {
+          "id": "skin",
+          "name": {
+            "en": "Skin",
+            "es": "Piel"
+          },
+          "default": "#d9a27c"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "a18ba4fb94821cccaa8d950a038ad7341d46ddae88de00e1b442b3f7a2829d5d",
+          "mask": "eda977cec5d486263c88b7f062aa32bca492249a8372fac9a9bc8d3f030b96e2"
+        },
+        "slim": {
+          "art": "d683a3a221e9285e81f927bf940d7c1781dbb2811ab5d0a36f1752e2b030909c",
+          "mask": "0e2a8902237aa172fd6ab5854505612280adea33c902c896d0b2459cf6534bcb"
+        }
+      },
+      "thumb": "4e0ad764df6fff3d4bd7c323f75a3814f0f5edbc052d6dc84cb6ed9e65ed6db0",
+      "retired": false
+    },
+    {
+      "id": "bottom-jeans",
+      "slot": "bottom",
+      "name": {
+        "en": "Jeans",
+        "es": "Jeans"
+      },
+      "tags": [
+        "new",
+        "casual"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#3c5f91"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "fc5986dc1b4eea23603691da57664db0e29f00c360aa01a9cf4a78b007361044",
+          "mask": "4d40a0b0982b9818ae78c11766a8c958c5725f62f34af09dae3ff67b0c5cd4c6"
+        },
+        "slim": {
+          "art": "fc5986dc1b4eea23603691da57664db0e29f00c360aa01a9cf4a78b007361044",
+          "mask": "4d40a0b0982b9818ae78c11766a8c958c5725f62f34af09dae3ff67b0c5cd4c6"
+        }
+      },
+      "thumb": "ff3241545a0b43c50a505490dd5a8a53b2a01532e74be15b879e8212d2afec31",
+      "retired": false
+    },
+    {
+      "id": "bottom-plate-greaves",
+      "slot": "bottom",
+      "name": {
+        "en": "Plate greaves",
+        "es": "Grebas de placas"
+      },
+      "tags": [
+        "new",
+        "fantasy"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#8e97a1"
+        },
+        {
+          "id": "trim",
+          "name": {
+            "en": "Trim",
+            "es": "Ribete"
+          },
+          "default": "#c9a227"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "5731865377d5053af1d71e8936db0f1267f85d18695941e848302fd8624dfe1e",
+          "mask": "fda54ca3f2d8184b12b330613e8fc0fee4497aaeea1e6fbcd4d14c2c85fc4049"
+        },
+        "slim": {
+          "art": "5731865377d5053af1d71e8936db0f1267f85d18695941e848302fd8624dfe1e",
+          "mask": "fda54ca3f2d8184b12b330613e8fc0fee4497aaeea1e6fbcd4d14c2c85fc4049"
+        }
+      },
+      "thumb": "72305e512df6c64aa039bdfb9c7e0475cae1317b54a4d2de2b3ee6eda0e25c8b",
+      "retired": false
+    },
+    {
+      "id": "bottom-space-suit",
+      "slot": "bottom",
+      "name": {
+        "en": "Space suit trousers",
+        "es": "Pantalón espacial"
+      },
+      "tags": [
+        "new",
+        "sci-fi",
+        "jobs"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#eceff1"
+        },
+        {
+          "id": "trim",
+          "name": {
+            "en": "Trim",
+            "es": "Ribete"
+          },
+          "default": "#e07b24"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "f0e0aa104cbb712ba628d89bcbb1a58278b83cd193e8092242d086b7ea501c4b",
+          "mask": "958aa0e4388a6edbbb3810d46b74f9502027e15b3ba68e54730571f426b60c87"
+        },
+        "slim": {
+          "art": "f0e0aa104cbb712ba628d89bcbb1a58278b83cd193e8092242d086b7ea501c4b",
+          "mask": "958aa0e4388a6edbbb3810d46b74f9502027e15b3ba68e54730571f426b60c87"
+        }
+      },
+      "thumb": "c1bf64c1673bc4c90036f3efba541241321ab8b29365962ab21dbea755752b4a",
+      "retired": false
+    },
+    {
+      "id": "brows-straight",
+      "slot": "brows",
+      "name": {
+        "en": "Straight brows",
+        "es": "Cejas rectas"
+      },
+      "tags": [
+        "new"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#3b2618"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "1ba7ecda1dab7cdde2922ee9741ea2b1b55716ac33eca39298f4681951c00828",
+          "mask": "1ec15295754f6a189851f1cf2c4d86d0e130e804d70e9b79b4ffca7e21fff70a"
+        },
+        "slim": {
+          "art": "1ba7ecda1dab7cdde2922ee9741ea2b1b55716ac33eca39298f4681951c00828",
+          "mask": "1ec15295754f6a189851f1cf2c4d86d0e130e804d70e9b79b4ffca7e21fff70a"
+        }
+      },
+      "thumb": "2a701e3685c853decdf955d35bd0f616e99f0016b8fcf1ee0db79863ce97bdff",
+      "retired": false
+    },
+    {
+      "id": "eyes-round",
+      "slot": "eyes",
+      "name": {
+        "en": "Round eyes",
+        "es": "Ojos redondos"
+      },
+      "tags": [
+        "new"
+      ],
+      "areas": [
+        {
+          "id": "iris",
+          "name": {
+            "en": "Iris",
+            "es": "Iris"
+          },
+          "default": "#4a3324"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "07baf915b13d714ebcb390fff1e32e97cf6e63d1c7956a5bc919e63c05659e39",
+          "mask": "422389c6e35d33249738ef231129ef31193b9f0de50784ad0f276f696f6edf81"
+        },
+        "slim": {
+          "art": "07baf915b13d714ebcb390fff1e32e97cf6e63d1c7956a5bc919e63c05659e39",
+          "mask": "422389c6e35d33249738ef231129ef31193b9f0de50784ad0f276f696f6edf81"
+        }
+      },
+      "thumb": "263fb84f78a52cf68ae660f5c9233ae8a79a376ab86207bcb4727067e96b32a1",
+      "retired": false
+    },
+    {
+      "id": "glasses-round",
+      "slot": "glasses",
+      "name": {
+        "en": "Round glasses",
+        "es": "Lentes redondos"
+      },
+      "tags": [
+        "new",
+        "casual"
+      ],
+      "areas": [
+        {
+          "id": "frame",
+          "name": {
+            "en": "Frame",
+            "es": "Armazón"
+          },
+          "default": "#2b2b2b"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "ca19d8a627abc8f26bc5aa3f4cf7b1786b4ef6b7bd2a875c45bcd04bec8a72ab",
+          "mask": "2800f5fba06cbe3dc56c13e0c68abe71ba01f8a121475aba79ed96b80507ad1f"
+        },
+        "slim": {
+          "art": "ca19d8a627abc8f26bc5aa3f4cf7b1786b4ef6b7bd2a875c45bcd04bec8a72ab",
+          "mask": "2800f5fba06cbe3dc56c13e0c68abe71ba01f8a121475aba79ed96b80507ad1f"
+        }
+      },
+      "thumb": "dba14562b0f528e052544ebc3fabd3bd61e2d58b9470a13f7e0f469756b2cd29",
+      "retired": false
+    },
+    {
+      "id": "hair-short",
+      "slot": "hair",
+      "name": {
+        "en": "Short hair",
+        "es": "Pelo corto"
+      },
+      "tags": [
+        "new",
+        "casual"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#4b2f1f"
+        },
+        {
+          "id": "tips",
+          "name": {
+            "en": "Tips",
+            "es": "Puntas"
+          },
+          "default": "#7a5236"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "231dc5c8e4ba5064e7a8b4afdd2773d654f0c3382e2d9645a764c8ae23494ac5",
+          "mask": "29d37e219bbab873b4ab10cdad39e747b78dd98e4f4ed519d3b7a3558d8d94aa"
+        },
+        "slim": {
+          "art": "231dc5c8e4ba5064e7a8b4afdd2773d654f0c3382e2d9645a764c8ae23494ac5",
+          "mask": "29d37e219bbab873b4ab10cdad39e747b78dd98e4f4ed519d3b7a3558d8d94aa"
+        }
+      },
+      "thumb": "eb62e38d1759245ed8cf447761199e98548f13792230ed188557afaaba4f437f",
+      "retired": false
+    },
+    {
+      "id": "hands-gloves",
+      "slot": "hands",
+      "name": {
+        "en": "Gloves",
+        "es": "Guantes"
+      },
+      "tags": [
+        "new",
+        "jobs",
+        "sci-fi",
+        "fantasy"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#7a4f2e"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "6b5a5b3045335a531548703200bb6d18de3b670829ee06c0503174ac25093aa9",
+          "mask": "00ee77f27378c2849f2ede4bfdb50149139607de0128a37ec029bf934a1d9826"
+        },
+        "slim": {
+          "art": "c91e3154fa01ba13ef5790b2b8c4625cc056b0c852706c18be8bc6cebbd3c9b7",
+          "mask": "b1f25c395cf2c963ff725443039269be3cdad1159831571d9d3976707b2f949e"
+        }
+      },
+      "thumb": "9aa4946840a6f2c59f04e077cf4ef50e5e0b161757b71bb726af5a0598290bee",
+      "retired": false
+    },
+    {
+      "id": "hat-cap",
+      "slot": "hat",
+      "name": {
+        "en": "Cap",
+        "es": "Gorra"
+      },
+      "tags": [
+        "new",
+        "casual",
+        "sport"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#1f3b73"
+        },
+        {
+          "id": "peak",
+          "name": {
+            "en": "Peak",
+            "es": "Visera"
+          },
+          "default": "#d23c2f"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "4d1ad1ee874b5e5e7ab32f6acc8e79303b13690f389bb42ec7bbb89513cf61aa",
+          "mask": "31de2ce2479c57844e06c8165c66a84517dbf8663659f22f68427bf896291051"
+        },
+        "slim": {
+          "art": "4d1ad1ee874b5e5e7ab32f6acc8e79303b13690f389bb42ec7bbb89513cf61aa",
+          "mask": "31de2ce2479c57844e06c8165c66a84517dbf8663659f22f68427bf896291051"
+        }
+      },
+      "thumb": "2b8924be0c87be83a403035047b66b2c56ec4d28f487470a0d050d11b1748c14",
+      "retired": false
+    },
+    {
+      "id": "hat-knight-helm",
+      "slot": "hat",
+      "name": {
+        "en": "Knight's helm",
+        "es": "Yelmo de caballero"
+      },
+      "tags": [
+        "new",
+        "fantasy"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#8e97a1"
+        },
+        {
+          "id": "plume",
+          "name": {
+            "en": "Plume",
+            "es": "Penacho"
+          },
+          "default": "#b3262d"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "54fa23ed285c8b70b9735763d07a205ad5c44e520b54cb87ef6a28075ee31690",
+          "mask": "68a2892124c007db415aa8c1256e53daf89890bda44e833b2f5207628144c069"
+        },
+        "slim": {
+          "art": "54fa23ed285c8b70b9735763d07a205ad5c44e520b54cb87ef6a28075ee31690",
+          "mask": "68a2892124c007db415aa8c1256e53daf89890bda44e833b2f5207628144c069"
+        }
+      },
+      "thumb": "715959837ebb8a4ab0437dd620d7ffd0045dc5167a1164f1b8fffb36741086e4",
+      "retired": false
+    },
+    {
+      "id": "hat-space-helmet",
+      "slot": "hat",
+      "name": {
+        "en": "Space helmet",
+        "es": "Casco espacial"
+      },
+      "tags": [
+        "new",
+        "sci-fi",
+        "jobs"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#f0f2f5"
+        },
+        {
+          "id": "trim",
+          "name": {
+            "en": "Trim",
+            "es": "Ribete"
+          },
+          "default": "#e07b24"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "e1dd62ab5317ef08c3fcabb9f8ca74f010f732fcc3d29aeca3898d6770262ebf",
+          "mask": "baaa871e93d7a251253db2108bca69c5264ea8c505e47bcee2a115534765cb7d"
+        },
+        "slim": {
+          "art": "e1dd62ab5317ef08c3fcabb9f8ca74f010f732fcc3d29aeca3898d6770262ebf",
+          "mask": "baaa871e93d7a251253db2108bca69c5264ea8c505e47bcee2a115534765cb7d"
+        }
+      },
+      "thumb": "b13a6a65060538a0f2e3c99303dbda17518793653e924969713f45a5d24f717c",
+      "retired": false
+    },
+    {
+      "id": "mouth-smile",
+      "slot": "mouth",
+      "name": {
+        "en": "Smile",
+        "es": "Sonrisa"
+      },
+      "tags": [
+        "new"
+      ],
+      "areas": [],
+      "files": {
+        "classic": {
+          "art": "7889b53d6e585701a6d30e518008d7f9f0b2a2fdd7665b1936c646f48620088c",
+          "mask": "24bdcbfe99089f72e8352b33f8c6dfd1d8dffc5fc5be840ef959aa63b11af8a8"
+        },
+        "slim": {
+          "art": "7889b53d6e585701a6d30e518008d7f9f0b2a2fdd7665b1936c646f48620088c",
+          "mask": "24bdcbfe99089f72e8352b33f8c6dfd1d8dffc5fc5be840ef959aa63b11af8a8"
+        }
+      },
+      "thumb": "047fb496890f6fed20c06a1cafbf8966bcf288143476034ad2f0af7df1bda92c",
+      "retired": false
+    },
+    {
+      "id": "neck-scarf",
+      "slot": "neck",
+      "name": {
+        "en": "Scarf",
+        "es": "Bufanda"
+      },
+      "tags": [
+        "new",
+        "casual"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#b8322e"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "91799907b1f32f2e3da9f7c3d7ec24a8aea41bd3291cd6570851c20a5c24ed37",
+          "mask": "814a06a51a19a2756f9041b1eaedab8f8f77ee0557c3bd6dfc5355c1c278a251"
+        },
+        "slim": {
+          "art": "91799907b1f32f2e3da9f7c3d7ec24a8aea41bd3291cd6570851c20a5c24ed37",
+          "mask": "814a06a51a19a2756f9041b1eaedab8f8f77ee0557c3bd6dfc5355c1c278a251"
+        }
+      },
+      "thumb": "ab1de1fb75c6f248802945c118d4bdb5650e254fe7e6cc5a2de1913b8002944b",
+      "retired": false
+    },
+    {
+      "id": "shoes-boots",
+      "slot": "shoes",
+      "name": {
+        "en": "Boots",
+        "es": "Botas"
+      },
+      "tags": [
+        "new",
+        "fantasy",
+        "jobs"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#6b4226"
+        },
+        {
+          "id": "sole",
+          "name": {
+            "en": "Sole",
+            "es": "Suela"
+          },
+          "default": "#2e1f14"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "757658d72a107f56a9eb6df72526d316442f43b469b4eabafd93415b7df394c9",
+          "mask": "ad33bd4caa88012f7e510ee24e3a77ec3f905b88c61d74adb7c6f0ff5f693245"
+        },
+        "slim": {
+          "art": "757658d72a107f56a9eb6df72526d316442f43b469b4eabafd93415b7df394c9",
+          "mask": "ad33bd4caa88012f7e510ee24e3a77ec3f905b88c61d74adb7c6f0ff5f693245"
+        }
+      },
+      "thumb": "e5026daf9f409900dd1c7d6d451ed5a744f427d53bae6b720734130c00988945",
+      "retired": false
+    },
+    {
+      "id": "shoes-moon-boots",
+      "slot": "shoes",
+      "name": {
+        "en": "Moon boots",
+        "es": "Botas lunares"
+      },
+      "tags": [
+        "new",
+        "sci-fi"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#d7dbe0"
+        },
+        {
+          "id": "sole",
+          "name": {
+            "en": "Sole",
+            "es": "Suela"
+          },
+          "default": "#5a5f66"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "cd5585000f8f2a7395ed426010b8da67cf6c2e073344a1deabf3055a7e74f78d",
+          "mask": "229afd2091223e60124c34e833e49304e6f10f8ed94eea86924d1dc18eb810bb"
+        },
+        "slim": {
+          "art": "cd5585000f8f2a7395ed426010b8da67cf6c2e073344a1deabf3055a7e74f78d",
+          "mask": "229afd2091223e60124c34e833e49304e6f10f8ed94eea86924d1dc18eb810bb"
+        }
+      },
+      "thumb": "3784c85e961e0f44700834c97a57cbb8c8c872382e735ee3afcc80c0fc8620db",
+      "retired": false
+    },
+    {
+      "id": "shoes-sneakers",
+      "slot": "shoes",
+      "name": {
+        "en": "Sneakers",
+        "es": "Tenis"
+      },
+      "tags": [
+        "new",
+        "casual",
+        "sport"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#d9483b"
+        },
+        {
+          "id": "sole",
+          "name": {
+            "en": "Sole",
+            "es": "Suela"
+          },
+          "default": "#f2f2f2"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "603de7ad9e8c68043a4ff1cd1a13ce4553654b84abf5a931fd55e47971922659",
+          "mask": "eadb8da8967d391050083349343879486caf8eea332e974bb8b74e505cb982c2"
+        },
+        "slim": {
+          "art": "603de7ad9e8c68043a4ff1cd1a13ce4553654b84abf5a931fd55e47971922659",
+          "mask": "eadb8da8967d391050083349343879486caf8eea332e974bb8b74e505cb982c2"
+        }
+      },
+      "thumb": "0500652604f34d86223ee03c0e0df137a67808535f977099d96b58d1b934e981",
+      "retired": false
+    },
+    {
+      "id": "top-bomber",
+      "slot": "top",
+      "name": {
+        "en": "Bomber jacket",
+        "es": "Chaqueta bomber"
+      },
+      "tags": [
+        "new",
+        "casual"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#4a5d3a"
+        },
+        {
+          "id": "trim",
+          "name": {
+            "en": "Trim",
+            "es": "Ribete"
+          },
+          "default": "#2b2b2b"
+        },
+        {
+          "id": "zip",
+          "name": {
+            "en": "Zip",
+            "es": "Cierre"
+          },
+          "default": "#c9c9c9"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "a48e54a074dbd86a870d1763be2ada3fe78a6c176b0d1907b80f2f8c9c066e12",
+          "mask": "6224d8f2d8a6b29423f1362cd5f1a564a0cc7b7c1760eadd4c8d952e099b8f50"
+        },
+        "slim": {
+          "art": "24b47c02111c2426542fcb6e9c6db279b6ce2a330469af4856ccaa328b47e33c",
+          "mask": "5b7af8e349983ee27d966ee217899ecb9b19f6ddf098083f0a33d35831703143"
+        }
+      },
+      "thumb": "f0eafa12bae03989dd921f776c8a307056f3e1187c0b8da168b44847143cf9bb",
+      "retired": false
+    },
+    {
+      "id": "top-plate-armour",
+      "slot": "top",
+      "name": {
+        "en": "Plate armour",
+        "es": "Armadura de placas"
+      },
+      "tags": [
+        "new",
+        "fantasy"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#8e97a1"
+        },
+        {
+          "id": "trim",
+          "name": {
+            "en": "Trim",
+            "es": "Ribete"
+          },
+          "default": "#c9a227"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "83b0b776dd5f77a139f5d7b762b88d1f25f35ea6295ecc18d9c5637850f2ad6c",
+          "mask": "e97674d3d9bbe2064f3634f2dce148ea9dbbc39cac48d09012ccdf8114954554"
+        },
+        "slim": {
+          "art": "20acbda07a3be2e075551eb94da99e67e12e4407a9bc9430353fa69ea31a9700",
+          "mask": "4f1579d181b41882fc172531de1bc1b1952407fec515f4279b02644978dd7399"
+        }
+      },
+      "thumb": "4b5d6b91a7e9a5d43e4c2df4dcf0f11db8ef99021941fe01d3cbb2ed9e4e3f96",
+      "retired": false
+    },
+    {
+      "id": "top-space-suit",
+      "slot": "top",
+      "name": {
+        "en": "Space suit",
+        "es": "Traje espacial"
+      },
+      "tags": [
+        "new",
+        "sci-fi",
+        "jobs"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#eceff1"
+        },
+        {
+          "id": "trim",
+          "name": {
+            "en": "Trim",
+            "es": "Ribete"
+          },
+          "default": "#e07b24"
+        },
+        {
+          "id": "patch",
+          "name": {
+            "en": "Patch",
+            "es": "Parche"
+          },
+          "default": "#2f5aa8"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "397d963960c2e0853b6bc5f7d3f0d2c2c33b1c6e0c8be5648f06348bf09d49aa",
+          "mask": "d9f065848361595bf8f9cb3b368952f442e7c685497cd5f5cecadf75af599e4a"
+        },
+        "slim": {
+          "art": "879b2649fffd1d01cfc8d62b4dac662b7b47d2ceb87838671039d7ce3dd13e13",
+          "mask": "5e54d4517762253b951b5370303f3be32807c18372edf3fbdfd5a13ef0cf5426"
+        }
+      },
+      "thumb": "ee9383101ff9ea257a0b8e4b148539e68ff664f4a3b0fe230d20f466398eb504",
+      "retired": false
+    },
+    {
+      "id": "top-tee",
+      "slot": "top",
+      "name": {
+        "en": "T-shirt",
+        "es": "Camiseta"
+      },
+      "tags": [
+        "new",
+        "casual"
+      ],
+      "areas": [
+        {
+          "id": "main",
+          "name": {
+            "en": "Main",
+            "es": "Principal"
+          },
+          "default": "#e8e4dc"
+        },
+        {
+          "id": "trim",
+          "name": {
+            "en": "Trim",
+            "es": "Ribete"
+          },
+          "default": "#3a6ea5"
+        }
+      ],
+      "files": {
+        "classic": {
+          "art": "dc1d286b13fd8a7d43395d54fa0356d259d7fd256ddad633cd9956da65cbfd4f",
+          "mask": "4cd16d7aec42276ab913bb0f931a775b9d3621e7a1cf2f733edf7ee81d45c5a7"
+        },
+        "slim": {
+          "art": "48c0f36cbfd4a70be1f8b4a05bfa7322c131505447f525ecf5abe6823fad81ed",
+          "mask": "76fef3f170eeb8b18550ff9b53a992de3987ee01daf4aa40a50436fe89120326"
+        }
+      },
+      "thumb": "ccbe03a74010de1d6cef38debf25d40f9ce8e0e76e47d6c4db18b835cd974049",
+      "retired": false
+    }
+  ],
+  "looks": [
+    {
+      "id": "look-astronaut",
+      "name": {
+        "en": "Astronaut",
+        "es": "Astronauta"
+      },
+      "tags": [
+        "new",
+        "sci-fi",
+        "jobs"
+      ],
+      "model": "classic",
+      "pieces": [
+        {
+          "id": "body-plain",
+          "colours": {
+            "skin": "#8d5b3e"
+          }
+        },
+        {
+          "id": "eyes-round",
+          "colours": {
+            "iris": "#2a1a10"
+          }
+        },
+        {
+          "id": "brows-straight",
+          "colours": {
+            "main": "#1e140d"
+          }
+        },
+        {
+          "id": "mouth-smile",
+          "colours": {}
+        },
+        {
+          "id": "bottom-space-suit",
+          "colours": {
+            "main": "#eceff1",
+            "trim": "#e07b24"
+          }
+        },
+        {
+          "id": "shoes-moon-boots",
+          "colours": {
+            "main": "#a9b2bc",
+            "sole": "#4a4f56"
+          }
+        },
+        {
+          "id": "top-space-suit",
+          "colours": {
+            "main": "#eceff1",
+            "patch": "#2f5aa8",
+            "trim": "#e07b24"
+          }
+        },
+        {
+          "id": "hands-gloves",
+          "colours": {
+            "main": "#d7dbe0"
+          }
+        },
+        {
+          "id": "hat-space-helmet",
+          "colours": {
+            "main": "#f4f6f8",
+            "trim": "#e07b24"
+          }
+        }
+      ],
+      "thumb": "3906d6b4f86b11ad00d0085f68b6041d86c1bc004f04da215712202edc5153ac",
+      "retired": false
+    },
+    {
+      "id": "look-knight",
+      "name": {
+        "en": "Knight",
+        "es": "Caballero"
+      },
+      "tags": [
+        "new",
+        "fantasy"
+      ],
+      "model": "classic",
+      "pieces": [
+        {
+          "id": "body-plain",
+          "colours": {
+            "skin": "#e0b391"
+          }
+        },
+        {
+          "id": "eyes-round",
+          "colours": {
+            "iris": "#3f6a8f"
+          }
+        },
+        {
+          "id": "brows-straight",
+          "colours": {
+            "main": "#6b4a2b"
+          }
+        },
+        {
+          "id": "mouth-smile",
+          "colours": {}
+        },
+        {
+          "id": "bottom-plate-greaves",
+          "colours": {
+            "main": "#8e97a1",
+            "trim": "#c9a227"
+          }
+        },
+        {
+          "id": "shoes-boots",
+          "colours": {
+            "main": "#5d646c",
+            "sole": "#2a2a2a"
+          }
+        },
+        {
+          "id": "top-plate-armour",
+          "colours": {
+            "main": "#8e97a1",
+            "trim": "#c9a227"
+          }
+        },
+        {
+          "id": "hands-gloves",
+          "colours": {
+            "main": "#6c737b"
+          }
+        },
+        {
+          "id": "back-cape",
+          "colours": {
+            "main": "#7a1f2b",
+            "trim": "#d4af37"
+          }
+        },
+        {
+          "id": "hat-knight-helm",
+          "colours": {
+            "main": "#8e97a1",
+            "plume": "#b3262d"
+          }
+        }
+      ],
+      "thumb": "77840d5c5b2341c061409aaf4f5d18246c45c52f5c920e26142ba6078662b8a4",
+      "retired": false
+    },
+    {
+      "id": "look-street",
+      "name": {
+        "en": "Street",
+        "es": "Urbano"
+      },
+      "tags": [
+        "new",
+        "casual"
+      ],
+      "model": "slim",
+      "pieces": [
+        {
+          "id": "body-plain",
+          "colours": {
+            "skin": "#c68b62"
+          }
+        },
+        {
+          "id": "eyes-round",
+          "colours": {
+            "iris": "#3d2a1e"
+          }
+        },
+        {
+          "id": "brows-straight",
+          "colours": {
+            "main": "#2a1b12"
+          }
+        },
+        {
+          "id": "mouth-smile",
+          "colours": {}
+        },
+        {
+          "id": "bottom-jeans",
+          "colours": {
+            "main": "#35557f"
+          }
+        },
+        {
+          "id": "shoes-sneakers",
+          "colours": {
+            "main": "#f0f0f0",
+            "sole": "#d9483b"
+          }
+        },
+        {
+          "id": "top-bomber",
+          "colours": {
+            "main": "#4a5d3a",
+            "trim": "#262626",
+            "zip": "#c9c9c9"
+          }
+        },
+        {
+          "id": "hair-short",
+          "colours": {
+            "main": "#2c1d14",
+            "tips": "#5a3a24"
+          }
+        },
+        {
+          "id": "hat-cap",
+          "colours": {
+            "main": "#1f2a44",
+            "peak": "#d23c2f"
+          }
+        }
+      ],
+      "thumb": "1b65a0b09388a3bea502a292ce7d49a2a6eeb1b750534c6f2e80b65401e68864",
+      "retired": false
+    }
+  ]
+}

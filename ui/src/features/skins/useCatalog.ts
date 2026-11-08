@@ -1,7 +1,7 @@
 // Perland's skin catalog for the Skins screen: the manifest and its status, and its PNGs loaded only when something
 // asks for them and kept for the session (thumbnails are asked for by the grid as it draws, art and masks only when a
 // look is shown on the figure or added).
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { commands } from '../../ipc/commands';
 import type { CatalogManifest, CatalogStatus, SkinLook, SkinModel } from '../../ipc/schema';
@@ -89,5 +89,7 @@ export function useCatalog(): Catalog {
     [manifest, pixels],
   );
 
-  return { manifest, status, loading: answer.isPending, image, pixels, layers };
+  const loading = answer.isPending;
+  // One object while nothing changes, so a consumer can depend on it without redoing its work every render.
+  return useMemo(() => ({ manifest, status, loading, image, pixels, layers }), [manifest, status, loading, image, pixels, layers]);
 }

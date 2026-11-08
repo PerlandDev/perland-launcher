@@ -10,10 +10,32 @@ describe('mock skin catalog', () => {
     const { handle } = createMockBackend();
     const { manifest, status } = (await handle('skin_catalog')) as CatalogAnswer;
     expect(status).toBe('fresh');
-    expect(manifest!.pieces.map((p) => p.id)).toEqual(
-      expect.arrayContaining(['body-plain', 'eyes-round', 'brows-straight', 'mouth-smile', 'hair-short', 'top-tee', 'top-bomber', 'bottom-jeans', 'shoes-sneakers', 'hat-cap', 'glasses-round', 'neck-scarf']),
-    );
-    expect(manifest!.looks.map((l) => l.id)).toEqual(['look-street', 'look-knight', 'look-astronaut']);
+    // The Engine's first batch: 22 pieces and 3 looks.
+    expect(manifest!.pieces.map((p) => p.id)).toEqual([
+      'back-cape',
+      'body-plain',
+      'bottom-jeans',
+      'bottom-plate-greaves',
+      'bottom-space-suit',
+      'brows-straight',
+      'eyes-round',
+      'glasses-round',
+      'hair-short',
+      'hands-gloves',
+      'hat-cap',
+      'hat-knight-helm',
+      'hat-space-helmet',
+      'mouth-smile',
+      'neck-scarf',
+      'shoes-boots',
+      'shoes-moon-boots',
+      'shoes-sneakers',
+      'top-bomber',
+      'top-plate-armour',
+      'top-space-suit',
+      'top-tee',
+    ]);
+    expect(manifest!.looks.map((l) => l.id)).toEqual(['look-astronaut', 'look-knight', 'look-street']);
     const piece = manifest!.pieces[0]!;
     expect(((await handle('skin_catalog_file', { sha256: piece.thumb })) as string).startsWith(PNG)).toBe(true);
     await expect(handle('skin_catalog_file', { sha256: 'nope' })).rejects.toMatchObject({ code: 'skin_catalog_unavailable' });
@@ -40,12 +62,12 @@ describe('mock skin catalog', () => {
   });
 });
 
-it('the mock catalog gives every file its own hash', () => {
+it('the mock catalog serves every file its manifest names', () => {
   const { manifest, files } = mockCatalog();
   const named = [
     ...manifest.pieces.flatMap((p) => [p.thumb, ...Object.values(p.files).flatMap((f) => [f.art, f.mask])]),
     ...manifest.looks.flatMap((l) => [l.thumb, ...(l.painting ? [l.painting] : [])]),
   ];
-  expect(new Set(named).size).toBe(named.length);
-  expect(files.size).toBe(named.length);
+  for (const hash of named) expect(files.get(hash)?.startsWith(PNG), hash).toBe(true);
+  expect(files.size).toBe(new Set(named).size);
 });

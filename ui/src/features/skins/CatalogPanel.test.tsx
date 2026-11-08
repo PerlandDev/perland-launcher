@@ -39,17 +39,19 @@ const names = (list: HTMLElement) => within(list).getAllByRole('button').map((b)
 it('shows looks and filters by tag', async () => {
   const { user } = renderPanel();
   const list = await grid();
-  expect(names(list)).toEqual(['Street', 'Knight', 'Astronaut']);
+  expect(names(list)).toEqual(['Astronaut', 'Knight', 'Street']);
   const tags = screen.getByRole('group', { name: 'Tags' });
   // "All" leads, then the manifest's tags.
-  expect(within(tags).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'Casual', 'Fantasy', 'New', 'Sci-fi']);
+  expect(within(tags).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'Casual', 'Fantasy', 'Jobs', 'New', 'Sci-fi', 'Spooky', 'Sport']);
   expect(within(tags).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
-  await user.click(within(tags).getByRole('button', { name: 'New' }));
-  expect(names(list)).toEqual(['Street', 'Astronaut']);
+  await user.click(within(tags).getByRole('button', { name: 'Casual' }));
+  expect(names(list)).toEqual(['Street']);
+  await user.click(within(tags).getByRole('button', { name: 'Sport' }));
+  expect(within(list).queryAllByRole('button')).toEqual([]);
   await user.click(within(tags).getByRole('button', { name: 'Fantasy' }));
   expect(names(list)).toEqual(['Knight']);
   await user.click(within(tags).getByRole('button', { name: 'All' }));
-  expect(names(list)).toEqual(['Street', 'Knight', 'Astronaut']);
+  expect(names(list)).toEqual(['Astronaut', 'Knight', 'Street']);
 });
 
 it('searching narrows the grid', async () => {
@@ -63,15 +65,16 @@ it('searching narrows the grid', async () => {
   expect(screen.getByText('No looks match that search.')).toBeInTheDocument();
 });
 
-it('shows the picked look with its pieces', async () => {
+it('shows the picked look with what it wears, not the face it starts from', async () => {
   const { user } = renderPanel();
   const list = await grid();
   await user.click(within(list).getByRole('button', { name: 'Knight' }));
   expect(within(list).getByRole('button', { name: 'Knight' })).toHaveAttribute('aria-pressed', 'true');
   const preview = screen.getByRole('region', { name: 'Knight' });
+  // Its kind, not that it's new.
+  expect(within(preview).getByText('By Perland · Fantasy')).toBeInTheDocument();
   const pieces = within(preview).getByRole('list', { name: 'Pieces' });
-  expect(within(pieces).getByText('Bomber jacket')).toBeInTheDocument();
-  expect(within(pieces).getByText('Scarf')).toBeInTheDocument();
+  expect(within(pieces).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Plate greaves', 'Boots', 'Plate armour', 'Gloves', 'Cape', "Knight's helm"]);
 });
 
 it('add to my wardrobe creates a skin for the shown account and saves its look', async () => {
@@ -79,13 +82,13 @@ it('add to my wardrobe creates a skin for the shown account and saves its look',
   await grid();
   await user.click(screen.getByRole('button', { name: 'Add to my wardrobe' }));
   await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(1));
-  expect(sent(calls, 'skin_create')).toEqual([{ name: 'Street', model: 'classic', texture: 'data:image/png;base64,ENCODED', owner: OWNER, seeded: false }]);
+  expect(sent(calls, 'skin_create')).toEqual([{ name: 'Astronaut', model: 'classic', texture: 'data:image/png;base64,ENCODED', owner: OWNER, seeded: false }]);
   const [save] = sent(calls, 'skin_look_save') as { id: string; look: { pieces: { id: string }[]; painting: boolean }; painting: string | null }[];
   const created = (onAdded as ReturnType<typeof vi.fn>).mock.calls[0]![0] as SkinEntry;
   expect(save!.id).toBe(created.id);
   expect(save!.look.painting).toBe(false);
   expect(save!.painting).toBeNull();
-  expect(save!.look.pieces.map((p) => p.id)).toContain('top-tee');
+  expect(save!.look.pieces.map((p) => p.id)).toContain('top-space-suit');
   expect(created.look?.pieces.length).toBe(save!.look.pieces.length);
 });
 
