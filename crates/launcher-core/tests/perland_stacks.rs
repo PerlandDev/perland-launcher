@@ -47,7 +47,8 @@ async fn get_all_lists_single_servers() {
         .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
             "servers": [{
                 "stackName": "survival", "status": "running", "health": "healthy",
-                "address": "play.example.com", "motd": "Hi", "version": "1.21",
+                "address": "play.example.com:25573", "joinAddress": "survival.perland.world",
+                "hostname": "survival", "motd": "Hi", "version": "1.21",
                 "kind": "single", "type": "paper", "ownerId": "x"
             }, { "stackName": "creative", "status": "exited" }]
         }))))
@@ -57,9 +58,15 @@ async fn get_all_lists_single_servers() {
     let items = client(&server).get_all(&jwt()).await.unwrap();
     assert_eq!(items.len(), 2);
     assert_eq!(items[0].stack_name, "survival");
-    assert_eq!(items[0].address.as_deref(), Some("play.example.com"));
+    assert_eq!(items[0].address.as_deref(), Some("play.example.com:25573"));
+    assert_eq!(
+        items[0].join_address.as_deref(),
+        Some("survival.perland.world")
+    );
     assert_eq!(items[0].r#type, "paper");
     assert_eq!(items[1].address, None);
+    // An Engine without GAME_DOMAIN sends no join address.
+    assert_eq!(items[1].join_address, None);
 }
 
 #[tokio::test]
@@ -71,7 +78,8 @@ async fn details_reads_without_stats() {
         .and(header("x-user-token", BEARER))
         .respond_with(ResponseTemplate::new(200).set_body_json(envelope(json!({
             "stackName": "survival", "status": "running", "version": "1.21", "type": "paper",
-            "pendingRestart": true,
+            "pendingRestart": true, "address": "play.example.com:25573",
+            "joinAddress": "survival.perland.world",
             "idle": { "state": "active", "paused": false, "stopsAt": "2026-10-21T10:00:00Z" }
         }))))
         .expect(1)
@@ -79,6 +87,8 @@ async fn details_reads_without_stats() {
         .await;
     let d = client(&server).details(&jwt(), "survival").await.unwrap();
     assert!(d.pending_restart);
+    assert_eq!(d.address.as_deref(), Some("play.example.com:25573"));
+    assert_eq!(d.join_address.as_deref(), Some("survival.perland.world"));
     let idle = d.idle.unwrap();
     assert_eq!(idle.state, "active");
     assert_eq!(idle.stops_at.as_deref(), Some("2026-10-21T10:00:00Z"));

@@ -762,7 +762,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 team_name: team.display_name.clone(),
                 name: item.stack_name.clone(),
                 state: manage_state(&item.status, &item.health, None).into(),
-                address: item.address.filter(|a| !a.trim().is_empty()),
+                address: shown_address(item.join_address.as_deref(), item.address),
                 stack: item.stack_name,
                 free,
             }));
@@ -810,7 +810,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             tenant_id: tenant.to_string(),
             stack: stack.to_string(),
             state: state.into(),
-            address: detail.address.filter(|a| !a.trim().is_empty()),
+            address: shown_address(detail.join_address.as_deref(), detail.address),
             online: online.as_ref().map(|o| o.online),
             max: online.as_ref().map(|o| o.max),
             players: online.and_then(|o| o.players).unwrap_or_default(),
@@ -1113,6 +1113,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .open_url(perland::panel_page(panel, next).as_str());
         Ok(())
     }
+}
+
+/// What a player types to join: the server's join name when the Engine sent one, else its
+/// `host:port`.
+fn shown_address(join: Option<&str>, address: Option<String>) -> Option<String> {
+    launcher_core::instances::join_name(join).or_else(|| address.filter(|a| !a.trim().is_empty()))
 }
 
 #[cfg(test)]
@@ -1612,6 +1618,59 @@ mod tests {
         let detail = core.manage_detail("t1", "survival").await.unwrap();
         assert_eq!(detail.state, "asleep");
         assert_eq!(fake.calls_to("online").len(), 2);
+    }
+
+    #[tokio::test]
+    async fn manage_shows_the_join_address_before_host_and_port() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core);
+        let fake = stack(&runner);
+        *fake.memberships.lock().unwrap() = Ok(vec![team("t-a", "alpha", "Alpha", "owner", None)]);
+        let named = StackItem {
+            join_address: Some(" MoisesTest.perland.world ".into()),
+            address: Some("play-mc.perland.online:25573".into()),
+            ..item("moisestest", "running")
+        };
+        let blank = StackItem {
+            join_address: Some("  ".into()),
+            address: Some("play-mc.perland.online:25574".into()),
+            ..item("other", "running")
+        };
+        fake.serve_all("t-a", Ok(vec![named, blank]));
+        let servers = core.managed_servers().await.unwrap();
+        let address = |name: &str| {
+            servers
+                .iter()
+                .find(|s| s.stack == name)
+                .and_then(|s| s.address.clone())
+        };
+        assert_eq!(
+            address("moisestest").as_deref(),
+            Some("moisestest.perland.world")
+        );
+        assert_eq!(
+            address("other").as_deref(),
+            Some("play-mc.perland.online:25574")
+        );
+
+        *fake.details.lock().unwrap() = Ok(StackDetail {
+            status: "sleeping".into(),
+            join_address: Some("moisestest.perland.world".into()),
+            ..StackDetail::default()
+        });
+        let detail = core.manage_detail("t-a", "moisestest").await.unwrap();
+        assert_eq!(detail.address.as_deref(), Some("moisestest.perland.world"));
+
+        *fake.details.lock().unwrap() = Ok(StackDetail {
+            status: "running".into(),
+            address: Some("play-mc.perland.online:25573".into()),
+            ..StackDetail::default()
+        });
+        let detail = core.manage_detail("t-a", "moisestest").await.unwrap();
+        assert_eq!(
+            detail.address.as_deref(),
+            Some("play-mc.perland.online:25573")
+        );
     }
 
     #[tokio::test]

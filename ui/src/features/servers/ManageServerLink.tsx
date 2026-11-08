@@ -10,7 +10,7 @@ import { Button } from '../../ui/Button';
 import { CopyRow } from '../../ui/CopyRow';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
-import { addressText, inviteOf } from '../home/labels';
+import { inviteOf, shownAddress } from '../home/labels';
 import { ServerCard } from '../join/ServerCard';
 import { InviteOnly } from './InviteOnly';
 
@@ -63,7 +63,7 @@ export function ManageServerLink({ instance, onClose }: { instance: Instance; on
   const running = useRun(instance.id).state !== 'idle';
   const invite = inviteOf(instance) ?? '';
   const preview = useJoinPreview(inviteCanonical(invite) ?? invite);
-  const address = instance.server?.address ?? null;
+  const address = shownAddress(instance.server?.address, instance.server?.join);
   if (confirming) return <UnlinkDialog instance={instance} onBack={() => setConfirming(false)} onDone={onClose} />;
   const hint = running ? 'manage-link-running' : undefined;
   return (
@@ -113,7 +113,7 @@ export function ManageServerLink({ instance, onClose }: { instance: Instance; on
             {t('server.address')}
           </p>
           {address ? (
-            <CopyRow text={addressText(address)} label={t('server.address')} copy={t('server.copyAddress')} copied={t('server.addressCopied')} />
+            <CopyRow text={address} label={t('server.address')} copy={t('server.copyAddress')} copied={t('server.addressCopied')} />
           ) : (
             <p className="text-sm text-ink-dim">{t('server.noAddress')}</p>
           )}

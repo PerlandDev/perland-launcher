@@ -16,6 +16,12 @@ export function addressText(address: ServerAddress): string {
   return address.host.includes(':') ? `[${address.host}]:${address.port}` : `${address.host}:${address.port}`;
 }
 
+/** What players type: the server's join name ("survival.perland.world") when it has one, else `host:port`. */
+export function shownAddress(address: ServerAddress | null | undefined, join: string | null | undefined): string | null {
+  if (join) return join;
+  return address ? addressText(address) : null;
+}
+
 export const loaderName = (kind: LoaderKind) => NAMES[kind];
 
 /** "Minecraft 1.20.1 · Fabric 0.16.14" or "Minecraft 26.3 · Vanilla". */

@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { addressText } from './labels';
+import { addressText, shownAddress } from './labels';
 
 describe('addressText', () => {
   it('writes host:port, with brackets around IPv6', () => {
     expect(addressText({ host: 'play.example.com', port: 25566 })).toBe('play.example.com:25566');
     expect(addressText({ host: '2001:db8::1', port: 25565 })).toBe('[2001:db8::1]:25565');
+  });
+});
+
+describe('shownAddress', () => {
+  it('shows the join name, without a port, when the server has one', () => {
+    expect(shownAddress({ host: 'survival.perland.world', port: 25565 }, 'survival.perland.world')).toBe('survival.perland.world');
+  });
+
+  it('falls back to host:port, and to nothing', () => {
+    expect(shownAddress({ host: 'play-mc.perland.online', port: 25573 }, null)).toBe('play-mc.perland.online:25573');
+    expect(shownAddress(null, null)).toBeNull();
+    expect(shownAddress(undefined, undefined)).toBeNull();
   });
 });

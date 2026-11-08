@@ -44,6 +44,8 @@ export const serverLink = z.strictObject({
   lastStatus: serverStatus.nullable(),
   lastSeen: z.number().int().nullable(),
   gone: z.boolean(),
+  /** The server's join name (`survival.perland.world`), shown in place of `address`. */
+  join: z.string().nullable(),
 });
 export const serverPlayers = z.strictObject({ online: z.number().int(), max: z.number().int().nullable() });
 export const serverGame = z.strictObject({
@@ -70,6 +72,8 @@ export const joinPreview = z.strictObject({
   whitelisted: z.boolean(),
   team: serverTeam.nullable(),
   address: serverAddress.nullable(),
+  /** The server's join name, shown in place of `address`. */
+  join: z.string().nullable(),
   icon: z.string().nullable(),
   existing: z.string().nullable(),
 });
@@ -375,6 +379,8 @@ export const serverStatusView = z.strictObject({
   packState: z.string().nullable(),
   gone: z.boolean(),
   address: serverAddress.nullable(),
+  /** The last known join name, shown in place of `address`. */
+  join: z.string().nullable(),
 });
 export const deepLink = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('pack'), url: z.string() }),
