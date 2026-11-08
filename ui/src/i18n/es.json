@@ -1121,6 +1121,7 @@
     "skin_rejected": { "message": "Minecraft no aceptó esta skin.", "fix": "Vuelve a intentarlo en un minuto. Si sigue pasando, exporta el PNG y revisa que sea de 64 × 64." },
     "skin_offline_account": { "message": "Las cuentas sin conexión no pueden cambiar su skin en Minecraft.", "fix": "Exporta el PNG, o cambia a una cuenta de Microsoft para usarlo." },
     "skin_version_not_found": { "message": "Esa versión de la skin ya no está guardada." },
+    "skin_catalog_unavailable": { "message": "No pudimos conectar con el catálogo de skins de Perland. Revisa tu conexión e inténtalo de nuevo." },
     "mod_not_jar": { "message": "Solo se pueden agregar archivos .jar como mods." },
     "mod_exists": { "message": "{{file}} ya está en esta instancia." },
     "mod_not_found": { "message": "{{file}} ya no está en esta instancia." },

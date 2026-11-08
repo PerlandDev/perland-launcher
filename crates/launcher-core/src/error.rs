@@ -109,6 +109,7 @@ error_codes! {
     SharePathInvalid, ShareTooLarge,
     // skins
     SkinInvalid, SkinNotFound, SkinRejected, SkinOfflineAccount, SkinVersionNotFound,
+    SkinCatalogUnavailable,
     // anything unexpected
     Internal,
 }
