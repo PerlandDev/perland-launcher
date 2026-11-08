@@ -18,7 +18,25 @@ afterEach(() => {
 const ID = 'skin-0a1b2c3d4e5f';
 const noop = () => {};
 
-function open(look?: SkinLook) {
+/** Holds the catalog's file reads while closed, so a change waits on its pieces. */
+function gate() {
+  let release: () => void = () => {};
+  let held: Promise<void> | null = null;
+  return {
+    close() {
+      held = new Promise((r) => (release = r));
+    },
+    open() {
+      held = null;
+      release();
+    },
+    get held() {
+      return held;
+    },
+  };
+}
+
+function open(look?: SkinLook, files = gate()) {
   const backend = createMockBackend();
   if (look) backend.state.skins.entries.find((e) => e.id === ID)!.look = look;
   const calls: [string, unknown][] = [];
@@ -34,6 +52,8 @@ function open(look?: SkinLook) {
   renderWithProviders(createElement(Harness), {
     ipc: (cmd, args) => {
       calls.push([cmd, args]);
+      const held = files.held;
+      if (cmd === 'skin_catalog_file' && held) return held.then(() => backend.handle(cmd, args));
       return backend.handle(cmd, args);
     },
   });
@@ -103,4 +123,47 @@ it('a plain skin keeps its texels as the painting under its first piece', async 
   expect(got.editor!.look!.painting).toBe(true);
   await act(() => vi.advanceTimersByTimeAsync(700));
   expect((sent(calls, 'skin_look_save') as { painting: string | null }[])[0]!.painting).toMatch(/^data:image\/png;base64,SUM/);
+});
+
+it('make part of the skin right after a colour change still loading keeps that colour', async () => {
+  const files = gate();
+  const cape = { id: 'back-cape', colours: { main: '#7a1f2b', trim: '#d4af37' } };
+  const { got } = open({ pieces: [{ id: 'body-plain', colours: { skin: '#d9a27c' } }, cape], painting: false }, files);
+  await waitFor(() => expect(got.ready).toBe(true));
+  const opened = new Uint8ClampedArray(got.doc!.pixels!.data);
+  files.close();
+  act(() => got.editor!.setColour('back-cape', 'main', '#123456'));
+  act(() => got.editor!.bakeAll());
+  files.open();
+  await waitFor(() => expect(got.editor!.look!.pieces).toEqual([]));
+  // The bake took the recoloured cape into the painting, not the skin as it was before the change landed.
+  expect(got.editor!.painting).toEqual(got.doc!.pixels!.data);
+  expect(got.editor!.painting).not.toEqual(opened);
+  act(() => got.doc!.undo());
+  await waitFor(() => expect(got.editor!.look!.pieces[1]!.colours.main).toBe('#123456'));
+});
+
+it('undo while a change is loading holds, and the change lands on what is left', async () => {
+  const files = gate();
+  const { got, calls } = open({ pieces: [{ id: 'body-plain', colours: { skin: '#d9a27c' } }], painting: false }, files);
+  await waitFor(() => expect(got.ready).toBe(true));
+  act(() => got.editor!.setColour('body-plain', 'skin', '#8d5524'));
+  await waitFor(() => expect(got.editor!.look!.pieces[0]!.colours.skin).toBe('#8d5524'));
+  files.close();
+  const scarf = await catalogPiece('neck-scarf');
+  const asked = sent(calls, 'skin_catalog_file').length;
+  act(() => got.editor!.putOn(scarf));
+  // The change is under way: it waits on the scarf's files.
+  await waitFor(() => expect(sent(calls, 'skin_catalog_file').length).toBeGreaterThan(asked));
+  act(() => got.doc!.undo());
+  // The undo holds while the scarf loads.
+  expect(got.editor!.look!.pieces[0]!.colours.skin).toBe('#d9a27c');
+  files.open();
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['body-plain', 'neck-scarf']));
+  expect(got.editor!.look!.pieces[0]!.colours.skin).toBe('#d9a27c');
+  // The scarf is a new step after the undo: nothing to redo, and one undo takes the scarf off.
+  expect(got.doc!.canRedo).toBe(false);
+  act(() => got.doc!.undo());
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['body-plain']));
+  expect(got.editor!.look!.pieces[0]!.colours.skin).toBe('#d9a27c');
 });

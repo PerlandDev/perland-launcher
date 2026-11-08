@@ -962,7 +962,11 @@
       "wearingNone": "No pieces on",
       "unavailable": "Piece no longer available",
       "unavailableNote": "Perland's catalog doesn't have this piece anymore. It stays on until you take it off.",
-      "loading": "Loading the pieces…"
+      "loading": "Loading the pieces…",
+      "pieceLoading": "Loading…",
+      "pieceOffline": "Piece",
+      "pieceOfflineNote": "Perland's catalog can't be reached, so this piece's name isn't known. It stays on.",
+      "armsNeedCatalog": "Changing arms needs Perland's catalog, to draw your pieces for the other arms. Try again when you're online."
     },
     "catalog": {
       "search": "Search looks",
@@ -1058,6 +1062,8 @@
     "resetView": "Reset view",
     "stageLabel": "Your figure in 3D. Drag on it to paint, drag around it to turn it.",
     "stageHint": "Drag the figure to paint. Drag around it, or right-drag, to turn it.",
+    "stageHintTurn": "Drag the figure, or right-drag, to turn it.",
+    "stageLabelTurn": "Your figure in 3D. Drag it to turn it.",
     "wear": "Wear this skin",
     "wearingNow": "Putting it on…",
     "worn": "You're wearing {{name}}",

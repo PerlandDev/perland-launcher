@@ -46,6 +46,7 @@ export function Stage({
   onPaint,
   onEnd,
   label,
+  paintable = true,
   ref,
 }: {
   pixels: Pixels | null;
@@ -62,6 +63,8 @@ export function Stage({
   onEnd: () => void;
   /** The figure's accessible name; the editor's (drag to paint) by default. */
   label?: string;
+  /** False: a drag on the figure turns it too, and nothing is painted or highlighted. */
+  paintable?: boolean;
   ref?: Ref<StageHandle>;
 }) {
   const { t } = useTranslation();
@@ -103,7 +106,7 @@ export function Stage({
   }, [scene, pixels, rev, hover, model]);
 
   const down = (event: PointerEvent<HTMLCanvasElement>) => {
-    const hit = event.button === 0 ? scene?.pick(event.clientX, event.clientY) : null;
+    const hit = paintable && event.button === 0 ? scene?.pick(event.clientX, event.clientY) : null;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     if (hit) {
       drag.current = { mode: 'paint', x: event.clientX, y: event.clientY };
@@ -123,6 +126,7 @@ export function Stage({
       d.y = event.clientY;
       return;
     }
+    if (!paintable) return;
     const hit = s.pick(event.clientX, event.clientY);
     onHover(hit ? [hit.x, hit.y] : null);
     if (d?.mode === 'paint' && hit) onPaint(hit.x, hit.y);

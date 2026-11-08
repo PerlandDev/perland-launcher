@@ -627,6 +627,8 @@
   grid-template-columns: clamp(11.5rem, 15vw, 14rem) minmax(0, 1fr) clamp(25rem, 34vw, 34rem);
 }
 .create-side {
+  /* The sticky action row's height: a field reached by keyboard scrolls clear above it, never under it. */
+  scroll-padding-bottom: 5rem;
   padding: 1rem;
   background: var(--color-panel);
   border-radius: 6px;
@@ -639,6 +641,9 @@
   min-height: 0;
 }
 .create-categories {
+  position: sticky;
+  top: 0;
+  align-self: start;
   display: grid;
   align-content: start;
   gap: 0.25rem;
@@ -843,7 +848,10 @@
   margin: 0 -1rem -1rem;
   padding: 0.75rem 1rem calc(1rem + 4px);
   background: var(--color-panel);
-  box-shadow: 0 -1px 0 var(--color-line);
+  /* A seam and a short fade over what scrolls under the row. */
+  box-shadow:
+    0 -1px 0 var(--color-line),
+    0 -10px 12px -6px rgb(0 0 0 / 0.45);
 }
 .wearing-row {
   display: flex;
@@ -902,7 +910,14 @@
   border-radius: 3px;
   cursor: pointer;
 }
-.wearing-x:hover {
+.wearing-chip[data-waiting] {
+  color: var(--color-ink-dim);
+}
+.wearing-x:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.wearing-x:hover:not(:disabled) {
   color: var(--color-ink);
   background: color-mix(in oklab, var(--color-raised), white 8%);
 }
@@ -1078,6 +1093,7 @@
     gap: 0.75rem;
   }
   .create-categories {
+    position: static;
     display: flex;
     gap: 0.25rem;
     margin: 0 -0.75rem;

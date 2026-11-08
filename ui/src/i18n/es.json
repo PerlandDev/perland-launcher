@@ -962,7 +962,11 @@
       "wearingNone": "No llevas piezas",
       "unavailable": "Pieza ya no disponible",
       "unavailableNote": "El catálogo de Perland ya no tiene esta pieza. Se queda puesta hasta que te la quites.",
-      "loading": "Cargando las piezas…"
+      "loading": "Cargando las piezas…",
+      "pieceLoading": "Cargando…",
+      "pieceOffline": "Pieza",
+      "pieceOfflineNote": "No se puede conectar con el catálogo de Perland, así que no se sabe el nombre de esta pieza. Se queda puesta.",
+      "armsNeedCatalog": "Para cambiar los brazos se necesita el catálogo de Perland, que dibuja tus piezas para los otros brazos. Vuelve a intentarlo cuando tengas conexión."
     },
     "catalog": {
       "search": "Buscar estilos",
@@ -1058,6 +1062,8 @@
     "resetView": "Restablecer vista",
     "stageLabel": "Tu figura en 3D. Arrastra sobre ella para pintar y alrededor para girarla.",
     "stageHint": "Arrastra sobre la figura para pintar. Arrastra alrededor, o con clic derecho, para girarla.",
+    "stageHintTurn": "Arrastra la figura, o arrastra con el botón derecho, para girarla.",
+    "stageLabelTurn": "Tu figura en 3D. Arrástrala para girarla.",
     "wear": "Ponerme esta skin",
     "wearingNow": "Poniéndola…",
     "worn": "Ahora llevas {{name}}",

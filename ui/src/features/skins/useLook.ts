@@ -34,6 +34,8 @@ function startOf(look: LookState | null, pixels: Pixels): LookState {
   return look ?? { look: { pieces: [], painting: true }, painting: new Uint8ClampedArray(pixels.data) };
 }
 
+type Change = (state: LookState) => { next: LookState; key?: string; to?: SkinModel } | null;
+
 export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catalog: Catalog): LookEditor {
   const latest = useRef({ id, model, doc, catalog });
   useEffect(() => {
@@ -41,23 +43,45 @@ export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catal
   });
   // Changes run one after another, each on the look the one before left.
   const queue = useRef<Promise<void>>(Promise.resolve());
+  // Live colour changes waiting for their turn, by key: a newer one replaces the waiting one instead of queueing.
+  const waiting = useRef(new Map<string, { change: Change }>());
 
-  /** Runs `change` on the look as it is when its turn comes, then composes and records what it returns. */
-  const run = (change: (state: LookState) => { next: LookState; key?: string; to?: SkinModel } | null) => {
+  /**
+   * Runs `change` on the look as it is when its turn comes, then composes and records what it returns. When the skin
+   * changed while the pieces' files loaded (an Undo, a stroke), the change is worked out again on what is there now,
+   * so nothing the player did meanwhile is lost or undone behind their back. Without the catalog nothing changes: the
+   * pieces couldn't be drawn, and saving would strip them from the finished skin.
+   */
+  const run = (change: Change, coalesce?: string) => {
     const forId = latest.current.id;
-    if (!forId) return;
+    if (!forId || !latest.current.catalog.manifest) return;
+    if (coalesce) {
+      const queued = waiting.current.get(coalesce);
+      if (queued) {
+        queued.change = change;
+        return;
+      }
+    }
+    const entry = { change };
+    if (coalesce) waiting.current.set(coalesce, entry);
     queue.current = queue.current.then(async () => {
-      const { doc: d, catalog: c, model: m } = latest.current;
-      const now = d.current(forId);
-      if (!now) return;
-      const result = change(startOf(now.look, now.pixels));
-      if (!result) return;
-      const { next, key, to } = result;
+      if (coalesce && waiting.current.get(coalesce) === entry) waiting.current.delete(coalesce);
       try {
-        const layers = await c.layers(next.look, to ?? m);
-        // The skin may have changed meanwhile (another skin opened): drop the change then.
-        if (!latest.current.doc.current(forId)) return;
-        latest.current.doc.changeLook(next, compose(next.painting, layers), { key, model: to && to !== m ? { before: m, after: to } : undefined });
+        for (;;) {
+          const { doc: d, catalog: c, model: m } = latest.current;
+          const now = d.current(forId);
+          if (!now) return;
+          const result = entry.change(startOf(now.look, now.pixels));
+          if (!result) return;
+          const { next, key, to } = result;
+          const layers = await c.layers(next.look, to ?? m);
+          const after = latest.current.doc.current(forId);
+          // Another skin opened meanwhile: drop the change.
+          if (!after) return;
+          if (after.version !== now.version) continue;
+          latest.current.doc.changeLook(next, compose(next.painting, layers), { key, model: to && to !== m ? { before: m, after: to } : undefined });
+          return;
+        }
       } catch (error) {
         pushError(error);
       }
@@ -78,16 +102,21 @@ export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catal
         const worn = s.look.pieces.find((w) => w.id === pieceId);
         if (!worn || worn.colours[areaId]?.toLowerCase() === hex.toLowerCase()) return null;
         return { next: withLook(s, setColour(s.look, pieceId, areaId, hex)), key: live ? `colour:${pieceId}:${areaId}` : undefined };
-      }),
+      }, live ? `colour:${pieceId}:${areaId}` : undefined),
     applyLook: (catalogLook) => run((s) => ({ next: withLook(s, applyLook(s.look, catalogLook)) })),
     bakeAll: () => {
       const forId = latest.current.id;
-      const now = forId ? doc.current(forId) : null;
-      if (!now) return;
-      const composed = new Uint8ClampedArray(now.pixels.data);
-      const baked = bakeAll(now.look?.painting ?? null, composed);
-      // The finished skin is unchanged, so nothing waits on the catalog.
-      queue.current = queue.current.then(() => latest.current.doc.changeLook({ look: baked.look, painting: baked.painting }, composed));
+      if (!forId) return;
+      // Read when its turn comes, so a change still loading lands first and is kept in the painting.
+      queue.current = queue.current.then(() => {
+        const d = latest.current.doc;
+        const now = d.current(forId);
+        if (!now) return;
+        const composed = new Uint8ClampedArray(now.pixels.data);
+        const baked = bakeAll(now.look?.painting ?? null, composed);
+        // The finished skin is unchanged, so nothing waits on the catalog.
+        d.changeLook({ look: baked.look, painting: baked.painting }, composed);
+      });
     },
     switchModel: (to) =>
       run((s) => {

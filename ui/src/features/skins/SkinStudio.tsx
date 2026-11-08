@@ -102,6 +102,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const catalog = useCatalog();
   const editor = useLook(selected?.id ?? null, model, doc, catalog);
   const lang: Lang = i18n.language.startsWith('es') ? 'es' : 'en';
+  const armsLocked = doc.look !== null && !catalog.manifest;
 
   const [tab, setTab] = useState<Tab>('paint');
   const [tool, setTool] = useState<Tool>('pencil');
@@ -273,7 +274,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
 
   const strokeOpts = { tool, color, mirror, darken, opacity: opacity / 100 };
   const paintAt = (x: number, y: number, joined: boolean) => {
-    if (previewing) return;
+    if (previewing || tab !== 'paint') return;
     if (tool === 'picker') {
       const c = doc.pixels?.get(x, y);
       if (c && c[3] > 0) setColor([c[0], c[1], c[2], 255]);
@@ -450,7 +451,18 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               <div className="stage-bar">
                 <div role="radiogroup" aria-label={t('skins.arms')} className="flex gap-2">
                   {(['classic', 'slim'] as const).map((m) => (
-                    <button key={m} type="button" role="radio" aria-checked={model === m} className="seg seg-sm" data-checked={model === m || undefined} onClick={() => selected && (doc.look && catalog.manifest ? editor.switchModel(m) : doc.switchModel(m))}>
+                    <button
+                      key={m}
+                      type="button"
+                      role="radio"
+                      aria-checked={model === m}
+                      className="seg seg-sm"
+                      data-checked={model === m || undefined}
+                      // A skin wearing pieces needs the catalog to draw them for the other arms.
+                      disabled={armsLocked}
+                      title={armsLocked ? t('skins.create.armsNeedCatalog') : undefined}
+                      onClick={() => selected && (doc.look ? editor.switchModel(m) : doc.switchModel(m))}
+                    >
                       {t(`skins.model.${m}`)}
                     </button>
                   ))}
@@ -491,6 +503,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
                   onBegin={doc.begin}
                   onPaint={(x, y) => paintAt(x, y, false)}
                   onEnd={doc.end}
+                  paintable={tab === 'paint'}
+                  label={tab === 'paint' ? undefined : t('skins.stageLabelTurn')}
                   ref={stage}
                 />
                 <div className="stage-view">
@@ -519,7 +533,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
                     </div>
                   </div>
                 ) : (
-                  <p className="stage-hint text-sm text-ink-dim">{t('skins.stageHint')}</p>
+                  <p className="stage-hint text-sm text-ink-dim">{tab === 'paint' ? t('skins.stageHint') : t('skins.stageHintTurn')}</p>
                 )}
                 <div className="stage-wear" hidden={previewing}>
                   {wearer?.provider === 'microsoft' ? (
@@ -571,7 +585,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         )}
       </div>
 
-      {tab === 'create' && <WearingRow worn={editor.look?.pieces ?? []} pieces={catalog.manifest?.pieces ?? []} lang={lang} onTakeOff={editor.takeOff} />}
+      {tab === 'create' && <WearingRow worn={editor.look?.pieces ?? []} pieces={catalog.manifest?.pieces ?? null} loading={catalog.loading} lang={lang} onTakeOff={editor.takeOff} />}
 
       {tab === 'paint' && (
         <Hotbar

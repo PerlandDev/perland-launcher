@@ -114,6 +114,7 @@ function LookPreview({ catalog, manifest, look, lang, owner, onAdded }: { catalo
           paused={false}
           hover={null}
           label={t('skins.catalog.figure', { name })}
+          paintable={false}
           onHover={noop}
           onBegin={noop}
           onPaint={noop}

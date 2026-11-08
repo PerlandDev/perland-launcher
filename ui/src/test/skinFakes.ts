@@ -43,8 +43,23 @@ export function fakeCodec() {
   };
 }
 
-/** The stage without WebGL: an element that names the checksum of what it draws. */
-export const FakeStage = forwardRef(function FakeStage({ pixels, rev }: { pixels: Pixels | null; rev: number }, ref) {
+/** The stage without WebGL: an element that names the checksum of what it draws. A press paints texel (10, 10) when
+ *  the stage is paintable, as a press on the figure's face would. */
+export const FakeStage = forwardRef(function FakeStage(
+  { pixels, rev, paintable = true, label, onBegin, onPaint, onEnd }: { pixels: Pixels | null; rev: number; paintable?: boolean; label?: string; onBegin: () => void; onPaint: (x: number, y: number) => void; onEnd: () => void },
+  ref,
+) {
   useImperativeHandle(ref, () => ({ resetView() {}, zoom() {}, celebrate() {} }));
-  return createElement('div', { 'data-testid': 'stage', 'data-rev': rev, 'data-sum': pixels ? checksum(pixels.data) : '' });
+  return createElement('div', {
+    'data-testid': 'stage',
+    'data-rev': rev,
+    'data-sum': pixels ? checksum(pixels.data) : '',
+    'aria-label': label,
+    onPointerDown: () => {
+      if (!paintable) return;
+      onBegin();
+      onPaint(10, 10);
+      onEnd();
+    },
+  });
 });

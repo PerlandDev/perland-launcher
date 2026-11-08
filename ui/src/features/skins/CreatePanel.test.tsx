@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
 import type { SkinLook } from '../../ipc/schema';
@@ -23,19 +23,22 @@ const TEE = { id: 'top-tee', colours: { main: '#e8e4dc', trim: '#3a6ea5' } };
 const BODY = { id: 'body-plain', colours: { skin: '#d9a27c' } };
 
 /** The Skins screen on its first skin, wearing `look`, opened on the Create tab. */
-async function openCreate(look?: SkinLook) {
+async function openCreate(look?: SkinLook, { catalog = 'fresh' }: { catalog?: 'fresh' | 'unavailable' | 'never' } = {}) {
   const backend = createMockBackend();
   if (look) backend.state.skins.entries.find((e) => e.id === ID)!.look = look;
+  if (catalog === 'unavailable') backend.state.skins.catalogStatus = 'unavailable';
   const calls: [string, unknown][] = [];
   const result = renderWithProviders(<SkinStudio />, {
     ipc: (cmd, args) => {
       calls.push([cmd, args]);
+      // 'never': the catalog is still loading for the whole test.
+      if (cmd === 'skin_catalog' && catalog === 'never') return new Promise(() => {});
       return backend.handle(cmd, args);
     },
   });
   await screen.findByText('Saved');
   await result.user.click(screen.getByRole('tab', { name: 'Create' }));
-  await screen.findByRole('group', { name: 'Categories' });
+  if (catalog === 'fresh') await screen.findByRole('group', { name: 'Categories' });
   return { ...result, calls, backend };
 }
 
@@ -143,4 +146,37 @@ it('a piece missing from the catalog stays worn and is labelled unavailable', as
   await waitFor(() => expect(chips()).toEqual(['Plain body', 'Piece no longer available', 'Cap']));
   await user.click(within(wearing()).getByRole('button', { name: 'Take off Piece no longer available' }));
   await waitFor(() => expect(chips()).toEqual(['Plain body', 'Cap']));
+});
+
+it('a drag on the figure in Create turns it and paints nothing', async () => {
+  const { user, calls } = await openCreate({ pieces: [BODY, TEE], painting: false });
+  expect(screen.getByText('Drag the figure, or right-drag, to turn it.')).toBeInTheDocument();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const before = stageSum();
+  fireEvent.pointerDown(screen.getByTestId('stage'));
+  await act(() => vi.advanceTimersByTimeAsync(700));
+  expect(stageSum()).toBe(before);
+  expect(sent(calls, 'skin_save')).toEqual([]);
+  expect(sent(calls, 'skin_look_save')).toEqual([]);
+  expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+  // The same press in Paint paints.
+  await user.click(screen.getByRole('tab', { name: 'Paint' }));
+  fireEvent.pointerDown(screen.getByTestId('stage'));
+  await waitFor(() => expect(stageSum()).not.toBe(before));
+});
+
+it('while the catalog loads, worn pieces wait: no names, no ×', async () => {
+  await openCreate({ pieces: [BODY, TEE], painting: false }, { catalog: 'never' });
+  await waitFor(() => expect(chips()).toEqual(['Loading…', 'Loading…']));
+  for (const x of within(wearing()).getAllByRole('button')) expect(x).toBeDisabled();
+  expect(screen.queryByText('Piece no longer available')).not.toBeInTheDocument();
+});
+
+it('without the catalog, a skin wearing pieces keeps them and its arms', async () => {
+  await openCreate({ pieces: [BODY, TEE], painting: false }, { catalog: 'unavailable' });
+  await waitFor(() => expect(chips()).toEqual(['Piece', 'Piece']));
+  for (const x of within(wearing()).getAllByRole('button')) expect(x).toBeDisabled();
+  const slim = screen.getByRole('radio', { name: 'Slim arms' });
+  expect(slim).toBeDisabled();
+  expect(slim).toHaveAttribute('title', expect.stringContaining("Perland's catalog"));
 });

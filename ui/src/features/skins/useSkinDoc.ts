@@ -46,8 +46,11 @@ export interface SkinDoc {
   replace(data: Uint8ClampedArray): void;
   /** The open skin's look, null for a plain painted skin. */
   look: LookState | null;
-  /** The open skin's look and texels as they are now, not as of the last render (null while `id` isn't open). */
-  current(id: string): { look: LookState | null; pixels: Pixels } | null;
+  /**
+   * The open skin's look and texels as they are now, not as of the last render (null while `id` isn't open).
+   * `version` changes with every step that changes them (a stroke, undo, redo, a look change, a restore, an arm switch).
+   */
+  current(id: string): { look: LookState | null; pixels: Pixels; version: number } | null;
   /**
    * Gives the skin a new look (null: plain) whose finished texels are `composed`, as one undo step. `key` joins quick
    * changes of one thing (a colour being dragged) into one step; `model` switches the arms in the same step.
@@ -60,6 +63,8 @@ class DocStore {
   id: string | null = null;
   pixels: Pixels | null = null;
   look: LookState | null = null;
+  /** Bumped by every change of texels or look that goes through history, so async work can tell it was overtaken. */
+  version = 0;
   /** The saved skin has a look, so saving a plain one clears it first. */
   savedLook = false;
   history = new History();
@@ -82,6 +87,7 @@ class DocStore {
     this.pixels = new Pixels(data);
     this.look = look;
     this.savedLook = look !== null;
+    this.version += 1;
     this.history.clear();
     this.dirty = false;
   }
@@ -119,6 +125,7 @@ class DocStore {
     this.look = null;
     this.savedLook = false;
     this.history.push(changes, undefined, look);
+    this.version += 1;
     return true;
   }
 
@@ -137,6 +144,7 @@ class DocStore {
     }
     for (const c of changes) px.set(c.x, c.y, c.after);
     this.history.pushLook(changes, { before: this.look, after: next }, opts);
+    this.version += 1;
     this.look = next;
     return true;
   }
@@ -181,15 +189,20 @@ class DocStore {
     this.last = null;
     if (!done || done.length === 0) return false;
     this.history.push(mergeStroke(done));
+    this.version += 1;
     return true;
   }
 
   undo(onModel: (model: SkinModel) => void): boolean {
-    return !!this.pixels && this.history.undo(this.pixels, { onModel, onLook: (look) => (this.look = look) });
+    const done = !!this.pixels && this.history.undo(this.pixels, { onModel, onLook: (look) => (this.look = look) });
+    if (done) this.version += 1;
+    return done;
   }
 
   redo(onModel: (model: SkinModel) => void): boolean {
-    return !!this.pixels && this.history.redo(this.pixels, { onModel, onLook: (look) => (this.look = look) });
+    const done = !!this.pixels && this.history.redo(this.pixels, { onModel, onLook: (look) => (this.look = look) });
+    if (done) this.version += 1;
+    return done;
   }
 
   /** Switches the arms from `from` to `to`; true when texels changed. */
@@ -198,6 +211,7 @@ class DocStore {
     if (!px || from === to) return false;
     const changes = fitsModel(px, to) ? [] : convertArms(px, from, to);
     this.history.push(changes, { before: from, after: to });
+    this.version += 1;
     return changes.length > 0;
   }
 
@@ -342,7 +356,7 @@ export function useSkinDoc(
       if (open && store.replace(data)) bump();
     },
     look: open ? store.look : null,
-    current: (forId) => (store.id === forId && store.pixels ? { look: store.look, pixels: store.pixels } : null),
+    current: (forId) => (store.id === forId && store.pixels ? { look: store.look, pixels: store.pixels, version: store.version } : null),
     changeLook: (next, composed, opts = {}) => {
       if (!open || !store.changeLook(next, composed, opts)) return;
       if (opts.model) onModel(opts.model.after);
