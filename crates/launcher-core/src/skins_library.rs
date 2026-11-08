@@ -349,7 +349,8 @@ impl SkinLibrary {
 
     /// Saves the look of `id`: the finished `texture` (`<id>.png`) and, when the player painted
     /// on it, their `painting` (`<id>.paint.png`; removed when `None`). A history version of the
-    /// finished image is taken as `save_texture` does.
+    /// finished image is taken as `save_texture` does. `look.painting` is derived from whether
+    /// `painting` bytes are passed; the caller's value is ignored.
     pub async fn save_look(
         &self,
         id: &str,
@@ -390,29 +391,36 @@ impl SkinLibrary {
         Ok(entry)
     }
 
-    /// The player's own painting of `id`, if it has one.
+    /// The player's own painting of `id`; `None` unless its look says it has one.
     pub async fn painting(&self, id: &str) -> Result<Option<Vec<u8>>> {
         if !valid_id(id) {
             return Err(not_found(id));
         }
+        if !self.entry(id).await?.look.is_some_and(|l| l.painting) {
+            return Ok(None);
+        }
         match tokio::fs::read(self.paint_png(id)).await {
             Ok(bytes) => Ok(Some(bytes)),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                self.entry(id).await?;
-                Ok(None)
-            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
             Err(e) => Err(e.into()),
         }
     }
 
     /// Every catalog file of every piece any skin's look wears, across all owners. Pieces the
-    /// manifest doesn't list are skipped.
-    pub async fn look_hashes(&self, manifest: &Manifest) -> BTreeSet<String> {
+    /// manifest doesn't list are skipped. No list yet is an empty set; a list that can't be read
+    /// or parsed is an error, so nobody prunes files a look may still need.
+    pub async fn look_hashes(&self, manifest: &Manifest) -> Result<BTreeSet<String>> {
         let _held = self.lock.lock().await;
         let mut out = BTreeSet::new();
-        let Ok(file) = self.read().await else {
-            return out;
+        let bytes = match tokio::fs::read(self.dir.join(LIST)).await {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+            Err(e) => return Err(e.into()),
         };
+        let file = serde_json::from_slice::<LibraryFile>(&bytes).map_err(|e| {
+            LauncherError::disk(ErrorCode::DiskIo, "The skin list couldn't be read")
+                .with_detail(e.to_string())
+        })?;
         for piece in file
             .skins
             .iter()
@@ -427,7 +435,7 @@ impl SkinLibrary {
                 }
             }
         }
-        out
+        Ok(out)
     }
 
     /// Renames `id` and/or changes its arm model.
@@ -464,6 +472,17 @@ impl SkinLibrary {
             .iter()
             .find(|s| s.id == id)
             .ok_or_else(|| not_found(id))?;
+        let mut look = source.look.clone();
+        let paint = if look.as_ref().is_some_and(|l| l.painting) {
+            tokio::fs::read(self.paint_png(id)).await.ok()
+        } else {
+            None
+        };
+        if paint.is_none() {
+            if let Some(l) = look.as_mut() {
+                l.painting = false;
+            }
+        }
         let entry = SkinEntry {
             id: new_id(),
             name,
@@ -472,12 +491,7 @@ impl SkinLibrary {
             worn_by: None,
             owner: source.owner.clone(),
             seeded: false,
-            look: source.look.clone(),
-        };
-        let paint = if entry.look.as_ref().is_some_and(|l| l.painting) {
-            tokio::fs::read(self.paint_png(id)).await.ok()
-        } else {
-            None
+            look,
         };
         write_atomic(&self.png(&entry.id), &png).await?;
         if let Some(paint) = paint {
@@ -1277,11 +1291,47 @@ mod tests {
         lib.save_look(&b.id, look_of(&["two"]), None, &skin([2; 4]))
             .await
             .unwrap();
-        let hashes = lib.look_hashes(&manifest).await;
+        let hashes = lib.look_hashes(&manifest).await.unwrap();
         let want: BTreeSet<String> = ['a', 'b', 'c', 'd', 'm', 'n', 'o', 'p', 'f']
             .iter()
             .map(|c| h(*c))
             .collect();
         assert_eq!(hashes, want);
+    }
+    #[tokio::test]
+    async fn look_hashes_errors_on_a_damaged_list_and_is_empty_without_one() {
+        use crate::skin_catalog::Manifest;
+        let manifest = Manifest {
+            format_version: 1,
+            version: "0".repeat(64),
+            license: "CC0-1.0".into(),
+            slots: vec![],
+            tags: vec![],
+            pieces: vec![],
+            looks: vec![],
+        };
+        let (_dir, lib) = library();
+        assert!(lib.look_hashes(&manifest).await.unwrap().is_empty());
+        std::fs::create_dir_all(lib.dir()).unwrap();
+        std::fs::write(lib.dir().join(LIST), b"{ nope").unwrap();
+        assert!(lib.look_hashes(&manifest).await.is_err());
+        assert!(lib.dir().join(LIST).exists());
+    }
+
+    #[tokio::test]
+    async fn orphan_paint_file_is_not_served_and_lost_paint_is_not_copied() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        std::fs::write(paint_path(&lib, &a.id), skin([9; 4])).unwrap();
+        assert_eq!(lib.painting(&a.id).await.unwrap(), None);
+        lib.save_look(&a.id, look_of(&["a"]), Some(&skin([9; 4])), &skin([2; 4]))
+            .await
+            .unwrap();
+        std::fs::remove_file(paint_path(&lib, &a.id)).unwrap();
+        let b = lib.duplicate(&a.id, "B").await.unwrap();
+        assert!(!b.look.unwrap().painting);
     }
 }
