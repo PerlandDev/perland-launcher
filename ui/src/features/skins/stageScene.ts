@@ -48,18 +48,23 @@ function makeGeometry(positions: number[], uvs: number[], colors: number[], inde
   return geometry;
 }
 
+/** How far inside its edges a face's texture coordinates sit, in texels: far below one texel, well above rounding. */
+const UV_INSET = 0.01;
+
 /** A box's faces, placed relative to the joint it hangs from, textured from a `texW` × `texH` texture. */
-function geometryFor(box: { faces: Face[] }, pivot: Vec3, texW = SKIN_SIZE, texH = SKIN_SIZE): BufferGeometry {
+export function geometryFor(box: { faces: Face[] }, pivot: Vec3, texW = SKIN_SIZE, texH = SKIN_SIZE): BufferGeometry {
   const positions: number[] = [];
   const uvs: number[] = [];
   const colors: number[] = [];
   const index: number[] = [];
   box.faces.forEach((face, i) => {
     const [lt, rt, lb, rb] = face.corners;
-    const u0 = face.x / texW;
-    const u1 = (face.x + face.w) / texW;
-    const v0 = face.y / texH;
-    const v1 = (face.y + face.h) / texH;
+    // A hair inside the face: exactly on its edge the GPU may sample the texel beside it, which belongs to another
+    // face, and shows as a stray dot (or a dot floating on an empty outer layer).
+    const u0 = (face.x + UV_INSET) / texW;
+    const u1 = (face.x + face.w - UV_INSET) / texW;
+    const v0 = (face.y + UV_INSET) / texH;
+    const v1 = (face.y + face.h - UV_INSET) / texH;
     for (const p of [lt, rt, lb, rb]) positions.push(p[0] - pivot[0], p[1] - pivot[1], p[2] - pivot[2]);
     uvs.push(u0, v0, u1, v0, u0, v1, u1, v1);
     const b = brightness(face.normal);

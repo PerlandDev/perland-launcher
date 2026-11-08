@@ -9,10 +9,15 @@ import SkinStudio from './SkinStudio';
 
 // jsdom has no canvas or WebGL: the codec hands back the starter skin, and the 3D stage is unavailable (the screen
 // keeps working on the flat texture, as it would without WebGL).
+// A test that needs to tell saved textures apart turns `tagged` on: each texture then encodes to a digest of its texels.
+const encoding = vi.hoisted(() => ({
+  tagged: false,
+  digest: (data: Uint8ClampedArray) => `data:image/png;base64,DIGEST-${data.reduce((h, v, i) => (h * 31 + v * (i + 1)) % 1_000_000_007, 7)}`,
+}));
 vi.mock('./codec', () => ({
   // A kept version decodes to the blank figure, so restoring one changes texels.
   decodeTexture: (url: string) => Promise.resolve(url.includes('VERSION') ? blankSkin().data : starterSkin().data),
-  encodeTexture: () => 'data:image/png;base64,ENCODED',
+  encodeTexture: (data: Uint8ClampedArray) => (encoding.tagged ? encoding.digest(data) : 'data:image/png;base64,ENCODED'),
 }));
 vi.mock('./stageScene', () => ({
   createStage: () => {
@@ -28,6 +33,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
+  encoding.tagged = false;
 });
 
 const STEVE = '5627dd98-e6be-3c21-b8a8-e92344183641';
@@ -250,6 +256,26 @@ it('the picker takes a see-through texel at its own opacity', async () => {
   await user.keyboard('4');
   await paintTexel(41, 9);
   expect(slider).toHaveValue('40');
+});
+
+it('switching to slim arms and straight back gives back the very same arms', async () => {
+  encoding.tagged = true;
+  const { user, calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  await waitFor(() => expect(sent(calls, 'skin_texture').length).toBeGreaterThan(0));
+  const saved = () => sent(calls, 'skin_save').map((c) => (c as { texture: string }).texture);
+  const original = encoding.digest(starterSkin().data);
+  // Beach day's test texture is drawn for classic arms: first put its flag right.
+  await user.click(screen.getByRole('radio', { name: 'Classic arms' }));
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  await user.click(screen.getByRole('radio', { name: 'Slim arms' }));
+  await act(() => vi.advanceTimersByTimeAsync(700));
+  await waitFor(() => expect(saved()).toHaveLength(1));
+  expect(saved()[0]).not.toBe(original);
+  await user.click(screen.getByRole('radio', { name: 'Classic arms' }));
+  await act(() => vi.advanceTimersByTimeAsync(700));
+  await waitFor(() => expect(saved()).toHaveLength(2));
+  expect(saved()[1]).toBe(original);
 });
 
 it('switching arms redraws them into the new layout, and one undo puts both back', async () => {
