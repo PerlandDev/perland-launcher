@@ -370,7 +370,6 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   renderer.setClearColor(0x000000, 0);
   const scene = new Scene();
   const camera = new PerspectiveCamera(32, 1, 1, 600);
-  const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 
   const world = new Group();
   scene.add(world);
@@ -410,7 +409,6 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   let straight = false;
   let celebratedAt = -Infinity;
 
-  const still = () => motion?.matches === true;
   const raycaster = new Raycaster();
   const pointer = new Vector2();
 
@@ -434,7 +432,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       theHorse.group.position.y = Math.abs(gait) * 0.5;
       theHorse.tail.rotation.z = Math.sin(t * Math.PI * 2 * 0.8) * 0.18;
     }
-    const party = still() ? null : celebration((now - celebratedAt) / 1000);
+    const party = celebration((now - celebratedAt) / 1000);
     world.rotation.y = party?.spin ?? 0;
     world.position.y = party?.lift ?? 0;
   };
@@ -444,10 +442,10 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     place(now);
     aim();
     renderer.render(scene, camera);
-    // The figure is a little alive (breathing, looking around) while Animation is on, which is the player's own
-    // choice: under reduced motion the screen starts with it off. The celebration plays either way, except under
-    // reduced motion. A still stage redraws only when something changes.
-    const celebrating = !still() && now - celebratedAt < CELEBRATE_S * 1000;
+    // The figure is a little alive (breathing, looking around) while Animation is on; that switch is the player's,
+    // so the system's reduced-motion setting doesn't stop it. The celebration plays either way. A still stage
+    // redraws only when something changes.
+    const celebrating = now - celebratedAt < CELEBRATE_S * 1000;
     if (!straight || celebrating) frame = requestAnimationFrame(draw);
   };
   /** The pose's centre, and the distance at which the whole pose fits the stage. */
@@ -521,9 +519,6 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     for (let o = object; o; o = o.parent) if (!o.visible) return false;
     return true;
   };
-
-  const onMotion = () => invalidate();
-  motion?.addEventListener?.('change', onMotion);
 
   return {
     setTexture(next) {
@@ -611,7 +606,6 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     },
     dispose() {
       if (frame) cancelAnimationFrame(frame);
-      motion?.removeEventListener?.('change', onMotion);
       for (const { mesh } of [...meshes, ...wallMeshes]) mesh.geometry.dispose();
       texture.dispose();
       baseMaterial.dispose();

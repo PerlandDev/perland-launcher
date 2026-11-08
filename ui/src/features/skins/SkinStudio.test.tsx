@@ -401,15 +401,15 @@ it('one arms key switches classic and slim, each press to the other', async () =
   expect(screen.queryByRole('radiogroup', { name: 'Arms' })).not.toBeInTheDocument();
 });
 
-it('the stage bar reads arms, then Animation, then the pose', async () => {
+it('the stage bar reads arms, then the pose, then Animation', async () => {
   renderApp(<SkinStudio />);
   await screen.findByText('Saved');
   const bar = armsKey().parentElement!;
   const keys = within(bar).getAllByRole('button').map((b) => b.textContent?.trim());
-  expect(keys).toEqual(['Slim arms', 'Animation', 'Standing']);
+  expect(keys).toEqual(['Slim arms', 'Standing', 'Animation']);
 });
 
-it('when the system asks for less motion, Animation starts off, and turning it on still moves the figure', async () => {
+it("the system's reduced-motion setting doesn't turn Animation off: the switch is the player's", async () => {
   // jsdom has no matchMedia: stand one in that answers yes to reduced motion.
   const original = window.matchMedia;
   window.matchMedia = ((query: string) =>
@@ -418,9 +418,9 @@ it('when the system asks for less motion, Animation starts off, and turning it o
     const { user } = renderApp(<SkinStudio />);
     await screen.findByText('Saved');
     const animation = screen.getByRole('button', { name: 'Animation' });
-    expect(animation).toHaveAttribute('aria-pressed', 'false');
-    await user.click(animation);
     expect(animation).toHaveAttribute('aria-pressed', 'true');
+    await user.click(animation);
+    expect(animation).toHaveAttribute('aria-pressed', 'false');
   } finally {
     window.matchMedia = original;
   }
