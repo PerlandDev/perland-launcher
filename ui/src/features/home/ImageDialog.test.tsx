@@ -5,6 +5,14 @@ import { runStore } from '../../state/runStore';
 import { createMockBackend } from '../../ipc/mock';
 import type { Instance } from '../../ipc/schema';
 import { renderApp, sent } from '../../test/backend';
+
+/** The background positions saved, as `{ id, focus }`; a position alone always keeps the default zoom and edges. */
+const views = (calls: [string, unknown][]) =>
+  sent(calls, 'instance_banner_view_set').map((args) => {
+    const { id, view } = args as { id: string; view: { focus: unknown; zoom: unknown; edges: unknown } };
+    expect([view.zoom, view.edges]).toEqual([null, null]);
+    return { id, focus: view.focus };
+  });
 import { renderWithProviders } from '../../test/render';
 import { Home } from './Home';
 
@@ -227,9 +235,9 @@ describe('Change image: the position', () => {
       act(() => vi.advanceTimersByTime(299));
       // The marquee behind the dialog follows before the save.
       expect(homeBanner()?.style.objectPosition).toBe('45% 95%');
-      expect(sent(calls, 'instance_banner_focus_set')).toEqual([]);
+      expect(views(calls)).toEqual([]);
       act(() => vi.advanceTimersByTime(1));
-      await vi.waitFor(() => expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: { x: 45, y: 95 } }]));
+      await vi.waitFor(() => expect(views(calls)).toEqual([{ id: 'castle-keep', focus: { x: 45, y: 95 } }]));
     } finally {
       vi.useRealTimers();
     }
@@ -247,7 +255,7 @@ describe('Change image: the position', () => {
       // The 300 ms wait never ends: only closing can have sent it.
       vi.useRealTimers();
     }
-    await vi.waitFor(() => expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: { x: 55, y: 100 } }]));
+    await vi.waitFor(() => expect(views(calls)).toEqual([{ id: 'castle-keep', focus: { x: 55, y: 100 } }]));
   });
 
   it('saves a drag when the pointer is released', async () => {
@@ -260,11 +268,11 @@ describe('Change image: the position', () => {
     fireEvent.pointerMove(picture, { clientX: 160, clientY: 75, pointerId: 1 });
     expect(within(group).getByLabelText('Left to right')).toHaveValue('30');
     await vi.waitFor(() => expect(homeBanner()?.style.objectPosition).toBe('30% 25%'));
-    expect(sent(calls, 'instance_banner_focus_set')).toEqual([]);
+    expect(views(calls)).toEqual([]);
     // Past the edge it stops at the edge.
     fireEvent.pointerMove(picture, { clientX: 400, clientY: 75, pointerId: 1 });
     fireEvent.pointerUp(picture, { clientX: 400, clientY: 75, pointerId: 1 });
-    await vi.waitFor(() => expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: { x: 100, y: 25 } }]));
+    await vi.waitFor(() => expect(views(calls)).toEqual([{ id: 'castle-keep', focus: { x: 100, y: 25 } }]));
   });
 
   it('keeps the last shown point when the pointer is cancelled', async () => {
@@ -277,7 +285,7 @@ describe('Change image: the position', () => {
     fireEvent.pointerMove(picture, { clientX: 160, clientY: 75, pointerId: 1 });
     // A cancelled pointer (the OS took it) carries no real place: 0, 0 would be the top left.
     fireEvent.pointerCancel(picture, { clientX: 0, clientY: 0, pointerId: 1 });
-    await vi.waitFor(() => expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: { x: 30, y: 25 } }]));
+    await vi.waitFor(() => expect(views(calls)).toEqual([{ id: 'castle-keep', focus: { x: 30, y: 25 } }]));
   });
 
   it('goes back to the default with Reset', async () => {
@@ -287,13 +295,13 @@ describe('Change image: the position', () => {
     const group = await within(dialog).findByRole('group', { name: 'Position' });
     expect(within(group).getByLabelText('Left to right')).toHaveValue('30');
     await user.click(within(group).getByRole('button', { name: 'Reset' }));
-    expect(sent(calls, 'instance_banner_focus_set')).toEqual([{ id: 'castle-keep', focus: null }]);
+    expect(views(calls)).toEqual([{ id: 'castle-keep', focus: null }]);
     expect(within(group).getByLabelText('Top to bottom')).toHaveValue('100');
     await vi.waitFor(() => expect(homeBanner()?.style.objectPosition).toBe(''));
     // Already the default: nothing more to send.
     expect(within(group).getByRole('button', { name: 'Reset' })).toHaveAttribute('aria-disabled', 'true');
     await user.click(within(group).getByRole('button', { name: 'Reset' }));
-    expect(sent(calls, 'instance_banner_focus_set')).toHaveLength(1);
+    expect(views(calls)).toHaveLength(1);
   });
 
   it('starts a new picture from the default, and leaves a landscape alone', async () => {
@@ -311,7 +319,7 @@ describe('Change image: the position', () => {
     const { user, backend } = castle();
     const handle = backend.handle;
     vi.spyOn(backend, 'handle').mockImplementation((cmd, args) =>
-      cmd === 'instance_banner_focus_set'
+      cmd === 'instance_banner_view_set'
         ? Promise.reject({ category: 'disk', code: 'banner_focus_invalid', message: 'That position is outside the picture', fix: null, detail: null, params: {} })
         : handle(cmd, args),
     );

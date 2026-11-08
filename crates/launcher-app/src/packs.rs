@@ -5,7 +5,7 @@ use std::{path::Path, sync::Arc};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
     fsutil::{path_key, write_atomic},
-    instances::{ArtMode, Focus, IconMode, Instance, SourceRef},
+    instances::{ArtMode, Focus, IconMode, Instance, SourceRef, MAX_BANNER_ZOOM, MIN_BANNER_ZOOM},
     mods,
     picture::{self, BACKGROUND_FIT, MAX_SOURCE_BYTES, THUMBNAIL_FIT},
     sources::{
@@ -23,8 +23,8 @@ use crate::{
     app::{busy, AppCore},
     deep_link::{self, DeepLink},
     dto::{
-        ArtChoice, IconChoice, InstanceArtData, ManualProgress, OptionalChoice, PackAddRequest,
-        PackContents, PackMod, PackStatus, PackUpdate,
+        ArtChoice, BannerView, IconChoice, InstanceArtData, ManualProgress, OptionalChoice,
+        PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate,
     },
     events::{AppEvent, Host},
     runner::Runner,
@@ -496,8 +496,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 instance.art = ArtMode::Custom
             }
         }
-        // A new picture starts from the default position.
+        // A new picture starts from the default view.
         instance.banner_focus = None;
+        instance.banner_zoom = None;
+        instance.banner_edges = None;
         if instance.icon.is_none() {
             if icon == IconMode::Custom {
                 self.pin_legacy_icon(id, &custom).await?;
@@ -565,28 +567,38 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Ok(thumbnail.map(|jpeg| format!("data:image/jpeg;base64,{}", STANDARD.encode(jpeg))))
     }
 
-    /// "Change image…", the background's position: which part of a picture background stays in
-    /// view (`None` is the default). The same refusals as `instance_art_set`, and only this field
-    /// is saved.
-    pub async fn instance_banner_focus_set(
-        &self,
-        id: &str,
-        focus: Option<Focus>,
-    ) -> Result<Instance> {
+    /// "Adjust the background": which point of a picture background stays in view, how big it is
+    /// drawn and what fills the edges, saved together (`None` is each one's default). The same
+    /// refusals as `instance_art_set`, and only these fields are saved.
+    pub async fn instance_banner_view_set(&self, id: &str, view: BannerView) -> Result<Instance> {
         if self.is_busy(id) {
             return Err(busy(id));
         }
         if self.is_installing(id) {
             return Err(crate::browse::content_installing());
         }
-        if focus.is_some_and(|f| f.x > Focus::MAX || f.y > Focus::MAX) {
+        if view
+            .focus
+            .is_some_and(|f| f.x > Focus::MAX || f.y > Focus::MAX)
+        {
             return Err(LauncherError::disk(
                 ErrorCode::BannerFocusInvalid,
                 "That position is outside the picture",
             ));
         }
+        if view
+            .zoom
+            .is_some_and(|z| !(MIN_BANNER_ZOOM..=MAX_BANNER_ZOOM).contains(&z))
+        {
+            return Err(LauncherError::disk(
+                ErrorCode::BannerZoomInvalid,
+                "That zoom is out of range",
+            ));
+        }
         let mut instance = self.instances.load(id).await?;
-        instance.banner_focus = focus;
+        instance.banner_focus = view.focus;
+        instance.banner_zoom = view.zoom;
+        instance.banner_edges = view.edges;
         self.instances.save(&instance).await?;
         Ok(instance)
     }
@@ -674,7 +686,7 @@ mod tests {
 
     use launcher_core::{
         accounts::BuildKind,
-        instances::{ArtMode, Focus, IconMode, SourceRef, UpdatePolicy},
+        instances::{ArtMode, BannerEdges, Focus, IconMode, SourceRef, UpdatePolicy},
         sources::{art::MAX_ART_BYTES, PackInput, UpdateCheck},
         sync::{lockfile, manual::Scanner},
         ErrorCode, LauncherError,
@@ -684,7 +696,10 @@ mod tests {
     use crate::{
         app::{tests::core, ManualState},
         deep_link::DeepLink,
-        dto::{ArtChoice, IconChoice, InstanceArtData, NewInstance, OpenTarget, PackAddRequest},
+        dto::{
+            ArtChoice, BannerView, IconChoice, InstanceArtData, NewInstance, OpenTarget,
+            PackAddRequest,
+        },
         events::{AppEvent, RunStateKind::*},
         testing::{
             desired, exit, invite, managed_for, manual_file, pack_file, pack_instance, pending,
@@ -1869,8 +1884,12 @@ mod tests {
         assert!(!core.instances.perland_dir(&id).join("custom").exists());
     }
 
+    fn view(focus: Option<Focus>, zoom: Option<u16>, edges: Option<BannerEdges>) -> BannerView {
+        BannerView { focus, zoom, edges }
+    }
+
     #[tokio::test]
-    async fn banner_focus_is_saved_and_reset_by_a_new_background() {
+    async fn banner_view_is_saved_and_reset_by_a_new_background() {
         let (core, _runner, _host, tmp) = core(BuildKind::Dev);
         let id = pack_instance(&core, "Sky", None).await.id;
         core.instance_art_set(
@@ -1882,54 +1901,79 @@ mod tests {
         .await
         .unwrap();
         let focus = Focus { x: 20, y: 80 };
-        let set = core
-            .instance_banner_focus_set(&id, Some(focus))
-            .await
-            .unwrap();
+        let chosen = view(Some(focus), Some(150), Some(BannerEdges::Pixel));
+        let set = core.instance_banner_view_set(&id, chosen).await.unwrap();
         assert_eq!(set.banner_focus, Some(focus));
+        assert_eq!(set.banner_zoom, Some(150));
+        assert_eq!(set.banner_edges, Some(BannerEdges::Pixel));
         let loaded = core.instances.load(&id).await.unwrap();
         assert_eq!(loaded.banner_focus, Some(focus));
-        assert_eq!(loaded.art, ArtMode::Custom, "only the position changes");
+        assert_eq!(loaded.banner_zoom, Some(150));
+        assert_eq!(loaded.banner_edges, Some(BannerEdges::Pixel));
+        assert_eq!(loaded.art, ArtMode::Custom, "only the view changes");
         // Back to the default.
-        let set = core.instance_banner_focus_set(&id, None).await.unwrap();
-        assert_eq!(set.banner_focus, None);
-        core.instance_banner_focus_set(&id, Some(focus))
+        let set = core
+            .instance_banner_view_set(&id, view(None, None, None))
             .await
             .unwrap();
-        // Any new background starts from the default position.
+        assert_eq!(
+            (set.banner_focus, set.banner_zoom, set.banner_edges),
+            (None, None, None)
+        );
+        core.instance_banner_view_set(&id, chosen).await.unwrap();
+        // Any new background starts from the default view.
         let set = core
             .instance_art_set(&id, ArtChoice::Generated { seed: "sky".into() })
             .await
             .unwrap();
-        assert_eq!(set.banner_focus, None);
-        assert_eq!(core.instances.load(&id).await.unwrap().banner_focus, None);
+        assert_eq!(
+            (set.banner_focus, set.banner_zoom, set.banner_edges),
+            (None, None, None)
+        );
+        let loaded = core.instances.load(&id).await.unwrap();
+        assert_eq!(
+            (loaded.banner_focus, loaded.banner_zoom, loaded.banner_edges),
+            (None, None, None)
+        );
     }
 
     #[tokio::test]
-    async fn banner_focus_over_100_is_refused() {
+    async fn banner_view_out_of_range_is_refused() {
         let (core, _runner, _host, _tmp) = core(BuildKind::Dev);
         let id = pack_instance(&core, "Sky", None).await.id;
         let path = core.instances.instance_dir(&id).join("instance.json");
         let before = std::fs::read(&path).unwrap();
         for focus in [Focus { x: 101, y: 0 }, Focus { x: 0, y: 255 }] {
             let err = core
-                .instance_banner_focus_set(&id, Some(focus))
+                .instance_banner_view_set(&id, view(Some(focus), None, None))
                 .await
                 .unwrap_err();
             assert_eq!(err.code, ErrorCode::BannerFocusInvalid);
         }
+        for zoom in [0, 24, 301] {
+            let err = core
+                .instance_banner_view_set(&id, view(None, Some(zoom), None))
+                .await
+                .unwrap_err();
+            assert_eq!(err.code, ErrorCode::BannerZoomInvalid);
+        }
         assert_eq!(std::fs::read(&path).unwrap(), before);
-        // The edges are inside the picture.
+        // The ends of each range are allowed.
         let edge = Focus { x: 100, y: 0 };
-        let set = core
-            .instance_banner_focus_set(&id, Some(edge))
-            .await
-            .unwrap();
-        assert_eq!(set.banner_focus, Some(edge));
+        for zoom in [25, 300] {
+            let set = core
+                .instance_banner_view_set(&id, view(Some(edge), Some(zoom), None))
+                .await
+                .unwrap();
+            assert_eq!(
+                (set.banner_focus, set.banner_zoom),
+                (Some(edge), Some(zoom))
+            );
+        }
     }
 
     #[tokio::test]
-    async fn banner_focus_refused_while_busy() {
+    async fn banner_view_refused_while_busy() {
         let (core, _runner, _host, _tmp) = core(BuildKind::Dev);
         let id = pack_instance(&core, "Sky", None).await.id;
         core.runs.lock().unwrap().insert(
@@ -1945,20 +1989,21 @@ mod tests {
                 synced: None,
             },
         );
-        let focus = Some(Focus { x: 20, y: 80 });
+        let chosen = view(Some(Focus { x: 20, y: 80 }), Some(60), None);
         let err = core
-            .instance_banner_focus_set(&id, focus)
+            .instance_banner_view_set(&id, chosen)
             .await
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::InstanceBusy);
         core.runs.lock().unwrap().clear();
         core.installing.lock().unwrap().insert(id.clone());
         let err = core
-            .instance_banner_focus_set(&id, focus)
+            .instance_banner_view_set(&id, chosen)
             .await
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::ContentInstalling);
-        assert_eq!(core.instances.load(&id).await.unwrap().banner_focus, None);
+        let loaded = core.instances.load(&id).await.unwrap();
+        assert_eq!((loaded.banner_focus, loaded.banner_zoom), (None, None));
     }
 
     #[tokio::test]

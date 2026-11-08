@@ -13,7 +13,7 @@ import type {
   ContentKind,
   DeepLink,
   EmailCodeSent,
-  Focus,
+  BannerView,
   IconChoice,
   ImageKind,
   ImportPreview,
@@ -203,7 +203,7 @@ export const commands = {
   instanceScreenshots: (id: string) => invoke<string[]>('instance_screenshots', { id }),
   instanceScreenshot: (id: string, name: string) => invoke<string | null>('instance_screenshot', { id, name }),
   instanceIconSet: (id: string, choice: IconChoice) => invoke<Instance>('instance_icon_set', { id, choice }),
-  instanceBannerFocusSet: (id: string, focus: Focus | null) => invoke<Instance>('instance_banner_focus_set', { id, focus }),
+  instanceBannerViewSet: (id: string, view: BannerView) => invoke<Instance>('instance_banner_view_set', { id, view }),
   deepLinkTake: () => invoke<DeepLink | null>('deep_link_take'),
   /** The canonical invite a pasted link stands for (an invite, or a server's copied modpack link), or null for a pack link. */
   inviteFromLink: (link: string) => invoke<string | null>('invite_from_link', { link }),

@@ -30,8 +30,8 @@
       "x": 30,
       "y": 60
     },
-    "bannerZoom": null,
-    "bannerEdges": null
+    "bannerZoom": 150,
+    "bannerEdges": "pixel"
   },
   "added": [
     "sodium-fabric-0.5.11+mc1.20.1.jar"

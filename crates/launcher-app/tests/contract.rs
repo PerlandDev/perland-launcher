@@ -14,15 +14,15 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AccountReady, AppInfo, ArtChoice, Build, ContentFile, ContinueKind, ContinueTarget,
-        EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice, ImportPreview,
-        ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
-        ManualProgress, MicrosoftSignInPhase, NameListView, NewInstance, NewsChangesView,
-        NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents, PackMod,
-        PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase, PerlandStats, PerlandStatus,
-        PlaytimeEntry, PublicServerCard, PublicServerPage, RestorePointDto, RunSnapshot,
-        ServerGame, ServerNews, ServerPack, ServerPlayers, ServerStatsView, ServerStatusView,
-        ServerTeam, SharePreview, SyncSummary, YourServerCard, YourServersPage,
+        AccountReady, AppInfo, ArtChoice, BannerView, Build, ContentFile, ContinueKind,
+        ContinueTarget, EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice,
+        ImportPreview, ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
+        LinkCodeView, ManualProgress, MicrosoftSignInPhase, NameListView, NewInstance,
+        NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents,
+        PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase, PerlandStats,
+        PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage, RestorePointDto,
+        RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers, ServerStatsView,
+        ServerStatusView, ServerTeam, SharePreview, SyncSummary, YourServerCard, YourServersPage,
     },
     events::{AppEvent, CrashFix, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -38,9 +38,9 @@ use launcher_core::{
     download::Hashes,
     events::TaskId,
     instances::{
-        ArtMode, DamagedInstance, Focus, GameSpec, GameWindow, IconMode, Instance, InstanceListing,
-        JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdateHold,
-        UpdatePolicy,
+        ArtMode, BannerEdges, DamagedInstance, Focus, GameSpec, GameWindow, IconMode, Instance,
+        InstanceListing, JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus,
+        SourceRef, UpdateHold, UpdatePolicy,
     },
     invite::invite_link_cases,
     java::JavaFit,
@@ -134,8 +134,8 @@ fn fabric_instance() -> Instance {
         art: ArtMode::Auto,
         icon: None,
         banner_focus: Some(Focus { x: 30, y: 60 }),
-        banner_zoom: None,
-        banner_edges: None,
+        banner_zoom: Some(150),
+        banner_edges: Some(BannerEdges::Pixel),
         update_hold: None,
     }
 }
@@ -1523,6 +1523,26 @@ fn contract_fixtures_are_current() {
             },
             ArtChoice::Screenshot {
                 name: "2026-10-17_12.34.56.png".into(),
+            },
+        ],
+    );
+    check(
+        "banner_views",
+        vec![
+            BannerView {
+                focus: None,
+                zoom: None,
+                edges: None,
+            },
+            BannerView {
+                focus: Some(Focus { x: 70, y: 40 }),
+                zoom: Some(60),
+                edges: Some(BannerEdges::Pixel),
+            },
+            BannerView {
+                focus: Some(Focus { x: 0, y: 100 }),
+                zoom: Some(300),
+                edges: Some(BannerEdges::Dark),
             },
         ],
     );

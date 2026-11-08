@@ -29,6 +29,6 @@
     "x": 30,
     "y": 60
   },
-  "bannerZoom": null,
-  "bannerEdges": null
+  "bannerZoom": 150,
+  "bannerEdges": "pixel"
 }

@@ -8,7 +8,7 @@ use launcher_core::{
         plan::{ItemReason, PlanItem, PlanSkip},
         search::SortIndex,
     },
-    instances::{accent_of, Instance, LoaderSpec, ServerAddress, ServerStatus},
+    instances::{accent_of, BannerEdges, Focus, Instance, LoaderSpec, ServerAddress, ServerStatus},
     invite::{non_empty, shown_invite, EngineView, InviteLink, InvitePlayers},
     java::{JavaFit, JavaInstall, TEMURIN},
     meta::loaders::LoaderKind,
@@ -313,6 +313,18 @@ pub enum ArtChoice {
     Pack,
     Upload { path: PathBuf },
     Screenshot { name: String },
+}
+
+/// How a picture background sits in the marquee, saved together from "Adjust the background":
+/// which point stays in view, how big it is drawn (percent of the size that just covers the
+/// marquee) and what fills the marquee around it when it no longer covers it. `None` is each
+/// one's default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BannerView {
+    pub focus: Option<Focus>,
+    pub zoom: Option<u16>,
+    pub edges: Option<BannerEdges>,
 }
 
 /// What the player picked for the icon in "Change image…": the generated monogram, the pack's

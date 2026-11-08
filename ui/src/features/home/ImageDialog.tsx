@@ -12,8 +12,8 @@ import {
   useInstanceArt,
   useInstanceScreenshot,
   useInstanceScreenshots,
-  usePreviewBannerFocus,
-  useSetBannerFocus,
+  usePreviewBannerView,
+  useSetBannerView,
   useSetInstanceArt,
   useSetInstanceIcon,
 } from '../../state/queries';
@@ -205,8 +205,10 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
   const { t } = useTranslation();
   const setArt = useSetInstanceArt({ inline: true });
   const setIcon = useSetInstanceIcon({ inline: true });
-  const setFocus = useSetBannerFocus({ inline: true });
-  const previewFocus = usePreviewBannerFocus();
+  const setFocus = useSetBannerView({ inline: true });
+  const previewView = usePreviewBannerView();
+  // Position alone keeps the zoom and edges the instance already has.
+  const withFocus = (focus: Focus | null) => ({ focus, zoom: instance.bannerZoom, edges: instance.bannerEdges });
   const art = useInstanceArt(instance.id);
   const screenshots = useInstanceScreenshots(instance.id);
   const [allScreenshots, setAllScreenshots] = useState(false);
@@ -271,7 +273,7 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
   };
   const saveFocus = (focus: Focus | null) => {
     fresh();
-    setFocus.mutate({ id: instance.id, focus }, { onError: restartFocus });
+    setFocus.mutate({ id: instance.id, view: withFocus(focus) }, { onError: restartFocus });
   };
   const upload = async (apply: (path: string) => void) => {
     if (busy) return;
@@ -417,7 +419,7 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
                 picture={bannerPicture}
                 focus={restart ? restart.focus : instance.bannerFocus}
                 disabled={pictureBusy}
-                onPreview={(focus) => previewFocus(instance.id, focus)}
+                onPreview={(focus) => previewView(instance.id, withFocus(focus))}
                 onSave={saveFocus}
               />
             )}
