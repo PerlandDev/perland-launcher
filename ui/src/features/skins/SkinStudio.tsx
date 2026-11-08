@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { HumanArmsUp, Pause, Play, ZoomIn, ZoomOut } from 'pixelarticons/react';
+import { HumanArmsUp, ZoomIn, ZoomOut } from 'pixelarticons/react';
 import { commands } from '../../ipc/commands';
 import type { SkinEntry, SkinModel, SkinVersion } from '../../ipc/schema';
 import { useAccounts } from '../../state/queries';
@@ -98,8 +98,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const [darken, setDarken] = useState(true);
   const [paintLayer, setPaintLayer] = useState<Layer>('base');
   const [pose, setPose] = useState<Pose>('still');
-  // Pausing holds the figure on its current moment, whichever pose it takes next, until it's played again.
-  const [paused, setPaused] = useState(false);
+  // Animation on, the figure takes its pose; off, it stands square and still for painting, until a pose is picked.
+  const [animated, setAnimated] = useState(true);
   const poseMenu = useRef<MenuHandle>(null);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [hover, setHover] = useState<[number, number] | null>(null);
@@ -444,11 +444,15 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               label={t('skins.poseLabel')}
               trigger={false}
               className="contents"
-              items={POSES.map((p) => ({ id: p, label: t(`skins.pose.${p}`), icon: p === pose ? <span className="lamp" aria-hidden /> : undefined, onSelect: () => setPose(p) }))}
+              items={POSES.map((p) => ({ id: p, label: t(`skins.pose.${p}`), icon: p === pose ? <span className="lamp" aria-hidden /> : undefined, onSelect: () => {
+                  setPose(p);
+                  setAnimated(true);
+                },
+              }))}
             />
-            <Button icon={paused ? <Play /> : <Pause />} title={paused ? t('skins.playMotion') : t('skins.pauseMotion')} onClick={() => setPaused((p) => !p)}>
-              <span className="btn-label">{paused ? t('skins.playMotion') : t('skins.pauseMotion')}</span>
-            </Button>
+            <button type="button" className="seg seg-sm" aria-pressed={animated} data-checked={animated || undefined} title={t('skins.animationHint')} onClick={() => setAnimated((a) => !a)}>
+              {t('skins.animation')}
+            </button>
           </div>
 
           <div className="stage-well">
@@ -460,7 +464,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               hidden={hidden}
               paintLayer={paintLayer}
               pose={pose}
-              paused={paused}
+              straight={!animated}
               hover={hover}
               onHover={setHover}
               onBegin={doc.begin}

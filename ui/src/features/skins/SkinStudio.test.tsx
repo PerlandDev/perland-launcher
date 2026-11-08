@@ -384,16 +384,21 @@ it('switching arms redraws them into the new layout, and one undo puts both back
   expect(screen.getByRole('radio', { name: 'Classic arms' })).toHaveAttribute('aria-checked', 'true');
 });
 
-it('the figure can be paused and resumed, and stays paused across poses', async () => {
+it('Animation is on until turned off, which stands the figure straight; picking a pose turns it back on', async () => {
   const { user } = renderApp(<SkinStudio />);
   await screen.findByText('Saved');
-  await user.click(screen.getByRole('button', { name: 'Pause' }));
-  expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
+  const animation = screen.getByRole('button', { name: 'Animation' });
+  expect(animation).toHaveAttribute('aria-pressed', 'true');
+  await user.click(animation);
+  expect(animation).toHaveAttribute('aria-pressed', 'false');
+  await user.click(animation);
+  expect(animation).toHaveAttribute('aria-pressed', 'true');
+  // Off, then a pose picked (even the one shown): the figure moves again.
+  await user.click(animation);
   await user.click(screen.getByRole('button', { name: /^Pose/ }));
   await user.click(await screen.findByRole('menuitem', { name: 'Walking' }));
-  expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
-  await user.click(screen.getByRole('button', { name: 'Resume' }));
-  expect(screen.getByRole('button', { name: 'Pause' })).toBeInTheDocument();
+  expect(animation).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument();
 });
 
 it("switching accounts shows each account's own wardrobe", async () => {

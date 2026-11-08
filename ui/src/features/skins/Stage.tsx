@@ -40,7 +40,7 @@ export function Stage({
   hidden,
   paintLayer,
   pose,
-  paused,
+  straight,
   hover,
   onHover,
   onBegin,
@@ -54,7 +54,8 @@ export function Stage({
   hidden: Set<string>;
   paintLayer: Layer;
   pose: Pose;
-  paused: boolean;
+  /** Stands the figure straight and still for painting. */
+  straight: boolean;
   hover: [number, number] | null;
   onHover: (texel: [number, number] | null) => void;
   onBegin: () => void;
@@ -85,7 +86,7 @@ export function Stage({
   }, []);
   useImperativeHandle(ref, () => ({ resetView: () => scene?.resetView(), zoom: (f) => scene?.zoom(f), celebrate: () => scene?.celebrate() }), [scene]);
   useEffect(() => scene?.setPose(pose), [scene, pose]);
-  useEffect(() => scene?.setPaused(paused), [scene, paused]);
+  useEffect(() => scene?.setStraight(straight), [scene, straight]);
 
   useEffect(() => scene?.setModel(model), [scene, model]);
   useEffect(() => scene?.setPaintLayer(paintLayer), [scene, paintLayer]);
@@ -135,7 +136,11 @@ export function Stage({
     if (drag.current?.mode === 'paint') onEnd();
     drag.current = null;
   };
-  const wheel = (event: WheelEvent) => scene?.zoom(event.deltaY > 0 ? 1.1 : 1 / 1.1, event.clientX, event.clientY);
+  const wheel = (event: WheelEvent) => {
+    // Only the wheel's own turn zooms: tilting it sideways (or a sideways swipe) scrolls horizontally, deltaY 0.
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    scene?.zoom(event.deltaY > 0 ? 1.1 : 1 / 1.1, event.clientX, event.clientY);
+  };
 
   return (
     <canvas
