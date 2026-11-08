@@ -221,8 +221,9 @@ class DocStore {
       for (const [tx, ty] of points) done.push(...applyTool(working, model, opts.tool, tx, ty, opts, mirrorTexel, this.touched));
     } else {
       // Tools that read colours (Fill's region, Shade, Noise, a light Pencil) act on what the player sees at the
-      // painting's depth: the face pieces with the painting over them (the finished skin until the pieces load).
-      const seen = layers ? new Pixels(compose(working.data, layers.filter((l) => FACE_SLOTS.includes(l.slot)))) : px.clone();
+      // painting's depth: the face pieces with the painting over them (the painting alone until the pieces load, so the
+      // pieces on top never leak into it).
+      const seen = layers ? new Pixels(compose(working.data, layers.filter((l) => FACE_SLOTS.includes(l.slot)))) : working.clone();
       for (const [tx, ty] of points) {
         for (const c of applyTool(seen, model, opts.tool, tx, ty, opts, mirrorTexel, this.touched)) {
           done.push({ x: c.x, y: c.y, before: working.get(c.x, c.y), after: c.after });

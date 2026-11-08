@@ -305,3 +305,12 @@ it('switching arms clears the pieces-on-top hint', async () => {
   act(() => got.doc!.switchModel('slim'));
   expect(got.doc!.covered).toBe(false);
 });
+
+it('without the pieces, a shade reads the painting, never the pieces on top', async () => {
+  const { got } = open({ pieces: [BODY, TEE], painting: false }, gate(), true);
+  await waitFor(() => expect(got.doc!.pixels).not.toBeNull());
+  // Opaque on the finished skin, empty in the painting.
+  expect(at(got.doc!.pixels!.data, 5, 22)![3]).toBe(255);
+  strokeWith(got.doc!, 5, 22, { tool: 'shade', darken: true });
+  expect(at(got.editor!.painting, 5, 22)?.[3] ?? 0).toBe(0);
+});
