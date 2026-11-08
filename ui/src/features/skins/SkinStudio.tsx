@@ -22,7 +22,7 @@ import { Hotbar } from './Hotbar';
 import { POSES, type Pose } from './poses';
 import { SLOT_TOOLS } from './tools';
 import { PARTS, type Layer } from './layout';
-import { Pixels, toHex, type Rgba, type Tool } from './paint';
+import { pickPaint, Pixels, toHex, type Rgba, type Tool } from './paint';
 import { PartsPanel } from './PartsPanel';
 import { remember } from './recent';
 import { Stage, type StageHandle } from './Stage';
@@ -249,8 +249,11 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const paintAt = (x: number, y: number, joined: boolean) => {
     if (previewing) return;
     if (tool === 'picker') {
-      const c = doc.pixels?.get(x, y);
-      if (c && c[3] > 0) setColor([c[0], c[1], c[2], 255]);
+      const picked = doc.pixels && pickPaint(doc.pixels.get(x, y));
+      if (picked) {
+        setColor(picked.color);
+        setOpacity(picked.opacity);
+      }
       return;
     }
     doc.paint(x, y, strokeOpts, joined);

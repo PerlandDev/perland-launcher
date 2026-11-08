@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { History, HISTORY_CAP, mergeStroke } from './history';
 import { boxes, boxOf, faceAt } from './layout';
 import { mirrorTexel } from './mirror';
-import { applyTool, blend, floodRegion, fromHex, line, noise, Pixels, shade, toHex, type Rgba } from './paint';
+import { applyTool, blend, floodRegion, fromHex, line, noise, pickPaint, Pixels, shade, toHex, type Rgba } from './paint';
 import { blankSkin, starterSkin } from './starter';
 
 const RED: Rgba = [200, 0, 0, 255];
@@ -170,6 +170,17 @@ describe('tools', () => {
     const [r, g, b] = px.get(9, 9);
     applyTool(px, 'classic', 'eraser', 9, 9, { ...opts, opacity: 0.5 }, mirrorTexel);
     expect(px.get(9, 9)).toEqual([r, g, b, 128]);
+  });
+
+  it('the picker takes a texel\'s colour and its opacity', () => {
+    expect(pickPaint([10, 20, 30, 255])).toEqual({ color: [10, 20, 30, 255], opacity: 100 });
+    expect(pickPaint([10, 20, 30, 102])).toEqual({ color: [10, 20, 30, 255], opacity: 40 });
+    // Paint picked back at its own opacity lands as the same texel.
+    const { color, opacity } = pickPaint([10, 20, 30, 102])!;
+    expect(blend([0, 0, 0, 0], color, opacity / 100)).toEqual([10, 20, 30, 102]);
+    // The faintest paint still picks as 1%, the slider's least; an empty texel picks nothing.
+    expect(pickPaint([10, 20, 30, 1])).toEqual({ color: [10, 20, 30, 255], opacity: 1 });
+    expect(pickPaint([10, 20, 30, 0])).toBeNull();
   });
 
   it('line has no gaps', () => {

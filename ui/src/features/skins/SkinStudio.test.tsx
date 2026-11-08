@@ -237,6 +237,21 @@ it('the brush opacity starts full and can be turned down', async () => {
   expect(slider).toHaveAttribute('aria-valuetext', '40%');
 });
 
+it('the picker takes a see-through texel at its own opacity', async () => {
+  const { user } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  const slider = screen.getByRole('slider', { name: 'Opacity' });
+  // A texel of the empty outer layer painted at 40%…
+  await user.click(within(screen.getByRole('radiogroup', { name: 'Paint on' })).getByRole('radio', { name: 'Outer' }));
+  fireEvent.change(slider, { target: { value: '40' } });
+  await paintTexel(41, 9);
+  // …picked with full opacity set: the picker sets the slider back to 40%.
+  fireEvent.change(slider, { target: { value: '100' } });
+  await user.keyboard('4');
+  await paintTexel(41, 9);
+  expect(slider).toHaveValue('40');
+});
+
 it('switching arms redraws them into the new layout, and one undo puts both back', async () => {
   const { user, calls } = renderApp(<SkinStudio />);
   await screen.findByText('Saved');

@@ -12,6 +12,7 @@ import {
   FrontSide,
   Group,
   Mesh,
+  type Object3D,
   MeshBasicMaterial,
   NearestFilter,
   PerspectiveCamera,
@@ -26,6 +27,7 @@ import {
 } from 'three';
 import type { SkinModel } from '../../ipc/schema';
 import { boxes, SKIN_SIZE, type Box, type Face, type Layer, type Part, type Vec3 } from './layout';
+import { cameraPosition, orbit as orbitView, pan as panView, startView, targetOf, zoomAt } from './camera';
 import { outerWalls, type Wall } from './outerWalls';
 import { AnimationClock, celebration, CELEBRATE_S, POSE_STILL_T, rigAt, type Joint, type Pose } from './poses';
 
@@ -298,7 +300,10 @@ export interface Stage {
   /** The texel under a point of the canvas (client coordinates), on the paint layer; null over empty stage. */
   pick(clientX: number, clientY: number): Hit | null;
   orbit(dx: number, dy: number): void;
-  zoom(factor: number): void;
+  /** Zooms by `factor` (below 1 is closer), toward what is under the client point when one is given. */
+  zoom(factor: number, clientX?: number, clientY?: number): void;
+  /** Slides the view by a drag of (dx, dy) CSS pixels. */
+  pan(dx: number, dy: number): void;
   resetView(): void;
   resize(width: number, height: number): void;
   dispose(): void;
@@ -353,7 +358,6 @@ const FRAMING: Record<Pose, { target: number; height: number; width: number }> =
   horse: { target: 25, height: 72, width: 46 },
 };
 
-const START = { yaw: -0.55, pitch: 0.14, zoom: 1 };
 
 export function createStage(canvas: HTMLCanvasElement): Stage {
   const renderer = new WebGLRenderer({ canvas, antialias: false, alpha: true, preserveDrawingBuffer: true });
@@ -394,13 +398,15 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   let paintLayer: Layer = 'base';
   let pose: Pose = 'still';
   let model: SkinModel = 'classic';
-  const view = { ...START };
+  let view = startView();
   let fit = { half: Math.tan((32 * Math.PI) / 360), aspect: 1 };
   let frame = 0;
   const clock = new AnimationClock(performance.now());
   let celebratedAt = -Infinity;
 
   const still = () => motion?.matches === true;
+  const raycaster = new Raycaster();
+  const pointer = new Vector2();
 
   const place = (now: number) => {
     const t = still() ? POSE_STILL_T : clock.at(now);
@@ -430,20 +436,34 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   const draw = (now: number) => {
     frame = 0;
     place(now);
-    const framing = FRAMING[pose];
-    const distance = Math.max(framing.height / 2 / fit.half, framing.width / 2 / (fit.half * fit.aspect)) * view.zoom;
-    const { yaw, pitch } = view;
-    camera.position.set(
-      distance * Math.cos(pitch) * Math.sin(yaw),
-      framing.target + distance * Math.sin(pitch),
-      distance * Math.cos(pitch) * Math.cos(yaw),
-    );
-    camera.lookAt(0, framing.target, 0);
+    aim();
     renderer.render(scene, camera);
     // The figure is always a little alive (breathing, looking around) until the player pauses it; the celebration
     // plays even then. Reduced motion holds it still. A still stage redraws only when something changes.
     const celebrating = now - celebratedAt < CELEBRATE_S * 1000;
     if (!still() && (!clock.paused || celebrating)) frame = requestAnimationFrame(draw);
+  };
+  /** The pose's centre, and the distance at which the whole pose fits the stage. */
+  const framed = () => {
+    const framing = FRAMING[pose];
+    const centre: Vec3 = [0, framing.target, 0];
+    return { centre, fitDistance: Math.max(framing.height / 2 / fit.half, framing.width / 2 / (fit.half * fit.aspect)) };
+  };
+  const aim = () => {
+    const { centre, fitDistance } = framed();
+    camera.position.set(...cameraPosition(view, centre, fitDistance));
+    camera.lookAt(...targetOf(view, centre));
+    camera.updateMatrixWorld();
+  };
+  /** The ray from the camera through a client point of the canvas; false when the canvas has no size. */
+  const aimRay = (clientX: number, clientY: number) => {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    aim();
+    scene.updateMatrixWorld();
+    raycaster.setFromCamera(pointer, camera);
+    return true;
   };
   const invalidate = () => {
     if (!frame) frame = requestAnimationFrame(draw);
@@ -489,9 +509,12 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     });
   }
   build('classic');
+  /** Whether `object` and every group it hangs from are shown (a hidden prop's blocks are still `visible`). */
+  const isShown = (object: Object3D | null): boolean => {
+    for (let o = object; o; o = o.parent) if (!o.visible) return false;
+    return true;
+  };
 
-  const raycaster = new Raycaster();
-  const pointer = new Vector2();
   const onMotion = () => invalidate();
   motion?.addEventListener?.('change', onMotion);
 
@@ -528,11 +551,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       invalidate();
     },
     pick(clientX, clientY) {
-      const rect = canvas.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return null;
-      pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-      scene.updateMatrixWorld();
-      raycaster.setFromCamera(pointer, camera);
+      if (!aimRay(clientX, clientY)) return null;
       const targets: { mesh: Mesh; box: Box; walls?: Wall[] }[] = [...meshes, ...wallMeshes].filter(({ mesh, box }) => mesh.visible && box.layer === paintLayer);
       const hit = raycaster.intersectObjects(targets.map((t) => t.mesh), false)[0];
       if (!hit || !hit.uv || hit.faceIndex == null) return null;
@@ -552,16 +571,29 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       };
     },
     orbit(dx, dy) {
-      view.yaw -= dx * 0.01;
-      view.pitch = Math.max(-1.2, Math.min(1.2, view.pitch + dy * 0.01));
+      view = orbitView(view, dx, dy);
       invalidate();
     },
-    zoom(factor) {
-      view.zoom = Math.max(0.35, Math.min(1.8, view.zoom * factor));
+    zoom(factor, clientX, clientY) {
+      let point: Vec3 | null = null;
+      if (clientX !== undefined && clientY !== undefined && aimRay(clientX, clientY)) {
+        // Whatever is drawn under the pointer, either layer, the boat or the horse.
+        const hit = raycaster.intersectObjects(world.children, true).find((h) => h.object.visible && isShown(h.object));
+        if (hit) point = [hit.point.x, hit.point.y, hit.point.z];
+      }
+      view = zoomAt(view, factor, framed().centre, point);
+      invalidate();
+    },
+    pan(dx, dy) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.height === 0) return;
+      // At the target's distance the stage's height spans 2 · tan(fov / 2) · distance model units.
+      const unitsPerPixel = (2 * fit.half * framed().fitDistance * view.zoom) / rect.height;
+      view = panView(view, dx, dy, unitsPerPixel);
       invalidate();
     },
     resetView() {
-      Object.assign(view, START);
+      view = startView();
       invalidate();
     },
     resize(width, height) {
