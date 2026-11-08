@@ -276,7 +276,7 @@ mod tests {
         }
     }
 
-    fn catalog(dir: &Path, fake: Fake) -> SkinCatalog<Fake> {
+    fn catalog(dir: &std::path::Path, fake: Fake) -> SkinCatalog<Fake> {
         SkinCatalog::new(fake, CatalogCache::new(dir))
     }
 
