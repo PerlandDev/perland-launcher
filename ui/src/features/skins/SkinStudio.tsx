@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { HumanArmsUp, Pause, Play, ZoomIn, ZoomOut } from 'pixelarticons/react';
+import { HumanArmsUp, Pause, Play, Redo, Undo, ZoomIn, ZoomOut } from 'pixelarticons/react';
 import { commands } from '../../ipc/commands';
 import type { SkinEntry, SkinModel, SkinVersion } from '../../ipc/schema';
 import { useAccounts } from '../../state/queries';
@@ -28,6 +28,13 @@ import { remember } from './recent';
 import { Stage, type StageHandle } from './Stage';
 import { blankSkin, starterSkin } from './starter';
 import { CatalogPanel } from './CatalogPanel';
+import { CreatePanel } from './CreatePanel';
+import type { Lang } from './catalogSearch';
+import { compose } from './compose';
+import { putOn } from './look';
+import { useCatalog } from './useCatalog';
+import { useLook } from './useLook';
+import { WearingRow } from './WearingRow';
 import { TexturePanel } from './TexturePanel';
 import { HistoryPanel } from './HistoryPanel';
 import { useSkinDoc } from './useSkinDoc';
@@ -91,7 +98,10 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         refresh();
       });
   };
-  const doc = useSkinDoc(selected?.id ?? null, model, refresh, storeModel);
+  const doc = useSkinDoc(selected?.id ?? null, model, refresh, storeModel, selected?.look);
+  const catalog = useCatalog();
+  const editor = useLook(selected?.id ?? null, model, doc, catalog);
+  const lang: Lang = i18n.language.startsWith('es') ? 'es' : 'en';
 
   const [tab, setTab] = useState<Tab>('paint');
   const [tool, setTool] = useState<Tool>('pencil');
@@ -187,12 +197,23 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
       setPicked(null);
     });
 
+  // A new skin wearing only the catalog's plain body, in its own colour, opened in Create.
+  const plainBody = catalog.manifest?.pieces.find((p) => p.id === 'body-plain' && !p.retired);
+  const buildFromPieces = async () => {
+    if (!plainBody || !catalog.manifest) return;
+    const look = putOn({ pieces: [], painting: false }, plainBody, catalog.manifest.pieces);
+    const texture = encodeTexture(compose(null, await catalog.layers(look, 'classic')));
+    const entry = await commands.skinCreate(t('skins.piecesName'), 'classic', texture, owner);
+    addedFromCatalog(await commands.skinLookSave(entry.id, look, null, texture));
+  };
+
   const newItems: MenuItem[] = [
     ...(wearer?.provider === 'microsoft'
       ? [{ id: 'current', label: t('skins.newFromAccount'), onSelect: () => void fromAccount().catch(pushError) }]
       : []),
     { id: 'starter', label: t('skins.newStarter'), onSelect: () => void create(t('skins.starterName'), 'classic', encodeTexture(starterSkin().data)).catch(pushError) },
     { id: 'blank', label: t('skins.newBlank'), onSelect: () => void create(t('skins.blankName'), 'classic', encodeTexture(blankSkin().data)).catch(pushError) },
+    ...(plainBody ? [{ id: 'pieces', label: t('skins.newPieces'), onSelect: () => void buildFromPieces().catch(pushError) }] : []),
   ];
 
   const importSkin = async () => {
@@ -338,7 +359,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         return;
       }
       if (event.key === 'Shift') setDarken(false);
-      if (tab !== 'paint' || typing(event.target) || document.querySelector('dialog[open]') || event.altKey) return;
+      if (tab === 'catalog' || typing(event.target) || document.querySelector('dialog[open]') || event.altKey) return;
       if (event.key === 'Escape' && previewing) {
         setPreview(null);
         return;
@@ -351,7 +372,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
       } else if (ctrl && key === 'z') {
         event.preventDefault();
         doc.undo();
-      } else if (!ctrl && /^[1-9]$/.test(event.key)) {
+      } else if (!ctrl && tab === 'paint' && /^[1-9]$/.test(event.key)) {
         const n = Number(event.key);
         if (n <= SLOT_TOOLS.length) setTool(SLOT_TOOLS[n - 1]!);
         else if (n === 7) setMirror((m) => !m);
@@ -406,7 +427,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         )}
       </header>
 
-      <div className="skins-body" role="tabpanel" id="skins-tabpanel" aria-labelledby={`skins-tab-${tab}`}>
+      <div className="skins-body" data-tab={tab} role="tabpanel" id="skins-tabpanel" aria-labelledby={`skins-tab-${tab}`}>
         <Wardrobe
           accounts={allAccounts}
           owner={wearer}
@@ -429,7 +450,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               <div className="stage-bar">
                 <div role="radiogroup" aria-label={t('skins.arms')} className="flex gap-2">
                   {(['classic', 'slim'] as const).map((m) => (
-                    <button key={m} type="button" role="radio" aria-checked={model === m} className="seg seg-sm" data-checked={model === m || undefined} onClick={() => selected && doc.switchModel(m)}>
+                    <button key={m} type="button" role="radio" aria-checked={model === m} className="seg seg-sm" data-checked={model === m || undefined} onClick={() => selected && (doc.look && catalog.manifest ? editor.switchModel(m) : doc.switchModel(m))}>
                       {t(`skins.model.${m}`)}
                     </button>
                   ))}
@@ -447,6 +468,12 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
                 <Button icon={paused ? <Play /> : <Pause />} title={paused ? t('skins.playMotion') : t('skins.pauseMotion')} onClick={() => setPaused((p) => !p)}>
                   <span className="btn-label">{paused ? t('skins.playMotion') : t('skins.pauseMotion')}</span>
                 </Button>
+                {tab === 'create' && (
+                  <div className="ml-auto flex gap-2">
+                    <Button variant="ghost" size="icon" aria-label={t('skins.undo')} title={t('skins.undo')} icon={<Undo />} disabled={!doc.canUndo} onClick={doc.undo} />
+                    <Button variant="ghost" size="icon" aria-label={t('skins.redo')} title={t('skins.redo')} icon={<Redo />} disabled={!doc.canRedo} onClick={doc.redo} />
+                  </div>
+                )}
               </div>
 
               <div className="stage-well">
@@ -509,9 +536,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
             {historyOpen && selected ? (
               <HistoryPanel skin={selected.id} model={model} versions={versions.data} picked={previewShown?.version.id ?? null} onPick={pickVersion} onClose={() => setHistoryOpen(false)} />
             ) : tab === 'create' ? (
-              <aside className="skins-side" aria-label={t('skins.tab.create')}>
-                <p className="note-plate text-sm">{t('skins.createSoon')}</p>
-              </aside>
+              <CreatePanel key={selected?.id ?? ''} catalog={catalog} look={editor.look} editor={editor} lang={lang} />
             ) : (
             <aside className="skins-side" aria-label={t('skins.texture')}>
               <div className="flex items-center justify-between gap-2">
@@ -545,6 +570,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
           </>
         )}
       </div>
+
+      {tab === 'create' && <WearingRow worn={editor.look?.pieces ?? []} pieces={catalog.manifest?.pieces ?? []} lang={lang} onTakeOff={editor.takeOff} />}
 
       {tab === 'paint' && (
         <Hotbar
