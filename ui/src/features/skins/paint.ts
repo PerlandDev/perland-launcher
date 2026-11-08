@@ -76,15 +76,16 @@ export function shade(c: Rgba, darken: boolean): Rgba {
 }
 
 /** `color` laid over `under` at `opacity` (0–1), the way paint goes on: over nothing it keeps its own colour, part
- *  see-through; over an opaque texel it mixes and stays opaque. */
+ *  see-through; over a texel it mixes the colour that far toward its own, and the texel ends as opaque as the stronger
+ *  of the two. Strokes never pile up past the brush's opacity, so a picked colour painted back over its own texel
+ *  leaves it exactly as it was. */
 export function blend(under: Rgba, color: Rgba, opacity: number): Rgba {
   const top = (opacity * color[3]) / 255;
   if (top >= 1) return color;
-  const below = (under[3] / 255) * (1 - top);
-  const alpha = top + below;
-  if (alpha <= 0) return TRANSPARENT;
-  const mix = (k: number) => clamp((color[k]! * top + under[k]! * below) / alpha);
-  return [mix(0), mix(1), mix(2), clamp(alpha * 255)];
+  if (top <= 0) return under;
+  if (under[3] === 0) return [color[0], color[1], color[2], clamp(top * 255)];
+  const mix = (k: number) => clamp(under[k]! * (1 - top) + color[k]! * top);
+  return [mix(0), mix(1), mix(2), Math.max(under[3], clamp(top * 255))];
 }
 
 export function noise(c: Rgba, rand: () => number): Rgba {
