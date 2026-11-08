@@ -75,6 +75,10 @@ impl LauncherDirs {
     pub fn skins(&self) -> PathBuf {
         self.root.join("cache").join("skins")
     }
+    /// The skin catalog's manifest and PNGs, by hash (see `skin_catalog`).
+    pub fn skin_catalog(&self) -> PathBuf {
+        self.root.join("cache").join("skin-catalog")
+    }
     /// Locked while shared game files are installed, across every launcher process.
     pub fn install_lock(&self) -> PathBuf {
         self.root.join(".install.lock")

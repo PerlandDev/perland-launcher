@@ -282,6 +282,11 @@ fn main() {
             commands::skin_current,
             commands::skin_sync_current,
             commands::skin_wear,
+            commands::skin_catalog,
+            commands::skin_catalog_file,
+            commands::skin_painting,
+            commands::skin_look_save,
+            commands::skin_look_clear,
             commands::quit,
         ])
         .build(tauri::generate_context!())

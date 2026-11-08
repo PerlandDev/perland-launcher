@@ -167,6 +167,8 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) console_closes: Mutex<crate::manage_console::CloseCounts>,
     /// The player's skin wardrobe (see `skins.rs`).
     pub(crate) skins: launcher_core::skins_library::SkinLibrary,
+    /// The skin catalog version last pruned for (see `skins.rs`).
+    pub(crate) catalog_seen: Mutex<Option<String>>,
     /// Makes the next import fail while it moves the copied files into the new instance.
     #[cfg(test)]
     pub(crate) import_fail_move: AtomicBool,
@@ -266,6 +268,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             console_stream: Mutex::new(None),
             console_closes: Mutex::new(Default::default()),
             skins: launcher_core::skins_library::SkinLibrary::new(config.dirs.skin_library()),
+            catalog_seen: Mutex::new(None),
             #[cfg(test)]
             import_fail_move: AtomicBool::new(false),
             #[cfg(test)]

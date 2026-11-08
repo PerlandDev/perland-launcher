@@ -427,6 +427,10 @@ export const accountsFile = z.strictObject({
   licensedSigninSeen: z.boolean(),
 });
 export const skinModel = z.enum(['classic', 'slim']);
+/** A catalog piece a skin wears, with the colour picked for each of its areas (`#rrggbb`). */
+export const wornPiece = z.strictObject({ id: z.string(), colours: z.record(z.string(), z.string()) });
+/** How a skin was put together from the catalog; `painting` says the player's own painting is kept beside it. */
+export const skinLook = z.strictObject({ pieces: z.array(wornPiece), painting: z.boolean() });
 /** One skin in the player's wardrobe. `wornBy` is the account that last wore it from the launcher. */
 export const skinEntry = z.strictObject({
   id: z.string(),
@@ -438,7 +442,52 @@ export const skinEntry = z.strictObject({
   owner: z.string().optional(),
   /** Put in an empty wardrobe by the launcher and never changed: an account adopting loose skins drops it. */
   seeded: z.boolean().optional(),
+  /** The catalog pieces it was built from, when it was. */
+  look: skinLook.optional(),
 });
+/** Text in both languages, as the Engine's catalog names things. */
+export const catalogText = z.strictObject({ en: z.string(), es: z.string() });
+export const catalogTag = z.strictObject({ id: z.string(), name: catalogText });
+/** A colour area of a piece; `default` is `#rrggbb`. */
+export const catalogArea = z.strictObject({ id: z.string(), name: catalogText, default: z.string() });
+/** SHA-256 hex of a piece's art and colour mask for one arm model. */
+export const catalogFiles = z.strictObject({ art: z.string(), mask: z.string() });
+export const catalogPiece = z.strictObject({
+  id: z.string(),
+  slot: z.string(),
+  name: catalogText,
+  tags: z.array(z.string()),
+  areas: z.array(catalogArea),
+  /** By arm model: `classic`, `slim`. */
+  files: z.record(z.string(), catalogFiles),
+  thumb: z.string(),
+  retired: z.boolean(),
+});
+export const catalogLookPiece = z.strictObject({ id: z.string(), colours: z.record(z.string(), z.string()) });
+export const catalogLook = z.strictObject({
+  id: z.string(),
+  name: catalogText,
+  tags: z.array(z.string()),
+  model: skinModel,
+  pieces: z.array(catalogLookPiece),
+  /** Hash of the look's painting layer, when it has one. */
+  painting: z.string().optional(),
+  thumb: z.string(),
+  retired: z.boolean(),
+});
+export const catalogManifest = z.strictObject({
+  formatVersion: z.number().int(),
+  version: z.string(),
+  license: z.string(),
+  slots: z.array(z.string()),
+  tags: z.array(catalogTag),
+  pieces: z.array(catalogPiece),
+  looks: z.array(catalogLook),
+});
+/** How the catalog was reached: the Engine (`fresh`), the cache (`cached`), neither (`unavailable`), or an Engine newer than
+ *  this launcher reads (`too_new`). */
+export const catalogStatus = z.enum(['fresh', 'cached', 'unavailable', 'too_new']);
+export const catalogAnswer = z.strictObject({ manifest: catalogManifest.nullable(), status: catalogStatus });
 /** Why a skin version was kept. */
 export const skinVersionReason = z.enum(['edited', 'worn', 'exported', 'restored']);
 /** One kept version of a wardrobe skin. `taken` is Unix seconds; `current` marks the version the skin is now. */
@@ -887,6 +936,13 @@ export type AccountsFile = z.infer<typeof accountsFile>;
 export type SkinModel = z.infer<typeof skinModel>;
 export type SkinEntry = z.infer<typeof skinEntry>;
 export type CurrentSkin = z.infer<typeof currentSkin>;
+export type WornPiece = z.infer<typeof wornPiece>;
+export type SkinLook = z.infer<typeof skinLook>;
+export type CatalogManifest = z.infer<typeof catalogManifest>;
+export type CatalogPiece = z.infer<typeof catalogPiece>;
+export type CatalogLook = z.infer<typeof catalogLook>;
+export type CatalogStatus = z.infer<typeof catalogStatus>;
+export type CatalogAnswer = z.infer<typeof catalogAnswer>;
 export type SkinVersion = z.infer<typeof skinVersion>;
 export type SkinVersionReason = z.infer<typeof skinVersionReason>;
 export type AccountReady = z.infer<typeof accountReady>;

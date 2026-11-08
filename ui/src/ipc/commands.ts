@@ -2,7 +2,9 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   AccountReady,
   AccountsFile,
+  CatalogAnswer,
   CurrentSkin,
+  SkinLook,
   SkinEntry,
   SkinVersion,
   SkinModel,
@@ -154,6 +156,17 @@ export const commands = {
    *  marks it worn; null for an offline account or one wearing Minecraft's default. */
   skinSyncCurrent: (uuid: string, name: string) => invoke<SkinEntry | null>('skin_sync_current', { uuid, name }),
   skinWear: (id: string, uuid: string) => invoke<SkinEntry[]>('skin_wear', { id, uuid }),
+  /** Perland's skin catalog: the Engine's manifest, else the cached one (see `status`). */
+  skinCatalog: () => invoke<CatalogAnswer>('skin_catalog'),
+  /** A catalog PNG (thumbnail, art or mask) by its SHA-256, as a `data:` URL. */
+  skinCatalogFile: (sha256: string) => invoke<string>('skin_catalog_file', { sha256 }),
+  /** The player's own painting on a skin as a `data:` URL; null without one. */
+  skinPainting: (id: string) => invoke<string | null>('skin_painting', { id }),
+  /** Saves a skin's look: its pieces, the player's painting (null for none) and the finished texture, all PNG `data:` URLs. */
+  skinLookSave: (id: string, look: SkinLook, painting: string | null, texture: string) =>
+    invoke<SkinEntry>('skin_look_save', { id, look, painting, texture }),
+  /** Drops a skin's look and painting; its texture stays as a plain skin. */
+  skinLookClear: (id: string) => invoke<SkinEntry>('skin_look_clear', { id }),
   /** Sign in with Microsoft in the browser. Null when it was canceled (here or in the browser). */
   accountSignInMicrosoft: (language: string) => invoke<AccountsFile | null>('account_sign_in_microsoft', { language }),
   accountSignInCancel: () => invoke<null>('account_sign_in_cancel'),

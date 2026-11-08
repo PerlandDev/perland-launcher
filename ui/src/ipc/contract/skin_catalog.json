@@ -1,0 +1,172 @@
+[
+  {
+    "manifest": {
+      "formatVersion": 1,
+      "version": "60f573c45b9fc8115fa680f5516ce12c6c307ed7f1a848b5210dd477ef1a40ed",
+      "license": "CC0-1.0",
+      "slots": [
+        "body",
+        "mouth",
+        "hat"
+      ],
+      "tags": [
+        {
+          "id": "casual",
+          "name": {
+            "en": "Casual",
+            "es": "Casual"
+          }
+        }
+      ],
+      "pieces": [
+        {
+          "id": "hat-cap",
+          "slot": "hat",
+          "name": {
+            "en": "Cap",
+            "es": "Gorra"
+          },
+          "tags": [
+            "casual"
+          ],
+          "areas": [
+            {
+              "id": "main",
+              "name": {
+                "en": "Main",
+                "es": "Principal"
+              },
+              "default": "#2f5aa8"
+            }
+          ],
+          "files": {
+            "classic": {
+              "art": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "mask": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "slim": {
+              "art": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "mask": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            }
+          },
+          "thumb": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "retired": false
+        }
+      ],
+      "looks": [
+        {
+          "id": "look-street",
+          "name": {
+            "en": "Street",
+            "es": "Calle"
+          },
+          "tags": [
+            "casual"
+          ],
+          "model": "classic",
+          "pieces": [
+            {
+              "id": "hat-cap",
+              "colours": {
+                "main": "#2f5aa8"
+              }
+            }
+          ],
+          "painting": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "thumb": "0000000000000000000000000000000000000000000000000000000000000000",
+          "retired": false
+        }
+      ]
+    },
+    "status": "fresh"
+  },
+  {
+    "manifest": {
+      "formatVersion": 1,
+      "version": "60f573c45b9fc8115fa680f5516ce12c6c307ed7f1a848b5210dd477ef1a40ed",
+      "license": "CC0-1.0",
+      "slots": [
+        "body",
+        "mouth",
+        "hat"
+      ],
+      "tags": [
+        {
+          "id": "casual",
+          "name": {
+            "en": "Casual",
+            "es": "Casual"
+          }
+        }
+      ],
+      "pieces": [
+        {
+          "id": "hat-cap",
+          "slot": "hat",
+          "name": {
+            "en": "Cap",
+            "es": "Gorra"
+          },
+          "tags": [
+            "casual"
+          ],
+          "areas": [
+            {
+              "id": "main",
+              "name": {
+                "en": "Main",
+                "es": "Principal"
+              },
+              "default": "#2f5aa8"
+            }
+          ],
+          "files": {
+            "classic": {
+              "art": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "mask": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "slim": {
+              "art": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "mask": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            }
+          },
+          "thumb": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "retired": false
+        }
+      ],
+      "looks": [
+        {
+          "id": "look-street",
+          "name": {
+            "en": "Street",
+            "es": "Calle"
+          },
+          "tags": [
+            "casual"
+          ],
+          "model": "classic",
+          "pieces": [
+            {
+              "id": "hat-cap",
+              "colours": {
+                "main": "#2f5aa8"
+              }
+            }
+          ],
+          "painting": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "thumb": "0000000000000000000000000000000000000000000000000000000000000000",
+          "retired": false
+        }
+      ]
+    },
+    "status": "cached"
+  },
+  {
+    "manifest": null,
+    "status": "unavailable"
+  },
+  {
+    "manifest": null,
+    "status": "too_new"
+  }
+]

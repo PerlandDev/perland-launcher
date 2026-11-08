@@ -13,6 +13,7 @@ use launcher_core::{
     play::{self, Prepared, StartSpec},
     public_list::{self, FetchedPage, ListQuery, PublicListClient, PublicServer},
     server_wake::{self, Knock, Ping, WaitEnd},
+    skin_catalog::{CatalogCache, CatalogClient, CatalogStatus, Manifest, SkinCatalog},
     skins::{SkinClient, SkinEndpoints},
     sources::{PackInput, UpdateCheck},
     sync::{Cancel, Ensured, ManualFile, PendingUpdate, Syncer},
@@ -31,6 +32,28 @@ pub const WAKE_EVERY: Duration = Duration::from_secs(2);
 pub const WAKE_LIMIT: Duration = Duration::from_secs(5 * 60);
 
 pub type BoxFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
+
+/// The skin catalog as the app uses it. The real one is [`SkinCatalog`]; tests use a fake.
+pub trait CatalogApi: Send + Sync {
+    fn load(&self) -> BoxFuture<(Option<Manifest>, CatalogStatus)>;
+    fn file(&self, sha256: String) -> BoxFuture<Result<Vec<u8>>>;
+    fn prune(&self, keep: std::collections::BTreeSet<String>) -> BoxFuture<Result<usize>>;
+}
+
+impl CatalogApi for Arc<SkinCatalog<CatalogClient>> {
+    fn load(&self) -> BoxFuture<(Option<Manifest>, CatalogStatus)> {
+        let this = self.clone();
+        Box::pin(async move { this.as_ref().load().await })
+    }
+    fn file(&self, sha256: String) -> BoxFuture<Result<Vec<u8>>> {
+        let this = self.clone();
+        Box::pin(async move { this.as_ref().file(&sha256).await })
+    }
+    fn prune(&self, keep: std::collections::BTreeSet<String>) -> BoxFuture<Result<usize>> {
+        let this = self.clone();
+        Box::pin(async move { this.as_ref().prune(&keep).await })
+    }
+}
 
 pub trait Kill: Send + Sync {
     fn kill(&self);
@@ -148,6 +171,8 @@ pub trait Runner: Send + Sync + 'static {
     /// The skin texture PNG Minecraft profile `uuid` wears, or `None` when it wears none of
     /// its own. See `SkinClient::texture`.
     fn skin_texture(&self, uuid: String) -> BoxFuture<Result<Option<Vec<u8>>>>;
+    /// Perland's skin catalog (manifest and pieces), cached for offline use.
+    fn catalog(&self) -> Arc<dyn CatalogApi>;
 }
 
 pub struct CoreRunner {
@@ -162,6 +187,7 @@ pub struct CoreRunner {
     msa: Arc<dyn MsaApi>,
     /// `Err` when its HTTP client couldn't start: every skin ask answers that.
     skins: Result<SkinClient>,
+    catalog: Arc<SkinCatalog<CatalogClient>>,
 }
 
 impl CoreRunner {
@@ -180,6 +206,7 @@ impl CoreRunner {
         let site = public_list::site_url(public_list::DEFAULT_SITE)
             .expect("the default site is a valid Perland site");
         let public = PublicListClient::new(syncer.sources.invites.clone(), site.clone());
+        let catalog = Self::catalog_for(&installer, &syncer, site.clone());
         let player = Self::player_for(&syncer, &launcher_version, site);
         // Never follows a redirect: one would forward the device token or a JWT.
         let stack = Arc::new(CoreStack::new(
@@ -199,7 +226,18 @@ impl CoreRunner {
             stack,
             msa,
             skins,
+            catalog,
         }
+    }
+    fn catalog_for(
+        installer: &Installer,
+        syncer: &Syncer,
+        site: Url,
+    ) -> Arc<SkinCatalog<CatalogClient>> {
+        Arc::new(SkinCatalog::new(
+            CatalogClient::new(syncer.sources.invites.clone(), site),
+            CatalogCache::new(installer.dirs.skin_catalog()),
+        ))
     }
     /// The player routes go through a client that never follows a redirect (one would replay a
     /// code or verifier body to another host), to the Engine `site` names.
@@ -214,6 +252,7 @@ impl CoreRunner {
     /// own). `site` should come from [`public_list::site_url`].
     pub fn with_site(mut self, site: Url) -> Self {
         self.public = PublicListClient::new(self.syncer.sources.invites.clone(), site.clone());
+        self.catalog = Self::catalog_for(&self.installer, &self.syncer, site.clone());
         self.player = Self::player_for(&self.syncer, &self.launcher_version, site);
         self
     }
@@ -398,6 +437,10 @@ impl Runner for CoreRunner {
     fn skin_texture(&self, uuid: String) -> BoxFuture<Result<Option<Vec<u8>>>> {
         let skins = self.skins.clone();
         Box::pin(async move { skins?.texture(&uuid).await })
+    }
+
+    fn catalog(&self) -> Arc<dyn CatalogApi> {
+        Arc::new(self.catalog.clone())
     }
 }
 
