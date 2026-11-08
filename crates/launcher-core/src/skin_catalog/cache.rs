@@ -1,11 +1,7 @@
 //! The skin catalog's offline cache: the newest manifest and the PNGs it names, kept under one
 //! folder. Files are named by their SHA-256 and re-verified on every read.
 
-use std::{
-    collections::BTreeSet,
-    future::Future,
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeSet, future::Future, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -14,7 +10,10 @@ use super::{
     client::{CatalogClient, Fetched},
     manifest::{Manifest, FORMAT_VERSION},
 };
-use crate::{error::Result, fsutil::write_atomic};
+use crate::{
+    error::{ErrorCode, LauncherError, Result},
+    fsutil::write_atomic,
+};
 
 /// How a [`SkinCatalog::load`] ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +32,7 @@ pub enum CatalogStatus {
 /// Where the catalog comes from. [`CatalogClient`] is the real one; tests inject a fake.
 pub trait CatalogSource: Send + Sync {
     fn manifest(&self, etag: Option<&str>) -> impl Future<Output = Result<Fetched>> + Send;
+    /// The PNG named by `sha256`. Implementations should verify it; callers do not trust that.
     fn file(&self, sha256: &str) -> impl Future<Output = Result<Vec<u8>>> + Send;
 }
 
@@ -43,6 +43,10 @@ impl CatalogSource for CatalogClient {
     fn file(&self, sha256: &str) -> impl Future<Output = Result<Vec<u8>>> + Send {
         CatalogClient::file(self, sha256)
     }
+}
+
+fn is_hash(s: &str) -> bool {
+    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -119,10 +123,13 @@ impl CatalogCache {
         };
         while let Some(entry) = entries.next_entry().await? {
             let name = entry.file_name().to_string_lossy().into_owned();
-            let stem = Path::new(&name)
-                .file_stem()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_default();
+            let Some(stem) = name.strip_suffix(".png") else {
+                continue;
+            };
+            if !is_hash(stem) {
+                continue;
+            }
+            let stem = stem.to_string();
             if !keep.contains(&stem) && tokio::fs::remove_file(entry.path()).await.is_ok() {
                 removed += 1;
             }
@@ -143,12 +150,27 @@ impl<C: CatalogSource> SkinCatalog<C> {
     }
 
     pub async fn load(&self) -> (Option<Manifest>, CatalogStatus) {
-        let cached = self.cache.manifest().await;
+        // A cached manifest newer than this launcher reads (after a downgrade) is no cache.
+        let mut cached_too_new = false;
+        let cached = self.cache.manifest().await.filter(|m| {
+            cached_too_new = m.format_version > FORMAT_VERSION;
+            !cached_too_new
+        });
         let etag = cached.as_ref().map(|m| m.version.clone());
+        let nothing = |too_new: bool| {
+            (
+                None,
+                if too_new {
+                    CatalogStatus::TooNew
+                } else {
+                    CatalogStatus::Unavailable
+                },
+            )
+        };
         match self.client.manifest(etag.as_deref()).await {
             Ok(Fetched::NotModified) => match cached {
                 Some(m) => (Some(m), CatalogStatus::Fresh),
-                None => (None, CatalogStatus::Unavailable),
+                None => nothing(cached_too_new),
             },
             Ok(Fetched::Manifest(m)) if m.format_version > FORMAT_VERSION => {
                 (cached, CatalogStatus::TooNew)
@@ -161,7 +183,7 @@ impl<C: CatalogSource> SkinCatalog<C> {
             }
             Err(_) => match cached {
                 Some(m) => (Some(m), CatalogStatus::Cached),
-                None => (None, CatalogStatus::Unavailable),
+                None => nothing(cached_too_new),
             },
         }
     }
@@ -172,6 +194,13 @@ impl<C: CatalogSource> SkinCatalog<C> {
             return Ok(bytes);
         }
         let bytes = self.client.file(sha256).await?;
+        if sha256_hex(&bytes) != sha256 {
+            return Err(LauncherError::network(
+                ErrorCode::SkinCatalogUnavailable,
+                "Couldn't reach Perland's skin catalog.",
+            )
+            .with_detail("a catalog file did not match its hash"));
+        }
         if let Err(e) = self.cache.store_file(sha256, &bytes).await {
             tracing::warn!("couldn't cache a skin catalog file: {}", e.message);
         }
@@ -180,10 +209,11 @@ impl<C: CatalogSource> SkinCatalog<C> {
 
     /// Deletes cached files the newest manifest and the wardrobe no longer name.
     pub async fn prune(&self, wardrobe_keep: &BTreeSet<String>) -> Result<usize> {
+        let Some(m) = self.cache.manifest().await else {
+            return Ok(0);
+        };
         let mut keep = wardrobe_keep.clone();
-        if let Some(m) = self.cache.manifest().await {
-            keep.extend(m.hashes());
-        }
+        keep.extend(m.hashes());
         self.cache.prune(&keep).await
     }
 }
@@ -193,7 +223,6 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::error::{ErrorCode, LauncherError};
 
     struct Fake {
         manifest: Mutex<Option<Result<Fetched>>>,
@@ -374,5 +403,58 @@ mod tests {
         assert!(cache.file(&a).await.is_some());
         assert!(cache.file(&b).await.is_none());
         assert!(cache.manifest().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn prune_ignores_foreign_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = CatalogCache::new(dir.path());
+        cache.store_manifest(&manifest("v1", 1)).await.unwrap();
+        let files = dir.path().join("files");
+        std::fs::create_dir_all(&files).unwrap();
+        std::fs::write(files.join("x.tmp"), b"1").unwrap();
+        std::fs::write(files.join("notes.txt"), b"1").unwrap();
+        let cat = catalog(dir.path(), Fake::new(None));
+        assert_eq!(cat.prune(&BTreeSet::new()).await.unwrap(), 0);
+        assert!(files.join("x.tmp").exists() && files.join("notes.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn prune_without_manifest_does_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = CatalogCache::new(dir.path());
+        let a = sha256_hex(b"a");
+        cache.store_file(&a, b"a").await.unwrap();
+        let cat = catalog(dir.path(), Fake::new(None));
+        assert_eq!(cat.prune(&BTreeSet::new()).await.unwrap(), 0);
+        std::fs::write(dir.path().join("manifest.json"), b"{ bad").unwrap();
+        assert_eq!(cat.prune(&BTreeSet::new()).await.unwrap(), 0);
+        assert!(cache.file(&a).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn cached_manifest_newer_than_launcher_is_no_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        CatalogCache::new(dir.path())
+            .store_manifest(&manifest("v9", 2))
+            .await
+            .unwrap();
+        let (m, status) = catalog(dir.path(), Fake::new(None)).load().await;
+        assert!(m.is_none());
+        assert_eq!(status, CatalogStatus::TooNew);
+    }
+
+    #[tokio::test]
+    async fn fetched_file_with_wrong_hash_is_not_stored() {
+        let dir = tempfile::tempdir().unwrap();
+        let hash = sha256_hex(b"right");
+        let fake = Fake::new(None);
+        fake.files
+            .lock()
+            .unwrap()
+            .push((hash.clone(), b"wrong".to_vec()));
+        let cat = catalog(dir.path(), fake);
+        assert!(cat.file(&hash).await.is_err());
+        assert!(CatalogCache::new(dir.path()).file(&hash).await.is_none());
     }
 }
