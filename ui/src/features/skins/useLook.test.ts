@@ -7,7 +7,7 @@ import { sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
 import { useCatalog } from './useCatalog';
 import { useLook, type LookEditor } from './useLook';
-import { useSkinDoc, type SkinDoc } from './useSkinDoc';
+import { useSkinDoc, type SkinDoc, type StrokeOptions } from './useSkinDoc';
 
 vi.mock('./codec', async () => (await import('../../test/skinFakes')).fakeCodec());
 
@@ -36,8 +36,9 @@ function gate() {
   };
 }
 
-function open(look?: SkinLook, files = gate()) {
+function open(look?: SkinLook, files = gate(), noCatalog = false) {
   const backend = createMockBackend();
+  if (noCatalog) backend.state.skins.catalogStatus = 'unavailable';
   if (look) backend.state.skins.entries.find((e) => e.id === ID)!.look = look;
   const calls: [string, unknown][] = [];
   const got: { doc?: SkinDoc; editor?: LookEditor; ready?: boolean } = {};
@@ -169,7 +170,7 @@ it('undo while a change is loading holds, and the change lands on what is left',
 });
 
 const RED = [255, 0, 0, 255];
-const pencil = { tool: 'pencil' as const, color: [255, 0, 0, 255] as [number, number, number, number], mirror: false, darken: false };
+const pencil: StrokeOptions = { tool: 'pencil', color: [255, 0, 0, 255] as [number, number, number, number], mirror: false, darken: false };
 const at = (data: Uint8ClampedArray | null | undefined, x: number, y: number) => (data ? Array.from(data.slice((y * 64 + x) * 4, (y * 64 + x) * 4 + 4)) : null);
 const TEE: WornPiece = { id: 'top-tee', colours: { main: '#e8e4dc', trim: '#3a6ea5' } };
 const BODY: WornPiece = { id: 'body-plain', colours: { skin: '#d9a27c' } };
@@ -245,4 +246,62 @@ it('skins without a look paint exactly as before', async () => {
   await act(() => vi.advanceTimersByTimeAsync(700));
   expect(sent(calls, 'skin_save')).toHaveLength(1);
   expect(sent(calls, 'skin_look_save')).toEqual([]);
+});
+
+const EYES: WornPiece = { id: 'eyes-round', colours: { iris: '#4a3324' } };
+function strokeWith(doc: SkinDoc, x: number, y: number, opts: Partial<StrokeOptions> & { opacity?: number }) {
+  act(() => {
+    doc.begin();
+    doc.paint(x, y, { ...pencil, ...opts }, false);
+    doc.end();
+  });
+}
+
+it('fill over the body piece fills only the visible same-colour region', async () => {
+  // The head's top face (x 8–15, y 0–7): the fake body covers rows 0–3, the fake eyes rows 4–7.
+  const { got } = open({ pieces: [BODY, EYES], painting: false });
+  await waitFor(() => expect(got.ready && got.doc!.piecesReady).toBe(true));
+  strokeWith(got.doc!, 10, 1, { tool: 'fill' });
+  expect(at(got.editor!.painting, 10, 1)).toEqual(RED);
+  expect(at(got.editor!.painting, 14, 3)).toEqual(RED);
+  // The eyes are another colour on screen, so the fill stops at them.
+  expect(at(got.editor!.painting, 10, 6)![3]).toBe(0);
+  expect(at(got.doc!.pixels!.data, 10, 6)).toEqual([0x4a, 0x33, 0x24, 255]);
+});
+
+it('shade over the body piece darkens the visible colour', async () => {
+  const { got } = open({ pieces: [BODY], painting: false });
+  await waitFor(() => expect(got.ready && got.doc!.piecesReady).toBe(true));
+  strokeWith(got.doc!, 10, 1, { tool: 'shade', darken: true });
+  // #d9a27c moved 12% towards black.
+  expect(at(got.editor!.painting, 10, 1)).toEqual([191, 143, 109, 255]);
+  expect(at(got.doc!.pixels!.data, 10, 1)).toEqual([191, 143, 109, 255]);
+});
+
+it('without the pieces, an eraser leaves the finished skin and a light stroke lays over it', async () => {
+  const { got } = open({ pieces: [BODY, TEE], painting: false }, gate(), true);
+  await waitFor(() => expect(got.doc!.pixels).not.toBeNull());
+  expect(got.doc!.piecesReady).toBe(false);
+  const before = at(got.doc!.pixels!.data, 5, 22)!;
+  expect(before[3]).toBe(255);
+  strokeWith(got.doc!, 5, 22, { tool: 'eraser' });
+  expect(at(got.doc!.pixels!.data, 5, 22)).toEqual(before);
+  strokeWith(got.doc!, 5, 22, { opacity: 0.5 });
+  const after = at(got.doc!.pixels!.data, 5, 22)!;
+  // Laid over what shows, not punched through as a half-transparent hole.
+  expect(after[3]).toBe(255);
+  expect(after).not.toEqual(before);
+  expect(after).not.toEqual(RED);
+  // Both went into the painting under the pieces.
+  expect(at(got.editor!.painting, 5, 22)![3]).toBeGreaterThan(0);
+  expect(got.doc!.canUndo).toBe(true);
+});
+
+it('switching arms clears the pieces-on-top hint', async () => {
+  const { got } = open({ pieces: [BODY, TEE], painting: false });
+  await waitFor(() => expect(got.ready && got.doc!.piecesReady).toBe(true));
+  stroke(got.doc!, 10, 33);
+  expect(got.doc!.covered).toBe(true);
+  act(() => got.doc!.switchModel('slim'));
+  expect(got.doc!.covered).toBe(false);
 });

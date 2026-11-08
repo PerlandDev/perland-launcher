@@ -96,6 +96,12 @@ it('restoring a version of a skin with pieces warns and clears the look', async 
   await user.click(within(dialog).getByRole('button', { name: 'Restore' }));
   await waitFor(() => expect(sent(calls, 'skin_restore')).toHaveLength(1));
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Restore this version' })).not.toBeInTheDocument());
+  // The next save is a plain one: no look is saved back.
+  const looks = sent(calls, 'skin_look_save').length;
+  // The history panel holds the texture column: paint on the figure (the fake stage paints texel (10, 10)).
+  act(() => void fireEvent.pointerDown(screen.getByTestId('stage')));
+  await waitFor(() => expect(sent(calls, 'skin_save')).toHaveLength(1), { timeout: 3000 });
+  expect(sent(calls, 'skin_look_save')).toHaveLength(looks);
   await user.click(screen.getByRole('tab', { name: 'Create' }));
   expect(within(screen.getByRole('list', { name: 'Wearing' })).queryAllByRole('listitem')).toHaveLength(0);
 });

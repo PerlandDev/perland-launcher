@@ -98,6 +98,7 @@ export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catal
     catalog
       .layers(shown, model)
       .then((layers) => {
+        // A piece with no art for these arms leaves the set short: strokes then stay on top until a Create change.
         if (live && layers.length === shown.pieces.length) latest.current.doc.setLayers(shown, model, layers);
       })
       .catch(() => {});

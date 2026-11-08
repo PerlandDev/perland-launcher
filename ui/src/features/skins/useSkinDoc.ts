@@ -15,7 +15,7 @@ import { decodeTexture, encodeTexture } from './codec';
 import { convertArms, fitsModel } from './armModel';
 import { History, mergeStroke, type LookState, type ModelSwap } from './history';
 import { mirrorTexel } from './mirror';
-import { applyTool, line, Pixels, sameColor, type Change, type Rgba, type Tool, type Touched } from './paint';
+import { applyTool, blend, line, Pixels, sameColor, type Change, type Rgba, type Tool, type Touched } from './paint';
 import { SKIN_SIZE } from './layout';
 
 /** The quiet wait after a stroke before the skin is saved. */
@@ -206,19 +206,36 @@ class DocStore {
     const from = joined && this.last && opts.tool !== 'fill' ? this.last : null;
     const points: [number, number][] = from ? line(from[0], from[1], x, y).slice(1) : [[x, y]];
     this.last = [x, y];
-    // A skin with a look paints its painting; the finished texels follow.
-    const target = this.look ? this.working : px;
-    if (!target) return false;
     const done: Change[] = [];
-    for (const [tx, ty] of points) done.push(...applyTool(target, model, opts.tool, tx, ty, opts, mirrorTexel, this.touched));
+    const working = this.working;
+    if (!this.look || !working) {
+      for (const [tx, ty] of points) done.push(...applyTool(px, model, opts.tool, tx, ty, opts, mirrorTexel, this.touched));
+      if (done.length === 0) return false;
+      this.stroke!.push(...done);
+      return true;
+    }
+    // A skin with a look paints its painting; the finished texels follow.
+    const layers = this.layersFor(model);
+    if (opts.tool === 'eraser') {
+      // The eraser takes paint off the painting only.
+      for (const [tx, ty] of points) done.push(...applyTool(working, model, opts.tool, tx, ty, opts, mirrorTexel, this.touched));
+    } else {
+      // Tools that read colours (Fill's region, Shade, Noise, a light Pencil) act on what the player sees at the
+      // painting's depth: the face pieces with the painting over them (the finished skin until the pieces load).
+      const seen = layers ? new Pixels(compose(working.data, layers.filter((l) => FACE_SLOTS.includes(l.slot)))) : px.clone();
+      for (const [tx, ty] of points) {
+        for (const c of applyTool(seen, model, opts.tool, tx, ty, opts, mirrorTexel, this.touched)) {
+          done.push({ x: c.x, y: c.y, before: working.get(c.x, c.y), after: c.after });
+          working.set(c.x, c.y, c.after);
+        }
+      }
+    }
     if (done.length === 0) return false;
     this.stroke!.push(...done);
-    if (target !== px) {
-      const layers = this.layersFor(model);
-      if (layers) px.data.set(compose(target.data, layers));
-      // The pieces aren't loaded: show the stroke as painted until the next recompose puts it under them.
-      else for (const c of done) px.set(c.x, c.y, c.after);
-    }
+    if (layers) px.data.set(compose(working.data, layers));
+    // The pieces aren't loaded: lay the stroke over what shows until the next recompose puts it under them (an
+    // eraser shows nothing until then: it would punch holes through pieces it can't see).
+    else if (opts.tool !== 'eraser') for (const c of done) px.set(c.x, c.y, blend(px.get(c.x, c.y), c.after, 1));
     return true;
   }
 
@@ -289,6 +306,7 @@ class DocStore {
     if (!px || from === to) return false;
     const changes = fitsModel(px, to) ? [] : convertArms(px, from, to);
     this.history.push(changes, { before: from, after: to });
+    this.covered = false;
     this.version += 1;
     return changes.length > 0;
   }
