@@ -94,6 +94,8 @@ function InstanceView({ instance }: { instance: Instance }) {
         dimmed={run.state !== 'idle'}
         banner={banner}
         focus={instance.bannerFocus}
+        zoom={instance.bannerZoom}
+        edges={instance.bannerEdges}
         className="absolute inset-0"
       />
       {/* The two things a newcomer looks for first, out in the open at the top right, away from Play's corner.

@@ -1235,6 +1235,21 @@
     object-fit: cover;
     object-position: center bottom;
   }
+  /* A zoomed banner is sized and placed inline (left, top, width, height): the box is the picture. */
+  .marquee-banner[data-zoomed] {
+    inset: auto;
+    object-fit: fill;
+  }
+  /* Around a banner zoomed below 100, the pixel edges: the same picture as big dark blocks, never a blur. */
+  .marquee-edges {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    image-rendering: pixelated;
+    filter: brightness(0.4);
+  }
   .marquee-banner[data-upscale],
   .rail-art[data-upscale] {
     image-rendering: pixelated;
