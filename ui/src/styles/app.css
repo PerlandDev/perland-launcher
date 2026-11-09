@@ -336,12 +336,15 @@
   /* Home's icon plate: the instance's own icon, framed on laminate beside its name. It is signage, not a
      key, so it wears the name's two-layer hard shade (dirt, then ground) rather than a control's dirt-deep
      step, and nothing about it presses or lights. */
+  /* It is as tall as one line of the name, whatever size the name takes: the same clamp and the same fit (the row
+     carries --name-fit), so a window that shrinks the name shrinks the plate with it. */
   .icon-plate {
+    --plate: calc(clamp(2.5rem, 5.2cqi, 5.5rem) * var(--name-fit, 1) * 0.95);
     flex: none;
     box-sizing: border-box;
-    width: 4.5rem;
-    height: 4.5rem;
-    padding: 0.375rem;
+    width: var(--plate);
+    height: var(--plate);
+    padding: calc(var(--plate) * 0.08);
     background: var(--color-ground);
     border-radius: 6px;
     corner-shape: notch;

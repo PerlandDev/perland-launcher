@@ -27,15 +27,19 @@ export function nameFit({
 
 /** Keeps the marquee name whole: it wraps only between words, and a word too wide for the column shrinks
  *  the type (`--name-fit`) instead of losing its last letters to a new line. It re-fits when the column's
- *  width, the name or the loaded fonts change. */
-export function useNameFit<T extends HTMLElement>(name: string, floorPx = FLOOR_PX) {
+ *  width, the name or the loaded fonts change. With `shareWithRow`, the name's row carries `--name-fit` too,
+ *  so what sits beside the name (Home's icon plate) shrinks with it. */
+export function useNameFit<T extends HTMLElement>(name: string, floorPx = FLOOR_PX, shareWithRow = false) {
   const ref = useRef<T>(null);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const fit = () => {
-      // Measure at full size with words kept whole, so an overflowing word shows in the scroll width.
+      // Measure at full size with words kept whole, so an overflowing word shows in the scroll width. The row's
+      // copy goes too, or the name would inherit it.
+      const row = shareWithRow ? el.parentElement : null;
       el.style.removeProperty('--name-fit');
+      row?.style.removeProperty('--name-fit');
       delete el.dataset.fit;
       const { scale, floor } = nameFit({
         available: el.clientWidth,
@@ -43,7 +47,10 @@ export function useNameFit<T extends HTMLElement>(name: string, floorPx = FLOOR_
         fontSize: parseFloat(getComputedStyle(el).fontSize),
         floorPx,
       });
-      if (scale < 1) el.style.setProperty('--name-fit', String(scale));
+      if (scale < 1) {
+        el.style.setProperty('--name-fit', String(scale));
+        row?.style.setProperty('--name-fit', String(scale));
+      }
       if (floor) el.dataset.fit = 'floor';
     };
     fit();
@@ -63,6 +70,6 @@ export function useNameFit<T extends HTMLElement>(name: string, floorPx = FLOOR_
       live = false;
       observer.disconnect();
     };
-  }, [name, floorPx]);
+  }, [name, floorPx, shareWithRow]);
   return ref;
 }

@@ -801,6 +801,8 @@ describe('the instance name', () => {
       renderApp(<Home id="asalith-fields" />);
       const name = await screen.findByRole('heading', { name: 'Asalith Fields' });
       expect(name.style.getPropertyValue('--name-fit')).toBe('0.75');
+      // The row carries it too, so the icon plate beside the name shrinks with it.
+      expect(name.parentElement!.style.getPropertyValue('--name-fit')).toBe('0.75');
       expect(name).not.toHaveAttribute('data-fit');
     } finally {
       vi.restoreAllMocks();
