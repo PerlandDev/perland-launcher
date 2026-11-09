@@ -342,7 +342,6 @@
     width: 4.5rem;
     height: 4.5rem;
     padding: 0.375rem;
-    object-fit: cover;
     background: var(--color-ground);
     border-radius: 6px;
     corner-shape: notch;
@@ -351,8 +350,44 @@
       0 4px 0 var(--color-dirt),
       0 8px 0 var(--color-ground);
   }
-  .icon-plate[data-upscale] {
+  .icon-plate img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .icon-plate img[data-upscale] {
     image-rendering: pixelated;
+  }
+  /* Round, as Settings → Instance icons says: the plate, its seam and its two steps become the rail's stepped
+     circle, and the picture inside is clipped to it. The steps are drop shadows of the whole circle, so they
+     follow its outline instead of showing a square under it. */
+  .icon-plate[data-shape='round'] {
+    position: relative;
+    isolation: isolate;
+    background: none;
+    border-radius: 0;
+    box-shadow: none;
+    filter: drop-shadow(0 4px 0 var(--color-dirt)) drop-shadow(0 4px 0 var(--color-ground));
+  }
+  .icon-plate[data-shape='round']::before,
+  .icon-plate[data-shape='round']::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .icon-plate[data-shape='round']::before {
+    z-index: -1;
+    background: var(--color-ground);
+    clip-path: var(--pixel-circle);
+  }
+  .icon-plate[data-shape='round']::after {
+    background: var(--color-line);
+    clip-path: var(--pixel-ring);
+  }
+  .icon-plate[data-shape='round'] img {
+    clip-path: var(--pixel-circle);
   }
   /* The Microsoft sign-in's steps: one row per call of the chain, led by a 1.125rem mark slot. Done is a lime check, the
      running step a blue lamp that blinks in two snapped steps, a step not reached an empty lamp in a seam ring, a refusal
@@ -1579,10 +1614,13 @@
     line-height: 1.25;
     font-variant-numeric: tabular-nums;
   }
+  /* Every icon sits on a ground tile of the chosen shape, so a picture with clear corners (a round logo) still
+     reads as square or round, as Settings says, instead of keeping its own outline. */
   .rail-art {
     width: 40px;
     height: 40px;
     object-fit: cover;
+    background: var(--color-ground);
     border-radius: 3px;
     corner-shape: notch;
   }
@@ -1591,8 +1629,9 @@
      The narrow rail's cabinet follows it: its plate, its dirt step, the carried ring and the open socket
      are the same stepped circle, so no square plate or square shadow shows around a round icon. The
      coin-slot light, the LED, the signal bars and the warning diamond belong to the cabinet, not the
-     tile, so they stay whole. Wide, a cabinet is a row with its name, so it keeps its notched plate. */
-  .rail {
+     tile, so they stay whole. Wide, a cabinet is a row with its name, so it keeps its notched plate.
+     The circle is the app's, not the rail's: Home's icon plate takes the same shape. */
+  :root {
     --pixel-circle-points:
       68.75% 0, 68.75% 6.25%, 81.25% 6.25%, 81.25% 12.5%, 87.5% 12.5%, 87.5% 18.75%, 93.75% 18.75%, 93.75% 31.25%,
       100% 31.25%, 100% 68.75%, 93.75% 68.75%, 93.75% 81.25%, 87.5% 81.25%, 87.5% 87.5%, 81.25% 87.5%, 81.25% 93.75%,

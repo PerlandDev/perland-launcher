@@ -132,6 +132,7 @@ describe('mock backend', () => {
       banner: expect.stringMatching(/^data:image\/png;base64,/),
       // The pack's own background is still there to go back to.
       packBanner: true,
+      packIcon: true,
     });
     const generated = (await handle('instance_icon_set', { id: 'sky-islands', choice: { kind: 'generated' } })) as Instance;
     expect(generated.icon).toBe('generated');
@@ -170,7 +171,7 @@ describe('mock backend', () => {
     expect(state.custom.has('sky-islands')).toBe(false);
     const again = (await handle('instance_create', { request: { name: 'Sky Islands', minecraft: '1.21.1', loader: null } })) as Instance;
     expect(again.id).toBe('sky-islands');
-    expect(await handle('instance_art', { id: again.id })).toEqual({ icon: null, banner: null, packBanner: false });
+    expect(await handle('instance_art', { id: again.id })).toEqual({ icon: null, banner: null, packBanner: false, packIcon: false });
   });
 
   it('lets a round-1 upload fill both places until the background changes', async () => {
@@ -184,7 +185,7 @@ describe('mock backend', () => {
     expect(legacy.banner).toBe(legacy.icon);
     const set = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'generated', seed: 'dunes' } })) as Instance;
     expect(set.icon).toBe('custom');
-    expect(await art('sky-islands')).toEqual({ icon: legacy.icon, banner: null, packBanner: true });
+    expect(await art('sky-islands')).toEqual({ icon: legacy.icon, banner: null, packBanner: true, packIcon: true });
   });
 
   it('refuses a bad upload and a pack choice without a pack', async () => {

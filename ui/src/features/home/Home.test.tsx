@@ -732,7 +732,7 @@ describe('the icon plate', () => {
     const { container } = renderApp(<Home id="sky-islands" />);
     const name = await screen.findByRole('heading', { name: 'Sky Islands' });
     const plate = await vi.waitFor(() => {
-      const found = container.querySelector<HTMLImageElement>('img.icon-plate');
+      const found = container.querySelector<HTMLImageElement>('.icon-plate img');
       expect(found).not.toBeNull();
       return found!;
     });
@@ -740,11 +740,22 @@ describe('the icon plate', () => {
     // Decoration beside the name, which already says what it is.
     expect(plate).toHaveAttribute('alt', '');
     expect(name.parentElement).toContainElement(plate);
+    // Beside the name and centred on it, so a name that shrinks with the window or wraps keeps the plate in balance.
+    expect(name.parentElement).toHaveClass('items-center');
     expect(plate.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // The icon never becomes the background.
     const banner = container.querySelector<HTMLImageElement>('img.marquee-banner');
     expect(banner).not.toBeNull();
     expect(banner!.getAttribute('src')).not.toBe(plate.getAttribute('src'));
+  });
+
+  it("takes the rail's icon shape from Settings", async () => {
+    for (const shape of ['square', 'round'] as const) {
+      const { container, unmount } = renderApp(<Home id="sky-islands" />, { iconShape: shape });
+      await screen.findByRole('heading', { name: 'Sky Islands' });
+      await vi.waitFor(() => expect(container.querySelector('.icon-plate')).toHaveAttribute('data-shape', shape));
+      unmount();
+    }
   });
 
   it('is absent for a generated icon', async () => {

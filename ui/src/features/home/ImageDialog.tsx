@@ -40,10 +40,10 @@ function currentBackground(instance: Instance, packBanner: boolean | undefined):
 /** Which icon is in use now. A never-chosen icon follows the core: a round-1 upload still fills it, and
  *  otherwise it is on auto, which is the pack's icon for a pack and the initials for anything else. A pack
  *  with no icon of its own (`packIcon` null, once the art has loaded) shows the initials, as the rail does. */
-function currentIcon(instance: Instance, packIcon: string | null | undefined): 'upload' | 'pack' | 'generated' {
+function currentIcon(instance: Instance, packIcon: boolean | undefined): 'upload' | 'pack' | 'generated' {
   const mode = instance.icon ?? (instance.art === 'custom' ? 'custom' : 'auto');
   if (mode === 'custom') return 'upload';
-  if (mode === 'auto' && isPack(instance) && packIcon !== null) return 'pack';
+  if (mode === 'auto' && isPack(instance) && packIcon !== false) return 'pack';
   return 'generated';
 }
 
@@ -306,7 +306,9 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
   const background = currentBackground(instance, art.data?.packBanner);
   // From the modpack is there to pick only for a modpack with a background of its own.
   const packArtOffered = pack && art.data?.packBanner === true;
-  const icon = currentIcon(instance, art.data && art.data.icon);
+  const icon = currentIcon(instance, art.data?.packIcon);
+  // Modpack icon is there to pick only for a modpack with an icon of its own.
+  const packIconOffered = pack && art.data?.packIcon === true;
   const pictureBusy = setArt.isPending || setIcon.isPending;
   const busy = pictureBusy || setView.isPending;
   // The icon and the background come back apart, each shown on its own current key.
@@ -426,17 +428,21 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
                 busy={busy}
                 onChoose={() => chooseIcon({ kind: 'generated' })}
               />
-              {pack && (
-                <PictureKey
-                  label={t('image.packIcon')}
-                  glyph={<Package />}
-                  picture={iconPicture}
-                  current={icon === 'pack'}
-                  tabbable={icon === 'pack'}
-                  busy={busy}
-                  onChoose={() => chooseIcon({ kind: 'pack' })}
-                />
-              )}
+              {/* Always offered, like Modpack background; locked, and saying why, on an instance that isn't a modpack or
+                  a modpack with no icon of its own. */}
+              <PictureKey
+                locked={!packIconOffered}
+                label={t('image.packIcon')}
+                hint={packIconOffered ? undefined : pack ? t('image.packIconNone') : t('image.packLocked')}
+                glyph={packIconOffered ? <Package /> : <Lock />}
+                picture={iconPicture}
+                current={packIconOffered && icon === 'pack'}
+                tabbable={packIconOffered && icon === 'pack'}
+                busy={busy}
+                onChoose={() => {
+                  if (packIconOffered) chooseIcon({ kind: 'pack' });
+                }}
+              />
               <PictureKey
                 label={t('image.uploadIcon')}
                 hint={t('image.uploadHintIcon')}
