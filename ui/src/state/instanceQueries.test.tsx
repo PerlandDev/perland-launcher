@@ -15,7 +15,7 @@ function setup() {
   return { qc, wrapper };
 }
 
-const PICTURE = { icon: 'data:image/webp;base64,AAAA', banner: null };
+const PICTURE = { icon: 'data:image/webp;base64,AAAA', banner: null, packBanner: false };
 
 /** Every cached query of instance `id` that outlives its folder: its pictures, files and statuses. */
 function seed(qc: ReturnType<typeof createQueryClient>, id: string) {

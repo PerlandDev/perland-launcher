@@ -162,13 +162,14 @@ interface MockPack {
   installed: string | null;
   update: PackUpdate | null;
   contents: PackContents;
-  art: InstanceArtData;
+  /** The pack's own pictures, as its `.perland/art/` holds them. */
+  art: Pick<InstanceArtData, 'icon' | 'banner'>;
   manual: ManualFile[];
   found: number;
 }
 
 const svg = (body: string) => `data:image/svg+xml;base64,${btoa(body)}`;
-const SKY_ART: InstanceArtData = {
+const SKY_ART: Pick<InstanceArtData, 'icon' | 'banner'> = {
   icon: svg(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect width="16" height="16" fill="#7cc4ff"/><rect y="9" width="16" height="7" fill="#3f8f4f"/><rect y="12" width="16" height="4" fill="#6b4a2b"/></svg>',
   ),
@@ -1191,7 +1192,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
             : (pack?.icon ?? null);
       const banner =
         target.art === 'generated' ? null : target.art === 'custom' ? (state.custom.get(target.id) ?? null) : (pack?.banner ?? null);
-      return { icon, banner } satisfies InstanceArtData;
+      return { icon, banner, packBanner: Boolean(pack?.banner) } satisfies InstanceArtData;
     }
     case 'instance_art_set': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');

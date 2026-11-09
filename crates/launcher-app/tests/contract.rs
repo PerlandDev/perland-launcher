@@ -1513,6 +1513,7 @@ fn contract_fixtures_are_current() {
         InstanceArtData {
             icon: Some("data:image/png;base64,iVBORw0KGgo=".into()),
             banner: None,
+            pack_banner: false,
         },
     );
     check(

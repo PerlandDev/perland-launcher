@@ -703,7 +703,8 @@ export const optionalChoice = z.strictObject({ enabled: z.boolean(), description
 export const packMod = z.strictObject({ path: z.string(), name: z.string(), optional: optionalChoice.nullable() });
 export const packContents = z.strictObject({ managed: z.array(packMod), additions: z.array(localMod) });
 export const manualProgress = z.strictObject({ found: z.number().int(), total: z.number().int(), remaining: z.array(manualFile) });
-export const instanceArtData = z.strictObject({ icon: z.string().nullable(), banner: z.string().nullable() });
+/** An instance's pictures, icon and background apart, and whether its pack has a background of its own. */
+export const instanceArtData = z.strictObject({ icon: z.string().nullable(), banner: z.string().nullable(), packBanner: z.boolean() });
 export const artChoice = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('generated'), seed: z.string() }),
   z.strictObject({ kind: z.literal('pack') }),

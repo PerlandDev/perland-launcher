@@ -302,6 +302,9 @@ pub struct ManualProgress {
 pub struct InstanceArtData {
     pub icon: Option<String>,
     pub banner: Option<String>,
+    /// Whether the pack has a background of its own, whichever background is in use: "Change image…"
+    /// offers "From the modpack" only then.
+    pub pack_banner: bool,
 }
 
 /// What the player picked in "Change image…": one of the generated landscapes (by seed), the
