@@ -107,13 +107,11 @@ const STEPS: Partial<Record<string, number>> = {
 function ChoiceGroup({
   label,
   busy,
-  aside,
   between,
   children,
 }: {
   label: string;
   busy: boolean;
-  aside?: ReactNode;
   between?: (labelId: string) => ReactNode;
   children: ReactNode;
 }) {
@@ -135,14 +133,7 @@ function ChoiceGroup({
   );
   return (
     <div className="art-section">
-      {aside ? (
-        <div className="art-section-head">
-          {heading}
-          {aside}
-        </div>
-      ) : (
-        heading
-      )}
+      {heading}
       {between?.(id)}
       <div role="radiogroup" aria-labelledby={id} aria-busy={busy || undefined} className="art-choices" onKeyDown={onKeyDown}>
         {children}
@@ -403,7 +394,17 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
   }
 
   return (
-    <Dialog open onClose={onClose} title={t('image.title')} actions={<Button onClick={onClose}>{t('image.done')}</Button>}>
+    <Dialog open onClose={onClose} title={t('image.title')} actions={
+        <>
+          {/* Adjust leads the foot (only a picture is cropped by the marquee); Done ends it. */}
+          {adjustable && (
+            <Button icon={<Crop />} className="mr-auto" onClick={() => setStep('adjust')}>
+              {t('image.adjust')}
+            </Button>
+          )}
+          <Button onClick={onClose}>{t('image.done')}</Button>
+        </>
+      }>
       <div className="grid gap-5">
         <p>{t('image.body')}</p>
         <div className="art-stack">
@@ -447,13 +448,6 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
           <ChoiceGroup
             label={t('image.backgroundSection')}
             busy={busy}
-            aside={
-              adjustable && (
-                <Button variant="ghost" icon={<Crop />} onClick={() => setStep('adjust')}>
-                  {t('image.adjust')}
-                </Button>
-              )
-            }
             between={(labelId) => (
               <div className="art-tabs-row">
                 <BackgroundTabs tabs={tabs} shown={shownTab} labelId={labelId} panelId={panelId} onShow={setTab} />

@@ -15,9 +15,3 @@ it('lays Change image out in one column: three icon keys to a row, then a thin r
   expect(rule('.art-rule')).toMatch(/height:\s*1px/);
   expect(css).not.toMatch(/\.art-sections\s*\{/);
 });
-
-it("keeps Adjust a small key beside Background's heading", () => {
-  const adjust = rule('.art-section-head .btn-ghost');
-  expect(adjust).toMatch(/font-size:\s*0\.875rem/);
-  expect(adjust).toMatch(/min-height:\s*2rem/);
-});

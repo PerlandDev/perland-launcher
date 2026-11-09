@@ -95,7 +95,7 @@ describe('Change image', () => {
     await showTab(user, dialog, 'Default');
     expect(group(dialog, 'Background').getByRole('radio', { name: 'Landscape 1' })).toHaveAttribute('aria-checked', 'false');
     // A screenshot is a picture like any other, so it can be adjusted.
-    expect(within(dialog).getByRole('button', { name: 'Adjust' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Adjust the background' })).toBeInTheDocument();
   });
 
   it('says where screenshots come from when there are none', async () => {
@@ -191,10 +191,13 @@ describe('Change image', () => {
     expect(landscapes).toHaveFocus();
   });
 
-  it('keeps Done in view while the dialog scrolls', async () => {
-    const { user } = renderApp(<Home id="asalith-fields" />);
-    const dialog = await openPicker(user, 'Asalith Fields');
-    expect(within(dialog).getByRole('button', { name: 'Done' }).closest('.dialog-actions')).not.toBeNull();
+  it('keeps Done in view while the dialog scrolls, with Adjust the background beside it', async () => {
+    const { user } = renderApp(<Home id="sky-islands" />);
+    const dialog = await openPicker(user, 'Sky Islands');
+    const foot = within(dialog).getByRole('button', { name: 'Done' }).closest<HTMLElement>('.dialog-actions')!;
+    expect(foot).not.toBeNull();
+    // Adjust leads the foot, Done ends it.
+    expect(within(foot).getAllByRole('button').map((b) => b.textContent)).toEqual(['Adjust the background', 'Done']);
   });
 
   it('closes with Done', async () => {
@@ -236,7 +239,7 @@ it.each([
 });
 
 describe('Change image: adjust the background', () => {
-  const adjustKey = (dialog: HTMLElement) => within(dialog).queryByRole('button', { name: 'Adjust' });
+  const adjustKey = (dialog: HTMLElement) => within(dialog).queryByRole('button', { name: 'Adjust the background' });
   const homeBanner = () => document.querySelector<HTMLImageElement>('section[data-home-hero] > .marquee img.marquee-banner');
   const rect = (left: number, top: number, width: number, height: number) => () =>
     ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
@@ -257,7 +260,7 @@ describe('Change image: adjust the background', () => {
   /** Open Change image, then Adjust…; the same dialog now shows the adjust view. */
   async function adjust(user: ReturnType<typeof renderApp>['user']) {
     const picker = await openPicker(user, 'Castle Keep');
-    await user.click(await within(picker).findByRole('button', { name: 'Adjust' }));
+    await user.click(await within(picker).findByRole('button', { name: 'Adjust the background' }));
     return screen.getByRole('dialog', { name: 'Adjust the background' });
   }
 
@@ -267,12 +270,12 @@ describe('Change image: adjust the background', () => {
     plain.unmount();
 
     const pack = renderApp(<Home id="sky-islands" />, { pictureBackground: true });
-    expect(await within(await openPicker(pack.user, 'Sky Islands')).findByRole('button', { name: 'Adjust' })).toBeInTheDocument();
+    expect(await within(await openPicker(pack.user, 'Sky Islands')).findByRole('button', { name: 'Adjust the background' })).toBeInTheDocument();
     pack.unmount();
 
     const { user } = castle();
     const picker = await openPicker(user, 'Castle Keep');
-    expect(await within(picker).findByRole('button', { name: 'Adjust' })).toBeInTheDocument();
+    expect(await within(picker).findByRole('button', { name: 'Adjust the background' })).toBeInTheDocument();
     // Position no longer lives in Change image.
     expect(within(picker).queryByRole('group', { name: 'Position' })).toBeNull();
   });
@@ -288,7 +291,7 @@ describe('Change image: adjust the background', () => {
     expect(preview.querySelector('section')).not.toBeNull();
     await user.click(within(view).getByRole('button', { name: 'Back' }));
     expect(screen.getByRole('dialog', { name: 'Change image' })).toBeInTheDocument();
-    await user.click(await within(screen.getByRole('dialog')).findByRole('button', { name: 'Adjust' }));
+    await user.click(await within(screen.getByRole('dialog')).findByRole('button', { name: 'Adjust the background' }));
     await user.click(within(screen.getByRole('dialog', { name: 'Adjust the background' })).getByRole('button', { name: 'Done' }));
     await vi.waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
@@ -471,7 +474,7 @@ describe('Change image: adjust the background', () => {
     const { user } = castle({ bannerFocus: { x: 30, y: 60 }, bannerZoom: 60 });
     const picker = await openPicker(user, 'Castle Keep');
     await user.click(within(picker).getByRole('button', { name: 'Upload your own…' }));
-    await user.click(await within(picker).findByRole('button', { name: 'Adjust' }));
+    await user.click(await within(picker).findByRole('button', { name: 'Adjust the background' }));
     const view = screen.getByRole('dialog', { name: 'Adjust the background' });
     await vi.waitFor(() => expect(within(view).getByRole('slider', { name: 'Zoom' })).toHaveValue('100'));
     expect(within(view).getByLabelText('Left to right')).toHaveValue('50');

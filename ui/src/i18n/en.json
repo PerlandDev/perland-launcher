@@ -89,7 +89,7 @@
     "screenshot": "Screenshot {{name}}",
     "noScreenshots": "Screenshots you take in the game (F2) show up here.",
     "moreScreenshots": "Show all {{count}}",
-    "adjust": "Adjust",
+    "adjust": "Adjust the background",
     "adjustTitle": "Adjust the background",
     "adjustHint": "Drag the picture to move it and use the zoom to bring it closer or further away.",
     "zoom": "Zoom",

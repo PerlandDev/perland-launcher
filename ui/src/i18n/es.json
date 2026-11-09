@@ -89,7 +89,7 @@
     "screenshot": "Captura {{name}}",
     "noScreenshots": "Las capturas que tomes en el juego (F2) aparecen aquí.",
     "moreScreenshots": "Ver las {{count}}",
-    "adjust": "Ajustar",
+    "adjust": "Ajustar el fondo",
     "adjustTitle": "Ajustar el fondo",
     "adjustHint": "Arrastra la imagen para moverla y usa el zoom para acercarla o alejarla.",
     "zoom": "Zoom",
