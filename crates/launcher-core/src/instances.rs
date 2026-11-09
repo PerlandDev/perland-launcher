@@ -429,10 +429,10 @@ impl Focus {
     pub const MAX: u8 = 100;
 }
 
-/// The smallest and largest background zoom, in percent of the size that just covers the
-/// marquee (100 is that size).
+/// The smallest and largest background zoom: the picture's height in percent of the marquee's
+/// (100 is as tall as the marquee).
 pub const MIN_BANNER_ZOOM: u16 = 25;
-pub const MAX_BANNER_ZOOM: u16 = 300;
+pub const MAX_BANNER_ZOOM: u16 = 500;
 
 /// What fills the marquee around a background picture zoomed out until it no longer covers
 /// it: the panel's own dark ground, or the same picture as big dark pixels.
@@ -479,8 +479,8 @@ pub struct Instance {
     /// `None` is the default, the bottom middle; generated landscapes ignore it.
     #[serde(default)]
     pub banner_focus: Option<Focus>,
-    /// How big a background picture is drawn, in percent of the size that just covers the
-    /// marquee. `None` is 100, that size.
+    /// How big a background picture is drawn: its height in percent of the marquee's. `None` is
+    /// the size that just covers the marquee, whatever its shape.
     #[serde(default)]
     pub banner_zoom: Option<u16>,
     /// What fills the marquee around a picture zoomed out below 100. `None` is `Dark`.

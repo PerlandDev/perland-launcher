@@ -192,13 +192,26 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     { id: 'blank', label: t('skins.newBlank'), onSelect: () => void create(t('skins.blankName'), 'classic', encodeTexture(blankSkin().data)).catch(pushError) },
   ];
 
-  const importSkin = async () => {
-    const path = await open({ multiple: false, filters: [{ name: t('skins.pngFilter'), extensions: ['png'] }] });
-    if (typeof path !== 'string') return;
-    const entry = await commands.skinImport(path, owner);
-    qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [entry, ...(old ?? [])]);
-    setPicked(entry.id);
-  };
+  // One import at a time, from the press to the new skin in the wardrobe: a second press while the picker is open
+  // or the file is read would add the skin twice.
+  const importOnce = useSingleFlight();
+  const [importing, setImporting] = useState(false);
+  const importSkin = () =>
+    importOnce((done) => {
+      setImporting(true);
+      void (async () => {
+        const path = await open({ multiple: false, filters: [{ name: t('skins.pngFilter'), extensions: ['png'] }] });
+        if (typeof path !== 'string') return;
+        const entry = await commands.skinImport(path, owner);
+        qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [entry, ...(old ?? [])]);
+        setPicked(entry.id);
+      })()
+        .catch(pushError)
+        .finally(() => {
+          setImporting(false);
+          done();
+        });
+    });
 
   const exportSkin = async (entry: SkinEntry) => {
     await doc.flush();
@@ -326,7 +339,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         .then(() => commands.skinRestore(selected.id, version.id))
         .then((entry) => {
           qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => old?.map((e) => (e.id === entry.id ? entry : e)));
-          doc.replace(pixels.data);
+          // The version's arms came back with it; Undo takes both back.
+          doc.replace(pixels.data, entry.model !== model ? { before: model, after: entry.model } : undefined);
           setPreview(null);
           refreshVersions();
           pushNotice({ title: t('skins.history.restored'), body: t('skins.history.restoredBody', { when: whenLabel(version.taken, i18n.language, t) }) });
@@ -423,7 +437,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
           onSelect={(id) => void doc.flush().then(() => setPicked(id))}
           emptyNote={defaultSkin ? t('skins.emptyDefault') : t('skins.empty')}
           newItems={newItems}
-          onImport={() => void importSkin().catch(pushError)}
+          onImport={importSkin}
+          importing={importing}
           menuFor={menuFor}
           onMove={moveSkin}
         />
@@ -460,7 +475,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               pixels={previewing ? previewShown.pixels : doc.pixels}
               // A preview gets its own (negative) revisions, so the figure redraws on every switch.
               rev={previewing ? -previewShown.seq : doc.rev}
-              model={model}
+              // A version shows on the arms it was drawn for.
+              model={previewing ? (previewShown.version.model ?? model) : model}
               hidden={hidden}
               paintLayer={paintLayer}
               pose={pose}

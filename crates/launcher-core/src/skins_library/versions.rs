@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use super::{not_found, now, valid_id, SkinEntry, SkinLibrary};
+use super::{not_found, now, valid_id, SkinEntry, SkinLibrary, SkinModel};
 use crate::error::{ErrorCode, LauncherError, Result};
 use crate::fsutil::write_atomic;
 
@@ -42,6 +42,8 @@ pub struct SkinVersion {
     pub worn: bool,
     /// The skin's texture now is this version (only the newest such version).
     pub current: bool,
+    /// The arm model the texture was drawn for; `None` for a version kept before arm models were recorded.
+    pub model: Option<SkinModel>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,6 +54,9 @@ struct Record {
     #[serde(default)]
     worn: bool,
     sha256: String,
+    /// The arm model the texture was drawn for; absent in versions kept before it was recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model: Option<SkinModel>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -151,6 +156,8 @@ async fn rebuild(dir: &Path) -> Index {
                 reason: VersionReason::Edited,
                 worn: false,
                 sha256: sha256(&png),
+                // Lost with the index.
+                model: None,
             });
         }
     }
@@ -187,14 +194,20 @@ async fn prune(dir: &Path, index: &mut Index) {
     }
 }
 
-/// Keeps `png` as a version of the skin in `dir`, unless the newest version is the same texture (then a worn
-/// keep just marks it worn).
-async fn keep(dir: &Path, png: &[u8], taken: i64, reason: VersionReason) -> Result<()> {
+/// Keeps `png`, drawn for `model`, as a version of the skin in `dir`, unless the newest version is the same
+/// texture with the same arms (then a worn keep just marks it worn).
+async fn keep(
+    dir: &Path,
+    png: &[u8],
+    model: SkinModel,
+    taken: i64,
+    reason: VersionReason,
+) -> Result<()> {
     let mut index = load(dir).await?;
     let hash = sha256(png);
     let worn = reason == VersionReason::Worn;
     if let Some(newest) = index.versions.last_mut() {
-        if newest.sha256 == hash {
+        if newest.sha256 == hash && newest.model.is_none_or(|m| m == model) {
             if worn && !newest.worn {
                 newest.worn = true;
                 store(dir, &index).await?;
@@ -215,6 +228,7 @@ async fn keep(dir: &Path, png: &[u8], taken: i64, reason: VersionReason) -> Resu
         reason,
         worn,
         sha256: hash,
+        model: Some(model),
     });
     prune(dir, &mut index).await;
     store(dir, &index).await
@@ -226,7 +240,7 @@ impl SkinLibrary {
     }
 
     /// The skin `id`, or not found, under the lock already held.
-    async fn entry_held(&self, id: &str) -> Result<SkinEntry> {
+    pub(super) async fn entry_held(&self, id: &str) -> Result<SkinEntry> {
         if !valid_id(id) {
             return Err(not_found(id));
         }
@@ -242,19 +256,36 @@ impl SkinLibrary {
     /// about to be overwritten, dated `last_change`.
     pub(super) async fn keep_before_save(&self, id: &str, last_change: i64) -> Result<()> {
         let dir = self.versions_of(id);
-        let fresh = load(&dir).await?.versions.is_empty();
-        if !fresh && now() - last_change < IDLE_SECS {
+        let index = load(&dir).await?;
+        if !index.versions.is_empty() && now() - last_change < IDLE_SECS {
             return Ok(());
         }
         let png = self.texture(id).await?;
-        keep(&dir, &png, last_change, VersionReason::Edited).await
+        // Already the newest version: after a switch of arms its texture is kept with the arms it was drawn for,
+        // and the skin's model is already the new one, so it mustn't be kept again with those.
+        if index
+            .versions
+            .last()
+            .is_some_and(|r| r.sha256 == sha256(&png))
+        {
+            return Ok(());
+        }
+        let model = self.entry_held(id).await?.model;
+        keep(&dir, &png, model, last_change, VersionReason::Edited).await
     }
 
     /// Keeps the texture of `id` now, under the lock already held.
     pub(super) async fn keep_now(&self, id: &str, reason: VersionReason) -> Result<()> {
         let entry = self.entry_held(id).await?;
         let png = self.texture(id).await?;
-        keep(&self.versions_of(id), &png, entry.updated, reason).await
+        keep(
+            &self.versions_of(id),
+            &png,
+            entry.model,
+            entry.updated,
+            reason,
+        )
+        .await
     }
 
     pub(super) async fn forget_versions(&self, id: &str) {
@@ -270,20 +301,23 @@ impl SkinLibrary {
     /// The versions of `id`, newest first.
     pub async fn versions(&self, id: &str) -> Result<Vec<SkinVersion>> {
         let _held = self.lock.lock().await;
-        self.entry_held(id).await?;
+        let model = self.entry_held(id).await?.model;
         let index = load(&self.versions_of(id)).await?;
-        // Only the newest version with the texture now is `current`.
+        // Only the newest version with the texture and the arms now is `current`.
         let mut now = self.texture(id).await.map(|png| sha256(&png)).ok();
         Ok(index
             .versions
             .into_iter()
             .rev()
             .map(|r| SkinVersion {
-                current: now.as_deref() == Some(r.sha256.as_str()) && now.take().is_some(),
+                current: now.as_deref() == Some(r.sha256.as_str())
+                    && r.model.is_none_or(|m| m == model)
+                    && now.take().is_some(),
                 id: r.id,
                 taken: r.taken,
                 reason: r.reason,
                 worn: r.worn,
+                model: r.model,
             })
             .collect())
     }
@@ -310,18 +344,37 @@ impl SkinLibrary {
     pub async fn restore(&self, id: &str, version: &str) -> Result<SkinEntry> {
         let png = self.version_texture(id, version).await?;
         let _held = self.lock.lock().await;
+        let model = self.model_of(id, version).await?;
         self.keep_now(id, VersionReason::Edited).await?;
-        let (file, entry) = self.change(id, |_| {}).await?;
+        // The version's arms come back with its texture; one kept before arms were recorded keeps the skin's.
+        let (file, entry) = self
+            .change(id, |e| {
+                if let Some(model) = model {
+                    e.model = model;
+                }
+            })
+            .await?;
         write_atomic(&self.png(id), &png).await?;
         self.write(&file).await?;
         keep(
             &self.versions_of(id),
             &png,
+            entry.model,
             entry.updated,
             VersionReason::Restored,
         )
         .await?;
         Ok(entry)
+    }
+
+    /// The arm model version `version` of `id` was drawn for, if it was recorded.
+    async fn model_of(&self, id: &str, version: &str) -> Result<Option<SkinModel>> {
+        Ok(load(&self.versions_of(id))
+            .await?
+            .versions
+            .into_iter()
+            .find(|r| r.id == version)
+            .and_then(|r| r.model))
     }
 
     /// A new skin named `name` from version `version` of `id`: same arms, same wardrobe, no history.
@@ -330,9 +383,14 @@ impl SkinLibrary {
         if !valid_id(id) {
             return Err(not_found(id));
         }
-        // The copy stays in the source's wardrobe, as a skin the player made (never seeded).
+        // The copy stays in the source's wardrobe, as a skin the player made (never seeded), with the version's arms.
         let source = self.entry(id).await?;
-        self.create(name, source.model, &png, source.owner.as_deref())
+        let model = {
+            let _held = self.lock.lock().await;
+            self.model_of(id, version).await?
+        }
+        .unwrap_or(source.model);
+        self.create(name, model, &png, source.owner.as_deref())
             .await
     }
 }
@@ -473,6 +531,105 @@ mod tests {
         assert_eq!(versions.len(), 2);
         assert_eq!(versions[0].reason, VersionReason::Worn);
         assert!(versions[0].worn && versions[0].current);
+    }
+
+    #[tokio::test]
+    async fn a_version_keeps_the_arm_model_its_texture_was_drawn_for() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Slim, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        lib.checkpoint(&a.id, VersionReason::Edited).await.unwrap();
+        // Switching the arms keeps the texture as it was, with the arms it was drawn for.
+        lib.update(&a.id, None, Some(SkinModel::Classic))
+            .await
+            .unwrap();
+        lib.save_texture(&a.id, &skin([2, 2, 2, 255]))
+            .await
+            .unwrap();
+        lib.checkpoint(&a.id, VersionReason::Edited).await.unwrap();
+        let versions = lib.versions(&a.id).await.unwrap();
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].model, Some(SkinModel::Classic));
+        assert!(versions[0].current);
+        assert_eq!(versions[1].model, Some(SkinModel::Slim));
+        assert_eq!(
+            texel_of(&lib, &a.id, &versions[1].id).await,
+            Rgba([1, 1, 1, 255])
+        );
+    }
+
+    #[tokio::test]
+    async fn switching_arms_on_a_texture_that_fits_both_is_a_version_of_its_own() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        lib.update(&a.id, None, Some(SkinModel::Slim))
+            .await
+            .unwrap();
+        lib.checkpoint(&a.id, VersionReason::Edited).await.unwrap();
+        let versions = lib.versions(&a.id).await.unwrap();
+        let models: Vec<_> = versions.iter().map(|v| v.model).collect();
+        assert_eq!(models, [Some(SkinModel::Slim), Some(SkinModel::Classic)]);
+        // The same texels with other arms are not the skin now.
+        assert!(versions[0].current && !versions[1].current);
+    }
+
+    #[tokio::test]
+    async fn restoring_or_copying_a_version_brings_its_arms_back() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Slim, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        lib.update(&a.id, None, Some(SkinModel::Classic))
+            .await
+            .unwrap();
+        lib.save_texture(&a.id, &skin([2, 2, 2, 255]))
+            .await
+            .unwrap();
+        let versions = lib.versions(&a.id).await.unwrap();
+        let slim = versions
+            .iter()
+            .find(|v| v.model == Some(SkinModel::Slim))
+            .unwrap()
+            .id
+            .clone();
+        let copy = lib.copy_version(&a.id, &slim, "Copy").await.unwrap();
+        assert_eq!(copy.model, SkinModel::Slim);
+        let restored = lib.restore(&a.id, &slim).await.unwrap();
+        assert_eq!(restored.model, SkinModel::Slim);
+        assert_eq!(lib.entry(&a.id).await.unwrap().model, SkinModel::Slim);
+    }
+
+    #[tokio::test]
+    async fn a_version_kept_before_arm_models_were_recorded_has_none() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Slim, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        let dir = versions_dir(&lib.dir, &a.id);
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        tokio::fs::write(png_of(&dir, "5"), skin([9, 9, 9, 255]))
+            .await
+            .unwrap();
+        tokio::fs::write(
+            dir.join(INDEX),
+            r#"{"versions":[{"id":"5","taken":1,"reason":"edited","sha256":"x"}]}"#,
+        )
+        .await
+        .unwrap();
+        let versions = lib.versions(&a.id).await.unwrap();
+        assert_eq!(versions[0].model, None);
+        // Restoring it keeps the arms the skin has.
+        assert_eq!(
+            lib.restore(&a.id, "5").await.unwrap().model,
+            SkinModel::Slim
+        );
     }
 
     #[tokio::test]

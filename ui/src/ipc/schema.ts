@@ -402,7 +402,7 @@ export const instance = z.strictObject({
   icon: z.enum(['auto', 'generated', 'custom']).nullable(),
   /** Which point of a picture background stays in view, in percent of its width and height; null is the default (bottom middle). */
   bannerFocus: z.strictObject({ x: z.number().int(), y: z.number().int() }).nullable(),
-  /** How big a picture background is drawn, in percent of the size that just covers the marquee; null is 100. */
+  /** How big a picture background is drawn: its height in percent of the marquee's; null just covers the marquee. */
   bannerZoom: z.number().int().nullable(),
   /** What fills the marquee around a picture zoomed out below 100; null is dark. */
   bannerEdges: z.enum(['dark', 'pixel']).nullable(),
@@ -452,6 +452,8 @@ export const skinVersion = z.strictObject({
   reason: skinVersionReason,
   worn: z.boolean(),
   current: z.boolean(),
+  /** The arm model the texture was drawn for; null for a version kept before arm models were recorded. */
+  model: skinModel.nullable(),
 });
 /** The skin a Microsoft account wears now: a PNG `data:` URL and its arm model. */
 export const currentSkin = z.strictObject({ texture: z.string(), model: skinModel });

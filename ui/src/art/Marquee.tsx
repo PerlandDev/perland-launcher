@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CELL, COLS, discPath, layerPath, marqueeScene } from './marqueeScene';
 import type { BannerEdges } from '../ipc/schema';
-import { bannerBox, covers } from './bannerLayout';
+import { bannerBox, leavesEdges } from './bannerLayout';
 import { usePixelEdges } from './pixelEdges';
 import { pixelUpscale } from './upscale';
 
@@ -38,9 +38,9 @@ export function Marquee({
   banner?: string | null;
   /** Which point of the banner stays in view, in percent (CSS `object-position`). Null keeps the default, the bottom middle. */
   focus?: { x: number; y: number } | null;
-  /** How big the banner is drawn, in percent of the size that just covers the panel. Null (or 100) keeps the plain cover. */
+  /** How big the banner is drawn: its height in percent of the panel's. Null keeps the plain cover. */
   zoom?: number | null;
-  /** What fills the panel around a banner zoomed below 100: its dark ground (null or dark), or the banner as big dark pixels. */
+  /** What fills the panel around a zoomed banner that leaves edges: its dark ground (null or dark), or the banner as big dark pixels. */
   edges?: BannerEdges | null;
   className?: string;
 }) {
@@ -73,11 +73,11 @@ export function Marquee({
   const fullSunY = (scene.sun.y + 4) * CELL;
   // Never closer to the visible top than its own radius plus a cell: on a short panel it sets behind the hills whole.
   const sunY = Math.max(H - visible + fullSunY * (visible / H), H - visible + 5 * CELL);
-  // Away from 100 the banner is sized and placed here, from the panel's and the picture's own sizes.
+  // A chosen zoom is sized and placed here, from the panel's and the picture's own sizes.
   const measured = natural?.src === art && box.width > 0 ? natural : null;
-  const placed = art && (zoom ?? 100) !== 100 && measured ? bannerBox(box, measured, zoom, focus) : null;
+  const placed = art && zoom !== null && measured ? bannerBox(box, measured, zoom, focus) : null;
   const drawn = placed ?? box;
-  const pixels = usePixelEdges(art && edges === 'pixel' && !covers(zoom) ? art : null);
+  const pixels = usePixelEdges(art && edges === 'pixel' && placed && leavesEdges(box, placed) ? art : null);
   return (
     <div ref={frame} className={`marquee ${className ?? ''}`} data-dimmed={dimmed || undefined} aria-hidden="true">
       {pixels && <img src={pixels} alt="" className="marquee-edges" draggable={false} />}

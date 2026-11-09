@@ -80,7 +80,7 @@ export function HistoryPanel({
             return (
               <li key={v.id} className="wardrobe-item" data-selected={isPicked || undefined}>
                 <button type="button" className="wardrobe-pick" aria-current={isPicked || undefined} onClick={() => onPick(v)}>
-                  <VersionFigure skin={skin} version={v.id} model={model} />
+                  <VersionFigure skin={skin} version={v.id} model={v.model ?? model} />
                   <span className="grid min-w-0 flex-1 text-left">
                     <span className="truncate font-semibold tabular">{whenLabel(v.taken, i18n.language, t)}</span>
                     <span className="flex items-center gap-1.5 text-xs text-ink-dim">

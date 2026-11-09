@@ -309,6 +309,13 @@ impl SkinLibrary {
     ) -> Result<SkinEntry> {
         let name = name.map(validate_name).transpose()?;
         let _held = self.lock.lock().await;
+        // A switch of arms keeps the texture first, with the arms it was drawn for: the redrawn arms that follow
+        // are a new version, and the old one can be restored as it was.
+        if let Some(model) = model {
+            if self.entry_held(id).await?.model != model {
+                self.keep_now(id, VersionReason::Edited).await?;
+            }
+        }
         let (file, entry) = self
             .change(id, |e| {
                 if let Some(name) = name {

@@ -1257,7 +1257,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         fail('disk', 'banner_focus_invalid', 'That position is outside the picture');
       }
       const zoom = view.zoom ?? null;
-      if (zoom !== null && (!Number.isInteger(zoom) || zoom < 25 || zoom > 300)) fail('disk', 'banner_zoom_invalid', 'That zoom is out of range');
+      if (zoom !== null && (!Number.isInteger(zoom) || zoom < 25 || zoom > 500)) fail('disk', 'banner_zoom_invalid', 'That zoom is out of range');
       const updated: Instance = { ...target, bannerFocus: focus, bannerZoom: zoom, bannerEdges: view.edges ?? null };
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;

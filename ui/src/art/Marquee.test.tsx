@@ -67,16 +67,18 @@ describe('a zoomed banner', () => {
     return { ...view, img };
   }
 
-  it('keeps the plain cover path at 100', () => {
-    const { img } = zoomed({ zoom: 100 });
+  it('keeps the plain cover path while no zoom is chosen', () => {
+    const { img } = zoomed({ zoom: null });
     expect(img.style.width).toBe('');
     expect(img.hasAttribute('data-zoomed')).toBe(false);
   });
 
-  it('sizes and places the picture itself below 100', () => {
+  it("sizes a chosen zoom from the panel's height and places the picture itself", () => {
     const { img } = zoomed({ zoom: 50 });
-    expect([img.style.left, img.style.top, img.style.width, img.style.height]).toEqual(['250px', '0px', '500px', '500px']);
+    expect([img.style.left, img.style.top, img.style.width, img.style.height]).toEqual(['375px', '250px', '250px', '250px']);
     expect(img.hasAttribute('data-zoomed')).toBe(true);
+    // 200 is as tall as twice the panel: 1000 × 1000, which covers it.
+    expect(zoomed({ zoom: 200 }).img.style.width).toBe('1000px');
   });
 
   it('draws pixel edges behind it, and none when they cannot be made', () => {
@@ -90,12 +92,14 @@ describe('a zoomed banner', () => {
 
   it('draws no edges for dark edges or a picture that still covers', () => {
     expect(zoomed({ zoom: 50, edges: 'dark' }).container.querySelector('img.marquee-edges')).toBeNull();
-    expect(zoomed({ zoom: 150, edges: 'pixel' }).container.querySelector('img.marquee-edges')).toBeNull();
+    expect(zoomed({ zoom: 200, edges: 'pixel' }).container.querySelector('img.marquee-edges')).toBeNull();
+    // 150 is 750 wide in a 1000 wide panel: the sides show.
+    expect(zoomed({ zoom: 150, edges: 'pixel' }).container.querySelector('img.marquee-edges')).not.toBeNull();
   });
 
   it('decides hard pixels from the size the zoom draws, not the panel', () => {
-    // 600 px covering 1000 × 500 grows 1.67×: smooth. Zoomed to 150 it grows 2.5×: hard pixels.
+    // 600 px covering 1000 × 500 grows 1.67×: smooth. Zoomed to 300 (1500 px tall) it grows 2.5×: hard pixels.
     expect(zoomed({ zoom: null }, { width: 600, height: 600 }).img.hasAttribute('data-upscale')).toBe(false);
-    expect(zoomed({ zoom: 150 }, { width: 600, height: 600 }).img.hasAttribute('data-upscale')).toBe(true);
+    expect(zoomed({ zoom: 300 }, { width: 600, height: 600 }).img.hasAttribute('data-upscale')).toBe(true);
   });
 });

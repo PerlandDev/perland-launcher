@@ -142,6 +142,30 @@ it('a refused upload shows the translated error', async () => {
   await waitFor(() => expect(toastsSnapshot().map((t) => (t.error as { code?: string } | undefined)?.code)).toContain('skin_rejected'));
 });
 
+it('import runs once at a time: Import waits while a skin is being imported', async () => {
+  const { user, calls, backend } = renderApp(<SkinStudio />);
+  await screen.findByRole('list', { name: 'Wardrobe' });
+  // Hold the import until the test lets it go.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const handle = backend.handle;
+  vi.spyOn(backend, 'handle').mockImplementation(async (cmd, args) => {
+    if (cmd === 'skin_import') await held;
+    return handle(cmd, args);
+  });
+  const importKey = screen.getByRole('button', { name: 'Import' });
+  await user.click(importKey);
+  await waitFor(() => expect(importKey).toHaveAttribute('aria-disabled', 'true'));
+  await user.click(importKey);
+  await user.click(importKey);
+  // One file picker and one import, however many presses.
+  expect(sent(calls, 'plugin:dialog|open')).toHaveLength(1);
+  release();
+  await waitFor(() => expect(importKey).not.toHaveAttribute('aria-disabled'));
+  expect(sent(calls, 'skin_import')).toHaveLength(1);
+  expect(within(screen.getByRole('list', { name: 'Wardrobe' })).getAllByText('castle')).toHaveLength(1);
+});
+
 it('import adds the picked PNG to the wardrobe', async () => {
   const { user, calls } = renderApp(<SkinStudio />);
   await screen.findByRole('list', { name: 'Wardrobe' });
@@ -511,6 +535,20 @@ it('Restore makes the version the skin, and Undo takes it back', async () => {
   expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
   // The restore itself is the newest version now.
   await waitFor(() => expect(within(screen.getByRole('list', { name: 'Earlier versions' })).getAllByRole('button')).toHaveLength(5));
+});
+
+it('Restore brings back the arms the version was drawn for, and Undo takes them back', async () => {
+  // Beach day has slim arms now; its oldest version was drawn for classic ones.
+  const { user, calls } = renderApp(<SkinStudio />);
+  const list = await openHistory(user);
+  expect(screen.getByRole('button', { name: 'Slim arms' })).toBeInTheDocument();
+  await user.click(within(list).getAllByRole('button')[3]!);
+  await user.click(await screen.findByRole('button', { name: 'Restore this version' }));
+  await waitFor(() => expect(sent(calls, 'skin_restore')).toHaveLength(1));
+  expect(await screen.findByRole('button', { name: 'Classic arms' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Undo' }));
+  expect(await screen.findByRole('button', { name: 'Slim arms' })).toBeInTheDocument();
+  await waitFor(() => expect(sent(calls, 'skin_update')).toContainEqual({ id: 'skin-0a1b2c3d4e5f', name: null, model: 'slim' }));
 });
 
 it('Make a copy turns a version into a new wardrobe skin', async () => {
