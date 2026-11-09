@@ -1047,7 +1047,7 @@
   /* Icon over Background in one column: the icon's keys share a row, then a band of the room's ground across
      the whole dialog, then the landscapes, the background's keys and the screenshots. */
   .dialog:has(.art-stack) {
-    width: min(40rem, calc(100vw - 4rem));
+    width: min(44rem, calc(100vw - 4rem));
   }
   .art-stack {
     display: grid;
@@ -1069,7 +1069,13 @@
     justify-content: space-between;
     gap: 0.5rem 1rem;
   }
-  /* Upload beside the tabs: the art key at the tabs' height, its slot smaller, its hint in the tooltip. */
+  .art-tabs-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-left: auto;
+  }
+  /* From the modpack and Upload beside the tabs: the art key at the tabs' height, its slot smaller, its hint in the tooltip. */
   .art-key[data-action] {
     min-height: 2.5rem;
     padding: 0.25rem 0.75rem 0.25rem 0.25rem;
@@ -1105,7 +1111,7 @@
     display: grid;
     align-content: start;
     gap: 0.75rem;
-    min-height: 14.25rem;
+    min-height: 15.75rem;
   }
   /* Icon and Background: each group is named by a small legend over its keys, like Settings' channel. */
   .art-section {

@@ -457,17 +457,32 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
             between={(labelId) => (
               <div className="art-tabs-row">
                 <BackgroundTabs tabs={tabs} shown={shownTab} labelId={labelId} panelId={panelId} onShow={setTab} />
-                <PictureKey
-                  action
-                  label={t('image.upload')}
-                  hint={t('image.uploadHintBackground')}
-                  glyph={<Upload />}
-                  picture={bannerPicture}
-                  current={uploadLit}
-                  tabbable
-                  busy={busy}
-                  onChoose={() => void upload((path) => chooseBackground({ kind: 'upload', path }))}
-                />
+                <div className="art-tabs-actions">
+                  {pack && (
+                    <PictureKey
+                      action
+                      label={t('image.pack')}
+                      hint={t('image.packHint')}
+                      glyph={<Package />}
+                      picture={bannerPicture}
+                      current={background === 'pack'}
+                      tabbable
+                      busy={busy}
+                      onChoose={() => chooseBackground({ kind: 'pack' })}
+                    />
+                  )}
+                  <PictureKey
+                    action
+                    label={t('image.upload')}
+                    hint={t('image.uploadHintBackground')}
+                    glyph={<Upload />}
+                    picture={bannerPicture}
+                    current={uploadLit}
+                    tabbable
+                    busy={busy}
+                    onChoose={() => void upload((path) => chooseBackground({ kind: 'upload', path }))}
+                  />
+                </div>
               </div>
             )}
           >
