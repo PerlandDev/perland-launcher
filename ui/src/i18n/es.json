@@ -74,6 +74,9 @@
     "body": "El ícono identifica esta instancia; el fondo llena la pantalla detrás de su nombre.",
     "iconSection": "Ícono",
     "backgroundSection": "Fondo",
+    "tabLandscapes": "Paisajes",
+    "tabPack": "Del modpack",
+    "tabYours": "Tus fondos",
     "landscape": "Paisaje {{n}}",
     "pack": "Imagen del pack",
     "generatedIcon": "Letras",
@@ -1044,7 +1047,7 @@
       "restored": "Versión restaurada",
       "restoredBody": "Tu skin volvió a {{when}}. Deshacer lo revierte.",
       "copyName": "{{name}} ({{when}})",
-      "clear": "Borrar historial…",
+      "clear": "Borrar historial",
       "clearTitle": "¿Borrar el historial de {{name}}?",
       "clearBody": "Se borran todas las versiones anteriores de esta skin. La skin se queda como está ahora. No se puede deshacer.",
       "clearConfirm": "Borrar historial"

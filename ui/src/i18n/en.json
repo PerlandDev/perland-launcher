@@ -74,6 +74,9 @@
     "body": "The icon marks this instance; the background fills the screen behind its name.",
     "iconSection": "Icon",
     "backgroundSection": "Background",
+    "tabLandscapes": "Landscapes",
+    "tabPack": "From the modpack",
+    "tabYours": "Your backgrounds",
     "landscape": "Landscape {{n}}",
     "pack": "Pack art",
     "generatedIcon": "Letters",
@@ -1044,7 +1047,7 @@
       "restored": "Version restored",
       "restoredBody": "Your skin is back to {{when}}. Undo takes it back.",
       "copyName": "{{name}} ({{when}})",
-      "clear": "Clear history…",
+      "clear": "Clear history",
       "clearTitle": "Clear the history of {{name}}?",
       "clearBody": "Every earlier version of this skin is deleted. The skin stays as it is now. This can't be undone.",
       "clearConfirm": "Clear history"

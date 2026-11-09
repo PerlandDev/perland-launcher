@@ -102,8 +102,21 @@ const STEPS: Partial<Record<string, number>> = {
 };
 
 /** A labelled group of choices, one tab stop: arrow keys, Home and End move between them, and Space or
- *  Enter picks. Moving never picks, because every pick saves at once and an Upload key opens the file picker. */
-function ChoiceGroup({ label, busy, aside, children }: { label: string; busy: boolean; aside?: ReactNode; children: ReactNode }) {
+ *  Enter picks. Moving never picks, because every pick saves at once and an Upload key opens the file picker.
+ *  `between` sits under the heading, outside the choices (Background's tabs). */
+function ChoiceGroup({
+  label,
+  busy,
+  aside,
+  between,
+  children,
+}: {
+  label: string;
+  busy: boolean;
+  aside?: ReactNode;
+  between?: (labelId: string) => ReactNode;
+  children: ReactNode;
+}) {
   const id = useId();
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const radios = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')];
@@ -115,21 +128,75 @@ function ChoiceGroup({ label, busy, aside, children }: { label: string; busy: bo
     event.preventDefault();
     radios[next]?.focus();
   };
+  const heading = (
+    <h3 id={id} className="art-section-label">
+      {label}
+    </h3>
+  );
   return (
-    <div role="radiogroup" aria-labelledby={id} aria-busy={busy || undefined} className="art-section" onKeyDown={onKeyDown}>
+    <div className="art-section">
       {aside ? (
         <div className="art-section-head">
-          <h3 id={id} className="art-section-label">
-            {label}
-          </h3>
+          {heading}
           {aside}
         </div>
       ) : (
-        <h3 id={id} className="art-section-label">
-          {label}
-        </h3>
+        heading
       )}
-      {children}
+      {between?.(id)}
+      <div role="radiogroup" aria-labelledby={id} aria-busy={busy || undefined} className="art-choices" onKeyDown={onKeyDown}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/** Background's tabs: the generated landscapes, the modpack's own art (a modpack only) and the player's own pictures. */
+type BackgroundTab = 'landscapes' | 'pack' | 'yours';
+
+/** The tabs over Background's choices: one tab stop, the arrow keys move and show at once (they only show, never pick). */
+function BackgroundTabs({
+  tabs,
+  shown,
+  labelId,
+  panelId,
+  onShow,
+}: {
+  tabs: { id: BackgroundTab; label: string }[];
+  shown: BackgroundTab;
+  labelId: string;
+  panelId: string;
+  onShow: (tab: BackgroundTab) => void;
+}) {
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const at = tabs.findIndex((tab) => tab.id === shown);
+    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : null;
+    const next = step !== null ? (at + step + tabs.length) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+    if (next === null) return;
+    event.preventDefault();
+    const tab = tabs[next]!;
+    onShow(tab.id);
+    event.currentTarget.querySelector<HTMLElement>(`[data-tab="${tab.id}"]`)?.focus();
+  };
+  return (
+    <div role="tablist" aria-labelledby={labelId} className="art-tabs" onKeyDown={onKeyDown}>
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          id={`${panelId}-${tab.id}`}
+          data-tab={tab.id}
+          className="seg seg-sm"
+          data-checked={tab.id === shown ? '' : undefined}
+          aria-selected={tab.id === shown}
+          aria-controls={panelId}
+          tabIndex={tab.id === shown ? 0 : -1}
+          onClick={() => onShow(tab.id)}
+        >
+          {tab.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -245,6 +312,17 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
   const landscapeLit = typeof background === 'object' && presetSeeds(instance).includes(background.seed);
   const shotLit = background === 'upload' && shot !== null && (screenshots.data ?? []).includes(shot);
   const uploadLit = background === 'upload' && !shotLit;
+  // Background opens on the tab that holds the background in use; a tab the instance doesn't have shows Landscapes.
+  const [tab, setTab] = useState<BackgroundTab>(() => (background === 'pack' ? 'pack' : background === 'upload' ? 'yours' : 'landscapes'));
+  const shownTab: BackgroundTab = tab === 'pack' && !pack ? 'landscapes' : tab;
+  const tabs: { id: BackgroundTab; label: string }[] = [
+    { id: 'landscapes', label: t('image.tabLandscapes') },
+    ...(pack ? [{ id: 'pack' as const, label: t('image.tabPack') }] : []),
+    { id: 'yours', label: t('image.tabYours') },
+  ];
+  const panelId = useId();
+  // The pack's own art shows on its tile while it is the background; otherwise only the core knows it, so a glyph stands in.
+  const packBanner = background === 'pack' ? bannerPicture : null;
   const shownShots = allScreenshots ? (screenshots.data ?? []) : (screenshots.data ?? []).slice(0, FIRST_SCREENSHOTS);
 
   /** Clear what the last pick left behind, so only this pick's error can show. */
@@ -362,8 +440,7 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
               />
             </div>
           </ChoiceGroup>
-          {/* The seam between the two pictures: a strip of the room's ground across the whole dialog. */}
-          <div className="art-band" aria-hidden="true" />
+          <div className="art-rule" aria-hidden="true" />
           <ChoiceGroup
             label={t('image.backgroundSection')}
             busy={busy}
@@ -374,82 +451,103 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
                 </Button>
               )
             }
+            between={(labelId) => <BackgroundTabs tabs={tabs} shown={shownTab} labelId={labelId} panelId={panelId} onShow={setTab} />}
           >
-            <div className="art-tiles">
-              {presetSeeds(instance).map((seed, index) => {
-                const lit = typeof background === 'object' && background.seed === seed;
-                return (
+            <div role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${shownTab}`} className="art-panel">
+              {shownTab === 'landscapes' && (
+                <div className="art-tiles">
+                  {presetSeeds(instance).map((seed, index) => {
+                    const lit = typeof background === 'object' && background.seed === seed;
+                    return (
+                      <button
+                        key={seed}
+                        type="button"
+                        role="radio"
+                        className="art-tile"
+                        aria-label={t('image.landscape', { n: index + 1 })}
+                        aria-checked={lit}
+                        aria-disabled={busy || undefined}
+                        // Nothing lit here (a pinned seed that is none of the six, or another tab's choice): the first keeps the tab stop.
+                        tabIndex={lit || (index === 0 && !landscapeLit) ? 0 : -1}
+                        onClick={() => chooseBackground({ kind: 'generated', seed })}
+                      >
+                        <Marquee seed={seed} attract={false} className="absolute inset-0" />
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {shownTab === 'pack' && (
+                <div className="art-tiles">
                   <button
-                    key={seed}
                     type="button"
                     role="radio"
                     className="art-tile"
-                    aria-label={t('image.landscape', { n: index + 1 })}
-                    aria-checked={lit}
+                    aria-label={t('image.pack')}
+                    aria-checked={background === 'pack'}
                     aria-disabled={busy || undefined}
-                    // A pinned seed that is none of the six lights nothing; the first landscape keeps the tab stop.
-                    tabIndex={lit || (index === 0 && typeof background === 'object' && !landscapeLit) ? 0 : -1}
-                    onClick={() => chooseBackground({ kind: 'generated', seed })}
+                    tabIndex={0}
+                    onClick={() => chooseBackground({ kind: 'pack' })}
                   >
-                    <Marquee seed={seed} attract={false} className="absolute inset-0" />
-                  </button>
-                );
-              })}
-            </div>
-            <div className="art-keys">
-              {pack && (
-                <PictureKey
-                  label={t('image.pack')}
-                  glyph={<Package />}
-                  picture={bannerPicture}
-                  current={background === 'pack'}
-                  tabbable={background === 'pack'}
-                  busy={busy}
-                  onChoose={() => chooseBackground({ kind: 'pack' })}
-                />
-              )}
-              <PictureKey
-                label={t('image.upload')}
-                hint={t('image.uploadHintBackground')}
-                glyph={<Upload />}
-                picture={bannerPicture}
-                current={uploadLit}
-                tabbable={uploadLit}
-                busy={busy}
-                onChoose={() => void upload((path) => chooseBackground({ kind: 'upload', path }))}
-              />
-            </div>
-            {screenshots.data && (
-              <div className="art-shots">
-                <h4 className="art-section-label">{t('image.screenshots')}</h4>
-                {screenshots.data.length === 0 ? (
-                  <p className="text-sm text-ink-dim">{t('image.noScreenshots')}</p>
-                ) : (
-                  <>
-                    <div className="art-tiles">
-                      {shownShots.map((name) => (
-                        <ScreenshotTile
-                          key={name}
-                          id={instance.id}
-                          name={name}
-                          current={shotLit && shot === name}
-                          tabbable={shotLit && shot === name}
-                          busy={busy}
-                          onChoose={() => chooseBackground({ kind: 'screenshot', name })}
-                        />
-                      ))}
-                    </div>
-                    {!allScreenshots && screenshots.data.length > FIRST_SCREENSHOTS && (
-                      <Button variant="ghost" className="justify-self-start" onClick={() => setAllScreenshots(true)}>
-                        {t('image.moreScreenshots', {
-                          count: screenshots.data.length,
-                        })}
-                      </Button>
+                    {packBanner ? (
+                      <img src={packBanner} alt="" draggable={false} className="absolute inset-0 h-full w-full object-cover" />
+                    ) : (
+                      <span className="art-tile-glyph" aria-hidden>
+                        <Package />
+                        {t('image.pack')}
+                      </span>
                     )}
-                  </>
-                )}
-              </div>
-            )}
+                  </button>
+                </div>
+              )}
+              {shownTab === 'yours' && (
+                <>
+                  <div className="art-keys art-keys-wide">
+                    <PictureKey
+                      label={t('image.upload')}
+                      hint={t('image.uploadHintBackground')}
+                      glyph={<Upload />}
+                      picture={bannerPicture}
+                      current={uploadLit}
+                      tabbable={uploadLit || !shotLit}
+                      busy={busy}
+                      onChoose={() => void upload((path) => chooseBackground({ kind: 'upload', path }))}
+                    />
+                  </div>
+                  {screenshots.data && (
+                    <div className="art-shots">
+                      <h4 className="art-section-label">{t('image.screenshots')}</h4>
+                      {screenshots.data.length === 0 ? (
+                        <p className="text-sm text-ink-dim">{t('image.noScreenshots')}</p>
+                      ) : (
+                        <>
+                          <div className="art-tiles">
+                            {shownShots.map((name) => (
+                              <ScreenshotTile
+                                key={name}
+                                id={instance.id}
+                                name={name}
+                                current={shotLit && shot === name}
+                                tabbable={shotLit && shot === name}
+                                busy={busy}
+                                onChoose={() => chooseBackground({ kind: 'screenshot', name })}
+                              />
+                            ))}
+                          </div>
+                          {!allScreenshots && screenshots.data.length > FIRST_SCREENSHOTS && (
+                            <Button variant="ghost" className="justify-self-start" onClick={() => setAllScreenshots(true)}>
+                              {t('image.moreScreenshots', {
+                                count: screenshots.data.length,
+                              })}
+                            </Button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </ChoiceGroup>
         </div>
         {error !== null && <ErrorCard error={error} />}
