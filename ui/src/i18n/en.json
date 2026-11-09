@@ -78,6 +78,7 @@
     "tabShots": "Your screenshots",
     "pack": "From the modpack",
     "packHint": "The picture that comes with the modpack.",
+    "packLocked": "Only for modpack instances.",
     "landscape": "Landscape {{n}}",
     "generatedIcon": "Letters",
     "generatedIconHint": "Made from the instance's name.",

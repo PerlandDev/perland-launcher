@@ -47,8 +47,13 @@ describe('Change image', () => {
     const plain = await openPicker(first.user, 'Asalith Fields');
     expect(within(plain).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Default', 'Your screenshots']);
     expect(within(plain).getByRole('button', { name: 'Upload your own…' })).toHaveAttribute('aria-pressed', 'false');
-    // Not a modpack: nothing of its own to offer.
-    expect(within(plain).queryByRole('button', { name: 'From the modpack' })).not.toBeInTheDocument();
+    // Not a modpack: the key is there but locked, and says why.
+    const locked = within(plain).getByRole('button', { name: 'From the modpack' });
+    expect(locked).toHaveAttribute('aria-disabled', 'true');
+    expect(locked).toHaveAttribute('aria-pressed', 'false');
+    expect(locked).toHaveAccessibleDescription('Only for modpack instances.');
+    await first.user.click(locked);
+    expect(sent(first.calls, 'instance_art_set')).toEqual([]);
     first.unmount();
 
     const { user, calls } = renderApp(<Home id="sky-islands" />);

@@ -20,7 +20,7 @@ import {
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
-import { Crop, Package, Upload } from '../../ui/Icon';
+import { Crop, Lock, Package, Upload } from '../../ui/Icon';
 import { BannerAdjust } from './BannerAdjust';
 import { isPack } from './labels';
 
@@ -204,12 +204,15 @@ function PictureKey({
   busy,
   onChoose,
   action = false,
+  locked = false,
 }: {
   label: string;
   /** A second, dim line under the label (what an upload may be). It describes the key; the label alone names it. */
   hint?: string;
   /** An action beside a group rather than one of its choices: a plain button, pressed while its picture is in use. */
   action?: boolean;
+  /** Shown but not available here (From the modpack on an instance that isn't one): dimmed, never pressed. */
+  locked?: boolean;
   glyph: ReactNode;
   /** The glyph is a picture of its own (the initials) and fills the slot. */
   fill?: boolean;
@@ -230,9 +233,10 @@ function PictureKey({
       role={action ? undefined : 'radio'}
       className="art-key"
       data-action={action || undefined}
+      data-locked={locked || undefined}
       aria-checked={action ? undefined : current}
       aria-pressed={action ? current : undefined}
-      aria-disabled={busy || undefined}
+      aria-disabled={busy || locked || undefined}
       aria-labelledby={`${id}-label`}
       aria-describedby={hint ? `${id}-hint` : undefined}
       tabIndex={action || tabbable ? 0 : -1}
@@ -450,19 +454,21 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
               <div className="art-tabs-row">
                 <BackgroundTabs tabs={tabs} shown={shownTab} labelId={labelId} panelId={panelId} onShow={setTab} />
                 <div className="art-tabs-actions">
-                  {pack && (
-                    <PictureKey
-                      action
-                      label={t('image.pack')}
-                      hint={t('image.packHint')}
-                      glyph={<Package />}
-                      picture={bannerPicture}
-                      current={background === 'pack'}
-                      tabbable
-                      busy={busy}
-                      onChoose={() => chooseBackground({ kind: 'pack' })}
-                    />
-                  )}
+                  {/* Always offered; locked, and saying why, on an instance that isn't a modpack. */}
+                  <PictureKey
+                    action
+                    locked={!pack}
+                    label={t('image.pack')}
+                    hint={pack ? t('image.packHint') : t('image.packLocked')}
+                    glyph={pack ? <Package /> : <Lock />}
+                    picture={bannerPicture}
+                    current={pack && background === 'pack'}
+                    tabbable
+                    busy={busy}
+                    onChoose={() => {
+                      if (pack) chooseBackground({ kind: 'pack' });
+                    }}
+                  />
                   <PictureKey
                     action
                     label={t('image.upload')}
