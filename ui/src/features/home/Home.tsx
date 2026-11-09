@@ -29,9 +29,8 @@ import { pick } from './pick';
 import { UpdateDialog } from './UpdateDialog';
 import { UpdatePlate } from './UpdatePlate';
 
-/** The picture's side inside the icon plate at its largest (the name's full 5.5rem type), in px: what decides
- *  whether a small icon is blown up with hard pixels. */
-const PLATE_ART = 72;
+/** The picture's side inside the icon plate (4.5rem less its 0.375rem frame), in px. */
+const PLATE_ART = 60;
 
 /** The instance's own icon (a pack's, or the player's upload), framed beside the name in the shape Settings gives the
  *  rail's icons. It is decoration: the name beside it says what it is. A picture that fails to decode takes the plate
@@ -79,8 +78,7 @@ function InstanceView({ instance, preview = false }: { instance: Instance; previ
   const iconShape = useSettings().data?.iconShape ?? 'square';
   // The second click of a double click lands before the `queued` event; hold it until Play settles.
   const playOnce = useSingleFlight();
-  // The row shares the fit, so the icon plate keeps the name's size.
-  const nameRef = useNameFit<HTMLHeadingElement>(instance.name, undefined, true);
+  const nameRef = useNameFit<HTMLHeadingElement>(instance.name);
   const actions = useInstanceActions(instance);
   const menu = useRef<MenuHandle>(null);
   return (

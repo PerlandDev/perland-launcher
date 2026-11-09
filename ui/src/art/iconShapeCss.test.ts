@@ -21,10 +21,3 @@ it('backs every rail icon with a tile, so a picture with clear corners still rea
 it("rounds Home's icon plate and its picture when the icons are round", () => {
   expect(rule(".icon-plate[data-shape='round'] img")).toMatch(/clip-path:\s*var\(--pixel-circle\)/);
 });
-
-it("sizes Home's icon plate from the name's own type, so it never towers over a name the window shrinks", () => {
-  const plate = rule('.icon-plate');
-  expect(plate).toMatch(/--name-fit/);
-  expect(plate).toMatch(/5\.2cqi/);
-  expect(plate).not.toMatch(/width:\s*4\.5rem/);
-});
