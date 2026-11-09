@@ -292,6 +292,17 @@ impl SkinLibrary {
         let _ = tokio::fs::remove_dir_all(self.versions_of(id)).await;
     }
 
+    /// Forgets every kept version of `id`. The skin itself stays as it is.
+    pub async fn clear_versions(&self, id: &str) -> Result<()> {
+        let _held = self.lock.lock().await;
+        self.entry_held(id).await?;
+        match tokio::fs::remove_dir_all(self.versions_of(id)).await {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     /// Keeps the texture of `id` as it is now (leaving a changed skin, exporting it).
     pub async fn checkpoint(&self, id: &str, reason: VersionReason) -> Result<()> {
         let _held = self.lock.lock().await;
@@ -449,6 +460,42 @@ mod tests {
             texel_of(&lib, &a.id, &versions[0].id).await,
             Rgba([1, 1, 1, 255])
         );
+    }
+
+    #[tokio::test]
+    async fn clearing_forgets_every_version_and_keeps_the_skin() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        lib.save_texture(&a.id, &skin([2, 2, 2, 255]))
+            .await
+            .unwrap();
+        age(&lib, &a.id, IDLE_SECS + 5).await;
+        lib.save_texture(&a.id, &skin([3, 3, 3, 255]))
+            .await
+            .unwrap();
+        assert_eq!(lib.versions(&a.id).await.unwrap().len(), 2);
+        lib.clear_versions(&a.id).await.unwrap();
+        assert!(lib.versions(&a.id).await.unwrap().is_empty());
+        let png = lib.texture(&a.id).await.unwrap();
+        assert_eq!(
+            *skins_png::decode(&png).unwrap().get_pixel(8, 8),
+            Rgba([3, 3, 3, 255])
+        );
+        // Nothing to clear is not a problem; an unknown skin is.
+        lib.clear_versions(&a.id).await.unwrap();
+        assert_eq!(
+            lib.clear_versions("nope").await.unwrap_err().code,
+            ErrorCode::SkinNotFound
+        );
+        // The next session starts a history again.
+        age(&lib, &a.id, IDLE_SECS + 5).await;
+        lib.save_texture(&a.id, &skin([4, 4, 4, 255]))
+            .await
+            .unwrap();
+        assert_eq!(lib.versions(&a.id).await.unwrap().len(), 1);
     }
 
     #[tokio::test]

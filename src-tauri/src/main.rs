@@ -278,6 +278,7 @@ fn main() {
             commands::skin_restore,
             commands::skin_version_copy,
             commands::skin_checkpoint,
+            commands::skin_versions_clear,
             commands::skin_delete,
             commands::skin_export,
             commands::skin_current,

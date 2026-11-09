@@ -291,6 +291,9 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       // The copy stays in the source's wardrobe and is never seeded, as in Rust.
       return add(state, checkName(args.name), version.model ?? entry.model, version.texture, entry.owner ?? null);
     }
+    case 'skin_versions_clear':
+      state.versions.delete(find(state, args.id).id);
+      return null;
     case 'skin_checkpoint': {
       const entry = find(state, args.id);
       keep(state, entry, state.textures.get(entry.id)!, 'edited');

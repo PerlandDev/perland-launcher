@@ -69,7 +69,7 @@ export function Dialog({
             </p>
           )}
           {children && <div className="mt-2 text-ink-dim">{children}</div>}
-          {actions != null && <div className="mt-6 flex justify-end gap-3">{actions}</div>}
+          {actions != null && <div className="dialog-actions mt-6 flex justify-end gap-3">{actions}</div>}
         </>
       )}
     </dialog>

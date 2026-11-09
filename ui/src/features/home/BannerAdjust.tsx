@@ -1,6 +1,6 @@
 import { useContext, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type Ref, type WheelEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { bannerBox, clampZoom, coverZoom, DEFAULT_FOCUS, dragFocus, focusFor, leavesEdges, MAX_ZOOM, MIN_ZOOM, placeFrame, ZOOM_STEP, type Size } from '../../art/bannerLayout';
+import { bannerBox, clampZoom, coverZoom, DEFAULT_FOCUS, dragFocus, leavesEdges, MAX_ZOOM, MIN_ZOOM, placeFrame, ZOOM_STEP, zoomAround, type Size } from '../../art/bannerLayout';
 import { Marquee } from '../../art/Marquee';
 import { artSeed } from '../../art/seed';
 import type { BannerEdges, BannerView, Focus, Instance } from '../../ipc/schema';
@@ -132,12 +132,14 @@ export function BannerAdjust({
       timer.current = setTimeout(flush, SAVE_DELAY_MS);
     }
   };
-  const zoomTo = (value: number) => {
+  /** Zoom to `value` around `anchor`, a point of the header (its middle when not given): the part of the picture there
+   *  stays put, so the zoom closes in on it. A first zoom also turns the cover's position into a zoomed one. */
+  const zoomTo = (value: number, anchor?: { x: number; y: number }) => {
     if (disabled) return;
-    const zoom = clampZoom(value);
-    // A first zoom keeps the picture where the marquee shows it: a zoomed picture's x% means another thing.
-    const focus = draft.zoom === null && natural ? focusFor(header, bannerBox(header, natural, null, draft.focus), zoom) : draft.focus;
-    move({ ...draft, focus, zoom }, 'later');
+    const next = clampZoom(value);
+    if (next === draft.zoom) return;
+    const focus = natural ? zoomAround(header, natural, draft.zoom, draft.focus, next, anchor) : draft.focus;
+    move({ ...draft, focus, zoom: next }, 'later');
   };
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -177,7 +179,11 @@ export function BannerAdjust({
   };
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
     if (event.deltaY === 0) return;
-    zoomTo(zoom + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+    // Screen pixels to the header's own: the wheel zooms into what is under the pointer.
+    const rect = event.currentTarget.getBoundingClientRect();
+    const k = rect.width / header.width;
+    const anchor = k > 0 ? { x: (event.clientX - rect.left) / k, y: (event.clientY - rect.top) / k } : undefined;
+    zoomTo(zoom + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP), anchor);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
