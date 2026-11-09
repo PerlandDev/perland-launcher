@@ -79,6 +79,7 @@
     "pack": "Del modpack",
     "packHint": "La imagen que trae el modpack.",
     "packLocked": "Solo en instancias de modpack.",
+    "packNoArt": "Este modpack no trae imagen.",
     "landscape": "Paisaje {{n}}",
     "generatedIcon": "Letras",
     "generatedIconHint": "Hechas con el nombre de la instancia.",

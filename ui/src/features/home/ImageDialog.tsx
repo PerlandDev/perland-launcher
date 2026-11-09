@@ -29,10 +29,11 @@ const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'webp'];
 const SLOT = 32;
 
 /** Which background is in use now (ruling R4): an uploaded picture, the pack's own art, or a landscape's
- *  seed (which lights no tile when it isn't one of the six). */
-function currentBackground(instance: Instance): 'upload' | 'pack' | { seed: string } {
+ *  seed (which lights no tile when it isn't one of the six). A pack on auto with no background of its own
+ *  (`packBanner` false, once the art has loaded) shows its landscape, as Home does. */
+function currentBackground(instance: Instance, packBanner: boolean | undefined): 'upload' | 'pack' | { seed: string } {
   if (instance.art === 'custom') return 'upload';
-  if (instance.art === 'auto' && isPack(instance)) return 'pack';
+  if (instance.art === 'auto' && isPack(instance) && packBanner !== false) return 'pack';
   return { seed: artSeed(instance) };
 }
 
@@ -302,7 +303,9 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
       instance: qc.getQueryData<InstanceListing>(qk.instances)?.instances.find((i) => i.id === instance.id) ?? instance,
     }));
   const pack = isPack(instance);
-  const background = currentBackground(instance);
+  const background = currentBackground(instance, art.data?.packBanner);
+  // From the modpack is there to pick only for a modpack with a background of its own.
+  const packArtOffered = pack && art.data?.packBanner === true;
   const icon = currentIcon(instance, art.data && art.data.icon);
   const pictureBusy = setArt.isPending || setIcon.isPending;
   const busy = pictureBusy || setView.isPending;
@@ -454,19 +457,20 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
               <div className="art-tabs-row">
                 <BackgroundTabs tabs={tabs} shown={shownTab} labelId={labelId} panelId={panelId} onShow={setTab} />
                 <div className="art-tabs-actions">
-                  {/* Always offered; locked, and saying why, on an instance that isn't a modpack. */}
+                  {/* Always offered; locked, and saying why, on an instance that isn't a modpack or a modpack with no
+                      background of its own. */}
                   <PictureKey
                     action
-                    locked={!pack}
+                    locked={!packArtOffered}
                     label={t('image.pack')}
-                    hint={pack ? t('image.packHint') : t('image.packLocked')}
-                    glyph={pack ? <Package /> : <Lock />}
+                    hint={packArtOffered ? t('image.packHint') : pack ? t('image.packNoArt') : t('image.packLocked')}
+                    glyph={packArtOffered ? <Package /> : <Lock />}
                     picture={bannerPicture}
-                    current={pack && background === 'pack'}
+                    current={packArtOffered && background === 'pack'}
                     tabbable
                     busy={busy}
                     onChoose={() => {
-                      if (pack) chooseBackground({ kind: 'pack' });
+                      if (packArtOffered) chooseBackground({ kind: 'pack' });
                     }}
                   />
                   <PictureKey

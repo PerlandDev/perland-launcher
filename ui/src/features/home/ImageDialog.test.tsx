@@ -72,6 +72,20 @@ describe('Change image', () => {
     await vi.waitFor(() => expect(within(pack).getByRole('button', { name: 'From the modpack' })).toHaveAttribute('aria-pressed', 'true'));
   });
 
+  it("locks From the modpack when the modpack has no picture of its own, and lights the landscape Home shows", async () => {
+    const backend = createMockBackend();
+    backend.state.packs.get('sky-islands')!.art = { icon: null, banner: null };
+    const { user } = renderWithProviders(<Home id="sky-islands" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
+    const dialog = await openPicker(user, 'Sky Islands');
+    const packArt = await within(dialog).findByRole('button', { name: 'From the modpack' });
+    await vi.waitFor(() => expect(packArt).toHaveAttribute('aria-disabled', 'true'));
+    expect(packArt).toHaveAttribute('aria-pressed', 'false');
+    expect(packArt).toHaveAccessibleDescription('This modpack has no picture of its own.');
+    // Home draws the instance's own landscape, so that is the one lit; there is no picture to adjust.
+    expect(group(dialog, 'Background').getByRole('radio', { name: 'Landscape 1' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(dialog).queryByRole('button', { name: 'Adjust the background' })).not.toBeInTheDocument();
+  });
+
   it('uploads a picked image and lights Upload', async () => {
     // The mock's file picker answers an image filter with a picture.
     const { user, calls } = renderApp(<Home id="asalith-fields" />);

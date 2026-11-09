@@ -431,7 +431,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// The pictures the player sees for this instance, icon and background apart: their own
     /// files from `.perland/custom/`, nothing for generated ones, or the pack's art from
-    /// `.perland/art/`. A never-chosen icon on a round-1 upload is that upload, so the one
+    /// `.perland/art/`, and whether the pack has a background of its own. A never-chosen icon on a round-1 upload is that upload, so the one
     /// picture keeps filling both places until one of them changes.
     pub async fn instance_art(&self, id: &str) -> Result<InstanceArtData> {
         let instance = self.instances.load(id).await?;
@@ -444,12 +444,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             IconMode::Custom => art_url(&custom, ICON_STEM).await,
             IconMode::Auto => art_url(&art, "icon").await,
         };
+        let pack_banner = art_url(&art, "banner").await;
+        let has_pack_banner = pack_banner.is_some();
         let banner = match instance.art {
             ArtMode::Generated => None,
             ArtMode::Custom => art_url(&custom, CUSTOM_STEM).await,
-            ArtMode::Auto => art_url(&art, "banner").await,
+            ArtMode::Auto => pack_banner,
         };
-        Ok(InstanceArtData { icon, banner })
+        Ok(InstanceArtData {
+            icon,
+            banner,
+            pack_banner: has_pack_banner,
+        })
     }
 
     /// "Change image…", the background: a generated landscape, the pack's own art, or a file of
@@ -1147,7 +1153,8 @@ mod tests {
             core.instance_art(&id).await.unwrap(),
             InstanceArtData {
                 icon: None,
-                banner: None
+                banner: None,
+                pack_banner: false,
             }
         );
         let art = core.instances.perland_dir(&id).join("art");
@@ -1168,6 +1175,29 @@ mod tests {
             .banner
             .unwrap()
             .starts_with("data:image/svg+xml;base64,"));
+    }
+
+    #[tokio::test]
+    async fn instance_art_says_whether_the_pack_has_a_background_of_its_own() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        // A pack with no banner: nothing to offer, whatever the background is now.
+        assert!(!core.instance_art(&id).await.unwrap().pack_banner);
+        let art = core.instances.perland_dir(&id).join("art");
+        std::fs::create_dir_all(&art).unwrap();
+        std::fs::write(art.join("banner.png"), PNG).unwrap();
+        assert!(core.instance_art(&id).await.unwrap().pack_banner);
+        // Still there with a landscape as the background, so the player can go back to it.
+        core.instance_art_set(
+            &id,
+            ArtChoice::Generated {
+                seed: "dunes".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let data = core.instance_art(&id).await.unwrap();
+        assert_eq!((data.banner, data.pack_banner), (None, true));
     }
 
     const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0rest";
@@ -1250,7 +1280,8 @@ mod tests {
             core.instance_art(&id).await.unwrap(),
             InstanceArtData {
                 icon: Some(png_url(PNG)),
-                banner: None
+                banner: None,
+                pack_banner: false,
             }
         );
         assert!(custom_files(&core, &id).is_empty());
@@ -1676,6 +1707,7 @@ mod tests {
             InstanceArtData {
                 icon: Some(png_url(PNG_A)),
                 banner: Some(png_url(PNG_B)),
+                pack_banner: false,
             }
         );
         assert_eq!(custom_files(&core, &id), ["icon.png", "image.png"]);
@@ -1693,6 +1725,7 @@ mod tests {
             InstanceArtData {
                 icon: Some(png_url(PNG_A)),
                 banner: None,
+                pack_banner: false,
             }
         );
         assert_eq!(custom_files(&core, &id), ["icon.png"]);
@@ -1724,6 +1757,7 @@ mod tests {
             InstanceArtData {
                 icon: Some(png_url(PNG)),
                 banner: Some(png_url(PNG)),
+                pack_banner: false,
             }
         );
         // A new background pins the old picture as the icon first.
@@ -1746,6 +1780,7 @@ mod tests {
             InstanceArtData {
                 icon: Some(png_url(PNG)),
                 banner: None,
+                pack_banner: false,
             }
         );
         assert!(custom.join("icon.png").exists());
