@@ -288,7 +288,8 @@ describe('Change image: adjust the background', () => {
     } finally {
       vi.useRealTimers();
     }
-    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: null, zoom: 175, edges: null } }]));
+    // The position becomes the one that keeps the picture where it was: the bottom middle.
+    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: { x: 50, y: 100 }, zoom: 175, edges: null } }]));
   });
 
   it('shows Edges only while the picture no longer covers the header, and saves a pick at once', async () => {

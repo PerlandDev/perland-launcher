@@ -1,6 +1,6 @@
 import { useContext, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type Ref, type WheelEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { bannerBox, clampZoom, coverZoom, DEFAULT_FOCUS, dragFocus, leavesEdges, MAX_ZOOM, MIN_ZOOM, ZOOM_STEP, type Size } from '../../art/bannerLayout';
+import { bannerBox, clampZoom, coverZoom, DEFAULT_FOCUS, dragFocus, focusFor, leavesEdges, MAX_ZOOM, MIN_ZOOM, placeFrame, ZOOM_STEP, type Size } from '../../art/bannerLayout';
 import { Marquee } from '../../art/Marquee';
 import { artSeed } from '../../art/seed';
 import type { BannerEdges, BannerView, Focus, Instance } from '../../ipc/schema';
@@ -133,7 +133,11 @@ export function BannerAdjust({
     }
   };
   const zoomTo = (value: number) => {
-    if (!disabled) move({ ...draft, zoom: clampZoom(value) }, 'later');
+    if (disabled) return;
+    const zoom = clampZoom(value);
+    // A first zoom keeps the picture where the marquee shows it: a zoomed picture's x% means another thing.
+    const focus = draft.zoom === null && natural ? focusFor(header, bannerBox(header, natural, null, draft.focus), zoom) : draft.focus;
+    move({ ...draft, focus, zoom }, 'later');
   };
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -150,7 +154,9 @@ export function BannerAdjust({
     // Screen pixels to the header's own pixels.
     const k = rect.width / header.width;
     const delta = { width: (event.clientX - start.x) / k, height: (event.clientY - start.y) / k };
-    return { ...draft, focus: dragFocus(start.from, delta, header, bannerBox(header, natural, draft.zoom, start.from)) };
+    // A zoomed picture moves across the 3:2 band in the middle of the header; one that covers it, across the header.
+    const space = draft.zoom === null ? header : { width: placeFrame(header).width, height: header.height };
+    return { ...draft, focus: dragFocus(start.from, delta, space, bannerBox(header, natural, draft.zoom, start.from)) };
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const next = dragged(event);

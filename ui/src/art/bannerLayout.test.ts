@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bannerBox, clampZoom, coverZoom, dragFocus, leavesEdges } from './bannerLayout';
+import { bannerBox, clampZoom, coverZoom, dragFocus, focusFor, leavesEdges, placeFrame } from './bannerLayout';
 
 const frame = { width: 1000, height: 500 };
 const square = { width: 500, height: 500 };
@@ -13,8 +13,14 @@ describe('bannerBox', () => {
   it("draws a chosen zoom as the picture's height in percent of the frame's", () => {
     expect(bannerBox(frame, square, 100, null)).toEqual({ left: 250, top: 0, width: 500, height: 500 });
     expect(bannerBox(frame, square, 50, null)).toEqual({ left: 375, top: 250, width: 250, height: 250 });
-    expect(bannerBox(frame, square, 50, { x: 0, y: 0 })).toEqual({ left: 0, top: 0, width: 250, height: 250 });
     expect(bannerBox(frame, square, 200, null).height).toBe(1000);
+  });
+
+  it('places a zoomed picture across a 3:2 band in the middle of the frame, so extra width goes to both sides', () => {
+    // The 1000 × 500 frame's band is 750 wide, from 125 to 875.
+    expect(placeFrame(frame)).toEqual({ left: 125, width: 750 });
+    expect(bannerBox(frame, square, 50, { x: 0, y: 0 })).toEqual({ left: 125, top: 0, width: 250, height: 250 });
+    expect(bannerBox(frame, square, 50, { x: 100, y: 100 })).toEqual({ left: 625, top: 250, width: 250, height: 250 });
   });
 
   it('keeps a chosen zoom and position the same against the header when the window changes width', () => {
@@ -25,9 +31,13 @@ describe('bannerBox', () => {
     const before = bannerBox(small, square, 107, focus);
     const after = bannerBox(wide, square, 107, focus);
     expect(after.height / wide.height).toBeCloseTo(before.height / small.height);
-    // The same point of the free space, so it sits the same way beside the name and Play.
-    expect(after.top / (wide.height - after.height)).toBeCloseTo(before.top / (small.height - before.height));
-    expect(after.left / (wide.width - after.width)).toBeCloseTo(before.left / (small.width - before.width));
+    // Its centre keeps its distance from the header's centre, in header heights: the new width goes to both sides.
+    const offset = (box: typeof before, f: typeof small) => ({
+      x: (box.left + box.width / 2 - f.width / 2) / f.height,
+      y: (box.top + box.height / 2 - f.height / 2) / f.height,
+    });
+    expect(offset(after, wide).x).toBeCloseTo(offset(before, small).x);
+    expect(offset(after, wide).y).toBeCloseTo(offset(before, small).y);
   });
 });
 
@@ -61,6 +71,14 @@ describe('dragFocus', () => {
     const box = bannerBox(frame, square, 100, null);
     expect(dragFocus({ x: 90, y: 0 }, { width: 900, height: -50 }, frame, box)).toEqual({ x: 100, y: 0 });
   });
+});
+
+it('finds the position that draws a zoomed picture where a box already is, so choosing a zoom never moves it', () => {
+  const cover = bannerBox(frame, square, null, { x: 30, y: 60 });
+  const focus = focusFor(frame, cover, 200);
+  const zoomed = bannerBox(frame, square, 200, focus);
+  expect(zoomed.left).toBeCloseTo(cover.left, 0);
+  expect(zoomed.top).toBeCloseTo(cover.top, 0);
 });
 
 it('says whether a picture leaves part of the frame uncovered', () => {

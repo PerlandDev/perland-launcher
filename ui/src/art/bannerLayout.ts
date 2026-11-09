@@ -9,19 +9,43 @@ export const DEFAULT_FOCUS: Focus = { x: 50, y: 100 };
 export const MIN_ZOOM = 25;
 export const MAX_ZOOM = 500;
 export const ZOOM_STEP = 5;
+/** The shape of the band a zoomed picture is placed across, centred in the marquee. */
+export const PLACE_ASPECT = 3 / 2;
+
+/** The band, as tall as `frame` and 3:2, centred across it, that a zoomed picture's x% places it in. A wider window
+ *  only adds room on both sides of it, so the picture keeps its distance from the middle, beside the name and Play. */
+export function placeFrame(frame: Size): { left: number; width: number } {
+  const width = frame.height * PLACE_ASPECT;
+  return { left: (frame.width - width) / 2, width };
+}
 
 /** A picture's box in the marquee, in the frame's pixels. With no zoom chosen it just covers the frame (CSS `cover`),
- *  as it always has. A chosen zoom is the picture's height in percent of the frame's: the frame's height, unlike its
- *  width, barely changes when the window does, so the picture keeps its size beside the name and Play at any window
- *  width. The focus keeps `object-position`'s meaning: x% and y% place the picture in the free space the frame
- *  leaves (or the overflow, when it is bigger). */
+ *  as it always has, and x% and y% place it as `object-position` does. A chosen zoom is the picture's height in percent
+ *  of the frame's: the frame's height, unlike its width, barely changes when the window does, so the picture keeps its
+ *  size beside the name and Play. Its y% places it in the frame's height, and its x% across `placeFrame`'s band, so it
+ *  keeps its place too: a wider window only adds room on both sides. */
 export function bannerBox(frame: Size, picture: Size, zoom: number | null, focus: Focus | null): Box {
   const scale =
     zoom === null ? Math.max(frame.width / picture.width, frame.height / picture.height) : ((zoom / 100) * frame.height) / picture.height;
   const width = picture.width * scale;
   const height = picture.height * scale;
   const { x, y } = focus ?? DEFAULT_FOCUS;
-  return { left: ((frame.width - width) * x) / 100, top: ((frame.height - height) * y) / 100, width, height };
+  const across = zoom === null ? { left: 0, width: frame.width } : placeFrame(frame);
+  return { left: across.left + ((across.width - width) * x) / 100, top: ((frame.height - height) * y) / 100, width, height };
+}
+
+/** The position that draws the picture in `box`, at `zoom`, centred where `box` is: choosing a zoom where none was
+ *  then starts from what the marquee shows, without the picture jumping. */
+export function focusFor(frame: Size, box: Box, zoom: number): Focus {
+  const height = (zoom / 100) * frame.height;
+  const width = (height * box.width) / box.height;
+  const band = placeFrame(frame);
+  // The percent of `free` that puts the picture's start at `start`; no free space keeps it in the middle.
+  const percent = (start: number, free: number) => (Math.abs(free) < 0.5 ? 50 : Math.min(100, Math.max(0, Math.round((start / free) * 100))));
+  return {
+    x: percent(box.left + box.width / 2 - width / 2 - band.left, band.width - width),
+    y: percent(box.top + box.height / 2 - height / 2, frame.height - height),
+  };
 }
 
 /** A zoom the core accepts: on the step, inside the range. */
