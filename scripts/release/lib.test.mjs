@@ -20,24 +20,45 @@ import {
   signRole,
 } from './lib.mjs';
 
-test('the first beta of a base version is beta.1', () => {
-  assert.equal(nextVersion({ base: '0.2.0', channel: 'beta', tags: ['v0.1.0-beta.3'] }), '0.2.0-beta.1');
+const NOV = new Date('2026-11-09T12:00:00Z');
+
+test('the first release of a month is YYYY.M.0, without a leading zero', () => {
+  assert.equal(nextVersion({ channel: 'stable', tags: ['v0.2.13'], now: NOV }), '2026.11.0');
+  assert.equal(nextVersion({ channel: 'beta', tags: [], now: new Date('2027-01-31T23:59:59Z') }), '2027.1.0-beta.1');
+});
+
+test('the month is read in UTC', () => {
+  assert.equal(nextVersion({ channel: 'stable', tags: [], now: new Date('2026-11-30T23:30:00-02:00') }), '2026.12.0');
+});
+
+test('MICRO counts the releases of the month and starts again the next month', () => {
+  const tags = ['v2026.11.0', 'v2026.11.1-beta.1', 'v2026.11.1', 'v2026.10.4'];
+  assert.equal(nextVersion({ channel: 'stable', tags, now: NOV }), '2026.11.2');
+  assert.equal(nextVersion({ channel: 'beta', tags, now: NOV }), '2026.11.2-beta.1');
+  assert.equal(nextVersion({ channel: 'stable', tags, now: new Date('2026-12-01T00:00:00Z') }), '2026.12.0');
 });
 
 test('betas count up from the highest, ignoring odd tags', () => {
-  const tags = ['v0.2.0-beta.1', 'v0.2.0-beta.10', 'v0.2.0-beta.2', 'v0.2.0-beta.x', 'channel-beta'];
-  assert.equal(nextVersion({ base: '0.2.0', channel: 'beta', tags }), '0.2.0-beta.11');
+  const tags = ['v2026.11.0-beta.1', 'v2026.11.0-beta.10', 'v2026.11.0-beta.2', 'v2026.11.0-beta.x', 'channel-beta'];
+  assert.equal(nextVersion({ channel: 'beta', tags, now: NOV }), '2026.11.0-beta.11');
 });
 
-test('stable is the base, once', () => {
-  assert.equal(nextVersion({ base: '0.2.0', channel: 'stable', tags: ['v0.2.0-beta.4'] }), '0.2.0');
-  assert.throws(() => nextVersion({ base: '0.2.0', channel: 'stable', tags: ['v0.2.0'] }), /already released/);
+test('a stable keeps the base of its betas, also in a later month', () => {
+  const tags = ['v2026.11.0', 'v2026.11.1-beta.1', 'v2026.11.1-beta.2'];
+  const dec = new Date('2026-12-03T10:00:00Z');
+  assert.equal(nextVersion({ channel: 'stable', tags, now: dec }), '2026.11.1');
+  assert.equal(nextVersion({ channel: 'beta', tags, now: dec }), '2026.11.1-beta.3');
+  assert.equal(nextVersion({ channel: 'beta', tags: [...tags, 'v2026.11.1'], now: dec }), '2026.12.0-beta.1');
 });
 
-test('no beta after its stable, no bad input', () => {
-  assert.throws(() => nextVersion({ base: '0.2.0', channel: 'beta', tags: ['v0.2.0'] }), /bump the version/);
-  assert.throws(() => nextVersion({ base: '0.2', channel: 'beta', tags: [] }), /x\.y\.z/);
-  assert.throws(() => nextVersion({ base: '0.2.0', channel: 'nightly', tags: [] }), /channel/);
+test('the old 0.x tags are left out', () => {
+  const tags = ['v0.2.0-beta.31', 'v0.2.13', 'v0.3.0-beta.2'];
+  assert.equal(nextVersion({ channel: 'beta', tags, now: NOV }), '2026.11.0-beta.1');
+});
+
+test('no unknown channel, no bad date', () => {
+  assert.throws(() => nextVersion({ channel: 'nightly', tags: [], now: NOV }), /channel/);
+  assert.throws(() => nextVersion({ channel: 'stable', tags: [], now: new Date('nope') }), /date/);
 });
 
 test('the workspace version is replaced and nothing else', () => {

@@ -9,17 +9,7 @@
   {
     "enabled": true,
     "methods": [
-      "discord",
-      "email",
-      "github"
-    ],
-    "account": null
-  },
-  {
-    "enabled": true,
-    "methods": [
-      "discord",
-      "email"
+      "perland"
     ],
     "account": {
       "name": "Steve",
@@ -34,7 +24,7 @@
   {
     "enabled": true,
     "methods": [
-      "email"
+      "perland"
     ],
     "account": {
       "name": "alex@example.com",

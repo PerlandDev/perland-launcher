@@ -76,6 +76,8 @@ const modpack = (id: string, name: string, source: { projectId: string; versionI
   art: 'auto',
   icon: null,
   bannerFocus: null,
+  bannerZoom: null,
+  bannerEdges: null,
 });
 export const modrinthInstances = (): Instance[] => [modpack('cozy-pack', 'Cozy Pack', MOCK_COZY_PACK), modpack('mega-pack', 'Mega Pack', MOCK_MEGA_PACK)];
 

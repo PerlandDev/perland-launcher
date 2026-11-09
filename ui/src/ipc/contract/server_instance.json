@@ -39,6 +39,8 @@
   "art": "auto",
   "icon": null,
   "bannerFocus": null,
+  "bannerZoom": null,
+  "bannerEdges": null,
   "updateHold": {
     "since": 1791720000,
     "version": "1.0.3"

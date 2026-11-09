@@ -25,7 +25,7 @@ import { sessionKind } from '../browse/session';
 import { useInstanceActions } from '../home/InstanceMenu';
 import { pickId } from '../home/pick';
 import { statusWord } from '../servers/statusWord';
-import { dropIndex, moveItem } from './reorder';
+import { dropIndex, moveItem, preview } from './reorder';
 
 /** How far the pointer travels before a press becomes a drag; anything less is a click. */
 const DRAG_THRESHOLD = 4;
@@ -207,19 +207,6 @@ function RailItem({
       {item.instance && <RailMenu instance={item.instance} wide={wide} entry={entry} ref={menu} />}
     </>
   );
-}
-
-/** Where everything stands while a cabinet is carried. The rows between its own place and the place it
- *  would land snap one place toward its own (a snap, never a slide), so the open slot is always where it
- *  will land: a recessed socket, marked by the drop line, under the carried cabinet. `shift` is how far a
- *  row at `order` has moved; `socket` is how far the open slot is from the carried cabinet's own place. */
-function preview(carry: Carry, order: number): { shift: number; socket: number; moved: boolean } {
-  const { from, midpoints: mid } = carry;
-  const target = carry.slot > from ? carry.slot - 1 : carry.slot;
-  const at = (k: number) => mid[k] ?? 0;
-  const shift =
-    order > from && order <= target ? at(order - 1) - at(order) : order < from && order >= target ? at(order + 1) - at(order) : 0;
-  return { shift, socket: at(target) - at(from), moved: target !== from };
 }
 
 /** Every instance as a cabinet icon; the selected one has the lit light. Arrow keys move along it,

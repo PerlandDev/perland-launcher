@@ -4,7 +4,8 @@ import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, expect, it } from 'vitest';
 import { createMockBackend } from '../ipc/mock';
-import { createQueryClient, qk, useDeleteInstance, useRenameInstance } from './queries';
+import type { InstanceListing } from '../ipc/schema';
+import { createQueryClient, qk, useDeleteInstance, usePreviewBannerView, useRenameInstance, useSetBannerView } from './queries';
 
 function setup() {
   const backend = createMockBackend();
@@ -14,7 +15,7 @@ function setup() {
   return { qc, wrapper };
 }
 
-const PICTURE = { icon: 'data:image/webp;base64,AAAA', banner: null };
+const PICTURE = { icon: 'data:image/webp;base64,AAAA', banner: null, packBanner: false, packIcon: false };
 
 /** Every cached query of instance `id` that outlives its folder: its pictures, files and statuses. */
 function seed(qc: ReturnType<typeof createQueryClient>, id: string) {
@@ -56,4 +57,16 @@ it('forgets the old id of an instance whose folder moved with a rename', async (
   const renamed = await act(() => result.current.mutateAsync({ id: 'sky-islands', name: 'Cloud Isles' }));
   expect(renamed.id).toBe('cloud-isles');
   expect(cachedFor(qc, 'sky-islands')).toEqual([]);
+});
+
+it('shows a background view at once and saves all of it together', async () => {
+  const { qc, wrapper } = setup();
+  qc.setQueryData(qk.instances, await (await import('../ipc/commands')).commands.instancesList());
+  const cached = () => qc.getQueryData<InstanceListing>(qk.instances)!.instances.find((i) => i.id === 'sky-islands')!;
+  const view = { focus: { x: 10, y: 20 }, zoom: 60, edges: 'pixel' } as const;
+  const { result } = renderHook(() => ({ preview: usePreviewBannerView(), save: useSetBannerView() }), { wrapper });
+  act(() => result.current.preview('sky-islands', view));
+  expect([cached().bannerFocus, cached().bannerZoom, cached().bannerEdges]).toEqual([{ x: 10, y: 20 }, 60, 'pixel']);
+  const saved = await act(() => result.current.save.mutateAsync({ id: 'sky-islands', view }));
+  expect([saved.bannerFocus, saved.bannerZoom, saved.bannerEdges]).toEqual([{ x: 10, y: 20 }, 60, 'pixel']);
 });

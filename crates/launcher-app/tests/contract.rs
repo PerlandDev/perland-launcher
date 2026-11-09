@@ -14,15 +14,15 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AccountReady, AppInfo, ArtChoice, Build, ContentFile, ContinueKind, ContinueTarget,
-        EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice, ImportPreview,
-        ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
-        ManualProgress, MicrosoftSignInPhase, NameListView, NewInstance, NewsChangesView,
-        NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents, PackMod,
-        PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase, PerlandStats, PerlandStatus,
-        PlaytimeEntry, PublicServerCard, PublicServerPage, RestorePointDto, RunSnapshot,
-        ServerGame, ServerNews, ServerPack, ServerPlayers, ServerStatsView, ServerStatusView,
-        ServerTeam, SharePreview, SyncSummary, YourServerCard, YourServersPage,
+        AccountReady, AppInfo, ArtChoice, BannerView, Build, ContentFile, ContinueKind,
+        ContinueTarget, EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice,
+        ImportPreview, ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
+        LinkCodeView, ManualProgress, MicrosoftSignInPhase, NameListView, NewInstance,
+        NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents,
+        PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase, PerlandStats,
+        PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage, RestorePointDto,
+        RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers, ServerStatsView,
+        ServerStatusView, ServerTeam, SharePreview, SyncSummary, YourServerCard, YourServersPage,
     },
     events::{AppEvent, CrashFix, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -38,9 +38,9 @@ use launcher_core::{
     download::Hashes,
     events::TaskId,
     instances::{
-        ArtMode, DamagedInstance, Focus, GameSpec, GameWindow, IconMode, Instance, InstanceListing,
-        JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdateHold,
-        UpdatePolicy,
+        ArtMode, BannerEdges, DamagedInstance, Focus, GameSpec, GameWindow, IconMode, Instance,
+        InstanceListing, JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus,
+        SourceRef, UpdateHold, UpdatePolicy,
     },
     invite::invite_link_cases,
     java::JavaFit,
@@ -134,6 +134,8 @@ fn fabric_instance() -> Instance {
         art: ArtMode::Auto,
         icon: None,
         banner_focus: Some(Focus { x: 30, y: 60 }),
+        banner_zoom: Some(150),
+        banner_edges: Some(BannerEdges::Pixel),
         update_hold: None,
     }
 }
@@ -163,6 +165,8 @@ fn vanilla_instance() -> Instance {
         art: ArtMode::Generated,
         icon: Some(IconMode::Generated),
         banner_focus: None,
+        banner_zoom: None,
+        banner_edges: None,
         update_hold: None,
     }
 }
@@ -534,6 +538,8 @@ fn server_instance() -> Instance {
         art: ArtMode::Auto,
         icon: None,
         banner_focus: None,
+        banner_zoom: None,
+        banner_edges: None,
         update_hold: Some(UpdateHold {
             since: 1_791_720_000,
             version: "1.0.3".into(),
@@ -704,6 +710,76 @@ fn sample_plan_views() -> Vec<InstallPlanView> {
 
 #[test]
 fn contract_fixtures_are_current() {
+    check(
+        "skin_entries",
+        vec![
+            launcher_core::skins_library::SkinEntry {
+                id: "skin-0a1b2c3d4e5f".into(),
+                name: "Beach day".into(),
+                model: launcher_core::skins_library::SkinModel::Slim,
+                updated: 1_762_500_000,
+                worn_by: None,
+                owner: Some("5627dd98-e6be-3c21-b8a8-e92344183641".into()),
+                seeded: false,
+            },
+            launcher_core::skins_library::SkinEntry {
+                id: "skin-ffeeddccbbaa".into(),
+                name: "Miner".into(),
+                model: launcher_core::skins_library::SkinModel::Classic,
+                updated: 1_762_400_000,
+                worn_by: None,
+                owner: Some("5627dd98-e6be-3c21-b8a8-e92344183641".into()),
+                seeded: false,
+            },
+        ],
+    );
+    check(
+        "skin_versions",
+        vec![
+            launcher_core::skins_library::SkinVersion {
+                id: "1762500000123".into(),
+                taken: 1_762_500_000,
+                reason: launcher_core::skins_library::VersionReason::Restored,
+                worn: false,
+                current: true,
+                model: Some(launcher_core::skins_library::SkinModel::Classic),
+            },
+            launcher_core::skins_library::SkinVersion {
+                id: "1762400000456".into(),
+                taken: 1_762_400_000,
+                reason: launcher_core::skins_library::VersionReason::Worn,
+                worn: true,
+                current: false,
+                model: Some(launcher_core::skins_library::SkinModel::Slim),
+            },
+            launcher_core::skins_library::SkinVersion {
+                id: "1762300000789".into(),
+                taken: 1_762_300_000,
+                reason: launcher_core::skins_library::VersionReason::Edited,
+                worn: false,
+                current: false,
+                model: None,
+            },
+            launcher_core::skins_library::SkinVersion {
+                id: "1762200000000".into(),
+                taken: 1_762_200_000,
+                reason: launcher_core::skins_library::VersionReason::Exported,
+                worn: false,
+                current: false,
+                model: Some(launcher_core::skins_library::SkinModel::Classic),
+            },
+        ],
+    );
+    check(
+        "current_skin",
+        vec![
+            Some(launcher_app::skins::CurrentSkin {
+                texture: "data:image/png;base64,iVBORw0KGgo=".into(),
+                model: launcher_core::skins_library::SkinModel::Classic,
+            }),
+            None,
+        ],
+    );
     check("instance", fabric_instance());
     check(
         "instance_listing",
@@ -1120,12 +1196,7 @@ fn contract_fixtures_are_current() {
             },
             PerlandStatus {
                 enabled: true,
-                methods: vec!["discord".into(), "email".into(), "github".into()],
-                account: None,
-            },
-            PerlandStatus {
-                enabled: true,
-                methods: vec!["discord".into(), "email".into()],
+                methods: vec!["perland".into()],
                 account: Some(PerlandAccount {
                     name: "Steve".into(),
                     display_name: "Steve".into(),
@@ -1138,7 +1209,7 @@ fn contract_fixtures_are_current() {
             },
             PerlandStatus {
                 enabled: true,
-                methods: vec!["email".into()],
+                methods: vec!["perland".into()],
                 account: Some(PerlandAccount {
                     name: "alex@example.com".into(),
                     display_name: "".into(),
@@ -1442,6 +1513,8 @@ fn contract_fixtures_are_current() {
         InstanceArtData {
             icon: Some("data:image/png;base64,iVBORw0KGgo=".into()),
             banner: None,
+            pack_banner: false,
+            pack_icon: false,
         },
     );
     check(
@@ -1456,6 +1529,26 @@ fn contract_fixtures_are_current() {
             },
             ArtChoice::Screenshot {
                 name: "2026-10-17_12.34.56.png".into(),
+            },
+        ],
+    );
+    check(
+        "banner_views",
+        vec![
+            BannerView {
+                focus: None,
+                zoom: None,
+                edges: None,
+            },
+            BannerView {
+                focus: Some(Focus { x: 70, y: 40 }),
+                zoom: Some(60),
+                edges: Some(BannerEdges::Pixel),
+            },
+            BannerView {
+                focus: Some(Focus { x: 0, y: 100 }),
+                zoom: Some(300),
+                edges: Some(BannerEdges::Dark),
             },
         ],
     );

@@ -402,6 +402,10 @@ export const instance = z.strictObject({
   icon: z.enum(['auto', 'generated', 'custom']).nullable(),
   /** Which point of a picture background stays in view, in percent of its width and height; null is the default (bottom middle). */
   bannerFocus: z.strictObject({ x: z.number().int(), y: z.number().int() }).nullable(),
+  /** How big a picture background is drawn: its height in percent of the marquee's; null just covers the marquee. */
+  bannerZoom: z.number().int().nullable(),
+  /** What fills the marquee around a picture zoomed out below 100; null is dark. */
+  bannerEdges: z.enum(['dark', 'pixel']).nullable(),
   /** Set after going back on an instance that checks for updates: Play skips the check until "Update again". Absent when not held. */
   updateHold: z.strictObject({ since: z.number().int(), version: z.string() }).optional(),
 });
@@ -426,6 +430,33 @@ export const accountsFile = z.strictObject({
   active: z.string().nullable(),
   licensedSigninSeen: z.boolean(),
 });
+export const skinModel = z.enum(['classic', 'slim']);
+/** One skin in the player's wardrobe. `wornBy` is the account that last wore it from the launcher. */
+export const skinEntry = z.strictObject({
+  id: z.string(),
+  name: z.string(),
+  model: skinModel,
+  updated: z.number().int(),
+  wornBy: z.string().optional(),
+  /** The account whose wardrobe it's in; absent while it's loose (made with no account signed in). */
+  owner: z.string().optional(),
+  /** Put in an empty wardrobe by the launcher and never changed: an account adopting loose skins drops it. */
+  seeded: z.boolean().optional(),
+});
+/** Why a skin version was kept. */
+export const skinVersionReason = z.enum(['edited', 'worn', 'exported', 'restored']);
+/** One kept version of a wardrobe skin. `taken` is Unix seconds; `current` marks the version the skin is now. */
+export const skinVersion = z.strictObject({
+  id: z.string(),
+  taken: z.number().int(),
+  reason: skinVersionReason,
+  worn: z.boolean(),
+  current: z.boolean(),
+  /** The arm model the texture was drawn for; null for a version kept before arm models were recorded. */
+  model: skinModel.nullable(),
+});
+/** The skin a Microsoft account wears now: a PNG `data:` URL and its arm model. */
+export const currentSkin = z.strictObject({ texture: z.string(), model: skinModel });
 /** The calls of the Microsoft sign-in chain, in order: Microsoft's code, Xbox Live, XSTS, Minecraft's login, the profile and
  *  ownership check. */
 export const MSA_STEPS = ['microsoft', 'xbox', 'xsts', 'minecraft', 'profile'] as const;
@@ -672,13 +703,20 @@ export const optionalChoice = z.strictObject({ enabled: z.boolean(), description
 export const packMod = z.strictObject({ path: z.string(), name: z.string(), optional: optionalChoice.nullable() });
 export const packContents = z.strictObject({ managed: z.array(packMod), additions: z.array(localMod) });
 export const manualProgress = z.strictObject({ found: z.number().int(), total: z.number().int(), remaining: z.array(manualFile) });
-export const instanceArtData = z.strictObject({ icon: z.string().nullable(), banner: z.string().nullable() });
+/** An instance's pictures, icon and background apart, and whether its pack has a background and an icon of its own. */
+export const instanceArtData = z.strictObject({ icon: z.string().nullable(), banner: z.string().nullable(), packBanner: z.boolean(), packIcon: z.boolean() });
 export const artChoice = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('generated'), seed: z.string() }),
   z.strictObject({ kind: z.literal('pack') }),
   z.strictObject({ kind: z.literal('upload'), path: z.string() }),
   z.strictObject({ kind: z.literal('screenshot'), name: z.string() }),
 ]);
+/** "Adjust the background": the three banner settings, saved together. */
+export const bannerView = z.strictObject({
+  focus: z.strictObject({ x: z.number().int(), y: z.number().int() }).nullable(),
+  zoom: z.number().int().nullable(),
+  edges: z.enum(['dark', 'pixel']).nullable(),
+});
 export const iconChoice = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('generated') }),
   z.strictObject({ kind: z.literal('pack') }),
@@ -855,10 +893,17 @@ export type ServerStatusView = z.infer<typeof serverStatusView>;
 export type DeepLink = z.infer<typeof deepLink>;
 export type Instance = z.infer<typeof instance>;
 export type Focus = NonNullable<Instance['bannerFocus']>;
+export type BannerEdges = NonNullable<Instance['bannerEdges']>;
+export type BannerView = z.infer<typeof bannerView>;
 export type DamagedInstance = z.infer<typeof damagedInstance>;
 export type InstanceListing = z.infer<typeof instanceListing>;
 export type Account = z.infer<typeof account>;
 export type AccountsFile = z.infer<typeof accountsFile>;
+export type SkinModel = z.infer<typeof skinModel>;
+export type SkinEntry = z.infer<typeof skinEntry>;
+export type CurrentSkin = z.infer<typeof currentSkin>;
+export type SkinVersion = z.infer<typeof skinVersion>;
+export type SkinVersionReason = z.infer<typeof skinVersionReason>;
 export type AccountReady = z.infer<typeof accountReady>;
 export type Lang = z.infer<typeof lang>;
 export type Channel = z.infer<typeof channel>;

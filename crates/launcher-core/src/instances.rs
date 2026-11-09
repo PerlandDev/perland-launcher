@@ -429,6 +429,23 @@ impl Focus {
     pub const MAX: u8 = 100;
 }
 
+/// The smallest and largest background zoom: the picture's height in percent of the marquee's
+/// (100 is as tall as the marquee).
+pub const MIN_BANNER_ZOOM: u16 = 25;
+pub const MAX_BANNER_ZOOM: u16 = 500;
+
+/// What fills the marquee around a background picture zoomed out until it no longer covers
+/// it: the panel's own dark ground, or the same picture as big dark pixels.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BannerEdges {
+    Pixel,
+    /// Also what an unknown kind from a newer launcher loads as.
+    #[default]
+    #[serde(other)]
+    Dark,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Instance {
@@ -462,6 +479,13 @@ pub struct Instance {
     /// `None` is the default, the bottom middle; generated landscapes ignore it.
     #[serde(default)]
     pub banner_focus: Option<Focus>,
+    /// How big a background picture is drawn: its height in percent of the marquee's. `None` is
+    /// the size that just covers the marquee, whatever its shape.
+    #[serde(default)]
+    pub banner_zoom: Option<u16>,
+    /// What fills the marquee around a picture zoomed out below 100. `None` is `Dark`.
+    #[serde(default)]
+    pub banner_edges: Option<BannerEdges>,
     /// Set by going back on an instance that checks for updates: sync is skipped until the
     /// player updates again, or the source's version equals `version`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -547,6 +571,8 @@ impl InstanceStore {
             art: ArtMode::Auto,
             icon: None,
             banner_focus: None,
+            banner_zoom: None,
+            banner_edges: None,
             update_hold: None,
         };
         tokio::fs::create_dir_all(self.game_dir(&instance.id)).await?;
@@ -1274,6 +1300,33 @@ mod tests {
         assert_eq!(back["bannerFocus"], serde_json::json!({ "x": 20, "y": 80 }));
         let again: Instance = serde_json::from_value(back).unwrap();
         assert_eq!(again.banner_focus, Some(Focus { x: 20, y: 80 }));
+    }
+
+    #[test]
+    fn old_instance_json_has_no_banner_zoom_or_edges() {
+        let json =
+            r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"}}"#;
+        let mut instance: Instance = serde_json::from_str(json).unwrap();
+        assert_eq!(instance.banner_zoom, None);
+        assert_eq!(instance.banner_edges, None);
+        let value = serde_json::to_value(&instance).unwrap();
+        assert!(value["bannerZoom"].is_null());
+        assert!(value["bannerEdges"].is_null());
+        instance.banner_zoom = Some(150);
+        instance.banner_edges = Some(BannerEdges::Pixel);
+        let back = serde_json::to_value(&instance).unwrap();
+        assert_eq!(back["bannerZoom"], serde_json::json!(150));
+        assert_eq!(back["bannerEdges"], serde_json::json!("pixel"));
+        let again: Instance = serde_json::from_value(back).unwrap();
+        assert_eq!(again.banner_zoom, Some(150));
+        assert_eq!(again.banner_edges, Some(BannerEdges::Pixel));
+    }
+
+    #[test]
+    fn unknown_banner_edges_load_as_dark() {
+        let json = r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"},"bannerEdges":"glow"}"#;
+        let instance: Instance = serde_json::from_str(json).unwrap();
+        assert_eq!(instance.banner_edges, Some(BannerEdges::Dark));
     }
 
     #[test]

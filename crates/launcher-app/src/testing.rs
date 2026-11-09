@@ -48,6 +48,7 @@ use launcher_core::{
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
+    skins_library::SkinModel,
     sources::{
         DesiredState, FileMode, FileSource, OptionalFile, PackAbout, PackFile, PackInput, Side,
         UpdateCheck,
@@ -554,6 +555,10 @@ pub(crate) struct FakeRunner {
     pub repairs: Mutex<Vec<bool>>,
     /// What `invite_icon` answers.
     pub icon: Mutex<Option<Vec<u8>>>,
+    /// What `skin_texture` answers (none: no skin of its own).
+    pub skin: Mutex<Option<Result<Option<Vec<u8>>>>>,
+    /// The profiles `skin_texture` was asked for.
+    pub skin_asks: Mutex<Vec<String>>,
     /// What `public_page` answers (none: `server_list_closed`).
     pub public_page: Mutex<Option<Result<FetchedPage>>>,
     /// The queries `public_page` was asked.
@@ -624,6 +629,8 @@ impl FakeRunner {
             engine_hints: Mutex::new(Vec::new()),
             repairs: Mutex::new(Vec::new()),
             icon: Mutex::new(None),
+            skin: Mutex::new(None),
+            skin_asks: Mutex::new(Vec::new()),
             public_page: Mutex::new(None),
             public_queries: Mutex::new(Vec::new()),
             public_invites: Mutex::new(true),
@@ -1023,6 +1030,12 @@ impl Runner for FakeRunner {
     fn msa(&self) -> Arc<dyn MsaApi> {
         self.msa.clone()
     }
+
+    fn skin_texture(&self, uuid: String) -> BoxFuture<Result<Option<Vec<u8>>>> {
+        self.skin_asks.lock().unwrap().push(uuid);
+        let answer = self.skin.lock().unwrap().clone().unwrap_or(Ok(None));
+        Box::pin(async move { answer })
+    }
 }
 
 /// The client id `FakeMsa` has by default.
@@ -1067,6 +1080,10 @@ pub(crate) struct FakeMsa {
     pub refreshes: Mutex<VecDeque<Result<SignedIn>>>,
     /// What each `profile` answers, in order; when none is left, Alex's profile.
     pub profiles: Mutex<VecDeque<Result<Option<McProfile>>>>,
+    /// What each `skin_model` answers, in order; when none is left, no skin.
+    pub skin_models: Mutex<VecDeque<Result<Option<SkinModel>>>>,
+    /// What each `upload_skin` answers, in order; when none is left, it works.
+    pub uploads: Mutex<VecDeque<Result<()>>>,
     pub calls: Mutex<Vec<MsaCall>>,
     /// Methods whose calls wait for a permit of their gate (see `hold`).
     holds: Mutex<HashMap<&'static str, Arc<Semaphore>>>,
@@ -1083,6 +1100,8 @@ impl FakeMsa {
             redeems: Mutex::new(VecDeque::new()),
             refreshes: Mutex::new(VecDeque::new()),
             profiles: Mutex::new(VecDeque::new()),
+            skin_models: Mutex::new(VecDeque::new()),
+            uploads: Mutex::new(VecDeque::new()),
             calls: Mutex::new(Vec::new()),
             holds: Mutex::new(HashMap::new()),
         })
@@ -1238,6 +1257,25 @@ impl MsaApi for FakeMsa {
             Some(signed_in("Alex", FAKE_MSA_ID).profile)
         })
     }
+
+    fn skin_model(&self, token: McToken) -> BoxFuture<Result<Option<SkinModel>>> {
+        self.answer(
+            "skin_model",
+            &[&token.access_token],
+            &self.skin_models,
+            || None,
+        )
+    }
+
+    fn upload_skin(&self, token: McToken, png: Vec<u8>, model: SkinModel) -> BoxFuture<Result<()>> {
+        let size = png.len().to_string();
+        self.answer(
+            "upload_skin",
+            &[&token.access_token, model.variant(), &size],
+            &self.uploads,
+            || (),
+        )
+    }
 }
 
 /// A fake player token: `plt_` and 43 × `c`.
@@ -1276,13 +1314,12 @@ pub(crate) struct FakePlayer {
     pub site: Mutex<Result<Url>>,
     /// Default: accounts on, Discord and email.
     pub config: Mutex<Result<PlayerConfig>>,
-    /// What `token`, `oauth_token` and `email_verify` answer. Default: Steve,
-    /// `player_token('x')`, new.
+    /// What `oauth_token` answers. Default: Steve, `player_token('x')`, new.
     pub token_answer: Mutex<Result<TokenAnswer>>,
-    /// What `discover` answers. Default: no OAuth sign-in (`None`), an Engine from before it.
+    /// What `discover` answers. Default: the Perland page at
+    /// `https://panel.example.com/oauth/authorize`.
     pub discovery: Mutex<Result<Option<Discovery>>>,
     pub revoke: Mutex<Result<()>>,
-    pub email_started: Mutex<Result<EmailStarted>>,
     /// Default: Steve.
     pub me: Mutex<Result<Player>>,
     pub sign_out: Mutex<Result<()>>,
@@ -1308,6 +1345,10 @@ pub(crate) struct FakePlayer {
     pub unlink: Mutex<Result<()>>,
     /// Default: no Minecraft account linked, no servers.
     pub stats: Mutex<Result<Option<PlayerStats>>>,
+    /// Default: a code that may be asked for again in 60 s.
+    pub email_started: Mutex<Result<EmailStarted>>,
+    /// Default: `new@example.com`.
+    pub email_verified: Mutex<Result<String>>,
     pub calls: Mutex<Vec<PlayerCall>>,
     /// Routes whose calls wait for a permit of their gate (see `hold`).
     holds: Mutex<HashMap<&'static str, Arc<Semaphore>>>,
@@ -1326,12 +1367,11 @@ impl FakePlayer {
                 player: sample_player(),
                 new_player: true,
             })),
-            discovery: Mutex::new(Ok(None)),
+            discovery: Mutex::new(Ok(Some(Discovery {
+                authorization_endpoint: Url::parse("https://panel.example.com/oauth/authorize")
+                    .unwrap(),
+            }))),
             revoke: Mutex::new(Ok(())),
-            email_started: Mutex::new(Ok(EmailStarted {
-                expires_in: 600,
-                resend_in: 60,
-            })),
             me: Mutex::new(Ok(sample_player())),
             sign_out: Mutex::new(Ok(())),
             servers: Mutex::new(Ok(vec![])),
@@ -1349,6 +1389,11 @@ impl FakePlayer {
             })),
             unlink: Mutex::new(Ok(())),
             stats: Mutex::new(Ok(Some(PlayerStats::default()))),
+            email_started: Mutex::new(Ok(EmailStarted {
+                expires_in: 600,
+                resend_in: 60,
+            })),
+            email_verified: Mutex::new(Ok("new@example.com".into())),
             calls: Mutex::new(Vec::new()),
             holds: Mutex::new(HashMap::new()),
         })
@@ -1419,20 +1464,6 @@ impl PlayerApi for FakePlayer {
     fn config(&self, engine: Url) -> BoxFuture<Result<PlayerConfig>> {
         self.record("config", engine, &[], &self.config)
     }
-    fn token(
-        &self,
-        engine: Url,
-        code: String,
-        verifier: String,
-        redirect: String,
-    ) -> BoxFuture<Result<TokenAnswer>> {
-        self.record(
-            "token",
-            engine,
-            &[&code, &verifier, &redirect],
-            &self.token_answer,
-        )
-    }
     fn discover(&self, engine: Url) -> BoxFuture<Result<Option<Discovery>>> {
         self.record("discover", engine, &[], &self.discovery)
     }
@@ -1452,27 +1483,6 @@ impl PlayerApi for FakePlayer {
     }
     fn revoke(&self, engine: Url, token: String) -> BoxFuture<Result<()>> {
         self.record("revoke", engine, &[&token], &self.revoke)
-    }
-    fn email_start(
-        &self,
-        engine: Url,
-        email: String,
-        language: String,
-    ) -> BoxFuture<Result<EmailStarted>> {
-        self.record(
-            "email_start",
-            engine,
-            &[&email, &language],
-            &self.email_started,
-        )
-    }
-    fn email_verify(
-        &self,
-        engine: Url,
-        email: String,
-        code: String,
-    ) -> BoxFuture<Result<TokenAnswer>> {
-        self.record("email_verify", engine, &[&email, &code], &self.token_answer)
     }
     fn me(&self, engine: Url, token: String) -> BoxFuture<Result<Player>> {
         self.record("me", engine, &[&token], &self.me)
@@ -1503,6 +1513,34 @@ impl PlayerApi for FakePlayer {
     }
     fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>> {
         self.record("stats", engine, &[&token], &self.stats)
+    }
+    fn account_email_start(
+        &self,
+        engine: Url,
+        token: String,
+        email: String,
+        language: String,
+    ) -> BoxFuture<Result<EmailStarted>> {
+        self.record(
+            "account_email_start",
+            engine,
+            &[&token, &email, &language],
+            &self.email_started,
+        )
+    }
+    fn account_email_verify(
+        &self,
+        engine: Url,
+        token: String,
+        email: String,
+        code: String,
+    ) -> BoxFuture<Result<String>> {
+        self.record(
+            "account_email_verify",
+            engine,
+            &[&token, &email, &code],
+            &self.email_verified,
+        )
     }
     fn free_server(
         &self,
@@ -1566,7 +1604,7 @@ pub(crate) struct StackCall {
     pub route: &'static str,
     pub engine: Url,
     pub jwt: Option<String>,
-    /// The team the JWT was scoped to; `None` for the base JWT or no JWT.
+    /// The team the JWT was scoped to; `None` with no JWT.
     pub tenant: Option<String>,
     pub args: Vec<String>,
 }
@@ -1581,11 +1619,10 @@ pub(crate) fn fake_jwt(n: usize) -> String {
 /// A version list's `(type, minecraft)`.
 pub(crate) type VersionsKey = (String, Option<String>);
 
-/// The Engine's auth and server routes, answered from what the test scripted. `player_session`
-/// and `select_tenant` mint a new JWT per call; every call is recorded.
+/// The Engine's auth and server routes, answered from what the test scripted. `select_tenant`
+/// mints a new JWT per call; every call is recorded. `memberships` and `select_tenant` record
+/// the device token first in `args`.
 pub(crate) struct FakeStack {
-    /// Default: a fresh JWT. A scripted error is answered instead.
-    pub player_session: Mutex<Result<()>>,
     /// Default: no teams.
     pub memberships: Mutex<Result<Vec<Membership>>>,
     /// Default: no handoff route (`None`).
@@ -1627,7 +1664,6 @@ pub(crate) struct FakeStack {
 impl FakeStack {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            player_session: Mutex::new(Ok(())),
             memberships: Mutex::new(Ok(vec![])),
             handoff: Mutex::new(Ok(None)),
             get_all: Mutex::new(HashMap::new()),
@@ -1782,28 +1818,20 @@ impl FakeStack {
 }
 
 impl StackApi for FakeStack {
-    fn player_session(&self, engine: Url, device: String) -> BoxFuture<Result<SessionJwt>> {
-        let answer = match self.note("player_session", engine, None, &[&device]) {
+    fn memberships(&self, engine: Url, device: String) -> BoxFuture<Result<Vec<Membership>>> {
+        let answer = match self.note("memberships", engine, None, &[&device]) {
             Some(e) => Err(e),
-            None => self
-                .player_session
-                .lock()
-                .unwrap()
-                .clone()
-                .map(|()| self.mint()),
+            None => self.memberships.lock().unwrap().clone(),
         };
         Box::pin(async move { answer })
-    }
-    fn memberships(&self, engine: Url, jwt: SessionJwt) -> BoxFuture<Result<Vec<Membership>>> {
-        self.answer("memberships", engine, jwt, &[], &self.memberships)
     }
     fn select_tenant(
         &self,
         engine: Url,
-        jwt: SessionJwt,
+        device: String,
         tenant: String,
     ) -> BoxFuture<Result<SessionJwt>> {
-        let answer = match self.note("select_tenant", engine, Some(&jwt), &[&tenant]) {
+        let answer = match self.note("select_tenant", engine, None, &[&device, &tenant]) {
             Some(e) => Err(e),
             None => {
                 let scoped = self.mint();

@@ -997,7 +997,7 @@ mod tests {
         let (core3, runner3, _h3, _t3) = core(BuildKind::Dev);
         sign_in(&core3, "https://api.example.com");
         serve_free(&runner3, Some(free_view("online")));
-        *runner3.stack.player_session.lock().unwrap() =
+        *runner3.stack.memberships.lock().unwrap() =
             Err(LauncherError::network(ErrorCode::HostTrouble, "trouble"));
         let card = core3.free_server().await.unwrap().unwrap().server.unwrap();
         assert_eq!(card.manage, None);

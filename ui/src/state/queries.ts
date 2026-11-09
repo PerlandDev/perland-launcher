@@ -3,7 +3,7 @@ import i18n from '../i18n';
 import { commands } from '../ipc/commands';
 import { isLauncherError } from '../ipc/errors';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { TeamCreateRequest, TeamInstanceRequest, TeamServerType, ArtChoice, ManageListChange, ManageSettingsSave, ManageState, ContentKind, Focus, FreeServerKind, FreeServerPage, FreeServerSettings, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PerlandStatus, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
+import type { Account, TeamCreateRequest, TeamInstanceRequest, TeamServerType, ArtChoice, ManageListChange, ManageSettingsSave, ManageState, BannerView, ContentKind, FreeServerKind, FreeServerPage, FreeServerSettings, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PerlandStatus, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { endImport, importWatched } from './importProgress';
@@ -46,6 +46,7 @@ export const qk = {
   instances: ['instances'] as const,
   accounts: ['accounts'] as const,
   accountReady: ['accountReady'] as const,
+  accountFace: (uuid: string) => ['accountFace', uuid] as const,
   playtime: ['playtime'] as const,
   continueTarget: (id: string) => ['continue', id] as const,
   mcVersions: ['catalog', 'minecraft'] as const,
@@ -88,12 +89,22 @@ export const qk = {
 };
 
 const TEN_MINUTES = 10 * 60_000;
+const THIRTY_MINUTES = 30 * 60_000;
 
 export const useAppInfo = () => useQuery({ queryKey: qk.appInfo, queryFn: commands.appInfo, staleTime: Infinity });
 export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: commands.settingsGet });
 export const useUpdate = () => useQuery({ queryKey: qk.update, queryFn: commands.updateStatus });
 export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: commands.instancesList });
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
+/** A Microsoft account's face from its skin (`null`: none of its own, or not fetched yet). The core asks Mojang again after half
+ *  an hour, so this does too. An offline account never asks. */
+export const useAccountFace = (account: Pick<Account, 'provider' | 'uuid'>) =>
+  useQuery({
+    queryKey: qk.accountFace(account.uuid),
+    queryFn: () => commands.accountFace(account.uuid),
+    enabled: account.provider === 'microsoft',
+    staleTime: THIRTY_MINUTES,
+  });
 /** Whether Play can start (a Microsoft account in use, signed in), whether Microsoft is still approving this build, and whether
  *  the "offline accounts are gone" notice is due. Every sign-in, remove and dismiss asks for it again. */
 export const useAccountReady = () => useQuery({ queryKey: qk.accountReady, queryFn: commands.accountReady });
@@ -616,24 +627,27 @@ export function useSetInstanceIcon(opts: Opts = {}) {
   });
 }
 
-/** Show a background position on the marquee before it is saved: the cached listing takes it at once,
- *  so the marquee behind "Change image…" follows a drag. `useSetBannerFocus` saves it. */
-export function usePreviewBannerFocus() {
+/** Show a background view (position, zoom, edges) on the marquee before it is saved: the cached listing takes
+ *  it at once, so the marquee behind the dialog follows a drag. `useSetBannerView` saves it. */
+export function usePreviewBannerView() {
   const qc = useQueryClient();
-  return (id: string, focus: Focus | null) =>
+  return (id: string, view: BannerView) =>
     qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
-      listing && { ...listing, instances: listing.instances.map((i) => (i.id === id ? { ...i, bannerFocus: focus } : i)) },
+      listing && {
+        ...listing,
+        instances: listing.instances.map((i) => (i.id === id ? { ...i, bannerFocus: view.focus, bannerZoom: view.zoom, bannerEdges: view.edges } : i)),
+      },
     );
 }
 
-/** Save which part of a picture background stays in view (null is the default). The marquee already shows
- *  it (`usePreviewBannerFocus`), so success leaves the cache alone: a newer position may be on screen by
+/** Save how a picture background sits in the marquee (null is each setting's default). The marquee already
+ *  shows it (`usePreviewBannerView`), so success leaves the cache alone: a newer view may be on screen by
  *  then. A refused save reads the listing again, so the marquee goes back to what is on disk. */
-export function useSetBannerFocus(opts: Opts = {}) {
+export function useSetBannerView(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
     scope: PICTURE_SAVES,
-    mutationFn: ({ id, focus }: { id: string; focus: Focus | null }) => commands.instanceBannerFocusSet(id, focus),
+    mutationFn: ({ id, view }: { id: string; view: BannerView }) => commands.instanceBannerViewSet(id, view),
     onError: (error) => {
       onError(opts)(error);
       return qc.invalidateQueries({ queryKey: qk.instances });

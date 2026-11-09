@@ -42,6 +42,7 @@
   "memory_out_of_range",
   "art_file_invalid",
   "banner_focus_invalid",
+  "banner_zoom_invalid",
   "window_size_invalid",
   "java_unavailable",
   "java_start_failed",
@@ -151,6 +152,8 @@
   "sign_in_client_refused",
   "sign_in_incompatible",
   "sign_in_canceled",
+  "launcher_update_required",
+  "email_in_use",
   "email_required",
   "free_server_exists",
   "too_many_free_servers",
@@ -188,5 +191,10 @@
   "invalid_team_server",
   "share_path_invalid",
   "share_too_large",
+  "skin_invalid",
+  "skin_not_found",
+  "skin_rejected",
+  "skin_offline_account",
+  "skin_version_not_found",
   "internal"
 ]

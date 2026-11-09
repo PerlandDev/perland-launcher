@@ -1,4 +1,6 @@
 {
   "icon": "data:image/png;base64,iVBORw0KGgo=",
-  "banner": null
+  "banner": null,
+  "packBanner": false,
+  "packIcon": false
 }

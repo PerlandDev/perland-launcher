@@ -2,6 +2,10 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   AccountReady,
   AccountsFile,
+  CurrentSkin,
+  SkinEntry,
+  SkinVersion,
+  SkinModel,
   AppInfo,
   ArtChoice,
   BrowsePlanRequest,
@@ -9,7 +13,7 @@ import type {
   ContentKind,
   DeepLink,
   EmailCodeSent,
-  Focus,
+  BannerView,
   IconChoice,
   ImageKind,
   ImportPreview,
@@ -121,9 +125,44 @@ export const commands = {
   accountAddOffline: (name: string) => invoke<AccountsFile>('account_add_offline', { name }),
   accountSetActive: (uuid: string) => invoke<AccountsFile>('account_set_active', { uuid }),
   accountRemove: (uuid: string) => invoke<AccountsFile>('account_remove', { uuid }),
+  // The Skins screen. Textures cross as PNG `data:` URLs.
+  /** The wardrobe of `owner` (an account uuid), or the loose skins for null. `starter` (the launcher's starter as a PNG
+   *  data URL) lets the active account recognise an untouched starter among the loose skins and drop it. */
+  skinsList: (owner: string | null, starter: string | null = null) => invoke<SkinEntry[]>('skins_list', { owner, starter }),
+  skinTexture: (id: string) => invoke<string>('skin_texture', { id }),
+  /** `seeded`: the launcher puts this starter in an empty wardrobe by itself (dropped, not adopted, if never changed). */
+  skinCreate: (name: string, model: SkinModel, texture: string, owner: string | null, seeded = false) =>
+    invoke<SkinEntry>('skin_create', { name, model, texture, owner, seeded }),
+  skinImport: (path: string, owner: string | null) => invoke<SkinEntry>('skin_import', { path, owner }),
+  skinSave: (id: string, texture: string) => invoke<SkinEntry>('skin_save', { id, texture }),
+  skinUpdate: (id: string, change: { name?: string; model?: SkinModel }) =>
+    invoke<SkinEntry>('skin_update', { id, name: change.name ?? null, model: change.model ?? null }),
+  skinDuplicate: (id: string, name: string) => invoke<SkinEntry>('skin_duplicate', { id, name }),
+  skinDelete: (id: string) => invoke<null>('skin_delete', { id }),
+  /** Puts `owner`'s wardrobe in the order of `ids`; answers the wardrobe as it now stands. */
+  skinReorder: (owner: string | null, ids: string[]) => invoke<SkinEntry[]>('skin_reorder', { owner, ids }),
+  skinExport: (id: string, path: string) => invoke<string>('skin_export', { id, path }),
+  /** A skin's kept versions, newest first. */
+  skinVersions: (id: string) => invoke<SkinVersion[]>('skin_versions', { id }),
+  skinVersionTexture: (id: string, version: string) => invoke<string>('skin_version_texture', { id, version }),
+  /** Makes a version the skin's texture; the texture it replaces is kept as a version first. */
+  skinRestore: (id: string, version: string) => invoke<SkinEntry>('skin_restore', { id, version }),
+  skinVersionCopy: (id: string, version: string, name: string) => invoke<SkinEntry>('skin_version_copy', { id, version, name }),
+  /** Keeps the skin's texture now as a version (the player left a skin they changed). */
+  skinCheckpoint: (id: string) => invoke<null>('skin_checkpoint', { id }),
+  /** Forgets every kept version of a skin; the skin stays as it is. */
+  skinVersionsClear: (id: string) => invoke<null>('skin_versions_clear', { id }),
+  /** The skin a Microsoft account wears now; null for an offline account or no skin. */
+  skinCurrent: (uuid: string) => invoke<CurrentSkin | null>('skin_current', { uuid }),
+  /** Puts the skin a Microsoft account wears in its wardrobe (reusing a matching entry, else a new one named `name`) and
+   *  marks it worn; null for an offline account or one wearing Minecraft's default. */
+  skinSyncCurrent: (uuid: string, name: string) => invoke<SkinEntry | null>('skin_sync_current', { uuid, name }),
+  skinWear: (id: string, uuid: string) => invoke<SkinEntry[]>('skin_wear', { id, uuid }),
   /** Sign in with Microsoft in the browser. Null when it was canceled (here or in the browser). */
   accountSignInMicrosoft: (language: string) => invoke<AccountsFile | null>('account_sign_in_microsoft', { language }),
   accountSignInCancel: () => invoke<null>('account_sign_in_cancel'),
+  /** A Microsoft account's face from the skin it wears, as a `data:` URL; null draws the generated face. */
+  accountFace: (uuid: string) => invoke<string | null>('account_face', { uuid }),
   /** Whether Play can start now, read without a network call. */
   accountReady: () => invoke<AccountReady>('account_ready'),
   play: (id: string, join = false) => invoke<null>('play', { id, join }),
@@ -166,7 +205,7 @@ export const commands = {
   instanceScreenshots: (id: string) => invoke<string[]>('instance_screenshots', { id }),
   instanceScreenshot: (id: string, name: string) => invoke<string | null>('instance_screenshot', { id, name }),
   instanceIconSet: (id: string, choice: IconChoice) => invoke<Instance>('instance_icon_set', { id, choice }),
-  instanceBannerFocusSet: (id: string, focus: Focus | null) => invoke<Instance>('instance_banner_focus_set', { id, focus }),
+  instanceBannerViewSet: (id: string, view: BannerView) => invoke<Instance>('instance_banner_view_set', { id, view }),
   deepLinkTake: () => invoke<DeepLink | null>('deep_link_take'),
   /** The canonical invite a pasted link stands for (an invite, or a server's copied modpack link), or null for a pack link. */
   inviteFromLink: (link: string) => invoke<string | null>('invite_from_link', { link }),
@@ -184,16 +223,15 @@ export const commands = {
   serverLink: (id: string, link: string) => invoke<Instance>('server_link', { id, link }),
   serverUnlink: (id: string) => invoke<Instance>('server_unlink', { id }),
   perlandStatus: () => invoke<PerlandStatus>('perland_status'),
-  /** Opens the browser and waits for the player to finish; null when they canceled or said no. */
   /** Signs in on the Perland page in the browser (OAuth), where the player picks GitHub, Discord or an email code. Null when canceled here. */
   perlandSignIn: (language: string) => invoke<PerlandAccount | null>('perland_sign_in', { language }),
-  perlandSignInDiscord: (language: string) => invoke<PerlandAccount | null>('perland_sign_in_discord', { language }),
-  /** Signs in through the Perland panel's GitHub page in the browser, like Discord. */
-  perlandSignInGithub: (language: string) => invoke<PerlandAccount | null>('perland_sign_in_github', { language }),
   perlandSignInReopen: () => invoke<null>('perland_sign_in_reopen'),
   perlandSignInCancel: () => invoke<null>('perland_sign_in_cancel'),
-  perlandEmailStart: (email: string, language: string) => invoke<EmailCodeSent>('perland_email_start', { email, language }),
-  perlandEmailVerify: (email: string, code: string) => invoke<PerlandAccount>('perland_email_verify', { email, code }),
+  /** Sends a code to `email` to put it on the signed-in account (a free server needs one). */
+  perlandAccountEmailStart: (email: string, language: string) =>
+    invoke<EmailCodeSent>('perland_account_email_start', { email, language }),
+  /** Checks the code; answers the account with the email on it. */
+  perlandAccountEmailVerify: (email: string, code: string) => invoke<PerlandAccount>('perland_account_email_verify', { email, code }),
   perlandSignOut: () => invoke<null>('perland_sign_out'),
   /** Manage in Perland: the panel's page for a server the player owns, in the browser. */
   perlandManage: (stack: string) => invoke<null>('perland_manage', { stack }),

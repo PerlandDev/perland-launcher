@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AccountReady, AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, ContinueTarget,
+    AccountReady, AppInfo, ArtChoice, BannerView, BrowsePlanRequest, ContentFile, ContinueTarget,
     EmailCodeSent, FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest,
     InstallPlanView, InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
     LinkCodeView, ManageChangeResult, ManageConsoleReply, ManageDetail, ManageDiagnosis,
@@ -21,7 +21,7 @@ use launcher_core::{
         project::{ProjectDetail, VersionInfo},
         search::SearchPage,
     },
-    instances::{Focus, Instance, InstanceListing},
+    instances::{Instance, InstanceListing},
     meta::{
         catalog::{LoaderVersion, McVersion},
         loaders::LoaderKind,
@@ -191,6 +191,12 @@ pub async fn account_sign_in_microsoft(
 pub async fn account_sign_in_cancel(core: CoreState<'_>) -> Res<()> {
     core.account_sign_in_cancel();
     Ok(())
+}
+
+/// A Microsoft account's face from its skin, as a `data:` URL; `None` draws the generated one.
+#[tauri::command]
+pub async fn account_face(core: CoreState<'_>, uuid: String) -> Res<Option<String>> {
+    logged("account_face", core.account_face(&uuid).await)
 }
 
 #[tauri::command]
@@ -431,14 +437,14 @@ pub async fn instance_icon_set(
 }
 
 #[tauri::command]
-pub async fn instance_banner_focus_set(
+pub async fn instance_banner_view_set(
     core: CoreState<'_>,
     id: String,
-    focus: Option<Focus>,
+    view: BannerView,
 ) -> Res<Instance> {
     logged(
-        "instance_banner_focus_set",
-        core.instance_banner_focus_set(&id, focus).await,
+        "instance_banner_view_set",
+        core.instance_banner_view_set(&id, view).await,
     )
 }
 
@@ -610,28 +616,6 @@ pub async fn perland_sign_in(core: CoreState<'_>, language: String) -> Res<Optio
 }
 
 #[tauri::command]
-pub async fn perland_sign_in_discord(
-    core: CoreState<'_>,
-    language: String,
-) -> Res<Option<PerlandAccount>> {
-    logged(
-        "perland_sign_in_discord",
-        core.perland_sign_in_discord(&language).await,
-    )
-}
-
-#[tauri::command]
-pub async fn perland_sign_in_github(
-    core: CoreState<'_>,
-    language: String,
-) -> Res<Option<PerlandAccount>> {
-    logged(
-        "perland_sign_in_github",
-        core.perland_sign_in_github(&language).await,
-    )
-}
-
-#[tauri::command]
 pub async fn perland_sign_in_reopen(core: CoreState<'_>) -> Res<()> {
     logged("perland_sign_in_reopen", core.perland_sign_in_reopen())
 }
@@ -640,30 +624,6 @@ pub async fn perland_sign_in_reopen(core: CoreState<'_>) -> Res<()> {
 pub async fn perland_sign_in_cancel(core: CoreState<'_>) -> Res<()> {
     core.perland_sign_in_cancel();
     Ok(())
-}
-
-#[tauri::command]
-pub async fn perland_email_start(
-    core: CoreState<'_>,
-    email: String,
-    language: String,
-) -> Res<EmailCodeSent> {
-    logged(
-        "perland_email_start",
-        core.perland_email_start(&email, &language).await,
-    )
-}
-
-#[tauri::command]
-pub async fn perland_email_verify(
-    core: CoreState<'_>,
-    email: String,
-    code: String,
-) -> Res<PerlandAccount> {
-    logged(
-        "perland_email_verify",
-        core.perland_email_verify(&email, &code).await,
-    )
 }
 
 /// Opened from Rust, like `open_link`, so the webview's opener scope stays as narrow as it was.
@@ -675,6 +635,30 @@ pub async fn perland_manage(core: CoreState<'_>, stack: String) -> Res<()> {
 #[tauri::command]
 pub async fn perland_sign_out(core: CoreState<'_>) -> Res<()> {
     logged("perland_sign_out", core.perland_sign_out().await)
+}
+
+#[tauri::command]
+pub async fn perland_account_email_start(
+    core: CoreState<'_>,
+    email: String,
+    language: String,
+) -> Res<EmailCodeSent> {
+    logged(
+        "perland_account_email_start",
+        core.perland_account_email_start(&email, &language).await,
+    )
+}
+
+#[tauri::command]
+pub async fn perland_account_email_verify(
+    core: CoreState<'_>,
+    email: String,
+    code: String,
+) -> Res<PerlandAccount> {
+    logged(
+        "perland_account_email_verify",
+        core.perland_account_email_verify(&email, &code).await,
+    )
 }
 
 #[tauri::command]
@@ -1053,4 +1037,184 @@ pub fn diagnostics_reveal(app: AppHandle, core: CoreState<'_>) -> Res<()> {
         let _ = app.opener().reveal_item_in_dir(path);
     }
     Ok(())
+}
+
+// The Skins screen (see `launcher_app::skins`). Textures cross as PNG `data:` URLs.
+
+#[tauri::command]
+pub async fn skins_list(
+    core: CoreState<'_>,
+    owner: Option<String>,
+    starter: Option<String>,
+) -> Res<Vec<launcher_core::skins_library::SkinEntry>> {
+    logged(
+        "skins_list",
+        core.skins_list(owner.as_deref(), starter.as_deref()).await,
+    )
+}
+
+#[tauri::command]
+pub async fn skin_texture(core: CoreState<'_>, id: String) -> Res<String> {
+    logged("skin_texture", core.skin_texture(&id).await)
+}
+
+#[tauri::command]
+pub async fn skin_create(
+    core: CoreState<'_>,
+    name: String,
+    model: launcher_core::skins_library::SkinModel,
+    texture: String,
+    owner: Option<String>,
+    seeded: Option<bool>,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged(
+        "skin_create",
+        core.skin_create(
+            &name,
+            model,
+            &texture,
+            owner.as_deref(),
+            seeded.unwrap_or(false),
+        )
+        .await,
+    )
+}
+
+#[tauri::command]
+pub async fn skin_import(
+    core: CoreState<'_>,
+    path: PathBuf,
+    owner: Option<String>,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged(
+        "skin_import",
+        core.skin_import(path, owner.as_deref()).await,
+    )
+}
+
+#[tauri::command]
+pub async fn skin_save(
+    core: CoreState<'_>,
+    id: String,
+    texture: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged("skin_save", core.skin_save(&id, &texture).await)
+}
+
+#[tauri::command]
+pub async fn skin_update(
+    core: CoreState<'_>,
+    id: String,
+    name: Option<String>,
+    model: Option<launcher_core::skins_library::SkinModel>,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged("skin_update", core.skin_update(&id, name, model).await)
+}
+
+#[tauri::command]
+pub async fn skin_duplicate(
+    core: CoreState<'_>,
+    id: String,
+    name: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged("skin_duplicate", core.skin_duplicate(&id, &name).await)
+}
+
+#[tauri::command]
+pub async fn skin_reorder(
+    core: CoreState<'_>,
+    owner: Option<String>,
+    ids: Vec<String>,
+) -> Res<Vec<launcher_core::skins_library::SkinEntry>> {
+    logged(
+        "skin_reorder",
+        core.skin_reorder(owner.as_deref(), &ids).await,
+    )
+}
+
+#[tauri::command]
+pub async fn skin_delete(core: CoreState<'_>, id: String) -> Res<()> {
+    logged("skin_delete", core.skin_delete(&id).await)
+}
+
+#[tauri::command]
+pub async fn skin_export(core: CoreState<'_>, id: String, path: PathBuf) -> Res<String> {
+    logged("skin_export", core.skin_export(&id, path).await).map(|p| p.display().to_string())
+}
+
+#[tauri::command]
+pub async fn skin_versions(
+    core: CoreState<'_>,
+    id: String,
+) -> Res<Vec<launcher_core::skins_library::SkinVersion>> {
+    logged("skin_versions", core.skin_versions(&id).await)
+}
+
+#[tauri::command]
+pub async fn skin_version_texture(core: CoreState<'_>, id: String, version: String) -> Res<String> {
+    logged(
+        "skin_version_texture",
+        core.skin_version_texture(&id, &version).await,
+    )
+}
+
+#[tauri::command]
+pub async fn skin_restore(
+    core: CoreState<'_>,
+    id: String,
+    version: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged("skin_restore", core.skin_restore(&id, &version).await)
+}
+
+#[tauri::command]
+pub async fn skin_version_copy(
+    core: CoreState<'_>,
+    id: String,
+    version: String,
+    name: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged(
+        "skin_version_copy",
+        core.skin_version_copy(&id, &version, &name).await,
+    )
+}
+
+#[tauri::command]
+pub async fn skin_versions_clear(core: CoreState<'_>, id: String) -> Res<()> {
+    logged("skin_versions_clear", core.skin_versions_clear(&id).await)
+}
+
+#[tauri::command]
+pub async fn skin_checkpoint(core: CoreState<'_>, id: String) -> Res<()> {
+    logged("skin_checkpoint", core.skin_checkpoint(&id).await)
+}
+
+#[tauri::command]
+pub async fn skin_current(
+    core: CoreState<'_>,
+    uuid: String,
+) -> Res<Option<launcher_app::skins::CurrentSkin>> {
+    logged("skin_current", core.skin_current(&uuid).await)
+}
+
+#[tauri::command]
+pub async fn skin_sync_current(
+    core: CoreState<'_>,
+    uuid: String,
+    name: String,
+) -> Res<Option<launcher_core::skins_library::SkinEntry>> {
+    logged(
+        "skin_sync_current",
+        core.skin_sync_current(&uuid, &name).await,
+    )
+}
+
+#[tauri::command]
+pub async fn skin_wear(
+    core: CoreState<'_>,
+    id: String,
+    uuid: String,
+) -> Res<Vec<launcher_core::skins_library::SkinEntry>> {
+    logged("skin_wear", core.skin_wear(&id, &uuid).await)
 }

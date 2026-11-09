@@ -42,19 +42,45 @@ describe('FreeServerEntry', () => {
     }
   });
 
-  it('email required offers the panel account page', async () => {
-    const { user, calls } = renderApp(<ServersScreen />, { perland: 'github', free: 'emailRequired' });
+  it('email required offers Add an email, panel or not, and the email step opens in the launcher', async () => {
+    const { user, calls } = renderApp(<ServersScreen />, { perland: 'github', free: 'emailRequired', panel: false });
     const section = await yours();
     expect(within(section).queryByText(/Discord/)).toBeNull();
     await user.click(await within(section).findByRole('button', { name: 'Add an email' }));
-    expect(sent(calls, 'perland_open_account')).toHaveLength(1);
+    const dialog = await screen.findByRole('dialog', { name: 'Add an email' });
+    expect(within(dialog).getByRole('textbox', { name: 'Email' })).toBeInTheDocument();
+    expect(sent(calls, 'perland_open_account')).toHaveLength(0);
   });
 
-  it('email required without a panel has no button', async () => {
-    renderApp(<ServersScreen />, { perland: 'signedIn', free: 'emailRequired', panel: false });
+  it('a verified email closes the step and opens the way to create', async () => {
+    const { user, calls } = renderApp(<ServersScreen />, { perland: 'github', free: 'emailRequired' });
     const section = await yours();
-    expect(await within(section).findByText(/^Free servers need a verified email/)).toBeInTheDocument();
-    expect(within(section).queryByRole('button', { name: 'Add an email' })).toBeNull();
+    await user.click(await within(section).findByRole('button', { name: 'Add an email' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add an email' });
+    await user.type(within(dialog).getByRole('textbox', { name: 'Email' }), 'a@b.co');
+    await user.click(within(dialog).getByRole('button', { name: 'Send code' }));
+    await user.type(await within(dialog).findByRole('textbox', { name: 'Code' }), '123456');
+    const statusBefore = sent(calls, 'perland_status').length;
+    await user.click(within(dialog).getByRole('button', { name: 'Verify' }));
+    expect(await within(section).findByRole('button', { name: ENTRY })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Add an email' })).toBeNull();
+    await vi.waitFor(() => expect(sent(calls, 'perland_status').length).toBeGreaterThan(statusBefore));
+  });
+
+  it('closing the step mid-way and opening it again starts at the email field', async () => {
+    const { user } = renderApp(<ServersScreen />, { perland: 'github', free: 'emailRequired' });
+    const section = await yours();
+    await user.click(await within(section).findByRole('button', { name: 'Add an email' }));
+    let dialog = await screen.findByRole('dialog', { name: 'Add an email' });
+    await user.type(within(dialog).getByRole('textbox', { name: 'Email' }), 'a@b.co');
+    await user.click(within(dialog).getByRole('button', { name: 'Send code' }));
+    await within(dialog).findByRole('textbox', { name: 'Code' });
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog', { name: 'Add an email' })).toBeNull();
+    await user.click(within(section).getByRole('button', { name: 'Add an email' }));
+    dialog = await screen.findByRole('dialog', { name: 'Add an email' });
+    expect(within(dialog).getByRole('textbox', { name: 'Email' })).toHaveValue('');
+    expect(within(dialog).queryByRole('textbox', { name: 'Code' })).toBeNull();
   });
 
   it('nothing once the player has a server', async () => {

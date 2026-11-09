@@ -4,7 +4,7 @@ import { MOCK_LINK_CODE, MOCK_LINK_POLLS, perlandScenario } from './mockPerland'
 import { MOCK_PUBLIC_SERVERS } from './mockServers';
 import { inviteCanonical } from './inviteLink';
 import type { MockOptions } from './mock';
-import type { LinkCode, PerlandAccount, PerlandStats, PerlandStatus, YourServersPage } from './schema';
+import type { FreeServerPage, LinkCode, PerlandAccount, PerlandStats, PerlandStatus, YourServersPage } from './schema';
 import * as s from './schema';
 
 afterEach(() => {
@@ -17,116 +17,104 @@ const status = async (b: ReturnType<typeof backend>) => (await b.handle('perland
 const page = async (b: ReturnType<typeof backend>) => (await b.handle('your_servers')) as YourServersPage | null;
 
 describe('mock Perland account', () => {
-  it('is signed out and offers Discord, email and (with the panel) GitHub by default', async () => {
+  it('is signed out and offers only the Perland page by default, panel or not', async () => {
     const st = await status(backend());
-    expect(st).toEqual({ enabled: true, methods: ['discord', 'email', 'github'], account: null });
-    expect(s.perlandStatus.safeParse(st).success).toBe(true);
-    expect((await status(createMockBackend({ panel: false }))).methods).toEqual(['discord', 'email']);
-  });
-
-  it('signs in with GitHub like Discord, and refuses it without a panel', async () => {
-    vi.useFakeTimers();
-    const b = backend();
-    const done = b.handle('perland_sign_in_github', { language: 'en' });
-    await vi.runAllTimersAsync();
-    expect(((await done) as PerlandAccount).newPlayer).toBe(true);
-    await expect(createMockBackend({ panel: false }).handle('perland_sign_in_github', { language: 'en' })).rejects.toMatchObject({
-      code: 'sign_in_unavailable',
-      params: { method: 'github' },
-    });
-  });
-
-  it('offers only the Perland page on an Engine with OAuth, and ends a sign-in as asked', async () => {
-    const st = await status(backend('oauth'));
     expect(st).toEqual({ enabled: true, methods: ['perland'], account: null });
     expect(s.perlandStatus.safeParse(st).success).toBe(true);
+    expect((await status(createMockBackend({ panel: false }))).methods).toEqual(['perland']);
+  });
+
+  it('signs in on the Perland page, and ends a sign-in as asked', async () => {
     vi.useFakeTimers();
-    const ok = createMockBackend({ perland: 'oauth' });
+    const ok = backend();
     const done = ok.handle('perland_sign_in', { language: 'en' });
     await vi.runAllTimersAsync();
-    expect(((await done) as PerlandAccount).name).toBe('Steve');
+    const account = (await done) as PerlandAccount;
+    expect(account).toMatchObject({ name: 'Steve', newPlayer: true });
+    expect(s.perlandAccount.safeParse(account).success).toBe(true);
+    expect((await status(ok)).account).toEqual(account);
     for (const [outcome, code] of [
       ['cancel', 'sign_in_canceled'],
       ['timeout', 'sign_in_timed_out'],
       ['fail', 'sign_in_failed'],
       ['expired', 'sign_in_expired'],
     ] as const) {
-      const b = createMockBackend({ perland: 'oauth', perlandSignIn: outcome });
+      const b = createMockBackend({ perlandSignIn: outcome });
       const failed = b.handle('perland_sign_in', { language: 'en' });
       const caught = expect(failed).rejects.toMatchObject({ code });
       await vi.runAllTimersAsync();
       await caught;
     }
-    // An Engine without OAuth refuses it: its old methods are the way in.
-    await expect(backend().handle('perland_sign_in', { language: 'en' })).rejects.toMatchObject({
-      code: 'sign_in_unavailable',
-      params: { method: 'perland' },
-    });
+  });
+
+  it('has no older sign-in commands', async () => {
+    for (const cmd of ['perland_sign_in_discord', 'perland_sign_in_github', 'perland_email_start', 'perland_email_verify']) {
+      await expect(backend().handle(cmd, { language: 'en', email: 'a@b.co', code: '123456' })).rejects.toMatchObject({ code: 'internal' });
+    }
   });
 
   it('turns accounts off', async () => {
     const b = backend('off');
     expect(await status(b)).toEqual({ enabled: false, methods: [], account: null });
-    await expect(b.handle('perland_email_start', { email: 'a@b.co', language: 'en' })).rejects.toMatchObject({ code: 'player_accounts_closed' });
-    expect(await page(b)).toBeNull();
-  });
-
-  it('offers only email, and refuses Discord', async () => {
-    const b = backend('emailOnly');
-    expect((await status(b)).methods).toEqual(['email']);
-    await expect(b.handle('perland_sign_in_discord', { language: 'en' })).rejects.toMatchObject({
-      category: 'network',
-      code: 'sign_in_unavailable',
-      params: { method: 'discord' },
+    await expect(b.handle('perland_sign_in', { language: 'en' })).rejects.toMatchObject({ code: 'player_accounts_closed' });
+    await expect(b.handle('perland_account_email_start', { email: 'a@b.co', language: 'en' })).rejects.toMatchObject({
+      code: 'player_accounts_closed',
     });
-  });
-
-  it('signs in with Discord after about 1.5 s of waiting, and tells the UI', async () => {
-    vi.useFakeTimers();
-    const b = backend();
-    const done = b.handle('perland_sign_in_discord', { language: 'en' }) as Promise<PerlandAccount | null>;
-    let settled = false;
-    void done.then(() => (settled = true));
-    await vi.advanceTimersByTimeAsync(1400);
-    expect(settled).toBe(false);
-    await vi.advanceTimersByTimeAsync(200);
-    const account = await done;
-    expect(account).toMatchObject({ discord: true, newPlayer: true });
-    expect(s.perlandAccount.safeParse(account).success).toBe(true);
-    expect((await status(b)).account).toEqual(account);
+    expect(await page(b)).toBeNull();
   });
 
   it('resolves null when the player cancels the browser step', async () => {
     vi.useFakeTimers();
     const b = backend();
-    const done = b.handle('perland_sign_in_discord', { language: 'en' });
+    const done = b.handle('perland_sign_in', { language: 'en' });
     await b.handle('perland_sign_in_cancel');
     expect(await done).toBeNull();
     expect((await status(b)).account).toBeNull();
   });
 
-  it('counts wrong codes down from 4 to 0, then accepts 123456', async () => {
-    const b = backend();
-    expect(await b.handle('perland_email_start', { email: 'alex@example.com', language: 'en' })).toEqual({ resendIn: 60 });
+  it('adds an email only while signed in', async () => {
+    await expect(backend().handle('perland_account_email_start', { email: 'a@b.co', language: 'en' })).rejects.toMatchObject({
+      code: 'perland_signed_out',
+    });
+    await expect(backend().handle('perland_account_email_verify', { email: 'a@b.co', code: '123456' })).rejects.toMatchObject({
+      code: 'perland_signed_out',
+    });
+  });
+
+  it('counts wrong codes down from 4 to 0, then accepts 123456 and puts the email on the account', async () => {
+    const b = backend('github');
+    expect(await b.handle('perland_account_email_start', { email: 'alex@example.com', language: 'en' })).toEqual({ resendIn: 60 });
     for (const left of ['4', '3', '2', '1', '0']) {
-      await expect(b.handle('perland_email_verify', { email: 'alex@example.com', code: '000000' })).rejects.toMatchObject({
+      await expect(b.handle('perland_account_email_verify', { email: 'alex@example.com', code: '000000' })).rejects.toMatchObject({
         category: 'auth',
         code: 'invalid_code',
         params: { attemptsLeft: left },
       });
     }
-    const account = (await b.handle('perland_email_verify', { email: 'alex@example.com', code: '123 456' })) as PerlandAccount;
-    expect(account).toMatchObject({ name: 'alex@example.com', email: 'alex@example.com', discord: false });
+    const account = (await b.handle('perland_account_email_verify', { email: 'alex@example.com', code: '123 456' })) as PerlandAccount;
+    expect(account).toMatchObject({ name: 'octocat', email: 'alex@example.com', github: true });
+    expect(s.perlandAccount.safeParse(account).success).toBe(true);
     expect((await status(b)).account).toEqual(account);
   });
 
-  it('rejects a bad address and starts the countdown over for a new code', async () => {
-    const b = backend();
-    await expect(b.handle('perland_email_start', { email: 'nope', language: 'en' })).rejects.toMatchObject({ code: 'invalid_email' });
-    await b.handle('perland_email_start', { email: 'a@b.co', language: 'en' });
-    await expect(b.handle('perland_email_verify', { email: 'a@b.co', code: '1' })).rejects.toMatchObject({ params: { attemptsLeft: '4' } });
-    await b.handle('perland_email_start', { email: 'a@b.co', language: 'en' });
-    await expect(b.handle('perland_email_verify', { email: 'a@b.co', code: '1' })).rejects.toMatchObject({ params: { attemptsLeft: '4' } });
+  it('rejects a bad address and starts the count over for a new code', async () => {
+    const b = backend('signedIn');
+    await expect(b.handle('perland_account_email_start', { email: 'nope', language: 'en' })).rejects.toMatchObject({ code: 'invalid_email' });
+    await b.handle('perland_account_email_start', { email: 'a@b.co', language: 'en' });
+    await expect(b.handle('perland_account_email_verify', { email: 'a@b.co', code: '1' })).rejects.toMatchObject({ params: { attemptsLeft: '4' } });
+    await b.handle('perland_account_email_start', { email: 'a@b.co', language: 'en' });
+    await expect(b.handle('perland_account_email_verify', { email: 'a@b.co', code: '1' })).rejects.toMatchObject({ params: { attemptsLeft: '4' } });
+  });
+
+  it('lets a player missing an email create a free server once it is verified', async () => {
+    const b = createMockBackend({ perland: 'github', free: 'emailRequired' });
+    const create = async () => ((await b.handle('free_server')) as FreeServerPage).create;
+    expect(await create()).toEqual({ allowed: false, reason: 'email_required', retryAfter: null });
+    await b.handle('perland_account_email_start', { email: 'a@b.co', language: 'en' });
+    await expect(b.handle('perland_account_email_verify', { email: 'a@b.co', code: '000000' })).rejects.toMatchObject({ code: 'invalid_code' });
+    expect((await create()).allowed).toBe(false);
+    await b.handle('perland_account_email_verify', { email: 'a@b.co', code: '123456' });
+    expect(await create()).toEqual({ allowed: true, reason: null, retryAfter: null });
   });
 
   it('signs out', async () => {
@@ -215,9 +203,11 @@ describe('mock Your servers', () => {
   });
 
   it('shows the signed-in set after signing in from signed out', async () => {
+    vi.useFakeTimers();
     const b = backend();
-    await b.handle('perland_email_start', { email: 'a@b.co', language: 'en' });
-    await b.handle('perland_email_verify', { email: 'a@b.co', code: '123456' });
+    const done = b.handle('perland_sign_in', { language: 'en' });
+    await vi.runAllTimersAsync();
+    await done;
     expect((await page(b))!.servers.length).toBe(4);
   });
 });

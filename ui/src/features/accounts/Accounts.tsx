@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Avatar } from '../../art/Avatar';
+import { AccountAvatar } from './AccountAvatar';
 import type { Account, AccountsFile } from '../../ipc/schema';
 import { useAccountMutations, useAccounts, useAppInfo, usePlaytime } from '../../state/queries';
 import { navigate } from '../../state/route';
@@ -8,7 +8,7 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
-import { Check, Trash } from '../../ui/Icon';
+import { Check, Shirt, Trash } from '../../ui/Icon';
 import { formatPlaytime } from '../../ui/playtime';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useSingleFlight } from '../../ui/useSingleFlight';
@@ -132,10 +132,13 @@ export function Accounts() {
               const inUse = account.uuid === accounts.data?.active;
               return (
                 <li key={account.uuid} className="panel flex items-center gap-4 px-4 py-3">
-                  <Avatar uuid={account.uuid} size={40} />
+                  <AccountAvatar account={account} size={40} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-bold">{account.username}</p>
-                    {account.provider === 'offline' && <span className="badge mt-1">{t('accounts.offlineBadge')}</span>}
+                    {/* Every row says its kind in words, like the Perland card's second line: a face alone can't tell them apart (#157). */}
+                    <p className="truncate text-sm text-ink-dim">
+                      {account.provider === 'microsoft' ? t('accounts.kindMicrosoft') : t('accounts.kindOffline')}
+                    </p>
                   </div>
                   {inUse ? (
                     <span className="flex items-center gap-2 font-semibold text-lime">
@@ -145,6 +148,14 @@ export function Accounts() {
                   ) : (
                     <Button onClick={() => use(account)}>{t('accounts.use')}</Button>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t('accounts.editSkinLabel', { name: account.username })}
+                    title={t('accounts.editSkin')}
+                    icon={<Shirt />}
+                    onClick={() => navigate({ name: 'skins', account: account.uuid })}
+                  />
                   <Button
                     variant="ghost"
                     size="icon"

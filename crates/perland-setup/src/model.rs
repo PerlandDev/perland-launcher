@@ -482,6 +482,18 @@ mod tests {
     }
 
     #[test]
+    fn offer_calver_after_the_old_versions() {
+        let from_old = |v: &str| Offer::Update { from: v.into() };
+        assert_eq!(offer(Some("0.2.14"), "2026.11.0"), from_old("0.2.14"));
+        assert_eq!(
+            offer(Some("2026.11.1"), "2026.12.0-beta.1"),
+            from_old("2026.11.1")
+        );
+        assert_eq!(offer(Some("2026.12.0"), "2026.11.3"), Offer::Newer);
+        assert_eq!(offer(Some("2026.11.0"), "2026.11.0"), Offer::Reinstall);
+    }
+
+    #[test]
     fn offer_garbage_is_update() {
         assert_eq!(
             offer(Some("dev"), "0.2.0"),

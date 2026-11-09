@@ -13,6 +13,7 @@ use launcher_core::{
     play::{self, Prepared, StartSpec},
     public_list::{self, FetchedPage, ListQuery, PublicListClient, PublicServer},
     server_wake::{self, Knock, Ping, WaitEnd},
+    skins::{SkinClient, SkinEndpoints},
     sources::{PackInput, UpdateCheck},
     sync::{Cancel, Ensured, ManualFile, PendingUpdate, Syncer},
     Result,
@@ -144,6 +145,9 @@ pub trait Runner: Send + Sync + 'static {
     fn stack(&self) -> Arc<dyn StackApi>;
     /// Microsoft, Xbox and Minecraft services (Sign in with Microsoft).
     fn msa(&self) -> Arc<dyn MsaApi>;
+    /// The skin texture PNG Minecraft profile `uuid` wears, or `None` when it wears none of
+    /// its own. See `SkinClient::texture`.
+    fn skin_texture(&self, uuid: String) -> BoxFuture<Result<Option<Vec<u8>>>>;
 }
 
 pub struct CoreRunner {
@@ -156,6 +160,8 @@ pub struct CoreRunner {
     player: Arc<CorePlayer>,
     stack: Arc<CoreStack>,
     msa: Arc<dyn MsaApi>,
+    /// `Err` when its HTTP client couldn't start: every skin ask answers that.
+    skins: Result<SkinClient>,
 }
 
 impl CoreRunner {
@@ -179,6 +185,9 @@ impl CoreRunner {
         let stack = Arc::new(CoreStack::new(
             launcher_core::http::client_without_redirects(&launcher_version),
         ));
+        // Never follows a redirect, so a skin only ever comes from the texture server.
+        let skins = launcher_core::http::client_without_redirects(&launcher_version)
+            .map(|http| SkinClient::new(http, SkinEndpoints::production()));
         Self {
             installer,
             syncer: Arc::new(syncer),
@@ -189,6 +198,7 @@ impl CoreRunner {
             player,
             stack,
             msa,
+            skins,
         }
     }
     /// The player routes go through a client that never follows a redirect (one would replay a
@@ -383,6 +393,11 @@ impl Runner for CoreRunner {
 
     fn msa(&self) -> Arc<dyn MsaApi> {
         self.msa.clone()
+    }
+
+    fn skin_texture(&self, uuid: String) -> BoxFuture<Result<Option<Vec<u8>>>> {
+        let skins = self.skins.clone();
+        Box::pin(async move { skins?.texture(&uuid).await })
     }
 }
 

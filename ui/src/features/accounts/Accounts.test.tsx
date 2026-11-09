@@ -1,6 +1,8 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
+import i18n from '../../i18n';
 import { routeSnapshot } from '../../state/route';
+import { MOCK_MICROSOFT_ACCOUNT, MOCK_SKIN_FACE } from '../../ipc/mock';
 import { renderApp, sent } from '../../test/backend';
 import { Accounts } from './Accounts';
 
@@ -53,17 +55,63 @@ it('beta shows Add Microsoft account and never Add offline account', async () =>
   expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument();
 });
 
-it('lists a Microsoft account with Remove and no offline badge', async () => {
+it('says under each name which kind of account it is (#157)', async () => {
+  renderApp(<Accounts />, { microsoft: 'signedIn' });
+  const alex = (await screen.findByText('Alex')).closest('li')!;
+  const steve = screen.getByText('Steve').closest('li')!;
+  expect(within(alex).getByText('Microsoft account')).toBeInTheDocument();
+  expect(within(alex).queryByText('Offline account')).not.toBeInTheDocument();
+  expect(within(steve).getByText('Offline account')).toBeInTheDocument();
+  expect(within(steve).queryByText('Microsoft account')).not.toBeInTheDocument();
+});
+
+it('says the kind in Spanish too', async () => {
+  renderApp(<Accounts />, { microsoft: 'signedIn' });
+  await act(() => i18n.changeLanguage('es'));
+  const alex = (await screen.findByText('Alex')).closest('li')!;
+  expect(within(alex).getByText('Cuenta de Microsoft')).toBeInTheDocument();
+  expect(within(screen.getByText('Steve').closest('li')!).getByText('Cuenta sin conexión')).toBeInTheDocument();
+});
+
+it('lists a Microsoft account with Remove', async () => {
   const { user, calls } = renderApp(<Accounts />, { beta: true, offlineLocked: true, microsoft: 'signedIn' });
   const alex = (await screen.findByText('Alex')).closest('li')!;
   expect(within(alex).getByText('In use')).toBeInTheDocument();
-  expect(within(alex).queryByText('Offline')).not.toBeInTheDocument();
   await user.click(within(alex).getByRole('button', { name: 'Remove Alex' }));
   const dialog = screen.getByRole('dialog');
   expect(dialog).toHaveTextContent('You can sign in again any time. Your worlds stay where they are.');
   await user.click(within(dialog).getByRole('button', { name: 'Remove' }));
   expect(sent(calls, 'account_remove')).toHaveLength(1);
   await waitFor(() => expect(screen.queryByText('Alex')).not.toBeInTheDocument());
+});
+
+it("shows a Microsoft account's own skin face and the generated face for offline accounts", async () => {
+  const { calls } = renderApp(<Accounts />, { microsoft: 'signedIn' });
+  const alex = (await screen.findByText('Alex')).closest('li')!;
+  await waitFor(() => expect(alex.querySelector('img')).toHaveAttribute('src', MOCK_SKIN_FACE));
+  const steve = screen.getByText('Steve').closest('li')!;
+  expect(steve.querySelector('img')).toBeNull();
+  expect(steve.querySelector('svg rect')).not.toBeNull();
+  expect(sent(calls, 'account_face')).toEqual([{ uuid: MOCK_MICROSOFT_ACCOUNT.uuid }]);
+});
+
+it('keeps the generated face when the skin face cannot be shown', async () => {
+  const { backend } = renderApp(<Accounts />, { microsoft: 'signedIn' });
+  const handle = backend.handle;
+  vi.spyOn(backend, 'handle').mockImplementation((cmd, args) =>
+    cmd === 'account_face' ? Promise.resolve('data:image/png;base64,broken') : handle(cmd, args),
+  );
+  const alex = (await screen.findByText('Alex')).closest('li')!;
+  const img = await waitFor(() => {
+    const found = alex.querySelector('img');
+    expect(found).not.toBeNull();
+    return found!;
+  });
+  act(() => {
+    img.dispatchEvent(new Event('error'));
+  });
+  expect(alex.querySelector('img')).toBeNull();
+  expect(alex.querySelector('svg rect')).not.toBeNull();
 });
 
 it('adds a Microsoft account and says who is in use', async () => {

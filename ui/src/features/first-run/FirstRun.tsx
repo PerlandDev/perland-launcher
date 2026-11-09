@@ -119,8 +119,10 @@ export function FirstRun() {
       <TitleBar minimal />
       <main className="relative min-h-0 overflow-hidden">
         <Marquee seed="perland" attract className="absolute inset-0" />
-        <div className="relative grid h-full place-items-center p-10">
-          <div className="panel grid w-full max-w-lg gap-6 p-8 shadow-[0_8px_0_var(--color-dirt-deep)]">
+        {/* Auto margins centre the card and fall to zero when it outgrows the window (a sign-in's steps at 960 × 600), so it scrolls
+            instead of being cut. */}
+        <div className="relative flex h-full overflow-y-auto p-10">
+          <div className="panel m-auto grid w-full max-w-lg gap-6 p-8 shadow-[0_8px_0_var(--color-dirt-deep)]">
             {step === 0 && (
               <>
                 <img src={mark} alt="" width={112} height={96} />
@@ -163,27 +165,38 @@ export function FirstRun() {
                 )}
                 {!appInfo.isError && !appInfo.data && <p className="text-ink-dim">{t('common.loading')}</p>}
                 {appInfo.data?.offlineAllowed && (
-                  <form onSubmit={submitAccount} className="grid gap-4">
-                    <p className="text-ink-dim">{t('firstRun.accountBody')}</p>
-                    <Field
-                      label={t('accounts.offlineName')}
-                      hint={t('accounts.offlineHint')}
-                      error={showInvalid ? t('errors.offline_name_invalid.message') : null}
-                    >
-                      <input
-                        ref={nameInput}
-                        className="field-input"
-                        value={name}
-                        maxLength={16}
-                        autoComplete="off"
-                        onChange={(e) => setName(e.target.value)}
-                        onBlur={() => name && setChecked(true)}
-                      />
-                    </Field>
-                    <Button type="submit" variant="primary" size="lg" aria-disabled={addOffline.isPending || undefined}>
-                      {t('common.continue')}
-                    </Button>
-                  </form>
+                  <>
+                    <MicrosoftSignIn variant="primary" onSignedIn={() => setStep(3)} />
+                    <section aria-labelledby="first-run-offline" className="grid gap-4">
+                      <div className="flex items-center gap-3">
+                        <h2 id="first-run-offline" className="text-sm font-bold text-ink-dim">
+                          {t('firstRun.offlineTitle')}
+                        </h2>
+                        <span aria-hidden className="h-px flex-1 bg-line" />
+                      </div>
+                      <form onSubmit={submitAccount} className="grid gap-4">
+                        <Field
+                          label={t('accounts.offlineName')}
+                          hint={t('accounts.offlineHint')}
+                          error={showInvalid ? t('errors.offline_name_invalid.message') : null}
+                        >
+                          <input
+                            ref={nameInput}
+                            className="field-input"
+                            value={name}
+                            maxLength={16}
+                            autoComplete="off"
+                            onChange={(e) => setName(e.target.value)}
+                            onBlur={() => name && setChecked(true)}
+                          />
+                        </Field>
+                        {/* Microsoft's is the step's one lit key, so the offline Continue stays raised. */}
+                        <Button type="submit" size="lg" aria-disabled={addOffline.isPending || undefined}>
+                          {t('common.continue')}
+                        </Button>
+                      </form>
+                    </section>
+                  </>
                 )}
                 {appInfo.data && !appInfo.data.offlineAllowed && (
                   <>

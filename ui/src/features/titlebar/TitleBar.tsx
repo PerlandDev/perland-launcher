@@ -1,14 +1,14 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Avatar } from '../../art/Avatar';
+import { AccountAvatar } from '../accounts/AccountAvatar';
 import mark from '../../assets/mark.svg';
 import { commands } from '../../ipc/commands';
 import { useAccounts, useUpdate } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { useUpdateBusy } from '../../state/updateBusy';
-import { Close, Minus, SettingsCog, Square, Trophy, WindowFrame } from '../../ui/Icon';
+import { Close, Minus, SettingsCog, Shirt, Square, Trophy, WindowFrame } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 
 /** The custom title bar: drag anywhere that isn't a button. `minimal` keeps only the window
@@ -78,12 +78,15 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
             <button type="button" className="tb-btn flex shrink-0" onClick={() => navigate({ name: 'accounts' })}>
               {active ? (
                 <>
-                  <Avatar uuid={active.uuid} size={20} />
+                  <AccountAvatar account={active} size={20} />
                   <span className="font-semibold text-ink">{active.username}</span>
                 </>
               ) : (
                 t('titlebar.noAccount')
               )}
+            </button>
+            <button type="button" className="tb-btn" aria-label={t('titlebar.skins')} title={t('titlebar.skins')} onClick={() => navigate({ name: 'skins' })}>
+              <Shirt aria-hidden />
             </button>
             <button type="button" className="tb-btn" aria-label={t('titlebar.achievements')} onClick={() => navigate({ name: 'achievements' })}>
               <Trophy aria-hidden />

@@ -2621,10 +2621,11 @@ dependencies = [
 
 [[package]]
 name = "launcher-app"
-version = "0.2.0"
+version = "0.2.15"
 dependencies = [
  "base64 0.22.1",
  "futures-util",
+ "image",
  "launcher-core",
  "serde",
  "serde_json",
@@ -2639,7 +2640,7 @@ dependencies = [
 
 [[package]]
 name = "launcher-core"
-version = "0.2.0"
+version = "0.2.15"
 dependencies = [
  "base64 0.22.1",
  "dirs",
@@ -3657,7 +3658,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "perland-cli"
-version = "0.2.0"
+version = "0.2.15"
 dependencies = [
  "clap",
  "launcher-core",
@@ -3667,7 +3668,7 @@ dependencies = [
 
 [[package]]
 name = "perland-launcher"
-version = "0.2.0"
+version = "0.2.15"
 dependencies = [
  "launcher-app",
  "launcher-core",
@@ -3688,7 +3689,7 @@ dependencies = [
 
 [[package]]
 name = "perland-setup"
-version = "0.2.0"
+version = "0.2.15"
 dependencies = [
  "accesskit",
  "accesskit_winit",

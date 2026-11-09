@@ -49,7 +49,8 @@ error_codes! {
     MojangMismatch, NoAssetIndex, NativesExtractFailed, VersionInUse, ArchiveInvalid,
     // instances
     InstanceNotFound, InstanceDamaged, InstanceIdInvalid, InstanceBusy, AlreadyRunning,
-    NameInvalid, MemoryOutOfRange, ArtFileInvalid, BannerFocusInvalid, WindowSizeInvalid,
+    NameInvalid, MemoryOutOfRange, ArtFileInvalid, BannerFocusInvalid, BannerZoomInvalid,
+    WindowSizeInvalid,
     // java
     JavaUnavailable, JavaStartFailed, JavaPathMissing, JavaTestFailed, JvmArgsUnclosedQuote,
     JvmArgNotOption, JvmArgNotAllowed, JvmArgsMemory, JvmArgsTooLong,
@@ -91,7 +92,8 @@ error_codes! {
     PlayerAccountsClosed, SignInUnavailable, SignInFailed, SignInTimedOut, InvalidEmail,
     InvalidCode, TooManyCodes, EmailUnavailable, PerlandSignedOut, PlayerServersClosed,
     TooManyPlayerServers, MinecraftLinkClosed, AccountDisabled, ForgetUnsupported,
-    SignInExpired, SignInClientRefused, SignInIncompatible, SignInCanceled,
+    SignInExpired, SignInClientRefused, SignInIncompatible, SignInCanceled, LauncherUpdateRequired,
+    EmailInUse,
     // free servers
     EmailRequired, FreeServerExists, TooManyFreeServers, FreeServersFull, InvalidFreeServer,
     ModpackUnsupported, ModpackTooHeavy, FreeServerOverDisk, HostFull, FreeServersPaused,
@@ -106,6 +108,8 @@ error_codes! {
     TeamServerTooBig, ServerNameTaken, InvalidTeamServer,
     // sharing an instance
     SharePathInvalid, ShareTooLarge,
+    // skins
+    SkinInvalid, SkinNotFound, SkinRejected, SkinOfflineAccount, SkinVersionNotFound,
     // anything unexpected
     Internal,
 }
@@ -278,6 +282,7 @@ mod tests {
             (ErrorCode::ModManaged, "mod_managed"),
             (ErrorCode::ArtFileInvalid, "art_file_invalid"),
             (ErrorCode::BannerFocusInvalid, "banner_focus_invalid"),
+            (ErrorCode::BannerZoomInvalid, "banner_zoom_invalid"),
             (ErrorCode::WindowSizeInvalid, "window_size_invalid"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
@@ -350,6 +355,11 @@ mod tests {
             (ErrorCode::TooManyPlayerServers, "too_many_player_servers"),
             (ErrorCode::ForgetUnsupported, "forget_unsupported"),
             (ErrorCode::MinecraftLinkClosed, "minecraft_link_closed"),
+            (
+                ErrorCode::LauncherUpdateRequired,
+                "launcher_update_required",
+            ),
+            (ErrorCode::EmailInUse, "email_in_use"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

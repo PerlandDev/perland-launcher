@@ -1,5 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CELL, COLS, discPath, layerPath, marqueeScene } from './marqueeScene';
+import type { BannerEdges } from '../ipc/schema';
+import { bannerBox, leavesEdges } from './bannerLayout';
+import { usePixelEdges } from './pixelEdges';
 import { pixelUpscale } from './upscale';
 
 const W = COLS * CELL; // 480
@@ -24,6 +27,8 @@ export function Marquee({
   dimmed = false,
   banner = null,
   focus = null,
+  zoom = null,
+  edges = null,
   className,
 }: {
   seed: string;
@@ -33,6 +38,10 @@ export function Marquee({
   banner?: string | null;
   /** Which point of the banner stays in view, in percent (CSS `object-position`). Null keeps the default, the bottom middle. */
   focus?: { x: number; y: number } | null;
+  /** How big the banner is drawn: its height in percent of the panel's. Null keeps the plain cover. */
+  zoom?: number | null;
+  /** What fills the panel around a zoomed banner that leaves edges: its dark ground (null or dark), or the banner as big dark pixels. */
+  edges?: BannerEdges | null;
   className?: string;
 }) {
   const scene = useMemo(() => marqueeScene(seed), [seed]);
@@ -64,16 +73,29 @@ export function Marquee({
   const fullSunY = (scene.sun.y + 4) * CELL;
   // Never closer to the visible top than its own radius plus a cell: on a short panel it sets behind the hills whole.
   const sunY = Math.max(H - visible + fullSunY * (visible / H), H - visible + 5 * CELL);
+  // A chosen zoom is sized and placed here, from the panel's and the picture's own sizes.
+  const measured = natural?.src === art && box.width > 0 ? natural : null;
+  const placed = art && zoom !== null && measured ? bannerBox(box, measured, zoom, focus) : null;
+  const drawn = placed ?? box;
+  const pixels = usePixelEdges(art && edges === 'pixel' && placed && leavesEdges(box, placed) ? art : null);
   return (
     <div ref={frame} className={`marquee ${className ?? ''}`} data-dimmed={dimmed || undefined} aria-hidden="true">
+      {pixels && <img src={pixels} alt="" className="marquee-edges" draggable={false} />}
       {art && (
         <img
           src={art}
           alt=""
           className="marquee-banner"
-          style={focus ? { objectPosition: `${focus.x}% ${focus.y}%` } : undefined}
+          style={
+            placed
+              ? { left: `${placed.left}px`, top: `${placed.top}px`, width: `${placed.width}px`, height: `${placed.height}px` }
+              : focus
+                ? { objectPosition: `${focus.x}% ${focus.y}%` }
+                : undefined
+          }
           draggable={false}
-          data-upscale={natural?.src === art && pixelUpscale(natural, box) ? '' : undefined}
+          data-zoomed={placed ? '' : undefined}
+          data-upscale={natural?.src === art && pixelUpscale(natural, drawn) ? '' : undefined}
           onLoad={(e) => setNatural({ src: art, width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })}
           onError={() => setFailed(art)}
         />

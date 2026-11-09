@@ -8,7 +8,7 @@ use launcher_core::{
         plan::{ItemReason, PlanItem, PlanSkip},
         search::SortIndex,
     },
-    instances::{accent_of, Instance, LoaderSpec, ServerAddress, ServerStatus},
+    instances::{accent_of, BannerEdges, Focus, Instance, LoaderSpec, ServerAddress, ServerStatus},
     invite::{non_empty, shown_invite, EngineView, InviteLink, InvitePlayers},
     java::{JavaFit, JavaInstall, TEMURIN},
     meta::loaders::LoaderKind,
@@ -302,6 +302,12 @@ pub struct ManualProgress {
 pub struct InstanceArtData {
     pub icon: Option<String>,
     pub banner: Option<String>,
+    /// Whether the pack has a background of its own, whichever background is in use: "Change image…"
+    /// offers "From the modpack" only then.
+    pub pack_banner: bool,
+    /// Whether the pack has an icon of its own, whichever icon is in use: "Change image…" offers
+    /// "Modpack icon" only then.
+    pub pack_icon: bool,
 }
 
 /// What the player picked in "Change image…": one of the generated landscapes (by seed), the
@@ -313,6 +319,18 @@ pub enum ArtChoice {
     Pack,
     Upload { path: PathBuf },
     Screenshot { name: String },
+}
+
+/// How a picture background sits in the marquee, saved together from "Adjust the background":
+/// which point stays in view, how big it is drawn (percent of the size that just covers the
+/// marquee) and what fills the marquee around it when it no longer covers it. `None` is each
+/// one's default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BannerView {
+    pub focus: Option<Focus>,
+    pub zoom: Option<u16>,
+    pub edges: Option<BannerEdges>,
 }
 
 /// What the player picked for the icon in "Change image…": the generated monogram, the pack's

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AchievementsScreen } from './features/medals/AchievementsScreen';
 import { Accounts } from './features/accounts/Accounts';
@@ -7,7 +7,8 @@ import { ActivityDrawer } from './features/activity/ActivityDrawer';
 import { Browse } from './features/browse/Browse';
 import { CloseGuard } from './features/close-guard/CloseGuard';
 import { FirstRun } from './features/first-run/FirstRun';
-import { Home } from './features/home/Home';
+import { HeroCopy, Home } from './features/home/Home';
+import { HeroPreview } from './features/home/heroPreview';
 import { InstanceSettings } from './features/instance-settings/InstanceSettings';
 import { JoinServer } from './features/join/JoinServer';
 import { ManageScreen } from './features/manage/ManageScreen';
@@ -22,11 +23,18 @@ import { useActivity } from './state/activity';
 import { applyAppearance } from './state/appearance';
 import { takeDeepLink } from './state/deepLink';
 import { useSettings } from './state/queries';
+import type { Instance } from './ipc/schema';
 import { useRoute, type Route } from './state/route';
 import { Button } from './ui/Button';
 import { ErrorCard } from './ui/ErrorCard';
 import { Toasts } from './ui/Toasts';
 import { useSingleFlight } from './ui/useSingleFlight';
+
+// three.js stays out of the start bundle: the Skins screen loads on first visit.
+const SkinStudio = lazy(() => import('./features/skins/SkinStudio'));
+
+/** Home's header as a still copy, for the background preview opened from anywhere (the rail's menu too). */
+const heroCopy = (instance: Instance) => <HeroCopy instance={instance} />;
 
 function Screen({ route }: { route: Route }) {
   switch (route.name) {
@@ -55,6 +63,12 @@ function Screen({ route }: { route: Route }) {
       return <ManageScreen key={`${route.tenantId}/${route.stack}`} tenantId={route.tenantId} stack={route.stack} />;
     case 'accounts':
       return <Accounts />;
+    case 'skins':
+      return (
+        <Suspense fallback={null}>
+          <SkinStudio skin={route.skin} account={route.account} />
+        </Suspense>
+      );
     case 'achievements':
       return <AchievementsScreen />;
     case 'settings':
@@ -70,19 +84,22 @@ function Shell() {
   // Once the shell exists (after first run), pick up a link that started the app.
   useEffect(() => void takeDeepLink(), []);
   return (
-    <div className="grid h-full grid-rows-[2.25rem_1fr]">
-      <TitleBar />
-      <div className={`grid min-h-0 ${wide ? 'grid-cols-[15rem_1fr]' : 'grid-cols-[4.5rem_1fr]'}`}>
-        <Rail />
-        {/* The open drawer is 18rem tall (ActivityDrawer); padding by the same keeps the screen above it.
-            `overflow-clip`, not `hidden`: a hidden box still scrolls to show a focused element, which would slide
-            the screen and the drawer up and leave the window half empty (#121). Screens scroll inside themselves. */}
-        <main className={`relative min-h-0 overflow-clip ${activity.open ? 'pb-[18rem]' : 'pb-9'}`}>
-          <Screen route={route} />
-          <ActivityDrawer />
-        </main>
+    // The rail's menu opens Change image too, so its background preview can draw Home's header from anywhere.
+    <HeroPreview.Provider value={heroCopy}>
+      <div className="grid h-full grid-rows-[2.25rem_1fr]">
+        <TitleBar />
+        <div className={`grid min-h-0 ${wide ? 'grid-cols-[15rem_1fr]' : 'grid-cols-[4.5rem_1fr]'}`}>
+          <Rail />
+          {/* The open drawer is 18rem tall (ActivityDrawer); padding by the same keeps the screen above it.
+              `overflow-clip`, not `hidden`: a hidden box still scrolls to show a focused element, which would slide
+              the screen and the drawer up and leave the window half empty (#121). Screens scroll inside themselves. */}
+          <main className={`relative min-h-0 overflow-clip ${activity.open ? 'pb-[18rem]' : 'pb-9'}`}>
+            <Screen route={route} />
+            <ActivityDrawer />
+          </main>
+        </div>
       </div>
-    </div>
+    </HeroPreview.Provider>
   );
 }
 

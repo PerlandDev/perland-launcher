@@ -23,6 +23,7 @@ import { closeConsole, freeManageRef, handleManage, managedForYourServers, NOT_M
 import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario, type PerlandSignInOutcome } from './mockPerland';
 import { mockCrash, type CrashScenario } from './mockCrash';
 import { handleTeams, NOT_TEAMS, type TeamsScenario } from './mockTeams';
+import { handleSkins, NOT_SKINS, seedSkins, type SkinsScenario } from './mockSkins';
 import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
 import { MSA_STEPS, type MsaStep } from './schema';
 import type {
@@ -36,7 +37,7 @@ import type {
   ContentKind,
   DeepLink,
   ExitInfo,
-  Focus,
+  BannerView,
   IconChoice,
   InstallPlanView,
   InstallResult,
@@ -101,7 +102,7 @@ export interface MockOptions {
   link?: string;
   /** Seeds the `survival` Perland server and picks how its invite answers. */
   server?: ServerScenario;
-  /** Perland account: `off` closes accounts; `signedOut` (default), `signedIn`, `empty` (signed in, no servers), `emailOnly`, `linked` (Minecraft linked, with stats) and `noAddon` (stats off). */
+  /** Perland account: `off` closes accounts; `signedOut` (default), `signedIn`, `empty` (signed in, no servers), `linked` (Minecraft linked, with stats) and `noAddon` (stats off). */
   perland?: PerlandScenario;
   /** How the Perland page sign-in ends (`?perlandSignIn=`): `ok` (default), `cancel`, `timeout`, `fail` or `expired`. */
   perlandSignIn?: PerlandSignInOutcome;
@@ -114,6 +115,8 @@ export interface MockOptions {
   /** Teams the player may create a server on (only while `perland` is signed in): `none` (the default here; dev:mock starts
    *  on `some`) or `some` (Builders with room, Night Shift with none, Starter Club whose plan has no modded servers). */
   teams?: TeamsScenario;
+  /** The skin wardrobe: `seeded` (default: two skins), `empty`, or `rejected` (every upload is refused). */
+  skins?: SkinsScenario;
   /** What Share… finds: `some` (default: two mods not on Modrinth), `all` (every mod on Modrinth) or `error` (Modrinth unreachable). */
   share?: 'some' | 'all' | 'error';
   /** What Play this with friends finds: `ok` (default: every mod on Modrinth, fits), `missing` (two mods aren't on Modrinth) or
@@ -159,13 +162,14 @@ interface MockPack {
   installed: string | null;
   update: PackUpdate | null;
   contents: PackContents;
-  art: InstanceArtData;
+  /** The pack's own pictures, as its `.perland/art/` holds them. */
+  art: Pick<InstanceArtData, 'icon' | 'banner'>;
   manual: ManualFile[];
   found: number;
 }
 
 const svg = (body: string) => `data:image/svg+xml;base64,${btoa(body)}`;
-const SKY_ART: InstanceArtData = {
+const SKY_ART: Pick<InstanceArtData, 'icon' | 'banner'> = {
   icon: svg(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect width="16" height="16" fill="#7cc4ff"/><rect y="9" width="16" height="7" fill="#3f8f4f"/><rect y="12" width="16" height="4" fill="#6b4a2b"/></svg>',
   ),
@@ -183,6 +187,11 @@ function mockModIcon(file: string): string | null {
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect width="16" height="16" fill="hsl(${hue} 45% 35%)"/><rect x="4" y="4" width="8" height="8" fill="hsl(${hue} 60% 65%)"/></svg>`,
   );
 }
+
+/** A Microsoft account's face as the core sends it: an 8×8 picture (an original one here, never a Mojang skin). */
+export const MOCK_SKIN_FACE = svg(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" shape-rendering="crispEdges"><rect width="8" height="8" fill="#c98f63"/><rect width="8" height="2" fill="#2f5d8a"/><rect y="2" width="1" height="2" fill="#2f5d8a"/><rect x="7" y="2" width="1" height="2" fill="#2f5d8a"/><rect x="1" y="4" width="2" height="1" fill="#f4f1ea"/><rect x="2" y="4" width="1" height="1" fill="#1d2b3a"/><rect x="5" y="4" width="2" height="1" fill="#f4f1ea"/><rect x="5" y="4" width="1" height="1" fill="#1d2b3a"/><rect x="3" y="6" width="2" height="1" fill="#8a5a3c"/></svg>`,
+);
 
 /** A player's uploaded background: a 4:3 picture taller than the marquee, so its position matters. */
 const CASTLE_PICTURE = svg(
@@ -387,6 +396,8 @@ function seed(options: MockOptions) {
       art: 'auto',
       icon: null,
       bannerFocus: null,
+      bannerZoom: null,
+      bannerEdges: null,
     };
     listing.instances = [...listing.instances, sky];
     const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
@@ -429,12 +440,14 @@ function seed(options: MockOptions) {
       art: 'custom',
       icon: 'generated',
       bannerFocus: null,
+      bannerZoom: null,
+      bannerEdges: null,
     };
     listing.instances = [...listing.instances, castle];
     custom.set(castle.id, CASTLE_PICTURE);
   }
   // The create dialog picks a Modrinth modpack instance; only a free-server preview or a signed-in player has them.
-  const perland = seedPerland(options.perland, options.panel !== false, options.perlandSignIn);
+  const perland = seedPerland(options.perland, options.perlandSignIn);
   if (!options.firstRun && options.free !== 'off' && (options.free !== undefined || perland.account !== null)) {
     listing.instances = [...listing.instances, ...modrinthInstances()];
   }
@@ -476,6 +489,7 @@ function seed(options: MockOptions) {
     // `empty` is a player with no servers at all, so none to manage either.
     manage: seedManage(options.manage ?? (options.perland === 'empty' ? 'none' : undefined), event),
     teams: options.teams ?? 'none',
+    skins: seedSkins(options.skins),
     // The player's own order, like instance-order.json. Existing instances start A-Z, so a new one lands above them.
     order: [...listing.instances].sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())).map((i) => i.id),
     servers,
@@ -935,6 +949,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         art: 'auto',
         icon: null,
         bannerFocus: null,
+        bannerZoom: null,
+        bannerEdges: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       return created;
@@ -1057,6 +1073,10 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'account_sign_in_cancel':
       state.microsoft.cancel?.();
       return null;
+    case 'account_face': {
+      const account = state.accounts.accounts.find((a) => a.uuid === String(args.uuid));
+      return account?.provider === 'microsoft' ? MOCK_SKIN_FACE : null;
+    }
     case 'account_ready': {
       const active = state.accounts.accounts.find((a) => a.uuid === state.accounts.active);
       return {
@@ -1172,7 +1192,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
             : (pack?.icon ?? null);
       const banner =
         target.art === 'generated' ? null : target.art === 'custom' ? (state.custom.get(target.id) ?? null) : (pack?.banner ?? null);
-      return { icon, banner } satisfies InstanceArtData;
+      return { icon, banner, packBanner: Boolean(pack?.banner), packIcon: Boolean(pack?.icon) } satisfies InstanceArtData;
     }
     case 'instance_art_set': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
@@ -1192,13 +1212,13 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       let updated: Instance;
       if (choice.kind === 'generated') {
         state.custom.delete(target.id);
-        updated = { ...target, art: 'generated', artSeed: choice.seed, icon, bannerFocus: null };
+        updated = { ...target, art: 'generated', artSeed: choice.seed, icon, bannerFocus: null, bannerZoom: null, bannerEdges: null };
       } else if (choice.kind === 'pack') {
         state.custom.delete(target.id);
-        updated = { ...target, art: 'auto', icon, bannerFocus: null };
+        updated = { ...target, art: 'auto', icon, bannerFocus: null, bannerZoom: null, bannerEdges: null };
       } else {
         state.custom.set(target.id, upload ?? invalid());
-        updated = { ...target, art: 'custom', icon, bannerFocus: null };
+        updated = { ...target, art: 'custom', icon, bannerFocus: null, bannerZoom: null, bannerEdges: null };
       }
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
@@ -1229,14 +1249,17 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
     }
-    case 'instance_banner_focus_set': {
+    case 'instance_banner_view_set': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
       if (state.runs.has(target.id)) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: target.id });
-      const focus = (args.focus ?? null) as Focus | null;
+      const view = args.view as BannerView;
+      const focus = view.focus ?? null;
       if (focus && [focus.x, focus.y].some((n) => !Number.isInteger(n) || n < 0 || n > 100)) {
         fail('disk', 'banner_focus_invalid', 'That position is outside the picture');
       }
-      const updated: Instance = { ...target, bannerFocus: focus };
+      const zoom = view.zoom ?? null;
+      if (zoom !== null && (!Number.isInteger(zoom) || zoom < 25 || zoom > 500)) fail('disk', 'banner_zoom_invalid', 'That zoom is out of range');
+      const updated: Instance = { ...target, bannerFocus: focus, bannerZoom: zoom, bannerEdges: view.edges ?? null };
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
     }
@@ -1269,6 +1292,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         art: 'auto',
         icon: null,
         bannerFocus: null,
+        bannerZoom: null,
+        bannerEdges: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });
@@ -1546,6 +1571,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'plugin:window|is_maximized':
       return false;
     default: {
+      const skinsServed = handleSkins(state.skins, state.accounts, cmd, args);
+      if (skinsServed !== NOT_SKINS) return skinsServed;
       const extra = [...state.perland.servers, ...(state.free.server ? [state.free.server] : [])];
       const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite }, extra) as Instance;
       const freeServed = await handleFree(state.free, state.perland.account, state.listing, cmd, args, join, (card) =>
@@ -1561,7 +1588,11 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         (c) => repeatsFreeServer(state.free, c),
         () => managedForYourServers(state.manage, state.perland.account, state.free.server),
       );
-      if (perlandServed !== NOT_PERLAND) return perlandServed;
+      if (perlandServed !== NOT_PERLAND) {
+        // The account has a verified email now, so the Engine lets it make a free server.
+        if (cmd === 'perland_account_email_verify' && state.free.scenario === 'emailRequired') state.free.scenario = 'none';
+        return perlandServed;
+      }
       const teamsServed = await handleTeams(state.teams, state.manage, state.perland.account, find, cmd, args);
       if (teamsServed !== NOT_TEAMS) return teamsServed;
       const manageServed = handleManage(state.manage, state.perland.account, state.free.server, cmd, args);

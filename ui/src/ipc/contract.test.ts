@@ -12,6 +12,7 @@ import errorCodes from './contract/error_codes.json';
 import events from './contract/events.json';
 import freeServerPage from './contract/free_server_page.json';
 import freeServerSettings from './contract/free_server_settings.json';
+import bannerViews from './contract/banner_views.json';
 import iconChoices from './contract/icon_choices.json';
 import importPreview from './contract/import_preview.json';
 import importRequest from './contract/import_request.json';
@@ -58,6 +59,9 @@ import serverInstanceFx from './contract/server_instance.json';
 import serverNews from './contract/server_news.json';
 import serverStatusFx from './contract/server_status.json';
 import settingsFx from './contract/settings.json';
+import skinEntriesFx from './contract/skin_entries.json';
+import currentSkinFx from './contract/current_skin.json';
+import skinVersionsFx from './contract/skin_versions.json';
 import shareChoiceFx from './contract/share_choice.json';
 import sharePreviewFx from './contract/share_preview.json';
 import friendsCheckFx from './contract/friends_check.json';
@@ -75,6 +79,9 @@ import * as s from './schema';
 
 const cases: [string, ZodType, unknown][] = [
   ['accounts', s.accountsFile, accounts],
+  ['skin_entries', s.skinEntry.array(), skinEntriesFx],
+  ['current_skin', s.currentSkin.nullable().array(), currentSkinFx],
+  ['skin_versions', s.skinVersion.array(), skinVersionsFx],
   ['account_ready', s.accountReady.array(), accountReadyFx],
   ['app_info', s.appInfo, appInfo],
   ['content_files', s.contentFile.array(), contentFiles],
@@ -103,6 +110,7 @@ const cases: [string, ZodType, unknown][] = [
   ['pack_add_requests', s.packAddRequest.array(), packAddRequests],
   ['instance_art', s.instanceArtData, instanceArt],
   ['art_choices', s.artChoice.array(), artChoices],
+  ['banner_views', s.bannerView.array(), bannerViews],
   ['icon_choices', s.iconChoice.array(), iconChoices],
   ['pack_contents', s.packContents, packContents],
   ['pack_status', s.packStatus.array(), packStatus],
