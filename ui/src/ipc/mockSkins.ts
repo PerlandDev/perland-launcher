@@ -31,6 +31,7 @@ interface KeptVersion {
   reason: SkinVersionReason;
   worn: boolean;
   texture: string;
+  model: SkinModel | null;
 }
 
 /** A save this long after the skin's last change starts a new editing session (as in Rust). */
@@ -107,7 +108,9 @@ export function seedSkins(scenario: SkinsScenario = 'seeded'): SkinsState {
     const kept = (skinVersionsFx as SkinVersion[]).map(({ current, ...v }, i) => ({
       ...v,
       taken: now - (ago[i] ?? 0),
-      texture: current ? textures.get(first.id)! : variant(i, first.model),
+      // The version that is the skin now has its arms; the others keep the fixture's.
+      model: current ? first.model : v.model,
+      texture: current ? textures.get(first.id)! : variant(i, v.model ?? first.model),
     }));
     versions.set(first.id, kept.reverse());
   }
@@ -117,12 +120,12 @@ export function seedSkins(scenario: SkinsScenario = 'seeded'): SkinsState {
 function keep(state: SkinsState, entry: SkinEntry, texture: string, reason: SkinVersionReason, taken = entry.updated) {
   const list = state.versions.get(entry.id) ?? [];
   const newest = list[list.length - 1];
-  if (newest && newest.texture === texture) {
+  if (newest && newest.texture === texture && (newest.model ?? entry.model) === entry.model) {
     if (reason === 'worn') newest.worn = true;
     return;
   }
   const last = newest ? Number(newest.id) : 0;
-  list.push({ id: String(Math.max(Date.now(), last + 1)), taken, reason, worn: reason === 'worn', texture });
+  list.push({ id: String(Math.max(Date.now(), last + 1)), taken, reason, worn: reason === 'worn', texture, model: entry.model });
   const unworn = list.filter((v) => !v.worn);
   const drop = new Set(unworn.slice(0, Math.max(0, unworn.length - VERSIONS_CAP)).map((v) => v.id));
   state.versions.set(entry.id, list.filter((v) => !drop.has(v.id)));
@@ -227,6 +230,8 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
     case 'skin_update': {
       const entry = find(state, args.id);
       if (args.name != null) entry.name = checkName(args.name);
+      // A switch of arms keeps the texture first, with the arms it was drawn for, as in Rust.
+      if (args.model != null && args.model !== entry.model) keep(state, entry, state.textures.get(entry.id)!, 'edited');
       if (args.model != null) entry.model = args.model as SkinModel;
       touch(entry);
       return { ...entry };
@@ -262,7 +267,7 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       // Only the newest version with the texture now is current, as in Rust.
       let now = state.textures.get(entry.id);
       return [...(state.versions.get(entry.id) ?? [])].reverse().map(({ texture, ...v }) => {
-        const current = texture === now;
+        const current = texture === now && (v.model ?? entry.model) === entry.model;
         if (current) now = undefined;
         return { ...v, current } satisfies SkinVersion;
       });
@@ -274,6 +279,8 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       const version = findVersion(state, entry, args.version);
       keep(state, entry, state.textures.get(entry.id)!, 'edited');
       state.textures.set(entry.id, version.texture);
+      // The version's arms come back with it.
+      if (version.model) entry.model = version.model;
       touch(entry);
       keep(state, entry, version.texture, 'restored');
       return { ...entry };
@@ -282,7 +289,7 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       const entry = find(state, args.id);
       const version = findVersion(state, entry, args.version);
       // The copy stays in the source's wardrobe and is never seeded, as in Rust.
-      return add(state, checkName(args.name), entry.model, version.texture, entry.owner ?? null);
+      return add(state, checkName(args.name), version.model ?? entry.model, version.texture, entry.owner ?? null);
     }
     case 'skin_checkpoint': {
       const entry = find(state, args.id);

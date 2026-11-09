@@ -742,6 +742,7 @@ fn contract_fixtures_are_current() {
                 reason: launcher_core::skins_library::VersionReason::Restored,
                 worn: false,
                 current: true,
+                model: Some(launcher_core::skins_library::SkinModel::Classic),
             },
             launcher_core::skins_library::SkinVersion {
                 id: "1762400000456".into(),
@@ -749,6 +750,7 @@ fn contract_fixtures_are_current() {
                 reason: launcher_core::skins_library::VersionReason::Worn,
                 worn: true,
                 current: false,
+                model: Some(launcher_core::skins_library::SkinModel::Slim),
             },
             launcher_core::skins_library::SkinVersion {
                 id: "1762300000789".into(),
@@ -756,6 +758,7 @@ fn contract_fixtures_are_current() {
                 reason: launcher_core::skins_library::VersionReason::Edited,
                 worn: false,
                 current: false,
+                model: None,
             },
             launcher_core::skins_library::SkinVersion {
                 id: "1762200000000".into(),
@@ -763,6 +766,7 @@ fn contract_fixtures_are_current() {
                 reason: launcher_core::skins_library::VersionReason::Exported,
                 worn: false,
                 current: false,
+                model: Some(launcher_core::skins_library::SkinModel::Classic),
             },
         ],
     );

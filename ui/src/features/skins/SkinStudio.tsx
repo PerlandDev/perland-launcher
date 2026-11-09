@@ -326,7 +326,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         .then(() => commands.skinRestore(selected.id, version.id))
         .then((entry) => {
           qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => old?.map((e) => (e.id === entry.id ? entry : e)));
-          doc.replace(pixels.data);
+          // The version's arms came back with it; Undo takes both back.
+          doc.replace(pixels.data, entry.model !== model ? { before: model, after: entry.model } : undefined);
           setPreview(null);
           refreshVersions();
           pushNotice({ title: t('skins.history.restored'), body: t('skins.history.restoredBody', { when: whenLabel(version.taken, i18n.language, t) }) });
@@ -460,7 +461,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               pixels={previewing ? previewShown.pixels : doc.pixels}
               // A preview gets its own (negative) revisions, so the figure redraws on every switch.
               rev={previewing ? -previewShown.seq : doc.rev}
-              model={model}
+              // A version shows on the arms it was drawn for.
+              model={previewing ? (previewShown.version.model ?? model) : model}
               hidden={hidden}
               paintLayer={paintLayer}
               pose={pose}

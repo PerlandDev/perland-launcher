@@ -452,6 +452,8 @@ export const skinVersion = z.strictObject({
   reason: skinVersionReason,
   worn: z.boolean(),
   current: z.boolean(),
+  /** The arm model the texture was drawn for; null for a version kept before arm models were recorded. */
+  model: skinModel.nullable(),
 });
 /** The skin a Microsoft account wears now: a PNG `data:` URL and its arm model. */
 export const currentSkin = z.strictObject({ texture: z.string(), model: skinModel });

@@ -6,7 +6,7 @@ import type { SkinModel } from '../../ipc/schema';
 import { pushError } from '../../state/toasts';
 import { decodeTexture, encodeTexture } from './codec';
 import { convertArms, fitsModel, restoreArms } from './armModel';
-import { History, mergeStroke } from './history';
+import { History, mergeStroke, type ModelSwap } from './history';
 import { mirrorTexel } from './mirror';
 import { applyTool, line, Pixels, sameColor, type Change, type Rgba, type Tool, type Touched } from './paint';
 import { faceAt, SKIN_SIZE } from './layout';
@@ -40,8 +40,8 @@ export interface SkinDoc {
   switchModel(to: SkinModel): void;
   /** Saves now if a save is waiting (before switching skins, exporting or wearing). */
   flush(): Promise<void>;
-  /** Shows `data` (already saved, e.g. a restored version) as one undoable step. */
-  replace(data: Uint8ClampedArray): void;
+  /** Shows `data` (already saved, e.g. a restored version) as one undoable step, with the arm model it switched to. */
+  replace(data: Uint8ClampedArray, model?: ModelSwap): void;
 }
 
 /** Whether (x, y) is an arm texel, in either arm model's layout. */
@@ -94,8 +94,9 @@ class DocStore {
     }
   }
 
-  /** Swaps in `data` as one stroke, so Undo takes it back (and autosaves the texture it replaced). */
-  replace(data: Uint8ClampedArray): boolean {
+  /** Swaps in `data` as one stroke, so Undo takes it back (and autosaves the texture it replaced), with the arm model
+   *  it switched to, if it did. */
+  replace(data: Uint8ClampedArray, model?: ModelSwap): boolean {
     const px = this.pixels;
     if (!px) return false;
     const next = new Pixels(data);
@@ -107,9 +108,9 @@ class DocStore {
         if (!sameColor(before, after)) changes.push({ x, y, before, after });
       }
     }
-    if (changes.length === 0) return false;
+    if (changes.length === 0 && !model) return false;
     for (const c of changes) px.set(c.x, c.y, c.after);
-    this.history.push(changes);
+    this.history.push(changes, model);
     this.lastSwitch = null;
     return true;
   }
@@ -287,8 +288,8 @@ export function useSkinDoc(id: string | null, model: SkinModel, onSaved: () => v
     redo,
     switchModel,
     flush: () => store.saveNow(),
-    replace: (data: Uint8ClampedArray) => {
-      if (open && store.replace(data)) bump();
+    replace: (data: Uint8ClampedArray, swap?: ModelSwap) => {
+      if (open && store.replace(data, swap)) bump();
     },
   };
 }

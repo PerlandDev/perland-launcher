@@ -513,6 +513,20 @@ it('Restore makes the version the skin, and Undo takes it back', async () => {
   await waitFor(() => expect(within(screen.getByRole('list', { name: 'Earlier versions' })).getAllByRole('button')).toHaveLength(5));
 });
 
+it('Restore brings back the arms the version was drawn for, and Undo takes them back', async () => {
+  // Beach day has slim arms now; its oldest version was drawn for classic ones.
+  const { user, calls } = renderApp(<SkinStudio />);
+  const list = await openHistory(user);
+  expect(screen.getByRole('button', { name: 'Slim arms' })).toBeInTheDocument();
+  await user.click(within(list).getAllByRole('button')[3]!);
+  await user.click(await screen.findByRole('button', { name: 'Restore this version' }));
+  await waitFor(() => expect(sent(calls, 'skin_restore')).toHaveLength(1));
+  expect(await screen.findByRole('button', { name: 'Classic arms' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Undo' }));
+  expect(await screen.findByRole('button', { name: 'Slim arms' })).toBeInTheDocument();
+  await waitFor(() => expect(sent(calls, 'skin_update')).toContainEqual({ id: 'skin-0a1b2c3d4e5f', name: null, model: 'slim' }));
+});
+
 it('Make a copy turns a version into a new wardrobe skin', async () => {
   const { user, calls } = renderApp(<SkinStudio />);
   const list = await openHistory(user);
