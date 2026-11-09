@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bannerBox, clampZoom, coverZoom, dragFocus, focusFor, leavesEdges, placeFrame, zoomAround } from './bannerLayout';
+import { bannerBox, clampZoom, coverZoom, dragFocus, leavesEdges, placeFrame, zoomAround } from './bannerLayout';
 
 const frame = { width: 1000, height: 500 };
 const square = { width: 500, height: 500 };
@@ -73,14 +73,6 @@ describe('dragFocus', () => {
   });
 });
 
-it('finds the position that draws a zoomed picture where a box already is, so choosing a zoom never moves it', () => {
-  const cover = bannerBox(frame, square, null, { x: 30, y: 60 });
-  const focus = focusFor(frame, cover, 200);
-  const zoomed = bannerBox(frame, square, 200, focus);
-  expect(zoomed.left).toBeCloseTo(cover.left, 0);
-  expect(zoomed.top).toBeCloseTo(cover.top, 0);
-});
-
 it('says whether a picture leaves part of the frame uncovered', () => {
   expect(leavesEdges(frame, bannerBox(frame, square, null, null))).toBe(false);
   expect(leavesEdges(frame, bannerBox(frame, square, 200, null))).toBe(false);
@@ -97,6 +89,13 @@ describe('zoomAround', () => {
     const after = bannerBox(frame, square, 250, focus);
     expect(onPicture(after, 600, 300).x).toBeCloseTo(onPicture(before, 600, 300).x, 2);
     expect(onPicture(after, 600, 300).y).toBeCloseTo(onPicture(before, 600, 300).y, 1);
+  });
+
+  it('starts a first zoom from the covering picture, so choosing a zoom never moves it', () => {
+    const cover = bannerBox(frame, square, null, { x: 30, y: 60 });
+    const zoomed = bannerBox(frame, square, 200, zoomAround(frame, square, null, { x: 30, y: 60 }, 200));
+    expect(zoomed.left).toBeCloseTo(cover.left, 0);
+    expect(zoomed.top).toBeCloseTo(cover.top, 0);
   });
 
   it("zooms into the middle of what shows when there's no pointer", () => {

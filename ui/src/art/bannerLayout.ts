@@ -34,14 +34,6 @@ export function bannerBox(frame: Size, picture: Size, zoom: number | null, focus
   return { left: across.left + ((across.width - width) * x) / 100, top: ((frame.height - height) * y) / 100, width, height };
 }
 
-/** The position that draws the picture in `box`, at `zoom`, centred where `box` is: choosing a zoom where none was
- *  then starts from what the marquee shows, without the picture jumping. */
-export function focusFor(frame: Size, box: Box, zoom: number): Focus {
-  const height = (zoom / 100) * frame.height;
-  const width = (height * box.width) / box.height;
-  return focusAt(frame, { left: box.left + box.width / 2 - width / 2, top: box.top + box.height / 2 - height / 2, width, height });
-}
-
 /** The position that draws a zoomed picture at `box` (as near as 0–100 allows); no free space keeps it in the middle. */
 function focusAt(frame: Size, box: Box): Focus {
   const band = placeFrame(frame);
