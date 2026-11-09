@@ -1041,19 +1041,32 @@
     width: 100%;
     height: 100%;
   }
-  /* Icon and Background side by side: the icon's keys stack in a narrow column at left, the landscapes take
-     the rest. The dialog widens for them, so both fit at the 960 × 600 minimum without scrolling. */
-  .dialog:has(.art-sections) {
-    width: min(46rem, calc(100vw - 4rem));
+  /* Icon over Background in one column: the icon's keys share a row, then a band of the room's ground across
+     the whole dialog, then the landscapes, the background's keys and the screenshots. */
+  .dialog:has(.art-stack) {
+    width: min(40rem, calc(100vw - 4rem));
   }
-  .art-sections {
+  .art-stack {
     display: grid;
-    grid-template-columns: minmax(0, 13rem) minmax(0, 1fr);
-    align-items: start;
     gap: 1.5rem;
   }
-  .art-keys-stack {
-    grid-template-columns: minmax(0, 1fr);
+  .art-keys-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  /* The screenshots are a third source: more room above them than between a heading and its tiles. */
+  .art-shots {
+    display: grid;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+  /* The seam between the two pictures, edge to edge (the dialog's own padding is 1.5rem): recessed like a well. */
+  .art-band {
+    height: 0.75rem;
+    margin-inline: -1.5rem;
+    background: var(--color-ground);
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.35),
+      inset 0 -1px 0 var(--color-line);
   }
   /* Icon and Background: each group is named by a small legend over its keys, like Settings' channel. */
   .art-section {
@@ -1066,13 +1079,6 @@
     font-weight: 600;
     line-height: 1.25;
   }
-  /* Background's column: its radio group, landscapes, keys and screenshots. */
-  .art-column {
-    display: grid;
-    gap: 1.25rem;
-    min-width: 0;
-  }
-
   /* A group heading with a key at its end (Background's Adjust…): the key is a ghost, so the row keeps the
      heading's rhythm, pulled up by the key's own padding. */
   .art-section-head {

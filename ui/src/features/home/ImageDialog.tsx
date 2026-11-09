@@ -325,9 +325,9 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
     <Dialog open onClose={onClose} title={t('image.title')} actions={<Button onClick={onClose}>{t('image.done')}</Button>}>
       <div className="grid gap-5">
         <p>{t('image.body')}</p>
-        <div className="art-sections">
+        <div className="art-stack">
           <ChoiceGroup label={t('image.iconSection')} busy={busy}>
-            <div className="art-keys art-keys-stack">
+            <div className="art-keys art-keys-row">
               <PictureKey
                 label={t('image.generatedIcon')}
                 hint={t('image.generatedIconHint')}
@@ -362,8 +362,9 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
               />
             </div>
           </ChoiceGroup>
-          <div className="art-column">
-            <ChoiceGroup
+          {/* The seam between the two pictures: a strip of the room's ground across the whole dialog. */}
+          <div className="art-band" aria-hidden="true" />
+          <ChoiceGroup
             label={t('image.backgroundSection')}
             busy={busy}
             aside={
@@ -374,83 +375,82 @@ export function ImageDialog({ instance, onClose }: { instance: Instance; onClose
               )
             }
           >
-              <div className="art-tiles">
-                {presetSeeds(instance).map((seed, index) => {
-                  const lit = typeof background === 'object' && background.seed === seed;
-                  return (
-                    <button
-                      key={seed}
-                      type="button"
-                      role="radio"
-                      className="art-tile"
-                      aria-label={t('image.landscape', { n: index + 1 })}
-                      aria-checked={lit}
-                      aria-disabled={busy || undefined}
-                      // A pinned seed that is none of the six lights nothing; the first landscape keeps the tab stop.
-                      tabIndex={lit || (index === 0 && typeof background === 'object' && !landscapeLit) ? 0 : -1}
-                      onClick={() => chooseBackground({ kind: 'generated', seed })}
-                    >
-                      <Marquee seed={seed} attract={false} className="absolute inset-0" />
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="art-keys">
-                {pack && (
-                  <PictureKey
-                    label={t('image.pack')}
-                    glyph={<Package />}
-                    picture={bannerPicture}
-                    current={background === 'pack'}
-                    tabbable={background === 'pack'}
-                    busy={busy}
-                    onChoose={() => chooseBackground({ kind: 'pack' })}
-                  />
-                )}
+            <div className="art-tiles">
+              {presetSeeds(instance).map((seed, index) => {
+                const lit = typeof background === 'object' && background.seed === seed;
+                return (
+                  <button
+                    key={seed}
+                    type="button"
+                    role="radio"
+                    className="art-tile"
+                    aria-label={t('image.landscape', { n: index + 1 })}
+                    aria-checked={lit}
+                    aria-disabled={busy || undefined}
+                    // A pinned seed that is none of the six lights nothing; the first landscape keeps the tab stop.
+                    tabIndex={lit || (index === 0 && typeof background === 'object' && !landscapeLit) ? 0 : -1}
+                    onClick={() => chooseBackground({ kind: 'generated', seed })}
+                  >
+                    <Marquee seed={seed} attract={false} className="absolute inset-0" />
+                  </button>
+                );
+              })}
+            </div>
+            <div className="art-keys">
+              {pack && (
                 <PictureKey
-                  label={t('image.upload')}
-                  hint={t('image.uploadHintBackground')}
-                  glyph={<Upload />}
+                  label={t('image.pack')}
+                  glyph={<Package />}
                   picture={bannerPicture}
-                  current={uploadLit}
-                  tabbable={uploadLit}
+                  current={background === 'pack'}
+                  tabbable={background === 'pack'}
                   busy={busy}
-                  onChoose={() => void upload((path) => chooseBackground({ kind: 'upload', path }))}
+                  onChoose={() => chooseBackground({ kind: 'pack' })}
                 />
-              </div>
-              {screenshots.data && (
-                <div className="grid gap-2">
-                  <h4 className="art-section-label">{t('image.screenshots')}</h4>
-                  {screenshots.data.length === 0 ? (
-                    <p className="text-sm text-ink-dim">{t('image.noScreenshots')}</p>
-                  ) : (
-                    <>
-                      <div className="art-tiles">
-                        {shownShots.map((name) => (
-                          <ScreenshotTile
-                            key={name}
-                            id={instance.id}
-                            name={name}
-                            current={shotLit && shot === name}
-                            tabbable={shotLit && shot === name}
-                            busy={busy}
-                            onChoose={() => chooseBackground({ kind: 'screenshot', name })}
-                          />
-                        ))}
-                      </div>
-                      {!allScreenshots && screenshots.data.length > FIRST_SCREENSHOTS && (
-                        <Button variant="ghost" className="justify-self-start" onClick={() => setAllScreenshots(true)}>
-                          {t('image.moreScreenshots', {
-                            count: screenshots.data.length,
-                          })}
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </div>
               )}
-            </ChoiceGroup>
-          </div>
+              <PictureKey
+                label={t('image.upload')}
+                hint={t('image.uploadHintBackground')}
+                glyph={<Upload />}
+                picture={bannerPicture}
+                current={uploadLit}
+                tabbable={uploadLit}
+                busy={busy}
+                onChoose={() => void upload((path) => chooseBackground({ kind: 'upload', path }))}
+              />
+            </div>
+            {screenshots.data && (
+              <div className="art-shots">
+                <h4 className="art-section-label">{t('image.screenshots')}</h4>
+                {screenshots.data.length === 0 ? (
+                  <p className="text-sm text-ink-dim">{t('image.noScreenshots')}</p>
+                ) : (
+                  <>
+                    <div className="art-tiles">
+                      {shownShots.map((name) => (
+                        <ScreenshotTile
+                          key={name}
+                          id={instance.id}
+                          name={name}
+                          current={shotLit && shot === name}
+                          tabbable={shotLit && shot === name}
+                          busy={busy}
+                          onChoose={() => chooseBackground({ kind: 'screenshot', name })}
+                        />
+                      ))}
+                    </div>
+                    {!allScreenshots && screenshots.data.length > FIRST_SCREENSHOTS && (
+                      <Button variant="ghost" className="justify-self-start" onClick={() => setAllScreenshots(true)}>
+                        {t('image.moreScreenshots', {
+                          count: screenshots.data.length,
+                        })}
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </ChoiceGroup>
         </div>
         {error !== null && <ErrorCard error={error} />}
       </div>

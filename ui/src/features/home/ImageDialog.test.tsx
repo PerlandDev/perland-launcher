@@ -134,6 +134,25 @@ describe('Change image', () => {
     expect(screen.getByRole('menuitem', { name: 'Change image…' })).toBeDisabled();
   });
 
+  it('stacks Icon over Background, with a band between them', async () => {
+    const { user } = renderApp(<Home id="sky-islands" />);
+    const dialog = await openPicker(user, 'Sky Islands');
+    const icon = within(dialog).getByRole('radiogroup', { name: 'Icon' });
+    const background = within(dialog).getByRole('radiogroup', { name: 'Background' });
+    const band = dialog.querySelector('.art-band')!;
+    expect(band).toHaveAttribute('aria-hidden', 'true');
+    // In reading order: Icon, the band, then Background.
+    expect(icon.compareDocumentPosition(band) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(band.compareDocumentPosition(background) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // A pack's three icon keys share one row.
+    const row = icon.querySelector('.art-keys-row')!;
+    expect(within(row as HTMLElement).getAllByRole('radio').map((r) => r.textContent)).toEqual([
+      expect.stringContaining('Letters'),
+      'Pack icon',
+      expect.stringContaining('Upload your own…'),
+    ]);
+  });
+
   it('closes with Done', async () => {
     const { user } = renderApp(<Home id="asalith-fields" />);
     const dialog = await openPicker(user, 'Asalith Fields');
