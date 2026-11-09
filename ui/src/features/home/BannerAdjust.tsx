@@ -1,6 +1,6 @@
 import { useContext, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type Ref, type WheelEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { bannerBox, clampZoom, covers, DEFAULT_FOCUS, dragFocus, MAX_ZOOM, MIN_ZOOM, ZOOM_STEP, type Size } from '../../art/bannerLayout';
+import { bannerBox, clampZoom, coverZoom, DEFAULT_FOCUS, dragFocus, leavesEdges, MAX_ZOOM, MIN_ZOOM, ZOOM_STEP, type Size } from '../../art/bannerLayout';
 import { Marquee } from '../../art/Marquee';
 import { artSeed } from '../../art/seed';
 import type { BannerEdges, BannerView, Focus, Instance } from '../../ipc/schema';
@@ -23,9 +23,10 @@ const ARROWS: Partial<Record<string, [number, number]>> = {
 
 const clamp = (n: number) => Math.min(100, Math.max(0, Math.round(n)));
 
-/** Each setting at its default is stored as null, so Reset knows when there is nothing to reset. */
+/** Dark edges, the default, are stored as null, so Reset knows when there is nothing to reset. A zoom stays as chosen:
+ *  null is "covers the header", which a number only matches at one window size. */
 function normal(view: BannerView): BannerView {
-  return { focus: view.focus, zoom: view.zoom === 100 ? null : view.zoom, edges: view.edges === 'dark' ? null : view.edges };
+  return { focus: view.focus, zoom: view.zoom, edges: view.edges === 'dark' ? null : view.edges };
 }
 
 /** What the dialog can ask of a view still waiting to be saved. */
@@ -74,7 +75,8 @@ export function BannerAdjust({
   const [dragging, setDragging] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
   const focus = draft.focus ?? DEFAULT_FOCUS;
-  const zoom = draft.zoom ?? 100;
+  // With no zoom chosen the picture covers the header: the slider starts from the zoom that does that now.
+  const zoom = draft.zoom ?? (natural ? coverZoom(header, natural) : 100);
   const edges: BannerEdges = draft.edges ?? 'dark';
   const atDefault = draft.focus === null && draft.zoom === null && draft.edges === null;
 
@@ -197,6 +199,8 @@ export function BannerAdjust({
       onChange={(event) => move({ ...draft, focus: { ...focus, [axis]: clamp(Number(event.currentTarget.value)) } }, 'later')}
     />
   );
+  // Whether the picture leaves part of the header uncovered now; before its size is known, a zoom under 100 surely does.
+  const showsEdges = natural ? leavesEdges(header, bannerBox(header, natural, draft.zoom, draft.focus)) : draft.zoom !== null && draft.zoom < 100;
   const shown: Instance = { ...instance, bannerFocus: draft.focus, bannerZoom: draft.zoom, bannerEdges: draft.edges };
   const fill = `${((zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100}%`;
   const edgeChoice = (kind: BannerEdges, label: string) => (
@@ -286,7 +290,7 @@ export function BannerAdjust({
           </span>
         </div>
         {/* Only a picture that no longer covers the header has edges; hidden, the row keeps its room. */}
-        <div role="radiogroup" aria-labelledby={`banner-edges-label-${instance.id}`} className="banner-edges-row" style={covers(draft.zoom) ? { visibility: 'hidden' } : undefined}>
+        <div role="radiogroup" aria-labelledby={`banner-edges-label-${instance.id}`} className="banner-edges-row" style={showsEdges ? undefined : { visibility: 'hidden' }}>
           <span id={`banner-edges-label-${instance.id}`} className="banner-control-label">
             {t('image.edges')}
           </span>

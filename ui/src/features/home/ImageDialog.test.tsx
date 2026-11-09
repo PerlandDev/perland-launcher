@@ -253,7 +253,7 @@ describe('Change image: adjust the background', () => {
     const view = await adjust(user);
     const zoom = within(view).getByRole('slider', { name: 'Zoom' });
     expect(zoom).toHaveAttribute('min', '25');
-    expect(zoom).toHaveAttribute('max', '300');
+    expect(zoom).toHaveAttribute('max', '500');
     expect(zoom).toHaveAttribute('step', '5');
     expect(zoom).toHaveValue('100');
     expect(within(view).getByText('100 %')).toBeInTheDocument();
@@ -269,6 +269,26 @@ describe('Change image: adjust the background', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('starts the zoom from what Home shows, so the first step never jumps', async () => {
+    const { user, calls } = castle();
+    const view = await adjust(user);
+    // A 500 × 500 picture covering the 1000 × 562 header is 1000 tall: 178 % of it, on the step 180.
+    const probe = view.querySelector<HTMLImageElement>('img.banner-probe')!;
+    Object.defineProperty(probe, 'naturalWidth', { value: 500 });
+    Object.defineProperty(probe, 'naturalHeight', { value: 500 });
+    fireEvent.load(probe);
+    const zoom = within(view).getByRole('slider', { name: 'Zoom' });
+    expect(zoom).toHaveValue('180');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.click(within(view).getByRole('button', { name: 'Zoom out' }));
+      act(() => vi.advanceTimersByTime(300));
+    } finally {
+      vi.useRealTimers();
+    }
+    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: null, zoom: 175, edges: null } }]));
   });
 
   it('shows Edges only while the picture no longer covers the header, and saves a pick at once', async () => {

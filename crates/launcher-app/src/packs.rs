@@ -1950,7 +1950,7 @@ mod tests {
                 .unwrap_err();
             assert_eq!(err.code, ErrorCode::BannerFocusInvalid);
         }
-        for zoom in [0, 24, 301] {
+        for zoom in [0, 24, 501] {
             let err = core
                 .instance_banner_view_set(&id, view(None, Some(zoom), None))
                 .await
@@ -1960,7 +1960,7 @@ mod tests {
         assert_eq!(std::fs::read(&path).unwrap(), before);
         // The ends of each range are allowed.
         let edge = Focus { x: 100, y: 0 };
-        for zoom in [25, 300] {
+        for zoom in [25, 500] {
             let set = core
                 .instance_banner_view_set(&id, view(Some(edge), Some(zoom), None))
                 .await

@@ -149,7 +149,7 @@ describe('mock backend', () => {
     const view = { focus: { x: 70, y: 40 }, zoom: 60, edges: 'pixel' };
     const set = (await handle('instance_banner_view_set', { id: 'sky-islands', view })) as Instance;
     expect([set.bannerFocus, set.bannerZoom, set.bannerEdges]).toEqual([{ x: 70, y: 40 }, 60, 'pixel']);
-    for (const zoom of [24, 301]) {
+    for (const zoom of [24, 501]) {
       await expect(handle('instance_banner_view_set', { id: 'sky-islands', view: { ...view, zoom } })).rejects.toMatchObject({ code: 'banner_zoom_invalid' });
     }
     await expect(handle('instance_banner_view_set', { id: 'sky-islands', view: { ...view, focus: { x: 101, y: 0 } } })).rejects.toMatchObject({
