@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bannerBox, clampZoom, coverZoom, dragFocus, focusFor, leavesEdges, placeFrame } from './bannerLayout';
+import { bannerBox, clampZoom, coverZoom, dragFocus, focusFor, leavesEdges, placeFrame, zoomAround } from './bannerLayout';
 
 const frame = { width: 1000, height: 500 };
 const square = { width: 500, height: 500 };
@@ -85,4 +85,24 @@ it('says whether a picture leaves part of the frame uncovered', () => {
   expect(leavesEdges(frame, bannerBox(frame, square, null, null))).toBe(false);
   expect(leavesEdges(frame, bannerBox(frame, square, 200, null))).toBe(false);
   expect(leavesEdges(frame, bannerBox(frame, square, 150, null))).toBe(true);
+});
+
+describe('zoomAround', () => {
+  /** Where the frame point (x, y) falls on the picture drawn in `box`, as fractions of its size. */
+  const onPicture = (box: ReturnType<typeof bannerBox>, x: number, y: number) => ({ x: (x - box.left) / box.width, y: (y - box.top) / box.height });
+
+  it('keeps the part of the picture under the pointer where it is', () => {
+    const before = bannerBox(frame, square, 200, { x: 50, y: 50 });
+    const focus = zoomAround(frame, square, 200, { x: 50, y: 50 }, 250, { x: 600, y: 300 });
+    const after = bannerBox(frame, square, 250, focus);
+    expect(onPicture(after, 600, 300).x).toBeCloseTo(onPicture(before, 600, 300).x, 2);
+    expect(onPicture(after, 600, 300).y).toBeCloseTo(onPicture(before, 600, 300).y, 1);
+  });
+
+  it("zooms into the middle of what shows when there's no pointer", () => {
+    const before = bannerBox(frame, square, 200, { x: 30, y: 40 });
+    const after = bannerBox(frame, square, 260, zoomAround(frame, square, 200, { x: 30, y: 40 }, 260));
+    expect(onPicture(after, 500, 250).x).toBeCloseTo(onPicture(before, 500, 250).x, 1);
+    expect(onPicture(after, 500, 250).y).toBeCloseTo(onPicture(before, 500, 250).y, 1);
+  });
 });

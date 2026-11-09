@@ -1255,6 +1255,9 @@
   .marquee-banner[data-zoomed] {
     inset: auto;
     object-fit: fill;
+    /* Preflight caps every img at the panel's width, which squeezed a picture zoomed wider than it into a stretch. */
+    max-width: none;
+    max-height: none;
   }
   /* Around a banner zoomed below 100, the pixel edges: the same picture as big dark blocks, never a blur. */
   .marquee-edges {

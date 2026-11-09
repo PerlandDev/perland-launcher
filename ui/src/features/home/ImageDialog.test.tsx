@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { runStore } from '../../state/runStore';
 import { createMockBackend } from '../../ipc/mock';
 import type { Instance } from '../../ipc/schema';
+import { zoomAround } from '../../art/bannerLayout';
 import { renderApp, sent } from '../../test/backend';
 
 import { renderWithProviders } from '../../test/render';
@@ -15,6 +16,9 @@ async function openPicker(user: ReturnType<typeof renderApp>['user'], name: stri
   await user.click(screen.getByRole('menuitem', { name: 'Change image…' }));
   return screen.getByRole('dialog', { name: 'Change image' });
 }
+
+/** Home's header as the adjust view takes it when it can't be measured. */
+const FALLBACK = { width: 1000, height: 562 };
 
 const group = (dialog: HTMLElement, name: 'Icon' | 'Background') => within(within(dialog).getByRole('radiogroup', { name }));
 
@@ -290,6 +294,51 @@ describe('Change image: adjust the background', () => {
     }
     // The position becomes the one that keeps the picture where it was: the bottom middle.
     await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: { x: 50, y: 100 }, zoom: 175, edges: null } }]));
+  });
+
+  /** The 500 × 500 picture's own size, as the probe reports it once loaded. */
+  function loadSquare(view: HTMLElement) {
+    const probe = view.querySelector<HTMLImageElement>('img.banner-probe')!;
+    Object.defineProperty(probe, 'naturalWidth', { value: 500 });
+    Object.defineProperty(probe, 'naturalHeight', { value: 500 });
+    fireEvent.load(probe);
+  }
+  const square = { width: 500, height: 500 };
+
+  it('zooms the keys and the slider into the middle of what shows', async () => {
+    const { user, calls } = castle({ bannerFocus: { x: 30, y: 40 }, bannerZoom: 200 });
+    const view = await adjust(user);
+    loadSquare(view);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.click(within(view).getByRole('button', { name: 'Zoom in' }));
+      act(() => vi.advanceTimersByTime(300));
+    } finally {
+      vi.useRealTimers();
+    }
+    const focus = zoomAround(FALLBACK, square, 200, { x: 30, y: 40 }, 205);
+    // Not where it was: a zoom that kept x% and y% would close in on a corner.
+    expect(focus).not.toEqual({ x: 30, y: 40 });
+    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus, zoom: 205, edges: null } }]));
+  });
+
+  it('zooms the wheel into the point under the pointer', async () => {
+    const { user, calls } = castle({ bannerFocus: { x: 50, y: 50 }, bannerZoom: 200 });
+    const view = await adjust(user);
+    loadSquare(view);
+    const drag = view.querySelector<HTMLElement>('.banner-preview-drag')!;
+    // The header shows at half size: the pointer at (300, 150) is the header's (600, 300).
+    drag.getBoundingClientRect = rect(0, 0, 500, 281);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.wheel(drag, { deltaY: -100, clientX: 300, clientY: 150 });
+      act(() => vi.advanceTimersByTime(300));
+    } finally {
+      vi.useRealTimers();
+    }
+    const focus = zoomAround(FALLBACK, square, 200, { x: 50, y: 50 }, 205, { x: 600, y: 300 });
+    expect(focus).not.toEqual(zoomAround(FALLBACK, square, 200, { x: 50, y: 50 }, 205));
+    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus, zoom: 205, edges: null } }]));
   });
 
   it('shows Edges only while the picture no longer covers the header, and saves a pick at once', async () => {
