@@ -107,6 +107,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const [renaming, setRenaming] = useState<SkinEntry | null>(null);
   const [newName, setNewName] = useState('');
   const [deleting, setDeleting] = useState<SkinEntry | null>(null);
+  // The skin whose history is about to be forgotten, while the player confirms.
+  const [clearing, setClearing] = useState<SkinEntry | null>(null);
   const [wearing, setWearing] = useState(false);
   // Version history: the panel in the texture column, and the version shown on the stage instead of the skin.
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -529,7 +531,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         </div>
 
         {historyOpen && selected ? (
-          <HistoryPanel skin={selected.id} model={model} versions={versions.data} picked={previewShown?.version.id ?? null} onPick={pickVersion} onClose={() => setHistoryOpen(false)} />
+          <HistoryPanel skin={selected.id} model={model} versions={versions.data} picked={previewShown?.version.id ?? null} onPick={pickVersion} onClear={() => setClearing(selected)} onClose={() => setHistoryOpen(false)} />
         ) : (
         <aside className="skins-side" aria-label={t('skins.texture')}>
           <div className="flex items-center justify-between gap-2">
@@ -635,6 +637,39 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         }
       >
         <p className="text-ink-dim">{t('skins.deleteBody')}</p>
+      </Dialog>
+
+      <Dialog
+        open={clearing !== null}
+        onClose={() => setClearing(null)}
+        title={t('skins.history.clearTitle', { name: clearing?.name ?? '' })}
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setClearing(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                const target = clearing;
+                if (!target) return;
+                commands
+                  .skinVersionsClear(target.id)
+                  .then(() => {
+                    if (preview?.skin === target.id) setPreview(null);
+                    qc.setQueryData<SkinVersion[]>(['skinVersions', target.id], []);
+                    refreshVersions();
+                  })
+                  .catch(pushError)
+                  .finally(() => setClearing(null));
+              }}
+            >
+              {t('skins.history.clearConfirm')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-ink-dim">{t('skins.history.clearBody')}</p>
       </Dialog>
     </section>
   );

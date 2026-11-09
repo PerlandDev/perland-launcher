@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { commands } from '../../ipc/commands';
 import type { SkinModel, SkinVersion } from '../../ipc/schema';
 import { Button } from '../../ui/Button';
-import { Close } from '../../ui/Icon';
+import { Close, Trash } from '../../ui/Icon';
 import { whenLabel } from './when';
 
 /** Where each part's front face sits in the texture ([x, y, w, h]) and on the 16 × 32 figure ([x, y]), base then outer. */
@@ -51,6 +51,7 @@ export function HistoryPanel({
   versions,
   picked,
   onPick,
+  onClear,
   onClose,
 }: {
   skin: string;
@@ -58,6 +59,8 @@ export function HistoryPanel({
   versions: SkinVersion[] | undefined;
   picked: string | null;
   onPick: (version: SkinVersion) => void;
+  /** Asks to forget every version (the studio confirms first). */
+  onClear: () => void;
   onClose: () => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -95,6 +98,12 @@ export function HistoryPanel({
             );
           })}
         </ul>
+      )}
+      {/* At the foot, away from the versions: forgetting them all is the one thing here that can't be undone. */}
+      {versions && versions.length > 0 && (
+        <Button variant="ghost" className="history-clear" icon={<Trash />} onClick={onClear}>
+          {t('skins.history.clear')}
+        </Button>
       )}
     </aside>
   );

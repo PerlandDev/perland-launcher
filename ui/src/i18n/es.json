@@ -1043,7 +1043,11 @@
       "restoreShort": "Restaurar",
       "restored": "Versión restaurada",
       "restoredBody": "Tu skin volvió a {{when}}. Deshacer lo revierte.",
-      "copyName": "{{name}} ({{when}})"
+      "copyName": "{{name}} ({{when}})",
+      "clear": "Borrar historial…",
+      "clearTitle": "¿Borrar el historial de {{name}}?",
+      "clearBody": "Se borran todas las versiones anteriores de esta skin. La skin se queda como está ahora. No se puede deshacer.",
+      "clearConfirm": "Borrar historial"
     }
   },
   "errors": {

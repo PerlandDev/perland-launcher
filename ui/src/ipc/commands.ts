@@ -150,6 +150,8 @@ export const commands = {
   skinVersionCopy: (id: string, version: string, name: string) => invoke<SkinEntry>('skin_version_copy', { id, version, name }),
   /** Keeps the skin's texture now as a version (the player left a skin they changed). */
   skinCheckpoint: (id: string) => invoke<null>('skin_checkpoint', { id }),
+  /** Forgets every kept version of a skin; the skin stays as it is. */
+  skinVersionsClear: (id: string) => invoke<null>('skin_versions_clear', { id }),
   /** The skin a Microsoft account wears now; null for an offline account or no skin. */
   skinCurrent: (uuid: string) => invoke<CurrentSkin | null>('skin_current', { uuid }),
   /** Puts the skin a Microsoft account wears in its wardrobe (reusing a matching entry, else a new one named `name`) and

@@ -185,6 +185,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.skins.copy_version(id, version, name).await
     }
 
+    /// Forgets the kept versions of `id`; the skin stays as it is.
+    pub async fn skin_versions_clear(&self, id: &str) -> Result<()> {
+        self.skins.clear_versions(id).await
+    }
+
     /// Keeps the texture of `id` now: the player left a skin they changed.
     pub async fn skin_checkpoint(&self, id: &str) -> Result<()> {
         self.skins.checkpoint(id, VersionReason::Edited).await
@@ -738,5 +743,19 @@ mod tests {
             core.skin_restore(&entry.id, "1").await.unwrap_err().code,
             ErrorCode::SkinVersionNotFound
         );
+    }
+
+    #[tokio::test]
+    async fn clearing_the_history_keeps_the_skin() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let entry = core
+            .skin_create("Mine", SkinModel::Slim, &texture(), None, false)
+            .await
+            .unwrap();
+        core.skin_checkpoint(&entry.id).await.unwrap();
+        assert!(!core.skin_versions(&entry.id).await.unwrap().is_empty());
+        core.skin_versions_clear(&entry.id).await.unwrap();
+        assert!(core.skin_versions(&entry.id).await.unwrap().is_empty());
+        assert_eq!(core.skin_texture(&entry.id).await.unwrap(), texture());
     }
 }

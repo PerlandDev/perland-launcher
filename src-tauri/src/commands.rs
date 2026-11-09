@@ -1181,6 +1181,11 @@ pub async fn skin_version_copy(
 }
 
 #[tauri::command]
+pub async fn skin_versions_clear(core: CoreState<'_>, id: String) -> Res<()> {
+    logged("skin_versions_clear", core.skin_versions_clear(&id).await)
+}
+
+#[tauri::command]
 pub async fn skin_checkpoint(core: CoreState<'_>, id: String) -> Res<()> {
     logged("skin_checkpoint", core.skin_checkpoint(&id).await)
 }

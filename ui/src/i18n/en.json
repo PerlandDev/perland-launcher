@@ -1043,7 +1043,11 @@
       "restoreShort": "Restore",
       "restored": "Version restored",
       "restoredBody": "Your skin is back to {{when}}. Undo takes it back.",
-      "copyName": "{{name}} ({{when}})"
+      "copyName": "{{name}} ({{when}})",
+      "clear": "Clear history…",
+      "clearTitle": "Clear the history of {{name}}?",
+      "clearBody": "Every earlier version of this skin is deleted. The skin stays as it is now. This can't be undone.",
+      "clearConfirm": "Clear history"
     }
   },
   "errors": {

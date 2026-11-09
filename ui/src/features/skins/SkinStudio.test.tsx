@@ -551,6 +551,27 @@ it('Restore brings back the arms the version was drawn for, and Undo takes them 
   await waitFor(() => expect(sent(calls, 'skin_update')).toContainEqual({ id: 'skin-0a1b2c3d4e5f', name: null, model: 'slim' }));
 });
 
+it('Clear history asks first, then forgets every version and leaves the skin as it is', async () => {
+  const { user, calls } = renderApp(<SkinStudio />);
+  const list = await openHistory(user);
+  // Previewing a version: clearing ends the preview too.
+  await user.click(within(list).getAllByRole('button')[2]!);
+  await screen.findByRole('button', { name: 'Restore this version' });
+  await user.click(screen.getByRole('button', { name: 'Clear history…' }));
+  const confirm = screen.getByRole('dialog', { name: 'Clear the history of Beach day?' });
+  expect(confirm).toHaveTextContent("Every earlier version of this skin is deleted. The skin stays as it is now. This can't be undone.");
+  // Cancel keeps it all.
+  await user.click(within(confirm).getByRole('button', { name: 'Cancel' }));
+  expect(sent(calls, 'skin_versions_clear')).toEqual([]);
+  await user.click(screen.getByRole('button', { name: 'Clear history…' }));
+  await user.click(within(screen.getByRole('dialog', { name: 'Clear the history of Beach day?' })).getByRole('button', { name: 'Clear history' }));
+  await waitFor(() => expect(sent(calls, 'skin_versions_clear')).toEqual([{ id: 'skin-0a1b2c3d4e5f' }]));
+  expect(await screen.findByText('No earlier versions yet. One is kept as soon as you change this skin.')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Restore this version' })).not.toBeInTheDocument();
+  // Nothing left to clear.
+  expect(screen.queryByRole('button', { name: 'Clear history…' })).not.toBeInTheDocument();
+});
+
 it('Make a copy turns a version into a new wardrobe skin', async () => {
   const { user, calls } = renderApp(<SkinStudio />);
   const list = await openHistory(user);
