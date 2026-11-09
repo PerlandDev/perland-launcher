@@ -30,9 +30,8 @@ function walk(dir) {
 const [command, ...args] = process.argv.slice(2);
 switch (command) {
   case 'version': {
-    const base = /\[workspace\.package\][^[]*?\nversion = "([^"]+)"/.exec(readFileSync(cargoPath, 'utf8'))?.[1];
     const tags = execFileSync('git', ['tag', '--list', 'v*'], { encoding: 'utf8' }).split('\n').filter(Boolean);
-    console.log(nextVersion({ base, channel: args[0], tags }));
+    console.log(nextVersion({ channel: args[0], tags, now: new Date() }));
     break;
   }
   case 'ci-check': {
