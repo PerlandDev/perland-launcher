@@ -22,7 +22,7 @@ const FALLBACK = { width: 1000, height: 562 };
 
 const group = (dialog: HTMLElement, name: 'Icon' | 'Background') => within(within(dialog).getByRole('radiogroup', { name }));
 /** Shows one of Background's tabs. */
-const showTab = (user: ReturnType<typeof renderApp>['user'], dialog: HTMLElement, name: 'Landscapes' | 'From the modpack' | 'Your backgrounds') =>
+const showTab = (user: ReturnType<typeof renderApp>['user'], dialog: HTMLElement, name: 'Landscapes' | 'Your screenshots') =>
   user.click(within(dialog).getByRole('tab', { name }));
 
 describe('Change image', () => {
@@ -42,48 +42,39 @@ describe('Change image', () => {
     await vi.waitFor(() => expect(sent(calls, 'instance_art').length).toBeGreaterThan(artReads));
   });
 
-  it('offers the pack art only for a pack, lit while it is in use', async () => {
+  it("keeps a modpack's own art as its background until another is picked, with no choice of its own", async () => {
     const first = renderApp(<Home id="asalith-fields" />);
     const plain = await openPicker(first.user, 'Asalith Fields');
-    // Only a modpack has a tab of its own.
-    expect(within(plain).queryByRole('tab', { name: 'From the modpack' })).not.toBeInTheDocument();
-    expect(within(plain).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Landscapes', 'Your backgrounds']);
-    await showTab(first.user, plain, 'Your backgrounds');
-    expect(group(plain, 'Background').queryByRole('radio', { name: 'Pack art' })).not.toBeInTheDocument();
-    expect(group(plain, 'Background').getByRole('radio', { name: 'Upload your own…' })).toHaveAttribute('aria-checked', 'false');
+    expect(within(plain).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Landscapes', 'Your screenshots']);
+    expect(within(plain).getByRole('button', { name: 'Upload your own…' })).toHaveAttribute('aria-pressed', 'false');
     first.unmount();
 
-    const { user, calls } = renderApp(<Home id="sky-islands" />);
+    const { user } = renderApp(<Home id="sky-islands" />);
     const pack = await openPicker(user, 'Sky Islands');
-    // It opens on the tab that holds the background in use.
-    expect(within(pack).getByRole('tab', { name: 'From the modpack' })).toHaveAttribute('aria-selected', 'true');
-    const packArt = group(pack, 'Background').getByRole('radio', { name: 'Pack art' });
-    expect(packArt).toHaveAttribute('aria-checked', 'true');
-    await showTab(user, pack, 'Landscapes');
+    expect(within(pack).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Landscapes', 'Your screenshots']);
+    expect(group(pack, 'Background').queryByRole('radio', { name: 'Pack art' })).not.toBeInTheDocument();
+    // The pack's art is in use, so nothing here is lit; the first landscape keeps the tab stop.
     for (const tile of group(pack, 'Background').getAllByRole('radio', { name: /^Landscape \d$/ })) expect(tile).toHaveAttribute('aria-checked', 'false');
-    await user.click(group(pack, 'Background').getByRole('radio', { name: 'Landscape 2' }));
-    await vi.waitFor(() => expect(sent(calls, 'instance_art_set')).toHaveLength(1));
-    await showTab(user, pack, 'From the modpack');
-    await user.click(await group(pack, 'Background').findByRole('radio', { name: 'Pack art' }));
-    expect(sent(calls, 'instance_art_set').at(-1)).toEqual({ id: 'sky-islands', choice: { kind: 'pack' } });
+    expect(group(pack, 'Background').getByRole('radio', { name: 'Landscape 1' })).toHaveAttribute('tabindex', '0');
+    // Adjust stays, since the pack's art is a picture.
+    expect(within(pack).getByRole('button', { name: 'Adjust…' })).toBeInTheDocument();
   });
 
   it('uploads a picked image and lights Upload', async () => {
     // The mock's file picker answers an image filter with a picture.
     const { user, calls } = renderApp(<Home id="asalith-fields" />);
     const dialog = await openPicker(user, 'Asalith Fields');
-    await showTab(user, dialog, 'Your backgrounds');
-    await user.click(group(dialog, 'Background').getByRole('radio', { name: 'Upload your own…' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Upload your own…' }));
     const [options] = sent(calls, 'plugin:dialog|open') as { options: { filters: { extensions: string[] }[] } }[];
     expect(options?.options.filters[0]?.extensions).toEqual(['png', 'jpg', 'jpeg', 'webp']);
     expect(sent(calls, 'instance_art_set')).toEqual([{ id: 'asalith-fields', choice: { kind: 'upload', path: 'C:/Users/player/Pictures/castle.png' } }]);
-    expect(await group(dialog, 'Background').findByRole('radio', { name: 'Upload your own…' })).toHaveAttribute('aria-checked', 'true');
+    await vi.waitFor(() => expect(within(dialog).getByRole('button', { name: 'Upload your own…' })).toHaveAttribute('aria-pressed', 'true'));
   });
 
   it("picks one of the instance's screenshots and lights it", async () => {
     const { user, calls } = renderApp(<Home id="asalith-fields" />);
     const dialog = await openPicker(user, 'Asalith Fields');
-    await showTab(user, dialog, 'Your backgrounds');
+    await showTab(user, dialog, 'Your screenshots');
     const background = group(dialog, 'Background');
     // The newest six first; the rest wait behind Show all.
     expect(await background.findAllByRole('radio', { name: /^Screenshot / })).toHaveLength(6);
@@ -93,7 +84,7 @@ describe('Change image', () => {
     expect(sent(calls, 'instance_art_set')).toEqual([{ id: 'asalith-fields', choice: { kind: 'screenshot', name: '2026-10-16_21.04.11.png' } }]);
     expect(await background.findByRole('radio', { name: 'Screenshot 2026-10-16_21.04.11' })).toHaveAttribute('aria-checked', 'true');
     // One lamp: the screenshot, not Upload, though both are a picture of the player's.
-    expect(background.getByRole('radio', { name: 'Upload your own…' })).toHaveAttribute('aria-checked', 'false');
+    expect(within(dialog).getByRole('button', { name: 'Upload your own…' })).toHaveAttribute('aria-pressed', 'false');
     await showTab(user, dialog, 'Landscapes');
     expect(group(dialog, 'Background').getByRole('radio', { name: 'Landscape 1' })).toHaveAttribute('aria-checked', 'false');
     // A screenshot is a picture like any other, so it can be adjusted.
@@ -103,7 +94,7 @@ describe('Change image', () => {
   it('says where screenshots come from when there are none', async () => {
     const { user } = renderApp(<Home id="sky-islands" />);
     const dialog = await openPicker(user, 'Sky Islands');
-    await showTab(user, dialog, 'Your backgrounds');
+    await showTab(user, dialog, 'Your screenshots');
     expect(await within(dialog).findByText('Screenshots you take in the game (F2) show up here.')).toBeInTheDocument();
     expect(group(dialog, 'Background').queryByRole('radio', { name: /^Screenshot / })).not.toBeInTheDocument();
   });
@@ -115,8 +106,7 @@ describe('Change image', () => {
       cmd === 'plugin:dialog|open' ? Promise.resolve('C:/Users/player/Pictures/invalid.png') : handle(cmd, args),
     );
     const dialog = await openPicker(user, 'Asalith Fields');
-    await showTab(user, dialog, 'Your backgrounds');
-    await user.click(group(dialog, 'Background').getByRole('radio', { name: 'Upload your own…' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Upload your own…' }));
     const alert = await within(dialog).findByRole('alert');
     expect(alert).toHaveTextContent("That file can't be used as an instance image.");
     expect(alert).toHaveTextContent('Pick a PNG, JPEG or WebP image.');
@@ -131,8 +121,7 @@ describe('Change image', () => {
     const handle = backend.handle;
     vi.spyOn(backend, 'handle').mockImplementation((cmd, args) => (cmd === 'plugin:dialog|open' ? Promise.resolve(null) : handle(cmd, args)));
     const dialog = await openPicker(user, 'Asalith Fields');
-    await showTab(user, dialog, 'Your backgrounds');
-    await user.click(group(dialog, 'Background').getByRole('radio', { name: 'Upload your own…' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Upload your own…' }));
     expect(sent(calls, 'instance_art_set')).toEqual([]);
     expect(within(dialog).queryByRole('alert')).not.toBeInTheDocument();
   });
@@ -173,27 +162,32 @@ describe('Change image', () => {
   });
 
   it('moves between Background tabs with the arrow keys, and shows only the one picked', async () => {
-    const { user } = renderApp(<Home id="sky-islands" />);
-    const dialog = await openPicker(user, 'Sky Islands');
+    const { user } = renderApp(<Home id="asalith-fields" />);
+    const dialog = await openPicker(user, 'Asalith Fields');
     const tabs = within(within(dialog).getByRole('tablist', { name: 'Background' }));
-    const modpack = tabs.getByRole('tab', { name: 'From the modpack' });
-    expect(tabs.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Landscapes', 'From the modpack', 'Your backgrounds']);
-    // One tab stop: the tab shown.
-    expect(modpack).toHaveAttribute('tabindex', '0');
-    expect(tabs.getByRole('tab', { name: 'Landscapes' })).toHaveAttribute('tabindex', '-1');
-    expect(within(dialog).getByRole('tabpanel', { name: 'From the modpack' })).toContainElement(group(dialog, 'Background').getByRole('radio', { name: 'Pack art' }));
+    const landscapes = tabs.getByRole('tab', { name: 'Landscapes' });
+    // It opens on Landscapes; one tab stop, the tab shown.
+    expect(landscapes).toHaveAttribute('aria-selected', 'true');
+    expect(landscapes).toHaveAttribute('tabindex', '0');
+    expect(tabs.getByRole('tab', { name: 'Your screenshots' })).toHaveAttribute('tabindex', '-1');
+    expect(within(dialog).getByRole('tabpanel', { name: 'Landscapes' })).toContainElement(group(dialog, 'Background').getByRole('radio', { name: 'Landscape 1' }));
+    landscapes.focus();
+    await user.keyboard('{ArrowRight}');
+    const shots = tabs.getByRole('tab', { name: 'Your screenshots' });
+    expect(shots).toHaveFocus();
+    expect(shots).toHaveAttribute('aria-selected', 'true');
     expect(group(dialog, 'Background').queryByRole('radio', { name: 'Landscape 1' })).not.toBeInTheDocument();
-    modpack.focus();
+    // Nothing lit among the screenshots: the first keeps the tab stop.
+    const tiles = await group(dialog, 'Background').findAllByRole('radio', { name: /^Screenshot / });
+    expect(tiles[0]).toHaveAttribute('tabindex', '0');
     await user.keyboard('{ArrowRight}');
-    const yours = tabs.getByRole('tab', { name: 'Your backgrounds' });
-    expect(yours).toHaveFocus();
-    expect(yours).toHaveAttribute('aria-selected', 'true');
-    expect(group(dialog, 'Background').getByRole('radio', { name: 'Upload your own…' })).toBeInTheDocument();
-    await user.keyboard('{ArrowRight}');
-    expect(tabs.getByRole('tab', { name: 'Landscapes' })).toHaveFocus();
-    expect(group(dialog, 'Background').getAllByRole('radio', { name: /^Landscape \d$/ })).toHaveLength(6);
-    // A tab with nothing lit still has one tab stop: its first choice.
-    expect(group(dialog, 'Background').getByRole('radio', { name: 'Landscape 1' })).toHaveAttribute('tabindex', '0');
+    expect(landscapes).toHaveFocus();
+  });
+
+  it('keeps Done in view while the dialog scrolls', async () => {
+    const { user } = renderApp(<Home id="asalith-fields" />);
+    const dialog = await openPicker(user, 'Asalith Fields');
+    expect(within(dialog).getByRole('button', { name: 'Done' }).closest('.dialog-actions')).not.toBeNull();
   });
 
   it('closes with Done', async () => {
@@ -215,12 +209,11 @@ it.each([
   await user.click(screen.getByRole('button', { name: lang === 'en' ? 'More options' : 'Más opciones' }));
   await user.click(screen.getByRole('menuitem', { name: lang === 'en' ? 'Change image…' : 'Cambiar imagen…' }));
   const dialog = screen.getByRole('dialog');
-  await user.click(within(dialog).getByRole('tab', { name: lang === 'en' ? 'Your backgrounds' : 'Tus fondos' }));
   // Both sections take an upload, and each says what suits it.
-  const keys = [...new Set([...screen.getAllByRole('radio', { name: iconUpload }), ...screen.getAllByRole('radio', { name: upload })])];
-  expect(keys).toHaveLength(2);
+  const keys = [within(dialog).getByRole('radio', { name: iconUpload }), within(dialog).getByRole('button', { name: upload })];
   expect(within(dialog).getByRole('radiogroup', { name: lang === 'en' ? 'Icon' : 'Ícono' })).toContainElement(keys[0]!);
-  expect(within(dialog).getByRole('radiogroup', { name: lang === 'en' ? 'Background' : 'Fondo' })).toContainElement(keys[1]!);
+  // Background's sits beside its tabs, as an action of its own.
+  expect(keys[1]!.closest('.art-tabs-row')).not.toBeNull();
   const tied = (words: string) => words.replaceAll(' ', ' ');
   for (const [key, copy] of [
     [keys[0]!, iconHint],
@@ -470,7 +463,7 @@ describe('Change image: adjust the background', () => {
   it('starts a new picture from the default view', async () => {
     const { user } = castle({ bannerFocus: { x: 30, y: 60 }, bannerZoom: 60 });
     const picker = await openPicker(user, 'Castle Keep');
-    await user.click(group(picker, 'Background').getByRole('radio', { name: 'Upload your own…' }));
+    await user.click(within(picker).getByRole('button', { name: 'Upload your own…' }));
     await user.click(await within(picker).findByRole('button', { name: 'Adjust…' }));
     const view = screen.getByRole('dialog', { name: 'Adjust the background' });
     await vi.waitFor(() => expect(within(view).getByRole('slider', { name: 'Zoom' })).toHaveValue('100'));
@@ -521,7 +514,7 @@ describe('Change image: the icon', () => {
     expect(await group(dialog, 'Icon').findByRole('radio', { name: 'Letters' })).toHaveAttribute('aria-checked', 'true');
     expect(group(dialog, 'Icon').getByRole('radio', { name: 'Pack icon' })).toHaveAttribute('aria-checked', 'false');
     // The background is still the pack's art.
-    expect(group(dialog, 'Background').getByRole('radio', { name: 'Pack art' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(dialog).getByRole('button', { name: 'Upload your own…' })).toHaveAttribute('aria-pressed', 'false');
     await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Pack icon' }));
     expect(sent(calls, 'instance_icon_set').at(-1)).toEqual({ id: 'sky-islands', choice: { kind: 'pack' } });
   });
@@ -548,8 +541,7 @@ describe('Change image: the icon', () => {
     expect(key).toHaveAttribute('aria-checked', 'true');
     // The key shows the icon now in use.
     await vi.waitFor(() => expect(key.querySelector('img')?.getAttribute('src')).toMatch(/^data:image\/png;base64,/));
-    await showTab(user, dialog, 'Your backgrounds');
-    expect(group(dialog, 'Background').getByRole('radio', { name: 'Upload your own…' })).toHaveAttribute('aria-checked', 'false');
+    expect(within(dialog).getByRole('button', { name: 'Upload your own…' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it.each<[string, Partial<Instance>, string, string]>([
