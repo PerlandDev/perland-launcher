@@ -740,6 +740,8 @@ describe('the icon plate', () => {
     // Decoration beside the name, which already says what it is.
     expect(plate).toHaveAttribute('alt', '');
     expect(name.parentElement).toContainElement(plate);
+    // Beside the name and centred on it, so a name that shrinks with the window or wraps keeps the plate in balance.
+    expect(name.parentElement).toHaveClass('items-center');
     expect(plate.compareDocumentPosition(name) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // The icon never becomes the background.
     const banner = container.querySelector<HTMLImageElement>('img.marquee-banner');

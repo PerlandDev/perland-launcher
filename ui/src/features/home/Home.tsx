@@ -130,7 +130,9 @@ function InstanceView({ instance, preview = false }: { instance: Instance; previ
           </div>
         )}
         <div className="min-w-0">
-          <div className="flex items-end gap-5">
+          {/* Centred on the name: one line or several, at any size the window gives it, the plate stays balanced
+              beside it. */}
+          <div className="flex items-center gap-5">
             {icon && <IconPlate src={icon} shape={iconShape} />}
             {/* Sized in app.css: words stay whole, and one too wide for the row shrinks the type. It fills
                 the row so useNameFit can read the room it has from its own width. */}
