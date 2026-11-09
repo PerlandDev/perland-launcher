@@ -208,8 +208,7 @@ function PictureKey({
   label: string;
   /** A second, dim line under the label (what an upload may be). It describes the key; the label alone names it. */
   hint?: string;
-  /** An action beside a group rather than one of its choices: a plain button, pressed while its picture is in use, with
-   *  its hint as the description and the tooltip instead of a second line. */
+  /** An action beside a group rather than one of its choices: a plain button, pressed while its picture is in use. */
   action?: boolean;
   glyph: ReactNode;
   /** The glyph is a picture of its own (the initials) and fills the slot. */
@@ -236,7 +235,6 @@ function PictureKey({
       aria-disabled={busy || undefined}
       aria-labelledby={`${id}-label`}
       aria-describedby={hint ? `${id}-hint` : undefined}
-      title={action ? hint : undefined}
       tabIndex={action || tabbable ? 0 : -1}
       onClick={onChoose}
     >
@@ -262,7 +260,7 @@ function PictureKey({
       <span className="art-key-text">
         <span id={`${id}-label`}>{label}</span>
         {hint && (
-          <span id={`${id}-hint`} className={action ? 'art-key-hint sr-only' : 'art-key-hint'}>
+          <span id={`${id}-hint`} className="art-key-hint">
             {hint}
           </span>
         )}

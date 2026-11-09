@@ -232,6 +232,8 @@ it.each([
     const hint = key.querySelector('.art-key-hint')!.textContent!;
     expect(hint.replaceAll(' ', ' ')).toBe(copy);
     expect(key).toHaveAccessibleDescription(hint);
+    // Shown under the label, not only to screen readers.
+    expect(key.querySelector('.art-key-hint')).not.toHaveClass('sr-only');
     // Tied with no-break spaces, so the list of kinds never breaks inside.
     expect(hint).toContain(tied(lang === 'en' ? 'PNG, JPEG or WebP.' : 'PNG, JPEG o WebP.'));
   }
