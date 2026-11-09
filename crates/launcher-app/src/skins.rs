@@ -106,14 +106,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             return Err(skins_png::normalise(&[]).unwrap_err());
         }
         let bytes = tokio::fs::read(&path).await?;
-        let png = skins_png::normalise(&bytes)?;
         let name: String = path
             .file_stem()
             .map(|s| s.to_string_lossy().trim().chars().take(64).collect())
             .filter(|s: &String| !s.is_empty())
             .unwrap_or_else(|| "Skin".to_string());
+        // `create` checks and normalises the PNG; doing it here as well read the file twice over.
         self.skins
-            .create(&name, SkinModel::Classic, &png, owner)
+            .create(&name, SkinModel::Classic, &bytes, owner)
             .await
     }
 

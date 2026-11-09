@@ -142,6 +142,30 @@ it('a refused upload shows the translated error', async () => {
   await waitFor(() => expect(toastsSnapshot().map((t) => (t.error as { code?: string } | undefined)?.code)).toContain('skin_rejected'));
 });
 
+it('import runs once at a time: Import waits while a skin is being imported', async () => {
+  const { user, calls, backend } = renderApp(<SkinStudio />);
+  await screen.findByRole('list', { name: 'Wardrobe' });
+  // Hold the import until the test lets it go.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  const handle = backend.handle;
+  vi.spyOn(backend, 'handle').mockImplementation(async (cmd, args) => {
+    if (cmd === 'skin_import') await held;
+    return handle(cmd, args);
+  });
+  const importKey = screen.getByRole('button', { name: 'Import' });
+  await user.click(importKey);
+  await waitFor(() => expect(importKey).toHaveAttribute('aria-disabled', 'true'));
+  await user.click(importKey);
+  await user.click(importKey);
+  // One file picker and one import, however many presses.
+  expect(sent(calls, 'plugin:dialog|open')).toHaveLength(1);
+  release();
+  await waitFor(() => expect(importKey).not.toHaveAttribute('aria-disabled'));
+  expect(sent(calls, 'skin_import')).toHaveLength(1);
+  expect(within(screen.getByRole('list', { name: 'Wardrobe' })).getAllByText('castle')).toHaveLength(1);
+});
+
 it('import adds the picked PNG to the wardrobe', async () => {
   const { user, calls } = renderApp(<SkinStudio />);
   await screen.findByRole('list', { name: 'Wardrobe' });

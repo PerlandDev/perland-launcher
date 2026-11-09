@@ -98,6 +98,7 @@ export function Wardrobe({
   emptyNote,
   newItems,
   onImport,
+  importing,
   menuFor,
   onMove,
 }: {
@@ -115,6 +116,8 @@ export function Wardrobe({
   emptyNote: string;
   newItems: MenuItem[];
   onImport: () => void;
+  /** An import is on its way: Import waits, pressed, with a progress cursor. */
+  importing: boolean;
   menuFor: (entry: SkinEntry) => MenuItem[];
   /** Moves the skin at index `from` to index `to` in the wardrobe's order. */
   onMove: (from: number, to: number) => void;
@@ -244,7 +247,7 @@ export function Wardrobe({
         <Button icon={<Plus />} aria-haspopup="menu" onClick={(e) => newMenu.current?.openAt(e.currentTarget)}>
           {t('skins.new')}
         </Button>
-        <Button icon={<Upload />} onClick={onImport}>
+        <Button icon={<Upload />} aria-disabled={importing || undefined} aria-busy={importing || undefined} onClick={onImport}>
           {t('skins.import')}
         </Button>
       </div>
