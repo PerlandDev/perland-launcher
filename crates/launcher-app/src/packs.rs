@@ -431,18 +431,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// The pictures the player sees for this instance, icon and background apart: their own
     /// files from `.perland/custom/`, nothing for generated ones, or the pack's art from
-    /// `.perland/art/`, and whether the pack has a background of its own. A never-chosen icon on a round-1 upload is that upload, so the one
+    /// `.perland/art/`, and whether the pack has a background and an icon of its own. A never-chosen icon on a round-1 upload is that upload, so the one
     /// picture keeps filling both places until one of them changes.
     pub async fn instance_art(&self, id: &str) -> Result<InstanceArtData> {
         let instance = self.instances.load(id).await?;
         let perland = self.instances.perland_dir(id);
         let custom = perland.join(CUSTOM_DIR);
         let art = perland.join("art");
+        let pack_icon = art_url(&art, "icon").await;
+        let has_pack_icon = pack_icon.is_some();
         let icon = match instance.icon_mode() {
             IconMode::Generated => None,
             IconMode::Custom if instance.icon.is_none() => art_url(&custom, CUSTOM_STEM).await,
             IconMode::Custom => art_url(&custom, ICON_STEM).await,
-            IconMode::Auto => art_url(&art, "icon").await,
+            IconMode::Auto => pack_icon,
         };
         let pack_banner = art_url(&art, "banner").await;
         let has_pack_banner = pack_banner.is_some();
@@ -455,6 +457,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             icon,
             banner,
             pack_banner: has_pack_banner,
+            pack_icon: has_pack_icon,
         })
     }
 
@@ -1155,6 +1158,7 @@ mod tests {
                 icon: None,
                 banner: None,
                 pack_banner: false,
+                pack_icon: false,
             }
         );
         let art = core.instances.perland_dir(&id).join("art");
@@ -1175,6 +1179,23 @@ mod tests {
             .banner
             .unwrap()
             .starts_with("data:image/svg+xml;base64,"));
+    }
+
+    #[tokio::test]
+    async fn instance_art_says_whether_the_pack_has_an_icon_of_its_own() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        assert!(!core.instance_art(&id).await.unwrap().pack_icon);
+        let art = core.instances.perland_dir(&id).join("art");
+        std::fs::create_dir_all(&art).unwrap();
+        std::fs::write(art.join("icon.png"), PNG).unwrap();
+        assert!(core.instance_art(&id).await.unwrap().pack_icon);
+        // Still there with the initials as the icon, so the player can go back to it.
+        core.instance_icon_set(&id, IconChoice::Generated)
+            .await
+            .unwrap();
+        let data = core.instance_art(&id).await.unwrap();
+        assert_eq!((data.icon, data.pack_icon), (None, true));
     }
 
     #[tokio::test]
@@ -1282,6 +1303,7 @@ mod tests {
                 icon: Some(png_url(PNG)),
                 banner: None,
                 pack_banner: false,
+                pack_icon: true,
             }
         );
         assert!(custom_files(&core, &id).is_empty());
@@ -1708,6 +1730,7 @@ mod tests {
                 icon: Some(png_url(PNG_A)),
                 banner: Some(png_url(PNG_B)),
                 pack_banner: false,
+                pack_icon: false,
             }
         );
         assert_eq!(custom_files(&core, &id), ["icon.png", "image.png"]);
@@ -1726,6 +1749,7 @@ mod tests {
                 icon: Some(png_url(PNG_A)),
                 banner: None,
                 pack_banner: false,
+                pack_icon: false,
             }
         );
         assert_eq!(custom_files(&core, &id), ["icon.png"]);
@@ -1758,6 +1782,7 @@ mod tests {
                 icon: Some(png_url(PNG)),
                 banner: Some(png_url(PNG)),
                 pack_banner: false,
+                pack_icon: false,
             }
         );
         // A new background pins the old picture as the icon first.
@@ -1781,6 +1806,7 @@ mod tests {
                 icon: Some(png_url(PNG)),
                 banner: None,
                 pack_banner: false,
+                pack_icon: false,
             }
         );
         assert!(custom.join("icon.png").exists());

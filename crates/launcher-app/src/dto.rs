@@ -305,6 +305,9 @@ pub struct InstanceArtData {
     /// Whether the pack has a background of its own, whichever background is in use: "Change image…"
     /// offers "From the modpack" only then.
     pub pack_banner: bool,
+    /// Whether the pack has an icon of its own, whichever icon is in use: "Change image…" offers
+    /// "Modpack icon" only then.
+    pub pack_icon: bool,
 }
 
 /// What the player picked in "Change image…": one of the generated landscapes (by seed), the

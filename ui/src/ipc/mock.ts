@@ -1192,7 +1192,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
             : (pack?.icon ?? null);
       const banner =
         target.art === 'generated' ? null : target.art === 'custom' ? (state.custom.get(target.id) ?? null) : (pack?.banner ?? null);
-      return { icon, banner, packBanner: Boolean(pack?.banner) } satisfies InstanceArtData;
+      return { icon, banner, packBanner: Boolean(pack?.banner), packIcon: Boolean(pack?.icon) } satisfies InstanceArtData;
     }
     case 'instance_art_set': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');

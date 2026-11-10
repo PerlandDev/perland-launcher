@@ -5,7 +5,7 @@ import { artSeed } from '../../art/seed';
 import { pixelUpscale } from '../../art/upscale';
 import { commands } from '../../ipc/commands';
 import type { Instance } from '../../ipc/schema';
-import { useAccounts, useAppInfo, useInstances, useInstanceArt, usePlaytime } from '../../state/queries';
+import { useAccounts, useAppInfo, useInstances, useInstanceArt, usePlaytime, useSettings } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { openSignInPrompt } from '../../state/signInPrompt';
@@ -32,25 +32,27 @@ import { UpdatePlate } from './UpdatePlate';
 /** The picture's side inside the icon plate (4.5rem less its 0.375rem frame), in px. */
 const PLATE_ART = 60;
 
-/** The instance's own icon (a pack's, or the player's upload), framed beside the name. It is decoration:
- *  the name beside it says what it is. A picture that fails to decode takes the plate away with it. */
-function IconPlate({ src }: { src: string }) {
+/** The instance's own icon (a pack's, or the player's upload), framed beside the name in the shape Settings gives the
+ *  rail's icons. It is decoration: the name beside it says what it is. A picture that fails to decode takes the plate
+ *  away with it. */
+function IconPlate({ src, shape }: { src: string; shape: 'square' | 'round' }) {
   const [failed, setFailed] = useState<string | null>(null);
   const [upscaled, setUpscaled] = useState<string | null>(null);
   if (failed === src) return null;
   return (
-    <img
-      src={src}
-      alt=""
-      className="icon-plate"
-      draggable={false}
-      data-upscale={upscaled === src ? '' : undefined}
-      onLoad={(e) => {
-        const { naturalWidth: width, naturalHeight: height } = e.currentTarget;
-        setUpscaled(pixelUpscale({ width, height }, { width: PLATE_ART, height: PLATE_ART }) ? src : null);
-      }}
-      onError={() => setFailed(src)}
-    />
+    <span className="icon-plate" data-shape={shape}>
+      <img
+        src={src}
+        alt=""
+        draggable={false}
+        data-upscale={upscaled === src ? '' : undefined}
+        onLoad={(e) => {
+          const { naturalWidth: width, naturalHeight: height } = e.currentTarget;
+          setUpscaled(pixelUpscale({ width, height }, { width: PLATE_ART, height: PLATE_ART }) ? src : null);
+        }}
+        onError={() => setFailed(src)}
+      />
+    </span>
   );
 }
 
@@ -72,6 +74,8 @@ function InstanceView({ instance, preview = false }: { instance: Instance; previ
   const banner = art.data?.banner ?? null;
   // Only a real icon gets a plate: the generated initials would only repeat the name.
   const icon = art.data?.icon ?? null;
+  // The plate takes the rail's shape, so the instance looks the same in both places.
+  const iconShape = useSettings().data?.iconShape ?? 'square';
   // The second click of a double click lands before the `queued` event; hold it until Play settles.
   const playOnce = useSingleFlight();
   const nameRef = useNameFit<HTMLHeadingElement>(instance.name);
@@ -126,8 +130,10 @@ function InstanceView({ instance, preview = false }: { instance: Instance; previ
           </div>
         )}
         <div className="min-w-0">
-          <div className="flex items-end gap-5">
-            {icon && <IconPlate src={icon} />}
+          {/* Centred on the name: one line or several, at any size the window gives it, the plate stays balanced
+              beside it. */}
+          <div className="flex items-center gap-5">
+            {icon && <IconPlate src={icon} shape={iconShape} />}
             {/* Sized in app.css: words stay whole, and one too wide for the row shrinks the type. It fills
                 the row so useNameFit can read the room it has from its own width. */}
             <h1 ref={nameRef} id="instance-name" className="marquee-name min-w-0 flex-1 font-display leading-[0.95]">

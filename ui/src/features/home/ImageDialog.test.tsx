@@ -42,13 +42,13 @@ describe('Change image', () => {
     await vi.waitFor(() => expect(sent(calls, 'instance_art').length).toBeGreaterThan(artReads));
   });
 
-  it("offers a modpack's own art beside Upload, lit while it is in use", async () => {
+  it("offers a modpack's own background beside Upload, lit while it is in use", async () => {
     const first = renderApp(<Home id="asalith-fields" />);
     const plain = await openPicker(first.user, 'Asalith Fields');
     expect(within(plain).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Default', 'Your screenshots']);
     expect(within(plain).getByRole('button', { name: 'Upload your own…' })).toHaveAttribute('aria-pressed', 'false');
     // Not a modpack: the key is there but locked, and says why.
-    const locked = within(plain).getByRole('button', { name: 'From the modpack' });
+    const locked = within(plain).getByRole('button', { name: 'Modpack background' });
     expect(locked).toHaveAttribute('aria-disabled', 'true');
     expect(locked).toHaveAttribute('aria-pressed', 'false');
     expect(locked).toHaveAccessibleDescription('Only for modpack instances.');
@@ -58,26 +58,26 @@ describe('Change image', () => {
 
     const { user, calls } = renderApp(<Home id="sky-islands" />);
     const pack = await openPicker(user, 'Sky Islands');
-    const packArt = within(pack).getByRole('button', { name: 'From the modpack' });
+    const packArt = within(pack).getByRole('button', { name: 'Modpack background' });
     // A modpack starts on its own art.
     expect(packArt).toHaveAttribute('aria-pressed', 'true');
     expect(packArt).toHaveAccessibleDescription('The picture that comes with the modpack.');
     expect(packArt.closest('.art-tabs-row')).not.toBeNull();
     for (const tile of group(pack, 'Background').getAllByRole('radio', { name: /^Landscape \d$/ })) expect(tile).toHaveAttribute('aria-checked', 'false');
     await user.click(group(pack, 'Background').getByRole('radio', { name: 'Landscape 2' }));
-    await vi.waitFor(() => expect(within(pack).getByRole('button', { name: 'From the modpack' })).toHaveAttribute('aria-pressed', 'false'));
+    await vi.waitFor(() => expect(within(pack).getByRole('button', { name: 'Modpack background' })).toHaveAttribute('aria-pressed', 'false'));
     // It takes the pack's art back.
-    await user.click(within(pack).getByRole('button', { name: 'From the modpack' }));
+    await user.click(within(pack).getByRole('button', { name: 'Modpack background' }));
     expect(sent(calls, 'instance_art_set').at(-1)).toEqual({ id: 'sky-islands', choice: { kind: 'pack' } });
-    await vi.waitFor(() => expect(within(pack).getByRole('button', { name: 'From the modpack' })).toHaveAttribute('aria-pressed', 'true'));
+    await vi.waitFor(() => expect(within(pack).getByRole('button', { name: 'Modpack background' })).toHaveAttribute('aria-pressed', 'true'));
   });
 
-  it("locks From the modpack when the modpack has no picture of its own, and lights the landscape Home shows", async () => {
+  it("locks Modpack background when the modpack has no picture of its own, and lights the landscape Home shows", async () => {
     const backend = createMockBackend();
     backend.state.packs.get('sky-islands')!.art = { icon: null, banner: null };
     const { user } = renderWithProviders(<Home id="sky-islands" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
     const dialog = await openPicker(user, 'Sky Islands');
-    const packArt = await within(dialog).findByRole('button', { name: 'From the modpack' });
+    const packArt = await within(dialog).findByRole('button', { name: 'Modpack background' });
     await vi.waitFor(() => expect(packArt).toHaveAttribute('aria-disabled', 'true'));
     expect(packArt).toHaveAttribute('aria-pressed', 'false');
     expect(packArt).toHaveAccessibleDescription('This modpack has no picture of its own.');
@@ -182,7 +182,7 @@ describe('Change image', () => {
     const row = icon.querySelector('.art-keys-row')!;
     expect(within(row as HTMLElement).getAllByRole('radio').map((r) => r.textContent)).toEqual([
       expect.stringContaining('Letters'),
-      'Pack icon',
+      'Modpack icon',
       expect.stringContaining('Upload your own…'),
     ]);
   });
@@ -525,11 +525,12 @@ describe('Change image: the icon', () => {
     expect(within(dialog).getByRole('radiogroup', { name: 'Icon' })).toBe(groups[0]);
     expect(within(dialog).getByRole('radiogroup', { name: 'Background' })).toBe(groups[1]);
     const icons = group(dialog, 'Icon').getAllByRole('radio');
-    expect(icons).toHaveLength(2);
+    expect(icons).toHaveLength(3);
     expect(icons[0]).toHaveAccessibleName('Letters');
     // The second line says where the letters come from.
     expect(icons[0]).toHaveAccessibleDescription("Made from the instance's name.");
-    expect(icons[1]).toHaveAccessibleName('Upload your own…');
+    expect(icons[1]).toHaveAccessibleName('Modpack icon');
+    expect(icons[2]).toHaveAccessibleName('Upload your own…');
     // The landscapes are backgrounds only.
     expect(group(dialog, 'Icon').queryByRole('radio', { name: /^Landscape/ })).not.toBeInTheDocument();
   });
@@ -538,26 +539,31 @@ describe('Change image: the icon', () => {
     const { user, calls } = renderApp(<Home id="sky-islands" />);
     const dialog = await openPicker(user, 'Sky Islands');
     const icons = group(dialog, 'Icon');
-    expect(icons.getByRole('radio', { name: 'Pack icon' })).toHaveAttribute('aria-checked', 'true');
+    expect(icons.getByRole('radio', { name: 'Modpack icon' })).toHaveAttribute('aria-checked', 'true');
     await user.click(icons.getByRole('radio', { name: 'Letters' }));
     expect(sent(calls, 'instance_icon_set')).toEqual([{ id: 'sky-islands', choice: { kind: 'generated' } }]);
     expect(sent(calls, 'instance_art_set')).toEqual([]);
     expect(await group(dialog, 'Icon').findByRole('radio', { name: 'Letters' })).toHaveAttribute('aria-checked', 'true');
-    expect(group(dialog, 'Icon').getByRole('radio', { name: 'Pack icon' })).toHaveAttribute('aria-checked', 'false');
+    expect(group(dialog, 'Icon').getByRole('radio', { name: 'Modpack icon' })).toHaveAttribute('aria-checked', 'false');
     // The background is still the pack's art.
     expect(within(dialog).getByRole('button', { name: 'Upload your own…' })).toHaveAttribute('aria-pressed', 'false');
-    await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Pack icon' }));
+    await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Modpack icon' }));
     expect(sent(calls, 'instance_icon_set').at(-1)).toEqual({ id: 'sky-islands', choice: { kind: 'pack' } });
   });
 
-  it('offers the pack icon only for a pack', async () => {
+  it('always shows the modpack icon, locked on an instance that is not a modpack', async () => {
     const first = renderApp(<Home id="asalith-fields" />);
     const plain = await openPicker(first.user, 'Asalith Fields');
-    expect(group(plain, 'Icon').queryByRole('radio', { name: 'Pack icon' })).not.toBeInTheDocument();
+    const locked = group(plain, 'Icon').getByRole('radio', { name: 'Modpack icon' });
+    expect(locked).toHaveAttribute('aria-disabled', 'true');
+    expect(locked).toHaveAttribute('aria-checked', 'false');
+    expect(locked).toHaveAccessibleDescription('Only for modpack instances.');
+    await first.user.click(locked);
+    expect(sent(first.calls, 'instance_icon_set')).toEqual([]);
     first.unmount();
     const { user } = renderApp(<Home id="sky-islands" />);
     const pack = await openPicker(user, 'Sky Islands');
-    expect(group(pack, 'Icon').getByRole('radio', { name: 'Pack icon' })).toBeInTheDocument();
+    expect(group(pack, 'Icon').getByRole('radio', { name: 'Modpack icon' })).toBeInTheDocument();
   });
 
   it('uploads a picked image as the icon only', async () => {
@@ -577,7 +583,7 @@ describe('Change image: the icon', () => {
 
   it.each<[string, Partial<Instance>, string, string]>([
     ['a never-chosen icon on a plain instance', { icon: null, art: 'auto' }, 'asalith-fields', 'Letters'],
-    ['a never-chosen icon on a pack', { icon: null, art: 'auto' }, 'sky-islands', 'Pack icon'],
+    ['a never-chosen icon on a pack', { icon: null, art: 'auto' }, 'sky-islands', 'Modpack icon'],
     ['a round-1 upload, which is still the icon', { icon: null, art: 'custom' }, 'asalith-fields', 'Upload your own…'],
     ['the initials on a pack', { icon: 'generated' }, 'sky-islands', 'Letters'],
     ['auto on a plain instance', { icon: 'auto', art: 'generated' }, 'asalith-fields', 'Letters'],
@@ -595,14 +601,17 @@ describe('Change image: the icon', () => {
     expect(checked[0]).toHaveAccessibleName(lit);
   });
 
-  it('lights the initials for a pack with no icon of its own, and still offers the pack icon', async () => {
+  it('lights the initials for a pack with no icon of its own, and locks the modpack icon', async () => {
     const backend = createMockBackend();
     backend.state.packs.get('sky-islands')!.art = { icon: null, banner: null };
     const { user } = renderWithProviders(<Home id="sky-islands" />, { ipc: (cmd, args) => backend.handle(cmd, args) });
     const dialog = await openPicker(user, 'Sky Islands');
     const icons = group(dialog, 'Icon');
     expect(await icons.findByRole('radio', { name: 'Letters' })).toHaveAttribute('aria-checked', 'true');
-    expect(icons.getByRole('radio', { name: 'Pack icon' })).toHaveAttribute('aria-checked', 'false');
+    const modpack = icons.getByRole('radio', { name: 'Modpack icon' });
+    expect(modpack).toHaveAttribute('aria-checked', 'false');
+    await vi.waitFor(() => expect(modpack).toHaveAttribute('aria-disabled', 'true'));
+    expect(modpack).toHaveAccessibleDescription('This modpack has no icon of its own.');
     expect(icons.getAllByRole('radio').filter((r) => r.tabIndex === 0)).toEqual([icons.getByRole('radio', { name: 'Letters' })]);
   });
 
@@ -633,7 +642,7 @@ describe('Change image: the icon', () => {
     for (const radio of within(dialog).getAllByRole('radio')) expect(radio).toHaveAttribute('aria-disabled', 'true');
     // A background picked meanwhile would race the icon's save to instance.json, so it waits.
     await user.click(group(dialog, 'Background').getByRole('radio', { name: 'Landscape 2' }));
-    await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Pack icon' }));
+    await user.click(group(dialog, 'Icon').getByRole('radio', { name: 'Modpack icon' }));
     expect(sent(calls, 'instance_art_set')).toEqual([]);
     expect(sent(calls, 'instance_icon_set')).toHaveLength(1);
     await act(async () => release());
@@ -664,8 +673,8 @@ describe('Change image: the icon', () => {
     const dialog = await openPicker(user, 'Sky Islands');
     const icons = group(dialog, 'Icon');
     // One stop per group: the current choice.
-    expect(icons.getAllByRole('radio').filter((r) => r.tabIndex === 0)).toEqual([icons.getByRole('radio', { name: 'Pack icon' })]);
-    icons.getByRole('radio', { name: 'Pack icon' }).focus();
+    expect(icons.getAllByRole('radio').filter((r) => r.tabIndex === 0)).toEqual([icons.getByRole('radio', { name: 'Modpack icon' })]);
+    icons.getByRole('radio', { name: 'Modpack icon' }).focus();
     await user.keyboard('{ArrowLeft}');
     expect(icons.getByRole('radio', { name: 'Letters' })).toHaveFocus();
     // Moving never saves: an upload key would open the file picker.

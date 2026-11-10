@@ -1514,6 +1514,7 @@ fn contract_fixtures_are_current() {
             icon: Some("data:image/png;base64,iVBORw0KGgo=".into()),
             banner: None,
             pack_banner: false,
+            pack_icon: false,
         },
     );
     check(
