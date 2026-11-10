@@ -299,7 +299,7 @@ The system rejects the launcher category default of a navy gradient, rounded car
 
 **Key Characteristics:**
 - Warm laminate-black ground (`ground`, `panel`, `raised`, `line`) with warm off-white ink.
-- Four plot hues with one job each: amber acts, lime means running or OK, coral means stop or fault, blue means info or progress.
+- Four plot hues with one job each: amber acts, lime means running or OK, coral means stop or fault, blue means info or progress. The act hue follows the theme (see Themes); the other three never change.
 - Raised controls stand on a dirt step: hard offset under-layers, never a blurred shadow.
 - Pixel-notched corners (`corner-shape: notch`) on every control and panel.
 - Bungee signage display with a two-layer hard shade. Atkinson Hyperlegible Next for body text, Atkinson Hyperlegible Mono for logs and paths.
@@ -339,7 +339,15 @@ A warm brown-black cabinet laminate carrying the four saturated land-plot hues, 
 **The Hue Has One Job Rule.** Lime is running or OK, coral is stop or fault, blue is info or progress. A status never relies on hue alone, so pair it with a label, an icon or a shape (the LED, the warning diamond, the meter blocks). Amber is never a status or a notice: advice such as a server's invite-only line is info, so it is `blue-ink` text led by a pixel lock.
 
 ### Themes
-A player picks the room in Settings → Appearance → Theme (`theme` in settings). A theme is a different material for the same cabinet: it swaps **only the eight neutrals** (`ground`, `panel`, `raised`, `line`, `ink`, `ink-dim`, `dirt`, `dirt-deep`). The role hues (`amber`, `amber-hi`, `lime`, `coral`, `blue`, `blue-ink`) are identical in every theme, so every rule above holds unchanged. Every theme is dark.
+A player picks the room in Settings → Appearance → Theme (`theme` in settings). A theme is a different material for the same cabinet: it swaps the eight neutrals (`ground`, `panel`, `raised`, `line`, `ink`, `ink-dim`, `dirt`, `dirt-deep`) and its **act hue** (`amber`, `amber-hi`: Play, every other lit key, the focus ring, the caret and the drop line), drawn from the room's own family so Play belongs to the room it sits in. The token keeps the name `amber`; its job is unchanged: it acts, and at rest only Play is lit. Lime, coral, blue and blue-ink are identical in every theme, so every status rule holds unchanged. Every theme is dark.
+
+| Theme | act (`amber`) | hover (`amber-hi`) |
+|---|---|---|
+| Laminate | amber `#ffc233` | `#ffd76e` |
+| Stone | diamond teal `#1fa396` | `#2ec4b6` |
+| Night | periwinkle `#6a76ff` | `#8b95ff` |
+| Forest | leaf green `#22a35a` | `#2fc46e` |
+
 
 | Theme (en / es) | ground | panel | raised | line | ink | ink-dim | dirt | dirt-deep |
 |---|---|---|---|---|---|---|---|---|
@@ -349,7 +357,7 @@ A player picks the room in Settings → Appearance → Theme (`theme` in setting
 | **Forest** / Bosque: dark moss | `#111712` | `#19211a` | `#232d24` | `#3a4a3b` | `#eef3ea` | `#b5c3b0` | `#4f6b3a` | `#2f4223` |
 
 - **Mechanism:** `@theme` holds Laminate. Each theme is a `:root[data-theme='…']` block in `app.css` that overrides the eight `--color-*` properties; Tailwind's utilities read the variables, so the whole app changes live. `applyAppearance` sets `data-theme` (and `data-font`) on `<html>` whenever the settings change, and once before the first render from a `localStorage` mirror, so a start never flashes the old room.
-- **Contrast floor (tested):** in every theme `ink`, `ink-dim`, `blue-ink` and `coral` reach 4.5:1 on `ground`, `panel` and `raised`; `ground` text reaches 4.5:1 on `amber` and `coral` faces; `lime` reaches 3:1 on `ground`. `styles/themes.test.ts` parses `app.css` and fails below this. The tightest pair is `coral` on Stone's `raised` (4.60:1).
+- **Contrast floor (tested):** in every theme `ink`, `ink-dim`, `blue-ink` and `coral` reach 4.5:1 on `ground`, `panel` and `raised`; `ground` text reaches 4.5:1 on each theme's own `amber` face and on `coral` faces; `lime` reaches 3:1 on `ground`. `styles/themes.test.ts` parses `app.css` and fails below this. The tightest pair is `coral` on Stone's `raised` (4.60:1).
 - **No literal neutrals in chrome.** Anything the room colours goes through a token, translucent ones through `color-mix` (the dialog backdrop is `ground` darkened by half at 78%).
 - **Generated art keeps its own palette.** Marquees, avatars, plot icons and monogram plates are pictures, not chrome, and are drawn from Laminate's ground and dirt in every theme. The one picture not generated is a Microsoft account's face, taken from the skin the player wears (never a default Mojang skin: that account keeps its generated face).
 - **The picker:** four swatch keys in a row. Each is a raised key whose face is a small sample of that theme's room, painted through `[data-swatch]`: a `ground` tile in a 1px `line` ring holding a `raised` key (with a 2px `ink` label stroke) on its `dirt-deep` step and an amber pixel on a `dirt` step, then the theme's name. The chosen key presses into its slot with the lime lamp before the name. The amber pixel is a sample of the theme, not a lit control.
