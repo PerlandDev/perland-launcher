@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CELL, COLS, discPath, layerPath, marqueeScene } from './marqueeScene';
+import { useArtPalette } from './palette';
 import type { BannerEdges } from '../ipc/schema';
 import { bannerBox, leavesEdges } from './bannerLayout';
 import { usePixelEdges } from './pixelEdges';
@@ -44,7 +45,9 @@ export function Marquee({
   edges?: BannerEdges | null;
   className?: string;
 }) {
-  const scene = useMemo(() => marqueeScene(seed), [seed]);
+  // The theme's own colours: the same landscape in every room, lit like that room.
+  const palette = useArtPalette();
+  const scene = useMemo(() => marqueeScene(seed, palette), [seed, palette]);
   // A banner that fails to decode gives the panel back to the generated scene.
   const [failed, setFailed] = useState<string | null>(null);
   const art = banner && banner !== failed ? banner : null;
