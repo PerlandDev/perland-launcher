@@ -31,8 +31,9 @@ export function placeFrame(frame: Size, aspect: number = PLACE_ASPECT): { left: 
 /** A picture's box in the marquee, in the frame's pixels. With no zoom chosen it just covers the frame (CSS `cover`),
  *  as it always has, and x% and y% place it as `object-position` does. A chosen zoom is the picture's height in percent
  *  of `placeFrame`'s band, the shape the view was chosen at (`aspect`) fitted in the frame: in that shape, the frame's
- *  own height. Its y% places it in the frame's height, and its x% across the band, so whatever the window's shape, the
- *  part of the picture framed when it was chosen stays in view whole, with more of the picture (or the edges) around. */
+ *  own height. Its y% places it in the frame's height, and its x% across the band, so in a wider window the part of the
+ *  picture framed when it was chosen stays in view whole, with more of the picture around. A narrower or portrait
+ *  window never shows empty bands: a zoom that filled its header covers this one too, centred on what was framed. */
 export function bannerBox(frame: Size, picture: Size, zoom: number | null, focus: Focus | null, aspect?: number): Box {
   const band = placeFrame(frame, aspect);
   const scale =
@@ -41,7 +42,21 @@ export function bannerBox(frame: Size, picture: Size, zoom: number | null, focus
   const height = picture.height * scale;
   const { x, y } = focus ?? DEFAULT_FOCUS;
   const across = zoom === null ? { left: 0, width: frame.width } : band;
-  return { left: across.left + ((across.width - width) * x) / 100, top: ((frame.height - height) * y) / 100, width, height };
+  const left = across.left + ((across.width - width) * x) / 100;
+  const top = ((frame.height - height) * y) / 100;
+  // A zoom that filled the header it was chosen in never leaves empty bands in a narrower or portrait one: it grows to
+  // cover the frame around the middle of what was framed, cropping the sides. One zoomed out on purpose keeps its edges.
+  const cover = Math.max(frame.width / picture.width, frame.height / picture.height);
+  const fillsBand = width >= band.width - 0.5 && height >= band.height - 0.5;
+  if (zoom === null || !fillsBand || scale >= cover) return { left, top, width, height };
+  const grow = cover / scale;
+  const middle = band.left + band.width / 2;
+  const grown = { width: width * grow, height: height * grow };
+  return {
+    left: Math.min(0, Math.max(frame.width - grown.width, middle - (middle - left) * grow)),
+    top: ((frame.height - grown.height) * y) / 100,
+    ...grown,
+  };
 }
 
 /** The position that draws a zoomed picture at `box` (as near as 0–100 allows); no free space keeps it in the middle. */
