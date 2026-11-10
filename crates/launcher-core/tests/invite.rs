@@ -928,6 +928,23 @@ async fn networks_are_refused_with_their_address() {
 }
 
 #[tokio::test]
+async fn the_view_reads_the_join_name_and_a_refusal_quotes_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    let mut view = network_view();
+    view["address"]["join"] = json!("lobby.perland.world");
+    mount_view(&server, view).await;
+    let ev = client().view(&link(&server)).await.unwrap();
+    assert_eq!(ev.view.address.join.as_deref(), Some("lobby.perland.world"));
+    assert_eq!(ev.view.address.port, 25577, "host and port still parse");
+    let src = sources(&server, tmp.path());
+    let err = perland::open(&src, &link(&server)).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::InviteUnsupported);
+    assert_eq!(err.params["address"], "lobby.perland.world");
+}
+
+#[tokio::test]
 async fn a_modded_stack_without_a_pack_is_refused_with_its_address() {
     let tmp = tempfile::tempdir().unwrap();
     let server = MockServer::start().await;

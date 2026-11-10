@@ -61,9 +61,9 @@ describe('ManageOverview', () => {
     expect(sent(calls, 'manage_diagnosis')).toEqual([]);
   });
 
-  it('shows the address to copy', async () => {
+  it('shows the join address to copy, without a port', async () => {
     show('running');
-    expect(await screen.findByText('play.example.com:25600')).toBeInTheDocument();
+    expect(await screen.findByText('team-survival.perland.world')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Copy server address' })).toBeInTheDocument();
   });
 

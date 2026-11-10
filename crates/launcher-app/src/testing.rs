@@ -217,6 +217,7 @@ pub(crate) fn server_view(name: &str) -> EngineView {
                 host: Some("play.example.com".into()),
                 port: 25566,
                 display: Some("play.example.com:25566".into()),
+                join: None,
             },
             game: InviteGame {
                 kind: "fabric".into(),

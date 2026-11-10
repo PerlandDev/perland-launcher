@@ -26,9 +26,10 @@
       "accent": "violet"
     },
     "address": {
-      "host": "play.example.com",
-      "port": 25566
+      "host": "survival.perland.world",
+      "port": 25565
     },
+    "join": "survival.perland.world",
     "icon": "data:image/png;base64,iVBORw0KGgo=",
     "existing": null
   },
@@ -51,6 +52,7 @@
       "host": "play.example.com",
       "port": 25570
     },
+    "join": null,
     "icon": null,
     "existing": "creative"
   }

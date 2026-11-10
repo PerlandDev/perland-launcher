@@ -31,8 +31,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         for server in &fetched.page.servers {
             let invite = self.runner.public_invite(server).map(|l| l.canonical());
             let instance = instance_of(&joined, invite.as_deref());
-            let address =
-                ServerAddress::from_view(&server.address, &fetched.engine).map(|a| a.display());
+            let address = server.address.join_name().or_else(|| {
+                ServerAddress::from_view(&server.address, &fetched.engine).map(|a| a.display())
+            });
             servers.push(card(server, invite, address, instance, false));
         }
         Ok(PublicServerPage {
@@ -161,6 +162,7 @@ mod tests {
                 host: Some("play.example.com".into()),
                 port: 25566,
                 display: None,
+                join: None,
             },
             game: InviteGame {
                 kind: "fabric".into(),
@@ -191,6 +193,19 @@ mod tests {
                 ..ListPage::default()
             },
         }));
+    }
+
+    #[tokio::test]
+    async fn a_card_shows_the_join_name() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        let mut named = modded('A');
+        named.address.join = Some("survival.perland.world".into());
+        serve_page(&runner, vec![named]);
+        let page = core.servers_list(ListQuery::default()).await.unwrap();
+        assert_eq!(
+            page.servers[0].address.as_deref(),
+            Some("survival.perland.world")
+        );
     }
 
     #[tokio::test]

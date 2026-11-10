@@ -162,13 +162,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         match self.runner.invite_view(link, Some(engine)).await {
             Ok(ev) => {
                 let saved = self.update_server(id, true, |s| apply_view(s, &ev)).await?;
+                let (address, join) = saved.map(|s| (s.address, s.join)).unwrap_or_default();
                 Ok(ServerStatusView {
                     status: ev.view.status(),
                     players: ev.view.players.as_ref().map(ServerPlayers::from),
                     whitelisted: ev.view.whitelisted,
                     pack_state: ev.view.pack.as_ref().map(|p| p.state.clone()),
                     gone: false,
-                    address: saved.and_then(|s| s.address),
+                    address,
+                    join,
                 })
             }
             Err(e) if e.code == ErrorCode::InviteGone => {
@@ -179,6 +181,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     whitelisted: last.as_ref().is_some_and(|s| s.whitelisted),
                     pack_state: None,
                     gone: true,
+                    join: last.as_ref().and_then(|s| s.join.clone()),
                     address: last.and_then(|s| s.address),
                 })
             }

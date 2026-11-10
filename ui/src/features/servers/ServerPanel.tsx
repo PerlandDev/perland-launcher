@@ -22,7 +22,7 @@ export function ServerPanel({ instance }: { instance: Instance }) {
     <div className="mt-2 grid justify-items-start gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill status={live ? live.status : (saved?.lastStatus ?? null)} players={live?.players ?? null} gone={gone} />
-        <AddressLine address={live?.address ?? saved?.address ?? null} />
+        <AddressLine address={live?.address ?? saved?.address ?? null} join={live?.join ?? saved?.join ?? null} />
       </div>
       {/* Home is open, so its news reads now; the line is absent without news. */}
       <NewsLine invite={instance.source.kind === 'perland' ? instance.source.invite : null} name={instance.name} visible onArt />

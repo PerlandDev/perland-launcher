@@ -661,6 +661,7 @@ mod tests {
             last_status: None,
             last_seen: None,
             gone: false,
+            join: None,
         });
         core.instances.save(&instance).await.unwrap();
         updated(&core, &id).await;

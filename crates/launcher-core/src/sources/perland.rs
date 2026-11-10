@@ -112,8 +112,10 @@ fn refused(ev: &EngineView) -> Result<()> {
     ) {
         return Ok(());
     }
-    let address = ServerAddress::from_view(&view.address, &ev.engine)
-        .map(|a| a.display())
+    let address = view
+        .address
+        .join_name()
+        .or_else(|| ServerAddress::from_view(&view.address, &ev.engine).map(|a| a.display()))
         .or_else(|| non_empty(&view.address.display).map(|d| d.chars().take(260).collect()))
         .unwrap_or_else(|| host_of(&ev.engine));
     Err(LauncherError::pack(

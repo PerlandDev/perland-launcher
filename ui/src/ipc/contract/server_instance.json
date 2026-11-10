@@ -33,7 +33,8 @@
     "whitelisted": false,
     "lastStatus": "online",
     "lastSeen": 1791720000,
-    "gone": false
+    "gone": false,
+    "join": null
   },
   "artSeed": null,
   "art": "auto",
