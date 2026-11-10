@@ -32,9 +32,10 @@
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Themes (Settings → Theme). A theme is a different room: it swaps only the eight neutrals, the
-   room (ground, panel, raised, line), its ink and the dirt steps. Amber, lime, coral and blue keep
-   their one job in every theme, so they live only in @theme. Every theme is dark, and
+/* Themes (Settings → Theme). A theme is a different room: it swaps the eight neutrals (the room: ground, panel,
+   raised, line; its ink; the dirt steps) and its act hue (amber and amber-hi: Play, the other lit keys, the focus
+   ring), drawn from the room's own family. Lime, coral and blue keep their one meaning in every theme, so they live
+   only in @theme. Every theme is dark, and
    styles/themes.test.ts holds each one to the contrast bar. `[data-swatch]` paints a theme's sample
    on its Settings key whatever theme is in use. Laminate repeats @theme, so its swatch is right too. */
 @layer base {
@@ -48,6 +49,8 @@
     --color-ink-dim: #c5b9a8;
     --color-dirt: #7a4a2a;
     --color-dirt-deep: #4e2e19;
+    --color-amber: #ffc233;
+    --color-amber-hi: #ffd76e;
   }
   /* Cool deepslate grey. */
   :root[data-theme='stone'],
@@ -60,6 +63,8 @@
     --color-ink-dim: #b6bec8;
     --color-dirt: #5b636d;
     --color-dirt-deep: #363b42;
+    --color-amber: #1fa396;
+    --color-amber-hi: #2ec4b6;
   }
   /* A deep blue night sky. */
   :root[data-theme='night'],
@@ -72,6 +77,8 @@
     --color-ink-dim: #b3bad3;
     --color-dirt: #4a4f8a;
     --color-dirt-deep: #2b2f57;
+    --color-amber: #6a76ff;
+    --color-amber-hi: #8b95ff;
   }
   /* Dark moss. */
   :root[data-theme='forest'],
@@ -84,6 +91,8 @@
     --color-ink-dim: #b5c3b0;
     --color-dirt: #4f6b3a;
     --color-dirt-deep: #2f4223;
+    --color-amber: #22a35a;
+    --color-amber-hi: #2fc46e;
   }
   :root[data-font='system'] {
     --font-sans: var(--font-system);

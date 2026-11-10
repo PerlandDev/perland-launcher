@@ -7,6 +7,23 @@ vi.mock('./pixelEdges', () => ({ usePixelEdges: pixelEdgesMock }));
 
 const BANNER = 'data:image/png;base64,AAAA';
 
+it("paints the generated scene in the theme's own colours, and follows a theme change", async () => {
+  const { marqueeScene } = await import('./marqueeScene');
+  const { PALETTES } = await import('./palette');
+  const sky = (root: Element) => root.querySelector('svg > rect')?.getAttribute('fill');
+  try {
+    document.documentElement.dataset.theme = 'night';
+    const { container } = render(<Marquee seed="asalith-fields" attract={false} />);
+    expect(sky(container)).toBe(marqueeScene('asalith-fields', PALETTES.night).sky);
+    await act(async () => {
+      document.documentElement.dataset.theme = 'forest';
+    });
+    expect(sky(container)).toBe(marqueeScene('asalith-fields', PALETTES.forest).sky);
+  } finally {
+    delete document.documentElement.dataset.theme;
+  }
+});
+
 it("draws a pack's banner in place of the generated scene", () => {
   const { container } = render(<Marquee seed="sky-islands" attract={false} banner={BANNER} />);
   expect(container.querySelector('img.marquee-banner')).not.toBeNull();
