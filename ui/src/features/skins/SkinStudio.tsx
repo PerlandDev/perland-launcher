@@ -88,7 +88,13 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         refresh();
       });
   };
-  const doc = useSkinDoc(selected?.id ?? null, model, refresh, storeModel);
+  // A save can keep a version (the first of an editing session, or leaving a changed skin): the history asks again
+  // at once, rather than showing what it was told before for as long as that counts as fresh.
+  const saved = () => {
+    refresh();
+    void qc.invalidateQueries({ queryKey: ['skinVersions'] });
+  };
+  const doc = useSkinDoc(selected?.id ?? null, model, saved, storeModel);
 
   const [tool, setTool] = useState<Tool>('pencil');
   const [color, setColorState] = useState<Rgba>([108, 171, 60, 255]);

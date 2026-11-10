@@ -23,9 +23,11 @@ stood at a moment, and is taken:
 2. **When the player leaves a skin they changed** (switches skin or leaves the screen): the UI calls
    `skin_checkpoint`.
 3. **On export** (`skin_export`) and **on wear** (`skin_wear`). Worn versions are marked `worn`.
-4. **On restore**: the current texture is kept, then the restored texture is kept as a `restored` version.
+4. **On restore**: the current texture is kept. The restored texture is already in the history, so it isn't kept
+   again; that version becomes "now". (Histories from before 2026-11-10 can still hold `restored` versions.)
 
-A version identical to the newest one (same SHA-256) is not added again; a wear of it just marks it worn.
+A version identical to one already kept (same SHA-256 and arm model) is never added again, wherever it is in the
+list; a wear of it just marks that one worn. So the history never lists the same skin twice.
 
 ## Cap and pruning
 

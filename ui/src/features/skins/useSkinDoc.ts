@@ -89,6 +89,7 @@ class DocStore {
     this.dirty = false;
     try {
       await commands.skinCheckpoint(id);
+      this.onSaved();
     } catch (error) {
       pushError(error);
     }

@@ -27,6 +27,7 @@ pub enum VersionReason {
     Edited,
     Worn,
     Exported,
+    /// Only in histories from before a restore stopped keeping the restored texture a second time.
     Restored,
 }
 
@@ -194,8 +195,8 @@ async fn prune(dir: &Path, index: &mut Index) {
     }
 }
 
-/// Keeps `png`, drawn for `model`, as a version of the skin in `dir`, unless the newest version is the same
-/// texture with the same arms (then a worn keep just marks it worn).
+/// Keeps `png`, drawn for `model`, as a version of the skin in `dir`, unless a version with the same texture and
+/// arms is kept already, so the history never lists one twice (then a worn keep just marks that one worn).
 async fn keep(
     dir: &Path,
     png: &[u8],
@@ -206,14 +207,17 @@ async fn keep(
     let mut index = load(dir).await?;
     let hash = sha256(png);
     let worn = reason == VersionReason::Worn;
-    if let Some(newest) = index.versions.last_mut() {
-        if newest.sha256 == hash && newest.model.is_none_or(|m| m == model) {
-            if worn && !newest.worn {
-                newest.worn = true;
-                store(dir, &index).await?;
-            }
-            return Ok(());
+    if let Some(same) = index
+        .versions
+        .iter_mut()
+        .rev()
+        .find(|r| r.sha256 == hash && r.model.is_none_or(|m| m == model))
+    {
+        if worn && !same.worn {
+            same.worn = true;
+            store(dir, &index).await?;
         }
+        return Ok(());
     }
     let last = index
         .versions
@@ -350,8 +354,8 @@ impl SkinLibrary {
         }
     }
 
-    /// Makes version `version` the texture of `id`. The texture it replaces is kept first, and the restored one
-    /// is kept as a `restored` version, so a restore can always be undone.
+    /// Makes version `version` the texture of `id`. The texture it replaces is kept first, so a restore can always be
+    /// undone; the restored one is in the history already, so it isn't kept again.
     pub async fn restore(&self, id: &str, version: &str) -> Result<SkinEntry> {
         let png = self.version_texture(id, version).await?;
         let _held = self.lock.lock().await;
@@ -367,14 +371,6 @@ impl SkinLibrary {
             .await?;
         write_atomic(&self.png(id), &png).await?;
         self.write(&file).await?;
-        keep(
-            &self.versions_of(id),
-            &png,
-            entry.model,
-            entry.updated,
-            VersionReason::Restored,
-        )
-        .await?;
         Ok(entry)
     }
 
@@ -557,6 +553,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_texture_already_in_the_history_is_not_kept_again() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        lib.checkpoint(&a.id, VersionReason::Edited).await.unwrap();
+        lib.save_texture(&a.id, &skin([2, 2, 2, 255]))
+            .await
+            .unwrap();
+        lib.checkpoint(&a.id, VersionReason::Edited).await.unwrap();
+        // Back to the first texture: it is in the history already, further down.
+        lib.save_texture(&a.id, &skin([1, 1, 1, 255]))
+            .await
+            .unwrap();
+        lib.checkpoint(&a.id, VersionReason::Edited).await.unwrap();
+        lib.mark_worn(&a.id, "u1").await.unwrap();
+        let versions = lib.versions(&a.id).await.unwrap();
+        assert_eq!(versions.len(), 2);
+        // The version already kept is the skin now, and wearing it marks it.
+        assert!(!versions[0].current && versions[1].current);
+        assert!(versions[1].worn);
+        assert_eq!(
+            texel_of(&lib, &a.id, &versions[1].id).await,
+            Rgba([1, 1, 1, 255])
+        );
+    }
+
+    #[tokio::test]
     async fn wearing_marks_the_version_worn() {
         let (_dir, lib) = library();
         let a = lib
@@ -680,7 +705,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_keeps_the_current_texture_and_is_a_version() {
+    async fn restore_keeps_the_current_texture_and_adds_no_copy() {
         let (_dir, lib) = library();
         let a = lib
             .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), None)
@@ -697,22 +722,15 @@ mod tests {
 
         let versions = lib.versions(&a.id).await.unwrap();
         let reasons: Vec<_> = versions.iter().map(|v| v.reason).collect();
-        assert_eq!(
-            reasons,
-            vec![
-                VersionReason::Restored,
-                VersionReason::Edited,
-                VersionReason::Edited
-            ]
-        );
-        assert!(versions[0].current);
-        // Only the newest version with the texture now is marked, not the identical original.
-        assert!(!versions[2].current);
+        assert_eq!(reasons, vec![VersionReason::Edited, VersionReason::Edited]);
         // The texture the restore replaced is kept, so the restore can be undone.
         assert_eq!(
-            texel_of(&lib, &a.id, &versions[1].id).await,
+            texel_of(&lib, &a.id, &versions[0].id).await,
             Rgba([2, 2, 2, 255])
         );
+        // The restored version is in the history already: it is the skin now, not a second copy of it.
+        assert_eq!(versions[1].id, original);
+        assert!(versions[1].current && !versions[0].current);
     }
 
     #[tokio::test]
