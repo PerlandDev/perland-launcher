@@ -25,7 +25,8 @@ changed in each update**, in their language and in words they understand.
 - Announcing releases on Discord or on perland.online. Either can read the GitHub Release later.
 - Notes for the releases already out (up to `v2026.11.4`). History starts with the first release that has this.
 - Pictures, links or formatting inside a note. A note is one plain sentence.
-- Forcing every pull request to carry a note. Internal changes add none.
+- A note on every pull request. Each one must settle the question, but an internal change settles it with
+  "none" (see Writing a note).
 
 ## Anti-goals
 
@@ -83,8 +84,11 @@ Where the launcher reads the notes from (my call):
   removes the note from history, which is how old notes are pruned.
 - A test in `scripts/release` (it already runs in CI through `pnpm -r test`) checks every file: the slug, the
   kind, both languages present, single line, the length.
-- `CLAUDE.md` and `AGENTS.md` gain the rule: a change players would notice adds a note in `release-notes/`;
-  a change they wouldn't adds none.
+- **Every pull request fills this in** (the owner's rule, 2026-11-10): it either adds a note, or its description
+  says `Release notes: none (reason)`. `CLAUDE.md` and `AGENTS.md` carry the rule.
+- **A skill teaches agents to write them**: `.claude/skills/release-notes/SKILL.md`. It covers what the test
+  cannot check: whether a change needs a note at all, the kind, the player's words rather than the code's, and
+  Spanish that is written rather than translated.
 
 ### From notes to a release
 
@@ -165,7 +169,7 @@ notes from a shallow clone: without tags, every note would look new.
 ### Docs
 
 `README.md` → Releasing explains the notes folder and what the workflow does with it. `CLAUDE.md` and `AGENTS.md`
-get the rule above.
+get the rule above and point at the `release-notes` skill.
 
 ## Left to the builder
 
