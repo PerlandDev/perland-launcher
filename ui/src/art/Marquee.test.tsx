@@ -116,8 +116,8 @@ describe('a zoomed banner', () => {
   it('draws no edges for dark edges or a picture that still covers', () => {
     expect(zoomed({ zoom: 50, edges: 'dark' }).container.querySelector('img.marquee-edges')).toBeNull();
     expect(zoomed({ zoom: 200, edges: 'pixel' }).container.querySelector('img.marquee-edges')).toBeNull();
-    // 150 is 750 wide in a 1000 wide panel: the sides show.
-    expect(zoomed({ zoom: 150, edges: 'pixel' }).container.querySelector('img.marquee-edges')).not.toBeNull();
+    // 140 is under the 150 that fills the panel's band, so it was zoomed out on purpose: 700 wide in 1000, the sides show.
+    expect(zoomed({ zoom: 140, edges: 'pixel' }).container.querySelector('img.marquee-edges')).not.toBeNull();
   });
 
   it('decides hard pixels from the size the zoom draws, not the panel', () => {

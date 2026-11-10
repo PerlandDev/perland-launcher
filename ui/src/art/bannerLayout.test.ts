@@ -84,6 +84,40 @@ describe('the shape a view was chosen at', () => {
     }
   });
 
+  it('fills a narrower or portrait header too when it filled the one it was chosen in, centred on what was framed', () => {
+    const aspect = aspectOf(wide) / 1000;
+    const middle = { x: 50, y: 60 };
+    const there = bannerBox(wide, picture, 145, middle, aspect);
+    const atCentre = (f: Size, box: Box) => (f.width / 2 - box.left) / box.width;
+    for (const narrow of [{ width: 760, height: 660 }, { width: 836, height: 1800 }]) {
+      const here = bannerBox(narrow, picture, 145, middle, aspect);
+      // No empty bands: it covers the header, cropping the sides instead.
+      expect(leavesEdges(narrow, here)).toBe(false);
+      expect(here.width / here.height).toBeCloseTo(picture.width / picture.height);
+      // What sat in the middle of the framing still sits in the middle.
+      expect(atCentre(narrow, here)).toBeCloseTo(atCentre(wide, there), 2);
+    }
+  });
+
+  it('never pushes a covering picture past an edge, wherever the framing sat', () => {
+    const aspect = aspectOf(wide) / 1000;
+    const tall = { width: 836, height: 1800 };
+    for (const x of [0, 100]) {
+      const box = bannerBox(tall, picture, 145, { x, y: 100 }, aspect);
+      expect(leavesEdges(tall, box)).toBe(false);
+    }
+  });
+
+  it('keeps the edges of a picture the player zoomed out on purpose', () => {
+    const aspect = aspectOf(wide) / 1000;
+    const tall = { width: 836, height: 1800 };
+    // 60 % leaves edges in the header it was chosen in: it is drawn as chosen, at 60 % of the band's height.
+    expect(leavesEdges(wide, bannerBox(wide, picture, 60, focus, aspect))).toBe(true);
+    const box = bannerBox(tall, picture, 60, focus, aspect);
+    expect(leavesEdges(tall, box)).toBe(true);
+    expect(box.height).toBeCloseTo(0.6 * placeFrame(tall, aspect).height);
+  });
+
   it('is 3:2 for a view chosen before shapes were kept, so a window narrower than that no longer crops it', () => {
     const narrow = { width: 900, height: 700 };
     const box = bannerBox(narrow, picture, 150, focus);
@@ -150,7 +184,9 @@ describe('dragFocus', () => {
 it('says whether a picture leaves part of the frame uncovered', () => {
   expect(leavesEdges(frame, bannerBox(frame, square, null, null))).toBe(false);
   expect(leavesEdges(frame, bannerBox(frame, square, 200, null))).toBe(false);
-  expect(leavesEdges(frame, bannerBox(frame, square, 150, null))).toBe(true);
+  // 150 just fills the 3:2 band, so it covers the frame too; 140 was zoomed out on purpose and keeps its edges.
+  expect(leavesEdges(frame, bannerBox(frame, square, 150, null))).toBe(false);
+  expect(leavesEdges(frame, bannerBox(frame, square, 140, null))).toBe(true);
 });
 
 describe('zoomAround', () => {
