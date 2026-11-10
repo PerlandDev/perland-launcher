@@ -533,8 +533,9 @@ it('Restore makes the version the skin, and Undo takes it back', async () => {
   await waitFor(() => expect(toastsSnapshot().map((t) => t.notice?.title)).toContain('Version restored'));
   expect(screen.queryByRole('button', { name: 'Restore this version' })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
-  // The restore itself is the newest version now.
-  await waitFor(() => expect(within(screen.getByRole('list', { name: 'Earlier versions' })).getAllByRole('button')).toHaveLength(5));
+  // The restored version is in the history already: it becomes Now, and no second copy of it is listed.
+  await waitFor(() => expect(within(screen.getByRole('list', { name: 'Earlier versions' })).getAllByRole('button')[2]).toHaveTextContent('Now'));
+  expect(within(screen.getByRole('list', { name: 'Earlier versions' })).getAllByRole('button')).toHaveLength(4);
 });
 
 it('Restore brings back the arms the version was drawn for, and Undo takes them back', async () => {
