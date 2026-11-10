@@ -19,9 +19,34 @@ it('shows a Forge instance on Forge and saves its game unchanged', async () => {
   backend.state.listing.instances[0]!.game = structuredClone(forge);
   expect(await screen.findByRole('radio', { name: 'Forge' })).toBeChecked();
   expect(await screen.findByRole('combobox', { name: 'Loader version' })).toHaveValue('47.2.0');
+  await touchName(user);
   await user.click(await screen.findByRole('button', { name: 'Save' }));
   const saved = sent(calls, 'instance_update')[0] as { instance: { game: unknown } };
   expect(saved.instance.game).toEqual(forge);
+});
+
+/** Change the name, so Save turns on and the rest of the form goes out as it was. */
+async function touchName(user: ReturnType<typeof renderApp>['user']) {
+  await user.type(await screen.findByRole('textbox', { name: 'Name' }), '!');
+}
+
+it('keeps Save off until something changes, and off again once it is undone or saved', async () => {
+  const { user, calls } = renderApp(<InstanceSettings id="asalith-fields" />);
+  const name = await screen.findByRole('textbox', { name: 'Name' });
+  await screen.findByRole('option', { name: /0\.19\.5/ });
+  const save = screen.getByRole('button', { name: 'Save' });
+  expect(save).toBeDisabled();
+  await user.type(name, '!');
+  expect(save).toBeEnabled();
+  // Back to what is saved: nothing to save.
+  await user.type(name, '{Backspace}');
+  expect(save).toBeDisabled();
+  fireEvent.change(screen.getByRole('slider', { name: 'Memory' }), { target: { value: '2048' } });
+  expect(save).toBeEnabled();
+  await user.click(save);
+  expect(await screen.findByText('Saved')).toBeInTheDocument();
+  expect(save).toBeDisabled();
+  expect(sent(calls, 'instance_update')).toHaveLength(1);
 });
 
 const failure = { category: 'game', code: 'java_test_failed', message: 'nope', fix: null, detail: null, params: {} };
@@ -106,6 +131,7 @@ it('keeps a stored Java chosen and saves it unchanged without asking again', asy
   backend.state.listing.instances[0]!.java.path = TEMURIN_21;
   expect(await screen.findByRole('radio', { name: /Eclipse Temurin 21\.0\.4/ })).toBeChecked();
   expect(screen.getByRole('switch', { name: 'Use this Java anyway' })).toBeChecked();
+  await touchName(user);
   await user.click(screen.getByRole('button', { name: 'Save' }));
   const saved = sent(calls, 'instance_update')[0] as { instance: { java: { path: string } } };
   expect(saved.instance.java.path).toBe(TEMURIN_21);
@@ -147,6 +173,7 @@ it('shows a failure to open the file dialog instead of leaving it unhandled', as
 
 it('clears "Saved" and a failed save as soon as the form changes again', async () => {
   const { user, backend } = renderApp(<InstanceSettings id="asalith-fields" />);
+  await touchName(user);
   await user.click(await screen.findByRole('button', { name: 'Save' }));
   expect(await screen.findByText('Saved')).toBeInTheDocument();
   await user.type(screen.getByRole('textbox', { name: 'Name' }), '!');
@@ -163,6 +190,7 @@ it('clears "Saved" and a failed save as soon as the form changes again', async (
 it('saves an untouched instance with its game exactly as it was, loader version included', async () => {
   const { user, calls } = renderApp(<InstanceSettings id="asalith-fields" />);
   await screen.findByRole('option', { name: /0\.19\.5/ });
+  await touchName(user);
   await user.click(screen.getByRole('button', { name: 'Save' }));
   const saved = sent(calls, 'instance_update')[0] as { instance: { game: unknown } };
   expect(saved.instance.game).toEqual({ minecraft: '1.20.1', loader: { kind: 'fabric', version: '0.16.14' } });
@@ -174,6 +202,7 @@ it('saves an instance whose Minecraft version the catalog does not list unchange
   const select = await screen.findByRole('combobox', { name: 'Minecraft version' });
   await screen.findByRole('option', { name: '26.3' });
   expect(select).toHaveValue('1.2.5');
+  await touchName(user);
   await user.click(screen.getByRole('button', { name: 'Save' }));
   const saved = sent(calls, 'instance_update')[0] as { instance: { game: unknown } };
   expect(saved.instance.game).toEqual({ minecraft: '1.2.5', loader: null });
@@ -250,6 +279,7 @@ it('shows a stored Java arguments value and saves it unchanged', async () => {
   backend.state.listing.instances[0]!.java.args = '-XX:+UseZGC -Dname="two words"';
   const field = await screen.findByRole('textbox', { name: 'Java arguments' });
   expect(field).toHaveValue('-XX:+UseZGC -Dname="two words"');
+  await touchName(user);
   await user.click(screen.getByRole('button', { name: 'Save' }));
   const saved = sent(calls, 'instance_update')[0] as { instance: { java: { args: string } } };
   expect(saved.instance.java.args).toBe('-XX:+UseZGC -Dname="two words"');
@@ -277,6 +307,7 @@ it('opens the game window as before until the player picks a size', async () => 
   const { user, calls } = renderApp(<InstanceSettings id="asalith-fields" />);
   expect(await screen.findByRole('radio', { name: "Game's default" })).toBeChecked();
   expect(screen.queryByRole('spinbutton', { name: 'Width' })).not.toBeInTheDocument();
+  await touchName(user);
   await user.click(screen.getByRole('button', { name: 'Save' }));
   const saved = sent(calls, 'instance_update')[0] as { instance: Instance };
   expect(saved.instance.window).toEqual({ mode: 'default' });
