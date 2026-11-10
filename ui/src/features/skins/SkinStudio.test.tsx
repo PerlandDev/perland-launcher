@@ -524,6 +524,38 @@ it('picking a version previews it without painting, and Back to now leaves', asy
   expect(screen.queryByRole('button', { name: 'Restore this version' })).not.toBeInTheDocument();
 });
 
+it('History shows a version kept by a save at once, not one asked for before it', async () => {
+  const { user } = renderApp(<SkinStudio />);
+  const wardrobe = await screen.findByRole('list', { name: 'Wardrobe' });
+  await user.click(within(wardrobe).getByRole('button', { name: /^Miner/ }));
+  await screen.findByText('Saved');
+  await user.click(screen.getByRole('button', { name: 'History' }));
+  expect(await screen.findByText('No earlier versions yet. One is kept as soon as you change this skin.')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Close history' }));
+  // The first save of a skin with no history keeps the texture it overwrites.
+  await paintTexel(9, 9);
+  await screen.findByText('Saved', {}, { timeout: 3000 });
+  await user.click(screen.getByRole('button', { name: 'History' }));
+  const list = await screen.findByRole('list', { name: 'Earlier versions' });
+  expect(within(list).getAllByRole('button')).toHaveLength(1);
+});
+
+it('History shows the version kept on leaving a changed skin when it comes back to it', async () => {
+  encoding.tagged = true;
+  const { user, calls } = renderApp(<SkinStudio />);
+  const list = await openHistory(user);
+  expect(within(list).getAllByRole('button')).toHaveLength(4);
+  await user.click(screen.getByRole('button', { name: 'Close history' }));
+  await paintTexel(9, 9);
+  await waitFor(() => expect(sent(calls, 'skin_save')).toHaveLength(1), { timeout: 3000 });
+  const wardrobe = screen.getByRole('list', { name: 'Wardrobe' });
+  await user.click(within(wardrobe).getByRole('button', { name: /^Miner/ }));
+  await waitFor(() => expect(sent(calls, 'skin_checkpoint')).toHaveLength(1));
+  await user.click(within(wardrobe).getByRole('button', { name: /^Beach day/ }));
+  await openHistory(user);
+  await waitFor(() => expect(within(screen.getByRole('list', { name: 'Earlier versions' })).getAllByRole('button')).toHaveLength(5));
+});
+
 it('Restore makes the version the skin, and Undo takes it back', async () => {
   const { user, calls } = renderApp(<SkinStudio />);
   const list = await openHistory(user);
