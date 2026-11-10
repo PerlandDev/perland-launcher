@@ -322,15 +322,17 @@ pub enum ArtChoice {
 }
 
 /// How a picture background sits in the marquee, saved together from "Adjust the background":
-/// which point stays in view, how big it is drawn (percent of the size that just covers the
-/// marquee) and what fills the marquee around it when it no longer covers it. `None` is each
-/// one's default.
+/// which point stays in view, how big it is drawn (its height in percent of the marquee's), what
+/// fills the marquee around it when it no longer covers it, and the marquee's shape then (its
+/// width per 1000 of its height), so another window shape shows the same part of the picture.
+/// `None` is each one's default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BannerView {
     pub focus: Option<Focus>,
     pub zoom: Option<u16>,
     pub edges: Option<BannerEdges>,
+    pub aspect: Option<u16>,
 }
 
 /// What the player picked for the icon in "Change image…": the generated monogram, the pack's

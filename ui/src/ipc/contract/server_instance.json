@@ -41,6 +41,7 @@
   "bannerFocus": null,
   "bannerZoom": null,
   "bannerEdges": null,
+  "bannerAspect": null,
   "updateHold": {
     "since": 1791720000,
     "version": "1.0.3"

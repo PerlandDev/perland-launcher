@@ -98,6 +98,12 @@ describe('a zoomed banner', () => {
     expect(zoomed({ zoom: 200 }).img.style.width).toBe('1000px');
   });
 
+  it('draws a view chosen at a wider shape smaller, so a narrower panel still shows all it framed', () => {
+    // Chosen at 4:1: the 1000 × 500 panel's band is 1000 × 250, so 100 is 250 tall, from the bottom.
+    const { img } = zoomed({ zoom: 100, aspect: 4000 });
+    expect([img.style.left, img.style.top, img.style.width, img.style.height]).toEqual(['375px', '250px', '250px', '250px']);
+  });
+
   it('draws pixel edges behind it, and none when they cannot be made', () => {
     const { container } = zoomed({ zoom: 50, edges: 'pixel' });
     expect(container.querySelector<HTMLImageElement>('img.marquee-edges')?.getAttribute('src')).toBe('data:image/png;base64,EDGES');

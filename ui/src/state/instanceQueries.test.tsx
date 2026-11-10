@@ -63,10 +63,10 @@ it('shows a background view at once and saves all of it together', async () => {
   const { qc, wrapper } = setup();
   qc.setQueryData(qk.instances, await (await import('../ipc/commands')).commands.instancesList());
   const cached = () => qc.getQueryData<InstanceListing>(qk.instances)!.instances.find((i) => i.id === 'sky-islands')!;
-  const view = { focus: { x: 10, y: 20 }, zoom: 60, edges: 'pixel' } as const;
+  const view = { focus: { x: 10, y: 20 }, zoom: 60, edges: 'pixel', aspect: 1833 } as const;
   const { result } = renderHook(() => ({ preview: usePreviewBannerView(), save: useSetBannerView() }), { wrapper });
   act(() => result.current.preview('sky-islands', view));
-  expect([cached().bannerFocus, cached().bannerZoom, cached().bannerEdges]).toEqual([{ x: 10, y: 20 }, 60, 'pixel']);
+  expect([cached().bannerFocus, cached().bannerZoom, cached().bannerEdges, cached().bannerAspect]).toEqual([{ x: 10, y: 20 }, 60, 'pixel', 1833]);
   const saved = await act(() => result.current.save.mutateAsync({ id: 'sky-islands', view }));
-  expect([saved.bannerFocus, saved.bannerZoom, saved.bannerEdges]).toEqual([{ x: 10, y: 20 }, 60, 'pixel']);
+  expect([saved.bannerFocus, saved.bannerZoom, saved.bannerEdges, saved.bannerAspect]).toEqual([{ x: 10, y: 20 }, 60, 'pixel', 1833]);
 });

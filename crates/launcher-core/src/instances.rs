@@ -434,6 +434,11 @@ impl Focus {
 pub const MIN_BANNER_ZOOM: u16 = 25;
 pub const MAX_BANNER_ZOOM: u16 = 500;
 
+/// The narrowest and widest marquee shape a background view keeps: its width per 1000 of its
+/// height (1500 is 3:2).
+pub const MIN_BANNER_ASPECT: u16 = 500;
+pub const MAX_BANNER_ASPECT: u16 = 5000;
+
 /// What fills the marquee around a background picture zoomed out until it no longer covers
 /// it: the panel's own dark ground, or the same picture as big dark pixels.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -486,6 +491,11 @@ pub struct Instance {
     /// What fills the marquee around a picture zoomed out below 100. `None` is `Dark`.
     #[serde(default)]
     pub banner_edges: Option<BannerEdges>,
+    /// The marquee's shape when the view was chosen: its width per 1000 of its height. At any
+    /// other shape the part of the picture framed then stays in view whole. `None` (a view from
+    /// before shapes were kept) is 3:2.
+    #[serde(default)]
+    pub banner_aspect: Option<u16>,
     /// Set by going back on an instance that checks for updates: sync is skipped until the
     /// player updates again, or the source's version equals `version`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -573,6 +583,7 @@ impl InstanceStore {
             banner_focus: None,
             banner_zoom: None,
             banner_edges: None,
+            banner_aspect: None,
             update_hold: None,
         };
         tokio::fs::create_dir_all(self.game_dir(&instance.id)).await?;
@@ -1320,6 +1331,20 @@ mod tests {
         let again: Instance = serde_json::from_value(back).unwrap();
         assert_eq!(again.banner_zoom, Some(150));
         assert_eq!(again.banner_edges, Some(BannerEdges::Pixel));
+    }
+
+    #[test]
+    fn old_instance_json_has_no_banner_aspect() {
+        let json =
+            r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"}}"#;
+        let mut instance: Instance = serde_json::from_str(json).unwrap();
+        assert_eq!(instance.banner_aspect, None);
+        assert!(serde_json::to_value(&instance).unwrap()["bannerAspect"].is_null());
+        instance.banner_aspect = Some(1833);
+        let back = serde_json::to_value(&instance).unwrap();
+        assert_eq!(back["bannerAspect"], serde_json::json!(1833));
+        let again: Instance = serde_json::from_value(back).unwrap();
+        assert_eq!(again.banner_aspect, Some(1833));
     }
 
     #[test]

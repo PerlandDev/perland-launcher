@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { runStore } from '../../state/runStore';
 import { createMockBackend } from '../../ipc/mock';
 import type { Instance } from '../../ipc/schema';
-import { zoomAround } from '../../art/bannerLayout';
+import { restateView, zoomAround } from '../../art/bannerLayout';
 import { renderApp, sent } from '../../test/backend';
 
 import { renderWithProviders } from '../../test/render';
@@ -19,6 +19,9 @@ async function openPicker(user: ReturnType<typeof renderApp>['user'], name: stri
 
 /** Home's header as the adjust view takes it when it can't be measured. */
 const FALLBACK = { width: 1000, height: 562 };
+/** The shape "Adjust the background" keeps with a zoom chosen on that header: its width per 1000 of its height. */
+const HEADER_ASPECT = 1779;
+const A = HEADER_ASPECT / 1000;
 
 const group = (dialog: HTMLElement, name: 'Icon' | 'Background') => within(within(dialog).getByRole('radiogroup', { name }));
 /** Shows one of Background's tabs. */
@@ -265,7 +268,7 @@ describe('Change image: adjust the background', () => {
   const rect = (left: number, top: number, width: number, height: number) => () =>
     ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
   /** The mock's Castle Keep, with its own background picture and, if given, a saved view. */
-  function castle(view: Partial<Pick<Instance, 'bannerFocus' | 'bannerZoom' | 'bannerEdges'>> = {}) {
+  function castle(view: Partial<Pick<Instance, 'bannerFocus' | 'bannerZoom' | 'bannerEdges' | 'bannerAspect'>> = {}) {
     const backend = createMockBackend({ pictureBackground: true });
     backend.state.listing.instances = backend.state.listing.instances.map((i) => (i.id === 'castle-keep' ? { ...i, ...view } : i));
     const calls: [string, unknown][] = [];
@@ -333,7 +336,7 @@ describe('Change image: adjust the background', () => {
       expect(homeBanner()?.style.objectPosition).toBe('45% 95%');
       expect(saved(calls)).toEqual([]);
       act(() => vi.advanceTimersByTime(1));
-      await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: { x: 45, y: 95 }, zoom: null, edges: null } }]));
+      await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: { x: 45, y: 95 }, zoom: null, edges: null, aspect: null } }]));
     } finally {
       vi.useRealTimers();
     }
@@ -356,7 +359,7 @@ describe('Change image: adjust the background', () => {
       fireEvent.wheel(view.querySelector('.banner-preview-drag')!, { deltaY: -100 });
       expect(zoom).toHaveValue('65');
       act(() => vi.advanceTimersByTime(300));
-      await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: null, zoom: 65, edges: null } }]));
+      await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: null, zoom: 65, edges: null, aspect: HEADER_ASPECT } }]));
     } finally {
       vi.useRealTimers();
     }
@@ -380,7 +383,7 @@ describe('Change image: adjust the background', () => {
       vi.useRealTimers();
     }
     // The position becomes the one that keeps the picture where it was: the bottom middle.
-    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: { x: 50, y: 100 }, zoom: 175, edges: null } }]));
+    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: { x: 50, y: 100 }, zoom: 175, edges: null, aspect: HEADER_ASPECT } }]));
   });
 
   /** The 500 × 500 picture's own size, as the probe reports it once loaded. */
@@ -403,10 +406,32 @@ describe('Change image: adjust the background', () => {
     } finally {
       vi.useRealTimers();
     }
-    const focus = zoomAround(FALLBACK, square, 200, { x: 30, y: 40 }, 205);
+    // Saved before the header's shape was kept: restated for this header first, so the picture doesn't move.
+    const start = restateView(FALLBACK, square, 200, { x: 30, y: 40 }, undefined, A);
+    expect(start.zoom).toBe(200);
+    const focus = zoomAround(FALLBACK, square, start.zoom, start.focus, 205, undefined, A);
     // Not where it was: a zoom that kept x% and y% would close in on a corner.
-    expect(focus).not.toEqual({ x: 30, y: 40 });
-    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus, zoom: 205, edges: null } }]));
+    expect(focus).not.toEqual(start.focus);
+    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus, zoom: 205, edges: null, aspect: HEADER_ASPECT } }]));
+  });
+
+  it('restates a zoom chosen at another window shape for this header, then keeps this shape with it', async () => {
+    // Chosen at 4:1: on this header its band is 1000 × 250, so 200 drew the picture 500 tall, 89 % of the header: 90 on the step.
+    const { user, calls } = castle({ bannerFocus: { x: 20, y: 100 }, bannerZoom: 200, bannerAspect: 4000 });
+    const view = await adjust(user);
+    loadSquare(view);
+    const start = restateView(FALLBACK, square, 200, { x: 20, y: 100 }, 4, A);
+    expect(start.zoom).toBe(90);
+    await vi.waitFor(() => expect(within(view).getByRole('slider', { name: 'Zoom' })).toHaveValue('90'));
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.click(within(view).getByRole('button', { name: 'Zoom in' }));
+      act(() => vi.advanceTimersByTime(300));
+    } finally {
+      vi.useRealTimers();
+    }
+    const focus = zoomAround(FALLBACK, square, 90, start.focus, 95, undefined, A);
+    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus, zoom: 95, edges: null, aspect: HEADER_ASPECT } }]));
   });
 
   it('zooms the wheel into the point under the pointer', async () => {
@@ -423,9 +448,10 @@ describe('Change image: adjust the background', () => {
     } finally {
       vi.useRealTimers();
     }
-    const focus = zoomAround(FALLBACK, square, 200, { x: 50, y: 50 }, 205, { x: 600, y: 300 });
-    expect(focus).not.toEqual(zoomAround(FALLBACK, square, 200, { x: 50, y: 50 }, 205));
-    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus, zoom: 205, edges: null } }]));
+    const start = restateView(FALLBACK, square, 200, { x: 50, y: 50 }, undefined, A);
+    const focus = zoomAround(FALLBACK, square, start.zoom, start.focus, 205, { x: 600, y: 300 }, A);
+    expect(focus).not.toEqual(zoomAround(FALLBACK, square, start.zoom, start.focus, 205, undefined, A));
+    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus, zoom: 205, edges: null, aspect: HEADER_ASPECT } }]));
   });
 
   it('shows Edges only while the picture no longer covers the header, and saves a pick at once', async () => {
@@ -438,7 +464,7 @@ describe('Change image: adjust the background', () => {
     expect(edges().style.visibility).toBe('');
     expect(within(view).getByRole('radio', { name: 'Dark' })).toBeChecked();
     await user.click(within(view).getByRole('radio', { name: 'Pixel' }));
-    await vi.waitFor(() => expect(saved(calls).at(-1)).toEqual({ id: 'castle-keep', view: { focus: null, zoom: 60, edges: 'pixel' } }));
+    await vi.waitFor(() => expect(saved(calls).at(-1)).toEqual({ id: 'castle-keep', view: { focus: null, zoom: 60, edges: 'pixel', aspect: HEADER_ASPECT } }));
   });
 
   it('saves a drag on the preview when the pointer is released', async () => {
@@ -456,7 +482,7 @@ describe('Change image: adjust the background', () => {
     expect(saved(calls)).toEqual([]);
     fireEvent.pointerUp(drag, { clientX: 100, clientY: 150, pointerId: 1 });
     // Covering 1000 wide, the picture can't move sideways; dragging it down 100 header pixels shows more of its top.
-    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: { x: 50, y: 77 }, zoom: null, edges: null } }]));
+    await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: { x: 50, y: 77 }, zoom: null, edges: null, aspect: null } }]));
   });
 
   it('goes back to the default with Reset', async () => {
@@ -464,7 +490,7 @@ describe('Change image: adjust the background', () => {
     const view = await adjust(user);
     expect(within(view).getByRole('slider', { name: 'Zoom' })).toHaveValue('60');
     await user.click(within(view).getByRole('button', { name: 'Reset' }));
-    expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: null, zoom: null, edges: null } }]);
+    expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: null, zoom: null, edges: null, aspect: null } }]);
     expect(within(view).getByRole('slider', { name: 'Zoom' })).toHaveValue('100');
     // Already the default: nothing more to send.
     expect(within(view).getByRole('button', { name: 'Reset' })).toHaveAttribute('aria-disabled', 'true');
@@ -486,7 +512,7 @@ describe('Change image: adjust the background', () => {
         // The 300 ms wait never ends: only leaving can have sent it.
         vi.useRealTimers();
       }
-      await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: { x: 55, y: 100 }, zoom: null, edges: null } }]));
+      await vi.waitFor(() => expect(saved(calls)).toEqual([{ id: 'castle-keep', view: { focus: { x: 55, y: 100 }, zoom: null, edges: null, aspect: null } }]));
       unmount();
     }
   });

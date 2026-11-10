@@ -1,6 +1,21 @@
 import { useContext, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type Ref, type WheelEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { bannerBox, clampZoom, coverZoom, DEFAULT_FOCUS, dragFocus, leavesEdges, MAX_ZOOM, MIN_ZOOM, placeFrame, ZOOM_STEP, zoomAround, type Size } from '../../art/bannerLayout';
+import {
+  aspectOf,
+  bannerBox,
+  clampZoom,
+  coverZoom,
+  DEFAULT_FOCUS,
+  dragFocus,
+  leavesEdges,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  placeFrame,
+  restateView,
+  ZOOM_STEP,
+  zoomAround,
+  type Size,
+} from '../../art/bannerLayout';
 import { Marquee } from '../../art/Marquee';
 import { artSeed } from '../../art/seed';
 import type { BannerEdges, BannerView, Focus, Instance } from '../../ipc/schema';
@@ -24,9 +39,10 @@ const ARROWS: Partial<Record<string, [number, number]>> = {
 const clamp = (n: number) => Math.min(100, Math.max(0, Math.round(n)));
 
 /** Dark edges, the default, are stored as null, so Reset knows when there is nothing to reset. A zoom stays as chosen:
- *  null is "covers the header", which a number only matches at one window size. */
-function normal(view: BannerView): BannerView {
-  return { focus: view.focus, zoom: view.zoom, edges: view.edges === 'dark' ? null : view.edges };
+ *  null is "covers the header", which a number only matches at one window size. A chosen zoom keeps the header's
+ *  shape (`aspect`), so another window shape shows the same part of the picture; covering needs none. */
+function normal(view: BannerView, aspect: number): BannerView {
+  return { focus: view.focus, zoom: view.zoom, edges: view.edges === 'dark' ? null : view.edges, aspect: view.zoom === null ? null : aspect };
 }
 
 /** What the dialog can ask of a view still waiting to be saved. */
@@ -69,14 +85,28 @@ export function BannerAdjust({
     const rect = document.querySelector('[data-home-hero]')?.getBoundingClientRect();
     return rect && rect.width > 0 && rect.height > 0 ? { width: rect.width, height: rect.height } : FALLBACK_HERO;
   });
-  const [draft, setDraft] = useState<BannerView>(() => ({ focus: instance.bannerFocus, zoom: instance.bannerZoom, edges: instance.bannerEdges }));
+  // The header's shape, kept with a chosen zoom: at any other shape, the part of the picture framed here shows whole.
+  const aspect = aspectOf(header);
+  const A = aspect / 1000;
+  const [chosen, setDraft] = useState<BannerView>(() => ({
+    focus: instance.bannerFocus,
+    zoom: instance.bannerZoom,
+    edges: instance.bannerEdges,
+    aspect: instance.bannerAspect,
+  }));
   const [natural, setNatural] = useState<Size | null>(null);
+  // A zoom chosen at another shape (or before shapes were kept, 3:2) is restated for this header once the picture's
+  // size is known, drawn where it is, so changing it here starts from what shows.
+  const draft: BannerView =
+    natural && chosen.zoom !== null && chosen.aspect !== aspect
+      ? { ...chosen, ...restateView(header, natural, chosen.zoom, chosen.focus, chosen.aspect === null ? undefined : chosen.aspect / 1000, A), aspect }
+      : chosen;
   const [scale, setScale] = useState(0.5);
   const [dragging, setDragging] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
   const focus = draft.focus ?? DEFAULT_FOCUS;
   // With no zoom chosen the picture covers the header: the slider starts from the zoom that does that now.
-  const zoom = draft.zoom ?? (natural ? coverZoom(header, natural) : 100);
+  const zoom = draft.zoom ?? (natural ? coverZoom(header, natural, A) : 100);
   const edges: BannerEdges = draft.edges ?? 'dark';
   const atDefault = draft.focus === null && draft.zoom === null && draft.edges === null;
 
@@ -119,7 +149,7 @@ export function BannerAdjust({
   }, [header.width]);
 
   const move = (next: BannerView, when: 'now' | 'later' | 'drag') => {
-    const view = normal(next);
+    const view = normal(next, aspect);
     lastShown.current = view;
     setDraft(view);
     onPreview(view);
@@ -138,7 +168,7 @@ export function BannerAdjust({
     if (disabled) return;
     const next = clampZoom(value);
     if (next === draft.zoom) return;
-    const focus = natural ? zoomAround(header, natural, draft.zoom, draft.focus, next, anchor) : draft.focus;
+    const focus = natural ? zoomAround(header, natural, draft.zoom, draft.focus, next, anchor, A) : draft.focus;
     move({ ...draft, focus, zoom: next }, 'later');
   };
 
@@ -157,8 +187,8 @@ export function BannerAdjust({
     const k = rect.width / header.width;
     const delta = { width: (event.clientX - start.x) / k, height: (event.clientY - start.y) / k };
     // A zoomed picture moves across the 3:2 band in the middle of the header; one that covers it, across the header.
-    const space = draft.zoom === null ? header : { width: placeFrame(header).width, height: header.height };
-    return { ...draft, focus: dragFocus(start.from, delta, space, bannerBox(header, natural, draft.zoom, start.from)) };
+    const space = draft.zoom === null ? header : { width: placeFrame(header, A).width, height: header.height };
+    return { ...draft, focus: dragFocus(start.from, delta, space, bannerBox(header, natural, draft.zoom, start.from, A)) };
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     const next = dragged(event);
@@ -212,8 +242,8 @@ export function BannerAdjust({
     />
   );
   // Whether the picture leaves part of the header uncovered now; before its size is known, a zoom under 100 surely does.
-  const showsEdges = natural ? leavesEdges(header, bannerBox(header, natural, draft.zoom, draft.focus)) : draft.zoom !== null && draft.zoom < 100;
-  const shown: Instance = { ...instance, bannerFocus: draft.focus, bannerZoom: draft.zoom, bannerEdges: draft.edges };
+  const showsEdges = natural ? leavesEdges(header, bannerBox(header, natural, draft.zoom, draft.focus, A)) : draft.zoom !== null && draft.zoom < 100;
+  const shown: Instance = { ...instance, bannerFocus: draft.focus, bannerZoom: draft.zoom, bannerEdges: draft.edges, bannerAspect: draft.aspect };
   const fill = `${((zoom - MIN_ZOOM) / (MAX_ZOOM - MIN_ZOOM)) * 100}%`;
   const edgeChoice = (kind: BannerEdges, label: string) => (
     <label className="seg seg-sm" data-checked={edges === kind ? '' : undefined}>
@@ -245,6 +275,7 @@ export function BannerAdjust({
                   focus={draft.focus}
                   zoom={draft.zoom}
                   edges={draft.edges}
+                  aspect={draft.aspect}
                   className="absolute inset-0"
                 />
               )}
@@ -317,7 +348,7 @@ export function BannerAdjust({
           variant="ghost"
           aria-disabled={atDefault || disabled || undefined}
           onClick={() => {
-            if (!atDefault && !disabled) move({ focus: null, zoom: null, edges: null }, 'now');
+            if (!atDefault && !disabled) move({ focus: null, zoom: null, edges: null, aspect: null }, 'now');
           }}
         >
           {t('image.reset')}

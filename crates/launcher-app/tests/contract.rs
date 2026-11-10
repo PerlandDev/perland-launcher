@@ -136,6 +136,7 @@ fn fabric_instance() -> Instance {
         banner_focus: Some(Focus { x: 30, y: 60 }),
         banner_zoom: Some(150),
         banner_edges: Some(BannerEdges::Pixel),
+        banner_aspect: Some(1833),
         update_hold: None,
     }
 }
@@ -167,6 +168,7 @@ fn vanilla_instance() -> Instance {
         banner_focus: None,
         banner_zoom: None,
         banner_edges: None,
+        banner_aspect: None,
         update_hold: None,
     }
 }
@@ -540,6 +542,7 @@ fn server_instance() -> Instance {
         banner_focus: None,
         banner_zoom: None,
         banner_edges: None,
+        banner_aspect: None,
         update_hold: Some(UpdateHold {
             since: 1_791_720_000,
             version: "1.0.3".into(),
@@ -1539,16 +1542,19 @@ fn contract_fixtures_are_current() {
                 focus: None,
                 zoom: None,
                 edges: None,
+                aspect: None,
             },
             BannerView {
                 focus: Some(Focus { x: 70, y: 40 }),
                 zoom: Some(60),
                 edges: Some(BannerEdges::Pixel),
+                aspect: Some(1500),
             },
             BannerView {
                 focus: Some(Focus { x: 0, y: 100 }),
                 zoom: Some(300),
                 edges: Some(BannerEdges::Dark),
+                aspect: None,
             },
         ],
     );

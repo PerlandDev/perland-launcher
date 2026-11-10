@@ -149,9 +149,12 @@ describe('mock backend', () => {
 
   it('saves a background view, refuses a zoom out of range and starts a new background from the default view', async () => {
     const { handle } = createMockBackend();
-    const view = { focus: { x: 70, y: 40 }, zoom: 60, edges: 'pixel' };
+    const view = { focus: { x: 70, y: 40 }, zoom: 60, edges: 'pixel', aspect: 1833 };
     const set = (await handle('instance_banner_view_set', { id: 'sky-islands', view })) as Instance;
-    expect([set.bannerFocus, set.bannerZoom, set.bannerEdges]).toEqual([{ x: 70, y: 40 }, 60, 'pixel']);
+    expect([set.bannerFocus, set.bannerZoom, set.bannerEdges, set.bannerAspect]).toEqual([{ x: 70, y: 40 }, 60, 'pixel', 1833]);
+    for (const aspect of [499, 5001]) {
+      await expect(handle('instance_banner_view_set', { id: 'sky-islands', view: { ...view, aspect } })).rejects.toMatchObject({ code: 'banner_aspect_invalid' });
+    }
     for (const zoom of [24, 501]) {
       await expect(handle('instance_banner_view_set', { id: 'sky-islands', view: { ...view, zoom } })).rejects.toMatchObject({ code: 'banner_zoom_invalid' });
     }
@@ -159,7 +162,15 @@ describe('mock backend', () => {
       code: 'banner_focus_invalid',
     });
     const fresh = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/view.png' } })) as Instance;
-    expect([fresh.bannerFocus, fresh.bannerZoom, fresh.bannerEdges]).toEqual([null, null, null]);
+    expect([fresh.bannerFocus, fresh.bannerZoom, fresh.bannerEdges, fresh.bannerAspect]).toEqual([null, null, null, null]);
+  });
+
+  it('keeps the whole background view when instance settings save a copy read before it', async () => {
+    const { handle, state } = createMockBackend();
+    const before = state.listing.instances.find((i) => i.id === 'sky-islands')!;
+    await handle('instance_banner_view_set', { id: 'sky-islands', view: { focus: { x: 70, y: 40 }, zoom: 60, edges: 'pixel', aspect: 1833 } });
+    const after = (await handle('instance_update', { instance: { ...before, java: { ...before.java, memoryMb: before.java.memoryMb + 512 } } })) as Instance;
+    expect([after.bannerFocus, after.bannerZoom, after.bannerEdges, after.bannerAspect]).toEqual([{ x: 70, y: 40 }, 60, 'pixel', 1833]);
   });
 
   it('drops the pictures of a deleted instance, so a new one with its name starts clean', async () => {

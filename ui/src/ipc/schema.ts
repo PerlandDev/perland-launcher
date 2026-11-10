@@ -406,6 +406,8 @@ export const instance = z.strictObject({
   bannerZoom: z.number().int().nullable(),
   /** What fills the marquee around a picture zoomed out below 100; null is dark. */
   bannerEdges: z.enum(['dark', 'pixel']).nullable(),
+  /** The marquee's shape when the view was chosen (width per 1000 of height); null is 3:2. */
+  bannerAspect: z.number().int().nullable(),
   /** Set after going back on an instance that checks for updates: Play skips the check until "Update again". Absent when not held. */
   updateHold: z.strictObject({ since: z.number().int(), version: z.string() }).optional(),
 });
@@ -716,6 +718,7 @@ export const bannerView = z.strictObject({
   focus: z.strictObject({ x: z.number().int(), y: z.number().int() }).nullable(),
   zoom: z.number().int().nullable(),
   edges: z.enum(['dark', 'pixel']).nullable(),
+  aspect: z.number().int().nullable(),
 });
 export const iconChoice = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('generated') }),

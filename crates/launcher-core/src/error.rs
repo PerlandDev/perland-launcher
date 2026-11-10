@@ -50,7 +50,7 @@ error_codes! {
     // instances
     InstanceNotFound, InstanceDamaged, InstanceIdInvalid, InstanceBusy, AlreadyRunning,
     NameInvalid, MemoryOutOfRange, ArtFileInvalid, BannerFocusInvalid, BannerZoomInvalid,
-    WindowSizeInvalid,
+    BannerAspectInvalid, WindowSizeInvalid,
     // java
     JavaUnavailable, JavaStartFailed, JavaPathMissing, JavaTestFailed, JvmArgsUnclosedQuote,
     JvmArgNotOption, JvmArgNotAllowed, JvmArgsMemory, JvmArgsTooLong,
@@ -283,6 +283,7 @@ mod tests {
             (ErrorCode::ArtFileInvalid, "art_file_invalid"),
             (ErrorCode::BannerFocusInvalid, "banner_focus_invalid"),
             (ErrorCode::BannerZoomInvalid, "banner_zoom_invalid"),
+            (ErrorCode::BannerAspectInvalid, "banner_aspect_invalid"),
             (ErrorCode::WindowSizeInvalid, "window_size_invalid"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);

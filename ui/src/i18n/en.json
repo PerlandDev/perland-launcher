@@ -1163,6 +1163,7 @@
     "art_file_invalid": { "message": "That file can't be used as an instance image.", "fix": "Pick a PNG, JPEG or WebP image." },
     "banner_focus_invalid": { "message": "That position is outside the picture." },
     "banner_zoom_invalid": { "message": "That zoom is out of range." },
+    "banner_aspect_invalid": { "message": "That background shape is out of range." },
     "window_size_invalid": { "message": "The window must be at least {{minWidth}} × {{minHeight}} and at most {{max}} on each side." },
     "import_not_instance": { "message": "This folder doesn't look like a Minecraft instance.", "fix": "Pick the instance's own folder: the one with mods, saves or config inside." },
     "import_inside_launcher": { "message": "That folder belongs to Perland Launcher itself.", "fix": "Pick a folder from your other launcher." },
