@@ -10,6 +10,20 @@ describe('bannerBox', () => {
     expect(bannerBox(frame, square, null, { x: 50, y: 50 })).toEqual({ left: 0, top: -250, width: 1000, height: 1000 });
   });
 
+  it('draws a picture with no zoom chosen as wide as the frame, so a narrower window shrinks it instead of cropping it', () => {
+    const shot = { width: 1920, height: 1080 };
+    // Wider than the picture: it covers the frame, as it always has.
+    const wide = { width: 1848, height: 1008 };
+    const there = bannerBox(wide, shot, null, null);
+    expect(there.width).toBe(1848);
+    expect(leavesEdges(wide, there)).toBe(false);
+    // Narrower: the whole picture from side to side, on the floor, with the edges above it.
+    const narrow = { width: 880, height: 660 };
+    const here = bannerBox(narrow, shot, null, null);
+    expect(here).toEqual({ left: 0, top: 165, width: 880, height: 495 });
+    expect(leavesEdges(narrow, here)).toBe(true);
+  });
+
   it("draws a chosen zoom as the picture's height in percent of the frame's", () => {
     expect(bannerBox(frame, square, 100, null)).toEqual({ left: 250, top: 0, width: 500, height: 500 });
     expect(bannerBox(frame, square, 50, null)).toEqual({ left: 375, top: 250, width: 250, height: 250 });
@@ -118,12 +132,12 @@ it('clamps a zoom to 25–500 in steps of 5', () => {
   expect(clampZoom(152)).toBe(150);
 });
 
-it('gives the zoom that covers the frame, so adjusting starts from what Home shows', () => {
+it('gives the zoom of the picture as wide as the frame, so adjusting starts from what Home shows', () => {
   expect(coverZoom(frame, square)).toBe(200);
   // At the frame's own shape, as "Adjust the background" keeps it, the zoom is in percent of the frame's height.
   expect(coverZoom({ width: 1065, height: 750 }, square, 1065 / 750)).toBe(140);
-  // A wide picture covers by its height.
-  expect(coverZoom(frame, { width: 3000, height: 1000 })).toBe(100);
+  // A picture wider than the frame starts as wide as it, not covering its height: 333 of the 500, on the step 65.
+  expect(coverZoom(frame, { width: 3000, height: 1000 })).toBe(65);
   // Against the band of the shape the view keeps: covering 600 × 500 takes 600 px, twice the 2:1 band's 300.
   expect(coverZoom({ width: 600, height: 500 }, square, 2)).toBe(200);
 });

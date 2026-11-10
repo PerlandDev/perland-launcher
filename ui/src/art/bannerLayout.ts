@@ -28,15 +28,16 @@ export function placeFrame(frame: Size, aspect: number = PLACE_ASPECT): { left: 
   return { left: (frame.width - width) / 2, width, height: width / aspect };
 }
 
-/** A picture's box in the marquee, in the frame's pixels. With no zoom chosen it just covers the frame (CSS `cover`),
- *  as it always has, and x% and y% place it as `object-position` does. A chosen zoom is the picture's height in percent
+/** A picture's box in the marquee, in the frame's pixels. With no zoom chosen it is as wide as the frame: in a frame
+ *  wider than the picture that covers it, as it always has, and a narrower window shrinks it instead of cropping its
+ *  sides, with the edges above and below it; x% and y% place it as `object-position` does. A chosen zoom is the picture's height in percent
  *  of `placeFrame`'s band, the shape the view was chosen at (`aspect`) fitted in the frame: in that shape, the frame's
  *  own height. Its y% places it in the frame's height, and its x% across the band, so whatever the window's shape, the
  *  part of the picture framed when it was chosen stays in view whole, with more of the picture (or the edges) around. */
 export function bannerBox(frame: Size, picture: Size, zoom: number | null, focus: Focus | null, aspect?: number): Box {
   const band = placeFrame(frame, aspect);
   const scale =
-    zoom === null ? Math.max(frame.width / picture.width, frame.height / picture.height) : ((zoom / 100) * band.height) / picture.height;
+    zoom === null ? frame.width / picture.width : ((zoom / 100) * band.height) / picture.height;
   const width = picture.width * scale;
   const height = picture.height * scale;
   const { x, y } = focus ?? DEFAULT_FOCUS;
@@ -97,11 +98,11 @@ export function dragFocus(start: Focus, delta: Size, frame: Size, box: Box): Foc
   return { x: along(start.x, delta.width, frame.width - box.width), y: along(start.y, delta.height, frame.height - box.height) };
 }
 
-/** The zoom that just covers `frame`, against the band of shape `aspect`: what the marquee shows with no zoom chosen,
- *  so adjusting starts from it. */
+/** The zoom of the picture as wide as `frame`, against the band of shape `aspect`: what the marquee shows with no zoom
+ *  chosen, so adjusting starts from it. */
 export function coverZoom(frame: Size, picture: Size, aspect?: number): number {
-  const cover = Math.max(frame.width / picture.width, frame.height / picture.height);
-  return clampZoom(((cover * picture.height) / placeFrame(frame, aspect).height) * 100);
+  const scale = frame.width / picture.width;
+  return clampZoom(((scale * picture.height) / placeFrame(frame, aspect).height) * 100);
 }
 
 /** Whether `box` leaves part of `frame` uncovered, where the edges show. Half a pixel is rounding, not an edge. */

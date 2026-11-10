@@ -1345,15 +1345,15 @@
     object-fit: cover;
     object-position: center bottom;
   }
-  /* A zoomed banner is sized and placed inline (left, top, width, height): the box is the picture. */
-  .marquee-banner[data-zoomed] {
+  /* Once its size is known, a banner is sized and placed inline (left, top, width, height): the box is the picture. */
+  .marquee-banner[data-placed] {
     inset: auto;
     object-fit: fill;
     /* Preflight caps every img at the panel's width, which squeezed a picture zoomed wider than it into a stretch. */
     max-width: none;
     max-height: none;
   }
-  /* Around a banner zoomed below 100, the pixel edges: the same picture as big dark blocks, never a blur. */
+  /* Around a banner that leaves part of the panel uncovered, the pixel edges: the same picture as big dark blocks, never a blur. */
   .marquee-edges {
     position: absolute;
     inset: 0;

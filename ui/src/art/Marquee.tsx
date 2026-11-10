@@ -82,7 +82,8 @@ export function Marquee({
   const sunY = Math.max(H - visible + fullSunY * (visible / H), H - visible + 5 * CELL);
   // A chosen zoom is sized and placed here, from the panel's and the picture's own sizes.
   const measured = natural?.src === art && box.width > 0 ? natural : null;
-  const placed = art && zoom !== null && measured ? bannerBox(box, measured, zoom, focus, aspect === null ? undefined : aspect / 1000) : null;
+  // Once its size is known the banner is always sized and placed here; before that the stylesheet covers the panel.
+  const placed = art && measured ? bannerBox(box, measured, zoom, focus, aspect === null ? undefined : aspect / 1000) : null;
   const drawn = placed ?? box;
   const pixels = usePixelEdges(art && edges === 'pixel' && placed && leavesEdges(box, placed) ? art : null);
   return (
@@ -101,7 +102,7 @@ export function Marquee({
                 : undefined
           }
           draggable={false}
-          data-zoomed={placed ? '' : undefined}
+          data-placed={placed ? '' : undefined}
           data-upscale={natural?.src === art && pixelUpscale(natural, drawn) ? '' : undefined}
           onLoad={(e) => setNatural({ src: art, width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight })}
           onError={() => setFailed(art)}

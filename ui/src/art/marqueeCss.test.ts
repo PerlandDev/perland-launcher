@@ -12,7 +12,7 @@ function rule(selector: string): string {
 // jsdom lays nothing out, so this pins the rule (checked in a real browser): Tailwind's preflight caps every img at
 // max-width: 100%, which squeezed a zoomed banner wider than the panel while its height stayed, stretching it.
 it('lets a zoomed banner be wider and taller than the panel, so it is never stretched', () => {
-  const zoomed = rule('.marquee-banner[data-zoomed]');
+  const zoomed = rule('.marquee-banner[data-placed]');
   expect(zoomed).toMatch(/max-width:\s*none/);
   expect(zoomed).toMatch(/max-height:\s*none/);
 });

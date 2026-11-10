@@ -84,16 +84,20 @@ describe('a zoomed banner', () => {
     return { ...view, img };
   }
 
-  it('keeps the plain cover path while no zoom is chosen', () => {
-    const { img } = zoomed({ zoom: null });
-    expect(img.style.width).toBe('');
-    expect(img.hasAttribute('data-zoomed')).toBe(false);
+  it('draws a banner with no zoom chosen as wide as the panel, with the pixel edges above a short one', () => {
+    // A 4:1 picture in the 2:1 panel: 1000 × 250, on the floor.
+    const { img, container } = zoomed({ zoom: null, edges: 'pixel' }, { width: 2000, height: 500 });
+    expect([img.style.left, img.style.top, img.style.width, img.style.height]).toEqual(['0px', '250px', '1000px', '250px']);
+    expect(img.hasAttribute('data-placed')).toBe(true);
+    expect(container.querySelector('img.marquee-edges')).not.toBeNull();
+    // One that covers the panel leaves no edges.
+    expect(zoomed({ zoom: null, edges: 'pixel' }).container.querySelector('img.marquee-edges')).toBeNull();
   });
 
   it("sizes a chosen zoom from the panel's height and places the picture itself", () => {
     const { img } = zoomed({ zoom: 50 });
     expect([img.style.left, img.style.top, img.style.width, img.style.height]).toEqual(['375px', '250px', '250px', '250px']);
-    expect(img.hasAttribute('data-zoomed')).toBe(true);
+    expect(img.hasAttribute('data-placed')).toBe(true);
     // 200 is as tall as twice the panel: 1000 × 1000, which covers it.
     expect(zoomed({ zoom: 200 }).img.style.width).toBe('1000px');
   });
