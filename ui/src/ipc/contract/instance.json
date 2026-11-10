@@ -30,5 +30,6 @@
     "y": 60
   },
   "bannerZoom": 150,
-  "bannerEdges": "pixel"
+  "bannerEdges": "pixel",
+  "bannerAspect": 1833
 }

@@ -635,7 +635,7 @@ export function usePreviewBannerView() {
     qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
       listing && {
         ...listing,
-        instances: listing.instances.map((i) => (i.id === id ? { ...i, bannerFocus: view.focus, bannerZoom: view.zoom, bannerEdges: view.edges } : i)),
+        instances: listing.instances.map((i) => (i.id === id ? { ...i, bannerFocus: view.focus, bannerZoom: view.zoom, bannerEdges: view.edges, bannerAspect: view.aspect } : i)),
       },
     );
 }

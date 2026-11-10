@@ -462,7 +462,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// Version and Java changes wait until the game stops; other edits are fine while it runs.
     /// Where an instance comes from (`source`), its server link (`server`) and its pictures
-    /// (`art`, `art_seed`, `icon`, `banner_focus`) change only through their own commands, so a stale copy from
+    /// (`art`, `art_seed`, `icon` and the background's view) change only through their own commands, so a stale copy from
     /// the UI can't undo a relink or a picture. Server instances
     /// always follow their server (`Auto`).
     pub async fn instance_update(&self, instance: Instance) -> Result<Instance> {
@@ -485,6 +485,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         instance.art_seed = current.art_seed.clone();
         instance.icon = current.icon;
         instance.banner_focus = current.banner_focus;
+        instance.banner_zoom = current.banner_zoom;
+        instance.banner_edges = current.banner_edges;
+        instance.banner_aspect = current.banner_aspect;
         // Only going back and "Update again" set or lift the hold.
         instance.update_hold = current.update_hold.clone();
         if matches!(current.source, SourceRef::Perland { .. }) {
@@ -1686,6 +1689,38 @@ pub(crate) mod tests {
         core.instance_update(instance).await.unwrap();
         let after = core.instances.load("a").await.unwrap();
         assert_eq!(after.banner_focus, Some(Focus { x: 20, y: 80 }));
+        assert_eq!(after.java.memory_mb, stored.java.memory_mb + 512);
+    }
+
+    #[tokio::test]
+    async fn update_keeps_the_whole_banner_view_from_disk() {
+        use launcher_core::instances::{BannerEdges, Focus};
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let mut instance = core.instance_create(vanilla("A")).await.unwrap();
+        let mut stored = core.instances.load("a").await.unwrap();
+        stored.banner_focus = Some(Focus { x: 20, y: 80 });
+        stored.banner_zoom = Some(150);
+        stored.banner_edges = Some(BannerEdges::Pixel);
+        stored.banner_aspect = Some(1833);
+        core.instances.update(&stored).await.unwrap();
+        // Instance settings saves a copy read before "Adjust the background" changed the view.
+        instance.java.memory_mb += 512;
+        core.instance_update(instance).await.unwrap();
+        let after = core.instances.load("a").await.unwrap();
+        assert_eq!(
+            (
+                after.banner_focus,
+                after.banner_zoom,
+                after.banner_edges,
+                after.banner_aspect
+            ),
+            (
+                Some(Focus { x: 20, y: 80 }),
+                Some(150),
+                Some(BannerEdges::Pixel),
+                Some(1833)
+            )
+        );
         assert_eq!(after.java.memory_mb, stored.java.memory_mb + 512);
     }
 

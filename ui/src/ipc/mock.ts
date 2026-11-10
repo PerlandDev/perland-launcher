@@ -398,6 +398,7 @@ function seed(options: MockOptions) {
       bannerFocus: null,
       bannerZoom: null,
       bannerEdges: null,
+      bannerAspect: null,
     };
     listing.instances = [...listing.instances, sky];
     const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
@@ -442,6 +443,7 @@ function seed(options: MockOptions) {
       bannerFocus: null,
       bannerZoom: null,
       bannerEdges: null,
+      bannerAspect: null,
     };
     listing.instances = [...listing.instances, castle];
     custom.set(castle.id, CASTLE_PICTURE);
@@ -951,6 +953,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         bannerFocus: null,
         bannerZoom: null,
         bannerEdges: null,
+        bannerAspect: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       return created;
@@ -959,7 +962,18 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const sent = args.instance as Instance;
       // Like the core: the pictures change only through their own commands.
       const stored = find(sent.id);
-      const updated: Instance = stored ? { ...sent, art: stored.art, artSeed: stored.artSeed, icon: stored.icon, bannerFocus: stored.bannerFocus } : sent;
+      const updated: Instance = stored
+        ? {
+            ...sent,
+            art: stored.art,
+            artSeed: stored.artSeed,
+            icon: stored.icon,
+            bannerFocus: stored.bannerFocus,
+            bannerZoom: stored.bannerZoom,
+            bannerEdges: stored.bannerEdges,
+            bannerAspect: stored.bannerAspect,
+          }
+        : sent;
       // Like the core: memory comes from the slider, never from the Java arguments.
       if (updated.java.args.split(/\s+/).some((token) => token.startsWith('-Xmx'))) fail('java', 'jvm_args_memory', 'Memory is set with the slider, not in the Java arguments');
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
@@ -1212,13 +1226,13 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       let updated: Instance;
       if (choice.kind === 'generated') {
         state.custom.delete(target.id);
-        updated = { ...target, art: 'generated', artSeed: choice.seed, icon, bannerFocus: null, bannerZoom: null, bannerEdges: null };
+        updated = { ...target, art: 'generated', artSeed: choice.seed, icon, bannerFocus: null, bannerZoom: null, bannerEdges: null, bannerAspect: null };
       } else if (choice.kind === 'pack') {
         state.custom.delete(target.id);
-        updated = { ...target, art: 'auto', icon, bannerFocus: null, bannerZoom: null, bannerEdges: null };
+        updated = { ...target, art: 'auto', icon, bannerFocus: null, bannerZoom: null, bannerEdges: null, bannerAspect: null };
       } else {
         state.custom.set(target.id, upload ?? invalid());
-        updated = { ...target, art: 'custom', icon, bannerFocus: null, bannerZoom: null, bannerEdges: null };
+        updated = { ...target, art: 'custom', icon, bannerFocus: null, bannerZoom: null, bannerEdges: null, bannerAspect: null };
       }
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
@@ -1259,7 +1273,9 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       }
       const zoom = view.zoom ?? null;
       if (zoom !== null && (!Number.isInteger(zoom) || zoom < 25 || zoom > 500)) fail('disk', 'banner_zoom_invalid', 'That zoom is out of range');
-      const updated: Instance = { ...target, bannerFocus: focus, bannerZoom: zoom, bannerEdges: view.edges ?? null };
+      const aspect = view.aspect ?? null;
+      if (aspect !== null && (!Number.isInteger(aspect) || aspect < 500 || aspect > 5000)) fail('disk', 'banner_aspect_invalid', 'That background shape is out of range');
+      const updated: Instance = { ...target, bannerFocus: focus, bannerZoom: zoom, bannerEdges: view.edges ?? null, bannerAspect: aspect };
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
     }
@@ -1294,6 +1310,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         bannerFocus: null,
         bannerZoom: null,
         bannerEdges: null,
+        bannerAspect: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });

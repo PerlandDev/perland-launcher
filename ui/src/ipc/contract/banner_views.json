@@ -2,7 +2,8 @@
   {
     "focus": null,
     "zoom": null,
-    "edges": null
+    "edges": null,
+    "aspect": null
   },
   {
     "focus": {
@@ -10,7 +11,8 @@
       "y": 40
     },
     "zoom": 60,
-    "edges": "pixel"
+    "edges": "pixel",
+    "aspect": 1500
   },
   {
     "focus": {
@@ -18,6 +20,7 @@
       "y": 100
     },
     "zoom": 300,
-    "edges": "dark"
+    "edges": "dark",
+    "aspect": null
   }
 ]

@@ -5,7 +5,10 @@ use std::{path::Path, sync::Arc};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
     fsutil::{path_key, write_atomic},
-    instances::{ArtMode, Focus, IconMode, Instance, SourceRef, MAX_BANNER_ZOOM, MIN_BANNER_ZOOM},
+    instances::{
+        ArtMode, Focus, IconMode, Instance, SourceRef, MAX_BANNER_ASPECT, MAX_BANNER_ZOOM,
+        MIN_BANNER_ASPECT, MIN_BANNER_ZOOM,
+    },
     mods,
     picture::{self, BACKGROUND_FIT, MAX_SOURCE_BYTES, THUMBNAIL_FIT},
     sources::{
@@ -509,6 +512,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         instance.banner_focus = None;
         instance.banner_zoom = None;
         instance.banner_edges = None;
+        instance.banner_aspect = None;
         if instance.icon.is_none() {
             if icon == IconMode::Custom {
                 self.pin_legacy_icon(id, &custom).await?;
@@ -577,7 +581,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// "Adjust the background": which point of a picture background stays in view, how big it is
-    /// drawn and what fills the edges, saved together (`None` is each one's default). The same
+    /// drawn, what fills the edges and the marquee's shape then, saved together (`None` is each one's default). The same
     /// refusals as `instance_art_set`, and only these fields are saved.
     pub async fn instance_banner_view_set(&self, id: &str, view: BannerView) -> Result<Instance> {
         if self.is_busy(id) {
@@ -604,10 +608,20 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 "That zoom is out of range",
             ));
         }
+        if view
+            .aspect
+            .is_some_and(|a| !(MIN_BANNER_ASPECT..=MAX_BANNER_ASPECT).contains(&a))
+        {
+            return Err(LauncherError::disk(
+                ErrorCode::BannerAspectInvalid,
+                "That background shape is out of range",
+            ));
+        }
         let mut instance = self.instances.load(id).await?;
         instance.banner_focus = view.focus;
         instance.banner_zoom = view.zoom;
         instance.banner_edges = view.edges;
+        instance.banner_aspect = view.aspect;
         self.instances.save(&instance).await?;
         Ok(instance)
     }
@@ -1946,7 +1960,12 @@ mod tests {
     }
 
     fn view(focus: Option<Focus>, zoom: Option<u16>, edges: Option<BannerEdges>) -> BannerView {
-        BannerView { focus, zoom, edges }
+        BannerView {
+            focus,
+            zoom,
+            edges,
+            aspect: None,
+        }
     }
 
     #[tokio::test]
@@ -1962,15 +1981,20 @@ mod tests {
         .await
         .unwrap();
         let focus = Focus { x: 20, y: 80 };
-        let chosen = view(Some(focus), Some(150), Some(BannerEdges::Pixel));
+        let chosen = BannerView {
+            aspect: Some(1833),
+            ..view(Some(focus), Some(150), Some(BannerEdges::Pixel))
+        };
         let set = core.instance_banner_view_set(&id, chosen).await.unwrap();
         assert_eq!(set.banner_focus, Some(focus));
         assert_eq!(set.banner_zoom, Some(150));
         assert_eq!(set.banner_edges, Some(BannerEdges::Pixel));
+        assert_eq!(set.banner_aspect, Some(1833));
         let loaded = core.instances.load(&id).await.unwrap();
         assert_eq!(loaded.banner_focus, Some(focus));
         assert_eq!(loaded.banner_zoom, Some(150));
         assert_eq!(loaded.banner_edges, Some(BannerEdges::Pixel));
+        assert_eq!(loaded.banner_aspect, Some(1833));
         assert_eq!(loaded.art, ArtMode::Custom, "only the view changes");
         // Back to the default.
         let set = core
@@ -1978,8 +2002,13 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            (set.banner_focus, set.banner_zoom, set.banner_edges),
-            (None, None, None)
+            (
+                set.banner_focus,
+                set.banner_zoom,
+                set.banner_edges,
+                set.banner_aspect
+            ),
+            (None, None, None, None)
         );
         core.instance_banner_view_set(&id, chosen).await.unwrap();
         // Any new background starts from the default view.
@@ -1988,13 +2017,23 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            (set.banner_focus, set.banner_zoom, set.banner_edges),
-            (None, None, None)
+            (
+                set.banner_focus,
+                set.banner_zoom,
+                set.banner_edges,
+                set.banner_aspect
+            ),
+            (None, None, None, None)
         );
         let loaded = core.instances.load(&id).await.unwrap();
         assert_eq!(
-            (loaded.banner_focus, loaded.banner_zoom, loaded.banner_edges),
-            (None, None, None)
+            (
+                loaded.banner_focus,
+                loaded.banner_zoom,
+                loaded.banner_edges,
+                loaded.banner_aspect
+            ),
+            (None, None, None, None)
         );
     }
 
@@ -2018,6 +2057,17 @@ mod tests {
                 .unwrap_err();
             assert_eq!(err.code, ErrorCode::BannerZoomInvalid);
         }
+        for aspect in [0, 499, 5001] {
+            let chosen = BannerView {
+                aspect: Some(aspect),
+                ..view(None, Some(100), None)
+            };
+            let err = core
+                .instance_banner_view_set(&id, chosen)
+                .await
+                .unwrap_err();
+            assert_eq!(err.code, ErrorCode::BannerAspectInvalid);
+        }
         assert_eq!(std::fs::read(&path).unwrap(), before);
         // The ends of each range are allowed.
         let edge = Focus { x: 100, y: 0 };
@@ -2030,6 +2080,14 @@ mod tests {
                 (set.banner_focus, set.banner_zoom),
                 (Some(edge), Some(zoom))
             );
+        }
+        for aspect in [500, 5000] {
+            let chosen = BannerView {
+                aspect: Some(aspect),
+                ..view(None, Some(100), None)
+            };
+            let set = core.instance_banner_view_set(&id, chosen).await.unwrap();
+            assert_eq!(set.banner_aspect, Some(aspect));
         }
     }
 

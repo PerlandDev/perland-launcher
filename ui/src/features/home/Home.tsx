@@ -104,6 +104,7 @@ function InstanceView({ instance, preview = false }: { instance: Instance; previ
         focus={instance.bannerFocus}
         zoom={instance.bannerZoom}
         edges={instance.bannerEdges}
+        aspect={instance.bannerAspect}
         className="absolute inset-0"
       />
       {/* The two things a newcomer looks for first, out in the open at the top right, away from Play's corner.
