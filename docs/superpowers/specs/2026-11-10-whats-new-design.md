@@ -128,9 +128,13 @@ notes from a shallow clone: without tags, every note would look new.
     base version's notes.
   - Marker newer than the running version, or not a version the notes file knows: show nothing.
   - Nothing to show (an update with no notes): no dialog.
-  - In every case the marker then moves to the running version. Dev builds never open the dialog by themselves.
-- **The dialog.** It uses the app's `Dialog`, like server news. It waits until first run is over and no other
-  dialog is open, and it does not open while a game is starting.
+  - Dev builds never open the dialog by themselves.
+- **When the marker moves** (my call). At once when there is nothing to show. Otherwise only when the dialog
+  actually opens, as server news marks posts seen on open. Notes are never lost because something was in the way.
+- **The dialog.** It uses the app's `Dialog`, like server news. The launcher tries it once per launch, when the
+  first screen has settled. If first run is still going, another dialog is open (a join link, for example) or a
+  game is starting at that moment, it does not open and the marker stays, so the next launch tries again. It
+  never pops up later in the same session, so there is no watcher for other dialogs.
 
   ```
   ┌──────────────────────────────────────────────┐
@@ -178,6 +182,7 @@ get the rule above.
 - `scripts/release/lib.test.mjs`: a note's version (plain, beta then stable, branch beta merged later, removed and
   re-added, no tags), grouping and the 10-version cap, the release description for stable, beta and empty, and
   the validation of note files.
-- Vitest: the rule (each case above), the dialog (groups, both languages, plain text), the Settings button.
+- Vitest: the rule (each case above), when the marker moves, a launch where something is in the way, the dialog
+  (groups, both languages, plain text), the Settings button.
 - Core and app: the marker's round trip, an old `settings.json` without it, and the IPC contract.
 - A dry run of the Release workflow shows the description and the bundled notes before anything is published.
