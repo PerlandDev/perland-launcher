@@ -19,6 +19,8 @@ pub const BATCH_REPORTS: usize = 20;
 /// The most bytes of reports in one request, leaving room under the Engine's 64 KiB for the
 /// body's other fields.
 pub const BATCH_BYTES: usize = 56 << 10;
+/// The largest state file read.
+const FILE_MAX: u64 = 2 << 20;
 /// The most a counter holds.
 pub const COUNTER_MAX: u32 = 100_000;
 
@@ -95,6 +97,10 @@ impl State {
     /// A missing, unreadable or damaged file is an empty state, and anything in it over a
     /// limit or unknown is cut or dropped: this file is never worth an error.
     pub fn load(path: &Path) -> State {
+        // The launcher's own file is a few hundred kilobytes at most: a bigger one isn't it.
+        if std::fs::metadata(path).map_or(true, |m| m.len() > FILE_MAX) {
+            return State::default();
+        }
         let Ok(bytes) = std::fs::read(path) else {
             return State::default();
         };
@@ -158,6 +164,11 @@ impl State {
     }
     pub fn notice_shown(&self) -> Option<Day> {
         self.notice_shown
+    }
+
+    /// The notice is due again. `true` when that changed something.
+    pub fn forget_notice(&mut self) -> bool {
+        self.notice_shown.take().is_some()
     }
 
     /// The player has been shown the notice. `true` when this is the first time.
@@ -585,6 +596,8 @@ mod tests {
         assert_eq!(State::load(&path), State::default(), "missing");
         std::fs::write(&path, b"{not json").unwrap();
         assert_eq!(State::load(&path), State::default(), "damaged");
+        std::fs::write(&path, vec![b' '; FILE_MAX as usize + 1]).unwrap();
+        assert_eq!(State::load(&path), State::default(), "far too big");
         // One bad field costs only itself.
         std::fs::write(
             &path,

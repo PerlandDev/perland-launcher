@@ -132,14 +132,17 @@ The wire contract above is unchanged. These are the decisions the design left op
 
 **Scrubbing**
 
-18. Shapes are recognised first: URLs, the data folder, the home folder, any other absolute path wherever it stands (drives, UNC, `\\?\`, `file:`, `~/`, with spaces in folder names), emails, IPv4 and IPv6, `name:port`, any dotted word that ends like a host name (unless it is a file name, a version, a public service or a Java-style name), and anything shaped like a credential (a JWT, `Bearer …`, `token=…`, `code=…`). Then everything the launcher knows by name, in plain and percent-encoded spelling: account names and ids, the Perland profile, session token and Engine host, instance names and folders, server names and addresses, invite tokens and sites. Names are learned when the launcher starts and whenever one is made or listed (a new, renamed or imported instance, an added account, a sign-in, a free server).
-19. What is kept on purpose: the data folder's top-level name the launcher chose (`<data>/instances`), a public service's host without its path, the window's own bundled files (`<app>/assets/…`), and the part of a build-machine path every player shares (`<cargo>/…`, `<rustc>/…`).
-20. The scrubber removes when in doubt (a few words after a path, a property name that looks like a host). Known limits: a relative path and a bare file name are not replaced, and an error message can name a mod or modpack. Names the launcher knows are still masked there. The README says so.
-21. Text is scrubbed first and cut to the contract's limits after, so a name is never cut in half before it can be masked.
-22. Settings that can't be read turn sharing off for that run: a damaged file must not opt a player back in.
+18. Shapes are recognised first: URLs; the data folder, the home folder and any other path wherever it stands (drives, UNC, `\\?\`, `file:`, `~/`, relative ones with a backslash or three parts, with spaces, `'` and `:` in folder names); emails; IPv4 and IPv6; `name:port`; any dotted word that ends like a host name, has three labels ending in letters, or is a lowercase `name.word` (unless it is a file name, a version, a public service or ends in a class name); and anything shaped like a credential (a JWT, `Bearer …`, `token=…`, `--accessToken …`, `code=…`, a `plt_`-style key, an account id, any run of 24 or more letters and digits). Then everything the launcher knows by name, in plain and percent-encoded spelling: account names and ids, the Perland profile, session token and Engine host, instance names and folders, server names and addresses, invite tokens and sites. Names are learned when the launcher starts and whenever one is made or listed.
+19. An error's own params: one on the allow-list is sent only when its value has the shape the launcher writes (a version, a number, a word or two of its own). Every other param value is that error's private part and is masked wherever its message or detail repeats it, before the general scrub.
+20. What is kept on purpose: the data folder's top-level name the launcher chose (`<data>/instances`), a public service's host without its path, the window's own bundled files (`<app>/assets/…`), the launcher's own source paths (`crates/…`), and the part of a build-machine path every player shares (`<cargo>/…`, `<rustc>/…`).
+21. The scrubber removes when in doubt (words after a path, a property name that looks like a host, a hash). Known limits, which the README states: a bare file name is not replaced, and an error message can name a mod or modpack.
+22. Text is scrubbed first and cut to the contract's limits after, so a name is never cut in half before it can be masked.
+23. Settings that can't be read turn sharing off for that run and make the notice due again, so a damaged file can't opt a player back in (the first run shows again and its welcome step is the notice).
+24. The telemetry requests follow no redirect: a body is never sent on to another address.
+25. Whether a run collects is decided once, when the launcher starts. A notice shown later, or the switch turned on later, counts from the next start.
 
 **Elsewhere**
 
-23. The state file is `telemetry.json` in the data folder: `version`, `installWeek`, `noticeShown`, `lastPing`, `counters`, `reports`. A damaged or edited file is read field by field and cut to the limits, never an error.
-24. The Settings switch sits in its own "Privacy" section after Diagnostics. The first-run line is on the welcome step, before anything else is asked.
-25. The Engine is found from the same site as the public server list (`PERLAND_SITE_URL` when set, else the default site).
+26. The state file is `telemetry.json` in the data folder: `version`, `installWeek`, `noticeShown`, `lastPing`, `counters`, `reports`. A damaged or edited file is read field by field and cut to the limits, never an error.
+27. The Settings switch sits in its own "Privacy" section after Diagnostics. The first-run line is on the welcome step, before anything else is asked.
+28. The Engine is found from the same site as the public server list (`PERLAND_SITE_URL` when set, else the default site).

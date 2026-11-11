@@ -443,23 +443,34 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         result
     }
 
-    /// Reads the player's switch and whether they were shown the notice in an earlier run, and
-    /// learns the names that must never leave. Quick and local: call it before anything can
-    /// be reported. Until then nothing is collected.
+    /// Reads the player's switch and whether they were shown the notice in an earlier run.
+    /// Quick and local: call it once, before anything can be reported. Until then nothing
+    /// is collected.
     pub async fn telemetry_begin(&self) {
         // Not `settings_get`: its one-time damaged-settings warning is for the UI's first read.
         let (settings, damaged) = self.settings.lock().await.load().await;
         let telemetry = &self.config.telemetry;
         // Settings that can't be read say nothing about the switch: a player who turned it
-        // off must not be opted back in by a damaged file.
-        telemetry.set_sharing(damaged.is_none() && settings.share_anonymous_data);
-        telemetry.arm_from_disk();
+        // off must not be opted back in by a damaged file, now or when the defaults are
+        // saved over it. The notice is due again.
+        if damaged.is_some() {
+            telemetry.distrust();
+        } else {
+            telemetry.set_sharing(settings.share_anonymous_data);
+            telemetry.arm_from_disk();
+        }
         let locale = match settings.language {
             Some(launcher_core::settings::Lang::En) => "en".to_string(),
             Some(launcher_core::settings::Lang::Es) => "es".to_string(),
             None => launcher_core::telemetry::os_locale().unwrap_or_default(),
         };
         telemetry.set_locale(&locale);
+    }
+
+    /// Learns the names already on disk that must never leave: accounts and instances.
+    /// (Names made later are learned as they are made.)
+    pub async fn telemetry_learn_names(&self) {
+        let telemetry = &self.config.telemetry;
         if !telemetry.is_on() {
             return;
         }
@@ -478,6 +489,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if !telemetry.is_on() {
             return;
         }
+        self.telemetry_learn_names().await;
         let (settings, _) = self.settings.lock().await.load().await;
         let channel = match (
             self.config.build,
@@ -1137,7 +1149,14 @@ pub(crate) mod tests {
             ..core.settings_get().await
         };
         core.settings_set(settings).await.unwrap();
+        restart(core).await;
+    }
+
+    /// The launcher closed and started again.
+    async fn restart(core: &TestCore) {
+        core.telemetry().restart();
         core.telemetry_begin().await;
+        core.telemetry_learn_names().await;
     }
 
     #[tokio::test]
@@ -1170,7 +1189,7 @@ pub(crate) mod tests {
         assert!(!core.telemetry().is_on());
 
         // The next start.
-        core.telemetry_begin().await;
+        restart(&core).await;
         assert!(core.telemetry().is_on());
         core.instance_create(vanilla("Alpha")).await.unwrap();
         assert!(core.instance_create(vanilla("  ")).await.is_err());
@@ -1191,7 +1210,7 @@ pub(crate) mod tests {
         )
         .unwrap();
         for _start in 0..2 {
-            core.telemetry_begin().await;
+            restart(&core).await;
             assert!(!core.telemetry().is_on());
             assert!(core.telemetry_notice_due());
             core.instance_create(vanilla("Quiet")).await.unwrap();
@@ -1211,7 +1230,7 @@ pub(crate) mod tests {
         core.instance_create(vanilla("Still quiet")).await.unwrap();
         assert!(core.telemetry().snapshot().is_empty());
         // The next start.
-        core.telemetry_begin().await;
+        restart(&core).await;
         assert!(core.telemetry().is_on());
     }
 
@@ -1241,18 +1260,20 @@ pub(crate) mod tests {
         assert!(core.telemetry().snapshot().is_empty());
 
         // A later start reads the switch as off, and asks for no notice.
-        core.telemetry_begin().await;
+        restart(&core).await;
         core.telemetry_start().await;
         assert!(!core.telemetry().is_on());
         assert!(!core.telemetry_notice_due());
 
-        // And back on.
+        // And back on: from the next start, as after any notice.
         core.settings_set(Settings {
             share_anonymous_data: true,
             ..settings
         })
         .await
         .unwrap();
+        assert!(!core.telemetry().is_on());
+        restart(&core).await;
         assert!(core.telemetry().is_on());
     }
 
@@ -1273,7 +1294,7 @@ pub(crate) mod tests {
         core.settings_set(settings).await.unwrap();
         assert!(!core.telemetry_notice_due());
         assert!(!core.telemetry().is_on(), "from the next start");
-        core.telemetry_begin().await;
+        restart(&core).await;
         assert!(core.telemetry().is_on());
     }
 
@@ -1284,10 +1305,25 @@ pub(crate) mod tests {
         assert!(core.telemetry().is_on());
         // The file is damaged: whatever the switch said is unknown.
         std::fs::write(tmp.path().join("settings.json"), b"{not json").unwrap();
-        core.telemetry_begin().await;
+        restart(&core).await;
         assert!(!core.telemetry().is_on());
         core.instance_create(vanilla("Quiet")).await.unwrap();
         assert!(core.telemetry().snapshot().is_empty());
+        let state_file = tmp.path().join(launcher_core::telemetry::STATE_FILE);
+        let state: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&state_file).unwrap()).unwrap();
+        assert_eq!(state["noticeShown"], serde_json::Value::Null);
+        // With the defaults in use the first run shows again, and its welcome step is the
+        // notice: the player, who may have had sharing off, is told before anything starts.
+        core.settings_set(Settings {
+            first_run_done: true,
+            ..Settings::default()
+        })
+        .await
+        .unwrap();
+        assert!(!core.telemetry().is_on());
+        restart(&core).await;
+        assert!(core.telemetry().is_on());
     }
 
     #[tokio::test]

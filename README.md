@@ -62,7 +62,7 @@ The launcher sends Perland two small things, so we know how many people use it a
 
 **You are told first.** Nothing is collected or sent until you have been shown that the launcher does this: on the first run's welcome screen for a new install, or in What's new after the update that brings it. Sharing then starts the next time the launcher starts, not before, so if you turn the switch off when you read about it, nothing was ever sent.
 
-**Where it goes:** to Perland's own server (the Engine behind `play.perland.online`, the one the public server list comes from), over HTTPS, with no account or token attached. No third party is involved.
+**Where it goes:** to Perland's own server (the Engine behind `play.perland.online`, the one the public server list comes from), over HTTPS, with no account or token attached. To find that server the launcher first reads `config.json` from `play.perland.online`, as it does for the server list. No third party is involved.
 
 **It never gets in your way.** Sending happens in the background with a 10-second limit. If it fails, nothing is shown; what could not be sent waits for the next time the launcher starts (at most 50 reports are kept).
 
@@ -113,7 +113,7 @@ Sent shortly after something goes wrong, or at the next start (`POST /api/v1/tel
 
 A **game crash** report holds only the cause the launcher recognised (or `crash_unknown`), the Minecraft version and the loader. It never holds a line of the game's log, the instance's name or a mod's name.
 
-Every text is cleaned before it is saved or sent. Your home folder becomes `<home>`, the launcher's data folder `<data>`, any other file path `<path>`, web addresses `<url>` (except public services such as Mojang's or Modrinth's, which keep only the host), server addresses, host names and IP addresses `<address>`, emails `<email>`, your computer's user name `<user>`, and every name the launcher knows (accounts, instances, servers, invite links) and anything shaped like a token `<redacted>`.
+Every text is cleaned before it is saved or sent. Your home folder becomes `<home>`, the launcher's data folder `<data>`, any other file path `<path>`, web addresses `<url>` (except public services such as Mojang's or Modrinth's, which keep only the host), server addresses, host names and IP addresses `<address>`, emails `<email>`, your computer's user name `<user>`, and every name the launcher knows (accounts, instances, servers, invite links), anything shaped like a token or an account ID, and whatever the error itself marks as private `<redacted>`. Paths written without a drive or a leading slash (`saves\My world\level.dat`) become `<path>` too.
 
 ### What is never sent
 
@@ -131,7 +131,7 @@ And these are taken out of every error text before it is saved or sent, as descr
 - Your computer's user name, your home folder, and file paths on your computer.
 - The names of your instances.
 
-An error message can still name a mod or modpack from a public catalogue (such as "Sodium needs Fabric API"), and a file's name without its folder (such as `options.txt`). The cleaning is automatic and errs on the side of removing too much; if you ever find something it missed, please open an issue.
+An error message can still name a mod or modpack (such as "Sodium needs Fabric API"), and a file's name without its folder (such as `options.txt`). The cleaning is automatic and errs on the side of removing too much; if you ever find something it missed, please open an issue.
 
 ### What stays on your computer
 

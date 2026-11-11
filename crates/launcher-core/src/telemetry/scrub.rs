@@ -9,8 +9,6 @@ use std::sync::LazyLock;
 
 use regex::{Captures, Regex};
 
-use crate::launch::Redactor;
-
 /// The longest text scrubbed; the rest is cut first, at a space. Far above any field's limit.
 const INPUT_CAP: usize = 32 << 10;
 
@@ -21,6 +19,8 @@ const DATA: char = '\u{E000}';
 const HOME: char = '\u{E001}';
 const STASH: char = '\u{E002}';
 const STASH_END: char = '\u{E003}';
+/// Stands before a path start made while scrubbing, and is taken out again at the end.
+const PAD: char = '\u{E004}';
 /// A stashed piece's number is written in these ten, so no name or number can match it.
 const DIGIT_0: u32 = 0xE010;
 
@@ -115,13 +115,17 @@ const FILE_ENDINGS: &[&str] = &[
     "pack",
     "mcmeta",
     "disabled",
-];
-
-/// First labels of Java and Kotlin package names: `net.minecraft.client.Main` is not a host.
-const PACKAGE_ROOTS: &[&str] = &[
-    "java", "javax", "jdk", "sun", "kotlin", "kotlinx", "scala", "net", "com", "org", "io", "cpw",
-    "dev", "me", "mod", "mods", "fabric", "quilt", "forge", "neoforge", "mixins", "mixin", "self",
-    "this", "window", "document", "e", "i",
+    "rlib",
+    "lib",
+    "pdb",
+    "dylib",
+    "dat_old",
+    "ini",
+    "conf",
+    "csv",
+    "msi",
+    "deb",
+    "appimage",
 ];
 
 /// Is `host` one of [`PUBLIC_HOSTS`] or under one?
@@ -141,7 +145,7 @@ fn re(pattern: &str) -> Regex {
 
 /// Characters a path's last part can't hold, as the inside of a character class: whitespace,
 /// quotes of every kind, and what no file name has.
-const NOT_IN_PATH: &str = r#"\s"'`<>|*?:«»“”‘’\u{E002}\u{E003}"#;
+const NOT_IN_PATH: &str = r#"\s"'`<>|*?:«»“”‘’\u{E002}-\u{E004}"#;
 
 /// Windows spellings that only wrap a path: `\\?\C:\x`, `\\?\UNC\server\x`, `\\.\C:\x`.
 static VERBATIM: LazyLock<Regex> =
@@ -155,24 +159,28 @@ static URL: LazyLock<Regex> = LazyLock::new(|| {
         NOT_IN_PATH_URL = r#"\s"'`<>«»“”‘’\u{E000}-\u{E01F}"#
     ))
 });
-/// An absolute path, wherever it stands: a stand-in for a known folder, a drive, a UNC share,
-/// `~/…`, or `/…` that doesn't follow a letter, a digit or another `/` (so not `and/or`).
-/// It runs on through spaces for as long as another separator follows on the line, so
-/// `C:\Users\Ana Maria\Mis cosas\x` goes whole, and then through a file name with spaces up
-/// to a known file ending. It may take a few words too many ("/a/b and then c/d"), never too few.
+/// A path, wherever it stands: a stand-in for a known folder, a UNC share or `\x`, `~/…`,
+/// `./…`, `/…` that doesn't follow a letter, a digit or another `/` (so not `and/or`), and a
+/// relative one (`saves\Mi mundo\x`, or three parts or more with `/`).
+/// It runs on for as long as another separator follows on the line, through spaces, `'` and
+/// `:`, so `C:\Users\Ana Maria\Sofía's world\x` goes whole, and then through a file name with
+/// spaces up to a known file ending. It may take words too many ("/a/b and then c/d"), never
+/// too few.
 static PATH: LazyLock<Regex> = LazyLock::new(|| {
     let seg = format!("[^{NOT_IN_PATH}]");
     let word = format!(r"[^{NOT_IN_PATH}/\\]");
-    let line = r#"[^\n\r"'`<>|*?:«»“”‘’\u{E002}\u{E003}]"#;
+    let line = r#"[^\n\r"`<>|*?«»“”\u{E002}\u{E003}]"#;
     re(&format!(
-        r"(?P<lead>^|[^A-Za-z0-9/\\])(?P<path>(?:[\u{{E000}}\u{{E001}}]|\\\\|~[\\/]|/{seg}){seg}*(?:{line}*[\\/]{seg}*)*(?:(?: {word}+){{1,8}}\.(?i:{endings})\b)?)",
+        r"(?P<lead>^|[^A-Za-z0-9/\\])(?P<path>(?:[\u{{E000}}\u{{E001}}]|\\{seg}|~[\\/]|\.{{1,2}}[\\/]|/{seg}|{word}+\\|{word}+/{word}+/){seg}*(?:{line}*[\\/]{seg}*)*(?:'{seg}+)*(?:(?: {word}+){{1,8}}\.(?i:{endings})\b)?)",
         endings = FILE_ENDINGS.join("|")
     ))
 });
 /// A drive path. It needs no lead: after the URL step nothing else looks like `X:\`.
 static DRIVE: LazyLock<Regex> = LazyLock::new(|| re(r"[A-Za-z]:[\\/]"));
 static EMAIL: LazyLock<Regex> = LazyLock::new(|| re(r"[\w.%+-]+@[\w-]+(?:\.[\w-]+)+"));
-static DOTTED: LazyLock<Regex> = LazyLock::new(|| re(r"\b[\w-]+(?:\.[\w-]+)+(?P<port>:\d{1,5})?"));
+/// A dotted word, its port, and anything glued to it with a `/` (`host/the-rest`).
+static DOTTED: LazyLock<Regex> =
+    LazyLock::new(|| re(r#"\b[\w-]+(?:\.[\w-]+)+(?P<port>:\d{1,5})?(?P<glued>/[^\s"'<>]*)?"#));
 /// `name:25565`: a host without a dot, with a port a game or a service would use.
 static NAME_PORT: LazyLock<Regex> = LazyLock::new(|| re(r"\b[A-Za-z][\w-]*:(?P<port>\d{4,5})\b"));
 /// IPv6: in brackets, written out, or shortened with `::`. What follows is captured so a
@@ -180,7 +188,7 @@ static NAME_PORT: LazyLock<Regex> = LazyLock::new(|| re(r"\b[A-Za-z][\w-]*:(?P<p
 static IPV6: LazyLock<Regex> = LazyLock::new(|| {
     let h = "[0-9A-Fa-f]{1,4}";
     re(&format!(
-        r"\[[0-9A-Fa-f:.]{{2,}}\](?::\d{{1,5}})?|(?P<v6>\b(?:{h}:){{1,7}}:(?:{h}(?::{h})*)?|::(?:{h}:)*{h}|\b(?:{h}:){{3,7}}{h})(?P<next>[\w:]?)"
+        r"\[[0-9A-Fa-f:.]{{2,}}\](?::\d{{1,5}})?|(?P<v6>\b(?:{h}:){{1,7}}:(?:{h}(?::{h})*)?|::(?:{h}:)*{h}(?:(?:\.\d{{1,3}}){{3}})?|\b(?:{h}:){{3,7}}{h})(?P<next>[\w:]?)"
     ))
 });
 /// Things shaped like a credential, whatever they are: a JWT, a bearer token, `token=…`.
@@ -188,9 +196,25 @@ static JWT: LazyLock<Regex> = LazyLock::new(|| re(r"\beyJ[\w-]{6,}\.[\w-]+(?:\.[
 static BEARER: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)\b(?P<word>bearer|basic)\s+[^\s,;]+"));
 static KEYED: LazyLock<Regex> = LazyLock::new(|| {
     re(
-        r#"(?i)\b(?P<key>[\w-]*(?:token|secret|password|passwd|authorization|api[_-]?key|session))(?P<sep>["']?\s*[=:]\s*["']?)[^\s"',;&)]+"#,
+        r#"(?i)\b(?P<key>[\w-]*(?:token|secret|password|passwd|authorization|api[_-]?key|session)|cookie|sid|pwd|pass)(?P<sep>["']?\s*[=:]\s*["']?)[^\s"',;&)]+"#,
     )
 });
+/// `--accessToken abc`, `--username Ana`: a command line's own secrets and names.
+static FLAGGED: LazyLock<Regex> = LazyLock::new(|| {
+    re(r"(?i)(?P<flag>--[\w-]*(?:token|secret|password|username|uuid|session|key)[\w-]*)[\s=]+\S+")
+});
+/// Keys that say what they are by how they start.
+static PREFIXED: LazyLock<Regex> =
+    LazyLock::new(|| re(r"\b(?:plt|pma|pk|sk|ghp|gho)_[A-Za-z0-9_-]{8,}"));
+/// An account id, with or without dashes.
+static UUID: LazyLock<Regex> = LazyLock::new(|| {
+    re(r"\b[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}\b|\b[0-9a-fA-F]{32}\b")
+});
+/// A long unbroken run of letters and digits: a token, a hash, an invite's code.
+static LONG_RUN: LazyLock<Regex> = LazyLock::new(|| re(r"[A-Za-z0-9_-]{24,}"));
+/// The launcher's own source, as a panic or a backtrace names it.
+static SOURCE: LazyLock<Regex> =
+    LazyLock::new(|| re(r"^(?:\./)?(?:crates|src|src-tauri|library|ui)/[\w.+/-]+$"));
 /// `code=…`: what a sign-in brings back in a URL or a form. (`exit code: 1` is not one.)
 static CODE: LazyLock<Regex> = LazyLock::new(|| re(r#"(?i)\bcode=[^\s"',;&)]+"#));
 static CARGO: LazyLock<Regex> =
@@ -264,10 +288,11 @@ fn whole_word(text: &str) -> String {
 /// See the module's own words. Built from what the launcher knows right then.
 #[derive(Default)]
 pub struct Scrubber {
-    /// Long secrets, replaced wherever they appear.
-    secrets: Redactor,
-    /// Names: matched without regard to case, short ones only as whole words.
-    names: Vec<Regex>,
+    /// Names, each as a pattern: matched without regard to case, short ones only as whole
+    /// words. Longest first.
+    name_patterns: Vec<String>,
+    /// All of `name_patterns` as one alternation.
+    names: Option<Regex>,
     roots: Vec<Root>,
     user: Option<Regex>,
 }
@@ -276,7 +301,7 @@ pub struct Scrubber {
 impl std::fmt::Debug for Scrubber {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Scrubber")
-            .field("names", &self.names.len())
+            .field("names", &self.name_patterns.len())
             .field("roots", &self.roots.len())
             .finish_non_exhaustive()
     }
@@ -348,43 +373,62 @@ impl Scrubber {
     }
 
     pub fn add_secret(&mut self, secret: &str) {
-        let secret = secret.trim();
-        let len = secret.chars().count();
-        if len < 2 {
-            return;
-        }
-        let mut spellings = vec![secret.to_string()];
-        // As a URL writes it.
-        let encoded =
-            percent_encoding::utf8_percent_encode(secret, percent_encoding::NON_ALPHANUMERIC)
-                .to_string();
-        let spaces = secret.replace(' ', "%20");
-        for other in [encoded, spaces] {
-            if !spellings.contains(&other) {
-                spellings.push(other);
+        self.add_secrets([secret]);
+    }
+
+    /// Several at once: the names are compiled into one pattern, once.
+    pub fn add_secrets<I, S>(&mut self, secrets: I)
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        for secret in secrets {
+            let secret = secret.as_ref().trim();
+            let len = secret.chars().count();
+            if len < 2 {
+                continue;
+            }
+            let mut spellings = vec![secret.to_string()];
+            // As a URL writes it.
+            let encoded =
+                percent_encoding::utf8_percent_encode(secret, percent_encoding::NON_ALPHANUMERIC)
+                    .to_string();
+            let spaces = secret.replace(' ', "%20");
+            for other in [encoded, spaces] {
+                if !spellings.contains(&other) {
+                    spellings.push(other);
+                }
+            }
+            for spelling in spellings {
+                let pattern = if len >= 5 {
+                    regex::escape(&spelling)
+                } else {
+                    whole_word(&spelling)
+                };
+                if !self.name_patterns.contains(&pattern) {
+                    self.name_patterns.push(pattern);
+                }
             }
         }
-        for spelling in spellings {
-            let pattern = if len >= 5 {
-                // Exact matches first, through the launcher's own redactor.
-                self.secrets = std::mem::take(&mut self.secrets).with_secret(spelling.as_str());
-                format!("(?i){}", regex::escape(&spelling))
-            } else {
-                format!("(?i){}", whole_word(&spelling))
-            };
-            if let Ok(name) = Regex::new(&pattern) {
-                self.names.push(name);
-            }
-        }
+        // Longest first, so a name isn't half-taken by a shorter one inside it.
+        self.name_patterns
+            .sort_by_key(|pattern| std::cmp::Reverse(pattern.len()));
+        self.names = (!self.name_patterns.is_empty())
+            .then(|| {
+                regex::RegexBuilder::new(&format!("(?i)(?:{})", self.name_patterns.join("|")))
+                    .size_limit(64 << 20)
+                    .build()
+                    .ok()
+            })
+            .flatten();
     }
 
     /// Known secrets and names out of `text`.
     fn mask(&self, text: &str) -> String {
-        let mut text = self.secrets.redact(text);
-        for name in &self.names {
-            text = name.replace_all(&text, "<redacted>").into_owned();
+        match &self.names {
+            Some(names) => names.replace_all(text, "<redacted>").into_owned(),
+            None => text.to_string(),
         }
-        text
     }
 
     pub fn scrub(&self, input: &str) -> String {
@@ -429,10 +473,11 @@ impl Scrubber {
         text = BEARER.replace_all(&text, "$word <redacted>").into_owned();
         text = KEYED.replace_all(&text, "$key$sep<redacted>").into_owned();
         text = CODE.replace_all(&text, "code=<redacted>").into_owned();
+        text = FLAGGED.replace_all(&text, "$flag <redacted>").into_owned();
         text = FILE_SCHEME
             .replace_all(&text, |found: &Captures| match found.name("drive") {
-                Some(drive) => format!(" {}", drive.as_str()),
-                None => " /".to_string(),
+                Some(drive) => format!("{PAD}{}", drive.as_str()),
+                None => format!("{PAD}/"),
             })
             .into_owned();
         for root in &self.roots {
@@ -443,11 +488,13 @@ impl Scrubber {
             }
         }
         // A drive becomes a path start the path rule takes wherever it stands.
-        text = DRIVE.replace_all(&text, " //").into_owned();
+        text = DRIVE
+            .replace_all(&text, format!("{PAD}//").as_str())
+            .into_owned();
         // A known folder may follow anything (`)C:\Users\…`, `\nC:\…`): give it room.
         text = text
-            .replace(DATA, &format!(" {DATA}"))
-            .replace(HOME, &format!(" {HOME}"));
+            .replace(DATA, &format!("{PAD}{DATA}"))
+            .replace(HOME, &format!("{PAD}{HOME}"));
         text = PATH
             .replace_all(&text, |found: &Captures| {
                 format!(
@@ -458,6 +505,21 @@ impl Scrubber {
             })
             .into_owned();
         text = text.replace(DATA, "<data>").replace(HOME, "<home>");
+        // After the paths, so a token inside one can't break it in two.
+        text = PREFIXED.replace_all(&text, "<redacted>").into_owned();
+        text = UUID.replace_all(&text, "<redacted>").into_owned();
+        text = LONG_RUN
+            .replace_all(&text, |found: &Captures| {
+                let run = &found[0];
+                let mixed = run.bytes().any(|b| b.is_ascii_digit())
+                    && run.bytes().any(|b| b.is_ascii_alphabetic());
+                if mixed {
+                    "<redacted>".to_string()
+                } else {
+                    run.to_string()
+                }
+            })
+            .into_owned();
         text = EMAIL.replace_all(&text, "<email>").into_owned();
         text = IPV6
             .replace_all(&text, |found: &Captures| {
@@ -478,7 +540,11 @@ impl Scrubber {
             .into_owned();
         text = DOTTED
             .replace_all(&text, |found: &Captures| {
-                dotted_placeholder(&found[0], found.name("port").is_some())
+                dotted_placeholder(
+                    &found[0],
+                    found.name("port").is_some(),
+                    found.name("glued").map_or("", |m| m.as_str()),
+                )
             })
             .into_owned();
         text = NAME_PORT
@@ -516,10 +582,7 @@ impl Scrubber {
             rest = &after[end + STASH_END.len_utf8()..];
         }
         out.push_str(rest);
-        // Room made for a path start that turned out to need none.
-        while out.contains("  ") {
-            out = out.replace("  ", " ");
-        }
+        out.retain(|c| c != PAD);
         out.trim().to_string()
     }
 }
@@ -574,46 +637,98 @@ fn path_placeholder(path: &str) -> String {
     if let Some(found) = RUSTC.captures(&unix) {
         return format!("<rustc>/{}", &found["tail"]);
     }
+    // The launcher's own source files, relative to its repository.
+    if SOURCE.is_match(&unix) {
+        return unix.trim_start_matches("./").to_string();
+    }
     "<path>".into()
 }
 
-/// `a.b.c` with or without a port. An IPv4 address, anything with a port that isn't a place
-/// in a file, and any dotted word that ends in letters is `<address>`, unless it is a file
-/// name, a version, a public service, or a Java-style name (`net.minecraft.client.Main`,
-/// `Foo.bar`).
-fn dotted_placeholder(found: &str, has_port: bool) -> String {
-    let name = found.split(':').next().unwrap_or(found);
+/// Endings a host name commonly has. A dotted word that ends in one is an address whatever
+/// else it looks like.
+const HOST_ENDINGS: &[&str] = &[
+    "com", "net", "org", "io", "gg", "online", "xyz", "me", "co", "dev", "fun", "club", "es", "mx",
+    "ar", "cl", "pe", "ve", "uy", "ec", "bo", "py", "br", "uk", "de", "fr", "it", "nl", "pl", "ru",
+    "eu", "us", "ca", "au", "jp", "cn", "in", "tk", "host", "pro", "live", "world", "games",
+    "land", "space", "site", "cc", "tv", "info", "app", "cloud", "network", "lat", "local", "lan",
+    "store", "server", "shop", "tech", "top", "icu", "link", "one", "play", "gay", "wtf", "lol",
+    "cool",
+];
+
+/// File endings that are also real host endings: only a plain `name.ext` is taken as a file.
+const FILE_OR_HOST: &[&str] = &["rs", "zip", "md", "so", "properties", "sh", "py"];
+
+/// `a.b.c`, with or without a port or something glued on with `/`.
+///
+/// An address (`<address>`, the glued part with it): an IPv4 address; anything with a port
+/// that isn't a place in a file; anything that ends like a host ([`HOST_ENDINGS`], or
+/// punycode); three labels or more that end in letters; and a lowercase `name.word`.
+/// Kept: a public service's host (without what is glued on), a file name, a version, and a
+/// name that ends in a class (`java.net.UnknownHostException`, `Object.render`).
+fn dotted_placeholder(found: &str, has_port: bool, glued: &str) -> String {
+    let whole = &found[..found.len() - glued.len()];
+    let name = whole.split(':').next().unwrap_or(whole);
     let labels: Vec<&str> = name.split('.').collect();
     let first = labels.first().copied().unwrap_or("");
     let last = labels.last().copied().unwrap_or("");
     let lower = last.to_lowercase();
     let all_digits = |l: &&str| !l.is_empty() && l.bytes().all(|b| b.is_ascii_digit());
-    let ipv4 = labels.len() == 4 && labels.iter().all(|l| l.len() <= 3 && all_digits(l));
-    let is_file = FILE_ENDINGS.contains(&lower.as_str());
-    if ipv4 {
+    if labels.len() == 4 && labels.iter().all(|l| l.len() <= 3 && all_digits(l)) {
         return "<address>".into();
     }
-    if is_file || is_public_host(name) {
+    if is_public_host(name) {
+        return name.to_ascii_lowercase();
+    }
+    let versioned = labels
+        .iter()
+        .any(|l| l.starts_with(|c: char| c.is_ascii_digit()));
+    let file_ending = FILE_ENDINGS.contains(&lower.as_str());
+    // `mods.zip` and `sodium-0.5.8.jar` are files; `mc.pedro.rs` is a host.
+    let is_file =
+        file_ending && (labels.len() == 2 || versioned || !FILE_OR_HOST.contains(&lower.as_str()));
+    if is_file {
         return found.into();
     }
     if has_port {
         return "<address>".into();
     }
-    // A host name ends in two or more letters, all of one case.
-    let host_ending = last.chars().count() >= 2
-        && last.chars().all(char::is_alphabetic)
-        && (last == lower || last == last.to_uppercase());
-    // `Foo.bar`, `java.lang.Thing`, `window.x`: code, not a host.
-    let code = PACKAGE_ROOTS.contains(&first.to_lowercase().as_str())
-        || labels.iter().any(|l| {
-            l.chars().next().is_some_and(char::is_uppercase) && l.chars().any(char::is_lowercase)
-        })
-        || labels.iter().any(|l| l.contains('_'));
-    if host_ending && !code {
+    let letters = last.chars().count() >= 2 && last.chars().all(char::is_alphabetic);
+    let host_ending = HOST_ENDINGS.contains(&lower.as_str()) || lower.starts_with("xn--");
+    // `…client.Main`, `Object.render`: code.
+    let camel = |l: &str| l.starts_with(char::is_uppercase) && l.chars().any(char::is_lowercase);
+    let class_last = camel(last) && !host_ending;
+    let plain = |l: &str| !l.chars().any(char::is_uppercase);
+    let address = host_ending
+        || (letters && !class_last && labels.len() >= 3)
+        || (letters && labels.len() == 2 && plain(first) && plain(last));
+    if address {
         "<address>".into()
     } else {
         found.into()
     }
+}
+
+/// `text` without `values`: what one error calls its own private parts (a param that is not
+/// on the allow-list), wherever its message or detail repeats them, whatever their case.
+pub fn without_values(text: &str, values: &[&str]) -> String {
+    let mut out = text.to_string();
+    let mut values: Vec<&str> = values
+        .iter()
+        .map(|v| v.trim())
+        .filter(|v| v.chars().count() >= 2)
+        .collect();
+    values.sort_by_key(|v| std::cmp::Reverse(v.len()));
+    for value in values {
+        let pattern = if value.chars().count() >= 4 {
+            format!("(?i){}", regex::escape(value))
+        } else {
+            format!("(?i){}", whole_word(value))
+        };
+        if let Ok(found) = Regex::new(&pattern) {
+            out = found.replace_all(&out, "<redacted>").into_owned();
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -695,7 +810,7 @@ mod tests {
             ("open /media/Mi Disco/Juegos/a.jar now", "open <path> now"),
             (r"open D:\Juegos\Minecraft de Luis\a.jar", "open <path>"),
             (r"open \\nas\luis\a.jar", "open <path>"),
-            ("path=/opt/x", "path=<path>"),
+            ("path=/opt/x", "<path>"),
             ("file:/home/otro/x", "<path>"),
             (r"D:\Games (old)\Users\luis\x now", "<path> now"),
         ] {
@@ -811,7 +926,7 @@ mod tests {
     fn stand_ins_in_the_input_cannot_smuggle_anything_back() {
         let s = linux();
         let sneaky = format!("{STASH}0{STASH_END} {DATA} /home/moises/x");
-        assert_eq!(s.scrub(&sneaky), "0 <home>");
+        assert_eq!(s.scrub(&sneaky), "0  <home>");
     }
 
     #[test]
@@ -941,9 +1056,8 @@ mod tests {
         for text in [
             "java.util.concurrent.ExecutionException",
             "net.fabricmc.loader.impl.FormattedException",
-            "com.mojang.authlib.exceptions",
-            "org.lwjgl.glfw",
-            "TypeError: window.foo is not a function",
+            "com.mojang.authlib.GameProfile",
+            "TypeError: Object.keys is not a function",
             "at Object.render (index.js:1:2)",
             "fabric.mod.json and quilt.mod.json",
             "launcher_core.rlib",
@@ -1049,6 +1163,228 @@ mod tests {
         assert_eq!(
             s.scrub("12 at https://api.modrinth.com/a and /srv/b and /srv/c"),
             "<redacted> at https://api.modrinth.com and <path>"
+        );
+    }
+
+    /// The second review's inputs, as it sent them.
+    #[test]
+    fn an_apostrophe_or_a_colon_inside_a_path_does_not_end_it() {
+        let l = Scrubber::new()
+            .with_data_root("/home/sofia/.local/share/PerlandLauncher")
+            .with_home("/home/sofia");
+        let w = Scrubber::new()
+            .with_data_root(r"C:\Users\Ana María\AppData\Roaming\PerlandLauncher")
+            .with_home(r"C:\Users\Ana María");
+        for (scrubber, text, want) in [
+            (&l, "/home/sofia/It's mine/secret dir/file.txt", "<home>"),
+            (
+                &l,
+                r"D:\Juegos\Sofía's Mods\secreto.jar not found",
+                "<path> not found",
+            ),
+            (
+                &w,
+                r"C:\Users\Ana María\AppData\Roaming\.minecraft\saves\Casa de Sofía's\level.dat",
+                "<home>",
+            ),
+            (
+                &w,
+                r"C:\Users\Ana María\AppData\Roaming\PerlandLauncher\instances\ana's world\mods\Secret Mod.jar",
+                "<data>/instances",
+            ),
+            (
+                &l,
+                r"D:\Juegos de Sofía\Mundo: La casa\level.dat missing",
+                "<path> missing",
+            ),
+            (&l, "/home/sofia/a:b/secret/file.txt", "<home>"),
+            (
+                &l,
+                r"D:\Juegos\Sofía's MultiMC\instances\Casa de Sofía\.minecraft\options.txt: permission denied",
+                "<path>: permission denied",
+            ),
+            (
+                &w,
+                r"C:\Users\Ana María\Sofía's Java\bin\javaw.exe",
+                "<home>",
+            ),
+            (
+                &l,
+                "failed to open \"/home/sofia/It's mine/x.txt\": denied",
+                "failed to open \"<home>\": denied",
+            ),
+            (&l, "open /home/sofia/it's.txt now", "open <home> now"),
+        ] {
+            assert_eq!(scrubber.scrub(text), want, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_host_is_a_host_whatever_its_first_label_ending_or_capitals() {
+        let s = Scrubber::new();
+        for host in [
+            "fabric.sofiacraft.net",
+            "mods.sofiacraft.net",
+            "dev.sofiacraft.net",
+            "forge.sofiacraft.net",
+            "mod.sofiacraft.net",
+            "me.sofiacraft.net",
+            "net.sofiacraft.org",
+            "io.sofiacraft.gg",
+            "quilt.sofiacraft.xyz",
+            "mc.sofiacraft.rs",
+            "mc.sofiacraft.md",
+            "mc.sofiacraft.so",
+            "Play.SofiaCraft.net",
+            "Sofia.aternos.me",
+            "sofia_smp.example.com",
+            "sofiacraft.xn--p1ai",
+            "sofiacraft.cool",
+            "sofiacraft.land",
+        ] {
+            let text = format!("Couldn't reach the server's Perland site at {host}");
+            assert_eq!(
+                s.scrub(&text),
+                "Couldn't reach the server's Perland site at <address>",
+                "{host}"
+            );
+        }
+        assert_eq!(
+            s.scrub("java.net.UnknownHostException: fabric.sofiacraft.net"),
+            "java.net.UnknownHostException: <address>"
+        );
+        // Still not hosts.
+        for text in [
+            "sodium-fabric-0.5.8.jar and fabric-api-0.92.0+1.20.1.jar",
+            "fabric.mod.json, pack.mcmeta, mods.zip and level.dat_old",
+            "net.minecraft.client.Main",
+            "at Object.render (index.js:1:2)",
+            "Minecraft 1.20.1 with Forge 47.2.0",
+        ] {
+            assert_eq!(s.scrub(text), text);
+        }
+    }
+
+    #[test]
+    fn tokens_nobody_taught_the_scrubber_go_by_their_shape() {
+        let s = Scrubber::new();
+        for (text, private) in [
+            ("key plt_9f8e7d6c5b4a39281706f5e4d3c2b1a0 refused", "9f8e7d"),
+            ("key pk_live_51Habcdefghijklmnop refused", "51Habc"),
+            (
+                "invite token AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde is not valid",
+                "AbCdEf",
+            ),
+            (
+                "play.sofiacraft.net/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde",
+                "AbCdEf",
+            ),
+            (
+                "perland:join/AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde",
+                "AbCdEf",
+            ),
+            ("github.com/sofia-lopez/secret-pack", "sofia"),
+            (
+                "--accessToken ZXhhbXBsZXRva2VuMTIzNDU2Nzg5MGFiY2RlZg --username Sofi_2014",
+                "ZXhhbX",
+            ),
+            (
+                "--accessToken ZXhhbXBsZXRva2VuMTIzNDU2Nzg5MGFiY2RlZg --username Sofi_2014",
+                "Sofi_2014",
+            ),
+            (
+                "refresh token M.C507_BAY.0.U.-CqZ8vQ0rabcdefghijklmnopqrstuvwxyz0123456789 expired",
+                "CqZ8vQ0r",
+            ),
+            (
+                "cookie: sid=s%3Aabcdefghijklmnop.qrstuvwxyz0123456789",
+                "abcdefghijklmnop",
+            ),
+            ("pwd=hunter2", "hunter2"),
+            ("pass: hunter2", "hunter2"),
+            ("uuid 069a79f4-44e9-4726-a5be-fca90e38aaf5", "069a79f4"),
+            ("uuid 069a79f444e94726a5befca90e38aaf5", "069a79f4"),
+        ] {
+            let out = s.scrub(text);
+            assert!(!out.contains(private), "{private} left in {out:?}");
+        }
+    }
+
+    #[test]
+    fn an_ipv4_address_inside_an_ipv6_one_goes_whole() {
+        let s = Scrubber::new();
+        assert_eq!(
+            s.scrub("peer ::ffff:203.0.113.9 gone"),
+            "peer <address> gone"
+        );
+        assert_eq!(
+            s.scrub("peer [::ffff:203.0.113.9]:25565 gone"),
+            "peer <address> gone"
+        );
+    }
+
+    #[test]
+    fn relative_paths_go_and_the_launchers_own_source_stays() {
+        let s = Scrubber::new().with_user("Ana María");
+        for text in [
+            r"Caused by: java.nio.file.NoSuchFileException: saves\Casa de Sofía\level.dat",
+            "zip entry overrides/saves/Casa de Sofía/level.dat is invalid",
+            r"..\..\Users\Sofía\Desktop\x.txt",
+            r"\Users\Ana María\Documents\secret plans\x.txt",
+            r"C:Users\Sofía\x.txt",
+            "./mundos/Casa de Sofía/level.dat",
+        ] {
+            let out = s.scrub(text).to_lowercase();
+            for private in [
+                "sofía", "casa", "secret", "users", "saves", "mundos", "desktop",
+            ] {
+                assert!(
+                    !out.contains(private),
+                    "{private} left in {out:?} from {text}"
+                );
+            }
+        }
+        for (text, want) in [
+            (
+                "panicked at crates/launcher-app/src/runs.rs:120:5",
+                "panicked at crates/launcher-app/src/runs.rs:120:5",
+            ),
+            (
+                r"panicked at crates\launcher-app\src\runs.rs:120:5",
+                "panicked at crates/launcher-app/src/runs.rs:120:5",
+            ),
+            (
+                "   at ./crates/launcher-core/src/x.rs:7:1",
+                "at crates/launcher-core/src/x.rs:7:1",
+            ),
+            ("at src/main.rs:88", "at src/main.rs:88"),
+        ] {
+            assert_eq!(s.scrub(text), want, "{text}");
+        }
+        // One separator is not a path.
+        for text in ["and/or", "50 KB/s", "application/json", "I/O error"] {
+            assert_eq!(s.scrub(text), text);
+        }
+    }
+
+    #[test]
+    fn an_errors_own_private_values_go_wherever_it_repeats_them() {
+        assert_eq!(
+            without_values(
+                "Couldn't reach FABRIC.sofiacraft.net (fabric.sofiacraft.net) for Al, also",
+                &["fabric.sofiacraft.net", "Al", "x"],
+            ),
+            "Couldn't reach <redacted> (<redacted>) for <redacted>, also"
+        );
+    }
+
+    #[test]
+    fn many_names_are_one_pattern_and_the_longest_wins() {
+        let mut s = Scrubber::new();
+        s.add_secrets(["Pedro", "Servidor de Pedro", "Al", "PedroGamer99"]);
+        assert_eq!(
+            s.scrub("Servidor de Pedro, PedroGamer99, pedro and al, not also"),
+            "<redacted>, <redacted>, <redacted> and <redacted>, not also"
         );
     }
 }

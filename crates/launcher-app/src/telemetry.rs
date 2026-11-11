@@ -112,6 +112,8 @@ pub struct Telemetry {
     invites: InviteClient,
     /// The player's switch. Off until the settings are read, so nothing is recorded before.
     sharing: AtomicBool,
+    /// `arm_from_disk` ran: it decides once per run of the launcher.
+    begun: AtomicBool,
     /// The player was shown the notice before this run of the launcher started. A notice
     /// shown during this run counts from the next start, so a player who reads it and turns
     /// the switch off has sent nothing.
@@ -140,14 +142,21 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 impl Telemetry {
     pub fn new(config: TelemetryConfig) -> Arc<Self> {
         let scrubber = Scrubber::for_current_user(&config.data_root);
+        // Its own client, which follows no redirect: a body is never sent on to wherever an
+        // answer points.
+        let sender = Sender::new(
+            launcher_core::http::client_without_redirects(&config.launcher_version)
+                .unwrap_or_else(|_| config.http.clone()),
+        );
         Arc::new(Self {
             mode: config.mode,
             path: config.data_root.join(STATE_FILE),
             data_root: config.data_root,
             version: config.launcher_version,
-            sender: Sender::new(config.http.clone()),
+            sender,
             invites: InviteClient::new(config.http),
             sharing: AtomicBool::new(false),
+            begun: AtomicBool::new(false),
             armed: AtomicBool::new(false),
             state: Mutex::new(None),
             names: Mutex::new(BTreeSet::new()),
@@ -206,7 +215,8 @@ impl Telemetry {
     /// Once, when the launcher starts and after the switch is read: collecting is allowed
     /// from now if the player was shown the notice in an earlier run.
     pub fn arm_from_disk(&self) {
-        if !self.wanted() {
+        // Once per run: a notice shown later in this run can't arm it, whoever calls again.
+        if !self.wanted() || self.begun.swap(true, Ordering::SeqCst) {
             return;
         }
         let mut guard = lock(&self.state);
@@ -226,6 +236,32 @@ impl Telemetry {
             .get_or_insert_with(|| State::load(&self.path))
             .notice_shown()
             .is_none()
+    }
+
+    /// The switch can't be trusted any more (the settings couldn't be read): sharing is off,
+    /// and the player has to be shown the notice again before anything is collected, even
+    /// if the settings are later saved with sharing on.
+    pub fn distrust(&self) {
+        self.sharing.store(false, Ordering::SeqCst);
+        self.armed.store(false, Ordering::SeqCst);
+        self.begun.store(true, Ordering::SeqCst);
+        if self.mode == Mode::Off || !self.path.is_file() {
+            return;
+        }
+        let mut guard = lock(&self.state);
+        let state = guard.get_or_insert_with(|| State::load(&self.path));
+        let forgot = state.forget_notice();
+        if forgot || !state.is_empty() {
+            state.clear_collected();
+            self.save(state);
+        }
+    }
+
+    /// A new run of the launcher, for tests that play several on one `Telemetry`.
+    #[cfg(test)]
+    pub(crate) fn restart(&self) {
+        self.begun.store(false, Ordering::SeqCst);
+        self.armed.store(false, Ordering::SeqCst);
     }
 
     /// The player has now been shown it (What's new, the first run, or by turning the switch
@@ -327,9 +363,7 @@ impl Telemetry {
             return;
         }
         let mut scrubber = Scrubber::for_current_user(&self.data_root);
-        for name in known.iter() {
-            scrubber.add_secret(name);
-        }
+        scrubber.add_secrets(known.iter());
         *self.scrubber.write().unwrap_or_else(|e| e.into_inner()) = Arc::new(scrubber);
     }
 
@@ -1514,6 +1548,74 @@ pub(crate) mod tests {
             json!([]),
             "the Engine didn't take the report"
         );
+    }
+
+    #[tokio::test]
+    async fn a_redirect_is_not_followed_with_the_body() {
+        let elsewhere = engine(202, 202).await;
+        let server = MockServer::start().await;
+        for route in [ERRORS, PING] {
+            Mock::given(method("POST"))
+                .and(path(route))
+                .respond_with(
+                    ResponseTemplate::new(307)
+                        .insert_header("location", format!("{}{route}", elsewhere.uri())),
+                )
+                .mount(&server)
+                .await;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let telemetry = telemetry_to(&server, tmp.path());
+        set_today(&telemetry, "2026-11-11");
+        telemetry.report_error(&disk_error(), None);
+        telemetry.start(false, PingChannel::Stable).await;
+        settle(&telemetry).await;
+        assert!(elsewhere.received_requests().await.unwrap().is_empty());
+        // Not taken: kept for the next start.
+        let state = file(tmp.path()).unwrap();
+        assert_eq!(state["lastPing"], Value::Null);
+        assert_eq!(state["reports"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn arming_is_decided_once_per_run() {
+        let server = engine(202, 202).await;
+        let tmp = tempfile::tempdir().unwrap();
+        let telemetry = started(&server, tmp.path(), true);
+        telemetry.notice_shown();
+        // Whoever reads the switch again in this run doesn't start it.
+        telemetry.set_sharing(true);
+        telemetry.arm_from_disk();
+        assert!(!telemetry.is_on());
+        use_everything(&telemetry).await;
+        assert!(server.received_requests().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn settings_that_cannot_be_trusted_make_the_notice_due_again() {
+        let server = engine(500, 500).await;
+        let tmp = tempfile::tempdir().unwrap();
+        let earlier = started(&server, tmp.path(), true);
+        earlier.notice_shown();
+        let running = started(&server, tmp.path(), true);
+        running.report_error(&disk_error(), None);
+        assert!(running.is_on());
+
+        // A start where the settings couldn't be read.
+        let damaged = with_mode(Mode::Engine(url(&server.uri())), tmp.path());
+        damaged.distrust();
+        assert!(!damaged.is_on());
+        let state = file(tmp.path()).unwrap();
+        assert_eq!(state["noticeShown"], Value::Null);
+        assert_eq!(state["reports"], json!([]));
+        // The defaults (share on) get saved later: still nothing until a new notice and
+        // the start after it.
+        damaged.set_sharing(true);
+        damaged.arm_from_disk();
+        assert!(!damaged.is_on());
+        let next = started(&server, tmp.path(), true);
+        assert!(next.notice_due());
+        assert!(!next.is_on());
     }
 
     #[tokio::test]

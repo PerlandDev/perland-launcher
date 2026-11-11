@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::scrub::{is_public_host, Scrubber};
+use super::scrub::{is_public_host, without_values, Scrubber};
 use crate::LauncherError;
 
 pub const MESSAGE_MAX: usize = 500;
@@ -19,23 +19,65 @@ pub const VERSION_MAX: usize = 32;
 pub const ARCH_MAX: usize = 16;
 pub const LOCALE_MAX: usize = 8;
 
-/// `LauncherError` params that say what failed without saying whose it was.
-const PARAMS: &[&str] = &[
-    "version",
-    "loader",
-    "loader_version",
-    "status",
-    "item",
-    "field",
-    "step",
-    "method",
-    "component",
-    "reason",
-    "what",
-    "min",
-    "max",
-    "count",
+/// What an allow-listed param's value must look like to be sent.
+#[derive(Clone, Copy)]
+enum Shape {
+    /// A version: starts with a digit, then letters, digits and `. + _ -`.
+    Version,
+    /// A number, or an HTTP status with its words (`502 Bad Gateway`).
+    Number,
+    /// A word or a few from the launcher's own code (`instance order`, `NeoForge`).
+    Word,
+}
+
+/// `LauncherError` params that say what failed without saying whose it was, and the shape
+/// their values have when they do. Anything else in a param is taken as private.
+const PARAMS: &[(&str, Shape)] = &[
+    ("version", Shape::Version),
+    ("loader_version", Shape::Version),
+    ("loader", Shape::Word),
+    ("status", Shape::Number),
+    ("item", Shape::Word),
+    ("field", Shape::Word),
+    ("step", Shape::Word),
+    ("method", Shape::Word),
+    ("component", Shape::Word),
+    ("reason", Shape::Word),
+    ("what", Shape::Word),
+    ("min", Shape::Number),
+    ("max", Shape::Number),
+    ("count", Shape::Number),
 ];
+
+impl Shape {
+    fn fits(self, value: &str) -> bool {
+        let chars = |ok: fn(char) -> bool| value.chars().all(ok);
+        match self {
+            Shape::Version => {
+                value.len() <= 32
+                    && value.starts_with(|c: char| c.is_ascii_digit())
+                    && chars(|c| c.is_ascii_alphanumeric() || "._+-".contains(c))
+            }
+            Shape::Number => {
+                value.len() <= 40
+                    && value.starts_with(|c: char| c.is_ascii_digit())
+                    && chars(|c| c.is_ascii_alphanumeric() || c == ' ')
+                    && value
+                        .split(' ')
+                        .next()
+                        .is_some_and(|n| n.bytes().all(|b| b.is_ascii_digit()))
+            }
+            Shape::Word => {
+                value.len() <= 32
+                    && value.starts_with(|c: char| c.is_ascii_alphabetic())
+                    && chars(|c| c.is_ascii_alphanumeric() || c == '_' || c == ' ')
+                    && value.split(' ').count() <= 3
+                    // The launcher's own words are lowercase, or one CamelCase name.
+                    && (value == value.to_lowercase() || !value.contains([' ', '_']))
+            }
+        }
+    }
+}
 
 /// At most `max` bytes of `text`, cut on a character boundary. A byte limit is never looser
 /// than the contract's character limit.
@@ -219,21 +261,33 @@ pub fn report_for_error(
     scrubber: &Scrubber,
 ) -> Report {
     let wire = |value: &dyn erased::Wire| value.wire();
-    let mut report = Report::new(ReportKind::AppError, &scrubber.scrub(&error.message))
+    // Which params may be sent, and which are this error's private parts.
+    let mut sent: Vec<(String, &str)> = Vec::new();
+    let mut private: Vec<&str> = Vec::new();
+    for (key, value) in &error.params {
+        let shape = PARAMS.iter().find(|(name, _)| name == key).map(|(_, s)| *s);
+        if shape.is_some_and(|shape| shape.fits(value)) {
+            sent.push((format!("p_{key}"), value));
+        } else if key == "host" && is_public_host(value) {
+            sent.push(("p_host".into(), value));
+        } else {
+            private.push(value);
+        }
+    }
+    // A private part goes wherever the message or the detail repeats it, before anything
+    // else: the message of "couldn't reach {host}" is where a host nobody learned would stay.
+    let clean = |text: &str| scrubber.scrub(&without_values(text, &private));
+    let mut report = Report::new(ReportKind::AppError, &clean(&error.message))
         .code(&wire(&error.code))
         .context("category", &wire(&error.category));
     if let Some(command) = command {
         report = report.context("command", command);
     }
     if let Some(detail) = &error.detail {
-        report = report.context("detail", &scrubber.scrub(detail));
+        report = report.context("detail", &clean(detail));
     }
-    for (key, value) in &error.params {
-        if PARAMS.contains(&key.as_str()) {
-            report = report.context(&format!("p_{key}"), &scrubber.scrub(value));
-        } else if key == "host" && is_public_host(value) {
-            report = report.context("p_host", value);
-        }
+    for (key, value) in sent {
+        report = report.context(&key, &clean(value));
     }
     report
 }
@@ -654,6 +708,82 @@ mod tests {
                 }
                 assert!(!sent.contains("069a79f4"), "{sent}");
             }
+        }
+    }
+
+    #[test]
+    fn a_param_that_is_not_sent_is_masked_wherever_the_error_repeats_it() {
+        let scrubber = Scrubber::new();
+        for host in [
+            "fabric.sofiacraft.net",
+            "dev.sofiacraft.net",
+            "mc.sofiacraft.rs",
+            "sofiacraft.zip",
+            "Play.SofiaCraft.net",
+            "sofiahost",
+        ] {
+            let error = LauncherError::network(
+                ErrorCode::InviteSiteUnreachable,
+                format!("Couldn't reach the server's Perland site at {host}"),
+            )
+            .with_param("host", host)
+            .with_detail(format!(
+                "config.json at {} answered 502",
+                host.to_uppercase()
+            ));
+            let sent = serde_json::to_string(&report_for_error(&error, None, &scrubber)).unwrap();
+            assert!(!sent.to_lowercase().contains("sofia"), "{host}: {sent}");
+        }
+    }
+
+    #[test]
+    fn a_param_is_sent_only_when_it_looks_like_what_the_launcher_writes() {
+        let scrubber = Scrubber::new();
+        let error = LauncherError::pack(
+            ErrorCode::UpdateDownloadFailed,
+            "Couldn't download the update. You still have Servidor de Pedro v3",
+        )
+        .with_param("version", "Servidor de Pedro v3")
+        .with_param("loader_version", "1.20.1-Sofía pack")
+        .with_param("item", "Casa de Sofía")
+        .with_param("what", "sofia-pack.mrpack")
+        .with_param("reason", "the server refused Sofi_2014")
+        .with_param("field", "Sofi_2014")
+        .with_param("status", "Sofi 502")
+        .with_param("count", "12 de Sofi_2014");
+        let report = report_for_error(&error, None, &scrubber);
+        let sent = serde_json::to_string(&report).unwrap().to_lowercase();
+        for private in ["sofi", "pedro", "casa", "servidor"] {
+            assert!(!sent.contains(private), "{private} left in {sent}");
+        }
+        assert!(
+            !report.context_map().keys().any(|k| k.starts_with("p_")),
+            "{sent}"
+        );
+
+        let fine = LauncherError::loader(ErrorCode::LoaderVersionNotFound, "No such loader")
+            .with_param("version", "1.20.1")
+            .with_param("loader_version", "0.15.11+build.2")
+            .with_param("loader", "NeoForge")
+            .with_param("item", "instance order")
+            .with_param("reason", "not_on_modrinth")
+            .with_param("status", "502 Bad Gateway")
+            .with_param("count", 3)
+            .with_param("max", 16384);
+        let context = report_for_error(&fine, None, &scrubber)
+            .context_map()
+            .clone();
+        for (key, value) in [
+            ("p_version", "1.20.1"),
+            ("p_loader_version", "0.15.11+build.2"),
+            ("p_loader", "NeoForge"),
+            ("p_item", "instance order"),
+            ("p_reason", "not_on_modrinth"),
+            ("p_status", "502 Bad Gateway"),
+            ("p_count", "3"),
+            ("p_max", "16384"),
+        ] {
+            assert_eq!(context.get(key).map(String::as_str), Some(value), "{key}");
         }
     }
 
