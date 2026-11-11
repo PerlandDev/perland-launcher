@@ -17,12 +17,13 @@ use launcher_app::{
         AccountReady, AppInfo, ArtChoice, BannerView, Build, ContentFile, ContinueKind,
         ContinueTarget, EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice,
         ImportPreview, ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
-        LinkCodeView, ManualProgress, MicrosoftSignInPhase, NameListView, NewInstance,
-        NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents,
-        PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase, PerlandStats,
-        PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage, RestorePointDto,
-        RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers, ServerStatsView,
-        ServerStatusView, ServerTeam, SharePreview, SyncSummary, YourServerCard, YourServersPage,
+        LinkCodeView, ManualProgress, MicrosoftSignInPhase, ModSourceCounts, NameListView,
+        NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest,
+        PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase,
+        PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage,
+        RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers,
+        ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary, TrustPrompt,
+        UpdateFile, YourServerCard, YourServersPage,
     },
     events::{AppEvent, CrashFix, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -40,7 +41,7 @@ use launcher_core::{
     instances::{
         ArtMode, BannerEdges, DamagedInstance, Focus, GameSpec, GameWindow, IconMode, Instance,
         InstanceListing, JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus,
-        SourceRef, UpdateHold, UpdatePolicy,
+        ServerTrust, SourceRef, UpdateHold, UpdatePolicy,
     },
     invite::invite_link_cases,
     java::JavaFit,
@@ -58,7 +59,7 @@ use launcher_core::{
     restore::{Change, PointKind},
     settings::{IconShape, Lang, Settings, Theme, UiFont},
     share::{Category, CategoryCount, ShareChoice},
-    sync::ManualFile,
+    sync::{origin::FileOrigin, plan::FileChange, ManualFile},
     ErrorCode, LauncherError,
 };
 use serde::Serialize;
@@ -75,6 +76,44 @@ fn sample_update() -> PackUpdate {
         updated: vec!["Sodium".into(), "Iris".into()],
         removed: vec!["Zoomify".into()],
         kept: vec!["config/sodium-options.json".into()],
+        files: vec![
+            UpdateFile {
+                name: "Just Enough Items".into(),
+                change: FileChange::Added,
+                origin: FileOrigin::CurseForge,
+                host: None,
+                needs_look: false,
+            },
+            UpdateFile {
+                name: "Create".into(),
+                change: FileChange::Added,
+                origin: FileOrigin::Modrinth,
+                host: None,
+                needs_look: false,
+            },
+            UpdateFile {
+                name: "Farmer's Delight".into(),
+                change: FileChange::Added,
+                origin: FileOrigin::Web,
+                host: Some("github.com".into()),
+                needs_look: true,
+            },
+            UpdateFile {
+                name: "survival-extras.jar".into(),
+                change: FileChange::Updated,
+                origin: FileOrigin::Uploaded,
+                host: None,
+                needs_look: true,
+            },
+            UpdateFile {
+                name: "Iris".into(),
+                change: FileChange::Updated,
+                origin: FileOrigin::Pack,
+                host: None,
+                needs_look: true,
+            },
+        ],
+        held: true,
     }
 }
 
@@ -216,6 +255,7 @@ fn fabric_instance() -> Instance {
         banner_edges: Some(BannerEdges::Pixel),
         banner_aspect: Some(1833),
         update_hold: None,
+        server_trust: None,
     }
 }
 
@@ -248,6 +288,7 @@ fn vanilla_instance() -> Instance {
         banner_edges: None,
         banner_aspect: None,
         update_hold: None,
+        server_trust: None,
     }
 }
 
@@ -625,6 +666,10 @@ fn server_instance() -> Instance {
         update_hold: Some(UpdateHold {
             since: 1_791_720_000,
             version: "1.0.3".into(),
+        }),
+        server_trust: Some(ServerTrust {
+            server: "address:play.example.com:25566".into(),
+            at: 1_791_720_000,
         }),
     }
 }
@@ -1788,6 +1833,36 @@ fn contract_fixtures_are_current() {
         ],
     );
     check("server_news", server_news());
+    check(
+        "trust_prompts",
+        vec![
+            Some(TrustPrompt {
+                name: "Survival con los panas".into(),
+                team: Some("Acme".into()),
+                pack: Some("Survival Pack".into()),
+                mod_count: 42,
+                sources: Some(ModSourceCounts {
+                    modrinth: 30,
+                    curseforge: 8,
+                    web: 1,
+                    uploaded: 3,
+                    other: 0,
+                }),
+                modrinth_pack: false,
+                auto_update: true,
+            }),
+            Some(TrustPrompt {
+                name: "Cobblemon".into(),
+                team: None,
+                pack: None,
+                mod_count: 0,
+                sources: None,
+                modrinth_pack: true,
+                auto_update: false,
+            }),
+            None,
+        ],
+    );
     check(
         "join_preview",
         vec![

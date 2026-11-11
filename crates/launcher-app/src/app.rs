@@ -604,8 +604,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Version and Java changes wait until the game stops; other edits are fine while it runs.
     /// Where an instance comes from (`source`), its server link (`server`) and its pictures
     /// (`art`, `art_seed`, `icon` and the background's view) change only through their own commands, so a stale copy from
-    /// the UI can't undo a relink or a picture. Server instances
-    /// always follow their server (`Auto`).
+    /// the UI can't undo a relink or a picture. Trust in a server
+    /// (`server_trust`) changes only through the trust step's commands. Server instances update
+    /// on their own or ask, never stay pinned.
     pub async fn instance_update(&self, instance: Instance) -> Result<Instance> {
         let current = self.instances.load(&instance.id).await?;
         if self.is_busy(&instance.id)
@@ -631,7 +632,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         instance.banner_aspect = current.banner_aspect;
         // Only going back and "Update again" set or lift the hold.
         instance.update_hold = current.update_hold.clone();
-        if matches!(current.source, SourceRef::Perland { .. }) {
+        // Only the trust step and its settings row trust a server, or take it back.
+        instance.server_trust = current.server_trust.clone();
+        // A server instance updates on its own or asks first, as its player chose; it can't stay
+        // on one version, since it must match the server to join it.
+        if matches!(current.source, SourceRef::Perland { .. })
+            && instance.update_policy == UpdatePolicy::Pinned
+        {
             instance.update_policy = UpdatePolicy::Auto;
         }
         self.instances.update(&instance).await

@@ -19,6 +19,7 @@ import { VersionFields } from '../new-instance/VersionFields';
 import { GameWindowFields } from './GameWindowFields';
 import { windowDraft, windowOf } from './gameWindow';
 import { JavaPicker } from './JavaPicker';
+import { ServerTrustFields } from './ServerTrustFields';
 import { useJavaChoice } from './useJavaChoice';
 
 /** The fields this screen saves, written the same way whatever order their keys came in, to tell an edit from what is
@@ -145,6 +146,12 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
               {t('server.relinkRunning')}
             </p>
           )}
+          <ServerTrustFields
+            instance={instance}
+            running={running}
+            autoUpdate={policy !== 'ask'}
+            onAutoUpdate={(next) => edit(setPolicy)(next ? 'auto' : 'ask')}
+          />
         </section>
       )}
       {!pack && (

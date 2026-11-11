@@ -8,6 +8,7 @@ import type { PublicServerCard as Card } from '../../ipc/schema';
 import { qk, recordYourServer, useServerIcon } from '../../state/queries';
 import { requireAccount } from '../../state/requireAccount';
 import { navigate } from '../../state/route';
+import { askJoinTrust } from '../../state/trustPrompt';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { copyText } from '../../ui/copyText';
@@ -200,7 +201,11 @@ function usePlay(card: Card, follow: boolean, onPlay?: () => Promise<void>) {
         if (!(await requireAccount())) return;
         // Always asked, even when the card names an instance: it answers the one that joins the server
         // now, so an instance deleted since the list loaded is never played.
-        id = (await commands.joinAdd(invite)).id;
+        // A server that installs a modpack asks first, before anything is added: Not now leaves nothing behind.
+        const prompt = await commands.joinTrust(invite);
+        const autoUpdate = prompt ? await askJoinTrust(prompt) : undefined;
+        if (autoUpdate === null) return;
+        id = (await commands.joinAdd(invite, autoUpdate)).id;
         if (follow) recordYourServer(qc, () => commands.yourServersFollow(invite));
         if (id !== card.instance) await qc.invalidateQueries({ queryKey: qk.instances });
         await commands.play(id, true);

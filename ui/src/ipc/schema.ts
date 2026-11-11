@@ -416,6 +416,8 @@ export const instance = z.strictObject({
   bannerAspect: z.number().int().nullable(),
   /** Set after going back on an instance that checks for updates: Play skips the check until "Update again". Absent when not held. */
   updateHold: z.strictObject({ since: z.number().int(), version: z.string() }).optional(),
+  /** The trust step's answer for this server instance's server; absent until then. */
+  serverTrust: z.strictObject({ server: z.string(), at: z.number().int() }).optional(),
 });
 export const restoreChange = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('packUpdate'), from: z.string(), to: z.string() }),
@@ -732,6 +734,15 @@ export const manualFile = z.strictObject({
   pageUrl: z.string(),
   hashes,
 });
+/** Where a file an update writes comes from: `pack` is inside the pack file, source unknown. */
+export const fileOrigin = z.enum(['modrinth', 'curseForge', 'web', 'uploaded', 'pack']);
+export const updateFile = z.strictObject({
+  name: z.string(),
+  change: z.enum(['added', 'updated']),
+  origin: fileOrigin,
+  host: z.string().nullable(),
+  needsLook: z.boolean(),
+});
 export const packUpdate = z.strictObject({
   fromVersion: z.string().nullable(),
   toVersion: z.string(),
@@ -739,6 +750,25 @@ export const packUpdate = z.strictObject({
   updated: z.array(z.string()),
   removed: z.array(z.string()),
   kept: z.array(z.string()),
+  files: z.array(updateFile),
+  held: z.boolean(),
+});
+export const modSourceCounts = z.strictObject({
+  modrinth: z.number().int(),
+  curseforge: z.number().int(),
+  web: z.number().int(),
+  uploaded: z.number().int(),
+  other: z.number().int(),
+});
+/** The trust step before a server's modpack installs. */
+export const trustPrompt = z.strictObject({
+  name: z.string(),
+  team: z.string().nullable(),
+  pack: z.string().nullable(),
+  modCount: z.number().int(),
+  sources: modSourceCounts.nullable(),
+  modrinthPack: z.boolean(),
+  autoUpdate: z.boolean(),
 });
 export const syncSummary = z.strictObject({
   fromVersion: z.string().nullable(),
@@ -1049,6 +1079,10 @@ export type CrashFix = z.infer<typeof crashFix>;
 export type Hashes = z.infer<typeof hashes>;
 export type ManualFile = z.infer<typeof manualFile>;
 export type PackUpdate = z.infer<typeof packUpdate>;
+export type UpdateFile = z.infer<typeof updateFile>;
+export type FileOrigin = z.infer<typeof fileOrigin>;
+export type TrustPrompt = z.infer<typeof trustPrompt>;
+export type ModSourceCounts = z.infer<typeof modSourceCounts>;
 export type SyncSummary = z.infer<typeof syncSummary>;
 export type ExitInfo = z.infer<typeof exitInfo>;
 export type RestoreChange = z.infer<typeof restoreChange>;

@@ -3,6 +3,7 @@
 pub mod client;
 pub mod engine_link;
 pub mod link;
+pub mod mods;
 pub mod view;
 
 pub use client::{
@@ -11,6 +12,7 @@ pub use client::{
 };
 pub use engine_link::{pack_link_refused, EngineInviteLink};
 pub use link::{invite_link_cases, shown_invite, InviteLink, InviteLinkCase, TOKEN_LEN};
+pub use mods::{InviteMod, InviteMods, ModCounts, ModSource};
 pub use view::{
     non_empty, shown_name, InviteAddress, InviteGame, InviteLauncher, InviteModrinth, InvitePack,
     InvitePlayers, InviteTeam, InviteView, PACK_PENDING, PACK_READY, PACK_UNAVAILABLE,

@@ -24,7 +24,7 @@ import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario, type Per
 import { mockCrash, type CrashScenario } from './mockCrash';
 import { handleTeams, NOT_TEAMS, type TeamsScenario } from './mockTeams';
 import { handleSkins, NOT_SKINS, seedSkins, type SkinsScenario } from './mockSkins';
-import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
+import { handleServer, instanceTrustPrompt, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
 import { MSA_STEPS, type MsaStep } from './schema';
 import type {
   FriendsCheck,
@@ -421,7 +421,9 @@ function seed(options: MockOptions) {
       bannerAspect: null,
     };
     listing.instances = [...listing.instances, sky];
-    const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
+    const fixture = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
+    // Not a server's pack: nothing is "uploaded by the server's owner", and nothing waits on its own.
+    const offer = fixture && { ...fixture, held: false, files: fixture.files.filter((f) => f.origin !== 'uploaded') };
     const blocked = (clone(manualProgressFx) as ManualProgress).remaining;
     content.set(contentKey(sky.id, 'resource_pack'), [{ fileName: 'Pack Textures.zip', size: 2_000_000, folder: false, managed: true }]);
     packs.set(sky.id, {
@@ -474,6 +476,11 @@ function seed(options: MockOptions) {
     listing.instances = [...listing.instances, ...modrinthInstances()];
   }
   const servers = seedServers(options.server, listing);
+  if (options.server === 'update-held') {
+    // The server's pack changed, with a file its owner uploaded: the run waits on "Update ready" although it updates on its own.
+    const update = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
+    packs.set(MOCK_SERVER_ID, { installed: '1.0.3', update, contents: clone(packContentsFx) as PackContents, art: { icon: null, banner: null }, manual: [], found: 0 });
+  }
   // Each instance's one restore point (the real one is .perland/restore/point/point.json).
   const restorePoints = new Map<string, RestorePoint>();
   if (!options.firstRun) {
@@ -655,7 +662,8 @@ async function packPrelude(
     await wait(400);
     if (run.cancelled) return null;
     if (pack.update) {
-      if (updateOnly || instance.updatePolicy === 'auto') take = true;
+      // As the core: code from outside Modrinth and CurseForge waits for the player even when updates are automatic.
+      if ((updateOnly || instance.updatePolicy === 'auto') && !pack.update.held) take = true;
       else {
         run.state = 'asking';
         event({ type: 'run_state', instance: id, state: 'asking', exit: null, update: pack.update });
@@ -1136,6 +1144,10 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
       if (!state.accounts.active) fail('auth', 'no_account', 'Add an account before playing');
       if (state.runs.has(target.id)) fail('game', 'already_running', 'already running');
+      // As the core: nothing from a server the player hasn't trusted installs.
+      if (instanceTrustPrompt(target)) {
+        fail('pack', 'server_trust_needed', 'Confirm you trust this server before its modpack installs', args.join ? { id: target.id, join: 'true' } : { id: target.id });
+      }
       if (state.servers?.scenario === 'pending' && target.id === MOCK_SERVER_ID) {
         void scriptServerWait(state, target);
         return null;
@@ -1182,7 +1194,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const version = update?.from ?? pack?.installed ?? target.updateHold?.version ?? null;
       if (pack && update) {
         pack.installed = update.from;
-        pack.update = { fromVersion: update.from, toVersion: update.to, added: [], updated: [], removed: [], kept: [] };
+        pack.update = { fromVersion: update.from, toVersion: update.to, added: [], updated: [], removed: [], kept: [], files: [], held: false };
       }
       const updated: Instance = { ...target };
       if (target.updateHold) updated.updateHold = target.updateHold;
@@ -1535,7 +1547,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       if (!vanilla && modrinth === null && state.options.friends === 'missing') {
         fail('pack', 'free_server_mods_not_on_modrinth', 'Free servers only run mods from Modrinth');
       }
-      const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite }, []) as Instance;
+      // The player's own server: trusted, as the core joins it.
+      const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite, autoUpdate: true }, []) as Instance;
       return handleFree(
         state.free,
         state.perland.account,
@@ -1625,7 +1638,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const skinsServed = handleSkins(state.skins, state.accounts, cmd, args);
       if (skinsServed !== NOT_SKINS) return skinsServed;
       const extra = [...state.perland.servers, ...(state.free.server ? [state.free.server] : [])];
-      const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite }, extra) as Instance;
+      const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite, autoUpdate: true }, extra) as Instance;
       const freeServed = await handleFree(state.free, state.perland.account, state.listing, cmd, args, join, (card) =>
         freeManageRef(state.manage, card),
       );

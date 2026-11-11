@@ -448,7 +448,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             started = true;
         }
         let invite = server.invite_url.clone().unwrap_or_default();
-        let instance = self.join_add(&invite).await?;
+        let instance = self.join_add(&invite, Some(true)).await?;
         if started || server.status == "starting" {
             self.update_server(&instance.id, false, |link| {
                 if let Some(link) = link {
@@ -950,7 +950,7 @@ mod tests {
         offline.address = Some("play.example.com".into());
         serve_free(&runner, Some(offline));
         serve(&runner, &invite('F'), Ok(server_view("Survival")));
-        let joined = core.join_add(&invite('F')).await.unwrap();
+        let joined = core.join_add(&invite('F'), Some(true)).await.unwrap();
         let card = core
             .free_server()
             .await
