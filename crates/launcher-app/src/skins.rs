@@ -377,7 +377,7 @@ mod tests {
     #[tokio::test]
     async fn wearing_a_skin_is_counted_when_it_worked() {
         let (core, _runner, _host, _t) = core(BuildKind::Release);
-        core.telemetry().set_sharing(true);
+        core.telemetry().force_on();
         let alex = alex(&core).await;
         let entry = core
             .skin_create("Mine", SkinModel::Slim, &texture(), Some(&alex.uuid), false)

@@ -55,7 +55,7 @@ counters! {
     GameLaunches => "game_launches": "The game started.",
     GameCrashes => "game_crashes": "The game closed by itself with an error.",
     GameRepairs => "game_repairs": "A repair of the game's files was started (the crash card's Repair).",
-    InstancesCreated => "instances_created": "An instance was created by hand (New instance or the first run).",
+    InstancesCreated => "instances_created": "An instance was created with a Minecraft version picked by hand (New instance, the first run, or along with a new team server).",
     InstancesImported => "instances_imported": "An instance was imported from another launcher.",
     PacksInstalled => "packs_installed": "A modpack was added as a new instance (from Browse, a file or a link).",
     JoinsByLink => "joins_by_link": "A server was added from an invite link or the server list.",
@@ -80,6 +80,9 @@ pub struct State {
     version: u32,
     /// The ISO week of this install's first run with the feature, `YYYY-Www`.
     install_week: Option<String>,
+    /// The UTC day the player was shown that the launcher shares anonymous data. Until there
+    /// is one, nothing is collected.
+    notice_shown: Option<Day>,
     /// The UTC day of the last ping the Engine took.
     last_ping: Option<Day>,
     /// Sums since that ping.
@@ -95,26 +98,45 @@ impl State {
         let Ok(bytes) = std::fs::read(path) else {
             return State::default();
         };
-        let Ok(read) = serde_json::from_slice::<State>(&bytes) else {
+        let Ok(read) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
             return State::default();
         };
+        // Field by field: one that can't be read costs only itself, so a bad report doesn't
+        // make the install look new.
+        fn field<T: serde::de::DeserializeOwned>(read: &serde_json::Value, key: &str) -> Option<T> {
+            serde_json::from_value(read.get(key)?.clone()).ok()
+        }
         let mut state = State {
             version: 1,
-            install_week: read.install_week.filter(|w| is_install_week(w)),
-            last_ping: read.last_ping,
+            install_week: field::<String>(&read, "installWeek").filter(|w| is_install_week(w)),
+            notice_shown: field(&read, "noticeShown"),
+            last_ping: field(&read, "lastPing"),
             counters: BTreeMap::new(),
             reports: Vec::new(),
         };
         for counter in Counter::ALL {
-            if let Some(n) = read.counters.get(counter.as_str()) {
-                if *n > 0 {
-                    state
-                        .counters
-                        .insert(counter.as_str().into(), (*n).min(COUNTER_MAX));
-                }
+            let n = read
+                .get("counters")
+                .and_then(|c| c.get(counter.as_str()))
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or(0);
+            if n > 0 {
+                state.counters.insert(
+                    counter.as_str().into(),
+                    n.min(u64::from(COUNTER_MAX)) as u32,
+                );
             }
         }
-        for report in read.reports.iter().rev().take(QUEUE_CAP).rev() {
+        let reports: Vec<Report> = read
+            .get("reports")
+            .and_then(serde_json::Value::as_array)
+            .map(|all| {
+                all.iter()
+                    .filter_map(|one| serde_json::from_value(one.clone()).ok())
+                    .collect()
+            })
+            .unwrap_or_default();
+        for report in reports.iter().rev().take(QUEUE_CAP).rev() {
             state.reports.push(report.rebuilt());
         }
         state
@@ -133,6 +155,18 @@ impl State {
     }
     pub fn last_ping(&self) -> Option<Day> {
         self.last_ping
+    }
+    pub fn notice_shown(&self) -> Option<Day> {
+        self.notice_shown
+    }
+
+    /// The player has been shown the notice. `true` when this is the first time.
+    pub fn note_notice(&mut self, today: Day) -> bool {
+        if self.notice_shown.is_some() {
+            return false;
+        }
+        self.notice_shown = Some(today);
+        true
     }
     pub fn counters(&self) -> &BTreeMap<String, u32> {
         &self.counters
@@ -473,6 +507,7 @@ mod tests {
     fn turning_sharing_off_keeps_only_the_dates() {
         let mut state = State::default();
         state.note_install(day("2026-11-11"));
+        state.note_notice(day("2026-11-11"));
         state.ping_delivered(day("2026-11-11"), &BTreeMap::new());
         state.push(report(0));
         state.count(Counter::GameLaunches);
@@ -481,6 +516,8 @@ mod tests {
         assert!(state.is_empty());
         assert_eq!(state.install_week(), Some("2026-W46"));
         assert_eq!(state.last_ping(), Some(day("2026-11-11")));
+        // And that the player was told: turning it back on is not a surprise.
+        assert_eq!(state.notice_shown(), Some(day("2026-11-11")));
     }
 
     #[test]
@@ -497,6 +534,8 @@ mod tests {
         let path = tmp.path().join(STATE_FILE);
         let mut state = State::default();
         state.note_install(day("2026-11-11"));
+        assert!(state.note_notice(day("2026-11-11")));
+        assert!(!state.note_notice(day("2026-11-13")));
         state.ping_delivered(day("2026-11-12"), &BTreeMap::new());
         state.count(Counter::GameLaunches);
         state.push(report(0));
@@ -512,8 +551,16 @@ mod tests {
             .collect();
         assert_eq!(
             keys,
-            ["counters", "installWeek", "lastPing", "reports", "version"]
+            [
+                "counters",
+                "installWeek",
+                "lastPing",
+                "noticeShown",
+                "reports",
+                "version"
+            ]
         );
+        assert_eq!(raw["noticeShown"], "2026-11-11");
         assert_eq!(raw["installWeek"], "2026-W46");
         assert_eq!(raw["lastPing"], "2026-11-12");
         assert_eq!(raw["counters"], serde_json::json!({ "game_launches": 1 }));
@@ -538,8 +585,18 @@ mod tests {
         assert_eq!(State::load(&path), State::default(), "missing");
         std::fs::write(&path, b"{not json").unwrap();
         assert_eq!(State::load(&path), State::default(), "damaged");
-        std::fs::write(&path, br#"{"lastPing":"tomorrow"}"#).unwrap();
-        assert_eq!(State::load(&path), State::default(), "a bad date");
+        // One bad field costs only itself.
+        std::fs::write(
+            &path,
+            br#"{"lastPing":"tomorrow","noticeShown":"2026-11-11","installWeek":"2026-W46","counters":"x","reports":[{"kind":"from_the_future","message":"m"},{"kind":"panic","message":"kept"},7]}"#,
+        )
+        .unwrap();
+        let partly = State::load(&path);
+        assert_eq!(partly.last_ping(), None);
+        assert_eq!(partly.notice_shown(), Some(day("2026-11-11")));
+        assert_eq!(partly.install_week(), Some("2026-W46"));
+        assert_eq!(partly.reports().len(), 1);
+        assert_eq!(partly.reports()[0].message(), "kept");
 
         let reports: Vec<_> = (0..70)
             .map(|n| serde_json::json!({ "kind": "panic", "message": format!("m{n}") }))
@@ -548,7 +605,7 @@ mod tests {
             "installWeek": "1999-W01",
             "installId": "abc",
             "lastPing": "2026-11-12",
-            "counters": { "game_launches": 4_000_000_000u32, "which_server": 3, "skins_changed": 0 },
+            "counters": { "game_launches": 40_000_000_000u64, "which_server": 3, "skins_changed": 0 },
             "reports": reports
         });
         std::fs::write(&path, serde_json::to_vec(&edited).unwrap()).unwrap();

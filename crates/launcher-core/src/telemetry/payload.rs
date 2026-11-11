@@ -633,7 +633,7 @@ mod tests {
         assert_eq!(context["p_version"], "1.20.1");
         assert_eq!(
             context["detail"],
-            "GET https://api.modrinth.com/v2/project/sodium answered 502"
+            "GET https://api.modrinth.com answered 502"
         );
         assert_eq!(report.stack_str(), None);
     }

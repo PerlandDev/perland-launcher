@@ -295,6 +295,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 Vec::new()
             }
         };
+        // Its name, address and invite are masked in every report from now on.
+        let mut names = vec![server.name.clone()];
+        names.extend(server.address.clone());
+        if let Some(link) = server
+            .invite_url
+            .as_deref()
+            .and_then(|url| launcher_core::invite::InviteLink::parse(url).ok())
+        {
+            names.push(link.token().to_string());
+            names.push(link.host().to_string());
+        }
+        self.config.telemetry.add_names(names);
         free_card(server, &joined)
     }
 

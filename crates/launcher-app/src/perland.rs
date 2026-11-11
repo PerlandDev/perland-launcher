@@ -420,6 +420,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 .await
                 .unwrap_or(None);
             state.loaded = true;
+            if let Some(session) = &state.session {
+                self.config
+                    .telemetry
+                    .add_names(crate::telemetry::session_names(session));
+            }
         }
         state
     }
@@ -471,6 +476,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         let mut profile = session.profile.clone();
         edit(&mut profile);
+        self.config
+            .telemetry
+            .add_names(crate::telemetry::profile_names(&profile));
         if session.profile == profile {
             return;
         }
@@ -561,7 +569,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let telemetry = &self.config.telemetry;
         telemetry.count(Counter::PerlandSignIns);
         if let Some(session) = &state.session {
-            telemetry.add_names(crate::telemetry::profile_names(&session.profile));
+            telemetry.add_names(crate::telemetry::session_names(session));
         }
         shown
     }

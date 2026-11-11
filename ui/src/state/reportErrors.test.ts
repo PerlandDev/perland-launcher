@@ -52,12 +52,12 @@ it('never sends an object that was thrown, and leaves command errors to Rust', (
 
 it('cuts long text and survives a send that fails or throws', async () => {
   const send = setup(vi.fn(() => Promise.reject(new Error('no backend'))));
-  const long = new Error('x'.repeat(2000));
-  long.stack = 'y'.repeat(20000);
+  const long = new Error('x'.repeat(9000));
+  long.stack = 'y'.repeat(50000);
   expect(() => throwError(long)).not.toThrow();
   const [, message, stack] = send.mock.calls[0] as unknown as [string, string, string];
-  expect(message).toHaveLength(500);
-  expect(stack).toHaveLength(8192);
+  expect(message).toHaveLength(4000);
+  expect(stack).toHaveLength(24000);
   await Promise.resolve();
   stop();
   stop = installErrorReporting(target, () => {

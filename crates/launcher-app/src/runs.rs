@@ -1773,7 +1773,7 @@ mod tests {
     #[tokio::test]
     async fn a_crash_is_counted_and_reported_as_its_verdict_only() {
         let (core, runner, host, _t) = ready(false).await;
-        core.telemetry().set_sharing(true);
+        core.telemetry().force_on();
         core.play("alpha").await.unwrap();
         runner.open_gate(1);
         host.wait_for("alpha", Running).await;

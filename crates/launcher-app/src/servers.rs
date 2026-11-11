@@ -1,7 +1,6 @@
 //! Joining Perland servers by invite link (join-by-link spec §2.2): previewing an invite,
 //! adding it as an instance, its live status, and moving it to a new link. Tauri only forwards
 //! these commands.
-use crate::telemetry::instance_names;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::telemetry::Counter;
 use launcher_core::{
@@ -118,7 +117,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
         self.instances.save(&instance).await?;
         self.config.telemetry.count(Counter::JoinsByLink);
-        self.config.telemetry.add_names(instance_names(&instance));
+        self.telemetry_learn(&instance);
         Ok(instance)
     }
 
@@ -458,7 +457,7 @@ mod tests {
     #[tokio::test]
     async fn joining_counts_once_and_teaches_the_server_to_the_scrubber() {
         let (core, runner, _host, tmp) = core(BuildKind::Dev);
-        core.telemetry().set_sharing(true);
+        core.telemetry().force_on();
         serve(&runner, &invite('A'), Ok(server_view("survival")));
         let instance = core.join_add(&invite('A')).await.unwrap();
         // The same server again is the same instance, not another join.

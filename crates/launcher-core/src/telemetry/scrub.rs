@@ -1,22 +1,28 @@
 //! Takes everything private out of a text before it is queued: known names and tokens, the
-//! data folder and the home folder, emails, addresses, and every absolute path. What is left
-//! are placeholders (`<home>`, `<data>/instances`, `<path>`, `<url>`, `<address>`, `<email>`,
-//! `<user>`, `<redacted>`) and the words around them.
+//! data folder and the home folder, emails, addresses, anything shaped like a token, and
+//! every absolute path. What is left are placeholders (`<home>`, `<data>/instances`, `<path>`,
+//! `<url>`, `<address>`, `<email>`, `<user>`, `<redacted>`) and the words around them.
+//!
+//! When in doubt it removes: a few words too many after a path, a Java package that ends
+//! like a host name. It never keeps something because it "looks fine".
 use std::sync::LazyLock;
 
 use regex::{Captures, Regex};
 
-use crate::{download::redact_url, launch::Redactor};
+use crate::launch::Redactor;
 
-/// The longest text scrubbed; the rest is cut first. Far above any field's own limit.
+/// The longest text scrubbed; the rest is cut first, at a space. Far above any field's limit.
 const INPUT_CAP: usize = 32 << 10;
 
 /// Stand-ins while scrubbing, from Unicode's private use area. Any already in the input are
 /// removed first, so a text can't smuggle one in.
+const PRIVATE_USE: std::ops::RangeInclusive<char> = '\u{E000}'..='\u{E01F}';
 const DATA: char = '\u{E000}';
 const HOME: char = '\u{E001}';
 const STASH: char = '\u{E002}';
 const STASH_END: char = '\u{E003}';
+/// A stashed piece's number is written in these ten, so no name or number can match it.
+const DIGIT_0: u32 = 0xE010;
 
 /// Folders and files the launcher itself names inside its data folder: safe to keep.
 const DATA_TOP: &[&str] = &[
@@ -35,8 +41,8 @@ const DATA_TOP: &[&str] = &[
     "instance-order.json",
 ];
 
-/// Public services the launcher talks to. A URL on one of these keeps its host and path
-/// (never its query); any other host is the player's business.
+/// Public services the launcher talks to. A URL on one of these keeps its host (never its
+/// path or query); any other host is the player's business.
 const PUBLIC_HOSTS: &[&str] = &[
     "mojang.com",
     "minecraft.net",
@@ -57,18 +63,65 @@ const PUBLIC_HOSTS: &[&str] = &[
     "adoptium.net",
 ];
 
-/// Endings that make `name.ext:12` a place in a file, not an address.
+/// Endings that make `name.ext` a file (or a place in one, with `:12`), not an address.
 const FILE_ENDINGS: &[&str] = &[
-    "rs", "js", "mjs", "cjs", "ts", "tsx", "jsx", "java", "kt", "json", "toml", "jar", "class",
-    "txt", "log", "zip", "png", "dat", "cfg", "mrpack", "exe", "dll", "so", "html", "css", "md",
+    "rs",
+    "js",
+    "mjs",
+    "cjs",
+    "ts",
+    "tsx",
+    "jsx",
+    "java",
+    "kt",
+    "json",
+    "toml",
+    "jar",
+    "class",
+    "txt",
+    "log",
+    "zip",
+    "png",
+    "dat",
+    "cfg",
+    "mrpack",
+    "exe",
+    "dll",
+    "so",
+    "html",
+    "css",
+    "md",
+    "yml",
+    "yaml",
+    "xml",
+    "properties",
+    "lock",
+    "tmp",
+    "bak",
+    "old",
+    "nbt",
+    "mca",
+    "ogg",
+    "jpg",
+    "jpeg",
+    "gif",
+    "webp",
+    "svg",
+    "ico",
+    "gz",
+    "tar",
+    "sha1",
+    "bin",
+    "pack",
+    "mcmeta",
+    "disabled",
 ];
 
-/// Endings that make a dotted word a host name.
-const HOST_ENDINGS: &[&str] = &[
-    "com", "net", "org", "io", "gg", "online", "xyz", "me", "co", "dev", "fun", "club", "es", "mx",
-    "ar", "cl", "pe", "br", "uk", "de", "fr", "eu", "us", "ca", "host", "pro", "live", "world",
-    "games", "land", "space", "site", "cc", "tv", "info", "app", "cloud", "network", "lat",
-    "local", "lan",
+/// First labels of Java and Kotlin package names: `net.minecraft.client.Main` is not a host.
+const PACKAGE_ROOTS: &[&str] = &[
+    "java", "javax", "jdk", "sun", "kotlin", "kotlinx", "scala", "net", "com", "org", "io", "cpw",
+    "dev", "me", "mod", "mods", "fabric", "quilt", "forge", "neoforge", "mixins", "mixin", "self",
+    "this", "window", "document", "e", "i",
 ];
 
 /// Is `host` one of [`PUBLIC_HOSTS`] or under one?
@@ -86,29 +139,67 @@ fn re(pattern: &str) -> Regex {
     Regex::new(pattern).expect("a fixed pattern compiles")
 }
 
-static URL: LazyLock<Regex> =
-    LazyLock::new(|| re(r#"(?i)\b[a-z][a-z0-9+.-]*://[^\s"'`<>\u{E000}-\u{E003}]+"#));
-/// An absolute path: a stand-in for a known folder, a drive, a UNC share, or `/…` after
-/// something that can come before a path. Then every following run of words that ends in one
-/// with a separator in it, so `C:\Users\Ana Maria\x` goes whole. It may take a few words too
-/// many ("/a/b and then c/d"), never too few.
-static PATH: LazyLock<Regex> = LazyLock::new(|| {
-    let seg = r#"[^\s"'`<>|*?:\u{E000}-\u{E003}]"#;
-    // A word of a folder's name: up to three may sit between two separators ("Mi disco de juegos").
-    let word = r#"[^\s"'`<>|*?:/\\\u{E000}-\u{E003}]"#;
+/// Characters a path's last part can't hold, as the inside of a character class: whitespace,
+/// quotes of every kind, and what no file name has.
+const NOT_IN_PATH: &str = r#"\s"'`<>|*?:«»“”‘’\u{E002}\u{E003}"#;
+
+/// Windows spellings that only wrap a path: `\\?\C:\x`, `\\?\UNC\server\x`, `\\.\C:\x`.
+static VERBATIM: LazyLock<Regex> =
+    LazyLock::new(|| re(r"(?i)(?:\\\\|//)[?.](?:\\|/)(?P<unc>UNC(?:\\|/))?"));
+/// `file:/C:/x` and `jar:file:/x!/y`: what follows is a path.
+static FILE_SCHEME: LazyLock<Regex> =
+    LazyLock::new(|| re(r"(?i)\b(?:jar:)?file:/+(?P<drive>[A-Za-z]:[\\/])?"));
+static URL: LazyLock<Regex> = LazyLock::new(|| {
     re(&format!(
-        r#"(?P<lead>^|[\s"'`(=\[{{,;:>])(?P<path>(?:[\u{{E000}}\u{{E001}}]|[A-Za-z]:[\\/]|\\\\|/{seg}){seg}*(?:(?: {word}+){{0,3}} {seg}*[\\/]{seg}*)*)"#
+        r"(?i)\b[a-z][a-z0-9+.-]*://[^{NOT_IN_PATH_URL}]+",
+        NOT_IN_PATH_URL = r#"\s"'`<>«»“”‘’\u{E000}-\u{E01F}"#
     ))
 });
-static EMAIL: LazyLock<Regex> =
-    LazyLock::new(|| re(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"));
-static DOTTED: LazyLock<Regex> =
-    LazyLock::new(|| re(r"\b[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+(?P<port>:\d{1,5})?"));
-static IPV6: LazyLock<Regex> = LazyLock::new(|| {
-    re(r"\[[0-9A-Fa-f:.]{2,}\](?::\d{1,5})?|\b(?:[0-9A-Fa-f]{1,4}:){3,7}[0-9A-Fa-f]{1,4}\b")
+/// An absolute path, wherever it stands: a stand-in for a known folder, a drive, a UNC share,
+/// `~/…`, or `/…` that doesn't follow a letter, a digit or another `/` (so not `and/or`).
+/// It runs on through spaces for as long as another separator follows on the line, so
+/// `C:\Users\Ana Maria\Mis cosas\x` goes whole, and then through a file name with spaces up
+/// to a known file ending. It may take a few words too many ("/a/b and then c/d"), never too few.
+static PATH: LazyLock<Regex> = LazyLock::new(|| {
+    let seg = format!("[^{NOT_IN_PATH}]");
+    let word = format!(r"[^{NOT_IN_PATH}/\\]");
+    let line = r#"[^\n\r"'`<>|*?:«»“”‘’\u{E002}\u{E003}]"#;
+    re(&format!(
+        r"(?P<lead>^|[^A-Za-z0-9/\\])(?P<path>(?:[\u{{E000}}\u{{E001}}]|\\\\|~[\\/]|/{seg}){seg}*(?:{line}*[\\/]{seg}*)*(?:(?: {word}+){{1,8}}\.(?i:{endings})\b)?)",
+        endings = FILE_ENDINGS.join("|")
+    ))
 });
-static CARGO: LazyLock<Regex> = LazyLock::new(|| re(r"registry/src/[^/]+/(?P<tail>.+)$"));
-static RUSTC: LazyLock<Regex> = LazyLock::new(|| re(r"/rustc/[0-9a-f]+/(?P<tail>.+)$"));
+/// A drive path. It needs no lead: after the URL step nothing else looks like `X:\`.
+static DRIVE: LazyLock<Regex> = LazyLock::new(|| re(r"[A-Za-z]:[\\/]"));
+static EMAIL: LazyLock<Regex> = LazyLock::new(|| re(r"[\w.%+-]+@[\w-]+(?:\.[\w-]+)+"));
+static DOTTED: LazyLock<Regex> = LazyLock::new(|| re(r"\b[\w-]+(?:\.[\w-]+)+(?P<port>:\d{1,5})?"));
+/// `name:25565`: a host without a dot, with a port a game or a service would use.
+static NAME_PORT: LazyLock<Regex> = LazyLock::new(|| re(r"\b[A-Za-z][\w-]*:(?P<port>\d{4,5})\b"));
+/// IPv6: in brackets, written out, or shortened with `::`. What follows is captured so a
+/// Rust path (`f32::from`) can be told apart.
+static IPV6: LazyLock<Regex> = LazyLock::new(|| {
+    let h = "[0-9A-Fa-f]{1,4}";
+    re(&format!(
+        r"\[[0-9A-Fa-f:.]{{2,}}\](?::\d{{1,5}})?|(?P<v6>\b(?:{h}:){{1,7}}:(?:{h}(?::{h})*)?|::(?:{h}:)*{h}|\b(?:{h}:){{3,7}}{h})(?P<next>[\w:]?)"
+    ))
+});
+/// Things shaped like a credential, whatever they are: a JWT, a bearer token, `token=…`.
+static JWT: LazyLock<Regex> = LazyLock::new(|| re(r"\beyJ[\w-]{6,}\.[\w-]+(?:\.[\w-]+)?"));
+static BEARER: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)\b(?P<word>bearer|basic)\s+[^\s,;]+"));
+static KEYED: LazyLock<Regex> = LazyLock::new(|| {
+    re(
+        r#"(?i)\b(?P<key>[\w-]*(?:token|secret|password|passwd|authorization|api[_-]?key|session))(?P<sep>["']?\s*[=:]\s*["']?)[^\s"',;&)]+"#,
+    )
+});
+/// `code=…`: what a sign-in brings back in a URL or a form. (`exit code: 1` is not one.)
+static CODE: LazyLock<Regex> = LazyLock::new(|| re(r#"(?i)\bcode=[^\s"',;&)]+"#));
+static CARGO: LazyLock<Regex> =
+    LazyLock::new(|| re(r"\.cargo/registry/src/[^/]+/(?P<tail>[\w.+-]+(?:/[\w.+-]+)*)$"));
+static RUSTC: LazyLock<Regex> =
+    LazyLock::new(|| re(r"^/rustc/[0-9a-f]+/(?P<tail>[\w.+-]+(?:/[\w.+-]+)*)$"));
+/// A page of the launcher's own window: only its bundled files keep their path.
+static APP_PATH: LazyLock<Regex> =
+    LazyLock::new(|| re(r"^/(?:assets|src)/[\w./@-]+(?::\d+){0,2}$"));
 
 /// A known folder in each spelling it can turn up in.
 struct Root {
@@ -129,6 +220,13 @@ impl Root {
             spellings.push(path.replace('\\', "\\\\"));
             spellings.push(path.replace('\\', "/"));
         }
+        // As a URL writes it: spaces and other characters percent-encoded.
+        for spelling in spellings.clone() {
+            let encoded = spelling.replace(' ', "%20");
+            if encoded != spelling {
+                spellings.push(encoded);
+            }
+        }
         // Longest first, so the doubled form isn't half-eaten by the plain one.
         spellings.sort_by_key(|s| std::cmp::Reverse(s.len()));
         let windows = path.contains('\\') || path.as_bytes().get(1) == Some(&b':');
@@ -143,7 +241,27 @@ impl Root {
     }
 }
 
-/// See the module's own words. Built once per report from what the launcher knows right then.
+/// `text` between word boundaries, where its own ends are word characters (a boundary next
+/// to a `.` or a space would never match).
+fn whole_word(text: &str) -> String {
+    let is_word = |c: Option<char>| c.is_some_and(|c| c.is_alphanumeric() || c == '_');
+    format!(
+        "{}{}{}",
+        if is_word(text.chars().next()) {
+            r"\b"
+        } else {
+            ""
+        },
+        regex::escape(text),
+        if is_word(text.chars().last()) {
+            r"\b"
+        } else {
+            ""
+        }
+    )
+}
+
+/// See the module's own words. Built from what the launcher knows right then.
 #[derive(Default)]
 pub struct Scrubber {
     /// Long secrets, replaced wherever they appear.
@@ -216,7 +334,7 @@ impl Scrubber {
     pub fn with_user(mut self, user: &str) -> Self {
         let user = user.trim();
         if user.chars().count() >= 2 {
-            self.user = Regex::new(&format!(r"(?i)\b{}\b", regex::escape(user))).ok();
+            self.user = Regex::new(&format!("(?i){}", whole_word(user))).ok();
         }
         self
     }
@@ -235,16 +353,28 @@ impl Scrubber {
         if len < 2 {
             return;
         }
-        let escaped = regex::escape(secret);
-        let pattern = if len >= 5 {
-            // Exact matches first, through the launcher's own redactor.
-            self.secrets = std::mem::take(&mut self.secrets).with_secret(secret);
-            format!("(?i){escaped}")
-        } else {
-            format!(r"(?i)\b{escaped}\b")
-        };
-        if let Ok(name) = Regex::new(&pattern) {
-            self.names.push(name);
+        let mut spellings = vec![secret.to_string()];
+        // As a URL writes it.
+        let encoded =
+            percent_encoding::utf8_percent_encode(secret, percent_encoding::NON_ALPHANUMERIC)
+                .to_string();
+        let spaces = secret.replace(' ', "%20");
+        for other in [encoded, spaces] {
+            if !spellings.contains(&other) {
+                spellings.push(other);
+            }
+        }
+        for spelling in spellings {
+            let pattern = if len >= 5 {
+                // Exact matches first, through the launcher's own redactor.
+                self.secrets = std::mem::take(&mut self.secrets).with_secret(spelling.as_str());
+                format!("(?i){}", regex::escape(&spelling))
+            } else {
+                format!("(?i){}", whole_word(&spelling))
+            };
+            if let Ok(name) = Regex::new(&pattern) {
+                self.names.push(name);
+            }
         }
     }
 
@@ -258,21 +388,52 @@ impl Scrubber {
     }
 
     pub fn scrub(&self, input: &str) -> String {
-        let mut text: String = input
-            .chars()
-            .filter(|c| !(DATA..=STASH_END).contains(c))
-            .take(INPUT_CAP)
-            .collect();
+        let mut text: String = input.chars().filter(|c| !PRIVATE_USE.contains(c)).collect();
+        if text.len() > INPUT_CAP {
+            // Cut at a space, so no name or token is left half there for a later rule to miss.
+            let mut end = INPUT_CAP;
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            let cut = text[..end].rfind(char::is_whitespace).unwrap_or(0);
+            text.truncate(cut);
+        }
+        // Spellings that only wrap a path.
+        text = VERBATIM
+            .replace_all(&text, |found: &Captures| {
+                if found.name("unc").is_some() {
+                    r"\\".to_string()
+                } else {
+                    String::new()
+                }
+            })
+            .into_owned();
         // Shapes first (a URL, a path, an address are recognised whole), then what the
         // launcher knows by name. Finished pieces wait in `stash`, where no later step can
         // touch them; a piece that keeps some of its text is masked on its way in.
         let mut stash: Vec<String> = Vec::new();
         let mut keep = |piece: String| {
             stash.push(self.mask(&piece));
-            format!("{STASH}{}{STASH_END}", stash.len() - 1)
+            let number: String = (stash.len() - 1)
+                .to_string()
+                .bytes()
+                .filter_map(|digit| char::from_u32(DIGIT_0 + u32::from(digit - b'0')))
+                .collect();
+            format!("{STASH}{number}{STASH_END}")
         };
         text = URL
             .replace_all(&text, |found: &Captures| keep(url_placeholder(&found[0])))
+            .into_owned();
+        // Anything shaped like a credential, whatever it is.
+        text = JWT.replace_all(&text, "<redacted>").into_owned();
+        text = BEARER.replace_all(&text, "$word <redacted>").into_owned();
+        text = KEYED.replace_all(&text, "$key$sep<redacted>").into_owned();
+        text = CODE.replace_all(&text, "code=<redacted>").into_owned();
+        text = FILE_SCHEME
+            .replace_all(&text, |found: &Captures| match found.name("drive") {
+                Some(drive) => format!(" {}", drive.as_str()),
+                None => " /".to_string(),
+            })
             .into_owned();
         for root in &self.roots {
             for form in &root.forms {
@@ -281,6 +442,12 @@ impl Scrubber {
                     .into_owned();
             }
         }
+        // A drive becomes a path start the path rule takes wherever it stands.
+        text = DRIVE.replace_all(&text, " //").into_owned();
+        // A known folder may follow anything (`)C:\Users\…`, `\nC:\…`): give it room.
+        text = text
+            .replace(DATA, &format!(" {DATA}"))
+            .replace(HOME, &format!(" {HOME}"));
         text = PATH
             .replace_all(&text, |found: &Captures| {
                 format!(
@@ -290,13 +457,38 @@ impl Scrubber {
                 )
             })
             .into_owned();
-        // A known folder named without a path after it and not at a path's start.
         text = text.replace(DATA, "<data>").replace(HOME, "<home>");
         text = EMAIL.replace_all(&text, "<email>").into_owned();
-        text = IPV6.replace_all(&text, "<address>").into_owned();
+        text = IPV6
+            .replace_all(&text, |found: &Captures| {
+                let whole = &found[0];
+                let Some(v6) = found.name("v6") else {
+                    return "<address>".to_string();
+                };
+                let next = found.name("next").map_or("", |m| m.as_str());
+                // `f32::from` and `serde::de::Error` are Rust, and `12:34:56` is the time.
+                let rust_or_time =
+                    !next.is_empty() || !v6.as_str().bytes().any(|b| b.is_ascii_digit());
+                if rust_or_time {
+                    whole.to_string()
+                } else {
+                    "<address>".to_string()
+                }
+            })
+            .into_owned();
         text = DOTTED
             .replace_all(&text, |found: &Captures| {
                 dotted_placeholder(&found[0], found.name("port").is_some())
+            })
+            .into_owned();
+        text = NAME_PORT
+            .replace_all(&text, |found: &Captures| {
+                let port: u32 = found["port"].parse().unwrap_or(0);
+                if (1024..=65535).contains(&port) {
+                    "<address>".to_string()
+                } else {
+                    found[0].to_string()
+                }
             })
             .into_owned();
         text = self.mask(&text);
@@ -313,22 +505,27 @@ impl Scrubber {
                 rest = after;
                 continue;
             };
-            if let Some(piece) = after[..end]
-                .parse::<usize>()
-                .ok()
-                .and_then(|i| stash.get(i))
-            {
+            let number: Option<usize> = after[..end]
+                .chars()
+                .map(|c| char::from_digit((c as u32).wrapping_sub(DIGIT_0), 10))
+                .collect::<Option<String>>()
+                .and_then(|digits| digits.parse().ok());
+            if let Some(piece) = number.and_then(|i| stash.get(i)) {
                 out.push_str(piece);
             }
             rest = &after[end + STASH_END.len_utf8()..];
         }
         out.push_str(rest);
-        out
+        // Room made for a path start that turned out to need none.
+        while out.contains("  ") {
+            out = out.replace("  ", " ");
+        }
+        out.trim().to_string()
     }
 }
 
-/// A URL on a public service keeps host and path; the webview's own pages become `<app>/…`;
-/// anything else is `<url>`.
+/// A URL on a public service keeps its host; the window's own bundled files become
+/// `<app>/…`; anything else is `<url>`.
 fn url_placeholder(raw: &str) -> String {
     // Punctuation that ended the sentence, not the URL.
     let trimmed = raw.trim_end_matches(['.', ',', ';', ')', ']', '}']);
@@ -343,11 +540,15 @@ fn url_placeholder(raw: &str) -> String {
             && host.eq_ignore_ascii_case("localhost")
             && url.port() == Some(1420));
     if own_page {
-        // A stack frame: keep the file and the `:line:column` after it.
-        return format!("<app>{}{tail}", url.path());
+        // A stack frame: the bundled file and the `:line:column` after it, nothing else.
+        return if APP_PATH.is_match(url.path()) {
+            format!("<app>{}{tail}", url.path())
+        } else {
+            format!("<app>{tail}")
+        };
     }
     if matches!(url.scheme(), "http" | "https") && is_public_host(host) {
-        return format!("{}{tail}", redact_url(trimmed));
+        return format!("{}://{}{tail}", url.scheme(), host.to_ascii_lowercase());
     }
     format!("<url>{tail}")
 }
@@ -366,7 +567,7 @@ fn path_placeholder(path: &str) -> String {
         return "<home>".into();
     }
     // Where the build machine kept a dependency or the standard library: the same for every
-    // player, and what makes a backtrace readable.
+    // player, and what makes a backtrace readable. Only when the rest is plainly source.
     if let Some(found) = CARGO.captures(&unix) {
         return format!("<cargo>/{}", &found["tail"]);
     }
@@ -376,19 +577,39 @@ fn path_placeholder(path: &str) -> String {
     "<path>".into()
 }
 
-/// `a.b.c` with or without a port: an IPv4 address, a host with a port, or a word that ends
-/// like a host name is `<address>`. File names, versions and Java packages stay.
+/// `a.b.c` with or without a port. An IPv4 address, anything with a port that isn't a place
+/// in a file, and any dotted word that ends in letters is `<address>`, unless it is a file
+/// name, a version, a public service, or a Java-style name (`net.minecraft.client.Main`,
+/// `Foo.bar`).
 fn dotted_placeholder(found: &str, has_port: bool) -> String {
     let name = found.split(':').next().unwrap_or(found);
     let labels: Vec<&str> = name.split('.').collect();
-    let last = labels.last().copied().unwrap_or("").to_ascii_lowercase();
-    let ipv4 = labels.len() == 4
-        && labels
-            .iter()
-            .all(|l| l.len() <= 3 && !l.is_empty() && l.bytes().all(|b| b.is_ascii_digit()));
-    let is_file = FILE_ENDINGS.contains(&last.as_str());
-    let is_host = HOST_ENDINGS.contains(&last.as_str());
-    if ipv4 || (has_port && !is_file) || (is_host && !is_public_host(name)) {
+    let first = labels.first().copied().unwrap_or("");
+    let last = labels.last().copied().unwrap_or("");
+    let lower = last.to_lowercase();
+    let all_digits = |l: &&str| !l.is_empty() && l.bytes().all(|b| b.is_ascii_digit());
+    let ipv4 = labels.len() == 4 && labels.iter().all(|l| l.len() <= 3 && all_digits(l));
+    let is_file = FILE_ENDINGS.contains(&lower.as_str());
+    if ipv4 {
+        return "<address>".into();
+    }
+    if is_file || is_public_host(name) {
+        return found.into();
+    }
+    if has_port {
+        return "<address>".into();
+    }
+    // A host name ends in two or more letters, all of one case.
+    let host_ending = last.chars().count() >= 2
+        && last.chars().all(char::is_alphabetic)
+        && (last == lower || last == last.to_uppercase());
+    // `Foo.bar`, `java.lang.Thing`, `window.x`: code, not a host.
+    let code = PACKAGE_ROOTS.contains(&first.to_lowercase().as_str())
+        || labels.iter().any(|l| {
+            l.chars().next().is_some_and(char::is_uppercase) && l.chars().any(char::is_lowercase)
+        })
+        || labels.iter().any(|l| l.contains('_'));
+    if host_ending && !code {
         "<address>".into()
     } else {
         found.into()
@@ -455,7 +676,7 @@ mod tests {
         let s = linux();
         assert_eq!(
             s.scrub("No such file: /home/moises/Descargas/mi skin.png"),
-            "No such file: <home> skin.png"
+            "No such file: <home>"
         );
         assert_eq!(
             s.scrub("user moises has no rights"),
@@ -475,7 +696,7 @@ mod tests {
             (r"open D:\Juegos\Minecraft de Luis\a.jar", "open <path>"),
             (r"open \\nas\luis\a.jar", "open <path>"),
             ("path=/opt/x", "path=<path>"),
-            ("file:/home/otro/x", "file:<path>"),
+            ("file:/home/otro/x", "<path>"),
             (r"D:\Games (old)\Users\luis\x now", "<path> now"),
         ] {
             assert_eq!(s.scrub(text), want, "{text}");
@@ -515,7 +736,7 @@ mod tests {
         let s = linux();
         assert_eq!(
             s.scrub("GET https://api.modrinth.com/v2/project/sodium?token=abc#x failed."),
-            "GET https://api.modrinth.com/v2/project/sodium failed."
+            "GET https://api.modrinth.com failed."
         );
         assert_eq!(
             s.scrub("error sending request for url (https://play.pedrocraft.net/api/v1/invites/tok_123/pack)"),
@@ -590,7 +811,7 @@ mod tests {
     fn stand_ins_in_the_input_cannot_smuggle_anything_back() {
         let s = linux();
         let sneaky = format!("{STASH}0{STASH_END} {DATA} /home/moises/x");
-        assert_eq!(s.scrub(&sneaky), "0  <home>");
+        assert_eq!(s.scrub(&sneaky), "0 <home>");
     }
 
     #[test]
@@ -605,5 +826,229 @@ mod tests {
     fn a_root_too_short_to_be_a_folder_is_ignored() {
         let s = Scrubber::new().with_home("/").with_data_root("C:");
         assert_eq!(s.scrub("a/b and 1/2"), "a/b and 1/2");
+    }
+
+    #[test]
+    fn windows_verbatim_and_file_scheme_spellings_are_paths_too() {
+        let s = windows();
+        for (text, want) in [
+            (
+                r"open \\?\C:\Users\Ana Maria\Downloads\Tarea de Luis\pack.mrpack failed",
+                "open <home> failed",
+            ),
+            (
+                r"\\?\C:\Users\Ana Maria\AppData\Roaming\PerlandLauncher\instances\Mundo de Luis\mods\x.jar: denied",
+                "<data>/instances: denied",
+            ),
+            (
+                r"open \\?\D:\Juegos\Luis Gomez\a.jar failed",
+                "open <path> failed",
+            ),
+            (r"open \\?\UNC\nas\luis\a.jar", "open <path>"),
+            (r"open \\.\D:\Luis\a.jar", "open <path>"),
+            (
+                "jar:file:/C:/Users/Ana Maria/Downloads/Tarea de Luis/x.jar!/fabric.mod.json",
+                "<home>",
+            ),
+            ("file:/D:/Luis/x.png gone", "<path> gone"),
+        ] {
+            assert_eq!(s.scrub(text), want, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_path_is_a_path_whatever_stands_before_it() {
+        let s = windows();
+        for text in [
+            r"«C:\Users\Ana Maria\Documents\Tarea de Luis\x.png»",
+            r"“D:\Luis\x.png”",
+            r"failed)C:\Users\Ana Maria\Documents\Luis\x",
+            r"line1\nC:\Users\Ana Maria\Documents\Luis\x",
+            r"-path-D:\Luis\x",
+            r"a|D:\Luis\y",
+            r"a+D:\Luis\z",
+            r"<D:\Luis\w>",
+            "@/home/otro/luis/x",
+            "#/home/otro/luis/y",
+            "%/srv/luis/z",
+            r"cwd=C:\Users\Ana Maria\Documents\Luis;PATH=C:\x|D:\Luis\y",
+            "~/Documentos/Tarea de Luis/x",
+            r"~\Documents\Luis\x",
+        ] {
+            let out = s.scrub(text).to_lowercase();
+            for private in [
+                "luis",
+                "ana",
+                "maria",
+                "otro",
+                "users",
+                "documents",
+                "documentos",
+            ] {
+                assert!(
+                    !out.contains(private),
+                    "{private} left in {out:?} from {text}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn folder_and_file_names_of_many_words_go_whole() {
+        let s = linux();
+        for (text, want) in [
+            (
+                r"open D:\Los juegos de mi hermano Luis Gomez\a.jar failed",
+                "open <path> failed",
+            ),
+            (
+                "open /home/moises/Mis documentos muy importantes de Pedro Gomez/x.png failed",
+                "open <home> failed",
+            ),
+            (
+                "No such file: /home/moises/Descargas/skin de Pedro Gomez.png (os error 2)",
+                "No such file: <home> (os error 2)",
+            ),
+            (
+                "copy /media/Mi Disco/a b c.zip to /srv/x: denied",
+                "copy <path>: denied",
+            ),
+        ] {
+            assert_eq!(s.scrub(text), want, "{text}");
+        }
+    }
+
+    #[test]
+    fn hosts_on_any_ending_and_bare_names_with_a_port_go() {
+        let s = Scrubber::new();
+        for text in [
+            "dns error for play.pedrocraft.tk",
+            "dns error for mc.luis.ru",
+            "dns error for pedro.com.ve",
+            "dns error for survival.pedro.server",
+            "dns error for mc.pedro.store",
+            "connect to DESKTOP-PEDRO:25565 failed",
+            "dns error for mc.peña.net",
+            "dns error for PLAY.PEDROCRAFT.NET",
+            "sent to josé.peña@correo.mx",
+        ] {
+            let out = s.scrub(text).to_lowercase();
+            for private in ["pedro", "luis", "peña", "josé", "25565"] {
+                assert!(!out.contains(private), "{private} left in {out:?}");
+            }
+        }
+        // Code, files and versions are not hosts.
+        for text in [
+            "java.util.concurrent.ExecutionException",
+            "net.fabricmc.loader.impl.FormattedException",
+            "com.mojang.authlib.exceptions",
+            "org.lwjgl.glfw",
+            "TypeError: window.foo is not a function",
+            "at Object.render (index.js:1:2)",
+            "fabric.mod.json and quilt.mod.json",
+            "launcher_core.rlib",
+            "options.txt, servers.dat and level.dat",
+            "exit code: 1 after 12:34:56",
+            "v0.2.15-beta.1 on Minecraft 1.21.4",
+            "port:80 is taken",
+        ] {
+            assert_eq!(s.scrub(text), text);
+        }
+    }
+
+    #[test]
+    fn shortened_ipv6_goes_and_rust_paths_stay() {
+        let s = Scrubber::new();
+        assert_eq!(
+            s.scrub("peer 2001:db8::1 gone, fe80::a1b2:c3d4:e5f6:1234 and 2001:db8:85a3::8a2e:370:7334, also ::1"),
+            "peer <address> gone, <address> and <address>, also <address>"
+        );
+        for text in [
+            "serde::de::Error at f32::from",
+            "launcher_app::runs::play",
+            "core::fmt::Display for u8::MAX",
+            "std::fs::read",
+            "a::b",
+            "at 12:34:56",
+        ] {
+            assert_eq!(s.scrub(text), text);
+        }
+    }
+
+    #[test]
+    fn anything_shaped_like_a_credential_goes() {
+        let s = Scrubber::new();
+        let out = s.scrub(
+            "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcDEF123 token=abc123secret access_token: M.R3_BAY.-Cabc refresh_token\":\"0.AXoA9 code=M.C5_SN1.2 password=hunter22 session: s3ss10n",
+        );
+        for private in [
+            "eyJ",
+            "abc123secret",
+            "R3_BAY",
+            "AXoA9",
+            "C5_SN1",
+            "hunter22",
+            "s3ss10n",
+        ] {
+            assert!(!out.contains(private), "{private} left in {out}");
+        }
+        // Not credentials.
+        for text in ["exit code 1", "exit code: 1", "status code: 404 Not Found"] {
+            assert_eq!(s.scrub(text), text);
+        }
+    }
+
+    #[test]
+    fn kept_pieces_keep_only_what_every_player_shares() {
+        let s = windows().with_secret("Servidor de Pedro");
+        assert_eq!(
+            s.scrub(
+                "GET https://api.mojang.com/users/profiles/minecraft/LuisFriend77 answered 404"
+            ),
+            "GET https://api.mojang.com answered 404"
+        );
+        assert_eq!(
+            s.scrub("at tauri://localhost/C:/Users/Ana%20Maria/x.js:1:2"),
+            "at <app>"
+        );
+        assert_eq!(
+            s.scrub("at /mnt/pedro/registry/src/x/Pedro Secret/file.rs"),
+            "at <path>"
+        );
+        assert_eq!(
+            s.scrub("at /home/pedro/.cargo/registry/src/index.crates.io-1/Pedro Secret/file.rs:3"),
+            "at <path>:3"
+        );
+        for text in [
+            "open Servidor%20de%20Pedro now",
+            "open servidor%20de%20pedro now",
+            "C:/Users/Ana%20Maria/Documents/x",
+        ] {
+            let out = s.scrub(text).to_lowercase();
+            assert!(!out.contains("pedro") && !out.contains("maria"), "{out}");
+        }
+    }
+
+    #[test]
+    fn a_cut_never_leaves_half_a_secret() {
+        let s = Scrubber::new().with_secret("SECRETTOKEN1234567890");
+        let filler = "x ".repeat(INPUT_CAP / 2 - 6);
+        let out = s.scrub(&format!("{filler}SECRETTOKEN1234567890 and more"));
+        assert!(!out.contains("SECRET"), "{}", &out[out.len() - 40..]);
+        assert!(out.len() <= INPUT_CAP);
+    }
+
+    #[test]
+    fn names_that_end_in_punctuation_or_are_numbers_are_still_masked() {
+        let s = Scrubber::new()
+            .with_user("ana.")
+            .with_secret("12")
+            .with_secret("x.y");
+        assert_eq!(s.scrub("user ana. logged in"), "user <user> logged in");
+        // A numeric name can't eat a stashed piece's number.
+        assert_eq!(
+            s.scrub("12 at https://api.modrinth.com/a and /srv/b and /srv/c"),
+            "<redacted> at https://api.modrinth.com and <path>"
+        );
     }
 }

@@ -97,6 +97,8 @@ export interface MockOptions {
   /** The last version whose release notes the player was shown. Defaults to the running version (nothing new); null is a player
    *  who has not seen any. */
   whatsNewSeen?: string | null;
+  /** The player has not been shown the note about anonymous data yet. */
+  telemetryNoticeDue?: boolean;
   /** The pack's first sync ends with two files the player has to download by hand. */
   manual?: boolean;
   /** The pack has no update on offer. */
@@ -505,6 +507,7 @@ function seed(options: MockOptions) {
     appInfo,
     update,
     whatsNewSeen: options.whatsNewSeen === undefined ? appInfo.version : options.whatsNewSeen,
+    telemetryNoticeDue: options.telemetryNoticeDue ?? false,
     mods,
     packs,
     // The player's own background per instance, as a data URL (the real one is .perland/custom/image.*).
@@ -927,6 +930,11 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.whatsNewSeen = state.appInfo.version;
       return null;
     case 'telemetry_report':
+      return null;
+    case 'telemetry_notice_due':
+      return state.telemetryNoticeDue;
+    case 'telemetry_notice_shown':
+      state.telemetryNoticeDue = false;
       return null;
     case 'update_status':
       return state.update;

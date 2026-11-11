@@ -111,6 +111,10 @@ pub struct Telemetry {
     invites: InviteClient,
     /// The player's switch. Off until the settings are read, so nothing is recorded before.
     sharing: AtomicBool,
+    /// The player was shown the notice before this run of the launcher started. A notice
+    /// shown during this run counts from the next start, so a player who reads it and turns
+    /// the switch off has sent nothing.
+    armed: AtomicBool,
     /// Read from the file on first use.
     state: Mutex<Option<State>>,
     /// Everything the launcher knows that must never leave: names, addresses, tokens.
@@ -143,6 +147,7 @@ impl Telemetry {
             sender: Sender::new(config.http.clone()),
             invites: InviteClient::new(config.http),
             sharing: AtomicBool::new(false),
+            armed: AtomicBool::new(false),
             state: Mutex::new(None),
             names: Mutex::new(BTreeSet::new()),
             scrubber: RwLock::new(Arc::new(scrubber)),
@@ -166,6 +171,13 @@ impl Telemetry {
         })
     }
 
+    /// Sharing on and the notice long shown, for tests of everything after that.
+    #[cfg(test)]
+    pub(crate) fn force_on(&self) {
+        self.sharing.store(true, Ordering::SeqCst);
+        self.armed.store(true, Ordering::SeqCst);
+    }
+
     /// What is collected right now, for tests.
     #[cfg(test)]
     pub(crate) fn snapshot(&self) -> State {
@@ -176,20 +188,72 @@ impl Telemetry {
 
     /// Is anything being collected right now?
     pub fn is_on(&self) -> bool {
+        self.wanted() && self.armed.load(Ordering::SeqCst)
+    }
+
+    /// Whether a panic would be recorded: lets the hook skip its backtrace otherwise.
+    pub fn records_panics(&self) -> bool {
+        self.is_on()
+    }
+
+    /// Sharing is possible in this build and the player's switch is on. Whether anything is
+    /// collected also depends on the notice (`is_on`).
+    fn wanted(&self) -> bool {
         self.mode != Mode::Off && self.sharing.load(Ordering::SeqCst)
+    }
+
+    /// Once, when the launcher starts and after the switch is read: collecting is allowed
+    /// from now if the player was shown the notice in an earlier run.
+    pub fn arm_from_disk(&self) {
+        if !self.wanted() {
+            return;
+        }
+        let mut guard = lock(&self.state);
+        let state = guard.get_or_insert_with(|| State::load(&self.path));
+        self.armed
+            .store(state.notice_shown().is_some(), Ordering::SeqCst);
+    }
+
+    /// Does the player still have to be shown that the launcher shares anonymous data? Never
+    /// when nothing would be shared anyway (the switch is off, a dev build).
+    pub fn notice_due(&self) -> bool {
+        if !self.wanted() {
+            return false;
+        }
+        let mut guard = lock(&self.state);
+        guard
+            .get_or_insert_with(|| State::load(&self.path))
+            .notice_shown()
+            .is_none()
+    }
+
+    /// The player has now been shown it (What's new, the first run, or by turning the switch
+    /// on themselves). Remembered on disk; collecting starts with the launcher's next start.
+    pub fn notice_shown(&self) {
+        if !self.wanted() {
+            return;
+        }
+        let today = self.today();
+        let mut guard = lock(&self.state);
+        let state = guard.get_or_insert_with(|| State::load(&self.path));
+        // Also the week this install counts from.
+        if state.note_notice(today) | state.note_install(today) {
+            self.save(state);
+        }
     }
 
     /// The player's switch. Turning it off stops everything at once and deletes the reports
     /// and counters collected so far.
     pub fn set_sharing(&self, share: bool) {
-        let was = self.sharing.swap(share, Ordering::SeqCst);
+        self.sharing.store(share, Ordering::SeqCst);
         if self.mode == Mode::Off {
             return;
         }
-        if !share && (was || self.path.is_file()) {
+        // Only a file that exists is rewritten: off never creates one.
+        if !share && self.path.is_file() {
             let mut guard = lock(&self.state);
             let state = guard.get_or_insert_with(|| State::load(&self.path));
-            if !state.is_empty() || was {
+            if !state.is_empty() {
                 state.clear_collected();
                 self.save(state);
             }
@@ -217,9 +281,14 @@ impl Telemetry {
     ) -> T {
         let state = guard.get_or_insert_with(|| State::load(&self.path));
         let (out, changed) = change(state);
-        // The switch may have gone off while this waited for the lock.
-        if changed && self.is_on() {
-            self.save(state);
+        if self.is_on() {
+            if changed {
+                self.save(state);
+            }
+        } else {
+            // The switch went off while this waited for the lock: what it just added must
+            // not sit in memory for the switch to come back on.
+            state.clear_collected();
         }
         out
     }
@@ -388,16 +457,19 @@ impl Telemetry {
         }
     }
 
+    /// The launcher's language (`es`, `en-US`), said in both bodies.
+    pub fn set_locale(&self, locale: &str) {
+        *lock(&self.locale) = locale.to_string();
+    }
+
     fn client(&self) -> Client {
         Client::current(&self.version, &lock(&self.locale))
     }
 
     /// The first thing after the launcher starts: remembers the install week, sends today's
     /// ping if none went out today, then the reports waiting from earlier runs.
-    /// `locale` is the launcher's language (`es`, `en-US`); `signed_in` is whether a Perland
-    /// account is.
-    pub async fn start(&self, signed_in: bool, locale: &str, channel: PingChannel) {
-        *lock(&self.locale) = locale.to_string();
+    /// `signed_in` is whether a Perland account is.
+    pub async fn start(&self, signed_in: bool, channel: PingChannel) {
         if !self.is_on() {
             return;
         }
@@ -441,10 +513,16 @@ impl Telemetry {
             return;
         }
         match self.sender.ping(&engine, &ping).await {
-            Outcome::Delivered => self.with_state(|state| {
+            // Remembered even if the switch went off meanwhile: the Engine counted this day.
+            Outcome::Delivered => {
+                let mut guard = lock(&self.state);
+                let state = guard.get_or_insert_with(|| State::load(&self.path));
                 state.ping_delivered(today, &ping.counters);
-                ((), true)
-            }),
+                if !self.is_on() {
+                    state.clear_collected();
+                }
+                self.save(state);
+            }
             // The Engine will never take this body: its counters go, and the next start
             // (not this run) tries a new one.
             Outcome::Rejected => self.with_state(|state| {
@@ -512,7 +590,23 @@ pub fn report_command_error(command: &'static str, error: &LauncherError) {
 pub fn account_names(file: &launcher_core::accounts::AccountsFile) -> Vec<String> {
     file.accounts
         .iter()
-        .flat_map(|account| [account.username.clone(), account.uuid.clone()])
+        .flat_map(|account| {
+            // The id in both spellings: with and without dashes.
+            let plain = account.uuid.replace('-', "");
+            let dashed = if plain.len() == 32 && plain.is_ascii() {
+                format!(
+                    "{}-{}-{}-{}-{}",
+                    &plain[..8],
+                    &plain[8..12],
+                    &plain[12..16],
+                    &plain[16..20],
+                    &plain[20..]
+                )
+            } else {
+                plain.clone()
+            };
+            [account.username.clone(), plain, dashed]
+        })
         .collect()
 }
 
@@ -526,6 +620,15 @@ pub fn profile_names(profile: &launcher_core::perland::Profile) -> Vec<String> {
     .into_iter()
     .flatten()
     .collect()
+}
+
+/// What a Perland session holds that must never leave: the profile, the token, and the
+/// Engine it belongs to.
+pub fn session_names(session: &launcher_core::perland::Session) -> Vec<String> {
+    let mut names = profile_names(&session.profile);
+    names.push(session.token.clone());
+    names.extend(session.engine.host_str().map(str::to_owned));
+    names
 }
 
 /// What an instance holds that must never leave: its name and folder, its server's name and
@@ -560,6 +663,9 @@ pub fn instance_names(instance: &launcher_core::instances::Instance) -> Vec<Stri
 pub fn install_panic_hook(telemetry: Arc<Telemetry>) {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        if !telemetry.records_panics() {
+            return previous(info);
+        }
         let payload = info.payload();
         let message = payload
             .downcast_ref::<&str>()
@@ -650,7 +756,7 @@ pub(crate) mod tests {
     /// A telemetry that sends to `server`, sharing on, with a flush right after each report.
     pub(crate) fn telemetry_to(server: &MockServer, root: &std::path::Path) -> Arc<Telemetry> {
         let telemetry = with_mode(Mode::Engine(Url::parse(&server.uri()).unwrap()), root);
-        telemetry.set_sharing(true);
+        telemetry.force_on();
         telemetry
     }
 
@@ -760,10 +866,15 @@ pub(crate) mod tests {
         let tmp = tempfile::tempdir().unwrap();
         // Mode off (a dev build, the switch, a scratch folder), with the player's switch on.
         let off = with_mode(Mode::Off, tmp.path());
-        off.set_sharing(true);
+        off.force_on();
+        off.notice_shown();
+        assert!(!off.notice_due());
         // The player's switch off, with a mode that would send.
         let unshared = with_mode(Mode::Engine(url(&server.uri())), tmp.path());
+        unshared.force_on();
         unshared.set_sharing(false);
+        unshared.notice_shown();
+        assert!(!unshared.notice_due());
         // Before the settings were read at all.
         let unread = with_mode(Mode::Engine(url(&server.uri())), tmp.path());
         for telemetry in [off, unshared, unread] {
@@ -773,13 +884,100 @@ pub(crate) mod tests {
             telemetry.report_ui("exception", "boom", Some("at x"));
             telemetry.report_crash(Some(ErrorCode::CrashOutOfMemory), "1.20.1", "fabric");
             telemetry.report_panic("boom", Some("src/x.rs:1:1"), "frames");
-            telemetry.start(true, "es", PingChannel::Stable).await;
+            telemetry.set_locale("es");
+            telemetry.start(true, PingChannel::Stable).await;
             telemetry.flush().await;
             settle(&telemetry).await;
         }
         assert!(server.received_requests().await.unwrap().is_empty());
         assert_eq!(file(tmp.path()), None, "no file was written");
         assert!(std::fs::read_dir(tmp.path()).unwrap().next().is_none());
+    }
+
+    /// A launcher start: a new `Telemetry` on the same folder, the switch read, armed from disk.
+    fn started(server: &MockServer, root: &std::path::Path, share: bool) -> Arc<Telemetry> {
+        let telemetry = with_mode(Mode::Engine(url(&server.uri())), root);
+        telemetry.set_sharing(share);
+        telemetry.arm_from_disk();
+        telemetry
+    }
+
+    /// Everything a running launcher could record or send.
+    async fn use_everything(telemetry: &Arc<Telemetry>) {
+        telemetry.count(Counter::GameLaunches);
+        telemetry.report_error(&disk_error(), Some("settings_set"));
+        telemetry.report_ui("exception", "boom", None);
+        telemetry.report_crash(None, "1.20.1", "vanilla");
+        telemetry.report_panic("boom", None, "");
+        telemetry.set_locale("es");
+        telemetry.start(false, PingChannel::Stable).await;
+        telemetry.flush().await;
+        settle(telemetry).await;
+    }
+
+    #[tokio::test]
+    async fn nothing_is_collected_until_the_player_was_shown_the_notice_in_an_earlier_run() {
+        let server = engine(202, 202).await;
+        let tmp = tempfile::tempdir().unwrap();
+
+        // Updated into this version, the notice not shown yet: nothing, however long it runs.
+        let first = started(&server, tmp.path(), true);
+        assert!(first.notice_due());
+        assert!(!first.is_on());
+        use_everything(&first).await;
+        assert_eq!(file(tmp.path()), None);
+
+        // Shown during this run: remembered, but this run still collects and sends nothing.
+        set_today(&first, "2026-11-11");
+        first.notice_shown();
+        assert!(!first.notice_due());
+        assert!(!first.is_on());
+        use_everything(&first).await;
+        assert_eq!(
+            file(tmp.path()).unwrap(),
+            json!({
+                "version": 1,
+                "installWeek": "2026-W46",
+                "noticeShown": "2026-11-11",
+                "lastPing": null,
+                "counters": {},
+                "reports": []
+            })
+        );
+        assert!(server.received_requests().await.unwrap().is_empty());
+
+        // The next start, with the notice shown in an earlier run: now it collects and sends.
+        let next = started(&server, tmp.path(), true);
+        assert!(!next.notice_due());
+        assert!(next.is_on());
+        set_today(&next, "2026-11-11");
+        use_everything(&next).await;
+        assert_eq!(bodies(&server, PING).await.len(), 1);
+        assert_eq!(bodies(&server, PING).await[0]["firstEver"], true);
+        assert!(!bodies(&server, ERRORS).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reading_the_notice_and_turning_the_switch_off_sends_nothing_ever() {
+        let server = engine(202, 202).await;
+        let tmp = tempfile::tempdir().unwrap();
+        let first = started(&server, tmp.path(), true);
+        first.notice_shown();
+        // The player reads it, opens Settings and turns sharing off, in the same run.
+        first.set_sharing(false);
+        use_everything(&first).await;
+        // Later starts read the switch as off.
+        for _ in 0..2 {
+            let later = started(&server, tmp.path(), false);
+            assert!(!later.is_on());
+            assert!(!later.notice_due(), "no notice for what is not shared");
+            use_everything(&later).await;
+        }
+        assert!(server.received_requests().await.unwrap().is_empty());
+        let state = file(tmp.path()).unwrap();
+        assert_eq!(state["reports"], json!([]));
+        assert_eq!(state["counters"], json!({}));
+        assert_eq!(state["lastPing"], Value::Null);
     }
 
     #[tokio::test]
@@ -840,7 +1038,8 @@ pub(crate) mod tests {
         // The next start, with the Engine back.
         let server = engine(202, 202).await;
         let telemetry = telemetry_to(&server, tmp.path());
-        telemetry.start(false, "en", PingChannel::Stable).await;
+        telemetry.set_locale("en");
+        telemetry.start(false, PingChannel::Stable).await;
         let sent = bodies(&server, ERRORS).await;
         assert_eq!(sent.len(), 1);
         assert_eq!(sent[0]["reports"][0]["count"], 2);
@@ -877,7 +1076,8 @@ pub(crate) mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let telemetry = telemetry_to(&server, tmp.path());
         set_today(&telemetry, "2026-11-11");
-        telemetry.start(false, "es", PingChannel::Stable).await;
+        telemetry.set_locale("es");
+        telemetry.start(false, PingChannel::Stable).await;
         telemetry.count(Counter::GameLaunches);
         telemetry.report_error(&disk_error(), None);
         settle(&telemetry).await;
@@ -896,7 +1096,8 @@ pub(crate) mod tests {
         telemetry.report_error(&disk_error(), None);
         telemetry.report_panic("boom", None, "");
         telemetry.flush().await;
-        telemetry.start(false, "es", PingChannel::Stable).await;
+        telemetry.set_locale("es");
+        telemetry.start(false, PingChannel::Stable).await;
         settle(&telemetry).await;
         assert_eq!(file(tmp.path()).unwrap(), after);
         assert_eq!(server.received_requests().await.unwrap().len(), requests);
@@ -909,8 +1110,7 @@ pub(crate) mod tests {
         let earlier = telemetry_to(&server, tmp.path());
         earlier.report_error(&disk_error(), None);
         settle(&earlier).await;
-        let now = with_mode(Mode::Engine(url(&server.uri())), tmp.path());
-        now.set_sharing(false);
+        started(&server, tmp.path(), false);
         assert_eq!(file(tmp.path()).unwrap()["reports"], json!([]));
     }
 
@@ -924,8 +1124,10 @@ pub(crate) mod tests {
         telemetry.count(Counter::GameLaunches);
         telemetry.count(Counter::GameLaunches);
         telemetry.count(Counter::SkinsChanged);
-        telemetry.start(true, "es", PingChannel::Beta).await;
-        telemetry.start(true, "es", PingChannel::Beta).await;
+        telemetry.set_locale("es");
+        telemetry.start(true, PingChannel::Beta).await;
+        telemetry.set_locale("es");
+        telemetry.start(true, PingChannel::Beta).await;
         let pings = bodies(&server, PING).await;
         assert_eq!(pings.len(), 1, "one ping a day");
         let os = match std::env::consts::OS {
@@ -955,18 +1157,20 @@ pub(crate) mod tests {
             json!({
                 "version": 1,
                 "installWeek": "2026-W46",
+                "noticeShown": null,
                 "lastPing": "2026-11-11",
                 "counters": {},
                 "reports": []
             }),
-            "the whole state: two dates, counters and reports"
+            "the whole state: dates, counters and reports"
         );
 
         // The next day, same week: a new start (a new `Telemetry`, as after a restart).
         let telemetry = telemetry_to(&server, tmp.path());
         set_today(&telemetry, "2026-11-12");
         telemetry.count(Counter::PacksInstalled);
-        telemetry.start(false, "", PingChannel::Stable).await;
+        telemetry.set_locale("");
+        telemetry.start(false, PingChannel::Stable).await;
         let pings = bodies(&server, PING).await;
         assert_eq!(pings.len(), 2);
         let second = &pings[1];
@@ -987,14 +1191,16 @@ pub(crate) mod tests {
         for back in ["2026-11-12", "2026-11-11", "2026-10-01"] {
             let telemetry = telemetry_to(&server, tmp.path());
             set_today(&telemetry, back);
-            telemetry.start(false, "es", PingChannel::Stable).await;
+            telemetry.set_locale("es");
+            telemetry.start(false, PingChannel::Stable).await;
         }
         assert_eq!(bodies(&server, PING).await.len(), 2);
 
         // A new month.
         let telemetry = telemetry_to(&server, tmp.path());
         set_today(&telemetry, "2026-12-01");
-        telemetry.start(false, "es", PingChannel::Stable).await;
+        telemetry.set_locale("es");
+        telemetry.start(false, PingChannel::Stable).await;
         let third = bodies(&server, PING).await.remove(2);
         assert_eq!(
             (
@@ -1014,7 +1220,8 @@ pub(crate) mod tests {
         let telemetry = telemetry_to(&down, tmp.path());
         set_today(&telemetry, "2026-11-11");
         telemetry.count(Counter::GameLaunches);
-        telemetry.start(false, "es", PingChannel::Stable).await;
+        telemetry.set_locale("es");
+        telemetry.start(false, PingChannel::Stable).await;
         assert_eq!(bodies(&down, PING).await.len(), 1);
         let state = file(tmp.path()).unwrap();
         assert_eq!(state["lastPing"], Value::Null);
@@ -1024,7 +1231,8 @@ pub(crate) mod tests {
         let up = engine(202, 202).await;
         let telemetry = telemetry_to(&up, tmp.path());
         set_today(&telemetry, "2026-11-11");
-        telemetry.start(false, "es", PingChannel::Stable).await;
+        telemetry.set_locale("es");
+        telemetry.start(false, PingChannel::Stable).await;
         let ping = bodies(&up, PING).await.remove(0);
         assert_eq!(ping["firstEver"], true);
         assert_eq!(ping["counters"], json!({ "game_launches": 1 }));
@@ -1037,7 +1245,8 @@ pub(crate) mod tests {
         let telemetry = telemetry_to(&refusing, tmp.path());
         set_today(&telemetry, "2026-11-11");
         telemetry.count(Counter::GameLaunches);
-        telemetry.start(false, "es", PingChannel::Stable).await;
+        telemetry.set_locale("es");
+        telemetry.start(false, PingChannel::Stable).await;
         let state = file(tmp.path()).unwrap();
         assert_eq!(state["counters"], json!({}));
         assert_eq!(state["lastPing"], Value::Null, "not a ping the Engine took");
@@ -1055,16 +1264,18 @@ pub(crate) mod tests {
             .await;
         let tmp = tempfile::tempdir().unwrap();
         let telemetry = with_mode(Mode::Site(url(&server.uri())), tmp.path());
-        telemetry.set_sharing(true);
-        telemetry.start(false, "es", PingChannel::Stable).await;
+        telemetry.force_on();
+        telemetry.set_locale("es");
+        telemetry.start(false, PingChannel::Stable).await;
         assert_eq!(bodies(&server, PING).await.len(), 1);
 
         // A site that can't be reached is silence, and the ping stays due.
         let nowhere = tempfile::tempdir().unwrap();
         let lost = with_mode(Mode::Site(url("http://127.0.0.1:9/")), nowhere.path());
-        lost.set_sharing(true);
+        lost.force_on();
         lost.report_error(&disk_error(), None);
-        lost.start(false, "es", PingChannel::Stable).await;
+        lost.set_locale("es");
+        lost.start(false, PingChannel::Stable).await;
         let state = file(nowhere.path()).unwrap();
         assert_eq!(state["lastPing"], Value::Null);
         assert_eq!(state["reports"].as_array().unwrap().len(), 1);
@@ -1110,7 +1321,8 @@ pub(crate) mod tests {
             &format!("0: launcher_app::runs::play\n   at {root}/../src/runs.rs:120:5\n1: pedro@correo.example"),
         );
         telemetry.report_crash(Some(ErrorCode::CrashModFailed), "1.20.1", "fabric");
-        telemetry.start(true, "es", PingChannel::Stable).await;
+        telemetry.set_locale("es");
+        telemetry.start(true, PingChannel::Stable).await;
         settle(&telemetry).await;
 
         let mut all = bodies(&server, ERRORS).await;
@@ -1246,7 +1458,8 @@ pub(crate) mod tests {
         );
 
         let next = telemetry_to(&server, tmp.path());
-        next.start(false, "es", PingChannel::Stable).await;
+        next.set_locale("es");
+        next.start(false, PingChannel::Stable).await;
         assert_eq!(
             bodies(&server, ERRORS).await[0]["reports"][0]["message"],
             "index out of bounds"

@@ -88,8 +88,26 @@ pub async fn whats_new_mark(core: CoreState<'_>) -> Res<()> {
 /// An error from the window's own code, for the anonymous error reports. Answers nothing:
 /// the window has nothing to do about it either way.
 #[tauri::command]
-pub fn telemetry_report(core: CoreState<'_>, kind: String, message: String, stack: Option<String>) {
+pub async fn telemetry_report(
+    core: CoreState<'_>,
+    kind: String,
+    message: String,
+    stack: Option<String>,
+) -> Res<()> {
     core.telemetry_report(&kind, &message, stack.as_deref());
+    Ok(())
+}
+
+/// Whether What's new still has to show the note about anonymous data.
+#[tauri::command]
+pub fn telemetry_notice_due(core: CoreState<'_>) -> bool {
+    core.telemetry_notice_due()
+}
+
+/// What's new has shown it.
+#[tauri::command]
+pub fn telemetry_notice_shown(core: CoreState<'_>) {
+    core.telemetry_notice_shown();
 }
 
 #[tauri::command]

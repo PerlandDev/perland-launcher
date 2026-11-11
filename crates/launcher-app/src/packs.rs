@@ -216,6 +216,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }
         };
         let added = self.runner.add_pack(input).await;
+        if let Ok(instance) = &added {
+            self.telemetry_learn(instance);
+        }
         self.counted(Counter::PacksInstalled, added)
     }
 

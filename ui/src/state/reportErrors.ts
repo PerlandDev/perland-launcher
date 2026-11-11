@@ -2,8 +2,10 @@ import { commands } from '../ipc/commands';
 
 /** Reports per run of the launcher: an error in a render loop must not become a stream of calls. */
 export const REPORT_CAP = 10;
-const MESSAGE_MAX = 500;
-const STACK_MAX = 8192;
+// Rust scrubs first and cuts to the Engine's limits after, so a name is never cut in half before it is masked. These
+// only keep a runaway text from crossing the bridge.
+const MESSAGE_MAX = 4000;
+const STACK_MAX = 24000;
 
 type Kind = 'exception' | 'unhandled_rejection';
 type Send = (kind: Kind, message: string, stack: string | null) => Promise<unknown>;

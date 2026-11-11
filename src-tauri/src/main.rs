@@ -267,6 +267,8 @@ fn main() {
             commands::whats_new_seen,
             commands::whats_new_mark,
             commands::telemetry_report,
+            commands::telemetry_notice_due,
+            commands::telemetry_notice_shown,
             commands::update_status,
             commands::update_check,
             commands::update_restart,
