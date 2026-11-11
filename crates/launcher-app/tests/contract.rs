@@ -14,15 +14,15 @@ use launcher_app::dto::{
 use launcher_app::{
     deep_link::DeepLink,
     dto::{
-        AccountReady, AppInfo, ArtChoice, Build, ContentFile, ContinueKind, ContinueTarget,
-        EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice, ImportPreview,
-        ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
-        ManualProgress, MicrosoftSignInPhase, NameListView, NewInstance, NewsChangesView,
-        NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents, PackMod,
-        PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase, PerlandStats, PerlandStatus,
-        PlaytimeEntry, PublicServerCard, PublicServerPage, RestorePointDto, RunSnapshot,
-        ServerGame, ServerNews, ServerPack, ServerPlayers, ServerStatsView, ServerStatusView,
-        ServerTeam, SharePreview, SyncSummary, YourServerCard, YourServersPage,
+        AccountReady, AppInfo, ArtChoice, BannerView, Build, ContentFile, ContinueKind,
+        ContinueTarget, EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice,
+        ImportPreview, ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
+        LinkCodeView, ManualProgress, MicrosoftSignInPhase, NameListView, NewInstance,
+        NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents,
+        PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase, PerlandStats,
+        PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage, RestorePointDto,
+        RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers, ServerStatsView,
+        ServerStatusView, ServerTeam, SharePreview, SyncSummary, YourServerCard, YourServersPage,
     },
     events::{AppEvent, CrashFix, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -38,9 +38,9 @@ use launcher_core::{
     download::Hashes,
     events::TaskId,
     instances::{
-        ArtMode, DamagedInstance, Focus, GameSpec, GameWindow, IconMode, Instance, InstanceListing,
-        JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus, SourceRef, UpdateHold,
-        UpdatePolicy,
+        ArtMode, BannerEdges, DamagedInstance, Focus, GameSpec, GameWindow, IconMode, Instance,
+        InstanceListing, JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus,
+        SourceRef, UpdateHold, UpdatePolicy,
     },
     invite::invite_link_cases,
     java::JavaFit,
@@ -212,6 +212,9 @@ fn fabric_instance() -> Instance {
         art: ArtMode::Auto,
         icon: None,
         banner_focus: Some(Focus { x: 30, y: 60 }),
+        banner_zoom: Some(150),
+        banner_edges: Some(BannerEdges::Pixel),
+        banner_aspect: Some(1833),
         update_hold: None,
     }
 }
@@ -241,6 +244,9 @@ fn vanilla_instance() -> Instance {
         art: ArtMode::Generated,
         icon: Some(IconMode::Generated),
         banner_focus: None,
+        banner_zoom: None,
+        banner_edges: None,
+        banner_aspect: None,
         update_hold: None,
     }
 }
@@ -434,7 +440,7 @@ fn public_server_page() -> PublicServerPage {
                 token: "A".repeat(43),
                 invite: Some(invite('A')),
                 joinable: true,
-                address: Some("play.example.com:25566".into()),
+                address: Some("survival.perland.world".into()),
                 name: "Survival".into(),
                 display_name: "Survival con los panas".into(),
                 icon_version: Some("1a2b3c4d5e6f7a8b".into()),
@@ -607,11 +613,15 @@ fn server_instance() -> Instance {
             last_status: Some(ServerStatus::Online),
             last_seen: Some(1_791_720_000),
             gone: false,
+            join: None,
         }),
         art_seed: None,
         art: ArtMode::Auto,
         icon: None,
         banner_focus: None,
+        banner_zoom: None,
+        banner_edges: None,
+        banner_aspect: None,
         update_hold: Some(UpdateHold {
             since: 1_791_720_000,
             version: "1.0.3".into(),
@@ -842,6 +852,7 @@ fn contract_fixtures_are_current() {
                 reason: launcher_core::skins_library::VersionReason::Restored,
                 worn: false,
                 current: true,
+                model: Some(launcher_core::skins_library::SkinModel::Classic),
             },
             launcher_core::skins_library::SkinVersion {
                 id: "1762400000456".into(),
@@ -849,6 +860,7 @@ fn contract_fixtures_are_current() {
                 reason: launcher_core::skins_library::VersionReason::Worn,
                 worn: true,
                 current: false,
+                model: Some(launcher_core::skins_library::SkinModel::Slim),
             },
             launcher_core::skins_library::SkinVersion {
                 id: "1762300000789".into(),
@@ -856,6 +868,7 @@ fn contract_fixtures_are_current() {
                 reason: launcher_core::skins_library::VersionReason::Edited,
                 worn: false,
                 current: false,
+                model: None,
             },
             launcher_core::skins_library::SkinVersion {
                 id: "1762200000000".into(),
@@ -863,6 +876,7 @@ fn contract_fixtures_are_current() {
                 reason: launcher_core::skins_library::VersionReason::Exported,
                 worn: false,
                 current: false,
+                model: Some(launcher_core::skins_library::SkinModel::Classic),
             },
         ],
     );
@@ -1609,6 +1623,8 @@ fn contract_fixtures_are_current() {
         InstanceArtData {
             icon: Some("data:image/png;base64,iVBORw0KGgo=".into()),
             banner: None,
+            pack_banner: false,
+            pack_icon: false,
         },
     );
     check(
@@ -1623,6 +1639,29 @@ fn contract_fixtures_are_current() {
             },
             ArtChoice::Screenshot {
                 name: "2026-10-17_12.34.56.png".into(),
+            },
+        ],
+    );
+    check(
+        "banner_views",
+        vec![
+            BannerView {
+                focus: None,
+                zoom: None,
+                edges: None,
+                aspect: None,
+            },
+            BannerView {
+                focus: Some(Focus { x: 70, y: 40 }),
+                zoom: Some(60),
+                edges: Some(BannerEdges::Pixel),
+                aspect: Some(1500),
+            },
+            BannerView {
+                focus: Some(Focus { x: 0, y: 100 }),
+                zoom: Some(300),
+                edges: Some(BannerEdges::Dark),
+                aspect: None,
             },
         ],
     );
@@ -1767,7 +1806,11 @@ with friends"
                     display_name: "Acme".into(),
                     accent: Some("violet".into()),
                 }),
-                address: Some(sample_address()),
+                address: Some(ServerAddress {
+                    host: "survival.perland.world".into(),
+                    port: 25565,
+                }),
+                join: Some("survival.perland.world".into()),
                 icon: Some("data:image/png;base64,iVBORw0KGgo=".into()),
                 existing: None,
             },
@@ -1790,6 +1833,7 @@ with friends"
                     host: "play.example.com".into(),
                     port: 25570,
                 }),
+                join: None,
                 icon: None,
                 existing: Some("creative".into()),
             },
@@ -1807,7 +1851,11 @@ with friends"
                 whitelisted: false,
                 pack_state: Some("ready".into()),
                 gone: false,
-                address: Some(sample_address()),
+                address: Some(ServerAddress {
+                    host: "survival.perland.world".into(),
+                    port: 25565,
+                }),
+                join: Some("survival.perland.world".into()),
             },
             ServerStatusView {
                 status: None,
@@ -1816,6 +1864,7 @@ with friends"
                 pack_state: None,
                 gone: true,
                 address: Some(sample_address()),
+                join: None,
             },
         ],
     );
@@ -1904,7 +1953,7 @@ fn check_manage() {
             tenant_id: "t-1".into(),
             stack: "my-world".into(),
             state: state.into(),
-            address: Some("play.example.com:25566".into()),
+            address: Some("my-world.perland.world".into()),
             online: running.then_some(2),
             max: running.then_some(10),
             players: if running {

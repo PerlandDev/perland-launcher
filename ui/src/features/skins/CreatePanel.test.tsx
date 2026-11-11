@@ -187,7 +187,7 @@ it('a piece missing from the catalog stays worn and is labelled unavailable', as
 
 it('a drag on the figure in Create turns it and paints nothing', async () => {
   const { user, calls } = await openCreate({ pieces: [BODY, TEE], painting: false });
-  expect(screen.getByText('Drag the figure, or right-drag, to turn it.')).toBeInTheDocument();
+  expect(screen.getByText('Drag the figure, or right-drag, to turn it. Scroll to zoom, Shift-drag to move.')).toBeInTheDocument();
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const before = stageSum();
   fireEvent.pointerDown(screen.getByTestId('stage'));
@@ -213,9 +213,10 @@ it('without the catalog, a skin wearing pieces keeps them and its arms', async (
   await openCreate({ pieces: [BODY, TEE], painting: false }, { catalog: 'unavailable' });
   await waitFor(() => expect(chips()).toEqual(['Piece', 'Piece']));
   for (const x of within(wearing()).getAllByRole('button')) expect(x).toBeDisabled();
-  const slim = screen.getByRole('radio', { name: 'Slim arms' });
-  expect(slim).toBeDisabled();
-  expect(slim).toHaveAttribute('title', expect.stringContaining("Perland's catalog"));
+  // The one arms key says the skin's arms, and can't switch them here.
+  const arms = screen.getByRole('button', { name: 'Slim arms' });
+  expect(arms).toBeDisabled();
+  expect(arms).toHaveAttribute('title', expect.stringContaining("Perland's catalog"));
 });
 
 /** Holds the catalog's file reads while closed. */

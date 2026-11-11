@@ -113,7 +113,8 @@ pub struct SkinEntry {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct LibraryFile {
-    /// 1 (absent): one wardrobe for everyone. 2: an `owner` per entry.
+    /// 1 (absent): one wardrobe for everyone. 2: an `owner` per entry. 3: each wardrobe in the
+    /// player's order, the order of `skins`.
     #[serde(default = "version_one")]
     version: u32,
     #[serde(default)]
@@ -134,7 +135,7 @@ fn version_one() -> u32 {
 }
 
 const LIST: &str = "library.json";
-const VERSION: u32 = 2;
+const VERSION: u32 = 3;
 
 /// The skins folder. Every change is read, changed and written under one lock.
 pub struct SkinLibrary {
@@ -202,6 +203,18 @@ impl SkinLibrary {
                     for skin in &mut file.skins {
                         skin.owner = skin.worn_by.clone();
                     }
+                    file.version = 2;
+                }
+                if file.version < 3 {
+                    // Each wardrobe showed its worn skin first, then the most recently changed: keep
+                    // that as the player's order.
+                    file.skins.sort_by(|a, b| {
+                        let wears = |s: &SkinEntry| s.owner.is_some() && s.worn_by == s.owner;
+                        wears(b)
+                            .cmp(&wears(a))
+                            .then_with(|| b.updated.cmp(&a.updated))
+                            .then_with(|| a.id.cmp(&b.id))
+                    });
                     file.version = VERSION;
                 }
                 file.skins.retain(|s| valid_id(&s.id));
@@ -236,8 +249,7 @@ impl SkinLibrary {
         write_atomic(&self.dir.join(LIST), &json).await
     }
 
-    /// The wardrobe of `owner` (the loose skins for `None`): the skin it wears first, then the
-    /// most recently changed.
+    /// The wardrobe of `owner` (the loose skins for `None`), in the player's order.
     pub async fn list(&self, owner: Option<&str>) -> Result<Vec<SkinEntry>> {
         let _held = self.lock.lock().await;
         Ok(wardrobe(self.read().await?.skins, owner))
@@ -300,7 +312,8 @@ impl SkinLibrary {
             look: None,
         };
         write_atomic(&self.png(&entry.id), &png).await?;
-        file.skins.push(entry.clone());
+        // A new skin goes on top of its wardrobe.
+        file.skins.insert(0, entry.clone());
         self.write(&file).await?;
         Ok(entry)
     }
@@ -447,6 +460,13 @@ impl SkinLibrary {
     ) -> Result<SkinEntry> {
         let name = name.map(validate_name).transpose()?;
         let _held = self.lock.lock().await;
+        // A switch of arms keeps the texture first, with the arms it was drawn for: the redrawn arms that follow
+        // are a new version, and the old one can be restored as it was.
+        if let Some(model) = model {
+            if self.entry_held(id).await?.model != model {
+                self.keep_now(id, VersionReason::Edited).await?;
+            }
+        }
         let (file, entry) = self
             .change(id, |e| {
                 if let Some(name) = name {
@@ -467,11 +487,12 @@ impl SkinLibrary {
         let png = self.texture(id).await?;
         let _held = self.lock.lock().await;
         let mut file = self.read().await?;
-        let source = file
+        let at = file
             .skins
             .iter()
-            .find(|s| s.id == id)
+            .position(|s| s.id == id)
             .ok_or_else(|| not_found(id))?;
+        let source = &file.skins[at];
         let mut look = source.look.clone();
         let paint = if look.as_ref().is_some_and(|l| l.painting) {
             tokio::fs::read(self.paint_png(id)).await.ok()
@@ -497,9 +518,42 @@ impl SkinLibrary {
         if let Some(paint) = paint {
             write_atomic(&self.paint_png(&entry.id), &paint).await?;
         }
-        file.skins.push(entry.clone());
+        // A copy goes right below its source.
+        file.skins.insert(at + 1, entry.clone());
         self.write(&file).await?;
         Ok(entry)
+    }
+
+    /// Puts the wardrobe of `owner` in the order of `ids`. Its skins left out of `ids` follow,
+    /// in the order they had; ids that aren't in that wardrobe are ignored. Moving a skin isn't
+    /// changing it: its time and versions stay as they are. Answers the wardrobe as it now stands.
+    pub async fn reorder(&self, owner: Option<&str>, ids: &[String]) -> Result<Vec<SkinEntry>> {
+        let _held = self.lock.lock().await;
+        let mut file = self.read().await?;
+        let mine = |s: &SkinEntry| s.owner.as_deref() == owner;
+        // The places this wardrobe's skins take in the list, which the new order fills.
+        let places: Vec<usize> = (0..file.skins.len())
+            .filter(|&i| mine(&file.skins[i]))
+            .collect();
+        let mut rest: Vec<SkinEntry> = places.iter().map(|&i| file.skins[i].clone()).collect();
+        let mut order = Vec::with_capacity(rest.len());
+        for id in ids {
+            if let Some(at) = rest.iter().position(|s| &s.id == id) {
+                order.push(rest.remove(at));
+            }
+        }
+        order.append(&mut rest);
+        let changed = places
+            .iter()
+            .zip(&order)
+            .any(|(&i, s)| file.skins[i].id != s.id);
+        for (&i, skin) in places.iter().zip(order) {
+            file.skins[i] = skin;
+        }
+        if changed {
+            self.write(&file).await?;
+        }
+        Ok(wardrobe(file.skins, owner))
     }
 
     /// Removes `id` and its texture.
@@ -615,7 +669,7 @@ impl SkinLibrary {
                 };
                 write_atomic(&self.png(&entry.id), &png).await?;
                 let id = entry.id.clone();
-                file.skins.push(entry);
+                file.skins.insert(0, entry);
                 id
             }
         };
@@ -650,16 +704,9 @@ fn worn(file: &mut LibraryFile, id: &str, uuid: &str) -> bool {
     changed
 }
 
-/// The skins in `owner`'s wardrobe, the one it wears first, then the most recently changed.
+/// The skins in `owner`'s wardrobe, in the player's order.
 fn wardrobe(mut skins: Vec<SkinEntry>, owner: Option<&str>) -> Vec<SkinEntry> {
     skins.retain(|s| s.owner.as_deref() == owner);
-    let wears = |s: &SkinEntry| owner.is_some() && s.worn_by.as_deref() == owner;
-    skins.sort_by(|a, b| {
-        wears(b)
-            .cmp(&wears(a))
-            .then_with(|| b.updated.cmp(&a.updated))
-            .then_with(|| a.id.cmp(&b.id))
-    });
     skins
 }
 
@@ -850,8 +897,12 @@ mod tests {
         assert_eq!(copy.owner.as_deref(), Some("u1"));
     }
 
+    fn ids(list: Vec<SkinEntry>) -> Vec<String> {
+        list.into_iter().map(|e| e.id).collect()
+    }
+
     #[tokio::test]
-    async fn the_worn_skin_comes_first() {
+    async fn new_skins_go_on_top_and_changing_one_never_moves_it() {
         let (_dir, lib) = library();
         let old = lib
             .create("Old", SkinModel::Classic, &skin([0; 4]), Some("u1"))
@@ -861,12 +912,133 @@ mod tests {
             .create("New", SkinModel::Classic, &skin([1; 4]), Some("u1"))
             .await
             .unwrap();
-        lib.save_texture(&new.id, &skin([2; 4])).await.unwrap();
-        lib.mark_worn(&old.id, "u1").await.unwrap();
-        lib.save_texture(&new.id, &skin([3; 4])).await.unwrap();
-        let list = lib.list(Some("u1")).await.unwrap();
-        assert_eq!(list[0].id, old.id);
-        assert_eq!(list[1].id, new.id);
+        assert_eq!(
+            ids(lib.list(Some("u1")).await.unwrap()),
+            [new.id.as_str(), old.id.as_str()]
+        );
+        lib.save_texture(old.id.as_str(), &skin([2; 4]))
+            .await
+            .unwrap();
+        lib.mark_worn(old.id.as_str(), "u1").await.unwrap();
+        lib.update(old.id.as_str(), Some("Renamed"), Some(SkinModel::Slim))
+            .await
+            .unwrap();
+        assert_eq!(
+            ids(lib.list(Some("u1")).await.unwrap()),
+            [new.id.as_str(), old.id.as_str()]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_copy_goes_right_below_its_source() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([0; 4]), Some("u1"))
+            .await
+            .unwrap();
+        let b = lib
+            .create("B", SkinModel::Classic, &skin([1; 4]), Some("u1"))
+            .await
+            .unwrap();
+        let copy = lib.duplicate(b.id.as_str(), "B copy").await.unwrap();
+        assert_eq!(
+            ids(lib.list(Some("u1")).await.unwrap()),
+            [b.id.as_str(), copy.id.as_str(), a.id.as_str()]
+        );
+    }
+
+    #[tokio::test]
+    async fn reorder_sets_one_wardrobe_order_and_leaves_the_rest() {
+        let (_dir, lib) = library();
+        let mut mine = Vec::new();
+        let mut theirs = Vec::new();
+        for i in 0..3u8 {
+            mine.push(
+                lib.create("Mine", SkinModel::Classic, &skin([i; 4]), Some("u1"))
+                    .await
+                    .unwrap(),
+            );
+            theirs.push(
+                lib.create("Theirs", SkinModel::Classic, &skin([i; 4]), Some("u2"))
+                    .await
+                    .unwrap(),
+            );
+        }
+        let theirs_before = ids(lib.list(Some("u2")).await.unwrap());
+        let [a, b, c] = [&mine[0].id, &mine[1].id, &mine[2].id];
+        let list = lib
+            .reorder(Some("u1"), &[a.clone(), c.clone(), b.clone()])
+            .await
+            .unwrap();
+        assert_eq!(ids(list), [a.as_str(), c.as_str(), b.as_str()]);
+        assert_eq!(
+            ids(lib.list(Some("u1")).await.unwrap()),
+            [a.as_str(), c.as_str(), b.as_str()]
+        );
+        assert_eq!(ids(lib.list(Some("u2")).await.unwrap()), theirs_before);
+        // Moving a skin isn't changing it: it keeps its time and no version is kept.
+        let entry = lib.entry(a).await.unwrap();
+        assert_eq!(entry.updated, mine[0].updated);
+        assert!(lib.versions(a).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn reorder_puts_skins_it_wasnt_told_of_after_and_ignores_strangers() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([0; 4]), Some("u1"))
+            .await
+            .unwrap();
+        let b = lib
+            .create("B", SkinModel::Classic, &skin([1; 4]), Some("u1"))
+            .await
+            .unwrap();
+        let c = lib
+            .create("C", SkinModel::Classic, &skin([2; 4]), Some("u1"))
+            .await
+            .unwrap();
+        let other = lib
+            .create("Other", SkinModel::Classic, &skin([3; 4]), Some("u2"))
+            .await
+            .unwrap();
+        // Shown [C, B, A]; the screen asks for A first, names someone else's skin and one that's gone.
+        let list = lib
+            .reorder(
+                Some("u1"),
+                &[a.id.clone(), other.id.clone(), "skin-0000".into()],
+            )
+            .await
+            .unwrap();
+        assert_eq!(ids(list), [a.id.as_str(), c.id.as_str(), b.id.as_str()]);
+        assert_eq!(
+            ids(lib.list(Some("u2")).await.unwrap()),
+            [other.id.as_str()]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_version_two_list_keeps_the_order_it_showed() {
+        let (_dir, lib) = library();
+        tokio::fs::create_dir_all(lib.dir()).await.unwrap();
+        for id in ["skin-aa", "skin-bb", "skin-cc", "skin-dd"] {
+            tokio::fs::write(lib.png(id), skin([0; 4])).await.unwrap();
+        }
+        // Version 2 showed the worn skin first, then the most recently changed.
+        let v2 = r#"{"version":2,"skins":[
+            {"id":"skin-aa","name":"Oldest","model":"classic","updated":1,"owner":"u1"},
+            {"id":"skin-bb","name":"Newest","model":"classic","updated":9,"owner":"u1"},
+            {"id":"skin-cc","name":"Worn","model":"classic","updated":2,"owner":"u1","wornBy":"u1"},
+            {"id":"skin-dd","name":"Middle","model":"classic","updated":5,"owner":"u1"}
+        ]}"#;
+        tokio::fs::write(lib.dir().join(LIST), v2).await.unwrap();
+        let shown = ["skin-cc", "skin-bb", "skin-dd", "skin-aa"];
+        assert_eq!(ids(lib.list(Some("u1")).await.unwrap()), shown);
+        // Written back as version 3 in that order, which a later change no longer reshuffles.
+        lib.save_texture("skin-aa", &skin([1; 4])).await.unwrap();
+        let raw: serde_json::Value =
+            serde_json::from_slice(&tokio::fs::read(lib.dir().join(LIST)).await.unwrap()).unwrap();
+        assert_eq!(raw["version"], 3);
+        assert_eq!(ids(lib.list(Some("u1")).await.unwrap()), shown);
     }
 
     #[tokio::test]
@@ -885,11 +1057,11 @@ mod tests {
         assert_eq!(mine.len(), 1);
         assert_eq!(mine[0].id, "skin-aa", "the id is kept");
         assert_eq!(lib.list(None).await.unwrap()[0].id, "skin-bb");
-        // Written back as version 2, so a later change of `wornBy` doesn't move it again.
+        // Written back as the current version, so a later change of `wornBy` doesn't move it again.
         lib.mark_worn("skin-bb", "u1").await.unwrap();
         let raw: serde_json::Value =
             serde_json::from_slice(&tokio::fs::read(lib.dir().join(LIST)).await.unwrap()).unwrap();
-        assert_eq!(raw["version"], 2);
+        assert_eq!(raw["version"], VERSION);
         assert_eq!(lib.list(None).await.unwrap().len(), 1);
     }
 

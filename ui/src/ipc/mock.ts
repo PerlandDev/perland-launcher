@@ -37,7 +37,7 @@ import type {
   ContentKind,
   DeepLink,
   ExitInfo,
-  Focus,
+  BannerView,
   IconChoice,
   InstallPlanView,
   InstallResult,
@@ -94,6 +94,9 @@ export interface MockOptions {
   microsoftStepMs?: number;
   /** The launcher's own update state; defaults to idle on release and beta builds, off in dev. */
   update?: UpdateState;
+  /** The last version whose release notes the player was shown. Defaults to the running version (nothing new); null is a player
+   *  who has not seen any. */
+  whatsNewSeen?: string | null;
   /** The pack's first sync ends with two files the player has to download by hand. */
   manual?: boolean;
   /** The pack has no update on offer. */
@@ -162,13 +165,14 @@ interface MockPack {
   installed: string | null;
   update: PackUpdate | null;
   contents: PackContents;
-  art: InstanceArtData;
+  /** The pack's own pictures, as its `.perland/art/` holds them. */
+  art: Pick<InstanceArtData, 'icon' | 'banner'>;
   manual: ManualFile[];
   found: number;
 }
 
 const svg = (body: string) => `data:image/svg+xml;base64,${btoa(body)}`;
-const SKY_ART: InstanceArtData = {
+const SKY_ART: Pick<InstanceArtData, 'icon' | 'banner'> = {
   icon: svg(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges"><rect width="16" height="16" fill="#7cc4ff"/><rect y="9" width="16" height="7" fill="#3f8f4f"/><rect y="12" width="16" height="4" fill="#6b4a2b"/></svg>',
   ),
@@ -395,6 +399,9 @@ function seed(options: MockOptions) {
       art: 'auto',
       icon: null,
       bannerFocus: null,
+      bannerZoom: null,
+      bannerEdges: null,
+      bannerAspect: null,
     };
     listing.instances = [...listing.instances, sky];
     const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
@@ -437,6 +444,9 @@ function seed(options: MockOptions) {
       art: 'custom',
       icon: 'generated',
       bannerFocus: null,
+      bannerZoom: null,
+      bannerEdges: null,
+      bannerAspect: null,
     };
     listing.instances = [...listing.instances, castle];
     custom.set(castle.id, CASTLE_PICTURE);
@@ -494,6 +504,7 @@ function seed(options: MockOptions) {
     settings,
     appInfo,
     update,
+    whatsNewSeen: options.whatsNewSeen === undefined ? appInfo.version : options.whatsNewSeen,
     mods,
     packs,
     // The player's own background per instance, as a data URL (the real one is .perland/custom/image.*).
@@ -910,6 +921,11 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'settings_set':
       state.settings = args.settings as Settings;
       return state.settings;
+    case 'whats_new_seen':
+      return state.whatsNewSeen;
+    case 'whats_new_mark':
+      state.whatsNewSeen = state.appInfo.version;
+      return null;
     case 'update_status':
       return state.update;
     case 'update_check':
@@ -944,6 +960,9 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         art: 'auto',
         icon: null,
         bannerFocus: null,
+        bannerZoom: null,
+        bannerEdges: null,
+        bannerAspect: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       return created;
@@ -952,7 +971,18 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const sent = args.instance as Instance;
       // Like the core: the pictures change only through their own commands.
       const stored = find(sent.id);
-      const updated: Instance = stored ? { ...sent, art: stored.art, artSeed: stored.artSeed, icon: stored.icon, bannerFocus: stored.bannerFocus } : sent;
+      const updated: Instance = stored
+        ? {
+            ...sent,
+            art: stored.art,
+            artSeed: stored.artSeed,
+            icon: stored.icon,
+            bannerFocus: stored.bannerFocus,
+            bannerZoom: stored.bannerZoom,
+            bannerEdges: stored.bannerEdges,
+            bannerAspect: stored.bannerAspect,
+          }
+        : sent;
       // Like the core: memory comes from the slider, never from the Java arguments.
       if (updated.java.args.split(/\s+/).some((token) => token.startsWith('-Xmx'))) fail('java', 'jvm_args_memory', 'Memory is set with the slider, not in the Java arguments');
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
@@ -1185,7 +1215,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
             : (pack?.icon ?? null);
       const banner =
         target.art === 'generated' ? null : target.art === 'custom' ? (state.custom.get(target.id) ?? null) : (pack?.banner ?? null);
-      return { icon, banner } satisfies InstanceArtData;
+      return { icon, banner, packBanner: Boolean(pack?.banner), packIcon: Boolean(pack?.icon) } satisfies InstanceArtData;
     }
     case 'instance_art_set': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
@@ -1205,13 +1235,13 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       let updated: Instance;
       if (choice.kind === 'generated') {
         state.custom.delete(target.id);
-        updated = { ...target, art: 'generated', artSeed: choice.seed, icon, bannerFocus: null };
+        updated = { ...target, art: 'generated', artSeed: choice.seed, icon, bannerFocus: null, bannerZoom: null, bannerEdges: null, bannerAspect: null };
       } else if (choice.kind === 'pack') {
         state.custom.delete(target.id);
-        updated = { ...target, art: 'auto', icon, bannerFocus: null };
+        updated = { ...target, art: 'auto', icon, bannerFocus: null, bannerZoom: null, bannerEdges: null, bannerAspect: null };
       } else {
         state.custom.set(target.id, upload ?? invalid());
-        updated = { ...target, art: 'custom', icon, bannerFocus: null };
+        updated = { ...target, art: 'custom', icon, bannerFocus: null, bannerZoom: null, bannerEdges: null, bannerAspect: null };
       }
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
@@ -1242,14 +1272,19 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
     }
-    case 'instance_banner_focus_set': {
+    case 'instance_banner_view_set': {
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
       if (state.runs.has(target.id)) fail('game', 'instance_busy', 'Stop the game before changing this instance', { id: target.id });
-      const focus = (args.focus ?? null) as Focus | null;
+      const view = args.view as BannerView;
+      const focus = view.focus ?? null;
       if (focus && [focus.x, focus.y].some((n) => !Number.isInteger(n) || n < 0 || n > 100)) {
         fail('disk', 'banner_focus_invalid', 'That position is outside the picture');
       }
-      const updated: Instance = { ...target, bannerFocus: focus };
+      const zoom = view.zoom ?? null;
+      if (zoom !== null && (!Number.isInteger(zoom) || zoom < 25 || zoom > 500)) fail('disk', 'banner_zoom_invalid', 'That zoom is out of range');
+      const aspect = view.aspect ?? null;
+      if (aspect !== null && (!Number.isInteger(aspect) || aspect < 500 || aspect > 5000)) fail('disk', 'banner_aspect_invalid', 'That background shape is out of range');
+      const updated: Instance = { ...target, bannerFocus: focus, bannerZoom: zoom, bannerEdges: view.edges ?? null, bannerAspect: aspect };
       state.listing.instances = state.listing.instances.map((i) => (i.id === updated.id ? updated : i));
       return updated;
     }
@@ -1282,6 +1317,9 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
         art: 'auto',
         icon: null,
         bannerFocus: null,
+        bannerZoom: null,
+        bannerEdges: null,
+        bannerAspect: null,
       };
       state.listing.instances = [created, ...state.listing.instances];
       state.packs.set(id, { installed: null, update: null, contents: { managed: [], additions: [] }, art: SKY_ART, manual: [], found: 0 });

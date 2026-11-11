@@ -1,6 +1,8 @@
-// Where the stage camera stands: the whole figure, or a close-up of the part the Create tab is dressing. A shot is
-// what must fit in view (a point to look at and the height and width around it) and the angle it is seen from. Pure,
-// so it is tested without WebGL; stageScene animates between shots.
+// What the stage camera frames: the whole figure, or a close-up of the part the Create tab is dressing. A shot is
+// what must fit in view (a point to look at and the height and width around it) and the angle it is seen from. The
+// player's side of the camera (turn, zoom toward the pointer, slide) is camera.ts's view, laid over the shot. Pure, so
+// it is tested without WebGL; stageScene animates between shots.
+import { cameraPosition, START_VIEW, targetOf, ZOOM_MAX, ZOOM_MIN, zoomAt, type View } from './camera';
 import type { Vec3 } from './layout';
 import { rigAt, type Pose } from './poses';
 
@@ -14,12 +16,8 @@ export interface Frame {
   height: number;
   width: number;
 }
-/** The player's side of the camera: the angle around the target and a zoom over the frame's own distance. */
-export interface View {
-  yaw: number;
-  pitch: number;
-  zoom: number;
-}
+/** The player's side of the camera: the angle around the frame, a zoom over the frame's own distance, and a slide. */
+export type { View };
 export type Shot = Frame & Pick<View, 'yaw' | 'pitch'>;
 /** The stage's lens: tan of half the vertical field of view, and width over height. */
 export interface Fit {
@@ -65,7 +63,7 @@ const FIGURE: Record<Pose, Frame> = {
 };
 
 /** The angle the whole figure is seen from. */
-export const FIGURE_ANGLE = { yaw: -0.55, pitch: 0.14 } as const;
+export const FIGURE_ANGLE = { yaw: START_VIEW.yaw, pitch: START_VIEW.pitch } as const;
 
 /**
  * Each close-up on the standing figure (feet on 0, hips at 12, shoulders at 24, crown at 32): the point looked at,
@@ -127,30 +125,53 @@ export function fitDistance(frame: Pick<Frame, 'height' | 'width'>, fit: Fit): n
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
 /**
- * The zoom kept within reach: out to 1.8 times the whole figure's distance whatever the shot, so a close-up can
- * always be zoomed out to the figure; in to 0.35 of the figure's distance, or closer still on a close-up.
+ * The zoom's limits on a shot, as shares of the shot's own distance: the stage's own limits (camera.ts) counted on the
+ * whole figure's distance whatever the shot, so a close-up can always be zoomed out to the figure and beyond, and in
+ * as close as the figure can be, or closer still on a close-up.
  */
-export function clampZoom(zoom: number, shot: Frame, figure: Frame, fit: Fit): number {
+export function zoomLimits(shot: Frame, figure: Frame, fit: Fit): { min: number; max: number } {
   const own = fitDistance(shot, fit);
   const whole = fitDistance(figure, fit);
-  return clamp(zoom, Math.min(0.35 * whole, 0.6 * own) / own, (1.8 * whole) / own);
+  return { min: Math.min(ZOOM_MIN * whole, 0.6 * own) / own, max: (ZOOM_MAX * whole) / own };
+}
+
+/** The zoom kept within reach (see `zoomLimits`). */
+export function clampZoom(zoom: number, shot: Frame, figure: Frame, fit: Fit): number {
+  const { min, max } = zoomLimits(shot, figure, fit);
+  return clamp(zoom, min, max);
 }
 
 /**
- * Where the camera is and what it looks at. Zooming out of a close-up slides the target toward the whole figure's, so
- * by the time the figure fits it is centred, not hanging off the part that was framed.
+ * The point a shot centres on at `zoom`. Zooming out of a close-up slides it toward the whole figure's, so by the
+ * time the figure fits it is centred, not hanging off the part that was framed.
  */
-export function cameraAt(view: View, shot: Frame, figure: Frame, fit: Fit): { position: Vec3; target: Vec3 } {
+export function centreAt(zoom: number, shot: Frame, figure: Frame, fit: Fit): Vec3 {
   const own = fitDistance(shot, fit);
   const whole = fitDistance(figure, fit);
-  const distance = own * view.zoom;
-  const out = whole > own ? clamp((distance - own) / (whole - own), 0, 1) : 0;
-  const target = shot.target.map((v, i) => (out === 0 ? v : v + (figure.target[i]! - v) * out)) as Vec3;
-  const { yaw, pitch } = view;
-  return {
-    position: [target[0] + distance * Math.cos(pitch) * Math.sin(yaw), target[1] + distance * Math.sin(pitch), target[2] + distance * Math.cos(pitch) * Math.cos(yaw)],
-    target,
-  };
+  const out = whole > own ? clamp((own * zoom - own) / (whole - own), 0, 1) : 0;
+  return shot.target.map((v, i) => (out === 0 ? v : v + (figure.target[i]! - v) * out)) as Vec3;
+}
+
+/** Where the camera is and what it looks at: the shot's centre at the view's zoom, slid by the view's pan. */
+export function cameraAt(view: View, shot: Frame, figure: Frame, fit: Fit): { position: Vec3; target: Vec3 } {
+  const centre = centreAt(view.zoom, shot, figure, fit);
+  return { position: cameraPosition(view, centre, fitDistance(shot, fit)), target: targetOf(view, centre) };
+}
+
+/**
+ * Zooms the view of a shot by `factor` (below 1 is closer), within the shot's limits. With `point`, the model point
+ * under the pointer, that point stays under the pointer (camera.ts's `zoomAt`), also while the shot's centre slides;
+ * without one the camera closes in on what it looks at.
+ */
+export function zoomShot(view: View, factor: number, shot: Frame, figure: Frame, fit: Fit, point: Vec3 | null): View {
+  const limits = zoomLimits(shot, figure, fit);
+  const zoom = clamp(view.zoom * factor, limits.min, limits.max);
+  if (!point || zoom === view.zoom) return { ...view, zoom };
+  // The centre the zoom ends on: the pan is counted from there, so what the camera looks at now stays where it is.
+  const before = centreAt(view.zoom, shot, figure, fit);
+  const after = centreAt(zoom, shot, figure, fit);
+  const held: View = { ...view, pan: [view.pan[0] + before[0] - after[0], view.pan[1] + before[1] - after[1], view.pan[2] + before[2] - after[2]] };
+  return zoomAt(held, factor, after, point, limits);
 }
 
 /** Out fast, settle soft. */
@@ -167,19 +188,24 @@ export function glideFrame(from: Frame, to: Frame, k: number): Frame {
 /** Turns the short way round: `to`'s yaw is taken as the same direction nearest to where the camera is. */
 export function glideView(from: View, to: View, k: number): View {
   const turns = Math.round((from.yaw - to.yaw) / (Math.PI * 2));
-  return { yaw: mix(from.yaw, to.yaw + turns * Math.PI * 2, k), pitch: mix(from.pitch, to.pitch, k), zoom: mix(from.zoom, to.zoom, k) };
+  return {
+    yaw: mix(from.yaw, to.yaw + turns * Math.PI * 2, k),
+    pitch: mix(from.pitch, to.pitch, k),
+    zoom: mix(from.zoom, to.zoom, k),
+    pan: from.pan.map((v, i) => mix(v, to.pan[i]!, k)) as Vec3,
+  };
 }
 
 /** The shot `k` of the way (0 to 1, already eased) from one to another. */
 export function glideShot(from: Shot, to: Shot, k: number): Shot {
-  const { yaw, pitch } = glideView({ yaw: from.yaw, pitch: from.pitch, zoom: 1 }, { yaw: to.yaw, pitch: to.pitch, zoom: 1 }, k);
+  const { yaw, pitch } = glideView({ yaw: from.yaw, pitch: from.pitch, zoom: 1, pan: [0, 0, 0] }, { yaw: to.yaw, pitch: to.pitch, zoom: 1, pan: [0, 0, 0] }, k);
   return { ...glideFrame(from, to, k), yaw, pitch };
 }
 
 /**
- * Whose the camera is. It follows the focus it is given until the player moves it by hand (orbit, zoom); from then on
- * it stays theirs until the `key` changes (another category, another tab) or they reset the view. `aimed` is what the
- * camera frames now, `wanted` what a reset goes to.
+ * Whose the camera is. It follows the focus it is given until the player moves it by hand (turn, zoom, slide); from
+ * then on it stays theirs until the `key` changes (another category, another tab) or they reset the view. `aimed` is
+ * what the camera frames now, `wanted` what a reset goes to.
  */
 export interface Following {
   readonly aimed: Focus;

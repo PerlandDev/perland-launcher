@@ -33,7 +33,8 @@ export interface StageHandle {
   celebrate(): void;
 }
 
-/** The 3D figure. Drag on it to paint; drag the empty stage, or right-drag anywhere, to turn it; the wheel zooms. */
+/** The 3D figure. Drag on it to paint; drag the empty stage, or right-drag anywhere, to turn it; middle-drag or
+ *  Shift-drag to slide it; the wheel zooms toward the pointer. */
 export function Stage({
   pixels,
   rev,
@@ -41,7 +42,7 @@ export function Stage({
   hidden,
   paintLayer,
   pose,
-  paused,
+  straight,
   hover,
   onHover,
   onBegin,
@@ -61,7 +62,8 @@ export function Stage({
   hidden: Set<string>;
   paintLayer: Layer;
   pose: Pose;
-  paused: boolean;
+  /** Stands the figure straight and still for painting. */
+  straight: boolean;
   hover: [number, number] | null;
   onHover: (texel: [number, number] | null) => void;
   onBegin: () => void;
@@ -75,7 +77,7 @@ export function Stage({
   focus?: Focus;
   /** Names where the focus comes from (a Create category): once the player moves the camera, it stays theirs until this changes. */
   focusKey?: string;
-  /** The skin with its eyes shut (see blink.ts): shown for a moment every few seconds, unless the figure is paused. */
+  /** The skin with its eyes shut (see blink.ts): shown for a moment every few seconds, while Animation is on. */
   blink?: Pixels | null;
   /** Whose blink rhythm it is: the skin's id. */
   blinkSeed?: string;
@@ -84,7 +86,7 @@ export function Stage({
   const { t } = useTranslation();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [scene, setScene] = useState<Scene | null>(null);
-  const drag = useRef<{ mode: 'paint' | 'orbit'; x: number; y: number } | null>(null);
+  const drag = useRef<{ mode: 'paint' | 'orbit' | 'pan'; x: number; y: number } | null>(null);
 
   useEffect(() => {
     const el = canvas.current;
@@ -104,7 +106,7 @@ export function Stage({
   }, []);
   useImperativeHandle(ref, () => ({ resetView: () => scene?.resetView(), zoom: (f) => scene?.zoom(f), celebrate: () => scene?.celebrate() }), [scene]);
   useEffect(() => scene?.setPose(pose), [scene, pose]);
-  useEffect(() => scene?.setPaused(paused), [scene, paused]);
+  useEffect(() => scene?.setStraight(straight), [scene, straight]);
   useEffect(() => scene?.focus(focus, focusKey), [scene, focus, focusKey]);
 
   useEffect(() => scene?.setModel(model), [scene, model]);
@@ -116,17 +118,23 @@ export function Stage({
       for (const layer of ['base', 'outer'] as Layer[]) s.setVisible(part, layer, !hidden.has(`${part}:${layer}`));
     }
   }, [scene, hidden, model]);
-  // A blink swaps the texture the figure wears, and nothing else: the skin and the flat texture never see it.
-  const blinking = useBlinking(blink !== null && !paused, blinkSeed);
+  // A blink swaps the texture the figure wears, and nothing else: the skin and the flat texture never see it. With
+  // Animation off the figure is still, eyes open.
+  const blinking = useBlinking(blink !== null && !straight, blinkSeed);
   const drawn = blinking && blink ? blink : pixels;
   useEffect(() => {
     if (drawn) scene?.setTexture(withHover(drawn, hover));
   }, [scene, drawn, rev, hover, model]);
 
   const down = (event: PointerEvent<HTMLCanvasElement>) => {
-    const hit = paintable && event.button === 0 ? scene?.pick(event.clientX, event.clientY) : null;
+    const panning = event.button === 1 || (event.button === 0 && event.shiftKey);
+    const hit = paintable && event.button === 0 && !panning ? scene?.pick(event.clientX, event.clientY) : null;
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    if (hit) {
+    if (panning) {
+      // The middle button would otherwise start the browser's autoscroll.
+      event.preventDefault();
+      drag.current = { mode: 'pan', x: event.clientX, y: event.clientY };
+    } else if (hit) {
       drag.current = { mode: 'paint', x: event.clientX, y: event.clientY };
       onBegin();
       onPaint(hit.x, hit.y);
@@ -138,8 +146,9 @@ export function Stage({
     const s = scene;
     if (!s) return;
     const d = drag.current;
-    if (d?.mode === 'orbit') {
-      s.orbit(event.clientX - d.x, event.clientY - d.y);
+    if (d?.mode === 'orbit' || d?.mode === 'pan') {
+      if (d.mode === 'orbit') s.orbit(event.clientX - d.x, event.clientY - d.y);
+      else s.pan(event.clientX - d.x, event.clientY - d.y);
       d.x = event.clientX;
       d.y = event.clientY;
       return;
@@ -153,7 +162,11 @@ export function Stage({
     if (drag.current?.mode === 'paint') onEnd();
     drag.current = null;
   };
-  const wheel = (event: WheelEvent) => scene?.zoom(event.deltaY > 0 ? 1.1 : 1 / 1.1);
+  const wheel = (event: WheelEvent) => {
+    // Only the wheel's own turn zooms: tilting it sideways (or a sideways swipe) scrolls horizontally, deltaY 0.
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    scene?.zoom(event.deltaY > 0 ? 1.1 : 1 / 1.1, event.clientX, event.clientY);
+  };
 
   return (
     <canvas
@@ -163,6 +176,7 @@ export function Stage({
       role="img"
       aria-label={label ?? t('skins.stageLabel')}
       onPointerDown={down}
+      onMouseDown={(e) => e.button === 1 && e.preventDefault()}
       onPointerMove={move}
       onPointerUp={up}
       onPointerCancel={up}

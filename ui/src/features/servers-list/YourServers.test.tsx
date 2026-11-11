@@ -176,8 +176,8 @@ describe('YourServers', () => {
     const team = await cardIn(await yours(), 'Team survival');
     expect(within(team).getByText('Running')).toBeInTheDocument();
     expect(within(team).getByText('Builders')).toBeInTheDocument();
-    expect(within(team).getByText(/^Join from Minecraft: /)).toBeInTheDocument();
-    expect(within(team).getByRole('button', { name: 'Copy server address' })).toBeInTheDocument();
+    const address = within(team).getByRole('group', { name: 'Join from Minecraft' });
+    expect(within(address).getByRole('button', { name: 'Copy server address' })).toBeInTheDocument();
     // No invite is known, so no Play.
     expect(within(team).queryByRole('button', { name: 'Play' })).toBeNull();
     await user.click(within(team).getByRole('button', { name: 'Manage' }));

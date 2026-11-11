@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { AnimationClock, celebration, CELEBRATE_S, POSE_STILL_T, POSES, rigAt, SADDLE_Y } from './poses';
+import { celebration, CELEBRATE_S, POSES, rigAt, SADDLE_Y, STRAIGHT } from './poses';
 
 describe('poses', () => {
   it('walk swings the legs against each other and the arms against the legs', () => {
-    const rig = rigAt('walk', POSE_STILL_T);
+    const rig = rigAt('walk', 0.22);
     expect(rig.joints.rightLeg[0]).toBeGreaterThan(0.3);
     expect(rig.joints.leftLeg[0]).toBeCloseTo(-rig.joints.rightLeg[0]);
     expect(Math.sign(rig.joints.rightArm[0])).toBe(-Math.sign(rig.joints.rightLeg[0]));
@@ -26,19 +26,26 @@ describe('poses', () => {
     expect(rigAt('still', 0)).not.toEqual(rigAt('still', 1.5));
   });
 
-  it('the clock stops while paused and goes on from the same moment', () => {
-    const clock = new AnimationClock(1000);
-    expect(clock.at(3000)).toBeCloseTo(2);
-    clock.pause(3000);
-    expect(clock.at(9000)).toBeCloseTo(2);
-    // Pausing twice changes nothing.
-    clock.pause(9500);
-    expect(clock.at(9500)).toBeCloseTo(2);
-    clock.resume(10000);
-    expect(clock.at(10500)).toBeCloseTo(2.5);
-    clock.resume(11000);
-    expect(clock.at(11000)).toBeCloseTo(3);
-    expect(clock.paused).toBe(false);
+  it('standing turns the arms out from the shoulder, so their tops sink into the torso', () => {
+    // Why the straight pose exists: the arms turn about a point below their top edge.
+    const { joints } = rigAt('still', 0);
+    expect(joints.rightArm[2]).not.toBe(0);
+    expect(joints.leftArm[2]).not.toBe(0);
+  });
+
+  it('crouching leans the torso over legs that stay straight down, as the game sneaks', () => {
+    for (const t of [0, 0.5, 1.3]) {
+      const { joints } = rigAt('crouch', t);
+      expect(joints.torso[0]).toBeGreaterThan(0);
+      expect(joints.rightLeg).toEqual([0, 0, 0]);
+      expect(joints.leftLeg).toEqual([0, 0, 0]);
+    }
+  });
+
+  it('the straight pose holds every joint square, the figure on its spot, nothing moving', () => {
+    for (const rotation of Object.values(STRAIGHT.joints)) expect(rotation).toEqual([0, 0, 0]);
+    expect(STRAIGHT.offset).toEqual([0, 0, 0]);
+    expect(STRAIGHT.tilt).toEqual([0, 0, 0]);
   });
 
   it('in the boat the hands rest on the rim, not in the air', () => {

@@ -12,6 +12,7 @@ import errorCodes from './contract/error_codes.json';
 import events from './contract/events.json';
 import freeServerPage from './contract/free_server_page.json';
 import freeServerSettings from './contract/free_server_settings.json';
+import bannerViews from './contract/banner_views.json';
 import iconChoices from './contract/icon_choices.json';
 import importPreview from './contract/import_preview.json';
 import importRequest from './contract/import_request.json';
@@ -113,6 +114,7 @@ const cases: [string, ZodType, unknown][] = [
   ['pack_add_requests', s.packAddRequest.array(), packAddRequests],
   ['instance_art', s.instanceArtData, instanceArt],
   ['art_choices', s.artChoice.array(), artChoices],
+  ['banner_views', s.bannerView.array(), bannerViews],
   ['icon_choices', s.iconChoice.array(), iconChoices],
   ['pack_contents', s.packContents, packContents],
   ['pack_status', s.packStatus.array(), packStatus],

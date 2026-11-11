@@ -23,6 +23,16 @@ import type {
 } from './schema';
 
 describe('mock backend', () => {
+  it("keeps the What's new marker, which starts at the running version", async () => {
+    const { handle } = createMockBackend();
+    const { version } = (await handle('app_info')) as { version: string };
+    expect(await handle('whats_new_seen')).toBe(version);
+    const updated = createMockBackend({ whatsNewSeen: null });
+    expect(await updated.handle('whats_new_seen')).toBeNull();
+    expect(await updated.handle('whats_new_mark')).toBeNull();
+    expect(await updated.handle('whats_new_seen')).toBe(version);
+  });
+
   it('serves the contract fixtures', async () => {
     const { handle } = createMockBackend();
     const listing = (await handle('instances_list')) as InstanceListing;
@@ -130,6 +140,9 @@ describe('mock backend', () => {
     expect(await art('sky-islands')).toEqual({
       icon: expect.stringMatching(/^data:image\/webp;base64,/),
       banner: expect.stringMatching(/^data:image\/png;base64,/),
+      // The pack's own background is still there to go back to.
+      packBanner: true,
+      packIcon: true,
     });
     const generated = (await handle('instance_icon_set', { id: 'sky-islands', choice: { kind: 'generated' } })) as Instance;
     expect(generated.icon).toBe('generated');
@@ -144,6 +157,32 @@ describe('mock backend', () => {
     await expect(handle('instance_icon_set', { id: plain.id, choice: { kind: 'pack' } })).rejects.toMatchObject({ code: 'no_pack' });
   });
 
+  it('saves a background view, refuses a zoom out of range and starts a new background from the default view', async () => {
+    const { handle } = createMockBackend();
+    const view = { focus: { x: 70, y: 40 }, zoom: 60, edges: 'pixel', aspect: 1833 };
+    const set = (await handle('instance_banner_view_set', { id: 'sky-islands', view })) as Instance;
+    expect([set.bannerFocus, set.bannerZoom, set.bannerEdges, set.bannerAspect]).toEqual([{ x: 70, y: 40 }, 60, 'pixel', 1833]);
+    for (const aspect of [499, 5001]) {
+      await expect(handle('instance_banner_view_set', { id: 'sky-islands', view: { ...view, aspect } })).rejects.toMatchObject({ code: 'banner_aspect_invalid' });
+    }
+    for (const zoom of [24, 501]) {
+      await expect(handle('instance_banner_view_set', { id: 'sky-islands', view: { ...view, zoom } })).rejects.toMatchObject({ code: 'banner_zoom_invalid' });
+    }
+    await expect(handle('instance_banner_view_set', { id: 'sky-islands', view: { ...view, focus: { x: 101, y: 0 } } })).rejects.toMatchObject({
+      code: 'banner_focus_invalid',
+    });
+    const fresh = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/view.png' } })) as Instance;
+    expect([fresh.bannerFocus, fresh.bannerZoom, fresh.bannerEdges, fresh.bannerAspect]).toEqual([null, null, null, null]);
+  });
+
+  it('keeps the whole background view when instance settings save a copy read before it', async () => {
+    const { handle, state } = createMockBackend();
+    const before = state.listing.instances.find((i) => i.id === 'sky-islands')!;
+    await handle('instance_banner_view_set', { id: 'sky-islands', view: { focus: { x: 70, y: 40 }, zoom: 60, edges: 'pixel', aspect: 1833 } });
+    const after = (await handle('instance_update', { instance: { ...before, java: { ...before.java, memoryMb: before.java.memoryMb + 512 } } })) as Instance;
+    expect([after.bannerFocus, after.bannerZoom, after.bannerEdges, after.bannerAspect]).toEqual([{ x: 70, y: 40 }, 60, 'pixel', 1833]);
+  });
+
   it('drops the pictures of a deleted instance, so a new one with its name starts clean', async () => {
     const { handle, state } = createMockBackend();
     await handle('instance_icon_set', { id: 'sky-islands', choice: { kind: 'upload', path: 'C:/pics/me.webp' } });
@@ -153,7 +192,7 @@ describe('mock backend', () => {
     expect(state.custom.has('sky-islands')).toBe(false);
     const again = (await handle('instance_create', { request: { name: 'Sky Islands', minecraft: '1.21.1', loader: null } })) as Instance;
     expect(again.id).toBe('sky-islands');
-    expect(await handle('instance_art', { id: again.id })).toEqual({ icon: null, banner: null });
+    expect(await handle('instance_art', { id: again.id })).toEqual({ icon: null, banner: null, packBanner: false, packIcon: false });
   });
 
   it('lets a round-1 upload fill both places until the background changes', async () => {
@@ -167,7 +206,7 @@ describe('mock backend', () => {
     expect(legacy.banner).toBe(legacy.icon);
     const set = (await handle('instance_art_set', { id: 'sky-islands', choice: { kind: 'generated', seed: 'dunes' } })) as Instance;
     expect(set.icon).toBe('custom');
-    expect(await art('sky-islands')).toEqual({ icon: legacy.icon, banner: null });
+    expect(await art('sky-islands')).toEqual({ icon: legacy.icon, banner: null, packBanner: true, packIcon: true });
   });
 
   it('refuses a bad upload and a pack choice without a pack', async () => {

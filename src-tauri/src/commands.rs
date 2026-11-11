@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
-    AccountReady, AppInfo, ArtChoice, BrowsePlanRequest, ContentFile, ContinueTarget,
+    AccountReady, AppInfo, ArtChoice, BannerView, BrowsePlanRequest, ContentFile, ContinueTarget,
     EmailCodeSent, FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest,
     InstallPlanView, InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
     LinkCodeView, ManageChangeResult, ManageConsoleReply, ManageDetail, ManageDiagnosis,
@@ -21,7 +21,7 @@ use launcher_core::{
         project::{ProjectDetail, VersionInfo},
         search::SearchPage,
     },
-    instances::{Focus, Instance, InstanceListing},
+    instances::{Instance, InstanceListing},
     meta::{
         catalog::{LoaderVersion, McVersion},
         loaders::LoaderKind,
@@ -71,6 +71,16 @@ pub async fn settings_set(
         updates.set_channel(channel).await;
     });
     Ok(saved)
+}
+
+#[tauri::command]
+pub async fn whats_new_seen(core: CoreState<'_>) -> Res<Option<String>> {
+    Ok(core.whats_new_seen().await)
+}
+
+#[tauri::command]
+pub async fn whats_new_mark(core: CoreState<'_>) -> Res<()> {
+    logged("whats_new_mark", core.whats_new_mark().await)
 }
 
 #[tauri::command]
@@ -437,14 +447,14 @@ pub async fn instance_icon_set(
 }
 
 #[tauri::command]
-pub async fn instance_banner_focus_set(
+pub async fn instance_banner_view_set(
     core: CoreState<'_>,
     id: String,
-    focus: Option<Focus>,
+    view: BannerView,
 ) -> Res<Instance> {
     logged(
-        "instance_banner_focus_set",
-        core.instance_banner_focus_set(&id, focus).await,
+        "instance_banner_view_set",
+        core.instance_banner_view_set(&id, view).await,
     )
 }
 
@@ -1121,6 +1131,18 @@ pub async fn skin_duplicate(
 }
 
 #[tauri::command]
+pub async fn skin_reorder(
+    core: CoreState<'_>,
+    owner: Option<String>,
+    ids: Vec<String>,
+) -> Res<Vec<launcher_core::skins_library::SkinEntry>> {
+    logged(
+        "skin_reorder",
+        core.skin_reorder(owner.as_deref(), &ids).await,
+    )
+}
+
+#[tauri::command]
 pub async fn skin_delete(core: CoreState<'_>, id: String) -> Res<()> {
     logged("skin_delete", core.skin_delete(&id).await)
 }
@@ -1166,6 +1188,11 @@ pub async fn skin_version_copy(
         "skin_version_copy",
         core.skin_version_copy(&id, &version, &name).await,
     )
+}
+
+#[tauri::command]
+pub async fn skin_versions_clear(core: CoreState<'_>, id: String) -> Res<()> {
+    logged("skin_versions_clear", core.skin_versions_clear(&id).await)
 }
 
 #[tauri::command]

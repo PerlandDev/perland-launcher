@@ -35,7 +35,7 @@ import { ShareDialog } from "../share/ShareDialog";
 import { ImageDialog } from "./ImageDialog";
 import { GoBackDialog } from "./GoBackDialog";
 import { DeleteDialog, RenameDialog } from "./InstanceDialogs";
-import { addressText, inviteOf, isPack, isServer } from "./labels";
+import { inviteOf, isPack, isServer, shownAddress } from "./labels";
 import { useRestorePoint } from "./useRestorePoint";
 
 export interface InstanceActions {
@@ -64,7 +64,7 @@ export function useInstanceActions(instance: Instance): InstanceActions {
   const qc = useQueryClient();
   const close = () => setDialog(null);
   const invite = inviteOf(instance);
-  const address = instance.server?.address ?? null;
+  const address = shownAddress(instance.server?.address, instance.server?.join);
   // A run saves the whole instance when it syncs, so linking waits until it is idle.
   const running = useRun(instance.id).state !== "idle";
   // Play this with friends: a signed-in player without a free server, on an instance not linked to a server, and an Engine
@@ -124,7 +124,7 @@ export function useInstanceActions(instance: Instance): InstanceActions {
                 id: "copyAddress",
                 label: t("server.copyAddress"),
                 icon: <Copy />,
-                onSelect: () => void copyText(addressText(address)),
+                onSelect: () => void copyText(address),
               },
             ]
           : []),

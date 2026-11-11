@@ -1,0 +1,26 @@
+[
+  {
+    "focus": null,
+    "zoom": null,
+    "edges": null,
+    "aspect": null
+  },
+  {
+    "focus": {
+      "x": 70,
+      "y": 40
+    },
+    "zoom": 60,
+    "edges": "pixel",
+    "aspect": 1500
+  },
+  {
+    "focus": {
+      "x": 0,
+      "y": 100
+    },
+    "zoom": 300,
+    "edges": "dark",
+    "aspect": null
+  }
+]

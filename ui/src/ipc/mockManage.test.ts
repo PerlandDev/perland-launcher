@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMockBackend, stopMockRuns } from './mock';
 import type { MockOptions } from './mock';
-import { MOCK_FREE_TENANT, MOCK_MANAGE_START_MS, MOCK_TEAM_SERVER, MOCK_TEAM_TENANT, manageScenario } from './mockManage';
+import { MOCK_FREE_TENANT, MOCK_MANAGE_START_MS, MOCK_TEAM_JOIN, MOCK_TEAM_SERVER, MOCK_TEAM_TENANT, manageScenario } from './mockManage';
 import * as s from './schema';
 import type { AppEvent, FreeServerPage, ManageDetail, ManagedServer, YourServersPage } from './schema';
 
@@ -30,6 +30,13 @@ describe('mock Manage', () => {
     expect(manageScenario('crashed')).toBe('crashed');
     expect(manageScenario('nope')).toBeUndefined();
     expect(manageScenario(null)).toBeUndefined();
+  });
+
+  it("shows the team server's join address in the list and the detail", async () => {
+    const b = backend();
+    const listed = (await servers(b)).find((m) => m.name === MOCK_TEAM_SERVER);
+    expect(listed?.address).toBe(MOCK_TEAM_JOIN);
+    expect((await detail(b)).address).toBe(MOCK_TEAM_JOIN);
   });
 
   it('lists the free server first and the team server, both valid', async () => {

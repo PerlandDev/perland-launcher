@@ -12,11 +12,11 @@ import type { SkinEntry, SkinLook, SkinModel } from '../../ipc/schema';
 import { compose, FACE_SLOTS, type ComposeLayer } from './compose';
 import { pushError } from '../../state/toasts';
 import { decodeTexture, encodeTexture } from './codec';
-import { convertArms, fitsModel } from './armModel';
+import { convertArms, fitsModel, restoreArms } from './armModel';
 import { History, mergeStroke, type LookState, type ModelSwap } from './history';
 import { mirrorTexel } from './mirror';
 import { applyTool, blend, line, Pixels, sameColor, type Change, type Rgba, type Tool, type Touched } from './paint';
-import { SKIN_SIZE } from './layout';
+import { faceAt, SKIN_SIZE } from './layout';
 
 /** The quiet wait after a stroke before the skin is saved. */
 export const AUTOSAVE_MS = 600;
@@ -47,8 +47,11 @@ export interface SkinDoc {
   switchModel(to: SkinModel): void;
   /** Saves now if a save is waiting (before switching skins, exporting or wearing). */
   flush(): Promise<void>;
-  /** Shows `data` (already saved, e.g. a restored version) as one undoable step; a restored skin has no look. */
-  replace(data: Uint8ClampedArray): void;
+  /**
+   * Shows `data` (already saved, e.g. a restored version) as one undoable step, with the arm model it switched to; a
+   * restored skin has no look.
+   */
+  replace(data: Uint8ClampedArray, model?: ModelSwap): void;
   /** The open skin's look, null for a plain painted skin. */
   look: LookState | null;
   /** The last stroke went (at least partly) under a piece, so it doesn't show. */
@@ -67,6 +70,14 @@ export interface SkinDoc {
    * changes of one thing (a colour being dragged) into one step; `model` switches the arms in the same step.
    */
   changeLook(next: LookState | null, composed: Uint8ClampedArray, opts?: { key?: string; model?: ModelSwap }): void;
+}
+
+/** Whether (x, y) is an arm texel, in either arm model's layout. */
+function onArm(x: number, y: number): boolean {
+  return (['classic', 'slim'] as const).some((model) => {
+    const part = faceAt(model, x, y)?.box.part;
+    return part === 'rightArm' || part === 'leftArm';
+  });
 }
 
 /** Everything that changes without a render of its own: the views redraw on `rev`. */
@@ -92,10 +103,13 @@ class DocStore {
   covered = false;
   /** A save went through since the skin was opened or last kept as a version. */
   dirty = false;
-  onSaved: (entry: SkinEntry) => void = () => {};
+  /** The last switch of arm model that redrew the arms, while switching straight back can still undo it exactly. */
+  lastSwitch: { from: SkinModel; to: SkinModel; changes: Change[] } | null = null;
+  /** A save answers the wardrobe entry as stored; keeping a version on the way out answers none. */
+  onSaved: (entry?: SkinEntry) => void = () => {};
   onState: (id: string, state: SaveState) => void = () => {};
 
-  wire(onSaved: (entry: SkinEntry) => void, onState: (id: string, state: SaveState) => void) {
+  wire(onSaved: (entry?: SkinEntry) => void, onState: (id: string, state: SaveState) => void) {
     this.onSaved = onSaved;
     this.onState = onState;
   }
@@ -109,6 +123,7 @@ class DocStore {
     this.history.clear();
     this.dirty = false;
     this.covered = false;
+    this.lastSwitch = null;
   }
 
   setLayers(look: SkinLook, model: SkinModel, layers: ComposeLayer[]) {
@@ -130,13 +145,15 @@ class DocStore {
     this.dirty = false;
     try {
       await commands.skinCheckpoint(id);
+      this.onSaved();
     } catch (error) {
       pushError(error);
     }
   }
 
-  /** Swaps in `data` as one stroke, so Undo takes it back (and autosaves the texture it replaced). */
-  replace(data: Uint8ClampedArray): boolean {
+  /** Swaps in `data` as one stroke, so Undo takes it back (and autosaves the texture it replaced), with the arm model
+   *  it switched to, if it did. */
+  replace(data: Uint8ClampedArray, model?: ModelSwap): boolean {
     const px = this.pixels;
     if (!px) return false;
     const next = new Pixels(data);
@@ -148,14 +165,15 @@ class DocStore {
         if (!sameColor(before, after)) changes.push({ x, y, before, after });
       }
     }
-    if (changes.length === 0 && !this.look) return false;
+    if (changes.length === 0 && !model && !this.look) return false;
     for (const c of changes) px.set(c.x, c.y, c.after);
     // The texture was saved as a plain skin (a restore drops the look), so leaving the look is part of the step.
     const look = this.look ? { before: this.look, after: null } : undefined;
     this.look = null;
     this.savedLook = false;
     this.covered = false;
-    this.history.push(changes, undefined, look);
+    this.history.push(changes, model, look);
+    this.lastSwitch = null;
     this.version += 1;
     return true;
   }
@@ -178,6 +196,8 @@ class DocStore {
     this.version += 1;
     this.look = next;
     this.covered = false;
+    // The pieces redrew the skin, arms included: a switch of arms before this can't be taken back texel for texel.
+    this.lastSwitch = null;
     return true;
   }
 
@@ -250,6 +270,8 @@ class DocStore {
     this.working = null;
     this.composedBefore = null;
     if (!done || done.length === 0) return false;
+    // Paint on an arm since the last switch of arms: switching back redraws them, it can't hand back the old texels.
+    if (done.some((c) => onArm(c.x, c.y))) this.lastSwitch = null;
     const look = this.look;
     if (!look || !working || !before || !this.pixels) {
       this.history.push(mergeStroke(done));
@@ -288,6 +310,7 @@ class DocStore {
   }
 
   undo(onModel: (model: SkinModel) => void): boolean {
+    this.lastSwitch = null;
     const done = !!this.pixels && this.history.undo(this.pixels, { onModel, onLook: (look) => (this.look = look) });
     if (done) this.version += 1;
     this.covered = false;
@@ -295,6 +318,7 @@ class DocStore {
   }
 
   redo(onModel: (model: SkinModel) => void): boolean {
+    this.lastSwitch = null;
     const done = !!this.pixels && this.history.redo(this.pixels, { onModel, onLook: (look) => (this.look = look) });
     if (done) this.version += 1;
     this.covered = false;
@@ -305,7 +329,11 @@ class DocStore {
   switchModel(from: SkinModel, to: SkinModel): boolean {
     const px = this.pixels;
     if (!px || from === to) return false;
-    const changes = fitsModel(px, to) ? [] : convertArms(px, from, to);
+    // Straight back from a switch that redrew the arms, with them untouched since: the very texels come back.
+    const last = this.lastSwitch;
+    const back = last && last.from === to && last.to === from ? restoreArms(px, last.changes) : null;
+    const changes = back ?? (fitsModel(px, to) ? [] : convertArms(px, from, to));
+    this.lastSwitch = back || changes.length === 0 ? null : { from, to, changes };
     this.history.push(changes, { before: from, after: to });
     this.covered = false;
     this.version += 1;
@@ -356,14 +384,15 @@ async function openLook(id: string, look: SkinLook | undefined): Promise<LookSta
 }
 
 /**
- * `onSaved` gets the wardrobe entry each save answers, so the wardrobe can show it (and its look) at once. `onModel`
+ * `onSaved` gets the wardrobe entry each save answers, so the wardrobe can show it (and its look) at once; it is also
+ * called, with no entry, when leaving a changed skin kept a version of it, so the history can ask again. `onModel`
  * stores a new arm model for the open skin: after a switch, and when undo or redo crosses one. `look` is the open
  * skin's look as its wardrobe entry has it (read as the skin opens).
  */
 export function useSkinDoc(
   id: string | null,
   model: SkinModel,
-  onSaved: (entry: SkinEntry) => void,
+  onSaved: (entry?: SkinEntry) => void,
   onModel: (model: SkinModel) => void,
   look?: SkinLook,
 ): SkinDoc {
@@ -451,8 +480,8 @@ export function useSkinDoc(
     redo,
     switchModel,
     flush: () => store.saveNow(),
-    replace: (data: Uint8ClampedArray) => {
-      if (open && store.replace(data)) bump();
+    replace: (data: Uint8ClampedArray, swap?: ModelSwap) => {
+      if (open && store.replace(data, swap)) bump();
     },
     look: open ? store.look : null,
     covered: open && store.covered,

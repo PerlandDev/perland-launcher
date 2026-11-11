@@ -9,9 +9,10 @@
     "packState": "ready",
     "gone": false,
     "address": {
-      "host": "play.example.com",
-      "port": 25566
-    }
+      "host": "survival.perland.world",
+      "port": 25565
+    },
+    "join": "survival.perland.world"
   },
   {
     "status": null,
@@ -22,6 +23,7 @@
     "address": {
       "host": "play.example.com",
       "port": 25566
-    }
+    },
+    "join": null
   }
 ]

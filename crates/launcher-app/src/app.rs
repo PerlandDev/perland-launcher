@@ -39,6 +39,7 @@ use launcher_core::{
     settings::{Channel, Settings, SettingsStore},
     skins,
     sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
+    whats_new_seen::{WhatsNewSeen, WHATS_NEW_SEEN_FILE},
     ErrorCode, LauncherError, Result,
 };
 use tokio::{
@@ -117,6 +118,7 @@ pub struct AppCore<R: Runner, H: Host> {
     meta: MetaClient,
     /// The newest news post seen per server (`<data root>/news-seen.json`).
     pub(crate) news_seen: NewsSeen,
+    whats_new_seen: WhatsNewSeen,
     pub(crate) runner: Arc<R>,
     pub(crate) host: Arc<H>,
     /// One install at a time, so two installs never write the same shared files at once.
@@ -242,6 +244,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             accounts_warned: AtomicBool::new(false),
             meta,
             news_seen: NewsSeen::new(root.join(NEWS_SEEN_FILE)),
+            whats_new_seen: WhatsNewSeen::new(root.join(WHATS_NEW_SEEN_FILE)),
             runner,
             host,
             install_slot: Arc::new(Semaphore::new(1)),
@@ -396,6 +399,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Channel::effective(settings.update_channel, self.config.build)
     }
 
+    /// The last launcher version whose release notes this player was shown, if any (What's new).
+    pub async fn whats_new_seen(&self) -> Option<String> {
+        self.whats_new_seen.get().await
+    }
+
+    /// The player has now been shown the running version's notes. The UI never names a version.
+    pub async fn whats_new_mark(&self) -> Result<()> {
+        self.whats_new_seen.set(&self.config.launcher_version).await
+    }
+
     pub async fn settings_set(&self, settings: Settings) -> Result<Settings> {
         self.settings.lock().await.save(&settings).await?;
         Ok(settings)
@@ -465,7 +478,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// Version and Java changes wait until the game stops; other edits are fine while it runs.
     /// Where an instance comes from (`source`), its server link (`server`) and its pictures
-    /// (`art`, `art_seed`, `icon`, `banner_focus`) change only through their own commands, so a stale copy from
+    /// (`art`, `art_seed`, `icon` and the background's view) change only through their own commands, so a stale copy from
     /// the UI can't undo a relink or a picture. Server instances
     /// always follow their server (`Auto`).
     pub async fn instance_update(&self, instance: Instance) -> Result<Instance> {
@@ -488,6 +501,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         instance.art_seed = current.art_seed.clone();
         instance.icon = current.icon;
         instance.banner_focus = current.banner_focus;
+        instance.banner_zoom = current.banner_zoom;
+        instance.banner_edges = current.banner_edges;
+        instance.banner_aspect = current.banner_aspect;
         // Only going back and "Update again" set or lift the hold.
         instance.update_hold = current.update_hold.clone();
         if matches!(current.source, SourceRef::Perland { .. }) {
@@ -1094,6 +1110,15 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn whats_new_mark_stores_the_running_version() {
+        let (core, _, _, tmp) = core(BuildKind::Release);
+        assert_eq!(core.whats_new_seen().await, None);
+        core.whats_new_mark().await.unwrap();
+        assert_eq!(core.whats_new_seen().await.as_deref(), Some("0.1.0"));
+        assert!(tmp.path().join("whats-new-seen.json").exists());
+    }
+
+    #[tokio::test]
     async fn damaged_settings_warn_once() {
         let (core, _, host, tmp) = core(BuildKind::Dev);
         std::fs::write(tmp.path().join("settings.json"), "{nope").unwrap();
@@ -1689,6 +1714,38 @@ pub(crate) mod tests {
         core.instance_update(instance).await.unwrap();
         let after = core.instances.load("a").await.unwrap();
         assert_eq!(after.banner_focus, Some(Focus { x: 20, y: 80 }));
+        assert_eq!(after.java.memory_mb, stored.java.memory_mb + 512);
+    }
+
+    #[tokio::test]
+    async fn update_keeps_the_whole_banner_view_from_disk() {
+        use launcher_core::instances::{BannerEdges, Focus};
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let mut instance = core.instance_create(vanilla("A")).await.unwrap();
+        let mut stored = core.instances.load("a").await.unwrap();
+        stored.banner_focus = Some(Focus { x: 20, y: 80 });
+        stored.banner_zoom = Some(150);
+        stored.banner_edges = Some(BannerEdges::Pixel);
+        stored.banner_aspect = Some(1833);
+        core.instances.update(&stored).await.unwrap();
+        // Instance settings saves a copy read before "Adjust the background" changed the view.
+        instance.java.memory_mb += 512;
+        core.instance_update(instance).await.unwrap();
+        let after = core.instances.load("a").await.unwrap();
+        assert_eq!(
+            (
+                after.banner_focus,
+                after.banner_zoom,
+                after.banner_edges,
+                after.banner_aspect
+            ),
+            (
+                Some(Focus { x: 20, y: 80 }),
+                Some(150),
+                Some(BannerEdges::Pixel),
+                Some(1833)
+            )
+        );
         assert_eq!(after.java.memory_mb, stored.java.memory_mb + 512);
     }
 

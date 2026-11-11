@@ -2,6 +2,8 @@
 export {
   ArrowBarLeft,
   ArrowBarRight,
+  ArrowDown,
+  ArrowUp,
   Calendar,
   Check,
   ChevronDown,
@@ -9,6 +11,7 @@ export {
   Clock,
   Close,
   Copy,
+  Crop,
   Crown,
   DiamondGem,
   Download,

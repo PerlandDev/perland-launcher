@@ -1,6 +1,6 @@
 import type { i18n as I18n } from 'i18next';
 import { useQueryClient } from '@tanstack/react-query';
-import { useId } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import { describeError } from '../../ipc/errors';
@@ -12,6 +12,8 @@ import { Button } from '../../ui/Button';
 import { Reload } from '../../ui/Icon';
 import { Meter } from '../../ui/Meter';
 import { useSingleFlight } from '../../ui/useSingleFlight';
+import { releaseNotesData } from '../whats-new/notes';
+import { WhatsNewDialog } from '../whats-new/WhatsNewDialog';
 
 /** The plate's blue lamp is lit while an update is on its way (checking, downloading, ready).
  *  Up to date gets no lamp: on this screen lime marks only the chosen channel. */
@@ -43,6 +45,19 @@ function statusText(i18n: I18n, state: UpdateState, version: string): { line: st
   }
 }
 
+/** Every version's release notes, behind a raised key: the way back to what the launch dialog showed, and in a dev
+ *  build the only way in (it lists the notes not released yet under Next update). */
+function WhatsNew() {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>{t('settings.updates.whatsNew')}</Button>
+      <WhatsNewDialog open={open} groups={releaseNotesData.groups} all={null} onClose={() => setOpen(false)} />
+    </>
+  );
+}
+
 /** Settings → Launcher updates (spec §4.5). Nothing here is lit: these and About's buttons are all
  *  raised, so no two primaries compete. Blue is progress; lime is only the channel you're on. */
 export function LauncherUpdates({
@@ -70,6 +85,9 @@ export function LauncherUpdates({
           {t('settings.updates.title')}
         </h2>
         <p className="text-sm text-ink-dim">{t('settings.updates.off')}</p>
+        <div>
+          <WhatsNew />
+        </div>
       </section>
     );
   }
@@ -145,6 +163,7 @@ export function LauncherUpdates({
         >
           {t('settings.updates.check')}
         </Button>
+        <WhatsNew />
         {ready && busy && (
           <p id={busyId} className="text-sm text-ink-dim">
             {t('settings.updates.busy')}

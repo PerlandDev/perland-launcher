@@ -32,9 +32,10 @@
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Themes (Settings → Theme). A theme is a different room: it swaps only the eight neutrals, the
-   room (ground, panel, raised, line), its ink and the dirt steps. Amber, lime, coral and blue keep
-   their one job in every theme, so they live only in @theme. Every theme is dark, and
+/* Themes (Settings → Theme). A theme is a different room: it swaps the eight neutrals (the room: ground, panel,
+   raised, line; its ink; the dirt steps) and its act hue (amber and amber-hi: Play, the other lit keys, the focus
+   ring), drawn from the room's own family. Lime, coral and blue keep their one meaning in every theme, so they live
+   only in @theme. Every theme is dark, and
    styles/themes.test.ts holds each one to the contrast bar. `[data-swatch]` paints a theme's sample
    on its Settings key whatever theme is in use. Laminate repeats @theme, so its swatch is right too. */
 @layer base {
@@ -48,6 +49,8 @@
     --color-ink-dim: #c5b9a8;
     --color-dirt: #7a4a2a;
     --color-dirt-deep: #4e2e19;
+    --color-amber: #ffc233;
+    --color-amber-hi: #ffd76e;
   }
   /* Cool deepslate grey. */
   :root[data-theme='stone'],
@@ -60,6 +63,8 @@
     --color-ink-dim: #b6bec8;
     --color-dirt: #5b636d;
     --color-dirt-deep: #363b42;
+    --color-amber: #1fa396;
+    --color-amber-hi: #2ec4b6;
   }
   /* A deep blue night sky. */
   :root[data-theme='night'],
@@ -72,6 +77,8 @@
     --color-ink-dim: #b3bad3;
     --color-dirt: #4a4f8a;
     --color-dirt-deep: #2b2f57;
+    --color-amber: #6a76ff;
+    --color-amber-hi: #8b95ff;
   }
   /* Dark moss. */
   :root[data-theme='forest'],
@@ -84,6 +91,8 @@
     --color-ink-dim: #b5c3b0;
     --color-dirt: #4f6b3a;
     --color-dirt-deep: #2f4223;
+    --color-amber: #22a35a;
+    --color-amber-hi: #2fc46e;
   }
   :root[data-font='system'] {
     --font-sans: var(--font-system);
@@ -342,7 +351,6 @@
     width: 4.5rem;
     height: 4.5rem;
     padding: 0.375rem;
-    object-fit: cover;
     background: var(--color-ground);
     border-radius: 6px;
     corner-shape: notch;
@@ -351,8 +359,44 @@
       0 4px 0 var(--color-dirt),
       0 8px 0 var(--color-ground);
   }
-  .icon-plate[data-upscale] {
+  .icon-plate img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .icon-plate img[data-upscale] {
     image-rendering: pixelated;
+  }
+  /* Round, as Settings → Instance icons says: the plate, its seam and its two steps become the rail's stepped
+     circle, and the picture inside is clipped to it. The steps are drop shadows of the whole circle, so they
+     follow its outline instead of showing a square under it. */
+  .icon-plate[data-shape='round'] {
+    position: relative;
+    isolation: isolate;
+    background: none;
+    border-radius: 0;
+    box-shadow: none;
+    filter: drop-shadow(0 4px 0 var(--color-dirt)) drop-shadow(0 4px 0 var(--color-ground));
+  }
+  .icon-plate[data-shape='round']::before,
+  .icon-plate[data-shape='round']::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .icon-plate[data-shape='round']::before {
+    z-index: -1;
+    background: var(--color-ground);
+    clip-path: var(--pixel-circle);
+  }
+  .icon-plate[data-shape='round']::after {
+    background: var(--color-line);
+    clip-path: var(--pixel-ring);
+  }
+  .icon-plate[data-shape='round'] img {
+    clip-path: var(--pixel-circle);
   }
   /* The Microsoft sign-in's steps: one row per call of the chain, led by a 1.125rem mark slot. Done is a lime check, the
      running step a blue lamp that blinks in two snapped steps, a step not reached an empty lamp in a seam ring, a refusal
@@ -973,15 +1017,17 @@
       box-shadow 180ms steps(2, end),
       background-color 120ms linear;
   }
-  .art-key:hover:not([aria-checked='true'], [aria-disabled='true']) {
+  .art-key:hover:not([aria-checked='true'], [aria-pressed='true'], [aria-disabled='true']) {
     background: color-mix(in oklab, var(--color-raised), white 7%);
   }
   .art-key:active:not([aria-disabled='true']),
-  .art-key[aria-checked='true'] {
+  .art-key[aria-checked='true'],
+  .art-key[aria-pressed='true'] {
     translate: 0 4px;
     box-shadow: 0 0 0 var(--color-dirt-deep);
   }
-  .art-key[aria-checked='true'] {
+  .art-key[aria-checked='true'],
+  .art-key[aria-pressed='true'] {
     background: var(--color-ground);
     box-shadow:
       0 0 0 var(--color-dirt-deep),
@@ -989,7 +1035,8 @@
       inset 0 0 0 1px var(--color-line);
   }
   /* The lamp leads the label, as on segments, category keys and the tiles: after the icon slot, before the words. */
-  .art-key[aria-checked='true']::before {
+  .art-key[aria-checked='true']::before,
+  .art-key[aria-pressed='true']::before {
     content: '';
     flex: none;
     width: 0.5rem;
@@ -1041,19 +1088,82 @@
     width: 100%;
     height: 100%;
   }
-  /* Icon and Background side by side: the icon's keys stack in a narrow column at left, the landscapes take
-     the rest. The dialog widens for them, so both fit at the 960 × 600 minimum without scrolling. */
-  .dialog:has(.art-sections) {
-    width: min(46rem, calc(100vw - 4rem));
+  /* Icon over Background in one column: the icon's keys share a row, then a band of the room's ground across
+     the whole dialog, then the landscapes, the background's keys and the screenshots. */
+  .dialog:has(.art-stack) {
+    width: min(44rem, calc(100vw - 4rem));
   }
-  .art-sections {
+  .art-stack {
     display: grid;
-    grid-template-columns: minmax(0, 13rem) minmax(0, 1fr);
-    align-items: start;
     gap: 1.5rem;
   }
-  .art-keys-stack {
-    grid-template-columns: minmax(0, 1fr);
+  .art-keys-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  /* Between Icon and Background: a 1px seam rule, so the two read as two places without a heavy band. */
+  .art-rule {
+    height: 1px;
+    background: var(--color-line);
+  }
+  /* Background's tabs at left and Upload at right, on one row. */
+  .art-tabs-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+  }
+  /* From the modpack and Upload: a row of their own under the tabs, in two equal columns across the panel. */
+  .art-tabs-actions {
+    display: grid;
+    flex: 1 0 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  /* From the modpack and Upload beside the tabs: art keys with their hint under the label, a little tighter. */
+  /* Locked (From the modpack off a modpack): flat, dimmed and with a lock, so it reads as not available here. */
+  .art-key[data-locked] {
+    translate: 0 4px;
+    color: var(--color-ink-dim);
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--color-line);
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  .art-key[data-locked]:hover {
+    background: transparent;
+  }
+  .art-key[data-action] {
+    padding: 0.375rem 0.75rem 0.375rem 0.375rem;
+    gap: 0.5rem;
+  }
+  /* Done stays in view while Change image scrolls: a panel-coloured foot pinned to the dialog's bottom edge. */
+  .dialog:has(.art-stack) .dialog-actions {
+    position: sticky;
+    bottom: -1.5rem;
+    z-index: 3;
+    margin: 1.5rem -1.5rem -1.5rem;
+    padding: 1rem 1.5rem 1.5rem;
+    background: var(--color-panel);
+    box-shadow: 0 -1px 0 var(--color-line);
+  }
+  /* Background's tabs: segments in a row; only the tab shown has the lamp. */
+  .art-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  /* A group's choices, under its heading (and Background's tabs). */
+  .art-choices {
+    display: grid;
+    gap: 0.75rem;
+  }
+  /* One tab's choices. It keeps the height of the six landscapes, so switching tabs never makes the dialog jump. */
+  .art-panel {
+    display: grid;
+    align-content: start;
+    gap: 0.75rem;
+    min-height: 15.75rem;
   }
   /* Icon and Background: each group is named by a small legend over its keys, like Settings' channel. */
   .art-section {
@@ -1062,98 +1172,98 @@
   }
   .art-section-label {
     color: var(--color-ink);
-    font-size: 0.875rem;
-    font-weight: 600;
+    font-size: 1.0625rem;
+    font-weight: 700;
     line-height: 1.25;
   }
-  /* Background's column: its radio group, then Position under it while a picture is the background. */
-  .art-column {
-    display: grid;
-    gap: 1.25rem;
-    min-width: 0;
-  }
 
-  /* Position: the whole picture in a recessed well, letterboxed on `ground`, with a crosshair on the point
-     that stays in view. The crosshair's centre is the lime lamp in its ground socket, as on the tiles: it
-     marks what is in use. The words and Center sit beside the well, so the dialog grows by one row. */
-  .focus-picker {
-    display: grid;
-    gap: 0.75rem;
+  /* Adjust the background: Home's header, scaled into a recessed well that fills the dialog, then the zoom and
+     the edges in two rows. The well is the preview; a transparent surface over it takes the pointer. */
+  .dialog:has(.banner-adjust) {
+    width: min(46rem, calc(100vw - 4rem));
   }
-  .focus-row {
-    display: grid;
-    grid-template-columns: 12rem minmax(0, 1fr);
-    align-items: start;
-    gap: 1rem;
-  }
-  .focus-frame {
-    /* Room for the lamp's socket when the point sits on an edge (the default sits on the bottom one). */
+  .banner-well {
+    position: relative;
     padding: 0.5rem;
     background: var(--color-ground);
     border-radius: var(--radius-step);
     corner-shape: notch;
     box-shadow: inset 0 0 0 1px var(--color-line);
-    cursor: crosshair;
-    touch-action: none;
-    user-select: none;
-  }
-  .focus-frame[data-disabled] {
-    cursor: progress;
   }
   /* The range inputs are visually hidden; their keyboard focus rings the well instead. */
-  .focus-picker:has(input:focus-visible) .focus-frame {
+  .banner-well:has(input:focus-visible) {
     outline: 2px solid var(--color-amber);
     outline-offset: 2px;
   }
-  .focus-stage {
+  /* The header's shape, as wide as the well allows but never taller than the dialog leaves room for at 960 × 600. */
+  .banner-stage {
     position: relative;
-    aspect-ratio: 16 / 9;
+    max-width: 100%;
+    /* 24rem is the dialog's own chrome, words and controls: at 600 px tall the whole view fits without scrolling. */
+    max-height: min(18rem, calc(100dvh - 24rem));
+    margin-inline: auto;
   }
-  .focus-picture {
+  .banner-preview {
     position: absolute;
+    inset: 0;
+    overflow: hidden;
   }
-  .focus-picture img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-  }
-  .focus-picture img[data-upscale] {
-    image-rendering: pixelated;
-  }
-  /* Hairlines across the whole picture, ink over a hard dark edge so they read on light and dark art alike. */
-  .focus-line {
+  .banner-preview-scale {
     position: absolute;
-    pointer-events: none;
-    background: color-mix(in srgb, var(--color-ink) 80%, transparent);
-  }
-  .focus-line-across {
-    left: 0;
-    right: 0;
-    height: 1px;
-    translate: 0 -0.5px;
-    box-shadow: 0 1px 0 color-mix(in srgb, var(--color-ground) 70%, transparent);
-  }
-  .focus-line-down {
     top: 0;
-    bottom: 0;
-    width: 1px;
-    translate: -0.5px 0;
-    box-shadow: 1px 0 0 color-mix(in srgb, var(--color-ground) 70%, transparent);
+    left: 0;
+    transform-origin: 0 0;
   }
-  .focus-mark {
+  /* Home's own controls, dimmed: they show what the picture sits behind without reading as live. */
+  .banner-preview-scale section > :not(.marquee) {
+    opacity: 0.4;
+  }
+  .banner-preview-drag {
     position: absolute;
-    width: 0.5rem;
-    height: 0.5rem;
-    translate: -50% -50%;
-    pointer-events: none;
-    background: var(--color-lime);
-    box-shadow: 0 0 0 3px var(--color-ground);
+    inset: 0;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
   }
-  .focus-side {
+  .banner-preview-drag[data-dragging] {
+    cursor: grabbing;
+  }
+  .banner-preview-drag[data-disabled] {
+    cursor: progress;
+  }
+  .banner-probe {
+    display: none;
+  }
+  .banner-controls {
     display: grid;
-    justify-items: start;
-    gap: 0.75rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 1rem;
+    row-gap: 0.75rem;
+    margin-top: 1rem;
+  }
+  .banner-control-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .banner-zoom {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .banner-zoom > .range {
+    flex: 1;
+    min-width: 0;
+  }
+  .banner-zoom-value {
+    min-width: 3.5rem;
+    text-align: right;
+    color: var(--color-ink-dim);
+    font-size: 0.875rem;
+  }
+  /* Its label and its segments sit in the grid's two columns. */
+  .banner-edges-row {
+    display: contents;
   }
 
   .menu {
@@ -1234,6 +1344,24 @@
     height: 100%;
     object-fit: cover;
     object-position: center bottom;
+  }
+  /* A zoomed banner is sized and placed inline (left, top, width, height): the box is the picture. */
+  .marquee-banner[data-zoomed] {
+    inset: auto;
+    object-fit: fill;
+    /* Preflight caps every img at the panel's width, which squeezed a picture zoomed wider than it into a stretch. */
+    max-width: none;
+    max-height: none;
+  }
+  /* Around a banner zoomed below 100, the pixel edges: the same picture as big dark blocks, never a blur. */
+  .marquee-edges {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    image-rendering: pixelated;
+    filter: brightness(0.4);
   }
   .marquee-banner[data-upscale],
   .rail-art[data-upscale] {
@@ -1495,10 +1623,13 @@
     line-height: 1.25;
     font-variant-numeric: tabular-nums;
   }
+  /* Every icon sits on a ground tile of the chosen shape, so a picture with clear corners (a round logo) still
+     reads as square or round, as Settings says, instead of keeping its own outline. */
   .rail-art {
     width: 40px;
     height: 40px;
     object-fit: cover;
+    background: var(--color-ground);
     border-radius: 3px;
     corner-shape: notch;
   }
@@ -1507,8 +1638,9 @@
      The narrow rail's cabinet follows it: its plate, its dirt step, the carried ring and the open socket
      are the same stepped circle, so no square plate or square shadow shows around a round icon. The
      coin-slot light, the LED, the signal bars and the warning diamond belong to the cabinet, not the
-     tile, so they stay whole. Wide, a cabinet is a row with its name, so it keeps its notched plate. */
-  .rail {
+     tile, so they stay whole. Wide, a cabinet is a row with its name, so it keeps its notched plate.
+     The circle is the app's, not the rail's: Home's icon plate takes the same shape. */
+  :root {
     --pixel-circle-points:
       68.75% 0, 68.75% 6.25%, 81.25% 6.25%, 81.25% 12.5%, 87.5% 12.5%, 87.5% 18.75%, 93.75% 18.75%, 93.75% 31.25%,
       100% 31.25%, 100% 68.75%, 93.75% 68.75%, 93.75% 81.25%, 87.5% 81.25%, 87.5% 87.5%, 81.25% 87.5%, 81.25% 93.75%,
@@ -2641,18 +2773,15 @@
     margin-top: 0.125rem;
     color: var(--color-coral);
   }
+  /* A server the launcher can't join yet: the address in the `.well` copy row, filling the card's width, with a 2rem
+     icon-only copy key so an address like "perlandvillage.perland.world" keeps one line in a narrow card. */
   .server-tile-address {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.25rem 0.5rem;
+    flex: 1 1 100%;
+    min-width: 0;
   }
-  .server-tile-address > p {
-    user-select: text;
-  }
-  .server-tile-address .btn {
-    min-height: 2rem;
-    padding-inline: 0.5rem;
+  .server-tile-address.copy-row .btn-icon {
+    min-width: 2rem;
+    padding: 0;
   }
   .server-tile-play {
     width: 100%;
@@ -3099,6 +3228,71 @@
   }
   button.stats-plate.marquee-plate:hover {
     background: var(--color-raised);
+  }
+
+  /* What's new (the launcher's own release notes): the news dialog's frame. Only the list scrolls, so Got it stays in
+     view. A version is a post: a 700 heading with its day, then its notes by kind as the modpack post's two-column table
+     (a 600 dim label, the notes beside it). Nothing in it is lit and no hue carries a kind: the word does. */
+  .dialog[open]:has(.whats-new-list) {
+    display: flex;
+    flex-direction: column;
+    width: min(36rem, calc(100vw - 4rem));
+    overflow: hidden;
+  }
+  .dialog[open]:has(.whats-new-list) > div:has(> .whats-new-list) {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin-top: 0.5rem;
+    color: var(--color-ink);
+  }
+  .whats-new-list {
+    min-height: 0;
+    overflow-y: auto;
+    /* Room for the focus ring, which the scroller would clip. */
+    margin-inline: -0.5rem;
+    padding-inline: 0.5rem;
+  }
+  .whats-new-version {
+    padding-block: 1rem;
+  }
+  .whats-new-version + .whats-new-version {
+    border-top: 1px solid var(--color-line);
+  }
+  .whats-new-version:first-child {
+    padding-top: 0.5rem;
+  }
+  .whats-new-version-title {
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.3;
+    font-variant-numeric: tabular-nums;
+  }
+  .whats-new-kind {
+    display: grid;
+    /* One label column for every kind and both languages ("Improved", "Arreglos"), so the notes share a left edge. */
+    grid-template-columns: 5rem minmax(0, 1fr);
+    column-gap: 0.75rem;
+    margin-top: 0.625rem;
+  }
+  .whats-new-kind-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    /* The notes' own line box (15px at 1.5), so the label sits on the first note's line. */
+    line-height: 1.40625rem;
+    color: var(--color-ink-dim);
+  }
+  .whats-new-notes {
+    display: grid;
+    gap: 0.375rem;
+    max-width: 65ch;
+    padding-left: 1.125rem;
+    list-style: square;
+    overflow-wrap: anywhere;
+    text-wrap: pretty;
+  }
+  .whats-new-notes > li::marker {
+    color: var(--color-ink-dim);
   }
 
   /* The achievements dialog widens a little, and only its list scrolls, so Close stays in view. */

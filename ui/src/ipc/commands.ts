@@ -15,7 +15,7 @@ import type {
   ContentKind,
   DeepLink,
   EmailCodeSent,
-  Focus,
+  BannerView,
   IconChoice,
   ImageKind,
   ImportPreview,
@@ -89,6 +89,10 @@ export const commands = {
   settingsGet: () => invoke<Settings>('settings_get'),
   settingsSet: (settings: Settings) => invoke<Settings>('settings_set', { settings }),
   updateStatus: () => invoke<UpdateState>('update_status'),
+  /** The last launcher version whose release notes this player was shown; null when none. */
+  whatsNewSeen: () => invoke<string | null>('whats_new_seen'),
+  /** The player has now been shown the running version's notes. */
+  whatsNewMark: () => invoke<null>('whats_new_mark'),
   updateCheck: () => invoke<UpdateState>('update_check'),
   updateRestart: () => invoke<null>('update_restart'),
   diagnosticsExport: (path: string) => invoke<string>('diagnostics_export', { path }),
@@ -141,6 +145,8 @@ export const commands = {
     invoke<SkinEntry>('skin_update', { id, name: change.name ?? null, model: change.model ?? null }),
   skinDuplicate: (id: string, name: string) => invoke<SkinEntry>('skin_duplicate', { id, name }),
   skinDelete: (id: string) => invoke<null>('skin_delete', { id }),
+  /** Puts `owner`'s wardrobe in the order of `ids`; answers the wardrobe as it now stands. */
+  skinReorder: (owner: string | null, ids: string[]) => invoke<SkinEntry[]>('skin_reorder', { owner, ids }),
   skinExport: (id: string, path: string) => invoke<string>('skin_export', { id, path }),
   /** A skin's kept versions, newest first. */
   skinVersions: (id: string) => invoke<SkinVersion[]>('skin_versions', { id }),
@@ -150,6 +156,8 @@ export const commands = {
   skinVersionCopy: (id: string, version: string, name: string) => invoke<SkinEntry>('skin_version_copy', { id, version, name }),
   /** Keeps the skin's texture now as a version (the player left a skin they changed). */
   skinCheckpoint: (id: string) => invoke<null>('skin_checkpoint', { id }),
+  /** Forgets every kept version of a skin; the skin stays as it is. */
+  skinVersionsClear: (id: string) => invoke<null>('skin_versions_clear', { id }),
   /** The skin a Microsoft account wears now; null for an offline account or no skin. */
   skinCurrent: (uuid: string) => invoke<CurrentSkin | null>('skin_current', { uuid }),
   /** Puts the skin a Microsoft account wears in its wardrobe (reusing a matching entry, else a new one named `name`) and
@@ -215,7 +223,7 @@ export const commands = {
   instanceScreenshots: (id: string) => invoke<string[]>('instance_screenshots', { id }),
   instanceScreenshot: (id: string, name: string) => invoke<string | null>('instance_screenshot', { id, name }),
   instanceIconSet: (id: string, choice: IconChoice) => invoke<Instance>('instance_icon_set', { id, choice }),
-  instanceBannerFocusSet: (id: string, focus: Focus | null) => invoke<Instance>('instance_banner_focus_set', { id, focus }),
+  instanceBannerViewSet: (id: string, view: BannerView) => invoke<Instance>('instance_banner_view_set', { id, view }),
   deepLinkTake: () => invoke<DeepLink | null>('deep_link_take'),
   /** The canonical invite a pasted link stands for (an invite, or a server's copied modpack link), or null for a pack link. */
   inviteFromLink: (link: string) => invoke<string | null>('invite_from_link', { link }),

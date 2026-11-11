@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { History, HISTORY_CAP, mergeStroke } from './history';
 import { boxes, boxOf, faceAt } from './layout';
 import { mirrorTexel } from './mirror';
-import { applyTool, blend, floodRegion, fromHex, line, noise, Pixels, shade, toHex, type Rgba } from './paint';
+import { applyTool, blend, floodRegion, fromHex, line, noise, pickPaint, Pixels, shade, toHex, type Rgba } from './paint';
 import { blankSkin, starterSkin } from './starter';
 
 const RED: Rgba = [200, 0, 0, 255];
@@ -170,6 +170,37 @@ describe('tools', () => {
     const [r, g, b] = px.get(9, 9);
     applyTool(px, 'classic', 'eraser', 9, 9, { ...opts, opacity: 0.5 }, mirrorTexel);
     expect(px.get(9, 9)).toEqual([r, g, b, 128]);
+  });
+
+  it('the picker takes a texel\'s colour and its opacity', () => {
+    expect(pickPaint([10, 20, 30, 255])).toEqual({ color: [10, 20, 30, 255], opacity: 100 });
+    expect(pickPaint([10, 20, 30, 102])).toEqual({ color: [10, 20, 30, 255], opacity: 40 });
+    // Paint picked back at its own opacity lands as the same texel.
+    const { color, opacity } = pickPaint([10, 20, 30, 102])!;
+    expect(blend([0, 0, 0, 0], color, opacity / 100)).toEqual([10, 20, 30, 102]);
+    // The faintest paint still picks as 1%, the slider's least; an empty texel picks nothing.
+    expect(pickPaint([10, 20, 30, 1])).toEqual({ color: [10, 20, 30, 255], opacity: 1 });
+    expect(pickPaint([10, 20, 30, 0])).toBeNull();
+  });
+
+  it('painting a picked see-through texel over itself leaves it as it is', () => {
+    // The eye of a player's skin: green on the outer layer at 80%.
+    const eye: Rgba = [69, 150, 35, 204];
+    const { color, opacity } = pickPaint(eye)!;
+    expect(opacity).toBe(80);
+    expect(blend(eye, color, opacity / 100)).toEqual(eye);
+    // Pencil strokes over it, one after another, never push it past the brush's opacity.
+    const px = new Pixels();
+    px.set(45, 12, eye);
+    for (let stroke = 0; stroke < 3; stroke++) applyTool(px, 'classic', 'pencil', 45, 12, { ...opts, color, opacity: opacity / 100 }, mirrorTexel);
+    expect(px.get(45, 12)).toEqual(eye);
+    expect(pickPaint(px.get(45, 12))!.opacity).toBe(80);
+  });
+
+  it('paint over a part see-through texel mixes the colour and is as opaque as the stronger of the two', () => {
+    // Fainter paint over a stronger texel keeps the texel's opacity; stronger paint raises it to the brush's.
+    expect(blend([0, 0, 200, 204], [200, 0, 0, 255], 0.5)).toEqual([100, 0, 100, 204]);
+    expect(blend([0, 0, 200, 51], [200, 0, 0, 255], 0.8)).toEqual([160, 0, 40, 204]);
   });
 
   it('line has no gaps', () => {

@@ -2,8 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { THEMES } from '../state/appearance';
 import css from './app.css?raw';
 
-/** What a theme swaps: the room and its steps. The role hues (amber, lime, coral, blue) never change. */
+/** What a theme swaps: the room and its steps, and its act hue (Play and the other lit keys, the focus ring). Lime,
+ *  coral and blue keep their one meaning in every theme. */
 const NEUTRALS = ['ground', 'panel', 'raised', 'line', 'ink', 'ink-dim', 'dirt', 'dirt-deep'] as const;
+const ACT = ['amber', 'amber-hi'] as const;
+const SWAPPED = [...NEUTRALS, ...ACT];
+
+/** Each theme's act hue, in its own family: amber in the laminate room, diamond teal in stone, periwinkle at night,
+ *  leaf green in the forest. */
+const ACT_HUES: Record<string, [string, string]> = {
+  laminate: ['#ffc233', '#ffd76e'],
+  stone: ['#1fa396', '#2ec4b6'],
+  night: ['#6a76ff', '#8b95ff'],
+  forest: ['#22a35a', '#2fc46e'],
+};
 
 type Tokens = Record<string, string>;
 
@@ -67,12 +79,16 @@ it('has one block for every theme and none for anything else', () => {
 });
 
 it('makes Laminate, the default, exactly the @theme room', () => {
-  for (const key of NEUTRALS) expect(blocks.laminate?.[key], key).toBe(base[key]);
+  for (const key of SWAPPED) expect(blocks.laminate?.[key], key).toBe(base[key]);
 });
 
 describe.each(THEMES.map((theme) => [theme]))('%s', (theme) => {
-  it('overrides exactly the eight neutrals, never a role hue', () => {
-    expect(Object.keys(blocks[theme]!).sort()).toEqual([...NEUTRALS].sort());
+  it('overrides exactly the eight neutrals and its act hue, never lime, coral or blue', () => {
+    expect(Object.keys(blocks[theme]!).sort()).toEqual([...SWAPPED].sort());
+  });
+
+  it('acts in its own hue', () => {
+    expect([blocks[theme]!.amber, blocks[theme]!['amber-hi']]).toEqual(ACT_HUES[theme]);
   });
 
   it('keeps every text and lamp readable', () => {

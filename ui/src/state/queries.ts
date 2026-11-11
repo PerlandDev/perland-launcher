@@ -3,7 +3,7 @@ import i18n from '../i18n';
 import { commands } from '../ipc/commands';
 import { isLauncherError } from '../ipc/errors';
 import { isInviteLink } from '../ipc/inviteLink';
-import type { Account, TeamCreateRequest, TeamInstanceRequest, TeamServerType, ArtChoice, ManageListChange, ManageSettingsSave, ManageState, ContentKind, Focus, FreeServerKind, FreeServerPage, FreeServerSettings, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PerlandStatus, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
+import type { Account, TeamCreateRequest, TeamInstanceRequest, TeamServerType, ArtChoice, ManageListChange, ManageSettingsSave, ManageState, BannerView, ContentKind, FreeServerKind, FreeServerPage, FreeServerSettings, IconChoice, ImageKind, ImportRequest, Instance, InstanceListing, ListQuery, LoaderKind, NewInstance, PerlandStatus, PackAddRequest, SearchRequest, ServerStats, Settings } from '../ipc/schema';
 import { nextPoll, pollServerStatus, strikesOf } from './serverPoll';
 import { lastInstance, navigate, rememberInstance, routeSnapshot, type Route } from './route';
 import { endImport, importWatched } from './importProgress';
@@ -43,6 +43,7 @@ export const qk = {
   appInfo: ['appInfo'] as const,
   settings: ['settings'] as const,
   update: ['update'] as const,
+  whatsNewSeen: ['whatsNewSeen'] as const,
   instances: ['instances'] as const,
   accounts: ['accounts'] as const,
   accountReady: ['accountReady'] as const,
@@ -94,6 +95,7 @@ const THIRTY_MINUTES = 30 * 60_000;
 export const useAppInfo = () => useQuery({ queryKey: qk.appInfo, queryFn: commands.appInfo, staleTime: Infinity });
 export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: commands.settingsGet });
 export const useUpdate = () => useQuery({ queryKey: qk.update, queryFn: commands.updateStatus });
+export const useWhatsNewSeen = () => useQuery({ queryKey: qk.whatsNewSeen, queryFn: commands.whatsNewSeen, staleTime: Infinity });
 export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: commands.instancesList });
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
 /** A Microsoft account's face from its skin (`null`: none of its own, or not fetched yet). The core asks Mojang again after half
@@ -627,24 +629,27 @@ export function useSetInstanceIcon(opts: Opts = {}) {
   });
 }
 
-/** Show a background position on the marquee before it is saved: the cached listing takes it at once,
- *  so the marquee behind "Change image…" follows a drag. `useSetBannerFocus` saves it. */
-export function usePreviewBannerFocus() {
+/** Show a background view (position, zoom, edges) on the marquee before it is saved: the cached listing takes
+ *  it at once, so the marquee behind the dialog follows a drag. `useSetBannerView` saves it. */
+export function usePreviewBannerView() {
   const qc = useQueryClient();
-  return (id: string, focus: Focus | null) =>
+  return (id: string, view: BannerView) =>
     qc.setQueryData<InstanceListing>(qk.instances, (listing) =>
-      listing && { ...listing, instances: listing.instances.map((i) => (i.id === id ? { ...i, bannerFocus: focus } : i)) },
+      listing && {
+        ...listing,
+        instances: listing.instances.map((i) => (i.id === id ? { ...i, bannerFocus: view.focus, bannerZoom: view.zoom, bannerEdges: view.edges, bannerAspect: view.aspect } : i)),
+      },
     );
 }
 
-/** Save which part of a picture background stays in view (null is the default). The marquee already shows
- *  it (`usePreviewBannerFocus`), so success leaves the cache alone: a newer position may be on screen by
+/** Save how a picture background sits in the marquee (null is each setting's default). The marquee already
+ *  shows it (`usePreviewBannerView`), so success leaves the cache alone: a newer view may be on screen by
  *  then. A refused save reads the listing again, so the marquee goes back to what is on disk. */
-export function useSetBannerFocus(opts: Opts = {}) {
+export function useSetBannerView(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
     scope: PICTURE_SAVES,
-    mutationFn: ({ id, focus }: { id: string; focus: Focus | null }) => commands.instanceBannerFocusSet(id, focus),
+    mutationFn: ({ id, view }: { id: string; view: BannerView }) => commands.instanceBannerViewSet(id, view),
     onError: (error) => {
       onError(opts)(error);
       return qc.invalidateQueries({ queryKey: qk.instances });

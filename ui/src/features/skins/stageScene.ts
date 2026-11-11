@@ -12,6 +12,7 @@ import {
   FrontSide,
   Group,
   Mesh,
+  type Object3D,
   MeshBasicMaterial,
   NearestFilter,
   PerspectiveCamera,
@@ -25,10 +26,11 @@ import {
   WebGLRenderer,
 } from 'three';
 import type { SkinModel } from '../../ipc/schema';
-import { cameraAt, clampZoom, easeOut, FIGURE_ANGLE, following, GLIDE_MS, glideFrame, glideView, shotOf, type Focus, type Frame, type View } from './framing';
 import { boxes, SKIN_SIZE, type Box, type Face, type Layer, type Part, type Vec3 } from './layout';
+import { orbit as orbitView, pan as panView, startView, type View } from './camera';
+import { cameraAt, easeOut, fitDistance, following, GLIDE_MS, glideFrame, glideView, shotOf, zoomShot, type Focus, type Frame, type Shot } from './framing';
 import { outerWalls, type Wall } from './outerWalls';
-import { AnimationClock, celebration, CELEBRATE_S, POSE_STILL_T, rigAt, type Joint, type Pose } from './poses';
+import { celebration, CELEBRATE_S, rigAt, STRAIGHT, type Joint, type Pose } from './poses';
 
 /** How bright each face direction is, like the game's block shading. */
 function brightness([x, y, z]: Vec3): number {
@@ -47,18 +49,23 @@ function makeGeometry(positions: number[], uvs: number[], colors: number[], inde
   return geometry;
 }
 
+/** How far inside its edges a face's texture coordinates sit, in texels: far below one texel, well above rounding. */
+const UV_INSET = 0.01;
+
 /** A box's faces, placed relative to the joint it hangs from, textured from a `texW` × `texH` texture. */
-function geometryFor(box: { faces: Face[] }, pivot: Vec3, texW = SKIN_SIZE, texH = SKIN_SIZE): BufferGeometry {
+export function geometryFor(box: { faces: Face[] }, pivot: Vec3, texW = SKIN_SIZE, texH = SKIN_SIZE): BufferGeometry {
   const positions: number[] = [];
   const uvs: number[] = [];
   const colors: number[] = [];
   const index: number[] = [];
   box.faces.forEach((face, i) => {
     const [lt, rt, lb, rb] = face.corners;
-    const u0 = face.x / texW;
-    const u1 = (face.x + face.w) / texW;
-    const v0 = face.y / texH;
-    const v1 = (face.y + face.h) / texH;
+    // A hair inside the face: exactly on its edge the GPU may sample the texel beside it, which belongs to another
+    // face, and shows as a stray dot (or a dot floating on an empty outer layer).
+    const u0 = (face.x + UV_INSET) / texW;
+    const u1 = (face.x + face.w - UV_INSET) / texW;
+    const v0 = (face.y + UV_INSET) / texH;
+    const v1 = (face.y + face.h - UV_INSET) / texH;
     for (const p of [lt, rt, lb, rb]) positions.push(p[0] - pivot[0], p[1] - pivot[1], p[2] - pivot[2]);
     uvs.push(u0, v0, u1, v0, u0, v1, u1, v1);
     const b = brightness(face.normal);
@@ -292,20 +299,24 @@ export interface Stage {
   /** The layer `pick` paints on. */
   setPaintLayer(layer: Layer): void;
   setPose(pose: Pose): void;
-  /** Holds the figure (and its boat or horse) on the current moment, or lets it move on from there. */
-  setPaused(paused: boolean): void;
+  /** Stands the figure straight and still for painting (no props), or lets it take its pose again. */
+  setStraight(straight: boolean): void;
   /** A hop and a turn, when a skin goes on. */
   celebrate(): void;
   /** The texel under a point of the canvas (client coordinates), on the paint layer; null over empty stage. */
   pick(clientX: number, clientY: number): Hit | null;
   /**
    * Frames `focus` (the whole figure, or the part being dressed), gliding there. The camera follows until the player
-   * turns or zooms it by hand; then it stays theirs until `key` changes or they reset the view (see `following`).
+   * turns, zooms or slides it by hand; then it stays theirs until `key` changes or they reset the view (see
+   * `following`).
    */
   focus(focus: Focus, key: string): void;
   orbit(dx: number, dy: number): void;
-  zoom(factor: number): void;
-  /** Back to the framing of the focus, at its own angle and distance. */
+  /** Zooms by `factor` (below 1 is closer), toward what is under the client point when one is given. */
+  zoom(factor: number, clientX?: number, clientY?: number): void;
+  /** Slides the view by a drag of (dx, dy) CSS pixels. */
+  pan(dx: number, dy: number): void;
+  /** Back to the framing of the focus, at its own angle and distance, with no slide. */
   resetView(): void;
   resize(width: number, height: number): void;
   dispose(): void;
@@ -354,6 +365,8 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   renderer.setClearColor(0x000000, 0);
   const scene = new Scene();
   const camera = new PerspectiveCamera(32, 1, 1, 600);
+  // Only the camera's glides follow the system's reduced-motion setting (they jump); the figure's own motion is the
+  // Animation switch's.
   const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 
   const world = new Group();
@@ -387,24 +400,31 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   let paintLayer: Layer = 'base';
   let pose: Pose = 'still';
   let model: SkinModel = 'classic';
-  // The camera: the angle and zoom are the player's to move, the frame is where the focus (and the pose) put it.
-  const view: View = { ...FIGURE_ANGLE, zoom: 1 };
+  // The camera: the view (angle, zoom and slide) is the player's to move, the shot is where the focus (and the pose)
+  // put it.
+  let view: View = startView();
   let follow = following();
-  let shot: Frame = shotOf('figure', pose);
+  let fit = { half: Math.tan((32 * Math.PI) / 360), aspect: 1 };
+  let frame = 0;
+  const started = performance.now();
+  let straight = false;
+  let celebratedAt = -Infinity;
+  /** The whole figure in its pose: what a close-up zooms out to. */
+  const whole = (): Shot => shotOf('figure', pose);
+  /** The shot of `focus` now. With Animation off the figure stands straight, so a close-up is of the standing figure. */
+  const shotNow = (focus: Focus): Shot => (focus === 'figure' ? whole() : shotOf(focus, straight ? 'still' : pose));
+  let shot: Frame = shotNow('figure');
   let shotGlide: { from: Frame; to: Frame; start: number } | null = null;
   let viewGlide: { from: View; to: View; start: number } | null = null;
   /** The first focus places the camera; later ones glide. */
   let placed = false;
-  let fit = { half: Math.tan((32 * Math.PI) / 360), aspect: 1 };
-  let frame = 0;
-  const clock = new AnimationClock(performance.now());
-  let celebratedAt = -Infinity;
 
-  const still = () => motion?.matches === true;
+  const raycaster = new Raycaster();
+  const pointer = new Vector2();
 
   const place = (now: number) => {
-    const t = still() ? POSE_STILL_T : clock.at(now);
-    const rig = rigAt(pose, t);
+    const t = (now - started) / 1000;
+    const rig = straight ? STRAIGHT : rigAt(pose, t);
     for (const j of JOINTS) {
       const pivot = pivotOf(j, model);
       const parent = PARENT[j] ? pivotOf(PARENT[j], model) : ([0, 0, 0] as Vec3);
@@ -413,16 +433,16 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     }
     figure.position.set(...rig.offset);
     ride.rotation.set(...rig.tilt);
-    theBoat.group.visible = pose === 'boat';
-    theHorse.group.visible = pose === 'horse';
-    if (pose === 'horse') {
+    theBoat.group.visible = !straight && pose === 'boat';
+    theHorse.group.visible = !straight && pose === 'horse';
+    if (!straight && pose === 'horse') {
       const gait = Math.sin(t * Math.PI * 2 * 1.05);
       theHorse.legs.forEach((leg, i) => (leg.rotation.x = (i === 0 || i === 3 ? 1 : -1) * gait * 0.45));
       theHorse.head.rotation.x = 0.45 + Math.sin(t * Math.PI * 2 * 1.05 * 2) * 0.05;
       theHorse.group.position.y = Math.abs(gait) * 0.5;
       theHorse.tail.rotation.z = Math.sin(t * Math.PI * 2 * 0.8) * 0.18;
     }
-    const party = still() ? null : celebration((now - celebratedAt) / 1000);
+    const party = celebration((now - celebratedAt) / 1000);
     world.rotation.y = party?.spin ?? 0;
     world.position.y = party?.lift ?? 0;
   };
@@ -436,7 +456,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     }
     if (viewGlide) {
       const k = (now - viewGlide.start) / GLIDE_MS;
-      Object.assign(view, glideView(viewGlide.from, viewGlide.to, easeOut(k)));
+      view = glideView(viewGlide.from, viewGlide.to, easeOut(k));
       if (k >= 1) viewGlide = null;
     }
     return shotGlide !== null || viewGlide !== null;
@@ -446,39 +466,54 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     frame = 0;
     place(now);
     const gliding = glide(now);
-    const at = cameraAt(view, shot, shotOf('figure', pose), fit);
+    aim();
+    renderer.render(scene, camera);
+    // The figure is a little alive (breathing, looking around) while Animation is on; that switch is the player's,
+    // so the system's reduced-motion setting doesn't stop it. The celebration plays either way, and so does a camera
+    // glide. A still stage redraws only when something changes.
+    const celebrating = now - celebratedAt < CELEBRATE_S * 1000;
+    if (gliding || !straight || celebrating) frame = requestAnimationFrame(draw);
+  };
+  /** Stands the camera where the view puts it over the shot. */
+  const aim = () => {
+    const at = cameraAt(view, shot, whole(), fit);
     camera.position.set(...at.position);
     camera.lookAt(...at.target);
-    renderer.render(scene, camera);
-    // The figure is always a little alive (breathing, looking around) until the player pauses it; the celebration
-    // plays even then, and so does a camera glide. Reduced motion holds it still. A still stage redraws only when
-    // something changes.
-    const celebrating = now - celebratedAt < CELEBRATE_S * 1000;
-    if (gliding || (!still() && (!clock.paused || celebrating))) frame = requestAnimationFrame(draw);
+    camera.updateMatrixWorld();
+  };
+  /** The ray from the camera through a client point of the canvas; false when the canvas has no size. */
+  const aimRay = (clientX: number, clientY: number) => {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+    pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    aim();
+    scene.updateMatrixWorld();
+    raycaster.setFromCamera(pointer, camera);
+    return true;
   };
   const invalidate = () => {
     if (!frame) frame = requestAnimationFrame(draw);
   };
 
   /**
-   * Sends the camera to the shot of what it follows, in the pose as it is: gliding, or at once (`instant`, and always
-   * under reduced motion). `angle` also takes the view to the shot's own angle and distance; without it only the
-   * frame moves (a pose change), and the player's angle and zoom stay.
+   * Sends the camera to the shot of what it follows, as the figure stands now: gliding, or at once (`instant`, and
+   * always under reduced motion). `angle` also takes the view to the shot's own angle and distance and undoes a
+   * slide; without it only the shot moves (a pose change), and the player's angle, zoom and slide stay.
    */
-  const aim = ({ angle, instant = false }: { angle: boolean; instant?: boolean }) => {
-    const goal = shotOf(follow.aimed, pose);
-    const to: View = { yaw: goal.yaw, pitch: goal.pitch, zoom: 1 };
-    if (instant || still()) {
+  const reframe = ({ angle, instant = false }: { angle: boolean; instant?: boolean }) => {
+    const goal = shotNow(follow.aimed);
+    const to: View = { ...startView(), yaw: goal.yaw, pitch: goal.pitch };
+    if (instant || motion?.matches === true) {
       shot = goal;
       shotGlide = null;
       if (angle) {
-        Object.assign(view, to);
+        view = to;
         viewGlide = null;
       }
     } else {
       const start = performance.now();
       shotGlide = { from: shot, to: goal, start };
-      if (angle) viewGlide = { from: { ...view }, to, start };
+      if (angle) viewGlide = { from: view, to, start };
     }
     invalidate();
   };
@@ -523,11 +558,11 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     });
   }
   build('classic');
-
-  const raycaster = new Raycaster();
-  const pointer = new Vector2();
-  const onMotion = () => invalidate();
-  motion?.addEventListener?.('change', onMotion);
+  /** Whether `object` and every group it hangs from are shown (a hidden prop's blocks are still `visible`). */
+  const isShown = (object: Object3D | null): boolean => {
+    for (let o = object; o; o = o.parent) if (!o.visible) return false;
+    return true;
+  };
 
   return {
     setTexture(next) {
@@ -551,24 +586,20 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       if (next === pose) return;
       pose = next;
       // The close-up goes with the part to where the new pose puts it.
-      aim({ angle: false, instant: !placed });
+      reframe({ angle: false, instant: !placed });
     },
-    setPaused(paused) {
-      const now = performance.now();
-      if (paused) clock.pause(now);
-      else clock.resume(now);
-      invalidate();
+    setStraight(next) {
+      if (next === straight) return;
+      straight = next;
+      // Standing straight (or back in its pose), the part being dressed is somewhere else.
+      reframe({ angle: false, instant: !placed });
     },
     celebrate() {
       celebratedAt = performance.now();
       invalidate();
     },
     pick(clientX, clientY) {
-      const rect = canvas.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return null;
-      pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-      scene.updateMatrixWorld();
-      raycaster.setFromCamera(pointer, camera);
+      if (!aimRay(clientX, clientY)) return null;
       const targets: { mesh: Mesh; box: Box; walls?: Wall[] }[] = [...meshes, ...wallMeshes].filter(({ mesh, box }) => mesh.visible && box.layer === paintLayer);
       const hit = raycaster.intersectObjects(targets.map((t) => t.mesh), false)[0];
       if (!hit || !hit.uv || hit.faceIndex == null) return null;
@@ -590,26 +621,41 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     focus(focus, key) {
       const next = follow.focus(focus, key);
       follow = next.state;
-      if (next.move) aim({ angle: true, instant: !placed });
+      if (next.move) reframe({ angle: true, instant: !placed });
       placed = true;
     },
     orbit(dx, dy) {
       // The player's hand wins: a glide of the view stops where it is.
       viewGlide = null;
       follow = follow.moved();
-      view.yaw -= dx * 0.01;
-      view.pitch = Math.max(-1.2, Math.min(1.2, view.pitch + dy * 0.01));
+      view = orbitView(view, dx, dy);
       invalidate();
     },
-    zoom(factor) {
+    zoom(factor, clientX, clientY) {
+      let point: Vec3 | null = null;
+      if (clientX !== undefined && clientY !== undefined && aimRay(clientX, clientY)) {
+        // Whatever is drawn under the pointer, either layer, the boat or the horse.
+        const hit = raycaster.intersectObjects(world.children, true).find((h) => h.object.visible && isShown(h.object));
+        if (hit) point = [hit.point.x, hit.point.y, hit.point.z];
+      }
       viewGlide = null;
       follow = follow.moved();
-      view.zoom = clampZoom(view.zoom * factor, shotGlide?.to ?? shot, shotOf('figure', pose), fit);
+      view = zoomShot(view, factor, shotGlide?.to ?? shot, whole(), fit, point);
+      invalidate();
+    },
+    pan(dx, dy) {
+      const rect = canvas.getBoundingClientRect();
+      if (rect.height === 0) return;
+      viewGlide = null;
+      follow = follow.moved();
+      // At the target's distance the stage's height spans 2 · tan(fov / 2) · distance model units.
+      const unitsPerPixel = (2 * fit.half * fitDistance(shot, fit) * view.zoom) / rect.height;
+      view = panView(view, dx, dy, unitsPerPixel);
       invalidate();
     },
     resetView() {
       follow = follow.reset();
-      aim({ angle: true });
+      reframe({ angle: true });
     },
     resize(width, height) {
       if (width <= 0 || height <= 0) return;
@@ -621,7 +667,6 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     },
     dispose() {
       if (frame) cancelAnimationFrame(frame);
-      motion?.removeEventListener?.('change', onMotion);
       for (const { mesh } of [...meshes, ...wallMeshes]) mesh.geometry.dispose();
       texture.dispose();
       baseMaterial.dispose();

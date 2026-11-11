@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { backward, screenAxes, startView, ZOOM_MAX, ZOOM_MIN, type View } from './camera';
+import type { Vec3 } from './layout';
 import { POSES } from './poses';
-import { cameraAt, clampZoom, easeOut, fitDistance, focusFor, FOCUSES, following, glideShot, GLIDE_MS, shotOf, type Fit, type Shot } from './framing';
+import { cameraAt, centreAt, clampZoom, easeOut, fitDistance, focusFor, FOCUSES, following, glideShot, glideView, GLIDE_MS, shotOf, zoomShot, type Fit, type Frame, type Shot } from './framing';
 
 const FIT: Fit = { half: Math.tan((32 * Math.PI) / 360), aspect: 1 };
+/** A view from straight ahead, not slid. */
+const ahead = (zoom: number): View => ({ yaw: 0, pitch: 0, zoom, pan: [0, 0, 0] });
 
 describe('focusFor', () => {
   it('frames the part each Create category dresses', () => {
@@ -116,7 +120,7 @@ describe('cameraAt', () => {
   });
 
   it('looks at the target from the shot’s angle', () => {
-    const cam = cameraAt({ yaw: 0, pitch: 0, zoom: 1 }, figure, figure, FIT);
+    const cam = cameraAt(ahead(1), figure, figure, FIT);
     expect(cam.target).toEqual([0, 13, 0]);
     expect(cam.position[0]).toBeCloseTo(0);
     expect(cam.position[1]).toBeCloseTo(13);
@@ -125,28 +129,104 @@ describe('cameraAt', () => {
 
   it('zooming out of a close-up recentres on the whole figure', () => {
     const head = shotOf('head', 'still');
-    const near = cameraAt({ yaw: 0, pitch: 0, zoom: 1 }, head, figure, FIT);
+    const near = cameraAt(ahead(1), head, figure, FIT);
     expect(near.target).toEqual(head.target);
     const out = fitDistance(figure, FIT) / fitDistance(head, FIT);
-    const far = cameraAt({ yaw: 0, pitch: 0, zoom: out }, head, figure, FIT);
+    const far = cameraAt(ahead(out), head, figure, FIT);
     expect(far.target[1]).toBeCloseTo(13);
-    const half = cameraAt({ yaw: 0, pitch: 0, zoom: (1 + out) / 2 }, head, figure, FIT);
+    const half = cameraAt(ahead((1 + out) / 2), head, figure, FIT);
     expect(half.target[1]).toBeGreaterThan(13);
     expect(half.target[1]).toBeLessThan(head.target[1]);
     // Zooming in stays on the part.
-    expect(cameraAt({ yaw: 0, pitch: 0, zoom: 0.7 }, head, figure, FIT).target).toEqual(head.target);
+    expect(cameraAt(ahead(0.7), head, figure, FIT).target).toEqual(head.target);
   });
 
-  it('zoom reaches the whole figure from a close-up, and no further than before', () => {
+  it('zoom reaches the whole figure from a close-up, and no further out or in than the stage itself allows', () => {
     const head = shotOf('head', 'still');
     const dFigure = fitDistance(figure, FIT);
     const dHead = fitDistance(head, FIT);
-    expect(clampZoom(100, head, figure, FIT) * dHead).toBeCloseTo(1.8 * dFigure);
-    expect(clampZoom(100, figure, figure, FIT)).toBeCloseTo(1.8);
-    expect(clampZoom(0.001, figure, figure, FIT)).toBeCloseTo(0.35);
-    // A close-up can still come a little closer.
+    expect(clampZoom(100, head, figure, FIT) * dHead).toBeCloseTo(ZOOM_MAX * dFigure);
+    expect(clampZoom(100, figure, figure, FIT)).toBeCloseTo(ZOOM_MAX);
+    // In as close as the stage's own zoom comes: a few texels fill it.
+    expect(clampZoom(0.001, figure, figure, FIT)).toBeCloseTo(ZOOM_MIN);
+    // A close-up comes as close as the whole figure can be, never less.
     expect(clampZoom(0.001, head, figure, FIT)).toBeLessThan(0.8);
+    expect(clampZoom(0.001, head, figure, FIT) * dHead).toBeLessThanOrEqual(ZOOM_MIN * dFigure + 1e-9);
     expect(clampZoom(1, head, figure, FIT)).toBe(1);
+  });
+
+  it('a slide moves what the camera looks at and the camera with it, off the shot’s centre', () => {
+    const head = shotOf('head', 'still');
+    const still = cameraAt(ahead(1), head, figure, FIT);
+    const slid = cameraAt({ ...ahead(1), pan: [2, -3, 0] }, head, figure, FIT);
+    expect(slid.target).toEqual([head.target[0] + 2, head.target[1] - 3, head.target[2]]);
+    for (const i of [0, 1, 2]) expect(slid.position[i]! - still.position[i]!).toBeCloseTo(slid.target[i]! - still.target[i]!);
+  });
+});
+
+describe('zoomShot', () => {
+  const figure = shotOf('figure', 'still');
+
+  /** Where `point` lands on the screen for a view of `shot`: its offsets along the camera's right and up over its depth. */
+  function onScreen(view: View, shot: Frame, point: Vec3): [number, number] {
+    const eye = cameraAt(view, shot, figure, FIT).position;
+    const d: Vec3 = [point[0] - eye[0], point[1] - eye[1], point[2] - eye[2]];
+    const { right, up } = screenAxes(view);
+    const back = backward(view);
+    const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const depth = -dot(d, back);
+    return [dot(d, right) / depth, dot(d, up) / depth];
+  }
+
+  it('on the whole figure it is the stage’s own zoom toward the pointer', () => {
+    const view = startView();
+    const hand: Vec3 = [-6, 11, 2];
+    const closer = zoomShot(view, 0.5, figure, figure, FIT, hand);
+    expect(closer.zoom).toBe(0.5);
+    const [x, y] = onScreen(closer, figure, hand);
+    const [x0, y0] = onScreen(view, figure, hand);
+    expect(x).toBeCloseTo(x0, 6);
+    expect(y).toBeCloseTo(y0, 6);
+  });
+
+  it('keeps the point under the pointer on a close-up too, in and out, while the shot’s centre slides to the figure', () => {
+    const head = shotOf('head', 'still');
+    const view: View = { ...startView(), yaw: head.yaw, pitch: head.pitch };
+    const ear: Vec3 = [4, 28, 0];
+    const before = onScreen(view, head, ear);
+    for (const factor of [0.6, 1.4, 2]) {
+      const next = zoomShot(view, factor, head, figure, FIT, ear);
+      expect(next.zoom).toBeCloseTo(factor);
+      const after = onScreen(next, head, ear);
+      expect(after[0]).toBeCloseTo(before[0], 6);
+      expect(after[1]).toBeCloseTo(before[1], 6);
+    }
+    // Zoomed out with no point, the camera closes on the centre as it slides toward the whole figure's.
+    const out = zoomShot(view, 2, head, figure, FIT, null);
+    expect(out.pan).toEqual([0, 0, 0]);
+    expect(centreAt(out.zoom, head, figure, FIT)[1]).toBeLessThan(head.target[1]);
+  });
+
+  it('stays within the shot’s limits, and a zoom held at its limit leaves the view where it is', () => {
+    const head = shotOf('head', 'still');
+    const view = startView();
+    const far = zoomShot(view, 1000, head, figure, FIT, [1, 2, 3]);
+    expect(far.zoom * fitDistance(head, FIT)).toBeCloseTo(ZOOM_MAX * fitDistance(figure, FIT));
+    expect(zoomShot(far, 2, head, figure, FIT, [5, 20, 3])).toEqual(far);
+    const near = zoomShot(view, 0.0001, head, figure, FIT, null);
+    expect(near.zoom).toBe(clampZoom(0, head, figure, FIT));
+  });
+});
+
+describe('glideView', () => {
+  it('a reset glides the slide away with the angle and the zoom', () => {
+    const from: View = { yaw: 1, pitch: 0.5, zoom: 0.4, pan: [6, -4, 2] };
+    const to = startView();
+    expect(glideView(from, to, 0)).toEqual(from);
+    expect(glideView(from, to, 1)).toEqual(to);
+    const mid = glideView(from, to, 0.5);
+    expect(mid.pan).toEqual([3, -2, 1]);
+    expect(mid.zoom).toBeCloseTo(0.7);
   });
 });
 

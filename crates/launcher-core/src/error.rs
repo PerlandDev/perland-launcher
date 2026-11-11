@@ -49,7 +49,8 @@ error_codes! {
     MojangMismatch, NoAssetIndex, NativesExtractFailed, VersionInUse, ArchiveInvalid,
     // instances
     InstanceNotFound, InstanceDamaged, InstanceIdInvalid, InstanceBusy, AlreadyRunning,
-    NameInvalid, MemoryOutOfRange, ArtFileInvalid, BannerFocusInvalid, WindowSizeInvalid,
+    NameInvalid, MemoryOutOfRange, ArtFileInvalid, BannerFocusInvalid, BannerZoomInvalid,
+    BannerAspectInvalid, WindowSizeInvalid,
     // java
     JavaUnavailable, JavaStartFailed, JavaPathMissing, JavaTestFailed, JvmArgsUnclosedQuote,
     JvmArgNotOption, JvmArgNotAllowed, JvmArgsMemory, JvmArgsTooLong,
@@ -282,6 +283,8 @@ mod tests {
             (ErrorCode::ModManaged, "mod_managed"),
             (ErrorCode::ArtFileInvalid, "art_file_invalid"),
             (ErrorCode::BannerFocusInvalid, "banner_focus_invalid"),
+            (ErrorCode::BannerZoomInvalid, "banner_zoom_invalid"),
+            (ErrorCode::BannerAspectInvalid, "banner_aspect_invalid"),
             (ErrorCode::WindowSizeInvalid, "window_size_invalid"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);

@@ -75,6 +75,23 @@ jobs:
           v=$(node scripts/release/cli.mjs version "$CHANNEL")
           test -n "$v"
           echo "version=$v" >> "$GITHUB_OUTPUT"
+      # What's new (docs/superpowers/specs/2026-11-10-whats-new-design.md): the notes the launcher
+      # bundles and the release's description, worked out once from release-notes/ and the tags
+      # (this job has the full history). A dry run shows the description in its summary.
+      - name: Release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir notes
+          node scripts/release/cli.mjs notes "$VERSION" notes/release-notes.json
+          node scripts/release/cli.mjs notes-body notes/release-notes.json "$VERSION" notes/release-body.md
+          cat notes/release-body.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: notes/*
+          if-no-files-found: error
+          retention-days: 14
 
   build:
     needs: plan
@@ -148,10 +165,16 @@ jobs:
           if [ "$SIGN_WINDOWS" = "true" ]; then
             trusted-signing-cli -e "$AZURE_SIGNING_ENDPOINT" -a "$AZURE_SIGNING_ACCOUNT" -c "$AZURE_SIGNING_PROFILE" -d PerlandLauncher target/release/perland-uninstall.exe
           fi
+      # The notes the plan job worked out; the UI build bundles them (ui/vite.config.ts).
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/release-notes
       - name: Build and sign the updater artifacts
         shell: bash
         working-directory: ${{ env.DEV_DRIVE_WORKSPACE || github.workspace }}
         env:
+          PERLAND_RELEASE_NOTES: ${{ runner.temp }}/release-notes/release-notes.json
           PERLAND_BUILD: ${{ inputs.channel == 'beta' && 'beta' || '' }}
           PERLAND_PANEL_URL: ${{ vars.PERLAND_PANEL_URL }}
           PERLAND_MS_CLIENT_ID: ${{ vars.PERLAND_MS_CLIENT_ID }}
@@ -238,8 +261,12 @@ jobs:
           path: dist
           pattern: bundles-*
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: notes
       - name: Updater manifest
-        run: node scripts/release/cli.mjs manifest "$VERSION" dist "https://github.com/$REPO/releases/download/v$VERSION" latest.json
+        run: node scripts/release/cli.mjs manifest "$VERSION" dist "https://github.com/$REPO/releases/download/v$VERSION" latest.json notes/release-body.md
       # The release stays a draft until every installer is up, so players never see it half
       # uploaded. Re-running this job resumes a draft a failed attempt left, and skips a release
       # that is already out.
@@ -247,7 +274,6 @@ jobs:
         run: |
           tag="v$VERSION"
           title="Perland Launcher $VERSION"
-          notes="Closed beta. Download it from https://perland.online/launcher. The installers aren't code-signed yet, so Windows may warn before it runs."
           if state=$(gh release view "$tag" --repo "$REPO" --json isDraft --jq .isDraft 2>&1); then :
           elif grep -q "release not found" <<<"$state"; then state=none
           else echo "$state"; exit 1
@@ -256,12 +282,12 @@ jobs:
             echo "$tag is already published."
             exit 0
           elif [ "$state" = "none" ]; then
-            gh release create "$tag" --repo "$REPO" --draft --target "$SHA" --title "$title" --notes "$notes" dist/*
+            gh release create "$tag" --repo "$REPO" --draft --target "$SHA" --title "$title" --notes-file notes/release-body.md dist/*
           else
             gh release upload "$tag" --repo "$REPO" --clobber dist/*
           fi
           if [ "$CHANNEL" = "beta" ]; then flags=(--prerelease --latest=false); else flags=(--prerelease=false --latest); fi
-          gh release edit "$tag" --repo "$REPO" --draft=false --target "$SHA" --title "$title" --notes "$notes" "${flags[@]}"
+          gh release edit "$tag" --repo "$REPO" --draft=false --target "$SHA" --title "$title" --notes-file notes/release-body.md "${flags[@]}"
       - name: Channel releases
         run: |
           feed() {

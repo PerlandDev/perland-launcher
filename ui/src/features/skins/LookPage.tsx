@@ -214,7 +214,7 @@ export function LookPage({ catalog, manifest, look, lang, owner, at, total, mine
             hidden={NO_PARTS_HIDDEN}
             paintLayer="base"
             pose={pose}
-            paused={false}
+            straight={false}
             hover={null}
             label={t('skins.catalog.figure', { name })}
             paintable={false}

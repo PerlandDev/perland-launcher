@@ -44,5 +44,6 @@ pub mod sources;
 pub mod sync;
 #[cfg(test)]
 pub(crate) mod test_support;
+pub mod whats_new_seen;
 
 pub use error::{ErrorCategory, ErrorCode, LauncherError, Result};

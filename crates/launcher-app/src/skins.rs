@@ -115,14 +115,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             return Err(skins_png::normalise(&[]).unwrap_err());
         }
         let bytes = tokio::fs::read(&path).await?;
-        let png = skins_png::normalise(&bytes)?;
         let name: String = path
             .file_stem()
             .map(|s| s.to_string_lossy().trim().chars().take(64).collect())
             .filter(|s: &String| !s.is_empty())
             .unwrap_or_else(|| "Skin".to_string());
+        // `create` checks and normalises the PNG; doing it here as well read the file twice over.
         self.skins
-            .create(&name, SkinModel::Classic, &png, owner)
+            .create(&name, SkinModel::Classic, &bytes, owner)
             .await
     }
 
@@ -142,6 +142,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     pub async fn skin_duplicate(&self, id: &str, name: &str) -> Result<SkinEntry> {
         self.skins.duplicate(id, name).await
+    }
+
+    /// Puts `owner`'s wardrobe in the order of `ids`, and answers it as it now stands.
+    pub async fn skin_reorder(
+        &self,
+        owner: Option<&str>,
+        ids: &[String],
+    ) -> Result<Vec<SkinEntry>> {
+        self.skins.reorder(owner, ids).await
     }
 
     pub async fn skin_delete(&self, id: &str) -> Result<()> {
@@ -183,6 +192,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         name: &str,
     ) -> Result<SkinEntry> {
         self.skins.copy_version(id, version, name).await
+    }
+
+    /// Forgets the kept versions of `id`; the skin stays as it is.
+    pub async fn skin_versions_clear(&self, id: &str) -> Result<()> {
+        self.skins.clear_versions(id).await
     }
 
     /// Keeps the texture of `id` now: the player left a skin they changed.
@@ -439,6 +453,38 @@ mod tests {
         assert_eq!(calls[0].args[0], "mc-cached");
         assert_eq!(calls[0].args[1], "slim");
         assert_eq!(list[0].worn_by.as_deref(), Some(alex.uuid.as_str()));
+    }
+
+    #[tokio::test]
+    async fn reorder_sets_the_wardrobe_order() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let alex = alex(&core).await;
+        let mut made = Vec::new();
+        for name in ["A", "B"] {
+            made.push(
+                core.skin_create(
+                    name,
+                    SkinModel::Classic,
+                    &texture(),
+                    Some(&alex.uuid),
+                    false,
+                )
+                .await
+                .unwrap()
+                .id,
+            );
+        }
+        let list = core.skin_reorder(Some(&alex.uuid), &made).await.unwrap();
+        let ids: Vec<String> = list.into_iter().map(|e| e.id).collect();
+        assert_eq!(ids, made);
+        let listed: Vec<String> = core
+            .skins_list(Some(&alex.uuid), None)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.id)
+            .collect();
+        assert_eq!(listed, made);
     }
 
     #[tokio::test]
@@ -897,5 +943,19 @@ mod tests {
             .unwrap();
         assert!(!saved.look.unwrap().painting);
         assert_eq!(core.skin_painting(&entry.id).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn clearing_the_history_keeps_the_skin() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let entry = core
+            .skin_create("Mine", SkinModel::Slim, &texture(), None, false)
+            .await
+            .unwrap();
+        core.skin_checkpoint(&entry.id).await.unwrap();
+        assert!(!core.skin_versions(&entry.id).await.unwrap().is_empty());
+        core.skin_versions_clear(&entry.id).await.unwrap();
+        assert!(core.skin_versions(&entry.id).await.unwrap().is_empty());
+        assert_eq!(core.skin_texture(&entry.id).await.unwrap(), texture());
     }
 }

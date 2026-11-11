@@ -33,12 +33,16 @@
     "whitelisted": false,
     "lastStatus": "online",
     "lastSeen": 1791720000,
-    "gone": false
+    "gone": false,
+    "join": null
   },
   "artSeed": null,
   "art": "auto",
   "icon": null,
   "bannerFocus": null,
+  "bannerZoom": null,
+  "bannerEdges": null,
+  "bannerAspect": null,
   "updateHold": {
     "since": 1791720000,
     "version": "1.0.3"

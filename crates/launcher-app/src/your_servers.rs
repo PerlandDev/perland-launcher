@@ -83,12 +83,13 @@ fn take_managed(
             })
         }),
         None => {
-            let address = address?.trim().to_ascii_lowercase();
+            // Either side may be a join name (port 25565) or `host:port`.
+            let address = parse_address(address?)?;
             pool.iter().position(|m| {
                 m.as_ref()
                     .and_then(|m| m.address.as_deref())
                     .and_then(parse_address)
-                    .is_some_and(|a| a.display().to_ascii_lowercase() == address)
+                    .is_some_and(|a| a == address)
             })
         }
     }?;
@@ -179,8 +180,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     return None;
                 }
                 let instance = instance_of(&joined, invite.as_deref());
-                let address =
-                    ServerAddress::from_view(&server.address, &session.engine).map(|a| a.display());
+                let address = server.address.join_name().or_else(|| {
+                    ServerAddress::from_view(&server.address, &session.engine).map(|a| a.display())
+                });
                 let mut card = card(server, invite, address, instance, true);
                 // The list can't say which Modrinth pack a server runs; an instance that
                 // already joins it can play it all the same.
@@ -324,6 +326,7 @@ mod tests {
                 host: Some("play.example.com".into()),
                 port: 25566,
                 display: None,
+                join: None,
             },
             game: InviteGame {
                 kind: "paper".into(),
@@ -606,6 +609,33 @@ mod tests {
         let page = core.your_servers().await.unwrap().unwrap();
         assert_eq!(page.servers[0].manage, None, "only an owner entry matches");
         assert_eq!(page.servers[1].manage, manage_ref("t-a", "Survival"));
+        assert!(page.managed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn owner_card_without_manage_matches_by_join_name() {
+        let (core, runner, _host, _t) = core(BuildKind::Dev);
+        sign_in(&core, "https://api.example.com");
+        let mut mine = owned('A', None);
+        mine.server.address.join = Some("survival.perland.world".into());
+        serve_servers(&runner, vec![mine]);
+        manages(
+            &runner,
+            &[(
+                "t-a",
+                "alpha",
+                vec![StackItem {
+                    join_address: Some("Survival.perland.world".into()),
+                    ..item("Survival", Some("play.example.com:25566"))
+                }],
+            )],
+        );
+        let page = core.your_servers().await.unwrap().unwrap();
+        assert_eq!(
+            page.servers[0].card.address.as_deref(),
+            Some("survival.perland.world")
+        );
+        assert_eq!(page.servers[0].manage, manage_ref("t-a", "Survival"));
         assert!(page.managed.is_empty());
     }
 

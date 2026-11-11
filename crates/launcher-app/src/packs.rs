@@ -5,7 +5,10 @@ use std::{path::Path, sync::Arc};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::{
     fsutil::{path_key, write_atomic},
-    instances::{ArtMode, Focus, IconMode, Instance, SourceRef},
+    instances::{
+        ArtMode, Focus, IconMode, Instance, SourceRef, MAX_BANNER_ASPECT, MAX_BANNER_ZOOM,
+        MIN_BANNER_ASPECT, MIN_BANNER_ZOOM,
+    },
     mods,
     picture::{self, BACKGROUND_FIT, MAX_SOURCE_BYTES, THUMBNAIL_FIT},
     sources::{
@@ -23,8 +26,8 @@ use crate::{
     app::{busy, AppCore},
     deep_link::{self, DeepLink},
     dto::{
-        ArtChoice, IconChoice, InstanceArtData, ManualProgress, OptionalChoice, PackAddRequest,
-        PackContents, PackMod, PackStatus, PackUpdate,
+        ArtChoice, BannerView, IconChoice, InstanceArtData, ManualProgress, OptionalChoice,
+        PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate,
     },
     events::{AppEvent, Host},
     runner::Runner,
@@ -431,25 +434,34 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// The pictures the player sees for this instance, icon and background apart: their own
     /// files from `.perland/custom/`, nothing for generated ones, or the pack's art from
-    /// `.perland/art/`. A never-chosen icon on a round-1 upload is that upload, so the one
+    /// `.perland/art/`, and whether the pack has a background and an icon of its own. A never-chosen icon on a round-1 upload is that upload, so the one
     /// picture keeps filling both places until one of them changes.
     pub async fn instance_art(&self, id: &str) -> Result<InstanceArtData> {
         let instance = self.instances.load(id).await?;
         let perland = self.instances.perland_dir(id);
         let custom = perland.join(CUSTOM_DIR);
         let art = perland.join("art");
+        let pack_icon = art_url(&art, "icon").await;
+        let has_pack_icon = pack_icon.is_some();
         let icon = match instance.icon_mode() {
             IconMode::Generated => None,
             IconMode::Custom if instance.icon.is_none() => art_url(&custom, CUSTOM_STEM).await,
             IconMode::Custom => art_url(&custom, ICON_STEM).await,
-            IconMode::Auto => art_url(&art, "icon").await,
+            IconMode::Auto => pack_icon,
         };
+        let pack_banner = art_url(&art, "banner").await;
+        let has_pack_banner = pack_banner.is_some();
         let banner = match instance.art {
             ArtMode::Generated => None,
             ArtMode::Custom => art_url(&custom, CUSTOM_STEM).await,
-            ArtMode::Auto => art_url(&art, "banner").await,
+            ArtMode::Auto => pack_banner,
         };
-        Ok(InstanceArtData { icon, banner })
+        Ok(InstanceArtData {
+            icon,
+            banner,
+            pack_banner: has_pack_banner,
+            pack_icon: has_pack_icon,
+        })
     }
 
     /// "Change image…", the background: a generated landscape, the pack's own art, or a file of
@@ -496,8 +508,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 instance.art = ArtMode::Custom
             }
         }
-        // A new picture starts from the default position.
+        // A new picture starts from the default view.
         instance.banner_focus = None;
+        instance.banner_zoom = None;
+        instance.banner_edges = None;
+        instance.banner_aspect = None;
         if instance.icon.is_none() {
             if icon == IconMode::Custom {
                 self.pin_legacy_icon(id, &custom).await?;
@@ -565,28 +580,48 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Ok(thumbnail.map(|jpeg| format!("data:image/jpeg;base64,{}", STANDARD.encode(jpeg))))
     }
 
-    /// "Change image…", the background's position: which part of a picture background stays in
-    /// view (`None` is the default). The same refusals as `instance_art_set`, and only this field
-    /// is saved.
-    pub async fn instance_banner_focus_set(
-        &self,
-        id: &str,
-        focus: Option<Focus>,
-    ) -> Result<Instance> {
+    /// "Adjust the background": which point of a picture background stays in view, how big it is
+    /// drawn, what fills the edges and the marquee's shape then, saved together (`None` is each one's default). The same
+    /// refusals as `instance_art_set`, and only these fields are saved.
+    pub async fn instance_banner_view_set(&self, id: &str, view: BannerView) -> Result<Instance> {
         if self.is_busy(id) {
             return Err(busy(id));
         }
         if self.is_installing(id) {
             return Err(crate::browse::content_installing());
         }
-        if focus.is_some_and(|f| f.x > Focus::MAX || f.y > Focus::MAX) {
+        if view
+            .focus
+            .is_some_and(|f| f.x > Focus::MAX || f.y > Focus::MAX)
+        {
             return Err(LauncherError::disk(
                 ErrorCode::BannerFocusInvalid,
                 "That position is outside the picture",
             ));
         }
+        if view
+            .zoom
+            .is_some_and(|z| !(MIN_BANNER_ZOOM..=MAX_BANNER_ZOOM).contains(&z))
+        {
+            return Err(LauncherError::disk(
+                ErrorCode::BannerZoomInvalid,
+                "That zoom is out of range",
+            ));
+        }
+        if view
+            .aspect
+            .is_some_and(|a| !(MIN_BANNER_ASPECT..=MAX_BANNER_ASPECT).contains(&a))
+        {
+            return Err(LauncherError::disk(
+                ErrorCode::BannerAspectInvalid,
+                "That background shape is out of range",
+            ));
+        }
         let mut instance = self.instances.load(id).await?;
-        instance.banner_focus = focus;
+        instance.banner_focus = view.focus;
+        instance.banner_zoom = view.zoom;
+        instance.banner_edges = view.edges;
+        instance.banner_aspect = view.aspect;
         self.instances.save(&instance).await?;
         Ok(instance)
     }
@@ -674,7 +709,7 @@ mod tests {
 
     use launcher_core::{
         accounts::BuildKind,
-        instances::{ArtMode, Focus, IconMode, SourceRef, UpdatePolicy},
+        instances::{ArtMode, BannerEdges, Focus, IconMode, SourceRef, UpdatePolicy},
         sources::{art::MAX_ART_BYTES, PackInput, UpdateCheck},
         sync::{lockfile, manual::Scanner},
         ErrorCode, LauncherError,
@@ -684,7 +719,10 @@ mod tests {
     use crate::{
         app::{tests::core, ManualState},
         deep_link::DeepLink,
-        dto::{ArtChoice, IconChoice, InstanceArtData, NewInstance, OpenTarget, PackAddRequest},
+        dto::{
+            ArtChoice, BannerView, IconChoice, InstanceArtData, NewInstance, OpenTarget,
+            PackAddRequest,
+        },
         events::{AppEvent, RunStateKind::*},
         testing::{
             desired, exit, invite, managed_for, manual_file, pack_file, pack_instance, pending,
@@ -1132,7 +1170,9 @@ mod tests {
             core.instance_art(&id).await.unwrap(),
             InstanceArtData {
                 icon: None,
-                banner: None
+                banner: None,
+                pack_banner: false,
+                pack_icon: false,
             }
         );
         let art = core.instances.perland_dir(&id).join("art");
@@ -1153,6 +1193,46 @@ mod tests {
             .banner
             .unwrap()
             .starts_with("data:image/svg+xml;base64,"));
+    }
+
+    #[tokio::test]
+    async fn instance_art_says_whether_the_pack_has_an_icon_of_its_own() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        assert!(!core.instance_art(&id).await.unwrap().pack_icon);
+        let art = core.instances.perland_dir(&id).join("art");
+        std::fs::create_dir_all(&art).unwrap();
+        std::fs::write(art.join("icon.png"), PNG).unwrap();
+        assert!(core.instance_art(&id).await.unwrap().pack_icon);
+        // Still there with the initials as the icon, so the player can go back to it.
+        core.instance_icon_set(&id, IconChoice::Generated)
+            .await
+            .unwrap();
+        let data = core.instance_art(&id).await.unwrap();
+        assert_eq!((data.icon, data.pack_icon), (None, true));
+    }
+
+    #[tokio::test]
+    async fn instance_art_says_whether_the_pack_has_a_background_of_its_own() {
+        let (core, _runner, _host, _t) = core(BuildKind::Dev);
+        let id = pack_instance(&core, "Sky", None).await.id;
+        // A pack with no banner: nothing to offer, whatever the background is now.
+        assert!(!core.instance_art(&id).await.unwrap().pack_banner);
+        let art = core.instances.perland_dir(&id).join("art");
+        std::fs::create_dir_all(&art).unwrap();
+        std::fs::write(art.join("banner.png"), PNG).unwrap();
+        assert!(core.instance_art(&id).await.unwrap().pack_banner);
+        // Still there with a landscape as the background, so the player can go back to it.
+        core.instance_art_set(
+            &id,
+            ArtChoice::Generated {
+                seed: "dunes".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let data = core.instance_art(&id).await.unwrap();
+        assert_eq!((data.banner, data.pack_banner), (None, true));
     }
 
     const PNG: &[u8] = b"\x89PNG\r\n\x1a\n\0rest";
@@ -1235,7 +1315,9 @@ mod tests {
             core.instance_art(&id).await.unwrap(),
             InstanceArtData {
                 icon: Some(png_url(PNG)),
-                banner: None
+                banner: None,
+                pack_banner: false,
+                pack_icon: true,
             }
         );
         assert!(custom_files(&core, &id).is_empty());
@@ -1661,6 +1743,8 @@ mod tests {
             InstanceArtData {
                 icon: Some(png_url(PNG_A)),
                 banner: Some(png_url(PNG_B)),
+                pack_banner: false,
+                pack_icon: false,
             }
         );
         assert_eq!(custom_files(&core, &id), ["icon.png", "image.png"]);
@@ -1678,6 +1762,8 @@ mod tests {
             InstanceArtData {
                 icon: Some(png_url(PNG_A)),
                 banner: None,
+                pack_banner: false,
+                pack_icon: false,
             }
         );
         assert_eq!(custom_files(&core, &id), ["icon.png"]);
@@ -1709,6 +1795,8 @@ mod tests {
             InstanceArtData {
                 icon: Some(png_url(PNG)),
                 banner: Some(png_url(PNG)),
+                pack_banner: false,
+                pack_icon: false,
             }
         );
         // A new background pins the old picture as the icon first.
@@ -1731,6 +1819,8 @@ mod tests {
             InstanceArtData {
                 icon: Some(png_url(PNG)),
                 banner: None,
+                pack_banner: false,
+                pack_icon: false,
             }
         );
         assert!(custom.join("icon.png").exists());
@@ -1869,8 +1959,17 @@ mod tests {
         assert!(!core.instances.perland_dir(&id).join("custom").exists());
     }
 
+    fn view(focus: Option<Focus>, zoom: Option<u16>, edges: Option<BannerEdges>) -> BannerView {
+        BannerView {
+            focus,
+            zoom,
+            edges,
+            aspect: None,
+        }
+    }
+
     #[tokio::test]
-    async fn banner_focus_is_saved_and_reset_by_a_new_background() {
+    async fn banner_view_is_saved_and_reset_by_a_new_background() {
         let (core, _runner, _host, tmp) = core(BuildKind::Dev);
         let id = pack_instance(&core, "Sky", None).await.id;
         core.instance_art_set(
@@ -1882,54 +1981,118 @@ mod tests {
         .await
         .unwrap();
         let focus = Focus { x: 20, y: 80 };
-        let set = core
-            .instance_banner_focus_set(&id, Some(focus))
-            .await
-            .unwrap();
+        let chosen = BannerView {
+            aspect: Some(1833),
+            ..view(Some(focus), Some(150), Some(BannerEdges::Pixel))
+        };
+        let set = core.instance_banner_view_set(&id, chosen).await.unwrap();
         assert_eq!(set.banner_focus, Some(focus));
+        assert_eq!(set.banner_zoom, Some(150));
+        assert_eq!(set.banner_edges, Some(BannerEdges::Pixel));
+        assert_eq!(set.banner_aspect, Some(1833));
         let loaded = core.instances.load(&id).await.unwrap();
         assert_eq!(loaded.banner_focus, Some(focus));
-        assert_eq!(loaded.art, ArtMode::Custom, "only the position changes");
+        assert_eq!(loaded.banner_zoom, Some(150));
+        assert_eq!(loaded.banner_edges, Some(BannerEdges::Pixel));
+        assert_eq!(loaded.banner_aspect, Some(1833));
+        assert_eq!(loaded.art, ArtMode::Custom, "only the view changes");
         // Back to the default.
-        let set = core.instance_banner_focus_set(&id, None).await.unwrap();
-        assert_eq!(set.banner_focus, None);
-        core.instance_banner_focus_set(&id, Some(focus))
+        let set = core
+            .instance_banner_view_set(&id, view(None, None, None))
             .await
             .unwrap();
-        // Any new background starts from the default position.
+        assert_eq!(
+            (
+                set.banner_focus,
+                set.banner_zoom,
+                set.banner_edges,
+                set.banner_aspect
+            ),
+            (None, None, None, None)
+        );
+        core.instance_banner_view_set(&id, chosen).await.unwrap();
+        // Any new background starts from the default view.
         let set = core
             .instance_art_set(&id, ArtChoice::Generated { seed: "sky".into() })
             .await
             .unwrap();
-        assert_eq!(set.banner_focus, None);
-        assert_eq!(core.instances.load(&id).await.unwrap().banner_focus, None);
+        assert_eq!(
+            (
+                set.banner_focus,
+                set.banner_zoom,
+                set.banner_edges,
+                set.banner_aspect
+            ),
+            (None, None, None, None)
+        );
+        let loaded = core.instances.load(&id).await.unwrap();
+        assert_eq!(
+            (
+                loaded.banner_focus,
+                loaded.banner_zoom,
+                loaded.banner_edges,
+                loaded.banner_aspect
+            ),
+            (None, None, None, None)
+        );
     }
 
     #[tokio::test]
-    async fn banner_focus_over_100_is_refused() {
+    async fn banner_view_out_of_range_is_refused() {
         let (core, _runner, _host, _tmp) = core(BuildKind::Dev);
         let id = pack_instance(&core, "Sky", None).await.id;
         let path = core.instances.instance_dir(&id).join("instance.json");
         let before = std::fs::read(&path).unwrap();
         for focus in [Focus { x: 101, y: 0 }, Focus { x: 0, y: 255 }] {
             let err = core
-                .instance_banner_focus_set(&id, Some(focus))
+                .instance_banner_view_set(&id, view(Some(focus), None, None))
                 .await
                 .unwrap_err();
             assert_eq!(err.code, ErrorCode::BannerFocusInvalid);
         }
+        for zoom in [0, 24, 501] {
+            let err = core
+                .instance_banner_view_set(&id, view(None, Some(zoom), None))
+                .await
+                .unwrap_err();
+            assert_eq!(err.code, ErrorCode::BannerZoomInvalid);
+        }
+        for aspect in [0, 499, 5001] {
+            let chosen = BannerView {
+                aspect: Some(aspect),
+                ..view(None, Some(100), None)
+            };
+            let err = core
+                .instance_banner_view_set(&id, chosen)
+                .await
+                .unwrap_err();
+            assert_eq!(err.code, ErrorCode::BannerAspectInvalid);
+        }
         assert_eq!(std::fs::read(&path).unwrap(), before);
-        // The edges are inside the picture.
+        // The ends of each range are allowed.
         let edge = Focus { x: 100, y: 0 };
-        let set = core
-            .instance_banner_focus_set(&id, Some(edge))
-            .await
-            .unwrap();
-        assert_eq!(set.banner_focus, Some(edge));
+        for zoom in [25, 500] {
+            let set = core
+                .instance_banner_view_set(&id, view(Some(edge), Some(zoom), None))
+                .await
+                .unwrap();
+            assert_eq!(
+                (set.banner_focus, set.banner_zoom),
+                (Some(edge), Some(zoom))
+            );
+        }
+        for aspect in [500, 5000] {
+            let chosen = BannerView {
+                aspect: Some(aspect),
+                ..view(None, Some(100), None)
+            };
+            let set = core.instance_banner_view_set(&id, chosen).await.unwrap();
+            assert_eq!(set.banner_aspect, Some(aspect));
+        }
     }
 
     #[tokio::test]
-    async fn banner_focus_refused_while_busy() {
+    async fn banner_view_refused_while_busy() {
         let (core, _runner, _host, _tmp) = core(BuildKind::Dev);
         let id = pack_instance(&core, "Sky", None).await.id;
         core.runs.lock().unwrap().insert(
@@ -1945,20 +2108,21 @@ mod tests {
                 synced: None,
             },
         );
-        let focus = Some(Focus { x: 20, y: 80 });
+        let chosen = view(Some(Focus { x: 20, y: 80 }), Some(60), None);
         let err = core
-            .instance_banner_focus_set(&id, focus)
+            .instance_banner_view_set(&id, chosen)
             .await
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::InstanceBusy);
         core.runs.lock().unwrap().clear();
         core.installing.lock().unwrap().insert(id.clone());
         let err = core
-            .instance_banner_focus_set(&id, focus)
+            .instance_banner_view_set(&id, chosen)
             .await
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::ContentInstalling);
-        assert_eq!(core.instances.load(&id).await.unwrap().banner_focus, None);
+        let loaded = core.instances.load(&id).await.unwrap();
+        assert_eq!((loaded.banner_focus, loaded.banner_zoom), (None, None));
     }
 
     #[tokio::test]

@@ -169,7 +169,7 @@ export function LooksBrowse({ hidden, manifest, status, lang, thumbs, filter, lo
             {t('skins.catalog.count', { count: looks.length })}
           </p>
           <FilterKey
-            label={t('skins.arms')}
+            label={t('skins.catalog.arms')}
             value={filter.arms}
             options={[
               { value: '', label: t('skins.catalog.all') },

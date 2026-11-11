@@ -9,22 +9,35 @@ const SUFFIX = {
   'linux-x86_64-deb': { release: '_amd64.deb', channel: '.deb', bundle: /\.deb$/ },
 };
 
-export function nextVersion({ base, channel, tags }) {
-  if (!/^\d+\.\d+\.\d+$/.test(base)) throw new Error(`The base version ${base} must be x.y.z`);
-  const released = tags.includes(`v${base}`);
-  if (channel === 'stable') {
-    if (released) throw new Error(`v${base} is already released; bump the version on main`);
-    return base;
+// Versions are CalVer YYYY.M.MICRO (SemVer-valid: no leading zero in the month). MICRO counts the
+// releases of a month from 0, in UTC. A stable keeps the base of its betas, even in a later month.
+export const CALVER = /^v(\d{4})\.([1-9]\d?)\.(\d+)(?:-beta\.(\d+))?$/;
+
+export function nextVersion({ channel, tags, now }) {
+  if (channel !== 'stable' && channel !== 'beta') throw new Error(`Unknown channel ${channel}`);
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new Error('A valid date is needed');
+  const parsed = tags
+    .map((tag) => CALVER.exec(tag))
+    .filter(Boolean)
+    .map(([, y, m, micro, beta]) => ({ base: `${Number(y)}.${Number(m)}.${Number(micro)}`, y: +y, m: +m, micro: +micro, beta: beta === undefined ? null : +beta }));
+  const stables = new Set(parsed.filter((t) => t.beta === null).map((t) => t.base));
+  const cmp = (a, b) => a.y - b.y || a.m - b.m || a.micro - b.micro;
+  // The newest base with betas and no stable yet, if it is newer than every stable.
+  const open = parsed
+    .filter((t) => t.beta !== null && !stables.has(t.base))
+    .filter((t) => parsed.every((s) => s.beta !== null || cmp(s, t) < 0))
+    .sort(cmp)
+    .at(-1);
+  let base = open?.base;
+  if (!base) {
+    const y = now.getUTCFullYear();
+    const m = now.getUTCMonth() + 1;
+    const micros = parsed.filter((t) => t.y === y && t.m === m).map((t) => t.micro + 1);
+    base = `${y}.${m}.${Math.max(0, ...micros)}`;
   }
-  if (channel !== 'beta') throw new Error(`Unknown channel ${channel}`);
-  if (released) throw new Error(`v${base} is already stable; bump the version on main before a new beta`);
-  const prefix = `v${base}-beta.`;
-  const numbers = tags
-    .filter((tag) => tag.startsWith(prefix))
-    .map((tag) => tag.slice(prefix.length))
-    .filter((n) => /^\d+$/.test(n))
-    .map(Number);
-  return `${base}-beta.${Math.max(0, ...numbers) + 1}`;
+  if (channel === 'stable') return base;
+  const betas = parsed.filter((t) => t.base === base && t.beta !== null).map((t) => t.beta);
+  return `${base}-beta.${Math.max(0, ...betas) + 1}`;
 }
 
 /** Set `[workspace.package] version`, leaving every other `version =` alone. */

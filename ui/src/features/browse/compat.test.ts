@@ -16,6 +16,9 @@ const instance = (minecraft: string, loader: Instance['game']['loader']): Instan
   art: 'auto',
   icon: null,
   bannerFocus: null,
+  bannerZoom: null,
+  bannerEdges: null,
+  bannerAspect: null,
 });
 const version = (id: string, type: string, date: string, mc: string[], loaders: string[]): VersionInfo => ({
   id,
