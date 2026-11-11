@@ -478,7 +478,8 @@
       "upToDate": "Al día · {{version}}",
       "check": "Buscar ahora",
       "restart": "Reiniciar ahora",
-      "busy": "Espera a que terminen los juegos y las instalaciones."
+      "busy": "Espera a que terminen los juegos y las instalaciones.",
+      "whatsNew": "Novedades del launcher"
     },
     "diagnostics": {
       "title": "Diagnóstico",
@@ -897,6 +898,19 @@
       "hostFull": "Tu servidor está listo, pero Perland está lleno por ahora. Enciéndelo en unos minutos.",
       "manage": "Administrar"
     }
+  },
+  "whatsNew": {
+    "title": "Novedades del launcher",
+    "version": "{{version}} · {{date}}",
+    "next": "Próxima actualización",
+    "kind": {
+      "new": "Nuevo",
+      "improved": "Mejoras",
+      "fixed": "Arreglos"
+    },
+    "all": "Todas las actualizaciones",
+    "close": "Entendido",
+    "empty": "Todavía no hay novedades."
   },
   "news": {
     "label": "Novedades",

@@ -1,11 +1,21 @@
-import { act, screen } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { act, screen, within } from '@testing-library/react';
+import { expect, it, vi } from 'vitest';
 import type { UpdateState } from '../../ipc/schema';
 import { beginContentInstall } from '../../state/contentProgress';
 import { qk } from '../../state/queries';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { Settings } from './Settings';
+
+vi.mock('../whats-new/notes', () => ({
+  releaseNotesData: {
+    versions: ['2026.11.5'],
+    groups: [
+      { base: null, date: '2026-11-21', notes: [{ id: 'e', kind: 'new', since: null, en: 'Coming soon.', es: 'Pronto.' }] },
+      { base: '2026.11.5', date: '2026-11-12', notes: [{ id: 'a', kind: 'improved', since: '2026.11.5', en: 'Skins save faster.', es: 'Las skins se guardan más rápido.' }] },
+    ],
+  },
+}));
 
 it('shows the state, checks now and switches channel', async () => {
   const { user, calls } = renderApp(<Settings />, { beta: true, offlineLocked: true, update: { state: 'up_to_date' } });
@@ -77,4 +87,19 @@ it('disables Restart now while a Browse install runs', async () => {
   expect(screen.getByRole('button', { name: 'Restart now' })).toHaveAccessibleDescription('Wait for games and installs to finish first.');
   act(() => end());
   expect(screen.getByRole('button', { name: 'Restart now' })).toBeEnabled();
+});
+
+it.each([
+  ['a release build', { release: true }],
+  ['a dev build', {}],
+])("opens What's new with every version in %s", async (_name, options) => {
+  const { user, calls } = renderApp(<Settings />, options);
+  await user.click(await screen.findByRole('button', { name: "What's new" }));
+  const dialog = screen.getByRole('dialog', { name: "What's new" });
+  expect(within(dialog).getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(['Next update', '2026.11.5 · Nov 12']);
+  expect(within(dialog).queryByRole('button', { name: 'All updates' })).not.toBeInTheDocument();
+  // Reading the history is not the launch check: the marker stays where it was.
+  expect(sent(calls, 'whats_new_mark')).toHaveLength(0);
+  await user.click(within(dialog).getByRole('button', { name: 'Got it' }));
+  expect(screen.queryByRole('dialog', { name: "What's new" })).not.toBeInTheDocument();
 });
