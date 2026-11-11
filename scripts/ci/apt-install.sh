@@ -20,13 +20,28 @@ skip_runner_mirror() {
   echo "::warning::Leaving out the runner's package mirror for the next attempt."
   sudo sed -i "/$runner_mirror/d" "$mirror_list"
 }
+# Says in the log which mirror answers and over which protocol, for whoever reads a failed run.
+probe_mirrors() {
+  local host flag
+  for host in azure.archive.ubuntu.com archive.ubuntu.com; do
+    for flag in -4 -6; do
+      echo "probe $host $flag: $(curl "$flag" -sS -o /dev/null -m 10 -w '%{http_code} in %{time_total}s' \
+        "http://$host/ubuntu/dists/" 2>&1 | tr '\n' ' ')"
+    done
+  done
+}
 for attempt in 1 2 3; do
   if sudo timeout "${APT_UPDATE_TIMEOUT:-3m}" apt-get "${opts[@]}" update &&
      sudo timeout "${APT_INSTALL_TIMEOUT:-6m}" apt-get "${opts[@]}" install -y "$@"; then
     exit 0
   fi
   echo "::warning::Installing $* failed or stalled (attempt $attempt of 3)."
-  [ "$attempt" = 3 ] || { skip_runner_mirror; sleep "${APT_RETRY_DELAY:-15}"; }
+  [ "$attempt" = 3 ] && break
+  probe_mirrors
+  skip_runner_mirror
+  # A mirror that only stalls over IPv6 is reached over IPv4 from here on.
+  opts+=(-o Acquire::ForceIPv4=true)
+  sleep "${APT_RETRY_DELAY:-15}"
 done
 echo "::error::Couldn't install $*: the runner's package mirror isn't answering. Re-run the job."
 exit 1
