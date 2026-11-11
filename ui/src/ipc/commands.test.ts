@@ -37,6 +37,8 @@ it('sends the argument names Rust expects', async () => {
   await commands.restorePoint('pack');
   await commands.restoreGoBack('pack');
   await commands.packUpdateAgain('pack');
+  await commands.whatsNewSeen();
+  await commands.whatsNewMark();
   expect(calls).toEqual([
     ['play', { id: 'pack', join: false }],
     ['play', { id: 'pack', join: true }],
@@ -66,6 +68,8 @@ it('sends the argument names Rust expects', async () => {
     ['restore_point', { id: 'pack' }],
     ['restore_go_back', { id: 'pack' }],
     ['pack_update_again', { id: 'pack' }],
+    ['whats_new_seen', {}],
+    ['whats_new_mark', {}],
   ]);
 });
 

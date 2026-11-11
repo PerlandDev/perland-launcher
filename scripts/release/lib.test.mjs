@@ -12,6 +12,7 @@ import {
   hasAuthenticodeSignature,
   keyIdOf,
   nextVersion,
+  notesFooter,
   PLATFORMS,
   releaseName,
   setupChannelName,
@@ -287,4 +288,12 @@ test('our own binaries must be signed by us, not found already signed', () => {
     l.includes('perland-launcher.exe') ? 'binary already-signed D:/a/target/release/perland-launcher.exe' : l,
   );
   assert.throws(() => checkSignLedger(lines), /never signed: perland-launcher\.exe/);
+});
+
+test("the notes footer warns about unsigned installers only while signing is off", () => {
+  assert.equal(
+    notesFooter({ signed: false }),
+    "Closed beta. Download it from https://perland.online/launcher. The installers aren't code-signed yet, so Windows may warn before it runs.",
+  );
+  assert.equal(notesFooter({ signed: true }), 'Closed beta. Download it from https://perland.online/launcher.');
 });

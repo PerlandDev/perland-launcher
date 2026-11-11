@@ -7,6 +7,23 @@ vi.mock('./pixelEdges', () => ({ usePixelEdges: pixelEdgesMock }));
 
 const BANNER = 'data:image/png;base64,AAAA';
 
+it("paints the generated scene in the theme's own colours, and follows a theme change", async () => {
+  const { marqueeScene } = await import('./marqueeScene');
+  const { PALETTES } = await import('./palette');
+  const sky = (root: Element) => root.querySelector('svg > rect')?.getAttribute('fill');
+  try {
+    document.documentElement.dataset.theme = 'night';
+    const { container } = render(<Marquee seed="asalith-fields" attract={false} />);
+    expect(sky(container)).toBe(marqueeScene('asalith-fields', PALETTES.night).sky);
+    await act(async () => {
+      document.documentElement.dataset.theme = 'forest';
+    });
+    expect(sky(container)).toBe(marqueeScene('asalith-fields', PALETTES.forest).sky);
+  } finally {
+    delete document.documentElement.dataset.theme;
+  }
+});
+
 it("draws a pack's banner in place of the generated scene", () => {
   const { container } = render(<Marquee seed="sky-islands" attract={false} banner={BANNER} />);
   expect(container.querySelector('img.marquee-banner')).not.toBeNull();
@@ -81,6 +98,12 @@ describe('a zoomed banner', () => {
     expect(zoomed({ zoom: 200 }).img.style.width).toBe('1000px');
   });
 
+  it('draws a view chosen at a wider shape smaller, so a narrower panel still shows all it framed', () => {
+    // Chosen at 4:1: the 1000 × 500 panel's band is 1000 × 250, so 100 is 250 tall, from the bottom.
+    const { img } = zoomed({ zoom: 100, aspect: 4000 });
+    expect([img.style.left, img.style.top, img.style.width, img.style.height]).toEqual(['375px', '250px', '250px', '250px']);
+  });
+
   it('draws pixel edges behind it, and none when they cannot be made', () => {
     const { container } = zoomed({ zoom: 50, edges: 'pixel' });
     expect(container.querySelector<HTMLImageElement>('img.marquee-edges')?.getAttribute('src')).toBe('data:image/png;base64,EDGES');
@@ -93,8 +116,8 @@ describe('a zoomed banner', () => {
   it('draws no edges for dark edges or a picture that still covers', () => {
     expect(zoomed({ zoom: 50, edges: 'dark' }).container.querySelector('img.marquee-edges')).toBeNull();
     expect(zoomed({ zoom: 200, edges: 'pixel' }).container.querySelector('img.marquee-edges')).toBeNull();
-    // 150 is 750 wide in a 1000 wide panel: the sides show.
-    expect(zoomed({ zoom: 150, edges: 'pixel' }).container.querySelector('img.marquee-edges')).not.toBeNull();
+    // 140 is under the 150 that fills the panel's band, so it was zoomed out on purpose: 700 wide in 1000, the sides show.
+    expect(zoomed({ zoom: 140, edges: 'pixel' }).container.querySelector('img.marquee-edges')).not.toBeNull();
   });
 
   it('decides hard pixels from the size the zoom draws, not the panel', () => {

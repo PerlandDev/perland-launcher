@@ -438,7 +438,9 @@ describe('server instances', () => {
   it('show the live status, the address and the invite-only line', async () => {
     renderApp(<Home id="survival" />, { server: 'whitelisted' });
     expect(await screen.findByRole('status', { name: 'Server status: Online · 3/20' })).toBeInTheDocument();
-    expect(screen.getByText('play.example.com:25566')).toBeInTheDocument();
+    // The live view names the server under the Engine's GAME_DOMAIN: shown without a port.
+    expect(screen.getByText('survival.perland.world')).toBeInTheDocument();
+    expect(screen.queryByText('play.example.com:25566')).toBeNull();
     expect(screen.getByText('Invite only: ask the owner to add you (Steve)')).toBeInTheDocument();
   });
 
@@ -486,7 +488,12 @@ describe('server instances', () => {
   it('copy the address', async () => {
     const { user } = renderApp(<Home id="survival" />, { server: 'online' });
     await user.click(await screen.findByRole('button', { name: 'Copy server address' }));
-    expect(await navigator.clipboard.readText()).toBe('play.example.com:25566');
+    expect(await navigator.clipboard.readText()).toBe('survival.perland.world');
+  });
+
+  it('show host:port for a server without a join name', async () => {
+    renderApp(<Home id="survival" />, { server: 'gone' });
+    expect(await screen.findByText('play.example.com:25566')).toBeInTheDocument();
   });
 
   it('say Copied only when the copy worked', async () => {

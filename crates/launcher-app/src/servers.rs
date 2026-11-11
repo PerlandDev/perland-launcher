@@ -2,6 +2,7 @@
 //! adding it as an instance, its live status, and moving it to a new link. Tauri only forwards
 //! these commands.
 use base64::{engine::general_purpose::STANDARD, Engine};
+use launcher_core::telemetry::Counter;
 use launcher_core::{
     instances::{unix_now, Instance, ServerLink, SourceRef, UpdatePolicy},
     invite::{EngineView, InviteLink},
@@ -115,6 +116,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             instance.server = Some(ServerLink::from_view(&ev.view, &ev.engine, unix_now()));
         }
         self.instances.save(&instance).await?;
+        self.config.telemetry.count(Counter::JoinsByLink);
+        self.telemetry_learn(&instance);
         Ok(instance)
     }
 
@@ -162,13 +165,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         match self.runner.invite_view(link, Some(engine)).await {
             Ok(ev) => {
                 let saved = self.update_server(id, true, |s| apply_view(s, &ev)).await?;
+                let (address, join) = saved.map(|s| (s.address, s.join)).unwrap_or_default();
                 Ok(ServerStatusView {
                     status: ev.view.status(),
                     players: ev.view.players.as_ref().map(ServerPlayers::from),
                     whitelisted: ev.view.whitelisted,
                     pack_state: ev.view.pack.as_ref().map(|p| p.state.clone()),
                     gone: false,
-                    address: saved.and_then(|s| s.address),
+                    address,
+                    join,
                 })
             }
             Err(e) if e.code == ErrorCode::InviteGone => {
@@ -179,6 +184,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     whitelisted: last.as_ref().is_some_and(|s| s.whitelisted),
                     pack_state: None,
                     gone: true,
+                    join: last.as_ref().and_then(|s| s.join.clone()),
                     address: last.and_then(|s| s.address),
                 })
             }
@@ -446,6 +452,38 @@ mod tests {
         let second = core.join_add(&shouted).await.unwrap();
         assert_eq!(first.id, second.id);
         assert_eq!(runner.added.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn joining_counts_once_and_teaches_the_server_to_the_scrubber() {
+        let (core, runner, _host, tmp) = core(BuildKind::Dev);
+        core.telemetry().force_on();
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let instance = core.join_add(&invite('A')).await.unwrap();
+        // The same server again is the same instance, not another join.
+        core.join_add(&invite('A')).await.unwrap();
+        assert!(core.join_add("not a link").await.is_err());
+        let telemetry = core.telemetry();
+        assert_eq!(telemetry.snapshot().counters()["joins_by_link"], 1);
+
+        // From now on nothing of this server leaves in a report.
+        let token = launcher_core::invite::InviteLink::parse(&invite('A')).unwrap();
+        let detail = format!(
+            "{} {} {} {} survival play.example.com:25566",
+            invite('A'),
+            token.token(),
+            instance.id,
+            tmp.path().join("instances").join(&instance.id).display()
+        );
+        telemetry.report_error(
+            &LauncherError::network(ErrorCode::HostUnreachable, "Couldn't reach survival")
+                .with_detail(detail),
+            Some("server_status"),
+        );
+        let queued = serde_json::to_string(&telemetry.snapshot().reports()).unwrap();
+        for private in ["survival", "play.example", token.token(), "25566"] {
+            assert!(!queued.contains(private), "{private} left in {queued}");
+        }
     }
 
     #[tokio::test]

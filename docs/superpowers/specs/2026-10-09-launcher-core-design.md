@@ -213,7 +213,7 @@ Game-forward direction. Final styling and the design system come from `/impeccab
 - **Integrity:** on a hash mismatch, delete and download again once, then fail that file with a clear message.
 - **Concurrency:** a per-instance lock file.
 - **Logs:** structured, rotated daily, kept 14 days. Tokens and the home path are redacted. **Export diagnostics** creates a zip of logs, `instance.json`, `managed.json` and system info.
-- **No telemetry in v1.**
+- **No telemetry in v1.** (2026-11-11: no longer true. The launcher sends anonymous error reports and usage counts, with one switch in Settings: see `2026-11-11-anonymous-usage-and-errors-design.md`.)
 - **Launcher self-update:** the Tauri updater, signed with Ed25519, from GitHub Releases. It checks on startup, installs on quit and never interrupts a game. Channels: `stable` and `beta`.
 - **Windows:** an NSIS installer, per user, with no admin prompt. Signing goes through Azure Trusted Signing once it's set up; until then builds are unsigned and SmartScreen warns.
 - **Linux:** AppImage + `.deb`. Flatpak comes later.

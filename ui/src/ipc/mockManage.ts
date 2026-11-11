@@ -36,6 +36,8 @@ export const manageScenario = (name: string | null): ManageScenario | undefined 
 export const MOCK_FREE_TENANT = 't-free';
 export const MOCK_TEAM_TENANT = 't-builders';
 export const MOCK_TEAM_SERVER = 'Team survival';
+/** The team server's join address (its name under the Engine's `GAME_DOMAIN`). */
+export const MOCK_TEAM_JOIN = 'team-survival.perland.world';
 /** How long a mock server takes to come up. */
 export const MOCK_MANAGE_START_MS = 3000;
 /** How often the open console gets a line. */
@@ -77,14 +79,15 @@ export interface MockManage {
   emit: (event: AppEvent) => void;
 }
 
-function server(scenario: ManageScenario, ref: ManageRef, teamName: string, free: boolean, port: number): Server {
+/** `join` is the server's name under the Engine's `GAME_DOMAIN`, which Manage shows in place of `host:port`. */
+function server(scenario: ManageScenario, ref: ManageRef, teamName: string, free: boolean, port: number, join?: string): Server {
   const state: ManageState =
     scenario === 'asleep' ? 'asleep' : scenario === 'stopped' || scenario === 'crashed' ? 'stopped' : scenario === 'starting' ? 'starting' : 'running';
   return {
     ref,
     teamName,
     free,
-    address: `${HOST}:${port}`,
+    address: join ?? `${HOST}:${port}`,
     state,
     upAt: null,
     crashed: scenario === 'crashed',
@@ -112,7 +115,7 @@ function server(scenario: ManageScenario, ref: ManageRef, teamName: string, free
 export function seedManage(scenario: ManageScenario = 'running', emit: (event: AppEvent) => void = () => {}): MockManage {
   return {
     scenario,
-    team: server(scenario, { tenantId: MOCK_TEAM_TENANT, stack: MOCK_TEAM_SERVER }, 'Builders', false, 25600),
+    team: server(scenario, { tenantId: MOCK_TEAM_TENANT, stack: MOCK_TEAM_SERVER }, 'Builders', false, 25600, MOCK_TEAM_JOIN),
     free: null,
     created: [],
     console: null,

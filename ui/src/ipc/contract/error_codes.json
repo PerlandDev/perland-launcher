@@ -43,6 +43,7 @@
   "art_file_invalid",
   "banner_focus_invalid",
   "banner_zoom_invalid",
+  "banner_aspect_invalid",
   "window_size_invalid",
   "java_unavailable",
   "java_start_failed",

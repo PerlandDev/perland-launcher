@@ -256,3 +256,27 @@ it('keeps the way back while the settings fail to load', async () => {
   await user.click(await screen.findByRole('button', { name: 'Back' }));
   expect(routeSnapshot()).toEqual({ name: 'home', id: null });
 });
+
+it('shares anonymous data by default, and the switch turns it off', async () => {
+  const { user, calls } = renderApp(<Settings />);
+  const privacy = await screen.findByRole('region', { name: 'Privacy' });
+  const share = within(privacy).getByRole('switch', { name: 'Share anonymous data' });
+  expect(share).toBeChecked();
+  expect(within(privacy).getByText(/Nothing in them says who you are\./)).toBeInTheDocument();
+  await user.click(share);
+  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { shareAnonymousData: false } }));
+  await waitFor(() => expect(share).not.toBeChecked());
+  await user.click(share);
+  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { shareAnonymousData: true } }));
+});
+
+it('links to the list of what is sent', async () => {
+  const { user, calls } = renderApp(<Settings />);
+  const privacy = await screen.findByRole('region', { name: 'Privacy' });
+  await user.click(within(privacy).getByRole('button', { name: 'What is sent' }));
+  await waitFor(() =>
+    expect(sent(calls, 'plugin:opener|open_url')).toEqual([
+      expect.objectContaining({ url: 'https://github.com/PerlandDev/perland-launcher#what-the-launcher-sends' }),
+    ]),
+  );
+});

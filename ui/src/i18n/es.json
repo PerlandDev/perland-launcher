@@ -478,7 +478,8 @@
       "upToDate": "Al día · {{version}}",
       "check": "Buscar ahora",
       "restart": "Reiniciar ahora",
-      "busy": "Espera a que terminen los juegos y las instalaciones."
+      "busy": "Espera a que terminen los juegos y las instalaciones.",
+      "whatsNew": "Novedades del launcher"
     },
     "diagnostics": {
       "title": "Diagnóstico",
@@ -486,6 +487,12 @@
       "export": "Exportar diagnóstico",
       "saved": "Diagnóstico guardado",
       "show": "Mostrar en la carpeta"
+    },
+    "privacy": {
+      "title": "Privacidad",
+      "share": "Compartir datos anónimos",
+      "shareHint": "Envía informes de errores y conteos de uso que nos ayudan a arreglar el launcher. Nada en ellos dice quién eres.",
+      "whatIsSent": "Qué se envía"
     }
   },
   "friends": {
@@ -552,6 +559,7 @@
   "firstRun": {
     "welcomeTitle": "Te damos la bienvenida a Perland",
     "welcomeBody": "Un launcher gratis para Minecraft, listo en unos clics.",
+    "privacy": "El launcher comparte informes de errores y conteos de uso anónimos. Puedes desactivarlo en Configuración.",
     "start": "Empezar",
     "languageTitle": "Elige tu idioma",
     "accountTitle": "¿Quién va a jugar?",
@@ -675,7 +683,7 @@
     "playing": "{{online}} / {{max}} jugando",
     "playingCount": "{{online}} jugando",
     "joining": "Entrando…",
-    "joinFromMinecraft": "Entra desde Minecraft: {{address}}",
+    "joinFromMinecraft": "Entra desde Minecraft",
     "noMatch": "Ningún servidor coincide. Prueba con menos filtros.",
     "clearFilters": "Quitar filtros",
     "empty": "Aún no hay servidores públicos.",
@@ -897,6 +905,19 @@
       "hostFull": "Tu servidor está listo, pero Perland está lleno por ahora. Enciéndelo en unos minutos.",
       "manage": "Administrar"
     }
+  },
+  "whatsNew": {
+    "title": "Novedades del launcher",
+    "version": "{{version}} · {{date}}",
+    "next": "Próxima actualización",
+    "kind": {
+      "new": "Nuevo",
+      "improved": "Mejoras",
+      "fixed": "Arreglos"
+    },
+    "all": "Todas las actualizaciones",
+    "close": "Entendido",
+    "empty": "Todavía no hay novedades."
   },
   "news": {
     "label": "Novedades",
@@ -1163,6 +1184,7 @@
     "art_file_invalid": { "message": "Ese archivo no se puede usar como imagen de la instancia.", "fix": "Elige una imagen PNG, JPEG o WebP." },
     "banner_focus_invalid": { "message": "Esa posición está fuera de la imagen." },
     "banner_zoom_invalid": { "message": "Ese zoom está fuera de rango." },
+    "banner_aspect_invalid": { "message": "La forma de ese fondo está fuera de rango." },
     "window_size_invalid": { "message": "La ventana debe medir al menos {{minWidth}} × {{minHeight}} y como mucho {{max}} por lado." },
     "import_not_instance": { "message": "Esta carpeta no parece una instancia de Minecraft.", "fix": "Elige la carpeta de la instancia: la que tiene mods, saves o config adentro." },
     "import_inside_launcher": { "message": "Esa carpeta es del propio Perland Launcher.", "fix": "Elige una carpeta de tu otro launcher." },

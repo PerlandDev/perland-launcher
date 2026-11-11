@@ -66,6 +66,18 @@ pub struct InviteAddress {
     pub port: i64,
     #[serde(default)]
     pub display: Option<String>,
+    /// The server's name under the Engine's `GAME_DOMAIN` (`survival.perland.world`): what
+    /// players type, with no port. Absent on Engines without it; see [`InviteAddress::join_name`].
+    #[serde(default)]
+    pub join: Option<String>,
+}
+
+impl InviteAddress {
+    /// The join name when the Engine sent a usable one. Players see it without a port; the game
+    /// connects to it on [`crate::instances::JOIN_PORT`].
+    pub fn join_name(&self) -> Option<String> {
+        crate::instances::join_name(self.join.as_deref())
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]

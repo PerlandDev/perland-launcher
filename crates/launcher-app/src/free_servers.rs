@@ -3,6 +3,7 @@
 //! and play it. Every call goes to the session's Engine with the session's token; a 401 forgets
 //! the session. Nothing here logs a token or an invite.
 
+use launcher_core::telemetry::Counter;
 use launcher_core::{
     instances::{ServerAddress, ServerStatus},
     invite::{non_empty, InviteLink, Url},
@@ -159,6 +160,12 @@ pub(crate) fn parse_address(raw: &str) -> Option<ServerAddress> {
     ServerAddress::new(host, port)
 }
 
+/// What players type for the free server: its join name as it is, else `host:port`.
+fn shown_free_address(raw: Option<&str>) -> Option<String> {
+    launcher_core::instances::join_name(raw)
+        .or_else(|| raw.and_then(parse_address).map(|a| a.display()))
+}
+
 /// The free-server view as a card (spec §5 "Owner card"). `joined` is every server instance's
 /// canonical invite and id, as `joined_invites` gives it.
 pub(crate) fn free_card(server: &FreeServer, joined: &[(String, String)]) -> FreeServerCard {
@@ -191,11 +198,7 @@ pub(crate) fn free_card(server: &FreeServer, joined: &[(String, String)]) -> Fre
                 .unwrap_or_default(),
             invite,
             joinable,
-            address: server
-                .address
-                .as_deref()
-                .and_then(parse_address)
-                .map(|a| a.display()),
+            address: shown_free_address(server.address.as_deref()),
             name: server.name.trim().to_string(),
             display_name: server.name.trim().to_string(),
             icon_version: None,
@@ -244,11 +247,7 @@ fn unplayable(server: &FreeServer, engine: &Url) -> Option<LauncherError> {
         .as_deref()
         .is_some_and(|url| InviteLink::parse(url).is_ok());
     (unplayable_status(&server.status) || !has_invite).then(|| {
-        let address = server
-            .address
-            .as_deref()
-            .and_then(parse_address)
-            .map(|a| a.display())
+        let address = shown_free_address(server.address.as_deref())
             .unwrap_or_else(|| host_of(engine).to_string());
         cannot_join(address)
     })
@@ -296,6 +295,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 Vec::new()
             }
         };
+        // Its name, address and invite are masked in every report from now on.
+        let mut names = vec![server.name.clone()];
+        names.extend(server.address.clone());
+        if let Some(link) = server
+            .invite_url
+            .as_deref()
+            .and_then(|url| launcher_core::invite::InviteLink::parse(url).ok())
+        {
+            names.push(link.token().to_string());
+            names.push(link.host().to_string());
+        }
+        self.config.telemetry.add_names(names);
         free_card(server, &joined)
     }
 
@@ -389,6 +400,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let created = self
             .free_call(&session, |e, t| player.create_free_server(e, t, request))
             .await?;
+        self.config.telemetry.count(Counter::FreeServersCreated);
         Ok(self.free_card_of(&created).await)
     }
 
@@ -950,7 +962,8 @@ mod tests {
         assert_eq!(card.status, ServerStatus::Offline);
         assert!(card.joinable, "Play starts it");
         assert_eq!(card.instance.as_deref(), Some(joined.id.as_str()));
-        assert_eq!(card.address.as_deref(), Some("play.example.com:25565"));
+        // A name without a port (the join address) is shown as players type it.
+        assert_eq!(card.address.as_deref(), Some("play.example.com"));
     }
 
     #[tokio::test]

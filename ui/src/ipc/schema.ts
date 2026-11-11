@@ -44,6 +44,8 @@ export const serverLink = z.strictObject({
   lastStatus: serverStatus.nullable(),
   lastSeen: z.number().int().nullable(),
   gone: z.boolean(),
+  /** The server's join name (`survival.perland.world`), shown in place of `address`. */
+  join: z.string().nullable(),
 });
 export const serverPlayers = z.strictObject({ online: z.number().int(), max: z.number().int().nullable() });
 export const serverGame = z.strictObject({
@@ -70,6 +72,8 @@ export const joinPreview = z.strictObject({
   whitelisted: z.boolean(),
   team: serverTeam.nullable(),
   address: serverAddress.nullable(),
+  /** The server's join name, shown in place of `address`. */
+  join: z.string().nullable(),
   icon: z.string().nullable(),
   existing: z.string().nullable(),
 });
@@ -375,6 +379,8 @@ export const serverStatusView = z.strictObject({
   packState: z.string().nullable(),
   gone: z.boolean(),
   address: serverAddress.nullable(),
+  /** The last known join name, shown in place of `address`. */
+  join: z.string().nullable(),
 });
 export const deepLink = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('pack'), url: z.string() }),
@@ -406,6 +412,8 @@ export const instance = z.strictObject({
   bannerZoom: z.number().int().nullable(),
   /** What fills the marquee around a picture zoomed out below 100; null is dark. */
   bannerEdges: z.enum(['dark', 'pixel']).nullable(),
+  /** The marquee's shape when the view was chosen (width per 1000 of height); null is 3:2. */
+  bannerAspect: z.number().int().nullable(),
   /** Set after going back on an instance that checks for updates: Play skips the check until "Update again". Absent when not held. */
   updateHold: z.strictObject({ since: z.number().int(), version: z.string() }).optional(),
 });
@@ -483,7 +491,24 @@ export const settings = z.strictObject({
   iconShape: z.enum(['square', 'round']),
   theme,
   font: uiFont,
+  shareAnonymousData: z.boolean(),
 });
+/** One release note (release-notes/<id>.json) with the version it first shipped in; null while unreleased. */
+export const releaseNote = z.strictObject({
+  id: z.string(),
+  kind: z.enum(['new', 'improved', 'fixed']),
+  since: z.string().nullable(),
+  en: z.string(),
+  es: z.string(),
+});
+/** A base version's notes and its release day (`YYYY-MM-DD`); a null base is the next update. */
+export const noteGroup = z.strictObject({ base: z.string().nullable(), date: z.string(), notes: z.array(releaseNote) });
+/** What the build bundles (scripts/release/notes.mjs `buildNotes`): every release oldest first, and the groups newest first. */
+export const releaseNotes = z.strictObject({ versions: z.array(z.string()), groups: z.array(noteGroup) });
+export type ReleaseNote = z.infer<typeof releaseNote>;
+export type NoteGroup = z.infer<typeof noteGroup>;
+export type ReleaseNotes = z.infer<typeof releaseNotes>;
+
 export const appInfo = z.strictObject({
   version: z.string(),
   build: z.enum(['dev', 'beta', 'release']),
@@ -716,6 +741,7 @@ export const bannerView = z.strictObject({
   focus: z.strictObject({ x: z.number().int(), y: z.number().int() }).nullable(),
   zoom: z.number().int().nullable(),
   edges: z.enum(['dark', 'pixel']).nullable(),
+  aspect: z.number().int().nullable(),
 });
 export const iconChoice = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('generated') }),

@@ -1,4 +1,5 @@
-import { DIRT, hash, PLOT_HUES, rng } from './random';
+import { PALETTES, type ArtPalette } from './palette';
+import { hash, rng } from './random';
 import { hueIndex } from './variant';
 
 export interface Cell {
@@ -7,10 +8,12 @@ export interface Cell {
   fill: string;
 }
 
-/** A tiny terraced plot like one quarter of the mark: stepped grass on dirt, in the instance's hue. */
-export function plotCells(seed: string): Cell[] {
+/** A tiny terraced plot like one quarter of the mark: stepped grass on dirt, in the instance's hue, painted with the
+ *  theme's palette. */
+export function plotCells(seed: string, palette: ArtPalette = PALETTES.laminate): Cell[] {
   const random = rng(hash(`plot:${seed}`));
-  const hue = PLOT_HUES[hueIndex(seed)] ?? PLOT_HUES[0];
+  const hue = palette.hues[hueIndex(seed)] ?? palette.hues[0];
+  const DIRT = palette.dirt;
   const rising = random() < 0.5;
   const cells: Cell[] = [];
   let height = 2 + Math.floor(random() * 2);

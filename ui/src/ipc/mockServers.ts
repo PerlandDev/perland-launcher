@@ -43,7 +43,8 @@ export const MOCK_PUBLIC_SERVERS: PublicServerCard[] = [
     token: 'A'.repeat(43),
     invite: inviteOf('A'),
     joinable: true,
-    address: `${HOST}:25566`,
+    // The Engine's join address: the server's name under its GAME_DOMAIN, joined on 25565.
+    address: 'survival.perland.world',
     name: 'Survival',
     displayName: 'Survival',
     iconVersion: '1a2b3c4d5e6f7a8b',
@@ -359,11 +360,16 @@ function publicPage(query: ListQuery, listing: Listing): PublicServerPage {
   };
 }
 
+/** A card's address as the game joins it: `host:port`, or a join name on 25565. */
 function addressOf(card: PublicServerCard): { host: string; port: number } | null {
-  const at = card.address?.lastIndexOf(':') ?? -1;
-  if (!card.address || at < 0) return null;
+  if (!card.address) return null;
+  const at = card.address.lastIndexOf(':');
+  if (at < 0) return { host: card.address, port: 25565 };
   return { host: card.address.slice(0, at), port: Number(card.address.slice(at + 1)) };
 }
+
+/** A card's join name: its address when it has no port. */
+const joinOf = (card: PublicServerCard): string | null => (card.address && !card.address.includes(':') ? card.address : null);
 
 /** The server instance Add makes from a public card. */
 function instanceFromCard(card: PublicServerCard, id: string, canonical: string): Instance {
@@ -377,7 +383,16 @@ function instanceFromCard(card: PublicServerCard, id: string, canonical: string)
       minecraft: card.game.version ?? '1.21.1',
       loader: card.game.loader ? { kind: card.game.loader as LoaderKind, version: card.game.loaderVersion ?? '' } : null,
     },
-    server: { address: addressOf(card), name: card.name, accent: null, whitelisted: card.whitelisted, lastStatus: card.status, lastSeen: null, gone: false },
+    server: {
+      address: addressOf(card),
+      name: card.name,
+      accent: null,
+      whitelisted: card.whitelisted,
+      lastStatus: card.status,
+      lastSeen: null,
+      gone: false,
+      join: joinOf(card),
+    },
   };
 }
 
@@ -394,6 +409,7 @@ function cardPreview(card: PublicServerCard, existing: string | null): JoinPrevi
     whitelisted: card.whitelisted,
     team: null,
     address: addressOf(card),
+    join: joinOf(card),
     icon: card.iconVersion ? MOCK_SERVER_ICON : null,
     existing,
   };

@@ -31,6 +31,7 @@ mod servers;
 mod share;
 pub mod skins;
 mod team_create;
+pub mod telemetry;
 #[cfg(test)]
 pub(crate) mod testing;
 pub mod updates;

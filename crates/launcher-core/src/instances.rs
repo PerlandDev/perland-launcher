@@ -231,6 +231,19 @@ pub fn valid_host(host: &str) -> bool {
         })
 }
 
+/// The port a join name answers on: Perland routes every `GAME_DOMAIN` name for Java on 25565.
+pub const JOIN_PORT: u16 = 25565;
+
+/// A server's join name (`survival.perland.world`): a DNS name with a dot and no port, lowercase,
+/// or `None` for anything else. Players type it as it is; the game connects to it on
+/// [`JOIN_PORT`].
+pub fn join_name(raw: Option<&str>) -> Option<String> {
+    let name = raw?.trim();
+    let name = name.strip_suffix('.').unwrap_or(name);
+    (name.contains('.') && name.parse::<std::net::IpAddr>().is_err() && valid_host(name))
+        .then(|| name.to_ascii_lowercase())
+}
+
 impl ServerAddress {
     /// `None` unless `host` passes [`valid_host`] and `port` is 1–65535. The address reaches the
     /// game's arguments, so nothing else gets through.
@@ -249,8 +262,12 @@ impl ServerAddress {
         })
     }
 
-    /// From the view: its host, or the Engine's host when it has none (as the invite page does).
+    /// From the view: its join name on [`JOIN_PORT`] when it has one, else its host, or the
+    /// Engine's host when it has none (as the invite page does).
     pub fn from_view(address: &InviteAddress, engine: &Url) -> Option<ServerAddress> {
+        if let Some(join) = address.join_name() {
+            return ServerAddress::new(&join, i64::from(JOIN_PORT));
+        }
         let host = non_empty(&address.host).or(engine.host_str())?;
         ServerAddress::new(host, address.port)
     }
@@ -309,6 +326,10 @@ pub struct ServerLink {
     /// The last read said `invite_gone`.
     #[serde(default)]
     pub gone: bool,
+    /// The server's join name at the last read, shown in place of `address` (which is then that
+    /// name on [`JOIN_PORT`]). Kept with `address` when the link stops working.
+    #[serde(default)]
+    pub join: Option<String>,
 }
 
 impl ServerLink {
@@ -321,6 +342,7 @@ impl ServerLink {
             last_status: view.status(),
             last_seen: Some(now),
             gone: false,
+            join: view.address.join_name(),
         }
     }
 
@@ -328,9 +350,11 @@ impl ServerLink {
     /// the last good one.
     pub fn refresh(&mut self, view: &InviteView, engine: &Url, now: i64) {
         let last = self.address.take();
+        let last_join = self.join.take();
         *self = ServerLink::from_view(view, engine, now);
         if self.address.is_none() {
             self.address = last;
+            self.join = last_join;
         }
     }
 
@@ -434,6 +458,11 @@ impl Focus {
 pub const MIN_BANNER_ZOOM: u16 = 25;
 pub const MAX_BANNER_ZOOM: u16 = 500;
 
+/// The narrowest and widest marquee shape a background view keeps: its width per 1000 of its
+/// height (1500 is 3:2).
+pub const MIN_BANNER_ASPECT: u16 = 500;
+pub const MAX_BANNER_ASPECT: u16 = 5000;
+
 /// What fills the marquee around a background picture zoomed out until it no longer covers
 /// it: the panel's own dark ground, or the same picture as big dark pixels.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -486,6 +515,11 @@ pub struct Instance {
     /// What fills the marquee around a picture zoomed out below 100. `None` is `Dark`.
     #[serde(default)]
     pub banner_edges: Option<BannerEdges>,
+    /// The marquee's shape when the view was chosen: its width per 1000 of its height. At any
+    /// other shape the part of the picture framed then stays in view whole. `None` (a view from
+    /// before shapes were kept) is 3:2.
+    #[serde(default)]
+    pub banner_aspect: Option<u16>,
     /// Set by going back on an instance that checks for updates: sync is skipped until the
     /// player updates again, or the source's version equals `version`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -573,6 +607,7 @@ impl InstanceStore {
             banner_focus: None,
             banner_zoom: None,
             banner_edges: None,
+            banner_aspect: None,
             update_hold: None,
         };
         tokio::fs::create_dir_all(self.game_dir(&instance.id)).await?;
@@ -1323,6 +1358,20 @@ mod tests {
     }
 
     #[test]
+    fn old_instance_json_has_no_banner_aspect() {
+        let json =
+            r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"}}"#;
+        let mut instance: Instance = serde_json::from_str(json).unwrap();
+        assert_eq!(instance.banner_aspect, None);
+        assert!(serde_json::to_value(&instance).unwrap()["bannerAspect"].is_null());
+        instance.banner_aspect = Some(1833);
+        let back = serde_json::to_value(&instance).unwrap();
+        assert_eq!(back["bannerAspect"], serde_json::json!(1833));
+        let again: Instance = serde_json::from_value(back).unwrap();
+        assert_eq!(again.banner_aspect, Some(1833));
+    }
+
+    #[test]
     fn unknown_banner_edges_load_as_dark() {
         let json = r#"{"id":"a","name":"A","source":{"kind":"none"},"game":{"minecraft":"1.20.1"},"bannerEdges":"glow"}"#;
         let instance: Instance = serde_json::from_str(json).unwrap();
@@ -1507,11 +1556,90 @@ mod tests {
     }
 
     #[test]
+    fn join_names_are_dns_names_without_a_port() {
+        for (raw, want) in [
+            (
+                Some("moisestest.perland.world"),
+                Some("moisestest.perland.world"),
+            ),
+            (
+                Some(" MoisesTest.Perland.World. "),
+                Some("moisestest.perland.world"),
+            ),
+            (Some("play-mc.perland.online:25573"), None),
+            (Some("10.0.0.5"), None),
+            (Some("[2001:db8::1]"), None),
+            (Some("localhost"), None),
+            (Some("-evil.perland.world"), None),
+            (Some("a b.perland.world"), None),
+            (Some(""), None),
+            (None, None),
+        ] {
+            assert_eq!(join_name(raw).as_deref(), want, "{raw:?}");
+        }
+    }
+
+    #[test]
+    fn the_join_name_is_joined_on_25565() {
+        let named = InviteAddress {
+            host: Some("play-mc.perland.online".into()),
+            port: 25573,
+            display: Some("play-mc.perland.online:25573".into()),
+            join: Some("moisestest.perland.world".into()),
+        };
+        assert_eq!(
+            ServerAddress::from_view(&named, &engine()),
+            Some(ServerAddress {
+                host: "moisestest.perland.world".into(),
+                port: JOIN_PORT,
+            })
+        );
+        let bad = InviteAddress {
+            join: Some("play-mc.perland.online:25573".into()),
+            ..named
+        };
+        assert_eq!(
+            ServerAddress::from_view(&bad, &engine()).unwrap().display(),
+            "play-mc.perland.online:25573",
+            "a join address that isn't a name falls back to host and port"
+        );
+    }
+
+    #[test]
+    fn server_link_keeps_the_join_name() {
+        let mut named = view(25573, "online");
+        named.address.join = Some("survival.perland.world".into());
+        let mut link = ServerLink::from_view(&named, &engine(), 1);
+        assert_eq!(link.join.as_deref(), Some("survival.perland.world"));
+        assert_eq!(
+            link.address.as_ref().unwrap().host,
+            "survival.perland.world"
+        );
+
+        // A read without a usable address keeps the last address and join name together.
+        let mut broken = view(0, "online");
+        broken.address.host = Some("bad host".into());
+        link.refresh(&broken, &Url::parse("https://[::1]").unwrap(), 2);
+        assert_eq!(link.join.as_deref(), Some("survival.perland.world"));
+
+        // An Engine without the name: host and port, no join name.
+        link.refresh(&view(25573, "online"), &engine(), 3);
+        assert_eq!(link.join, None);
+        assert_eq!(link.address.unwrap().display(), "play.example.com:25573");
+
+        // An instance file from before join names still loads.
+        let old = r#"{"address":{"host":"play.example.com","port":25573},"name":"s"}"#;
+        let old: ServerLink = serde_json::from_str(old).unwrap();
+        assert_eq!(old.join, None);
+    }
+
+    #[test]
     fn the_address_falls_back_to_the_engine_host() {
         let none = InviteAddress {
             host: None,
             port: 25566,
             display: None,
+            join: None,
         };
         assert_eq!(
             ServerAddress::from_view(&none, &engine())
@@ -1523,6 +1651,7 @@ mod tests {
             host: Some("  ".into()),
             port: 25566,
             display: None,
+            join: None,
         };
         assert_eq!(
             ServerAddress::from_view(&blank, &engine()).unwrap().host,
@@ -1540,6 +1669,7 @@ mod tests {
                 host: Some("play.example.com".into()),
                 port,
                 display: None,
+                join: None,
             },
             team: InviteTeam {
                 display_name: "Acme".into(),

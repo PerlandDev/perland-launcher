@@ -4,10 +4,10 @@ import type { ServerAddress } from '../../ipc/schema';
 import { Button } from '../../ui/Button';
 import { copyText } from '../../ui/copyText';
 import { Check, Copy } from '../../ui/Icon';
-import { addressText } from '../home/labels';
+import { shownAddress } from '../home/labels';
 
-/** The address players type, with Copy. */
-export function AddressLine({ address }: { address: ServerAddress | null }) {
+/** The address players type (the join name, else `host:port`), with Copy. */
+export function AddressLine({ address, join }: { address: ServerAddress | null; join: string | null }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -19,8 +19,8 @@ export function AddressLine({ address }: { address: ServerAddress | null }) {
       clearTimeout(timer.current);
     };
   }, []);
-  if (!address) return <p className="marquee-plate text-sm text-ink-dim">{t('server.noAddress')}</p>;
-  const text = addressText(address);
+  const text = shownAddress(address, join);
+  if (!text) return <p className="marquee-plate text-sm text-ink-dim">{t('server.noAddress')}</p>;
   const copy = () =>
     void copyText(text).then((ok) => {
       if (!ok || !mounted.current) return;

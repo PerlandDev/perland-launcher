@@ -15,6 +15,7 @@ import {
   findSetup,
   hasAuthenticodeSignature,
   nextVersion,
+  notesFooter,
   PLATFORMS,
   releaseName,
   setupChannelName,
@@ -22,10 +23,46 @@ import {
   setWorkspaceVersion,
   signRole,
 } from './lib.mjs';
+import { buildNotes, parseNote, releaseBody, releaseVersions } from './notes.mjs';
 
 const root = new URL('../../', import.meta.url);
 const cargoPath = new URL('Cargo.toml', root);
 const tauriConfPath = new URL('src-tauri/tauri.conf.json', root);
+const notesDir = new URL('release-notes/', root);
+
+// Under every release's notes. The feed (latest.json) carries the same text. SIGNED=true (Windows
+// code signing is on) drops the unsigned-installer warning.
+const NOTES_FOOTER = notesFooter({ signed: process.env.SIGNED === 'true' });
+
+const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+
+/** The notes file for a build of `version` (null: a dev build, whose unreleased notes get no
+ *  version). The releases are the CalVer tags that are ancestors of HEAD; a note's version comes
+ *  from which of them have its file. A real version needs every tag, so a shallow clone is refused. */
+function collectNotes(version) {
+  if (version !== null && git('rev-parse', '--is-shallow-repository') === 'true') {
+    throw new Error('Release notes need the full history and tags (this clone is shallow)');
+  }
+  const notes = readdirSync(notesDir)
+    .sort()
+    .map((file) => parseNote(file, readFileSync(new URL(file, notesDir), 'utf8')));
+  let releases = [];
+  try {
+    const tags = git('tag', '--merged', 'HEAD', '--list', 'v*').split('\n').filter(Boolean);
+    releases = releaseVersions(tags).map((release) => ({
+      version: release,
+      date: git('log', '-1', '--format=%cs', `v${release}`),
+      ids: git('ls-tree', '--name-only', `v${release}`, 'release-notes/')
+        .split('\n')
+        .filter((path) => path.endsWith('.json'))
+        .map((path) => path.slice('release-notes/'.length, -'.json'.length)),
+    }));
+  } catch (error) {
+    // No Git or no history here (a source archive): a dev build then shows every note as unreleased.
+    if (version !== null) throw error;
+  }
+  return buildNotes({ releases, current: { version, date: new Date().toISOString().slice(0, 10), notes } });
+}
 
 function walk(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(dir, e.name)) : [join(dir, e.name)]));
@@ -83,15 +120,32 @@ switch (command) {
     break;
   }
   case 'manifest': {
-    const [version, dir, baseUrl, out] = args;
+    // The optional fifth argument is the release's description (`notes-body`).
+    const [version, dir, baseUrl, out, body] = args;
     const signatures = Object.fromEntries(
       PLATFORMS.map((p) => [p, readFileSync(join(dir, `${releaseName(p, version)}.sig`), 'utf8').trim()]),
     );
     // A .sig from a key other than the committed pubkey would be rejected by every installed launcher.
     checkSignatureKeys(JSON.parse(readFileSync(tauriConfPath, 'utf8')).plugins?.updater?.pubkey, signatures);
-    const notes = 'Closed beta. Download it from https://perland.online/launcher';
+    const notes = body ? readFileSync(body, 'utf8').trim() : NOTES_FOOTER;
     const manifest = buildManifest({ version, notes, pubDate: new Date().toISOString(), signatures, baseUrl });
     writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
+    break;
+  }
+  case 'notes': {
+    // `notes <version|next> <out.json|->`: what the launcher bundles. `next` is a dev build.
+    const [version, out] = args;
+    if (!version || !out) throw new Error('Usage: notes <version|next> <out.json|->');
+    const json = `${JSON.stringify(collectNotes(version === 'next' ? null : version), null, 2)}\n`;
+    if (out === '-') process.stdout.write(json);
+    else writeFileSync(out, json);
+    break;
+  }
+  case 'notes-body': {
+    // `notes-body <notes.json> <version> <out.md>`: the GitHub Release's description.
+    const [file, version, out] = args;
+    if (!file || !version || !out) throw new Error('Usage: notes-body <notes.json> <version> <out.md>');
+    writeFileSync(out, releaseBody({ notes: JSON.parse(readFileSync(file, 'utf8')), version, footer: NOTES_FOOTER }));
     break;
   }
   case 'channel-copies': {

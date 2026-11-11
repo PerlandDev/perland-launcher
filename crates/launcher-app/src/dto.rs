@@ -322,15 +322,17 @@ pub enum ArtChoice {
 }
 
 /// How a picture background sits in the marquee, saved together from "Adjust the background":
-/// which point stays in view, how big it is drawn (percent of the size that just covers the
-/// marquee) and what fills the marquee around it when it no longer covers it. `None` is each
-/// one's default.
+/// which point stays in view, how big it is drawn (its height in percent of the marquee's), what
+/// fills the marquee around it when it no longer covers it, and the marquee's shape then (its
+/// width per 1000 of its height), so another window shape shows the same part of the picture.
+/// `None` is each one's default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BannerView {
     pub focus: Option<Focus>,
     pub zoom: Option<u16>,
     pub edges: Option<BannerEdges>,
+    pub aspect: Option<u16>,
 }
 
 /// What the player picked for the icon in "Change image…": the generated monogram, the pack's
@@ -429,6 +431,8 @@ pub struct JoinPreview {
     pub whitelisted: bool,
     pub team: Option<ServerTeam>,
     pub address: Option<ServerAddress>,
+    /// The server's join name, shown in place of `address` (which is then that name on 25565).
+    pub join: Option<String>,
     /// The icon as a `data:image/png` URL (the CSP allows no remote images).
     pub icon: Option<String>,
     /// The instance that already joins this server, if any: the screen offers Open.
@@ -447,6 +451,8 @@ pub struct ServerStatusView {
     pub gone: bool,
     /// The last known address.
     pub address: Option<ServerAddress>,
+    /// The last known join name, shown in place of `address`.
+    pub join: Option<String>,
 }
 
 fn owned(s: &Option<String>) -> Option<String> {
@@ -488,6 +494,7 @@ impl JoinPreview {
             whitelisted: view.whitelisted,
             team,
             address: ServerAddress::from_view(&view.address, &ev.engine),
+            join: view.address.join_name(),
             icon,
             existing,
         }
@@ -514,7 +521,7 @@ pub struct PublicServerCard {
     pub invite: Option<String>,
     /// Can Play join it? False for a modded server without a modpack.
     pub joinable: bool,
-    /// `host:port`, the form players type.
+    /// What players type: the server's join name, else `host:port`.
     pub address: Option<String>,
     /// The server's own name, which never changes (the panel's address for it).
     pub name: String,

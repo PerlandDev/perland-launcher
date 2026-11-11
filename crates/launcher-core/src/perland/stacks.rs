@@ -38,8 +38,11 @@ pub struct StackItem {
     pub stack_name: String,
     pub status: String,
     pub health: String,
-    /// What a player types to join; absent without a host or a published port.
+    /// `host:port`; absent without a host or a published port.
     pub address: Option<String>,
+    /// The server's name under the Engine's `GAME_DOMAIN` (`survival.perland.world`), what
+    /// players type; absent on Engines without it. Prefer it over `address`.
+    pub join_address: Option<String>,
     pub motd: String,
     pub version: String,
     pub kind: String,
@@ -62,6 +65,8 @@ pub struct StackDetail {
     pub stack_name: String,
     pub status: String,
     pub address: Option<String>,
+    /// As [`StackItem::join_address`].
+    pub join_address: Option<String>,
     pub motd: String,
     pub version: String,
     pub r#type: String,

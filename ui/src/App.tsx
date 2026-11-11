@@ -18,6 +18,7 @@ import { Rail } from './features/rail/Rail';
 import { ServersScreen } from './features/servers-list/ServersScreen';
 import { Settings } from './features/settings/Settings';
 import { TitleBar } from './features/titlebar/TitleBar';
+import { WhatsNewOnLaunch } from './features/whats-new/WhatsNewOnLaunch';
 import { applyLanguage } from './i18n';
 import { useActivity } from './state/activity';
 import { applyAppearance } from './state/appearance';
@@ -155,6 +156,7 @@ export default function App() {
       <Toasts />
       <SignInPrompt />
       <CloseGuard />
+      {settings.data !== undefined && <WhatsNewOnLaunch firstRunDone={settings.data.firstRunDone} />}
     </>
   );
 }

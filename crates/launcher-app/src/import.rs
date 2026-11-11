@@ -236,6 +236,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                         tracing::warn!(instance = id, %error, "couldn't save the time played");
                     }
                 }
+                self.config
+                    .telemetry
+                    .count(launcher_core::telemetry::Counter::InstancesImported);
+                self.telemetry_learn(&instance);
                 Ok(instance)
             }
             Err(failed) => {

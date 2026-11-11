@@ -21,6 +21,21 @@ import { windowDraft, windowOf } from './gameWindow';
 import { JavaPicker } from './JavaPicker';
 import { useJavaChoice } from './useJavaChoice';
 
+/** The fields this screen saves, written the same way whatever order their keys came in, to tell an edit from what is
+ *  saved. */
+function settingsKey(instance: Instance): string {
+  const sorted = (value: unknown): unknown =>
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(
+          Object.entries(value)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([k, v]) => [k, sorted(v)]),
+        )
+      : value;
+  const { name, game, updatePolicy, java, window } = instance;
+  return JSON.stringify(sorted({ name, game, updatePolicy, java, window }));
+}
+
 function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) {
   const { t, i18n } = useTranslation();
   const choice = useVersionChoice(instance.game);
@@ -59,23 +74,24 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
   // A refused argument belongs under its field; every other failure stays on the general card.
   const argsRefused = update.isError && isLauncherError(update.error) && update.error.code.startsWith('jvm_');
   const ready = (pack || choice.resolved.ready) && java.ready && gameWindow !== null;
+  const next: Instance = {
+    ...instance,
+    name,
+    game: pack ? instance.game : { minecraft, loader: choice.resolved.loader },
+    updatePolicy: policy,
+    java: { memoryMb, path: java.value, args: javaArgs },
+    window: gameWindow ?? instance.window,
+  };
+  // Save is there only for a change: what was just saved counts as saved until the listing is read again.
+  const saved = update.isSuccess && update.variables ? update.variables : instance;
+  const changed = settingsKey(next) !== settingsKey(saved);
   const save = () =>
-    update.mutate(
-      {
-        ...instance,
-        name,
-        game: pack ? instance.game : { minecraft, loader: choice.resolved.loader },
-        updatePolicy: policy,
-        java: { memoryMb, path: java.value, args: javaArgs },
-        window: gameWindow ?? instance.window,
+    update.mutate(next, {
+      // The Save bar is sticky, so a refusal under the field can sit off-screen; focusing it scrolls it into view.
+      onError: (error) => {
+        if (isLauncherError(error) && error.code.startsWith('jvm_')) argsField.current?.focus();
       },
-      {
-        // The Save bar is sticky, so a refusal under the field can sit off-screen; focusing it scrolls it into view.
-        onError: (error) => {
-          if (isLauncherError(error) && error.code.startsWith('jvm_')) argsField.current?.focus();
-        },
-      },
-    );
+    });
 
   return (
     <div className="grid max-w-2xl gap-10">
@@ -174,7 +190,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
       {update.isError && !argsRefused && <ErrorCard error={update.error} />}
       <div className="sticky bottom-0 flex items-center justify-end gap-4 bg-ground py-4 shadow-[0_-1px_0_var(--color-line)]">
         <p role="status" className="text-sm text-ink-dim">{update.isSuccess ? t('common.saved') : t('instanceSettings.applyNote')}</p>
-        <Button variant="primary" size="lg" disabled={!ready || update.isPending} onClick={save}>
+        <Button variant="primary" size="lg" disabled={!ready || !changed || update.isPending} onClick={save}>
           {update.isPending ? t('common.saving') : t('common.save')}
         </Button>
       </div>

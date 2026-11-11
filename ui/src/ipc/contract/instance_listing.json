@@ -32,7 +32,8 @@
         "y": 60
       },
       "bannerZoom": 150,
-      "bannerEdges": "pixel"
+      "bannerEdges": "pixel",
+      "bannerAspect": 1833
     },
     {
       "id": "creative-flat",
@@ -62,7 +63,8 @@
       "icon": "generated",
       "bannerFocus": null,
       "bannerZoom": null,
-      "bannerEdges": null
+      "bannerEdges": null,
+      "bannerAspect": null
     }
   ],
   "damaged": [

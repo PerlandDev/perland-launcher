@@ -119,11 +119,13 @@ export function seedSkins(scenario: SkinsScenario = 'seeded'): SkinsState {
 
 function keep(state: SkinsState, entry: SkinEntry, texture: string, reason: SkinVersionReason, taken = entry.updated) {
   const list = state.versions.get(entry.id) ?? [];
-  const newest = list[list.length - 1];
-  if (newest && newest.texture === texture && (newest.model ?? entry.model) === entry.model) {
-    if (reason === 'worn') newest.worn = true;
+  // A texture with the same arms is never kept twice, as in Rust: a worn keep just marks the one kept already.
+  const same = list.findLast((v) => v.texture === texture && (v.model ?? entry.model) === entry.model);
+  if (same) {
+    if (reason === 'worn') same.worn = true;
     return;
   }
+  const newest = list[list.length - 1];
   const last = newest ? Number(newest.id) : 0;
   list.push({ id: String(Math.max(Date.now(), last + 1)), taken, reason, worn: reason === 'worn', texture, model: entry.model });
   const unworn = list.filter((v) => !v.worn);
@@ -282,7 +284,7 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       // The version's arms come back with it.
       if (version.model) entry.model = version.model;
       touch(entry);
-      keep(state, entry, version.texture, 'restored');
+      // The restored version is in the history already, so it isn't kept again, as in Rust.
       return { ...entry };
     }
     case 'skin_version_copy': {

@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 import { graphemes, initials, terraceHeights } from './monogram';
 import { PlotIcon } from './PlotIcon';
-import { DIRT, GROUND, mix, PLOT_HUES } from './random';
+import { useArtPalette } from './palette';
+import { mix } from './random';
 import { hueIndex } from './variant';
 
 /** The plate's outline on the 40px grid, with the rail art's 3px pixel notch at each corner. */
@@ -10,21 +11,23 @@ const NOTCH = 3;
 const GRASS = 4;
 
 /** An instance's generated icon: its initials in Bungee on a laminate plate tinted toward its hue, over
- *  the terraces of its plot icon. The plate is dark so it never reads as a lit button; the hue lives in
- *  the tint and the grass. A name with no letter or digit gets the plain plot icon. */
+ *  the terraces of its plot icon, in the theme's palette. The plate is dark so it never reads as a lit button; the
+ *  hue lives in the tint and the grass. A name with no letter or digit gets the plain plot icon. */
 export function InstanceIcon({ name, seed, size = 44 }: { name: string; seed: string; size?: number }) {
+  const palette = useArtPalette();
   const art = useMemo(() => {
-    const hue = PLOT_HUES[hueIndex(seed)] ?? PLOT_HUES[0];
+    const hue = palette.hues[hueIndex(seed)] ?? palette.hues[0];
     const letters = initials(name);
     return {
       hue,
-      plate: mix(GROUND, hue, 0.28),
+      plate: mix(palette.ground, hue, 0.28),
       heights: terraceHeights(seed),
       letters,
       two: graphemes(letters).length > 1,
     };
-  }, [name, seed]);
+  }, [name, seed, palette]);
   const { letters, two } = art;
+  const { ground: GROUND, dirt: DIRT } = palette;
   if (!letters) return <PlotIcon seed={seed} size={size} />;
   // Bungee's caps are about 0.72em tall: either size sits centred in the 26px above the tallest terrace.
   const fontSize = two ? 18 : 22;

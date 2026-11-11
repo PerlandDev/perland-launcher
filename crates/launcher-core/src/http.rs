@@ -14,19 +14,22 @@ pub fn user_agent(launcher_version: &str) -> String {
 /// A client with the launcher's user agent and timeouts, so a stalled connection fails instead of
 /// hanging forever. The read timeout applies per read, so large downloads still work.
 pub fn client(launcher_version: &str) -> Result<reqwest::Client> {
-    build(
-        launcher_version,
-        reqwest::redirect::Policy::custom(|attempt| {
-            // `previous` holds the original URL and every redirect followed so far.
-            if attempt.previous().len() > MAX_REDIRECTS {
-                attempt.error("too many redirects")
-            } else if !allow_redirect_chain(attempt.previous(), attempt.url()) {
-                attempt.error("refused a redirect from https to plain http")
-            } else {
-                attempt.follow()
-            }
-        }),
-    )
+    build(launcher_version, redirect_policy())
+}
+
+/// The redirect policy `client` uses: at most `MAX_REDIRECTS` hops, each passing
+/// `allow_redirect_chain`. Public so tests can build a client with the same rules.
+pub fn redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        // `previous` holds the original URL and every redirect followed so far.
+        if attempt.previous().len() > MAX_REDIRECTS {
+            attempt.error("too many redirects")
+        } else if !allow_redirect_chain(attempt.previous(), attempt.url()) {
+            attempt.error("refused a redirect")
+        } else {
+            attempt.follow()
+        }
+    })
 }
 
 /// Like `client`, but never follows a redirect: a 3xx comes back as an ordinary response. For
@@ -65,10 +68,15 @@ pub fn is_loopback(url: &reqwest::Url) -> bool {
             .is_ok_and(|ip| ip.is_loopback())
 }
 
-/// May a request for `from` follow a redirect to `to`? Only to http(s), and never from https
-/// down to plain http, except to this computer (tests and local pack development): a pack,
-/// its index and the Modrinth API answers are where every download's hash comes from.
+/// May a request for `from` follow a redirect to `to`? Only to http(s); never from a host on
+/// the network to this computer, so a remote site can't point the launcher at a local
+/// service; and never from https down to plain http, except from this computer to itself
+/// (tests and local pack development): a pack, its index and the Modrinth API answers are
+/// where every download's hash comes from.
 pub fn allow_redirect(from: &reqwest::Url, to: &reqwest::Url) -> bool {
+    if is_loopback(to) && !is_loopback(from) {
+        return false;
+    }
     match (from.scheme(), to.scheme()) {
         (_, "https") => true,
         ("https", "http") => is_loopback(to),
@@ -160,9 +168,18 @@ mod tests {
             ("http://127.0.0.1:1/p", "http://127.0.0.1:2/q", true),
             ("http://a.example/p", "https://b.example/q", true),
             ("https://a.example/p", "http://b.example/q", false),
-            ("https://a.example/p", "http://localhost:8080/q", true),
-            ("https://a.example/p", "http://127.0.0.2/q", true),
-            ("https://a.example/p", "http://[::1]/q", true),
+            // A site on the network never sends a request to this computer, in any scheme.
+            ("https://a.example/p", "http://localhost:8080/q", false),
+            ("https://a.example/p", "http://127.0.0.2/q", false),
+            ("https://a.example/p", "http://[::1]/q", false),
+            ("https://a.example/p", "https://127.0.0.1/q", false),
+            ("http://a.example/p", "http://localhost/q", false),
+            ("http://10.0.0.1/p", "http://127.0.0.1:2/q", false),
+            // This computer to itself: tests and local pack development.
+            ("https://localhost:1/p", "http://127.0.0.1:2/q", true),
+            ("https://127.0.0.1:1/p", "https://localhost:2/q", true),
+            ("http://[::1]:1/p", "http://localhost:2/q", true),
+            ("http://localhost:1/p", "https://b.example/q", true),
             ("https://a.example/p", "http://10.0.0.1/q", false),
             (
                 "https://a.example/p",
@@ -182,7 +199,7 @@ mod tests {
     #[test]
     fn a_chain_that_was_on_https_never_drops_to_network_http() {
         // https → loopback http is fine, but the next hop to the network must not be plain http.
-        let chain = [url("https://a.example/p"), url("http://localhost:1/q")];
+        let chain = [url("https://localhost:1/p"), url("http://localhost:2/q")];
         assert!(!allow_redirect_chain(&chain, &url("http://b.example/r")));
         assert!(allow_redirect_chain(&chain, &url("http://127.0.0.1:2/r")));
         assert!(allow_redirect_chain(&chain, &url("https://b.example/r")));
@@ -192,6 +209,14 @@ mod tests {
             &[url("https://a.example/p")],
             &url("ftp://a.example/q")
         ));
+    }
+
+    #[test]
+    fn a_chain_from_the_network_never_reaches_this_computer() {
+        let chain = [url("http://127.0.0.1:1/p"), url("https://a.example/q")];
+        assert!(!allow_redirect_chain(&chain, &url("http://127.0.0.1:1/r")));
+        assert!(!allow_redirect_chain(&chain, &url("https://localhost/r")));
+        assert!(allow_redirect_chain(&chain, &url("https://b.example/r")));
     }
 
     #[tokio::test]

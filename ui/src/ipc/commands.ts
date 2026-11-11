@@ -87,6 +87,17 @@ export const commands = {
   settingsGet: () => invoke<Settings>('settings_get'),
   settingsSet: (settings: Settings) => invoke<Settings>('settings_set', { settings }),
   updateStatus: () => invoke<UpdateState>('update_status'),
+  /** The last launcher version whose release notes this player was shown; null when none. */
+  whatsNewSeen: () => invoke<string | null>('whats_new_seen'),
+  /** The player has now been shown the running version's notes. */
+  whatsNewMark: () => invoke<null>('whats_new_mark'),
+  /** An error from the window's own code, for the anonymous error reports (when the player shares them). Rust scrubs it and answers nothing. */
+  telemetryReport: (kind: 'exception' | 'unhandled_rejection', message: string, stack: string | null) =>
+    invoke<null>('telemetry_report', { kind, message, stack }),
+  /** Whether the player still has to be shown the note about anonymous data before any is sent. */
+  telemetryNoticeDue: () => invoke<boolean>('telemetry_notice_due'),
+  /** The player has now been shown it; sharing starts at the launcher's next start. */
+  telemetryNoticeShown: () => invoke<null>('telemetry_notice_shown'),
   updateCheck: () => invoke<UpdateState>('update_check'),
   updateRestart: () => invoke<null>('update_restart'),
   diagnosticsExport: (path: string) => invoke<string>('diagnostics_export', { path }),

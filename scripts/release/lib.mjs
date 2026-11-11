@@ -11,7 +11,7 @@ const SUFFIX = {
 
 // Versions are CalVer YYYY.M.MICRO (SemVer-valid: no leading zero in the month). MICRO counts the
 // releases of a month from 0, in UTC. A stable keeps the base of its betas, even in a later month.
-const CALVER = /^v(\d{4})\.([1-9]\d?)\.(\d+)(?:-beta\.(\d+))?$/;
+export const CALVER = /^v(\d{4})\.([1-9]\d?)\.(\d+)(?:-beta\.(\d+))?$/;
 
 export function nextVersion({ channel, tags, now }) {
   if (channel !== 'stable' && channel !== 'beta') throw new Error(`Unknown channel ${channel}`);
@@ -208,4 +208,11 @@ export function checkSignLedger(lines) {
     ([, role, name]) => !entries.some((e) => e.role === role && e.outcome === 'signed' && (!name || baseName(e.file) === name)),
   ).map(([label]) => label);
   if (missing.length > 0) throw new Error(`This build never signed: ${missing.join(', ')}`);
+}
+
+/** The line under every release's notes (and the feed's), which warns about unsigned installers
+ *  only while Windows code signing is off. */
+export function notesFooter({ signed }) {
+  const footer = 'Closed beta. Download it from https://perland.online/launcher.';
+  return signed ? footer : `${footer} The installers aren't code-signed yet, so Windows may warn before it runs.`;
 }

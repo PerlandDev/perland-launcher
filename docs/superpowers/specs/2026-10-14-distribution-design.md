@@ -34,7 +34,7 @@ After this plan, a tester:
 - Authenticode signing. The pipeline has a dormant hook for Azure Trusted Signing (§3.5); builds ship unsigned.
 - Microsoft sign-in (Plan 4, paused) and therefore any useful **stable** release: a Release build cannot add an account until Plan 4. The stable channel exists but stays empty.
 - Flatpak, MSI, portable zips.
-- Telemetry or uploading diagnostics anywhere.
+- Telemetry or uploading diagnostics anywhere. (2026-11-11: no longer true. The launcher sends anonymous error reports and usage counts, with one switch in Settings: see `2026-11-11-anonymous-usage-and-errors-design.md`.)
 - Carry-forwards split into a follow-up hardening session (§6.2).
 
 ## 2. Owner decisions (2026-10-14)

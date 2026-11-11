@@ -11,6 +11,7 @@ import { handleEvent } from "./state/handleEvent";
 import { hydrateRuns } from "./state/hydrateRuns";
 import { queryClient } from "./state/queries";
 import { installBrowserGuard } from "./shell/browserGuard";
+import { installErrorReporting } from "./state/reportErrors";
 import { pushError } from "./state/toasts";
 import "./styles/app.css";
 
@@ -70,6 +71,8 @@ async function bootstrap() {
       freeEngine: params.get("freeEngine") === "older" ? "older" : undefined,
     });
   }
+  // The window's own uncaught errors go to Rust, which keeps them only if the player shares anonymous data.
+  installErrorReporting();
   // Whatever fails here, the window still opens; the failure shows up as a toast.
   try {
     await onAppEvent(handleEvent);

@@ -1,12 +1,11 @@
-import { DIRT, GROUND, hash, mix, PLOT_HUES, rng } from './random';
+import { PALETTES, type ArtPalette } from './palette';
+import { hash, mix, rng } from './random';
 import { hueIndex, presetVariant, type Variant } from './variant';
 
 /** The marquee is a 480×270 panel on an 8-unit pixel grid: 60 columns, 33.75 rows. */
 export const COLS = 60;
 export const CELL = 8;
 const HALF = COLS / 2;
-/** The warm tube light behind every marquee panel; instances only tint it slightly. */
-const LAMP = '#ffd98a';
 
 /** The four hill bands, far to near. Far hills catch the most light; the nearest band is the dark
  *  cabinet floor the name sits on, the same in every variant. */
@@ -55,8 +54,11 @@ export interface MarqueeScene {
 }
 
 /** Terraced hills seen as silhouettes against a lamp behind the horizon, seeded by the instance id.
- *  A picked preset (`<base>~N`) pins its own hue, sun and ridge; every other seed draws as it always has. */
-export function marqueeScene(seed: string): MarqueeScene {
+ *  A picked preset (`<base>~N`) pins its own hue, sun and ridge; every other seed draws as it always has.
+ *  `palette` paints it: the seed decides the hills, the sun and which of the palette's hues, so a landscape is the
+ *  same in every theme, in that theme's colours. */
+export function marqueeScene(seed: string, palette: ArtPalette = PALETTES.laminate): MarqueeScene {
+  const { ground: GROUND, dirt: DIRT, lamp: LAMP, hues: PLOT_HUES } = palette;
   const variant = presetVariant(seed)?.variant ?? null;
   const random = rng(hash(seed));
   const hue = hueIndex(seed);
@@ -68,7 +70,7 @@ export function marqueeScene(seed: string): MarqueeScene {
   const sun = {
     x: SUN_X[sunSide] + Math.floor(random() * Math.round(COLS * 0.07)),
     y: sunTop + Math.floor(random() * (sunBottom - sunTop + 1)),
-    color: mix(glow, '#fff8e8', 0.7),
+    color: mix(glow, palette.sun, 0.7),
   };
   const bands = BANDS[variant?.ridge ?? 'hills'];
   const layers = bands.map((band, depth) => {

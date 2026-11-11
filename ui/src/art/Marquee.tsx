@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { CELL, COLS, discPath, layerPath, marqueeScene } from './marqueeScene';
+import { useArtPalette } from './palette';
 import type { BannerEdges } from '../ipc/schema';
 import { bannerBox, leavesEdges } from './bannerLayout';
 import { usePixelEdges } from './pixelEdges';
@@ -29,6 +30,7 @@ export function Marquee({
   focus = null,
   zoom = null,
   edges = null,
+  aspect = null,
   className,
 }: {
   seed: string;
@@ -42,9 +44,14 @@ export function Marquee({
   zoom?: number | null;
   /** What fills the panel around a zoomed banner that leaves edges: its dark ground (null or dark), or the banner as big dark pixels. */
   edges?: BannerEdges | null;
+  /** The panel's shape when the zoom was chosen (width per 1000 of height), so another shape shows what was framed
+   *  whole instead of zooming in. Null is 3:2. */
+  aspect?: number | null;
   className?: string;
 }) {
-  const scene = useMemo(() => marqueeScene(seed), [seed]);
+  // The theme's own colours: the same landscape in every room, lit like that room.
+  const palette = useArtPalette();
+  const scene = useMemo(() => marqueeScene(seed, palette), [seed, palette]);
   // A banner that fails to decode gives the panel back to the generated scene.
   const [failed, setFailed] = useState<string | null>(null);
   const art = banner && banner !== failed ? banner : null;
@@ -75,7 +82,7 @@ export function Marquee({
   const sunY = Math.max(H - visible + fullSunY * (visible / H), H - visible + 5 * CELL);
   // A chosen zoom is sized and placed here, from the panel's and the picture's own sizes.
   const measured = natural?.src === art && box.width > 0 ? natural : null;
-  const placed = art && zoom !== null && measured ? bannerBox(box, measured, zoom, focus) : null;
+  const placed = art && zoom !== null && measured ? bannerBox(box, measured, zoom, focus, aspect === null ? undefined : aspect / 1000) : null;
   const drawn = placed ?? box;
   const pixels = usePixelEdges(art && edges === 'pixel' && placed && leavesEdges(box, placed) ? art : null);
   return (
