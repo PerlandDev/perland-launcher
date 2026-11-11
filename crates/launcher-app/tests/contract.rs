@@ -57,7 +57,7 @@ use launcher_core::{
     },
     public_list::{Facets, ListQuery, ListSort},
     restore::{Change, PointKind},
-    settings::{IconShape, Lang, Settings, Theme, UiFont},
+    settings::{IconShape, Lang, Settings, Theme, Transitions, UiFont},
     share::{Category, CategoryCount, ShareChoice},
     sync::{origin::FileOrigin, plan::FileChange, ManualFile},
     ErrorCode, LauncherError,
@@ -1018,6 +1018,7 @@ fn contract_fixtures_are_current() {
             icon_shape: IconShape::Round,
             theme: Theme::Night,
             font: UiFont::System,
+            transitions: Transitions::Stepped,
             ..Settings::default()
         },
     );

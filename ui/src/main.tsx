@@ -5,7 +5,7 @@ import App from "./App";
 import "./i18n";
 import { onAppEvent } from "./ipc/events";
 import type { ServerScenario } from "./ipc/mockServers";
-import { theme, uiFont } from "./ipc/schema";
+import { theme, transitions, uiFont } from "./ipc/schema";
 import { applyAppearance, readMirror } from "./state/appearance";
 import { handleEvent } from "./state/handleEvent";
 import { hydrateRuns } from "./state/hydrateRuns";
@@ -34,6 +34,7 @@ async function bootstrap() {
     const params = new URLSearchParams(window.location.search);
     const themeParam = theme.safeParse(params.get("theme"));
     const fontParam = uiFont.safeParse(params.get("font"));
+    const transitionsParam = transitions.safeParse(params.get("transitions"));
     installMock({
       firstRun: params.has("firstRun"),
       crash: crashScenario(params.get("crash")),
@@ -62,6 +63,7 @@ async function bootstrap() {
       iconShape: params.get("iconShape") === "round" ? "round" : undefined,
       theme: themeParam.success ? themeParam.data : undefined,
       font: fontParam.success ? fontParam.data : undefined,
+      transitions: transitionsParam.success ? transitionsParam.data : undefined,
       pictureBackground: !params.has("noPicture"),
       held: params.has("held"),
       share: (["some", "all", "error"] as const).find(

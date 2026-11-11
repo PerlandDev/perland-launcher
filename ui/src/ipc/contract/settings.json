@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "language": "es",
   "defaultMemoryMb": 4096,
   "minimizeOnPlay": true,
@@ -11,5 +11,6 @@
   "font": "system",
   "shareAnonymousData": true,
   "graphicsCard": "automatic",
-  "showPlayer": true
+  "showPlayer": true,
+  "transitions": "stepped"
 }

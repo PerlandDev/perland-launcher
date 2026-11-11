@@ -68,6 +68,7 @@ import type {
   SearchRequest,
   Settings,
   Theme,
+  Transitions,
   UiFont,
   SyncSummary,
   UpdateState,
@@ -154,6 +155,8 @@ export interface MockOptions {
   theme?: Theme;
   /** The text font the settings start with. */
   font?: UiFont;
+  /** How screens come in: `smooth` (default), `stepped` or `off`. */
+  transitions?: Transitions;
   /** Seconds played per instance id. Defaults to 12 h in Asalith Fields (none on first run). */
   playtime?: Record<string, number>;
   /** Where Continue takes the player, per instance id. Defaults to the Asalith Fields server and a Creative Flat world. */
@@ -361,7 +364,7 @@ const contentKey = (id: string, kind: ContentKind) => `${id}:${kind}`;
 function seed(options: MockOptions) {
   const listing = clone(listingFx) as InstanceListing;
   const accounts = clone(accountsFx) as AccountsFile;
-  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, iconShape: options.iconShape ?? 'square', theme: options.theme ?? 'laminate', font: options.font ?? 'hyperlegible', language: null };
+  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, iconShape: options.iconShape ?? 'square', theme: options.theme ?? 'laminate', font: options.font ?? 'hyperlegible', transitions: options.transitions ?? 'smooth', language: null };
   if (options.firstRun) {
     listing.instances = [];
     listing.damaged = [];

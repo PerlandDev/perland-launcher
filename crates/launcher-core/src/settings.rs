@@ -56,6 +56,21 @@ pub enum UiFont {
     Hyperlegible,
 }
 
+/// How a screen comes in when the player moves to it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Transitions {
+    /// The arcade cabinet's own: a few snapped frames.
+    Stepped,
+    /// Nothing moves: the screen is simply there.
+    Off,
+    /// Eased fades and slides. Also what an unknown choice from a newer launcher loads as.
+    /// (`serde(other)` must be the last variant.)
+    #[default]
+    #[serde(other)]
+    Smooth,
+}
+
 /// Which graphics card the game is started on (see `graphics`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -90,6 +105,10 @@ impl Channel {
     }
 }
 
+/// The settings format this launcher writes. 2 (2026-11-11): the rail gained the launcher's
+/// places by name, so it was widened once for everyone (see `Settings::brought_up_to_date`).
+pub const SETTINGS_VERSION: u32 = 2;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -115,12 +134,14 @@ pub struct Settings {
     pub graphics_card: GraphicsCard,
     /// The player's own figure stands beside Play on an instance's Home.
     pub show_player: bool,
+    /// How screens come in.
+    pub transitions: Transitions,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: SETTINGS_VERSION,
             language: None,
             default_memory_mb: 4096,
             minimize_on_play: true,
@@ -133,7 +154,22 @@ impl Default for Settings {
             share_anonymous_data: crate::telemetry::SHARE_BY_DEFAULT,
             graphics_card: GraphicsCard::Automatic,
             show_player: true,
+            transitions: Transitions::Smooth,
         }
+    }
+}
+
+impl Settings {
+    /// Settings an older launcher saved, as this one reads them. From version 1 the rail is
+    /// widened once, so every player sees the new places (Skins, Servers, Browse, Achievements)
+    /// by name; narrowing it again saves the current version, and it then stays narrow. Settings
+    /// from a newer launcher are left as they are.
+    fn brought_up_to_date(mut self) -> Self {
+        if self.version < 2 {
+            self.rail_expanded = true;
+        }
+        self.version = self.version.max(SETTINGS_VERSION);
+        self
     }
 }
 
@@ -155,8 +191,8 @@ impl SettingsStore {
             }
             Err(e) => return (Settings::default(), Some(damaged(e))),
         };
-        match serde_json::from_slice(&bytes) {
-            Ok(settings) => (settings, None),
+        match serde_json::from_slice::<Settings>(&bytes) {
+            Ok(settings) => (settings.brought_up_to_date(), None),
             Err(e) => (Settings::default(), Some(damaged(e))),
         }
     }
@@ -200,19 +236,18 @@ mod tests {
         // New players see the rail with its names, so every place in it says what it is.
         assert!(settings.rail_expanded);
         assert!(settings.show_player);
+        assert_eq!(settings.version, SETTINGS_VERSION);
     }
 
     #[tokio::test]
     async fn show_player_is_on_for_older_files_and_round_trips() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("settings.json");
-        std::fs::write(&path, r#"{"firstRunDone": true, "railExpanded": false}"#).unwrap();
+        std::fs::write(&path, r#"{"version": 1, "firstRunDone": true}"#).unwrap();
         let store = SettingsStore::new(&path);
         let (settings, warning) = store.load().await;
         assert!(warning.is_none());
         assert!(settings.show_player);
-        // A rail the player already has keeps its width.
-        assert!(!settings.rail_expanded);
 
         let hidden = Settings {
             show_player: false,
@@ -222,6 +257,79 @@ mod tests {
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(raw.contains("\"showPlayer\": false"), "{raw}");
         assert_eq!(store.load().await, (hidden, None));
+    }
+
+    #[tokio::test]
+    async fn a_rail_saved_by_an_older_launcher_is_widened_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        // What every launcher before the places wrote: version 1, and the narrow rail it started with.
+        std::fs::write(
+            &path,
+            r#"{"version": 1, "firstRunDone": true, "railExpanded": false, "language": "es"}"#,
+        )
+        .unwrap();
+        let store = SettingsStore::new(&path);
+        let (settings, warning) = store.load().await;
+        assert!(warning.is_none());
+        assert!(settings.rail_expanded);
+        assert_eq!(settings.version, SETTINGS_VERSION);
+        // Nothing else of theirs moves.
+        assert_eq!(settings.language, Some(Lang::Es));
+        assert!(settings.first_run_done);
+
+        // The player narrows it again: that is theirs to keep, at every later start.
+        let narrow = Settings {
+            rail_expanded: false,
+            ..settings
+        };
+        store.save(&narrow).await.unwrap();
+        let (again, _) = store.load().await;
+        assert!(!again.rail_expanded);
+        assert_eq!(again, narrow);
+    }
+
+    #[tokio::test]
+    async fn transitions_default_to_smooth_round_trip_and_fall_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        let store = SettingsStore::new(&path);
+        assert_eq!(store.load().await.0.transitions, Transitions::Smooth);
+
+        for (choice, word) in [
+            (Transitions::Stepped, "stepped"),
+            (Transitions::Off, "off"),
+            (Transitions::Smooth, "smooth"),
+        ] {
+            let chosen = Settings {
+                transitions: choice,
+                ..Settings::default()
+            };
+            store.save(&chosen).await.unwrap();
+            let raw = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                raw.contains(&format!("\"transitions\": \"{word}\"")),
+                "{raw}"
+            );
+            assert_eq!(store.load().await, (chosen, None));
+        }
+
+        // A choice from a newer launcher is the default here, not damaged settings.
+        std::fs::write(&path, r#"{"version": 2, "transitions": "warp"}"#).unwrap();
+        let (settings, warning) = store.load().await;
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(settings.transitions, Transitions::Smooth);
+    }
+
+    #[tokio::test]
+    async fn settings_from_a_newer_launcher_keep_their_version() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(&path, r#"{"version": 9, "railExpanded": false}"#).unwrap();
+        let (settings, warning) = SettingsStore::new(&path).load().await;
+        assert!(warning.is_none());
+        assert_eq!(settings.version, 9);
+        assert!(!settings.rail_expanded);
     }
 
     #[tokio::test]

@@ -40,6 +40,18 @@ describe('App', () => {
     expect(frame.getAttribute('data-beat')).not.toBe(second);
   });
 
+  it('arrives smoothly unless Settings say otherwise', async () => {
+    renderApp(<App />);
+    const name = await screen.findByRole('heading', { name: 'Asalith Fields' });
+    expect(name.closest('.arrive')).toHaveAttribute('data-style', 'smooth');
+  });
+
+  it.each(['stepped', 'smooth', 'off'] as const)('arrives the way Settings say: %s', async (transitions) => {
+    renderApp(<App />, { transitions });
+    const name = await screen.findByRole('heading', { name: 'Asalith Fields' });
+    expect(name.closest('.arrive')).toHaveAttribute('data-style', transitions);
+  });
+
   it('never lets the frame around a screen scroll, so the screen and the activity drawer stay put (#121)', async () => {
     renderApp(<App />);
     await screen.findByRole('heading', { name: 'Asalith Fields' });

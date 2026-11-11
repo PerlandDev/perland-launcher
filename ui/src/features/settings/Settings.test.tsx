@@ -359,3 +359,16 @@ it('hides and shows the player on an instance’s Home from Appearance', async (
   await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { showPlayer: false } }));
   expect(screen.getByRole('switch', { name: 'Show your player beside Play' })).toHaveAttribute('aria-checked', 'false');
 });
+
+it('lets the player pick how screens come in, or turn that off', async () => {
+  const { user, calls } = renderApp(<Settings />);
+  const group = await screen.findByRole('group', { name: 'Screen transitions' });
+  // Smooth is what a new player gets, and it is offered first.
+  expect(within(group).getAllByRole('radio').map((r) => r.parentElement?.textContent)).toEqual(['Smooth', 'Arcade', 'Off']);
+  expect(within(group).getByRole('radio', { name: 'Smooth' })).toBeChecked();
+  await user.click(within(group).getByRole('radio', { name: 'Arcade' }));
+  expect(within(group).getByRole('radio', { name: 'Arcade' })).toBeChecked();
+  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { transitions: 'stepped' } }));
+  await user.click(within(group).getByRole('radio', { name: 'Off' }));
+  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { transitions: 'off' } }));
+});

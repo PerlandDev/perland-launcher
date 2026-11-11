@@ -552,6 +552,9 @@ export const channel = z.enum(['stable', 'beta']);
 /** A theme swaps the neutrals only; the first key is the default. */
 export const theme = z.enum(['laminate', 'stone', 'night', 'forest']);
 export const uiFont = z.enum(['hyperlegible', 'system']);
+/** How a screen comes in when the player moves to it: eased fades and slides (the default), the arcade cabinet's own snapped
+ *  frames, or nothing. In the order Settings offers them. */
+export const transitions = z.enum(['smooth', 'stepped', 'off']);
 /** The graphics card games start on: the system's pick, the high-performance card or the power-saving one. */
 export const graphicsCard = z.enum(['automatic', 'dedicated', 'integrated']);
 export const settings = z.strictObject({
@@ -568,6 +571,7 @@ export const settings = z.strictObject({
   shareAnonymousData: z.boolean(),
   graphicsCard,
   showPlayer: z.boolean(),
+  transitions,
 });
 /** One release note (release-notes/<id>.json) with the version it first shipped in; null while unreleased. */
 export const releaseNote = z.strictObject({
@@ -1056,6 +1060,7 @@ export type Lang = z.infer<typeof lang>;
 export type Channel = z.infer<typeof channel>;
 export type Theme = z.infer<typeof theme>;
 export type UiFont = z.infer<typeof uiFont>;
+export type Transitions = z.infer<typeof transitions>;
 export type Settings = z.infer<typeof settings>;
 export type GraphicsCard = z.infer<typeof graphicsCard>;
 export type AppInfo = z.infer<typeof appInfo>;

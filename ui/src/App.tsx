@@ -95,7 +95,8 @@ function Shell() {
   const route = useRoute();
   const activity = useActivity();
   // The rail is 4.5rem of icons, or 15rem with names when the player widens it; the switch snaps.
-  const wide = useSettings().data?.railExpanded ?? false;
+  const settings = useSettings().data;
+  const wide = settings?.railExpanded ?? false;
   const beat = useBeat(placeKey(route));
   // Once the shell exists (after first run), pick up a link that started the app.
   useEffect(() => void takeDeepLink(), []);
@@ -110,9 +111,10 @@ function Shell() {
               `overflow-clip`, not `hidden`: a hidden box still scrolls to show a focused element, which would slide
               the screen and the drawer up and leave the window half empty (#121). Screens scroll inside themselves. */}
           <main className={`relative min-h-0 overflow-clip ${activity.open ? 'pb-[18rem]' : 'pb-9'}`}>
-            {/* Each place arrives in the cabinet's own way (app.css, "Arrivals"): the beat flips at every move, which
-                replays the entrance without building the screen again. */}
-            <div className="arrive" data-arrive={route.name === 'home' ? 'home' : 'screen'} data-beat={beat}>
+            {/* Each place arrives (app.css, "Arrivals") in the style Settings give: eased (the default), the arcade
+                cabinet's own snapped frames, or not at all. The beat flips at every move, which replays the entrance without building the
+                screen again. */}
+            <div className="arrive" data-style={settings?.transitions ?? 'smooth'} data-arrive={route.name === 'home' ? 'home' : 'screen'} data-beat={beat}>
               <Screen route={route} />
             </div>
             <ActivityDrawer />

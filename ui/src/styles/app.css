@@ -3823,20 +3823,22 @@
   }
 }
 
-/* Arrivals: how a place comes in when the player moves to it. Everything steps and nothing eases, as everywhere else,
-   and only a clip, a few translates and one filter on the marquee move, for a handful of frames: a few repaints per
-   move and none at rest. Each entrance exists twice (a and b) because the frame's beat flips at every move, and a
-   changed animation name is what plays it again without building the screen again. Nothing stays applied once an
-   entrance ends (`backwards`), so no screen is left clipped or in a stacking context of its own. */
+/* Arrivals: how a place comes in when the player moves to it, in the style the player picked in Settings → Appearance
+   (`data-style` on the frame): eased (`smooth`, the default); the arcade cabinet's own, snapped (`stepped`); or none
+   (`off`, which has no rules here at all). Either way only a clip, opacity, a few translates and, stepped, one filter on the
+   marquee move, for a fraction of a second: a few repaints per move and none at rest. Each entrance exists twice
+   (a and b) because the frame's beat flips at every move, and a changed animation name is what plays it again without
+   building the screen again. Nothing stays applied once an entrance ends (`backwards`), so no screen is left clipped
+   or in a stacking context of its own. */
 @layer components {
   .arrive {
     height: 100%;
   }
   /* A screen (the Lobby, Skins, Servers, Browse, …) drops like a shutter in five blocks. */
-  .arrive[data-arrive='screen'][data-beat='0'] {
+  .arrive[data-style='stepped'][data-arrive='screen'][data-beat='0'] {
     animation: arrive-shutter-a 200ms steps(5, end) backwards;
   }
-  .arrive[data-arrive='screen'][data-beat='1'] {
+  .arrive[data-style='stepped'][data-arrive='screen'][data-beat='1'] {
     animation: arrive-shutter-b 200ms steps(5, end) backwards;
   }
   @keyframes arrive-shutter-a {
@@ -3858,10 +3860,10 @@
   /* An instance's Home powers on: the marquee's tube flickers up, the name and its plate land on their shade, and Play
      stands up onto its step last, so the eye ends on the one lit button. A dimmed marquee (a game is running) stays
      dim: its tube is not the one coming on. */
-  .arrive[data-arrive='home'][data-beat='0'] .marquee:not([data-dimmed]) {
+  .arrive[data-style='stepped'][data-arrive='home'][data-beat='0'] .marquee:not([data-dimmed]) {
     animation: arrive-tube-a 320ms steps(1, end) backwards;
   }
-  .arrive[data-arrive='home'][data-beat='1'] .marquee:not([data-dimmed]) {
+  .arrive[data-style='stepped'][data-arrive='home'][data-beat='1'] .marquee:not([data-dimmed]) {
     animation: arrive-tube-b 320ms steps(1, end) backwards;
   }
   @keyframes arrive-tube-a {
@@ -3894,16 +3896,16 @@
       filter: none;
     }
   }
-  .arrive[data-arrive='home'][data-beat='0'] .marquee-name {
+  .arrive[data-style='stepped'][data-arrive='home'][data-beat='0'] .marquee-name {
     animation: arrive-land-a 180ms steps(2, end) 80ms backwards;
   }
-  .arrive[data-arrive='home'][data-beat='1'] .marquee-name {
+  .arrive[data-style='stepped'][data-arrive='home'][data-beat='1'] .marquee-name {
     animation: arrive-land-b 180ms steps(2, end) 80ms backwards;
   }
-  .arrive[data-arrive='home'][data-beat='0'] .marquee-plate {
+  .arrive[data-style='stepped'][data-arrive='home'][data-beat='0'] .marquee-plate {
     animation: arrive-land-a 180ms steps(2, end) 170ms backwards;
   }
-  .arrive[data-arrive='home'][data-beat='1'] .marquee-plate {
+  .arrive[data-style='stepped'][data-arrive='home'][data-beat='1'] .marquee-plate {
     animation: arrive-land-b 180ms steps(2, end) 170ms backwards;
   }
   @keyframes arrive-land-a {
@@ -3919,12 +3921,12 @@
     }
   }
   /* Play starts down on its spent step and stands up; its own breathing light carries on after. */
-  .arrive[data-arrive='home'][data-beat='0'] .play[data-state='idle']:not(:disabled) {
+  .arrive[data-style='stepped'][data-arrive='home'][data-beat='0'] .play[data-state='idle']:not(:disabled) {
     animation:
       arrive-stand-a 180ms steps(2, end) 260ms backwards,
       play-lit 2.4s steps(3, end) 440ms infinite alternate;
   }
-  .arrive[data-arrive='home'][data-beat='1'] .play[data-state='idle']:not(:disabled) {
+  .arrive[data-style='stepped'][data-arrive='home'][data-beat='1'] .play[data-state='idle']:not(:disabled) {
     animation:
       arrive-stand-b 180ms steps(2, end) 260ms backwards,
       play-lit 2.4s steps(3, end) 440ms infinite alternate;
@@ -3943,6 +3945,64 @@
       box-shadow:
         0 0 0 var(--color-dirt),
         inset 0 3px 0 rgb(0 0 0 / 0.16);
+    }
+  }
+  /* Smooth, the default: the same order (the picture, the name, its plate, then Play), eased out. It fades and slides only, which the compositor does without repainting, so it costs less than it
+     looks. */
+  .arrive[data-style='smooth'][data-arrive='screen'][data-beat='0'] {
+    animation: arrive-rise-a 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+  .arrive[data-style='smooth'][data-arrive='screen'][data-beat='1'] {
+    animation: arrive-rise-b 260ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+  .arrive[data-style='smooth'][data-arrive='home'][data-beat='0'] .marquee:not([data-dimmed]) {
+    animation: arrive-glow-a 480ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+  .arrive[data-style='smooth'][data-arrive='home'][data-beat='1'] .marquee:not([data-dimmed]) {
+    animation: arrive-glow-b 480ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+  .arrive[data-style='smooth'][data-arrive='home'][data-beat='0'] .marquee-name {
+    animation: arrive-rise-a 360ms cubic-bezier(0.16, 1, 0.3, 1) 80ms backwards;
+  }
+  .arrive[data-style='smooth'][data-arrive='home'][data-beat='1'] .marquee-name {
+    animation: arrive-rise-b 360ms cubic-bezier(0.16, 1, 0.3, 1) 80ms backwards;
+  }
+  .arrive[data-style='smooth'][data-arrive='home'][data-beat='0'] .marquee-plate {
+    animation: arrive-rise-a 360ms cubic-bezier(0.16, 1, 0.3, 1) 150ms backwards;
+  }
+  .arrive[data-style='smooth'][data-arrive='home'][data-beat='1'] .marquee-plate {
+    animation: arrive-rise-b 360ms cubic-bezier(0.16, 1, 0.3, 1) 150ms backwards;
+  }
+  .arrive[data-style='smooth'][data-arrive='home'][data-beat='0'] .play[data-state='idle']:not(:disabled) {
+    animation:
+      arrive-stand-a 320ms cubic-bezier(0.16, 1, 0.3, 1) 220ms backwards,
+      play-lit 2.4s steps(3, end) 540ms infinite alternate;
+  }
+  .arrive[data-style='smooth'][data-arrive='home'][data-beat='1'] .play[data-state='idle']:not(:disabled) {
+    animation:
+      arrive-stand-b 320ms cubic-bezier(0.16, 1, 0.3, 1) 220ms backwards,
+      play-lit 2.4s steps(3, end) 540ms infinite alternate;
+  }
+  @keyframes arrive-rise-a {
+    from {
+      translate: 0 0.75rem;
+      opacity: 0;
+    }
+  }
+  @keyframes arrive-rise-b {
+    from {
+      translate: 0 0.75rem;
+      opacity: 0;
+    }
+  }
+  @keyframes arrive-glow-a {
+    from {
+      opacity: 0.2;
+    }
+  }
+  @keyframes arrive-glow-b {
+    from {
+      opacity: 0.2;
     }
   }
   /* Less motion: nothing arrives, it is simply there. */
