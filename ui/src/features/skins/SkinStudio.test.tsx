@@ -385,12 +385,32 @@ it('tabs switch between Create, Paint and Catalog', async () => {
   expect(screen.getByRole('tab', { name: 'Create' })).toHaveAttribute('aria-selected', 'true');
   expect(screen.queryByRole('list', { name: 'Looks' })).not.toBeInTheDocument();
 
-  // Adding a catalog look puts it in the shown account's wardrobe, opens it and goes to Create.
+  // Adding a catalog look puts it in the shown account's wardrobe and opens it there; the player stays in the catalog.
   await user.click(screen.getByRole('tab', { name: 'Catalog' }));
-  await user.click(await screen.findByRole('button', { name: 'Add to my wardrobe' }));
-  expect(await screen.findByRole('button', { name: /^Astronaut/, current: true })).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'Create' })).toHaveAttribute('aria-selected', 'true');
+  await user.click(within(await screen.findByRole('list', { name: 'Looks' })).getByRole('button', { name: 'Astronaut' }));
+  await user.click(screen.getByRole('button', { name: 'Add to my wardrobe' }));
+  const wardrobe = screen.getByRole('list', { name: 'Wardrobe' });
+  expect(await within(wardrobe).findByRole('button', { name: /^Astronaut/, current: true })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Catalog' })).toHaveAttribute('aria-selected', 'true');
+  expect(await screen.findByText('In your wardrobe')).toBeInTheDocument();
   expect(sent(calls, 'skin_create').at(-1)).toMatchObject({ name: 'Astronaut', owner: STEVE });
+  expect(sent(calls, 'skin_look_save')).toHaveLength(1);
+  // Customize takes that same skin to Create.
+  await user.click(screen.getByRole('button', { name: 'Customize' }));
+  await waitFor(() => expect(screen.getByRole('tab', { name: 'Create' })).toHaveAttribute('aria-selected', 'true'));
+  expect(within(screen.getByRole('list', { name: 'Wardrobe' })).getByRole('button', { name: /^Astronaut/, current: true })).toBeInTheDocument();
+  expect(sent(calls, 'skin_create').filter((c) => (c as { name: string }).name === 'Astronaut')).toHaveLength(1);
+});
+
+it('Customize on a catalog look adds it and opens it in Create in one go', async () => {
+  const { user, calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  await user.click(screen.getByRole('tab', { name: 'Catalog' }));
+  await user.click(within(await screen.findByRole('list', { name: 'Looks' })).getByRole('button', { name: 'Knight' }));
+  await user.click(screen.getByRole('button', { name: 'Customize' }));
+  await waitFor(() => expect(screen.getByRole('tab', { name: 'Create' })).toHaveAttribute('aria-selected', 'true'));
+  expect(within(screen.getByRole('list', { name: 'Wardrobe' })).getByRole('button', { name: /^Knight/, current: true })).toBeInTheDocument();
+  expect(sent(calls, 'skin_create').at(-1)).toMatchObject({ name: 'Knight', owner: STEVE });
   expect(sent(calls, 'skin_look_save')).toHaveLength(1);
 });
 

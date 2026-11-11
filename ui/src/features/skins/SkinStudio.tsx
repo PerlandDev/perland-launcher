@@ -439,12 +439,13 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     };
   }, [doc, previewing, tab, trying, tryOn]);
 
-  // A look added from the catalog opens in Create, in the wardrobe it went into.
-  const addedFromCatalog = (entry: SkinEntry) =>
+  // A look added from the catalog is opened in the wardrobe it went into, and in Create unless the player is still
+  // browsing the catalog (`customize` false).
+  const addedFromCatalog = (entry: SkinEntry, customize = true) =>
     void flush().then(() => {
       qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [entry, ...(old ?? []).filter((e) => e.id !== entry.id)]);
       setPicked(entry.id);
-      setTab('create');
+      if (customize) setTab('create');
     });
 
   const saveLabel = doc.save === 'saved' ? t('skins.saved') : t('skins.saving');
@@ -494,7 +495,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         />
 
         {tab === 'catalog' ? (
-          <CatalogPanel owner={owner} onAdded={addedFromCatalog} />
+          <CatalogPanel owner={owner} onAdded={(entry) => addedFromCatalog(entry, false)} onCustomize={(entry) => addedFromCatalog(entry)} />
         ) : (
           <>
             <div className="stage">

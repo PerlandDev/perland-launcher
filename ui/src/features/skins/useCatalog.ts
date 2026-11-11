@@ -19,6 +19,9 @@ function fetchFile(qc: ReturnType<typeof useQueryClient>, sha256: string): Promi
 /** Files that failed to load this session: not asked for again on every draw. */
 const failedFiles = new Set<string>();
 
+/** Did the file fail to load this session? `image` then never answers for it, so what has another way to show takes it. */
+export const fileFailed = (sha256: string) => failedFiles.has(sha256);
+
 /** While the catalog is shown from the cache and refreshed in the background, it is asked again this often. */
 export const REFRESH_POLL_MS = 500;
 
@@ -67,6 +70,8 @@ export function useCatalog(): Catalog {
           .catch(() => {
             failedFiles.add(sha256);
             asked.delete(sha256);
+            // Drawn again, so what has another way to show (a thumbnail whose sheet failed) takes it.
+            landed((n) => n + 1);
           }),
       );
       return undefined;
