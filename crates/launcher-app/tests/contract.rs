@@ -88,6 +88,84 @@ fn sample_manual() -> ManualFile {
     }
 }
 
+/// A fresh answer with a small catalog, a cached one from before expressions and sheets existed,
+/// and the answers when it can't be had.
+fn skin_catalog_answers() -> Vec<launcher_app::skins::CatalogAnswer> {
+    use launcher_core::skin_catalog::CatalogStatus;
+    let mut manifest: launcher_core::skin_catalog::Manifest = serde_json::from_value(serde_json::json!({
+        "formatVersion": 1,
+        "version": "60f573c45b9fc8115fa680f5516ce12c6c307ed7f1a848b5210dd477ef1a40ed",
+        "license": "CC0-1.0",
+        "slots": ["body", "mouth", "hat"],
+        "tags": [{ "id": "casual", "name": { "en": "Casual", "es": "Casual" } }],
+        "pieces": [{
+            "id": "hat-cap",
+            "slot": "hat",
+            "name": { "en": "Cap", "es": "Gorra" },
+            "tags": ["casual"],
+            "areas": [
+                { "id": "main", "name": { "en": "Main", "es": "Principal" }, "default": "#2f5aa8" }
+            ],
+            "files": {
+                "classic": { "art": "a".repeat(64), "mask": "b".repeat(64) },
+                "slim": { "art": "c".repeat(64), "mask": "d".repeat(64) }
+            },
+            "thumb": "e".repeat(64),
+            "retired": false
+        }],
+        "looks": [{
+            "id": "look-street",
+            "name": { "en": "Street", "es": "Calle" },
+            "tags": ["casual"],
+            "model": "classic",
+            "pieces": [
+                { "id": "hat-cap", "colours": { "main": "#2f5aa8" } }
+            ],
+            "painting": "f".repeat(64),
+            "thumb": "0".repeat(64),
+            "retired": false
+        }],
+        "expressions": [{
+            "id": "expr-happy",
+            "name": { "en": "Happy", "es": "Feliz" },
+            "eyes": "eyes-round",
+            "brows": "brows-straight",
+            "mouth": "mouth-smile"
+        }],
+        "sheets": {
+            "pieces": { "file": "1".repeat(64), "columns": 24 },
+            "looks": { "file": "", "columns": 0 }
+        }
+    }))
+    .unwrap();
+    assert_eq!(manifest.check(), Ok(()));
+    let current = manifest.clone();
+    manifest.expressions.clear();
+    manifest.sheets = None;
+    vec![
+        launcher_app::skins::CatalogAnswer {
+            manifest: Some(current.clone()),
+            status: CatalogStatus::Fresh,
+        },
+        launcher_app::skins::CatalogAnswer {
+            manifest: Some(current),
+            status: CatalogStatus::Refreshing,
+        },
+        launcher_app::skins::CatalogAnswer {
+            manifest: Some(manifest),
+            status: CatalogStatus::Cached,
+        },
+        launcher_app::skins::CatalogAnswer {
+            manifest: None,
+            status: CatalogStatus::Unavailable,
+        },
+        launcher_app::skins::CatalogAnswer {
+            manifest: None,
+            status: CatalogStatus::TooNew,
+        },
+    ]
+}
+
 fn dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../ui/src/ipc/contract")
 }
@@ -725,6 +803,7 @@ fn contract_fixtures_are_current() {
                 worn_by: None,
                 owner: Some("5627dd98-e6be-3c21-b8a8-e92344183641".into()),
                 seeded: false,
+                look: None,
             },
             launcher_core::skins_library::SkinEntry {
                 id: "skin-ffeeddccbbaa".into(),
@@ -734,9 +813,36 @@ fn contract_fixtures_are_current() {
                 worn_by: None,
                 owner: Some("5627dd98-e6be-3c21-b8a8-e92344183641".into()),
                 seeded: false,
+                look: None,
             },
         ],
     );
+    check(
+        "skin_entry_look",
+        vec![launcher_core::skins_library::SkinEntry {
+            id: "skin-123456abcdef".into(),
+            name: "Street look".into(),
+            model: launcher_core::skins_library::SkinModel::Classic,
+            updated: 1_762_450_000,
+            worn_by: None,
+            owner: Some("5627dd98-e6be-3c21-b8a8-e92344183641".into()),
+            seeded: false,
+            look: Some(launcher_core::skins_library::SkinLook {
+                pieces: vec![
+                    launcher_core::skins_library::WornPiece {
+                        id: "body-plain".into(),
+                        colours: [("skin".to_string(), "#8d5b3e".to_string())].into(),
+                    },
+                    launcher_core::skins_library::WornPiece {
+                        id: "mouth-smile".into(),
+                        colours: Default::default(),
+                    },
+                ],
+                painting: true,
+            }),
+        }],
+    );
+    check("skin_catalog", skin_catalog_answers());
     check(
         "skin_versions",
         vec![

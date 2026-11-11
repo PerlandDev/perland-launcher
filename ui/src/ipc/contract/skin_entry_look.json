@@ -1,0 +1,24 @@
+[
+  {
+    "id": "skin-123456abcdef",
+    "name": "Street look",
+    "model": "classic",
+    "updated": 1762450000,
+    "owner": "5627dd98-e6be-3c21-b8a8-e92344183641",
+    "look": {
+      "pieces": [
+        {
+          "id": "body-plain",
+          "colours": {
+            "skin": "#8d5b3e"
+          }
+        },
+        {
+          "id": "mouth-smile",
+          "colours": {}
+        }
+      ],
+      "painting": true
+    }
+  }
+]

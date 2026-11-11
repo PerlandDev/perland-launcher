@@ -3,15 +3,17 @@
 import skinEntriesFx from './contract/skin_entries.json';
 import skinVersionsFx from './contract/skin_versions.json';
 import { encodeTexture } from '../features/skins/codec';
+import { mockCatalog, type MockCatalog } from './mockCatalog';
 import { blankSkin, starterSkin } from '../features/skins/starter';
-import type { AccountsFile, CurrentSkin, LauncherError, SkinEntry, SkinModel, SkinVersion, SkinVersionReason } from './schema';
+import type { AccountsFile, CatalogStatus, CurrentSkin, LauncherError, SkinEntry, SkinLook, SkinModel, SkinVersion, SkinVersionReason } from './schema';
 
 export const NOT_SKINS = Symbol('not a skin command');
 
 /** `?skins=`: `seeded` (the default: two skins in Steve's wardrobe, and a Microsoft account wears its own skin), `empty`,
  *  `rejected` (every upload is refused), `loose` (only an untouched Perlander saved with no account signed in, from before
- *  per-account wardrobes) or `default` (a Microsoft account wears Minecraft's default skin). */
-export type SkinsScenario = 'seeded' | 'empty' | 'rejected' | 'loose' | 'default';
+ *  per-account wardrobes), `default` (a Microsoft account wears Minecraft's default skin) or `nocatalog` (Perland's skin
+ *  catalog can't be reached and nothing is cached). */
+export type SkinsScenario = 'seeded' | 'empty' | 'rejected' | 'loose' | 'default' | 'nocatalog';
 
 export interface SkinsState {
   entries: SkinEntry[];
@@ -23,6 +25,11 @@ export interface SkinsState {
   /** Each skin's kept versions, oldest first, with their textures. */
   versions: Map<string, KeptVersion[]>;
   seq: number;
+  /** Perland's skin catalog (the manifest and its PNGs). */
+  catalog: MockCatalog;
+  catalogStatus: CatalogStatus;
+  /** The player's own paintings, by skin id. */
+  paintings: Map<string, string>;
 }
 
 interface KeptVersion {
@@ -114,7 +121,18 @@ export function seedSkins(scenario: SkinsScenario = 'seeded'): SkinsState {
     }));
     versions.set(first.id, kept.reverse());
   }
-  return { entries, textures, scenario, current, uploads: [], versions, seq: 0 };
+  return {
+    entries,
+    textures,
+    scenario,
+    current,
+    uploads: [],
+    versions,
+    seq: 0,
+    catalog: mockCatalog(),
+    catalogStatus: scenario === 'nocatalog' ? 'unavailable' : 'fresh',
+    paintings: new Map(),
+  };
 }
 
 function keep(state: SkinsState, entry: SkinEntry, texture: string, reason: SkinVersionReason, taken = entry.updated) {
@@ -190,6 +208,19 @@ function add(state: SkinsState, name: string, model: SkinModel, texture: string,
   return entry;
 }
 
+/** The same checks as the core's `check_look`. */
+function checkLook(look: unknown): SkinLook {
+  const l = look as SkinLook | null;
+  if (!l || !Array.isArray(l.pieces)) fail('integrity', 'skin_invalid', "That look can't be saved.");
+  const ids = new Set<string>();
+  for (const p of l.pieces) {
+    const bad = l.pieces.length > 16 || ids.has(p.id) || Object.values(p.colours).some((c) => !/^#[0-9a-fA-F]{6}$/.test(c));
+    if (bad) fail('integrity', 'skin_invalid', "That look can't be saved.");
+    ids.add(p.id);
+  }
+  return l;
+}
+
 function touch(entry: SkinEntry) {
   delete entry.seeded;
   entry.updated = Math.max(Math.floor(Date.now() / 1000), entry.updated + 1);
@@ -240,7 +271,12 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
     }
     case 'skin_duplicate': {
       const entry = find(state, args.id);
-      return add(state, checkName(args.name), entry.model, state.textures.get(entry.id)!, entry.owner ?? null, false, entry);
+      // As in Rust: the copy goes right below its source, with its look and the painting under it.
+      const copy = add(state, checkName(args.name), entry.model, state.textures.get(entry.id)!, entry.owner ?? null, false, entry);
+      const painting = state.paintings.get(entry.id);
+      if (entry.look) copy.look = { pieces: entry.look.pieces.map((p) => ({ id: p.id, colours: { ...p.colours } })), painting: painting !== undefined };
+      if (painting !== undefined) state.paintings.set(copy.id, painting);
+      return { ...copy };
     }
     case 'skin_reorder': {
       // As in Rust: the wardrobe's skins fill their own places in the list, those named first, the rest after them.
@@ -263,6 +299,7 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       state.entries = state.entries.filter((e) => e.id !== args.id);
       state.textures.delete(String(args.id));
       state.versions.delete(String(args.id));
+      state.paintings.delete(String(args.id));
       return null;
     case 'skin_versions': {
       const entry = find(state, args.id);
@@ -285,6 +322,9 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       if (version.model) entry.model = version.model;
       touch(entry);
       // The restored version is in the history already, so it isn't kept again, as in Rust.
+      // As the core does: a restored version is a plain painted skin.
+      delete entry.look;
+      state.paintings.delete(entry.id);
       return { ...entry };
     }
     case 'skin_version_copy': {
@@ -305,6 +345,37 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       const entry = find(state, args.id);
       keep(state, entry, state.textures.get(entry.id)!, 'exported');
       return String(args.path).toLowerCase().endsWith('.png') ? args.path : `${String(args.path)}.png`;
+    }
+    case 'skin_catalog':
+      return { manifest: state.catalogStatus === 'unavailable' ? null : state.catalog.manifest, status: state.catalogStatus };
+    case 'skin_catalog_file': {
+      const file = state.catalog.files.get(String(args.sha256));
+      if (!file) fail('network', 'skin_catalog_unavailable', "Couldn't reach Perland's skin catalog.");
+      return file;
+    }
+    case 'skin_painting':
+      find(state, args.id);
+      return state.paintings.get(String(args.id)) ?? null;
+    case 'skin_look_save': {
+      const entry = find(state, args.id);
+      const look = checkLook(args.look);
+      const texture = checkTexture(args.texture);
+      const painting = args.painting == null ? null : checkTexture(args.painting);
+      const fresh = (state.versions.get(entry.id) ?? []).length === 0;
+      if (fresh || Date.now() / 1000 - entry.updated >= IDLE_SECS) keep(state, entry, state.textures.get(entry.id)!, 'edited');
+      state.textures.set(entry.id, texture);
+      if (painting === null) state.paintings.delete(entry.id);
+      else state.paintings.set(entry.id, painting);
+      entry.look = { pieces: look.pieces, painting: painting !== null };
+      touch(entry);
+      return { ...entry };
+    }
+    case 'skin_look_clear': {
+      const entry = find(state, args.id);
+      delete entry.look;
+      state.paintings.delete(entry.id);
+      touch(entry);
+      return { ...entry };
     }
     case 'skin_current': {
       const account = accounts.accounts.find((a) => a.uuid === args.uuid);

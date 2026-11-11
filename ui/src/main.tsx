@@ -52,7 +52,7 @@ async function bootstrap() {
       free: freeScenario(params.get("free")),
       manage: manageScenario(params.get("manage")),
       teams: teamsScenario(params.get("teams")) ?? "some",
-      skins: (["seeded", "empty", "rejected", "loose", "default"] as const).find(
+      skins: (["seeded", "empty", "rejected", "loose", "default", "nocatalog"] as const).find(
         (v) => v === params.get("skins"),
       ),
       server: (params.get("server") as ServerScenario | null) ?? undefined,

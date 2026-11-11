@@ -61,6 +61,8 @@ import serverStatusFx from './contract/server_status.json';
 import settingsFx from './contract/settings.json';
 import skinEntriesFx from './contract/skin_entries.json';
 import currentSkinFx from './contract/current_skin.json';
+import skinEntryLookFx from './contract/skin_entry_look.json';
+import skinCatalogFx from './contract/skin_catalog.json';
 import skinVersionsFx from './contract/skin_versions.json';
 import shareChoiceFx from './contract/share_choice.json';
 import sharePreviewFx from './contract/share_preview.json';
@@ -81,6 +83,8 @@ const cases: [string, ZodType, unknown][] = [
   ['accounts', s.accountsFile, accounts],
   ['skin_entries', s.skinEntry.array(), skinEntriesFx],
   ['current_skin', s.currentSkin.nullable().array(), currentSkinFx],
+  ['skin_entry_look', s.skinEntry.array(), skinEntryLookFx],
+  ['skin_catalog', s.catalogAnswer.array(), skinCatalogFx],
   ['skin_versions', s.skinVersion.array(), skinVersionsFx],
   ['account_ready', s.accountReady.array(), accountReadyFx],
   ['app_info', s.appInfo, appInfo],

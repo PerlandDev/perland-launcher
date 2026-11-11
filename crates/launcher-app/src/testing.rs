@@ -48,6 +48,7 @@ use launcher_core::{
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
+    skin_catalog::{CatalogStatus, Manifest},
     skins_library::SkinModel,
     sources::{
         DesiredState, FileMode, FileSource, OptionalFile, PackAbout, PackFile, PackInput, Side,
@@ -70,7 +71,7 @@ use crate::{
     manage::StackApi,
     msa::MsaApi,
     perland::PlayerApi,
-    runner::{BoxFuture, Kill, Runner, RunningGame},
+    runner::{BoxFuture, CatalogApi, Kill, Runner, RunningGame},
 };
 
 pub(crate) fn exit(code: Option<i32>) -> GameExit {
@@ -560,6 +561,8 @@ pub(crate) struct FakeRunner {
     pub skin: Mutex<Option<Result<Option<Vec<u8>>>>>,
     /// The profiles `skin_texture` was asked for.
     pub skin_asks: Mutex<Vec<String>>,
+    /// The skin catalog.
+    pub catalog: Arc<FakeCatalog>,
     /// What `public_page` answers (none: `server_list_closed`).
     pub public_page: Mutex<Option<Result<FetchedPage>>>,
     /// The queries `public_page` was asked.
@@ -632,6 +635,7 @@ impl FakeRunner {
             icon: Mutex::new(None),
             skin: Mutex::new(None),
             skin_asks: Mutex::new(Vec::new()),
+            catalog: Arc::new(FakeCatalog::default()),
             public_page: Mutex::new(None),
             public_queries: Mutex::new(Vec::new()),
             public_invites: Mutex::new(true),
@@ -1036,6 +1040,49 @@ impl Runner for FakeRunner {
         self.skin_asks.lock().unwrap().push(uuid);
         let answer = self.skin.lock().unwrap().clone().unwrap_or(Ok(None));
         Box::pin(async move { answer })
+    }
+
+    fn catalog(&self) -> Arc<dyn CatalogApi> {
+        Arc::new(self.catalog.clone())
+    }
+}
+
+/// A skin catalog the test controls: what `load` answers, the files it has, and the prunes asked.
+pub(crate) struct FakeCatalog {
+    pub load: Mutex<(Option<Manifest>, CatalogStatus)>,
+    pub files: Mutex<HashMap<String, Vec<u8>>>,
+    pub loads: AtomicUsize,
+    pub prunes: Mutex<Vec<std::collections::BTreeSet<String>>>,
+}
+
+impl Default for FakeCatalog {
+    fn default() -> Self {
+        Self {
+            load: Mutex::new((None, CatalogStatus::Unavailable)),
+            files: Mutex::new(HashMap::new()),
+            loads: AtomicUsize::new(0),
+            prunes: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl CatalogApi for Arc<FakeCatalog> {
+    fn load(&self) -> BoxFuture<(Option<Manifest>, CatalogStatus)> {
+        self.loads.fetch_add(1, Ordering::SeqCst);
+        let answer = self.load.lock().unwrap().clone();
+        Box::pin(async move { answer })
+    }
+    fn file(&self, sha256: String) -> BoxFuture<Result<Vec<u8>>> {
+        let found = self.files.lock().unwrap().get(&sha256).cloned();
+        Box::pin(async move {
+            found.ok_or_else(|| {
+                LauncherError::network(ErrorCode::SkinCatalogUnavailable, "catalog unavailable")
+            })
+        })
+    }
+    fn prune(&self, keep: std::collections::BTreeSet<String>) -> BoxFuture<Result<usize>> {
+        self.prunes.lock().unwrap().push(keep);
+        Box::pin(async { Ok(0) })
     }
 }
 

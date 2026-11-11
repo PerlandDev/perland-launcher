@@ -1,12 +1,12 @@
 // The Skins screen: a fitting room. The wardrobe at left, the figure on its stage in the middle, the flat texture and
 // colours at right, and the tools in a hotbar along the bottom (keys 1–9).
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { open, save } from '@tauri-apps/plugin-dialog';
-import { HumanArmsUp, ZoomIn, ZoomOut } from 'pixelarticons/react';
+import { HumanArmsUp, Redo, Undo, ZoomIn, ZoomOut } from 'pixelarticons/react';
 import { commands } from '../../ipc/commands';
-import type { SkinEntry, SkinModel, SkinVersion } from '../../ipc/schema';
+import type { SkinEntry, SkinLook, SkinModel, SkinVersion } from '../../ipc/schema';
 import { useAccounts } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { pushError, pushNotice } from '../../state/toasts';
@@ -28,6 +28,18 @@ import { PartsPanel } from './PartsPanel';
 import { remember } from './recent';
 import { Stage, type StageHandle } from './Stage';
 import { blankSkin, starterSkin } from './starter';
+import { CatalogPanel } from './CatalogPanel';
+import { CreatePanel } from './CreatePanel';
+import type { Lang } from './catalogSearch';
+import { compose } from './compose';
+import type { Focus } from './framing';
+import { putOn } from './look';
+import { useCatalog } from './useCatalog';
+import { surprise } from './surprise';
+import { useBlinkFrame } from './useBlink';
+import { useLook } from './useLook';
+import { useTryOn } from './useTryOn';
+import { WearingRow } from './WearingRow';
 import { TexturePanel } from './TexturePanel';
 import { HistoryPanel } from './HistoryPanel';
 import { useSkinDoc } from './useSkinDoc';
@@ -38,6 +50,9 @@ import './skins.css';
 /** One wardrobe per account; `null` is the skins made with no account signed in. */
 const skinsKey = (owner: string | null) => ['skins', owner] as const;
 const RECENT_MAX = 9;
+/** The studio's tabs: build from pieces, paint by hand, or pick a look from Perland's catalog. */
+const TABS = ['create', 'paint', 'catalog'] as const;
+type Tab = (typeof TABS)[number];
 
 function typing(target: EventTarget | null) {
   return (
@@ -45,6 +60,9 @@ function typing(target: EventTarget | null) {
     (target instanceof HTMLTextAreaElement || target.isContentEditable || (target instanceof HTMLInputElement && target.type !== 'checkbox' && target.type !== 'radio'))
   );
 }
+
+/** What Build from pieces starts wearing, in order. */
+const STARTER_PIECES = ['body-plain', 'eyes-round', 'brows-straight', 'mouth-smile'] as const;
 
 export default function SkinStudio({ skin, account }: { skin?: string; account?: string }) {
   const { t, i18n } = useTranslation();
@@ -88,14 +106,23 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         refresh();
       });
   };
-  // A save can keep a version (the first of an editing session, or leaving a changed skin): the history asks again
-  // at once, rather than showing what it was told before for as long as that counts as fresh.
-  const saved = () => {
+  // A save answers the entry as stored: every wardrobe list shows it at once, so reopening the skin reads its new look
+  // even before the list is fetched again. A save can also keep a version (the first of an editing session, or leaving
+  // a changed skin, which answers no entry): the history asks again at once, rather than showing what it was told
+  // before for as long as that counts as fresh.
+  const saved = (entry?: SkinEntry) => {
+    if (entry) qc.setQueriesData<SkinEntry[]>({ queryKey: ['skins'] }, (old) => old?.map((e) => (e.id === entry.id ? entry : e)));
     refresh();
     void qc.invalidateQueries({ queryKey: ['skinVersions'] });
   };
-  const doc = useSkinDoc(selected?.id ?? null, model, saved, storeModel);
+  const doc = useSkinDoc(selected?.id ?? null, model, saved, storeModel, selected?.look);
+  const catalog = useCatalog();
+  const editor = useLook(selected?.id ?? null, model, doc, catalog);
+  const lang: Lang = i18n.language.startsWith('es') ? 'es' : 'en';
+  const armsLocked = doc.look !== null && !catalog.manifest;
+  const catalogManifest = catalog.manifest;
 
+  const [tab, setTab] = useState<Tab>('paint');
   const [tool, setTool] = useState<Tool>('pencil');
   const [color, setColorState] = useState<Rgba>([108, 171, 60, 255]);
   const [opacity, setOpacity] = useState(100);
@@ -116,6 +143,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   // The skin whose history is about to be forgotten, while the player confirms.
   const [clearing, setClearing] = useState<SkinEntry | null>(null);
   const [wearing, setWearing] = useState(false);
+  // Restoring a version of a skin with pieces asks first: it becomes a plain painted skin.
+  const [confirmPlain, setConfirmPlain] = useState(false);
   // Version history: the panel in the texture column, and the version shown on the stage instead of the skin.
   const [historyOpen, setHistoryOpen] = useState(false);
   const [preview, setPreview] = useState<{ skin: string; version: SkinVersion; pixels: Pixels; seq: number } | null>(null);
@@ -128,6 +157,24 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   // A preview belongs to one skin while the history is open; switching skins or closing the history ends it.
   const previewShown = preview && historyOpen && preview.skin === selected?.id ? preview : null;
   const previewing = previewShown !== null;
+  // Trying a piece on (Create): the figure shows it, the skin doesn't have it. A version preview comes first.
+  const { shown: tryShown, tryOn } = useTryOn(editor, selected?.id ?? null, tab === 'create' && !historyOpen);
+  const trying = previewing ? null : tryShown;
+  // The figure blinks when the skin wears eyes that show: never over a preview, and never while a stroke is painted.
+  const [stroking, setStroking] = useState(false);
+  const beginStroke = () => {
+    setStroking(true);
+    doc.begin();
+  };
+  const endStroke = () => {
+    setStroking(false);
+    doc.end();
+  };
+  const blinkFrame = useBlinkFrame(selected?.id ?? null, doc, catalog, model, tab !== 'catalog' && !previewing && !trying && !stroking);
+  // What the Create tab is dressing: the stage camera frames it. Any other tab, and History, show the whole figure.
+  const [dressing, setDressing] = useState<{ focus: Focus; category: string }>({ focus: 'figure', category: '' });
+  const onCreateFocus = useCallback((focus: Focus, category: string) => setDressing((d) => (d.focus === focus && d.category === category ? d : { focus, category })), []);
+  const framing = tab === 'create' && !historyOpen && selected ? { focus: dressing.focus, key: `create:${selected.id}:${dressing.category}` } : { focus: 'figure' as const, key: tab };
 
   /** Chooses a colour for good: a new one joins the front of the recent row, one already in it stays put. */
   const setColor = (c: Rgba) => {
@@ -186,11 +233,27 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   }, [entries.isSuccess, list.length, wearer, owner]);
   const defaultSkin = wearer !== null && defaults.has(wearer.uuid);
 
+  // Saves now, after any Create change still loading has landed, so leaving, wearing or exporting keeps it.
+  const flush = () => editor.settled().then(() => doc.flush());
+
   const showWardrobeOf = (uuid: string) =>
-    void doc.flush().then(() => {
+    void flush().then(() => {
       setShown(uuid);
       setPicked(null);
     });
+
+  // A new skin wearing the catalog's plain body and a simple face (round eyes, straight brows, a smile), each in its own
+  // colours, opened in Create. A face piece the catalog no longer has is left out; without the body there is nothing.
+  const plainBody = catalog.manifest?.pieces.find((p) => p.id === 'body-plain' && !p.retired);
+  const buildFromPieces = async () => {
+    const manifest = catalog.manifest;
+    if (!plainBody || !manifest) return;
+    const starting = STARTER_PIECES.flatMap((id) => manifest.pieces.filter((p) => p.id === id && !p.retired));
+    const look = starting.reduce((l, piece) => putOn(l, piece, manifest.pieces), { pieces: [], painting: false } as SkinLook);
+    const texture = encodeTexture(compose(null, await catalog.layers(look, 'classic')));
+    const entry = await commands.skinCreate(t('skins.piecesName'), 'classic', texture, owner);
+    addedFromCatalog(await commands.skinLookSave(entry.id, look, null, texture));
+  };
 
   const newItems: MenuItem[] = [
     ...(wearer?.provider === 'microsoft'
@@ -198,6 +261,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
       : []),
     { id: 'starter', label: t('skins.newStarter'), onSelect: () => void create(t('skins.starterName'), 'classic', encodeTexture(starterSkin().data)).catch(pushError) },
     { id: 'blank', label: t('skins.newBlank'), onSelect: () => void create(t('skins.blankName'), 'classic', encodeTexture(blankSkin().data)).catch(pushError) },
+    ...(plainBody ? [{ id: 'pieces', label: t('skins.newPieces'), onSelect: () => void buildFromPieces().catch(pushError) }] : []),
   ];
 
   // One import at a time, from the press to the new skin in the wardrobe: a second press while the picker is open
@@ -222,7 +286,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     });
 
   const exportSkin = async (entry: SkinEntry) => {
-    await doc.flush();
+    await flush();
     const path = await save({ defaultPath: `${entry.name.replace(/[<>:"/\\|?*]/g, '-')}.png`, filters: [{ name: t('skins.pngFilter'), extensions: ['png'] }] });
     if (!path) return;
     await commands.skinExport(entry.id, path);
@@ -253,8 +317,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
       label: t('skins.duplicate'),
       icon: <Copy />,
       onSelect: () =>
-        void doc
-          .flush()
+        void flush()
           .then(() => commands.skinDuplicate(entry.id, t('skins.copyName', { name: entry.name }).slice(0, 64)))
           .then((copy) => {
             // As the wardrobe keeps it: right below its source.
@@ -293,7 +356,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
 
   const strokeOpts = { tool, color, mirror, darken, opacity: opacity / 100 };
   const paintAt = (x: number, y: number, joined: boolean) => {
-    if (previewing) return;
+    if (previewing || tab !== 'paint') return;
     if (tool === 'picker') {
       const picked = doc.pixels && pickPaint(doc.pixels.get(x, y));
       if (picked) {
@@ -309,8 +372,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
     if (!selected || !wearer) return;
     once((done) => {
       setWearing(true);
-      void doc
-        .flush()
+      void flush()
         .then(() => commands.skinWear(selected.id, wearer.uuid))
         .then((next) => {
           qc.setQueryData(SKINS_KEY, next);
@@ -330,8 +392,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const pickVersion = (version: SkinVersion) => {
     if (!selected) return;
     const skin = selected.id;
-    void doc
-      .flush()
+    void flush()
       .then(() => commands.skinVersionTexture(skin, version.id))
       .then(decodeTexture)
       .then((data) => setPreview({ skin, version, pixels: new Pixels(data), seq: (previewSeq.current += 1) }))
@@ -340,10 +401,19 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
 
   const restore = () => {
     if (!selected || !previewShown) return;
+    if (doc.look) {
+      setConfirmPlain(true);
+      return;
+    }
+    restoreNow();
+  };
+
+  const restoreNow = () => {
+    setConfirmPlain(false);
+    if (!selected || !previewShown) return;
     const { version, pixels } = previewShown;
     once((done) => {
-      void doc
-        .flush()
+      void flush()
         .then(() => commands.skinRestore(selected.id, version.id))
         .then((entry) => {
           qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => old?.map((e) => (e.id === entry.id ? entry : e)));
@@ -383,9 +453,13 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         return;
       }
       if (event.key === 'Shift') setDarken(false);
-      if (typing(event.target) || document.querySelector('dialog[open]') || event.altKey) return;
+      if (tab === 'catalog' || typing(event.target) || document.querySelector('dialog[open]') || event.altKey) return;
       if (event.key === 'Escape' && previewing) {
         setPreview(null);
+        return;
+      }
+      if (event.key === 'Escape' && trying) {
+        tryOn.clear();
         return;
       }
       const ctrl = event.ctrlKey || event.metaKey;
@@ -396,7 +470,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
       } else if (ctrl && key === 'z') {
         event.preventDefault();
         doc.undo();
-      } else if (!ctrl && /^[1-9]$/.test(event.key)) {
+      } else if (!ctrl && tab === 'paint' && /^[1-9]$/.test(event.key)) {
         const n = Number(event.key);
         if (n <= SLOT_TOOLS.length) setTool(SLOT_TOOLS[n - 1]!);
         else if (n === 7) setMirror((m) => !m);
@@ -410,7 +484,16 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
     };
-  }, [doc, previewing]);
+  }, [doc, previewing, tab, trying, tryOn]);
+
+  // A look added from the catalog is opened in the wardrobe it went into, and in Create unless the player is still
+  // browsing the catalog (`customize` false).
+  const addedFromCatalog = (entry: SkinEntry, customize = true) =>
+    void flush().then(() => {
+      qc.setQueryData<SkinEntry[]>(SKINS_KEY, (old) => [entry, ...(old ?? []).filter((e) => e.id !== entry.id)]);
+      setPicked(entry.id);
+      if (customize) setTab('create');
+    });
 
   const saveLabel = doc.save === 'saved' ? t('skins.saved') : t('skins.saving');
 
@@ -421,20 +504,29 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         <h1 id="skins-title" className="font-display text-[2rem] leading-none">
           {t('skins.title')}
         </h1>
-        {selected && (
+        <div role="tablist" aria-labelledby="skins-title" className="skins-tabs">
+          {TABS.map((id) => (
+            <button key={id} type="button" role="tab" id={`skins-tab-${id}`} aria-selected={tab === id} aria-controls="skins-tabpanel" className="seg" data-checked={tab === id || undefined} onClick={() => setTab(id)}>
+              {t(`skins.tab.${id}`)}
+            </button>
+          ))}
+        </div>
+        {selected && tab !== 'catalog' && (
           <p className="min-w-0 truncate text-lg font-bold" title={selected.name}>
             {selected.name}
           </p>
         )}
         <p className="ml-auto text-sm text-ink-dim" role="status">
-          {selected ? saveLabel : ''}
+          {selected && tab !== 'catalog' ? saveLabel : ''}
         </p>
-        <Button variant="ghost" icon={<Clock />} aria-pressed={historyOpen} disabled={!selected} onClick={() => setHistoryOpen((o) => !o)}>
-          {t('skins.history.title')}
-        </Button>
+        {tab !== 'catalog' && (
+          <Button variant="ghost" icon={<Clock />} aria-pressed={historyOpen} disabled={!selected} onClick={() => setHistoryOpen((o) => !o)}>
+            {t('skins.history.title')}
+          </Button>
+        )}
       </header>
 
-      <div className="skins-body">
+      <div className="skins-body" data-tab={tab} role="tabpanel" id="skins-tabpanel" aria-labelledby={`skins-tab-${tab}`}>
         <Wardrobe
           accounts={allAccounts}
           owner={wearer}
@@ -442,7 +534,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
           entries={list}
           selected={selected?.id ?? null}
           wearer={wearer?.uuid ?? null}
-          onSelect={(id) => void doc.flush().then(() => setPicked(id))}
+          onSelect={(id) => void flush().then(() => setPicked(id))}
           emptyNote={defaultSkin ? t('skins.emptyDefault') : t('skins.empty')}
           newItems={newItems}
           onImport={importSkin}
@@ -451,135 +543,196 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
           onMove={moveSkin}
         />
 
-        <div className="stage">
-          <div className="stage-bar">
-            <Button
-              title={t(model === 'classic' ? 'skins.toSlim' : 'skins.toClassic')}
-              onClick={() => selected && doc.switchModel(model === 'classic' ? 'slim' : 'classic')}
-            >
-              {t(`skins.model.${model}`)}
-            </Button>
-            <Button icon={<HumanArmsUp />} aria-haspopup="menu" aria-label={`${t('skins.poseLabel')}: ${t(`skins.pose.${pose}`)}`} title={t('skins.poseLabel')} onClick={(e) => poseMenu.current?.openAt(e.currentTarget)}>
-              <span className="btn-label">{t(`skins.pose.${pose}`)}</span>
-            </Button>
-            <Menu
-              ref={poseMenu}
-              label={t('skins.poseLabel')}
-              trigger={false}
-              className="contents"
-              items={POSES.map((p) => ({ id: p, label: t(`skins.pose.${p}`), icon: p === pose ? <span className="lamp" aria-hidden /> : undefined, onSelect: () => {
-                  setPose(p);
-                  setAnimated(true);
-                },
-              }))}
-            />
-            <button type="button" className="seg seg-sm" aria-pressed={animated} data-checked={animated || undefined} title={t('skins.animationHint')} onClick={() => setAnimated((a) => !a)}>
-              {t('skins.animation')}
-            </button>
-          </div>
+        {tab === 'catalog' ? (
+          <CatalogPanel owner={owner} onAdded={(entry) => addedFromCatalog(entry, false)} onCustomize={(entry) => addedFromCatalog(entry)} />
+        ) : (
+          <>
+            <div className="stage">
+              <div className="stage-bar">
+                <Button
+                  // A skin wearing pieces needs the catalog to draw them for the other arms.
+                  disabled={armsLocked}
+                  title={armsLocked ? t('skins.create.armsNeedCatalog') : t(model === 'classic' ? 'skins.toSlim' : 'skins.toClassic')}
+                  onClick={() => {
+                    if (!selected) return;
+                    const to = model === 'classic' ? 'slim' : 'classic';
+                    if (doc.look) editor.switchModel(to);
+                    else doc.switchModel(to);
+                  }}
+                >
+                  {t(`skins.model.${model}`)}
+                </Button>
+                <Button icon={<HumanArmsUp />} aria-haspopup="menu" aria-label={`${t('skins.poseLabel')}: ${t(`skins.pose.${pose}`)}`} title={t('skins.poseLabel')} onClick={(e) => poseMenu.current?.openAt(e.currentTarget)}>
+                  <span className="btn-label">{t(`skins.pose.${pose}`)}</span>
+                </Button>
+                <Menu
+                  ref={poseMenu}
+                  label={t('skins.poseLabel')}
+                  trigger={false}
+                  className="contents"
+                  items={POSES.map((p) => ({ id: p, label: t(`skins.pose.${p}`), icon: p === pose ? <span className="lamp" aria-hidden /> : undefined, onSelect: () => {
+                      setPose(p);
+                      setAnimated(true);
+                    },
+                  }))}
+                />
+                <button type="button" className="seg seg-sm" aria-pressed={animated} data-checked={animated || undefined} title={t('skins.animationHint')} onClick={() => setAnimated((a) => !a)}>
+                  {t('skins.animation')}
+                </button>
+                {tab === 'create' && (
+                  <div className="ml-auto flex gap-2">
+                    <Button variant="ghost" size="icon" aria-label={t('skins.undo')} title={t('skins.undo')} icon={<Undo />} disabled={!doc.canUndo} onClick={doc.undo} />
+                    <Button variant="ghost" size="icon" aria-label={t('skins.redo')} title={t('skins.redo')} icon={<Redo />} disabled={!doc.canRedo} onClick={doc.redo} />
+                  </div>
+                )}
+              </div>
 
-          <div className="stage-well">
-            <Stage
-              pixels={previewing ? previewShown.pixels : doc.pixels}
-              // A preview gets its own (negative) revisions, so the figure redraws on every switch.
-              rev={previewing ? -previewShown.seq : doc.rev}
-              // A version shows on the arms it was drawn for.
-              model={previewing ? (previewShown.version.model ?? model) : model}
-              hidden={hidden}
-              paintLayer={paintLayer}
-              pose={pose}
-              straight={!animated}
-              hover={hover}
-              onHover={setHover}
-              onBegin={doc.begin}
-              onPaint={(x, y) => paintAt(x, y, false)}
-              onEnd={doc.end}
-              ref={stage}
-            />
-            <div className="stage-view">
-              <Button variant="ghost" size="icon" aria-label={t('skins.zoomIn')} title={t('skins.zoomIn')} icon={<ZoomIn />} onClick={() => stage.current?.zoom(1 / 1.15)} />
-              <Button variant="ghost" size="icon" aria-label={t('skins.zoomOut')} title={t('skins.zoomOut')} icon={<ZoomOut />} onClick={() => stage.current?.zoom(1.15)} />
-              <Button variant="ghost" size="icon" aria-label={t('skins.resetView')} title={t('skins.resetView')} icon={<Reload />} onClick={() => stage.current?.resetView()} />
-            </div>
-            {previewing ? (
-              <div className="stage-preview" role="group" aria-label={t('skins.history.previewing', { when: whenLabel(previewShown.version.taken, i18n.language, t) })}>
-                <p className="stage-preview-note">
-                  <span className="preview-long truncate font-bold">{t('skins.history.previewing', { when: whenLabel(previewShown.version.taken, i18n.language, t) })}</span>
-                  <span className="preview-short truncate font-bold tabular">{whenLabel(previewShown.version.taken, i18n.language, t)}</span>
-                  <span className="preview-long text-ink-dim">{t('skins.history.previewNote')}</span>
-                </p>
-                <div className="stage-preview-keys">
-                  <Button variant="ghost" icon={<Close />} title={t('skins.history.back')} onClick={() => setPreview(null)}>
-                    <span className="btn-label">{t('skins.history.back')}</span>
-                  </Button>
-                  <Button icon={<Copy />} title={t('skins.history.copy')} onClick={copyVersion}>
-                    <span className="btn-label">{t('skins.history.copy')}</span>
-                  </Button>
-                  <Button variant="primary" icon={<Reload />} disabled={previewShown.version.current} aria-label={t('skins.history.restore')} title={t('skins.history.restore')} onClick={restore}>
-                    <span className="preview-long">{t('skins.history.restore')}</span>
-                    <span className="preview-short">{t('skins.history.restoreShort')}</span>
-                  </Button>
+              <div className="stage-well">
+                <Stage
+                  pixels={previewing ? previewShown.pixels : trying ? trying.pixels : doc.pixels}
+                  // A preview gets its own (negative) revisions, so the figure redraws on every switch.
+                  rev={previewing ? -previewShown.seq : trying ? -1e6 - trying.seq : doc.rev}
+                  // A version shows on the arms it was drawn for.
+                  model={previewing ? (previewShown.version.model ?? model) : model}
+                  hidden={hidden}
+                  paintLayer={paintLayer}
+                  pose={pose}
+                  straight={!animated}
+                  hover={hover}
+                  onHover={setHover}
+                  onBegin={beginStroke}
+                  onPaint={(x, y) => paintAt(x, y, false)}
+                  onEnd={endStroke}
+                  paintable={tab === 'paint'}
+                  label={tab === 'paint' ? undefined : t('skins.stageLabelTurn')}
+                  focus={framing.focus}
+                  focusKey={framing.key}
+                  blink={blinkFrame}
+                  blinkSeed={selected?.id ?? ''}
+                  ref={stage}
+                />
+                <div className="stage-view">
+                  <Button variant="ghost" size="icon" aria-label={t('skins.zoomIn')} title={t('skins.zoomIn')} icon={<ZoomIn />} onClick={() => stage.current?.zoom(1 / 1.15)} />
+                  <Button variant="ghost" size="icon" aria-label={t('skins.zoomOut')} title={t('skins.zoomOut')} icon={<ZoomOut />} onClick={() => stage.current?.zoom(1.15)} />
+                  <Button variant="ghost" size="icon" aria-label={t('skins.resetView')} title={t('skins.resetView')} icon={<Reload />} onClick={() => stage.current?.resetView()} />
+                </div>
+                {previewing ? (
+                  <div className="stage-preview" role="group" aria-label={t('skins.history.previewing', { when: whenLabel(previewShown.version.taken, i18n.language, t) })}>
+                    <p className="stage-preview-note">
+                      <span className="preview-long truncate font-bold">{t('skins.history.previewing', { when: whenLabel(previewShown.version.taken, i18n.language, t) })}</span>
+                      <span className="preview-short truncate font-bold tabular">{whenLabel(previewShown.version.taken, i18n.language, t)}</span>
+                      <span className="preview-long text-ink-dim">{t('skins.history.previewNote')}</span>
+                    </p>
+                    <div className="stage-preview-keys">
+                      <Button variant="ghost" icon={<Close />} title={t('skins.history.back')} onClick={() => setPreview(null)}>
+                        <span className="btn-label">{t('skins.history.back')}</span>
+                      </Button>
+                      <Button icon={<Copy />} title={t('skins.history.copy')} onClick={copyVersion}>
+                        <span className="btn-label">{t('skins.history.copy')}</span>
+                      </Button>
+                      <Button variant="primary" icon={<Reload />} disabled={previewShown.version.current} aria-label={t('skins.history.restore')} title={t('skins.history.restore')} onClick={restore}>
+                        <span className="preview-long">{t('skins.history.restore')}</span>
+                        <span className="preview-short">{t('skins.history.restoreShort')}</span>
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="stage-hint text-sm text-ink-dim">{trying ? t('skins.create.tryHint') : tab === 'paint' ? t('skins.stageHint') : t('skins.stageHintTurn')}</p>
+                )}
+                {trying && (
+                  <p className="stage-try" role="status" data-testid="stage-try">
+                    <span className="stage-try-tag">{t('skins.create.trying')}</span>
+                    <span className="truncate">{trying.name}</span>
+                  </p>
+                )}
+                <div className="stage-wear" hidden={previewing}>
+                  {wearer?.provider === 'microsoft' ? (
+                    <Button variant="primary" size="lg" icon={<Shirt />} aria-disabled={wearing || undefined} disabled={!selected} onClick={wear}>
+                      {wearing ? t('skins.wearingNow') : t('skins.wear')}
+                    </Button>
+                  ) : (
+                    <p className="stage-offline">{wearer ? t('skins.offlineNote') : t('skins.noAccountNote')}</p>
+                  )}
                 </div>
               </div>
-            ) : (
-              <p className="stage-hint text-sm text-ink-dim">{t('skins.stageHint')}</p>
-            )}
-            <div className="stage-wear" hidden={previewing}>
-              {wearer?.provider === 'microsoft' ? (
-                <Button variant="primary" size="lg" icon={<Shirt />} aria-disabled={wearing || undefined} disabled={!selected} onClick={wear}>
-                  {wearing ? t('skins.wearingNow') : t('skins.wear')}
-                </Button>
-              ) : (
-                <p className="stage-offline">{wearer ? t('skins.offlineNote') : t('skins.noAccountNote')}</p>
-              )}
             </div>
-          </div>
-        </div>
 
-        {historyOpen && selected ? (
-          <HistoryPanel skin={selected.id} model={model} versions={versions.data} picked={previewShown?.version.id ?? null} onPick={pickVersion} onClear={() => setClearing(selected)} onClose={() => setHistoryOpen(false)} />
-        ) : (
-        <aside className="skins-side" aria-label={t('skins.texture')}>
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="sr-only">{t('skins.texture')}</h2>
-            <span className="text-sm text-ink-dim" aria-hidden>
-              {t('skins.paintOn')}
-            </span>
-            <div role="radiogroup" aria-label={t('skins.paintOn')} className="flex items-center gap-2">
-              {(['base', 'outer'] as const).map((layer) => (
-                <button key={layer} type="button" role="radio" aria-checked={paintLayer === layer} title={`${t('skins.paintOn')}: ${t(`skins.layer.${layer}`)}`} className="seg seg-sm" data-checked={paintLayer === layer || undefined} onClick={() => setPaintLayer(layer)}>
-                  {t(`skins.layer.${layer}`)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <TexturePanel
-            pixels={doc.pixels}
-            rev={doc.rev}
-            model={model}
-            hover={hover}
-            paintLayer={paintLayer}
-            onHover={setHover}
-            onBegin={doc.begin}
-            onPaint={paintAt}
-            onEnd={doc.end}
-          />
-          <ColourPanel color={color} opacity={opacity} recent={recent} onColor={setColor} onPreview={setColorState} onOpacity={setOpacity} />
-          <PartsPanel hidden={hidden} onToggle={togglePart} onLayer={showLayer} />
-        </aside>
+            {historyOpen && selected ? (
+              <HistoryPanel skin={selected.id} model={model} hasLook={doc.look !== null} versions={versions.data} picked={previewShown?.version.id ?? null} onPick={pickVersion} onClear={() => setClearing(selected)} onClose={() => setHistoryOpen(false)} />
+            ) : tab === 'create' ? (
+              <CreatePanel
+                key={selected?.id ?? ''}
+                catalog={catalog}
+                look={editor.look}
+                editor={editor}
+                lang={lang}
+                onBuildFromPieces={plainBody ? () => void buildFromPieces().catch(pushError) : undefined}
+                tryOn={tryOn}
+                onFocus={onCreateFocus}
+              />
+            ) : (
+            <aside className="skins-side" aria-label={t('skins.texture')}>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="sr-only">{t('skins.texture')}</h2>
+                <span className="text-sm text-ink-dim" aria-hidden>
+                  {t('skins.paintOn')}
+                </span>
+                <div role="radiogroup" aria-label={t('skins.paintOn')} className="flex items-center gap-2">
+                  {(['base', 'outer'] as const).map((layer) => (
+                    <button key={layer} type="button" role="radio" aria-checked={paintLayer === layer} title={`${t('skins.paintOn')}: ${t(`skins.layer.${layer}`)}`} className="seg seg-sm" data-checked={paintLayer === layer || undefined} onClick={() => setPaintLayer(layer)}>
+                      {t(`skins.layer.${layer}`)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <TexturePanel
+                pixels={doc.pixels}
+                rev={doc.rev}
+                model={model}
+                hover={hover}
+                paintLayer={paintLayer}
+                onHover={setHover}
+                onBegin={beginStroke}
+                onPaint={paintAt}
+                onEnd={endStroke}
+              />
+              {doc.covered && (
+                <p className="paint-covered" role="status">
+                  {t('skins.piecesOnTop')}
+                </p>
+              )}
+              <ColourPanel color={color} opacity={opacity} recent={recent} onColor={setColor} onPreview={setColorState} onOpacity={setOpacity} />
+              <PartsPanel hidden={hidden} onToggle={togglePart} onLayer={showLayer} />
+            </aside>
+            )}
+          </>
         )}
       </div>
 
-      <Hotbar
-        tool={tool}
-        onTool={setTool}
-        mirror={mirror}
-        onMirror={() => setMirror((m) => !m)}
-        canUndo={doc.canUndo}
-        canRedo={doc.canRedo}
-        onUndo={doc.undo}
-        onRedo={doc.redo}
-      />
+      {tab === 'create' && (
+        <WearingRow
+          worn={editor.look?.pieces ?? []}
+          pieces={catalog.manifest?.pieces ?? null}
+          loading={catalog.loading}
+          lang={lang}
+          onTakeOff={editor.takeOff}
+          // The outfit is worked out when its turn comes, from the look as it is then.
+          onSurprise={catalogManifest && selected ? () => editor.restyle((look, arms) => surprise(catalogManifest, look, Math.random, arms)) : undefined}
+        />
+      )}
+
+      {tab === 'paint' && (
+        <Hotbar
+          tool={tool}
+          onTool={setTool}
+          mirror={mirror}
+          onMirror={() => setMirror((m) => !m)}
+          canUndo={doc.canUndo}
+          canRedo={doc.canRedo}
+          onUndo={doc.undo}
+          onRedo={doc.redo}
+        />
+      )}
 
       <Dialog
         open={renaming !== null}
@@ -643,6 +796,24 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         }
       >
         <p className="text-ink-dim">{t('skins.deleteBody')}</p>
+      </Dialog>
+
+      <Dialog
+        open={confirmPlain}
+        onClose={() => setConfirmPlain(false)}
+        title={t('skins.history.plainTitle')}
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmPlain(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="primary" icon={<Reload />} onClick={restoreNow}>
+              {t('skins.history.plainConfirm')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-ink-dim text-pretty">{t('skins.history.plainBody')}</p>
       </Dialog>
 
       <Dialog

@@ -1,14 +1,21 @@
 // The skin being edited: its texels, the stroke in progress, undo/redo, and an autosave shortly after each stroke.
 // Leaving a skin that was changed keeps a version of it (see the version history spec).
-import { useEffect, useState } from 'react';
+// A skin built from catalog pieces also has a look: the pieces and the painting under them. Its texels are then the
+// finished skin, compose(painting, pieces), and it saves through skin_look_save; one without a look works as before.
+// A stroke on such a skin edits the painting under the pieces and recomposes the finished skin, so the next change in
+// Create keeps it. Until the pieces' files are loaded (or with no catalog at all) the stroke still goes into the
+// painting, and the finished texels show it as painted; the next recompose puts it under the pieces. Pieces are never
+// taken off the finished skin because their files are missing.
+import { useEffect, useRef, useState } from 'react';
 import { commands } from '../../ipc/commands';
-import type { SkinModel } from '../../ipc/schema';
+import type { SkinEntry, SkinLook, SkinModel } from '../../ipc/schema';
+import { compose, FACE_SLOTS, type ComposeLayer } from './compose';
 import { pushError } from '../../state/toasts';
 import { decodeTexture, encodeTexture } from './codec';
 import { convertArms, fitsModel, restoreArms } from './armModel';
-import { History, mergeStroke, type ModelSwap } from './history';
+import { History, mergeStroke, type LookState, type ModelSwap } from './history';
 import { mirrorTexel } from './mirror';
-import { applyTool, line, Pixels, sameColor, type Change, type Rgba, type Tool, type Touched } from './paint';
+import { applyTool, blend, line, Pixels, sameColor, type Change, type Rgba, type Tool, type Touched } from './paint';
 import { faceAt, SKIN_SIZE } from './layout';
 
 /** The quiet wait after a stroke before the skin is saved. */
@@ -40,8 +47,29 @@ export interface SkinDoc {
   switchModel(to: SkinModel): void;
   /** Saves now if a save is waiting (before switching skins, exporting or wearing). */
   flush(): Promise<void>;
-  /** Shows `data` (already saved, e.g. a restored version) as one undoable step, with the arm model it switched to. */
+  /**
+   * Shows `data` (already saved, e.g. a restored version) as one undoable step, with the arm model it switched to; a
+   * restored skin has no look.
+   */
   replace(data: Uint8ClampedArray, model?: ModelSwap): void;
+  /** The open skin's look, null for a plain painted skin. */
+  look: LookState | null;
+  /** The last stroke went (at least partly) under a piece, so it doesn't show. */
+  covered: boolean;
+  /** A skin with a look has its pieces' files, so strokes are put under them (always true for a plain skin). */
+  piecesReady: boolean;
+  /** Hands over the pieces of `look` as drawn for `model`, so strokes can be composed under them. */
+  setLayers(look: SkinLook, model: SkinModel, layers: ComposeLayer[]): void;
+  /**
+   * The open skin's look and texels as they are now, not as of the last render (null while `id` isn't open).
+   * `version` changes with every step that changes them (a stroke, undo, redo, a look change, a restore, an arm switch).
+   */
+  current(id: string): { look: LookState | null; pixels: Pixels; version: number } | null;
+  /**
+   * Gives the skin a new look (null: plain) whose finished texels are `composed`, as one undo step. `key` joins quick
+   * changes of one thing (a colour being dragged) into one step; `model` switches the arms in the same step.
+   */
+  changeLook(next: LookState | null, composed: Uint8ClampedArray, opts?: { key?: string; model?: ModelSwap }): void;
 }
 
 /** Whether (x, y) is an arm texel, in either arm model's layout. */
@@ -56,29 +84,57 @@ function onArm(x: number, y: number): boolean {
 class DocStore {
   id: string | null = null;
   pixels: Pixels | null = null;
+  look: LookState | null = null;
+  /** Bumped by every change of texels or look that goes through history, so async work can tell it was overtaken. */
+  version = 0;
+  /** The saved skin has a look, so saving a plain one clears it first. */
+  savedLook = false;
   history = new History();
   stroke: Change[] | null = null;
   touched: Touched = new Set();
   last: [number, number] | null = null;
   timer: ReturnType<typeof setTimeout> | null = null;
+  /** The pieces of each look, by arm model, once loaded; looks are never changed in place, so they are the key. */
+  layerCache = new WeakMap<SkinLook, Map<SkinModel, ComposeLayer[]>>();
+  /** The painting a stroke on a skin with a look edits, and the finished texels as they were when it began. */
+  working: Pixels | null = null;
+  composedBefore: Pixels | null = null;
+  /** The last stroke was hidden (at least partly) by a piece. */
+  covered = false;
   /** A save went through since the skin was opened or last kept as a version. */
   dirty = false;
   /** The last switch of arm model that redrew the arms, while switching straight back can still undo it exactly. */
   lastSwitch: { from: SkinModel; to: SkinModel; changes: Change[] } | null = null;
-  onSaved: () => void = () => {};
+  /** A save answers the wardrobe entry as stored; keeping a version on the way out answers none. */
+  onSaved: (entry?: SkinEntry) => void = () => {};
   onState: (id: string, state: SaveState) => void = () => {};
 
-  wire(onSaved: () => void, onState: (id: string, state: SaveState) => void) {
+  wire(onSaved: (entry?: SkinEntry) => void, onState: (id: string, state: SaveState) => void) {
     this.onSaved = onSaved;
     this.onState = onState;
   }
 
-  open(id: string, data: Uint8ClampedArray) {
+  open(id: string, data: Uint8ClampedArray, look: LookState | null) {
     this.id = id;
     this.pixels = new Pixels(data);
+    this.look = look;
+    this.savedLook = look !== null;
+    this.version += 1;
     this.history.clear();
     this.dirty = false;
+    this.covered = false;
     this.lastSwitch = null;
+  }
+
+  setLayers(look: SkinLook, model: SkinModel, layers: ComposeLayer[]) {
+    let byModel = this.layerCache.get(look);
+    if (!byModel) this.layerCache.set(look, (byModel = new Map()));
+    byModel.set(model, layers);
+  }
+
+  /** The open look's pieces for `model`, when they are loaded. */
+  layersFor(model: SkinModel): ComposeLayer[] | null {
+    return this.look ? (this.layerCache.get(this.look.look)?.get(model) ?? null) : null;
   }
 
   /** Writes a waiting save, then keeps a version if the skin was changed while it was open. */
@@ -109,9 +165,38 @@ class DocStore {
         if (!sameColor(before, after)) changes.push({ x, y, before, after });
       }
     }
-    if (changes.length === 0 && !model) return false;
+    if (changes.length === 0 && !model && !this.look) return false;
     for (const c of changes) px.set(c.x, c.y, c.after);
-    this.history.push(changes, model);
+    // The texture was saved as a plain skin (a restore drops the look), so leaving the look is part of the step.
+    const look = this.look ? { before: this.look, after: null } : undefined;
+    this.look = null;
+    this.savedLook = false;
+    this.covered = false;
+    this.history.push(changes, model, look);
+    this.lastSwitch = null;
+    this.version += 1;
+    return true;
+  }
+
+  /** Swaps in a new look and its finished texels as one step; true when anything changed. */
+  changeLook(next: LookState | null, composed: Uint8ClampedArray, opts: { key?: string; model?: ModelSwap }): boolean {
+    const px = this.pixels;
+    if (!px) return false;
+    const after = new Pixels(composed);
+    const changes: Change[] = [];
+    for (let y = 0; y < SKIN_SIZE; y++) {
+      for (let x = 0; x < SKIN_SIZE; x++) {
+        const before = px.get(x, y);
+        const now = after.get(x, y);
+        if (!sameColor(before, now)) changes.push({ x, y, before, after: now });
+      }
+    }
+    for (const c of changes) px.set(c.x, c.y, c.after);
+    this.history.pushLook(changes, { before: this.look, after: next }, opts);
+    this.version += 1;
+    this.look = next;
+    this.covered = false;
+    // The pieces redrew the skin, arms included: a switch of arms before this can't be taken back texel for texel.
     this.lastSwitch = null;
     return true;
   }
@@ -128,6 +213,9 @@ class DocStore {
     this.stroke = [];
     this.touched = new Set();
     this.last = null;
+    // On a skin with a look the stroke paints a copy of the painting (recorded paintings are never changed in place).
+    this.working = this.look ? new Pixels(this.look.painting ?? undefined) : null;
+    this.composedBefore = this.look && this.pixels ? this.pixels.clone() : null;
   }
 
   /** Paints and returns whether anything changed. */
@@ -138,36 +226,103 @@ class DocStore {
     const from = joined && this.last && opts.tool !== 'fill' ? this.last : null;
     const points: [number, number][] = from ? line(from[0], from[1], x, y).slice(1) : [[x, y]];
     this.last = [x, y];
-    let changed = false;
-    for (const [tx, ty] of points) {
-      const changes = applyTool(px, model, opts.tool, tx, ty, opts, mirrorTexel, this.touched);
-      if (changes.length) {
-        this.stroke!.push(...changes);
-        changed = true;
+    const done: Change[] = [];
+    const working = this.working;
+    if (!this.look || !working) {
+      for (const [tx, ty] of points) done.push(...applyTool(px, model, opts.tool, tx, ty, opts, mirrorTexel, this.touched));
+      if (done.length === 0) return false;
+      this.stroke!.push(...done);
+      return true;
+    }
+    // A skin with a look paints its painting; the finished texels follow.
+    const layers = this.layersFor(model);
+    if (opts.tool === 'eraser') {
+      // The eraser takes paint off the painting only.
+      for (const [tx, ty] of points) done.push(...applyTool(working, model, opts.tool, tx, ty, opts, mirrorTexel, this.touched));
+    } else {
+      // Tools that read colours (Fill's region, Shade, Noise, a light Pencil) act on what the player sees at the
+      // painting's depth: the face pieces with the painting over them (the painting alone until the pieces load, so the
+      // pieces on top never leak into it).
+      const seen = layers ? new Pixels(compose(working.data, layers.filter((l) => FACE_SLOTS.includes(l.slot)))) : working.clone();
+      for (const [tx, ty] of points) {
+        for (const c of applyTool(seen, model, opts.tool, tx, ty, opts, mirrorTexel, this.touched)) {
+          done.push({ x: c.x, y: c.y, before: working.get(c.x, c.y), after: c.after });
+          working.set(c.x, c.y, c.after);
+        }
       }
     }
-    return changed;
+    if (done.length === 0) return false;
+    this.stroke!.push(...done);
+    if (layers) px.data.set(compose(working.data, layers));
+    // The pieces aren't loaded: lay the stroke over what shows until the next recompose puts it under them (an
+    // eraser shows nothing until then: it would punch holes through pieces it can't see).
+    else if (opts.tool !== 'eraser') for (const c of done) px.set(c.x, c.y, blend(px.get(c.x, c.y), c.after, 1));
+    return true;
   }
 
   /** Ends the stroke; true when it changed something (and went into history). */
-  end(): boolean {
+  end(model: SkinModel): boolean {
     const done = this.stroke;
+    const working = this.working;
+    const before = this.composedBefore;
     this.stroke = null;
     this.last = null;
+    this.working = null;
+    this.composedBefore = null;
     if (!done || done.length === 0) return false;
-    this.history.push(mergeStroke(done));
+    // Paint on an arm since the last switch of arms: switching back redraws them, it can't hand back the old texels.
     if (done.some((c) => onArm(c.x, c.y))) this.lastSwitch = null;
+    const look = this.look;
+    if (!look || !working || !before || !this.pixels) {
+      this.history.push(mergeStroke(done));
+      this.version += 1;
+      this.covered = false;
+      return true;
+    }
+    // One step: the painting before and after, and what that changed on the finished skin.
+    const px = this.pixels;
+    const changes: Change[] = [];
+    for (let y = 0; y < SKIN_SIZE; y++) {
+      for (let x = 0; x < SKIN_SIZE; x++) {
+        const was = before.get(x, y);
+        const now = px.get(x, y);
+        if (!sameColor(was, now)) changes.push({ x, y, before: was, after: now });
+      }
+    }
+    const layers = this.layersFor(model);
+    let skinLook = look.look;
+    if (!skinLook.painting) {
+      skinLook = { ...skinLook, painting: true };
+      const known = this.layerCache.get(look.look);
+      if (known) this.layerCache.set(skinLook, new Map(known));
+    }
+    const next: LookState = { look: skinLook, painting: working.data };
+    this.history.pushLook(changes, { before: look, after: next });
+    this.look = next;
+    this.version += 1;
+    // Hidden where what shows differs from the painting over the face pieces (the pieces under it).
+    this.covered = false;
+    if (layers) {
+      const under = new Pixels(compose(working.data, layers.filter((l) => FACE_SLOTS.includes(l.slot))));
+      this.covered = mergeStroke(done).some((c) => !sameColor(px.get(c.x, c.y), under.get(c.x, c.y)));
+    }
     return true;
   }
 
   undo(onModel: (model: SkinModel) => void): boolean {
     this.lastSwitch = null;
-    return !!this.pixels && this.history.undo(this.pixels, onModel);
+    const done = !!this.pixels && this.history.undo(this.pixels, { onModel, onLook: (look) => (this.look = look) });
+    if (done) this.version += 1;
+    this.covered = false;
+    return done;
   }
 
   redo(onModel: (model: SkinModel) => void): boolean {
     this.lastSwitch = null;
-    return !!this.pixels && this.history.redo(this.pixels, onModel);
+    const done = !!this.pixels && this.history.redo(this.pixels, { onModel, onLook: (look) => (this.look = look) });
+    if (done) this.version += 1;
+    this.covered = false;
+    return done;
   }
 
   /** Switches the arms from `from` to `to`; true when texels changed. */
@@ -180,6 +335,8 @@ class DocStore {
     const changes = back ?? (fitsModel(px, to) ? [] : convertArms(px, from, to));
     this.lastSwitch = back || changes.length === 0 ? null : { from, to, changes };
     this.history.push(changes, { before: from, after: to });
+    this.covered = false;
+    this.version += 1;
     return changes.length > 0;
   }
 
@@ -192,12 +349,24 @@ class DocStore {
     }
     const id = this.id;
     const px = this.pixels;
+    const look = this.look;
     if (!id || !px) return;
     this.onState(id, 'saving');
     try {
-      await commands.skinSave(id, encodeTexture(px.data));
+      const texture = encodeTexture(px.data);
+      let entry: SkinEntry;
+      if (look) {
+        entry = await commands.skinLookSave(id, look.look, look.painting ? encodeTexture(look.painting) : null, texture);
+        if (this.id === id) this.savedLook = true;
+      } else {
+        if (this.savedLook) {
+          await commands.skinLookClear(id);
+          if (this.id === id) this.savedLook = false;
+        }
+        entry = await commands.skinSave(id, texture);
+      }
       if (this.id === id) this.dirty = true;
-      this.onSaved();
+      this.onSaved(entry);
     } catch (error) {
       pushError(error);
     } finally {
@@ -206,13 +375,37 @@ class DocStore {
   }
 }
 
-/** `onModel` stores a new arm model for the open skin: after a switch, and when undo or redo crosses one. */
-export function useSkinDoc(id: string | null, model: SkinModel, onSaved: () => void, onModel: (model: SkinModel) => void): SkinDoc {
+/** The look a skin is opened with: its pieces and the painting under them, read once as it opens. */
+async function openLook(id: string, look: SkinLook | undefined): Promise<LookState | null> {
+  if (!look) return null;
+  const url = look.painting ? await commands.skinPainting(id) : null;
+  const painting = url ? await decodeTexture(url) : null;
+  return { look: { ...look, painting: painting !== null }, painting };
+}
+
+/**
+ * `onSaved` gets the wardrobe entry each save answers, so the wardrobe can show it (and its look) at once; it is also
+ * called, with no entry, when leaving a changed skin kept a version of it, so the history can ask again. `onModel`
+ * stores a new arm model for the open skin: after a switch, and when undo or redo crosses one. `look` is the open
+ * skin's look as its wardrobe entry has it (read as the skin opens).
+ */
+export function useSkinDoc(
+  id: string | null,
+  model: SkinModel,
+  onSaved: (entry?: SkinEntry) => void,
+  onModel: (model: SkinModel) => void,
+  look?: SkinLook,
+): SkinDoc {
   const [store] = useState(() => new DocStore());
   const [rev, setRev] = useState(0);
   const [loaded, setLoaded] = useState<string | null>(null);
   const [saveOf, setSaveOf] = useState<{ id: string; state: SaveState } | null>(null);
   const bump = () => setRev((r) => r + 1);
+  const lookRef = useRef(look);
+  // Kept current before the open effect below reads it (effects run in order).
+  useEffect(() => {
+    lookRef.current = look;
+  });
 
   useEffect(() => {
     store.wire(onSaved, (forId, state) =>
@@ -223,12 +416,10 @@ export function useSkinDoc(id: string | null, model: SkinModel, onSaved: () => v
   useEffect(() => {
     if (!id) return;
     let live = true;
-    commands
-      .skinTexture(id)
-      .then(decodeTexture)
-      .then((data) => {
+    Promise.all([commands.skinTexture(id).then(decodeTexture), openLook(id, lookRef.current)])
+      .then(([data, opened]) => {
         if (!live) return;
-        store.open(id, data);
+        store.open(id, data, opened);
         setLoaded(id);
         setRev((r) => r + 1);
       })
@@ -249,7 +440,7 @@ export function useSkinDoc(id: string | null, model: SkinModel, onSaved: () => v
     if (open && store.paint(model, x, y, opts, joined)) bump();
   };
   const end = () => {
-    if (store.end()) {
+    if (store.end(model)) {
       bump();
       schedule();
     }
@@ -291,6 +482,21 @@ export function useSkinDoc(id: string | null, model: SkinModel, onSaved: () => v
     flush: () => store.saveNow(),
     replace: (data: Uint8ClampedArray, swap?: ModelSwap) => {
       if (open && store.replace(data, swap)) bump();
+    },
+    look: open ? store.look : null,
+    covered: open && store.covered,
+    piecesReady: open && (!store.look || store.layersFor(model) !== null),
+    setLayers: (forLook, forModel, layers) => {
+      const had = store.layersFor(model) !== null;
+      store.setLayers(forLook, forModel, layers);
+      if (!had && store.layersFor(model) !== null) bump();
+    },
+    current: (forId) => (store.id === forId && store.pixels ? { look: store.look, pixels: store.pixels, version: store.version } : null),
+    changeLook: (next, composed, opts = {}) => {
+      if (!open || !store.changeLook(next, composed, opts)) return;
+      if (opts.model) onModel(opts.model.after);
+      bump();
+      schedule();
     },
   };
 }

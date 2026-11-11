@@ -1,10 +1,12 @@
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent, type Ref, type WheelEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SkinModel } from '../../ipc/schema';
+import type { Focus } from './framing';
 import { SKIN_SIZE, type Layer, type Part } from './layout';
 import type { Pixels } from './paint';
 import type { Pose } from './poses';
 import { createStage, type Stage as Scene } from './stageScene';
+import { useBlinking } from './useBlink';
 
 /** Hover tint: the texel under the pointer, lifted toward white so it reads on any colour. */
 function withHover(pixels: Pixels, hover: [number, number] | null): Uint8ClampedArray {
@@ -46,6 +48,12 @@ export function Stage({
   onBegin,
   onPaint,
   onEnd,
+  label,
+  paintable = true,
+  focus = 'figure',
+  focusKey = '',
+  blink = null,
+  blinkSeed = '',
   ref,
 }: {
   pixels: Pixels | null;
@@ -61,6 +69,18 @@ export function Stage({
   onBegin: () => void;
   onPaint: (x: number, y: number) => void;
   onEnd: () => void;
+  /** The figure's accessible name; the editor's (drag to paint) by default. */
+  label?: string;
+  /** False: a drag on the figure turns it too, and nothing is painted or highlighted. */
+  paintable?: boolean;
+  /** What the camera frames: the whole figure, or the part being dressed. */
+  focus?: Focus;
+  /** Names where the focus comes from (a Create category): once the player moves the camera, it stays theirs until this changes. */
+  focusKey?: string;
+  /** The skin with its eyes shut (see blink.ts): shown for a moment every few seconds, while Animation is on. */
+  blink?: Pixels | null;
+  /** Whose blink rhythm it is: the skin's id. */
+  blinkSeed?: string;
   ref?: Ref<StageHandle>;
 }) {
   const { t } = useTranslation();
@@ -87,6 +107,7 @@ export function Stage({
   useImperativeHandle(ref, () => ({ resetView: () => scene?.resetView(), zoom: (f) => scene?.zoom(f), celebrate: () => scene?.celebrate() }), [scene]);
   useEffect(() => scene?.setPose(pose), [scene, pose]);
   useEffect(() => scene?.setStraight(straight), [scene, straight]);
+  useEffect(() => scene?.focus(focus, focusKey), [scene, focus, focusKey]);
 
   useEffect(() => scene?.setModel(model), [scene, model]);
   useEffect(() => scene?.setPaintLayer(paintLayer), [scene, paintLayer]);
@@ -97,13 +118,17 @@ export function Stage({
       for (const layer of ['base', 'outer'] as Layer[]) s.setVisible(part, layer, !hidden.has(`${part}:${layer}`));
     }
   }, [scene, hidden, model]);
+  // A blink swaps the texture the figure wears, and nothing else: the skin and the flat texture never see it. With
+  // Animation off the figure is still, eyes open.
+  const blinking = useBlinking(blink !== null && !straight, blinkSeed);
+  const drawn = blinking && blink ? blink : pixels;
   useEffect(() => {
-    if (pixels) scene?.setTexture(withHover(pixels, hover));
-  }, [scene, pixels, rev, hover, model]);
+    if (drawn) scene?.setTexture(withHover(drawn, hover));
+  }, [scene, drawn, rev, hover, model]);
 
   const down = (event: PointerEvent<HTMLCanvasElement>) => {
     const panning = event.button === 1 || (event.button === 0 && event.shiftKey);
-    const hit = event.button === 0 && !panning ? scene?.pick(event.clientX, event.clientY) : null;
+    const hit = paintable && event.button === 0 && !panning ? scene?.pick(event.clientX, event.clientY) : null;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     if (panning) {
       // The middle button would otherwise start the browser's autoscroll.
@@ -128,6 +153,7 @@ export function Stage({
       d.y = event.clientY;
       return;
     }
+    if (!paintable) return;
     const hit = s.pick(event.clientX, event.clientY);
     onHover(hit ? [hit.x, hit.y] : null);
     if (d?.mode === 'paint' && hit) onPaint(hit.x, hit.y);
@@ -148,7 +174,7 @@ export function Stage({
       className="stage-canvas"
       data-testid="stage"
       role="img"
-      aria-label={t('skins.stageLabel')}
+      aria-label={label ?? t('skins.stageLabel')}
       onPointerDown={down}
       onMouseDown={(e) => e.button === 1 && e.preventDefault()}
       onPointerMove={move}

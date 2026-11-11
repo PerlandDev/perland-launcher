@@ -27,7 +27,8 @@ import {
 } from 'three';
 import type { SkinModel } from '../../ipc/schema';
 import { boxes, SKIN_SIZE, type Box, type Face, type Layer, type Part, type Vec3 } from './layout';
-import { cameraPosition, orbit as orbitView, pan as panView, startView, targetOf, zoomAt } from './camera';
+import { orbit as orbitView, pan as panView, startView, type View } from './camera';
+import { cameraAt, easeOut, fitDistance, following, GLIDE_MS, glideFrame, glideView, shotOf, zoomShot, type Focus, type Frame, type Shot } from './framing';
 import { outerWalls, type Wall } from './outerWalls';
 import { celebration, CELEBRATE_S, rigAt, STRAIGHT, type Joint, type Pose } from './poses';
 
@@ -304,11 +305,18 @@ export interface Stage {
   celebrate(): void;
   /** The texel under a point of the canvas (client coordinates), on the paint layer; null over empty stage. */
   pick(clientX: number, clientY: number): Hit | null;
+  /**
+   * Frames `focus` (the whole figure, or the part being dressed), gliding there. The camera follows until the player
+   * turns, zooms or slides it by hand; then it stays theirs until `key` changes or they reset the view (see
+   * `following`).
+   */
+  focus(focus: Focus, key: string): void;
   orbit(dx: number, dy: number): void;
   /** Zooms by `factor` (below 1 is closer), toward what is under the client point when one is given. */
   zoom(factor: number, clientX?: number, clientY?: number): void;
   /** Slides the view by a drag of (dx, dy) CSS pixels. */
   pan(dx: number, dy: number): void;
+  /** Back to the framing of the focus, at its own angle and distance, with no slide. */
   resetView(): void;
   resize(width: number, height: number): void;
   dispose(): void;
@@ -351,25 +359,15 @@ const PARENT: Record<Joint, Joint | null> = {
   leftLeg: null,
 };
 
-/** What each pose frames: the camera's target height and how much must fit. */
-const FRAMING: Record<Pose, { target: number; height: number; width: number }> = {
-  still: { target: 13, height: 50, width: 30 },
-  walk: { target: 13, height: 50, width: 30 },
-  run: { target: 13.5, height: 51, width: 32 },
-  crouch: { target: 12, height: 48, width: 30 },
-  sit: { target: 8, height: 42, width: 34 },
-  wave: { target: 15, height: 54, width: 32 },
-  boat: { target: 8, height: 44, width: 40 },
-  horse: { target: 25, height: 72, width: 46 },
-};
-
-
 export function createStage(canvas: HTMLCanvasElement): Stage {
   const renderer = new WebGLRenderer({ canvas, antialias: false, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0x000000, 0);
   const scene = new Scene();
   const camera = new PerspectiveCamera(32, 1, 1, 600);
+  // Only the camera's glides follow the system's reduced-motion setting (they jump); the figure's own motion is the
+  // Animation switch's.
+  const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
 
   const world = new Group();
   scene.add(world);
@@ -402,12 +400,24 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   let paintLayer: Layer = 'base';
   let pose: Pose = 'still';
   let model: SkinModel = 'classic';
-  let view = startView();
+  // The camera: the view (angle, zoom and slide) is the player's to move, the shot is where the focus (and the pose)
+  // put it.
+  let view: View = startView();
+  let follow = following();
   let fit = { half: Math.tan((32 * Math.PI) / 360), aspect: 1 };
   let frame = 0;
   const started = performance.now();
   let straight = false;
   let celebratedAt = -Infinity;
+  /** The whole figure in its pose: what a close-up zooms out to. */
+  const whole = (): Shot => shotOf('figure', pose);
+  /** The shot of `focus` now. With Animation off the figure stands straight, so a close-up is of the standing figure. */
+  const shotNow = (focus: Focus): Shot => (focus === 'figure' ? whole() : shotOf(focus, straight ? 'still' : pose));
+  let shot: Frame = shotNow('figure');
+  let shotGlide: { from: Frame; to: Frame; start: number } | null = null;
+  let viewGlide: { from: View; to: View; start: number } | null = null;
+  /** The first focus places the camera; later ones glide. */
+  let placed = false;
 
   const raycaster = new Raycaster();
   const pointer = new Vector2();
@@ -437,27 +447,38 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     world.position.y = party?.lift ?? 0;
   };
 
+  /** Moves the glides on to `now`; false once the camera has arrived. */
+  const glide = (now: number): boolean => {
+    if (shotGlide) {
+      const k = (now - shotGlide.start) / GLIDE_MS;
+      shot = glideFrame(shotGlide.from, shotGlide.to, easeOut(k));
+      if (k >= 1) shotGlide = null;
+    }
+    if (viewGlide) {
+      const k = (now - viewGlide.start) / GLIDE_MS;
+      view = glideView(viewGlide.from, viewGlide.to, easeOut(k));
+      if (k >= 1) viewGlide = null;
+    }
+    return shotGlide !== null || viewGlide !== null;
+  };
+
   const draw = (now: number) => {
     frame = 0;
     place(now);
+    const gliding = glide(now);
     aim();
     renderer.render(scene, camera);
     // The figure is a little alive (breathing, looking around) while Animation is on; that switch is the player's,
-    // so the system's reduced-motion setting doesn't stop it. The celebration plays either way. A still stage
-    // redraws only when something changes.
+    // so the system's reduced-motion setting doesn't stop it. The celebration plays either way, and so does a camera
+    // glide. A still stage redraws only when something changes.
     const celebrating = now - celebratedAt < CELEBRATE_S * 1000;
-    if (!straight || celebrating) frame = requestAnimationFrame(draw);
+    if (gliding || !straight || celebrating) frame = requestAnimationFrame(draw);
   };
-  /** The pose's centre, and the distance at which the whole pose fits the stage. */
-  const framed = () => {
-    const framing = FRAMING[pose];
-    const centre: Vec3 = [0, framing.target, 0];
-    return { centre, fitDistance: Math.max(framing.height / 2 / fit.half, framing.width / 2 / (fit.half * fit.aspect)) };
-  };
+  /** Stands the camera where the view puts it over the shot. */
   const aim = () => {
-    const { centre, fitDistance } = framed();
-    camera.position.set(...cameraPosition(view, centre, fitDistance));
-    camera.lookAt(...targetOf(view, centre));
+    const at = cameraAt(view, shot, whole(), fit);
+    camera.position.set(...at.position);
+    camera.lookAt(...at.target);
     camera.updateMatrixWorld();
   };
   /** The ray from the camera through a client point of the canvas; false when the canvas has no size. */
@@ -472,6 +493,29 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   };
   const invalidate = () => {
     if (!frame) frame = requestAnimationFrame(draw);
+  };
+
+  /**
+   * Sends the camera to the shot of what it follows, as the figure stands now: gliding, or at once (`instant`, and
+   * always under reduced motion). `angle` also takes the view to the shot's own angle and distance and undoes a
+   * slide; without it only the shot moves (a pose change), and the player's angle, zoom and slide stay.
+   */
+  const reframe = ({ angle, instant = false }: { angle: boolean; instant?: boolean }) => {
+    const goal = shotNow(follow.aimed);
+    const to: View = { ...startView(), yaw: goal.yaw, pitch: goal.pitch };
+    if (instant || motion?.matches === true) {
+      shot = goal;
+      shotGlide = null;
+      if (angle) {
+        view = to;
+        viewGlide = null;
+      }
+    } else {
+      const start = performance.now();
+      shotGlide = { from: shot, to: goal, start };
+      if (angle) viewGlide = { from: view, to, start };
+    }
+    invalidate();
   };
 
   const build = (next: SkinModel) => {
@@ -539,12 +583,16 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       paintLayer = layer;
     },
     setPose(next) {
+      if (next === pose) return;
       pose = next;
-      invalidate();
+      // The close-up goes with the part to where the new pose puts it.
+      reframe({ angle: false, instant: !placed });
     },
     setStraight(next) {
+      if (next === straight) return;
       straight = next;
-      invalidate();
+      // Standing straight (or back in its pose), the part being dressed is somewhere else.
+      reframe({ angle: false, instant: !placed });
     },
     celebrate() {
       celebratedAt = performance.now();
@@ -570,7 +618,16 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
         layer: owner.box.layer,
       };
     },
+    focus(focus, key) {
+      const next = follow.focus(focus, key);
+      follow = next.state;
+      if (next.move) reframe({ angle: true, instant: !placed });
+      placed = true;
+    },
     orbit(dx, dy) {
+      // The player's hand wins: a glide of the view stops where it is.
+      viewGlide = null;
+      follow = follow.moved();
       view = orbitView(view, dx, dy);
       invalidate();
     },
@@ -581,20 +638,24 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
         const hit = raycaster.intersectObjects(world.children, true).find((h) => h.object.visible && isShown(h.object));
         if (hit) point = [hit.point.x, hit.point.y, hit.point.z];
       }
-      view = zoomAt(view, factor, framed().centre, point);
+      viewGlide = null;
+      follow = follow.moved();
+      view = zoomShot(view, factor, shotGlide?.to ?? shot, whole(), fit, point);
       invalidate();
     },
     pan(dx, dy) {
       const rect = canvas.getBoundingClientRect();
       if (rect.height === 0) return;
+      viewGlide = null;
+      follow = follow.moved();
       // At the target's distance the stage's height spans 2 · tan(fov / 2) · distance model units.
-      const unitsPerPixel = (2 * fit.half * framed().fitDistance * view.zoom) / rect.height;
+      const unitsPerPixel = (2 * fit.half * fitDistance(shot, fit) * view.zoom) / rect.height;
       view = panView(view, dx, dy, unitsPerPixel);
       invalidate();
     },
     resetView() {
-      view = startView();
-      invalidate();
+      follow = follow.reset();
+      reframe({ angle: true });
     },
     resize(width, height) {
       if (width <= 0 || height <= 0) return;

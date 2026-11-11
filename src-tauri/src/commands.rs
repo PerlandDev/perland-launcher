@@ -1248,6 +1248,44 @@ pub async fn skin_sync_current(
 }
 
 #[tauri::command]
+pub async fn skin_catalog(core: CoreState<'_>) -> Res<launcher_app::skins::CatalogAnswer> {
+    Ok(core.skin_catalog().await)
+}
+
+#[tauri::command]
+pub async fn skin_catalog_file(core: CoreState<'_>, sha256: String) -> Res<String> {
+    logged("skin_catalog_file", core.skin_catalog_file(&sha256).await)
+}
+
+#[tauri::command]
+pub async fn skin_painting(core: CoreState<'_>, id: String) -> Res<Option<String>> {
+    logged("skin_painting", core.skin_painting(&id).await)
+}
+
+#[tauri::command]
+pub async fn skin_look_save(
+    core: CoreState<'_>,
+    id: String,
+    look: launcher_core::skins_library::SkinLook,
+    painting: Option<String>,
+    texture: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged(
+        "skin_look_save",
+        core.skin_look_save(&id, look, painting.as_deref(), &texture)
+            .await,
+    )
+}
+
+#[tauri::command]
+pub async fn skin_look_clear(
+    core: CoreState<'_>,
+    id: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged("skin_look_clear", core.skin_look_clear(&id).await)
+}
+
+#[tauri::command]
 pub async fn skin_wear(
     core: CoreState<'_>,
     id: String,

@@ -465,6 +465,380 @@
   white-space: nowrap;
 }
 
+/* Studio tabs: Create, Paint, Catalog as the standard segments, the open one pressed with the lime lamp. */
+.skins-tabs {
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
+  padding-bottom: 4px;
+}
+
+/* Create: the third column widens into a panel of categories, pieces and colours; the Wearing row takes the
+   hotbar's place under the stage. Worn pieces carry a lime On badge; the picked one sits pressed in its slot. */
+.skins-body[data-tab='create'] {
+  grid-template-columns: clamp(11.5rem, 15vw, 14rem) minmax(0, 1fr) clamp(25rem, 34vw, 34rem);
+}
+.create-side {
+  /* The sticky action row's height (two rows of keys): what the keyboard or the Colours key brings into view scrolls
+     clear above it, never under it. */
+  scroll-padding-bottom: 8rem;
+  padding: 1rem;
+  background: var(--color-panel);
+  border-radius: 6px;
+  corner-shape: notch;
+}
+.create {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: 1rem;
+  min-height: 0;
+}
+.create-categories {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  display: grid;
+  align-content: start;
+  gap: 0.25rem;
+}
+.create-category {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0 0.75rem;
+  font-weight: 600;
+  color: var(--color-ink-dim);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  cursor: pointer;
+}
+.create-category:hover {
+  color: var(--color-ink);
+  background: var(--color-raised);
+}
+.create-category[aria-pressed='true'] {
+  color: var(--color-ink);
+  background: var(--color-ground);
+  box-shadow:
+    inset 0 2px 0 rgb(0 0 0 / 0.45),
+    inset 0 0 0 1px var(--color-line);
+}
+.create-category[aria-pressed='true']::before {
+  content: '';
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--color-lime);
+}
+.create-category:focus-visible,
+.piece-tile:focus-visible,
+.expression-chip:focus-visible,
+.wearing-x:focus-visible {
+  outline: 2px solid var(--color-amber);
+  outline-offset: 2px;
+}
+.create-pieces {
+  display: grid;
+  align-content: start;
+  gap: 1.125rem;
+  min-width: 0;
+}
+.create-group {
+  display: grid;
+  gap: 0.625rem;
+}
+.create-heading {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-dim);
+}
+.piece-grid {
+  display: grid;
+  /* Three to a row in the panel at 1280: a category of 48 tops is 16 rows, not 24. */
+  grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr));
+  gap: 0.75rem 0.5rem;
+  margin: 0;
+  padding: 0 0 4px;
+  list-style: none;
+}
+.piece-tile {
+  position: relative;
+  display: grid;
+  gap: 0.25rem;
+  width: 100%;
+  padding: 0.5rem 0.375rem 0.4375rem;
+  color: var(--color-ink);
+  background: var(--color-raised);
+  border: 0;
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow: 0 4px 0 var(--color-dirt-deep);
+  cursor: pointer;
+  transition:
+    translate 180ms steps(2, end),
+    box-shadow 180ms steps(2, end);
+}
+.piece-tile:hover {
+  background: color-mix(in oklab, var(--color-raised), white 7%);
+}
+.piece-tile:active,
+.piece-tile[aria-current='true'] {
+  translate: 0 4px;
+  box-shadow: 0 0 0 var(--color-dirt-deep);
+}
+.piece-tile[aria-current='true'] {
+  background: var(--color-ground);
+  box-shadow:
+    inset 0 2px 0 rgb(0 0 0 / 0.45),
+    inset 0 0 0 2px var(--color-lime);
+}
+.piece-grid > li {
+  min-width: 0;
+}
+.piece-thumb {
+  display: block;
+  min-width: 0;
+}
+/* The thumbnail is a front view twice as tall as it is wide (CatalogThumb, cut from the catalog's sheet): 48 x 96,
+   the sheet's own size, so every texel stays square. */
+.piece-thumb > .skin-thumb {
+  width: 3rem;
+  margin: 0 auto;
+}
+.piece-grid[data-head] {
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+}
+/* What is worn on the head shows the head alone: a square box, filled by the style useThumbs answers for a head. */
+.piece-thumb-head {
+  aspect-ratio: 1;
+}
+.piece-name {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.piece-tile:not([aria-current='true']) .piece-name {
+  color: var(--color-ink-dim);
+}
+.piece-on {
+  position: absolute;
+  top: 0.3125rem;
+  right: 0.3125rem;
+  padding: 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ground);
+  background: var(--color-lime);
+  border-radius: 2px;
+  corner-shape: notch;
+}
+/* Expressions: a row of small raised keys, each the player's own face (8 texels, six device pixels each) with that
+   expression on. The one worn now sits pressed in its slot with the lime ring, like a picked piece. */
+.expression-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem 0.5rem;
+  padding-bottom: 4px;
+}
+.expression-chip {
+  flex: none;
+  padding: 0.25rem;
+  background: var(--color-raised);
+  border: 0;
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow: 0 4px 0 var(--color-dirt-deep);
+  cursor: pointer;
+  transition:
+    translate 180ms steps(2, end),
+    box-shadow 180ms steps(2, end);
+}
+.expression-chip:hover {
+  background: color-mix(in oklab, var(--color-raised), white 7%);
+}
+.expression-chip:active,
+.expression-chip[aria-current='true'] {
+  translate: 0 4px;
+  box-shadow: 0 0 0 var(--color-dirt-deep);
+}
+.expression-chip[aria-current='true'] {
+  background: var(--color-ground);
+  box-shadow:
+    inset 0 2px 0 rgb(0 0 0 / 0.45),
+    inset 0 0 0 2px var(--color-lime);
+}
+.expression-face {
+  display: block;
+  width: 3rem;
+  height: 3rem;
+  image-rendering: pixelated;
+  background: var(--color-ground);
+  border-radius: 2px;
+  corner-shape: notch;
+}
+.area-colours {
+  display: grid;
+  gap: 0.875rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-line);
+}
+.area-row {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+.area-name {
+  padding-top: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+/* The area's quick colours, under its picker: small swatches that wrap. The padding keeps the outline of the one in
+   use (and the focus ring) inside the row. */
+.area-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+}
+.area-swatches .colour-swatch {
+  width: 1.125rem;
+  height: 1.125rem;
+  /* A seam ring, so the darkest hair and cloth colours still read as swatches on the panel. */
+  box-shadow: inset 0 0 0 1px var(--color-line);
+}
+.area-colours .colour-well {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+.area-colours .colour-chip {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+.create-covered {
+  display: grid;
+  justify-items: start;
+  gap: 0.5rem;
+}
+.create-actions {
+  position: sticky;
+  bottom: -1rem;
+  z-index: 1;
+  /* The piece's own keys (Colours, Take off) share a row; Make part of the skin takes the next when it doesn't fit. */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 -1rem -1rem;
+  padding: 0.75rem 1rem calc(1rem + 4px);
+  background: var(--color-panel);
+  /* A seam and a short fade over what scrolls under the row. */
+  box-shadow:
+    0 -1px 0 var(--color-line),
+    0 -10px 12px -6px rgb(0 0 0 / 0.45);
+}
+.create-actions > .btn {
+  flex: 1 1 auto;
+}
+.wearing-row {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  gap: 0.5rem 0.75rem;
+  min-height: 3.75rem;
+  padding: 0.75rem 0 1rem;
+}
+/* Surprise me leads the row and stays put while the chips scroll under it. */
+.wearing-surprise {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: none;
+  /* The step's height under the key, and a gap the chips scroll behind. */
+  padding: 0 0.25rem 4px 0;
+  background: var(--color-ground);
+}
+.wearing-label {
+  flex: none;
+  font-weight: 600;
+  color: var(--color-ink-dim);
+}
+.wearing-label::after {
+  content: ':';
+}
+.wearing-chips {
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.wearing-chip {
+  display: inline-flex;
+  flex: none;
+  white-space: nowrap;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 14rem;
+  min-height: 2rem;
+  padding: 0 0.125rem 0 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: var(--color-raised);
+  border-radius: 3px;
+  corner-shape: notch;
+}
+.wearing-chip[data-gone] {
+  color: var(--color-ink-dim);
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--color-line);
+}
+.wearing-x {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--color-ink-dim);
+  background: none;
+  border: 0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.wearing-chip[data-waiting] {
+  color: var(--color-ink-dim);
+}
+.wearing-x:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+.wearing-x:hover:not(:disabled) {
+  color: var(--color-ink);
+  background: color-mix(in oklab, var(--color-raised), white 8%);
+}
+.wearing-x svg {
+  width: 1rem;
+  height: 1rem;
+}
+
 /* Version history: the texture column turns into the skin's kept versions, rows like the wardrobe's. */
 .history {
   overflow: hidden;
@@ -511,6 +885,39 @@
   border-radius: 3px;
   corner-shape: notch;
   box-shadow: inset 0 0 0 1px var(--color-line);
+}
+/* Trying a piece on (Create): a ground plate at the head of the well names what the figure shows but doesn't wear.
+   Its tag is the On badge in ink: lime stays the mark of what is really worn. */
+.stage-try {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: calc(100% - 4rem);
+  padding: 0.3125rem 0.625rem 0.3125rem 0.3125rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  pointer-events: none;
+  background: color-mix(in oklab, var(--color-ground) 92%, transparent);
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow: inset 0 0 0 1px var(--color-line);
+}
+.stage-try-tag {
+  flex: none;
+  padding: 0 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1.25rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ground);
+  background: var(--color-ink);
+  border-radius: 2px;
+  corner-shape: notch;
 }
 /* Previewing a version: a ground plate across the foot of the well, in place of the hint and Wear. */
 .stage-preview {
@@ -623,6 +1030,58 @@
     grid-template-columns: 11rem minmax(0, 1fr) 15rem;
     gap: 0.75rem;
   }
+  /* Narrow: the categories become one scrolling row over the pieces, so the stage keeps its room. */
+  .skins-body[data-tab='create'] {
+    grid-template-columns: 11rem minmax(0, 1fr) 17.5rem;
+  }
+  .create-side {
+    /* Clear of the category row that stays at the top, and of the action row at the foot. */
+    scroll-padding: 3.25rem 0 7.5rem;
+    padding: 0.75rem;
+  }
+  .create {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+  /* The row stays at the top while the pieces scroll under it: a long category never hides the others. */
+  .create-categories {
+    top: -0.75rem;
+    z-index: 2;
+    display: flex;
+    gap: 0.25rem;
+    margin: -0.75rem -0.75rem 0;
+    padding: 0.75rem 0.75rem 0.375rem;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    background: var(--color-panel);
+    box-shadow: 0 1px 0 var(--color-line);
+  }
+  .create-category {
+    flex: none;
+    min-height: 2.25rem;
+    padding: 0 0.625rem;
+    font-size: 0.875rem;
+  }
+  .create-actions {
+    bottom: -0.75rem;
+    margin: 0 -0.75rem -0.75rem;
+    padding: 0.625rem 0.75rem calc(0.75rem + 4px);
+    gap: 0.5rem;
+  }
+  .piece-grid {
+    grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
+  }
+  .piece-grid[data-head] {
+    grid-template-columns: repeat(auto-fill, minmax(3.75rem, 1fr));
+  }
+  .area-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.375rem;
+  }
+  .wearing-row {
+    min-height: 3.25rem;
+    padding: 0.5rem 0 0.75rem;
+  }
   .hotbar {
     padding: 0.625rem 0 0.75rem;
   }
@@ -633,9 +1092,24 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .piece-tile,
+  .expression-chip,
   .hotbar-slot {
     transition: none;
   }
+}
+/* Under the texture: a stroke went under the pieces worn on top of it. */
+.paint-covered {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-ink);
+  text-wrap: pretty;
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow: inset 0 0 0 1px var(--color-line), inset 3px 0 0 var(--color-blue);
+}
+.history-plain {
+  color: var(--color-ink-dim);
 }
 
 /* Reordering the wardrobe, as the rail does it (DESIGN.md, Reordering the rail). The rows between the carried skin's

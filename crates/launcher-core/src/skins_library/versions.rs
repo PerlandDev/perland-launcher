@@ -362,8 +362,10 @@ impl SkinLibrary {
         let model = self.model_of(id, version).await?;
         self.keep_now(id, VersionReason::Edited).await?;
         // The version's arms come back with its texture; one kept before arms were recorded keeps the skin's.
+        // A version is a plain texture, so the look the skin had goes, with its painting.
         let (file, entry) = self
             .change(id, |e| {
+                e.look = None;
                 if let Some(model) = model {
                     e.model = model;
                 }
@@ -371,6 +373,7 @@ impl SkinLibrary {
             .await?;
         write_atomic(&self.png(id), &png).await?;
         self.write(&file).await?;
+        let _ = tokio::fs::remove_file(self.paint_png(id)).await;
         Ok(entry)
     }
 
@@ -895,5 +898,33 @@ mod tests {
                 ErrorCode::SkinNotFound
             );
         }
+    }
+    #[tokio::test]
+    async fn restore_drops_look() {
+        let (_dir, lib) = library();
+        let a = lib
+            .create("A", SkinModel::Classic, &skin([1, 1, 1, 255]), None)
+            .await
+            .unwrap();
+        let look = SkinLook {
+            pieces: vec![],
+            painting: false,
+        };
+        lib.save_look(
+            &a.id,
+            look,
+            Some(&skin([9, 9, 9, 255])),
+            &skin([2, 2, 2, 255]),
+        )
+        .await
+        .unwrap();
+        let version = lib.versions(&a.id).await.unwrap()[0].id.clone();
+        let copy = lib.copy_version(&a.id, &version, "Copy").await.unwrap();
+        assert_eq!(copy.look, None);
+        assert!(!lib.dir().join(format!("{}.paint.png", copy.id)).exists());
+        let entry = lib.restore(&a.id, &version).await.unwrap();
+        assert_eq!(entry.look, None);
+        assert_eq!(lib.entry(&a.id).await.unwrap().look, None);
+        assert!(!lib.dir().join(format!("{}.paint.png", a.id)).exists());
     }
 }
