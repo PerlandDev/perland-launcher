@@ -92,7 +92,7 @@ it('changing an area colour updates the stage texture', async () => {
   await waitFor(() => expect(stageSum()).not.toBe(before));
   // A quick colour of the area: one click (the fake masks paint the first area only).
   const now = stageSum();
-  await user.click(within(within(colours).getByRole('group', { name: 'Main' })).getAllByRole('button')[1]!);
+  await user.click(within(within(colours).getByRole('toolbar', { name: 'Main' })).getAllByRole('button')[1]!);
   await waitFor(() => expect(stageSum()).not.toBe(now));
 });
 

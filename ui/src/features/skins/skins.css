@@ -865,15 +865,19 @@
   font-size: 0.875rem;
   font-weight: 600;
 }
+/* The area's quick colours, under its picker: small swatches that wrap. The padding keeps the outline of the one in
+   use (and the focus ring) inside the row. */
 .area-swatches {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 4px;
   padding: 3px;
 }
 .area-swatches .colour-swatch {
-  width: 1.625rem;
-  height: 1.625rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  /* A seam ring, so the darkest hair and cloth colours still read as swatches on the panel. */
+  box-shadow: inset 0 0 0 1px var(--color-line);
 }
 .area-colours .colour-well {
   width: 2.25rem;
