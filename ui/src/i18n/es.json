@@ -676,7 +676,7 @@
     "playing": "{{online}} / {{max}} jugando",
     "playingCount": "{{online}} jugando",
     "joining": "Entrando…",
-    "joinFromMinecraft": "Entra desde Minecraft: {{address}}",
+    "joinFromMinecraft": "Entra desde Minecraft",
     "noMatch": "Ningún servidor coincide. Prueba con menos filtros.",
     "clearFilters": "Quitar filtros",
     "empty": "Aún no hay servidores públicos.",

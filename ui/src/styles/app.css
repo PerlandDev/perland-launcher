@@ -2773,18 +2773,15 @@
     margin-top: 0.125rem;
     color: var(--color-coral);
   }
+  /* A server the launcher can't join yet: the address in the `.well` copy row, filling the card's width, with a 2rem
+     icon-only copy key so an address like "perlandvillage.perland.world" keeps one line in a narrow card. */
   .server-tile-address {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.25rem 0.5rem;
+    flex: 1 1 100%;
+    min-width: 0;
   }
-  .server-tile-address > p {
-    user-select: text;
-  }
-  .server-tile-address .btn {
-    min-height: 2rem;
-    padding-inline: 0.5rem;
+  .server-tile-address.copy-row .btn-icon {
+    min-width: 2rem;
+    padding: 0;
   }
   .server-tile-play {
     width: 100%;

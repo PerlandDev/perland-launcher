@@ -162,8 +162,9 @@ describe('ServersScreen', () => {
     renderApp(<ServersScreen />);
     const forge = await card('Tech Forge');
     expect(within(forge).getByText('Forge 1.20.1')).toBeInTheDocument();
-    expect(within(forge).getByText('Join from Minecraft: play.example.com:25572')).toBeInTheDocument();
-    expect(within(forge).getByRole('button', { name: 'Copy server address' })).toBeInTheDocument();
+    const address = within(forge).getByRole('group', { name: 'Join from Minecraft' });
+    expect(within(address).getByText('play.example.com:25572')).toBeInTheDocument();
+    expect(within(address).getByRole('button', { name: 'Copy server address' })).toBeInTheDocument();
     expect(within(forge).getByRole('button', { name: 'Play' })).toBeDisabled();
   });
 
