@@ -20,5 +20,12 @@ export default defineConfig({
     restoreMocks: true,
     // Event times read in the computer's zone: every test runs in UTC, whatever TZ the shell exports.
     env: { TZ: 'UTC' },
+    // The tests read a small fixed skin catalog, not the mock's copy of the real one (hundreds of files).
+    alias: [
+      {
+        find: /^.*\/mockCatalogData$/,
+        replacement: '/src/test/catalogFixtureData.ts',
+      },
+    ],
   },
 });

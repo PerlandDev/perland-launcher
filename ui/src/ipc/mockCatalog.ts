@@ -1,15 +1,8 @@
-// The mock skin catalog for `pnpm --filter ui dev:mock` and the tests: the Engine's generated first batch, copied from
-// PerlandEngine's internal/skincatalog/data (CC0, Perland's own art). The PNGs are inlined as data URLs, as
-// `skin_catalog_file` answers. Only the mock imports this module, and the mock is loaded in mock mode only, so none of it
-// reaches the production bundle.
-//
-// Refresh ./mock-catalog from an Engine checkout with
-//   node ui/scripts/sync-mock-catalog.mjs <engine>/internal/skincatalog/data
-// which copies the manifest and exactly the files it names (thumbnail sheets included) and removes the stale ones.
-import manifestJson from './mock-catalog/manifest.json';
+// The mock skin catalog for `pnpm --filter ui dev:mock`: the Engine's generated catalog (see mockCatalogData.ts). The
+// PNGs are inlined as data URLs, as `skin_catalog_file` answers. Only the mock imports this module, and the mock is
+// loaded in mock mode only, so none of it reaches the production bundle. The tests get a small fixed catalog instead.
+import { manifest as manifestJson, pngs as PNGS } from './mockCatalogData';
 import { catalogManifest, type CatalogManifest } from './schema';
-
-const PNGS = import.meta.glob<string>('./mock-catalog/*.png', { query: '?inline', import: 'default', eager: true });
 
 export interface MockCatalog {
   manifest: CatalogManifest;

@@ -92,6 +92,27 @@ async fn manifest_is_read_from_the_envelope() {
     }
 }
 
+/// The catalog the Engine serves, as the dev mock holds it (ui/scripts/sync-mock-catalog.mjs keeps it current): it
+/// must pass every check the launcher makes, and fit the caps with room to grow.
+#[tokio::test]
+async fn the_real_catalog_is_read() {
+    let real: Value = serde_json::from_str(include_str!(
+        "../../../ui/src/ipc/mock-catalog/manifest.json"
+    ))
+    .unwrap();
+    match fetched(real).await.unwrap() {
+        Fetched::Manifest(m) => {
+            assert!(m.pieces.len() >= 276, "{} pieces", m.pieces.len());
+            assert!(m.looks.len() >= 520, "{} looks", m.looks.len());
+            assert!(m.expressions.len() >= 12);
+            let sheets = m.sheets.clone().expect("the catalog has sheets");
+            assert!(m.hashes().contains(&sheets.pieces.file));
+            assert!(m.hashes().contains(&sheets.looks.file));
+        }
+        other => panic!("expected a manifest, got {other:?}"),
+    }
+}
+
 async fn fetched(data: Value) -> launcher_core::Result<Fetched> {
     let server = MockServer::start().await;
     mount_config(&server).await;

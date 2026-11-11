@@ -18,7 +18,7 @@ use crate::{
 };
 
 /// The longest manifest read, in bytes.
-const MANIFEST_CAP: usize = 1 << 20;
+const MANIFEST_CAP: usize = 8 << 20;
 /// The most distinct files a manifest may name.
 const FILES_CAP: usize = 4000;
 /// The largest catalog file read, in bytes.
