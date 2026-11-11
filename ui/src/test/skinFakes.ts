@@ -1,7 +1,7 @@
 // Stand-ins for the Skins screen's canvas and WebGL parts, which jsdom lacks. The codec encodes texels to a checksum
 // (so tests can tell textures apart) and decodes a catalog piece's art and mask to plain shapes that recolour: the art
 // mid grey and the mask every texel in the piece's first colour area, both covering one band of rows per slot. Any other
-// texture decodes to the starter skin. The stage shows the checksum of the texels it draws and what its camera frames.
+// texture decodes to the starter skin. The stage shows the checksum of the texels it draws, what its camera frames and the closed-eyes frame it was handed.
 import { createElement, forwardRef, useImperativeHandle } from 'react';
 import { mockCatalog, type MockCatalog } from '../ipc/mockCatalog';
 import type { CatalogExpression } from '../ipc/schema';
@@ -54,10 +54,11 @@ export const FakeStage = forwardRef(function FakeStage(
     label,
     focus = 'figure',
     focusKey = '',
+    blink = null,
     onBegin,
     onPaint,
     onEnd,
-  }: { pixels: Pixels | null; rev: number; paintable?: boolean; label?: string; focus?: string; focusKey?: string; onBegin: () => void; onPaint: (x: number, y: number) => void; onEnd: () => void },
+  }: { pixels: Pixels | null; rev: number; paintable?: boolean; label?: string; focus?: string; focusKey?: string; blink?: Pixels | null; onBegin: () => void; onPaint: (x: number, y: number) => void; onEnd: () => void },
   ref,
 ) {
   useImperativeHandle(ref, () => ({ resetView() {}, zoom() {}, celebrate() {} }));
@@ -67,6 +68,7 @@ export const FakeStage = forwardRef(function FakeStage(
     'data-sum': pixels ? checksum(pixels.data) : '',
     'data-focus': focus,
     'data-focus-key': focusKey,
+    'data-blink': blink ? checksum(blink.data) : '',
     'aria-label': label,
     onPointerDown: () => {
       if (!paintable) return;

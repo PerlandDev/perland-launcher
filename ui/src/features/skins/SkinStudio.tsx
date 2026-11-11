@@ -35,6 +35,7 @@ import type { Focus } from './framing';
 import { putOn } from './look';
 import { useCatalog } from './useCatalog';
 import { surprise } from './surprise';
+import { useBlinkFrame } from './useBlink';
 import { useLook } from './useLook';
 import { useTryOn } from './useTryOn';
 import { WearingRow } from './WearingRow';
@@ -152,6 +153,17 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   // Trying a piece on (Create): the figure shows it, the skin doesn't have it. A version preview comes first.
   const { shown: tryShown, tryOn } = useTryOn(editor, selected?.id ?? null, tab === 'create' && !historyOpen);
   const trying = previewing ? null : tryShown;
+  // The figure blinks when the skin wears eyes that show: never over a preview, and never while a stroke is painted.
+  const [stroking, setStroking] = useState(false);
+  const beginStroke = () => {
+    setStroking(true);
+    doc.begin();
+  };
+  const endStroke = () => {
+    setStroking(false);
+    doc.end();
+  };
+  const blinkFrame = useBlinkFrame(selected?.id ?? null, doc, catalog, model, tab !== 'catalog' && !previewing && !trying && !stroking);
   // What the Create tab is dressing: the stage camera frames it. Any other tab, and History, show the whole figure.
   const [dressing, setDressing] = useState<{ focus: Focus; category: string }>({ focus: 'figure', category: '' });
   const onCreateFocus = useCallback((focus: Focus, category: string) => setDressing((d) => (d.focus === focus && d.category === category ? d : { focus, category })), []);
@@ -538,13 +550,15 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
                   paused={paused}
                   hover={hover}
                   onHover={setHover}
-                  onBegin={doc.begin}
+                  onBegin={beginStroke}
                   onPaint={(x, y) => paintAt(x, y, false)}
-                  onEnd={doc.end}
+                  onEnd={endStroke}
                   paintable={tab === 'paint'}
                   label={tab === 'paint' ? undefined : t('skins.stageLabelTurn')}
                   focus={framing.focus}
                   focusKey={framing.key}
+                  blink={blinkFrame}
+                  blinkSeed={selected?.id ?? ''}
                   ref={stage}
                 />
                 <div className="stage-view">
@@ -628,9 +642,9 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
                 hover={hover}
                 paintLayer={paintLayer}
                 onHover={setHover}
-                onBegin={doc.begin}
+                onBegin={beginStroke}
                 onPaint={paintAt}
-                onEnd={doc.end}
+                onEnd={endStroke}
               />
               {doc.covered && (
                 <p className="paint-covered" role="status">

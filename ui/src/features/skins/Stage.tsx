@@ -6,6 +6,7 @@ import { SKIN_SIZE, type Layer, type Part } from './layout';
 import type { Pixels } from './paint';
 import type { Pose } from './poses';
 import { createStage, type Stage as Scene } from './stageScene';
+import { useBlinking } from './useBlink';
 
 /** Hover tint: the texel under the pointer, lifted toward white so it reads on any colour. */
 function withHover(pixels: Pixels, hover: [number, number] | null): Uint8ClampedArray {
@@ -50,6 +51,8 @@ export function Stage({
   paintable = true,
   focus = 'figure',
   focusKey = '',
+  blink = null,
+  blinkSeed = '',
   ref,
 }: {
   pixels: Pixels | null;
@@ -72,6 +75,10 @@ export function Stage({
   focus?: Focus;
   /** Names where the focus comes from (a Create category): once the player moves the camera, it stays theirs until this changes. */
   focusKey?: string;
+  /** The skin with its eyes shut (see blink.ts): shown for a moment every few seconds, unless the figure is paused. */
+  blink?: Pixels | null;
+  /** Whose blink rhythm it is: the skin's id. */
+  blinkSeed?: string;
   ref?: Ref<StageHandle>;
 }) {
   const { t } = useTranslation();
@@ -109,9 +116,12 @@ export function Stage({
       for (const layer of ['base', 'outer'] as Layer[]) s.setVisible(part, layer, !hidden.has(`${part}:${layer}`));
     }
   }, [scene, hidden, model]);
+  // A blink swaps the texture the figure wears, and nothing else: the skin and the flat texture never see it.
+  const blinking = useBlinking(blink !== null && !paused, blinkSeed);
+  const drawn = blinking && blink ? blink : pixels;
   useEffect(() => {
-    if (pixels) scene?.setTexture(withHover(pixels, hover));
-  }, [scene, pixels, rev, hover, model]);
+    if (drawn) scene?.setTexture(withHover(drawn, hover));
+  }, [scene, drawn, rev, hover, model]);
 
   const down = (event: PointerEvent<HTMLCanvasElement>) => {
     const hit = paintable && event.button === 0 ? scene?.pick(event.clientX, event.clientY) : null;
