@@ -464,20 +464,76 @@ it('a failed add says so and leaves the look to add', async () => {
   expect(within(page).queryByText('In your wardrobe')).not.toBeInTheDocument();
 });
 
-it('a cached catalog says so quietly', async () => {
-  renderPanel({ status: 'cached' });
-  await grid();
-  expect(screen.getByText('Showing the saved catalog')).toBeInTheDocument();
+it('while the catalog loads, the tab says so', async () => {
+  renderWithProviders(<CatalogPanel owner={OWNER} onAdded={vi.fn()} onCustomize={vi.fn()} />, { ipc: (cmd) => (cmd === 'skin_catalog' ? new Promise(() => {}) : null) });
+  const loading = await screen.findByText('Loading the catalog…');
+  expect(loading.closest('[aria-busy="true"]')).not.toBeNull();
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
 });
 
-it('a catalog newer than the launcher asks for an update', async () => {
+it('a cached catalog says so quietly, and is whole', async () => {
+  const { user } = renderPanel({ status: 'cached' });
+  expect(names(await grid())).toEqual(['Astronaut', 'Knight', 'Street']);
+  expect(screen.getByText('Showing the saved catalog')).toBeInTheDocument();
+  const page = await openLook(user, 'Knight');
+  expect(within(page).getByRole('button', { name: 'Add to my wardrobe' })).toBeInTheDocument();
+});
+
+it('a catalog newer than the launcher asks for an update, over the looks it could read', async () => {
   renderPanel({ status: 'too_new' });
-  await grid();
+  expect(names(await grid())).toEqual(['Astronaut', 'Knight', 'Street']);
   expect(screen.getByText('Update the launcher to see the newest pieces.')).toBeInTheDocument();
+});
+
+it('a catalog too new to read, with none saved, says both', async () => {
+  renderWithProviders(<CatalogPanel owner={OWNER} onAdded={vi.fn()} onCustomize={vi.fn()} />, { ipc: (cmd) => (cmd === 'skin_catalog' ? { manifest: null, status: 'too_new' } : null) });
+  expect(await screen.findByText("Perland's skin catalog can't be reached right now. Try again when you're online.")).toBeInTheDocument();
+  expect(screen.getByText('Update the launcher to see the newest pieces.')).toBeInTheDocument();
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
 });
 
 it('an unavailable catalog shows a plain message', async () => {
   renderPanel({ status: 'unavailable' });
   expect(await screen.findByText("Perland's skin catalog can't be reached right now. Try again when you're online.")).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Add to my wardrobe' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Random look' })).not.toBeInTheDocument();
+});
+
+it('a catalog with no looks to offer says so, not that a search found none', async () => {
+  renderPanel({ manifest: (m) => ({ ...m, looks: m.looks.map((l) => ({ ...l, retired: true })) }) });
+  expect(await screen.findByText('No looks here yet. New ones arrive with catalog updates.')).toBeInTheDocument();
+  expect(screen.queryByText('No looks match that search.')).not.toBeInTheDocument();
+  expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
+});
+
+it('a catalog shown from the cache while it refreshes takes the new looks when they land', async () => {
+  const { user, backend } = renderPanel({ status: 'refreshing', looks: 70 });
+  const list = await grid();
+  // Shown at once, with nothing said about it.
+  expect(screen.getByRole('status')).toHaveTextContent('70 looks');
+  expect(screen.queryByText('Showing the saved catalog')).not.toBeInTheDocument();
+  await user.click(tagKey('New'));
+  await openLook(user, 'Calm look 002');
+  expect(position()).toBe('3 of 20');
+  // The refresh answers with a bigger catalog that dropped the first look: the open look stays open, and the looks it
+  // steps through are the new ones.
+  const next = manyLooks(mockCatalog().manifest, 90);
+  backend.state.skins.catalog.manifest = { ...next, looks: next.looks.map((l, i) => ({ ...l, retired: i === 0 })) };
+  backend.state.skins.catalogStatus = 'fresh';
+  await waitFor(() => expect(position()).toBe('2 of 19'), { timeout: 3000 });
+  expect(screen.getByRole('region', { name: 'Calm look 002' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Back to looks' }));
+  expect(tagKey('All')).toHaveTextContent('All 89');
+  expect(names(list)).toHaveLength(19);
+});
+
+it('a look the refreshed catalog no longer offers closes its page', async () => {
+  const { user, backend } = renderPanel({ status: 'refreshing' });
+  await openLook(user, 'Knight');
+  const { manifest } = mockCatalog();
+  backend.state.skins.catalog.manifest = { ...manifest, version: 'next', looks: manifest.looks.map((l) => (l.id === 'look-knight' ? { ...l, retired: true } : l)) };
+  backend.state.skins.catalogStatus = 'fresh';
+  await waitFor(() => expect(screen.queryByRole('region', { name: 'Knight' })).not.toBeInTheDocument(), { timeout: 3000 });
+  expect(names(await grid())).toEqual(['Astronaut', 'Street']);
 });

@@ -120,6 +120,17 @@ export function CatalogPanel({ owner, onAdded, onCustomize }: CatalogPanelProps)
       </div>
     );
   }
+  if (!manifest.looks.some((l) => !l.retired)) {
+    return (
+      <div className="catalog-tab">
+        <div className="catalog-message">
+          <p className="empty-slot">{t('skins.catalog.empty')}</p>
+          {status === 'too_new' && <p className="info-line">{t('skins.catalog.tooNew')}</p>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div ref={root} className="catalog-tab">
       <LooksBrowse hidden={!browsing} manifest={manifest} status={status} lang={lang} thumbs={thumbs} filter={filter} looks={looks} onFilter={setFilter} onOpen={open} onRandom={random} />
