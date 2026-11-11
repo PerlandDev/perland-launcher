@@ -487,6 +487,12 @@
       "export": "Export diagnostics",
       "saved": "Diagnostics saved",
       "show": "Show in folder"
+    },
+    "privacy": {
+      "title": "Privacy",
+      "share": "Share anonymous data",
+      "shareHint": "Sends error reports and usage counts that help us fix the launcher. Nothing in them says who you are.",
+      "whatIsSent": "What is sent"
     }
   },
   "friends": {
@@ -553,6 +559,7 @@
   "firstRun": {
     "welcomeTitle": "Welcome to Perland",
     "welcomeBody": "A free launcher for Minecraft, ready in a few clicks.",
+    "privacy": "The launcher shares anonymous error reports and usage counts. You can turn this off in Settings.",
     "start": "Let's go",
     "languageTitle": "Pick your language",
     "accountTitle": "Who's playing?",

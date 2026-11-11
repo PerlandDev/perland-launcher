@@ -280,6 +280,16 @@ mod tests {
     }
 
     #[test]
+    fn the_readme_says_what_every_counter_counts() {
+        let readme = include_str!("../../../../README.md");
+        assert!(readme.contains("## What the launcher sends"));
+        for counter in Counter::ALL {
+            let row = format!("| `{}` | {} |", counter.as_str(), counter.describes());
+            assert!(readme.contains(&row), "the README is missing: {row}");
+        }
+    }
+
+    #[test]
     fn the_first_ping_is_first_of_everything() {
         let flags = State::default().ping_due(day("2026-11-11")).unwrap();
         assert_eq!(

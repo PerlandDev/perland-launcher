@@ -491,6 +491,7 @@ export const settings = z.strictObject({
   iconShape: z.enum(['square', 'round']),
   theme,
   font: uiFont,
+  shareAnonymousData: z.boolean(),
 });
 /** One release note (release-notes/<id>.json) with the version it first shipped in; null while unreleased. */
 export const releaseNote = z.strictObject({

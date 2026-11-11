@@ -1,3 +1,4 @@
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Marquee } from '../../art/Marquee';
@@ -5,7 +6,9 @@ import mark from '../../assets/mark.svg';
 import { applyLanguage } from '../../i18n';
 import type { Instance, Lang } from '../../ipc/schema';
 import { useAccountMutations, useAppInfo, useCreateInstance, useSaveSettings, useSettings } from '../../state/queries';
+import { WHAT_IS_SENT } from '../../state/privacy';
 import { navigate } from '../../state/route';
+import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { Field } from '../../ui/Field';
@@ -131,6 +134,16 @@ export function FirstRun() {
                 <Button variant="primary" size="lg" onClick={() => setStep(1)}>
                   {t('firstRun.start')}
                 </Button>
+                <p className="text-sm text-ink-dim">
+                  {t('firstRun.privacy')}{' '}
+                  <button
+                    type="button"
+                    className="text-blue-ink underline underline-offset-4"
+                    onClick={() => void openUrl(WHAT_IS_SENT).catch(pushError)}
+                  >
+                    {t('settings.privacy.whatIsSent')}
+                  </button>
+                </p>
               </>
             )}
             {step === 1 && (

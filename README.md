@@ -54,6 +54,81 @@ Only for signing in with Perland's own app instead of the Minecraft Launcher's c
 - **API permissions:** none to add; the launcher asks for `XboxLive.signin offline_access` when the player signs in.
 - Then Mojang must approve the client ID for the Minecraft services (their AppID review). Until it does, every sign-in still runs the whole chain (browser, Microsoft, Xbox Live, XSTS, Minecraft) and Minecraft turns it down at its login; the launcher shows each step that passed and says Minecraft hasn't approved it yet.
 
+## What the launcher sends
+
+The launcher sends Perland two small things, so we know how many people use it and what breaks: **error reports** and one **usage ping a day**. Neither says who you are. There is no install ID, account ID or any other identifier, in what is sent or on your computer, and the server keeps totals only: no row per ping and no IP address.
+
+**To turn it off:** Settings → Privacy → **Share anonymous data**. It is on by default. Off takes effect at once and deletes the reports and counts not sent yet. Setting the environment variable `PERLAND_LAUNCHER_TELEMETRY=0` turns it off too, whatever the switch says.
+
+**Where it goes:** to Perland's own server (the Engine behind `play.perland.online`, the one the public server list comes from), over HTTPS, with no account or token attached. No third party is involved.
+
+**It never gets in your way.** Sending happens in the background with a 10-second limit. If it fails, nothing is shown; what could not be sent waits for the next time the launcher starts (at most 50 reports are kept).
+
+### The daily ping
+
+Sent at most once per UTC day, the first time the launcher starts that day (`POST /api/v1/telemetry/launcher/ping`):
+
+| Field | What it is |
+|---|---|
+| `version` | The launcher's version. |
+| `channel` | `stable` or `beta` (the releases this launcher follows); `dev` only from a development build under test. |
+| `os`, `arch` | `windows`, `linux` or `macos`, and the processor type (such as `x86_64`). |
+| `locale` | The launcher's language (`en` or `es`), or the system's language tag (such as `es-MX`) if you never picked one. |
+| `signedIn` | Whether a Perland account is signed in: yes or no, nothing about the account. |
+| `firstEver`, `firstThisWeek`, `firstThisMonth` | Whether this is the launcher's first ping ever, this week and this month. The launcher works this out from the date of its last ping, so the server can count weekly and monthly players without telling installs apart. |
+| `installWeek` | The week the launcher first ran with this feature, such as `2026-W46`. |
+| `counters` | How many times each thing below happened since the last ping. |
+
+The counters say how often something happened, never which server, modpack, skin or account it happened with:
+
+| Counter | Counts |
+|---|---|
+| `game_launches` | The game started. |
+| `game_crashes` | The game closed by itself with an error. |
+| `game_repairs` | A repair of the game's files was started (the crash card's Repair). |
+| `instances_created` | An instance was created by hand (New instance or the first run). |
+| `instances_imported` | An instance was imported from another launcher. |
+| `packs_installed` | A modpack was added as a new instance (from Browse, a file or a link). |
+| `joins_by_link` | A server was added from an invite link or the server list. |
+| `perland_sign_ins` | A sign-in to a Perland account finished. |
+| `microsoft_sign_ins` | A sign-in to a Microsoft account finished. |
+| `free_servers_created` | A free server was created. |
+| `skins_changed` | A skin was put on an account. |
+| `updates_installed` | A launcher update was installed. |
+
+### Error reports
+
+Sent shortly after something goes wrong, or at the next start (`POST /api/v1/telemetry/errors`). Each request says the launcher's `version`, `os`, `arch` and `locale` (as above) and carries up to 20 reports. A report has:
+
+| Field | What it is |
+|---|---|
+| `kind` | `app_error` (an error the launcher showed you), `panic` (the launcher itself crashed), `exception` or `unhandled_rejection` (an error in the window's code), or `game_crash` (the game crashed). |
+| `code` | The error's stable name, such as `download_corrupt` or `crash_out_of_memory`. |
+| `message` | The error's plain English message, at most 500 characters. |
+| `stack` | For a launcher crash or a window error: where in the launcher's code it happened. |
+| `context` | A few short facts: the error's category, the launcher command that failed, a cleaned-up technical detail, and safe values such as a Minecraft version, a loader or an HTTP status. |
+| `count` | How many times the same report happened. |
+
+A **game crash** report holds only the cause the launcher recognised (or `crash_unknown`), the Minecraft version and the loader. It never holds a line of the game's log, the instance's name or a mod's name.
+
+Every text is cleaned before it is saved or sent. Your home folder becomes `<home>`, the launcher's data folder `<data>`, any other file path `<path>`, web addresses `<url>` (except public services such as Mojang's or Modrinth's, which keep the host and path but never the part after `?`), server addresses and IP addresses `<address>`, emails `<email>`, your computer's user name `<user>`, and every name the launcher knows (accounts, instances, servers, invite links) `<redacted>`.
+
+### What is never sent
+
+- Your Minecraft, Microsoft or Perland account name, ID, email, or any sign-in token.
+- An invite link or its token, or a server's name or address.
+- Your computer's user name, your home folder, or any file path on your computer.
+- The names of your instances, worlds, mods or skins, or anything inside your files or the game's log.
+- An identifier for you or your computer. The server does not store your IP address.
+
+### What stays on your computer
+
+One small file, `telemetry.json` in the launcher's data folder: the week of the first run, the date of the last ping, the counters, and the reports not sent yet. With sharing off, the reports and counters in it are deleted and nothing new is written.
+
+### For developers
+
+A development build never sends anything, and neither does a launcher pointed at a scratch data folder with `PERLAND_LAUNCHER_ROOT`. To test against an Engine of your own, set `PERLAND_LAUNCHER_TELEMETRY_URL` to its address (https, or http on this computer); that is the only way either of those sends. The code is in `crates/launcher-core/src/telemetry` and `crates/launcher-app/src/telemetry.rs`, and the design in `docs/superpowers/specs/2026-11-11-anonymous-usage-and-errors-design.md`.
+
 ## License
 
 GPL-3.0-only. See `LICENSE` and `NOTICE`.

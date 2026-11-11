@@ -91,6 +91,9 @@ export const commands = {
   whatsNewSeen: () => invoke<string | null>('whats_new_seen'),
   /** The player has now been shown the running version's notes. */
   whatsNewMark: () => invoke<null>('whats_new_mark'),
+  /** An error from the window's own code, for the anonymous error reports (when the player shares them). Rust scrubs it and answers nothing. */
+  telemetryReport: (kind: 'exception' | 'unhandled_rejection', message: string, stack: string | null) =>
+    invoke<null>('telemetry_report', { kind, message, stack }),
   updateCheck: () => invoke<UpdateState>('update_check'),
   updateRestart: () => invoke<null>('update_restart'),
   diagnosticsExport: (path: string) => invoke<string>('diagnostics_export', { path }),

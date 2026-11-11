@@ -85,4 +85,41 @@ At most once per UTC day, at the first start of that day.
 
 ## Calls made while building
 
-Filled in as the launcher part is built; see the end of this file's history.
+The wire contract above is unchanged. These are the decisions the design left open.
+
+**What is sent**
+
+1. **Counters** (the final list, each documented in the README): `game_launches`, `game_crashes`, `game_repairs`, `instances_created`, `instances_imported`, `packs_installed`, `joins_by_link`, `perland_sign_ins`, `microsoft_sign_ins`, `free_servers_created`, `skins_changed`, `updates_installed`. `servers_opened_from_list` was dropped: the core adds a server the same way from a link and from the list, so `joins_by_link` counts both. `crash_fixes_applied` became `game_repairs`: Repair is the one crash fix the core can see (the others are ordinary edits made by the window). `game_crashes` was added because crash reports collapse and are capped, so they can't give a crash rate.
+2. **`app_error` reports** put the scrubbed detail in `context.detail` (cut to 200 characters), the failing UI command in `context.command`, and allow-listed params as `context.p_<name>`: `version`, `loader`, `loader_version`, `status`, `item`, `field`, `step`, `method`, `component`, `reason`, `what`, `min`, `max`, `count`, and `host` only when it is a public service (Mojang, Modrinth, Microsoft and the like). Every other param (`name`, `id`, `file`, `path`, `address`, `url`, `uuid`, `value`, …) is never sent.
+3. **Not reported:** `sign_in_canceled`, `sync_cancelled`, `import_cancelled` (the player's own choice) and `offline` (it can't be sent while it lasts, and repeats with every poll).
+4. **`game_crash`** is `code` = the cause's `crash_*` code or `crash_unknown`, `message` = "The game crashed", `context.minecraft` and `context.loader` (`vanilla` without one). Nothing else.
+5. **`panic`** carries the scrubbed message, `context.location` and the scrubbed backtrace as `stack`. It is written to disk in the hook without waiting for any lock and sent at the next start.
+6. **`locale`** is the launcher's language when the player picked one, else the system's language tag cut to 8 characters (`es-MX`), else `und`.
+7. **`channel`** is the update channel the launcher follows (`stable` or `beta`); `dev` only from a dev build sending to a test endpoint.
+8. **`signedIn`** comes from the session marker file; the credential store is not read for it.
+9. **Limits are applied in bytes**, not characters, so a field is never over the contract's limit however the Engine counts.
+
+**When**
+
+10. The ping is tried once per start (not again while the launcher stays open). A queued report is sent 30 seconds after it is recorded, with whatever else arrived. After any send that is not taken (429, 5xx, a timeout, no network), nothing more is sent until the next start.
+11. A ping answered 400 or 413 drops the counters it carried and is not marked as taken; the next start sends a new one.
+12. A clock set back sends no ping until it passes the last pinged day again. A clock that was wrong forwards therefore silences the ping until that date; this was preferred over ever counting a day twice.
+13. The window may hand over at most 30 reports per run (and itself sends at most 10 distinct ones), so a loop can't flood.
+
+**Off**
+
+14. Until the settings are read at start, nothing is collected. With sharing off, a dev build, `PERLAND_LAUNCHER_TELEMETRY=0` (also `false`, `off`, `no`), or `PERLAND_LAUNCHER_ROOT` set, nothing is recorded and no file is written.
+15. `PERLAND_LAUNCHER_TELEMETRY_URL` is the testing override: an Engine address (https, or http on this computer) that a dev build or a scratch folder sends to. A value that can't be used turns telemetry off rather than falling back to the real Engine.
+16. Turning the switch off deletes queued reports and counters and keeps `installWeek` and `lastPing`, so turning it back on doesn't count the install as new.
+17. Tester builds have debug assertions on, so they are dev builds and never send.
+
+**Scrubbing**
+
+18. Shapes are recognised first (URLs, the data folder, the home folder, any other absolute path, emails, `host:port`, IPv4 and IPv6, words ending like a host name), then everything the launcher knows by name (account names and ids, the Perland profile, instance names and folders, server names and addresses, invite tokens and sites). The data folder keeps only a top-level name the launcher chose (`<data>/instances`). Build-machine paths keep the part every player shares (`<cargo>/…`, `<rustc>/…`) so backtraces stay readable.
+19. Known limit: a relative path in an error's detail is not replaced, and after a path with spaces a trailing word of a file name can remain (`<home> skin.png`). Names the launcher knows are still masked there.
+
+**Elsewhere**
+
+20. The state file is `telemetry.json` in the data folder: `version`, `installWeek`, `lastPing`, `counters`, `reports`. A damaged or edited file is read as empty or cut to the limits, never an error.
+21. The Settings switch sits in its own "Privacy" section after Diagnostics. The first-run line is on the welcome step, before anything else is asked.
+22. The Engine is found from the same site as the public server list (`PERLAND_SITE_URL` when set, else the default site).

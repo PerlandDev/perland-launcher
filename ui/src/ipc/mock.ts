@@ -926,6 +926,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'whats_new_mark':
       state.whatsNewSeen = state.appInfo.version;
       return null;
+    case 'telemetry_report':
+      return null;
     case 'update_status':
       return state.update;
     case 'update_check':
