@@ -120,7 +120,7 @@ Ladders have four tiers (copper, iron, gold, diamond). Singles have one tier who
 - The events that move counters, each in the Rust core where the action happens, never in the UI: a run ends (`firstGame`, `days`, `versions`, `longestRunSeconds`, and the `doctor` check), the theme setting saved, an instance image set, a skin saved from the editor, a modpack or mod install from Explore succeeds, a crash diagnosed (`pendingDoctor` = instance id).
 - After every counter change and on start, the core evaluates the rules and records any newly reached tier with the current time. The rules move from the UI to the core so the core can date them; the UI renders what the core returns.
 - **First run after the update:** what can be measured now is credited at once and dated now (time, instance time, collector). Counters that start from zero (modpacks, mods, versions, days, marathon) count from the update on.
-- **Perland medals** are evaluated from the stats whenever they are fetched, and a newly reached tier is recorded with that time in the account's set (below), not in `earned`, because they belong to the account.
+- **Perland medals** are evaluated from the stats whenever they are fetched, and a newly reached tier is recorded with that time in `earned` like any other: a Perland medal earned while this computer saw it stays on this computer after signing out.
 - `account` caches the signed-in account's set, so the screen shows it offline. Its `playerId` keeps one account's medals from showing under another: when the session's player differs, the cache is dropped and fetched again.
 
 What the screen shows: `earned` merged with `account.earned` when the session's player matches, per medal the highest tier, per tier the earliest date.
@@ -141,7 +141,7 @@ With a Perland session and an Engine that serves the routes:
 
 1. On start, after sign-in, when the screen opens and after a new tier is recorded: `PUT` the union of `earned` and the cached account set, then store the answer as the account cache.
 2. A failure (offline, 5xx, 404 from an older Engine) changes nothing locally and is retried at the next trigger. No error is shown; the saved line keeps saying "en tu cuenta" because the next sync will catch up.
-3. Signing out keeps `earned` (the computer's own) and drops the account cache, so the screen shows only this computer's medals.
+3. Signing out keeps `earned`, so every medal earned on this computer, Perland medals included, stays in the earned list. It drops the account cache, so medals the account brought from other computers show again only when that account signs in.
 
 The local `earned` set is the computer's: a second Perland account signing in on the same computer receives the computer's medals too. The owner accepts this: launcher medals are earned on a computer.
 
@@ -159,6 +159,7 @@ The local `earned` set is the computer's: a second Perland account signing in on
 - Counters start at the update; only measures already on disk are credited back.
 - 403 for partner sessions, the 200-row cap, the 2026-01-01 floor.
 - The Perland medals' dates are the time the launcher first saw the stats reach the tier, not when the player did it in game.
+- Medals the account brought from another computer are not copied into this computer's `earned`: they show while that account is signed in. Copying them would hand one account's medals to the next person who signs in on a shared computer.
 
 ## 11. Release
 
