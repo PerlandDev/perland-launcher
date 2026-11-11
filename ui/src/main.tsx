@@ -23,7 +23,7 @@ async function bootstrap() {
   // The Vite dev server (tauri dev, dev:mock) keeps the browser's menu and Inspect for developers.
   if (!import.meta.env.DEV) installBrowserGuard(document);
   if (import.meta.env.MODE === "mock") {
-    const { installMock, mockUpdateState } = await import("./ipc/mock");
+    const { installMock, mockUpdateState, GRAPHICS_SCENARIOS } = await import("./ipc/mock");
     const { perlandScenario, perlandSignInOutcome } = await import(
       "./ipc/mockPerland"
     );
@@ -56,6 +56,7 @@ async function bootstrap() {
         (v) => v === params.get("skins"),
       ),
       server: (params.get("server") as ServerScenario | null) ?? undefined,
+      graphics: GRAPHICS_SCENARIOS.find((v) => v === params.get("graphics")),
       railExpanded: params.has("railExpanded"),
       iconShape: params.get("iconShape") === "round" ? "round" : undefined,
       theme: themeParam.success ? themeParam.data : undefined,

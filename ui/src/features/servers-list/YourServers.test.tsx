@@ -9,7 +9,7 @@ import { renderWithProviders } from '../../test/render';
 import { createMockBackend } from '../../ipc/mock';
 import { ServersScreen } from './ServersScreen';
 
-const NUDGE = 'Sign in with Perland to keep your servers here.';
+const NUDGE = 'Sign in with Perland to create and keep your servers.';
 
 /** The Your servers section, once it shows. */
 const yours = () => screen.findByRole('region', { name: 'Your servers' });
@@ -396,6 +396,6 @@ describe('YourServers', () => {
     const { default: i18n } = await import('../../i18n');
     await i18n.changeLanguage('es');
     renderApp(<ServersScreen />, { perland: 'signedOut' });
-    expect(await screen.findByText('Inicia sesión con Perland para guardar tus servidores aquí.')).toBeInTheDocument();
+    expect(await screen.findByText('Inicia sesión con Perland para crear y guardar tus servidores.')).toBeInTheDocument();
   });
 });

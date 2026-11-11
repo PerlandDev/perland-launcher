@@ -48,6 +48,8 @@ pub struct AppInfo {
     pub build: Build,
     pub offline_allowed: bool,
     pub system_memory_mb: u64,
+    /// The graphics cards and whether the player can choose between them.
+    pub graphics: launcher_core::graphics::GraphicsSupport,
     pub data_dir: String,
     /// A Perland panel is configured: the servers the player owns offer Manage in Perland.
     pub panel: bool,
@@ -1295,6 +1297,7 @@ mod tests {
             build: Build::Dev,
             offline_allowed: true,
             system_memory_mb: 16384,
+            graphics: launcher_core::graphics::GraphicsSupport::unknown(),
             data_dir: "C:/x".into(),
             panel: false,
         };

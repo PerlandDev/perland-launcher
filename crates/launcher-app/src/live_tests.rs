@@ -81,6 +81,7 @@ fn launcher(root: &Path, timing: InviteTiming) -> (Arc<LiveCore>, Arc<RecordingH
             build: BuildKind::Dev,
             launcher_version: "0.1.0".into(),
             system_memory_mb: 16384,
+            graphics: launcher_core::graphics::GraphicsSupport::unknown(),
             downloads_dir: None,
             panel: None,
             telemetry: crate::telemetry::Telemetry::off(),

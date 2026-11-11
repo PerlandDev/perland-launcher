@@ -64,6 +64,8 @@ pub struct LaunchCommand {
     pub args: Vec<String>,
     pub cwd: PathBuf,
     pub classpath: Vec<PathBuf>,
+    /// Variables added to the launcher's own environment for the game (see `graphics`).
+    pub env: Vec<(String, String)>,
 }
 
 // Manual Debug: `args` carries the access token, so it must never be printed.
@@ -361,6 +363,7 @@ pub fn build_command(spec: &LaunchSpec) -> Result<LaunchCommand> {
         args,
         cwd: spec.game_dir.to_path_buf(),
         classpath,
+        env: Vec::new(),
     })
 }
 
@@ -687,6 +690,7 @@ fn spawn_with_log(
     let mut command = tokio::process::Command::new(&cmd.program);
     command
         .args(&cmd.args)
+        .envs(cmd.env.iter().map(|(k, v)| (k, v)))
         .current_dir(&cmd.cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -1232,6 +1236,7 @@ mod tests {
             args: args.iter().map(|a| a.to_string()).collect(),
             cwd: cwd.to_path_buf(),
             classpath: vec![],
+            env: vec![],
         }
     }
 
@@ -1372,6 +1377,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_game_gets_the_commands_variables() {
+        if cfg!(windows) {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let cmd = LaunchCommand {
+            program: "sh".into(),
+            args: vec![
+                "-c".into(),
+                "echo card=$DRI_PRIME home=${HOME:+kept}".into(),
+            ],
+            cwd: tmp.path().into(),
+            classpath: vec![],
+            env: vec![("DRI_PRIME".into(), "1".into())],
+        };
+        let (sink, _) = collect();
+        let game = spawn(&cmd, Redactor::new(), sink, &tmp.path().join("l.log"))
+            .await
+            .unwrap();
+        let exit = game.wait().await.unwrap();
+        // The variable is added; the launcher's own environment is still passed on.
+        assert_eq!(exit.tail, ["card=1 home=kept"]);
+    }
+
+    #[tokio::test]
     async fn kill_stops_a_running_process() {
         let tmp = tempfile::tempdir().unwrap();
         let (program, args) = if cfg!(windows) {
@@ -1384,6 +1414,7 @@ mod tests {
             args: args.into_iter().map(String::from).collect(),
             cwd: tmp.path().into(),
             classpath: vec![],
+            env: vec![],
         };
         let (sink, _) = collect();
         let game = spawn(&cmd, Redactor::new(), sink, &tmp.path().join("l.log"))
@@ -1460,6 +1491,7 @@ mod tests {
             args: vec![],
             cwd: tmp.path().into(),
             classpath: vec![jar.clone()],
+            env: vec![],
         };
         assert_eq!(missing_files(&cmd), vec![program.clone(), jar.clone()]);
         std::fs::write(&program, "").unwrap();
@@ -1480,6 +1512,7 @@ mod tests {
             args: vec![],
             cwd: tmp.path().into(),
             classpath: vec![PathBuf::from("lib.jar"), PathBuf::from("absent.jar")],
+            env: vec![],
         };
         assert_eq!(missing_files(&cmd), vec![PathBuf::from("absent.jar")]);
     }
@@ -1522,6 +1555,7 @@ mod tests {
             ],
             cwd: "/pl/instances/x/minecraft".into(),
             classpath: vec![],
+            env: vec![],
         }
     }
 

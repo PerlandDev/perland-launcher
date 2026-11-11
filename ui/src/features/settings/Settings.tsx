@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import mark from '../../assets/mark.svg';
 import { applyLanguage } from '../../i18n';
 import { commands } from '../../ipc/commands';
-import type { Lang } from '../../ipc/schema';
+import type { GraphicsCard, Lang } from '../../ipc/schema';
 import { applyAppearance, FONTS, THEMES, type Appearance } from '../../state/appearance';
 import { useAppInfo, useSettings } from '../../state/queries';
 import { WHAT_IS_SENT } from '../../state/privacy';
@@ -59,6 +59,14 @@ export function Settings() {
   }
   if (!data || !appInfo.data) return <ScreenFrame title={t('settings.title')} onBack={home}>{null}</ScreenFrame>;
 
+  const { graphics } = appInfo.data;
+  const graphicsHint = [
+    t(graphics.status === 'choose' ? 'settings.graphics.hint' : graphics.status === 'singleCard' ? 'settings.graphics.single' : 'settings.graphics.unsupported'),
+    graphics.cards.length > 0 && t('settings.graphics.found', { cards: graphics.cards.join(', ') }),
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
     <ScreenFrame
       title={t('settings.title')}
@@ -90,6 +98,19 @@ export function Settings() {
           valueMb={data.defaultMemoryMb}
           systemMb={appInfo.data.systemMemoryMb}
           onChange={(defaultMemoryMb) => edit({ defaultMemoryMb }, true)}
+        />
+        <Select
+          label={t('settings.graphics.label')}
+          value={data.graphicsCard}
+          disabled={graphics.status !== 'choose'}
+          hint={graphicsHint}
+          options={[
+            { value: 'automatic', label: t('settings.graphics.automatic') },
+            // Without a card built into the processor, the two are named by what they do.
+            { value: 'dedicated', label: t(graphics.integrated ? 'settings.graphics.dedicated' : 'settings.graphics.performance') },
+            { value: 'integrated', label: t(graphics.integrated ? 'settings.graphics.integrated' : 'settings.graphics.saving') },
+          ]}
+          onChange={(value) => edit({ graphicsCard: value as GraphicsCard })}
         />
         <div className="flex items-start justify-between gap-6">
           <div>

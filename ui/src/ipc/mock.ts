@@ -74,8 +74,22 @@ import type {
   VersionInfo,
 } from './schema';
 
+/** The computer's graphics cards: `two` (default, an integrated and a dedicated one), `one`, `dedicated` (two, neither integrated),
+ *  `unsupported` (a system where the launcher can't choose) or `unknown` (they couldn't be read). */
+export type GraphicsScenario = 'two' | 'one' | 'dedicated' | 'unsupported' | 'unknown';
+export const GRAPHICS_SCENARIOS: GraphicsScenario[] = ['two', 'one', 'dedicated', 'unsupported', 'unknown'];
+
+const MOCK_GRAPHICS: Record<Exclude<GraphicsScenario, 'two'>, AppInfo['graphics']> = {
+  one: { status: 'singleCard', cards: ['NVIDIA GeForce RTX 4060'], integrated: false },
+  dedicated: { status: 'choose', cards: ['NVIDIA GeForce RTX 4090', 'AMD Radeon RX 580'], integrated: false },
+  unsupported: { status: 'unsupported', cards: [], integrated: false },
+  unknown: { status: 'choose', cards: [], integrated: false },
+};
+
 export interface MockOptions {
   firstRun?: boolean;
+  /** The computer's graphics cards (`?graphics=`). */
+  graphics?: GraphicsScenario;
   /** The game crashes a few seconds into its first run, with this cause. */
   crash?: CrashScenario;
   release?: boolean;
@@ -366,6 +380,7 @@ function seed(options: MockOptions) {
     offlineAllowed: !options.offlineLocked,
     panel: options.panel ?? true,
   };
+  if (options.graphics && options.graphics !== 'two') appInfo.graphics = clone(MOCK_GRAPHICS[options.graphics]);
   // Like the core's `visible`: a build with offline accounts locked never lists one, and one in use reads as none. The real file
   // keeps them for a dev build on the same computer; the mock has no dev build to keep them for.
   if (!appInfo.offlineAllowed) {

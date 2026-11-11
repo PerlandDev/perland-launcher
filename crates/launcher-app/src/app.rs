@@ -67,6 +67,8 @@ pub struct AppConfig {
     pub build: BuildKind,
     pub launcher_version: String,
     pub system_memory_mb: u64,
+    /// This computer's graphics cards (`launcher_core::graphics::detect`).
+    pub graphics: launcher_core::graphics::GraphicsSupport,
     /// Where the player's browser saves files (manual CurseForge downloads).
     pub downloads_dir: Option<PathBuf>,
     /// The Perland panel (`launcher_core::perland::panel_url`), where the player manages the
@@ -243,7 +245,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Arc::new(Self {
             instances: InstanceStore::new(config.dirs.instances()),
             accounts: tokio::sync::Mutex::new(AccountStore::new(root.join("accounts.json"))),
-            settings: tokio::sync::Mutex::new(SettingsStore::new(root.join("settings.json"))),
+            settings: tokio::sync::Mutex::new(SettingsStore::new(config.dirs.settings())),
             order: tokio::sync::Mutex::new(OrderStore::new(config.dirs.instance_order())),
             settings_warned: AtomicBool::new(false),
             accounts_warned: AtomicBool::new(false),
@@ -336,6 +338,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             build: self.config.build.into(),
             offline_allowed: launcher_core::accounts::offline_allowed(self.config.build),
             system_memory_mb: self.config.system_memory_mb,
+            graphics: self.config.graphics.clone(),
             data_dir: self.config.dirs.root().display().to_string(),
             panel: self.config.panel.is_some(),
         })
@@ -1117,6 +1120,7 @@ pub(crate) mod tests {
                 build,
                 launcher_version: "0.1.0".into(),
                 system_memory_mb: 16384,
+                graphics: launcher_core::graphics::GraphicsSupport::unknown(),
                 downloads_dir: Some(tmp.path().join("Downloads")),
                 panel,
                 // On only once a test turns sharing on; then it records, and sends nowhere.

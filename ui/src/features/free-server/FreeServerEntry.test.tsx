@@ -104,7 +104,7 @@ describe('FreeServerEntry', () => {
     expect(screen.queryByRole('button', { name: ENTRY })).toBeNull();
     off.unmount();
     const out = renderApp(<ServersScreen />, { perland: 'signedOut' });
-    expect(await screen.findByText('Sign in with Perland to keep your servers here.')).toBeInTheDocument();
+    expect(await screen.findByText('Sign in with Perland to create and keep your servers.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: ENTRY })).toBeNull();
     expect(sent(out.calls, 'free_server')).toEqual([]);
   });

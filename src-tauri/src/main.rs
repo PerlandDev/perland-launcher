@@ -437,6 +437,7 @@ fn build_core(
         build: BuildKind::current(),
         launcher_version: version,
         system_memory_mb: host::system_memory_mb(),
+        graphics: launcher_core::graphics::detect(),
         downloads_dir: launcher_core::sync::manual::downloads_dir(),
         panel: panel_url(
             std::env::var("PERLAND_PANEL_URL").ok().as_deref(),
