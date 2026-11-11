@@ -41,6 +41,7 @@ pub mod skins_library;
 pub mod skins_png;
 pub mod sources;
 pub mod sync;
+pub mod telemetry;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub mod whats_new_seen;

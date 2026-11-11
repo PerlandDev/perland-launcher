@@ -83,6 +83,7 @@ fn launcher(root: &Path, timing: InviteTiming) -> (Arc<LiveCore>, Arc<RecordingH
             system_memory_mb: 16384,
             downloads_dir: None,
             panel: None,
+            telemetry: crate::telemetry::Telemetry::off(),
         },
         meta,
         runner,

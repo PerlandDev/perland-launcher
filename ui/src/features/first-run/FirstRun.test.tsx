@@ -312,3 +312,16 @@ it('opens Browse in the app shell once first run is done', async () => {
   expect(screen.getByRole('tab', { name: 'Modpacks' })).toHaveAttribute('aria-selected', 'true');
   expect(screen.queryByRole('heading', { name: 'Tu primera instancia' })).not.toBeInTheDocument();
 });
+
+it('says on the welcome step that anonymous data is shared, with the link to what is sent', async () => {
+  const { user, calls } = renderApp(<FirstRun />, { firstRun: true });
+  expect(
+    await screen.findByText(/The launcher shares anonymous error reports and usage counts\. You can turn this off in Settings\./),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'What is sent' }));
+  await waitFor(() =>
+    expect(sent(calls, 'plugin:opener|open_url')).toEqual([
+      expect.objectContaining({ url: 'https://github.com/PerlandDev/perland-launcher#what-the-launcher-sends' }),
+    ]),
+  );
+});

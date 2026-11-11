@@ -26,8 +26,10 @@ use tauri::{Emitter, Manager, WindowEvent};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_window_state::StateFlags;
 
-/// The window's host, logging what matters on its way (the launcher log).
-pub type Host = launcher_app::logged::LoggedHost<host::TauriHost>;
+/// The window's host, logging what matters on its way (the launcher log) and reporting the
+/// errors (anonymous error reports, when the player shares them).
+pub type Host =
+    launcher_app::logged::LoggedHost<launcher_app::telemetry::ReportingHost<host::TauriHost>>;
 pub type Core = AppCore<CoreRunner, Host>;
 pub type Updates = launcher_app::updates::Updates<updater::TauriUpdateSource, Host>;
 
@@ -70,12 +72,24 @@ fn main() {
             tauri::WebviewWindowBuilder::from_config(app.handle(), &window)?
                 .devtools(cfg!(dev))
                 .build()?;
+            let telemetry = build_telemetry();
+            launcher_app::telemetry::set_app_telemetry(telemetry.clone());
+            launcher_app::telemetry::install_panic_hook(telemetry.clone());
             // One host for the core and the updater.
-            let host = Arc::new(launcher_app::logged::LoggedHost(host::TauriHost::new(
-                app.handle().clone(),
-            )));
-            let core = build_core(host.clone())?;
+            let host = Arc::new(launcher_app::logged::LoggedHost(
+                launcher_app::telemetry::ReportingHost::new(
+                    host::TauriHost::new(app.handle().clone()),
+                    telemetry.clone(),
+                ),
+            ));
+            let core = build_core(host.clone(), telemetry.clone())?;
             app.manage(core.clone());
+            // Reads the player's switch: until this returns, nothing is collected.
+            tauri::async_runtime::block_on(core.telemetry_begin());
+            let pinging = core.clone();
+            tauri::async_runtime::spawn(async move {
+                pinging.telemetry_start().await;
+            });
             let build = BuildKind::current();
             // Not `settings_get`: its one-time damaged-settings warning would go to no listener.
             let channel = tauri::async_runtime::block_on(core.update_channel());
@@ -93,6 +107,7 @@ fn main() {
                 build,
                 channel,
             );
+            updates.set_telemetry(telemetry);
             app.manage(updates.clone());
             tauri::async_runtime::spawn(async move {
                 updates.start(launcher_app::updates::START_DELAY).await;
@@ -251,6 +266,9 @@ fn main() {
             commands::perland_open_account,
             commands::whats_new_seen,
             commands::whats_new_mark,
+            commands::telemetry_report,
+            commands::telemetry_notice_due,
+            commands::telemetry_notice_shown,
             commands::update_status,
             commands::update_check,
             commands::update_restart,
@@ -341,7 +359,38 @@ fn panel_url(run: Option<&str>, built: Option<&str>) -> Option<launcher_core::in
     panel
 }
 
-fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> {
+/// Anonymous error reports and usage counts: off in a dev build, with
+/// `PERLAND_LAUNCHER_TELEMETRY=0`, and with a scratch data folder (`PERLAND_LAUNCHER_ROOT`),
+/// unless `PERLAND_LAUNCHER_TELEMETRY_URL` names an Engine to test against. The player's own
+/// switch is read later (`telemetry_begin`).
+fn build_telemetry() -> Arc<launcher_app::telemetry::Telemetry> {
+    use launcher_app::telemetry::{mode, Telemetry, TelemetryConfig, ENDPOINT_ENV, SWITCH_ENV};
+    let version = env!("CARGO_PKG_VERSION");
+    let site = site_override(std::env::var("PERLAND_SITE_URL").ok().as_deref())
+        .or_else(|| launcher_core::public_list::site_url(launcher_core::public_list::DEFAULT_SITE));
+    let (Some(root), Some(site), Ok(http)) =
+        (root_from_env(), site, launcher_core::http::client(version))
+    else {
+        return Telemetry::off();
+    };
+    Telemetry::new(TelemetryConfig {
+        mode: mode(
+            BuildKind::current(),
+            std::env::var(SWITCH_ENV).ok().as_deref(),
+            std::env::var_os("PERLAND_LAUNCHER_ROOT").is_some(),
+            std::env::var(ENDPOINT_ENV).ok().as_deref(),
+            site,
+        ),
+        data_root: LauncherDirs::new(root).root().to_path_buf(),
+        launcher_version: version.to_string(),
+        http,
+    })
+}
+
+fn build_core(
+    host: Arc<Host>,
+    telemetry: Arc<launcher_app::telemetry::Telemetry>,
+) -> Result<Arc<Core>, Box<dyn std::error::Error>> {
     let root = root_from_env().ok_or("couldn't find a data folder")?;
     let dirs = LauncherDirs::new(root);
     let version = env!("CARGO_PKG_VERSION").to_string();
@@ -388,6 +437,7 @@ fn build_core(host: Arc<Host>) -> Result<Arc<Core>, Box<dyn std::error::Error>> 
             std::env::var("PERLAND_PANEL_URL").ok().as_deref(),
             option_env!("PERLAND_PANEL_URL"),
         ),
+        telemetry,
     };
     Ok(AppCore::new(
         config,

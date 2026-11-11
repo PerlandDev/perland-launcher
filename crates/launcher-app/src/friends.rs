@@ -228,6 +228,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 player.create_free_server_from_pack(e, t, name, language, pack, settings)
             })
             .await?;
+        self.config
+            .telemetry
+            .count(launcher_core::telemetry::Counter::FreeServersCreated);
         Ok(self.free_card_of(&created).await)
     }
 }

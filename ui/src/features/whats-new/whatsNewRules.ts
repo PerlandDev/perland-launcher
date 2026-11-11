@@ -65,3 +65,25 @@ export function whatsNew({
     .filter((group) => group.notes.length > 0);
   return { groups, mark: groups.length > 0 ? 'on-open' : 'now' };
 }
+
+/** The release note that tells players the launcher shares anonymous data (release-notes/anonymous-data.json). */
+export const PRIVACY_NOTE = 'anonymous-data';
+
+/** Does what the dialog shows include the note `id`? */
+export const showsNote = (groups: NoteGroup[], id: string) => groups.some((group) => group.notes.some((note) => note.id === id));
+
+/** `groups` with the released note `id` in them, whatever the marker says: a notice the player must be shown before
+ *  it takes effect is news until they have seen it. Unchanged when it is already there, or when this build's notes
+ *  don't carry it as released at or before the running version. */
+export function withNote(groups: NoteGroup[], notes: ReleaseNotes, running: string, id: string): NoteGroup[] {
+  if (showsNote(groups, id)) return groups;
+  const runningAt = notes.versions.indexOf(running);
+  for (const group of notes.groups) {
+    const note = group.notes.find((n) => n.id === id);
+    if (!note) continue;
+    const at = note.since === null ? -1 : notes.versions.indexOf(note.since);
+    if (at === -1 || at > runningAt) return groups;
+    return [{ ...group, notes: [note] }, ...groups];
+  }
+  return groups;
+}

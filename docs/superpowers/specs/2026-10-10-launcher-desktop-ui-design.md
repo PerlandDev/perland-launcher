@@ -387,3 +387,5 @@ On the TS side:
 ## 12. Out of scope
 
 Microsoft sign-in (Plan 4) · Forge/NeoForge (Plan 2) · pack links, `.mrpack`, Browse, sync, `perland://` handling (Plan 3) · updater, installers, signing, log rotation, diagnostics export (Plan 6) · light theme · macOS · WebDriver app tests · telemetry.
+
+(2026-11-11: no longer true. The launcher sends anonymous error reports and usage counts, with one switch in Settings: see `2026-11-11-anonymous-usage-and-errors-design.md`.)

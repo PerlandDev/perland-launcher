@@ -1,4 +1,6 @@
 //! The app's state and every command except playing (see `runs.rs`).
+use crate::telemetry::{instance_names, Telemetry};
+use launcher_core::telemetry::{payload::PingChannel, Counter};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -70,6 +72,9 @@ pub struct AppConfig {
     /// The Perland panel (`launcher_core::perland::panel_url`), where the player manages the
     /// servers they own. Without one, Manage in Perland isn't offered.
     pub panel: Option<launcher_core::invite::Url>,
+    /// Anonymous error reports and usage counts (see `telemetry.rs`). `Telemetry::off()` for
+    /// a launcher that never collects any.
+    pub telemetry: Arc<crate::telemetry::Telemetry>,
 }
 
 /// How long a fetched skin is shown before it is asked again: a skin changed on minecraft.net
@@ -407,8 +412,120 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     pub async fn settings_set(&self, settings: Settings) -> Result<Settings> {
-        self.settings.lock().await.save(&settings).await?;
+        let store = self.settings.lock().await;
+        let (before, _) = store.load().await;
+        store.save(&settings).await?;
+        drop(store);
+        // Off stops sending at once and deletes what was collected.
+        let telemetry = &self.config.telemetry;
+        telemetry.set_sharing(settings.share_anonymous_data);
+        // The player was told that anonymous data is shared when they finish the first run
+        // (its welcome step says so), and when they turn the switch on themselves. Sharing
+        // then starts with the launcher's next start.
+        let finished_first_run = settings.first_run_done && !before.first_run_done;
+        let turned_on = settings.share_anonymous_data && !before.share_anonymous_data;
+        if finished_first_run || turned_on {
+            telemetry.notice_shown();
+        }
         Ok(settings)
+    }
+
+    /// Anonymous error reports and usage counts.
+    pub fn telemetry(&self) -> &Arc<Telemetry> {
+        &self.config.telemetry
+    }
+
+    /// Counts `counter` when `result` is a success.
+    pub(crate) fn counted<T>(&self, counter: Counter, result: Result<T>) -> Result<T> {
+        if result.is_ok() {
+            self.config.telemetry.count(counter);
+        }
+        result
+    }
+
+    /// Reads the player's switch and whether they were shown the notice in an earlier run.
+    /// Quick and local: call it once, before anything can be reported. Until then nothing
+    /// is collected.
+    pub async fn telemetry_begin(&self) {
+        // Not `settings_get`: its one-time damaged-settings warning is for the UI's first read.
+        let (settings, damaged) = self.settings.lock().await.load().await;
+        let telemetry = &self.config.telemetry;
+        // Settings that can't be read say nothing about the switch: a player who turned it
+        // off must not be opted back in by a damaged file, now or when the defaults are
+        // saved over it. The notice is due again.
+        if damaged.is_some() {
+            telemetry.distrust();
+        } else {
+            telemetry.set_sharing(settings.share_anonymous_data);
+            telemetry.arm_from_disk();
+        }
+        let locale = match settings.language {
+            Some(launcher_core::settings::Lang::En) => "en".to_string(),
+            Some(launcher_core::settings::Lang::Es) => "es".to_string(),
+            None => launcher_core::telemetry::os_locale().unwrap_or_default(),
+        };
+        telemetry.set_locale(&locale);
+    }
+
+    /// Learns the names already on disk that must never leave: accounts and instances.
+    /// (Names made later are learned as they are made.)
+    pub async fn telemetry_learn_names(&self) {
+        let telemetry = &self.config.telemetry;
+        if !telemetry.is_on() {
+            return;
+        }
+        if let Ok(file) = self.accounts.lock().await.list().await {
+            telemetry.add_names(crate::telemetry::account_names(&file));
+        }
+        if let Ok(listing) = self.instances.list_all().await {
+            telemetry.add_names(listing.instances.iter().flat_map(instance_names));
+        }
+        // From here reports are recorded: the scrubber knows what is on this computer.
+        telemetry.names_ready();
+    }
+
+    /// Today's ping, if none went out yet, then the reports left from earlier runs. Slow (it
+    /// talks to the network) and silent: run it on a background task.
+    pub async fn telemetry_start(&self) {
+        let telemetry = &self.config.telemetry;
+        if !telemetry.is_on() {
+            return;
+        }
+        self.telemetry_learn_names().await;
+        let (settings, _) = self.settings.lock().await.load().await;
+        let channel = match (
+            self.config.build,
+            Channel::effective(settings.update_channel, self.config.build),
+        ) {
+            (BuildKind::Dev, _) => PingChannel::Dev,
+            (_, Channel::Beta) => PingChannel::Beta,
+            (_, Channel::Stable) => PingChannel::Stable,
+        };
+        // The marker file says a Perland session exists; the credential store isn't read.
+        let signed_in = self.config.dirs.root().join(ACCOUNT_MARKER).is_file();
+        telemetry.start(signed_in, channel).await;
+    }
+
+    /// Whether the window still has to show the player the note about anonymous data (in
+    /// What's new) before any is collected.
+    pub fn telemetry_notice_due(&self) -> bool {
+        self.config.telemetry.notice_due()
+    }
+
+    /// The window has shown it. Collecting starts with the launcher's next start.
+    pub fn telemetry_notice_shown(&self) {
+        self.config.telemetry.notice_shown();
+    }
+
+    /// The instance's names, folder, server and invite are masked in every report from now.
+    pub(crate) fn telemetry_learn(&self, instance: &Instance) {
+        self.config.telemetry.add_names(instance_names(instance));
+    }
+
+    /// An error from the window's own code (`exception` or `unhandled_rejection`). Never
+    /// fails: there is nothing the window could do about it.
+    pub fn telemetry_report(&self, kind: &str, message: &str, stack: Option<&str>) {
+        self.config.telemetry.report_ui(kind, message, stack);
     }
 
     /// The instances in the player's order: ones not in it yet on top (A-Z), then the stored order.
@@ -428,6 +545,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             // Only a convenience: a failed save shows the same listing next time.
             let _ = order.save(&ordered).await;
         }
+        self.config
+            .telemetry
+            .add_names(listing.instances.iter().flat_map(instance_names));
         Ok(listing)
     }
 
@@ -470,6 +590,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             instance.java.memory_mb = memory;
             instance = self.instances.update(&instance).await?;
         }
+        self.config.telemetry.count(Counter::InstancesCreated);
+        self.telemetry_learn(&instance);
         Ok(instance)
     }
 
@@ -534,6 +656,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             )
             .await;
             self.logs.rename(id, &renamed.id);
+            self.telemetry_learn(&renamed);
             self.manual.lock().await.remove(id);
             self.plans
                 .lock()
@@ -578,6 +701,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// The accounts the player may see: outside dev builds, offline ones are left out.
     pub async fn accounts_list(&self) -> Result<AccountsFile> {
         let file = self.accounts.lock().await.list().await?;
+        self.config
+            .telemetry
+            .add_names(crate::telemetry::account_names(&file));
         Ok(visible(file, self.config.build))
     }
 
@@ -620,7 +746,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     pub async fn account_add_offline(&self, name: &str) -> Result<AccountsFile> {
         let store = self.accounts.lock().await;
         store.add_offline(name, self.config.build).await?;
-        Ok(visible(store.list().await?, self.config.build))
+        let file = store.list().await?;
+        self.config
+            .telemetry
+            .add_names(crate::telemetry::account_names(&file));
+        Ok(visible(file, self.config.build))
     }
 
     /// Only an account the player may see can become active (never an offline one outside
@@ -986,6 +1116,15 @@ pub(crate) mod tests {
                 system_memory_mb: 16384,
                 downloads_dir: Some(tmp.path().join("Downloads")),
                 panel,
+                // On only once a test turns sharing on; then it records, and sends nowhere.
+                telemetry: crate::telemetry::Telemetry::new(crate::telemetry::TelemetryConfig {
+                    mode: crate::telemetry::Mode::Engine(
+                        launcher_core::invite::Url::parse("http://127.0.0.1:9/").unwrap(),
+                    ),
+                    data_root: tmp.path().to_path_buf(),
+                    launcher_version: "0.1.0".into(),
+                    http: launcher_core::http::client("test").unwrap(),
+                }),
             },
             meta,
             runner.clone(),
@@ -1001,6 +1140,222 @@ pub(crate) mod tests {
             name: name.into(),
             minecraft: "1.20.1".into(),
             loader: None,
+        }
+    }
+
+    /// The first run finishing is the notice; the next start (here: reading the switch again)
+    /// is when sharing begins.
+    async fn finish_first_run_and_restart(core: &TestCore) {
+        let settings = Settings {
+            first_run_done: true,
+            ..core.settings_get().await
+        };
+        core.settings_set(settings).await.unwrap();
+        restart(core).await;
+    }
+
+    /// The launcher closed and started again.
+    async fn restart(core: &TestCore) {
+        core.telemetry().restart();
+        core.telemetry_begin().await;
+        core.telemetry_learn_names().await;
+    }
+
+    #[tokio::test]
+    async fn a_fresh_install_shares_nothing_until_the_start_after_the_first_run() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Release);
+        let state_file = tmp.path().join(launcher_core::telemetry::STATE_FILE);
+        // Nothing is collected before the settings are read, or during the first run.
+        core.instance_create(vanilla("Before")).await.unwrap();
+        core.telemetry_begin().await;
+        assert!(!core.telemetry().is_on());
+        assert!(core.telemetry_notice_due());
+        core.instance_create(vanilla("During")).await.unwrap();
+        core.telemetry_report("exception", "boom", None);
+        assert!(!state_file.exists());
+
+        // Finishing the first run (its welcome step says what is shared) is the notice. The
+        // rest of this run still collects nothing.
+        let settings = Settings {
+            first_run_done: true,
+            ..core.settings_get().await
+        };
+        core.settings_set(settings.clone()).await.unwrap();
+        assert!(!core.telemetry_notice_due());
+        assert!(!core.telemetry().is_on());
+        core.instance_create(vanilla("After")).await.unwrap();
+        core.telemetry_start().await;
+        assert!(core.telemetry().snapshot().is_empty());
+        // Saving the settings again is not a second notice, and starts nothing.
+        core.settings_set(settings).await.unwrap();
+        assert!(!core.telemetry().is_on());
+
+        // The next start.
+        restart(&core).await;
+        assert!(core.telemetry().is_on());
+        core.instance_create(vanilla("Alpha")).await.unwrap();
+        assert!(core.instance_create(vanilla("  ")).await.is_err());
+        assert_eq!(
+            core.telemetry().snapshot().counters()["instances_created"],
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn an_updated_install_shares_nothing_until_the_start_after_whats_new_showed_the_note() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Release);
+        let state_file = tmp.path().join(launcher_core::telemetry::STATE_FILE);
+        // An install from before this version: the first run was done long ago.
+        std::fs::write(
+            tmp.path().join("settings.json"),
+            r#"{"firstRunDone": true}"#,
+        )
+        .unwrap();
+        for _start in 0..2 {
+            restart(&core).await;
+            assert!(!core.telemetry().is_on());
+            assert!(core.telemetry_notice_due());
+            core.instance_create(vanilla("Quiet")).await.unwrap();
+            // Settings saved for any other reason are not the notice.
+            let settings = Settings {
+                rail_expanded: true,
+                ..core.settings_get().await
+            };
+            core.settings_set(settings).await.unwrap();
+            core.telemetry_start().await;
+            assert!(!state_file.exists());
+        }
+        // What's new shows the note.
+        core.telemetry_notice_shown();
+        assert!(!core.telemetry_notice_due());
+        assert!(!core.telemetry().is_on());
+        core.instance_create(vanilla("Still quiet")).await.unwrap();
+        assert!(core.telemetry().snapshot().is_empty());
+        // The next start.
+        restart(&core).await;
+        assert!(core.telemetry().is_on());
+    }
+
+    #[tokio::test]
+    async fn turning_sharing_off_deletes_what_was_collected_and_on_again_is_its_own_notice() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Release);
+        let state_file = tmp.path().join(launcher_core::telemetry::STATE_FILE);
+        finish_first_run_and_restart(&core).await;
+        core.instance_create(vanilla("Alpha")).await.unwrap();
+        core.telemetry()
+            .report_error(&busy("alpha"), Some("instance_update"));
+        assert_eq!(core.telemetry().snapshot().reports().len(), 1);
+
+        // Off: at once, and what was collected is gone from the disk too.
+        let settings = Settings {
+            share_anonymous_data: false,
+            ..core.settings_get().await
+        };
+        core.settings_set(settings.clone()).await.unwrap();
+        assert!(!core.telemetry().is_on());
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&state_file).unwrap()).unwrap();
+        assert_eq!(saved["reports"], serde_json::json!([]));
+        assert_eq!(saved["counters"], serde_json::json!({}));
+        core.instance_create(vanilla("Beta")).await.unwrap();
+        core.telemetry_report("exception", "boom", None);
+        assert!(core.telemetry().snapshot().is_empty());
+
+        // A later start reads the switch as off, and asks for no notice.
+        restart(&core).await;
+        core.telemetry_start().await;
+        assert!(!core.telemetry().is_on());
+        assert!(!core.telemetry_notice_due());
+
+        // And back on: from the next start, as after any notice.
+        core.settings_set(Settings {
+            share_anonymous_data: true,
+            ..settings
+        })
+        .await
+        .unwrap();
+        assert!(!core.telemetry().is_on());
+        restart(&core).await;
+        assert!(core.telemetry().is_on());
+    }
+
+    #[tokio::test]
+    async fn a_player_who_turns_sharing_on_themselves_needs_no_other_notice() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Release);
+        std::fs::write(
+            tmp.path().join("settings.json"),
+            r#"{"firstRunDone": true, "shareAnonymousData": false}"#,
+        )
+        .unwrap();
+        core.telemetry_begin().await;
+        assert!(!core.telemetry_notice_due(), "nothing is shared: no notice");
+        let settings = Settings {
+            share_anonymous_data: true,
+            ..core.settings_get().await
+        };
+        core.settings_set(settings).await.unwrap();
+        assert!(!core.telemetry_notice_due());
+        assert!(!core.telemetry().is_on(), "from the next start");
+        restart(&core).await;
+        assert!(core.telemetry().is_on());
+    }
+
+    #[tokio::test]
+    async fn settings_that_cannot_be_read_never_turn_sharing_on() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Release);
+        finish_first_run_and_restart(&core).await;
+        assert!(core.telemetry().is_on());
+        // The file is damaged: whatever the switch said is unknown.
+        std::fs::write(tmp.path().join("settings.json"), b"{not json").unwrap();
+        restart(&core).await;
+        assert!(!core.telemetry().is_on());
+        core.instance_create(vanilla("Quiet")).await.unwrap();
+        assert!(core.telemetry().snapshot().is_empty());
+        let state_file = tmp.path().join(launcher_core::telemetry::STATE_FILE);
+        let state: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&state_file).unwrap()).unwrap();
+        assert_eq!(state["noticeShown"], serde_json::Value::Null);
+        // With the defaults in use the first run shows again, and its welcome step is the
+        // notice: the player, who may have had sharing off, is told before anything starts.
+        core.settings_set(Settings {
+            first_run_done: true,
+            ..Settings::default()
+        })
+        .await
+        .unwrap();
+        assert!(!core.telemetry().is_on());
+        restart(&core).await;
+        assert!(core.telemetry().is_on());
+    }
+
+    #[tokio::test]
+    async fn names_on_disk_and_names_made_in_this_run_never_leave() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        core.account_add_offline("PedroGamer").await.unwrap();
+        core.instance_create(vanilla("Servidor de Pedro"))
+            .await
+            .unwrap();
+        finish_first_run_and_restart(&core).await;
+        // Made after the start: learned as they are made.
+        core.instance_create(vanilla("Mundo de Luis"))
+            .await
+            .unwrap();
+        core.instance_rename("mundo-de-luis", "Reino de Camila")
+            .await
+            .unwrap();
+        core.account_add_offline("LuisFriend").await.unwrap();
+        core.telemetry_report(
+            "exception",
+            "PedroGamer and LuisFriend can't open Servidor de Pedro (servidor-de-pedro), Mundo de Luis (mundo-de-luis) or Reino de Camila",
+            None,
+        );
+        let missing = core.instances.load("no-such").await.unwrap_err();
+        core.telemetry().report_error(&missing, Some("play"));
+        let queued = serde_json::to_string(&core.telemetry().snapshot().reports())
+            .unwrap()
+            .to_lowercase();
+        for private in ["pedro", "luis", "camila"] {
+            assert!(!queued.contains(private), "{private} left in {queued}");
         }
     }
 

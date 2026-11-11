@@ -94,6 +94,8 @@ pub struct Settings {
     pub theme: Theme,
     /// The body text font.
     pub font: UiFont,
+    /// Send anonymous error reports and usage counts (see `telemetry`).
+    pub share_anonymous_data: bool,
 }
 
 impl Default for Settings {
@@ -109,6 +111,7 @@ impl Default for Settings {
             icon_shape: IconShape::Square,
             theme: Theme::Laminate,
             font: UiFont::Hyperlegible,
+            share_anonymous_data: crate::telemetry::SHARE_BY_DEFAULT,
         }
     }
 }
@@ -303,6 +306,33 @@ mod tests {
             store.save(&bad).await.unwrap_err().code,
             ErrorCode::MemoryOutOfRange
         );
+    }
+
+    #[tokio::test]
+    async fn sharing_anonymous_data_follows_the_one_default_and_round_trips() {
+        assert_eq!(
+            Settings::default().share_anonymous_data,
+            crate::telemetry::SHARE_BY_DEFAULT
+        );
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        // A file from before the switch gets the default.
+        std::fs::write(&path, r#"{"firstRunDone": true}"#).unwrap();
+        let store = SettingsStore::new(&path);
+        let (settings, warning) = store.load().await;
+        assert!(warning.is_none());
+        assert_eq!(
+            settings.share_anonymous_data,
+            crate::telemetry::SHARE_BY_DEFAULT
+        );
+        let off = Settings {
+            share_anonymous_data: false,
+            ..settings
+        };
+        store.save(&off).await.unwrap();
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"shareAnonymousData\": false"), "{raw}");
+        assert_eq!(store.load().await, (off, None));
     }
 
     #[test]

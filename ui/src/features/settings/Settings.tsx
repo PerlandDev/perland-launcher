@@ -6,6 +6,7 @@ import { commands } from '../../ipc/commands';
 import type { Lang } from '../../ipc/schema';
 import { applyAppearance, FONTS, THEMES, type Appearance } from '../../state/appearance';
 import { useAppInfo, useSettings } from '../../state/queries';
+import { WHAT_IS_SENT } from '../../state/privacy';
 import { navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
@@ -177,6 +178,33 @@ export function Settings() {
         </div>
         <LauncherUpdates appInfo={appInfo.data} choice={data.updateChannel} onChannel={(updateChannel) => edit({ updateChannel })} />
         <Diagnostics />
+        <section className="grid gap-4" aria-labelledby="privacy-heading">
+          <h2 id="privacy-heading" className="text-lg font-bold">
+            {t('settings.privacy.title')}
+          </h2>
+          <div className="flex items-start justify-between gap-6">
+            <div className="grid gap-1">
+              <p className="font-semibold" aria-hidden>
+                {t('settings.privacy.share')}
+              </p>
+              <p id="privacy-hint" className="text-sm text-ink-dim">
+                {t('settings.privacy.shareHint')}
+              </p>
+              <button
+                type="button"
+                className="justify-self-start text-sm text-blue-ink underline underline-offset-4"
+                onClick={() => open(() => openUrl(WHAT_IS_SENT))}
+              >
+                {t('settings.privacy.whatIsSent')}
+              </button>
+            </div>
+            <Toggle
+              checked={data.shareAnonymousData}
+              label={t('settings.privacy.share')}
+              onChange={(shareAnonymousData) => edit({ shareAnonymousData })}
+            />
+          </div>
+        </section>
         <section className="panel grid gap-4 p-6" aria-labelledby="about-heading">
           <div className="flex items-center gap-4">
             <img src={mark} alt="" width={56} height={48} />

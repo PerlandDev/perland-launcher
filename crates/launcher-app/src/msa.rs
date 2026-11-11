@@ -3,6 +3,7 @@
 //! refresh token in the credential store, the Minecraft token and xuid in memory only. Every
 //! sign-in runs the whole chain; nothing is remembered that would skip a step.
 //! Nothing here logs or formats a token, an authorization code or the PKCE verifier.
+use launcher_core::telemetry::Counter;
 use std::sync::Mutex;
 
 use launcher_core::{
@@ -396,6 +397,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 uuid,
             })
             .await?;
+        self.config.telemetry.count(Counter::MicrosoftSignIns);
+        self.config
+            .telemetry
+            .add_names(crate::telemetry::account_names(&file));
         Ok(visible(file, self.config.build))
     }
 
