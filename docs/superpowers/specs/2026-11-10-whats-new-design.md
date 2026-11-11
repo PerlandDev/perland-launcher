@@ -1,6 +1,7 @@
 # What's new: release notes for players
 
-Date: 2026-11-10. Status: draft, waiting for the owner's approval (nothing built yet).
+Date: 2026-11-10. Status: the owner chose the approach and added the skill and the every-pull-request rule
+(2026-11-10); being built from `docs/superpowers/plans/2026-11-11-whats-new.md`.
 
 ## Intent
 
@@ -120,8 +121,9 @@ notes from a shallow clone: without tags, every note would look new.
 - **Data.** The UI bundles the notes file. For a release it is the workflow's copy; in `pnpm --filter ui dev`,
   `dev:mock` and `pnpm tauri dev` it is computed on the spot from the checkout, where notes not yet released
   show under "Next update". That is the preview for whoever writes a note.
-- **The marker.** The core remembers the last version whose notes this player was shown (`whatsNewSeen` in
-  `settings.json`, written through its own command so the Settings screen's draft cannot overwrite it).
+- **The marker.** The core remembers the last version whose notes this player was shown, in its own small file
+  (`whats-new-seen.json`, beside `news-seen.json`). It is not a setting: the Settings screen saves the whole
+  settings object and would overwrite it.
 - **The rule** (a pure function in the UI, next to its tests, like `newsRules.ts`):
   - First run not finished: show nothing, and set the marker to the running version.
   - Marker equal to the running version: show nothing.
@@ -130,7 +132,9 @@ notes from a shallow clone: without tags, every note would look new.
     what `beta.2` added.
   - No marker, first run finished (a player updating into the first release with this feature): show the running
     base version's notes.
-  - Marker newer than the running version, or not a version the notes file knows: show nothing.
+  - Marker newer than the running version (a downgrade): show nothing.
+  - Marker that the notes file does not know (a beta from a branch that never merged): as with no marker, show
+    the running base version's notes.
   - Nothing to show (an update with no notes): no dialog.
   - Dev builds never open the dialog by themselves.
 - **When the marker moves** (my call). At once when there is nothing to show. Otherwise only when the dialog
@@ -176,8 +180,6 @@ get the rule above and point at the `release-notes` skill.
 - The exact look of the dialog and the Settings button, through the `/impeccable` skill and `DESIGN.md`.
 - How the UI bundles the notes file (a Vite virtual module, or a generated file kept out of Git) and how the
   workflow hands the `plan` job's copy to the other jobs.
-- Whether the marker lives in `settings.json` or in its own small file next to `news-seen.json`, if the settings
-  draft makes the first awkward.
 - The names of commands, components and i18n keys.
 - The first note: this feature's own (`release-notes/whats-new.json`, the example above).
 
