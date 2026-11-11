@@ -102,7 +102,7 @@ describe('ServersScreen', () => {
     const { user, calls } = renderApp(<ServersScreen />);
     await user.click(within(await card('Creative Plots')).getByRole('button', { name: 'Play' }));
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'creative-plots' }));
-    expect(sent(calls, 'join_add')).toEqual([{ link: B_INVITE }]);
+    expect(sent(calls, 'join_add')).toEqual([{ link: B_INVITE, autoUpdate: null }]);
     expect(sent(calls, 'play')).toEqual([{ id: 'creative-plots', join: true }]);
     const order = calls.map(([cmd]) => cmd).filter((cmd) => cmd === 'join_add' || cmd === 'play');
     expect(order).toEqual(['join_add', 'play']);
@@ -125,7 +125,7 @@ describe('ServersScreen', () => {
     await user.click(within(await card('Survival')).getByRole('button', { name: 'Play' }));
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival' }));
     // join_add is always asked (it answers the instance that already joins), so a stale id is never played.
-    expect(sent(calls, 'join_add')).toEqual([{ link: MOCK_PUBLIC_SERVERS.find((c) => c.name === 'Survival')!.invite }]);
+    expect(sent(calls, 'join_add')).toEqual([{ link: MOCK_PUBLIC_SERVERS.find((c) => c.name === 'Survival')!.invite, autoUpdate: null }]);
     expect(sent(calls, 'play')).toEqual([{ id: 'survival', join: true }]);
     expect(await ids()).toEqual(before);
   });

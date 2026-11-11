@@ -34,6 +34,7 @@ mod team_create;
 pub mod telemetry;
 #[cfg(test)]
 pub(crate) mod testing;
+mod trust;
 pub mod updates;
 mod your_servers;
 

@@ -84,7 +84,7 @@ describe('runStore', () => {
   it('keeps the offer only while asking and starts a fresh run from checking', () => {
     const store = createRunStore();
     const offer = {
-      fromVersion: '1.0.3', toVersion: '1.0.4', added: ['JEI'], updated: [], removed: [], kept: [],
+      fromVersion: '1.0.3', toVersion: '1.0.4', added: ['JEI'], updated: [], removed: [], kept: [], files: [], held: false,
     };
     store.apply({ type: 'log', instance: 'pack', lines: ['old'] });
     store.apply({ type: 'run_state', instance: 'pack', state: 'checking', exit: null, update: null });

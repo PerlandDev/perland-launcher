@@ -193,7 +193,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             PackAddRequest::Link { url } => match PackInput::parse(&url)? {
                 PackInput::MrpackFile { .. } => return Err(link_invalid()),
                 // The UI routes invite links to Join server first; this is the same thing.
-                PackInput::Perland { .. } => return self.join_add(&url).await,
+                PackInput::Perland { .. } => return self.join_add(&url, None).await,
                 input => input,
             },
             PackAddRequest::File { path } => {
@@ -234,7 +234,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// The banner's Update: take the pack's update without playing.
     pub async fn pack_update(self: &Arc<Self>, id: &str) -> Result<()> {
         let instance = self.pack_instance(id).await?;
-        let checks = self.checks_for_updates(&instance).await;
+        let gate = self.trust_gate(&instance).await?;
+        let checks = gate == crate::trust::Gate::Open && self.checks_for_updates(&instance).await;
         self.start_run(id, instance, None, checks)
     }
 
@@ -258,6 +259,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                             updated: vec![],
                             removed: vec![],
                             kept: vec![],
+                            files: vec![],
+                            held: false,
                         }),
                         None,
                     ),
@@ -760,7 +763,7 @@ mod tests {
     async fn a_servers_pack_status_comes_from_its_view() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         lockfile::save_pack(&core.instances.perland_dir(&id), &desired("1.0.4", vec![]))
             .await
             .unwrap();

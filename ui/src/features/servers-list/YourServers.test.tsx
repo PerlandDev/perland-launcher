@@ -323,7 +323,7 @@ describe('YourServers', () => {
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'my-world' }));
     await user.click(within(await cardIn(section, 'Friends')).getByRole('button', { name: 'Play' }));
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'friends' }));
-    expect(sent(calls, 'join_add')).toEqual([{ link: inviteOf('O') }, { link: inviteOf('I') }]);
+    expect(sent(calls, 'join_add')).toEqual([{ link: inviteOf('O'), autoUpdate: null }, { link: inviteOf('I'), autoUpdate: null }]);
     expect(sent(calls, 'your_servers_follow')).toEqual([]);
   });
 

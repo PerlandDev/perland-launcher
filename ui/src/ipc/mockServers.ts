@@ -3,8 +3,9 @@
 import joinPreviewFx from './contract/join_preview.json';
 import serverInstanceFx from './contract/server_instance.json';
 import serverStatusFx from './contract/server_status.json';
+import trustPromptsFx from './contract/trust_prompts.json';
 import { inviteCanonical } from './inviteLink';
-import type { Instance, JoinPreview, LauncherError, ListQuery, LoaderKind, NewsPostView, PublicServerCard, PublicServerPage, ServerNews, ServerStatusView } from './schema';
+import type { Instance, JoinPreview, LauncherError, ListQuery, LoaderKind, NewsPostView, PublicServerCard, PublicServerPage, ServerNews, ServerStatusView, TrustPrompt } from './schema';
 
 export type ServerScenario =
   | 'online'
@@ -19,7 +20,11 @@ export type ServerScenario =
   /** The public server list isn't open yet: `servers_list` answers `server_list_closed`. */
   | 'closed'
   /** The Engine has the news turned off: `server_news` answers null for every server. */
-  | 'news-off';
+  | 'news-off'
+  /** The seeded server instance was joined before the trust step: Play asks first. */
+  | 'untrusted'
+  /** The server's pack has an update with a file its owner uploaded: Play waits on "Update ready". */
+  | 'update-held';
 
 /** The invite the seeded server instance has. */
 export const MOCK_INVITE = `https://play.example.com/${'A'.repeat(43)}`;
@@ -374,6 +379,7 @@ const joinOf = (card: PublicServerCard): string | null => (card.address && !card
 /** The server instance Add makes from a public card. */
 function instanceFromCard(card: PublicServerCard, id: string, canonical: string): Instance {
   const base = serverInstance();
+  delete base.serverTrust;
   return {
     ...base,
     id,
@@ -451,6 +457,7 @@ export function seedServers(scenario: ServerScenario | undefined, listing: Listi
     instance.server.whitelisted = scenario === 'whitelisted';
   }
   if (scenario === 'vanilla') instance.game = { minecraft: '1.21.1', loader: null };
+  if (scenario === 'untrusted') delete instance.serverTrust;
   listing.instances = sorted([...listing.instances, instance]);
   return { scenario };
 }
@@ -489,6 +496,36 @@ function status(servers: MockServers): ServerStatusView {
 
 function perlandOf(instance: Instance): string | null {
   return instance.source.kind === 'perland' ? inviteCanonical(instance.source.invite) : null;
+}
+
+/** The trust step for a server: the fixture's, named and counted for it. */
+function trustPrompt(name: string, pack: { name: string; modCount: number } | null): TrustPrompt {
+  const [base] = clone(trustPromptsFx) as TrustPrompt[];
+  if (!pack) return { ...base!, name };
+  // The fixture's split, scaled to the pack: most from Modrinth, a few from CurseForge, one or two from elsewhere.
+  const uploaded = Math.min(3, pack.modCount);
+  const web = Math.min(1, pack.modCount - uploaded);
+  const curseforge = Math.floor((pack.modCount - uploaded - web) / 4);
+  const modrinth = pack.modCount - uploaded - web - curseforge;
+  return { ...base!, name, pack: pack.name, modCount: pack.modCount, sources: { modrinth, curseforge, web, uploaded, other: 0 } };
+}
+
+/** Record the trust step's answer on `instance`, as the core does. */
+function trusted(instance: Instance, autoUpdate: boolean): Instance {
+  return { ...instance, serverTrust: { server: 'address:play.example.com:25566', at: 1_791_720_000 }, updatePolicy: autoUpdate ? 'auto' : 'ask' };
+}
+
+/** Whether `instance`'s server installs a modpack (a vanilla server instance has no loader). */
+const installsPack = (instance: Instance) => instance.game.loader !== null;
+
+/** The step `instance` needs before its next Play, or null. */
+export function instanceTrustPrompt(instance: Instance): TrustPrompt | null {
+  if (instance.source.kind !== 'perland' || instance.serverTrust || !installsPack(instance)) return null;
+  const pack = MOCK_PUBLIC_SERVERS.find((c) => c.invite && inviteCanonical(c.invite) === perlandOf(instance))?.pack ?? {
+    name: 'Survival Pack',
+    modCount: 142,
+  };
+  return trustPrompt(instance.server?.name ?? instance.name, pack);
 }
 
 /** Answer a server command, or `NOT_MINE`. `extra` are cards the public list doesn't have (the player's own Your servers),
@@ -533,22 +570,56 @@ export function handleServer(
       if (host.toLowerCase() !== 'api.example.com') fail('pack', 'invite_pack_link', "That's a server's modpack link, not its invite link");
       return `https://play.example.com/${token}`;
     }
+    case 'join_trust': {
+      const canonical = inviteCanonical(String(args.link ?? '')) ?? fail('pack', 'invite_link_invalid', "That isn't a Perland invite link");
+      // A relink keeps its trust: the mock's links all reach the one server.
+      const existing = (args.instance ? listing.instances.find((i) => i.id === args.instance) : listing.instances.find((i) => perlandOf(i) === canonical)) ?? null;
+      if (existing?.serverTrust) return null;
+      const card = servers ? undefined : (cardOf(canonical) ?? extra.find((c) => c.invite !== null && inviteCanonical(c.invite) === canonical));
+      if (card) return card.pack ? trustPrompt(card.displayName, card.pack) : null;
+      if (!servers || servers.scenario === 'gone') fail('pack', 'invite_gone', "This invite link doesn't work anymore.");
+      if (servers.scenario === 'vanilla') return null;
+      const shown = preview(servers, null);
+      return trustPrompt(shown.name, shown.pack);
+    }
+    case 'instance_trust': {
+      const target = listing.instances.find((i) => i.id === args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (target.source.kind !== 'perland') fail('pack', 'no_pack', "This instance doesn't come from a server invite");
+      const prompt = instanceTrustPrompt(target);
+      return prompt && { ...prompt, autoUpdate: target.updatePolicy === 'auto' };
+    }
+    case 'instance_trust_set':
+    case 'instance_trust_forget': {
+      const target = listing.instances.find((i) => i.id === args.id) ?? fail('disk', 'instance_not_found', 'gone');
+      if (target.source.kind !== 'perland') fail('pack', 'no_pack', "This instance doesn't come from a server invite");
+      const next = cmd === 'instance_trust_set' ? trusted(target, Boolean(args.autoUpdate)) : { ...target };
+      if (cmd === 'instance_trust_forget') delete next.serverTrust;
+      listing.instances = listing.instances.map((i) => (i.id === next.id ? next : i));
+      return next;
+    }
     case 'join_preview':
     case 'join_add': {
+      const answered = typeof args.autoUpdate === 'boolean' ? args.autoUpdate : null;
+      const withTrust = (instance: Instance): Instance => {
+        if (answered === null) return instance;
+        const next = trusted(instance, answered);
+        listing.instances = listing.instances.map((i) => (i.id === next.id ? next : i));
+        return next;
+      };
       const canonical = inviteCanonical(String(args.link ?? '')) ?? fail('pack', 'invite_link_invalid', "That isn't a Perland invite link");
       // Without an invite scenario, a card of the public list joins on its own; with one, the scenario answers every invite.
       const card = servers ? undefined : (cardOf(canonical) ?? extra.find((c) => c.invite !== null && inviteCanonical(c.invite) === canonical));
       if (card) {
         const existing = listing.instances.find((i) => perlandOf(i) === canonical) ?? null;
         if (cmd === 'join_preview') return cardPreview(card, existing?.id ?? null);
-        if (existing) return existing;
+        if (existing) return withTrust(existing);
         const taken = new Set(listing.instances.map((i) => i.id));
         const slug = card.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
         let id = slug;
         for (let n = 2; taken.has(id); n++) id = `${slug}-${n}`;
         const created = instanceFromCard(card, id, canonical);
         listing.instances = sorted([...listing.instances, created]);
-        return created;
+        return withTrust(created);
       }
       if (!servers || servers.scenario === 'gone') fail('pack', 'invite_gone', "This invite link doesn't work anymore.");
       if (servers.scenario === 'network' || servers.scenario === 'modded-no-pack') {
@@ -557,7 +628,7 @@ export function handleServer(
       }
       const existing = listing.instances.find((i) => perlandOf(i) === canonical) ?? null;
       if (cmd === 'join_preview') return preview(servers, existing?.id ?? null);
-      if (existing) return existing;
+      if (existing) return withTrust(existing);
       const taken = new Set(listing.instances.map((i) => i.id));
       let id = MOCK_SERVER_ID;
       for (let n = 2; taken.has(id); n++) id = `${MOCK_SERVER_ID}-${n}`;
@@ -566,8 +637,10 @@ export function handleServer(
         id,
         source: { kind: 'perland', invite: canonical, engine: 'https://api.example.com/' },
       };
+      delete created.serverTrust;
+      if (servers.scenario === 'vanilla') created.game = { minecraft: '1.21.1', loader: null };
       listing.instances = sorted([...listing.instances, created]);
-      return created;
+      return withTrust(created);
     }
     case 'server_status':
       if (!servers) fail('pack', 'no_pack', "This instance doesn't come from a server invite");
@@ -580,12 +653,14 @@ export function handleServer(
       if (servers.scenario === 'network' || servers.scenario === 'modded-no-pack') {
         fail('pack', 'invite_unsupported', "This server can't be joined from the launcher yet.", { address: 'play.example.com:25577' });
       }
-      const linked: Instance = {
+      const base: Instance = {
         ...target,
         source: { kind: 'perland', invite: canonical, engine: 'https://api.example.com/' },
         updatePolicy: 'auto',
         server: serverInstance().server,
       };
+      delete base.serverTrust;
+      const linked = typeof args.autoUpdate === 'boolean' ? trusted(base, args.autoUpdate) : base;
       listing.instances = listing.instances.map((i) => (i.id === linked.id ? linked : i));
       return linked;
     }
@@ -593,18 +668,19 @@ export function handleServer(
       const target = listing.instances.find((i) => i.id === args.id) ?? fail('disk', 'instance_not_found', 'gone');
       if (target.source.kind !== 'perland') fail('pack', 'no_pack', "This instance doesn't come from a server invite");
       const plain: Instance = { ...target, source: { kind: 'none' }, server: null };
+      delete plain.serverTrust;
       listing.instances = listing.instances.map((i) => (i.id === plain.id ? plain : i));
       return plain;
     }
     case 'server_relink': {
       const target = listing.instances.find((i) => i.id === args.id) ?? fail('disk', 'instance_not_found', 'gone');
       const canonical = inviteCanonical(String(args.link ?? '')) ?? fail('pack', 'invite_link_invalid', "That isn't a Perland invite link");
-      const moved: Instance = {
+      const relinked: Instance = {
         ...target,
         source: { kind: 'perland', invite: canonical, engine: 'https://api.example.com/' },
-        updatePolicy: 'auto',
         server: target.server ? { ...target.server, gone: false } : null,
       };
+      const moved = typeof args.autoUpdate === 'boolean' ? trusted(relinked, args.autoUpdate) : relinked;
       listing.instances = listing.instances.map((i) => (i.id === moved.id ? moved : i));
       if (servers) servers.scenario = 'online';
       return moved;

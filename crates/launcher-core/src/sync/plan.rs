@@ -5,7 +5,8 @@ use serde::Serialize;
 
 use crate::{
     fsutil::path_key,
-    sources::{DesiredState, FileMode, PackFile},
+    invite::Url,
+    sources::{DesiredState, FileMode, FileSource, PackFile},
     sync::lockfile::Managed,
 };
 
@@ -232,14 +233,144 @@ pub fn changes_except(
     }
 }
 
+/// How an update touches one file the pack installs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FileChange {
+    Added,
+    Updated,
+}
+
+/// Where a file an update writes is downloaded from: a web host, or the pack file itself (an
+/// override entry of the `.mrpack`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "kind", content = "host")]
+pub enum FileFrom {
+    Host(String),
+    InPack,
+}
+
+/// One file an update adds or replaces, as [`changes_except`] counts it: what the update summary
+/// says the file is and where it comes from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangedFile {
+    pub name: String,
+    pub path: String,
+    pub change: FileChange,
+    pub from: FileFrom,
+}
+
+fn file_from(f: &PackFile) -> FileFrom {
+    match &f.source {
+        FileSource::Archive { .. } => FileFrom::InPack,
+        FileSource::Remote { urls } => FileFrom::Host(
+            urls.first()
+                .and_then(|u| Url::parse(u).ok())
+                .and_then(|u| u.host_str().map(str::to_ascii_lowercase))
+                .unwrap_or_default(),
+        ),
+    }
+}
+
+/// The files `changes_except` reports as added or updated, by path: a file whose name moved
+/// (added and removed under one name) is `Updated`, as there.
+pub fn changed_files(
+    wanted: &[&PackFile],
+    managed: Option<&Managed>,
+    kept: &[String],
+) -> Vec<ChangedFile> {
+    let wanted_paths: HashSet<&str> = wanted.iter().map(|f| f.path.as_str()).collect();
+    let removed_names: HashSet<&str> = managed
+        .map(|m| {
+            m.files
+                .iter()
+                .filter(|(p, e)| !e.sha1.is_empty() && !wanted_paths.contains(p.as_str()))
+                .map(|(_, e)| e.name.as_str())
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut out = Vec::new();
+    for f in wanted.iter().filter(|f| !kept.contains(&f.path)) {
+        let change = match managed.and_then(|m| m.files.get(&f.path)) {
+            None if removed_names.contains(f.name.as_str()) => FileChange::Updated,
+            None => FileChange::Added,
+            Some(entry) if entry.declared != f.hashes && f.mode != FileMode::Preserve => {
+                FileChange::Updated
+            }
+            Some(_) => continue,
+        };
+        out.push(ChangedFile {
+            name: f.name.clone(),
+            path: f.path.clone(),
+            change,
+            from: file_from(f),
+        });
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         download::Hashes,
-        sources::{FileSource, OptionalFile, PackAbout, Side},
+        sources::{OptionalFile, PackAbout, Side},
         sync::lockfile::ManagedFile,
     };
+
+    #[test]
+    fn changed_files_say_what_changes_and_where_it_comes_from() {
+        let mut remote = pf("mods/sodium.jar", FileMode::Replace, "b");
+        remote.source = FileSource::Remote {
+            urls: vec!["https://CDN.modrinth.com/data/x/sodium.jar".into()],
+        };
+        let mut uploaded = pf("mods/custom.jar", FileMode::Replace, "c");
+        uploaded.source = FileSource::Archive {
+            entry: "overrides/mods/custom.jar".into(),
+        };
+        let same = pf("config/a.toml", FileMode::Replace, "s");
+        let mut renamed = pf("mods/jei-2.jar", FileMode::Replace, "j2");
+        renamed.name = "JEI".into();
+        let installed = managed(&[
+            ("mods/sodium.jar", entry("sodium.jar", "a", "a")),
+            ("config/a.toml", entry("a.toml", "s", "s")),
+            ("mods/jei-1.jar", entry("JEI", "j1", "j1")),
+            ("mods/gone.jar", entry("gone.jar", "g", "g")),
+        ]);
+        let wanted = [&remote, &uploaded, &same, &renamed];
+        let files = changed_files(&wanted, Some(&installed), &[]);
+        assert_eq!(
+            files,
+            vec![
+                ChangedFile {
+                    name: "custom.jar".into(),
+                    path: "mods/custom.jar".into(),
+                    change: FileChange::Added,
+                    from: FileFrom::InPack,
+                },
+                ChangedFile {
+                    name: "JEI".into(),
+                    path: "mods/jei-2.jar".into(),
+                    change: FileChange::Updated,
+                    from: FileFrom::Host(String::new()),
+                },
+                ChangedFile {
+                    name: "sodium.jar".into(),
+                    path: "mods/sodium.jar".into(),
+                    change: FileChange::Updated,
+                    from: FileFrom::Host("cdn.modrinth.com".into()),
+                },
+            ]
+        );
+        let changes = changes(&wanted, Some(&installed), "2.0");
+        assert_eq!(changes.added, vec!["custom.jar"]);
+        assert_eq!(changes.updated, vec!["JEI", "sodium.jar"]);
+        // Kept edits change nothing.
+        let kept = changed_files(&wanted, Some(&installed), &["mods/custom.jar".into()]);
+        assert_eq!(kept.len(), 2);
+    }
 
     fn pf(path: &str, mode: FileMode, hash: &str) -> PackFile {
         PackFile {

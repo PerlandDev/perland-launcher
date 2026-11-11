@@ -12,8 +12,14 @@ it('sends the argument names Rust expects', async () => {
   await commands.play('pack', true);
   await commands.joinPreview('l');
   await commands.joinAdd('l');
+  await commands.joinAdd('l', false);
+  await commands.joinTrust('l');
+  await commands.instanceTrust('pack');
+  await commands.instanceTrustSet('pack', true);
+  await commands.instanceTrustForget('pack');
   await commands.serverStatus('pack');
   await commands.serverRelink('pack', 'l');
+  await commands.serverLink('pack', 'l', true);
   await commands.serverUnlink('pack');
   const query = { sort: 'players', modded: null, minecraft: null, hasRoom: false, category: null, language: null, region: null, offset: 0 } as const;
   await commands.serversList(query);
@@ -43,9 +49,15 @@ it('sends the argument names Rust expects', async () => {
     ['play', { id: 'pack', join: false }],
     ['play', { id: 'pack', join: true }],
     ['join_preview', { link: 'l' }],
-    ['join_add', { link: 'l' }],
+    ['join_add', { link: 'l', autoUpdate: null }],
+    ['join_add', { link: 'l', autoUpdate: false }],
+    ['join_trust', { link: 'l', instance: null }],
+    ['instance_trust', { id: 'pack' }],
+    ['instance_trust_set', { id: 'pack', autoUpdate: true }],
+    ['instance_trust_forget', { id: 'pack' }],
     ['server_status', { id: 'pack' }],
-    ['server_relink', { id: 'pack', link: 'l' }],
+    ['server_relink', { id: 'pack', link: 'l', autoUpdate: null }],
+    ['server_link', { id: 'pack', link: 'l', autoUpdate: true }],
     ['server_unlink', { id: 'pack' }],
     ['servers_list', { query }],
     ['servers_icon', { token: 't', iconVersion: 'v1' }],

@@ -4,6 +4,7 @@ pub(crate) mod apply;
 pub mod lockfile;
 pub mod manual;
 mod mod_ids;
+pub mod origin;
 pub mod plan;
 
 use std::{
@@ -212,6 +213,8 @@ pub struct PendingUpdate {
     pub changes: Changes,
     /// Override files the player edited that the update keeps as they are.
     pub kept: Vec<String>,
+    /// The files behind `changes.added` and `changes.updated`, with where each comes from.
+    pub files: Vec<plan::ChangedFile>,
 }
 
 /// Override files the player edited that a sync to `wanted` would keep. Only
@@ -439,11 +442,13 @@ impl Syncer {
         let wanted = plan::wanted(&desired, &instance.optional_choices);
         let kept = kept_edits(&store.game_dir(&instance.id), &wanted, managed.as_ref()).await;
         let changes = plan::changes_except(&wanted, managed.as_ref(), &desired.pack_version, &kept);
+        let files = plan::changed_files(&wanted, managed.as_ref(), &kept);
         Ok(Some(PendingUpdate {
             source,
             desired,
             changes,
             kept,
+            files,
         }))
     }
 

@@ -524,6 +524,48 @@ pub struct Instance {
     /// player updates again, or the source's version equals `version`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update_hold: Option<UpdateHold>,
+    /// A server instance's trust step, answered: the player said they trust the server whose
+    /// [`server_key`] this is, so its pack may install. `None` until then, and again after they
+    /// take it back. It stays through a new invite link to the same server, never to another.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_trust: Option<ServerTrust>,
+}
+
+/// The player trusted a server at the trust step. Whether its pack updates on its own is
+/// `update_policy` (`auto` or `ask`), chosen at the same step.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerTrust {
+    /// The [`server_key`] of the server trusted.
+    pub server: String,
+    /// Unix seconds.
+    pub at: i64,
+}
+
+impl Instance {
+    /// Whether the player trusted the server `key` names for this instance.
+    pub fn trusts(&self, key: &str) -> bool {
+        self.server_trust.as_ref().is_some_and(|t| t.server == key)
+    }
+}
+
+/// What names a server for the trust step, whatever invite link reaches it: an owner can
+/// regenerate the token, but not the server's join name (unique under the Engine's game
+/// domain) or its address. An Engine with neither falls back to its host and the server's own
+/// name, which never changes. Lowercase, so spellings match.
+pub fn server_key(view: &InviteView, engine: &Url) -> String {
+    let key = if let Some(join) = view.address.join_name() {
+        format!("join:{join}")
+    } else if let Some(address) = ServerAddress::from_view(&view.address, engine) {
+        format!("address:{}", address.display())
+    } else {
+        format!(
+            "name:{}/{}",
+            engine.host_str().unwrap_or_default(),
+            view.name.trim()
+        )
+    };
+    key.to_lowercase()
 }
 
 /// Updates paused because the player went back to an earlier pack version.
@@ -609,6 +651,7 @@ impl InstanceStore {
             banner_edges: None,
             banner_aspect: None,
             update_hold: None,
+            server_trust: None,
         };
         tokio::fs::create_dir_all(self.game_dir(&instance.id)).await?;
         tokio::fs::create_dir_all(self.perland_dir(&instance.id)).await?;
@@ -1510,6 +1553,64 @@ mod tests {
 
     fn engine() -> Url {
         Url::parse("https://api.example.com").unwrap()
+    }
+
+    #[test]
+    fn a_server_key_survives_a_new_token_and_tells_servers_apart() {
+        let view = |join: Option<&str>, host: Option<&str>, port: i64, name: &str| InviteView {
+            name: name.into(),
+            address: InviteAddress {
+                host: host.map(str::to_string),
+                port,
+                display: None,
+                join: join.map(str::to_string),
+            },
+            ..InviteView::default()
+        };
+        let joined = view(
+            Some("Survival.Perland.World"),
+            Some("play.example.com"),
+            25566,
+            "s",
+        );
+        assert_eq!(
+            server_key(&joined, &engine()),
+            "join:survival.perland.world"
+        );
+        let addressed = view(None, Some("play.example.com"), 25566, "s");
+        assert_eq!(
+            server_key(&addressed, &engine()),
+            "address:play.example.com:25566"
+        );
+        let other_port = view(None, Some("play.example.com"), 25567, "s");
+        assert_ne!(
+            server_key(&addressed, &engine()),
+            server_key(&other_port, &engine())
+        );
+        let bare = view(None, Some("bad host"), 0, " Survival ");
+        assert_eq!(
+            server_key(&bare, &engine()),
+            "name:api.example.com/survival"
+        );
+    }
+
+    #[test]
+    fn trust_is_for_one_server_and_old_instances_have_none() {
+        let mut instance: Instance = serde_json::from_value(serde_json::json!({
+            "id": "s", "name": "S", "source": { "kind": "none" },
+            "game": { "minecraft": "1.21.1" }
+        }))
+        .unwrap();
+        assert_eq!(instance.server_trust, None);
+        assert!(!instance.trusts("join:a"));
+        instance.server_trust = Some(ServerTrust {
+            server: "join:a".into(),
+            at: 1,
+        });
+        assert!(instance.trusts("join:a"));
+        assert!(!instance.trusts("join:b"));
+        let back = serde_json::to_value(&instance).unwrap();
+        assert_eq!(back["serverTrust"]["server"], "join:a");
     }
 
     #[test]

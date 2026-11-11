@@ -155,7 +155,7 @@ async fn hits(server: &MockServer, at: &str) -> usize {
 async fn moved_instance(root: &Path, site: &MockServer, stale: &str) -> String {
     let (first, _) = launcher(root, unshared());
     let invite = format!("{}/{TOKEN}", site.uri());
-    let mut instance = first.join_add(&invite).await.unwrap();
+    let mut instance = first.join_add(&invite, Some(true)).await.unwrap();
     let SourceRef::Perland { invite, .. } = instance.source.clone() else {
         panic!("a server instance");
     };
@@ -224,7 +224,7 @@ async fn stop_while_the_server_prepares_the_modpack_ends_the_run_at_once() {
     );
     core.account_add_offline("Steve").await.unwrap();
     let id = core
-        .join_add(&format!("{}/{TOKEN}", site.uri()))
+        .join_add(&format!("{}/{TOKEN}", site.uri()), Some(true))
         .await
         .unwrap()
         .id;

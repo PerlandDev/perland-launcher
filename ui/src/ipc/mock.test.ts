@@ -585,7 +585,8 @@ describe('mock public server list', () => {
     vi.useFakeTimers();
     try {
       const backend = installMock();
-      const added = (await backend.handle('join_add', { link: card.invite })) as Instance;
+      // Joined through the trust step, as the list's Play does for a server with a modpack.
+      const added = (await backend.handle('join_add', { link: card.invite, autoUpdate: true })) as Instance;
       expect(added.source).toMatchObject({ kind: 'perland' });
       expect(added.name).toBe(card.name);
       await backend.handle('play', { id: added.id, join: true });

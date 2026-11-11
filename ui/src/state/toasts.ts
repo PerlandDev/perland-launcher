@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { isLauncherError } from '../ipc/errors';
 import { openSignInPrompt } from './signInPrompt';
+import { askInstanceTrust } from './trustPrompt';
 
 export interface Notice {
   title: string;
@@ -30,6 +31,11 @@ export function isSignInError(error: unknown): boolean {
 export function pushError(error: unknown) {
   if (isSignInError(error)) {
     openSignInPrompt();
+    return;
+  }
+  // A Play refused until the player trusts the server: the trust step says why, with the way on, so no toast as well.
+  if (isLauncherError(error) && error.code === 'server_trust_needed' && error.params.id) {
+    askInstanceTrust(error.params.id, error.params.join === 'true');
     return;
   }
   toasts = [...toasts, { id: nextId++, error }];

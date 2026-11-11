@@ -20,8 +20,8 @@ describe('JoinServer', () => {
     expect(screen.getByText('From play.example.com')).toBeInTheDocument();
     expect(screen.getByText('Survival Pack 1.0.4 · 142 mods')).toBeInTheDocument();
     expect(screen.getByText('Minecraft 1.20.1')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Add server' }));
-    expect(sent(calls, 'join_add')).toEqual([{ link: OTHER }]);
+    await user.click(await screen.findByRole('button', { name: 'Trust and add' }));
+    expect(sent(calls, 'join_add')).toEqual([{ link: OTHER, autoUpdate: true }]);
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival-2' }));
   });
 
@@ -124,8 +124,8 @@ describe('JoinServer', () => {
     await user.click(screen.getByRole('button', { name: 'Check link' }));
     expect(await screen.findByRole('heading', { name: 'survival' })).toBeInTheDocument();
     expect(sent(calls, 'join_preview')).toEqual([{ link: OTHER }]);
-    await user.click(screen.getByRole('button', { name: 'Add server' }));
-    expect(sent(calls, 'join_add')).toEqual([{ link: OTHER }]);
+    await user.click(await screen.findByRole('button', { name: 'Trust and add' }));
+    expect(sent(calls, 'join_add')).toEqual([{ link: OTHER, autoUpdate: true }]);
   });
 
   it('says to use the invite page for a modpack link from a server it cannot place', async () => {
@@ -144,7 +144,9 @@ describe('JoinServer', () => {
     await user.click(screen.getByRole('button', { name: 'Check link' }));
     expect(await screen.findByText('This link is for creative, not survival.')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Use this link' }));
-    expect(sent(calls, 'server_relink')).toEqual([{ id: 'survival', link: OTHER }]);
+    // The instance already trusts the server, so no step: its trust stays with it.
+    expect(sent(calls, 'join_trust')).toEqual([{ link: OTHER, instance: 'survival' }]);
+    expect(sent(calls, 'server_relink')).toEqual([{ id: 'survival', link: OTHER, autoUpdate: null }]);
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival' }));
   });
 
@@ -186,8 +188,8 @@ describe('JoinServer', () => {
     ).toBeInTheDocument();
     // Same game version and loader: nothing to warn about.
     expect(screen.queryByText(/back up your worlds/)).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Link' }));
-    expect(sent(calls, 'server_link')).toEqual([{ id: 'asalith-fields', link: OTHER }]);
+    await user.click(await screen.findByRole('button', { name: 'Trust and link' }));
+    expect(sent(calls, 'server_link')).toEqual([{ id: 'asalith-fields', link: OTHER, autoUpdate: true }]);
     expect(sent(calls, 'join_add')).toEqual([]);
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'asalith-fields' }));
   });
@@ -284,13 +286,13 @@ describe('JoinServer', () => {
 
   it('links even when another instance already joins that server', async () => {
     const { user, calls } = renderApp(<JoinServer invite={MOCK_INVITE} linkFor="asalith-fields" />, { server: 'online' });
-    await user.click(await screen.findByRole('button', { name: 'Link' }));
-    expect(sent(calls, 'server_link')).toEqual([{ id: 'asalith-fields', link: MOCK_INVITE }]);
+    await user.click(await screen.findByRole('button', { name: 'Trust and link' }));
+    expect(sent(calls, 'server_link')).toEqual([{ id: 'asalith-fields', link: MOCK_INVITE, autoUpdate: true }]);
   });
 
   it('join_screen_records_joined_on_add', async () => {
     const { user, calls } = renderApp(<JoinServer invite={OTHER} />, { server: 'online', perland: 'signedIn' });
-    await user.click(await screen.findByRole('button', { name: 'Add server' }));
+    await user.click(await screen.findByRole('button', { name: 'Trust and add' }));
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival-2' }));
     expect(sent(calls, 'your_servers_joined')).toEqual([{ invite: OTHER }]);
   });
@@ -348,10 +350,10 @@ describe('JoinServer', () => {
         return backend.handle(cmd, args);
       },
     });
-    const add = await screen.findByRole('button', { name: 'Add server' });
+    const add = await screen.findByRole('button', { name: 'Trust and add' });
     await user.dblClick(add);
     expect(screen.getByRole('button', { name: 'Adding…' })).toBeDisabled();
-    expect(sent(calls, 'join_add')).toEqual([{ link: OTHER }]);
+    expect(sent(calls, 'join_add')).toEqual([{ link: OTHER, autoUpdate: true }]);
     await act(async () => release());
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'survival-2' }));
     expect(sent(calls, 'join_add')).toHaveLength(1);
