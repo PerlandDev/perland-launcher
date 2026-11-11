@@ -486,6 +486,22 @@ export const settings = z.strictObject({
   theme,
   font: uiFont,
 });
+/** One release note (release-notes/<id>.json) with the version it first shipped in; null while unreleased. */
+export const releaseNote = z.strictObject({
+  id: z.string(),
+  kind: z.enum(['new', 'improved', 'fixed']),
+  since: z.string().nullable(),
+  en: z.string(),
+  es: z.string(),
+});
+/** A base version's notes and its release day (`YYYY-MM-DD`); a null base is the next update. */
+export const noteGroup = z.strictObject({ base: z.string().nullable(), date: z.string(), notes: z.array(releaseNote) });
+/** What the build bundles (scripts/release/notes.mjs `buildNotes`): every release oldest first, and the groups newest first. */
+export const releaseNotes = z.strictObject({ versions: z.array(z.string()), groups: z.array(noteGroup) });
+export type ReleaseNote = z.infer<typeof releaseNote>;
+export type NoteGroup = z.infer<typeof noteGroup>;
+export type ReleaseNotes = z.infer<typeof releaseNotes>;
+
 export const appInfo = z.strictObject({
   version: z.string(),
   build: z.enum(['dev', 'beta', 'release']),

@@ -43,6 +43,7 @@ export const qk = {
   appInfo: ['appInfo'] as const,
   settings: ['settings'] as const,
   update: ['update'] as const,
+  whatsNewSeen: ['whatsNewSeen'] as const,
   instances: ['instances'] as const,
   accounts: ['accounts'] as const,
   accountReady: ['accountReady'] as const,
@@ -94,6 +95,7 @@ const THIRTY_MINUTES = 30 * 60_000;
 export const useAppInfo = () => useQuery({ queryKey: qk.appInfo, queryFn: commands.appInfo, staleTime: Infinity });
 export const useSettings = () => useQuery({ queryKey: qk.settings, queryFn: commands.settingsGet });
 export const useUpdate = () => useQuery({ queryKey: qk.update, queryFn: commands.updateStatus });
+export const useWhatsNewSeen = () => useQuery({ queryKey: qk.whatsNewSeen, queryFn: commands.whatsNewSeen, staleTime: Infinity });
 export const useInstances = () => useQuery({ queryKey: qk.instances, queryFn: commands.instancesList });
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: commands.accountsList });
 /** A Microsoft account's face from its skin (`null`: none of its own, or not fetched yet). The core asks Mojang again after half

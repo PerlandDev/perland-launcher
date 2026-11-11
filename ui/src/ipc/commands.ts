@@ -87,6 +87,10 @@ export const commands = {
   settingsGet: () => invoke<Settings>('settings_get'),
   settingsSet: (settings: Settings) => invoke<Settings>('settings_set', { settings }),
   updateStatus: () => invoke<UpdateState>('update_status'),
+  /** The last launcher version whose release notes this player was shown; null when none. */
+  whatsNewSeen: () => invoke<string | null>('whats_new_seen'),
+  /** The player has now been shown the running version's notes. */
+  whatsNewMark: () => invoke<null>('whats_new_mark'),
   updateCheck: () => invoke<UpdateState>('update_check'),
   updateRestart: () => invoke<null>('update_restart'),
   diagnosticsExport: (path: string) => invoke<string>('diagnostics_export', { path }),
