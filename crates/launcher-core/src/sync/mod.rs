@@ -279,20 +279,40 @@ impl Syncer {
         Self::new(installer, sources, root)
     }
 
-    /// Copy files a scan found into the object cache (the player's copies stay where they
-    /// are); the next sync uses them.
-    pub async fn import_found(&self, found: &[(ManualFile, PathBuf)]) -> Result<()> {
+    /// Copy files a scan found for instance `id` into the object cache (the player's copies
+    /// stay where they are); the next sync uses them.
+    pub async fn import_found(
+        &self,
+        store: &InstanceStore,
+        id: &str,
+        found: &[(ManualFile, PathBuf)],
+    ) -> Result<()> {
+        let cache = self.cache_for(store, id);
         for (file, path) in found {
-            self.sources.cache.insert_file(path, &file.hashes).await?;
+            cache.insert_file(path, &file.hashes).await?;
         }
         Ok(())
     }
 
     /// Scan `dir` once and import every blocked file found there. Returns how many were found.
-    pub async fn import_manual(&self, dir: &Path, files: &[ManualFile]) -> Result<usize> {
+    pub async fn import_manual(
+        &self,
+        store: &InstanceStore,
+        id: &str,
+        dir: &Path,
+        files: &[ManualFile],
+    ) -> Result<usize> {
         let found = manual::scan(dir, files).await?;
-        self.import_found(&found).await?;
+        self.import_found(store, id, &found).await?;
         Ok(found.len())
+    }
+
+    /// The shared object cache, with instance `id`'s private store for files known only by a
+    /// weak hash.
+    fn cache_for(&self, store: &InstanceStore, id: &str) -> ObjectCache {
+        self.sources
+            .cache
+            .with_private(store.perland_dir(id).join("objects"))
     }
 
     /// A new instance for a pack, named after it, with its game version and its preferred update
@@ -702,16 +722,13 @@ impl Syncer {
         let staging = perland.join("staging");
         let _ = tokio::fs::remove_dir_all(&staging).await;
 
+        let cache = &self.cache_for(store, id);
         // Staged copies of everything written, plus downloads that aren't cached yet.
         let mut needed = 0u64;
         for p in &plan.write {
             let size = p.file.size.unwrap_or(0);
             needed += size;
-            let cached = self
-                .sources
-                .cache
-                .path_for(&p.file.hashes)
-                .is_some_and(|o| o.exists());
+            let cached = cache.path_for(&p.file.hashes).is_some_and(|o| o.exists());
             if matches!(p.file.source, FileSource::Remote { .. }) && !cached {
                 needed += size;
             }
@@ -725,11 +742,12 @@ impl Syncer {
             .iter()
             .any(|p| matches!(p.file.source, FileSource::Archive { .. }));
         let archive = match (&desired.archive, needs_archive) {
-            (Some(h), true) => Some(self.sources.cache.get(h).await.ok_or_else(archive_gone)?),
+            (Some(h), true) => Some(cache.get(h).await.ok_or_else(archive_gone)?),
             _ => None,
         };
         let staged = match self
             .stage_all(
+                cache,
                 &plan.write,
                 archive.as_deref(),
                 &staging,
@@ -892,6 +910,7 @@ impl Syncer {
     #[allow(clippy::too_many_arguments)]
     async fn stage_all(
         &self,
+        cache: &ObjectCache,
         writes: &[Planned],
         archive: Option<&Path>,
         staging: &Path,
@@ -921,7 +940,7 @@ impl Syncer {
                 if failed.load(Ordering::SeqCst) || cancel.is_cancelled() {
                     return None;
                 }
-                let result = self.stage_one(&p.file, archive, staging).await;
+                let result = self.stage_one(cache, &p.file, archive, staging).await;
                 if matches!(result, Err(StageError::Failed(_))) {
                     failed.store(true, Ordering::SeqCst);
                 }
@@ -968,6 +987,7 @@ impl Syncer {
 
     async fn stage_one(
         &self,
+        cache: &ObjectCache,
         file: &PackFile,
         archive: Option<&Path>,
         staging: &Path,
@@ -975,9 +995,7 @@ impl Syncer {
         let dest = staging.join(&file.path);
         match &file.source {
             FileSource::Remote { urls } => {
-                let object = match self
-                    .sources
-                    .cache
+                let object = match cache
                     .ensure(&self.sources.downloader, urls, &file.hashes, file.size)
                     .await
                 {
