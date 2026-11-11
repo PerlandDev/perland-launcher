@@ -85,17 +85,162 @@ pub fn parse(raw: &str) -> Result<Vec<String>> {
     Ok(args)
 }
 
-/// Options brought from another launcher that this one leaves out on top of what [`parse`]
-/// refuses: the starting heap (it can exceed the memory slider's maximum and stop the game) and
-/// Java agents (they point at files in the other launcher's folders).
-const IMPORT_DROPPED: &[&str] = &[
-    "-Xms",
-    "-XX:InitialHeapSize=",
-    "-XX:MinHeapSize=",
-    "-javaagent:",
-    "-agentlib:",
-    "-agentpath:",
+/// `-XX:` flags kept from another launcher (as `-XX:+Name`, `-XX:-Name` or `-XX:Name=value`):
+/// garbage collector choice and tuning, and JIT and memory-layout tuning that common
+/// performance presets carry. Anything else is left out of an import.
+const IMPORT_XX_FLAGS: &[&str] = &[
+    // Collector choice.
+    "UseG1GC",
+    "UseZGC",
+    "ZGenerational",
+    "UseShenandoahGC",
+    "ShenandoahGCMode",
+    "ShenandoahGCHeuristics",
+    "UseParallelGC",
+    "UseSerialGC",
+    "UseConcMarkSweepGC",
+    "UseParNewGC",
+    "CMSIncrementalMode",
+    "UnlockExperimentalVMOptions",
+    // Collector tuning.
+    "AlwaysPreTouch",
+    "ConcGCThreads",
+    "DisableExplicitGC",
+    "G1ConcRefinementThreads",
+    "G1HeapRegionSize",
+    "G1HeapWastePercent",
+    "G1MaxNewSizePercent",
+    "G1MixedGCCountTarget",
+    "G1MixedGCLiveThresholdPercent",
+    "G1NewSizePercent",
+    "G1RSetUpdatingPauseTimePercent",
+    "G1ReservePercent",
+    "G1SATBBufferEnqueueingThresholdPercent",
+    "GCTimeRatio",
+    "InitiatingHeapOccupancyPercent",
+    "MaxGCPauseMillis",
+    "MaxTenuringThreshold",
+    "ParallelGCThreads",
+    "ParallelRefProcEnabled",
+    "SoftMaxHeapSize",
+    "SurvivorRatio",
+    "UseAdaptiveSizePolicy",
+    "UseStringDeduplication",
+    "ZCollectionInterval",
+    "ZUncommit",
+    "ZUncommitDelay",
+    // JIT, memory layout and threads.
+    "AllocatePrefetchStyle",
+    "CICompilerCount",
+    "DoEscapeAnalysis",
+    "EliminateLocks",
+    "FreqInlineSize",
+    "MaxInlineLevel",
+    "MaxInlineSize",
+    "MaxMetaspaceSize",
+    "MaxNodeLimit",
+    "MetaspaceSize",
+    "NodeLimitFudgeFactor",
+    "NonNMethodCodeHeapSize",
+    "NonProfiledCodeHeapSize",
+    "OmitStackTraceInFastThrow",
+    "OptimizeStringConcat",
+    "PerfDisableSharedMem",
+    "ProfiledCodeHeapSize",
+    "RangeCheckElimination",
+    "ReservedCodeCacheSize",
+    "SegmentedCodeCache",
+    "ThreadPriorityPolicy",
+    "TieredCompilation",
+    "TrustFinalNonStaticFields",
+    "UseAES",
+    "UseAESIntrinsics",
+    "UseCodeCacheFlushing",
+    "UseCompactObjectHeaders",
+    "UseCompressedClassPointers",
+    "UseCompressedOops",
+    "UseCriticalJavaThreadPriority",
+    "UseFMA",
+    "UseFastJNIAccessors",
+    "UseFastUnorderedTimeStamps",
+    "UseLargePages",
+    "UseLoopPredicate",
+    "UseNUMA",
+    "UseThreadPriorities",
+    "UseTransparentHugePages",
+    "UseVectorCmov",
+    "UseXMMForArrayCopy",
 ];
+
+/// `-X` options kept from another launcher, each followed by a size (`-Xss4M`): the thread
+/// stack and the young generation. The starting heap (`-Xms`) is left out: it can exceed the
+/// memory slider's maximum and stop the game.
+const IMPORT_X_SIZES: &[&str] = &["-Xss", "-Xmn"];
+
+/// System properties kept from another launcher (`-Dkey=value`): text encoding, Java 2D
+/// rendering, IP version preference, locale, and Forge's timeouts and checks.
+const IMPORT_PROPERTIES: &[&str] = &[
+    "file.encoding",
+    "sun.jnu.encoding",
+    "stdout.encoding",
+    "stderr.encoding",
+    "sun.stdout.encoding",
+    "sun.stderr.encoding",
+    "java.net.preferIPv4Stack",
+    "java.net.preferIPv6Addresses",
+    "java.awt.headless",
+    "user.language",
+    "user.country",
+    "user.region",
+    "user.timezone",
+    "fml.readTimeout",
+    "fml.loginTimeout",
+    "fml.ignorePatchDiscrepancies",
+    "fml.ignoreInvalidMinecraftCertificates",
+    "fml.earlyprogresswindow",
+];
+
+/// Property name prefixes kept from another launcher.
+const IMPORT_PROPERTY_PREFIXES: &[&str] = &["sun.java2d."];
+
+/// A size such as `4M`, `512m` or `1024`.
+fn is_size(value: &str) -> bool {
+    let digits = value.trim_end_matches(['k', 'K', 'm', 'M', 'g', 'G']);
+    !digits.is_empty()
+        && value.len() - digits.len() <= 1
+        && digits.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// Is `arg` a plain tuning flag that may come along from another launcher? An allowlist: only
+/// the `-XX:` flags in [`IMPORT_XX_FLAGS`] (with a plain value), the sizes in
+/// [`IMPORT_X_SIZES`] and the properties in [`IMPORT_PROPERTIES`] pass.
+fn import_allowed(arg: &str) -> bool {
+    if let Some(flag) = arg.strip_prefix("-XX:") {
+        let (name, value) = match flag.split_once('=') {
+            Some((name, value)) => (name, Some(value)),
+            None => match flag.strip_prefix(['+', '-']) {
+                Some(name) => (name, None),
+                None => return false,
+            },
+        };
+        let plain_value = value.is_none_or(|v| {
+            !v.is_empty()
+                && v.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'.' || b == b'_')
+        });
+        return plain_value && IMPORT_XX_FLAGS.contains(&name);
+    }
+    if let Some(property) = arg.strip_prefix("-D") {
+        let key = property.split_once('=').map_or(property, |(key, _)| key);
+        return IMPORT_PROPERTIES.contains(&key)
+            || IMPORT_PROPERTY_PREFIXES
+                .iter()
+                .any(|p| key.len() > p.len() && key.starts_with(p));
+    }
+    IMPORT_X_SIZES
+        .iter()
+        .any(|p| arg.strip_prefix(p).is_some_and(is_size))
+}
 
 /// Another launcher's Java arguments for an instance, typed as one string: the ones this
 /// launcher accepts, as a string [`parse`] takes. Empty when there are none or `raw` can't be
@@ -106,27 +251,16 @@ pub fn imported(raw: &str) -> String {
         .unwrap_or_default()
 }
 
-/// [`imported`] for arguments the other launcher already keeps one by one. Each argument
-/// [`parse`] would refuse is dropped, with the value that follows it, and so are the ones in
-/// [`IMPORT_DROPPED`]. Empty when what is left still isn't accepted (too long, say).
+/// [`imported`] for arguments the other launcher already keeps one by one. Only plain tuning
+/// flags come along ([`import_allowed`]); everything else is dropped, with any value that
+/// follows it. Empty when what is left still isn't accepted (too long, say). Arguments a player
+/// types in this launcher's settings go through [`parse`] instead, which is not this filter.
 pub fn imported_list(args: &[String]) -> String {
-    let mut kept: Vec<&str> = Vec::new();
-    // Whether the last kept argument is a module option still waiting for its value.
-    let mut takes_value = false;
-    for arg in args {
-        if !arg.starts_with('-') {
-            if takes_value {
-                kept.push(arg);
-            }
-            takes_value = false;
-            continue;
-        }
-        let dropped = IMPORT_DROPPED.iter().any(|p| arg.starts_with(p)) || check(arg).is_err();
-        takes_value = !dropped && TAKES_VALUE.contains(&arg.as_str());
-        if !dropped {
-            kept.push(arg);
-        }
-    }
+    let kept: Vec<&str> = args
+        .iter()
+        .map(String::as_str)
+        .filter(|arg| import_allowed(arg) && check(arg).is_ok())
+        .collect();
     let joined = kept
         .iter()
         .map(|arg| quoted(arg))
@@ -384,15 +518,14 @@ mod tests {
     }
 
     #[test]
-    fn imported_keeps_what_parse_accepts() {
-        let kept = imported(
-            "-XX:+UseG1GC -Dfml.readTimeout=180 --add-opens java.base/java.lang=ALL-UNNAMED",
-        );
-        assert_eq!(
-            kept,
-            "-XX:+UseG1GC -Dfml.readTimeout=180 --add-opens java.base/java.lang=ALL-UNNAMED"
-        );
-        assert!(parse(&kept).is_ok());
+    fn imported_keeps_common_tuning_flags() {
+        let raw = "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 \
+                   -XX:+UnlockExperimentalVMOptions -XX:-UseAdaptiveSizePolicy -XX:G1NewSizePercent=30 \
+                   -XX:+UseZGC -XX:+ZGenerational -XX:+UseShenandoahGC -XX:ShenandoahGCMode=iu \
+                   -Xss4M -Xmn512m -Dfml.readTimeout=180 -Dfile.encoding=UTF-8 \
+                   -Dsun.java2d.opengl=true -Djava.net.preferIPv4Stack=true";
+        assert_eq!(imported(raw), split(raw).unwrap().join(" "));
+        assert!(parse(&imported(raw)).is_ok());
     }
 
     #[test]
@@ -405,16 +538,80 @@ mod tests {
     }
 
     #[test]
+    fn imported_keeps_only_plain_tuning_flags() {
+        for arg in [
+            "-XX:OnError=x",
+            "-XX:OnOutOfMemoryError=x",
+            "-XX:+StartAttachListener",
+            "-XX:+EnableDynamicAgentLoading",
+            "-XX:-DisableAttachMechanism",
+            "-XX:ErrorFile=/x/err.log",
+            "-XX:+UnlockDiagnosticVMOptions",
+            "-XX:StartFlightRecording=filename=/x.jfr",
+            "-XX:JVMCILibPath=/x",
+            "-XX:MaxGCPauseMillis=/x",
+            "-Xbootclasspath/a:/x.jar",
+            "-Xbootclasspath:/x.jar",
+            "-Xss",
+            "-Xss4M/x",
+            "-Xdebug",
+            "-Xrunjdwp:transport=dt_socket",
+            "-Xlog:gc:file=/x.log",
+            "-Djava.rmi.server.codebase=x",
+            "-Dcom.sun.management.jmxremote.port=1",
+            "-Dcom.sun.management.jmxremote",
+            "-Djava.security.manager=allow",
+            "-Djava.security.policy==/x.policy",
+            "-Djava.system.class.loader=x.Y",
+            "-Djava.library.path=/x",
+            "-Dorg.lwjgl.librarypath=/x",
+            "-Dlog4j.configurationFile=/x.xml",
+            "-Dfml.coreMods.load=x.Y",
+            "-Dx=1",
+            "--add-opens=java.base/java.lang=ALL-UNNAMED",
+            "--patch-module=java.base=/x",
+            "--upgrade-module-path=/x",
+            "--class-path=/x",
+            "-verbose:class",
+            "-ea",
+            "-server",
+            "@/x/args.txt",
+        ] {
+            assert_eq!(
+                imported_list(&strs(&["-XX:+UseG1GC", arg])),
+                "-XX:+UseG1GC",
+                "{arg}"
+            );
+        }
+        // A dropped option's own value goes with it.
+        assert_eq!(
+            imported("--add-opens java.base/java.lang=ALL-UNNAMED -XX:+UseG1GC"),
+            "-XX:+UseG1GC"
+        );
+        // Flag names are matched exactly.
+        assert_eq!(imported("-XX:+UseG1GCX -XX:+useg1gc"), "");
+    }
+
+    #[test]
     fn imported_requotes_values_with_spaces() {
-        let kept = imported(r#"-Dname="My Pack" '-Dq=say "hi"'"#);
-        assert_eq!(kept, r#""-Dname=My Pack" '-Dq=say "hi"'"#);
-        assert_eq!(parse(&kept).unwrap(), ["-Dname=My Pack", r#"-Dq=say "hi""#]);
+        let kept = imported(r#"-Dfile.encoding="UTF 8" '-Dsun.java2d.uiScale=say "hi"'"#);
+        assert_eq!(
+            kept,
+            r#""-Dfile.encoding=UTF 8" '-Dsun.java2d.uiScale=say "hi"'"#
+        );
+        assert_eq!(
+            parse(&kept).unwrap(),
+            ["-Dfile.encoding=UTF 8", r#"-Dsun.java2d.uiScale=say "hi""#]
+        );
     }
 
     #[test]
     fn imported_gives_up_on_what_it_cannot_read() {
         assert_eq!(imported("-Dx=\"unclosed"), "");
-        assert_eq!(imported(&"-Dx ".repeat(MAX_JVM_ARGS_CHARS)), "");
+        assert_eq!(
+            imported(&"-Dfile.encoding=x ".repeat(MAX_JVM_ARGS_CHARS / 8)),
+            ""
+        );
         assert_eq!(imported("  "), "");
     }
 }

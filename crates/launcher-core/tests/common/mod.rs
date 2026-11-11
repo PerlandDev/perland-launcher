@@ -141,7 +141,7 @@ impl PackBuilder {
     /// A CurseForge mod (`metadata:curseforge`). `blocked` leaves it off the CDN, like a mod
     /// whose author blocks other launchers. Use file names that need no URL escaping.
     pub fn cf_mod(
-        mut self,
+        self,
         slug: &str,
         file_name: &str,
         file_id: u64,
@@ -149,11 +149,34 @@ impl PackBuilder {
         body: &[u8],
         blocked: bool,
     ) -> Self {
+        let hash = sha1_hex(body);
+        self.cf_mod_hashed(
+            slug,
+            file_name,
+            file_id,
+            project_id,
+            body,
+            blocked,
+            ("sha1", &hash),
+        )
+    }
+
+    /// [`PackBuilder::cf_mod`] with the metafile's checksum given as (`hash-format`, `hash`).
+    #[allow(clippy::too_many_arguments)]
+    pub fn cf_mod_hashed(
+        mut self,
+        slug: &str,
+        file_name: &str,
+        file_id: u64,
+        project_id: u64,
+        body: &[u8],
+        blocked: bool,
+        (format, hash): (&str, &str),
+    ) -> Self {
         let meta = format!(
             "name = \"{slug}\"\nfilename = \"{file_name}\"\nside = \"both\"\n\n[download]\n\
-             hash-format = \"sha1\"\nhash = \"{}\"\nmode = \"metadata:curseforge\"\n\n\
-             [update]\n[update.curseforge]\nfile-id = {file_id}\nproject-id = {project_id}\n",
-            sha1_hex(body)
+             hash-format = \"{format}\"\nhash = \"{hash}\"\nmode = \"metadata:curseforge\"\n\n\
+             [update]\n[update.curseforge]\nfile-id = {file_id}\nproject-id = {project_id}\n"
         );
         if !blocked {
             self.hosted.push((
