@@ -33,6 +33,7 @@ import type { Lang } from './catalogSearch';
 import { compose } from './compose';
 import { putOn } from './look';
 import { useCatalog } from './useCatalog';
+import { surprise } from './surprise';
 import { useLook } from './useLook';
 import { WearingRow } from './WearingRow';
 import { TexturePanel } from './TexturePanel';
@@ -112,6 +113,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const editor = useLook(selected?.id ?? null, model, doc, catalog);
   const lang: Lang = i18n.language.startsWith('es') ? 'es' : 'en';
   const armsLocked = doc.look !== null && !catalog.manifest;
+  const catalogManifest = catalog.manifest;
 
   const [tab, setTab] = useState<Tab>('paint');
   const [tool, setTool] = useState<Tool>('pencil');
@@ -620,7 +622,17 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         )}
       </div>
 
-      {tab === 'create' && <WearingRow worn={editor.look?.pieces ?? []} pieces={catalog.manifest?.pieces ?? null} loading={catalog.loading} lang={lang} onTakeOff={editor.takeOff} />}
+      {tab === 'create' && (
+        <WearingRow
+          worn={editor.look?.pieces ?? []}
+          pieces={catalog.manifest?.pieces ?? null}
+          loading={catalog.loading}
+          lang={lang}
+          onTakeOff={editor.takeOff}
+          // The outfit is worked out when its turn comes, from the look as it is then.
+          onSurprise={catalogManifest && selected ? () => editor.restyle((look, arms) => surprise(catalogManifest, look, Math.random, arms)) : undefined}
+        />
+      )}
 
       {tab === 'paint' && (
         <Hotbar

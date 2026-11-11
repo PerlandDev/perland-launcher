@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { CLOTH_COLOURS, HAIR_COLOURS, IRIS_COLOURS, paletteFor, SKIN_TONES } from './palettes';
+import { CLOTH_COLOURS, HAIR_COLOURS, IRIS_COLOURS, OUTFIT_SCHEMES, paletteFor, SKIN_TONES } from './palettes';
 import { parseHex } from './recolour';
 
 const HEX = /^#[0-9a-f]{6}$/;
@@ -50,5 +50,15 @@ describe('palettes', () => {
     expect(paletteFor('hair', 'band')).toBe(CLOTH_COLOURS);
     expect(paletteFor('eyes', 'lash')).toBe(CLOTH_COLOURS);
     expect(paletteFor('glasses', 'frame')).toBe(CLOTH_COLOURS);
+  });
+
+  test('outfit schemes: at least twelve, each four different colours, none twice', () => {
+    expect(OUTFIT_SCHEMES.length).toBeGreaterThanOrEqual(12);
+    for (const scheme of OUTFIT_SCHEMES) {
+      expect(scheme).toHaveLength(4);
+      for (const c of scheme) expect(c).toMatch(HEX);
+      expect(new Set(scheme).size).toBe(4);
+    }
+    expect(new Set(OUTFIT_SCHEMES.map((s) => [...s].sort().join())).size).toBe(OUTFIT_SCHEMES.length);
   });
 });

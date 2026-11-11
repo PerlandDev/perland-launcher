@@ -453,3 +453,57 @@ it('without the catalog there is no face preview', async () => {
   await waitFor(() => expect(got.doc!.pixels).not.toBeNull());
   expect(await got.editor!.previewFace((look) => look)).toBeNull();
 });
+
+it('a restyle dresses the whole skin in one undo step, from the look as it is when its turn comes', async () => {
+  const files = gate();
+  const { got } = open({ pieces: FACE, painting: false }, files);
+  await waitFor(() => expect(got.ready).toBe(true));
+  const cap = await catalogPiece('hat-cap');
+  const seen: { ids: string[]; model: string }[] = [];
+  // A put-on still loading when the restyle is asked for: the restyle starts from the look with the cap on.
+  files.close();
+  act(() => got.editor!.putOn(cap));
+  act(() =>
+    got.editor!.restyle((look, model) => {
+      seen.push({ ids: look.pieces.map((w) => w.id), model });
+      return { ...look, pieces: [look.pieces[0]!, { id: 'top-tee', colours: { main: '#ff0000', trim: '#00ff00' } }, { id: 'shoes-boots', colours: { main: '#0000ff', sole: '#000000' } }] };
+    }),
+  );
+  files.open();
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['body-plain', 'top-tee', 'shoes-boots']));
+  expect(seen).toEqual([{ ids: ['body-plain', 'eyes-round', 'brows-straight', 'mouth-smile', 'hat-cap'], model: 'classic' }]);
+  expect(got.editor!.look!.painting).toBe(false);
+  // One undo takes the whole outfit back, a second the cap.
+  act(() => got.doc!.undo());
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['body-plain', 'eyes-round', 'brows-straight', 'mouth-smile', 'hat-cap']));
+  act(() => got.doc!.undo());
+  await waitFor(() => expect(got.editor!.look!.pieces).toEqual(FACE));
+  expect(got.doc!.canUndo).toBe(false);
+  // A restyle that hands the look back is no step.
+  act(() => got.editor!.restyle((look) => look));
+  await act(() => got.editor!.settled());
+  expect(got.doc!.canUndo).toBe(false);
+});
+
+it('a restyle of a plain skin keeps its texels as the painting', async () => {
+  const { got } = open();
+  await waitFor(() => expect(got.ready).toBe(true));
+  const texels = new Uint8ClampedArray(got.doc!.pixels!.data);
+  const outfit: WornPiece[] = [{ id: 'eyes-round', colours: { iris: '#00ff00' } }, { id: 'top-tee', colours: { main: '#ff0000', trim: '#00ff00' } }];
+  act(() => got.editor!.restyle((look) => ({ ...look, pieces: outfit })));
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['eyes-round', 'top-tee']));
+  expect(got.editor!.painting).toEqual(texels);
+  expect(got.editor!.look!.painting).toBe(true);
+});
+
+it('a restyle whose new face the painting covers raises the hint', async () => {
+  const { got } = open();
+  await waitFor(() => expect(got.ready).toBe(true));
+  const red = opaque(RED);
+  act(() => got.doc!.changeLook({ look: { pieces: [], painting: true }, painting: red }, red));
+  const outfit: WornPiece[] = [{ id: 'eyes-round', colours: { iris: '#00ff00' } }, { id: 'top-tee', colours: { main: '#ff0000', trim: '#00ff00' } }];
+  act(() => got.editor!.restyle((look) => ({ ...look, pieces: outfit })));
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['eyes-round', 'top-tee']));
+  // The top shows over the painting; the eyes under it don't.
+  expect(got.editor!.paintingCovers).toBe(true);
+});

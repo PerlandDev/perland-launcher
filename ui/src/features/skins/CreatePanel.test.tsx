@@ -274,6 +274,7 @@ it('a face piece the painting covers shows the hint, whose button builds from pi
     bakeAll: noop,
     switchModel: noop,
     applyExpression: noop,
+    restyle: noop,
     paintingCovers: true,
     rev: 0,
     previewFace: () => Promise.resolve(null),
@@ -364,6 +365,7 @@ it('each expression chip previews its own face and never changes the skin until 
     setColour: noop,
     applyLook: noop,
     applyExpression,
+    restyle: noop,
     bakeAll: noop,
     switchModel: noop,
     paintingCovers: true,
@@ -393,4 +395,57 @@ it('each expression chip previews its own face and never changes the skin until 
   await user.click(within(expressions()).getByRole('button', { name: 'Enojado' }));
   expect(applyExpression).toHaveBeenCalledTimes(1);
   expect(applyExpression).toHaveBeenCalledWith(FAKE_EXPRESSIONS[1]);
+});
+
+/** `Math.random` answering a fixed run of numbers, so the outfits are the same on every run. */
+function fixedDice(seed: number) {
+  let a = seed >>> 0;
+  return vi.spyOn(Math, 'random').mockImplementation(() => {
+    a = (Math.imul(a, 1664525) + 1013904223) >>> 0;
+    return a / 4294967296;
+  });
+}
+
+it('Surprise me dresses the skin in one step, keeps the body, and Undo brings the outfit before back', async () => {
+  const body = { id: 'body-plain', colours: { skin: '#3f2a1f' } };
+  const { user, calls } = await openCreate({ pieces: [body, TEE], painting: false });
+  const dice = fixedDice(42);
+  const start = stageSum();
+  await user.click(screen.getByRole('button', { name: 'Surprise me' }));
+  await waitFor(() => expect(stageSum()).not.toBe(start));
+  const first = { chips: chips(), sum: stageSum() };
+  // A whole character: the body it had, a face, hair, a top, a bottom and shoes.
+  expect(first.chips[0]).toBe('Plain body');
+  for (const name of ['Round eyes', 'Straight brows', 'Smile', 'Short hair']) expect(first.chips).toContain(name);
+  expect(first.chips.length).toBeGreaterThanOrEqual(8);
+  // Again: another outfit.
+  await user.click(screen.getByRole('button', { name: 'Surprise me' }));
+  await waitFor(() => expect(stageSum()).not.toBe(first.sum));
+  const second = stageSum();
+  await waitFor(() => expect(sent(calls, 'skin_look_save').length).toBeGreaterThan(0), { timeout: 2000 });
+  const saves = sent(calls, 'skin_look_save') as { look: SkinLook }[];
+  // The skin tone is the player's own, whatever the dice say.
+  expect(saves[saves.length - 1]!.look.pieces[0]).toEqual(body);
+  // One Undo per outfit.
+  await user.click(screen.getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(stageSum()).toBe(first.sum));
+  expect(chips()).toEqual(first.chips);
+  await user.click(screen.getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(chips()).toEqual(['Plain body', 'T-shirt']));
+  expect(stageSum()).toBe(start);
+  expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+  expect(second).not.toBe(start);
+  dice.mockRestore();
+});
+
+it('Surprise me needs the catalog: without it the key is not there', async () => {
+  await openCreate({ pieces: [BODY, TEE], painting: false }, { catalog: 'unavailable' });
+  expect(screen.queryByRole('button', { name: 'Surprise me' })).not.toBeInTheDocument();
+});
+
+it('Surprise me is a Create key: Paint has none', async () => {
+  const { user } = await openCreate({ pieces: [BODY, TEE], painting: false });
+  expect(screen.getByRole('button', { name: 'Surprise me' })).toBeInTheDocument();
+  await user.click(screen.getByRole('tab', { name: 'Paint' }));
+  expect(screen.queryByRole('button', { name: 'Surprise me' })).not.toBeInTheDocument();
 });

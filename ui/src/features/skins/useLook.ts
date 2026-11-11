@@ -26,6 +26,12 @@ export interface LookEditor {
   applyLook(look: CatalogLook): void;
   /** Puts on a ready-made face (its eyes, brows and mouth) as one step, keeping the player's colours. */
   applyExpression(expression: CatalogExpression): void;
+  /**
+   * Changes the whole outfit as one step (Surprise me). `change` gets the look as it is when its turn comes, after
+   * every change asked for before it, and the arms; it may run again if the skin changed while the pieces loaded.
+   * Handing the same look back changes nothing.
+   */
+  restyle(change: (look: SkinLook, model: SkinModel) => SkinLook): void;
   /** Makes every worn piece part of the painting: the finished skin stays, no pieces are left. */
   bakeAll(): void;
   /** Switches the arms: the painting is redrawn for them and the pieces use their art for them. */
@@ -170,6 +176,13 @@ export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catal
     applyExpression: (expression) =>
       run((s) => {
         const next = applyExpression(s.look, expression, pieces());
+        if (next === s.look) return null;
+        const had = new Set(s.look.pieces.map((w) => w.id));
+        return { next: withLook(s, next), pieces: next.pieces.filter((w) => !had.has(w.id)).map((w) => w.id) };
+      }),
+    restyle: (change) =>
+      run((s) => {
+        const next = change(s.look, latest.current.model);
         if (next === s.look) return null;
         const had = new Set(s.look.pieces.map((w) => w.id));
         return { next: withLook(s, next), pieces: next.pieces.filter((w) => !had.has(w.id)).map((w) => w.id) };

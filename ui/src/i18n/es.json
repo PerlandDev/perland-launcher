@@ -945,6 +945,8 @@
       "count_one": "{{count}} estilo",
       "count_other": "{{count}} estilos",
       "expression": "Expresión",
+      "surprise": "Sorpréndeme",
+      "surpriseNote": "Un atuendo al azar. Tu tono de piel se queda, y Deshacer te devuelve lo que tenías.",
       "on": "En uso",
       "empty": "Todavía no hay nada aquí. Las piezas nuevas llegan con las actualizaciones del catálogo.",
       "colours": "Colores de {{name}}",

@@ -945,6 +945,8 @@
       "count_one": "{{count}} style",
       "count_other": "{{count}} styles",
       "expression": "Expression",
+      "surprise": "Surprise me",
+      "surpriseNote": "A random outfit. Your skin tone stays, and Undo brings back what you had.",
       "on": "On",
       "empty": "Nothing here yet. New pieces arrive with catalog updates.",
       "colours": "{{name}} colours",
