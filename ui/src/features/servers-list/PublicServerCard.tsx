@@ -218,7 +218,8 @@ function usePlay(card: Card, follow: boolean, onPlay?: () => Promise<void>) {
   return { busy, run };
 }
 
-/** A server the launcher can't join yet: the address to type in Minecraft, with Copy. */
+/** A server the launcher can't join yet: the address to type in Minecraft in a recessed mono well, named "Join from
+ *  Minecraft" (its hover title says so too), with a compact copy key at its end that swaps to a check and "Copied". */
 export function JoinFromMinecraft({ address }: { address: string }) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
@@ -238,12 +239,11 @@ export function JoinFromMinecraft({ address }: { address: string }) {
       clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(false), 2000);
     });
+  const label = copied ? t('common.copied') : t('server.copyAddress');
   return (
-    <div className="server-tile-address">
-      <p className="text-sm">{t('servers.joinFromMinecraft', { address })}</p>
-      <Button variant="ghost" icon={copied ? <Check /> : <Copy />} aria-label={copied ? t('common.copied') : t('server.copyAddress')} onClick={copy}>
-        {copied ? t('common.copied') : t('common.copy')}
-      </Button>
+    <div className="well copy-row server-tile-address" role="group" aria-label={t('servers.joinFromMinecraft')} title={t('servers.joinFromMinecraft')}>
+      <span className="copy-row-text">{address}</span>
+      <Button variant="ghost" size="icon" icon={copied ? <Check /> : <Copy />} aria-label={label} title={label} onClick={copy} />
       <span className="sr-only" aria-live="polite">
         {copied ? t('server.addressCopied') : ''}
       </span>

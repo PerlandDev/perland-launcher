@@ -23,17 +23,26 @@ describe('ManagedServerCard', () => {
     const card = screen.getByRole('article', { name: 'Team survival' });
     expect(within(card).getByText('Builders')).toBeInTheDocument();
     expect(within(card).getByText('Running')).toBeInTheDocument();
-    expect(within(card).getByText('Join from Minecraft: play.example.com:25600')).toBeInTheDocument();
-    expect(within(card).getByRole('button', { name: 'Copy server address' })).toBeInTheDocument();
+    const address = within(card).getByRole('group', { name: 'Join from Minecraft' });
+    expect(within(address).getByText('play.example.com:25600')).toBeInTheDocument();
+    expect(within(address).getByRole('button', { name: 'Copy server address' })).toHaveTextContent('');
     expect(within(card).queryByRole('button', { name: 'Play' })).toBeNull();
     await user.click(within(card).getByRole('button', { name: 'Manage' }));
     expect(routeSnapshot()).toEqual({ name: 'manage', tenantId: 't-1', stack: 'team-survival' });
   });
 
+  it('copies the address from its icon key, which turns into Copied and announces it', async () => {
+    const { user } = renderApp(<ManagedServerCard server={server()} />);
+    await user.click(screen.getByRole('button', { name: 'Copy server address' }));
+    expect(await navigator.clipboard.readText()).toBe('play.example.com:25600');
+    expect(await screen.findByRole('button', { name: 'Copied' })).toHaveAttribute('title', 'Copied');
+    expect(screen.getByText('Address copied')).toHaveAttribute('aria-live', 'polite');
+  });
+
   it('says each state in words, and leaves the address out when there is none', () => {
     const { rerender } = renderApp(<ManagedServerCard server={server({ state: 'asleep', address: null })} />);
     expect(screen.getByText('Asleep · wakes when someone joins')).toBeInTheDocument();
-    expect(screen.queryByText(/^Join from Minecraft/)).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Join from Minecraft' })).toBeNull();
     rerender(<ManagedServerCard server={server({ state: 'stopped' })} />);
     expect(screen.getByText('Stopped')).toBeInTheDocument();
     rerender(<ManagedServerCard server={server({ state: 'starting' })} />);

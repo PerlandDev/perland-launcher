@@ -675,7 +675,7 @@
     "playing": "{{online}} / {{max}} playing",
     "playingCount": "{{online}} playing",
     "joining": "Joining…",
-    "joinFromMinecraft": "Join from Minecraft: {{address}}",
+    "joinFromMinecraft": "Join from Minecraft",
     "noMatch": "No servers match. Try fewer filters.",
     "clearFilters": "Clear filters",
     "empty": "No public servers yet.",
