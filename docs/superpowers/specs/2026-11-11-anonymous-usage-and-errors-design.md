@@ -140,6 +140,8 @@ The wire contract above is unchanged. These are the decisions the design left op
 23. Settings that can't be read turn sharing off for that run and make the notice due again, so a damaged file can't opt a player back in (the first run shows again and its welcome step is the notice).
 24. The telemetry requests follow no redirect: a body is never sent on to another address.
 25. Whether a run collects is decided once, when the launcher starts. A notice shown later, or the switch turned on later, counts from the next start.
+25a. A path, once started, runs to the last separator on its line and then to a real end (a double quote, `: `, ` (os error`, a closing bracket or comma before a space, the end of the line), because folder names have spaces; the words after it go with it.
+25b. No report is recorded until the accounts and instances on disk have been read at start (they are read off the setup thread), so the scrubber never writes one without knowing those names. Counters need no names and are counted from the start.
 
 **Elsewhere**
 

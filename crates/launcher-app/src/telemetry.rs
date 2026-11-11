@@ -112,6 +112,9 @@ pub struct Telemetry {
     invites: InviteClient,
     /// The player's switch. Off until the settings are read, so nothing is recorded before.
     sharing: AtomicBool,
+    /// The names already on disk were learned (`names_ready`). Until then no report is
+    /// recorded: a scrubber that knows no account, instance or server must not write one.
+    names_ready: AtomicBool,
     /// `arm_from_disk` ran: it decides once per run of the launcher.
     begun: AtomicBool,
     /// The player was shown the notice before this run of the launcher started. A notice
@@ -156,6 +159,7 @@ impl Telemetry {
             sender,
             invites: InviteClient::new(config.http),
             sharing: AtomicBool::new(false),
+            names_ready: AtomicBool::new(false),
             begun: AtomicBool::new(false),
             armed: AtomicBool::new(false),
             state: Mutex::new(None),
@@ -186,6 +190,7 @@ impl Telemetry {
     pub(crate) fn force_on(&self) {
         self.sharing.store(true, Ordering::SeqCst);
         self.armed.store(true, Ordering::SeqCst);
+        self.names_ready.store(true, Ordering::SeqCst);
     }
 
     /// What is collected right now, for tests.
@@ -201,9 +206,15 @@ impl Telemetry {
         self.wanted() && self.armed.load(Ordering::SeqCst)
     }
 
-    /// Whether a panic would be recorded: lets the hook skip its backtrace otherwise.
-    pub fn records_panics(&self) -> bool {
-        self.is_on()
+    /// Whether a report (an error, a panic) would be recorded right now: collecting is on and
+    /// the names on disk are known. Counters need no names and only ask `is_on`.
+    pub fn records_reports(&self) -> bool {
+        self.is_on() && self.names_ready.load(Ordering::SeqCst)
+    }
+
+    /// The names already on disk have been handed to `add_names`: reports may be recorded.
+    pub fn names_ready(&self) {
+        self.names_ready.store(true, Ordering::SeqCst);
     }
 
     /// Sharing is possible in this build and the player's switch is on. Whether anything is
@@ -385,7 +396,7 @@ impl Telemetry {
 
     /// Queues a finished report and sends it a little later.
     pub fn report(self: &Arc<Self>, report: Report) {
-        if !self.is_on() {
+        if !self.records_reports() {
             return;
         }
         self.with_state(|state| {
@@ -397,7 +408,7 @@ impl Telemetry {
 
     /// An error the player was shown. `command` is the UI command that failed, if one did.
     pub fn report_error(self: &Arc<Self>, error: &LauncherError, command: Option<&str>) {
-        if !self.is_on() || NOT_REPORTED.contains(&error.code) {
+        if !self.records_reports() || NOT_REPORTED.contains(&error.code) {
             return;
         }
         self.report(report_for_error(error, command, &self.scrubber()));
@@ -411,7 +422,9 @@ impl Telemetry {
             "unhandled_rejection" => ReportKind::UnhandledRejection,
             _ => return,
         };
-        if !self.is_on() || self.ui_reports.fetch_add(1, Ordering::SeqCst) >= UI_REPORTS_PER_RUN {
+        if !self.records_reports()
+            || self.ui_reports.fetch_add(1, Ordering::SeqCst) >= UI_REPORTS_PER_RUN
+        {
             return;
         }
         let scrubber = self.scrubber();
@@ -425,7 +438,7 @@ impl Telemetry {
     /// The game crashed: the crash doctor's verdict (a `crash_*` code, if it had one), the
     /// Minecraft version and the loader. Never a line of the game's log.
     pub fn report_crash(self: &Arc<Self>, cause: Option<ErrorCode>, minecraft: &str, loader: &str) {
-        if !self.is_on() {
+        if !self.records_reports() {
             return;
         }
         let code = cause
@@ -444,7 +457,7 @@ impl Telemetry {
     /// panic may have happened while one was held) and never starts a send: the report goes
     /// out at the next start.
     pub fn report_panic(&self, message: &str, location: Option<&str>, backtrace: &str) {
-        if !self.is_on() {
+        if !self.records_reports() {
             return;
         }
         let Ok(scrubber) = self.scrubber.try_read().map(|s| s.clone()) else {
@@ -698,7 +711,7 @@ pub fn instance_names(instance: &launcher_core::instances::Instance) -> Vec<Stri
 pub fn install_panic_hook(telemetry: Arc<Telemetry>) {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        if !telemetry.records_panics() {
+        if !telemetry.records_reports() {
             return previous(info);
         }
         let payload = info.payload();
@@ -934,6 +947,7 @@ pub(crate) mod tests {
         let telemetry = with_mode(Mode::Engine(url(&server.uri())), root);
         telemetry.set_sharing(share);
         telemetry.arm_from_disk();
+        telemetry.names_ready();
         telemetry
     }
 
@@ -1575,6 +1589,45 @@ pub(crate) mod tests {
         let state = file(tmp.path()).unwrap();
         assert_eq!(state["lastPing"], Value::Null);
         assert_eq!(state["reports"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn no_report_is_recorded_until_the_names_on_disk_are_known() {
+        let server = engine(500, 500).await;
+        let tmp = tempfile::tempdir().unwrap();
+        let earlier = started(&server, tmp.path(), true);
+        earlier.notice_shown();
+        // This start: armed, sharing on, but the accounts and instances not read yet.
+        let telemetry = with_mode(Mode::Engine(url(&server.uri())), tmp.path());
+        telemetry.set_sharing(true);
+        telemetry.arm_from_disk();
+        assert!(telemetry.is_on() && !telemetry.records_reports());
+        telemetry.report_ui(
+            "exception",
+            "PedroGamer99 can't open Servidor de Pedro",
+            None,
+        );
+        telemetry.report_error(&disk_error(), Some("instances_list"));
+        telemetry.report_crash(None, "1.20.1", "vanilla");
+        telemetry.report_panic("PedroGamer99", None, "");
+        // A counter needs no names.
+        telemetry.count(Counter::GameLaunches);
+        let state = file(tmp.path()).unwrap();
+        assert_eq!(state["reports"], json!([]));
+        assert_eq!(state["counters"], json!({ "game_launches": 1 }));
+
+        telemetry.add_names(["PedroGamer99", "Servidor de Pedro"]);
+        telemetry.names_ready();
+        telemetry.report_ui(
+            "exception",
+            "PedroGamer99 can't open Servidor de Pedro",
+            None,
+        );
+        let state = file(tmp.path()).unwrap();
+        assert_eq!(
+            state["reports"][0]["message"],
+            "<redacted> can't open <redacted>"
+        );
     }
 
     #[tokio::test]

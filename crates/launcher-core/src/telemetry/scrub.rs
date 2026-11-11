@@ -160,19 +160,19 @@ static URL: LazyLock<Regex> = LazyLock::new(|| {
     ))
 });
 /// A path, wherever it stands: a stand-in for a known folder, a UNC share or `\x`, `~/…`,
-/// `./…`, `/…` that doesn't follow a letter, a digit or another `/` (so not `and/or`), and a
-/// relative one (`saves\Mi mundo\x`, or three parts or more with `/`).
-/// It runs on for as long as another separator follows on the line, through spaces, `'` and
-/// `:`, so `C:\Users\Ana Maria\Sofía's world\x` goes whole, and then through a file name with
-/// spaces up to a known file ending. It may take words too many ("/a/b and then c/d"), never
-/// too few.
+/// `./…`, `/…` that doesn't follow a letter, a digit or another `/`, and a relative one
+/// (`saves\Mi mundo\x`, or `a/b` when another `/` follows on the line).
+///
+/// Once started, a space does not end it: folder names have spaces. It runs to the last
+/// separator on the line, and from there to a real end: a double quote, a backtick, « » “ ”,
+/// `: `, ` (os error`, a `)` `]` `}` `,` `;` before a space, or the end of the line. Words
+/// after a path go with it ("couldn't read <path>"): never too few.
 static PATH: LazyLock<Regex> = LazyLock::new(|| {
     let seg = format!("[^{NOT_IN_PATH}]");
     let word = format!(r"[^{NOT_IN_PATH}/\\]");
-    let line = r#"[^\n\r"`<>|*?«»“”\u{E002}\u{E003}]"#;
+    let hard = r#"\n\r"`<>|*?«»“”\u{E002}\u{E003}"#;
     re(&format!(
-        r"(?P<lead>^|[^A-Za-z0-9/\\])(?P<path>(?:[\u{{E000}}\u{{E001}}]|\\{seg}|~[\\/]|\.{{1,2}}[\\/]|/{seg}|{word}+\\|{word}+/{word}+/){seg}*(?:{line}*[\\/]{seg}*)*(?:'{seg}+)*(?:(?: {word}+){{1,8}}\.(?i:{endings})\b)?)",
-        endings = FILE_ENDINGS.join("|")
+        r"(?P<lead>^|[^A-Za-z0-9/\\])(?P<path>(?:[\u{{E000}}\u{{E001}}]|\\{seg}|~[\\/]|\.{{1,2}}[\\/]|/{seg}|{word}+\\|{word}+/[^{hard}]*/)(?:[^{hard}]*[\\/])*[^{hard}]*?)(?P<end>$|[{hard}]|: |:$| \(os error|[)\]}},;](?:\s|$))"
     ))
 });
 /// A drive path. It needs no lead: after the URL step nothing else looks like `X:\`.
@@ -214,13 +214,14 @@ static UUID: LazyLock<Regex> = LazyLock::new(|| {
 static LONG_RUN: LazyLock<Regex> = LazyLock::new(|| re(r"[A-Za-z0-9_-]{24,}"));
 /// The launcher's own source, as a panic or a backtrace names it.
 static SOURCE: LazyLock<Regex> =
-    LazyLock::new(|| re(r"^(?:\./)?(?:crates|src|src-tauri|library|ui)/[\w.+/-]+$"));
+    LazyLock::new(|| re(r"^(?:\./)?(?:crates|src|src-tauri|library|ui)/[\w.+/-]+(?::\d+){0,2}$"));
 /// `code=…`: what a sign-in brings back in a URL or a form. (`exit code: 1` is not one.)
 static CODE: LazyLock<Regex> = LazyLock::new(|| re(r#"(?i)\bcode=[^\s"',;&)]+"#));
-static CARGO: LazyLock<Regex> =
-    LazyLock::new(|| re(r"\.cargo/registry/src/[^/]+/(?P<tail>[\w.+-]+(?:/[\w.+-]+)*)$"));
+static CARGO: LazyLock<Regex> = LazyLock::new(|| {
+    re(r"\.cargo/registry/src/[^/]+/(?P<tail>[\w.+-]+(?:/[\w.+-]+)*(?::\d+){0,2})$")
+});
 static RUSTC: LazyLock<Regex> =
-    LazyLock::new(|| re(r"^/rustc/[0-9a-f]+/(?P<tail>[\w.+-]+(?:/[\w.+-]+)*)$"));
+    LazyLock::new(|| re(r"^/rustc/[0-9a-f]+/(?P<tail>[\w.+-]+(?:/[\w.+-]+)*(?::\d+){0,2})$"));
 /// A page of the launcher's own window: only its bundled files keep their path.
 static APP_PATH: LazyLock<Regex> =
     LazyLock::new(|| re(r"^/(?:assets|src)/[\w./@-]+(?::\d+){0,2}$"));
@@ -495,15 +496,23 @@ impl Scrubber {
         text = text
             .replace(DATA, &format!("{PAD}{DATA}"))
             .replace(HOME, &format!("{PAD}{HOME}"));
-        text = PATH
-            .replace_all(&text, |found: &Captures| {
-                format!(
-                    "{}{}",
-                    &found["lead"],
-                    keep(path_placeholder(&found["path"]))
-                )
-            })
-            .into_owned();
+        // More than once: a path's end can be the very character the next one starts after.
+        for _ in 0..8 {
+            let replaced = PATH
+                .replace_all(&text, |found: &Captures| {
+                    format!(
+                        "{}{}{}",
+                        &found["lead"],
+                        keep(path_placeholder(&found["path"])),
+                        &found["end"]
+                    )
+                })
+                .into_owned();
+            if replaced == text {
+                break;
+            }
+            text = replaced;
+        }
         text = text.replace(DATA, "<data>").replace(HOME, "<home>");
         // After the paths, so a token inside one can't break it in two.
         text = PREFIXED.replace_all(&text, "<redacted>").into_owned();
@@ -618,8 +627,16 @@ fn url_placeholder(raw: &str) -> String {
 
 fn path_placeholder(path: &str) -> String {
     let unix = path.replace("\\\\", "/").replace('\\', "/");
+    // `file.rs:12:5:` at the head of a panic message.
+    let trimmed = unix.trim_end_matches(':');
+    let colons = &unix[trimmed.len()..];
+    let unix = trimmed.to_string();
     if let Some(rest) = unix.strip_prefix(DATA) {
-        let top = rest.trim_start_matches('/').split('/').next().unwrap_or("");
+        let top = rest
+            .trim_start_matches('/')
+            .split(['/', ' '])
+            .next()
+            .unwrap_or("");
         return if DATA_TOP.contains(&top) {
             format!("<data>/{top}")
         } else {
@@ -632,14 +649,14 @@ fn path_placeholder(path: &str) -> String {
     // Where the build machine kept a dependency or the standard library: the same for every
     // player, and what makes a backtrace readable. Only when the rest is plainly source.
     if let Some(found) = CARGO.captures(&unix) {
-        return format!("<cargo>/{}", &found["tail"]);
+        return format!("<cargo>/{}{colons}", &found["tail"]);
     }
     if let Some(found) = RUSTC.captures(&unix) {
-        return format!("<rustc>/{}", &found["tail"]);
+        return format!("<rustc>/{}{colons}", &found["tail"]);
     }
     // The launcher's own source files, relative to its repository.
     if SOURCE.is_match(&unix) {
-        return unix.trim_start_matches("./").to_string();
+        return format!("{}{colons}", unix.trim_start_matches("./"));
     }
     "<path>".into()
 }
@@ -715,7 +732,7 @@ pub fn without_values(text: &str, values: &[&str]) -> String {
     let mut values: Vec<&str> = values
         .iter()
         .map(|v| v.trim())
-        .filter(|v| v.chars().count() >= 2)
+        .filter(|v| !v.is_empty())
         .collect();
     values.sort_by_key(|v| std::cmp::Reverse(v.len()));
     for value in values {
@@ -756,7 +773,7 @@ mod tests {
             "open C:/Users/Ana Maria/Downloads/pack.mrpack failed",
             r"open c:\users\ana maria\Downloads\pack.mrpack failed",
         ] {
-            assert_eq!(s.scrub(text), "open <home> failed", "{text}");
+            assert_eq!(s.scrub(text), "open <home>", "{text}");
         }
     }
 
@@ -806,13 +823,13 @@ mod tests {
         let s = linux();
         for (text, want) in [
             ("open /media/disco/Juegos/a.jar: gone", "open <path>: gone"),
-            ("open '/media/Mi Disco/a.jar'", "open '<path>'"),
-            ("open /media/Mi Disco/Juegos/a.jar now", "open <path> now"),
+            ("open \"/media/Mi Disco/a.jar\" and", "open \"<path>\" and"),
+            ("open /media/Mi Disco/Juegos/a.jar now", "open <path>"),
             (r"open D:\Juegos\Minecraft de Luis\a.jar", "open <path>"),
             (r"open \\nas\luis\a.jar", "open <path>"),
             ("path=/opt/x", "<path>"),
             ("file:/home/otro/x", "<path>"),
-            (r"D:\Games (old)\Users\luis\x now", "<path> now"),
+            (r"D:\Games (old)\Users\luis\x now", "<path>"),
         ] {
             assert_eq!(s.scrub(text), want, "{text}");
         }
@@ -940,7 +957,7 @@ mod tests {
     #[test]
     fn a_root_too_short_to_be_a_folder_is_ignored() {
         let s = Scrubber::new().with_home("/").with_data_root("C:");
-        assert_eq!(s.scrub("a/b and 1/2"), "a/b and 1/2");
+        assert_eq!(s.scrub("a/b and 50%"), "a/b and 50%");
     }
 
     #[test]
@@ -949,23 +966,20 @@ mod tests {
         for (text, want) in [
             (
                 r"open \\?\C:\Users\Ana Maria\Downloads\Tarea de Luis\pack.mrpack failed",
-                "open <home> failed",
+                "open <home>",
             ),
             (
                 r"\\?\C:\Users\Ana Maria\AppData\Roaming\PerlandLauncher\instances\Mundo de Luis\mods\x.jar: denied",
                 "<data>/instances: denied",
             ),
-            (
-                r"open \\?\D:\Juegos\Luis Gomez\a.jar failed",
-                "open <path> failed",
-            ),
+            (r"open \\?\D:\Juegos\Luis Gomez\a.jar failed", "open <path>"),
             (r"open \\?\UNC\nas\luis\a.jar", "open <path>"),
             (r"open \\.\D:\Luis\a.jar", "open <path>"),
             (
                 "jar:file:/C:/Users/Ana Maria/Downloads/Tarea de Luis/x.jar!/fabric.mod.json",
                 "<home>",
             ),
-            ("file:/D:/Luis/x.png gone", "<path> gone"),
+            ("file:/D:/Luis/x.png gone", "<path>"),
         ] {
             assert_eq!(s.scrub(text), want, "{text}");
         }
@@ -1014,11 +1028,11 @@ mod tests {
         for (text, want) in [
             (
                 r"open D:\Los juegos de mi hermano Luis Gomez\a.jar failed",
-                "open <path> failed",
+                "open <path>",
             ),
             (
                 "open /home/moises/Mis documentos muy importantes de Pedro Gomez/x.png failed",
-                "open <home> failed",
+                "open <home>",
             ),
             (
                 "No such file: /home/moises/Descargas/skin de Pedro Gomez.png (os error 2)",
@@ -1131,7 +1145,7 @@ mod tests {
         );
         assert_eq!(
             s.scrub("at /home/pedro/.cargo/registry/src/index.crates.io-1/Pedro Secret/file.rs:3"),
-            "at <path>:3"
+            "at <path>"
         );
         for text in [
             "open Servidor%20de%20Pedro now",
@@ -1180,7 +1194,7 @@ mod tests {
             (
                 &l,
                 r"D:\Juegos\Sofía's Mods\secreto.jar not found",
-                "<path> not found",
+                "<path>",
             ),
             (
                 &w,
@@ -1195,7 +1209,7 @@ mod tests {
             (
                 &l,
                 r"D:\Juegos de Sofía\Mundo: La casa\level.dat missing",
-                "<path> missing",
+                "<path>",
             ),
             (&l, "/home/sofia/a:b/secret/file.txt", "<home>"),
             (
@@ -1213,7 +1227,7 @@ mod tests {
                 "failed to open \"/home/sofia/It's mine/x.txt\": denied",
                 "failed to open \"<home>\": denied",
             ),
-            (&l, "open /home/sofia/it's.txt now", "open <home> now"),
+            (&l, "open /home/sofia/it's.txt now", "open <home>"),
         ] {
             assert_eq!(scrubber.scrub(text), want, "{text}");
         }
@@ -1386,5 +1400,84 @@ mod tests {
             s.scrub("Servidor de Pedro, PedroGamer99, pedro and al, not also"),
             "<redacted>, <redacted>, <redacted> and <redacted>, not also"
         );
+    }
+
+    /// The second review's second round.
+    #[test]
+    fn a_folder_name_with_spaces_at_the_end_of_a_path_goes_whole() {
+        let s = Scrubber::new()
+            .with_data_root(r"C:\Users\Ana\AppData\Roaming\PerlandLauncher")
+            .with_home(r"C:\Users\Ana");
+        for (text, want) in [
+            (
+                r"D:\Juegos\Casa de Sofía: permission denied",
+                "<path>: permission denied",
+            ),
+            (
+                r"C:\Users\Ana\Documents\Casa de Sofía: permission denied",
+                "<home>: permission denied",
+            ),
+            (
+                "/mnt/datos/Casa de Sofía: No such file or directory (os error 2)",
+                "<path>: No such file or directory (os error 2)",
+            ),
+            (
+                "/mnt/datos/Casa de Sofía (os error 13)",
+                "<path> (os error 13)",
+            ),
+            (
+                "couldn't read /mnt/datos/Mundo de Sofía",
+                "couldn't read <path>",
+            ),
+            (
+                r#"failed to open "D:\\Juegos\\Casa de Sofía": denied"#,
+                r#"failed to open "<path>": denied"#,
+            ),
+            (
+                r"C:\Users\Ana\AppData\Roaming\PerlandLauncher\instances\x\minecraft\saves\Casa de Sofía is locked",
+                "<data>/instances",
+            ),
+            ("path '/mnt/a/Sofía's stuff' is gone", "path '<path>"),
+            ("/Applications/Minecraft Sofía.app", "<path>"),
+            (
+                "see (/mnt/a/Casa de Sofía) and [/mnt/b/Otra casa], then",
+                "see <path>, then",
+            ),
+            (
+                "first /mnt/a/Casa de Sofía\nthen /mnt/b/Otra casa\n",
+                "first <path>\nthen <path>",
+            ),
+            ("moved /mnt/a/Casa: /mnt/b/Otra casa", "moved <path>"),
+        ] {
+            assert_eq!(s.scrub(text), want, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_relative_path_with_spaces_in_a_folder_name_goes_too() {
+        let s = Scrubber::new();
+        for (text, want) in [
+            ("saves/Casa de Sofía/level.dat missing", "<path>"),
+            (
+                "cwd=instances/mi mundo secreto/mods/x.jar relative",
+                "<path>",
+            ),
+            (
+                "zip entry overrides/Casa de Sofía/level.dat is invalid",
+                "zip entry <path>",
+            ),
+        ] {
+            assert_eq!(s.scrub(text), want, "{text}");
+        }
+        // One `/` on a line is still not a path.
+        for text in [
+            "and/or",
+            "50 KB/s",
+            "application/json",
+            "I/O error",
+            "read/write",
+        ] {
+            assert_eq!(s.scrub(text), text);
+        }
     }
 }

@@ -737,6 +737,29 @@ mod tests {
     }
 
     #[test]
+    fn an_error_about_a_folder_with_spaces_keeps_none_of_its_name() {
+        let scrubber = Scrubber::new().with_home(r"C:\Users\Ana");
+        for folder in [r"D:\Juegos\Casa de Sofía", r"D:\Mis Juegos\Java de Sofía"] {
+            // As `import::io_failed` builds it: the folder, then the system's words.
+            let error = LauncherError::disk(ErrorCode::DiskIo, "Couldn't read that folder")
+                .with_detail(format!("{folder}: permission denied"));
+            let report = report_for_error(&error, Some("import_instance"), &scrubber);
+            assert_eq!(report.context_map()["detail"], "<path>: permission denied");
+            let alone = LauncherError::java(ErrorCode::JavaPathMissing, "That Java isn't there")
+                .with_detail(folder);
+            let report = report_for_error(&alone, None, &scrubber);
+            assert_eq!(report.context_map()["detail"], "<path>");
+        }
+        // A one-letter private value is masked as a word.
+        let short = LauncherError::network(ErrorCode::InviteSiteUnreachable, "No site at a")
+            .with_param("host", "a");
+        assert_eq!(
+            report_for_error(&short, None, &scrubber).message(),
+            "No site at <redacted>"
+        );
+    }
+
+    #[test]
     fn a_param_is_sent_only_when_it_looks_like_what_the_launcher_writes() {
         let scrubber = Scrubber::new();
         let error = LauncherError::pack(

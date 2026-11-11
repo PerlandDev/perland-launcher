@@ -480,6 +480,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if let Ok(listing) = self.instances.list_all().await {
             telemetry.add_names(listing.instances.iter().flat_map(instance_names));
         }
+        // From here reports are recorded: the scrubber knows what is on this computer.
+        telemetry.names_ready();
     }
 
     /// Today's ping, if none went out yet, then the reports left from earlier runs. Slow (it

@@ -113,7 +113,7 @@ Sent shortly after something goes wrong, or at the next start (`POST /api/v1/tel
 
 A **game crash** report holds only the cause the launcher recognised (or `crash_unknown`), the Minecraft version and the loader. It never holds a line of the game's log, the instance's name or a mod's name.
 
-Every text is cleaned before it is saved or sent. Your home folder becomes `<home>`, the launcher's data folder `<data>`, any other file path `<path>`, web addresses `<url>` (except public services such as Mojang's or Modrinth's, which keep only the host), server addresses, host names and IP addresses `<address>`, emails `<email>`, your computer's user name `<user>`, and every name the launcher knows (accounts, instances, servers, invite links), anything shaped like a token or an account ID, and whatever the error itself marks as private `<redacted>`. Paths written without a drive or a leading slash (`saves\My world\level.dat`) become `<path>` too.
+Every text is cleaned before it is saved or sent. Your home folder becomes `<home>`, the launcher's data folder `<data>`, any other file path `<path>`, web addresses `<url>` (except public services such as Mojang's or Modrinth's, which keep only the host), server addresses, host names and IP addresses `<address>`, emails `<email>`, your computer's user name `<user>`, and every name the launcher knows (accounts, instances, servers, invite links), anything shaped like a token or an account ID, and whatever the error itself marks as private `<redacted>`. Paths written without a drive or a leading slash (`saves\My world\level.dat`) become `<path>` too, and the words that follow a path on the same line usually go with it, because a folder's name can have spaces.
 
 ### What is never sent
 
