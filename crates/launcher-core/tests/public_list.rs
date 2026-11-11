@@ -64,6 +64,15 @@ async fn requests_to(server: &MockServer, route: &str) -> Vec<wiremock::Request>
         .collect()
 }
 
+/// A loopback port that refuses connections for as long as the socket is held. It is bound, so
+/// no other test's server can be handed the same port meanwhile, and it never listens.
+fn closed_port() -> (tokio::net::TcpSocket, u16) {
+    let socket = tokio::net::TcpSocket::new_v4().unwrap();
+    socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    let port = socket.local_addr().unwrap().port();
+    (socket, port)
+}
+
 #[tokio::test]
 async fn reads_the_engine_from_the_site_config() {
     let server = MockServer::start().await;
@@ -233,12 +242,7 @@ async fn closed_list_is_server_list_closed() {
 
 #[tokio::test]
 async fn an_unreachable_site_stays_offline() {
-    // A port nobody listens on.
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
+    let (_held, port) = closed_port();
     let http = launcher_core::http::client("test").unwrap();
     let client = PublicListClient::new(
         InviteClient::new(http),
@@ -489,12 +493,7 @@ async fn a_modpack_link_on_another_engine_says_to_use_the_invite_page() {
 
 #[tokio::test]
 async fn an_unreachable_site_fails_the_modpack_link() {
-    // A port nobody listens on.
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
+    let (_held, port) = closed_port();
     let site = site_url(&format!("http://127.0.0.1:{port}")).unwrap();
     let http = launcher_core::http::client("test").unwrap();
     let client = PublicListClient::new(InviteClient::new(http), site);
