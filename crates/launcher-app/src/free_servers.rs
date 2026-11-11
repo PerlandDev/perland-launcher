@@ -3,6 +3,7 @@
 //! and play it. Every call goes to the session's Engine with the session's token; a 401 forgets
 //! the session. Nothing here logs a token or an invite.
 
+use launcher_core::telemetry::Counter;
 use launcher_core::{
     instances::{ServerAddress, ServerStatus},
     invite::{non_empty, InviteLink, Url},
@@ -294,6 +295,18 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 Vec::new()
             }
         };
+        // Its name, address and invite are masked in every report from now on.
+        let mut names = vec![server.name.clone()];
+        names.extend(server.address.clone());
+        if let Some(link) = server
+            .invite_url
+            .as_deref()
+            .and_then(|url| launcher_core::invite::InviteLink::parse(url).ok())
+        {
+            names.push(link.token().to_string());
+            names.push(link.host().to_string());
+        }
+        self.config.telemetry.add_names(names);
         free_card(server, &joined)
     }
 
@@ -387,6 +400,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let created = self
             .free_call(&session, |e, t| player.create_free_server(e, t, request))
             .await?;
+        self.config.telemetry.count(Counter::FreeServersCreated);
         Ok(self.free_card_of(&created).await)
     }
 

@@ -7,7 +7,7 @@ import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { releaseNotesData } from './notes';
 import { WhatsNewDialog } from './WhatsNewDialog';
-import { whatsNew } from './whatsNewRules';
+import { PRIVACY_NOTE, showsNote, whatsNew, withNote } from './whatsNewRules';
 
 /** How long after the first screen loads the dialog waits, so it doesn't race whatever the launch opens (a join link). */
 export const SETTLE_MS = 1500;
@@ -53,15 +53,25 @@ export function WhatsNewOnLaunch({
         .catch(() => {});
     const result = whatsNew({ notes, running: appInfo.version, seen: seen.data, firstRunDone, dev: appInfo.build === 'dev' });
     if (result.mark === 'now') mark();
-    if (result.groups.length === 0) return;
-    // Not cleared on cleanup: the check runs once, and a strict-mode remount must not cancel it.
-    setTimeout(() => {
-      // Its turn only on the screen every launch starts on: a perland:// link has by now opened Join server or New
-      // instance, which are screens, not dialogs.
-      if (!alive.current || routeSnapshot().name !== 'home' || document.querySelector('dialog[open]') || runStore.active().length > 0) return;
-      setGroups(result.groups);
-      mark();
-    }, settleMs);
+    const dev = appInfo.build === 'dev';
+    const show = (shown: NoteGroup[], moveMarker: boolean) => {
+      if (shown.length === 0) return;
+      // Not cleared on cleanup: the check runs once, and a strict-mode remount must not cancel it.
+      setTimeout(() => {
+        // Its turn only on the screen every launch starts on: a perland:// link has by now opened Join server or New
+        // instance, which are screens, not dialogs.
+        if (!alive.current || routeSnapshot().name !== 'home' || document.querySelector('dialog[open]') || runStore.active().length > 0) return;
+        setGroups(shown);
+        if (moveMarker) mark();
+        // The player has now been told about anonymous data: the launcher may share it from its next start.
+        if (showsNote(shown, PRIVACY_NOTE)) void commands.telemetryNoticeShown().catch(() => {});
+      }, settleMs);
+    };
+    // Nothing about anonymous data is sent until the player was shown its note. An updated launcher that would not
+    // show it by the usual rule (no marker, a skipped release) shows it anyway, once.
+    void (firstRunDone && !dev ? commands.telemetryNoticeDue().catch(() => false) : Promise.resolve(false)).then((due) =>
+      show(due ? withNote(result.groups, notes, appInfo.version, PRIVACY_NOTE) : result.groups, result.groups.length > 0),
+    );
   }, [loaded, notes, appInfo, firstRunDone, seen.data, settleMs, qc]);
 
   return <WhatsNewDialog open={groups !== null} groups={groups ?? []} all={notes.groups} onClose={() => setGroups(null)} />;

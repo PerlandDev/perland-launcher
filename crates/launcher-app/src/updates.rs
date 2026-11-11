@@ -1,6 +1,8 @@
 //! The launcher's own updates (spec §4): check on start, download in the background, install on
 //! quit or Restart now, and never while something runs. Tauri's updater sits behind
 //! `UpdateSource`, so all of this runs in tests with a fake.
+use crate::telemetry::Telemetry;
+use launcher_core::telemetry::Counter;
 use std::{
     sync::{Arc, Mutex, MutexGuard},
     time::Duration,
@@ -85,6 +87,7 @@ pub struct Updates<S: UpdateSource, H: Host> {
     ready: Mutex<Option<Downloaded<S::Update>>>,
     /// Checks run one at a time; a channel change waits for the running one.
     flight: tokio::sync::Mutex<()>,
+    telemetry: Mutex<Option<Arc<Telemetry>>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -122,7 +125,13 @@ impl<S: UpdateSource, H: Host> Updates<S, H> {
             })),
             ready: Mutex::new(None),
             flight: tokio::sync::Mutex::new(()),
+            telemetry: Mutex::new(None),
         })
+    }
+
+    /// Installed updates are counted here from now on (see `telemetry.rs`).
+    pub fn set_telemetry(&self, telemetry: Arc<Telemetry>) {
+        *lock(&self.telemetry) = Some(telemetry);
     }
 
     pub fn status(&self) -> UpdateState {
@@ -270,11 +279,19 @@ impl<S: UpdateSource, H: Host> Updates<S, H> {
     /// back, so quitting can still try. None when nothing is ready.
     async fn install_ready(&self, relaunch: bool) -> Option<Result<()>> {
         let taken = lock(&self.ready).take()?;
+        // Counted first: on Windows a successful install ends the process and never returns.
+        let telemetry = lock(&self.telemetry).clone();
+        if let Some(telemetry) = &telemetry {
+            telemetry.count(Counter::UpdatesInstalled);
+        }
         let result = self
             .source
             .install(taken.update.clone(), taken.bytes.clone(), relaunch)
             .await;
         if result.is_err() {
+            if let Some(telemetry) = &telemetry {
+                telemetry.uncount(Counter::UpdatesInstalled);
+            }
             // A newer download that arrived meanwhile wins.
             lock(&self.ready).get_or_insert(taken);
         }
@@ -570,6 +587,27 @@ mod tests {
         updates.restart_now(false).await.unwrap();
         assert!(!updates.on_quit(false).await, "already installed");
         assert_eq!(source.installs.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn an_install_is_counted_and_a_failed_one_is_not() {
+        let server = crate::telemetry::tests::engine(500, 500).await;
+        let tmp = tempfile::tempdir().unwrap();
+        let telemetry = crate::telemetry::tests::telemetry_to(&server, tmp.path());
+        let source = Arc::new(FakeSource::offering("0.2.0-beta.2"));
+        *source.install_results.lock().unwrap() = vec![Err(nothing_ready())];
+        let updates = Updates::new(
+            source.clone(),
+            RecordingHost::new(),
+            BuildKind::Beta,
+            Channel::Beta,
+        );
+        updates.set_telemetry(telemetry.clone());
+        updates.check().await;
+        assert!(updates.restart_now(false).await.is_err());
+        assert!(telemetry.snapshot().counters().is_empty());
+        updates.restart_now(false).await.unwrap();
+        assert_eq!(telemetry.snapshot().counters()["updates_installed"], 1);
     }
 
     #[tokio::test]
