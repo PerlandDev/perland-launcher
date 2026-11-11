@@ -74,6 +74,16 @@ pub async fn settings_set(
 }
 
 #[tauri::command]
+pub async fn whats_new_seen(core: CoreState<'_>) -> Res<Option<String>> {
+    Ok(core.whats_new_seen().await)
+}
+
+#[tauri::command]
+pub async fn whats_new_mark(core: CoreState<'_>) -> Res<()> {
+    logged("whats_new_mark", core.whats_new_mark().await)
+}
+
+#[tauri::command]
 pub fn update_status(updates: UpdatesState<'_>) -> UpdateState {
     updates.status()
 }

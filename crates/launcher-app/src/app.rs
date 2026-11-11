@@ -39,6 +39,7 @@ use launcher_core::{
     settings::{Channel, Settings, SettingsStore},
     skins,
     sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
+    whats_new_seen::{WhatsNewSeen, WHATS_NEW_SEEN_FILE},
     ErrorCode, LauncherError, Result,
 };
 use tokio::{
@@ -117,6 +118,7 @@ pub struct AppCore<R: Runner, H: Host> {
     meta: MetaClient,
     /// The newest news post seen per server (`<data root>/news-seen.json`).
     pub(crate) news_seen: NewsSeen,
+    whats_new_seen: WhatsNewSeen,
     pub(crate) runner: Arc<R>,
     pub(crate) host: Arc<H>,
     /// One install at a time, so two installs never write the same shared files at once.
@@ -240,6 +242,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             accounts_warned: AtomicBool::new(false),
             meta,
             news_seen: NewsSeen::new(root.join(NEWS_SEEN_FILE)),
+            whats_new_seen: WhatsNewSeen::new(root.join(WHATS_NEW_SEEN_FILE)),
             runner,
             host,
             install_slot: Arc::new(Semaphore::new(1)),
@@ -391,6 +394,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     pub async fn update_channel(&self) -> Channel {
         let (settings, _) = self.settings.lock().await.load().await;
         Channel::effective(settings.update_channel, self.config.build)
+    }
+
+    /// The last launcher version whose release notes this player was shown, if any (What's new).
+    pub async fn whats_new_seen(&self) -> Option<String> {
+        self.whats_new_seen.get().await
+    }
+
+    /// The player has now been shown the running version's notes. The UI never names a version.
+    pub async fn whats_new_mark(&self) -> Result<()> {
+        self.whats_new_seen.set(&self.config.launcher_version).await
     }
 
     pub async fn settings_set(&self, settings: Settings) -> Result<Settings> {
@@ -1091,6 +1104,15 @@ pub(crate) mod tests {
             assert_eq!(created.java.memory_mb, expected);
         }
         assert_eq!(core.instances_list().await.unwrap().instances.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn whats_new_mark_stores_the_running_version() {
+        let (core, _, _, tmp) = core(BuildKind::Release);
+        assert_eq!(core.whats_new_seen().await, None);
+        core.whats_new_mark().await.unwrap();
+        assert_eq!(core.whats_new_seen().await.as_deref(), Some("0.1.0"));
+        assert!(tmp.path().join("whats-new-seen.json").exists());
     }
 
     #[tokio::test]
