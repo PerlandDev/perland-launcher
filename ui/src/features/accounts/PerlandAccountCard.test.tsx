@@ -138,6 +138,15 @@ describe('PerlandAccountCard', () => {
     });
   });
 
+  it('the heading carries the Perland mark, signed in or out, without changing its name', async () => {
+    for (const perland of ['signedOut', 'github'] as const) {
+      const { unmount } = renderApp(<PerlandAccountCard />, { perland });
+      const heading = await screen.findByRole('heading', { name: 'Perland account' });
+      expect(heading.querySelector('img[src*="mark"]')).toHaveAttribute('alt', '');
+      unmount();
+    }
+  });
+
   it('a GitHub account shows its login and GitHub as the method', async () => {
     renderApp(<PerlandAccountCard />, { perland: 'github' });
     const card = await screen.findByRole('region', { name: 'Perland account' });
