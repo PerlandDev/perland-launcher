@@ -594,26 +594,24 @@
   aspect-ratio: 4 / 5;
   min-width: 0;
 }
+/* The thumbnail is a front view twice as tall as it is wide (CatalogThumb, cut from the catalog's sheet): it stands
+   centred in the tile's box, as tall as the box. */
+.piece-thumb > .skin-thumb {
+  width: 62.5%;
+  margin: 0 auto;
+}
 .piece-grid[data-head] {
   grid-template-columns: repeat(auto-fill, minmax(4.5rem, 1fr));
 }
-/* The thumbnail is a 1:2 front view whose head is the middle half of its top quarter. */
+/* What is worn on the head shows the head alone: a square box, filled by the style useThumbs answers for a head. */
 .piece-thumb-head {
   aspect-ratio: 1;
-  background-repeat: no-repeat;
-  background-position: 50% 0;
-  background-size: 200% auto;
-  image-rendering: pixelated;
 }
 .piece-tile-look .piece-thumb {
   aspect-ratio: 5 / 8;
 }
-.piece-thumb img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  image-rendering: pixelated;
+.piece-tile-look .piece-thumb > .skin-thumb {
+  width: 80%;
 }
 .piece-name {
   display: -webkit-box;

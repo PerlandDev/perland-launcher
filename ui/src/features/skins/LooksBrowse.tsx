@@ -1,13 +1,14 @@
 // The Catalog tab's shelves and grid: search, tag keys with their counts, arms and order, then the looks. With nothing
 // searched or filtered there is a shelf per tag over the grid of everything; any search or filter leaves just the
 // grid. The grid draws its looks a page at a time as the player scrolls, so a catalog of hundreds stays light.
-import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { memo, useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight, Shuffle } from 'pixelarticons/react';
 import type { CatalogLook, CatalogManifest, CatalogStatus } from '../../ipc/schema';
 import { Button } from '../../ui/Button';
-import { GRID_PAGE, lookShelves, NO_FILTER, noFilter, tagFacets, type Lang, type LookFilter, type LookShelf } from './catalogSearch';
+import { lookShelves, NO_FILTER, noFilter, tagFacets, type Lang, type LookFilter, type LookShelf } from './catalogSearch';
 import { CatalogThumb } from './CatalogThumb';
+import { usePages } from './usePages';
 import type { Thumbs } from './useThumbs';
 
 /** Opens a look's page; `from` is the tile pressed, which takes the focus back when the page closes. */
@@ -82,25 +83,10 @@ function Shelf({ shelf, lang, thumbs, onOpen, onSeeAll }: { shelf: LookShelf; la
   );
 }
 
-/** The grid of `looks` (`showing` names what they are: the filter and the language), a page at a time: more are drawn
- *  when its end comes near the bottom of what's scrolled into view, and Show more does the same by hand (and where the
- *  webview has no IntersectionObserver). */
+/** The grid of `looks` (`showing` names what they are: the filter and the language), a page at a time (see usePages). */
 function Grid({ looks, showing, lang, thumbs, onOpen }: { looks: CatalogLook[]; showing: string; lang: Lang; thumbs: Thumbs; onOpen: OpenLook }) {
   const { t } = useTranslation();
-  // How many are drawn, for what's showing: something else showing starts from the first page again.
-  const [page, setPage] = useState({ showing, drawn: GRID_PAGE });
-  const drawn = page.showing === showing ? page.drawn : GRID_PAGE;
-  const more = useCallback(() => setPage((p) => ({ showing, drawn: (p.showing === showing ? p.drawn : GRID_PAGE) + GRID_PAGE })), [showing]);
-  const end = useRef<HTMLDivElement>(null);
-  const left = looks.length - drawn;
-  useEffect(() => {
-    const el = end.current;
-    if (!el || left <= 0 || typeof IntersectionObserver === 'undefined') return;
-    // Watched again after every page: an end still in view after one page asks for the next.
-    const observer = new IntersectionObserver((entries) => entries.some((entry) => entry.isIntersecting) && more(), { root: el.closest('.looks-scroll'), rootMargin: '0px 0px 480px 0px' });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [left, more]);
+  const { drawn, left, more, end } = usePages(showing, looks.length, '.looks-scroll');
   return (
     <>
       <ul className="look-grid" aria-label={t('skins.catalog.looks')}>

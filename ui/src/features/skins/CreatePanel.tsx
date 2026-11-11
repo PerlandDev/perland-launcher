@@ -2,19 +2,22 @@
 // picked worn piece's colour areas with Take off and Make part of the skin. Looks applies a whole catalog look; Face
 // opens with the ready-made expressions. A face piece the painting hides gets a hint with a way to start clean from
 // pieces. Pointing at a piece, a look or an expression tries it on the figure without changing the skin (see tryOn).
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogLook, CatalogPiece, SkinLook } from '../../ipc/schema';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { AreaColours } from './AreaColours';
 import type { Lang } from './catalogSearch';
+import { CatalogThumb } from './CatalogThumb';
 import { ExpressionRow } from './ExpressionRow';
 import { focusFor, type Focus } from './framing';
 import { applyLook, putOn } from './look';
 import { tryHandlers, type Candidate, type TryOnHandle } from './tryOn';
 import type { Catalog } from './useCatalog';
 import type { LookEditor } from './useLook';
+import { usePages } from './usePages';
+import { useThumbs, type Thumbs } from './useThumbs';
 
 /** The categories in order, with the slots each holds (a category of several slots shows one group per slot). */
 const CATEGORIES: readonly { id: string; slots: readonly string[] }[] = [
@@ -37,7 +40,7 @@ function PieceTile({
   lang,
   worn,
   picked,
-  image,
+  thumb,
   onPick,
   tryOn,
   trying,
@@ -46,7 +49,8 @@ function PieceTile({
   lang: Lang;
   worn: boolean;
   picked: boolean;
-  image: string | undefined;
+  /** What draws the thumbnail (see `useThumbs`): the head alone for a piece worn on the head, else the whole figure. */
+  thumb: CSSProperties | null;
   onPick: () => void;
   tryOn?: TryOnHandle;
   /** What pointing at the tile tries on. */
@@ -57,9 +61,11 @@ function PieceTile({
     <li>
       <button type="button" className="piece-tile" aria-current={picked || undefined} data-worn={worn || undefined} onClick={onPick} {...tryHandlers(tryOn, trying)}>
         {HEAD_SLOTS.has(piece.slot) ? (
-          <span className="piece-thumb piece-thumb-head" style={image ? { backgroundImage: `url(${image})` } : undefined} />
+          <span aria-hidden className="piece-thumb piece-thumb-head" style={thumb ?? undefined} />
         ) : (
-          <span className="piece-thumb">{image && <img src={image} alt="" draggable={false} />}</span>
+          <span className="piece-thumb">
+            <CatalogThumb style={thumb} />
+          </span>
         )}
         <span className="piece-name">{piece.name[lang]}</span>
         {worn && <span className="piece-on">{t('skins.create.on')}</span>}
@@ -68,15 +74,17 @@ function PieceTile({
   );
 }
 
-function LooksGrid({ looks, lang, catalog, onPick, tryOn }: { looks: readonly CatalogLook[]; lang: Lang; catalog: Catalog; onPick: (look: CatalogLook) => void; tryOn?: TryOnHandle }) {
+/** The catalog's looks, a page at a time (see usePages): hundreds of tiles never mount at once. */
+function LooksGrid({ looks, lang, thumbs, onPick, tryOn }: { looks: readonly CatalogLook[]; lang: Lang; thumbs: Thumbs; onPick: (look: CatalogLook) => void; tryOn?: TryOnHandle }) {
   const { t } = useTranslation();
+  const { drawn, left, more, end } = usePages(lang, looks.length, '.create-side');
   return (
     <div className="create-group">
       <h3 className="create-heading">
         {t('skins.create.category.looks')} · <span className="tabular">{looks.length}</span>
       </h3>
       <ul className="piece-grid" aria-label={t('skins.create.category.looks')}>
-        {looks.map((look) => (
+        {looks.slice(0, drawn).map((look) => (
           <li key={look.id}>
             <button
               type="button"
@@ -85,12 +93,19 @@ function LooksGrid({ looks, lang, catalog, onPick, tryOn }: { looks: readonly Ca
               onClick={() => onPick(look)}
               {...tryHandlers(tryOn, { key: `look:${look.id}`, name: look.name[lang], change: (l) => applyLook(l, look) })}
             >
-              <span className="piece-thumb">{catalog.image(look.thumb) && <img src={catalog.image(look.thumb)} alt="" draggable={false} />}</span>
+              <span className="piece-thumb">
+                <CatalogThumb style={thumbs.look(look)} />
+              </span>
               <span className="piece-name">{look.name[lang]}</span>
             </button>
           </li>
         ))}
       </ul>
+      {left > 0 && (
+        <div ref={end} className="look-more">
+          <Button onClick={more}>{t('skins.catalog.showMore')}</Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -121,6 +136,8 @@ export function CreatePanel({
   const [baking, setBaking] = useState(false);
   const [applying, setApplying] = useState<CatalogLook | null>(null);
   const { manifest } = catalog;
+  // Every tile's thumbnail is cut from the catalog's two sheets: a category of any size costs no file of its own.
+  const thumbs = useThumbs(catalog);
   // The camera frames what the category dresses; where a category holds several parts (Accessories), the piece picked
   // there says which. With no catalog there is nothing to dress: the whole figure.
   const slots = CATEGORIES.find((c) => c.id === category)?.slots ?? [];
@@ -184,7 +201,7 @@ export function CreatePanel({
             </div>
           )}
           {open.id === 'looks' ? (
-            <LooksGrid looks={manifest.looks.filter((l) => !l.retired)} lang={lang} catalog={catalog} onPick={pickLook} tryOn={tryOn} />
+            <LooksGrid looks={manifest.looks.filter((l) => !l.retired)} lang={lang} thumbs={thumbs} onPick={pickLook} tryOn={tryOn} />
           ) : (
             groups.map(({ slot, label }) => {
               const pieces = inSlots([slot]);
@@ -205,7 +222,7 @@ export function CreatePanel({
                           lang={lang}
                           worn={wornIds.has(p.id)}
                           picked={p.id === shownId}
-                          image={catalog.image(p.thumb)}
+                          thumb={HEAD_SLOTS.has(p.slot) ? thumbs.head(p) : thumbs.piece(p)}
                           onPick={() => pick(p)}
                           tryOn={tryOn}
                           trying={{ key: `piece:${p.id}`, name: p.name[lang], change: (l) => putOn(l, p, manifest.pieces) }}

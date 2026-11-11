@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
 import type { SkinLook } from '../../ipc/schema';
 import { sent } from '../../test/backend';
+import { manyLooks } from '../../test/manyLooks';
 import { renderWithProviders } from '../../test/render';
 import { addFaces, fakeFaceFiles, FAKE_EXPRESSIONS } from '../../test/skinFakes';
 import SkinStudio from './SkinStudio';
@@ -36,9 +37,12 @@ async function openCreate(
     files,
     listOnce = false,
     faces = false,
-  }: { catalog?: 'fresh' | 'unavailable' | 'never'; microsoft?: boolean; files?: { held: Promise<void> | null }; listOnce?: boolean; faces?: boolean } = {},
+    looks,
+  }: { catalog?: 'fresh' | 'unavailable' | 'never'; microsoft?: boolean; files?: { held: Promise<void> | null }; listOnce?: boolean; faces?: boolean; looks?: number } = {},
 ) {
   const backend = createMockBackend(microsoft ? { microsoft: 'signedIn' } : {});
+  // looks: the catalog has that many looks in place of its three (see `manyLooks`).
+  if (looks !== undefined) backend.state.skins.catalog.manifest = manyLooks(backend.state.skins.catalog.manifest, looks);
   // faces: the catalog also has the test expressions and the pieces they name.
   if (faces) addFaces(backend.state.skins.catalog);
   if (look) backend.state.skins.entries.find((e) => e.id === ID)!.look = look;
@@ -64,6 +68,10 @@ async function openCreate(
 }
 
 const wearing = () => screen.getByRole('list', { name: 'Wearing' });
+/** The catalog files asked for so far, by hash. */
+const filesAsked = (calls: [string, unknown][]) => (sent(calls, 'skin_catalog_file') as { sha256: string }[]).map((a) => a.sha256);
+/** The box of a tile that draws its thumbnail. */
+const thumbOf = (tile: HTMLElement) => tile.querySelector<HTMLElement>('.skin-thumb, .piece-thumb-head')!;
 const chips = () => within(wearing()).queryAllByRole('listitem').map((li) => li.textContent);
 const stageSum = () => screen.getByTestId('stage').getAttribute('data-sum');
 
@@ -638,4 +646,80 @@ it('in Accessories the camera goes to the piece picked there, under the same key
   await user.click(tile('Back', /./));
   await waitFor(() => expect(framed()).toBe('back'));
   expect(framedKey()).toBe(key);
+});
+
+it('piece tiles are cut from the pieces sheet: one file for every category, and a head for what is worn on the head', async () => {
+  const { user, calls, backend } = await openCreate({ pieces: [BODY, TEE], painting: false });
+  const { manifest } = backend.state.skins.catalog;
+  await user.click(screen.getByRole('button', { name: 'Tops' }));
+  const jacket = within(screen.getByRole('list', { name: 'Tops' })).getByRole('button', { name: /Bomber jacket/ });
+  await waitFor(() => expect(thumbOf(jacket).style.backgroundImage).not.toBe(''));
+  // 22 pieces, 24 a row: the whole figure of its cell, in a box twice as tall as it is wide.
+  expect(thumbOf(jacket)).toHaveClass('skin-thumb');
+  expect(thumbOf(jacket).style.backgroundSize).toBe('2400% 100%');
+  await user.click(screen.getByRole('button', { name: 'Hats' }));
+  const cap = within(screen.getByRole('list', { name: 'Hats' })).getByRole('button', { name: /^Cap/ });
+  // A hat shows the head of its cell, in a square box.
+  expect(thumbOf(cap)).toHaveClass('piece-thumb-head');
+  expect(thumbOf(cap).style.backgroundSize).toBe('4800% 400%');
+  expect(thumbOf(cap).style.backgroundPosition).not.toBe(thumbOf(within(screen.getByRole('list', { name: 'Hats' })).getAllByRole('button')[1]!).style.backgroundPosition);
+  await user.click(screen.getByRole('button', { name: 'Looks' }));
+  const knight = within(screen.getByRole('list', { name: 'Looks' })).getByRole('button', { name: 'Knight' });
+  await waitFor(() => expect(thumbOf(knight).style.backgroundImage).not.toBe(''));
+  expect(thumbOf(knight).style.backgroundSize).toBe('2400% 100%');
+  // The two sheets once each, and no thumbnail file of a piece or a look.
+  const asked = filesAsked(calls);
+  expect(asked.filter((hash) => hash === manifest.sheets!.pieces.file)).toHaveLength(1);
+  expect(asked.filter((hash) => hash === manifest.sheets!.looks.file)).toHaveLength(1);
+  const thumbs = new Set([...manifest.pieces, ...manifest.looks].map((entry) => entry.thumb));
+  expect(asked.filter((hash) => thumbs.has(hash))).toEqual([]);
+});
+
+it('Looks draws a page of looks at a time, and Show more draws the next', async () => {
+  const { user } = await openCreate(undefined, { looks: 150 });
+  await user.click(screen.getByRole('button', { name: 'Looks' }));
+  const list = screen.getByRole('list', { name: 'Looks' });
+  // The heading counts them all; the grid draws the first page.
+  expect(screen.getByRole('heading', { name: /Looks · 150/ })).toBeInTheDocument();
+  expect(within(list).getAllByRole('button')).toHaveLength(60);
+  await user.click(screen.getByRole('button', { name: 'Show more looks' }));
+  expect(within(list).getAllByRole('button')).toHaveLength(120);
+  await user.click(screen.getByRole('button', { name: 'Show more looks' }));
+  expect(within(list).getAllByRole('button')).toHaveLength(150);
+  expect(screen.queryByRole('button', { name: 'Show more looks' })).not.toBeInTheDocument();
+  // Leaving the category and coming back starts from the first page.
+  await user.click(screen.getByRole('button', { name: 'Tops' }));
+  await user.click(screen.getByRole('button', { name: 'Looks' }));
+  expect(within(screen.getByRole('list', { name: 'Looks' })).getAllByRole('button')).toHaveLength(60);
+});
+
+it('Looks draws the next page by itself when its end scrolls near', async () => {
+  const watching = new Set<{ callback: IntersectionObserverCallback }>();
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      callback: IntersectionObserverCallback;
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+      }
+      observe() {
+        watching.add(this);
+      }
+      disconnect() {
+        watching.delete(this);
+      }
+    },
+  );
+  try {
+    const { user } = await openCreate(undefined, { looks: 100 });
+    await user.click(screen.getByRole('button', { name: 'Looks' }));
+    const list = screen.getByRole('list', { name: 'Looks' });
+    expect(within(list).getAllByRole('button')).toHaveLength(60);
+    expect(watching.size).toBe(1);
+    act(() => [...watching].forEach((o) => o.callback([{ isIntersecting: true } as IntersectionObserverEntry], o as unknown as IntersectionObserver)));
+    expect(within(list).getAllByRole('button')).toHaveLength(100);
+    expect(watching.size).toBe(0);
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
