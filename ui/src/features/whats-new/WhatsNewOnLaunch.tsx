@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { commands } from '../../ipc/commands';
 import type { NoteGroup, ReleaseNotes } from '../../ipc/schema';
 import { qk, useAppInfo, useWhatsNewSeen } from '../../state/queries';
+import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { releaseNotesData } from './notes';
 import { WhatsNewDialog } from './WhatsNewDialog';
@@ -15,8 +16,8 @@ export const SETTLE_MS = 1500;
 const preview = () => import.meta.env.MODE === 'mock' && new URLSearchParams(window.location.search).has('whatsNew');
 
 /** Once per launch: show the release notes this player has not seen (design: What's new). The marker moves when
- *  the dialog opens, or at once when there is nothing to show. If another dialog is open or a game is starting when
- *  its turn comes, nothing opens and the marker stays, so the next launch tries again. */
+ *  the dialog opens, or at once when there is nothing to show. If the player is no longer on Home, another dialog is
+ *  open or a game is starting when its turn comes, nothing opens and the marker stays, so the next launch tries again. */
 export function WhatsNewOnLaunch({
   firstRunDone,
   notes = releaseNotesData,
@@ -55,7 +56,9 @@ export function WhatsNewOnLaunch({
     if (result.groups.length === 0) return;
     // Not cleared on cleanup: the check runs once, and a strict-mode remount must not cancel it.
     setTimeout(() => {
-      if (!alive.current || document.querySelector('dialog[open]') || runStore.active().length > 0) return;
+      // Its turn only on the screen every launch starts on: a perland:// link has by now opened Join server or New
+      // instance, which are screens, not dialogs.
+      if (!alive.current || routeSnapshot().name !== 'home' || document.querySelector('dialog[open]') || runStore.active().length > 0) return;
       setGroups(result.groups);
       mark();
     }, settleMs);

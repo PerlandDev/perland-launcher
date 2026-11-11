@@ -79,7 +79,8 @@ Where the launcher reads the notes from (my call):
   ```
 
 - `kind` is `new`, `improved` or `fixed`.
-- `en` and `es` are each one plain sentence, at most 140 characters, with no markup and no links. They follow the
+- `en` and `es` are each one plain sentence, at most 140 characters, with no markup, no links, and no `@name` or
+  `#number` (GitHub would turn those into a ping or an issue link in the Release description). They follow the
   rules of every UI string: short, plain, friendly; Spanish is neutral Latin American with informal "tú".
 - A typo is fixed in place. A released note's file is never renamed (a new slug is a new note). Deleting a file
   removes the note from history, which is how old notes are pruned.
@@ -98,9 +99,11 @@ New pure functions in `scripts/release/lib.mjs` (tested in `lib.test.mjs`), with
 - **Which releases count.** The CalVer tags (`vYYYY.M.MICRO` and `-beta.N`) that are ancestors of the commit being
   built, in version order, followed by the version being built. Old `v0.x` tags are ignored, as `nextVersion`
   already does.
-- **A note's version.** The oldest release such that it and every later one contain the note's file. A note that
-  no tag contains belongs to the version being built. This holds when a beta was published from a branch that
-  merged later, and when a note was removed and added again.
+- **A note's version.** The oldest release such that it and every later stable contain the note's file. A note
+  that no tag contains belongs to the version being built. Only a stable without the file ends the run: a beta may
+  come from a branch that is behind `main`, and its lacking a note that already shipped must not make that note
+  new again (found in the final review). This holds when a beta was published from a branch that merged later,
+  and when a note was removed and added again.
 - **The notes file** (`release-notes.json`): the releases newest first, grouped by base version (the notes of
   `2026.11.5-beta.1`, `-beta.2` and `2026.11.5` sit together under `2026.11.5`), each note with its slug, kind,
   both texts and its exact version; each group with its day (the tagged commit's day; today for the version being
@@ -132,7 +135,9 @@ notes from a shallow clone: without tags, every note would look new.
     what `beta.2` added.
   - No marker, first run finished (a player updating into the first release with this feature): show the running
     base version's notes.
-  - Marker newer than the running version (a downgrade): show nothing.
+  - Marker newer than the running version (a downgrade): show nothing, and leave the marker where it is, so the
+    way back up repeats nothing. The notes of a build end at its own version, so a newer marker is one they do not
+    list; it is told apart from an unknown older one by comparing the version numbers.
   - Marker that the notes file does not know (a beta from a branch that never merged): as with no marker, show
     the running base version's notes.
   - Nothing to show (an update with no notes): no dialog.
@@ -140,8 +145,9 @@ notes from a shallow clone: without tags, every note would look new.
 - **When the marker moves** (my call). At once when there is nothing to show. Otherwise only when the dialog
   actually opens, as server news marks posts seen on open. Notes are never lost because something was in the way.
 - **The dialog.** It uses the app's `Dialog`, like server news. The launcher tries it once per launch, when the
-  first screen has settled. If first run is still going, another dialog is open (a join link, for example) or a
-  game is starting at that moment, it does not open and the marker stays, so the next launch tries again. It
+  first screen has settled. If first run is still going, the player is no longer on Home (a `perland://` link
+  has opened Join server, for example), another dialog is open or a game is starting at that moment, it does not
+  open and the marker stays, so the next launch tries again. It
   never pops up later in the same session, so there is no watcher for other dialogs.
 
   ```

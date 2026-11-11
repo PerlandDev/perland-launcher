@@ -5,8 +5,26 @@ export type Mark = 'now' | 'on-open' | 'never';
 
 const baseOf = (version: string) => version.replace(/-beta\.\d+$/, '');
 
+/** `YYYY.M.MICRO` or `YYYY.M.MICRO-beta.N` as numbers that sort (a stable after its betas); null for anything else. */
+function parts(version: string): number[] | null {
+  const m = /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/.exec(version);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3]), m[4] === undefined ? Infinity : Number(m[4])] : null;
+}
+
+/** Whether `a` is a newer version than `b`; false when either is not a version. */
+function newer(a: string, b: string): boolean {
+  const x = parts(a);
+  const y = parts(b);
+  if (!x || !y) return false;
+  for (let i = 0; i < x.length; i += 1) {
+    if (x[i] !== y[i]) return x[i]! > y[i]!;
+  }
+  return false;
+}
+
 /** What a launch shows of the release notes, and what happens to the marker (design: What's new, "The rule").
- *  Versions compare by their place in `notes.versions`, which lists every release in order. */
+ *  Versions compare by their place in `notes.versions`, which lists every release up to this build in order; only a
+ *  marker those don't list is compared by its numbers, to tell a downgrade from a release these notes never heard of. */
 export function whatsNew({
   notes,
   running,
@@ -29,8 +47,10 @@ export function whatsNew({
   if (seen === running) return { groups: [], mark: 'never' };
   const runningAt = notes.versions.indexOf(running);
   const seenAt = seen === null ? -1 : notes.versions.indexOf(seen);
-  // Notes that don't know this version, or a downgrade: nothing here is news.
-  if (runningAt === -1 || seenAt > runningAt) return { groups: [], mark: 'now' };
+  // Notes that don't know this version: nothing to show.
+  if (runningAt === -1) return { groups: [], mark: 'now' };
+  // A downgrade: nothing here is news, and the marker stays, so the way back up repeats nothing.
+  if (seenAt > runningAt || (seen !== null && seenAt === -1 && newer(seen, running))) return { groups: [], mark: 'never' };
   const base = baseOf(running);
   const groups = notes.groups
     .map((group) => ({

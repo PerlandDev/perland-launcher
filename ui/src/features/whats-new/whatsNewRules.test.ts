@@ -67,8 +67,16 @@ describe('whatsNew', () => {
     expect(run({ seen: '2026.11.5-beta.9' })).toEqual({ shown: [['2026.11.6', ['c']]], mark: 'on-open' });
   });
 
-  it('shows nothing after a downgrade', () => {
-    expect(run({ running: '2026.11.5', seen: '2026.11.6' })).toEqual({ shown: [], mark: 'now' });
+  it('shows nothing after a downgrade, and keeps the newer marker for the way back up', () => {
+    expect(run({ running: '2026.11.5', seen: '2026.11.6' })).toEqual({ shown: [], mark: 'never' });
+    // As a real build has it: its notes end at its own version and have never heard of a newer one.
+    const upTo5: ReleaseNotes = { versions: notes.versions.slice(0, 3), groups: [notes.groups[1]!] };
+    expect(run({ notes: upTo5, running: '2026.11.5', seen: '2026.11.6-beta.1' })).toEqual({ shown: [], mark: 'never' });
+    expect(run({ notes: upTo5, running: '2026.11.5', seen: '2027.1.0' })).toEqual({ shown: [], mark: 'never' });
+  });
+
+  it('treats a marker that is not a version as no marker', () => {
+    expect(run({ seen: 'nope' })).toEqual({ shown: [['2026.11.6', ['c']]], mark: 'on-open' });
   });
 
   it('shows nothing when the notes do not know the running version', () => {

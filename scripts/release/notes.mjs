@@ -12,6 +12,8 @@ const SLUG = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.json$/;
 const CONTROL = /[\u0000-\u001f\u007f]/;
 const LINK = /https?:\/\//i;
 const MARKUP = /[<>[\]*`]/;
+// GitHub turns these into a ping and an issue link in the Release's description.
+const MENTION = /@\w|#\d/;
 
 /** Why `text` can't be a note's sentence, or null when it can. */
 function textProblem(text) {
@@ -20,6 +22,7 @@ function textProblem(text) {
   if (text !== text.trim()) return 'must not start or end with a space';
   if (LINK.test(text)) return 'must not hold a link';
   if (MARKUP.test(text)) return 'must be plain text (none of < > [ ] * `)';
+  if (MENTION.test(text)) return 'must not hold an @name or a #number (GitHub would link them)';
   if ([...text].length > MAX_CHARS) return `is longer than ${MAX_CHARS} characters`;
   return null;
 }
@@ -80,14 +83,17 @@ export function baseOf(version) {
 }
 
 /** The version each of `current.ids` first shipped in: the oldest release such that it and every
- *  later one, up to the build, have the note. `releases` is oldest first. A note no release has
- *  belongs to the build (`current.version`, null in a dev build). */
+ *  later stable, up to the build, have the note. `releases` is oldest first. A note no release has
+ *  belongs to the build (`current.version`, null in a dev build). Only a stable without the note
+ *  ends the run: a beta may come from a branch that is behind main, and its lacking a note that
+ *  already shipped must not make that note new again. */
 export function assignVersions({ releases, current }) {
   const since = new Map();
   for (const id of current.ids) {
     let version = current.version;
-    for (let i = releases.length - 1; i >= 0 && releases[i].ids.includes(id); i -= 1) {
-      version = releases[i].version;
+    for (let i = releases.length - 1; i >= 0; i -= 1) {
+      if (releases[i].ids.includes(id)) version = releases[i].version;
+      else if (releases[i].version === baseOf(releases[i].version)) break;
     }
     since.set(id, version);
   }

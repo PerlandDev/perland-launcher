@@ -40,6 +40,12 @@ test('a note is one plain line', () => {
   assert.throws(() => parseNote('a.json', json({ en: '**A**' })), /en/);
 });
 
+test('a note cannot ping a person or link an issue from the GitHub Release', () => {
+  assert.throws(() => parseNote('a.json', json({ en: 'Thanks @steve.' })), /en/);
+  assert.throws(() => parseNote('a.json', json({ es: 'Arregla #12.' })), /es/);
+  parseNote('a.json', json({ en: 'The #1 thing you asked for @ last.' }).replace('#1', '# 1'));
+});
+
 test('140 characters pass and 141 fail, counted as a player reads them', () => {
   parseNote('a.json', json({ en: 'ñ'.repeat(140), es: '→'.repeat(140) }));
   parseNote('a.json', json({ en: '😀'.repeat(140) }));
@@ -80,6 +86,11 @@ test('a note belongs to the first release that had it', () => {
 
 test('a beta from a branch that merged after the stable is dated to the next release', () => {
   assert.deepEqual(since([rel('2026.11.5-beta.3', 'e'), rel('2026.11.5')], { version: '2026.11.6', ids: ['e'] }), { e: '2026.11.6' });
+});
+
+test('a beta from a branch that is behind main does not re-date a note that already shipped', () => {
+  assert.deepEqual(since([rel('2026.11.5', 'a'), rel('2026.11.6-beta.1')], { version: '2026.11.6', ids: ['a'] }), { a: '2026.11.5' });
+  assert.deepEqual(since([rel('2026.11.5-beta.1', 'a'), rel('2026.11.5-beta.2'), rel('2026.11.5', 'a')], { version: '2026.11.6', ids: ['a'] }), { a: '2026.11.5-beta.1' });
 });
 
 test('a note removed and added again counts from its return', () => {

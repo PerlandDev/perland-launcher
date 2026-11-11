@@ -2,6 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { act, screen } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import type { ReleaseNotes } from '../../ipc/schema';
+import { navigate } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { WhatsNewOnLaunch } from './WhatsNewOnLaunch';
@@ -39,6 +40,15 @@ it('waits for the next launch when another dialog is open', async () => {
   } finally {
     other.remove();
   }
+});
+
+it('waits for the next launch when a link opened another screen', async () => {
+  const { calls } = renderApp(<WhatsNewOnLaunch firstRunDone notes={notes} settleMs={SETTLE} />, updated);
+  // What a perland:// link does on launch: a screen, not a dialog.
+  act(() => navigate({ name: 'joinServer', invite: 'asalith' }));
+  await settled();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(sent(calls, 'whats_new_mark')).toHaveLength(0);
 });
 
 it('waits for the next launch when a game is starting', async () => {
