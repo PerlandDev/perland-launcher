@@ -1402,8 +1402,9 @@ mod tests {
             .await
             .unwrap();
         let raw = std::fs::read_to_string(lib.dir().join(LIST)).unwrap();
+        // A look is an optional field, not a new version of the list: it is written as any list is.
         assert!(!raw.contains("look"));
-        assert!(raw.contains("\"version\": 2"));
+        assert!(raw.contains(&format!("\"version\": {VERSION}")));
         assert_eq!(lib.entry(&a.id).await.unwrap().look, None);
     }
 
