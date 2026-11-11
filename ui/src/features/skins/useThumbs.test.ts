@@ -70,6 +70,27 @@ it('pieces read their own sheet', async () => {
   expect(got.thumbs!.piece(manifest.pieces[2]!)).toMatchObject({ backgroundPosition: `${(2 / 23) * 100}% 0%` });
 });
 
+it('a piece shown by its head is cut from the same sheet, one download for both views', async () => {
+  const { manifest, files, got } = thumbsHarness(3, sheets(SHEET));
+  const piece = manifest.pieces[2]!;
+  await waitFor(() => expect(got.thumbs!.head(piece)).not.toBeNull());
+  // 22 pieces, 24 a row: one row of 1152 x 96 px; the third head starts 2 x 48 + 12 px in.
+  expect(got.thumbs!.head(piece)).toMatchObject({ backgroundSize: '4800% 400%', backgroundPosition: `${(108 / 1128) * 100}% 0%` });
+  expect(got.thumbs!.piece(piece)).toMatchObject({ backgroundSize: '2400% 100%' });
+  expect(files).toEqual(['b'.repeat(64)]);
+  // Each view keeps its own style, the same object on every draw.
+  expect(got.thumbs!.head(piece)).toBe(got.thumbs!.head(piece));
+  expect(got.thumbs!.head(piece)).not.toBe(got.thumbs!.piece(piece));
+});
+
+it('without a sheet, a head is cut from the piece\'s own thumbnail', async () => {
+  const { manifest, files, got } = thumbsHarness(3, undefined);
+  const piece = manifest.pieces[0]!;
+  await waitFor(() => expect(got.thumbs!.head(piece)).not.toBeNull());
+  expect(got.thumbs!.head(piece)).toMatchObject({ backgroundImage: `url("${PNG}")`, backgroundSize: '200% 400%', backgroundPosition: '50% 0%' });
+  expect(files).toEqual([piece.thumb]);
+});
+
 it.each([
   ['a catalog from before sheets', undefined],
   ['a sheet with no file', sheets('', 0)],

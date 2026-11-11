@@ -3,7 +3,7 @@
 // shows each entry from its own `thumb` file instead. Draw the answer with `CatalogThumb`.
 import { useCallback, useMemo, type CSSProperties } from 'react';
 import type { CatalogLook, CatalogPiece } from '../../ipc/schema';
-import { sheetCell, sheetOf, wholeThumb, type SheetList } from './thumbSheet';
+import { sheetCell, sheetHead, sheetOf, wholeHead, wholeThumb, type SheetList } from './thumbSheet';
 import { fileFailed, type Catalog } from './useCatalog';
 
 /** A sheet under a short address, by hash. A sheet is named by the CSS of every thumbnail cut from it: hundreds of
@@ -39,7 +39,12 @@ export interface Thumbs {
   look(look: CatalogLook): CSSProperties | null;
   /** The same for a piece, from the pieces' sheet. */
   piece(piece: CatalogPiece): CSSProperties | null;
+  /** The piece's thumbnail shown by its head alone, in a square box: for what is worn on the head. */
+  head(piece: CatalogPiece): CSSProperties | null;
 }
+
+/** What of a thumbnail is shown: all of it (a box 1:2), or its head (a square box). */
+type View = 'whole' | 'head';
 
 /** Call it in the component that called `useCatalog`, with its answer. */
 export function useThumbs(catalog: Catalog): Thumbs {
@@ -52,7 +57,7 @@ export function useThumbs(catalog: Catalog): Thumbs {
   }, [manifest]);
 
   const thumb = useCallback(
-    (list: SheetList, entry: { id: string; thumb: string }): CSSProperties | null => {
+    (list: SheetList, entry: { id: string; thumb: string }, view: View = 'whole'): CSSProperties | null => {
       if (!manifest) return null;
       const sheet = sheetOf(manifest, list);
       const index = places[list].get(entry.id);
@@ -60,15 +65,15 @@ export function useThumbs(catalog: Catalog): Thumbs {
       const data = image(cut ? sheet.file : entry.thumb);
       if (data === undefined) return null;
       const url = cut ? sheetUrl(sheet.file, data) : data;
-      const key = `${list}:${entry.id}`;
+      const key = `${list}:${view}:${entry.id}`;
       const made = places.styles.get(key);
       if (made?.url === url) return made.style;
-      const style = cut ? sheetCell(url, sheet.columns, manifest[list].length, index) : wholeThumb(url);
+      const style = cut ? (view === 'head' ? sheetHead : sheetCell)(url, sheet.columns, manifest[list].length, index) : (view === 'head' ? wholeHead : wholeThumb)(url);
       places.styles.set(key, { url, style });
       return style;
     },
     [manifest, places, image],
   );
 
-  return useMemo(() => ({ look: (look) => thumb('looks', look), piece: (piece) => thumb('pieces', piece) }), [thumb]);
+  return useMemo(() => ({ look: (look) => thumb('looks', look), piece: (piece) => thumb('pieces', piece), head: (piece) => thumb('pieces', piece, 'head') }), [thumb]);
 }

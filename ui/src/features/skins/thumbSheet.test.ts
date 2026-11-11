@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { CatalogManifest } from '../../ipc/schema';
-import { sheetCell, sheetOf, wholeThumb } from './thumbSheet';
+import { sheetCell, sheetHead, sheetOf, wholeHead, wholeThumb } from './thumbSheet';
 
 const manifest = (sheets?: CatalogManifest['sheets']): CatalogManifest => ({
   formatVersion: 1, version: 'v', license: 'CC0-1.0', slots: [], tags: [], pieces: [], looks: [], expressions: [], sheets,
@@ -38,6 +38,32 @@ test('a thumbnail of its own fills its box', () => {
     backgroundPosition: '0% 0%',
     imageRendering: 'pixelated',
   });
+});
+
+test('the head of a thumbnail of its own is the middle half of its top quarter, in a square box', () => {
+  // The box shows 24 of the thumbnail's 48 x 96 px: the picture is twice as wide and four times as tall as the box.
+  expect(wholeHead('u')).toEqual({
+    backgroundImage: 'url("u")',
+    backgroundRepeat: 'no-repeat',
+    backgroundSize: '200% 400%',
+    backgroundPosition: '50% 0%',
+    imageRendering: 'pixelated',
+  });
+});
+
+test('the head of a cell is found in its sheet, whatever size it is shown at', () => {
+  // 50 entries, 24 a row: a sheet of 1152 x 288 px, of which the box shows 24 x 24.
+  expect(sheetHead('blob:sheet', 24, 50, 0)).toEqual({
+    backgroundImage: 'url("blob:sheet")',
+    backgroundRepeat: 'no-repeat',
+    backgroundSize: '4800% 1200%',
+    backgroundPosition: `${(12 / 1128) * 100}% 0%`,
+    imageRendering: 'pixelated',
+  });
+  // Entry 25 is the second cell of the second row: its head starts 48 + 12 px in and 96 px down.
+  expect(sheetHead('u', 24, 50, 25).backgroundPosition).toBe(`${(60 / 1128) * 100}% ${(96 / 264) * 100}%`);
+  // The last cell of the last row stops 12 px short of the right edge, and 72 px short of the bottom.
+  expect(sheetHead('u', 2, 4, 3)).toMatchObject({ backgroundSize: '400% 800%', backgroundPosition: `${(60 / 72) * 100}% ${(96 / 168) * 100}%` });
 });
 
 test('a manifest has a sheet only when it names a file and at least one column', () => {
