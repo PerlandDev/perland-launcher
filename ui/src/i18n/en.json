@@ -1003,7 +1003,17 @@
       "shelfForward": "More {{tag}} looks",
       "allLooks": "All looks",
       "showMore": "Show more looks",
-      "clear": "Clear search and filters"
+      "clear": "Clear search and filters",
+      "back": "Back to looks",
+      "previous": "Previous look",
+      "next": "Next look",
+      "position": "{{n}} of {{count}}",
+      "wears": "What it wears",
+      "base": "Body and face",
+      "colours": "Colours: {{names}}",
+      "slot": { "body": "Body", "eyes": "Eyes", "brows": "Brows", "mouth": "Mouth", "face_detail": "Face detail", "beard": "Beard", "bottom": "Bottom", "shoes": "Shoes", "top": "Top", "belt": "Belt", "hands": "Hands", "neck": "Neck", "back": "Back", "hair": "Hair", "glasses": "Glasses", "hat": "Hat" },
+      "customize": "Customize",
+      "have": "In your wardrobe"
     },
     "title": "Skins",
     "hotbar": "Tools",

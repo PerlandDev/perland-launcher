@@ -1,158 +1,118 @@
-// The Catalog tab: Perland's ready-made looks. Shelves and a grid to browse them (LooksBrowse); the picked one stands
-// on a figure at right with the pieces it's made of and the tab's one lit key, Add to my wardrobe.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+// The Catalog tab: Perland's ready-made looks. Shelves and a grid to browse them (LooksBrowse); picking one opens its
+// page (LookPage), with the look on a figure, what it's made of, and the keys that put it in the wardrobe. The looks
+// stay as they were underneath, so going back lands where the player left.
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { skipToken, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { HumanArmsUp } from 'pixelarticons/react';
-import { commands } from '../../ipc/commands';
-import type { CatalogLook, CatalogManifest, SkinEntry, SkinLook } from '../../ipc/schema';
-import { pushError } from '../../state/toasts';
-import { Button } from '../../ui/Button';
-import { Plus } from '../../ui/Icon';
-import { Menu, type MenuHandle } from '../../ui/Menu';
-import { useSingleFlight } from '../../ui/useSingleFlight';
+import type { CatalogLook, SkinEntry } from '../../ipc/schema';
 import { browseLooks, NO_FILTER, type Lang, type LookFilter } from './catalogSearch';
 import './catalog.css';
-import { encodeTexture } from './codec';
-import { compose } from './compose';
-import { Pixels } from './paint';
-import { POSES, type Pose } from './poses';
+import { LookPage } from './LookPage';
 import { LooksBrowse } from './LooksBrowse';
-import { Stage } from './Stage';
-import { useCatalog, type Catalog } from './useCatalog';
+import { useCatalog } from './useCatalog';
 import { useThumbs } from './useThumbs';
 
-const NO_PARTS_HIDDEN = new Set<string>();
-/** The face every look starts from: not listed among its pieces, which name what it wears. */
-const BASE_SLOTS = new Set(['body', 'eyes', 'brows', 'mouth']);
-const noop = () => {};
-
-/** A catalog look as a wardrobe look: its pieces with their colours. */
-const asLook = (look: CatalogLook): SkinLook => ({ pieces: look.pieces.map((p) => ({ id: p.id, colours: { ...p.colours } })), painting: look.painting !== undefined });
-
-/** The look put together on its own arm model: its painting (when it has one) under its pieces. */
-async function composeLook(catalog: Catalog, look: CatalogLook) {
-  const [layers, painting] = await Promise.all([catalog.layers(asLook(look), look.model), look.painting ? catalog.pixels(look.painting) : null]);
-  return { texels: compose(painting, layers), painting };
+export interface CatalogPanelProps {
+  /** The account whose wardrobe is shown (null: the loose skins); an added look goes into it. */
+  owner: string | null;
+  /** A look was added to the wardrobe as this skin: the player stays in the catalog. */
+  onAdded: (entry: SkinEntry) => void;
+  /** Open this skin (a look just added, or added earlier) in Create. */
+  onCustomize: (entry: SkinEntry) => void;
 }
 
-function LookPreview({ catalog, manifest, look, lang, owner, onAdded }: { catalog: Catalog; manifest: CatalogManifest; look: CatalogLook; lang: Lang; owner: string | null; onAdded: (entry: SkinEntry) => void }) {
-  const { t } = useTranslation();
-  const [figure, setFigure] = useState<{ id: string; pixels: Pixels } | null>(null);
-  const [pose, setPose] = useState<Pose>('still');
-  const poseMenu = useRef<MenuHandle>(null);
-  const [adding, setAdding] = useState(false);
-  const once = useSingleFlight();
-
-  useEffect(() => {
-    let live = true;
-    composeLook(catalog, look)
-      .then(({ texels }) => live && setFigure({ id: look.id, pixels: new Pixels(texels) }))
-      .catch(() => live && setFigure(null));
-    return () => {
-      live = false;
-    };
-  }, [catalog, look]);
-
-  const tagName = new Map(manifest.tags.map((tag) => [tag.id, tag.name[lang]]));
-  // The byline names what kind of look it is; "New" says when, so it comes last.
-  const kind = [...look.tags.filter((id) => id !== 'new'), ...look.tags.filter((id) => id === 'new')];
-  const firstTag = kind.map((id) => tagName.get(id)).find((n) => n !== undefined);
-  const pieceName = new Map(manifest.pieces.filter((p) => !BASE_SLOTS.has(p.slot)).map((p) => [p.id, p.name[lang]]));
-  const name = look.name[lang];
-
-  const add = () =>
-    once((done) => {
-      setAdding(true);
-      void composeLook(catalog, look)
-        .then(async ({ texels, painting }) => {
-          const texture = encodeTexture(texels);
-          const entry = await commands.skinCreate(name.slice(0, 64), look.model, texture, owner);
-          return commands.skinLookSave(entry.id, asLook(look), painting ? encodeTexture(painting) : null, texture);
-        })
-        .then(onAdded)
-        .catch(pushError)
-        .finally(() => {
-          setAdding(false);
-          done();
-        });
-    });
-
-  return (
-    <section className="catalog-preview" aria-labelledby="catalog-look-name">
-      <header className="catalog-preview-head">
-        <div className="min-w-0">
-          <h2 id="catalog-look-name" className="catalog-preview-name">
-            {name}
-          </h2>
-          <p className="text-sm text-ink-dim">{firstTag ? t('skins.catalog.byTag', { tag: firstTag }) : t('skins.catalog.by')}</p>
-        </div>
-        <Button size="icon" variant="ghost" icon={<HumanArmsUp />} aria-haspopup="menu" aria-label={`${t('skins.poseLabel')}: ${t(`skins.pose.${pose}`)}`} title={`${t('skins.poseLabel')}: ${t(`skins.pose.${pose}`)}`} onClick={(e) => poseMenu.current?.openAt(e.currentTarget)} />
-        <Menu
-          ref={poseMenu}
-          label={t('skins.poseLabel')}
-          trigger={false}
-          className="contents"
-          items={POSES.map((p) => ({ id: p, label: t(`skins.pose.${p}`), icon: p === pose ? <span className="lamp" aria-hidden /> : undefined, onSelect: () => setPose(p) }))}
-        />
-      </header>
-      <div className="catalog-figure">
-        <Stage
-          pixels={figure?.id === look.id ? figure.pixels : null}
-          rev={0}
-          model={look.model}
-          hidden={NO_PARTS_HIDDEN}
-          paintLayer="base"
-          pose={pose}
-          paused={false}
-          hover={null}
-          label={t('skins.catalog.figure', { name })}
-          paintable={false}
-          onHover={noop}
-          onBegin={noop}
-          onPaint={noop}
-          onEnd={noop}
-        />
-      </div>
-      <ul className="catalog-pieces" aria-label={t('skins.catalog.pieces')}>
-        {look.pieces.map((p) => {
-          const piece = pieceName.get(p.id);
-          return piece ? (
-            <li key={p.id} className="tag">
-              {piece}
-            </li>
-          ) : null;
-        })}
-      </ul>
-      <Button variant="primary" size="lg" className="catalog-add" icon={<Plus />} aria-disabled={adding || undefined} onClick={add}>
-        {adding ? t('skins.catalog.adding') : t('skins.catalog.add')}
-      </Button>
-      <p className="text-center text-sm text-ink-dim">{t('skins.catalog.addNote')}</p>
-    </section>
-  );
-}
-
-/** `owner` is the account whose wardrobe is shown (null: the loose skins); an added look goes into it. */
-export function CatalogPanel({ owner, onAdded }: { owner: string | null; onAdded: (entry: SkinEntry) => void }) {
+export function CatalogPanel({ owner, onAdded, onCustomize }: CatalogPanelProps) {
   const { t, i18n } = useTranslation();
   const lang: Lang = i18n.language.startsWith('es') ? 'es' : 'en';
   const catalog = useCatalog();
   const thumbs = useThumbs(catalog);
   const { manifest, status } = catalog;
   const [filter, setFilter] = useState<LookFilter>(NO_FILTER);
-  const [picked, setPicked] = useState<string | null>(null);
+  // The look whose page is open.
+  const [opened, setOpened] = useState<string | null>(null);
+  // What opened the page (the tile or key pressed, and the look it opened), and where the keyboard lands when the page
+  // closes: on a look's tile, or on the tag key the page chose.
+  const origin = useRef<{ look: string; from: HTMLElement | null } | null>(null);
+  const landing = useRef<{ look: string } | 'tag' | null>(null);
+  const root = useRef<HTMLDivElement>(null);
   const looks = useMemo(() => (manifest ? browseLooks(manifest, filter, lang) : []), [manifest, filter, lang]);
-  const open = useCallback((look: CatalogLook) => setPicked(look.id), []);
+  const look = useMemo(() => manifest?.looks.find((l) => l.id === opened && !l.retired) ?? null, [manifest, opened]);
+  const at = look ? looks.indexOf(look) : -1;
+
+  // The looks added from here, by look. The wardrobe (the Skins screen's own list, only read here) says whether each is
+  // still there; one counts until the list has shown it once, since it joins the list a moment after it's saved.
+  const [added, setAdded] = useState<ReadonlyMap<string, SkinEntry>>(new Map());
+  const [listed, setListed] = useState<ReadonlySet<string>>(new Set());
+  const wardrobe = useQuery<SkinEntry[]>({ queryKey: ['skins', owner], queryFn: skipToken }).data;
+  const inWardrobe = useMemo(() => new Set(wardrobe?.map((e) => e.id)), [wardrobe]);
+  const fresh = [...added.values()].filter((e) => inWardrobe.has(e.id) && !listed.has(e.id));
+  if (fresh.length > 0) setListed(new Set([...listed, ...fresh.map((e) => e.id)]));
+  const kept = look ? (added.get(look.id) ?? null) : null;
+  const mine = kept && (wardrobe === undefined || inWardrobe.has(kept.id) || !listed.has(kept.id)) ? kept : null;
+
+  const open = useCallback((picked: CatalogLook, from?: HTMLElement) => {
+    const focused = document.activeElement;
+    origin.current = { look: picked.id, from: from ?? (focused instanceof HTMLElement && focused !== document.body ? focused : null) };
+    setOpened(picked.id);
+  }, []);
+  const back = useCallback(() => {
+    landing.current = opened === null ? null : { look: opened };
+    setOpened(null);
+  }, [opened]);
+  const step = useCallback(
+    (by: 1 | -1) => {
+      const next = looks[at + by];
+      if (at >= 0 && next) setOpened(next.id);
+    },
+    [looks, at],
+  );
+  const random = useCallback(() => {
+    // Another look than the one open, when there is one.
+    const others = looks.length > 1 ? looks.filter((l) => l.id !== opened) : looks;
+    const picked = others[Math.floor(Math.random() * others.length)];
+    if (!picked) return;
+    // From the looks it opens a page; from a page it is one more step.
+    if (look) setOpened(picked.id);
+    else open(picked);
+  }, [looks, opened, look, open]);
+  const showTag = useCallback((tag: string) => {
+    setFilter((f) => ({ ...NO_FILTER, sort: f.sort, tag }));
+    landing.current = 'tag';
+    setOpened(null);
+  }, []);
+  const keep = useCallback(
+    (from: CatalogLook, entry: SkinEntry, how: 'add' | 'customize') => {
+      setAdded((m) => (m.get(from.id) === entry ? m : new Map(m).set(from.id, entry)));
+      (how === 'add' ? onAdded : onCustomize)(entry);
+    },
+    [onAdded, onCustomize],
+  );
+
+  // Back from a look's page, the keyboard carries on from where the player is: the tile that opened the page if they
+  // never left that look, else the grid's tile of the look last open (scrolled into view, if it's drawn), or the tag
+  // key the page chose.
+  const browsing = look === null;
+  useLayoutEffect(() => {
+    if (!browsing) return;
+    const to = landing.current;
+    landing.current = null;
+    if (to === null) return;
+    if (to === 'tag') return root.current?.querySelector<HTMLElement>('.look-tag-keys [aria-pressed="true"]')?.focus();
+    const from = origin.current;
+    const tiles = root.current?.querySelectorAll<HTMLElement>('.look-grid [data-look]') ?? [];
+    (from?.look === to.look && from.from?.isConnected ? from.from : [...tiles].find((tile) => tile.dataset.look === to.look))?.focus();
+  }, [browsing]);
 
   if (catalog.loading) {
     return (
-      <div className="catalog" aria-busy="true">
+      <div className="catalog-tab" aria-busy="true">
         <p className="catalog-message text-ink-dim">{t('skins.catalog.loading')}</p>
       </div>
     );
   }
   if (!manifest) {
     return (
-      <div className="catalog">
+      <div className="catalog-tab">
         <div className="catalog-message">
           <p className="empty-slot">{t('skins.catalog.unavailable')}</p>
           {status === 'too_new' && <p className="info-line">{t('skins.catalog.tooNew')}</p>}
@@ -160,20 +120,26 @@ export function CatalogPanel({ owner, onAdded }: { owner: string | null; onAdded
       </div>
     );
   }
-
-  // The picked look stays shown while a search hides it; with nothing picked, the first look of the grid is.
-  const shown = manifest.looks.find((l) => l.id === picked && !l.retired) ?? looks[0] ?? null;
-  const random = () => {
-    // Another look than the one showing, when there is one.
-    const others = looks.length > 1 ? looks.filter((l) => l.id !== shown?.id) : looks;
-    const look = others[Math.floor(Math.random() * others.length)];
-    if (look) setPicked(look.id);
-  };
-
   return (
-    <div className="catalog">
-      <LooksBrowse manifest={manifest} status={status} lang={lang} thumbs={thumbs} filter={filter} looks={looks} picked={shown?.id ?? null} onFilter={setFilter} onOpen={open} onRandom={random} />
-      {shown && <LookPreview key={shown.id} catalog={catalog} manifest={manifest} look={shown} lang={lang} owner={owner} onAdded={onAdded} />}
+    <div ref={root} className="catalog-tab">
+      <LooksBrowse hidden={!browsing} manifest={manifest} status={status} lang={lang} thumbs={thumbs} filter={filter} looks={looks} onFilter={setFilter} onOpen={open} onRandom={random} />
+      {look && (
+        <LookPage
+          catalog={catalog}
+          manifest={manifest}
+          look={look}
+          lang={lang}
+          owner={owner}
+          at={at}
+          total={looks.length}
+          mine={mine}
+          onStep={step}
+          onBack={back}
+          onRandom={random}
+          onTag={showTag}
+          onKept={keep}
+        />
+      )}
     </div>
   );
 }

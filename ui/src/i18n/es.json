@@ -1003,7 +1003,17 @@
       "shelfForward": "Más estilos de {{tag}}",
       "allLooks": "Todos los estilos",
       "showMore": "Mostrar más estilos",
-      "clear": "Quitar la búsqueda y los filtros"
+      "clear": "Quitar la búsqueda y los filtros",
+      "back": "Volver a los estilos",
+      "previous": "Estilo anterior",
+      "next": "Estilo siguiente",
+      "position": "{{n}} de {{count}}",
+      "wears": "Lo que lleva",
+      "base": "Cuerpo y cara",
+      "colours": "Colores: {{names}}",
+      "slot": { "body": "Cuerpo", "eyes": "Ojos", "brows": "Cejas", "mouth": "Boca", "face_detail": "Detalle", "beard": "Barba", "bottom": "Piernas", "shoes": "Calzado", "top": "Torso", "belt": "Cinturón", "hands": "Manos", "neck": "Cuello", "back": "Espalda", "hair": "Pelo", "glasses": "Lentes", "hat": "Gorro" },
+      "customize": "Personalizar",
+      "have": "En tu guardarropa"
     },
     "title": "Skins",
     "hotbar": "Herramientas",

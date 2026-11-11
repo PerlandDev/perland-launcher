@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
 import { mockCatalog } from '../../ipc/mockCatalog';
-import type { CatalogStatus, SkinEntry } from '../../ipc/schema';
+import type { CatalogManifest, CatalogStatus, SkinEntry } from '../../ipc/schema';
 import { sent } from '../../test/backend';
 import { manyLooks, NEW_LOOKS } from '../../test/manyLooks';
 import { renderWithProviders } from '../../test/render';
@@ -22,19 +22,23 @@ vi.mock('./stageScene', () => ({
 
 const OWNER = '5627dd98-e6be-3c21-b8a8-e92344183641';
 
-/** `looks` swaps the mock's three looks for that many (see `manyLooks`). */
-function renderPanel({ status, looks, onAdded = vi.fn() }: { status?: CatalogStatus; looks?: number; onAdded?: (entry: SkinEntry) => void } = {}) {
+/** `looks` swaps the mock's three looks for that many (see `manyLooks`); `manifest` changes what the catalog answers. */
+function renderPanel({ status, looks, manifest }: { status?: CatalogStatus; looks?: number; manifest?: (from: CatalogManifest) => CatalogManifest } = {}) {
   const backend = createMockBackend();
-  if (status) backend.state.skins.catalogStatus = status;
-  if (looks !== undefined) backend.state.skins.catalog.manifest = manyLooks(backend.state.skins.catalog.manifest, looks);
+  const skins = backend.state.skins;
+  if (status) skins.catalogStatus = status;
+  if (looks !== undefined) skins.catalog.manifest = manyLooks(skins.catalog.manifest, looks);
+  if (manifest) skins.catalog.manifest = manifest(skins.catalog.manifest);
   const calls: [string, unknown][] = [];
-  const result = renderWithProviders(<CatalogPanel owner={OWNER} onAdded={onAdded} />, {
+  const onAdded = vi.fn<(entry: SkinEntry) => void>();
+  const onCustomize = vi.fn<(entry: SkinEntry) => void>();
+  const result = renderWithProviders(<CatalogPanel owner={OWNER} onAdded={onAdded} onCustomize={onCustomize} />, {
     ipc: (cmd, args) => {
       calls.push([cmd, args]);
       return backend.handle(cmd, args);
     },
   });
-  return { ...result, calls, onAdded, manifest: backend.state.skins.catalog.manifest };
+  return { ...result, backend, calls, onAdded, onCustomize, manifest: skins.catalog.manifest };
 }
 
 afterEach(() => {
@@ -44,7 +48,13 @@ afterEach(() => {
 
 const grid = () => screen.findByRole('list', { name: 'Looks' });
 const names = (list: HTMLElement) => within(list).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent);
-const tagKeys = () => within(screen.getByRole('group', { name: 'Tags' })).getAllByRole('button').map((b) => b.textContent);
+const tagKeys = () => within(screen.getByRole('group', { name: 'Tags' })).getAllByRole('button', { pressed: undefined }).filter((b) => b.classList.contains('chip')).map((b) => b.textContent);
+/** Opens the page of a look of the grid. */
+async function openLook(user: ReturnType<typeof renderPanel>['user'], name: string) {
+  await user.click(within(await grid()).getByRole('button', { name }));
+  return screen.getByRole('region', { name });
+}
+const position = () => screen.getByRole('region').querySelector('.look-page-at')?.textContent;
 const tagKey = (name: string) => within(screen.getByRole('group', { name: 'Tags' })).getByRole('button', { name: new RegExp(`^${name} \\d+$`) });
 
 it('shows looks and filters by tag', async () => {
@@ -243,45 +253,215 @@ it('400 looks: the tag, the arms and the order work together', async () => {
   expect(names(list).slice(0, 3)).toEqual(['Brave look 001', 'Brave look 011', 'Dusty look 003']);
 });
 
-it('Random look shows a look of the current results, another than the one showing', async () => {
+it('Random look opens a look of the current results, and then another than the one open', async () => {
   const { user } = renderPanel({ looks: 400 });
   await grid();
   await user.click(tagKey('New'));
-  // The first look of the results is showing; the other 19 are in the draw.
-  expect(screen.getByRole('region', { name: 'Amber look 000' })).toBeInTheDocument();
   vi.spyOn(Math, 'random').mockReturnValue(0);
+  await user.click(screen.getByRole('button', { name: 'Random look' }));
+  expect(screen.getByRole('region', { name: 'Amber look 000' })).toBeInTheDocument();
+  expect(position()).toBe('1 of 20');
+  // From its page: the other 19 are in the draw.
   await user.click(screen.getByRole('button', { name: 'Random look' }));
   expect(screen.getByRole('region', { name: 'Brave look 001' })).toBeInTheDocument();
   vi.spyOn(Math, 'random').mockReturnValue(0.999);
   await user.click(screen.getByRole('button', { name: 'Random look' }));
   expect(screen.getByRole('region', { name: 'Jolly look 019' })).toBeInTheDocument();
+  expect(position()).toBe('20 of 20');
 });
 
-it('shows the picked look with what it wears, not the face it starts from', async () => {
+it("a look's page names it, its tags, its arms and what it wears, piece by piece", async () => {
   const { user } = renderPanel();
-  const list = await grid();
-  await user.click(within(list).getByRole('button', { name: 'Knight' }));
-  expect(within(list).getByRole('button', { name: 'Knight' })).toHaveAttribute('aria-pressed', 'true');
-  const preview = screen.getByRole('region', { name: 'Knight' });
-  // Its kind, not that it's new.
-  expect(within(preview).getByText('By Perland · Fantasy')).toBeInTheDocument();
-  const pieces = within(preview).getByRole('list', { name: 'Pieces' });
-  expect(within(pieces).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['Plate greaves', 'Boots', 'Plate armour', 'Gloves', 'Cape', "Knight's helm"]);
+  const page = await openLook(user, 'Knight');
+  // The looks give way to the page.
+  expect(screen.queryByRole('list', { name: 'Looks' })).not.toBeInTheDocument();
+  expect(within(page).getByRole('heading', { name: 'Knight' })).toBeInTheDocument();
+  expect(within(page).getByText('By Perland · Classic arms')).toBeInTheDocument();
+  expect(within(within(page).getByRole('group', { name: 'Tags' })).getAllByRole('button').map((b) => b.textContent)).toEqual(['New', 'Fantasy']);
+  const rows = (name: string) => within(within(page).getByRole('list', { name })).getAllByRole('listitem').map((li) => li.textContent);
+  // From head to toe, each piece under where it's worn.
+  expect(rows('What it wears')).toEqual(["HatKnight's helm", 'TopPlate armour', 'BackCape', 'HandsGloves', 'BottomPlate greaves', 'ShoesBoots']);
+  // The body and the face it starts from, apart.
+  expect(rows('Body and face')).toEqual(['BodyPlain body', 'EyesRound eyes', 'BrowsStraight brows', 'MouthSmile']);
+  // Each piece's colours as the look wears them, named for those who can't see them.
+  const cape = within(page).getByRole('list', { name: 'What it wears' }).querySelectorAll('li')[2]!;
+  const dots = within(cape).getByRole('img', { name: 'Colours: Main, Trim' });
+  expect([...dots.children].map((dot) => (dot as HTMLElement).style.backgroundColor)).toEqual(['rgb(122, 31, 43)', 'rgb(212, 175, 55)']);
+  // A piece with no colour area has no dots.
+  expect(within(within(page).getByRole('list', { name: 'Body and face' }).querySelectorAll('li')[3]!).queryByRole('img')).not.toBeInTheDocument();
 });
 
-it('add to my wardrobe creates a skin for the shown account and saves its look', async () => {
-  const { user, calls, onAdded } = renderPanel();
+it("a look's colours are the look's own, not the pieces' defaults", async () => {
+  const { user } = renderPanel({
+    manifest: (m) => ({ ...m, looks: m.looks.map((l) => (l.id === 'look-knight' ? { ...l, pieces: l.pieces.map((p) => (p.id === 'back-cape' ? { ...p, colours: { main: '#102030' } } : p)) } : l)) }),
+  });
+  const page = await openLook(user, 'Knight');
+  const dots = within(within(page).getByRole('list', { name: 'What it wears' }).querySelectorAll('li')[2]!).getByRole('img');
+  // The area the look doesn't name keeps the piece's default.
+  expect([...dots.children].map((dot) => (dot as HTMLElement).style.backgroundColor)).toEqual(['rgb(16, 32, 48)', 'rgb(212, 175, 55)']);
+});
+
+it('a tag on the page leads to the looks of that tag', async () => {
+  const { user } = renderPanel();
+  const page = await openLook(user, 'Knight');
+  await user.click(within(page).getByRole('button', { name: 'Fantasy' }));
+  expect(screen.queryByRole('region', { name: 'Knight' })).not.toBeInTheDocument();
+  expect(tagKey('Fantasy')).toHaveAttribute('aria-pressed', 'true');
+  expect(tagKey('Fantasy')).toHaveFocus();
+  expect(names(await grid())).toEqual(['Knight']);
+});
+
+it('the arrows and the left and right keys step through the looks being browsed', async () => {
+  const { user } = renderPanel({ looks: 400 });
+  await openLook(user, 'Amber look 000');
+  expect(position()).toBe('1 of 400');
+  expect(screen.getByRole('button', { name: 'Previous look' })).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: 'Next look' }));
+  expect(screen.getByRole('region', { name: 'Brave look 001' })).toBeInTheDocument();
+  expect(position()).toBe('2 of 400');
+  await user.keyboard('{ArrowRight}{ArrowRight}');
+  expect(screen.getByRole('region', { name: 'Dusty look 003' })).toBeInTheDocument();
+  await user.keyboard('{ArrowLeft}');
+  expect(screen.getByRole('region', { name: 'Calm look 002' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Previous look' }));
+  await user.keyboard('{ArrowLeft}{ArrowLeft}{ArrowLeft}');
+  // The first look is as far back as it goes.
+  expect(screen.getByRole('region', { name: 'Amber look 000' })).toBeInTheDocument();
+  // Its arms follow each look.
+  expect(screen.getByText('By Perland · Classic arms')).toBeInTheDocument();
+  await user.keyboard('{ArrowRight}');
+  expect(screen.getByText('By Perland · Slim arms')).toBeInTheDocument();
+});
+
+it('stepping stays inside the search, the tag and the order', async () => {
+  const { user } = renderPanel({ looks: 400 });
   await grid();
-  await user.click(screen.getByRole('button', { name: 'Add to my wardrobe' }));
+  await user.click(tagKey('New'));
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Arms' }), 'Slim');
+  // The page takes the keyboard when it opens.
+  expect(await openLook(user, 'Happy look 017')).toHaveFocus();
+  expect(position()).toBe('9 of 10');
+  await user.click(screen.getByRole('button', { name: 'Next look' }));
+  expect(screen.getByRole('region', { name: 'Jolly look 019' })).toBeInTheDocument();
+  // At the end the key goes out, and the page takes the keyboard back from it.
+  expect(screen.getByRole('button', { name: 'Next look' })).toBeDisabled();
+  expect(screen.getByRole('region', { name: 'Jolly look 019' })).toHaveFocus();
+  await user.keyboard('{ArrowRight}');
+  expect(screen.getByRole('region', { name: 'Jolly look 019' })).toBeInTheDocument();
+});
+
+it('back (or Escape) returns to the looks as they were, on the look last open', async () => {
+  const { user } = renderPanel({ looks: 150 });
+  const list = await grid();
+  await user.click(screen.getByRole('button', { name: 'Show more looks' }));
+  await user.type(screen.getByRole('searchbox', { name: 'Search looks' }), 'look');
+  await user.click(screen.getByRole('button', { name: 'Show more looks' }));
+  await openLook(user, 'Amber look 100');
+  await user.keyboard('{ArrowRight}');
+  await user.click(screen.getByRole('button', { name: 'Back to looks' }));
+  expect(screen.queryByRole('region')).not.toBeInTheDocument();
+  // The same grid: its search, and the pages already drawn.
+  expect(await grid()).toBe(list);
+  expect(screen.getByRole('searchbox', { name: 'Search looks' })).toHaveValue('look');
+  expect(names(list)).toHaveLength(120);
+  expect(within(list).getByRole('button', { name: 'Brave look 101' })).toHaveFocus();
+  await user.keyboard('{Enter}');
+  expect(screen.getByRole('region', { name: 'Brave look 101' })).toBeInTheDocument();
+  await user.keyboard('{Escape}');
+  expect(screen.queryByRole('region')).not.toBeInTheDocument();
+  expect(within(list).getByRole('button', { name: 'Brave look 101' })).toHaveFocus();
+});
+
+it('back from a look opened on a shelf returns to that shelf, not to the grid', async () => {
+  const { user } = renderPanel({ looks: 400 });
+  await grid();
+  const shelf = within(screen.getByRole('group', { name: 'Looks by tag' })).getByRole('list', { name: `New ${NEW_LOOKS}` });
+  await user.click(within(shelf).getByRole('button', { name: 'Calm look 002' }));
+  expect(screen.getByRole('region', { name: 'Calm look 002' })).toBeInTheDocument();
+  await user.keyboard('{Escape}');
+  expect(within(shelf).getByRole('button', { name: 'Calm look 002' })).toHaveFocus();
+  // Having stepped on, the player is among all the looks: the grid's tile of the look they ended on.
+  await user.click(within(shelf).getByRole('button', { name: 'Calm look 002' }));
+  await user.keyboard('{ArrowRight}{Escape}');
+  expect(within(await grid()).getByRole('button', { name: 'Dusty look 003' })).toHaveFocus();
+});
+
+it('add to my wardrobe creates a skin for the shown account, saves its look and stays on the page', async () => {
+  const { user, calls, onAdded, onCustomize } = renderPanel();
+  const page = await openLook(user, 'Astronaut');
+  await user.click(within(page).getByRole('button', { name: 'Add to my wardrobe' }));
   await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(1));
   expect(sent(calls, 'skin_create')).toEqual([{ name: 'Astronaut', model: 'classic', texture: 'data:image/png;base64,ENCODED', owner: OWNER, seeded: false }]);
   const [save] = sent(calls, 'skin_look_save') as { id: string; look: { pieces: { id: string }[]; painting: boolean }; painting: string | null }[];
-  const created = (onAdded as ReturnType<typeof vi.fn>).mock.calls[0]![0] as SkinEntry;
+  const created = onAdded.mock.calls[0]![0];
   expect(save!.id).toBe(created.id);
   expect(save!.look.painting).toBe(false);
   expect(save!.painting).toBeNull();
   expect(save!.look.pieces.map((p) => p.id)).toContain('top-space-suit');
   expect(created.look?.pieces.length).toBe(save!.look.pieces.length);
+  // Still on the look, which now says it's the player's; nothing opens in Create.
+  expect(onCustomize).not.toHaveBeenCalled();
+  expect(within(page).getByText('In your wardrobe')).toBeInTheDocument();
+  expect(within(page).queryByRole('button', { name: 'Add to my wardrobe' })).not.toBeInTheDocument();
+  // Another look is still to add; coming back to this one, it still isn't.
+  await user.keyboard('{ArrowRight}');
+  expect(screen.getByRole('button', { name: 'Add to my wardrobe' })).toBeInTheDocument();
+  await user.keyboard('{ArrowLeft}');
+  expect(screen.getByText('In your wardrobe')).toBeInTheDocument();
+});
+
+it('Customize adds the look and hands it on to open in Create', async () => {
+  const { user, calls, onAdded, onCustomize } = renderPanel();
+  const page = await openLook(user, 'Street');
+  await user.click(within(page).getByRole('button', { name: 'Customize' }));
+  await waitFor(() => expect(onCustomize).toHaveBeenCalledTimes(1));
+  expect(sent(calls, 'skin_create')).toEqual([{ name: 'Street', model: 'slim', texture: 'data:image/png;base64,ENCODED', owner: OWNER, seeded: false }]);
+  const [save] = sent(calls, 'skin_look_save') as { id: string }[];
+  expect(onCustomize.mock.calls[0]![0].id).toBe(save!.id);
+  expect(onAdded).not.toHaveBeenCalled();
+});
+
+it('Customize on a look already added opens that skin, without adding it twice', async () => {
+  const { user, calls, onAdded, onCustomize } = renderPanel();
+  const page = await openLook(user, 'Astronaut');
+  await user.click(within(page).getByRole('button', { name: 'Add to my wardrobe' }));
+  await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(1));
+  await user.click(within(page).getByRole('button', { name: 'Customize' }));
+  await waitFor(() => expect(onCustomize).toHaveBeenCalledTimes(1));
+  expect(onCustomize.mock.calls[0]![0]).toEqual(onAdded.mock.calls[0]![0]);
+  expect(sent(calls, 'skin_create')).toHaveLength(1);
+  expect(sent(calls, 'skin_look_save')).toHaveLength(1);
+});
+
+it('a look deleted from the wardrobe can be added again', async () => {
+  const { user, qc, calls, onAdded } = renderPanel();
+  const page = await openLook(user, 'Astronaut');
+  await user.click(within(page).getByRole('button', { name: 'Add to my wardrobe' }));
+  await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(1));
+  const entry = onAdded.mock.calls[0]![0];
+  // The Skins screen lists it a moment later; until then it already counts.
+  expect(within(page).getByText('In your wardrobe')).toBeInTheDocument();
+  // (The list's news reaches the page a tick later, so each change is given its tick.)
+  const wardrobe = (entries: SkinEntry[]) => act(() => new Promise<void>((done) => (qc.setQueryData(['skins', OWNER], entries), setTimeout(done, 20))));
+  await wardrobe([entry]);
+  expect(within(page).getByText('In your wardrobe')).toBeInTheDocument();
+  // Deleted there: the page offers it again, and adding makes a new skin.
+  await wardrobe([]);
+  expect(within(page).queryByText('In your wardrobe')).not.toBeInTheDocument();
+  await user.click(within(page).getByRole('button', { name: 'Add to my wardrobe' }));
+  await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(2));
+  expect(sent(calls, 'skin_create')).toHaveLength(2);
+});
+
+it('a failed add says so and leaves the look to add', async () => {
+  const { user, backend, onAdded } = renderPanel();
+  const page = await openLook(user, 'Astronaut');
+  const handle = backend.handle;
+  backend.handle = (cmd, args) => (cmd === 'skin_create' ? Promise.reject({ category: 'io', code: 'io_error', message: 'The disk is full.' }) : handle(cmd, args));
+  await user.click(within(page).getByRole('button', { name: 'Add to my wardrobe' }));
+  await waitFor(() => expect(within(page).getByRole('button', { name: 'Add to my wardrobe' })).not.toHaveAttribute('aria-disabled'));
+  expect(onAdded).not.toHaveBeenCalled();
+  expect(within(page).queryByText('In your wardrobe')).not.toBeInTheDocument();
 });
 
 it('a cached catalog says so quietly', async () => {
