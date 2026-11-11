@@ -593,13 +593,12 @@
 }
 .piece-thumb {
   display: block;
-  aspect-ratio: 4 / 5;
   min-width: 0;
 }
-/* The thumbnail is a front view twice as tall as it is wide (CatalogThumb, cut from the catalog's sheet): it stands
-   centred in the tile's box, as tall as the box. */
+/* The thumbnail is a front view twice as tall as it is wide (CatalogThumb, cut from the catalog's sheet): 48 x 96,
+   the sheet's own size, so every texel stays square. */
 .piece-thumb > .skin-thumb {
-  width: 62.5%;
+  width: 3rem;
   margin: 0 auto;
 }
 .piece-grid[data-head] {
@@ -608,12 +607,6 @@
 /* What is worn on the head shows the head alone: a square box, filled by the style useThumbs answers for a head. */
 .piece-thumb-head {
   aspect-ratio: 1;
-}
-.piece-tile-look .piece-thumb {
-  aspect-ratio: 5 / 8;
-}
-.piece-tile-look .piece-thumb > .skin-thumb {
-  width: 80%;
 }
 .piece-name {
   display: -webkit-box;
@@ -1020,10 +1013,6 @@
     grid-template-columns: 11rem minmax(0, 1fr) 15rem;
     gap: 0.75rem;
   }
-  .catalog {
-    grid-template-columns: minmax(0, 1fr) 15rem;
-    gap: 0.75rem;
-  }
   /* Narrow: the categories become one scrolling row over the pieces, so the stage keeps its room. */
   .skins-body[data-tab='create'] {
     grid-template-columns: 11rem minmax(0, 1fr) 17.5rem;
@@ -1086,7 +1075,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .catalog-look,
   .piece-tile,
   .expression-chip,
   .hotbar-slot {

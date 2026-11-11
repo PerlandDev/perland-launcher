@@ -44,7 +44,7 @@ function PieceTile({
   const { t } = useTranslation();
   return (
     <li>
-      <button type="button" className="piece-tile" aria-current={picked || undefined} data-worn={worn || undefined} onClick={onPick} {...tryHandlers(tryOn, trying)}>
+      <button type="button" className="piece-tile" title={piece.name[lang]} aria-current={picked || undefined} data-worn={worn || undefined} onClick={onPick} {...tryHandlers(tryOn, trying)}>
         {HEAD_SLOTS.has(piece.slot) ? (
           <span aria-hidden className="piece-thumb piece-thumb-head" style={thumb ?? undefined} />
         ) : (
@@ -73,8 +73,9 @@ function LooksGrid({ looks, lang, thumbs, onPick, tryOn }: { looks: readonly Cat
           <li key={look.id}>
             <button
               type="button"
-              className="piece-tile piece-tile-look"
+              className="piece-tile"
               aria-label={look.name[lang]}
+              title={look.name[lang]}
               onClick={() => onPick(look)}
               {...tryHandlers(tryOn, { key: `look:${look.id}`, name: look.name[lang], change: (l) => applyLook(l, look) })}
             >
