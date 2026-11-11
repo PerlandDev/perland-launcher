@@ -116,6 +116,18 @@ pub fn install_week(day: Day) -> String {
     week_label(day.iso_week().max(EARLIEST_WEEK))
 }
 
+/// The `installWeek` to send on `today`: the one remembered, but never a week after today's
+/// (it was written while the clock was ahead, and the Engine refuses a week in the future).
+pub fn install_week_to_send(remembered: &str, today: Day) -> String {
+    // `YYYY-Www` sorts as text.
+    let now = install_week(today);
+    if remembered > now.as_str() {
+        now
+    } else {
+        remembered.to_string()
+    }
+}
+
 /// Is `label` an `installWeek` the launcher could have written?
 pub fn is_install_week(label: &str) -> bool {
     let Some((year, week)) = label.split_once("-W") else {
@@ -249,6 +261,28 @@ mod tests {
         // A clock in the past.
         assert_eq!(install_week(day("2026-09-27")), "2026-W40");
         assert_eq!(install_week(day("1970-01-01")), "2026-W40");
+    }
+
+    #[test]
+    fn an_install_week_from_a_clock_that_ran_ahead_is_not_sent_as_the_future() {
+        let today = day("2026-11-11");
+        assert_eq!(install_week_to_send("2026-W46", today), "2026-W46");
+        assert_eq!(install_week_to_send("2026-W41", today), "2026-W41");
+        assert_eq!(install_week_to_send("2026-W47", today), "2026-W46");
+        assert_eq!(install_week_to_send("2031-W02", today), "2026-W46");
+        // Across a year's end, and never before the feature.
+        assert_eq!(
+            install_week_to_send("2026-W53", day("2027-01-05")),
+            "2026-W53"
+        );
+        assert_eq!(
+            install_week_to_send("2027-W02", day("2027-01-05")),
+            "2027-W01"
+        );
+        assert_eq!(
+            install_week_to_send("2026-W45", day("2020-01-01")),
+            "2026-W40"
+        );
     }
 
     #[test]

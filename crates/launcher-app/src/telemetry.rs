@@ -19,8 +19,9 @@ use launcher_core::{
     http::HttpClient,
     invite::{client::check_engine_url, InviteClient, Url},
     telemetry::{
-        payload::PingChannel, report_for_error, state::BATCH_BYTES, Client, Counter, Day,
-        ErrorBatch, Outcome, Ping, Report, ReportKind, Scrubber, Sender, State, STATE_FILE,
+        install_week_to_send, payload::PingChannel, report_for_error, state::BATCH_BYTES, Client,
+        Counter, Day, ErrorBatch, Outcome, Ping, Report, ReportKind, Scrubber, Sender, State,
+        STATE_FILE,
     },
     ErrorCode, LauncherError,
 };
@@ -498,7 +499,7 @@ impl Telemetry {
                     first_ever: flags.first_ever,
                     first_this_week: flags.first_this_week,
                     first_this_month: flags.first_this_month,
-                    install_week: state.install_week()?.to_string(),
+                    install_week: install_week_to_send(state.install_week()?, today),
                     counters: state.counters().clone(),
                 })
             });

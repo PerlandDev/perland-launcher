@@ -11,7 +11,7 @@ pub mod scrub;
 pub mod send;
 pub mod state;
 
-pub use date::Day;
+pub use date::{install_week_to_send, Day};
 pub use locale::os_locale;
 pub use payload::{report_for_error, Client, ErrorBatch, Ping, PingChannel, Report, ReportKind};
 pub use scrub::Scrubber;

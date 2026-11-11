@@ -287,13 +287,20 @@ impl Client {
             .unwrap_or("")
             .chars()
             .map(|c| if c == '_' { '-' } else { c })
-            .filter(|c| c.is_ascii_alphabetic() || *c == '-')
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
             .take(LOCALE_MAX)
             .collect();
+        let or_unknown = |text: String| {
+            if text.is_empty() {
+                "unknown".to_string()
+            } else {
+                text
+            }
+        };
         Self {
-            version: tag(version, VERSION_MAX),
+            version: or_unknown(tag(version, VERSION_MAX)),
             os,
-            arch: tag(arch, ARCH_MAX),
+            arch: or_unknown(tag(arch, ARCH_MAX)),
             locale: if locale.is_empty() {
                 "und".into()
             } else {
@@ -499,6 +506,44 @@ mod tests {
         );
         assert_eq!(serde_json::to_value(PingChannel::Beta).unwrap(), "beta");
         assert_eq!(serde_json::to_value(PingChannel::Dev).unwrap(), "dev");
+    }
+
+    #[test]
+    fn version_arch_and_locale_hold_only_what_the_engine_accepts() {
+        let allowed = |text: &str| {
+            !text.is_empty()
+                && text
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "._+-".contains(c))
+        };
+        for (version, arch, locale) in [
+            ("0.9.3-beta.1", "x86_64", "es-419"),
+            ("0.2.15 (dev build)/x", "x86 64/v2", "es_MX.UTF-8"),
+            ("1.0.0+build 7", "aarch64 (arm)", "en US"),
+            ("versión 1", "ärch", "español"),
+            ("", "", ""),
+        ] {
+            let client = Client::new(version, "linux", arch, locale);
+            for (field, value) in [("arch", &client.arch), ("locale", &client.locale)] {
+                assert!(allowed(value), "{field}: {value:?}");
+            }
+            assert!(
+                client.version.is_empty() || allowed(&client.version),
+                "{:?}",
+                client.version
+            );
+        }
+        let client = Client::new("0.9.3-beta.1", "linux", "x86_64", "es-419");
+        assert_eq!(
+            (
+                client.version.as_str(),
+                client.arch.as_str(),
+                client.locale.as_str()
+            ),
+            ("0.9.3-beta.1", "x86_64", "es-419")
+        );
+        assert_eq!(Client::new("", "linux", "", "").arch, "unknown");
+        assert_eq!(Client::new("", "linux", "", "").version, "unknown");
     }
 
     #[test]
