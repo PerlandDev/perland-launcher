@@ -226,7 +226,8 @@ export function PerlandAccountCard() {
 
   return (
     <section className="grid gap-3" aria-labelledby="perland-heading">
-      <h2 id="perland-heading" className="text-lg font-bold">
+      <h2 id="perland-heading" className="flex items-center gap-2 text-lg font-bold">
+        <img src={mark} alt="" width={21} height={18} className="flex-none" />
         {t('perland.title')}
       </h2>
       <p aria-live="polite" className="sr-only">
