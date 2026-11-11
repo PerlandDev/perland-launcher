@@ -93,7 +93,9 @@ fn detect_cards() -> Option<Vec<Card>> {
 }
 
 const INTEL: u16 = 0x8086;
+#[cfg(any(target_os = "linux", test))]
 const NVIDIA: u16 = 0x10de;
+#[cfg(any(target_os = "linux", test))]
 const AMD: u16 = 0x1002;
 
 /// Built into the processor? Only a certain yes: a wrong one would put the wrong words on the
@@ -262,7 +264,7 @@ mod windows {
 
     const PREFERENCES: &str = r"Software\Microsoft\DirectX\UserGpuPreferences";
 
-    fn io(e: windows_registry::Error) -> std::io::Error {
+    fn io(e: impl std::fmt::Display) -> std::io::Error {
         std::io::Error::other(e.to_string())
     }
 
