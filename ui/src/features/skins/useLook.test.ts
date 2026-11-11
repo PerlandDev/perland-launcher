@@ -5,6 +5,7 @@ import { createMockBackend } from '../../ipc/mock';
 import type { CatalogPiece, SkinLook, WornPiece } from '../../ipc/schema';
 import { sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
+import { addFaces, fakeFaceFiles, FAKE_EXPRESSIONS } from '../../test/skinFakes';
 import { useCatalog } from './useCatalog';
 import { useLook, type LookEditor } from './useLook';
 import { useSkinDoc, type SkinDoc, type StrokeOptions } from './useSkinDoc';
@@ -36,18 +37,21 @@ function gate() {
   };
 }
 
-function open(look?: SkinLook, files = gate(), noCatalog = false) {
+/** `faces`: the catalog also has the test expressions and their pieces. */
+function open(look?: SkinLook, files = gate(), noCatalog = false, faces = false) {
   const backend = createMockBackend();
+  if (faces) addFaces(backend.state.skins.catalog);
   if (noCatalog) backend.state.skins.catalogStatus = 'unavailable';
   if (look) backend.state.skins.entries.find((e) => e.id === ID)!.look = look;
   const calls: [string, unknown][] = [];
-  const got: { doc?: SkinDoc; editor?: LookEditor; ready?: boolean; renders: { ids: string[] | undefined; piecesReady: boolean }[] } = { renders: [] };
+  const got: { doc?: SkinDoc; editor?: LookEditor; ready?: boolean; pieces?: readonly CatalogPiece[]; renders: { ids: string[] | undefined; piecesReady: boolean }[] } = { renders: [] };
   function Harness() {
     const doc = useSkinDoc(ID, 'classic', noop, noop, look);
     const catalog = useCatalog();
     got.doc = doc;
     got.editor = useLook(ID, 'classic', doc, catalog);
     got.ready = doc.pixels !== null && catalog.manifest !== null;
+    got.pieces = catalog.manifest?.pieces;
     got.renders.push({ ids: doc.look?.look.pieces.map((p) => p.id), piecesReady: doc.piecesReady });
     return null;
   }
@@ -379,4 +383,73 @@ it('settled waits for a change still loading', async () => {
   files.open();
   await act(() => settled);
   expect(ids(got.doc!.look?.look)).toEqual(['body-plain', 'shoes-moon-boots']);
+});
+
+const FACE: WornPiece[] = [BODY, { id: 'eyes-round', colours: { iris: '#2266cc' } }, { id: 'brows-straight', colours: { main: '#3b2618' } }, { id: 'mouth-smile', colours: {} }];
+const [HAPPY, ANGRY, , BROKEN] = FAKE_EXPRESSIONS as [(typeof FAKE_EXPRESSIONS)[0], (typeof FAKE_EXPRESSIONS)[0], unknown, (typeof FAKE_EXPRESSIONS)[0]];
+
+// First of the tests with expressions: no test before it loads the angry face's files, which stay decoded for the file.
+it('a face preview draws the change, loads only the pieces it shows and leaves the skin alone', async () => {
+  const { got, calls } = open({ pieces: FACE, painting: false }, gate(), false, true);
+  await waitFor(() => expect(got.ready && got.doc!.piecesReady).toBe(true));
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const rev = got.doc!.rev;
+  const texels = new Uint8ClampedArray(got.doc!.pixels!.data);
+  const asked = () => (sent(calls, 'skin_catalog_file') as { sha256: string }[]).map((a) => a.sha256);
+  const before = asked().length;
+  const { applyExpression, setColour } = await import('./look');
+  // The fake brows cover the top half of the face: a preview with red brows is red there.
+  const face = await got.editor!.previewFace((look) => setColour(look, 'brows-straight', 'main', '#ff0000'));
+  expect(face).toHaveLength(8 * 8 * 4);
+  expect([...face!.slice(0, 4)]).toEqual(RED);
+  // Nothing new was needed for a recolour of what is worn.
+  expect(asked()).toHaveLength(before);
+  const plain = await got.editor!.previewFace((look) => look);
+  expect([...plain!.slice(0, 4)]).toEqual([0x3b, 0x26, 0x18, 255]);
+  // An expression loads its own pieces and nothing else.
+  const angry = await got.editor!.previewFace((look) => applyExpression(look, ANGRY, got.pieces!));
+  expect(angry).toHaveLength(8 * 8 * 4);
+  expect(asked().slice(before).sort()).toEqual(['eyes-fierce', 'brows-angry', 'mouth-gritted'].flatMap(fakeFaceFiles).sort());
+  // The skin is as it was: no step, no redraw, no save.
+  await act(() => vi.advanceTimersByTimeAsync(700));
+  expect(got.doc!.rev).toBe(rev);
+  expect(got.doc!.pixels!.data).toEqual(texels);
+  expect(got.doc!.canUndo).toBe(false);
+  expect(got.editor!.look!.pieces).toEqual(FACE);
+  expect(sent(calls, 'skin_look_save')).toEqual([]);
+  expect(sent(calls, 'skin_save')).toEqual([]);
+});
+
+it('an expression goes on as one undo step and keeps the eye colour', async () => {
+  const { got } = open({ pieces: FACE, painting: false }, gate(), false, true);
+  await waitFor(() => expect(got.ready).toBe(true));
+  act(() => got.editor!.applyExpression(ANGRY));
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['body-plain', 'eyes-fierce', 'brows-angry', 'mouth-gritted']));
+  expect(got.editor!.look!.pieces[1]!.colours).toEqual({ iris: '#2266cc' });
+  expect(got.editor!.paintingCovers).toBe(false);
+  act(() => got.doc!.undo());
+  await waitFor(() => expect(got.editor!.look!.pieces).toEqual(FACE));
+  expect(got.doc!.canUndo).toBe(false);
+  // The face already worn, and one the catalog can't dress, are no step at all.
+  act(() => got.editor!.applyExpression(HAPPY));
+  act(() => got.editor!.applyExpression(BROKEN));
+  await act(() => got.editor!.settled());
+  expect(got.editor!.look!.pieces).toEqual(FACE);
+  expect(got.doc!.canUndo).toBe(false);
+});
+
+it('an expression the painting covers raises the hint', async () => {
+  const { got } = open(undefined, gate(), false, true);
+  await waitFor(() => expect(got.ready).toBe(true));
+  const red = opaque(RED);
+  act(() => got.doc!.changeLook({ look: { pieces: [], painting: true }, painting: red }, red));
+  act(() => got.editor!.applyExpression(ANGRY));
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['eyes-fierce', 'brows-angry', 'mouth-gritted']));
+  expect(got.editor!.paintingCovers).toBe(true);
+});
+
+it('without the catalog there is no face preview', async () => {
+  const { got } = open({ pieces: FACE, painting: false }, gate(), true);
+  await waitFor(() => expect(got.doc!.pixels).not.toBeNull());
+  expect(await got.editor!.previewFace((look) => look)).toBeNull();
 });

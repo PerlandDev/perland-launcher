@@ -683,6 +683,7 @@
 }
 .create-category:focus-visible,
 .piece-tile:focus-visible,
+.expression-chip:focus-visible,
 .wearing-x:focus-visible {
   outline: 2px solid var(--color-amber);
   outline-offset: 2px;
@@ -800,6 +801,50 @@
   text-transform: uppercase;
   color: var(--color-ground);
   background: var(--color-lime);
+  border-radius: 2px;
+  corner-shape: notch;
+}
+/* Expressions: a row of small raised keys, each the player's own face (8 texels, six device pixels each) with that
+   expression on. The one worn now sits pressed in its slot with the lime ring, like a picked piece. */
+.expression-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.625rem 0.5rem;
+  padding-bottom: 4px;
+}
+.expression-chip {
+  flex: none;
+  padding: 0.25rem;
+  background: var(--color-raised);
+  border: 0;
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow: 0 4px 0 var(--color-dirt-deep);
+  cursor: pointer;
+  transition:
+    translate 180ms steps(2, end),
+    box-shadow 180ms steps(2, end);
+}
+.expression-chip:hover {
+  background: color-mix(in oklab, var(--color-raised), white 7%);
+}
+.expression-chip:active,
+.expression-chip[aria-current='true'] {
+  translate: 0 4px;
+  box-shadow: 0 0 0 var(--color-dirt-deep);
+}
+.expression-chip[aria-current='true'] {
+  background: var(--color-ground);
+  box-shadow:
+    inset 0 2px 0 rgb(0 0 0 / 0.45),
+    inset 0 0 0 2px var(--color-lime);
+}
+.expression-face {
+  display: block;
+  width: 3rem;
+  height: 3rem;
+  image-rendering: pixelated;
+  background: var(--color-ground);
   border-radius: 2px;
   corner-shape: notch;
 }
@@ -1144,6 +1189,7 @@
 @media (prefers-reduced-motion: reduce) {
   .catalog-look,
   .piece-tile,
+  .expression-chip,
   .hotbar-slot {
     transition: none;
   }

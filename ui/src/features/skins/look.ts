@@ -1,5 +1,5 @@
 // Edits a skin's look: the catalog pieces it wears and their colours.
-import type { CatalogLook, CatalogPiece, SkinLook, WornPiece } from '../../ipc/schema';
+import type { CatalogExpression, CatalogLook, CatalogPiece, SkinLook, WornPiece } from '../../ipc/schema';
 import type { PixelBuffer } from './recolour';
 
 /** Slots whose colours are the character's own (skin, eyes, hair): they follow the player from piece to piece. */
@@ -68,6 +68,33 @@ export function setColour(look: SkinLook, pieceId: string, areaId: string, hex: 
 
 export function applyLook(look: SkinLook, catalogLook: CatalogLook): SkinLook {
   return { ...look, pieces: catalogLook.pieces.map((p) => ({ id: p.id, colours: { ...p.colours } })) };
+}
+
+/**
+ * The expression's eyes, brows and mouth pieces, in that order. Null when it can't be offered: the catalog lacks one,
+ * one is retired, or one isn't a piece of the slot it is named for.
+ */
+export function expressionPieces(expression: CatalogExpression, catalog: readonly CatalogPiece[]): CatalogPiece[] | null {
+  const named = ([['eyes', expression.eyes], ['brows', expression.brows], ['mouth', expression.mouth]] as const).map(([slot, id]) =>
+    catalog.find((p) => p.id === id && p.slot === slot && !p.retired),
+  );
+  return named.every((p) => p !== undefined) ? named : null;
+}
+
+export function wearsExpression(look: SkinLook | null, expression: CatalogExpression): boolean {
+  const worn = new Set(look?.pieces.map((w) => w.id));
+  return worn.has(expression.eyes) && worn.has(expression.brows) && worn.has(expression.mouth);
+}
+
+/**
+ * Puts the expression's three pieces on, each keeping the player's colours as `putOn` does. The same look comes back
+ * when there is nothing to change: the expression is already worn, or it can't be offered.
+ */
+export function applyExpression(look: SkinLook, expression: CatalogExpression, catalog: readonly CatalogPiece[]): SkinLook {
+  const pieces = expressionPieces(expression, catalog);
+  if (!pieces) return look;
+  const worn = new Set(look.pieces.map((w) => w.id));
+  return pieces.filter((p) => !worn.has(p.id)).reduce((l, p) => putOn(l, p, catalog), look);
 }
 
 /** Turns everything worn into the player's own painting. */

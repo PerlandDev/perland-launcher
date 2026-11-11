@@ -944,6 +944,7 @@
       },
       "count_one": "{{count}} estilo",
       "count_other": "{{count}} estilos",
+      "expression": "Expresión",
       "on": "En uso",
       "empty": "Todavía no hay nada aquí. Las piezas nuevas llegan con las actualizaciones del catálogo.",
       "colours": "Colores de {{name}}",

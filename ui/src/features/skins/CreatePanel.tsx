@@ -1,6 +1,7 @@
 // The Create tab's column: categories at left, the pieces of the open category with an On badge for worn ones, and the
-// picked worn piece's colour areas with Take off and Make part of the skin. Looks applies a whole catalog look. A face
-// piece the painting hides gets a hint with a way to start clean from pieces.
+// picked worn piece's colour areas with Take off and Make part of the skin. Looks applies a whole catalog look; Face
+// opens with the ready-made expressions. A face piece the painting hides gets a hint with a way to start clean from
+// pieces.
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogLook, CatalogPiece, SkinLook } from '../../ipc/schema';
@@ -8,6 +9,7 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { AreaColours } from './AreaColours';
 import type { Lang } from './catalogSearch';
+import { ExpressionRow } from './ExpressionRow';
 import type { Catalog } from './useCatalog';
 import type { LookEditor } from './useLook';
 
@@ -123,6 +125,14 @@ export function CreatePanel({
           ))}
         </div>
         <div className="create-pieces">
+          {open.id === 'face' && <ExpressionRow expressions={manifest.expressions} pieces={manifest.pieces} look={look} editor={editor} lang={lang} />}
+          {/* Up here, under the expressions, so it shows where the player just clicked however long the lists get. */}
+          {editor.paintingCovers && (
+            <div className="create-covered" role="status">
+              <p className="info-line">{t('skins.create.paintingCovers')}</p>
+              {onBuildFromPieces && <Button onClick={onBuildFromPieces}>{t('skins.create.paintingCoversAction')}</Button>}
+            </div>
+          )}
           {open.id === 'looks' ? (
             <LooksGrid looks={manifest.looks.filter((l) => !l.retired)} lang={lang} catalog={catalog} onPick={pickLook} />
           ) : (
@@ -155,13 +165,6 @@ export function CreatePanel({
             ) : (
               <p className="text-sm text-ink-dim">{t('skins.create.pick')}</p>
             ))}
-
-          {editor.paintingCovers && (
-            <div className="create-covered" role="status">
-              <p className="info-line">{t('skins.create.paintingCovers')}</p>
-              {onBuildFromPieces && <Button onClick={onBuildFromPieces}>{t('skins.create.paintingCoversAction')}</Button>}
-            </div>
-          )}
 
           {(shownWorn || worn.length > 0) && (
             <div className="create-actions">

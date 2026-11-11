@@ -1,9 +1,11 @@
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
 import type { SkinLook } from '../../ipc/schema';
 import { sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
+import { addFaces, fakeFaceFiles, FAKE_EXPRESSIONS } from '../../test/skinFakes';
 import SkinStudio from './SkinStudio';
 import { CreatePanel } from './CreatePanel';
 import type { Catalog } from './useCatalog';
@@ -33,9 +35,12 @@ async function openCreate(
     microsoft = false,
     files,
     listOnce = false,
-  }: { catalog?: 'fresh' | 'unavailable' | 'never'; microsoft?: boolean; files?: { held: Promise<void> | null }; listOnce?: boolean } = {},
+    faces = false,
+  }: { catalog?: 'fresh' | 'unavailable' | 'never'; microsoft?: boolean; files?: { held: Promise<void> | null }; listOnce?: boolean; faces?: boolean } = {},
 ) {
   const backend = createMockBackend(microsoft ? { microsoft: 'signedIn' } : {});
+  // faces: the catalog also has the test expressions and the pieces they name.
+  if (faces) addFaces(backend.state.skins.catalog);
   if (look) backend.state.skins.entries.find((e) => e.id === ID)!.look = look;
   if (catalog === 'unavailable') backend.state.skins.catalogStatus = 'unavailable';
   const calls: [string, unknown][] = [];
@@ -268,7 +273,10 @@ it('a face piece the painting covers shows the hint, whose button builds from pi
     applyLook: noop,
     bakeAll: noop,
     switchModel: noop,
+    applyExpression: noop,
     paintingCovers: true,
+    rev: 0,
+    previewFace: () => Promise.resolve(null),
     settled: () => Promise.resolve(),
   };
   const build = vi.fn();
@@ -291,4 +299,98 @@ it('a skin reopened before the wardrobe is listed again shows the look it saved'
   await user.click(within(list).getByText('Miner'));
   await user.click(within(list).getByText('Beach day'));
   await waitFor(() => expect(chips()).toEqual(['Plain body', 'T-shirt', 'Cap']));
+});
+
+const EYES = { id: 'eyes-round', colours: { iris: '#2266cc' } };
+const BROWS = { id: 'brows-straight', colours: { main: '#3b2618' } };
+const MOUTH = { id: 'mouth-smile', colours: {} };
+const expressions = () => screen.getByRole('group', { name: 'Expression' });
+const offered = () => within(expressions()).getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+const askedFiles = (calls: [string, unknown][]) => (sent(calls, 'skin_catalog_file') as { sha256: string }[]).map((a) => a.sha256);
+
+it('Face offers the catalog\'s expressions in order, loading their pieces only once it is open', async () => {
+  const { user, calls } = await openCreate({ pieces: [BODY, EYES, BROWS, MOUTH], painting: false }, { faces: true });
+  // Tops is open: no expression row, and none of the expressions' own pieces was loaded.
+  expect(screen.queryByRole('group', { name: 'Expression' })).not.toBeInTheDocument();
+  expect(askedFiles(calls).filter((f) => f.startsWith('fake-'))).toEqual([]);
+  await user.click(screen.getByRole('button', { name: 'Face' }));
+  // The one naming a piece no catalog has is left out.
+  expect(offered()).toEqual(['Happy', 'Angry', 'Determined']);
+  // Above the eyes, brows and mouth.
+  expect(expressions().compareDocumentPosition(screen.getByRole('list', { name: 'Eyes' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // The face worn now is marked.
+  expect(within(expressions()).getByRole('button', { name: 'Happy' })).toHaveAttribute('aria-current', 'true');
+  expect(within(expressions()).getByRole('button', { name: 'Angry' })).not.toHaveAttribute('aria-current');
+  // The mini faces loaded the pieces the expressions name, and no other piece of the catalog.
+  const named = ['eyes-fierce', 'brows-angry', 'mouth-gritted'].flatMap(fakeFaceFiles).sort();
+  await waitFor(() => expect(askedFiles(calls).filter((f) => f.startsWith('fake-')).sort()).toEqual(named));
+});
+
+it('an expression chip puts the three pieces on in one step that Undo takes back', async () => {
+  const { user } = await openCreate({ pieces: [BODY, EYES, BROWS, MOUTH], painting: false }, { faces: true });
+  await user.click(screen.getByRole('button', { name: 'Face' }));
+  const before = stageSum();
+  await user.click(within(expressions()).getByRole('button', { name: 'Angry' }));
+  await waitFor(() => expect(chips()).toEqual(['Plain body', 'Fierce eyes', 'Angry brows', 'Gritted teeth']));
+  expect(within(expressions()).getByRole('button', { name: 'Angry' })).toHaveAttribute('aria-current', 'true');
+  expect(within(expressions()).getByRole('button', { name: 'Happy' })).not.toHaveAttribute('aria-current');
+  // The eyes kept the player's blue: the fake eyes draw their iris colour, so the default amber would look different.
+  await user.click(screen.getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(chips()).toEqual(['Plain body', 'Round eyes', 'Straight brows', 'Smile']));
+  expect(stageSum()).toBe(before);
+  expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+});
+
+it('a catalog without expressions shows no expression row', async () => {
+  const { user } = await openCreate({ pieces: [BODY, EYES, BROWS, MOUTH], painting: false });
+  await user.click(screen.getByRole('button', { name: 'Face' }));
+  expect(screen.getByRole('list', { name: 'Eyes' })).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Expression' })).not.toBeInTheDocument();
+});
+
+it('each expression chip previews its own face and never changes the skin until it is clicked', async () => {
+  const mock = (await import('../../ipc/mockCatalog')).mockCatalog();
+  addFaces(mock);
+  const catalog: Catalog = { manifest: mock.manifest, status: 'fresh', loading: false, image: () => undefined, pixels: () => new Promise(() => {}), layers: async () => [] };
+  const noop = () => {};
+  const look: SkinLook = { pieces: [EYES, BROWS, MOUTH], painting: true };
+  const previewFace = vi.fn<LookEditor['previewFace']>(() => Promise.resolve(new Uint8ClampedArray(8 * 8 * 4)));
+  const applyExpression = vi.fn();
+  const editor: LookEditor = {
+    look,
+    painting: null,
+    putOn: noop,
+    takeOff: noop,
+    setColour: noop,
+    applyLook: noop,
+    applyExpression,
+    bakeAll: noop,
+    switchModel: noop,
+    paintingCovers: true,
+    rev: 0,
+    previewFace,
+    settled: () => Promise.resolve(),
+  };
+  // Rendered bare, so a rerender keeps the panel (and its open category) mounted.
+  const user = userEvent.setup();
+  const { rerender } = render(<CreatePanel catalog={catalog} look={look} editor={editor} lang="es" />);
+  expect(previewFace).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: 'Face' }));
+  expect(offered()).toEqual(['Feliz', 'Enojado', 'Decidido']);
+  // One preview per chip: the look with that expression on, in the player's colours.
+  await waitFor(() => expect(previewFace).toHaveBeenCalledTimes(3));
+  const previewed = previewFace.mock.calls.map(([change]) => change(look).pieces);
+  expect(previewed[0]).toEqual(look.pieces);
+  expect(previewed[1]).toEqual([{ id: 'eyes-fierce', colours: { iris: '#2266cc' } }, { id: 'brows-angry', colours: { main: '#3b2618' } }, { id: 'mouth-gritted', colours: {} }]);
+  expect(applyExpression).not.toHaveBeenCalled();
+  // The painting's hint stays with the row.
+  expect(screen.getByText(/Your painting covers this piece/)).toBeInTheDocument();
+  // A change of the skin draws the faces again; a render with nothing new doesn't.
+  rerender(<CreatePanel catalog={catalog} look={look} editor={{ ...editor }} lang="es" />);
+  expect(previewFace).toHaveBeenCalledTimes(3);
+  rerender(<CreatePanel catalog={catalog} look={look} editor={{ ...editor, rev: 1 }} lang="es" />);
+  await waitFor(() => expect(previewFace).toHaveBeenCalledTimes(6));
+  await user.click(within(expressions()).getByRole('button', { name: 'Enojado' }));
+  expect(applyExpression).toHaveBeenCalledTimes(1);
+  expect(applyExpression).toHaveBeenCalledWith(FAKE_EXPRESSIONS[1]);
 });

@@ -944,6 +944,7 @@
       },
       "count_one": "{{count}} style",
       "count_other": "{{count}} styles",
+      "expression": "Expression",
       "on": "On",
       "empty": "Nothing here yet. New pieces arrive with catalog updates.",
       "colours": "{{name}} colours",

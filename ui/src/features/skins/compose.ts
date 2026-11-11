@@ -14,7 +14,7 @@ export interface ComposeLayer {
 }
 
 /** Alpha-over `src` onto `dst` in place. */
-function over(dst: PixelBuffer, src: PixelBuffer) {
+export function over(dst: PixelBuffer, src: PixelBuffer) {
   for (let i = 0; i + 3 < dst.length; i += 4) {
     const sa = src[i + 3]! / 255;
     if (sa === 0) continue;
@@ -32,9 +32,12 @@ const rank = (slot: string) => {
   return i < 0 ? SLOTS.length : i;
 };
 
-/** Each layer's grey art is recoloured through its mask and colours; a fixed mask or no colours leaves it as it is. */
-export function compose(painting: PixelBuffer | null, layers: readonly ComposeLayer[]): PixelBuffer {
-  const out = new Uint8ClampedArray(64 * 64 * 4);
+/**
+ * Each layer's grey art is recoloured through its mask and colours; a fixed mask or no colours leaves it as it is.
+ * `texels` is the size of every buffer: a whole skin, unless the caller cut the same part out of each.
+ */
+export function compose(painting: PixelBuffer | null, layers: readonly ComposeLayer[], texels = 64 * 64): PixelBuffer {
+  const out = new Uint8ClampedArray(texels * 4);
   const sorted = [...layers].sort((a, b) => rank(a.slot) - rank(b.slot));
   const face = sorted.filter((l) => FACE_SLOTS.includes(l.slot));
   const rest = sorted.filter((l) => !FACE_SLOTS.includes(l.slot));

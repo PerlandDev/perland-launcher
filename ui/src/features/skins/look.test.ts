@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import type { CatalogLook, CatalogPiece, SkinLook } from '../../ipc/schema';
-import { applyLook, bakeAll, putOn, setColour, takeOff } from './look';
+import type { CatalogExpression, CatalogLook, CatalogPiece, SkinLook } from '../../ipc/schema';
+import { applyExpression, applyLook, bakeAll, expressionPieces, putOn, setColour, takeOff, wearsExpression } from './look';
 
 const piece = (id: string, slot: string, areas: [string, string][] = [['main', '#112233']]): CatalogPiece => ({
   id,
@@ -90,6 +90,56 @@ describe('look', () => {
     const dark = putOn(blond, brows, all);
     const thick = piece('brows-thick', 'brows', [['main', '#000000']]);
     expect(putOn(setColour(dark, 'brows-straight', 'main', '#101010'), thick, [...all, thick]).pieces[1]).toEqual({ id: 'brows-thick', colours: { main: '#101010' } });
+  });
+
+  test('applyExpression puts the three face pieces on and keeps the player\'s colours', () => {
+    const round = piece('eyes-round', 'eyes', [['iris', '#4a3324']]);
+    const fierce = piece('eyes-fierce', 'eyes', [['iris', '#b8651e']]);
+    const straight = piece('brows-straight', 'brows', [['main', '#3b2618']]);
+    const angry = piece('brows-angry', 'brows', [['main', '#3b2618']]);
+    const smile = piece('mouth-smile', 'mouth', []);
+    const gritted = piece('mouth-gritted', 'mouth', []);
+    const tee = piece('tee', 'top');
+    const all = [round, fierce, straight, angry, smile, gritted, tee];
+    const expr = (id: string, eyes: string, brows: string, mouth: string): CatalogExpression => ({ id, name: { en: id, es: id }, eyes, brows, mouth });
+    const mad = expr('expr-angry', 'eyes-fierce', 'brows-angry', 'mouth-gritted');
+    const worn: SkinLook = {
+      pieces: [{ id: 'eyes-round', colours: { iris: '#2266cc' } }, { id: 'tee', colours: { main: '#ff0000' } }, { id: 'brows-straight', colours: { main: '#e0c068' } }, { id: 'mouth-smile', colours: {} }],
+      painting: true,
+    };
+    expect(wearsExpression(worn, mad)).toBe(false);
+    const out = applyExpression(worn, mad, all);
+    expect(out).toEqual({
+      pieces: [{ id: 'tee', colours: { main: '#ff0000' } }, { id: 'eyes-fierce', colours: { iris: '#2266cc' } }, { id: 'brows-angry', colours: { main: '#e0c068' } }, { id: 'mouth-gritted', colours: {} }],
+      painting: true,
+    });
+    expect(wearsExpression(out, mad)).toBe(true);
+    // Already worn: nothing changes, so there is nothing to undo.
+    expect(applyExpression(out, mad, all)).toBe(out);
+    // A face with no pieces yet gets all three; one sharing pieces with the expression only the others.
+    expect(applyExpression(empty, mad, all).pieces.map((p) => p.id)).toEqual(['eyes-fierce', 'brows-angry', 'mouth-gritted']);
+    const determined = expr('expr-determined', 'eyes-round', 'brows-angry', 'mouth-smile');
+    expect(applyExpression(worn, determined, all).pieces).toEqual([
+      { id: 'eyes-round', colours: { iris: '#2266cc' } },
+      { id: 'tee', colours: { main: '#ff0000' } },
+      { id: 'mouth-smile', colours: {} },
+      { id: 'brows-angry', colours: { main: '#e0c068' } },
+    ]);
+  });
+
+  test('an expression naming a piece the catalog lacks, retired or of another slot is not offered', () => {
+    const round = piece('eyes-round', 'eyes', [['iris', '#4a3324']]);
+    const straight = piece('brows-straight', 'brows');
+    const smile = piece('mouth-smile', 'mouth', []);
+    const old = { ...piece('mouth-old', 'mouth', []), retired: true };
+    const all = [round, straight, smile, old];
+    const expr = (eyes: string, brows: string, mouth: string): CatalogExpression => ({ id: 'e', name: { en: 'e', es: 'e' }, eyes, brows, mouth });
+    expect(expressionPieces(expr('eyes-round', 'brows-straight', 'mouth-smile'), all)).toEqual([round, straight, smile]);
+    expect(expressionPieces(expr('eyes-round', 'brows-straight', 'mouth-gone'), all)).toBeNull();
+    expect(expressionPieces(expr('eyes-round', 'brows-straight', 'mouth-old'), all)).toBeNull();
+    expect(expressionPieces(expr('brows-straight', 'eyes-round', 'mouth-smile'), all)).toBeNull();
+    const worn: SkinLook = { pieces: [{ id: 'eyes-round', colours: {} }], painting: false };
+    expect(applyExpression(worn, expr('eyes-round', 'brows-straight', 'mouth-gone'), all)).toBe(worn);
   });
 
   test('takeOff and setColour', () => {
