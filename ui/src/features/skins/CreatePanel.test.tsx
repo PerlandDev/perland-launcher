@@ -603,3 +603,39 @@ it('a version preview takes the stage from a piece being tried on', async () => 
   expect(badge()).toBeNull();
   expect(stageSum()).toBe(real);
 });
+
+// The camera follows what is being dressed.
+const framed = () => screen.getByTestId('stage').getAttribute('data-focus');
+const framedKey = () => screen.getByTestId('stage').getAttribute('data-focus-key');
+
+it('the stage frames the part each category dresses, and the whole figure outside Create', async () => {
+  const { user } = await openCreate({ pieces: [BODY, TEE], painting: false });
+  // Create opens on Tops.
+  expect(framed()).toBe('torso');
+  const expected: [string, string][] = [['Looks', 'figure'], ['Body', 'figure'], ['Face', 'head'], ['Hair', 'hair'], ['Tops', 'torso'], ['Bottoms', 'legs'], ['Shoes', 'feet'], ['Hats', 'hat'], ['Accessories', 'upper']];
+  const keys = new Set<string>();
+  for (const [category, focus] of expected) {
+    await user.click(screen.getByRole('button', { name: category }));
+    expect(framed()).toBe(focus);
+    keys.add(framedKey()!);
+  }
+  // Every category is its own key, so a camera the player moved follows again in the next one.
+  expect(keys.size).toBe(expected.length);
+  await user.click(screen.getByRole('tab', { name: 'Paint' }));
+  expect(framed()).toBe('figure');
+  await user.click(screen.getByRole('tab', { name: 'Create' }));
+  // Back in Create the panel opens on Tops again.
+  expect(framed()).toBe('torso');
+  await user.click(screen.getByRole('button', { name: 'History' }));
+  expect(framed()).toBe('figure');
+});
+
+it('in Accessories the camera goes to the piece picked there, under the same key', async () => {
+  const { user } = await openCreate({ pieces: [BODY], painting: false });
+  await user.click(screen.getByRole('button', { name: 'Accessories' }));
+  expect(framed()).toBe('upper');
+  const key = framedKey();
+  await user.click(tile('Back', /./));
+  await waitFor(() => expect(framed()).toBe('back'));
+  expect(framedKey()).toBe(key);
+});

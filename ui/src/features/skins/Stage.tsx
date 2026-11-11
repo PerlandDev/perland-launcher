@@ -1,6 +1,7 @@
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent, type Ref, type WheelEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SkinModel } from '../../ipc/schema';
+import type { Focus } from './framing';
 import { SKIN_SIZE, type Layer, type Part } from './layout';
 import type { Pixels } from './paint';
 import type { Pose } from './poses';
@@ -47,6 +48,8 @@ export function Stage({
   onEnd,
   label,
   paintable = true,
+  focus = 'figure',
+  focusKey = '',
   ref,
 }: {
   pixels: Pixels | null;
@@ -65,6 +68,10 @@ export function Stage({
   label?: string;
   /** False: a drag on the figure turns it too, and nothing is painted or highlighted. */
   paintable?: boolean;
+  /** What the camera frames: the whole figure, or the part being dressed. */
+  focus?: Focus;
+  /** Names where the focus comes from (a Create category): once the player moves the camera, it stays theirs until this changes. */
+  focusKey?: string;
   ref?: Ref<StageHandle>;
 }) {
   const { t } = useTranslation();
@@ -91,6 +98,7 @@ export function Stage({
   useImperativeHandle(ref, () => ({ resetView: () => scene?.resetView(), zoom: (f) => scene?.zoom(f), celebrate: () => scene?.celebrate() }), [scene]);
   useEffect(() => scene?.setPose(pose), [scene, pose]);
   useEffect(() => scene?.setPaused(paused), [scene, paused]);
+  useEffect(() => scene?.focus(focus, focusKey), [scene, focus, focusKey]);
 
   useEffect(() => scene?.setModel(model), [scene, model]);
   useEffect(() => scene?.setPaintLayer(paintLayer), [scene, paintLayer]);

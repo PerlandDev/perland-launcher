@@ -1,6 +1,6 @@
 // The Skins screen: a fitting room. The wardrobe at left, the figure on its stage in the middle, the flat texture and
 // colours at right, and the tools in a hotbar along the bottom (keys 1–9).
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -31,6 +31,7 @@ import { CatalogPanel } from './CatalogPanel';
 import { CreatePanel } from './CreatePanel';
 import type { Lang } from './catalogSearch';
 import { compose } from './compose';
+import type { Focus } from './framing';
 import { putOn } from './look';
 import { useCatalog } from './useCatalog';
 import { surprise } from './surprise';
@@ -151,6 +152,10 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   // Trying a piece on (Create): the figure shows it, the skin doesn't have it. A version preview comes first.
   const { shown: tryShown, tryOn } = useTryOn(editor, selected?.id ?? null, tab === 'create' && !historyOpen);
   const trying = previewing ? null : tryShown;
+  // What the Create tab is dressing: the stage camera frames it. Any other tab, and History, show the whole figure.
+  const [dressing, setDressing] = useState<{ focus: Focus; category: string }>({ focus: 'figure', category: '' });
+  const onCreateFocus = useCallback((focus: Focus, category: string) => setDressing((d) => (d.focus === focus && d.category === category ? d : { focus, category })), []);
+  const framing = tab === 'create' && !historyOpen && selected ? { focus: dressing.focus, key: `create:${selected.id}:${dressing.category}` } : { focus: 'figure' as const, key: tab };
 
   /** Chooses a colour for good: a new one joins the front of the recent row, one already in it stays put. */
   const setColor = (c: Rgba) => {
@@ -538,6 +543,8 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
                   onEnd={doc.end}
                   paintable={tab === 'paint'}
                   label={tab === 'paint' ? undefined : t('skins.stageLabelTurn')}
+                  focus={framing.focus}
+                  focusKey={framing.key}
                   ref={stage}
                 />
                 <div className="stage-view">
@@ -597,6 +604,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
                 lang={lang}
                 onBuildFromPieces={plainBody ? () => void buildFromPieces().catch(pushError) : undefined}
                 tryOn={tryOn}
+                onFocus={onCreateFocus}
               />
             ) : (
             <aside className="skins-side" aria-label={t('skins.texture')}>

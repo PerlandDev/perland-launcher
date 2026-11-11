@@ -25,6 +25,7 @@ import {
   WebGLRenderer,
 } from 'three';
 import type { SkinModel } from '../../ipc/schema';
+import { cameraAt, clampZoom, easeOut, FIGURE_ANGLE, following, GLIDE_MS, glideFrame, glideView, shotOf, type Focus, type Frame, type View } from './framing';
 import { boxes, SKIN_SIZE, type Box, type Face, type Layer, type Part, type Vec3 } from './layout';
 import { outerWalls, type Wall } from './outerWalls';
 import { AnimationClock, celebration, CELEBRATE_S, POSE_STILL_T, rigAt, type Joint, type Pose } from './poses';
@@ -297,8 +298,14 @@ export interface Stage {
   celebrate(): void;
   /** The texel under a point of the canvas (client coordinates), on the paint layer; null over empty stage. */
   pick(clientX: number, clientY: number): Hit | null;
+  /**
+   * Frames `focus` (the whole figure, or the part being dressed), gliding there. The camera follows until the player
+   * turns or zooms it by hand; then it stays theirs until `key` changes or they reset the view (see `following`).
+   */
+  focus(focus: Focus, key: string): void;
   orbit(dx: number, dy: number): void;
   zoom(factor: number): void;
+  /** Back to the framing of the focus, at its own angle and distance. */
   resetView(): void;
   resize(width: number, height: number): void;
   dispose(): void;
@@ -341,20 +348,6 @@ const PARENT: Record<Joint, Joint | null> = {
   leftLeg: null,
 };
 
-/** What each pose frames: the camera's target height and how much must fit. */
-const FRAMING: Record<Pose, { target: number; height: number; width: number }> = {
-  still: { target: 13, height: 50, width: 30 },
-  walk: { target: 13, height: 50, width: 30 },
-  run: { target: 13.5, height: 51, width: 32 },
-  crouch: { target: 12, height: 48, width: 30 },
-  sit: { target: 8, height: 42, width: 34 },
-  wave: { target: 15, height: 54, width: 32 },
-  boat: { target: 8, height: 44, width: 40 },
-  horse: { target: 25, height: 72, width: 46 },
-};
-
-const START = { yaw: -0.55, pitch: 0.14, zoom: 1 };
-
 export function createStage(canvas: HTMLCanvasElement): Stage {
   const renderer = new WebGLRenderer({ canvas, antialias: false, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -394,7 +387,14 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   let paintLayer: Layer = 'base';
   let pose: Pose = 'still';
   let model: SkinModel = 'classic';
-  const view = { ...START };
+  // The camera: the angle and zoom are the player's to move, the frame is where the focus (and the pose) put it.
+  const view: View = { ...FIGURE_ANGLE, zoom: 1 };
+  let follow = following();
+  let shot: Frame = shotOf('figure', pose);
+  let shotGlide: { from: Frame; to: Frame; start: number } | null = null;
+  let viewGlide: { from: View; to: View; start: number } | null = null;
+  /** The first focus places the camera; later ones glide. */
+  let placed = false;
   let fit = { half: Math.tan((32 * Math.PI) / 360), aspect: 1 };
   let frame = 0;
   const clock = new AnimationClock(performance.now());
@@ -427,26 +427,60 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     world.position.y = party?.lift ?? 0;
   };
 
+  /** Moves the glides on to `now`; false once the camera has arrived. */
+  const glide = (now: number): boolean => {
+    if (shotGlide) {
+      const k = (now - shotGlide.start) / GLIDE_MS;
+      shot = glideFrame(shotGlide.from, shotGlide.to, easeOut(k));
+      if (k >= 1) shotGlide = null;
+    }
+    if (viewGlide) {
+      const k = (now - viewGlide.start) / GLIDE_MS;
+      Object.assign(view, glideView(viewGlide.from, viewGlide.to, easeOut(k)));
+      if (k >= 1) viewGlide = null;
+    }
+    return shotGlide !== null || viewGlide !== null;
+  };
+
   const draw = (now: number) => {
     frame = 0;
     place(now);
-    const framing = FRAMING[pose];
-    const distance = Math.max(framing.height / 2 / fit.half, framing.width / 2 / (fit.half * fit.aspect)) * view.zoom;
-    const { yaw, pitch } = view;
-    camera.position.set(
-      distance * Math.cos(pitch) * Math.sin(yaw),
-      framing.target + distance * Math.sin(pitch),
-      distance * Math.cos(pitch) * Math.cos(yaw),
-    );
-    camera.lookAt(0, framing.target, 0);
+    const gliding = glide(now);
+    const at = cameraAt(view, shot, shotOf('figure', pose), fit);
+    camera.position.set(...at.position);
+    camera.lookAt(...at.target);
     renderer.render(scene, camera);
     // The figure is always a little alive (breathing, looking around) until the player pauses it; the celebration
-    // plays even then. Reduced motion holds it still. A still stage redraws only when something changes.
+    // plays even then, and so does a camera glide. Reduced motion holds it still. A still stage redraws only when
+    // something changes.
     const celebrating = now - celebratedAt < CELEBRATE_S * 1000;
-    if (!still() && (!clock.paused || celebrating)) frame = requestAnimationFrame(draw);
+    if (gliding || (!still() && (!clock.paused || celebrating))) frame = requestAnimationFrame(draw);
   };
   const invalidate = () => {
     if (!frame) frame = requestAnimationFrame(draw);
+  };
+
+  /**
+   * Sends the camera to the shot of what it follows, in the pose as it is: gliding, or at once (`instant`, and always
+   * under reduced motion). `angle` also takes the view to the shot's own angle and distance; without it only the
+   * frame moves (a pose change), and the player's angle and zoom stay.
+   */
+  const aim = ({ angle, instant = false }: { angle: boolean; instant?: boolean }) => {
+    const goal = shotOf(follow.aimed, pose);
+    const to: View = { yaw: goal.yaw, pitch: goal.pitch, zoom: 1 };
+    if (instant || still()) {
+      shot = goal;
+      shotGlide = null;
+      if (angle) {
+        Object.assign(view, to);
+        viewGlide = null;
+      }
+    } else {
+      const start = performance.now();
+      shotGlide = { from: shot, to: goal, start };
+      if (angle) viewGlide = { from: { ...view }, to, start };
+    }
+    invalidate();
   };
 
   const build = (next: SkinModel) => {
@@ -514,8 +548,10 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       paintLayer = layer;
     },
     setPose(next) {
+      if (next === pose) return;
       pose = next;
-      invalidate();
+      // The close-up goes with the part to where the new pose puts it.
+      aim({ angle: false, instant: !placed });
     },
     setPaused(paused) {
       const now = performance.now();
@@ -551,18 +587,29 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
         layer: owner.box.layer,
       };
     },
+    focus(focus, key) {
+      const next = follow.focus(focus, key);
+      follow = next.state;
+      if (next.move) aim({ angle: true, instant: !placed });
+      placed = true;
+    },
     orbit(dx, dy) {
+      // The player's hand wins: a glide of the view stops where it is.
+      viewGlide = null;
+      follow = follow.moved();
       view.yaw -= dx * 0.01;
       view.pitch = Math.max(-1.2, Math.min(1.2, view.pitch + dy * 0.01));
       invalidate();
     },
     zoom(factor) {
-      view.zoom = Math.max(0.35, Math.min(1.8, view.zoom * factor));
+      viewGlide = null;
+      follow = follow.moved();
+      view.zoom = clampZoom(view.zoom * factor, shotGlide?.to ?? shot, shotOf('figure', pose), fit);
       invalidate();
     },
     resetView() {
-      Object.assign(view, START);
-      invalidate();
+      follow = follow.reset();
+      aim({ angle: true });
     },
     resize(width, height) {
       if (width <= 0 || height <= 0) return;

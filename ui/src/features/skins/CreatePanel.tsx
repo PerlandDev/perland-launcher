@@ -2,7 +2,7 @@
 // picked worn piece's colour areas with Take off and Make part of the skin. Looks applies a whole catalog look; Face
 // opens with the ready-made expressions. A face piece the painting hides gets a hint with a way to start clean from
 // pieces. Pointing at a piece, a look or an expression tries it on the figure without changing the skin (see tryOn).
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogLook, CatalogPiece, SkinLook } from '../../ipc/schema';
 import { Button } from '../../ui/Button';
@@ -10,6 +10,7 @@ import { Dialog } from '../../ui/Dialog';
 import { AreaColours } from './AreaColours';
 import type { Lang } from './catalogSearch';
 import { ExpressionRow } from './ExpressionRow';
+import { focusFor, type Focus } from './framing';
 import { applyLook, putOn } from './look';
 import { tryHandlers, type Candidate, type TryOnHandle } from './tryOn';
 import type { Catalog } from './useCatalog';
@@ -102,6 +103,7 @@ export function CreatePanel({
   lang,
   onBuildFromPieces,
   tryOn,
+  onFocus,
 }: {
   catalog: Catalog;
   look: SkinLook | null;
@@ -110,6 +112,8 @@ export function CreatePanel({
   onBuildFromPieces?: () => void;
   /** Tries what a tile would put on, on the figure, while the tile is pointed at. */
   tryOn?: TryOnHandle;
+  /** Told what the stage camera should frame: the part the open category dresses (see framing), named by the category. */
+  onFocus?: (focus: Focus, category: string) => void;
 }) {
   const { t } = useTranslation();
   const [category, setCategory] = useState('tops');
@@ -117,6 +121,12 @@ export function CreatePanel({
   const [baking, setBaking] = useState(false);
   const [applying, setApplying] = useState<CatalogLook | null>(null);
   const { manifest } = catalog;
+  // The camera frames what the category dresses; where a category holds several parts (Accessories), the piece picked
+  // there says which. With no catalog there is nothing to dress: the whole figure.
+  const slots = CATEGORIES.find((c) => c.id === category)?.slots ?? [];
+  const pickedSlot = manifest?.pieces.find((p) => p.id === picked && slots.includes(p.slot))?.slot;
+  const focus = manifest ? focusFor(category, pickedSlot) : 'figure';
+  useEffect(() => onFocus?.(focus, category), [onFocus, focus, category]);
 
   if (!manifest) {
     return (
