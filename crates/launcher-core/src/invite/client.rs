@@ -219,6 +219,14 @@ pub fn check_engine_url(raw: &str) -> Option<Url> {
     .then_some(url)
 }
 
+/// An `engineUrl` named by the Perland site at `site`: as `check_engine_url`, and on this
+/// computer only when the site is too, so a site on the network can't point the launcher at a
+/// local service.
+pub fn check_site_engine_url(raw: &str, site: &Url) -> Option<Url> {
+    check_engine_url(raw)
+        .filter(|engine| !crate::http::is_loopback(engine) || crate::http::is_loopback(site))
+}
+
 /// `<engine>/api/v1/invites/<token><suffix>` (Engine `invite/src/lib/api.ts` `inviteUrl`).
 pub fn invite_route(engine: &Url, link: &InviteLink, suffix: &str) -> Url {
     let base = engine.as_str().trim_end_matches('/');
@@ -263,7 +271,8 @@ impl InviteClient {
     /// `config.json`. An unusable value is ignored, and a known Engine is kept: above all one
     /// the site's `config.json` named.
     pub fn remember_engine(&self, link: &InviteLink, engine: &str) {
-        if let Some(url) = check_engine_url(engine) {
+        let site = Url::parse(&link.origin()).ok();
+        if let Some(url) = site.and_then(|site| check_site_engine_url(engine, &site)) {
             self.state
                 .engines
                 .lock()
@@ -353,7 +362,12 @@ impl InviteClient {
             .ok_or_else(|| site_unreachable(host, "config.json is too large"))?;
         let config: SiteConfig = serde_json::from_slice(&body)
             .map_err(|_| site_unreachable(host, "config.json isn't valid JSON"))?;
-        let engine = match config.engine_url.as_deref().and_then(check_engine_url) {
+        let site = Url::parse(origin).map_err(|_| site_unreachable(host, "not a site address"))?;
+        let engine = match config
+            .engine_url
+            .as_deref()
+            .and_then(|raw| check_site_engine_url(raw, &site))
+        {
             Some(engine) => engine,
             None if list => return Err(server_list_closed(host)),
             None => {
@@ -489,5 +503,34 @@ impl InviteClient {
         envelope.data?.code.filter(|c| {
             (1..=64).contains(&c.len()) && c.bytes().all(|b| b.is_ascii_lowercase() || b == b'_')
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn url(s: &str) -> Url {
+        Url::parse(s).unwrap()
+    }
+
+    #[test]
+    fn a_site_on_the_network_never_names_an_engine_on_this_computer() {
+        for (site, engine, allowed) in [
+            ("https://play.example", "https://engine.example", true),
+            ("https://play.example", "http://127.0.0.1:8080", false),
+            ("https://play.example", "https://localhost", false),
+            ("https://play.example", "http://[::1]:1", false),
+            ("https://play.example", "http://engine.example", false),
+            ("http://127.0.0.1:1", "http://127.0.0.1:2", true),
+            ("http://localhost:1", "http://[::1]:2", true),
+            ("http://127.0.0.1:1", "https://engine.example", true),
+        ] {
+            assert_eq!(
+                check_site_engine_url(engine, &url(site)).is_some(),
+                allowed,
+                "{site} names {engine}"
+            );
+        }
     }
 }

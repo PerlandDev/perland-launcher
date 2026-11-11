@@ -1727,3 +1727,51 @@ async fn a_latest_server_without_the_manifest_fails_as_the_manifest_does() {
     assert_ne!(e.code, ErrorCode::MinecraftVersionNotFound);
     assert_token_free("latest manifest", &e);
 }
+
+/// A client with the launcher's redirect rules that sends `site.example` to the mock server,
+/// so the mock can stand in for a site on the network.
+fn remote_site_client(server: &MockServer) -> (InviteClient, launcher_core::invite::Url) {
+    let http = reqwest::Client::builder()
+        .redirect(launcher_core::http::redirect_policy())
+        .no_proxy()
+        .resolve("site.example", *server.address())
+        .build()
+        .unwrap();
+    let site = launcher_core::invite::Url::parse(&format!(
+        "http://site.example:{}/",
+        server.address().port()
+    ))
+    .unwrap();
+    (InviteClient::new(http).with_timing(fast()), site)
+}
+
+#[tokio::test]
+async fn a_remote_site_cant_redirect_config_json_to_this_computer() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/config.json"))
+        .respond_with(
+            ResponseTemplate::new(302).insert_header("location", format!("{}/local", server.uri())),
+        )
+        .mount(&server)
+        .await;
+    let (client, site) = remote_site_client(&server);
+    let err = client.engine_for_site(&site).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::InviteSiteUnreachable);
+    assert_eq!(hits(&server, "/local").await, 0);
+}
+
+#[tokio::test]
+async fn a_remote_site_cant_name_an_engine_on_this_computer() {
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    let (client, site) = remote_site_client(&server);
+    let err = client.engine_for_site(&site).await.unwrap_err();
+    assert_eq!(err.code, ErrorCode::ServerListClosed);
+    assert_eq!(hits(&server, "/config.json").await, 1);
+
+    // The same config.json from a site on this computer still works.
+    let local = launcher_core::invite::Url::parse(&server.uri()).unwrap();
+    let engine = client.engine_for_site(&local).await.unwrap();
+    assert_eq!(engine.as_str().trim_end_matches('/'), server.uri());
+}
