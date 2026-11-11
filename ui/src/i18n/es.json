@@ -953,6 +953,7 @@
       "noColours": "{{name}} tiene sus propios colores.",
       "pick": "Ponte una pieza o elige una que llevas puesta para cambiar sus colores.",
       "quickColour": "{{area}}: {{value}}",
+      "toColours": "Colores",
       "takeOff": "Quitar",
       "takeOffNamed": "Quitar {{name}}",
       "bake": "Hacerlas parte de la skin",

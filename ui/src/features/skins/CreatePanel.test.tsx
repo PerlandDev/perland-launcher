@@ -723,3 +723,31 @@ it('Looks draws the next page by itself when its end scrolls near', async () => 
     vi.unstubAllGlobals();
   }
 });
+
+it('the Colours key brings the picked piece\'s colours into view from anywhere in a long category', async () => {
+  const into = vi.fn();
+  Element.prototype.scrollIntoView = into;
+  try {
+    const { user } = await openCreate({ pieces: [BODY, TEE], painting: false });
+    await user.click(screen.getByRole('button', { name: 'Tops' }));
+    // The worn top's colours sit under every top of the category; the key is in the row that stays in view.
+    await user.click(screen.getByRole('button', { name: 'Colours' }));
+    const colours = screen.getByRole('region', { name: 'T-shirt colours' });
+    expect(into).toHaveBeenCalledTimes(1);
+    expect(into.mock.contexts[0]).toBe(colours);
+    // The keyboard lands on the first colour, so the next Tab walks the section.
+    expect(document.activeElement).toBe(within(colours).getByLabelText('More colours for Main'));
+  } finally {
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  }
+});
+
+it('a piece with no colour areas, and a category with nothing worn, offer no Colours key', async () => {
+  const { user } = await openCreate({ pieces: [BODY, { id: 'mouth-smile', colours: {} }], painting: false });
+  await user.click(screen.getByRole('button', { name: 'Face' }));
+  expect(screen.getByText('Smile keeps its own colours.')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Colours' })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Hats' }));
+  expect(screen.queryByRole('button', { name: 'Colours' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Make part of the skin' })).toBeInTheDocument();
+});

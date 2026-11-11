@@ -2,12 +2,13 @@
 // picked worn piece's colour areas with Take off and Make part of the skin. Looks applies a whole catalog look; Face
 // opens with the ready-made expressions. A face piece the painting hides gets a hint with a way to start clean from
 // pieces. Pointing at a piece, a look or an expression tries it on the figure without changing the skin (see tryOn).
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogLook, CatalogPiece, SkinLook } from '../../ipc/schema';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { AreaColours } from './AreaColours';
+import { CATEGORIES, HEAD_SLOTS } from './categories';
 import type { Lang } from './catalogSearch';
 import { CatalogThumb } from './CatalogThumb';
 import { ExpressionRow } from './ExpressionRow';
@@ -18,22 +19,6 @@ import type { Catalog } from './useCatalog';
 import type { LookEditor } from './useLook';
 import { usePages } from './usePages';
 import { useThumbs, type Thumbs } from './useThumbs';
-
-/** The categories in order, with the slots each holds (a category of several slots shows one group per slot). */
-const CATEGORIES: readonly { id: string; slots: readonly string[] }[] = [
-  { id: 'looks', slots: [] },
-  { id: 'body', slots: ['body'] },
-  { id: 'face', slots: ['eyes', 'brows', 'mouth', 'face_detail', 'beard'] },
-  { id: 'hair', slots: ['hair'] },
-  { id: 'tops', slots: ['top'] },
-  { id: 'bottoms', slots: ['bottom'] },
-  { id: 'shoes', slots: ['shoes'] },
-  { id: 'hats', slots: ['hat'] },
-  { id: 'accessories', slots: ['glasses', 'neck', 'back', 'hands', 'belt'] },
-];
-
-/** Pieces worn on the head show the head only, so a pair of eyes isn't a speck on a whole figure. */
-const HEAD_SLOTS = new Set(['eyes', 'brows', 'mouth', 'face_detail', 'beard', 'hair', 'hat', 'glasses']);
 
 function PieceTile({
   piece,
@@ -135,6 +120,8 @@ export function CreatePanel({
   const [picked, setPicked] = useState<string | null>(null);
   const [baking, setBaking] = useState(false);
   const [applying, setApplying] = useState<CatalogLook | null>(null);
+  // The shown piece's colours: under every piece of the category, however many there are.
+  const colours = useRef<HTMLElement>(null);
   const { manifest } = catalog;
   // Every tile's thumbnail is cut from the catalog's two sheets: a category of any size costs no file of its own.
   const thumbs = useThumbs(catalog);
@@ -173,6 +160,12 @@ export function CreatePanel({
     tryOn?.commit();
     if (worn.length > 0) setApplying(l);
     else editor.applyLook(l);
+  };
+  // The Colours key: the colours come into view and the keyboard lands on the first of them.
+  const toColours = () => {
+    const section = colours.current;
+    section?.scrollIntoView?.({ block: 'start' });
+    section?.querySelector<HTMLElement>('input, button')?.focus({ preventScroll: true });
   };
   const openCategory = (id: string) => {
     // The tiles under the pointer go away without a pointer leave.
@@ -238,13 +231,19 @@ export function CreatePanel({
 
           {open.id !== 'looks' &&
             (shown && shownWorn ? (
-              <AreaColours piece={shown} worn={shownWorn} lang={lang} onColour={(area, hex, live) => editor.setColour(shown.id, area, hex, live)} />
+              <AreaColours ref={colours} piece={shown} worn={shownWorn} lang={lang} onColour={(area, hex, live) => editor.setColour(shown.id, area, hex, live)} />
             ) : (
               <p className="text-sm text-ink-dim">{t('skins.create.pick')}</p>
             ))}
 
           {(shownWorn || worn.length > 0) && (
             <div className="create-actions">
+              {/* The row stays in view while the pieces scroll: from it the colours are one press away. */}
+              {shown && shownWorn && shown.areas.length > 0 && open.id !== 'looks' && (
+                <Button title={t('skins.create.colours', { name: shown.name[lang] })} onClick={toColours}>
+                  {t('skins.create.toColours')}
+                </Button>
+              )}
               {shownWorn && open.id !== 'looks' && <Button onClick={() => editor.takeOff(shownWorn.id)}>{t('skins.create.takeOff')}</Button>}
               {worn.length > 0 && <Button onClick={() => setBaking(true)}>{t('skins.create.bake')}</Button>}
             </div>

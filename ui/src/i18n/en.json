@@ -953,6 +953,7 @@
       "noColours": "{{name}} keeps its own colours.",
       "pick": "Put a piece on, or pick one you're wearing to change its colours.",
       "quickColour": "{{area}}: {{value}}",
+      "toColours": "Colours",
       "takeOff": "Take off",
       "takeOffNamed": "Take off {{name}}",
       "bake": "Make part of the skin",

@@ -1,6 +1,6 @@
 // The colour areas of the piece picked on the Create tab: per area the system picker and a hex field, and under them
 // the quick colours that suit the area (skin tones, eye colours, hair colours, or the cloth palette).
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, Ref } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogPiece, WornPiece } from '../../ipc/schema';
 import { ColourField } from './ColourPanel';
@@ -25,7 +25,10 @@ export function AreaColours({
   worn,
   lang,
   onColour,
+  ref,
 }: {
+  /** The section, for what brings it into view. */
+  ref?: Ref<HTMLElement>;
   piece: CatalogPiece;
   worn: WornPiece;
   lang: Lang;
@@ -35,7 +38,7 @@ export function AreaColours({
   const { t } = useTranslation();
   const name = piece.name[lang];
   return (
-    <section className="area-colours" aria-labelledby={`area-colours-${piece.id}`}>
+    <section ref={ref} className="area-colours" aria-labelledby={`area-colours-${piece.id}`}>
       <h3 id={`area-colours-${piece.id}`} className="create-heading">
         {t('skins.create.colours', { name })}
       </h3>
