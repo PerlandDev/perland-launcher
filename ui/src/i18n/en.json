@@ -46,7 +46,49 @@
     "collapse": "Hide names",
     "moved": "{{name}} moved to position {{position}} of {{count}}"
   },
+  "places": {
+    "label": "Places",
+    "home": "Home",
+    "skinsWord_one": "{{count}} in your wardrobe",
+    "skinsWord_other": "{{count}} in your wardrobe",
+    "skinsEmpty": "Make your own skin",
+    "serversWord": "Find one to play on",
+    "browseWord": "Modpacks, mods, shaders",
+    "medalsWord": "{{earned}} of {{total}} medals"
+  },
+  "lobby": {
+    "hello": "Hi, {{name}}",
+    "welcome": "Welcome",
+    "subtitle": "Everything in your launcher, in one place.",
+    "last": "Your last instance",
+    "playLabel": "Play {{name}}",
+    "open": "Open",
+    "openLabel": "Open {{name}}",
+    "skins": {
+      "wardrobe_one": "{{count}} in your wardrobe.",
+      "wardrobe_other": "{{count}} in your wardrobe.",
+      "empty": "Your wardrobe is empty.",
+      "looks_one": "{{count}} ready-made look in the catalog.",
+      "looks_other": "{{count}} ready-made looks in the catalog.",
+      "open": "Open wardrobe"
+    },
+    "servers": {
+      "busiest": "Busiest right now",
+      "all": "All servers",
+      "closed": "The server list isn't open yet.",
+      "unavailable": "The server list can't be reached right now.",
+      "none": "No public servers yet.",
+      "row": "{{name}}, {{status}}"
+    },
+    "browse": {
+      "hint": "Add to any instance, or start a new one from a modpack."
+    },
+    "medals": {
+      "open": "See all medals"
+    }
+  },
   "home": {
+    "changeSkin": "Change skin",
     "emptyTitle": "No instances yet",
     "emptyBody": "An instance is one Minecraft setup: a version, a loader and its own worlds.",
     "emptyAction": "Create an instance",
@@ -476,6 +518,8 @@
     "font": "Text font",
     "fontHyperlegible": "Easy to read",
     "fontSystem": "This computer's",
+    "showPlayer": "Show your player beside Play",
+    "showPlayerHint": "Your skin stands on the Play button of each instance.",
     "iconShape": "Instance icons",
     "iconSquare": "Square",
     "iconRound": "Round",

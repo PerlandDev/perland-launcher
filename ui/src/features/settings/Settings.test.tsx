@@ -349,3 +349,13 @@ it('offers the graphics card in Spanish', async () => {
     await i18n.changeLanguage('en');
   }
 });
+
+it('hides and shows the player on an instance’s Home from Appearance', async () => {
+  const { user, calls } = renderApp(<Settings />);
+  const player = await screen.findByRole('switch', { name: 'Show your player beside Play' });
+  expect(player).toHaveAttribute('aria-checked', 'true');
+  expect(screen.getByText('Your skin stands on the Play button of each instance.')).toBeInTheDocument();
+  await user.click(player);
+  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { showPlayer: false } }));
+  expect(screen.getByRole('switch', { name: 'Show your player beside Play' })).toHaveAttribute('aria-checked', 'false');
+});

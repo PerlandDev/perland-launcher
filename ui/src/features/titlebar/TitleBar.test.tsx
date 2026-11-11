@@ -19,27 +19,13 @@ it('drives the window and shows the active account', async () => {
   expect(routeSnapshot()).toEqual({ name: 'accounts' });
 });
 
-it('opens Skins from the shirt after the account', async () => {
-  const { user } = renderApp(<TitleBar />);
+it('leaves Skins and Achievements to the rail', async () => {
+  renderApp(<TitleBar />);
   const account = await screen.findByRole('button', { name: /Steve/ });
-  const skins = screen.getByRole('button', { name: 'Skins' });
+  expect(screen.queryByRole('button', { name: 'Skins' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Achievements' })).toBeNull();
   const buttons = screen.getAllByRole('button');
-  expect(buttons.indexOf(skins)).toBe(buttons.indexOf(account) + 1);
-  await user.click(skins);
-  expect(routeSnapshot()).toEqual({ name: 'skins' });
-});
-
-it('opens Achievements from the trophy between Skins and Settings', async () => {
-  const { user } = renderApp(<TitleBar />);
-  await screen.findByRole('button', { name: /Steve/ });
-  const skins = screen.getByRole('button', { name: 'Skins' });
-  const trophy = screen.getByRole('button', { name: 'Achievements' });
-  const buttons = screen.getAllByRole('button');
-  const at = (b: HTMLElement) => buttons.indexOf(b);
-  expect(at(trophy)).toBe(at(skins) + 1);
-  expect(at(screen.getByRole('button', { name: 'Settings' }))).toBe(at(trophy) + 1);
-  await user.click(trophy);
-  expect(routeSnapshot()).toEqual({ name: 'achievements' });
+  expect(buttons.indexOf(screen.getByRole('button', { name: 'Settings' }))).toBe(buttons.indexOf(account) + 1);
 });
 
 it('draws the settings button as a cog', async () => {

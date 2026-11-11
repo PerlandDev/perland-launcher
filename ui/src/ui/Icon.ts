@@ -20,6 +20,7 @@ export {
   Fire,
   Folder,
   Gear,
+  Home,
   Image,
   InfoBox,
   Languages,

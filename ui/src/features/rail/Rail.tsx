@@ -20,11 +20,11 @@ import { RAIL_POLL } from '../../state/serverPoll';
 import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
 import { Menu, type MenuHandle } from '../../ui/Menu';
-import { ArrowBarLeft, ArrowBarRight, Plus, Search, Server, WarningDiamond } from '../../ui/Icon';
-import { sessionKind } from '../browse/session';
+import { ArrowBarLeft, ArrowBarRight, Plus, WarningDiamond } from '../../ui/Icon';
 import { useInstanceActions } from '../home/InstanceMenu';
 import { pickId } from '../home/pick';
 import { statusWord } from '../servers/statusWord';
+import { RailPlaces } from './RailPlaces';
 import { dropIndex, moveItem, preview } from './reorder';
 
 /** How far the pointer travels before a press becomes a drag; anything less is a click. */
@@ -209,9 +209,9 @@ function RailItem({
   );
 }
 
-/** Every instance as a cabinet icon; the selected one has the lit light. Arrow keys move along it,
- *  and Alt+arrows or a drag move a cabinet to a new place in the player's order.
- *  Its key at the top widens it to show each name and status word, and the settings remember that. */
+/** The launcher's places by name, then every instance as a cabinet icon; the selected one has the lit light. Arrow keys
+ *  move along the cabinets, and Alt+arrows or a drag move one to a new place in the player's order.
+ *  The key at the top widens the rail to show each name and status word, and the settings remember that. */
 export function Rail() {
   const { t } = useTranslation();
   const { data } = useInstances();
@@ -374,7 +374,7 @@ export function Rail() {
   };
 
   return (
-    <nav aria-label={t('rail.label')} className="rail" data-wide={wide ? '' : undefined} data-icon-shape={settings.data?.iconShape ?? 'square'}>
+    <div className="rail" data-wide={wide ? '' : undefined} data-icon-shape={settings.data?.iconShape ?? 'square'}>
       <Button
         variant="ghost"
         size={wide ? 'md' : 'icon'}
@@ -387,72 +387,61 @@ export function Rail() {
       >
         {wide && t('rail.collapse')}
       </Button>
-      <ul ref={listRef} className="rail-list" onKeyDown={onKeyDown}>
-        {items.map((item, index) => {
-          const order = ids.indexOf(item.id);
-          const held = carry?.id === item.id;
-          const place = carry && order >= 0 ? preview(carry, order) : null;
-          return (
-            <li
-              key={item.id}
-              data-carry={held ? '' : undefined}
-              data-drop={held && place?.moved ? '' : undefined}
-              data-shift={!held && place?.shift ? '' : undefined}
-              style={
-                held
-                  ? ({ '--socket': `${place?.socket ?? 0}px` } as CSSProperties)
-                  : place?.shift
-                    ? ({ '--shift': `${place.shift}px` } as CSSProperties)
-                    : undefined
-              }
-            >
-              <RailItem
-                item={item}
-                selected={item.id === selected}
-                entry={selected ? item.id === selected : index === 0}
-                wide={wide}
-                setRef={(el) => {
-                  if (el) refs.current.set(item.id, el);
-                  else refs.current.delete(item.id);
-                }}
-                grip={order >= 0 ? gripFor(item.id, order) : undefined}
-                lift={carry?.id === item.id ? carry.lift : null}
-                movable={order >= 0}
-                endedDrag={() => {
-                  const ended = endedDrag.current;
-                  endedDrag.current = false;
-                  return ended;
-                }}
-              />
-            </li>
-          );
-        })}
-      </ul>
+      <RailPlaces wide={wide} />
+      {/* Wide, a small heading says where the instances start; narrow, a seam does. */}
+      {wide ? (
+        <p className="rail-heading" aria-hidden>
+          {t('rail.label')}
+        </p>
+      ) : (
+        <span className="rail-seam" aria-hidden />
+      )}
+      <nav aria-label={t('rail.label')} className="rail-instances">
+        <ul ref={listRef} className="rail-list" onKeyDown={onKeyDown}>
+          {items.map((item, index) => {
+            const order = ids.indexOf(item.id);
+            const held = carry?.id === item.id;
+            const place = carry && order >= 0 ? preview(carry, order) : null;
+            return (
+              <li
+                key={item.id}
+                data-carry={held ? '' : undefined}
+                data-drop={held && place?.moved ? '' : undefined}
+                data-shift={!held && place?.shift ? '' : undefined}
+                style={
+                  held
+                    ? ({ '--socket': `${place?.socket ?? 0}px` } as CSSProperties)
+                    : place?.shift
+                      ? ({ '--shift': `${place.shift}px` } as CSSProperties)
+                      : undefined
+                }
+              >
+                <RailItem
+                  item={item}
+                  selected={item.id === selected}
+                  entry={selected ? item.id === selected : index === 0}
+                  wide={wide}
+                  setRef={(el) => {
+                    if (el) refs.current.set(item.id, el);
+                    else refs.current.delete(item.id);
+                  }}
+                  grip={order >= 0 ? gripFor(item.id, order) : undefined}
+                  lift={carry?.id === item.id ? carry.lift : null}
+                  movable={order >= 0}
+                  endedDrag={() => {
+                    const ended = endedDrag.current;
+                    endedDrag.current = false;
+                    return ended;
+                  }}
+                />
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
       <p className="sr-only" aria-live="polite">
         {announcement}
       </p>
-      <Button
-        size={wide ? 'md' : 'icon'}
-        className="btn-lg rail-browse rail-foot"
-        aria-label={t('servers.open')}
-        title={t('servers.open')}
-        aria-current={route.name === 'servers' ? 'page' : undefined}
-        icon={<Server />}
-        onClick={() => navigate({ name: 'servers' })}
-      >
-        {wide && t('servers.open')}
-      </Button>
-      <Button
-        size={wide ? 'md' : 'icon'}
-        className="btn-lg rail-browse rail-foot"
-        aria-label={t('browse.open')}
-        title={t('browse.open')}
-        aria-current={route.name === 'browse' && !route.instance ? 'page' : undefined}
-        icon={<Search />}
-        onClick={() => navigate({ name: 'browse', kind: sessionKind() })}
-      >
-        {wide && t('browse.open')}
-      </Button>
       <Button
         variant="ghost"
         size={wide ? 'md' : 'icon'}
@@ -464,6 +453,6 @@ export function Rail() {
       >
         {wide && t('rail.newInstance')}
       </Button>
-    </nav>
+    </div>
   );
 }

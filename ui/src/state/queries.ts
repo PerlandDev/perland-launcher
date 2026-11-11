@@ -39,6 +39,9 @@ function forgetConsolesOnAccountChange(client: QueryClient) {
 
 export const queryClient = createQueryClient();
 
+/** Every account's player figure (`qk.playerSkin`), for asking for them all again. */
+export const PLAYER_SKIN_KEY = ['playerSkin'] as const;
+
 export const qk = {
   appInfo: ['appInfo'] as const,
   settings: ['settings'] as const,
@@ -48,6 +51,7 @@ export const qk = {
   accounts: ['accounts'] as const,
   accountReady: ['accountReady'] as const,
   accountFace: (uuid: string) => ['accountFace', uuid] as const,
+  playerSkin: (uuid: string | null) => [...PLAYER_SKIN_KEY, uuid] as const,
   playtime: ['playtime'] as const,
   continueTarget: (id: string) => ['continue', id] as const,
   mcVersions: ['catalog', 'minecraft'] as const,
@@ -107,6 +111,12 @@ export const useAccountFace = (account: Pick<Account, 'provider' | 'uuid'>) =>
     enabled: account.provider === 'microsoft',
     staleTime: THIRTY_MINUTES,
   });
+/** The skin drawn as the player's own figure (Home, the Lobby) and how many skins the active account's wardrobe holds. It only
+ *  reads, unlike the Skins screen's own listing, so it is safe to ask from anywhere. Disabled until an account is in use. */
+export function usePlayerSkin() {
+  const uuid = useAccounts().data?.active ?? null;
+  return useQuery({ queryKey: qk.playerSkin(uuid), queryFn: () => commands.playerSkin(uuid ?? ''), enabled: uuid !== null });
+}
 /** Whether Play can start (a Microsoft account in use, signed in), whether Microsoft is still approving this build, and whether
  *  the "offline accounts are gone" notice is due. Every sign-in, remove and dismiss asks for it again. */
 export const useAccountReady = () => useQuery({ queryKey: qk.accountReady, queryFn: commands.accountReady });

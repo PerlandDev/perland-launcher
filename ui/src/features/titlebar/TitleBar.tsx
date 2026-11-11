@@ -8,7 +8,7 @@ import { useAccounts, useUpdate } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { useUpdateBusy } from '../../state/updateBusy';
-import { Close, Minus, SettingsCog, Shirt, Square, Trophy, WindowFrame } from '../../ui/Icon';
+import { Close, Minus, SettingsCog, Square, WindowFrame } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 
 /** The custom title bar: drag anywhere that isn't a button. `minimal` keeps only the window
@@ -84,12 +84,6 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
               ) : (
                 t('titlebar.noAccount')
               )}
-            </button>
-            <button type="button" className="tb-btn" aria-label={t('titlebar.skins')} title={t('titlebar.skins')} onClick={() => navigate({ name: 'skins' })}>
-              <Shirt aria-hidden />
-            </button>
-            <button type="button" className="tb-btn" aria-label={t('titlebar.achievements')} onClick={() => navigate({ name: 'achievements' })}>
-              <Trophy aria-hidden />
             </button>
             <button type="button" className="tb-btn" aria-label={t('titlebar.settings')} onClick={() => navigate({ name: 'settings' })}>
               <SettingsCog data-icon="settings-cog" aria-hidden />

@@ -20,6 +20,26 @@ describe('App', () => {
     expect(await screen.findByRole('heading', { name: 'Asalith Fields' })).toBeInTheDocument();
   });
 
+  it('lets each place arrive in its own way, again at every move, without starting anything over', async () => {
+    const { user } = renderApp(<App />);
+    const name = await screen.findByRole('heading', { name: 'Asalith Fields' });
+    const frame = name.closest('.arrive')!;
+    // An instance powers on; any other screen drops in. The beat flips at each move, which is what replays the entrance.
+    expect(frame).toHaveAttribute('data-arrive', 'home');
+    const first = frame.getAttribute('data-beat');
+    await user.click(screen.getByRole('button', { name: 'Creative Flat' }));
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    expect(frame).toHaveAttribute('data-arrive', 'home');
+    expect(frame.getAttribute('data-beat')).not.toBe(first);
+    // The same frame and the same Home, moved on: nothing was thrown away and built again.
+    expect(screen.getByRole('heading', { name: 'Creative Flat' }).closest('.arrive')).toBe(frame);
+    const second = frame.getAttribute('data-beat');
+    await user.click(screen.getByRole('button', { name: 'Servers' }));
+    await screen.findByRole('heading', { name: 'Servers', level: 1 });
+    expect(frame).toHaveAttribute('data-arrive', 'screen');
+    expect(frame.getAttribute('data-beat')).not.toBe(second);
+  });
+
   it('never lets the frame around a screen scroll, so the screen and the activity drawer stay put (#121)', async () => {
     renderApp(<App />);
     await screen.findByRole('heading', { name: 'Asalith Fields' });

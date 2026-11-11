@@ -26,6 +26,8 @@ it('moves focus with the arrow keys and enters at the selected item', async () =
   // The rail key comes first, at the top.
   await user.tab();
   expect(screen.getByRole('button', { name: 'Show names' })).toHaveFocus();
+  // The places are one stop, then the instances.
+  await user.tab();
   await user.tab();
   expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
   await user.keyboard('{ArrowDown}');
@@ -72,23 +74,78 @@ it("falls back to the generated icon when a pack's icon fails to decode", async 
   expect(sky.querySelector('svg')).not.toBeNull();
 });
 
-it('opens Servers from the rail, above Browse, and marks it while open', async () => {
+it("lists the launcher's places above the instances, each by name", async () => {
+  renderApp(<Rail />);
+  const first = await screen.findByRole('button', { name: 'Asalith Fields' });
+  const places = within(screen.getByRole('navigation', { name: 'Places' })).getAllByRole('button');
+  expect(places.map((p) => p.getAttribute('aria-label'))).toEqual(['Home', 'Skins', 'Servers', 'Browse', 'Achievements']);
+  for (const place of places) expect(place.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+it('opens a place and marks it while open, with no cabinet selected', async () => {
   const { user } = renderApp(<Rail />);
-  const servers = await screen.findByRole('button', { name: 'Servers' });
-  const browse = screen.getByRole('button', { name: 'Browse' });
-  expect(servers.compareDocumentPosition(browse) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  const servers = screen.getByRole('button', { name: 'Servers' });
   expect(servers).not.toHaveAttribute('aria-current');
   await user.click(servers);
   expect(routeSnapshot()).toEqual({ name: 'servers' });
   expect(servers).toHaveAttribute('aria-current', 'page');
   // Servers isn't an instance's screen, so no cabinet is selected.
   expect(screen.getByRole('button', { name: 'Asalith Fields' })).not.toHaveAttribute('aria-current');
+  await user.click(screen.getByRole('button', { name: 'Browse' }));
+  expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
+  await user.click(screen.getByRole('button', { name: 'Skins' }));
+  expect(routeSnapshot()).toEqual({ name: 'skins' });
+  await user.click(screen.getByRole('button', { name: 'Achievements' }));
+  expect(routeSnapshot()).toEqual({ name: 'achievements' });
+  await user.click(screen.getByRole('button', { name: 'Home' }));
+  expect(routeSnapshot()).toEqual({ name: 'lobby' });
+  expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
 });
 
-it('opens Browse from the rail', async () => {
+it('says what each place holds while the rail shows names', async () => {
+  renderApp(<Rail />, { railExpanded: true });
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  const places = screen.getByRole('navigation', { name: 'Places' });
+  // Steve's mock wardrobe holds two skins; with Perland's stats off only the time medal counts.
+  expect(await within(places).findByText('2 in your wardrobe')).toBeInTheDocument();
+  expect(within(places).getByText('Find one to play on')).toBeInTheDocument();
+  expect(within(places).getByText('Modpacks, mods, shaders')).toBeInTheDocument();
+  expect(within(places).getByText('1 of 1 medals')).toBeInTheDocument();
+  expect(screen.getByText('Instances')).toBeInTheDocument();
+});
+
+it('keeps the places to icons, named by their tooltip, while the rail is narrow', async () => {
+  renderApp(<Rail />);
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  const places = screen.getByRole('navigation', { name: 'Places' });
+  expect(within(places).queryByText('Find one to play on')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Skins' })).toHaveAttribute('title', 'Skins');
+  expect(screen.queryByText('Instances')).toBeNull();
+});
+
+it('walks the places with the arrow keys from one tab stop', async () => {
   const { user } = renderApp(<Rail />);
-  await user.click(await screen.findByRole('button', { name: 'Browse' }));
-  expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  await user.tab();
+  expect(screen.getByRole('button', { name: 'Show names' })).toHaveFocus();
+  await user.tab();
+  expect(screen.getByRole('button', { name: 'Home' })).toHaveFocus();
+  await user.keyboard('{ArrowDown}{ArrowDown}');
+  expect(screen.getByRole('button', { name: 'Servers' })).toHaveFocus();
+  await user.keyboard('{End}');
+  expect(screen.getByRole('button', { name: 'Achievements' })).toHaveFocus();
+  // One stop for the places: the next Tab is the instances.
+  await user.tab();
+  expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
+});
+
+it('keeps only New instance at the foot', async () => {
+  renderApp(<Rail />);
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  expect(screen.getAllByRole('button', { name: 'Servers' })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'Browse' })).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'New instance' })).toBeInTheDocument();
 });
 
 it('marks a server with its last status, in words too', async () => {
@@ -133,13 +190,13 @@ it('shows names when its key is pressed, and remembers it in the settings', asyn
 it('round icon shape marks the rail', async () => {
   const { container } = renderApp(<Rail />, { iconShape: 'round' });
   await screen.findByRole('button', { name: 'Asalith Fields' });
-  expect(container.querySelector('nav.rail')).toHaveAttribute('data-icon-shape', 'round');
+  expect(container.querySelector('.rail')).toHaveAttribute('data-icon-shape', 'round');
 });
 
 it('leaves the rail square by default', async () => {
   const { container } = renderApp(<Rail />);
   await screen.findByRole('button', { name: 'Asalith Fields' });
-  expect(container.querySelector('nav.rail')).toHaveAttribute('data-icon-shape', 'square');
+  expect(container.querySelector('.rail')).toHaveAttribute('data-icon-shape', 'square');
 });
 
 it('shows the full name on hover and the status word in a wide row', async () => {
@@ -153,6 +210,8 @@ it('shows the full name on hover and the status word in a wide row', async () =>
 it('moves focus with the arrow keys in the wide rail too', async () => {
   const { user } = renderApp(<Rail />, { railExpanded: true });
   await screen.findByText('Asalith Fields');
+  // The places are one stop between the rail key and the cabinets.
+  await user.tab();
   await user.tab();
   await user.tab();
   expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
@@ -165,6 +224,8 @@ it('moves focus with the arrow keys in the wide rail too', async () => {
 it('moves a cabinet down with Alt+ArrowDown, keeps focus on it and says where it went', async () => {
   const { user, calls } = renderApp(<Rail />);
   await screen.findByRole('button', { name: 'Asalith Fields' });
+  // The places are one stop between the rail key and the cabinets.
+  await user.tab();
   await user.tab();
   await user.tab();
   expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
@@ -191,6 +252,8 @@ it('moves a cabinet up with Alt+ArrowUp in the wide rail', async () => {
 it('does nothing on Alt+ArrowUp at the top, and never moves past the end or a damaged cabinet', async () => {
   const { user, calls } = renderApp(<Rail />);
   await screen.findByRole('button', { name: 'Asalith Fields' });
+  // The places are one stop between the rail key and the cabinets.
+  await user.tab();
   await user.tab();
   await user.tab();
   await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
@@ -221,7 +284,7 @@ it('puts the order back when the move is refused', async () => {
 
 /** Lay the cabinets out 56px tall with 12px gaps, the way the rail draws them (jsdom has no layout). */
 function layOut() {
-  screen.getAllByRole('listitem').forEach((li, index) => {
+  within(screen.getByRole('navigation', { name: 'Instances' })).getAllByRole('listitem').forEach((li, index) => {
     const button = li.querySelector('button')!;
     const top = index * 68;
     button.getBoundingClientRect = () => ({ top, bottom: top + 56, height: 56, left: 0, right: 56, width: 56, x: 0, y: top, toJSON: () => null });
@@ -287,7 +350,8 @@ it('still selects on a click that wobbles under 4px, and never drags a damaged c
 
 /** The cabinets' accessible names, top to bottom. */
 function cabinetNames() {
-  return screen
+  // The instances' own list: the places above it are not cabinets.
+  return within(screen.getByRole('navigation', { name: 'Instances' }))
     .getAllByRole('listitem')
     .map((li) => li.querySelector('button')?.getAttribute('aria-label'))
     .filter(Boolean);

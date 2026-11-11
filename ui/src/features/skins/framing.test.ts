@@ -97,6 +97,18 @@ describe('shotOf', () => {
     }
   });
 
+  it("the launcher's own figure stands in a tighter frame that still holds it whole, a raised hand included", () => {
+    const figure = shotOf('figure', 'still');
+    for (const pose of ['still', 'wave'] as const) {
+      const stand = shotOf('stand', pose);
+      expect(stand.height).toBeLessThan(figure.height);
+      // Feet on 0, crown at 32, a waving hand a little above it and out past the shoulder.
+      expect(stand.target[1] - stand.height / 2).toBeLessThan(0);
+      expect(stand.target[1] + stand.height / 2).toBeGreaterThan(35);
+      expect(stand.width / 2).toBeGreaterThanOrEqual(14);
+    }
+  });
+
   it('every focus has a sane shot in every pose', () => {
     for (const pose of POSES) {
       for (const focus of FOCUSES) {

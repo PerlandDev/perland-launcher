@@ -6,8 +6,9 @@ import { cameraPosition, START_VIEW, targetOf, ZOOM_MAX, ZOOM_MIN, zoomAt, type 
 import type { Vec3 } from './layout';
 import { rigAt, type Pose } from './poses';
 
-/** What the camera can frame. `upper` is head to waist; `back` is the torso from behind. */
-export const FOCUSES = ['figure', 'head', 'hair', 'hat', 'upper', 'torso', 'back', 'legs', 'feet'] as const;
+/** What the camera can frame. `upper` is head to waist; `back` is the torso from behind; `stand` is the figure alone,
+ *  tight, for the launcher's own player figure (Home, the Lobby). */
+export const FOCUSES = ['figure', 'stand', 'head', 'hair', 'hat', 'upper', 'torso', 'back', 'legs', 'feet'] as const;
 export type Focus = (typeof FOCUSES)[number];
 
 /** What must fit in view: a box `height` tall and `width` wide around `target` (model units, one a texel). */
@@ -72,6 +73,8 @@ export const FIGURE_ANGLE = { yaw: START_VIEW.yaw, pitch: START_VIEW.pitch } as 
  * its part's middle, so the part stands clear of the keys and notes along the foot of the stage.
  */
 const CLOSE: Record<Exclude<Focus, 'figure'>, { at: Vec3; on: 'torso' | 'legs'; height: number; width: number; yaw: number; pitch: number }> = {
+  // The figure with no stage around it: feet to crown and a waving hand, a little less from above than the stage's view.
+  stand: { at: [0, 16.5, 0], on: 'legs', height: 40, width: 30, yaw: -0.5, pitch: 0.1 },
   head: { at: [0, 25.5, 0], on: 'torso', height: 24, width: 22, yaw: -0.3, pitch: 0.06 },
   hair: { at: [0, 26, 0], on: 'torso', height: 24, width: 22, yaw: -0.72, pitch: 0.3 },
   hat: { at: [0, 26.5, 0], on: 'torso', height: 25, width: 22, yaw: -0.5, pitch: 0.2 },

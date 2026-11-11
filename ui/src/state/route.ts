@@ -20,7 +20,9 @@ export type Route =
   // The Skins screen: the wardrobe, opened on a skin and wearing it on an account (the active one by default).
   | { name: 'skins'; skin?: string; account?: string }
   | { name: 'achievements' }
-  | { name: 'settings' };
+  | { name: 'settings' }
+  // The Lobby ("Home" to players): everything the launcher offers on one screen.
+  | { name: 'lobby' };
 
 const HOME: Route = { name: 'home', id: null };
 const LAST_KEY = 'perland.lastInstance';

@@ -1456,6 +1456,94 @@
     padding-block: 0.75rem 1rem;
     background: var(--color-ground);
   }
+  /* The launcher's places, at the top of the rail: flat rows (never cabinets, which are instances), an icon on the
+     cabinet icons' axis and, wide, the name over what the place holds. The open one stands on its step beside the
+     coin-slot light, like the selected cabinet; nothing here is ever lit. */
+  .rail-places {
+    align-self: stretch;
+    padding-inline: 0.75rem;
+  }
+  .rail-places > ul {
+    display: grid;
+    justify-items: center;
+    gap: 0.25rem;
+  }
+  .rail[data-wide] .rail-places > ul {
+    justify-items: stretch;
+  }
+  .rail-place {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 3.5rem;
+    height: 2.75rem;
+    color: var(--color-ink-dim);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    corner-shape: notch;
+    cursor: pointer;
+  }
+  .rail[data-wide] .rail-place {
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+    place-items: center start;
+    width: 100%;
+    height: 3rem;
+    padding-right: 0.75rem;
+    text-align: left;
+  }
+  .rail-place-icon {
+    display: grid;
+    place-items: center;
+    width: 3.5rem;
+  }
+  .rail-place-icon svg {
+    width: 1.375rem;
+    height: 1.375rem;
+  }
+  .rail-place .rail-name {
+    color: var(--color-ink);
+  }
+  .rail-place:hover,
+  .rail-place[data-selected] {
+    color: var(--color-ink);
+    background: var(--color-raised);
+  }
+  .rail-place[data-selected] {
+    box-shadow: 0 4px 0 var(--color-dirt-deep);
+  }
+  .rail-place[data-selected]::before {
+    content: '';
+    position: absolute;
+    left: -0.625rem;
+    top: 30%;
+    width: 4px;
+    height: 40%;
+    background: var(--color-amber);
+  }
+  /* Where the instances start: a small heading while the rail is wide, a seam while it is narrow. */
+  .rail-heading {
+    margin: 0.5rem 0 -0.25rem;
+    padding-inline: 1.5rem;
+    color: var(--color-ink-dim);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .rail-seam {
+    flex: none;
+    width: 2rem;
+    height: 2px;
+    background: var(--color-line);
+  }
+  /* The instances' own landmark: it takes the rail's spare height, and the list scrolls inside it. */
+  .rail-instances {
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
+    min-height: 0;
+  }
   .rail-list {
     display: flex;
     flex-direction: column;
@@ -2516,18 +2604,6 @@
     display: none;
   }
 
-  /* The rail's Browse key: raised, never lit; while Browse is open it sits pressed into its slot. */
-  .rail-browse[aria-current='page'] {
-    --face: var(--color-ground);
-    translate: 0 var(--step);
-    box-shadow:
-      inset 0 2px 0 rgb(0 0 0 / 0.45),
-      inset 0 0 0 1px var(--color-line);
-  }
-  .rail-browse[aria-current='page']:hover:not(:disabled) {
-    --face: var(--color-ground);
-  }
-
   /* Mods & packs: an instance's files as rows on the ground split by seam hairlines, like Browse
      results. A row never lifts, because only its own controls press. */
   .content-section {
@@ -3497,5 +3573,386 @@
     font-size: 0.875rem;
     font-weight: 600;
     color: var(--color-blue-ink);
+  }
+}
+
+/* The player's own figure and the Lobby. Nothing here is lit but the Lobby's one Play. */
+@layer components {
+  /* The figure: a flat front view at once (hard pixels), then the 3D one in its place. The box is the 3D frame's
+     3:4; the figure stands in its middle, feet a little above its foot. */
+  .player-figure {
+    position: relative;
+    display: block;
+    aspect-ratio: 3 / 4;
+  }
+  .player-flat,
+  .player-deep {
+    position: absolute;
+  }
+  /* Feet to crown is 32 of the frame's 40 texels, and the feet stand 3.5 above its foot. */
+  .player-flat {
+    left: 50%;
+    bottom: 8.75%;
+    height: 80%;
+    aspect-ratio: 1 / 2;
+    translate: -50% 0;
+    image-rendering: pixelated;
+  }
+  .player-deep {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    visibility: hidden;
+  }
+  .player-figure[data-deep] .player-flat {
+    visibility: hidden;
+  }
+  .player-figure[data-deep] .player-deep {
+    visibility: visible;
+  }
+
+  /* Home's player: the figure stands on Play's own top edge, at its left end, and the keys that sat above Play keep
+     the room to its right under a new Change skin key. A one-step laminate shade seats it on any art behind. */
+  .stand {
+    position: relative;
+    display: grid;
+    justify-items: end;
+    width: 17.5rem;
+    --figure: 13rem;
+  }
+  @media (height < 40rem) {
+    .stand {
+      --figure: 9.5rem;
+    }
+  }
+  @media (height >= 56rem) {
+    .stand {
+      --figure: 16rem;
+    }
+  }
+  .stand-player {
+    position: absolute;
+    left: -3.5rem;
+    /* Down the 0.75rem gap to Play, and by the frame's foot under the feet. */
+    bottom: calc(-0.75rem - var(--figure) * 0.0875);
+    width: calc(var(--figure) * 0.75);
+    padding: 0;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    filter: drop-shadow(0 3px 0 var(--color-ground));
+  }
+  .stand-keys {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: end;
+    gap: 0.75rem;
+    width: 100%;
+    min-width: 0;
+  }
+  /* What the figure leaves of Play's width. */
+  .stand[data-player] .stand-keys {
+    width: calc(100% - var(--figure) * 0.3);
+  }
+  /* With no key in it the column takes no room, so nothing opens a gap above Play. */
+  .stand:not(:has(.btn)) {
+    display: none;
+  }
+  .stand-keys > .btn {
+    max-width: 100%;
+  }
+  /* Pressing Play drops the figure with its face: it is standing on it. */
+  :has(> .play:active:not(:disabled)) > .stand .stand-player {
+    translate: 0 8px;
+  }
+
+  /* The Lobby: a greeting row, then four panels that each show the real thing. */
+  .lobby {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .lobby-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem 1.5rem;
+    max-width: 69rem;
+    padding: 1.75rem 2.5rem 1rem;
+  }
+  .lobby-resume {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-width: 0;
+  }
+  .lobby-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 0 2.5rem 2.5rem;
+  }
+  .lobby-grid {
+    display: grid;
+    grid-template-columns: 19rem minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'skins servers servers'
+      'browse medals medals';
+    gap: 1rem;
+    max-width: 64rem;
+  }
+  /* Under 62rem of window (the wide rail at the 960 px minimum) Skins narrows and Browse and the medals stack. */
+  @media (width < 68rem) {
+    .lobby-grid {
+      grid-template-columns: 15rem minmax(0, 1fr);
+      grid-template-areas:
+        'skins servers'
+        'browse browse'
+        'medals medals';
+    }
+  }
+  .lobby-grid > .panel {
+    display: grid;
+    align-content: start;
+    gap: 1rem;
+    min-width: 0;
+    padding: 1.25rem;
+  }
+  .lobby-skins {
+    grid-area: skins;
+    grid-template-rows: minmax(0, 1fr) auto auto;
+  }
+  .lobby-servers {
+    grid-area: servers;
+  }
+  .lobby-browse {
+    grid-area: browse;
+  }
+  .lobby-medals {
+    grid-area: medals;
+  }
+  .lobby-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.125rem;
+    font-weight: 700;
+    line-height: 1.25;
+  }
+  .lobby-title svg {
+    flex: none;
+    width: 1.25rem;
+    height: 1.25rem;
+    color: var(--color-ink-dim);
+  }
+  /* The stage: the fitting room's recessed well, the figure standing on its floor. */
+  .lobby-stage {
+    display: grid;
+    place-items: end center;
+    min-height: 10.5rem;
+    overflow: hidden;
+    cursor: pointer;
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  .lobby-stage .player-figure {
+    height: 11.5rem;
+    margin-bottom: -1rem;
+  }
+  .lobby-note {
+    padding: 1.5rem 0.5rem;
+    color: var(--color-ink-dim);
+  }
+  .lobby-rows {
+    display: grid;
+  }
+  .lobby-rows > li + li {
+    box-shadow: 0 -1px 0 var(--color-line);
+  }
+  .lobby-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+    padding: 0.625rem 0.5rem;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    corner-shape: notch;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .lobby-row:hover {
+    background: var(--color-raised);
+  }
+  .lobby-chevron {
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--color-ink-dim);
+  }
+  .lobby-kinds {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding-bottom: 0.25rem;
+  }
+  .lobby-case {
+    display: flex;
+    flex-wrap: wrap;
+    /* As wide as the medals it holds, so one medal isn't lost in an empty well. */
+    justify-self: start;
+    gap: 0.5rem 0.625rem;
+    padding: 0.875rem;
+    color: inherit;
+    background: var(--color-ground);
+    border: 0;
+    border-radius: 6px;
+    corner-shape: notch;
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+    cursor: pointer;
+  }
+  .lobby-case:hover {
+    background: var(--color-panel);
+  }
+}
+
+/* Arrivals: how a place comes in when the player moves to it. Everything steps and nothing eases, as everywhere else,
+   and only a clip, a few translates and one filter on the marquee move, for a handful of frames: a few repaints per
+   move and none at rest. Each entrance exists twice (a and b) because the frame's beat flips at every move, and a
+   changed animation name is what plays it again without building the screen again. Nothing stays applied once an
+   entrance ends (`backwards`), so no screen is left clipped or in a stacking context of its own. */
+@layer components {
+  .arrive {
+    height: 100%;
+  }
+  /* A screen (the Lobby, Skins, Servers, Browse, …) drops like a shutter in five blocks. */
+  .arrive[data-arrive='screen'][data-beat='0'] {
+    animation: arrive-shutter-a 200ms steps(5, end) backwards;
+  }
+  .arrive[data-arrive='screen'][data-beat='1'] {
+    animation: arrive-shutter-b 200ms steps(5, end) backwards;
+  }
+  @keyframes arrive-shutter-a {
+    from {
+      clip-path: inset(0 0 100% 0);
+    }
+    to {
+      clip-path: inset(0 0 0 0);
+    }
+  }
+  @keyframes arrive-shutter-b {
+    from {
+      clip-path: inset(0 0 100% 0);
+    }
+    to {
+      clip-path: inset(0 0 0 0);
+    }
+  }
+  /* An instance's Home powers on: the marquee's tube flickers up, the name and its plate land on their shade, and Play
+     stands up onto its step last, so the eye ends on the one lit button. A dimmed marquee (a game is running) stays
+     dim: its tube is not the one coming on. */
+  .arrive[data-arrive='home'][data-beat='0'] .marquee:not([data-dimmed]) {
+    animation: arrive-tube-a 320ms steps(1, end) backwards;
+  }
+  .arrive[data-arrive='home'][data-beat='1'] .marquee:not([data-dimmed]) {
+    animation: arrive-tube-b 320ms steps(1, end) backwards;
+  }
+  @keyframes arrive-tube-a {
+    0% {
+      filter: brightness(0.25) saturate(0.5);
+    }
+    25% {
+      filter: brightness(1.2) saturate(1);
+    }
+    45% {
+      filter: brightness(0.6) saturate(0.8);
+    }
+    65%,
+    100% {
+      filter: none;
+    }
+  }
+  @keyframes arrive-tube-b {
+    0% {
+      filter: brightness(0.25) saturate(0.5);
+    }
+    25% {
+      filter: brightness(1.2) saturate(1);
+    }
+    45% {
+      filter: brightness(0.6) saturate(0.8);
+    }
+    65%,
+    100% {
+      filter: none;
+    }
+  }
+  .arrive[data-arrive='home'][data-beat='0'] .marquee-name {
+    animation: arrive-land-a 180ms steps(2, end) 80ms backwards;
+  }
+  .arrive[data-arrive='home'][data-beat='1'] .marquee-name {
+    animation: arrive-land-b 180ms steps(2, end) 80ms backwards;
+  }
+  .arrive[data-arrive='home'][data-beat='0'] .marquee-plate {
+    animation: arrive-land-a 180ms steps(2, end) 170ms backwards;
+  }
+  .arrive[data-arrive='home'][data-beat='1'] .marquee-plate {
+    animation: arrive-land-b 180ms steps(2, end) 170ms backwards;
+  }
+  @keyframes arrive-land-a {
+    from {
+      translate: 0 -0.75rem;
+      opacity: 0;
+    }
+  }
+  @keyframes arrive-land-b {
+    from {
+      translate: 0 -0.75rem;
+      opacity: 0;
+    }
+  }
+  /* Play starts down on its spent step and stands up; its own breathing light carries on after. */
+  .arrive[data-arrive='home'][data-beat='0'] .play[data-state='idle']:not(:disabled) {
+    animation:
+      arrive-stand-a 180ms steps(2, end) 260ms backwards,
+      play-lit 2.4s steps(3, end) 440ms infinite alternate;
+  }
+  .arrive[data-arrive='home'][data-beat='1'] .play[data-state='idle']:not(:disabled) {
+    animation:
+      arrive-stand-b 180ms steps(2, end) 260ms backwards,
+      play-lit 2.4s steps(3, end) 440ms infinite alternate;
+  }
+  @keyframes arrive-stand-a {
+    from {
+      translate: 0 var(--step);
+      box-shadow:
+        0 0 0 var(--color-dirt),
+        inset 0 3px 0 rgb(0 0 0 / 0.16);
+    }
+  }
+  @keyframes arrive-stand-b {
+    from {
+      translate: 0 var(--step);
+      box-shadow:
+        0 0 0 var(--color-dirt),
+        inset 0 3px 0 rgb(0 0 0 / 0.16);
+    }
+  }
+  /* Less motion: nothing arrives, it is simply there. */
+  @media (prefers-reduced-motion: reduce) {
+    .arrive,
+    .arrive .marquee,
+    .arrive .marquee-name,
+    .arrive .marquee-plate,
+    .arrive .play {
+      animation: none !important;
+    }
   }
 }

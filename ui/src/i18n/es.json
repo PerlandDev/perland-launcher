@@ -46,7 +46,49 @@
     "collapse": "Ocultar nombres",
     "moved": "{{name}} pasó al puesto {{position}} de {{count}}"
   },
+  "places": {
+    "label": "Lugares",
+    "home": "Inicio",
+    "skinsWord_one": "{{count}} en tu guardarropa",
+    "skinsWord_other": "{{count}} en tu guardarropa",
+    "skinsEmpty": "Crea tu propia skin",
+    "serversWord": "Encuentra dónde jugar",
+    "browseWord": "Modpacks, mods, shaders",
+    "medalsWord": "{{earned}} de {{total}} medallas"
+  },
+  "lobby": {
+    "hello": "Hola, {{name}}",
+    "welcome": "Te damos la bienvenida",
+    "subtitle": "Todo lo de tu launcher, en un solo lugar.",
+    "last": "Tu última instancia",
+    "playLabel": "Jugar {{name}}",
+    "open": "Abrir",
+    "openLabel": "Abrir {{name}}",
+    "skins": {
+      "wardrobe_one": "{{count}} en tu guardarropa.",
+      "wardrobe_other": "{{count}} en tu guardarropa.",
+      "empty": "Tu guardarropa está vacío.",
+      "looks_one": "{{count}} estilo listo en el catálogo.",
+      "looks_other": "{{count}} estilos listos en el catálogo.",
+      "open": "Abrir guardarropa"
+    },
+    "servers": {
+      "busiest": "Los más activos ahora",
+      "all": "Todos los servidores",
+      "closed": "La lista de servidores aún no está abierta.",
+      "unavailable": "No se pudo cargar la lista de servidores ahora.",
+      "none": "Aún no hay servidores públicos.",
+      "row": "{{name}}, {{status}}"
+    },
+    "browse": {
+      "hint": "Agrega a cualquier instancia, o crea una nueva desde un modpack."
+    },
+    "medals": {
+      "open": "Ver todas las medallas"
+    }
+  },
   "home": {
+    "changeSkin": "Cambiar skin",
     "emptyTitle": "Todavía no tienes instancias",
     "emptyBody": "Una instancia es una configuración de Minecraft: una versión, un loader y sus propios mundos.",
     "emptyAction": "Crear una instancia",
@@ -476,6 +518,8 @@
     "font": "Fuente del texto",
     "fontHyperlegible": "Fácil de leer",
     "fontSystem": "La de tu computadora",
+    "showPlayer": "Mostrar tu personaje junto a Jugar",
+    "showPlayerHint": "Tu skin se para sobre el botón Jugar de cada instancia.",
     "iconShape": "Íconos de instancias",
     "iconSquare": "Cuadrados",
     "iconRound": "Redondos",

@@ -1,13 +1,14 @@
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import type { ServerStats } from '../../ipc/schema';
-import { usePerlandStats, usePerlandStatus, usePlaytime } from '../../state/queries';
+import { usePerlandStats, usePerlandStatus } from '../../state/queries';
 import { ChevronRight } from '../../ui/Icon';
 import { Meter } from '../../ui/Meter';
 import { formatPlaytime } from '../../ui/playtime';
 import { useAchievementsDialog } from './useAchievementsDialog';
 import { MedalBadge } from './MedalBadge';
-import { medals, type Medal } from './rules';
+import type { Medal } from './rules';
+import { useMedalCase } from './useMedalCase';
 
 const tierName = (tier: number, t: TFunction) => t(`medals.tier${tier}`);
 
@@ -102,14 +103,10 @@ function ServerRow({ server }: { server: ServerStats }) {
  *  opened. */
 export function Medals() {
   const { t } = useTranslation();
-  const playtime = usePlaytime();
   const status = usePerlandStatus();
   const stats = usePerlandStats();
-  const statsOn = Boolean(stats.data);
   const linked = Boolean(status.data?.account?.minecraft);
-  const localSeconds = playtime.data?.reduce((sum, p) => sum + p.seconds, 0) ?? 0;
-  const list = medals({ localSeconds, stats: stats.data ?? null }).filter((m) => statsOn || !m.needsStats);
-  const earned = list.filter((m) => m.tier > 0).length;
+  const { list, earned, statsOn } = useMedalCase();
   const servers = (stats.data?.servers ?? []).filter((s) => s.advancementIds.length > 0);
   return (
     <div className="grid gap-10">
