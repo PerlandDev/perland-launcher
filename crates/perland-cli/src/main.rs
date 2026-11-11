@@ -302,6 +302,7 @@ async fn launch_instance(
         launcher_version: env!("CARGO_PKG_VERSION"),
         join: None,
         world: None,
+        graphics: launcher_core::settings::GraphicsCard::Automatic,
     };
 
     if dry_run {

@@ -9,5 +9,6 @@
   "iconShape": "round",
   "theme": "night",
   "font": "system",
-  "shareAnonymousData": true
+  "shareAnonymousData": true,
+  "graphicsCard": "automatic"
 }

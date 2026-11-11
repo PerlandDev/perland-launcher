@@ -3,6 +3,14 @@
   "build": "dev",
   "offlineAllowed": true,
   "systemMemoryMb": 16384,
+  "graphics": {
+    "status": "choose",
+    "cards": [
+      "Intel(R) UHD Graphics 770",
+      "NVIDIA GeForce RTX 4060"
+    ],
+    "integrated": true
+  },
   "dataDir": "C:/Users/player/AppData/Roaming/PerlandLauncher",
   "panel": true
 }

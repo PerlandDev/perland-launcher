@@ -56,6 +56,21 @@ pub enum UiFont {
     Hyperlegible,
 }
 
+/// Which graphics card the game is started on (see `graphics`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GraphicsCard {
+    /// The high-performance card.
+    Dedicated,
+    /// The power-saving card.
+    Integrated,
+    /// The system decides, as if the launcher had no say. Also what an unknown choice from a
+    /// newer launcher loads as. (`serde(other)` must be the last variant.)
+    #[default]
+    #[serde(other)]
+    Automatic,
+}
+
 /// Which launcher releases this install follows (spec §4.4).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -96,6 +111,8 @@ pub struct Settings {
     pub font: UiFont,
     /// Send anonymous error reports and usage counts (see `telemetry`).
     pub share_anonymous_data: bool,
+    /// The graphics card games start on.
+    pub graphics_card: GraphicsCard,
 }
 
 impl Default for Settings {
@@ -112,6 +129,7 @@ impl Default for Settings {
             theme: Theme::Laminate,
             font: UiFont::Hyperlegible,
             share_anonymous_data: crate::telemetry::SHARE_BY_DEFAULT,
+            graphics_card: GraphicsCard::Automatic,
         }
     }
 }
@@ -333,6 +351,47 @@ mod tests {
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(raw.contains("\"shareAnonymousData\": false"), "{raw}");
         assert_eq!(store.load().await, (off, None));
+    }
+
+    #[tokio::test]
+    async fn graphics_card_defaults_to_automatic_and_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        // A file from before the choice existed.
+        std::fs::write(&path, r#"{"firstRunDone": true}"#).unwrap();
+        let store = SettingsStore::new(&path);
+        let (settings, warning) = store.load().await;
+        assert!(warning.is_none());
+        assert_eq!(settings.graphics_card, GraphicsCard::Automatic);
+
+        for (card, word) in [
+            (GraphicsCard::Dedicated, "dedicated"),
+            (GraphicsCard::Integrated, "integrated"),
+            (GraphicsCard::Automatic, "automatic"),
+        ] {
+            let chosen = Settings {
+                graphics_card: card,
+                ..settings.clone()
+            };
+            store.save(&chosen).await.unwrap();
+            let raw = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                raw.contains(&format!("\"graphicsCard\": \"{word}\"")),
+                "{raw}"
+            );
+            assert_eq!(store.load().await, (chosen, None));
+        }
+    }
+
+    #[tokio::test]
+    async fn unknown_graphics_card_loads_as_automatic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(&path, r#"{"language":"es","graphicsCard":"external"}"#).unwrap();
+        let (settings, warning) = SettingsStore::new(&path).load().await;
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(settings.graphics_card, GraphicsCard::Automatic);
+        assert_eq!(settings.language, Some(Lang::Es));
     }
 
     #[test]

@@ -13,6 +13,7 @@ use launcher_core::{
     play::{self, Prepared, StartSpec},
     public_list::{self, FetchedPage, ListQuery, PublicListClient, PublicServer},
     server_wake::{self, Knock, Ping, WaitEnd},
+    settings::SettingsStore,
     skin_catalog::{CatalogCache, CatalogClient, CatalogStatus, Manifest, SkinCatalog},
     skins::{SkinClient, SkinEndpoints},
     sources::{PackInput, UpdateCheck},
@@ -291,6 +292,9 @@ impl Runner for CoreRunner {
         let version = self.launcher_version.clone();
         Box::pin(async move {
             let game_dir = InstanceStore::new(installer.dirs.instances()).game_dir(&instance.id);
+            // Read here, so a choice made while the game was being prepared still counts.
+            let (settings, _) = SettingsStore::new(installer.dirs.settings()).load().await;
+            let graphics = settings.graphics_card;
             let spec = StartSpec {
                 dirs: &installer.dirs,
                 game_dir: &game_dir,
@@ -301,6 +305,7 @@ impl Runner for CoreRunner {
                 launcher_version: &version,
                 join: join.as_ref(),
                 world: world.as_deref(),
+                graphics,
             };
             let game = play::start(&spec, sink).await?;
             Ok(Box::new(game) as Box<dyn RunningGame>)
@@ -467,6 +472,7 @@ mod tests {
             args: args.iter().map(|a| a.to_string()).collect(),
             cwd: tmp.path().into(),
             classpath: vec![],
+            env: vec![],
         };
         let game = spawn(
             &cmd,

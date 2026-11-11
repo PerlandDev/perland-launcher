@@ -968,6 +968,19 @@ fn contract_fixtures_are_current() {
             build: Build::Dev,
             offline_allowed: true,
             system_memory_mb: 16384,
+            graphics: launcher_core::graphics::support(
+                launcher_core::platform::Os::Windows,
+                Some(vec![
+                    launcher_core::graphics::Card {
+                        name: "Intel(R) UHD Graphics 770".into(),
+                        integrated: true,
+                    },
+                    launcher_core::graphics::Card {
+                        name: "NVIDIA GeForce RTX 4060".into(),
+                        integrated: false,
+                    },
+                ]),
+            ),
             data_dir: "C:/Users/player/AppData/Roaming/PerlandLauncher".into(),
             panel: true,
         },

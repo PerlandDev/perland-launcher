@@ -443,6 +443,18 @@
     "memory": "Memoria para instancias nuevas",
     "minimize": "Minimizar mientras juegas",
     "minimizeHint": "El launcher vuelve cuando se cierra el juego.",
+    "graphics": {
+      "label": "Tarjeta gráfica",
+      "automatic": "Automática",
+      "dedicated": "Dedicada (más rendimiento)",
+      "integrated": "Integrada (ahorra batería)",
+      "performance": "Más rendimiento",
+      "saving": "Menos consumo",
+      "hint": "La tarjeta gráfica con la que corre Minecraft. Se aplica la próxima vez que inicies un juego.",
+      "found": "Detectadas: {{cards}}.",
+      "single": "Este equipo solo tiene una tarjeta gráfica.",
+      "unsupported": "En este equipo, el sistema elige la tarjeta gráfica."
+    },
     "appearance": "Apariencia",
     "theme": "Tema",
     "themes": { "laminate": "Laminado", "stone": "Piedra", "night": "Noche", "forest": "Bosque" },

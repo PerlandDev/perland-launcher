@@ -2666,6 +2666,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "windows-registry",
  "windows-sys 0.61.2",
  "wiremock",
  "zip 9.2.0",

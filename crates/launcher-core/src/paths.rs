@@ -30,6 +30,14 @@ impl LauncherDirs {
     pub fn root(&self) -> &Path {
         &self.root
     }
+    /// The player's preferences (`settings::SettingsStore`).
+    pub fn settings(&self) -> PathBuf {
+        self.root.join("settings.json")
+    }
+    /// The Java executables whose Windows graphics preference the launcher wrote (`graphics`).
+    pub fn graphics_owned(&self) -> PathBuf {
+        self.root.join("graphics-preferences.json")
+    }
     pub fn libraries(&self) -> PathBuf {
         self.root.join("libraries")
     }

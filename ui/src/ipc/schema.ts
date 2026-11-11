@@ -547,6 +547,8 @@ export const channel = z.enum(['stable', 'beta']);
 /** A theme swaps the neutrals only; the first key is the default. */
 export const theme = z.enum(['laminate', 'stone', 'night', 'forest']);
 export const uiFont = z.enum(['hyperlegible', 'system']);
+/** The graphics card games start on: the system's pick, the high-performance card or the power-saving one. */
+export const graphicsCard = z.enum(['automatic', 'dedicated', 'integrated']);
 export const settings = z.strictObject({
   version: z.number().int(),
   language: lang.nullable(),
@@ -559,6 +561,7 @@ export const settings = z.strictObject({
   theme,
   font: uiFont,
   shareAnonymousData: z.boolean(),
+  graphicsCard,
 });
 /** One release note (release-notes/<id>.json) with the version it first shipped in; null while unreleased. */
 export const releaseNote = z.strictObject({
@@ -581,6 +584,12 @@ export const appInfo = z.strictObject({
   build: z.enum(['dev', 'beta', 'release']),
   offlineAllowed: z.boolean(),
   systemMemoryMb: z.number().int(),
+  /** The graphics cards found, and whether the player can choose between them. `integrated`: one is built into the processor. */
+  graphics: z.strictObject({
+    status: z.enum(['choose', 'singleCard', 'unsupported']),
+    cards: z.array(z.string()),
+    integrated: z.boolean(),
+  }),
   dataDir: z.string(),
   /** A Perland panel is configured: the servers the player owns offer Manage in Perland. */
   panel: z.boolean(),
@@ -1013,6 +1022,7 @@ export type Channel = z.infer<typeof channel>;
 export type Theme = z.infer<typeof theme>;
 export type UiFont = z.infer<typeof uiFont>;
 export type Settings = z.infer<typeof settings>;
+export type GraphicsCard = z.infer<typeof graphicsCard>;
 export type AppInfo = z.infer<typeof appInfo>;
 export type McVersion = z.infer<typeof mcVersion>;
 export type LoaderVersion = z.infer<typeof loaderVersion>;

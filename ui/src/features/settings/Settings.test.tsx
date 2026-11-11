@@ -280,3 +280,72 @@ it('links to the list of what is sent', async () => {
     ]),
   );
 });
+
+const graphics = () => screen.findByRole('combobox', { name: 'Graphics card' });
+
+it('chooses the graphics card and saves it', async () => {
+  const { user, calls } = renderApp(<Settings />);
+  const select = await graphics();
+  expect(select).toBeEnabled();
+  expect(select).toHaveValue('automatic');
+  expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
+    'Automatic',
+    'Dedicated (more performance)',
+    'Integrated (saves battery)',
+  ]);
+  expect(select).toHaveAccessibleDescription(
+    'The graphics card Minecraft runs on. It applies the next time you start a game. Found: Intel(R) UHD Graphics 770, NVIDIA GeForce RTX 4060.',
+  );
+  await user.selectOptions(select, 'Dedicated (more performance)');
+  expect(select).toHaveValue('dedicated');
+  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { graphicsCard: 'dedicated' } }));
+  await user.selectOptions(select, 'Integrated (saves battery)');
+  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { graphicsCard: 'integrated' } }));
+});
+
+it('locks the graphics card choice on a computer with one card', async () => {
+  renderApp(<Settings />, { graphics: 'one' });
+  const select = await graphics();
+  expect(select).toBeDisabled();
+  expect(select).toHaveAccessibleDescription('This computer has only one graphics card. Found: NVIDIA GeForce RTX 4060.');
+});
+
+it('locks the graphics card choice where the system decides', async () => {
+  renderApp(<Settings />, { graphics: 'unsupported' });
+  const select = await graphics();
+  expect(select).toBeDisabled();
+  expect(select).toHaveAccessibleDescription('On this computer, the system chooses the graphics card.');
+});
+
+it('names the graphics card choices by what they do when no card is integrated', async () => {
+  renderApp(<Settings />, { graphics: 'dedicated' });
+  const select = await graphics();
+  expect(select).toBeEnabled();
+  expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['Automatic', 'More performance', 'Less power']);
+});
+
+it('keeps the graphics card choice open when the cards could not be read', async () => {
+  renderApp(<Settings />, { graphics: 'unknown' });
+  const select = await graphics();
+  expect(select).toBeEnabled();
+  expect(select).toHaveAccessibleDescription('The graphics card Minecraft runs on. It applies the next time you start a game.');
+});
+
+it('offers the graphics card in Spanish', async () => {
+  const { default: i18n } = await import('../../i18n');
+  await i18n.changeLanguage('es');
+  try {
+    renderApp(<Settings />);
+    const select = await screen.findByRole('combobox', { name: 'Tarjeta gráfica' });
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Automática',
+      'Dedicada (más rendimiento)',
+      'Integrada (ahorra batería)',
+    ]);
+    expect(select).toHaveAccessibleDescription(
+      'La tarjeta gráfica con la que corre Minecraft. Se aplica la próxima vez que inicies un juego. Detectadas: Intel(R) UHD Graphics 770, NVIDIA GeForce RTX 4060.',
+    );
+  } finally {
+    await i18n.changeLanguage('en');
+  }
+});

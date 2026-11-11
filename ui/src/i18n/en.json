@@ -443,6 +443,18 @@
     "memory": "Memory for new instances",
     "minimize": "Minimize while playing",
     "minimizeHint": "The launcher comes back when the game closes.",
+    "graphics": {
+      "label": "Graphics card",
+      "automatic": "Automatic",
+      "dedicated": "Dedicated (more performance)",
+      "integrated": "Integrated (saves battery)",
+      "performance": "More performance",
+      "saving": "Less power",
+      "hint": "The graphics card Minecraft runs on. It applies the next time you start a game.",
+      "found": "Found: {{cards}}.",
+      "single": "This computer has only one graphics card.",
+      "unsupported": "On this computer, the system chooses the graphics card."
+    },
     "appearance": "Appearance",
     "theme": "Theme",
     "themes": { "laminate": "Laminate", "stone": "Stone", "night": "Night", "forest": "Forest" },

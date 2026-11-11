@@ -36,6 +36,7 @@ wiremock.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Globalization"] }
+windows-registry = "0.6"
 keyring = { workspace = true, features = ["windows-native"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
