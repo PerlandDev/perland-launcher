@@ -1,0 +1,309 @@
+/* The Catalog tab: Perland's looks to browse on a panel (search, tag keys, a shelf per tag, a grid of everything) and
+   the picked look on its figure at right. Raised keys on dirt steps and the lime lamp for what's chosen, as on the
+   rest of the Skins screen; the tab's one lit key is Add to my wardrobe. */
+.catalog {
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(17rem, 24vw, 22rem);
+  gap: 1rem;
+  min-height: 0;
+  /* No hotbar under the catalog: the panels keep the screen's bottom gutter. */
+  padding-bottom: 1rem;
+}
+.catalog-message {
+  grid-column: 1 / -1;
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 0.75rem;
+  max-width: 36rem;
+}
+.looks-browse,
+.catalog-preview {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-panel);
+  border-radius: 6px;
+  corner-shape: notch;
+}
+
+/* A catalog thumbnail (CatalogThumb): a 1:2 box, cut from its sheet by the style useThumbs answers. */
+.skin-thumb {
+  display: block;
+  aspect-ratio: 1 / 2;
+}
+
+/* Browse: everything scrolls as one column under the search row, which stays put. */
+.looks-browse {
+  overflow: hidden;
+}
+.looks-scroll {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.875rem;
+  min-height: 0;
+  padding: 0 1rem 1rem;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.looks-scroll > * {
+  flex: none;
+}
+.looks-bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  /* The row's own gap to the tag keys is part of it, so looks scrolling under it are cut clean. */
+  margin-bottom: -0.875rem;
+  padding: 1rem 0 0.875rem;
+  background: var(--color-panel);
+}
+.looks-bar .field-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.looks-bar .btn {
+  flex: none;
+}
+/* A count beside a name: on a tag key, a shelf, the grid's heading. */
+.look-count {
+  font-weight: 600;
+  color: var(--color-ink-dim);
+}
+.looks-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 0.5rem;
+  /* Room for the keys' step. */
+  padding-bottom: 3px;
+}
+.looks-total {
+  margin-right: auto;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-ink-dim);
+}
+.looks-none {
+  display: grid;
+  justify-items: start;
+  gap: 0.75rem;
+  padding-bottom: 4px;
+}
+
+/* Shelves: a tag's name, its count and See all over one row of looks that scrolls sideways. */
+.look-shelves {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+.look-shelf {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+}
+.look-shelf-head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.look-shelf-name {
+  overflow: hidden;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.look-shelf-head .look-shelf-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.look-shelf-name .look-count {
+  margin-left: 0.25rem;
+  font-size: 0.9375rem;
+}
+.look-shelf-head .btn {
+  flex: none;
+  min-height: 2rem;
+}
+.look-shelf-all {
+  padding: 0 0.625rem;
+  font-size: 0.875rem;
+  color: var(--color-ink-dim);
+}
+.look-shelf-all:hover {
+  color: var(--color-ink);
+}
+.look-strip {
+  display: flex;
+  gap: 0.75rem;
+  margin: 0;
+  /* Room for the focus ring and the keys' step inside the scroller. */
+  padding: 4px 4px 8px;
+  overflow-x: auto;
+  list-style: none;
+  scroll-padding-inline: 4px;
+  scroll-snap-type: x proximity;
+  /* The arrow keys in the shelf's head, the wheel and the keyboard move it: fifteen scrollbars would only be noise. */
+  scrollbar-width: none;
+}
+.look-strip > li {
+  flex: none;
+  width: 7rem;
+  scroll-snap-align: start;
+}
+.looks-all {
+  margin-top: 0.375rem;
+}
+.look-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.875rem 0.75rem;
+  margin: 0;
+  padding: 0 4px 6px;
+  list-style: none;
+}
+.look-grid > li {
+  min-width: 0;
+}
+.look-more {
+  display: flex;
+  justify-content: center;
+  padding: 0.25rem 0 6px;
+}
+
+/* A look is a raised key on its step; the one shown at right sits pressed in its slot with the lime lamp. Its
+   thumbnail is 96 x 192: the sheet's cell doubled, so every texel stays square. */
+.look-tile {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0.5rem 0.375rem 0.4375rem;
+  color: var(--color-ink);
+  background: var(--color-raised);
+  border: 0;
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow: 0 4px 0 var(--color-dirt-deep);
+  cursor: pointer;
+  transition:
+    translate 180ms steps(2, end),
+    box-shadow 180ms steps(2, end);
+}
+.look-tile:hover {
+  background: color-mix(in oklab, var(--color-raised), white 7%);
+}
+.look-tile:active,
+.look-tile[aria-pressed='true'] {
+  translate: 0 4px;
+  box-shadow: 0 0 0 var(--color-dirt-deep);
+}
+.look-tile[aria-pressed='true'] {
+  background: var(--color-ground);
+  box-shadow:
+    inset 0 2px 0 rgb(0 0 0 / 0.45),
+    inset 0 0 0 1px var(--color-line);
+}
+.look-tile[aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  top: 0.4375rem;
+  right: 0.4375rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  background: var(--color-lime);
+}
+.look-tile:focus-visible {
+  outline-offset: 2px;
+}
+.look-tile-thumb {
+  width: 6rem;
+}
+.look-tile-name {
+  display: -webkit-box;
+  min-height: 2.5em;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.catalog-preview {
+  gap: 0.75rem;
+  padding: 1rem 1.125rem 1.125rem;
+  overflow-y: auto;
+}
+.catalog-preview > * {
+  flex: none;
+}
+.catalog-preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.catalog-preview-name {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The figure stands in a recessed well like the stage's; dragging turns it, nothing paints. */
+.catalog-figure {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 8rem;
+  overflow: hidden;
+  background: var(--color-ground);
+  border-radius: 6px;
+  corner-shape: notch;
+  box-shadow:
+    inset 0 3px 0 rgb(0 0 0 / 0.4),
+    inset 0 0 0 1px var(--color-line);
+}
+.catalog-figure .stage-canvas {
+  cursor: grab;
+}
+.catalog-pieces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.catalog-add {
+  width: 100%;
+}
+
+@media (width < 1200px) {
+  .looks-scroll {
+    padding: 0 0.75rem 0.75rem;
+  }
+  .looks-bar {
+    padding-top: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .look-tile {
+    transition: none;
+  }
+}

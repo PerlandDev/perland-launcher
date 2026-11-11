@@ -1,6 +1,6 @@
-// The Catalog tab: Perland's ready-made looks. Search and tag keys over a grid of looks; the picked one stands on a
-// figure at right with the pieces it's made of and the tab's one lit key, Add to my wardrobe.
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+// The Catalog tab: Perland's ready-made looks. Shelves and a grid to browse them (LooksBrowse); the picked one stands
+// on a figure at right with the pieces it's made of and the tab's one lit key, Add to my wardrobe.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HumanArmsUp } from 'pixelarticons/react';
 import { commands } from '../../ipc/commands';
@@ -10,12 +10,13 @@ import { Button } from '../../ui/Button';
 import { Plus } from '../../ui/Icon';
 import { Menu, type MenuHandle } from '../../ui/Menu';
 import { useSingleFlight } from '../../ui/useSingleFlight';
-import { searchLooks, type Lang } from './catalogSearch';
-import { CatalogThumb } from './CatalogThumb';
+import { browseLooks, NO_FILTER, type Lang, type LookFilter } from './catalogSearch';
+import './catalog.css';
 import { encodeTexture } from './codec';
 import { compose } from './compose';
 import { Pixels } from './paint';
 import { POSES, type Pose } from './poses';
+import { LooksBrowse } from './LooksBrowse';
 import { Stage } from './Stage';
 import { useCatalog, type Catalog } from './useCatalog';
 import { useThumbs } from './useThumbs';
@@ -32,19 +33,6 @@ const asLook = (look: CatalogLook): SkinLook => ({ pieces: look.pieces.map((p) =
 async function composeLook(catalog: Catalog, look: CatalogLook) {
   const [layers, painting] = await Promise.all([catalog.layers(asLook(look), look.model), look.painting ? catalog.pixels(look.painting) : null]);
   return { texels: compose(painting, layers), painting };
-}
-
-function LookTile({ look, lang, picked, thumb, onPick }: { look: CatalogLook; lang: Lang; picked: boolean; thumb: CSSProperties | null; onPick: () => void }) {
-  return (
-    <li>
-      <button type="button" className="catalog-look" aria-pressed={picked} aria-label={look.name[lang]} onClick={onPick}>
-        <span className="catalog-thumb">
-          <CatalogThumb style={thumb} />
-        </span>
-        <span className="catalog-look-name">{look.name[lang]}</span>
-      </button>
-    </li>
-  );
 }
 
 function LookPreview({ catalog, manifest, look, lang, owner, onAdded }: { catalog: Catalog; manifest: CatalogManifest; look: CatalogLook; lang: Lang; owner: string | null; onAdded: (entry: SkinEntry) => void }) {
@@ -150,10 +138,10 @@ export function CatalogPanel({ owner, onAdded }: { owner: string | null; onAdded
   const catalog = useCatalog();
   const thumbs = useThumbs(catalog);
   const { manifest, status } = catalog;
-  const [query, setQuery] = useState('');
-  const [tag, setTag] = useState('');
+  const [filter, setFilter] = useState<LookFilter>(NO_FILTER);
   const [picked, setPicked] = useState<string | null>(null);
-  const looks = useMemo(() => (manifest ? searchLooks(manifest, query, tag, lang) : []), [manifest, query, tag, lang]);
+  const looks = useMemo(() => (manifest ? browseLooks(manifest, filter, lang) : []), [manifest, filter, lang]);
+  const open = useCallback((look: CatalogLook) => setPicked(look.id), []);
 
   if (catalog.loading) {
     return (
@@ -175,30 +163,16 @@ export function CatalogPanel({ owner, onAdded }: { owner: string | null; onAdded
 
   // The picked look stays shown while a search hides it; with nothing picked, the first look of the grid is.
   const shown = manifest.looks.find((l) => l.id === picked && !l.retired) ?? looks[0] ?? null;
+  const random = () => {
+    // Another look than the one showing, when there is one.
+    const others = looks.length > 1 ? looks.filter((l) => l.id !== shown?.id) : looks;
+    const look = others[Math.floor(Math.random() * others.length)];
+    if (look) setPicked(look.id);
+  };
 
   return (
     <div className="catalog">
-      <div className="catalog-browse">
-        <input type="search" className="field-input" aria-label={t('skins.catalog.search')} placeholder={t('skins.catalog.searchPlaceholder')} value={query} onChange={(e) => setQuery(e.target.value)} />
-        <div role="group" aria-label={t('skins.catalog.tags')} className="browse-chips">
-          <button type="button" className="chip" aria-pressed={tag === ''} onClick={() => setTag('')}>
-            {t('skins.catalog.all')}
-          </button>
-          {manifest.tags.map((tg) => (
-            <button key={tg.id} type="button" className="chip" aria-pressed={tag === tg.id} onClick={() => setTag(tg.id)}>
-              {tg.name[lang]}
-            </button>
-          ))}
-        </div>
-        {status === 'cached' && <p className="text-sm text-ink-dim">{t('skins.catalog.cached')}</p>}
-        {status === 'too_new' && <p className="info-line">{t('skins.catalog.tooNew')}</p>}
-        <ul className="catalog-grid" aria-label={t('skins.catalog.looks')}>
-          {looks.map((look) => (
-            <LookTile key={look.id} look={look} lang={lang} picked={look.id === shown?.id} thumb={thumbs.look(look)} onPick={() => setPicked(look.id)} />
-          ))}
-        </ul>
-        {looks.length === 0 && <p className="empty-slot text-ink-dim">{t('skins.catalog.none')}</p>}
-      </div>
+      <LooksBrowse manifest={manifest} status={status} lang={lang} thumbs={thumbs} filter={filter} looks={looks} picked={shown?.id ?? null} onFilter={setFilter} onOpen={open} onRandom={random} />
       {shown && <LookPreview key={shown.id} catalog={catalog} manifest={manifest} look={shown} lang={lang} owner={owner} onAdded={onAdded} />}
     </div>
   );
