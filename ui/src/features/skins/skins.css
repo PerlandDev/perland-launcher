@@ -556,11 +556,12 @@
   display: block;
   aspect-ratio: 5 / 8;
 }
-.catalog-thumb img {
-  width: 100%;
+/* A catalog thumbnail, cut from its sheet: always 1:2. */
+.skin-thumb {
+  display: block;
   height: 100%;
-  object-fit: contain;
-  image-rendering: pixelated;
+  aspect-ratio: 1 / 2;
+  margin-inline: auto;
 }
 .catalog-look-name {
   overflow: hidden;

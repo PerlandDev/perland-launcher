@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
+import { mockCatalog } from '../../ipc/mockCatalog';
 import type { CatalogStatus, SkinEntry } from '../../ipc/schema';
 import { sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
@@ -55,6 +56,17 @@ it('shows looks and filters by tag', async () => {
   expect(names(list)).toEqual(['Knight']);
   await user.click(within(tags).getByRole('button', { name: 'All' }));
   expect(names(list)).toEqual(['Astronaut', 'Knight', 'Street']);
+});
+
+it('the grid draws every look from the one thumbnail sheet', async () => {
+  const { calls } = renderPanel();
+  const { manifest } = mockCatalog();
+  const list = await grid();
+  await waitFor(() => expect(within(list).getByRole('button', { name: 'Knight' }).querySelector('.skin-thumb')).toHaveStyle({ backgroundPosition: `${(1 / 23) * 100}% 0%` }));
+  const asked = (sent(calls, 'skin_catalog_file') as { sha256: string }[]).map((f) => f.sha256);
+  expect(asked.filter((sha256) => sha256 === manifest.sheets!.looks.file)).toHaveLength(1);
+  // No look's own thumbnail file is fetched.
+  expect(asked.filter((sha256) => manifest.looks.some((look) => look.thumb === sha256))).toEqual([]);
 });
 
 it('searching narrows the grid', async () => {

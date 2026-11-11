@@ -1,6 +1,6 @@
 // The Catalog tab: Perland's ready-made looks. Search and tag keys over a grid of looks; the picked one stands on a
 // figure at right with the pieces it's made of and the tab's one lit key, Add to my wardrobe.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HumanArmsUp } from 'pixelarticons/react';
 import { commands } from '../../ipc/commands';
@@ -11,12 +11,14 @@ import { Plus } from '../../ui/Icon';
 import { Menu, type MenuHandle } from '../../ui/Menu';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { searchLooks, type Lang } from './catalogSearch';
+import { CatalogThumb } from './CatalogThumb';
 import { encodeTexture } from './codec';
 import { compose } from './compose';
 import { Pixels } from './paint';
 import { POSES, type Pose } from './poses';
 import { Stage } from './Stage';
 import { useCatalog, type Catalog } from './useCatalog';
+import { useThumbs } from './useThumbs';
 
 const NO_PARTS_HIDDEN = new Set<string>();
 /** The face every look starts from: not listed among its pieces, which name what it wears. */
@@ -32,11 +34,13 @@ async function composeLook(catalog: Catalog, look: CatalogLook) {
   return { texels: compose(painting, layers), painting };
 }
 
-function LookTile({ look, lang, picked, image, onPick }: { look: CatalogLook; lang: Lang; picked: boolean; image: string | undefined; onPick: () => void }) {
+function LookTile({ look, lang, picked, thumb, onPick }: { look: CatalogLook; lang: Lang; picked: boolean; thumb: CSSProperties | null; onPick: () => void }) {
   return (
     <li>
       <button type="button" className="catalog-look" aria-pressed={picked} aria-label={look.name[lang]} onClick={onPick}>
-        <span className="catalog-thumb">{image && <img src={image} alt="" draggable={false} />}</span>
+        <span className="catalog-thumb">
+          <CatalogThumb style={thumb} />
+        </span>
         <span className="catalog-look-name">{look.name[lang]}</span>
       </button>
     </li>
@@ -144,6 +148,7 @@ export function CatalogPanel({ owner, onAdded }: { owner: string | null; onAdded
   const { t, i18n } = useTranslation();
   const lang: Lang = i18n.language.startsWith('es') ? 'es' : 'en';
   const catalog = useCatalog();
+  const thumbs = useThumbs(catalog);
   const { manifest, status } = catalog;
   const [query, setQuery] = useState('');
   const [tag, setTag] = useState('');
@@ -189,7 +194,7 @@ export function CatalogPanel({ owner, onAdded }: { owner: string | null; onAdded
         {status === 'too_new' && <p className="info-line">{t('skins.catalog.tooNew')}</p>}
         <ul className="catalog-grid" aria-label={t('skins.catalog.looks')}>
           {looks.map((look) => (
-            <LookTile key={look.id} look={look} lang={lang} picked={look.id === shown?.id} image={catalog.image(look.thumb)} onPick={() => setPicked(look.id)} />
+            <LookTile key={look.id} look={look} lang={lang} picked={look.id === shown?.id} thumb={thumbs.look(look)} onPick={() => setPicked(look.id)} />
           ))}
         </ul>
         {looks.length === 0 && <p className="empty-slot text-ink-dim">{t('skins.catalog.none')}</p>}
