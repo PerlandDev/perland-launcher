@@ -1030,6 +1030,39 @@
   corner-shape: notch;
   box-shadow: inset 0 0 0 1px var(--color-line);
 }
+/* Trying a piece on (Create): a ground plate at the head of the well names what the figure shows but doesn't wear.
+   Its tag is the On badge in ink: lime stays the mark of what is really worn. */
+.stage-try {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: calc(100% - 4rem);
+  padding: 0.3125rem 0.625rem 0.3125rem 0.3125rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  pointer-events: none;
+  background: color-mix(in oklab, var(--color-ground) 92%, transparent);
+  border-radius: var(--radius-step);
+  corner-shape: notch;
+  box-shadow: inset 0 0 0 1px var(--color-line);
+}
+.stage-try-tag {
+  flex: none;
+  padding: 0 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1.25rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ground);
+  background: var(--color-ink);
+  border-radius: 2px;
+  corner-shape: notch;
+}
 /* Previewing a version: a ground plate across the foot of the well, in place of the hint and Wear. */
 .stage-preview {
   position: absolute;

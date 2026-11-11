@@ -967,6 +967,8 @@
       "unavailableNote": "El catálogo de Perland ya no tiene esta pieza. Sigue en esta lista, pero desaparece de tu skin terminada en tu próximo cambio.",
       "paintingCovers": "Tu dibujo tapa esta pieza. Arma una skin nueva con piezas para empezar de cero.",
       "paintingCoversAction": "Armar con piezas",
+      "trying": "Vista previa",
+      "tryHint": "Aún no lo llevas puesto. Haz clic para ponértelo.",
       "loading": "Cargando las piezas…",
       "pieceLoading": "Cargando…",
       "pieceOffline": "Pieza",

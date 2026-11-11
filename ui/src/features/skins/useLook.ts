@@ -11,6 +11,7 @@ import { composeFace } from './face';
 import { applyExpression, applyLook, bakeAll, putOn, setColour, takeOff } from './look';
 import { Pixels } from './paint';
 import { recolour, type PixelBuffer } from './recolour';
+import { sameTexels, tryState } from './tryOn';
 import type { Catalog } from './useCatalog';
 import type { SkinDoc } from './useSkinDoc';
 
@@ -48,6 +49,16 @@ export interface LookEditor {
    * changed, queued or saved; only the files of pieces the changed look wears are loaded. Null with no skin or catalog.
    */
   previewFace(change: (look: SkinLook) => SkinLook): Promise<PixelBuffer | null>;
+  /**
+   * The finished skin the open skin would be with `change` made to its look, composed off the document as a real
+   * change would be: nothing is changed, queued, recorded or saved, and only the files of pieces the changed look
+   * wears are loaded. `version` is the skin's it was made from: once the skin's version moves on (see `version`), the
+   * preview is out of date. Null with no skin or catalog, when the skin changed while the pieces loaded, and when the
+   * change would show nothing new.
+   */
+  preview(change: (look: SkinLook, model: SkinModel) => SkinLook): Promise<{ pixels: PixelBuffer; version: number } | null>;
+  /** The open skin's version now: it moves with every step that changes its texels or look. Null with no skin open. */
+  version(): number | null;
   /** Resolves once every change asked for so far has landed (or been dropped); wait on it before saving or leaving. */
   settled(): Promise<void>;
 }
@@ -224,6 +235,22 @@ export function useLook(id: string | null, model: SkinModel, doc: SkinDoc, catal
       const painting = now.look ? now.look.painting : now.pixels.data;
       const look = change(now.look?.look ?? { pieces: [], painting: true });
       return composeFace(painting, await c.layers(look, m));
+    },
+    preview: async (change) => {
+      const { id: forId, doc: d, catalog: c, model: m } = latest.current;
+      const now = forId ? d.current(forId) : null;
+      if (!forId || !now || !c.manifest) return null;
+      const tried = tryState({ look: now.look, pixels: now.pixels.data }, (look) => change(look, m));
+      if (!tried) return null;
+      const layers = await c.layers(tried.look, m);
+      const after = latest.current.doc.current(forId);
+      if (!after || after.version !== now.version) return null;
+      const pixels = compose(tried.painting, layers);
+      return sameTexels(pixels, after.pixels.data) ? null : { pixels, version: now.version };
+    },
+    version: () => {
+      const { id: forId, doc: d } = latest.current;
+      return (forId ? d.current(forId)?.version : null) ?? null;
     },
     settled: async () => {
       // A change can queue another while it runs: wait until the queue stops growing.

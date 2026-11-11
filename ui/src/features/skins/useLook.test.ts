@@ -448,6 +448,74 @@ it('an expression the painting covers raises the hint', async () => {
   expect(got.editor!.paintingCovers).toBe(true);
 });
 
+it('a preview is the skin the change would give, and leaves the skin, its history and its file alone', async () => {
+  const { got, calls } = open({ pieces: [BODY, { id: 'top-tee', colours: { main: '#e8e4dc', trim: '#3a6ea5' } }], painting: false });
+  await waitFor(() => expect(got.ready && got.doc!.piecesReady).toBe(true));
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const rev = got.doc!.rev;
+  const version = got.editor!.version();
+  const texels = new Uint8ClampedArray(got.doc!.pixels!.data);
+  const boots = BOOTS_PIECE!;
+  const { putOn } = await import('./look');
+  const preview = await got.editor!.preview((look) => putOn(look, boots, got.pieces!));
+  expect(preview).not.toBeNull();
+  expect(preview!.version).toBe(version);
+  expect(preview!.pixels).not.toEqual(texels);
+  // Nothing happened to the skin: no step, no redraw, no save.
+  await act(() => vi.advanceTimersByTimeAsync(700));
+  expect(got.doc!.rev).toBe(rev);
+  expect(got.editor!.version()).toBe(version);
+  expect(got.doc!.pixels!.data).toEqual(texels);
+  expect(got.doc!.canUndo).toBe(false);
+  expect(ids(got.editor!.look)).toEqual(['body-plain', 'top-tee']);
+  expect(sent(calls, 'skin_look_save')).toEqual([]);
+  expect(sent(calls, 'skin_save')).toEqual([]);
+  // Wearing the piece gives exactly what the preview showed.
+  act(() => got.editor!.putOn(boots));
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['body-plain', 'top-tee', 'shoes-moon-boots']));
+  expect(got.doc!.pixels!.data).toEqual(preview!.pixels);
+  expect(got.editor!.version()).not.toBe(version);
+  // Now worn, trying it on again has nothing new to show; neither has a change that changes nothing.
+  expect(await got.editor!.preview((look) => putOn(look, boots, got.pieces!))).toBeNull();
+  expect(await got.editor!.preview((look) => look)).toBeNull();
+});
+
+it('a preview of a plain painted skin goes over the painting', async () => {
+  const { got } = open();
+  await waitFor(() => expect(got.ready).toBe(true));
+  const { putOn } = await import('./look');
+  const preview = await got.editor!.preview((look) => putOn(look, TEE_PIECE!, got.pieces!));
+  expect(preview).not.toBeNull();
+  expect(got.editor!.look).toBeNull();
+  act(() => got.editor!.putOn(TEE_PIECE!));
+  await waitFor(() => expect(ids(got.editor!.look)).toEqual(['top-tee']));
+  expect(got.doc!.pixels!.data).toEqual(preview!.pixels);
+});
+
+it('a preview overtaken by a real change while its pieces load is dropped', async () => {
+  const files = gate();
+  const { got } = open({ pieces: [BODY], painting: false }, files);
+  await waitFor(() => expect(got.ready && got.doc!.piecesReady).toBe(true));
+  const { putOn } = await import('./look');
+  const cap = await catalogPiece('hat-cap');
+  files.close();
+  const preview = got.editor!.preview((look) => putOn(look, cap, got.pieces!));
+  // The skin changes (a stroke) while the cap's files are still loading.
+  act(() => {
+    got.doc!.begin();
+    got.doc!.paint(10, 10, pencil, false);
+    got.doc!.end();
+  });
+  files.open();
+  expect(await preview).toBeNull();
+});
+
+it('without the catalog there is no preview', async () => {
+  const { got } = open({ pieces: FACE, painting: false }, gate(), true);
+  await waitFor(() => expect(got.doc!.pixels).not.toBeNull());
+  expect(await got.editor!.preview((look) => ({ ...look, pieces: [] }))).toBeNull();
+});
+
 it('without the catalog there is no face preview', async () => {
   const { got } = open({ pieces: FACE, painting: false }, gate(), true);
   await waitFor(() => expect(got.doc!.pixels).not.toBeNull());

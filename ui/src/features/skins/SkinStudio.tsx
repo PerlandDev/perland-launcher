@@ -35,6 +35,7 @@ import { putOn } from './look';
 import { useCatalog } from './useCatalog';
 import { surprise } from './surprise';
 import { useLook } from './useLook';
+import { useTryOn } from './useTryOn';
 import { WearingRow } from './WearingRow';
 import { TexturePanel } from './TexturePanel';
 import { HistoryPanel } from './HistoryPanel';
@@ -147,6 +148,9 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   // A preview belongs to one skin while the history is open; switching skins or closing the history ends it.
   const previewShown = preview && historyOpen && preview.skin === selected?.id ? preview : null;
   const previewing = previewShown !== null;
+  // Trying a piece on (Create): the figure shows it, the skin doesn't have it. A version preview comes first.
+  const { shown: tryShown, tryOn } = useTryOn(editor, selected?.id ?? null, tab === 'create' && !historyOpen);
+  const trying = previewing ? null : tryShown;
 
   /** Chooses a colour for good: a new one joins the front of the recent row, one already in it stays put. */
   const setColor = (c: Rgba) => {
@@ -390,6 +394,10 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
         setPreview(null);
         return;
       }
+      if (event.key === 'Escape' && trying) {
+        tryOn.clear();
+        return;
+      }
       const ctrl = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
       if (ctrl && (key === 'y' || (key === 'z' && event.shiftKey))) {
@@ -412,7 +420,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
     };
-  }, [doc, previewing, tab]);
+  }, [doc, previewing, tab, trying, tryOn]);
 
   // A look added from the catalog opens in Create, in the wardrobe it went into.
   const addedFromCatalog = (entry: SkinEntry) =>
@@ -515,9 +523,9 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
 
               <div className="stage-well">
                 <Stage
-                  pixels={previewing ? previewShown.pixels : doc.pixels}
+                  pixels={previewing ? previewShown.pixels : trying ? trying.pixels : doc.pixels}
                   // A preview gets its own (negative) revisions, so the figure redraws on every switch.
-                  rev={previewing ? -previewShown.seq : doc.rev}
+                  rev={previewing ? -previewShown.seq : trying ? -1e6 - trying.seq : doc.rev}
                   model={model}
                   hidden={hidden}
                   paintLayer={paintLayer}
@@ -558,7 +566,13 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
                     </div>
                   </div>
                 ) : (
-                  <p className="stage-hint text-sm text-ink-dim">{tab === 'paint' ? t('skins.stageHint') : t('skins.stageHintTurn')}</p>
+                  <p className="stage-hint text-sm text-ink-dim">{trying ? t('skins.create.tryHint') : tab === 'paint' ? t('skins.stageHint') : t('skins.stageHintTurn')}</p>
+                )}
+                {trying && (
+                  <p className="stage-try" role="status" data-testid="stage-try">
+                    <span className="stage-try-tag">{t('skins.create.trying')}</span>
+                    <span className="truncate">{trying.name}</span>
+                  </p>
                 )}
                 <div className="stage-wear" hidden={previewing}>
                   {wearer?.provider === 'microsoft' ? (
@@ -582,6 +596,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
                 editor={editor}
                 lang={lang}
                 onBuildFromPieces={plainBody ? () => void buildFromPieces().catch(pushError) : undefined}
+                tryOn={tryOn}
               />
             ) : (
             <aside className="skins-side" aria-label={t('skins.texture')}>

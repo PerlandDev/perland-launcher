@@ -7,6 +7,7 @@ import type { CatalogExpression, CatalogPiece, SkinLook } from '../../ipc/schema
 import type { Lang } from './catalogSearch';
 import { FACE_SIZE } from './face';
 import { applyExpression, expressionPieces, wearsExpression } from './look';
+import { tryHandlers, type TryOnHandle } from './tryOn';
 import type { LookEditor } from './useLook';
 
 function ExpressionFace({ expression, pieces, look, editor }: { expression: CatalogExpression; pieces: readonly CatalogPiece[]; look: SkinLook | null; editor: LookEditor }) {
@@ -43,12 +44,15 @@ export function ExpressionRow({
   look,
   editor,
   lang,
+  tryOn,
 }: {
   expressions: readonly CatalogExpression[];
   pieces: readonly CatalogPiece[];
   look: SkinLook | null;
   editor: LookEditor;
   lang: Lang;
+  /** Tries the pointed expression on the figure (see tryOn). */
+  tryOn?: TryOnHandle;
 }) {
   const { t } = useTranslation();
   // The key under the pointer or the keyboard: the heading reads its name.
@@ -63,23 +67,41 @@ export function ExpressionRow({
         {label} · {named ? named.name[lang] : <span className="tabular">{t('skins.create.count', { count: offered.length })}</span>}
       </h3>
       <div role="group" aria-label={label} className="expression-row">
-        {offered.map((e) => (
-          <button
-            key={e.id}
-            type="button"
-            className="expression-chip"
-            aria-label={e.name[lang]}
-            aria-current={wearsExpression(look, e) || undefined}
-            title={e.name[lang]}
-            onClick={() => editor.applyExpression(e)}
-            onPointerEnter={() => setPointed(e.id)}
-            onPointerLeave={() => setPointed((p) => (p === e.id ? null : p))}
-            onFocus={() => setPointed(e.id)}
-            onBlur={() => setPointed((p) => (p === e.id ? null : p))}
-          >
-            <ExpressionFace expression={e} pieces={pieces} look={look} editor={editor} />
-          </button>
-        ))}
+        {offered.map((e) => {
+          const trying = tryHandlers(tryOn, { key: `expression:${e.id}`, name: e.name[lang], change: (l) => applyExpression(l, e, pieces) });
+          return (
+            <button
+              key={e.id}
+              type="button"
+              className="expression-chip"
+              aria-label={e.name[lang]}
+              aria-current={wearsExpression(look, e) || undefined}
+              title={e.name[lang]}
+              onClick={() => {
+                tryOn?.commit();
+                editor.applyExpression(e);
+              }}
+              onPointerEnter={(event) => {
+                setPointed(e.id);
+                trying.onPointerEnter?.(event);
+              }}
+              onPointerLeave={() => {
+                setPointed((p) => (p === e.id ? null : p));
+                trying.onPointerLeave?.();
+              }}
+              onFocus={(event) => {
+                setPointed(e.id);
+                trying.onFocus?.(event);
+              }}
+              onBlur={() => {
+                setPointed((p) => (p === e.id ? null : p));
+                trying.onBlur?.();
+              }}
+            >
+              <ExpressionFace expression={e} pieces={pieces} look={look} editor={editor} />
+            </button>
+          );
+        })}
       </div>
     </div>
   );

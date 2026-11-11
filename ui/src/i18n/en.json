@@ -967,6 +967,8 @@
       "unavailableNote": "Perland's catalog doesn't have this piece anymore. It stays on this list, but it disappears from your finished skin at your next change.",
       "paintingCovers": "Your painting covers this piece. Build a new skin from pieces to start clean.",
       "paintingCoversAction": "Build from pieces",
+      "trying": "Preview",
+      "tryHint": "Not on yet. Click it to wear it.",
       "loading": "Loading the pieces…",
       "pieceLoading": "Loading…",
       "pieceOffline": "Piece",

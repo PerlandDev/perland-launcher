@@ -278,6 +278,8 @@ it('a face piece the painting covers shows the hint, whose button builds from pi
     paintingCovers: true,
     rev: 0,
     previewFace: () => Promise.resolve(null),
+    preview: () => Promise.resolve(null),
+    version: () => 0,
     settled: () => Promise.resolve(),
   };
   const build = vi.fn();
@@ -371,6 +373,8 @@ it('each expression chip previews its own face and never changes the skin until 
     paintingCovers: true,
     rev: 0,
     previewFace,
+    preview: () => Promise.resolve(null),
+    version: () => 0,
     settled: () => Promise.resolve(),
   };
   // Rendered bare, so a rerender keeps the panel (and its open category) mounted.
@@ -448,4 +452,154 @@ it('Surprise me is a Create key: Paint has none', async () => {
   expect(screen.getByRole('button', { name: 'Surprise me' })).toBeInTheDocument();
   await user.click(screen.getByRole('tab', { name: 'Paint' }));
   expect(screen.queryByRole('button', { name: 'Surprise me' })).not.toBeInTheDocument();
+});
+
+// Try before you wear: pointing at a tile shows it on the figure, and only a click changes the skin.
+const badge = () => screen.queryByTestId('stage-try');
+const tile = (list: string, name: RegExp | string) => within(screen.getByRole('list', { name: list })).getByRole('button', { name });
+const fileAsks = (calls: [string, unknown][]) => (sent(calls, 'skin_catalog_file') as { sha256: string }[]).map((a) => a.sha256);
+
+it('pointing at a piece shows it on the figure with a Preview badge and changes nothing; a click wears what was shown', async () => {
+  const { user, calls } = await openCreate({ pieces: [BODY, TEE], painting: false });
+  await user.click(screen.getByRole('button', { name: 'Shoes' }));
+  const real = stageSum();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  fireEvent.pointerEnter(tile('Shoes', /Moon boots/), { pointerType: 'mouse' });
+  // Not at once: a pointer passing over shows nothing.
+  expect(badge()).toBeNull();
+  await waitFor(() => expect(badge()).toHaveTextContent('PreviewMoon boots'));
+  const previewed = stageSum();
+  expect(previewed).not.toBe(real);
+  expect(screen.getByText('Not on yet. Click it to wear it.')).toBeInTheDocument();
+  // The skin is as it was: nothing worn, nothing to undo, nothing saved.
+  await act(() => vi.advanceTimersByTimeAsync(800));
+  expect(chips()).toEqual(['Plain body', 'T-shirt']);
+  expect(screen.getByRole('button', { name: 'Undo' })).toBeDisabled();
+  expect(screen.getByText('Saved')).toBeInTheDocument();
+  expect(sent(calls, 'skin_look_save')).toEqual([]);
+  expect(sent(calls, 'skin_save')).toEqual([]);
+  expect(tile('Shoes', /Moon boots/)).not.toHaveTextContent('On');
+  // Leaving the tile puts the real skin back.
+  fireEvent.pointerLeave(tile('Shoes', /Moon boots/));
+  await waitFor(() => expect(badge()).toBeNull());
+  expect(stageSum()).toBe(real);
+  // A click wears it: the figure is what the preview showed, with no badge.
+  fireEvent.pointerEnter(tile('Shoes', /Moon boots/), { pointerType: 'mouse' });
+  await waitFor(() => expect(badge()).not.toBeNull());
+  await user.click(tile('Shoes', /Moon boots/));
+  await waitFor(() => expect(chips()).toEqual(['Plain body', 'T-shirt', 'Moon boots']));
+  await waitFor(() => expect(badge()).toBeNull());
+  expect(stageSum()).toBe(previewed);
+  expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled();
+});
+
+it('a pointer swept across the grid loads no files for the tiles it crossed', async () => {
+  const { user, calls } = await openCreate({ pieces: [BODY], painting: false });
+  await user.click(screen.getByRole('button', { name: 'Hats' }));
+  const hats = within(screen.getByRole('list', { name: 'Hats' })).getAllByRole('button');
+  expect(hats.length).toBeGreaterThan(1);
+  await waitFor(() => expect(screen.getByTestId('stage').getAttribute('data-sum')).not.toBe(''));
+  const before = fileAsks(calls).length;
+  const thumbs = new Set((await import('../../ipc/mockCatalog')).mockCatalog().manifest.pieces.map((p) => p.thumb));
+  vi.useFakeTimers();
+  for (const hat of hats) {
+    fireEvent.pointerEnter(hat, { pointerType: 'mouse' });
+    await act(() => vi.advanceTimersByTimeAsync(30));
+    fireEvent.pointerLeave(hat);
+  }
+  await act(() => vi.advanceTimersByTimeAsync(1000));
+  expect(badge()).toBeNull();
+  // Thumbnails may still be landing; no piece's art or mask was asked for.
+  expect(fileAsks(calls).slice(before).filter((sha) => !thumbs.has(sha))).toEqual([]);
+});
+
+it('a finger gets no hover preview', async () => {
+  const { user } = await openCreate({ pieces: [BODY], painting: false });
+  await user.click(screen.getByRole('button', { name: 'Hats' }));
+  const real = stageSum();
+  vi.useFakeTimers();
+  fireEvent.pointerEnter(tile('Hats', /^Cap/), { pointerType: 'touch' });
+  await act(() => vi.advanceTimersByTimeAsync(1000));
+  expect(badge()).toBeNull();
+  expect(stageSum()).toBe(real);
+});
+
+it('keyboard focus on a tile tries it on, and Escape goes back to the real skin', async () => {
+  const { user } = await openCreate({ pieces: [BODY], painting: false });
+  await user.click(screen.getByRole('button', { name: 'Hats' }));
+  const real = stageSum();
+  const cap = tile('Hats', /^Cap/);
+  // Tab from the last category key lands on the first tile of the grid.
+  screen.getByRole('button', { name: 'Accessories' }).focus();
+  await user.tab();
+  expect(within(screen.getByRole('list', { name: 'Hats' })).getAllByRole('button')[0]).toHaveFocus();
+  await waitFor(() => expect(badge()).not.toBeNull());
+  expect(stageSum()).not.toBe(real);
+  await user.keyboard('{Escape}');
+  expect(badge()).toBeNull();
+  expect(stageSum()).toBe(real);
+  expect(chips()).toEqual(['Plain body']);
+  // Enter wears the focused piece.
+  cap.focus();
+  await user.keyboard('{Enter}');
+  await waitFor(() => expect(chips()).toEqual(['Plain body', 'Cap']));
+});
+
+it('a look and an expression are tried on the same way', async () => {
+  const { user } = await openCreate({ pieces: [BODY, EYES, BROWS, MOUTH], painting: false }, { faces: true });
+  await user.click(screen.getByRole('button', { name: 'Looks' }));
+  const real = stageSum();
+  fireEvent.pointerEnter(tile('Looks', 'Knight'), { pointerType: 'mouse' });
+  await waitFor(() => expect(badge()).toHaveTextContent('PreviewKnight'));
+  const knight = stageSum();
+  expect(knight).not.toBe(real);
+  // Opening another category leaves the tile behind: the real skin is back at once.
+  await user.click(screen.getByRole('button', { name: 'Face' }));
+  expect(badge()).toBeNull();
+  expect(stageSum()).toBe(real);
+  fireEvent.pointerEnter(within(expressions()).getByRole('button', { name: 'Angry' }), { pointerType: 'mouse' });
+  await waitFor(() => expect(badge()).toHaveTextContent('PreviewAngry'));
+  expect(stageSum()).not.toBe(real);
+  expect(stageSum()).not.toBe(knight);
+  // The face worn already has nothing to show.
+  fireEvent.pointerLeave(within(expressions()).getByRole('button', { name: 'Angry' }));
+  fireEvent.pointerEnter(within(expressions()).getByRole('button', { name: 'Happy' }), { pointerType: 'mouse' });
+  await waitFor(() => expect(badge()).toBeNull());
+  expect(stageSum()).toBe(real);
+  expect(chips()).toEqual(['Plain body', 'Round eyes', 'Straight brows', 'Smile']);
+});
+
+it('a preview never shows over a newer real change: it is tried again on the skin as it is now', async () => {
+  const { user } = await openCreate({ pieces: [BODY, TEE], painting: false });
+  await user.click(screen.getByRole('button', { name: 'Hats' }));
+  await user.click(tile('Hats', /^Cap/));
+  await waitFor(() => expect(chips()).toEqual(['Plain body', 'T-shirt', 'Cap']));
+  await user.click(screen.getByRole('button', { name: 'Shoes' }));
+  const withCap = stageSum();
+  fireEvent.pointerEnter(tile('Shoes', /Moon boots/), { pointerType: 'mouse' });
+  await waitFor(() => expect(badge()).not.toBeNull());
+  const bootsOverCap = stageSum();
+  // Undo takes the cap off under the preview.
+  await user.keyboard('{Control>}z{/Control}');
+  await waitFor(() => expect(chips()).toEqual(['Plain body', 'T-shirt']));
+  await waitFor(() => expect(stageSum()).not.toBe(bootsOverCap));
+  await waitFor(() => expect(badge()).not.toBeNull());
+  const bootsNoCap = stageSum();
+  expect(bootsNoCap).not.toBe(withCap);
+  // Wearing the boots now gives exactly that.
+  await user.click(tile('Shoes', /Moon boots/));
+  await waitFor(() => expect(chips()).toEqual(['Plain body', 'T-shirt', 'Moon boots']));
+  await waitFor(() => expect(badge()).toBeNull());
+  expect(stageSum()).toBe(bootsNoCap);
+});
+
+it('a version preview takes the stage from a piece being tried on', async () => {
+  const { user } = await openCreate({ pieces: [BODY, TEE], painting: false });
+  await user.click(screen.getByRole('button', { name: 'Hats' }));
+  const real = stageSum();
+  fireEvent.pointerEnter(tile('Hats', /^Cap/), { pointerType: 'mouse' });
+  await waitFor(() => expect(badge()).not.toBeNull());
+  await user.click(screen.getByRole('button', { name: 'History' }));
+  expect(badge()).toBeNull();
+  expect(stageSum()).toBe(real);
 });
