@@ -1467,6 +1467,55 @@ pub(crate) mod tests {
         );
     }
 
+    /// One end-to-end check against a real Engine, run by hand:
+    /// `PERLAND_LAUNCHER_TELEMETRY_URL=https://<engine> cargo test -p launcher-app --lib
+    /// telemetry::tests::a_real_engine_takes_the_ping_and_an_error_report -- --ignored --nocapture`.
+    /// It sends one ping (marked `dev`, so it can be told from players) and one error report
+    /// through the same code the launcher runs, and passes only if the Engine took both.
+    #[tokio::test]
+    #[ignore = "talks to a real Engine; needs PERLAND_LAUNCHER_TELEMETRY_URL"]
+    async fn a_real_engine_takes_the_ping_and_an_error_report() {
+        let raw = std::env::var(ENDPOINT_ENV).expect("set PERLAND_LAUNCHER_TELEMETRY_URL");
+        let Mode::Engine(engine) = mode(BuildKind::Dev, None, true, Some(&raw), site()) else {
+            panic!("{ENDPOINT_ENV} isn't an https address (or http on this computer)");
+        };
+        let tmp = tempfile::tempdir().unwrap();
+        let telemetry = Telemetry::new(TelemetryConfig {
+            mode: Mode::Engine(engine),
+            data_root: tmp.path().to_path_buf(),
+            launcher_version: env!("CARGO_PKG_VERSION").into(),
+            http: launcher_core::http::client(env!("CARGO_PKG_VERSION")).unwrap(),
+        });
+        telemetry.force_on();
+        telemetry.set_locale("en");
+        telemetry.count(Counter::GameLaunches);
+        telemetry.report_error(
+            &LauncherError::game(
+                ErrorCode::Internal,
+                "End-to-end check of the launcher's error reports",
+            )
+            .with_detail("sent by the launcher's own test, not by a player"),
+            Some("telemetry_live_check"),
+        );
+        telemetry.start(false, PingChannel::Dev).await;
+        let state = file(tmp.path()).unwrap();
+        println!("state after the check: {state}");
+        assert!(
+            state["lastPing"].is_string(),
+            "the Engine didn't take the ping"
+        );
+        assert_eq!(
+            state["counters"],
+            json!({}),
+            "counters go with a taken ping"
+        );
+        assert_eq!(
+            state["reports"],
+            json!([]),
+            "the Engine didn't take the report"
+        );
+    }
+
     #[tokio::test]
     async fn uncount_takes_one_back() {
         let server = engine(500, 500).await;
