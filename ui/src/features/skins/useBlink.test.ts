@@ -54,11 +54,12 @@ it('nothing blinks while it is off, and turning it off mid-blink opens the eyes'
   expect(result.current).toBe(false);
 });
 
-it('never blinks under reduced motion', () => {
+// The blink is the figure's own motion, so the Animation switch alone stops it, like the pose.
+it('blinks under reduced motion too', () => {
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: query.includes('reduce'), addEventListener() {}, removeEventListener() {} }));
   const { result } = renderHook(() => useBlinking(true, SKIN));
-  act(() => void vi.advanceTimersByTime(20_000));
-  expect(result.current).toBe(false);
+  act(() => void vi.advanceTimersByTime(first));
+  expect(result.current).toBe(true);
 });
 
 // The closed-eyes frame of the open skin.

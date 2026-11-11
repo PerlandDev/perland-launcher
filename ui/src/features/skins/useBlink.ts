@@ -10,18 +10,15 @@ import type { SkinDoc } from './useSkinDoc';
 /** The skin rests this long after a change before its closed-eyes frame is made: a colour being dragged makes none. */
 export const BLINK_SETTLE_MS = 250;
 
-function reducedMotion(): boolean {
-  return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
 /**
  * True while the eyes are shut: for `BLINK_MS` every 3 to 6 seconds, at the rhythm of `seed` (the skin). Never while
- * `active` is false or under reduced motion; turning it off opens the eyes at once and starts the rhythm over.
+ * `active` is false; turning it off opens the eyes at once and starts the rhythm over. Like the pose, it is the
+ * figure's own motion: the Animation switch stops it, the system's reduced-motion setting does not.
  */
 export function useBlinking(active: boolean, seed: string): boolean {
   const [shut, setShut] = useState(false);
   useEffect(() => {
-    if (!active || reducedMotion()) return;
+    if (!active) return;
     const rhythm = blinkSeed(seed);
     let n = 0;
     let timer: ReturnType<typeof setTimeout>;
