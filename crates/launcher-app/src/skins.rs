@@ -1,6 +1,7 @@
 //! The Skins screen: each account's wardrobe on disk, an account's current skin, and wearing a
 //! skin. Textures cross to the webview as `data:image/png;base64,` URLs. `owner` is the account
 //! whose wardrobe is shown; `None` is the loose wardrobe, used while no account is signed in.
+use launcher_core::telemetry::Counter;
 use std::path::PathBuf;
 
 use launcher_core::{
@@ -285,6 +286,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .upload_skin(token, png.clone(), model)
             .await?;
         self.skins.mark_worn(id, uuid).await?;
+        self.config.telemetry.count(Counter::SkinsChanged);
         // The account's face shows the new skin at once, not when the remembered one expires.
         if let Err(e) = skins::remember_texture(&self.config.dirs.skins(), uuid, &png).await {
             tracing::debug!(code = ?e.code, "couldn't remember the skin just worn");
@@ -370,6 +372,21 @@ mod tests {
         assert_eq!(calls[0].args[0], "mc-cached");
         assert_eq!(calls[0].args[1], "slim");
         assert_eq!(list[0].worn_by.as_deref(), Some(alex.uuid.as_str()));
+    }
+
+    #[tokio::test]
+    async fn wearing_a_skin_is_counted_when_it_worked() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        core.telemetry().set_sharing(true);
+        let alex = alex(&core).await;
+        let entry = core
+            .skin_create("Mine", SkinModel::Slim, &texture(), Some(&alex.uuid), false)
+            .await
+            .unwrap();
+        assert!(core.skin_wear("no-such-skin", &alex.uuid).await.is_err());
+        assert!(core.telemetry().snapshot().counters().is_empty());
+        core.skin_wear(&entry.id, &alex.uuid).await.unwrap();
+        assert_eq!(core.telemetry().snapshot().counters()["skins_changed"], 1);
     }
 
     #[tokio::test]

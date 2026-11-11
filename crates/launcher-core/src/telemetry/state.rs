@@ -53,14 +53,16 @@ macro_rules! counters {
 
 counters! {
     GameLaunches => "game_launches": "The game started.",
+    GameCrashes => "game_crashes": "The game closed by itself with an error.",
+    GameRepairs => "game_repairs": "A repair of the game's files was started (the crash card's Repair).",
     InstancesCreated => "instances_created": "An instance was created by hand (New instance or the first run).",
+    InstancesImported => "instances_imported": "An instance was imported from another launcher.",
     PacksInstalled => "packs_installed": "A modpack was added as a new instance (from Browse, a file or a link).",
     JoinsByLink => "joins_by_link": "A server was added from an invite link or the server list.",
     PerlandSignIns => "perland_sign_ins": "A sign-in to a Perland account finished.",
     MicrosoftSignIns => "microsoft_sign_ins": "A sign-in to a Microsoft account finished.",
     FreeServersCreated => "free_servers_created": "A free server was created.",
     SkinsChanged => "skins_changed": "A skin was put on an account.",
-    CrashFixesApplied => "crash_fixes_applied": "A fix offered after a crash was applied.",
     UpdatesInstalled => "updates_installed": "A launcher update was installed.",
 }
 

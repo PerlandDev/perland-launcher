@@ -248,20 +248,27 @@ impl Scrubber {
         }
     }
 
+    /// Known secrets and names out of `text`.
+    fn mask(&self, text: &str) -> String {
+        let mut text = self.secrets.redact(text);
+        for name in &self.names {
+            text = name.replace_all(&text, "<redacted>").into_owned();
+        }
+        text
+    }
+
     pub fn scrub(&self, input: &str) -> String {
         let mut text: String = input
             .chars()
             .filter(|c| !(DATA..=STASH_END).contains(c))
             .take(INPUT_CAP)
             .collect();
-        text = self.secrets.redact(&text);
-        for name in &self.names {
-            text = name.replace_all(&text, "<redacted>").into_owned();
-        }
-        // Finished pieces wait in `stash`, where no later step can touch them.
+        // Shapes first (a URL, a path, an address are recognised whole), then what the
+        // launcher knows by name. Finished pieces wait in `stash`, where no later step can
+        // touch them; a piece that keeps some of its text is masked on its way in.
         let mut stash: Vec<String> = Vec::new();
         let mut keep = |piece: String| {
-            stash.push(piece);
+            stash.push(self.mask(&piece));
             format!("{STASH}{}{STASH_END}", stash.len() - 1)
         };
         text = URL
@@ -292,6 +299,7 @@ impl Scrubber {
                 dotted_placeholder(&found[0], found.name("port").is_some())
             })
             .into_owned();
+        text = self.mask(&text);
         if let Some(user) = &self.user {
             text = user.replace_all(&text, "<user>").into_owned();
         }

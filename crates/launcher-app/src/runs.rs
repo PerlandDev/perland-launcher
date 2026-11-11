@@ -5,6 +5,7 @@
 //! and `stopping` after a Stop that waits on a sync or a kill. A never-synced or pinned pack
 //! starts at `queued`; a vanilla instance goes `queued`, `preparing`, `running`.
 //! A run leaves the map (idle) with exactly one final `run_state` event carrying how it ended.
+use launcher_core::telemetry::Counter;
 use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, Mutex},
@@ -154,7 +155,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// The crash card's Repair: a run that checks every game file by its hash, downloads what's
     /// wrong, rebuilds a loader's patched files, and plays.
     pub async fn play_repair(self: &Arc<Self>, id: &str) -> Result<()> {
-        self.play_run(id, Destination::Title, true).await
+        let started = self.play_run(id, Destination::Title, true).await;
+        self.counted(Counter::GameRepairs, started)
     }
 
     async fn play_run(
@@ -935,6 +937,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                     run.killer = Some(game.killer());
                     run.abort = None;
                     self.emit_state(&id, RunStateKind::Running, None);
+                    self.config.telemetry.count(Counter::GameLaunches);
                     let started = self.run_clock();
                     self.playing_since
                         .lock()
@@ -985,6 +988,24 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.record_place(&id, address.as_ref(), &connected, started_at)
             .await;
         let crashed = info.is_crash();
+        if crashed {
+            // The verdict, the version and the loader. Nothing of the log, the instance or
+            // the mods it names.
+            let telemetry = &self.config.telemetry;
+            telemetry.count(Counter::GameCrashes);
+            let loader = played
+                .game
+                .loader
+                .as_ref()
+                .and_then(|l| serde_json::to_value(l.kind).ok())
+                .and_then(|v| v.as_str().map(str::to_owned))
+                .unwrap_or_else(|| "vanilla".into());
+            telemetry.report_crash(
+                info.cause.as_ref().map(|c| c.code),
+                &played.game.minecraft,
+                &loader,
+            );
+        }
         // A game we lost track of (a wait error) didn't prove the update runs cleanly.
         restore::run_ended(
             &self.instances,
@@ -1747,6 +1768,43 @@ mod tests {
             Some("java.lang.OutOfMemoryError: Java heap space")
         );
         assert_eq!(exit.fixes, [CrashFix::MoreMemory]);
+    }
+
+    #[tokio::test]
+    async fn a_crash_is_counted_and_reported_as_its_verdict_only() {
+        let (core, runner, host, _t) = ready(false).await;
+        core.telemetry().set_sharing(true);
+        core.play("alpha").await.unwrap();
+        runner.open_gate(1);
+        host.wait_for("alpha", Running).await;
+        runner.finish(
+            "alpha",
+            launcher_core::launch::GameExit {
+                code: Some(1),
+                killed: false,
+                tail: vec!["[main/ERROR]: Steve lost connection to play.example.com".into()],
+                crash: Some(Crash {
+                    cause: CrashCause::OutOfMemory,
+                    detail: "java.lang.OutOfMemoryError: Java heap space".into(),
+                }),
+            },
+        );
+        host.wait_for("alpha", Idle).await;
+        let state = core.telemetry().snapshot();
+        assert_eq!(state.counters()["game_launches"], 1);
+        assert_eq!(state.counters()["game_crashes"], 1);
+        let report = serde_json::to_value(&state.reports()[0]).unwrap();
+        assert_eq!(
+            report,
+            serde_json::json!({
+                "kind": "game_crash",
+                "message": "The game crashed",
+                "code": "crash_out_of_memory",
+                "context": { "minecraft": "1.20.1", "loader": "vanilla" },
+                "count": 1
+            })
+        );
+        assert_eq!(state.reports().len(), 1);
     }
 
     #[tokio::test]

@@ -1,7 +1,9 @@
 //! Joining Perland servers by invite link (join-by-link spec §2.2): previewing an invite,
 //! adding it as an instance, its live status, and moving it to a new link. Tauri only forwards
 //! these commands.
+use crate::telemetry::instance_names;
 use base64::{engine::general_purpose::STANDARD, Engine};
+use launcher_core::telemetry::Counter;
 use launcher_core::{
     instances::{unix_now, Instance, ServerLink, SourceRef, UpdatePolicy},
     invite::{EngineView, InviteLink},
@@ -115,6 +117,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             instance.server = Some(ServerLink::from_view(&ev.view, &ev.engine, unix_now()));
         }
         self.instances.save(&instance).await?;
+        self.config.telemetry.count(Counter::JoinsByLink);
+        self.config.telemetry.add_names(instance_names(&instance));
         Ok(instance)
     }
 
@@ -449,6 +453,38 @@ mod tests {
         let second = core.join_add(&shouted).await.unwrap();
         assert_eq!(first.id, second.id);
         assert_eq!(runner.added.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn joining_counts_once_and_teaches_the_server_to_the_scrubber() {
+        let (core, runner, _host, tmp) = core(BuildKind::Dev);
+        core.telemetry().set_sharing(true);
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let instance = core.join_add(&invite('A')).await.unwrap();
+        // The same server again is the same instance, not another join.
+        core.join_add(&invite('A')).await.unwrap();
+        assert!(core.join_add("not a link").await.is_err());
+        let telemetry = core.telemetry();
+        assert_eq!(telemetry.snapshot().counters()["joins_by_link"], 1);
+
+        // From now on nothing of this server leaves in a report.
+        let token = launcher_core::invite::InviteLink::parse(&invite('A')).unwrap();
+        let detail = format!(
+            "{} {} {} {} survival play.example.com:25566",
+            invite('A'),
+            token.token(),
+            instance.id,
+            tmp.path().join("instances").join(&instance.id).display()
+        );
+        telemetry.report_error(
+            &LauncherError::network(ErrorCode::HostUnreachable, "Couldn't reach survival")
+                .with_detail(detail),
+            Some("server_status"),
+        );
+        let queued = serde_json::to_string(&telemetry.snapshot().reports()).unwrap();
+        for private in ["survival", "play.example", token.token(), "25566"] {
+            assert!(!queued.contains(private), "{private} left in {queued}");
+        }
     }
 
     #[tokio::test]

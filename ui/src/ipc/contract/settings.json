@@ -8,5 +8,6 @@
   "railExpanded": true,
   "iconShape": "round",
   "theme": "night",
-  "font": "system"
+  "font": "system",
+  "shareAnonymousData": true
 }

@@ -1,5 +1,6 @@
 //! Pack commands other than playing: adding a pack, its status, its mods, manual downloads
 //! and art (spec addendum §4.4). Runs and syncs live in `runs.rs`.
+use launcher_core::telemetry::Counter;
 use std::{path::Path, sync::Arc};
 
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -214,7 +215,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 PackInput::MrpackFile { path }
             }
         };
-        self.runner.add_pack(input).await
+        let added = self.runner.add_pack(input).await;
+        self.counted(Counter::PacksInstalled, added)
     }
 
     /// The instance `id`, if it comes from a pack.

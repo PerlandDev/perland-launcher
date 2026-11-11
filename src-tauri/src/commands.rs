@@ -40,10 +40,12 @@ type Res<T> = Result<T, LauncherError>;
 type CoreState<'a> = State<'a, Arc<Core>>;
 type UpdatesState<'a> = State<'a, Arc<crate::Updates>>;
 
-/// Every error a command returns goes to the launcher log.
+/// Every error a command returns goes to the launcher log, and to the anonymous error reports
+/// when the player shares them.
 fn logged<T>(command: &'static str, result: Res<T>) -> Res<T> {
     if let Err(error) = &result {
         launcher_core::logging::log_error(command, error);
+        launcher_app::telemetry::report_command_error(command, error);
     }
     result
 }
@@ -81,6 +83,13 @@ pub async fn whats_new_seen(core: CoreState<'_>) -> Res<Option<String>> {
 #[tauri::command]
 pub async fn whats_new_mark(core: CoreState<'_>) -> Res<()> {
     logged("whats_new_mark", core.whats_new_mark().await)
+}
+
+/// An error from the window's own code, for the anonymous error reports. Answers nothing:
+/// the window has nothing to do about it either way.
+#[tauri::command]
+pub fn telemetry_report(core: CoreState<'_>, kind: String, message: String, stack: Option<String>) {
+    core.telemetry_report(&kind, &message, stack.as_deref());
 }
 
 #[tauri::command]

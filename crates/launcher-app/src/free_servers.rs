@@ -3,6 +3,7 @@
 //! and play it. Every call goes to the session's Engine with the session's token; a 401 forgets
 //! the session. Nothing here logs a token or an invite.
 
+use launcher_core::telemetry::Counter;
 use launcher_core::{
     instances::{ServerAddress, ServerStatus},
     invite::{non_empty, InviteLink, Url},
@@ -387,6 +388,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let created = self
             .free_call(&session, |e, t| player.create_free_server(e, t, request))
             .await?;
+        self.config.telemetry.count(Counter::FreeServersCreated);
         Ok(self.free_card_of(&created).await)
     }
 

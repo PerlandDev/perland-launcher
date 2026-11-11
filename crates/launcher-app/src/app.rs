@@ -1,4 +1,6 @@
 //! The app's state and every command except playing (see `runs.rs`).
+use crate::telemetry::{instance_names, Telemetry};
+use launcher_core::telemetry::{payload::PingChannel, Counter};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -70,6 +72,9 @@ pub struct AppConfig {
     /// The Perland panel (`launcher_core::perland::panel_url`), where the player manages the
     /// servers they own. Without one, Manage in Perland isn't offered.
     pub panel: Option<launcher_core::invite::Url>,
+    /// Anonymous error reports and usage counts (see `telemetry.rs`). `Telemetry::off()` for
+    /// a launcher that never collects any.
+    pub telemetry: Arc<crate::telemetry::Telemetry>,
 }
 
 /// How long a fetched skin is shown before it is asked again: a skin changed on minecraft.net
@@ -408,7 +413,74 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     pub async fn settings_set(&self, settings: Settings) -> Result<Settings> {
         self.settings.lock().await.save(&settings).await?;
+        // Off stops sending at once and deletes what was collected.
+        self.config
+            .telemetry
+            .set_sharing(settings.share_anonymous_data);
         Ok(settings)
+    }
+
+    /// Anonymous error reports and usage counts.
+    pub fn telemetry(&self) -> &Arc<Telemetry> {
+        &self.config.telemetry
+    }
+
+    /// Counts `counter` when `result` is a success.
+    pub(crate) fn counted<T>(&self, counter: Counter, result: Result<T>) -> Result<T> {
+        if result.is_ok() {
+            self.config.telemetry.count(counter);
+        }
+        result
+    }
+
+    /// Reads the player's switch, and learns the names that must never leave. Quick and
+    /// local: call it before anything can be reported. Until then nothing is collected.
+    pub async fn telemetry_begin(&self) {
+        // Not `settings_get`: its one-time damaged-settings warning is for the UI's first read.
+        let (settings, _) = self.settings.lock().await.load().await;
+        let telemetry = &self.config.telemetry;
+        telemetry.set_sharing(settings.share_anonymous_data);
+        if !telemetry.is_on() {
+            return;
+        }
+        if let Ok(file) = self.accounts.lock().await.list().await {
+            telemetry.add_names(crate::telemetry::account_names(&file));
+        }
+        if let Ok(listing) = self.instances.list_all().await {
+            telemetry.add_names(listing.instances.iter().flat_map(instance_names));
+        }
+    }
+
+    /// Today's ping, if none went out yet, then the reports left from earlier runs. Slow (it
+    /// talks to the network) and silent: run it on a background task.
+    pub async fn telemetry_start(&self) {
+        let telemetry = &self.config.telemetry;
+        if !telemetry.is_on() {
+            return;
+        }
+        let (settings, _) = self.settings.lock().await.load().await;
+        let locale = match settings.language {
+            Some(launcher_core::settings::Lang::En) => "en".to_string(),
+            Some(launcher_core::settings::Lang::Es) => "es".to_string(),
+            None => launcher_core::telemetry::os_locale().unwrap_or_default(),
+        };
+        let channel = match (
+            self.config.build,
+            Channel::effective(settings.update_channel, self.config.build),
+        ) {
+            (BuildKind::Dev, _) => PingChannel::Dev,
+            (_, Channel::Beta) => PingChannel::Beta,
+            (_, Channel::Stable) => PingChannel::Stable,
+        };
+        // The marker file says a Perland session exists; the credential store isn't read.
+        let signed_in = self.config.dirs.root().join(ACCOUNT_MARKER).is_file();
+        telemetry.start(signed_in, &locale, channel).await;
+    }
+
+    /// An error from the window's own code (`exception` or `unhandled_rejection`). Never
+    /// fails: there is nothing the window could do about it.
+    pub fn telemetry_report(&self, kind: &str, message: &str, stack: Option<&str>) {
+        self.config.telemetry.report_ui(kind, message, stack);
     }
 
     /// The instances in the player's order: ones not in it yet on top (A-Z), then the stored order.
@@ -470,6 +542,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             instance.java.memory_mb = memory;
             instance = self.instances.update(&instance).await?;
         }
+        self.config.telemetry.count(Counter::InstancesCreated);
         Ok(instance)
     }
 
@@ -578,6 +651,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// The accounts the player may see: outside dev builds, offline ones are left out.
     pub async fn accounts_list(&self) -> Result<AccountsFile> {
         let file = self.accounts.lock().await.list().await?;
+        self.config
+            .telemetry
+            .add_names(crate::telemetry::account_names(&file));
         Ok(visible(file, self.config.build))
     }
 
@@ -986,6 +1062,15 @@ pub(crate) mod tests {
                 system_memory_mb: 16384,
                 downloads_dir: Some(tmp.path().join("Downloads")),
                 panel,
+                // On only once a test turns sharing on; then it records, and sends nowhere.
+                telemetry: crate::telemetry::Telemetry::new(crate::telemetry::TelemetryConfig {
+                    mode: crate::telemetry::Mode::Engine(
+                        launcher_core::invite::Url::parse("http://127.0.0.1:9/").unwrap(),
+                    ),
+                    data_root: tmp.path().to_path_buf(),
+                    launcher_version: "0.1.0".into(),
+                    http: launcher_core::http::client("test").unwrap(),
+                }),
             },
             meta,
             runner.clone(),
@@ -1002,6 +1087,75 @@ pub(crate) mod tests {
             minecraft: "1.20.1".into(),
             loader: None,
         }
+    }
+
+    #[tokio::test]
+    async fn sharing_follows_the_saved_switch_and_off_deletes_what_was_collected() {
+        let (core, _runner, _host, tmp) = core(BuildKind::Release);
+        let state_file = tmp.path().join(launcher_core::telemetry::STATE_FILE);
+        // Nothing is collected before the settings are read.
+        assert!(!core.telemetry().is_on());
+        core.instance_create(vanilla("Before")).await.unwrap();
+        assert!(!state_file.exists());
+
+        // The default is to share.
+        core.telemetry_begin().await;
+        assert!(core.telemetry().is_on());
+        core.instance_create(vanilla("Alpha")).await.unwrap();
+        assert!(core.instance_create(vanilla("  ")).await.is_err());
+        assert_eq!(
+            core.telemetry().snapshot().counters()["instances_created"],
+            1
+        );
+        core.telemetry()
+            .report_error(&busy("alpha"), Some("instance_update"));
+        assert_eq!(core.telemetry().snapshot().reports().len(), 1);
+
+        // Off: at once, and what was collected is gone from the disk too.
+        let settings = Settings {
+            share_anonymous_data: false,
+            ..core.settings_get().await
+        };
+        core.settings_set(settings.clone()).await.unwrap();
+        assert!(!core.telemetry().is_on());
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&state_file).unwrap()).unwrap();
+        assert_eq!(saved["reports"], serde_json::json!([]));
+        assert_eq!(saved["counters"], serde_json::json!({}));
+        core.instance_create(vanilla("Beta")).await.unwrap();
+        core.telemetry_report("exception", "boom", None);
+        assert!(core.telemetry().snapshot().is_empty());
+
+        // A later start reads the switch as off.
+        core.telemetry_begin().await;
+        core.telemetry_start().await;
+        assert!(!core.telemetry().is_on());
+
+        // And back on.
+        core.settings_set(Settings {
+            share_anonymous_data: true,
+            ..settings
+        })
+        .await
+        .unwrap();
+        assert!(core.telemetry().is_on());
+    }
+
+    #[tokio::test]
+    async fn starting_telemetry_learns_the_names_already_on_disk() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        core.account_add_offline("PedroGamer").await.unwrap();
+        core.instance_create(vanilla("Servidor de Pedro"))
+            .await
+            .unwrap();
+        core.telemetry_begin().await;
+        core.telemetry_report(
+            "exception",
+            "PedroGamer can't open Servidor de Pedro (servidor-de-pedro)",
+            None,
+        );
+        let queued = serde_json::to_string(&core.telemetry().snapshot().reports()).unwrap();
+        assert!(!queued.to_lowercase().contains("pedro"), "{queued}");
     }
 
     #[tokio::test]

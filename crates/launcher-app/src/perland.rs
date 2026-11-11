@@ -9,6 +9,7 @@
 //! redirect); the page offers GitHub, Discord and the email code itself. An Engine without
 //! OAuth discovery shows no Perland card. A session from before the page (no OAuth client)
 //! still signs out at `/player/sign-out`.
+use launcher_core::telemetry::Counter;
 use std::{
     sync::Mutex,
     time::{Duration, Instant},
@@ -557,6 +558,11 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.stop_console();
         state.checked = Some(Instant::now());
         state.new_player = answer.new_player;
+        let telemetry = &self.config.telemetry;
+        telemetry.count(Counter::PerlandSignIns);
+        if let Some(session) = &state.session {
+            telemetry.add_names(crate::telemetry::profile_names(&session.profile));
+        }
         shown
     }
 
