@@ -1,0 +1,5 @@
+{
+  "kind": "fixed",
+  "en": "Game libraries now download over a secure connection, and mod files are shared between instances only when they can be fully checked.",
+  "es": "Las librerías del juego ahora se descargan por conexión segura, y los mods solo se comparten entre instancias si se pueden verificar."
+}

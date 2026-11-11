@@ -1,0 +1,5 @@
+{
+  "kind": "fixed",
+  "en": "Importing an instance from another launcher now brings only its common performance Java arguments and leaves the others out.",
+  "es": "Al importar una instancia de otro launcher, solo se traen sus argumentos de Java de rendimiento más comunes; los demás se dejan fuera."
+}
