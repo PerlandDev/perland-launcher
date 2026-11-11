@@ -534,6 +534,9 @@ export const skinVersion = z.strictObject({
 });
 /** The skin a Microsoft account wears now: a PNG `data:` URL and its arm model. */
 export const currentSkin = z.strictObject({ texture: z.string(), model: skinModel });
+/** The skin drawn as the player's own figure (Home, the Lobby): a PNG `data:` URL, or null when the account has nothing of
+ *  its own to show and the launcher's starter stands in; its arm model; and how many skins the account's wardrobe holds. */
+export const playerSkin = z.strictObject({ texture: z.string().nullable(), model: skinModel, wardrobe: z.number().int() });
 /** The calls of the Microsoft sign-in chain, in order: Microsoft's code, Xbox Live, XSTS, Minecraft's login, the profile and
  *  ownership check. */
 export const MSA_STEPS = ['microsoft', 'xbox', 'xsts', 'minecraft', 'profile'] as const;
@@ -564,6 +567,7 @@ export const settings = z.strictObject({
   font: uiFont,
   shareAnonymousData: z.boolean(),
   graphicsCard,
+  showPlayer: z.boolean(),
 });
 /** One release note (release-notes/<id>.json) with the version it first shipped in; null while unreleased. */
 export const releaseNote = z.strictObject({
@@ -1034,6 +1038,7 @@ export type AccountsFile = z.infer<typeof accountsFile>;
 export type SkinModel = z.infer<typeof skinModel>;
 export type SkinEntry = z.infer<typeof skinEntry>;
 export type CurrentSkin = z.infer<typeof currentSkin>;
+export type PlayerSkin = z.infer<typeof playerSkin>;
 export type WornPiece = z.infer<typeof wornPiece>;
 export type SkinLook = z.infer<typeof skinLook>;
 export type CatalogManifest = z.infer<typeof catalogManifest>;

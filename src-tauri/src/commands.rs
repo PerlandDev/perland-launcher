@@ -1286,6 +1286,14 @@ pub async fn skin_checkpoint(core: CoreState<'_>, id: String) -> Res<()> {
 }
 
 #[tauri::command]
+pub async fn player_skin(
+    core: CoreState<'_>,
+    uuid: String,
+) -> Res<launcher_app::skins::PlayerSkin> {
+    logged("player_skin", core.player_skin(&uuid).await)
+}
+
+#[tauri::command]
 pub async fn skin_current(
     core: CoreState<'_>,
     uuid: String,

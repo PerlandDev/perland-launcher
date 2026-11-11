@@ -113,6 +113,8 @@ pub struct Settings {
     pub share_anonymous_data: bool,
     /// The graphics card games start on.
     pub graphics_card: GraphicsCard,
+    /// The player's own figure stands beside Play on an instance's Home.
+    pub show_player: bool,
 }
 
 impl Default for Settings {
@@ -124,12 +126,13 @@ impl Default for Settings {
             minimize_on_play: true,
             first_run_done: false,
             update_channel: None,
-            rail_expanded: false,
+            rail_expanded: true,
             icon_shape: IconShape::Square,
             theme: Theme::Laminate,
             font: UiFont::Hyperlegible,
             share_anonymous_data: crate::telemetry::SHARE_BY_DEFAULT,
             graphics_card: GraphicsCard::Automatic,
+            show_player: true,
         }
     }
 }
@@ -194,7 +197,31 @@ mod tests {
         assert_eq!(settings.default_memory_mb, 4096);
         assert!(settings.minimize_on_play);
         assert!(!settings.first_run_done);
+        // New players see the rail with its names, so every place in it says what it is.
+        assert!(settings.rail_expanded);
+        assert!(settings.show_player);
+    }
+
+    #[tokio::test]
+    async fn show_player_is_on_for_older_files_and_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(&path, r#"{"firstRunDone": true, "railExpanded": false}"#).unwrap();
+        let store = SettingsStore::new(&path);
+        let (settings, warning) = store.load().await;
+        assert!(warning.is_none());
+        assert!(settings.show_player);
+        // A rail the player already has keeps its width.
         assert!(!settings.rail_expanded);
+
+        let hidden = Settings {
+            show_player: false,
+            ..settings
+        };
+        store.save(&hidden).await.unwrap();
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("\"showPlayer\": false"), "{raw}");
+        assert_eq!(store.load().await, (hidden, None));
     }
 
     #[tokio::test]

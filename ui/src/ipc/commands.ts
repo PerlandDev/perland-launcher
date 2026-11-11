@@ -4,6 +4,7 @@ import type {
   AccountsFile,
   CatalogAnswer,
   CurrentSkin,
+  PlayerSkin,
   SkinLook,
   SkinEntry,
   SkinVersion,
@@ -168,6 +169,8 @@ export const commands = {
   skinVersionsClear: (id: string) => invoke<null>('skin_versions_clear', { id }),
   /** The skin a Microsoft account wears now; null for an offline account or no skin. */
   skinCurrent: (uuid: string) => invoke<CurrentSkin | null>('skin_current', { uuid }),
+  /** The skin to draw as the account's figure. It only reads: nothing is adopted, synced or fetched for it. */
+  playerSkin: (uuid: string) => invoke<PlayerSkin>('player_skin', { uuid }),
   /** Puts the skin a Microsoft account wears in its wardrobe (reusing a matching entry, else a new one named `name`) and
    *  marks it worn; null for an offline account or one wearing Minecraft's default. */
   skinSyncCurrent: (uuid: string, name: string) => invoke<SkinEntry | null>('skin_sync_current', { uuid, name }),

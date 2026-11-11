@@ -935,6 +935,21 @@ fn contract_fixtures_are_current() {
             None,
         ],
     );
+    check(
+        "player_skin",
+        vec![
+            launcher_app::skins::PlayerSkin {
+                texture: Some("data:image/png;base64,iVBORw0KGgo=".into()),
+                model: launcher_core::skins_library::SkinModel::Slim,
+                wardrobe: 3,
+            },
+            launcher_app::skins::PlayerSkin {
+                texture: None,
+                model: launcher_core::skins_library::SkinModel::Classic,
+                wardrobe: 0,
+            },
+        ],
+    );
     check("instance", fabric_instance());
     check(
         "instance_listing",

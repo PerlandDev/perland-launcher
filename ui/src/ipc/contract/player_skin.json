@@ -1,0 +1,12 @@
+[
+  {
+    "texture": "data:image/png;base64,iVBORw0KGgo=",
+    "model": "slim",
+    "wardrobe": 3
+  },
+  {
+    "texture": null,
+    "model": "classic",
+    "wardrobe": 0
+  }
+]

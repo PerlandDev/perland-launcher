@@ -28,6 +28,18 @@ pub struct CurrentSkin {
     pub model: SkinModel,
 }
 
+/// The skin the launcher draws as the player's own figure (Home, the Lobby), and how many skins
+/// the account's wardrobe holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerSkin {
+    /// A PNG data URL; `None` when the account has nothing of its own to show, and the UI draws
+    /// the launcher's starter.
+    pub texture: Option<String>,
+    pub model: SkinModel,
+    pub wardrobe: usize,
+}
+
 /// The skin catalog and how it was reached: `manifest` is `None` when there is nothing to show.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -312,6 +324,51 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }))
     }
 
+    /// The skin to draw as `uuid`'s figure: what a Microsoft account wears (the texture its face
+    /// is cut from, so nothing new is fetched, with the arm model read off the texture), else the
+    /// first skin in its wardrobe. It only reads: listing here never adopts loose skins the way
+    /// opening the Skins screen does, and the Minecraft profile is never asked.
+    pub async fn player_skin(&self, uuid: &str) -> Result<PlayerSkin> {
+        let account = self.account(uuid).await?;
+        let wardrobe = self.skins.list(Some(uuid)).await?;
+        let worn = match self.worn_texture(&account).await {
+            Some(texture) => skins_png::normalise(&texture).ok(),
+            None => None,
+        };
+        let (texture, model) = match (worn, wardrobe.first()) {
+            (Some(png), _) => {
+                let model = skins_png::guess_model(&skins_png::decode(&png)?);
+                (Some(skins_png::data_url(&png)), model)
+            }
+            (None, Some(first)) => {
+                let png = self.skins.texture(&first.id).await?;
+                (Some(skins_png::data_url(&png)), first.model)
+            }
+            (None, None) => (None, SkinModel::Classic),
+        };
+        Ok(PlayerSkin {
+            texture,
+            model,
+            wardrobe: wardrobe.len(),
+        })
+    }
+
+    /// The texture a Microsoft account wears, from the same cache as its face (no token needed);
+    /// `None` for an offline account or one without a skin of its own.
+    async fn worn_texture(&self, account: &Account) -> Option<Vec<u8>> {
+        if account.provider != Provider::Microsoft {
+            return None;
+        }
+        let runner = self.runner.clone();
+        skins::cached_texture(
+            &self.config.dirs.skins(),
+            &account.uuid,
+            SKIN_MAX_AGE,
+            |id| runner.skin_texture(id),
+        )
+        .await
+    }
+
     /// Puts the skin the Microsoft account `uuid` wears in its wardrobe, named `name` when it's
     /// new (an entry with the same texture and arm model is reused), and marks it worn. `None`
     /// for an offline account or one wearing Minecraft's default skin.
@@ -329,18 +386,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// token needed), the arm model from the Minecraft profile, or read off the texture when the
     /// profile can't be asked.
     async fn current_skin(&self, account: Account) -> Result<Option<(Vec<u8>, SkinModel)>> {
-        if account.provider != Provider::Microsoft {
-            return Ok(None);
-        }
-        let runner = self.runner.clone();
-        let Some(texture) = skins::cached_texture(
-            &self.config.dirs.skins(),
-            &account.uuid,
-            SKIN_MAX_AGE,
-            |id| runner.skin_texture(id),
-        )
-        .await
-        else {
+        let Some(texture) = self.worn_texture(&account).await else {
             return Ok(None);
         };
         let png = skins_png::normalise(&texture)?;
@@ -551,6 +597,87 @@ mod tests {
         let e = core.skin_wear(&entry.id, &steve.uuid).await.unwrap_err();
         assert_eq!(e.code, ErrorCode::SkinOfflineAccount);
         assert!(runner.msa.calls_to("upload_skin").is_empty());
+    }
+
+    #[tokio::test]
+    async fn player_skin_of_an_empty_offline_wardrobe_is_nothing_to_show() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let steve = steve(&core).await;
+        let shown = core.player_skin(&steve.uuid).await.unwrap();
+        assert_eq!(shown.texture, None);
+        assert_eq!(shown.wardrobe, 0);
+        assert!(runner.msa.calls.lock().unwrap().is_empty());
+        assert!(runner.skin_asks.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn player_skin_offline_is_the_first_in_the_wardrobe() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let steve = steve(&core).await;
+        core.skin_create(
+            "Old",
+            SkinModel::Classic,
+            &texture(),
+            Some(&steve.uuid),
+            false,
+        )
+        .await
+        .unwrap();
+        // A new skin goes on top of the player's order.
+        let mut image = RgbaImage::new(64, 64);
+        image.put_pixel(9, 9, Rgba([7, 7, 7, 255]));
+        let top = skins_png::data_url(&skins_png::encode(&image).unwrap());
+        core.skin_create("New", SkinModel::Slim, &top, Some(&steve.uuid), false)
+            .await
+            .unwrap();
+        let shown = core.player_skin(&steve.uuid).await.unwrap();
+        assert_eq!(shown.texture.as_deref(), Some(top.as_str()));
+        assert_eq!(shown.model, SkinModel::Slim);
+        assert_eq!(shown.wardrobe, 2);
+    }
+
+    #[tokio::test]
+    async fn player_skin_only_reads_so_loose_skins_stay_loose() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let steve = steve(&core).await;
+        core.skin_create("Loose", SkinModel::Classic, &texture(), None, false)
+            .await
+            .unwrap();
+        let shown = core.player_skin(&steve.uuid).await.unwrap();
+        assert_eq!(shown.wardrobe, 0);
+        assert_eq!(core.skins.list(None).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn player_skin_microsoft_is_the_skin_it_wears_without_asking_the_profile() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = alex(&core).await;
+        let png = skins_png::from_data_url(&texture()).unwrap();
+        *runner.skin.lock().unwrap() = Some(Ok(Some(png)));
+        let shown = core.player_skin(&alex.uuid).await.unwrap();
+        assert_eq!(shown.texture.as_deref(), Some(texture().as_str()));
+        assert!(runner.msa.calls_to("skin_model").is_empty());
+    }
+
+    #[tokio::test]
+    async fn player_skin_microsoft_without_a_skin_falls_back_to_the_wardrobe() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = alex(&core).await;
+        *runner.skin.lock().unwrap() = Some(Ok(None));
+        core.skin_create("Mine", SkinModel::Slim, &texture(), Some(&alex.uuid), false)
+            .await
+            .unwrap();
+        let shown = core.player_skin(&alex.uuid).await.unwrap();
+        assert_eq!(shown.texture.as_deref(), Some(texture().as_str()));
+        assert_eq!(shown.model, SkinModel::Slim);
+        assert_eq!(shown.wardrobe, 1);
+    }
+
+    #[tokio::test]
+    async fn player_skin_of_an_unknown_account_is_no_account() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let e = core.player_skin("not-an-account").await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::NoAccount);
     }
 
     #[tokio::test]
