@@ -11,7 +11,7 @@ const SUFFIX = {
 
 // Versions are CalVer YYYY.M.MICRO (SemVer-valid: no leading zero in the month). MICRO counts the
 // releases of a month from 0, in UTC. A stable keeps the base of its betas, even in a later month.
-const CALVER = /^v(\d{4})\.([1-9]\d?)\.(\d+)(?:-beta\.(\d+))?$/;
+export const CALVER = /^v(\d{4})\.([1-9]\d?)\.(\d+)(?:-beta\.(\d+))?$/;
 
 export function nextVersion({ channel, tags, now }) {
   if (channel !== 'stable' && channel !== 'beta') throw new Error(`Unknown channel ${channel}`);

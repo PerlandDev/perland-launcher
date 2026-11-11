@@ -249,6 +249,8 @@ fn main() {
             commands::manage_console_close,
             commands::manage_open_panel,
             commands::perland_open_account,
+            commands::whats_new_seen,
+            commands::whats_new_mark,
             commands::update_status,
             commands::update_check,
             commands::update_restart,

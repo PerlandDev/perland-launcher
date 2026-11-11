@@ -478,7 +478,8 @@
       "upToDate": "Up to date · {{version}}",
       "check": "Check now",
       "restart": "Restart now",
-      "busy": "Wait for games and installs to finish first."
+      "busy": "Wait for games and installs to finish first.",
+      "whatsNew": "What's new"
     },
     "diagnostics": {
       "title": "Diagnostics",
@@ -897,6 +898,19 @@
       "hostFull": "Your server is ready, but Perland is full right now. Start it in a few minutes.",
       "manage": "Manage"
     }
+  },
+  "whatsNew": {
+    "title": "What's new",
+    "version": "{{version}} · {{date}}",
+    "next": "Next update",
+    "kind": {
+      "new": "New",
+      "improved": "Improved",
+      "fixed": "Fixed"
+    },
+    "all": "All updates",
+    "close": "Got it",
+    "empty": "No notes yet."
   },
   "news": {
     "label": "News",

@@ -23,6 +23,16 @@ import type {
 } from './schema';
 
 describe('mock backend', () => {
+  it("keeps the What's new marker, which starts at the running version", async () => {
+    const { handle } = createMockBackend();
+    const { version } = (await handle('app_info')) as { version: string };
+    expect(await handle('whats_new_seen')).toBe(version);
+    const updated = createMockBackend({ whatsNewSeen: null });
+    expect(await updated.handle('whats_new_seen')).toBeNull();
+    expect(await updated.handle('whats_new_mark')).toBeNull();
+    expect(await updated.handle('whats_new_seen')).toBe(version);
+  });
+
   it('serves the contract fixtures', async () => {
     const { handle } = createMockBackend();
     const listing = (await handle('instances_list')) as InstanceListing;

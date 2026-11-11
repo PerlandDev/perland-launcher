@@ -94,6 +94,9 @@ export interface MockOptions {
   microsoftStepMs?: number;
   /** The launcher's own update state; defaults to idle on release and beta builds, off in dev. */
   update?: UpdateState;
+  /** The last version whose release notes the player was shown. Defaults to the running version (nothing new); null is a player
+   *  who has not seen any. */
+  whatsNewSeen?: string | null;
   /** The pack's first sync ends with two files the player has to download by hand. */
   manual?: boolean;
   /** The pack has no update on offer. */
@@ -501,6 +504,7 @@ function seed(options: MockOptions) {
     settings,
     appInfo,
     update,
+    whatsNewSeen: options.whatsNewSeen === undefined ? appInfo.version : options.whatsNewSeen,
     mods,
     packs,
     // The player's own background per instance, as a data URL (the real one is .perland/custom/image.*).
@@ -917,6 +921,11 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'settings_set':
       state.settings = args.settings as Settings;
       return state.settings;
+    case 'whats_new_seen':
+      return state.whatsNewSeen;
+    case 'whats_new_mark':
+      state.whatsNewSeen = state.appInfo.version;
+      return null;
     case 'update_status':
       return state.update;
     case 'update_check':
