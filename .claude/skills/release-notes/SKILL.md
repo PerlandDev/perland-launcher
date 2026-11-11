@@ -15,15 +15,17 @@ One question decides it: **after this update, will a player see, do or stop putt
 
 | The change | What to do |
 |---|---|
-| Players can do something they couldn't | A note, `new` |
-| Something they already use looks, works or runs better | A note, `improved` |
+| Players can do or get something they couldn't, more of an existing thing included (new medals, a new theme) | A note, `new` |
+| Something they already have looks, works or runs better | A note, `improved` |
 | Something broken in a release now works | A note, `fixed` |
 | A dependency bump, build change or refactor that changes what players experience | A note for what they experience |
 | A fix for a bug that never reached a release | None. No player saw it |
-| A change to something whose note is not released yet | Edit that note so it stays true. Don't add another |
+| A security fix for something that shipped | A note, `fixed`: what is safer now, in plain words, and nothing about how it could be abused |
+| A change only some players notice (one language, one system) | A note in both languages that says who it is for: "In Spanish, …", "On Windows, …" |
+| A change to something whose note is not released yet | Edit that note if it is no longer true. If it still is: `Release notes: none (covered by <slug>, not released yet)`. Never a second note |
 | A step of a feature players can't reach yet (behind a flag, not wired in) | None. The pull request that makes it reachable carries the feature's one note |
 | Refactors, tests, CI, docs, release tooling, the dev harness | None |
-| Polish a player wouldn't notice or miss | None |
+| Polish a player wouldn't notice or miss, or a speed-up only a stopwatch would show | None |
 
 To tell what is released, compare with the latest release tag:
 
@@ -59,7 +61,7 @@ Each of `en` and `es` is **one sentence, at most 140 characters, plain text**, t
 4. For `fixed`, say what works now, from their side: "…no longer…" or "…now…". The cause stays in the commit.
 5. When a change helps only some players, say who in their terms: "On Windows, …", "On slow disks, …".
 
-Nothing a player wouldn't say: names from the code, error codes, libraries, version and pull request numbers, lab figures ("40% faster"), links, emoji, markup or exclamation marks.
+Nothing a player wouldn't say: names from the code, error codes, libraries, version and pull request numbers, lab figures ("40% faster"), links, emoji, markup or exclamation marks. A number the player can count in the launcher is fine ("6 new medals").
 
 | Instead of | Write |
 |---|---|
