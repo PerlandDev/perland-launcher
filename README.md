@@ -131,7 +131,7 @@ And these are taken out of every error text before it is saved or sent, as descr
 - Your computer's user name, your home folder, and file paths on your computer.
 - The names of your instances.
 
-An error message can still name a mod or modpack (such as "Sodium needs Fabric API"), and a file's name without its folder (such as `options.txt`). The cleaning is automatic and errs on the side of removing too much; if you ever find something it missed, please open an issue.
+What the cleaning cannot promise: it recognises shapes (a path, an address, a token) and the names the launcher itself knows. So an error message written by Java, a mod or a modpack could still carry an ordinary word it has no way to recognise as private, such as another player's name in a sentence, or a file's name without its folder (such as `options.txt`). A message can also name a mod or modpack (such as "Sodium needs Fabric API"). The cleaning errs on the side of removing too much; if you ever find something it missed, please open an issue.
 
 ### What stays on your computer
 
