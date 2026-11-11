@@ -2,7 +2,7 @@
 // picked worn piece's colour areas with Take off and Make part of the skin. Looks applies a whole catalog look; Face
 // opens with the ready-made expressions. A face piece the painting hides gets a hint with a way to start clean from
 // pieces. Pointing at a piece, a look or an expression tries it on the figure without changing the skin (see tryOn).
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CatalogLook, CatalogPiece, SkinLook } from '../../ipc/schema';
 import { Button } from '../../ui/Button';
@@ -123,6 +123,11 @@ export function CreatePanel({
   const [applying, setApplying] = useState<CatalogLook | null>(null);
   // The shown piece's colours: under every piece of the category, however many there are.
   const colours = useRef<HTMLElement>(null);
+  // Another category starts at its top: the panel would otherwise stay as far down as the last one was scrolled.
+  const side = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (side.current) side.current.scrollTop = 0;
+  }, [category]);
   const { manifest } = catalog;
   // Every tile's thumbnail is cut from the catalog's two sheets: a category of any size costs no file of its own.
   const thumbs = useThumbs(catalog);
@@ -176,7 +181,7 @@ export function CreatePanel({
   const groups = open.slots.length === 1 ? [{ slot: open.slots[0]!, label: t(`skins.create.category.${open.id}`) }] : open.slots.map((slot) => ({ slot, label: t(`skins.create.slot.${slot}`) }));
 
   return (
-    <aside className="skins-side create-side" aria-label={t('skins.tab.create')}>
+    <aside ref={side} className="skins-side create-side" aria-label={t('skins.tab.create')}>
       <div className="create">
         <div role="group" aria-label={t('skins.create.categories')} className="create-categories">
           {CATEGORIES.map((c) => (

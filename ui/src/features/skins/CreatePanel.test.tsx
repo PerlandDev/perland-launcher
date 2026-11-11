@@ -751,3 +751,17 @@ it('a piece with no colour areas, and a category with nothing worn, offer no Col
   expect(screen.queryByRole('button', { name: 'Colours' })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Make part of the skin' })).toBeInTheDocument();
 });
+
+it('opening another category starts at its top, however far the last one was scrolled', async () => {
+  const { user } = await openCreate({ pieces: [BODY, TEE], painting: false });
+  const panel = screen.getByRole('complementary', { name: 'Create' });
+  await user.click(screen.getByRole('button', { name: 'Tops' }));
+  panel.scrollTop = 1800;
+  await user.click(screen.getByRole('button', { name: 'Hats' }));
+  expect(panel.scrollTop).toBe(0);
+  // Picking a piece of the open category leaves the panel where the player is.
+  panel.scrollTop = 600;
+  await user.click(within(screen.getByRole('list', { name: 'Hats' })).getByRole('button', { name: /^Cap/ }));
+  await waitFor(() => expect(chips()).toContain('Cap'));
+  expect(panel.scrollTop).toBe(600);
+});
