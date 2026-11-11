@@ -79,9 +79,184 @@ async fn manifest_is_read_from_the_envelope() {
             assert_eq!(m.looks.len(), 3);
             assert!(m.hashes().len() > 40);
             assert_eq!(m.looks[2].painting, None);
+            // The Engine's first batch has no expressions yet, and a sheet for each list.
+            assert!(m.expressions.is_empty());
+            let sheets = m.sheets.clone().expect("the fixture has sheets");
+            assert_eq!(sheets.pieces.columns, 24);
+            assert_eq!(sheets.looks.columns, 24);
+            assert_eq!(m.sheet_columns(&sheets.pieces.file), Some(24));
+            assert!(m.hashes().contains(&sheets.pieces.file));
+            assert!(m.hashes().contains(&sheets.looks.file));
         }
         other => panic!("expected a manifest, got {other:?}"),
     }
+}
+
+async fn fetched(data: Value) -> launcher_core::Result<Fetched> {
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    mount_manifest(&server, data).await;
+    client(&server).manifest(None).await
+}
+
+fn expression() -> Value {
+    json!({ "id": "expr-happy", "name": { "en": "Happy", "es": "Feliz" },
+        "eyes": "eyes-round", "brows": "brows-straight", "mouth": "mouth-smile" })
+}
+
+#[tokio::test]
+async fn an_older_manifest_without_expressions_or_sheets_is_read() {
+    let mut data = manifest_json();
+    let fields = data.as_object_mut().unwrap();
+    assert!(fields.remove("expressions").is_some());
+    assert!(fields.remove("sheets").is_some());
+    match fetched(data).await.unwrap() {
+        Fetched::Manifest(m) => {
+            assert!(m.expressions.is_empty());
+            assert_eq!(m.sheets, None);
+            assert_eq!(m.pieces.len(), 22);
+        }
+        other => panic!("expected a manifest, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn expressions_are_read_in_the_manifests_order() {
+    let mut data = manifest_json();
+    let mut second = expression();
+    second["id"] = json!("expr-plain");
+    data["expressions"] = json!([expression(), second]);
+    match fetched(data).await.unwrap() {
+        Fetched::Manifest(m) => {
+            let ids: Vec<&str> = m.expressions.iter().map(|e| e.id.as_str()).collect();
+            assert_eq!(ids, ["expr-happy", "expr-plain"]);
+            assert_eq!(m.expressions[0].name.es, "Feliz");
+            assert_eq!(m.expressions[0].eyes, "eyes-round");
+            assert_eq!(m.expressions[0].brows, "brows-straight");
+            assert_eq!(m.expressions[0].mouth, "mouth-smile");
+        }
+        other => panic!("expected a manifest, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_manifest_whose_expression_or_sheet_breaks_a_rule_is_refused() {
+    let mut bad_expression = manifest_json();
+    bad_expression["expressions"] = json!([expression()]);
+    bad_expression["expressions"][0]["mouth"] = json!("../mouth");
+    let mut bad_columns = manifest_json();
+    bad_columns["sheets"]["pieces"]["columns"] = json!(65);
+    let mut bad_file = manifest_json();
+    bad_file["sheets"]["looks"]["file"] = json!("not-a-hash");
+    for data in [bad_expression, bad_columns, bad_file] {
+        let err = fetched(data).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::SkinCatalogUnavailable);
+        assert_eq!(err.params.len(), 1);
+    }
+}
+
+/// Bytes that don't compress, so a PNG of them is about as large as they are.
+fn noise(len: usize) -> Vec<u8> {
+    let mut state = 0x2545_f491_4f6c_dd1d_u64;
+    (0..len)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state as u8
+        })
+        .collect()
+}
+
+fn noisy_png(w: u32, h: u32) -> Vec<u8> {
+    let image = RgbaImage::from_raw(w, h, noise((w * h * 4) as usize)).unwrap();
+    let mut out = Cursor::new(Vec::new());
+    image.write_to(&mut out, ImageFormat::Png).unwrap();
+    out.into_inner()
+}
+
+#[tokio::test]
+async fn a_sheet_is_read_at_its_own_size() {
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    let c = client(&server);
+    // 24 columns: one row, three rows, and the most rows a sheet may have.
+    for (columns, w, h) in [(24, 24 * 48, 96), (24, 24 * 48, 3 * 96), (1, 48, 200 * 96)] {
+        let bytes = png(w, h);
+        mount_file(&server, &sha(&bytes), bytes.clone()).await;
+        assert_eq!(c.sheet(&sha(&bytes), columns).await.unwrap(), bytes);
+        // Asked for as any other file, a sheet is no catalog image.
+        assert_eq!(
+            c.file(&sha(&bytes)).await.unwrap_err().code,
+            ErrorCode::SkinCatalogUnavailable
+        );
+    }
+    // A sheet may be larger than the 64 KiB of a single image.
+    let large = noisy_png(24 * 48, 96);
+    assert!(large.len() > 64 << 10);
+    mount_file(&server, &sha(&large), large.clone()).await;
+    assert_eq!(c.sheet(&sha(&large), 24).await.unwrap(), large);
+}
+
+#[tokio::test]
+async fn a_sheet_of_another_size_is_refused() {
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    let c = client(&server);
+    for (columns, w, h) in [
+        // Narrower and wider than its columns say.
+        (24, 23 * 48, 96),
+        (24, 25 * 48, 96),
+        // Not whole rows.
+        (24, 24 * 48, 95),
+        (24, 24 * 48, 96 + 48),
+        // More than 200 rows.
+        (1, 48, 201 * 96),
+        // A single image is no sheet of 24 columns.
+        (24, 48, 96),
+    ] {
+        let bytes = png(w, h);
+        mount_file(&server, &sha(&bytes), bytes.clone()).await;
+        let err = c.sheet(&sha(&bytes), columns).await.unwrap_err();
+        assert_eq!(
+            err.code,
+            ErrorCode::SkinCatalogUnavailable,
+            "{columns} {w}x{h}"
+        );
+    }
+    // It must still hash to its name.
+    let name = sha(&png(48, 96));
+    mount_file(&server, &name, png(24 * 48, 96)).await;
+    assert_eq!(
+        c.sheet(&name, 24).await.unwrap_err().code,
+        ErrorCode::SkinCatalogUnavailable
+    );
+    // Over 2 MiB.
+    let mut big = png(24 * 48, 96);
+    big.extend(vec![0u8; 2 << 20]);
+    mount_file(&server, &sha(&big), big.clone()).await;
+    assert_eq!(
+        c.sheet(&sha(&big), 24).await.unwrap_err().code,
+        ErrorCode::SkinCatalogUnavailable
+    );
+}
+
+#[tokio::test]
+async fn a_sheet_with_bad_columns_or_a_bad_hash_is_refused_before_any_request() {
+    let server = MockServer::start().await;
+    mount_config(&server).await;
+    let c = client(&server);
+    let good = sha(b"x");
+    for (name, columns) in [
+        (good.clone(), 0),
+        (good.clone(), 65),
+        ("../x".to_string(), 24),
+        (good.to_uppercase(), 24),
+    ] {
+        let err = c.sheet(&name, columns).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::SkinCatalogUnavailable, "{name}");
+    }
+    assert!(server.received_requests().await.unwrap().is_empty());
 }
 
 #[tokio::test]

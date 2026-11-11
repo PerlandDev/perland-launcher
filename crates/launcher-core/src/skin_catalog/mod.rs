@@ -8,6 +8,6 @@ pub mod manifest;
 pub use cache::{CatalogCache, CatalogSource, CatalogStatus, SkinCatalog};
 pub use client::{CatalogClient, Fetched};
 pub use manifest::{
-    CatalogArea, CatalogFiles, CatalogLook, CatalogPiece, CatalogTag, CatalogText, LookPiece,
-    Manifest, FORMAT_VERSION,
+    CatalogArea, CatalogExpression, CatalogFiles, CatalogLook, CatalogPiece, CatalogSheet,
+    CatalogSheets, CatalogTag, CatalogText, LookPiece, Manifest, FORMAT_VERSION, SHEET_COLUMNS,
 };

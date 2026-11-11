@@ -475,6 +475,20 @@ export const catalogLook = z.strictObject({
   thumb: z.string(),
   retired: z.boolean(),
 });
+/** A ready-made face: the id of one piece for each of the slots `eyes`, `brows` and `mouth`. */
+export const catalogExpression = z.strictObject({
+  id: z.string(),
+  name: catalogText,
+  eyes: z.string(),
+  brows: z.string(),
+  mouth: z.string(),
+});
+/** One PNG holding the thumbnails of a whole list: cell `i` (from 0, left to right, then down, `columns` cells per row,
+ *  each 48x96 px) is the thumbnail of the list's entry `i` in the manifest's order. `file` is the sheet's SHA-256 hex,
+ *  fetched like every other catalog file, or `''` for a list with no entries (its `columns` then say nothing). */
+export const catalogSheet = z.strictObject({ file: z.string(), columns: z.number().int() });
+/** The thumbnail sheets of the manifest's `pieces` and `looks`. */
+export const catalogSheets = z.strictObject({ pieces: catalogSheet, looks: catalogSheet });
 export const catalogManifest = z.strictObject({
   formatVersion: z.number().int(),
   version: z.string(),
@@ -483,6 +497,10 @@ export const catalogManifest = z.strictObject({
   tags: z.array(catalogTag),
   pieces: z.array(catalogPiece),
   looks: z.array(catalogLook),
+  /** Ready-made faces, in display order; empty for a catalog from before they existed. */
+  expressions: z.array(catalogExpression),
+  /** Absent for a catalog from before sheets existed. */
+  sheets: catalogSheets.optional(),
 });
 /** How the catalog was reached: the Engine (`fresh`), the cache (`cached`), neither (`unavailable`), or an Engine newer than
  *  this launcher reads (`too_new`). */
@@ -941,6 +959,9 @@ export type SkinLook = z.infer<typeof skinLook>;
 export type CatalogManifest = z.infer<typeof catalogManifest>;
 export type CatalogPiece = z.infer<typeof catalogPiece>;
 export type CatalogLook = z.infer<typeof catalogLook>;
+export type CatalogExpression = z.infer<typeof catalogExpression>;
+export type CatalogSheet = z.infer<typeof catalogSheet>;
+export type CatalogSheets = z.infer<typeof catalogSheets>;
 export type CatalogStatus = z.infer<typeof catalogStatus>;
 export type CatalogAnswer = z.infer<typeof catalogAnswer>;
 export type SkinVersion = z.infer<typeof skinVersion>;

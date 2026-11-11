@@ -1275,6 +1275,8 @@ mod tests {
             tags: vec![],
             pieces: vec![piece("one", 'a'), piece("two", 'm'), piece("unworn", 'w')],
             looks: vec![],
+            expressions: vec![],
+            sheets: None,
         };
         let (_dir, lib) = library();
         let a = lib
@@ -1309,6 +1311,8 @@ mod tests {
             tags: vec![],
             pieces: vec![],
             looks: vec![],
+            expressions: vec![],
+            sheets: None,
         };
         let (_dir, lib) = library();
         assert!(lib.look_hashes(&manifest).await.unwrap().is_empty());

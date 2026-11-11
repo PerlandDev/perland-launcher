@@ -7,7 +7,7 @@ use reqwest::header::IF_NONE_MATCH;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use super::manifest::{Manifest, FORMAT_VERSION};
+use super::manifest::{is_hash, Manifest, FORMAT_VERSION, SHEET_COLUMNS};
 use crate::{
     error::{ErrorCode, LauncherError, Result},
     http::read_capped,
@@ -23,9 +23,17 @@ const MANIFEST_CAP: usize = 1 << 20;
 const FILES_CAP: usize = 4000;
 /// The largest catalog file read, in bytes.
 const FILE_CAP: usize = 64 << 10;
+/// The largest thumbnail sheet read, in bytes.
+const SHEET_CAP: usize = 2 << 20;
+/// The most rows a thumbnail sheet may have.
+const SHEET_ROWS: u32 = 200;
+/// The size of a thumbnail, and so of a sheet's cell.
+const THUMB: (u32, u32) = (48, 96);
 const PNG_SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 
 /// What a manifest request answered.
+// One per request and never kept in a collection, so the manifest isn't boxed.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Fetched {
     /// The version asked about is still current.
@@ -57,22 +65,44 @@ fn unavailable(host: &str, why: &str) -> LauncherError {
     .with_detail(why)
 }
 
-/// A catalog file name: 64 lower-case hex digits.
-fn is_hash(s: &str) -> bool {
-    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+/// What a catalog file is asked for as, which decides the sizes it may have.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    /// Art, a mask or a painting (64x64), or a thumbnail (48x96): at most 64 KiB.
+    Image,
+    /// A thumbnail sheet of `columns` cells per row: `columns` thumbnails wide and 1 to 200
+    /// whole thumbnails high, at most 2 MiB.
+    Sheet { columns: u32 },
 }
 
-/// A PNG of a size the catalog uses: 64x64 (art, masks, paintings) or 48x96 (thumbnails).
-fn png_size_ok(bytes: &[u8]) -> bool {
-    if !bytes.starts_with(PNG_SIGNATURE) {
-        return false;
+impl Kind {
+    fn cap(self) -> usize {
+        match self {
+            Kind::Image => FILE_CAP,
+            Kind::Sheet { .. } => SHEET_CAP,
+        }
     }
-    let Ok(reader) =
-        ImageReader::with_format(Cursor::new(bytes), ImageFormat::Png).into_dimensions()
-    else {
-        return false;
-    };
-    matches!(reader, (64, 64) | (48, 96))
+
+    fn fits(self, (w, h): (u32, u32)) -> bool {
+        match self {
+            Kind::Image => (w, h) == (64, 64) || (w, h) == THUMB,
+            Kind::Sheet { columns } => {
+                w == columns * THUMB.0
+                    && h % THUMB.1 == 0
+                    && (1..=SHEET_ROWS).contains(&(h / THUMB.1))
+            }
+        }
+    }
+}
+
+/// The width and height a PNG's header gives.
+fn png_size(bytes: &[u8]) -> Option<(u32, u32)> {
+    if !bytes.starts_with(PNG_SIGNATURE) {
+        return None;
+    }
+    ImageReader::with_format(Cursor::new(bytes), ImageFormat::Png)
+        .into_dimensions()
+        .ok()
 }
 
 #[derive(Clone)]
@@ -97,7 +127,7 @@ impl CatalogClient {
 
     /// The manifest, or `NotModified` when `etag` (the manifest's `version`) is still current, or
     /// `TooNew` when its `formatVersion` is newer than [`FORMAT_VERSION`]. A manifest naming more
-    /// than 4000 distinct files is refused.
+    /// than 4000 distinct files, or failing [`Manifest::check`], is refused.
     pub async fn manifest(&self, etag: Option<&str>) -> Result<Fetched> {
         let engine = self
             .invites
@@ -111,8 +141,24 @@ impl CatalogClient {
         result
     }
 
-    /// One catalog PNG by its SHA-256 (lower-case hex), checked against its name.
+    /// One catalog PNG (art, a mask, a painting or a thumbnail) by its SHA-256 (lower-case
+    /// hex), checked against its name.
     pub async fn file(&self, sha256: &str) -> Result<Vec<u8>> {
+        self.fetch(sha256, Kind::Image).await
+    }
+
+    /// A thumbnail sheet by its SHA-256, for a hash the manifest names as a sheet of `columns`
+    /// cells per row. Checked against its name; it must be `columns` thumbnails wide and 1 to
+    /// 200 whole thumbnails high.
+    pub async fn sheet(&self, sha256: &str, columns: u32) -> Result<Vec<u8>> {
+        if !(1..=SHEET_COLUMNS).contains(&columns) {
+            let host = self.site.host_str().unwrap_or("the site");
+            return Err(unavailable(host, "not a sheet's columns"));
+        }
+        self.fetch(sha256, Kind::Sheet { columns }).await
+    }
+
+    async fn fetch(&self, sha256: &str, kind: Kind) -> Result<Vec<u8>> {
         let host = self.site.host_str().unwrap_or("the site").to_string();
         if !is_hash(sha256) {
             return Err(unavailable(&host, "not a file hash"));
@@ -124,7 +170,7 @@ impl CatalogClient {
             .map_err(|e| unavailable(&host, &e.message))?;
         let host = host_of(&engine);
         let url = self.route(&engine, &format!("/files/{sha256}"));
-        let result = self.fetch_file(url, &host, sha256).await;
+        let result = self.fetch_file(url, &host, sha256, kind).await;
         self.forget_if_offline(&result);
         result
     }
@@ -187,10 +233,11 @@ impl CatalogClient {
         if manifest.hashes().len() > FILES_CAP {
             return Err(unavailable(host, "the manifest names too many files"));
         }
+        manifest.check().map_err(|why| unavailable(host, why))?;
         Ok(Fetched::Manifest(manifest))
     }
 
-    async fn fetch_file(&self, url: Url, host: &str, sha256: &str) -> Result<Vec<u8>> {
+    async fn fetch_file(&self, url: Url, host: &str, sha256: &str, kind: Kind) -> Result<Vec<u8>> {
         let response = self.get(url, host, None).await?;
         match response.status().as_u16() {
             200..=299 => {}
@@ -198,14 +245,14 @@ impl CatalogClient {
             429 => return Err(rate_limited(host)),
             s => return Err(host_trouble(host, s)),
         }
-        let body = read_capped(response, FILE_CAP)
+        let body = read_capped(response, kind.cap())
             .await
             .map_err(|e| request_failed(host, e))?
             .ok_or_else(|| unavailable(host, "the file is too large"))?;
         if hex::encode(Sha256::digest(&body)) != sha256 {
             return Err(unavailable(host, "the file doesn't match its name"));
         }
-        if !png_size_ok(&body) {
+        if !png_size(&body).is_some_and(|size| kind.fits(size)) {
             return Err(unavailable(host, "the file isn't a catalog image"));
         }
         Ok(body)

@@ -67,7 +67,22 @@ it('the mock catalog serves every file its manifest names', () => {
   const named = [
     ...manifest.pieces.flatMap((p) => [p.thumb, ...Object.values(p.files).flatMap((f) => [f.art, f.mask])]),
     ...manifest.looks.flatMap((l) => [l.thumb, ...(l.painting ? [l.painting] : [])]),
+    ...[manifest.sheets?.pieces.file, manifest.sheets?.looks.file].filter((file): file is string => !!file),
   ];
   for (const hash of named) expect(files.get(hash)?.startsWith(PNG), hash).toBe(true);
   expect(files.size).toBe(new Set(named).size);
+});
+
+it('the mock catalog has the thumbnail sheets and the expressions list of the Engine', async () => {
+  const { handle } = createMockBackend();
+  const { manifest } = (await handle('skin_catalog')) as CatalogAnswer;
+  // The first batch has no expressions yet: the list is there and empty.
+  expect(manifest!.expressions).toEqual([]);
+  const sheets = manifest!.sheets!;
+  for (const sheet of [sheets.pieces, sheets.looks]) {
+    expect(sheet.file).toMatch(/^[0-9a-f]{64}$/);
+    expect(sheet.columns).toBe(24);
+    // A sheet is fetched like every other catalog file, by its hash.
+    expect(((await handle('skin_catalog_file', { sha256: sheet.file })) as string).startsWith(PNG)).toBe(true);
+  }
 });

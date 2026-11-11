@@ -158,7 +158,8 @@ export const commands = {
   skinWear: (id: string, uuid: string) => invoke<SkinEntry[]>('skin_wear', { id, uuid }),
   /** Perland's skin catalog: the Engine's manifest, else the cached one (see `status`). */
   skinCatalog: () => invoke<CatalogAnswer>('skin_catalog'),
-  /** A catalog PNG (thumbnail, art or mask) by its SHA-256, as a `data:` URL. */
+  /** A catalog PNG (thumbnail, art, mask, or a thumbnail sheet: `manifest.sheets.pieces.file` / `.looks.file`) by its
+   *  SHA-256, as a `data:` URL. */
   skinCatalogFile: (sha256: string) => invoke<string>('skin_catalog_file', { sha256 }),
   /** The player's own painting on a skin as a `data:` URL; null without one. */
   skinPainting: (id: string) => invoke<string | null>('skin_painting', { id }),

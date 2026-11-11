@@ -2,6 +2,10 @@
 // PerlandEngine's internal/skincatalog/data (CC0, Perland's own art). The PNGs are inlined as data URLs, as
 // `skin_catalog_file` answers. Only the mock imports this module, and the mock is loaded in mock mode only, so none of it
 // reaches the production bundle.
+//
+// Refresh ./mock-catalog from an Engine checkout with
+//   node ui/scripts/sync-mock-catalog.mjs <engine>/internal/skincatalog/data
+// which copies the manifest and exactly the files it names (thumbnail sheets included) and removes the stale ones.
 import manifestJson from './mock-catalog/manifest.json';
 import { catalogManifest, type CatalogManifest } from './schema';
 
@@ -9,7 +13,7 @@ const PNGS = import.meta.glob<string>('./mock-catalog/*.png', { query: '?inline'
 
 export interface MockCatalog {
   manifest: CatalogManifest;
-  /** Every file the manifest names, as a data URL, by hash. */
+  /** Every file the manifest names (thumbnail sheets included), as a data URL, by hash. */
   files: Map<string, string>;
 }
 

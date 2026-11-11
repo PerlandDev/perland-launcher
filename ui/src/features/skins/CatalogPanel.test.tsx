@@ -42,7 +42,10 @@ it('shows looks and filters by tag', async () => {
   expect(names(list)).toEqual(['Astronaut', 'Knight', 'Street']);
   const tags = screen.getByRole('group', { name: 'Tags' });
   // "All" leads, then the manifest's tags.
-  expect(within(tags).getAllByRole('button').map((b) => b.textContent)).toEqual(['All', 'Casual', 'Fantasy', 'Jobs', 'New', 'Sci-fi', 'Spooky', 'Sport']);
+  expect(within(tags).getAllByRole('button').map((b) => b.textContent)).toEqual([
+    'All', 'Adventure', 'Animals', 'Casual', 'Cute', 'Fantasy', 'Formal', 'Heroes', 'History', 'Holidays', 'Jobs', 'Music', 'New', 'Sci-fi', 'Spooky',
+    'Sport',
+  ]);
   expect(within(tags).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
   await user.click(within(tags).getByRole('button', { name: 'Casual' }));
   expect(names(list)).toEqual(['Street']);

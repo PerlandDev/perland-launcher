@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "version": "60f573c45b9fc8115fa680f5516ce12c6c307ed7f1a848b5210dd477ef1a40ed",
+  "version": "79239ccb1a6e2fe5fb7209212872fca2afb7f4da852fd4a8fae29fe0a2e84ee0",
   "license": "CC0-1.0",
   "slots": [
     "body",
@@ -22,10 +22,31 @@
   ],
   "tags": [
     {
+      "id": "adventure",
+      "name": {
+        "en": "Adventure",
+        "es": "Aventura"
+      }
+    },
+    {
+      "id": "animals",
+      "name": {
+        "en": "Animals",
+        "es": "Animales"
+      }
+    },
+    {
       "id": "casual",
       "name": {
         "en": "Casual",
         "es": "Casual"
+      }
+    },
+    {
+      "id": "cute",
+      "name": {
+        "en": "Cute",
+        "es": "Tierno"
       }
     },
     {
@@ -36,10 +57,45 @@
       }
     },
     {
+      "id": "formal",
+      "name": {
+        "en": "Formal",
+        "es": "Formal"
+      }
+    },
+    {
+      "id": "heroes",
+      "name": {
+        "en": "Heroes",
+        "es": "Héroes"
+      }
+    },
+    {
+      "id": "history",
+      "name": {
+        "en": "History",
+        "es": "Historia"
+      }
+    },
+    {
+      "id": "holidays",
+      "name": {
+        "en": "Holidays",
+        "es": "Fiestas"
+      }
+    },
+    {
       "id": "jobs",
       "name": {
         "en": "Jobs",
         "es": "Oficios"
+      }
+    },
+    {
+      "id": "music",
+      "name": {
+        "en": "Music",
+        "es": "Música"
       }
     },
     {
@@ -1172,5 +1228,16 @@
       "thumb": "1b65a0b09388a3bea502a292ce7d49a2a6eeb1b750534c6f2e80b65401e68864",
       "retired": false
     }
-  ]
+  ],
+  "expressions": [],
+  "sheets": {
+    "pieces": {
+      "file": "cee79d00b6e19f05970a319db70ccd50d5818995edbf1224a7c7cff05ff70860",
+      "columns": 24
+    },
+    "looks": {
+      "file": "3dd0ca0fb33d64ed62b05a89c0881a4153aaf96d66ed0425726b9ab2cb718cb9",
+      "columns": 24
+    }
+  }
 }

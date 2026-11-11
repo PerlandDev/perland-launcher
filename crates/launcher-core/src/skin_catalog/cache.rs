@@ -2,7 +2,7 @@
 //! folder. Files are named by their SHA-256 and re-verified on every read.
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     future::Future,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 
 use super::{
     client::{CatalogClient, Fetched},
-    manifest::{Manifest, FORMAT_VERSION},
+    manifest::{is_hash, Manifest, FORMAT_VERSION},
 };
 use crate::{
     error::{ErrorCode, LauncherError, Result},
@@ -43,6 +43,9 @@ pub trait CatalogSource: Send + Sync {
     fn manifest(&self, etag: Option<&str>) -> impl Future<Output = Result<Fetched>> + Send;
     /// The PNG named by `sha256`. Implementations should verify it; callers do not trust that.
     fn file(&self, sha256: &str) -> impl Future<Output = Result<Vec<u8>>> + Send;
+    /// The thumbnail sheet named by `sha256`, which the manifest says has `columns` cells per
+    /// row. A sheet is larger than any other catalog file, so it is asked for as one.
+    fn sheet(&self, sha256: &str, columns: u32) -> impl Future<Output = Result<Vec<u8>>> + Send;
 }
 
 impl CatalogSource for CatalogClient {
@@ -52,10 +55,9 @@ impl CatalogSource for CatalogClient {
     fn file(&self, sha256: &str) -> impl Future<Output = Result<Vec<u8>>> + Send {
         CatalogClient::file(self, sha256)
     }
-}
-
-fn is_hash(s: &str) -> bool {
-    s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+    fn sheet(&self, sha256: &str, columns: u32) -> impl Future<Output = Result<Vec<u8>>> + Send {
+        CatalogClient::sheet(self, sha256, columns)
+    }
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -84,17 +86,16 @@ impl CatalogCache {
     }
 
     fn file_path(&self, sha256: &str) -> Option<PathBuf> {
-        let ok = sha256.len() == 64
-            && sha256
-                .bytes()
-                .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'));
-        ok.then(|| self.files_dir().join(format!("{sha256}.png")))
+        is_hash(sha256).then(|| self.files_dir().join(format!("{sha256}.png")))
     }
 
-    /// The cached manifest; a missing or damaged one is no cache.
+    /// The cached manifest; a missing or damaged one, or one failing [`Manifest::check`], is no
+    /// cache.
     pub async fn manifest(&self) -> Option<Manifest> {
         let bytes = tokio::fs::read(self.manifest_path()).await.ok()?;
-        serde_json::from_slice(&bytes).ok()
+        serde_json::from_slice::<Manifest>(&bytes)
+            .ok()
+            .filter(|m| m.check().is_ok())
     }
 
     pub async fn store_manifest(&self, m: &Manifest) -> Result<()> {
@@ -154,6 +155,8 @@ const REFRESH_KEPT: Duration = Duration::from_secs(30);
 type Loaded = (Option<Manifest>, CatalogStatus);
 
 /// The background refresh that [`SkinCatalog::load`] starts while it answers from the cache.
+// One per catalog, so the manifest isn't boxed.
+#[allow(clippy::large_enum_variant)]
 enum Refresh {
     Idle,
     Running,
@@ -167,6 +170,9 @@ pub struct SkinCatalog<C = CatalogClient> {
     client: C,
     cache: CatalogCache,
     refresh: Mutex<Refresh>,
+    /// The thumbnail sheets (hash → columns) of every manifest handed out in this run. The UI
+    /// may still show one manifest's sheet after a refresh stored the next.
+    sheets: Mutex<BTreeMap<String, u32>>,
 }
 
 impl<C: CatalogSource + 'static> SkinCatalog<C> {
@@ -175,6 +181,29 @@ impl<C: CatalogSource + 'static> SkinCatalog<C> {
             client,
             cache,
             refresh: Mutex::new(Refresh::Idle),
+            sheets: Mutex::new(BTreeMap::new()),
+        }
+    }
+
+    fn note_sheets(&self, m: &Manifest) {
+        let mut sheets = self.sheets.lock().unwrap_or_else(|e| e.into_inner());
+        for sheet in m.named_sheets() {
+            sheets.insert(sheet.file.clone(), sheet.columns);
+        }
+    }
+
+    /// The columns of `sha256` when a manifest of this run, else the cached one, names it as a
+    /// thumbnail sheet.
+    async fn sheet_columns(&self, sha256: &str) -> Option<u32> {
+        let noted = self
+            .sheets
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(sha256)
+            .copied();
+        match noted {
+            Some(columns) => Some(columns),
+            None => self.cache.manifest().await?.sheet_columns(sha256),
         }
     }
 
@@ -185,9 +214,10 @@ impl<C: CatalogSource + 'static> SkinCatalog<C> {
             cached_too_new = m.format_version > FORMAT_VERSION;
             !cached_too_new
         });
-        if cached.is_none() {
+        let Some(shown) = &cached else {
             return self.fetch(None, cached_too_new).await;
-        }
+        };
+        self.note_sheets(shown);
         let mut refresh = self.refresh.lock().unwrap_or_else(|e| e.into_inner());
         match &*refresh {
             Refresh::Done(loaded, at) if at.elapsed() < REFRESH_KEPT => {
@@ -232,7 +262,13 @@ impl<C: CatalogSource + 'static> SkinCatalog<C> {
             Ok(Fetched::Manifest(m)) if m.format_version > FORMAT_VERSION => {
                 (cached, CatalogStatus::TooNew)
             }
+            // The client checks a manifest; a source that didn't is not trusted to have.
+            Ok(Fetched::Manifest(m)) if m.check().is_err() => match cached {
+                Some(m) => (Some(m), CatalogStatus::Cached),
+                None => nothing(cached_too_new),
+            },
             Ok(Fetched::Manifest(m)) => {
+                self.note_sheets(&m);
                 if let Err(e) = self.cache.store_manifest(&m).await {
                     tracing::warn!("couldn't cache the skin catalog: {}", e.message);
                 }
@@ -245,12 +281,16 @@ impl<C: CatalogSource + 'static> SkinCatalog<C> {
         }
     }
 
-    /// A catalog PNG: from the cache, else fetched, verified by the client and cached.
+    /// A catalog PNG: from the cache, else fetched, verified by the client and cached. A hash
+    /// the manifest names as a thumbnail sheet is fetched as one, so it may have a sheet's size.
     pub async fn file(&self, sha256: &str) -> Result<Vec<u8>> {
         if let Some(bytes) = self.cache.file(sha256).await {
             return Ok(bytes);
         }
-        let bytes = self.client.file(sha256).await?;
+        let bytes = match self.sheet_columns(sha256).await {
+            Some(columns) => self.client.sheet(sha256, columns).await?,
+            None => self.client.file(sha256).await?,
+        };
         if sha256_hex(&bytes) != sha256 {
             return Err(LauncherError::network(
                 ErrorCode::SkinCatalogUnavailable,
@@ -280,11 +320,14 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
+    use crate::skin_catalog::manifest::{CatalogSheet, CatalogSheets};
 
     struct Fake {
         manifest: Mutex<Option<Result<Fetched>>>,
         files: Mutex<Vec<(String, Vec<u8>)>>,
         file_calls: Mutex<usize>,
+        /// Every file asked for as a sheet, with its columns.
+        sheet_calls: Mutex<Vec<(String, u32)>>,
     }
 
     impl Fake {
@@ -293,7 +336,26 @@ mod tests {
                 manifest: Mutex::new(manifest),
                 files: Mutex::new(vec![]),
                 file_calls: Mutex::new(0),
+                sheet_calls: Mutex::new(vec![]),
             }
+        }
+
+        fn with_file(self, bytes: &[u8]) -> Self {
+            self.files
+                .lock()
+                .unwrap()
+                .push((sha256_hex(bytes), bytes.to_vec()));
+            self
+        }
+
+        fn found(&self, sha256: &str) -> Result<Vec<u8>> {
+            self.files
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(h, _)| h == sha256)
+                .map(|(_, b)| b.clone())
+                .ok_or_else(offline)
         }
     }
 
@@ -307,13 +369,14 @@ mod tests {
         }
         async fn file(&self, sha256: &str) -> Result<Vec<u8>> {
             *self.file_calls.lock().unwrap() += 1;
-            self.files
+            self.found(sha256)
+        }
+        async fn sheet(&self, sha256: &str, columns: u32) -> Result<Vec<u8>> {
+            self.sheet_calls
                 .lock()
                 .unwrap()
-                .iter()
-                .find(|(h, _)| h == sha256)
-                .map(|(_, b)| b.clone())
-                .ok_or_else(offline)
+                .push((sha256.to_string(), columns));
+            self.found(sha256)
         }
     }
 
@@ -330,6 +393,25 @@ mod tests {
             tags: vec![],
             pieces: vec![],
             looks: vec![],
+            expressions: vec![],
+            sheets: None,
+        }
+    }
+
+    /// A manifest whose pieces sheet is `file`.
+    fn with_sheet(version: &str, file: &str, columns: u32) -> Manifest {
+        Manifest {
+            sheets: Some(CatalogSheets {
+                pieces: CatalogSheet {
+                    file: file.into(),
+                    columns,
+                },
+                looks: CatalogSheet {
+                    file: String::new(),
+                    columns: 0,
+                },
+            }),
+            ..manifest(version, 1)
         }
     }
 
@@ -613,5 +695,106 @@ mod tests {
         let cat = catalog(dir.path(), fake);
         assert!(cat.file(&hash).await.is_err());
         assert!(CatalogCache::new(dir.path()).file(&hash).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_file_the_manifest_names_as_a_sheet_is_fetched_as_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let (sheet, thumb) = (b"sheet".to_vec(), b"thumb".to_vec());
+        CatalogCache::new(dir.path())
+            .store_manifest(&with_sheet("v1", &sha256_hex(&sheet), 24))
+            .await
+            .unwrap();
+        let cat = catalog(
+            dir.path(),
+            Fake::new(None).with_file(&sheet).with_file(&thumb),
+        );
+        // Before any load: the cached manifest says what the file is.
+        assert_eq!(cat.file(&sha256_hex(&sheet)).await.unwrap(), sheet);
+        assert_eq!(
+            *cat.client.sheet_calls.lock().unwrap(),
+            vec![(sha256_hex(&sheet), 24)]
+        );
+        assert_eq!(*cat.client.file_calls.lock().unwrap(), 0);
+        // Any other file is asked for as before.
+        assert_eq!(cat.file(&sha256_hex(&thumb)).await.unwrap(), thumb);
+        assert_eq!(*cat.client.file_calls.lock().unwrap(), 1);
+        assert_eq!(cat.client.sheet_calls.lock().unwrap().len(), 1);
+        // And a cached sheet is read back without asking.
+        assert_eq!(cat.file(&sha256_hex(&sheet)).await.unwrap(), sheet);
+        assert_eq!(cat.client.sheet_calls.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn the_sheet_of_the_manifest_shown_stays_one_after_a_newer_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let (old, new) = (b"old sheet".to_vec(), b"new sheet".to_vec());
+        CatalogCache::new(dir.path())
+            .store_manifest(&with_sheet("v1", &sha256_hex(&old), 24))
+            .await
+            .unwrap();
+        let fake = Fake::new(Some(Ok(Fetched::Manifest(with_sheet(
+            "v2",
+            &sha256_hex(&new),
+            8,
+        )))))
+        .with_file(&old)
+        .with_file(&new);
+        let cat = catalog(dir.path(), fake);
+        // The UI is shown v1 while the refresh stores v2.
+        let (m, status) = cat.load().await;
+        assert_eq!(status, CatalogStatus::Refreshing);
+        assert_eq!(m.unwrap().version, "v1");
+        settle(&cat).await;
+        assert_eq!(cat.file(&sha256_hex(&old)).await.unwrap(), old);
+        assert_eq!(cat.file(&sha256_hex(&new)).await.unwrap(), new);
+        assert_eq!(
+            *cat.client.sheet_calls.lock().unwrap(),
+            vec![(sha256_hex(&old), 24), (sha256_hex(&new), 8)]
+        );
+        assert_eq!(*cat.client.file_calls.lock().unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn prune_keeps_the_sheets_the_manifest_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = CatalogCache::new(dir.path());
+        let (sheet, stale) = (sha256_hex(b"sheet"), sha256_hex(b"stale"));
+        cache.store_file(&sheet, b"sheet").await.unwrap();
+        cache.store_file(&stale, b"stale").await.unwrap();
+        cache
+            .store_manifest(&with_sheet("v1", &sheet, 24))
+            .await
+            .unwrap();
+        let cat = catalog(dir.path(), Fake::new(None));
+        assert_eq!(cat.prune(&BTreeSet::new()).await.unwrap(), 1);
+        assert!(cache.file(&sheet).await.is_some());
+        assert!(cache.file(&stale).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_cached_manifest_that_fails_its_check_is_no_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = CatalogCache::new(dir.path());
+        cache
+            .store_manifest(&with_sheet("v1", "../../x", 24))
+            .await
+            .unwrap();
+        assert!(cache.manifest().await.is_none());
+        let (m, status) = catalog(dir.path(), Fake::new(None)).load().await;
+        assert!(m.is_none());
+        assert_eq!(status, CatalogStatus::Unavailable);
+    }
+
+    #[tokio::test]
+    async fn a_fetched_manifest_that_fails_its_check_is_not_stored_or_shown() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad = with_sheet("v2", &sha256_hex(b"sheet"), 65);
+        let (m, status) = catalog(dir.path(), Fake::new(Some(Ok(Fetched::Manifest(bad)))))
+            .load()
+            .await;
+        assert!(m.is_none());
+        assert_eq!(status, CatalogStatus::Unavailable);
+        assert!(CatalogCache::new(dir.path()).manifest().await.is_none());
     }
 }

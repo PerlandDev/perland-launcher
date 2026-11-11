@@ -227,7 +227,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         CatalogAnswer { manifest, status }
     }
 
-    /// A catalog PNG (a thumbnail, art or mask) as a data URL.
+    /// A catalog PNG (a thumbnail, art, a mask, or a thumbnail sheet the manifest names) as a
+    /// data URL.
     pub async fn skin_catalog_file(&self, sha256: &str) -> Result<String> {
         let bytes = self.runner.catalog().file(sha256.to_string()).await?;
         Ok(skins_png::data_url(&bytes))

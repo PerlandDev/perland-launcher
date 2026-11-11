@@ -88,10 +88,11 @@ fn sample_manual() -> ManualFile {
     }
 }
 
-/// A fresh answer with a small catalog, and the answers when it can't be had.
+/// A fresh answer with a small catalog, a cached one from before expressions and sheets existed,
+/// and the answers when it can't be had.
 fn skin_catalog_answers() -> Vec<launcher_app::skins::CatalogAnswer> {
     use launcher_core::skin_catalog::CatalogStatus;
-    let manifest: launcher_core::skin_catalog::Manifest = serde_json::from_value(serde_json::json!({
+    let mut manifest: launcher_core::skin_catalog::Manifest = serde_json::from_value(serde_json::json!({
         "formatVersion": 1,
         "version": "60f573c45b9fc8115fa680f5516ce12c6c307ed7f1a848b5210dd477ef1a40ed",
         "license": "CC0-1.0",
@@ -123,16 +124,31 @@ fn skin_catalog_answers() -> Vec<launcher_app::skins::CatalogAnswer> {
             "painting": "f".repeat(64),
             "thumb": "0".repeat(64),
             "retired": false
-        }]
+        }],
+        "expressions": [{
+            "id": "expr-happy",
+            "name": { "en": "Happy", "es": "Feliz" },
+            "eyes": "eyes-round",
+            "brows": "brows-straight",
+            "mouth": "mouth-smile"
+        }],
+        "sheets": {
+            "pieces": { "file": "1".repeat(64), "columns": 24 },
+            "looks": { "file": "", "columns": 0 }
+        }
     }))
     .unwrap();
+    assert_eq!(manifest.check(), Ok(()));
+    let current = manifest.clone();
+    manifest.expressions.clear();
+    manifest.sheets = None;
     vec![
         launcher_app::skins::CatalogAnswer {
-            manifest: Some(manifest.clone()),
+            manifest: Some(current.clone()),
             status: CatalogStatus::Fresh,
         },
         launcher_app::skins::CatalogAnswer {
-            manifest: Some(manifest.clone()),
+            manifest: Some(current),
             status: CatalogStatus::Refreshing,
         },
         launcher_app::skins::CatalogAnswer {

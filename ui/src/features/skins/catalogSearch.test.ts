@@ -18,6 +18,7 @@ const manifest: CatalogManifest = {
     piece('cap', 'hat', 'Cap', 'Gorra'),
   ],
   looks: [look('l1', 'Pirate', 'Pirata', ['fantasy']), look('l4', 'Runner', 'Corredora', ['sports']), look('l2', 'Cafe', 'Café', ['casual']), look('l3', 'Gone', 'Ido', [], true)],
+  expressions: [],
 };
 
 describe('catalog search', () => {
