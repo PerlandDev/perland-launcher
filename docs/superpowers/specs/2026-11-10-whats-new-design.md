@@ -1,7 +1,7 @@
 # What's new: release notes for players
 
 Date: 2026-11-10. Status: the owner chose the approach and added the skill and the every-pull-request rule
-(2026-11-10); being built from `docs/superpowers/plans/2026-11-11-whats-new.md`.
+(2026-11-10); built from `docs/superpowers/plans/2026-11-11-whats-new.md`.
 
 ## Intent
 

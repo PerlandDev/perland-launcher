@@ -75,5 +75,5 @@ Nothing a player wouldn't say: names from the code, error codes, libraries, vers
 ## Before the pull request is ready
 
 - `pnpm --filter release-scripts test` passes: it checks every note's slug, kind, both languages and length.
-- Read the note as a player would see it: `pnpm --filter ui dev:mock`, then Settings → Launcher updates → What's new, under "Next update". Switch the language and read it again.
+- Read the note as a player would see it: `pnpm --filter ui dev:mock`, then Settings → Launcher updates → What's new, under "Next update" (or open `http://localhost:1420/?whatsNew`). Read it in the other language too. Restart the dev server after adding a note: the notes are read when it starts.
 - The description says which it is: the note's text, or `Release notes: none (reason)` with a reason someone can check ("refactor, no behaviour change", "fixes a crash in the skin editor, which is not released yet").
