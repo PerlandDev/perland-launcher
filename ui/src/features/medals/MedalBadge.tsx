@@ -1,5 +1,5 @@
 import type { ComponentType, SVGProps } from 'react';
-import { Clock, Crown, DiamondGem, Feather, Fire, Moon, Server, Shield, Skull, Trophy, Users } from '../../ui/Icon';
+import { ArrowUp, Calendar, Check, Clock, Crown, DiamondGem, Download, Feather, Fire, Folder, Image, Map, Moon, Package, Play, Plus, Server, SettingsCog, Shield, Shirt, Skull, Trophy, Users, WarningDiamond } from '../../ui/Icon';
 
 /** Each medal's emblem: a pixelarticons glyph on the badge's face. */
 const EMBLEMS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
@@ -14,6 +14,19 @@ const EMBLEMS: Record<string, ComponentType<SVGProps<SVGSVGElement>>> = {
   hero: Shield,
   dragon: Crown,
   wither: Skull,
+  firstGame: Play,
+  theme: SettingsCog,
+  decorator: Image,
+  tailor: Shirt,
+  instanceTime: Folder,
+  collector: Package,
+  modpacks: Download,
+  modder: Plus,
+  versions: Map,
+  days: Calendar,
+  marathon: ArrowUp,
+  doctor: WarningDiamond,
+  completionist: Check,
 };
 
 /** The badge's art palette per tier (copper, iron, gold, diamond): pictures, not chrome, so the same in every theme, and

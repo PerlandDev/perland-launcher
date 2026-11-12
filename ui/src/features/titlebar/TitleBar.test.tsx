@@ -29,11 +29,11 @@ it('opens Skins from the shirt after the account', async () => {
   expect(routeSnapshot()).toEqual({ name: 'skins' });
 });
 
-it('opens Achievements from the trophy between Skins and Settings', async () => {
+it('opens Medals and achievements from the trophy between Skins and Settings', async () => {
   const { user } = renderApp(<TitleBar />);
   await screen.findByRole('button', { name: /Steve/ });
   const skins = screen.getByRole('button', { name: 'Skins' });
-  const trophy = screen.getByRole('button', { name: 'Achievements' });
+  const trophy = screen.getByRole('button', { name: 'Medals and achievements' });
   const buttons = screen.getAllByRole('button');
   const at = (b: HTMLElement) => buttons.indexOf(b);
   expect(at(trophy)).toBe(at(skins) + 1);

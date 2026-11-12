@@ -56,6 +56,7 @@ import type {
   FreeServerPage,
   PerlandAccount,
   PerlandStats,
+  MedalsView,
   PerlandStatus,
   PlaytimeEntry,
   ContinueTarget,
@@ -277,6 +278,7 @@ export const commands = {
   perlandUnlink: () => invoke<null>('perland_unlink'),
   /** The linked player's numbers per server, or null while the Engine's add-on is off. */
   perlandStats: () => invoke<PerlandStats | null>('perland_stats'),
+  medalsView: () => invoke<MedalsView>('medals_view'),
   /** The player's servers, or null while signed out or when accounts are off. */
   yourServers: () => invoke<YourServersPage | null>('your_servers'),
   /** `invite` is the canonical invite URL of the card or Join screen. Follow and joined never fail. */

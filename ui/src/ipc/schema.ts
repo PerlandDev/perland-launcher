@@ -792,6 +792,20 @@ export const exitInfo = z.strictObject({
   /** A crash right after an update that hasn't run cleanly since: the crash card offers "Go back". */
   restore: z.boolean(),
 });
+/** One medal as Rust shows it (`MedalView`): its tier now, its reading and when the tier was reached. */
+export const medalView = z.strictObject({
+  id: z.string(),
+  group: z.enum(['local', 'perland']),
+  kind: z.enum(['ladder', 'single']),
+  unit: z.enum(['time', 'count']),
+  tier: z.number().int().min(0).max(4),
+  rim: z.number().int().min(0).max(4),
+  value: z.number().nonnegative(),
+  goal: z.number().nullable(),
+  steps: z.number().array(),
+  earnedAt: z.string().nullable(),
+});
+export const medalsView = z.strictObject({ medals: medalView.array(), savedToAccount: z.boolean() });
 export const taskId = z.strictObject({ key: z.string(), params: z.record(z.string(), z.string()) });
 export const appEvent = z.discriminatedUnion('type', [
   z.strictObject({
@@ -812,6 +826,8 @@ export const appEvent = z.discriminatedUnion('type', [
   }),
   z.strictObject({ type: z.literal('warning'), instance: z.string().nullable(), error: launcherError }),
   z.strictObject({ type: z.literal('deep_link') }),
+  /** A medal was earned, the account's medals arrived or the Perland readings changed: read `medals_view` again. */
+  z.strictObject({ type: z.literal('medals_changed') }),
   z.strictObject({ type: z.literal('update'), state: updateState }),
   z.strictObject({ type: z.literal('perland_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
   /** A Microsoft sign-in moved on: the browser is open, or its code is being redeemed. */
@@ -1044,6 +1060,8 @@ export type CatalogSheet = z.infer<typeof catalogSheet>;
 export type CatalogSheets = z.infer<typeof catalogSheets>;
 export type CatalogStatus = z.infer<typeof catalogStatus>;
 export type CatalogAnswer = z.infer<typeof catalogAnswer>;
+export type MedalView = z.infer<typeof medalView>;
+export type MedalsView = z.infer<typeof medalsView>;
 export type SkinVersion = z.infer<typeof skinVersion>;
 export type SkinVersionReason = z.infer<typeof skinVersionReason>;
 export type AccountReady = z.infer<typeof accountReady>;

@@ -28,7 +28,7 @@
     "restore": "Restaurar",
     "close": "Cerrar",
     "accounts": "Cuentas",
-    "achievements": "Logros",
+    "achievements": "Medallas y logros",
     "settings": "Configuración",
     "noAccount": "Agregar cuenta",
     "updateReady": "Actualización lista · se instala al cerrar",
@@ -1558,10 +1558,8 @@
     "years_other": "{{count}} años"
   },
   "medals": {
-    "title": "Medallas",
-    "screenTitle": "Logros",
+    "screenTitle": "Medallas y logros",
     "steps": "Niveles",
-    "hint": "Tiempo de juego cuenta todo lo que juegas en esta computadora. Las demás se ganan en servidores creados en Perland.",
     "tier1": "Cobre",
     "tier2": "Hierro",
     "tier3": "Oro",
@@ -1571,8 +1569,6 @@
     "progress": "{{value}} de {{goal}}",
     "next": "Siguiente: {{tier}} al llegar a {{goal}}",
     "top": "Nivel máximo",
-    "linkToEarn": "Vincula tu cuenta de Minecraft para ganar las medallas de servidor.",
-    "earnedCount": "{{earned}} de {{total}} conseguidas",
     "time": {
       "name": "Tiempo de juego",
       "goal": "Juega {{goal}} en esta computadora"
@@ -1619,8 +1615,78 @@
       "name": "Invocador del Wither",
       "goal": "Invoca al Wither"
     },
-    "servers": "Logros en servidores de Perland",
-    "serversHint": "Lo que conseguiste jugando en servidores creados en Perland. Tus mundos de un jugador no cuentan aquí."
+    "firstGame": {
+      "name": "Primera partida",
+      "goal": "Juega por primera vez desde el launcher"
+    },
+    "theme": {
+      "name": "A mi estilo",
+      "goal": "Cambia el tema del launcher"
+    },
+    "decorator": {
+      "name": "Decorador",
+      "goal": "Pon una imagen propia a una instancia"
+    },
+    "tailor": {
+      "name": "Sastre",
+      "goal": "Crea una skin en el editor de skins"
+    },
+    "instanceTime": {
+      "name": "Fiel a una instancia",
+      "goal": "Juega {{goal}} en una misma instancia"
+    },
+    "collector": {
+      "name": "Coleccionista",
+      "goal_one": "Ten 1 instancia",
+      "goal_other": "Ten {{count}} instancias"
+    },
+    "modpacks": {
+      "name": "Modpackero",
+      "goal_one": "Instala 1 modpack",
+      "goal_other": "Instala {{count}} modpacks"
+    },
+    "modder": {
+      "name": "Modder",
+      "goal_one": "Instala 1 mod desde Explorar",
+      "goal_other": "Instala {{count}} mods desde Explorar"
+    },
+    "versions": {
+      "name": "Viajero del tiempo",
+      "goal_one": "Juega en 1 versión de Minecraft",
+      "goal_other": "Juega en {{count}} versiones de Minecraft"
+    },
+    "days": {
+      "name": "Constante",
+      "goal_one": "Juega 1 día",
+      "goal_other": "Juega {{count}} días distintos"
+    },
+    "marathon": {
+      "name": "Maratón",
+      "goal": "Juega {{goal}} seguidas"
+    },
+    "doctor": {
+      "name": "Médico",
+      "goal": "Arregla un cierre del juego con el diagnóstico"
+    },
+    "completionist": {
+      "name": "Completista",
+      "goal": "Consigue en Diamante todas las demás medallas sin cuenta"
+    },
+    "earnedTitle": "Medallas conseguidas",
+    "lockedTitle": "Medallas por conseguir",
+    "perlandHint": "Las que llevan la etiqueta «Cuenta y servidor de Perland» se ganan jugando en servidores creados en Perland, con tu cuenta de Perland y tu cuenta de Minecraft vinculada (en Cuentas pulsa «Vincular cuenta de Minecraft», copia el código que te da y escribe /perland link CÓDIGO en el chat de un servidor de Perland).",
+    "perlandTag": "Cuenta y servidor de Perland",
+    "signIn": "Iniciar sesión",
+    "earnedOn": "Conseguida el {{date}}",
+    "earnedOf": "{{earned}} de {{total}} medallas",
+    "savedAccount": "Tus medallas se guardan en tu cuenta de Perland: no las pierdes aunque reinstales el launcher o cambies de computadora.",
+    "savedLocal": "Tus medallas se guardan solo en esta computadora. Inicia sesión en Perland para guardarlas en tu cuenta y no perderlas si reinstalas el launcher.",
+    "mcTitle": "Logros de Minecraft",
+    "mcHint": "Los logros del propio juego (menú Progresos) que tienes en cada servidor de Perland. Necesitas tu cuenta de Perland con tu cuenta de Minecraft vinculada (en Cuentas pulsa «Vincular cuenta de Minecraft», copia el código que te da y escribe /perland link CÓDIGO en el chat de un servidor de Perland).",
+    "mcDialogHint": "Son los logros del menú Progresos del juego. Los que tienen candado aún no los tienes en este servidor.",
+    "medalsTitle": "Medallas",
+    "medalsHint": "Las da el Perland Launcher. Unas se ganan usando el launcher; las que llevan la etiqueta «Cuenta y servidor de Perland», jugando en servidores de Perland.",
+    "linkAccounts": "Vincular cuentas"
   },
   "achievements": {
     "title": "Logros en {{server}}",
@@ -1638,6 +1704,128 @@
       "adventure": "Aventura",
       "husbandry": "Granja",
       "other": "Otros"
+    },
+    "how": {
+      "story": {
+        "root": "Entra en el servidor y empieza a jugar.",
+        "mine_stone": "Pica piedra con un pico.",
+        "upgrade_tools": "Fabrica un pico de piedra.",
+        "smelt_iron": "Funde hierro en bruto en un horno.",
+        "obtain_armor": "Ponte cualquier pieza de armadura de hierro.",
+        "lava_bucket": "Llena un cubo con lava.",
+        "iron_tools": "Fabrica un pico de hierro.",
+        "deflect_arrow": "Bloquea una flecha u otro proyectil con un escudo.",
+        "form_obsidian": "Consigue un bloque de obsidiana.",
+        "mine_diamond": "Consigue un diamante.",
+        "enter_the_nether": "Construye y enciende un portal al Nether y crúzalo.",
+        "shiny_gear": "Ponte cualquier pieza de armadura de diamante.",
+        "enchant_item": "Encanta un objeto en una mesa de encantamientos.",
+        "cure_zombie_villager": "Lanza una poción arrojadiza de debilidad a un aldeano zombi y dale una manzana de oro.",
+        "follow_ender_eye": "Lanza ojos de ender hasta dar con una fortaleza y entra en ella.",
+        "enter_the_end": "Cruza el portal del End de una fortaleza."
+      },
+      "nether": {
+        "root": "Llega al Nether.",
+        "return_to_sender": "Mata a un ghast devolviéndole su bola de fuego.",
+        "find_bastion": "Entra en las ruinas de un bastión.",
+        "obtain_ancient_debris": "Pica escombros ancestrales.",
+        "fast_travel": "Recorre 7 km del mundo normal moviéndote por el Nether.",
+        "find_fortress": "Entra en una fortaleza del Nether.",
+        "obtain_crying_obsidian": "Consigue un bloque de obsidiana llorosa.",
+        "distract_piglin": "Dale oro a un piglin enfadado para calmarlo.",
+        "ride_strider": "Monta un lavagante con una caña con hongo distorsionado.",
+        "uneasy_alliance": "Lleva un ghast al mundo normal y mátalo allí.",
+        "loot_bastion": "Abre un cofre en las ruinas de un bastión.",
+        "use_lodestone": "Usa una brújula en una magnetita.",
+        "netherite_armor": "Ponte una armadura completa de netherita.",
+        "get_wither_skull": "Consigue una calavera de esqueleto wither.",
+        "obtain_blaze_rod": "Mata a un blaze y recoge su vara.",
+        "charge_respawn_anchor": "Carga del todo un nexo de reaparición con piedra luminosa.",
+        "ride_strider_in_overworld_lava": "Recorre un buen trecho de lava del mundo normal montado en un lavagante.",
+        "explore_nether": "Visita todos los biomas del Nether.",
+        "summon_wither": "Construye e invoca al Wither.",
+        "brew_potion": "Prepara una poción en un soporte para pociones.",
+        "create_beacon": "Construye y coloca un faro que funcione.",
+        "all_potions": "Ten a la vez todos los efectos de las pociones que se pueden preparar.",
+        "create_full_beacon": "Alimenta un faro con una pirámide completa de cuatro niveles.",
+        "all_effects": "Ten a la vez todos los efectos de estado del juego."
+      },
+      "end": {
+        "root": "Llega al End.",
+        "kill_dragon": "Derrota al dragón del End.",
+        "dragon_egg": "Recoge el huevo del dragón.",
+        "enter_end_gateway": "Lanza una perla de ender a un portal de acceso para llegar a las islas exteriores.",
+        "respawn_dragon": "Haz reaparecer al dragón del End con cuatro cristales del End.",
+        "dragon_breath": "Recoge aliento de dragón en un frasco de cristal.",
+        "find_end_city": "Entra en una ciudad del End.",
+        "elytra": "Consigue unos élitros en un barco del End.",
+        "levitate": "Sube 50 bloques flotando tras el golpe de un shulker."
+      },
+      "adventure": {
+        "root": "Empieza a explorar el mundo.",
+        "voluntary_exile": "Mata al capitán de una invasión.",
+        "spyglass_at_parrot": "Mira a un loro con un catalejo.",
+        "kill_a_mob": "Mata a cualquier criatura hostil.",
+        "read_power_of_chiseled_bookshelf": "Lee la señal de una estantería cincelada con un comparador.",
+        "trade": "Comercia con un aldeano.",
+        "trim_with_any_armor_pattern": "Ponle un adorno a una armadura en una mesa de herrería.",
+        "honey_block_slide": "Deslízate por un bloque de miel para frenar una caída.",
+        "ol_betsy": "Dispara una ballesta.",
+        "lightning_rod_with_villager_no_fire": "Protege a un aldeano de un rayo con un pararrayos, sin que haya fuego.",
+        "fall_from_world_height": "Cae desde lo más alto del mundo hasta lo más bajo y sobrevive.",
+        "salvage_sherd": "Cepilla arena o grava sospechosa hasta encontrar un fragmento de cerámica.",
+        "avoid_vibration": "Agáchate cerca de un sensor de sculk o un warden sin que te detecte.",
+        "sleep_in_bed": "Duerme en una cama.",
+        "hero_of_the_village": "Defiende una aldea y gana una invasión.",
+        "spyglass_at_ghast": "Mira a un ghast con un catalejo.",
+        "throw_trident": "Lanza un tridente contra algo.",
+        "kill_mob_near_sculk_catalyst": "Mata a una criatura junto a un catalizador de sculk.",
+        "shoot_arrow": "Acierta a algo con una flecha.",
+        "kill_all_mobs": "Mata a una criatura hostil de cada tipo.",
+        "totem_of_undying": "Libra la muerte gracias a un tótem de inmortalidad.",
+        "summon_iron_golem": "Construye un gólem de hierro.",
+        "trade_at_world_height": "Comercia con un aldeano en el límite de altura.",
+        "trim_with_all_exclusive_armor_patterns": "Usa al menos una vez cada uno de los adornos de armadura raros.",
+        "two_birds_one_arrow": "Mata a dos phantoms con una sola flecha perforante.",
+        "whos_the_pillager_now": "Mata a un saqueador con una ballesta.",
+        "arbalistic": "Mata a cinco criaturas distintas de un solo disparo de ballesta.",
+        "craft_decorated_pot_using_only_sherds": "Fabrica una vasija decorada con cuatro fragmentos de cerámica.",
+        "adventuring_time": "Visita todos los biomas del mundo normal.",
+        "play_jukebox_in_meadows": "Pon un disco en un tocadiscos en una pradera.",
+        "walk_on_powder_snow_with_leather_boots": "Camina sobre nieve polvo con botas de cuero.",
+        "spyglass_at_dragon": "Mira al dragón del End con un catalejo.",
+        "very_very_frightening": "Alcanza a un aldeano con un rayo de un tridente con conducción.",
+        "sniper_duel": "Mata a un esqueleto con una flecha a 50 bloques o más.",
+        "bullseye": "Da en el centro de una diana a 30 bloques o más."
+      },
+      "husbandry": {
+        "root": "Empieza a cultivar y a cuidar animales.",
+        "safely_harvest_honey": "Saca miel de una colmena con una fogata debajo.",
+        "breed_an_animal": "Haz que dos animales críen.",
+        "allay_deliver_item_to_player": "Haz que un allay te traiga un objeto.",
+        "ride_a_boat_with_a_goat": "Navega en una barca con una cabra dentro.",
+        "tame_an_animal": "Domestica un animal.",
+        "make_a_sign_glow": "Usa una bolsa de tinta luminosa en un cartel.",
+        "fishy_business": "Pesca un pez con una caña.",
+        "silk_touch_nest": "Mueve un nido de abejas con abejas dentro usando toque de seda.",
+        "tadpole_in_a_bucket": "Atrapa un renacuajo con un cubo de agua.",
+        "obtain_sniffer_egg": "Consigue un huevo de sniffer.",
+        "plant_seed": "Planta una semilla.",
+        "wax_on": "Encera un bloque de cobre con un panal.",
+        "bred_all_animals": "Haz criar a uno de cada animal que pueda criar.",
+        "allay_deliver_cake_to_note_block": "Haz que un allay deje una tarta junto a un bloque musical.",
+        "complete_catalogue": "Domestica un gato de cada tipo.",
+        "tactical_fishing": "Atrapa un pez con un cubo de agua.",
+        "leash_all_frog_variants": "Ata con una correa a cada uno de los tres tipos de rana.",
+        "feed_snifflet": "Dale de comer a una cría de sniffer.",
+        "balanced_diet": "Come todo lo que se puede comer.",
+        "obtain_netherite_hoe": "Mejora una azada de diamante a netherita.",
+        "wax_off": "Quita la cera de un bloque de cobre con un hacha.",
+        "axolotl_in_a_bucket": "Atrapa un ajolote con un cubo de agua.",
+        "froglights": "Ten en el inventario los tres tipos de luz de rana.",
+        "plant_any_sniffer_seed": "Planta una semilla que haya desenterrado un sniffer.",
+        "kill_axolotl_target": "Gana una pelea junto a un ajolote."
+      }
     }
   },
   "advancements": {

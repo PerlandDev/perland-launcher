@@ -28,7 +28,7 @@
     "restore": "Restore down",
     "close": "Close",
     "accounts": "Accounts",
-    "achievements": "Achievements",
+    "achievements": "Medals and achievements",
     "settings": "Settings",
     "noAccount": "Add account",
     "updateReady": "Update ready · installs when you close",
@@ -1558,10 +1558,8 @@
     "years_other": "{{count}} years"
   },
   "medals": {
-    "title": "Medals",
-    "screenTitle": "Achievements",
+    "screenTitle": "Medals and achievements",
     "steps": "Tiers",
-    "hint": "Time played counts everything you play on this computer. The others are earned on servers made on Perland.",
     "tier1": "Copper",
     "tier2": "Iron",
     "tier3": "Gold",
@@ -1571,8 +1569,6 @@
     "progress": "{{value}} of {{goal}}",
     "next": "Next: {{tier}} at {{goal}}",
     "top": "Top tier",
-    "linkToEarn": "Link your Minecraft account to earn the server medals.",
-    "earnedCount": "{{earned}} of {{total}} earned",
     "time": {
       "name": "Time played",
       "goal": "Play {{goal}} on this computer"
@@ -1619,8 +1615,78 @@
       "name": "Wither summoner",
       "goal": "Summon the Wither"
     },
-    "servers": "Achievements on Perland servers",
-    "serversHint": "What you've earned playing on servers made on Perland. Your single-player worlds don't count here."
+    "firstGame": {
+      "name": "First game",
+      "goal": "Play for the first time from the launcher"
+    },
+    "theme": {
+      "name": "My style",
+      "goal": "Change the launcher's theme"
+    },
+    "decorator": {
+      "name": "Decorator",
+      "goal": "Give an instance a picture of your own"
+    },
+    "tailor": {
+      "name": "Tailor",
+      "goal": "Make a skin in the skin editor"
+    },
+    "instanceTime": {
+      "name": "Loyal to an instance",
+      "goal": "Play {{goal}} in one instance"
+    },
+    "collector": {
+      "name": "Collector",
+      "goal_one": "Have 1 instance",
+      "goal_other": "Have {{count}} instances"
+    },
+    "modpacks": {
+      "name": "Modpacker",
+      "goal_one": "Install 1 modpack",
+      "goal_other": "Install {{count}} modpacks"
+    },
+    "modder": {
+      "name": "Modder",
+      "goal_one": "Install 1 mod from Explore",
+      "goal_other": "Install {{count}} mods from Explore"
+    },
+    "versions": {
+      "name": "Time traveller",
+      "goal_one": "Play 1 version of Minecraft",
+      "goal_other": "Play {{count}} versions of Minecraft"
+    },
+    "days": {
+      "name": "Regular",
+      "goal_one": "Play on 1 day",
+      "goal_other": "Play on {{count}} different days"
+    },
+    "marathon": {
+      "name": "Marathon",
+      "goal": "Play {{goal}} in one go"
+    },
+    "doctor": {
+      "name": "Doctor",
+      "goal": "Fix a crash with the crash check"
+    },
+    "completionist": {
+      "name": "Completionist",
+      "goal": "Earn every other medal that needs no account, at its top tier"
+    },
+    "earnedTitle": "Medals earned",
+    "lockedTitle": "Medals to earn",
+    "perlandHint": "The ones tagged “Perland account and server” are earned on servers made on Perland, with your Perland account and your Minecraft account linked (in Accounts press “Link Minecraft account”, copy the code it gives you and type /perland link CODE in the chat of a Perland server).",
+    "perlandTag": "Perland account and server",
+    "signIn": "Sign in",
+    "earnedOn": "Earned on {{date}}",
+    "earnedOf": "{{earned}} of {{total}} medals",
+    "savedAccount": "Your medals are saved to your Perland account: you keep them even if you reinstall the launcher or change computers.",
+    "savedLocal": "Your medals are saved on this computer only. Sign in to Perland to save them to your account and keep them if you reinstall the launcher.",
+    "mcTitle": "Minecraft achievements",
+    "mcHint": "The game's own achievements (the Advancements menu) you have on each Perland server. You need your Perland account with your Minecraft account linked (in Accounts press “Link Minecraft account”, copy the code it gives you and type /perland link CODE in the chat of a Perland server).",
+    "mcDialogHint": "These are the achievements from the game's Advancements menu. The locked ones you don't have on this server yet.",
+    "medalsTitle": "Medals",
+    "medalsHint": "Perland Launcher gives these. Some are earned using the launcher; the ones tagged “Perland account and server”, by playing on Perland servers.",
+    "linkAccounts": "Link accounts"
   },
   "achievements": {
     "title": "Achievements on {{server}}",
@@ -1638,6 +1704,128 @@
       "adventure": "Adventure",
       "husbandry": "Husbandry",
       "other": "Other"
+    },
+    "how": {
+      "story": {
+        "root": "Join the server and start playing.",
+        "mine_stone": "Mine stone with a pickaxe.",
+        "upgrade_tools": "Craft a stone pickaxe.",
+        "smelt_iron": "Smelt raw iron into an ingot in a furnace.",
+        "obtain_armor": "Put on any piece of iron armor.",
+        "lava_bucket": "Fill a bucket with lava.",
+        "iron_tools": "Craft an iron pickaxe.",
+        "deflect_arrow": "Block an arrow or other projectile with a shield.",
+        "form_obsidian": "Get a block of obsidian.",
+        "mine_diamond": "Get a diamond.",
+        "enter_the_nether": "Build and light a Nether portal, then go through it.",
+        "shiny_gear": "Put on any piece of diamond armor.",
+        "enchant_item": "Enchant an item at an enchanting table.",
+        "cure_zombie_villager": "Hit a zombie villager with a splash potion of weakness, then feed it a golden apple.",
+        "follow_ender_eye": "Throw eyes of ender to find a stronghold and walk into it.",
+        "enter_the_end": "Go through the End portal in a stronghold."
+      },
+      "nether": {
+        "root": "Reach the Nether.",
+        "return_to_sender": "Kill a ghast by hitting its fireball back at it.",
+        "find_bastion": "Walk into a bastion remnant.",
+        "obtain_ancient_debris": "Mine ancient debris.",
+        "fast_travel": "Travel 7 km in the Overworld by moving through the Nether.",
+        "find_fortress": "Walk into a Nether fortress.",
+        "obtain_crying_obsidian": "Get a block of crying obsidian.",
+        "distract_piglin": "Give gold to an angry piglin to calm it.",
+        "ride_strider": "Ride a strider while holding a warped fungus on a stick.",
+        "uneasy_alliance": "Bring a ghast back to the Overworld and kill it there.",
+        "loot_bastion": "Open a chest in a bastion remnant.",
+        "use_lodestone": "Use a compass on a lodestone.",
+        "netherite_armor": "Wear a full set of netherite armor.",
+        "get_wither_skull": "Get a wither skeleton skull.",
+        "obtain_blaze_rod": "Kill a blaze and pick up its rod.",
+        "charge_respawn_anchor": "Charge a respawn anchor all the way with glowstone.",
+        "ride_strider_in_overworld_lava": "Ride a strider a long way across lava in the Overworld.",
+        "explore_nether": "Visit every Nether biome.",
+        "summon_wither": "Build and summon the Wither.",
+        "brew_potion": "Brew a potion in a brewing stand.",
+        "create_beacon": "Build and place a working beacon.",
+        "all_potions": "Have every potion effect from brewing on you at once.",
+        "create_full_beacon": "Power a beacon with a full four-level pyramid.",
+        "all_effects": "Have every status effect on you at once."
+      },
+      "end": {
+        "root": "Reach the End.",
+        "kill_dragon": "Defeat the Ender Dragon.",
+        "dragon_egg": "Pick up the dragon egg.",
+        "enter_end_gateway": "Throw an ender pearl into an End gateway to reach the outer islands.",
+        "respawn_dragon": "Bring the Ender Dragon back with four end crystals.",
+        "dragon_breath": "Collect dragon's breath in a glass bottle.",
+        "find_end_city": "Walk into an End city.",
+        "elytra": "Find elytra on an End ship.",
+        "levitate": "Float 50 blocks up after a shulker's hit."
+      },
+      "adventure": {
+        "root": "Start exploring the world.",
+        "voluntary_exile": "Kill a raid captain.",
+        "spyglass_at_parrot": "Look at a parrot through a spyglass.",
+        "kill_a_mob": "Kill any hostile mob.",
+        "read_power_of_chiseled_bookshelf": "Read a chiseled bookshelf's signal with a comparator.",
+        "trade": "Trade with a villager.",
+        "trim_with_any_armor_pattern": "Add a trim to armor at a smithing table.",
+        "honey_block_slide": "Slide down the side of a honey block to slow a fall.",
+        "ol_betsy": "Shoot a crossbow.",
+        "lightning_rod_with_villager_no_fire": "Use a lightning rod to keep a villager safe from a strike, with no fire.",
+        "fall_from_world_height": "Fall from the top of the world to the bottom and live.",
+        "salvage_sherd": "Brush suspicious sand or gravel to find a pottery sherd.",
+        "avoid_vibration": "Sneak near a sculk sensor or warden without setting it off.",
+        "sleep_in_bed": "Sleep in a bed.",
+        "hero_of_the_village": "Defend a village and win a raid.",
+        "spyglass_at_ghast": "Look at a ghast through a spyglass.",
+        "throw_trident": "Throw a trident at something.",
+        "kill_mob_near_sculk_catalyst": "Kill a mob next to a sculk catalyst.",
+        "shoot_arrow": "Hit something with an arrow.",
+        "kill_all_mobs": "Kill one of every hostile mob.",
+        "totem_of_undying": "Cheat death with a totem of undying.",
+        "summon_iron_golem": "Build an iron golem.",
+        "trade_at_world_height": "Trade with a villager at the build limit.",
+        "trim_with_all_exclusive_armor_patterns": "Use each of the rare armor trims at least once.",
+        "two_birds_one_arrow": "Kill two phantoms with one piercing arrow.",
+        "whos_the_pillager_now": "Kill a pillager with a crossbow.",
+        "arbalistic": "Kill five different mobs with one crossbow shot.",
+        "craft_decorated_pot_using_only_sherds": "Make a decorated pot from four pottery sherds.",
+        "adventuring_time": "Visit every Overworld biome.",
+        "play_jukebox_in_meadows": "Play a music disc in a jukebox in a meadow.",
+        "walk_on_powder_snow_with_leather_boots": "Walk on powder snow wearing leather boots.",
+        "spyglass_at_dragon": "Look at the Ender Dragon through a spyglass.",
+        "very_very_frightening": "Strike a villager with lightning from a channeling trident.",
+        "sniper_duel": "Kill a skeleton with an arrow from at least 50 blocks away.",
+        "bullseye": "Hit the center of a target block from at least 30 blocks away."
+      },
+      "husbandry": {
+        "root": "Start farming and caring for animals.",
+        "safely_harvest_honey": "Take honey from a hive with a campfire under it.",
+        "breed_an_animal": "Breed two animals.",
+        "allay_deliver_item_to_player": "Have an allay bring you an item.",
+        "ride_a_boat_with_a_goat": "Ride a boat with a goat in it.",
+        "tame_an_animal": "Tame an animal.",
+        "make_a_sign_glow": "Use a glow ink sac on a sign.",
+        "fishy_business": "Catch a fish with a fishing rod.",
+        "silk_touch_nest": "Move a bee nest with bees in it using Silk Touch.",
+        "tadpole_in_a_bucket": "Catch a tadpole in a water bucket.",
+        "obtain_sniffer_egg": "Get a sniffer egg.",
+        "plant_seed": "Plant a seed.",
+        "wax_on": "Wax a copper block with honeycomb.",
+        "bred_all_animals": "Breed one of every animal that can be bred.",
+        "allay_deliver_cake_to_note_block": "Have an allay drop a cake at a note block.",
+        "complete_catalogue": "Tame one cat of every kind.",
+        "tactical_fishing": "Catch a fish in a water bucket.",
+        "leash_all_frog_variants": "Put a lead on each of the three kinds of frog.",
+        "feed_snifflet": "Feed a baby sniffer.",
+        "balanced_diet": "Eat everything that can be eaten.",
+        "obtain_netherite_hoe": "Upgrade a diamond hoe to netherite.",
+        "wax_off": "Scrape the wax off a copper block with an axe.",
+        "axolotl_in_a_bucket": "Catch an axolotl in a water bucket.",
+        "froglights": "Have all three kinds of froglight in your inventory.",
+        "plant_any_sniffer_seed": "Plant a seed a sniffer dug up.",
+        "kill_axolotl_target": "Team up with an axolotl and win a fight."
+      }
     }
   },
   "advancements": {
