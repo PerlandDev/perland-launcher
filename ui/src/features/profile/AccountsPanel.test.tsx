@@ -71,6 +71,16 @@ it('switches, adds and removes offline accounts', async () => {
   expect(sent(calls, 'account_remove')).toHaveLength(1);
 });
 
+it('closes the list with Add an account as its last row, after every account', async () => {
+  renderApp(<Profile />);
+  const alex = await row('Alex_Builds');
+  const add = within(panel()).getByRole('button', { name: 'Add an account' });
+  expect(add).toHaveClass('profile-add');
+  expect(alex.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // Never lit, and never a standing key: it is a row of the list.
+  expect(add).not.toHaveClass('btn');
+});
+
 it('offers Edit skin for each account, wearing what is made on that account', async () => {
   const { user, backend } = renderApp(<Profile />);
   await pick(user, 'Alex_Builds', 'Edit skin');

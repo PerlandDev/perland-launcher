@@ -9,8 +9,8 @@ import { Logout, WarningDiamond } from '../../ui/Icon';
 import { Menu } from '../../ui/Menu';
 import { perlandName, setPerlandAccount } from '../accounts/perlandSession';
 
-/** The signed-in Perland account, as the first row of Accounts: the land-plot mark, the account's name and under it its
- *  email when that is not already the name, else how it signs in. Its menu signs out. It renders nothing signed out (the
+/** The signed-in Perland account, as the first row of Accounts: the land-plot mark, the account's name and under it
+ *  "Perland account", with how it signs in when the Engine says. Its menu signs out. It renders nothing signed out (the
  *  account is then a step of Finish setting up) or while the Engine has player accounts closed. */
 export function PerlandRow({ onSignedOut }: { onSignedOut?: () => void }) {
   const { t, i18n } = useTranslation();
@@ -22,9 +22,9 @@ export function PerlandRow({ onSignedOut }: { onSignedOut?: () => void }) {
   if (!account) return null;
 
   const name = perlandName(account, t);
-  // The Engine names the account by Discord first, then GitHub, so the method follows the same order.
+  // How it signs in, when the Engine says: it names the account by Discord first, then GitHub, so the method follows the
+  // same order. The email is never shown here: it is long, and a Profile is a page players screenshot and stream.
   const method = account.discord ? t('perland.viaDiscord') : account.github ? t('perland.viaGithub') : null;
-  const second = account.email && account.email !== name ? account.email : method;
 
   const signOut = async () => {
     if (busy) return;
@@ -51,19 +51,21 @@ export function PerlandRow({ onSignedOut }: { onSignedOut?: () => void }) {
         <p className="truncate font-bold" title={name}>
           {name}
         </p>
-        <p className="truncate text-sm text-ink-dim" title={second ?? undefined}>
+        <p className="truncate text-sm text-ink-dim">
           {t('perland.title')}
-          {second ? ` · ${second}` : ''}
+          {/* A narrow panel keeps the kind whole and leaves the method out, rather than cut it short (app.css). */}
+          {method && <span className="profile-method"> · {method}</span>}
         </p>
       </div>
       <Menu
         compact
         floating
+        className="relative profile-menu"
         label={t('profile.morePerland')}
         items={[{ id: 'sign-out', label: t('perland.signOut'), icon: <Logout aria-hidden />, onSelect: () => void signOut() }]}
       />
       {failure && (
-        <div role="alert" className="basis-full grid gap-1 text-sm">
+        <div role="alert" className="grid gap-1 text-sm">
           <p className="flex items-start gap-2 font-semibold text-coral">
             <WarningDiamond className="mt-0.5 h-4 w-4 flex-none" aria-hidden />
             {failure.message}

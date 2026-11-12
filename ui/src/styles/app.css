@@ -3799,7 +3799,7 @@
   }
   @container profile (width >= 58rem) {
     .profile-grid {
-      grid-template-columns: 20rem minmax(0, 1fr);
+      grid-template-columns: 22rem minmax(0, 1fr);
       column-gap: 2.5rem;
     }
   }
@@ -3809,8 +3809,11 @@
       grid-template-columns: minmax(0, 1fr);
     }
   }
+  /* One column that never grows past the panel: a long name or address truncates in its row, and can't push the row
+     out of the panel's side (a bare grid column is as wide as its longest unbroken line). */
   .profile-card {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 1rem;
     min-width: 0;
     padding: 1.25rem;
@@ -3838,27 +3841,105 @@
   /* Accounts: rows split by seam rules, never cards in the card. */
   .profile-accounts {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
   }
   .profile-accounts:empty {
     display: none;
   }
+  /* A row: the face, the name over the kind of account, what it is doing (In use, or its Use key) and its menu. */
   .profile-account {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr) auto auto;
     align-items: center;
-    gap: 0.5rem 0.625rem;
-    padding: 0.625rem 0;
+    gap: 0.5rem 0.75rem;
+    padding: 0.75rem 0;
+  }
+  .profile-state {
+    grid-column: 3;
+  }
+  .profile-menu {
+    grid-column: 4;
+  }
+  .profile-account > [role='alert'] {
+    grid-column: 1 / -1;
+  }
+  /* In a row the Use key is a little tighter than a standing key, so the kind of account beside it stays whole. */
+  .profile-use {
+    min-height: 2.25rem;
+    padding: 0 0.75rem;
+  }
+  /* A narrow panel has no room for the state beside the words, so it drops under them, on the names' edge. */
+  @container accounts (width < 19.5rem) {
+    .profile-state {
+      grid-row: 2;
+      grid-column: 2 / -1;
+      justify-self: start;
+    }
+    .profile-method {
+      display: none;
+    }
+  }
+  .profile-accounts-card {
+    container: accounts / inline-size;
   }
   .profile-account + .profile-account {
     box-shadow: 0 -1px 0 var(--color-line);
   }
   .profile-who {
-    flex: 1;
     min-width: 0;
   }
+  /* The row's menu key: its glyph ends on the panel's text edge, so its hover face reaches into the padding, never past it. */
   .profile-account .btn-icon {
     margin-right: -0.375rem;
     color: var(--color-ink-dim);
+  }
+  /* Add an account closes the list as its last row: an empty socket where an account's face goes, then the words on the
+     names' own edge. Flat like a ghost key: the words light and the socket rises on hover. */
+  .profile-add {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.75rem 0;
+    color: var(--color-ink-dim);
+    background: transparent;
+    border: 0;
+    box-shadow: 0 -1px 0 var(--color-line);
+    font: inherit;
+    font-weight: 650;
+    text-align: left;
+    cursor: pointer;
+  }
+  .profile-accounts:empty + .profile-add {
+    box-shadow: none;
+  }
+  /* After a row it sits flush under it, one seam between them, not a panel gap away. */
+  .profile-accounts:not(:empty) + .profile-add {
+    margin-top: -1rem;
+  }
+  .profile-add-slot {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    background: var(--color-ground);
+    border-radius: 3px;
+    corner-shape: notch;
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  .profile-add-slot svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+  .profile-add:hover {
+    color: var(--color-ink);
+  }
+  .profile-add:hover .profile-add-slot {
+    background: var(--color-raised);
+    box-shadow: inset 0 0 0 1px var(--color-line);
   }
   /* The Perland account's own sign: the land-plot mark on a raised tile, where a Minecraft account shows its face. */
   .profile-mark {
@@ -3874,7 +3955,6 @@
   /* In use: the lime check and the words, where the other rows have their Use key. */
   .profile-in-use {
     display: flex;
-    flex: none;
     align-items: center;
     gap: 0.25rem;
     color: var(--color-lime);
@@ -3889,12 +3969,14 @@
   /* Finish setting up: one done line, then a step each for what is still to connect, split by seam rules. */
   .setup {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.5rem;
     margin-bottom: 2rem;
     padding: 1.25rem 1.25rem 0.5rem;
   }
   .setup-steps {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
   }
   .setup-step {
     display: grid;

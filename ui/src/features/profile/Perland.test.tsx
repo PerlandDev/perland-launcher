@@ -166,7 +166,9 @@ describe('the Perland account on the Profile', () => {
     const row = await perlandRow();
     expect(within(accounts()).getAllByRole('listitem')[0]).toBe(row);
     expect(row.querySelector('img[src*="mark"]')).toHaveAttribute('alt', '');
-    expect(row).toHaveTextContent('Perland account · steve@example.com');
+    // How it signs in, never its address: a Profile is a page players screenshot and stream.
+    expect(row).toHaveTextContent('Perland account · Discord');
+    expect(row).not.toHaveTextContent('@');
     expect(screen.queryByRole('button', { name: 'Continue with Perland' })).not.toBeInTheDocument();
   });
 

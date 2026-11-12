@@ -20,7 +20,7 @@ const ADD_KEY = '.profile [data-add-account]';
 
 /** The Profile's Accounts panel: the Perland account first (once signed in), then every Minecraft account as a row (its
  *  face, its name over its kind in words, the lime In use or a raised Use, and a menu with Edit skin and Remove), then Add
- *  an account, which opens its dialog. `say` speaks a change to screen readers; `add` opens the dialog on arrival. */
+ *  an account as the list's last row, which opens its dialog. `say` speaks a change to screen readers; `add` opens the dialog on arrival. */
 export function AccountsPanel({ say, add = false }: { say: (text: string) => void; add?: boolean }) {
   const { t } = useTranslation();
   const accounts = useAccounts();
@@ -91,7 +91,7 @@ export function AccountsPanel({ say, add = false }: { say: (text: string) => voi
   const losesActive = removing !== null && removing.uuid === accounts.data?.active;
 
   return (
-    <section className="panel profile-card" aria-labelledby="profile-accounts">
+    <section className="panel profile-card profile-accounts-card" aria-labelledby="profile-accounts">
       <h2 id="profile-accounts" className="profile-title">
         {t('accounts.title')}
       </h2>
@@ -129,16 +129,19 @@ export function AccountsPanel({ say, add = false }: { say: (text: string) => voi
                 </p>
               </div>
               {inUse ? (
-                <span className="profile-in-use">
+                <span className="profile-state profile-in-use">
                   <Check aria-hidden />
                   {t('accounts.inUse')}
                 </span>
               ) : (
-                <Button onClick={() => use(account)}>{t('accounts.use')}</Button>
+                <Button className="profile-state profile-use" onClick={() => use(account)}>
+                  {t('accounts.use')}
+                </Button>
               )}
               <Menu
                 compact
                 floating
+                className="relative profile-menu"
                 label={t('profile.more', { name: account.username })}
                 items={[
                   {
@@ -154,11 +157,13 @@ export function AccountsPanel({ say, add = false }: { say: (text: string) => voi
           );
         })}
       </ul>
-      <div>
-        <Button variant="ghost" icon={<Plus aria-hidden />} data-add-account onClick={() => setAdding(true)}>
-          {t('accounts.addTitle')}
-        </Button>
-      </div>
+      {/* The list's last row, on the rows' own grid: an empty socket where a face goes, then the words. */}
+      <button type="button" className="profile-add" data-add-account onClick={() => setAdding(true)}>
+        <span className="profile-add-slot" aria-hidden>
+          <Plus />
+        </span>
+        {t('accounts.addTitle')}
+      </button>
       <AddAccount open={adding} onClose={() => setAdding(false)} onAdded={added} />
       {removing && (
         <Dialog
