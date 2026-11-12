@@ -108,7 +108,8 @@ it('shows no checklist once everything is connected', async () => {
 });
 
 it('signs in with Microsoft from its step: the steps show in the panel, then the step goes and the new account has the keyboard', async () => {
-  const { user, calls } = renderApp(<Profile />, { perland: 'signedIn' });
+  // Short steps: the sign-in's five calls must not make the test depend on how fast the machine is.
+  const { user, calls } = renderApp(<Profile />, { perland: 'signedIn', microsoftStepMs: 60 });
   await user.click(await screen.findByRole('button', { name: 'Sign in with Microsoft' }));
   expect(sent(calls, 'account_sign_in_microsoft')).toEqual([{ language: 'en' }]);
   // The wait and Cancel take the step's own line.

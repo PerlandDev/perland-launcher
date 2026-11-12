@@ -152,7 +152,7 @@ it('keeps the generated face when the skin face cannot be shown', async () => {
 });
 
 it('adds a Microsoft account from the dialog and says who is in use', async () => {
-  const { user, calls } = renderApp(<Profile />, { beta: true, offlineLocked: true });
+  const { user, calls } = renderApp(<Profile />, { beta: true, offlineLocked: true, microsoftStepMs: 60 });
   const dialog = await openAdd(user);
   await user.click(within(dialog).getByRole('button', { name: 'Add Microsoft account' }));
   expect(await within(panel()).findByText('Alex', {}, { timeout: 4000 })).toBeInTheDocument();
