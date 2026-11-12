@@ -1022,12 +1022,23 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(&id);
-        if let Some(started) = started {
-            self.record_playtime(&id, started).await;
-        }
+        let ran = match started {
+            Some(started) => Some(self.record_playtime(&id, started).await),
+            None => None,
+        };
         self.record_place(&id, address.as_ref(), &connected, started_at)
             .await;
         let crashed = info.is_crash();
+        if let Some(seconds) = ran {
+            self.medals_note(crate::medals::MedalEvent::RunEnded {
+                instance: id.clone(),
+                version: played.game.minecraft.clone(),
+                seconds,
+                crashed,
+                diagnosed: crashed && info.cause.is_some(),
+            })
+            .await;
+        }
         if crashed {
             // The verdict, the version and the loader. Nothing of the log, the instance or
             // the mods it names.
@@ -1199,7 +1210,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     /// Add the time since `started` to the instance's playtime. A failed write loses only this
     /// run's count, so it is logged and nothing more.
-    async fn record_playtime(&self, id: &str, started: Instant) {
+    async fn record_playtime(&self, id: &str, started: Instant) -> u64 {
         let seconds = self
             .run_clock()
             .saturating_duration_since(started)
@@ -1208,6 +1219,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if let Err(error) = playtime::add(&self.instances.perland_dir(id), seconds, now).await {
             tracing::warn!(instance = id, %error, "couldn't save the time played");
         }
+        seconds
     }
 
     #[cfg(not(test))]

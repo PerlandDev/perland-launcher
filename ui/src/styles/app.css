@@ -3289,6 +3289,30 @@
   .medal[data-locked] .font-bold {
     color: var(--color-ink-dim);
   }
+  /* SPIKE: not earned yet, greyed out like a store's locked achievements. */
+  .medal-case[data-unearned] .medal {
+    filter: grayscale(1);
+    opacity: 0.6;
+  }
+  .medal-saved {
+    color: var(--color-blue-ink);
+  }
+  .achievements-items li {
+    align-items: flex-start;
+  }
+  /* A tagged medal's tag sits under its name, always: beside it, it fitted for short names and wrapped for long ones. */
+  .medal p:has(> .medal-tag) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+  .medal-tag {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding: 0.0625rem 0.375rem;
+    border: 1px solid var(--color-line);
+    color: var(--color-blue-ink);
+  }
   .medal-badge {
     position: relative;
     flex: none;
@@ -3681,8 +3705,8 @@
     visibility: visible;
   }
 
-  /* The Profile: who is playing, then what is still to connect, the player's skin and accounts, and what they have earned.
-     One column while the page is narrow (the wide rail at the smallest window), two from 48rem of page. */
+  /* The Profile: who is playing, then (beside their skin) what is still to connect, their accounts and a look at their
+     medals. */
   .profile {
     display: flex;
     flex-direction: column;
@@ -3699,59 +3723,39 @@
     padding: 0 2.5rem 2.5rem;
     container: profile / inline-size;
   }
+  /* Two columns, each its own stack so neither's heights move the other: the player (their skin, then their accounts)
+     beside what is still to connect and a look at their medals. The player's column is 18rem, and 22rem from 58rem of
+     page; the narrowest page (the wide rail at the smallest window) only closes the gap between the two. */
   .profile-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      'setup'
-      'me'
-      'earned';
+    grid-template-columns: 18rem minmax(0, 1fr);
+    align-items: start;
+    column-gap: 1rem;
     max-width: 64rem;
   }
+  .profile-col {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    min-width: 0;
+  }
   .profile-setup {
-    grid-area: setup;
     min-width: 0;
     container: setup / inline-size;
   }
-  .profile-me {
-    display: grid;
-    grid-area: me;
-    grid-template-columns: 14rem minmax(0, 1fr);
-    align-content: start;
-    align-items: start;
-    gap: 1rem;
-    min-width: 0;
-    margin-bottom: 2.5rem;
-  }
-  .profile-earned {
-    grid-area: earned;
-    min-width: 0;
-    container: earned / inline-size;
+  /* Nothing left to connect: no checklist, and no gap where it was. */
+  .profile-setup:empty {
+    display: none;
   }
   @container profile (width >= 48rem) {
     .profile-grid {
-      grid-template-columns: 18rem minmax(0, 1fr);
-      grid-template-rows: auto 1fr;
-      grid-template-areas:
-        'me setup'
-        'me earned';
       column-gap: 2rem;
-    }
-    .profile-me {
-      grid-template-columns: minmax(0, 1fr);
-      margin-bottom: 0;
     }
   }
   @container profile (width >= 58rem) {
     .profile-grid {
       grid-template-columns: 22rem minmax(0, 1fr);
       column-gap: 2.5rem;
-    }
-  }
-  /* The medal case keeps two columns only while each has room for a ladder's four steps. */
-  @container earned (width < 34rem) {
-    .medal-case {
-      grid-template-columns: minmax(0, 1fr);
     }
   }
   /* One column that never grows past the panel: a long name or address truncates in its row, and can't push the row
@@ -3823,6 +3827,16 @@
     .profile-method {
       display: none;
     }
+    /* The link's wide key starts at the row's own edge there, so it fits the panel; linked, Unlink drops under the
+       words like every other state. */
+    .profile-account.profile-link .profile-state {
+      grid-column: 1 / -1;
+    }
+    .profile-account.profile-link[data-view='linked'] .profile-who,
+    .profile-account.profile-link[data-view='linked'] .profile-state {
+      grid-column: 2 / -1;
+      margin-right: 0;
+    }
   }
   .profile-accounts-card {
     container: accounts / inline-size;
@@ -3886,6 +3900,41 @@
     background: var(--color-raised);
     box-shadow: inset 0 0 0 1px var(--color-line);
   }
+  /* The Perland account's link to a Minecraft account hangs under that account's row: no seam between them, a dim
+     glyph where a face would be. Its sentence takes the row's width with the key under it; linked, the quiet Unlink
+     sits beside the words. */
+  .profile-account.profile-link {
+    align-items: start;
+    padding-top: 0;
+    box-shadow: none;
+  }
+  .profile-link-glyph {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 1.5rem;
+    color: var(--color-ink-dim);
+  }
+  .profile-link-glyph svg {
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+  .profile-link .profile-who,
+  .profile-link .profile-state {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+  .profile-link[data-view='linked'] .profile-who {
+    grid-column: 2;
+  }
+  .profile-link[data-view='linked'] .profile-state {
+    grid-column: 3 / -1;
+    align-self: center;
+    margin-right: -0.375rem;
+  }
+  .profile-link > .profile-link-more {
+    grid-column: 2 / -1;
+  }
   /* The Perland account's own sign: the land-plot mark on a raised tile, where a Minecraft account shows its face. */
   .profile-mark {
     display: grid;
@@ -3911,12 +3960,49 @@
     width: 1rem;
     height: 1rem;
   }
+  /* The look at the medals: a small dim heading over rows split by seam rules (a badge, the name over its state, then
+     the date it was earned or how far along it is). */
+  .profile-subtitle {
+    color: var(--color-ink-dim);
+    font-size: 0.875rem;
+    font-weight: 700;
+  }
+  .profile-medal-rows {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .profile-medal-row {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.625rem 0;
+  }
+  .profile-medal-row + .profile-medal-row {
+    box-shadow: 0 -1px 0 var(--color-line);
+  }
+  .profile-medal-meter {
+    flex: none;
+    width: 11rem;
+  }
+  /* In a narrow panel the meter drops under the words, on their edge, so the words keep the row. */
+  .profile-medals-card {
+    container: medals / inline-size;
+  }
+  @container medals (width < 24rem) {
+    .profile-medal-row {
+      flex-wrap: wrap;
+    }
+    .profile-medal-meter {
+      width: auto;
+      flex: 1 1 100%;
+      margin-left: 3.375rem;
+    }
+  }
   /* Finish setting up: one done line, then a step each for what is still to connect, split by seam rules. */
   .setup {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 0.5rem;
-    margin-bottom: 2rem;
     padding: 1.25rem 1.25rem 0.5rem;
   }
   .setup-steps {

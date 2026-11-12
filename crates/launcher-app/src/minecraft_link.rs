@@ -107,6 +107,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             Err(e) if e.code == ErrorCode::PerlandSignedOut => return Ok(None),
             Err(e) => return Err(e),
         };
+        self.medals_stats(&stats).await;
         let instances = self.instances_by_invite_token(&session.engine).await;
         let servers = stats
             .servers

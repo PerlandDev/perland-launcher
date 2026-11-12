@@ -141,7 +141,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     pub async fn skin_save(&self, id: &str, texture: &str) -> Result<SkinEntry> {
         let png = skins_png::from_data_url(texture)?;
-        self.skins.save_texture(id, &png).await
+        let saved = self.skins.save_texture(id, &png).await?;
+        self.medals_note(crate::medals::MedalEvent::SkinSaved).await;
+        Ok(saved)
     }
 
     pub async fn skin_update(

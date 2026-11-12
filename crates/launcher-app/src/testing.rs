@@ -43,7 +43,7 @@ use launcher_core::{
         Apply, BanList, ConsoleReply, CreateAllowance, CreateFreeServer, CreateServer,
         CreatedServer, Diagnosis, DiscordAccount, Discovery, Disk, EmailStarted, EngineVersion,
         FreeLimits, FreeServer, FreeServerSettings, FreeServerState, Handoff, Lifecycle, LinkCode,
-        ListKind, Membership, MemoryLimits, NameList, NameResult, Online, Pkce, Player,
+        ListKind, MedalEntry, Membership, MemoryLimits, NameList, NameResult, Online, Pkce, Player,
         PlayerConfig, PlayerStats, SessionJwt, SettingsDoc, SettingsSaved, SignInMethod,
         StackDetail, StackItem, TeamUsage, TokenAnswer, YourServer,
     },
@@ -1448,6 +1448,10 @@ pub(crate) struct FakePlayer {
     pub unlink: Mutex<Result<()>>,
     /// Default: no Minecraft account linked, no servers.
     pub stats: Mutex<Result<Option<PlayerStats>>>,
+    /// Default: an Engine without medals (`None`). `save_medals` answers this too, after
+    /// recording what was sent in `saved_medals`.
+    pub medals: Mutex<Result<Option<Vec<MedalEntry>>>>,
+    pub saved_medals: Mutex<Vec<Vec<MedalEntry>>>,
     /// Default: a code that may be asked for again in 60 s.
     pub email_started: Mutex<Result<EmailStarted>>,
     /// Default: `new@example.com`.
@@ -1492,6 +1496,8 @@ impl FakePlayer {
             })),
             unlink: Mutex::new(Ok(())),
             stats: Mutex::new(Ok(Some(PlayerStats::default()))),
+            medals: Mutex::new(Ok(None)),
+            saved_medals: Mutex::new(Vec::new()),
             email_started: Mutex::new(Ok(EmailStarted {
                 expires_in: 600,
                 resend_in: 60,
@@ -1616,6 +1622,18 @@ impl PlayerApi for FakePlayer {
     }
     fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>> {
         self.record("stats", engine, &[&token], &self.stats)
+    }
+    fn medals(&self, engine: Url, token: String) -> BoxFuture<Result<Option<Vec<MedalEntry>>>> {
+        self.record("medals", engine, &[&token], &self.medals)
+    }
+    fn save_medals(
+        &self,
+        engine: Url,
+        token: String,
+        medals: Vec<MedalEntry>,
+    ) -> BoxFuture<Result<Option<Vec<MedalEntry>>>> {
+        self.saved_medals.lock().unwrap().push(medals);
+        self.record("save_medals", engine, &[&token], &self.medals)
     }
     fn account_email_start(
         &self,

@@ -119,6 +119,8 @@ pub enum AppEvent {
     },
     /// A `perland://` link arrived; the UI asks for it with `deep_link_take`.
     DeepLink,
+    /// A medal tier was earned, or the account's medals arrived: the UI reads `medals_view`.
+    MedalsChanged,
     /// The launcher's own update moved on (see `updates.rs`).
     Update { state: crate::updates::UpdateState },
     /// A Discord sign-in moved on: the browser is open (`waiting`), or the code it brought back

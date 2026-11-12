@@ -39,7 +39,7 @@ describe('the Perland account on the Profile', () => {
     expect(screen.getByRole('heading', { name: 'Finish setting up' })).toBeInTheDocument();
     expect(within(step()).getAllByRole('button')).toEqual([key]);
     expect(within(step()).queryByRole('textbox')).not.toBeInTheDocument();
-    expect(step()).toHaveTextContent('Sign in to create servers and earn medals.');
+    expect(step()).toHaveTextContent('Sign in to create servers and save your medals to your account.');
     expect(step()).toHaveTextContent("You'll choose GitHub, Discord or an email code on the Perland page.");
     // Never lit: the Microsoft sign-in is the page's one lit key.
     expect(key).not.toHaveClass('btn-primary');
@@ -133,7 +133,7 @@ describe('the Perland account on the Profile', () => {
         const { user, calls } = renderApp(<Profile />, { perlandSignIn: 'cancel' });
         const key = await screen.findByRole('button', { name: 'Continuar con Perland' });
         expect(screen.getByRole('heading', { name: 'Termina de configurar' })).toBeInTheDocument();
-        expect(screen.getByText(/Inicia sesión para crear servidores y ganar medallas\./)).toBeInTheDocument();
+        expect(screen.getByText(/Inicia sesión para crear servidores y guardar tus medallas en tu cuenta\./)).toBeInTheDocument();
         expect(screen.getByText(/En la página de Perland eliges GitHub, Discord o un código por correo\./)).toBeInTheDocument();
         await user.click(key);
         expect(await screen.findByText('Cancelaste el inicio de sesión.', {}, { timeout: 4000 })).toBeInTheDocument();

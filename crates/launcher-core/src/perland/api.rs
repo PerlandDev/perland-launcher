@@ -170,6 +170,21 @@ pub struct ServerStats {
     pub advancement_ids: Vec<String>,
 }
 
+/// One medal tier saved to the account: when the player first reached it (RFC 3339).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MedalEntry {
+    pub id: String,
+    pub tier: u8,
+    pub earned_at: String,
+}
+
+#[derive(Deserialize)]
+struct MedalList {
+    #[serde(default)]
+    medals: Vec<MedalEntry>,
+}
+
 /// The most advancement IDs kept per server: the Engine sends at most this many.
 pub const MAX_ADVANCEMENT_IDS: usize = 2000;
 
@@ -768,6 +783,41 @@ impl PlayerClient {
         let mut stats: PlayerStats = self.data(&reply)?;
         stats.cap_ids();
         Ok(Some(stats))
+    }
+
+    /// `GET /medals`: the medals saved to the account. `None` when the Engine doesn't keep them
+    /// (404) or has player accounts off (503).
+    pub async fn medals(&self, token: &str) -> Result<Option<Vec<MedalEntry>>> {
+        let reply = self
+            .send(Method::GET, "/medals", Some(token), None, BODY_CAP)
+            .await?;
+        self.medals_reply(reply)
+    }
+
+    /// `PUT /medals`: merge `medals` into the account and answer what it holds now.
+    pub async fn save_medals(
+        &self,
+        token: &str,
+        medals: &[MedalEntry],
+    ) -> Result<Option<Vec<MedalEntry>>> {
+        let body = json!({ "medals": medals });
+        let reply = self
+            .send(Method::PUT, "/medals", Some(token), Some(&body), BODY_CAP)
+            .await?;
+        self.medals_reply(reply)
+    }
+
+    fn medals_reply(&self, reply: Reply) -> Result<Option<Vec<MedalEntry>>> {
+        match reply.status {
+            404 => return Ok(None),
+            503 if failure(&reply).code.as_deref() == Some("player_accounts_disabled") => {
+                return Ok(None)
+            }
+            _ => {}
+        }
+        self.ok(&reply, Route::Plain)?;
+        let list: MedalList = self.data(&reply)?;
+        Ok(Some(list.medals))
     }
 
     async fn server_write(&self, route: &str, token: &str, invite_token: &str) -> Result<()> {

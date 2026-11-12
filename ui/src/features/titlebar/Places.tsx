@@ -1,7 +1,7 @@
 import { useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { navigate, useRoute, type Route } from '../../state/route';
-import { Package, Server, Shirt } from '../../ui/Icon';
+import { Package, Server, Shirt, Trophy } from '../../ui/Icon';
 import { sessionKind } from '../browse/session';
 
 interface Place {
@@ -21,13 +21,15 @@ function placeOf(route: Route): string | null {
       return 'servers';
     case 'browse':
       return route.instance ? null : 'browse';
+    case 'achievements':
+      return 'achievements';
     default:
       return null;
   }
 }
 
-/** The launcher's places by name, as tabs in the title bar: Skins, Servers and Mods & more (Browse: the box is the
- *  launcher's sign for mods, as on Home's Mods & packs key). The player's own page, the Profile, opens from the account at
+/** The launcher's places by name, as tabs in the title bar: Skins, Servers, Mods & more (Browse: the box is the
+ *  launcher's sign for mods, as on Home's Mods & packs key) and Medals and achievements (the trophy). The player's own page, the Profile, opens from the account at
  *  the bar's other end. They sit here, not in the rail, so the rail stays the instances' alone. Flat title-bar text, never lit; the open one is
  *  pressed into its slot with the lime lamp, like a chosen segment. One Tab stop, walked with the arrow keys. */
 export function Places() {
@@ -39,6 +41,7 @@ export function Places() {
     { id: 'skins', label: t('titlebar.skins'), icon: <Shirt aria-hidden />, go: () => navigate({ name: 'skins' }) },
     { id: 'servers', label: t('servers.open'), icon: <Server aria-hidden />, go: () => navigate({ name: 'servers' }) },
     { id: 'browse', label: t('browse.open'), icon: <Package aria-hidden />, go: () => navigate({ name: 'browse', kind: sessionKind() }) },
+    { id: 'achievements', label: t('titlebar.achievements'), icon: <Trophy aria-hidden />, go: () => navigate({ name: 'achievements' }) },
   ];
   // Tab enters at the open place, or the first.
   const entry = Math.max(

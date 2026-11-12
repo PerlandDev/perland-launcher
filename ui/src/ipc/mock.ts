@@ -20,12 +20,13 @@ import { APP_EVENT } from './events';
 import { inviteCanonical } from './inviteLink';
 import { handleFree, modrinthInstances, NOT_FREE, repeatsFreeServer, seedFree, type FreeScenario } from './mockFree';
 import { closeConsole, freeManageRef, handleManage, managedForYourServers, NOT_MANAGE, seedManage, type ManageScenario } from './mockManage';
-import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario, type PerlandSignInOutcome } from './mockPerland';
+import { handlePerland, mockPerlandStats, NOT_PERLAND, seedPerland, type PerlandScenario, type PerlandSignInOutcome } from './mockPerland';
 import { mockCrash, type CrashScenario } from './mockCrash';
 import { handleTeams, NOT_TEAMS, type TeamsScenario } from './mockTeams';
 import { handleSkins, NOT_SKINS, seedSkins, type SkinsScenario } from './mockSkins';
 import { handleServer, instanceTrustPrompt, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
 import { MSA_STEPS, type MsaStep } from './schema';
+import { mockMedalsView } from './mockMedals';
 import type {
   FriendsCheck,
   AccountsFile,
@@ -1086,6 +1087,13 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'import_cancel':
       if (state.importRun) state.importRun.cancelled = true;
       return null;
+    case 'medals_view':
+      return mockMedalsView({
+        playtime: state.listing.instances.map((i) => state.playtime.get(i.id) ?? 0),
+        instances: state.listing.instances.length,
+        stats: mockPerlandStats(state.perland, state.listing),
+        signedIn: Boolean(state.perland.account) && state.perland.scenario !== 'off',
+      });
     case 'playtime_list':
       return state.listing.instances.map(
         (i): PlaytimeEntry => ({

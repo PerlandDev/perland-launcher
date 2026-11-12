@@ -19,6 +19,7 @@ pub mod last_place;
 pub mod launch;
 pub mod locks;
 pub mod logging;
+pub mod medals;
 pub mod meta;
 pub mod mod_icons;
 pub mod mods;
