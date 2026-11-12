@@ -25,8 +25,8 @@ use launcher_core::{
     server_list,
     server_wake::{Knock, Ping, WaitEnd},
     sync::{
-        lockfile::PACK_FILE, manual::Scanner, Cancel, Ensured, ManualFile, PendingUpdate,
-        SyncOutcome,
+        lockfile::PACK_FILE, manual::Scanner, origin::OriginHints, Cancel, Ensured, ManualFile,
+        PendingUpdate, SyncOutcome,
     },
     ErrorCode, LauncherError, Result,
 };
@@ -46,6 +46,7 @@ use crate::{
     logs::spawn_batcher,
     runner::{Runner, WAKE_LIMIT},
     servers::{apply_view, server_source},
+    trust::Gate,
 };
 
 /// What a game run needs besides the instance: who plays, whether the window hides, and where
@@ -181,7 +182,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let session = self.session_for(account.clone()).await?;
         let checked_at = self.run_clock();
         let minimize = self.settings_get().await.minimize_on_play;
-        let checks = self.checks_for_updates(&instance).await;
+        // Nothing from a server the player hasn't trusted installs: the UI shows the trust step.
+        // The refusal says whether Play was to join, so the step's own Play does the same.
+        let gate = self.trust_gate(&instance).await.map_err(|e| {
+            if e.code == ErrorCode::ServerTrustNeeded && destination == Destination::JoinOwn {
+                e.with_param("join", "true")
+            } else {
+                e
+            }
+        })?;
+        let checks = gate == Gate::Open && self.checks_for_updates(&instance).await;
         self.start_run(
             id,
             instance,
@@ -506,14 +516,22 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 return None;
             }
         };
-        if update_only || instance.update_policy == UpdatePolicy::Auto {
+        let mut offer = match server_source(instance) {
+            Some((link, engine)) => self.server_offer(link, engine, &update).await,
+            None => PackUpdate::from(&update),
+        };
+        let unattended = update_only || instance.update_policy == UpdatePolicy::Auto;
+        // A server's code from outside Modrinth and CurseForge is never installed unseen, even
+        // when its pack updates on its own.
+        let held = server_source(instance).is_some() && offer.needs_look();
+        if unattended && !held {
             return Some(update);
         }
+        offer.held = unattended && held;
         let (tx, rx) = oneshot::channel();
         {
             let mut runs = self.runs.lock().unwrap_or_else(|e| e.into_inner());
             let run = runs.get_mut(id)?;
-            let offer = PackUpdate::from(&update);
             run.phase = RunStateKind::Asking;
             run.answer = Some(tx);
             run.offer = Some(offer.clone());
@@ -527,6 +545,28 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         match rx.await {
             Ok(true) => Some(update),
             _ => None,
+        }
+    }
+
+    /// A server's update as the player sees it: where each file comes from, told apart with the
+    /// server's mod list. Without the list nothing is assumed, so a jar inside the pack file
+    /// reads as "inside the pack".
+    async fn server_offer(
+        &self,
+        link: launcher_core::invite::InviteLink,
+        engine: String,
+        update: &PendingUpdate,
+    ) -> PackUpdate {
+        let hints = crate::dto::plain_hints(update);
+        if hints.modrinth_pack {
+            return PackUpdate::with_hints(update, &hints);
+        }
+        match self.runner.invite_mods(link, Some(engine)).await {
+            Ok(mods) => PackUpdate::with_hints(update, &OriginHints::server(&mods)),
+            Err(error) => {
+                tracing::info!(code = ?error.code, "update summary without the mod list");
+                PackUpdate::with_hints(update, &hints)
+            }
         }
     }
 
@@ -2435,7 +2475,7 @@ mod tests {
     /// A server instance from invite A that installed 1.0.4 before.
     async fn server(core: &TestCore, runner: &FakeRunner) -> String {
         serve(runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         lockfile::save_pack(&core.instances.perland_dir(&id), &desired("1.0.4", vec![]))
             .await
             .unwrap();
@@ -2932,7 +2972,7 @@ mod tests {
         let mut portless = server_view("survival");
         portless.view.address.port = 0;
         serve(&runner, &invite('A'), Ok(portless));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         core.play_with(&id, true).await.unwrap();
         runner.open_gate(1);
         host.wait_for(&id, Running).await;
@@ -2949,7 +2989,7 @@ mod tests {
         let mut portless = server_view("survival");
         portless.view.address.port = 0;
         serve(&runner, &invite('A'), Ok(portless));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         assert!(core
             .instances
             .load(&id)
@@ -3028,7 +3068,7 @@ mod tests {
     async fn a_never_synced_server_whose_pack_fails_ends_the_run_with_it() {
         let (core, runner, host, _t) = ready(true).await;
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         runner
             .sync_results
             .lock()
@@ -3103,5 +3143,159 @@ mod tests {
         assert!(listed(&core, "alpha").is_empty());
         core.stop("alpha").unwrap();
         host.wait_for("alpha", Idle).await;
+    }
+
+    // The trust step at Play, and updates that wait for the player.
+
+    /// A pending server update that adds `mods/custom.jar` from inside the pack file.
+    fn custom_update() -> launcher_core::sync::PendingUpdate {
+        use launcher_core::sync::plan::{ChangedFile, FileChange, FileFrom};
+        let mut update = pending("1.0.4", "1.0.5");
+        update.files = vec![
+            ChangedFile {
+                name: "custom.jar".into(),
+                path: "mods/custom.jar".into(),
+                change: FileChange::Added,
+                from: FileFrom::InPack,
+            },
+            ChangedFile {
+                name: "Sodium".into(),
+                path: "mods/sodium.jar".into(),
+                change: FileChange::Updated,
+                from: FileFrom::Host("cdn.modrinth.com".into()),
+            },
+        ];
+        update
+    }
+
+    #[tokio::test]
+    async fn an_untrusted_server_never_installs_until_the_player_trusts_it() {
+        let (core, runner, host, _t) = ready(true).await;
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A'), None).await.unwrap().id;
+        let refused = core.play(&id).await.unwrap_err();
+        assert_eq!(refused.code, ErrorCode::ServerTrustNeeded);
+        assert_eq!(refused.params.get("id"), Some(&id));
+        assert_eq!(refused.params.get("join"), None);
+        let joining = core.play_with(&id, true).await.unwrap_err();
+        assert_eq!(joining.params.get("join").map(String::as_str), Some("true"));
+        assert!(host.states(&id).is_empty(), "no run started");
+        assert!(runner.syncs.lock().unwrap().is_empty(), "nothing synced");
+        assert_eq!(
+            core.pack_update(&id).await.unwrap_err().code,
+            ErrorCode::ServerTrustNeeded
+        );
+
+        let trusted = core.instance_trust_set(&id, false).await.unwrap();
+        assert_eq!(trusted.update_policy, UpdatePolicy::Ask);
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(runner.syncs.lock().unwrap().len(), 1);
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn an_untrusted_server_out_of_reach_plays_only_what_is_installed() {
+        let (core, runner, host, _t) = ready(true).await;
+        serve(&runner, &invite('A'), Ok(server_view("survival")));
+        let id = core.join_add(&invite('A'), None).await.unwrap().id;
+        // Never synced and unreachable: the view's error, and nothing runs.
+        serve(
+            &runner,
+            &invite('A'),
+            Err(LauncherError::network(ErrorCode::Offline, "offline")),
+        );
+        assert_eq!(core.play(&id).await.unwrap_err().code, ErrorCode::Offline);
+        // Installed before (a launcher without the trust step): that version plays, unchecked.
+        lockfile::save_pack(&core.instances.perland_dir(&id), &desired("1.0.4", vec![]))
+            .await
+            .unwrap();
+        runner
+            .updates
+            .lock()
+            .unwrap()
+            .insert(id.clone(), Ok(Some(pending("1.0.4", "1.0.5"))));
+        core.play(&id).await.unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(host.states(&id)[0], Queued, "no update check");
+        assert_eq!(
+            runner.syncs.lock().unwrap()[0].1,
+            None,
+            "the installed version"
+        );
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn an_automatic_update_with_code_from_outside_the_catalogues_waits_for_the_player() {
+        use crate::testing::serve_mods;
+        use launcher_core::{invite::ModSource, sync::origin::FileOrigin};
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
+        serve_mods(
+            &runner,
+            &invite('A'),
+            &[("custom.jar", ModSource::Uploaded)],
+        );
+        runner
+            .updates
+            .lock()
+            .unwrap()
+            .insert(id.clone(), Ok(Some(custom_update())));
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        let offer = host.last_update(&id).unwrap();
+        assert!(offer.held, "auto, but held for this update");
+        assert_eq!(offer.files[0].origin, FileOrigin::Uploaded);
+        assert!(offer.files[0].needs_look);
+        assert_eq!(offer.files[1].origin, FileOrigin::Modrinth);
+        core.play_answer(&id, true).unwrap();
+        runner.open_gate(1);
+        host.wait_for(&id, Running).await;
+        assert_eq!(runner.syncs.lock().unwrap()[0].1.as_deref(), Some("1.0.5"));
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn without_the_mod_list_a_jar_inside_the_pack_waits_too() {
+        use launcher_core::sync::origin::FileOrigin;
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
+        runner
+            .updates
+            .lock()
+            .unwrap()
+            .insert(id.clone(), Ok(Some(custom_update())));
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        let offer = host.last_update(&id).unwrap();
+        assert!(offer.held);
+        assert_eq!(offer.files[0].origin, FileOrigin::Pack);
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
+    }
+
+    #[tokio::test]
+    async fn a_server_that_asks_shows_where_files_come_from_without_holding() {
+        let (core, runner, host, _t) = ready(true).await;
+        let id = server(&core, &runner).await;
+        core.instance_trust_set(&id, false).await.unwrap();
+        runner
+            .updates
+            .lock()
+            .unwrap()
+            .insert(id.clone(), Ok(Some(pending("1.0.4", "1.0.5"))));
+        core.play(&id).await.unwrap();
+        host.wait_for(&id, Asking).await;
+        let offer = host.last_update(&id).unwrap();
+        assert!(!offer.held, "asking is the player's own choice here");
+        assert_eq!(offer.files.len(), 1);
+        core.stop(&id).unwrap();
+        host.wait_for(&id, Idle).await;
     }
 }

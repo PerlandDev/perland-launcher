@@ -134,6 +134,13 @@ pub trait Runner: Send + Sync + 'static {
     ) -> BoxFuture<Result<EngineView>>;
     /// The invite's icon PNG, or `None`.
     fn invite_icon(&self, link: InviteLink) -> BoxFuture<Option<Vec<u8>>>;
+    /// The mods of the pack commit the server runs, each with where it comes from. `engine`
+    /// seeds the Engine as for `invite_view`.
+    fn invite_mods(
+        &self,
+        link: InviteLink,
+        engine: Option<String>,
+    ) -> BoxFuture<Result<launcher_core::invite::InviteMods>>;
     /// One page of Perland's public server list, and the Engine it came from.
     fn public_page(&self, query: ListQuery) -> BoxFuture<Result<FetchedPage>>;
     /// A listed server's icon PNG, or `None`.
@@ -377,6 +384,20 @@ impl Runner for CoreRunner {
     fn invite_icon(&self, link: InviteLink) -> BoxFuture<Option<Vec<u8>>> {
         let invites = self.syncer.sources.invites.clone();
         Box::pin(async move { invites.icon(&link).await })
+    }
+
+    fn invite_mods(
+        &self,
+        link: InviteLink,
+        engine: Option<String>,
+    ) -> BoxFuture<Result<launcher_core::invite::InviteMods>> {
+        let invites = self.syncer.sources.invites.clone();
+        Box::pin(async move {
+            if let Some(engine) = engine {
+                invites.remember_engine(&link, &engine);
+            }
+            invites.mods(&link).await
+        })
     }
 
     fn public_page(&self, query: ListQuery) -> BoxFuture<Result<FetchedPage>> {

@@ -1,0 +1,27 @@
+[
+  {
+    "name": "Survival con los panas",
+    "team": "Acme",
+    "pack": "Survival Pack",
+    "modCount": 42,
+    "sources": {
+      "modrinth": 30,
+      "curseforge": 8,
+      "web": 1,
+      "uploaded": 3,
+      "other": 0
+    },
+    "modrinthPack": false,
+    "autoUpdate": true
+  },
+  {
+    "name": "Cobblemon",
+    "team": null,
+    "pack": null,
+    "modCount": 0,
+    "sources": null,
+    "modrinthPack": true,
+    "autoUpdate": false
+  },
+  null
+]

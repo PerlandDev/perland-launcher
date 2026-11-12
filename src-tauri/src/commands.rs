@@ -11,7 +11,7 @@ use launcher_app::dto::{
     ManagedServer, ManualProgress, MedalsView, NewInstance, OpenTarget, PackAddRequest,
     PackContents, PackStatus, PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry,
     PublicServerPage, RestorePointDto, RunSnapshot, SearchRequest, ServerNews, ServerStatusView,
-    YourServersPage,
+    TrustPrompt, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -624,8 +624,49 @@ pub async fn news_image(
 }
 
 #[tauri::command]
-pub async fn join_add(core: CoreState<'_>, link: String) -> Res<Instance> {
-    logged("join_add", core.join_add(&link).await)
+pub async fn join_add(
+    core: CoreState<'_>,
+    link: String,
+    auto_update: Option<bool>,
+) -> Res<Instance> {
+    logged("join_add", core.join_add(&link, auto_update).await)
+}
+
+#[tauri::command]
+pub async fn join_trust(
+    core: CoreState<'_>,
+    link: String,
+    instance: Option<String>,
+) -> Res<Option<TrustPrompt>> {
+    logged(
+        "join_trust",
+        core.join_trust(&link, instance.as_deref()).await,
+    )
+}
+
+#[tauri::command]
+pub async fn instance_trust(core: CoreState<'_>, id: String) -> Res<Option<TrustPrompt>> {
+    logged("instance_trust", core.instance_trust(&id).await)
+}
+
+#[tauri::command]
+pub async fn instance_trust_set(
+    core: CoreState<'_>,
+    id: String,
+    auto_update: bool,
+) -> Res<Instance> {
+    logged(
+        "instance_trust_set",
+        core.instance_trust_set(&id, auto_update).await,
+    )
+}
+
+#[tauri::command]
+pub async fn instance_trust_forget(core: CoreState<'_>, id: String) -> Res<Instance> {
+    logged(
+        "instance_trust_forget",
+        core.instance_trust_forget(&id).await,
+    )
 }
 
 #[tauri::command]
@@ -634,13 +675,29 @@ pub async fn server_status(core: CoreState<'_>, id: String) -> Res<ServerStatusV
 }
 
 #[tauri::command]
-pub async fn server_relink(core: CoreState<'_>, id: String, link: String) -> Res<Instance> {
-    logged("server_relink", core.server_relink(&id, &link).await)
+pub async fn server_relink(
+    core: CoreState<'_>,
+    id: String,
+    link: String,
+    auto_update: Option<bool>,
+) -> Res<Instance> {
+    logged(
+        "server_relink",
+        core.server_relink(&id, &link, auto_update).await,
+    )
 }
 
 #[tauri::command]
-pub async fn server_link(core: CoreState<'_>, id: String, link: String) -> Res<Instance> {
-    logged("server_link", core.server_link(&id, &link).await)
+pub async fn server_link(
+    core: CoreState<'_>,
+    id: String,
+    link: String,
+    auto_update: Option<bool>,
+) -> Res<Instance> {
+    logged(
+        "server_link",
+        core.server_link(&id, &link, auto_update).await,
+    )
 }
 
 #[tauri::command]

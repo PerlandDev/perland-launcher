@@ -236,7 +236,7 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         sign_in(&core, ENGINE, Some("Moi"));
         serve(&runner, &invite('A'), Ok(server_view("s")));
-        let joined = core.join_add(&invite('A')).await.unwrap();
+        let joined = core.join_add(&invite('A'), Some(true)).await.unwrap();
         serve_stats(
             &runner,
             Ok(Some(PlayerStats {
@@ -271,7 +271,7 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         sign_in(&core, ENGINE, Some("Moi"));
         serve(&runner, &invite('A'), Ok(server_view("s")));
-        core.join_add(&invite('A')).await.unwrap();
+        core.join_add(&invite('A'), Some(true)).await.unwrap();
         serve_stats(
             &runner,
             Ok(Some(PlayerStats {
@@ -291,7 +291,7 @@ mod tests {
         // The instance's invite was found through api.example.com; the session lives elsewhere.
         sign_in(&core, "https://other.example.org", Some("Moi"));
         serve(&runner, &invite('A'), Ok(server_view("s")));
-        core.join_add(&invite('A')).await.unwrap();
+        core.join_add(&invite('A'), Some(true)).await.unwrap();
         serve_stats(
             &runner,
             Ok(Some(PlayerStats {

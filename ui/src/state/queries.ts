@@ -329,6 +329,40 @@ export const useJoinPreview = (invite: string) =>
     staleTime: 15_000,
   });
 
+/** The trust step for joining `invite` (for instance `forId` when relinking or linking), or null when none is needed. Asked
+ *  once the server is on screen. */
+export const useJoinTrust = (invite: string, enabled: boolean, forId?: string) =>
+  useQuery({
+    queryKey: ['joinTrust', invite, forId ?? null] as const,
+    queryFn: () => commands.joinTrust(invite, forId),
+    enabled: enabled && isInviteLink(invite),
+    staleTime: 15_000,
+  });
+
+/** The trust step instance `id`'s server still needs, or null. */
+export const useInstanceTrust = (id: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['instanceTrust', id] as const,
+    queryFn: () => commands.instanceTrust(id),
+    enabled,
+    staleTime: 15_000,
+  });
+
+/** Take back the trust in instance `id`'s server: the next Play asks again. */
+export function useInstanceTrustForget(id: string, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => commands.instanceTrustForget(id),
+    onSuccess: (instance) => {
+      qc.setQueryData<InstanceListing>(qk.instances, (old) =>
+        old ? { ...old, instances: old.instances.map((i) => (i.id === instance.id ? instance : i)) } : old,
+      );
+      void qc.invalidateQueries({ queryKey: ['instanceTrust', id] });
+    },
+    onError: onError(opts),
+  });
+}
+
 /** Live status, polled every `base` ms (backing off after rate limits) while the window is in front. */
 export const useServerStatus = (id: string, enabled: boolean, base: number) =>
   useQuery({
@@ -485,7 +519,8 @@ export function useImportInstance() {
 export function useJoinAdd(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (link: string) => ((await requireAccount()) ? commands.joinAdd(link) : null),
+    mutationFn: async ({ link, autoUpdate }: { link: string; autoUpdate?: boolean }) =>
+      (await requireAccount()) ? commands.joinAdd(link, autoUpdate) : null,
     onSuccess: (instance) => {
       if (instance) return qc.invalidateQueries({ queryKey: qk.instances });
     },
@@ -496,7 +531,7 @@ export function useJoinAdd(opts: Opts = {}) {
 export function useServerRelink(id: string, opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (link: string) => commands.serverRelink(id, link),
+    mutationFn: ({ link, autoUpdate }: { link: string; autoUpdate?: boolean }) => commands.serverRelink(id, link, autoUpdate),
     onSuccess: () => {
       for (const queryKey of [qk.instances, qk.serverStatus(id), qk.packStatus(id)]) void qc.invalidateQueries({ queryKey });
     },
@@ -523,7 +558,7 @@ export function useServerUnlink(id: string, opts: Opts = {}) {
 export function useServerLink(id: string, opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (link: string) => commands.serverLink(id, link),
+    mutationFn: ({ link, autoUpdate }: { link: string; autoUpdate?: boolean }) => commands.serverLink(id, link, autoUpdate),
     onSuccess: () => {
       for (const queryKey of [qk.instances, qk.serverStatus(id), qk.packStatus(id)]) void qc.invalidateQueries({ queryKey });
     },

@@ -1185,6 +1185,12 @@ async fn find_update_previews_without_downloading() {
     assert_eq!(update.changes.to_version, "1.1.0");
     assert_eq!(update.changes.added, vec!["jei".to_string()]);
     assert_eq!(update.changes.removed, vec!["zoom".to_string()]);
+    let names: Vec<&str> = update.files.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(names, vec!["jei"], "the files behind the change line");
+    assert!(matches!(
+        update.files[0].from,
+        launcher_core::sync::plan::FileFrom::Host(_)
+    ));
     assert!(update.kept.is_empty());
     assert_eq!(update.desired.pack_version, "1.1.0");
     assert_eq!(

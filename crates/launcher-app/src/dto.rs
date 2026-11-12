@@ -16,7 +16,11 @@ use launcher_core::{
     perland::{CreateAllowance, Deletion, Disk, FreeLimits},
     public_list::Facets,
     restore::{Change, PointKind},
-    sync::{ManualFile, PendingUpdate, SyncReport},
+    sync::{
+        origin::{needs_a_look, origin_of, FileOrigin, OriginHints},
+        plan::{FileChange, FileFrom},
+        ManualFile, PendingUpdate, SyncReport,
+    },
     LauncherError,
 };
 use serde::{Deserialize, Serialize};
@@ -195,10 +199,67 @@ pub struct PackUpdate {
     pub removed: Vec<String>,
     /// Files the player edited that the update keeps as they are ("Kept your version of N files").
     pub kept: Vec<String>,
+    /// The files behind `added` and `updated`, with where each comes from. Empty when that isn't
+    /// known (a server's banner reads only the version).
+    pub files: Vec<UpdateFile>,
+    /// The update waits for the player although the pack updates on its own: it adds or changes
+    /// code that doesn't come from Modrinth or CurseForge.
+    pub held: bool,
 }
 
-impl From<&PendingUpdate> for PackUpdate {
-    fn from(u: &PendingUpdate) -> Self {
+/// One file an update adds or replaces, as the update summary lists it.
+///
+/// Seam: once the Engine's mod-safety scan is live, a per-file verdict line belongs here (and a
+/// "Perland removed N files" count on [`PackUpdate`]); none is read or invented today.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateFile {
+    pub name: String,
+    pub change: FileChange,
+    pub origin: FileOrigin,
+    /// The website a `web` file comes from.
+    pub host: Option<String>,
+    /// Code from outside Modrinth and CurseForge: the summary calls it out, and it is never
+    /// installed without the player seeing it.
+    pub needs_look: bool,
+}
+
+/// What the launcher knows about an update's files without asking anyone: a Modrinth modpack's
+/// pack file is Modrinth's, anything else's is just the pack file.
+pub(crate) fn plain_hints(u: &PendingUpdate) -> OriginHints {
+    let modrinth = matches!(
+        u.source,
+        launcher_core::instances::SourceRef::Modrinth { .. }
+    ) || u
+        .desired
+        .stamp
+        .starts_with(launcher_core::sources::perland::MODRINTH_PREFIX);
+    if modrinth {
+        OriginHints::modrinth_pack()
+    } else {
+        OriginHints::default()
+    }
+}
+
+impl PackUpdate {
+    pub(crate) fn with_hints(u: &PendingUpdate, hints: &OriginHints) -> Self {
+        let files = u
+            .files
+            .iter()
+            .map(|f| {
+                let origin = origin_of(f, hints);
+                UpdateFile {
+                    name: f.name.clone(),
+                    change: f.change,
+                    origin,
+                    host: match (&f.from, origin) {
+                        (FileFrom::Host(h), FileOrigin::Web) if !h.is_empty() => Some(h.clone()),
+                        _ => None,
+                    },
+                    needs_look: needs_a_look(f, origin),
+                }
+            })
+            .collect();
         Self {
             from_version: u.changes.from_version.clone(),
             to_version: u.changes.to_version.clone(),
@@ -206,7 +267,20 @@ impl From<&PendingUpdate> for PackUpdate {
             updated: u.changes.updated.clone(),
             removed: u.changes.removed.clone(),
             kept: u.kept.clone(),
+            files,
+            held: false,
         }
+    }
+
+    /// Whether any file must be seen before it is installed.
+    pub(crate) fn needs_look(&self) -> bool {
+        self.files.iter().any(|f| f.needs_look)
+    }
+}
+
+impl From<&PendingUpdate> for PackUpdate {
+    fn from(u: &PendingUpdate) -> Self {
+        Self::with_hints(u, &plain_hints(u))
     }
 }
 
@@ -439,6 +513,59 @@ pub struct JoinPreview {
     pub icon: Option<String>,
     /// The instance that already joins this server, if any: the screen offers Open.
     pub existing: Option<String>,
+}
+
+/// The trust step: what the player is told before a server's modpack installs on their
+/// computer. `None` where no step is needed (a server without a modpack, one the player already
+/// trusts, or one they own).
+///
+/// Seam: once the Engine's mod-safety scan is live, the view's `pack.safety` summary belongs
+/// here as one more line ("Perland removed N files" and per-verdict counts); nothing reads or
+/// invents it today.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrustPrompt {
+    /// The name players see.
+    pub name: String,
+    /// Who runs it: the team's display name, absent when the team set none.
+    pub team: Option<String>,
+    /// The modpack's name, absent for a Modrinth modpack version (the server's own name stands).
+    pub pack: Option<String>,
+    /// How many files install on the player's computer: the mod list's count when it was read,
+    /// else the view's.
+    pub mod_count: u32,
+    /// Where those files come from; absent when the list couldn't be read.
+    pub sources: Option<ModSourceCounts>,
+    /// The server runs a Modrinth modpack version: everything comes from Modrinth.
+    pub modrinth_pack: bool,
+    /// Where the "Update this server's pack automatically" switch starts.
+    pub auto_update: bool,
+}
+
+/// How many of a pack's files come from each source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModSourceCounts {
+    pub modrinth: u32,
+    pub curseforge: u32,
+    /// Downloaded from a web address the server's team chose.
+    pub web: u32,
+    /// Uploaded to the pack by the server's owner.
+    pub uploaded: u32,
+    /// A source this launcher doesn't know yet.
+    pub other: u32,
+}
+
+impl From<launcher_core::invite::ModCounts> for ModSourceCounts {
+    fn from(c: launcher_core::invite::ModCounts) -> Self {
+        Self {
+            modrinth: c.modrinth,
+            curseforge: c.curseforge,
+            web: c.url,
+            uploaded: c.uploaded,
+            other: c.other,
+        }
+    }
 }
 
 /// A server instance's live status, for the pill, the address line and the dead-link plate.
@@ -1204,8 +1331,28 @@ mod tests {
             },
             changes: changes(),
             kept: vec!["config/a.toml".into()],
+            files: vec![
+                launcher_core::sync::plan::ChangedFile {
+                    name: "JEI".into(),
+                    path: "mods/jei.jar".into(),
+                    change: FileChange::Added,
+                    from: FileFrom::Host("github.com".into()),
+                },
+                launcher_core::sync::plan::ChangedFile {
+                    name: "Sodium".into(),
+                    path: "mods/sodium.jar".into(),
+                    change: FileChange::Updated,
+                    from: FileFrom::Host("cdn.modrinth.com".into()),
+                },
+            ],
         };
         let update = PackUpdate::from(&pending);
+        assert_eq!(update.files[0].origin, FileOrigin::Web);
+        assert_eq!(update.files[0].host.as_deref(), Some("github.com"));
+        assert!(update.files[0].needs_look);
+        assert_eq!(update.files[1].origin, FileOrigin::Modrinth);
+        assert!(!update.files[1].needs_look);
+        assert!(update.needs_look());
         assert_eq!(update.added, vec!["JEI".to_string(), "Create".to_string()]);
         assert_eq!(update.kept, vec!["config/a.toml".to_string()]);
         let json = serde_json::to_value(&update).unwrap();

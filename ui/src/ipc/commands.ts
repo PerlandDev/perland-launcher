@@ -82,6 +82,7 @@ import type {
   UpdateState,
   VersionInfo,
   YourServersPage,
+  TrustPrompt,
 } from './schema';
 
 /** The only place the UI calls into Rust. A failed call rejects with a `LauncherError` object. */
@@ -236,7 +237,15 @@ export const commands = {
   /** The canonical invite a pasted link stands for (an invite, or a server's copied modpack link), or null for a pack link. */
   inviteFromLink: (link: string) => invoke<string | null>('invite_from_link', { link }),
   joinPreview: (link: string) => invoke<JoinPreview>('join_preview', { link }),
-  joinAdd: (link: string) => invoke<Instance>('join_add', { link }),
+  /** `autoUpdate` is the trust step's answer; leave it out when no step was shown. */
+  joinAdd: (link: string, autoUpdate?: boolean) => invoke<Instance>('join_add', { link, autoUpdate: autoUpdate ?? null }),
+  /** The trust step before joining `link`, or null when none is needed. `instance` is the instance the link is for (a
+   *  relink or a link), whose trust counts when the link reaches the same server. */
+  joinTrust: (link: string, instance?: string) => invoke<TrustPrompt | null>('join_trust', { link, instance: instance ?? null }),
+  /** The trust step for instance `id`'s server, or null when none is needed. */
+  instanceTrust: (id: string) => invoke<TrustPrompt | null>('instance_trust', { id }),
+  instanceTrustSet: (id: string, autoUpdate: boolean) => invoke<Instance>('instance_trust_set', { id, autoUpdate }),
+  instanceTrustForget: (id: string) => invoke<Instance>('instance_trust_forget', { id }),
   serverStatus: (id: string) => invoke<ServerStatusView>('server_status', { id }),
   serversList: (query: ListQuery) => invoke<PublicServerPage>('servers_list', { query }),
   serversIcon: (token: string, iconVersion: string) => invoke<string | null>('servers_icon', { token, iconVersion }),
@@ -245,8 +254,9 @@ export const commands = {
   serverNewsOpened: (invite: string, newest: string) => invoke<null>('server_news_opened', { invite, newest }),
   newsImage: (invite: string, postId: string, imageVersion: string) =>
     invoke<string | null>('news_image', { invite, postId, imageVersion }),
-  serverRelink: (id: string, link: string) => invoke<Instance>('server_relink', { id, link }),
-  serverLink: (id: string, link: string) => invoke<Instance>('server_link', { id, link }),
+  serverRelink: (id: string, link: string, autoUpdate?: boolean) =>
+    invoke<Instance>('server_relink', { id, link, autoUpdate: autoUpdate ?? null }),
+  serverLink: (id: string, link: string, autoUpdate?: boolean) => invoke<Instance>('server_link', { id, link, autoUpdate: autoUpdate ?? null }),
   serverUnlink: (id: string) => invoke<Instance>('server_unlink', { id }),
   perlandStatus: () => invoke<PerlandStatus>('perland_status'),
   /** Signs in on the Perland page in the browser (OAuth), where the player picks GitHub, Discord or an email code. Null when canceled here. */

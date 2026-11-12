@@ -6,8 +6,9 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { ChangeSummary } from './ChangeSummary';
+import { isServer } from './labels';
 
-/** Play paused on an `ask` pack's update. Update and play is the one lit button; closing cancels the run. */
+/** Play paused on an `ask` pack's update, or on a server update with files from outside Modrinth and CurseForge. Update and play is the one lit button; closing cancels the run. */
 export function UpdateDialog({ instance, update }: { instance: Instance; update: PackUpdate }) {
   const { t } = useTranslation();
   const answerOnce = useSingleFlight();
@@ -32,7 +33,7 @@ export function UpdateDialog({ instance, update }: { instance: Instance; update:
         </>
       }
     >
-      <ChangeSummary update={update} />
+      <ChangeSummary update={update} server={isServer(instance)} />
     </Dialog>
   );
 }

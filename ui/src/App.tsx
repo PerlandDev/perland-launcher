@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AchievementsScreen } from './features/medals/AchievementsScreen';
 import { Accounts } from './features/accounts/Accounts';
 import { SignInPrompt } from './features/accounts/SignInPrompt';
+import { TrustDialog } from './features/trust/TrustDialog';
 import { ActivityDrawer } from './features/activity/ActivityDrawer';
 import { Browse } from './features/browse/Browse';
 import { CloseGuard } from './features/close-guard/CloseGuard';
@@ -155,6 +156,7 @@ export default function App() {
       )}
       <Toasts />
       <SignInPrompt />
+      <TrustDialog />
       <CloseGuard />
       {settings.data !== undefined && <WhatsNewOnLaunch firstRunDone={settings.data.firstRunDone} />}
     </>

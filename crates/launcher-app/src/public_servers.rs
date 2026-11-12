@@ -246,7 +246,7 @@ mod tests {
     async fn a_server_already_joined_names_its_instance() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         crate::testing::serve(&runner, &invite('A'), Ok(crate::testing::server_view("s")));
-        let joined = core.join_add(&invite('A')).await.unwrap();
+        let joined = core.join_add(&invite('A'), Some(true)).await.unwrap();
         serve_page(&runner, vec![modded('A'), modded('B')]);
         let page = core.servers_list(ListQuery::default()).await.unwrap();
         assert_eq!(

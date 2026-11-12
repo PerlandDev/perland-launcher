@@ -58,6 +58,7 @@ import searchRequests from './contract/search_requests.json';
 import serverInstanceFx from './contract/server_instance.json';
 import serverNews from './contract/server_news.json';
 import serverStatusFx from './contract/server_status.json';
+import trustPromptsFx from './contract/trust_prompts.json';
 import settingsFx from './contract/settings.json';
 import skinEntriesFx from './contract/skin_entries.json';
 import currentSkinFx from './contract/current_skin.json';
@@ -127,6 +128,7 @@ const cases: [string, ZodType, unknown][] = [
   ['server_instance', s.instance, serverInstanceFx],
   ['restore_points', s.restorePoint.nullable().array(), restorePoints],
   ['join_preview', s.joinPreview.array(), joinPreviewFx],
+  ['trust_prompts', s.trustPrompt.nullable().array(), trustPromptsFx],
   ['server_status', s.serverStatusView.array(), serverStatusFx],
   ['public_server_page', s.publicServerPage, publicServerPage],
   ['server_news', s.serverNews, serverNews],

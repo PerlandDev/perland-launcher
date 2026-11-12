@@ -28,7 +28,8 @@ use launcher_core::{
     instances::{GameSpec, Instance, InstanceStore, ServerAddress, SourceRef, UpdatePolicy},
     invite::{
         pack_link_refused, EngineInviteLink, EngineView, InviteAddress, InviteGame, InviteLink,
-        InviteModrinth, InvitePack, InvitePlayers, InviteTeam, InviteView, Url,
+        InviteMod, InviteModrinth, InviteMods, InvitePack, InvitePlayers, InviteTeam, InviteView,
+        ModSource, Url,
     },
     launch::GameExit,
     locks::InstanceLock,
@@ -56,7 +57,7 @@ use launcher_core::{
     },
     sync::{
         lockfile::{self, Managed, ManagedFile},
-        plan::Changes,
+        plan::{ChangedFile, Changes, FileChange, FileFrom},
         Cancel, Ensured, ManualFile, PendingUpdate, SyncOutcome, SyncReport,
     },
     ErrorCode, LauncherError, Result,
@@ -137,6 +138,12 @@ pub(crate) fn pending(from: &str, to: &str) -> PendingUpdate {
             removed: vec!["Zoomify".into()],
         },
         kept: vec![],
+        files: vec![ChangedFile {
+            name: "JEI".into(),
+            path: "mods/jei.jar".into(),
+            change: FileChange::Added,
+            from: FileFrom::Host("cdn.modrinth.com".into()),
+        }],
     }
 }
 
@@ -253,6 +260,24 @@ pub(crate) fn server_view(name: &str) -> EngineView {
 }
 
 /// What `invite_view` answers for `invite` from now on.
+/// The mods `invite`'s server lists: `(name, source)`, all on both sides.
+pub(crate) fn serve_mods(runner: &FakeRunner, invite: &str, list: &[(&str, ModSource)]) {
+    let key = InviteLink::parse(invite).unwrap().canonical();
+    let mods = InviteMods {
+        commit: "c".into(),
+        mods: list
+            .iter()
+            .map(|(name, source)| InviteMod {
+                name: (*name).into(),
+                side: "both".into(),
+                folder: "mods".into(),
+                source: *source,
+            })
+            .collect(),
+    };
+    runner.mods.lock().unwrap().insert(key, Ok(mods));
+}
+
 pub(crate) fn serve(runner: &FakeRunner, invite: &str, view: Result<EngineView>) {
     let key = InviteLink::parse(invite).unwrap().canonical();
     runner.views.lock().unwrap().insert(key, view);
@@ -557,6 +582,9 @@ pub(crate) struct FakeRunner {
     pub repairs: Mutex<Vec<bool>>,
     /// What `invite_icon` answers.
     pub icon: Mutex<Option<Vec<u8>>>,
+    /// What `invite_mods` answers, by canonical invite (none: the Engine has no list, 404).
+    pub mods: Mutex<HashMap<String, Result<launcher_core::invite::InviteMods>>>,
+    pub mods_reads: AtomicUsize,
     /// What `skin_texture` answers (none: no skin of its own).
     pub skin: Mutex<Option<Result<Option<Vec<u8>>>>>,
     /// The profiles `skin_texture` was asked for.
@@ -633,6 +661,8 @@ impl FakeRunner {
             engine_hints: Mutex::new(Vec::new()),
             repairs: Mutex::new(Vec::new()),
             icon: Mutex::new(None),
+            mods: Mutex::new(HashMap::new()),
+            mods_reads: AtomicUsize::new(0),
             skin: Mutex::new(None),
             skin_asks: Mutex::new(Vec::new()),
             catalog: Arc::new(FakeCatalog::default()),
@@ -924,6 +954,27 @@ impl Runner for FakeRunner {
     fn invite_icon(&self, _link: InviteLink) -> BoxFuture<Option<Vec<u8>>> {
         let icon = self.icon.lock().unwrap().clone();
         Box::pin(async move { icon })
+    }
+
+    fn invite_mods(
+        &self,
+        link: InviteLink,
+        _engine: Option<String>,
+    ) -> BoxFuture<Result<launcher_core::invite::InviteMods>> {
+        self.mods_reads.fetch_add(1, Ordering::SeqCst);
+        let answer = self
+            .mods
+            .lock()
+            .unwrap()
+            .get(&link.canonical())
+            .cloned()
+            .unwrap_or_else(|| {
+                Err(LauncherError::pack(
+                    ErrorCode::InviteGone,
+                    "This invite link doesn't work anymore",
+                ))
+            });
+        Box::pin(async move { answer })
     }
 
     fn public_page(&self, query: ListQuery) -> BoxFuture<Result<FetchedPage>> {
