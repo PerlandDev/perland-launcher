@@ -5,6 +5,7 @@ import { artSeed } from '../../art/seed';
 import { pixelUpscale } from '../../art/upscale';
 import { commands } from '../../ipc/commands';
 import type { Instance } from '../../ipc/schema';
+import { useActivity } from '../../state/activity';
 import { useAccounts, useAppInfo, useInstances, useInstanceArt, usePlaytime, useSettings } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
@@ -26,6 +27,7 @@ import { isPack, isServer, versionLine } from './labels';
 import { ManualDownloads } from './ManualDownloads';
 import { HeroPreview } from './heroPreview';
 import { pick } from './pick';
+import { PlayerStand } from './PlayerStand';
 import { UpdateDialog } from './UpdateDialog';
 import { UpdatePlate } from './UpdatePlate';
 
@@ -75,12 +77,33 @@ function InstanceView({ instance, preview = false }: { instance: Instance; previ
   // Only a real icon gets a plate: the generated initials would only repeat the name.
   const icon = art.data?.icon ?? null;
   // The plate takes the rail's shape, so the instance looks the same in both places.
-  const iconShape = useSettings().data?.iconShape ?? 'square';
+  const settings = useSettings();
+  const iconShape = settings.data?.iconShape ?? 'square';
+  // Open, the drawer takes 18rem of Home's height: no room for a figure above Play.
+  const drawerOpen = useActivity().open;
   // The second click of a double click lands before the `queued` event; hold it until Play settles.
   const playOnce = useSingleFlight();
   const nameRef = useNameFit<HTMLHeadingElement>(instance.name);
   const actions = useInstanceActions(instance);
   const menu = useRef<MenuHandle>(null);
+  const keys = (
+    <>
+      {/* Why Play is off heads the column (#116): it reads before the keys it explains, and Play's foot lines up
+          with the row beside it. A raised key like Continue, never lit, led by a pixel door (sign in) or a pixel
+          user-plus (dev builds: add an account). */}
+      {!hasAccount && accounts.isSuccess && (
+        <Button
+          icon={offlineAllowed ? <UserPlus aria-hidden /> : <Login aria-hidden />}
+          onClick={() => (offlineAllowed ? navigate({ name: 'profile', add: true }) : openSignInPrompt())}
+        >
+          {noAccount}
+        </Button>
+      )}
+      {/* Secondary, above Play and right-aligned to it: one quiet way back to where the player was. */}
+      {run.state === 'idle' && <ContinueKey id={instance.id} disabled={!hasAccount} disabledReason={noAccount} once={playOnce} />}
+    </>
+  );
+  const showPlayer = !preview && hasAccount && settings.data?.showPlayer === true && !drawerOpen;
   return (
     // Home measures its own width (`@container`), not the window's, so the wide rail narrows it honestly.
     <section
@@ -156,19 +179,12 @@ function InstanceView({ instance, preview = false }: { instance: Instance; previ
           </Button>
           <Menu ref={menu} label={t('home.more')} items={actions.items} />
           <div className="grid justify-items-end gap-3">
-            {/* Why Play is off heads the column (#116): it reads before the keys it explains, and Play's foot lines up
-                with the row beside it. A raised key like Continue, never lit, led by a pixel door (sign in) or a pixel
-                user-plus (dev builds: add an account). */}
-            {!hasAccount && accounts.isSuccess && (
-              <Button
-                icon={offlineAllowed ? <UserPlus aria-hidden /> : <Login aria-hidden />}
-                onClick={() => (offlineAllowed ? navigate({ name: 'profile', add: true }) : openSignInPrompt())}
-              >
-                {noAccount}
-              </Button>
-            )}
-            {/* Secondary, above Play and right-aligned to it: one quiet way back to where the player was. */}
-            {run.state === 'idle' && <ContinueKey id={instance.id} disabled={!hasAccount} disabledReason={noAccount} once={playOnce} />}
+            {/* The player stands on Play once Settings turn it on (it starts off), and the keys that head its column sit
+                beside the figure. Off, with no account, in the background preview and while the drawer leaves Home too
+                short for it, the keys head the column on their own. */}
+            <PlayerStand shown={showPlayer} still={run.state !== 'idle'}>
+              {keys}
+            </PlayerStand>
             <PlayButton
               state={run.state}
               progress={run.progress}

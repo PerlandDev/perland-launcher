@@ -18,6 +18,7 @@ import { ExternalLink, Folder } from '../../ui/Icon';
 import { MemorySlider } from '../../ui/MemorySlider';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Select } from '../../ui/Select';
+import { SwitchRow } from '../../ui/SwitchRow';
 import { Toggle } from '../../ui/Toggle';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { Diagnostics } from './Diagnostics';
@@ -200,6 +201,7 @@ export function Settings() {
                 ))}
               </div>
             </fieldset>
+            <SwitchRow label={t('settings.showPlayer')} hint={t('settings.showPlayerHint')} checked={data.showPlayer} onChange={(showPlayer) => edit({ showPlayer })} />
           </div>
         </section>
         <div className="grid gap-2">

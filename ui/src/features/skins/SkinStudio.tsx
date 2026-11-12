@@ -67,7 +67,7 @@ const STARTER_PIECES = ['body-plain', 'eyes-round', 'brows-straight', 'mouth-smi
 export default function SkinStudio({ skin, account }: { skin?: string; account?: string }) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
-  // What is worn, made or deleted here changes the player's own figure and wardrobe count (the Profile):
+  // What is worn, made or deleted here changes the player's own figure and wardrobe count (Home, the Profile):
   // they ask again once this screen closes.
   useEffect(() => () => void qc.invalidateQueries({ queryKey: PLAYER_SKIN_KEY }), [qc]);
   const accounts = useAccounts();

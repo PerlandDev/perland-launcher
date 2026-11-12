@@ -3681,6 +3681,61 @@
     visibility: visible;
   }
 
+  /* Home's player: the figure stands on Play's own top edge, at its left end, and the keys that sat above Play keep
+     the room to its right under a new Change skin key. A one-step laminate shade seats it on any art behind. */
+  .stand {
+    position: relative;
+    display: grid;
+    justify-items: end;
+    width: 17.5rem;
+    --figure: 13rem;
+  }
+  @media (height < 40rem) {
+    .stand {
+      --figure: 9.5rem;
+    }
+  }
+  @media (height >= 56rem) {
+    .stand {
+      --figure: 16rem;
+    }
+  }
+  .stand-player {
+    position: absolute;
+    left: -3.5rem;
+    /* Down the 0.75rem gap to Play, and by the frame's foot under the feet. */
+    bottom: calc(-0.75rem - var(--figure) * 0.0875);
+    width: calc(var(--figure) * 0.75);
+    padding: 0;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    filter: drop-shadow(0 3px 0 var(--color-ground));
+  }
+  .stand-keys {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: end;
+    gap: 0.75rem;
+    width: 100%;
+    min-width: 0;
+  }
+  /* What the figure leaves of Play's width. */
+  .stand[data-player] .stand-keys {
+    width: calc(100% - var(--figure) * 0.3);
+  }
+  /* With no key in it the column takes no room, so nothing opens a gap above Play. */
+  .stand:not(:has(.btn)) {
+    display: none;
+  }
+  .stand-keys > .btn {
+    max-width: 100%;
+  }
+  /* Pressing Play drops the figure with its face: it is standing on it. */
+  :has(> .play:active:not(:disabled)) > .stand .stand-player {
+    translate: 0 8px;
+  }
+
   /* The Profile: who is playing, then what is still to connect, the player's skin and accounts, and what they have earned.
      One column while the page is narrow (the wide rail at the smallest window), two from 48rem of page. */
   .profile {

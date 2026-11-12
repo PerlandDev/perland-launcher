@@ -36,7 +36,7 @@ function whenIdle(run: () => void): () => void {
  *
  * It shows at once as a flat front view, drawn once. The 3D figure (the Skins stage's own, so three.js loads only after
  * the first paint and is shared with that screen) then takes its place: it breathes and looks around, and waves while
- * `wave` is set. It draws 30 frames a second at most, and none at all while `still` is set (its owner holds it) or the
+ * `wave` is set. It draws 30 frames a second at most, and none at all while `still` is set (a game is running) or the
  * system asks for less motion. Without WebGL the flat figure simply stays.
  *
  * It is a picture: hidden from assistive tech, and whatever it stands beside says what it is for.
