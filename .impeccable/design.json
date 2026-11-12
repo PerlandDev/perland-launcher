@@ -199,7 +199,7 @@
       "**Do** pad `main` by the drawer's open height so Play is never covered, and keep primary form actions in a sticky row.",
       "**Do** let attract-mode parallax stop under reduced motion. State changes snap.",
       "**Do** list Browse results as rows on the ground split by inset seam hairlines, and make filters small 3px-step keys that sink into a slot with the lime lamp.",
-      "**Do** keep the project page's one lit button in its sticky action plate. Row Install stays raised and the rail's places stay flat, never lit.",
+      "**Do** keep the project page's one lit button in its sticky action plate. Row Install stays raised and the title bar's places stay flat, never lit.",
       "**Do** list an instance's files as rows on the ground split by full-width seams, with the glyph in a notched `panel` slot. Don't box them in panel cards, and don't lift a row that isn't a link."
     ],
     "donts": [

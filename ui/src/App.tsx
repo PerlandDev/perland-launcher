@@ -103,7 +103,7 @@ function Shell() {
   return (
     // The rail's menu opens Change image too, so its background preview can draw Home's header from anywhere.
     <HeroPreview.Provider value={heroCopy}>
-      <div className="grid h-full grid-rows-[2.25rem_1fr]">
+      <div className="grid h-full grid-rows-[2.75rem_1fr]">
         <TitleBar />
         <div className={`grid min-h-0 ${wide ? 'grid-cols-[15rem_1fr]' : 'grid-cols-[4.5rem_1fr]'}`}>
           <Rail />

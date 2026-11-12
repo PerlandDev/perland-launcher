@@ -20,12 +20,21 @@ import { RAIL_POLL } from '../../state/serverPoll';
 import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
 import { Menu, type MenuHandle } from '../../ui/Menu';
-import { ArrowBarLeft, ArrowBarRight, Plus, WarningDiamond } from '../../ui/Icon';
+import { ArrowBarLeft, ArrowBarRight, Plus, Search, WarningDiamond } from '../../ui/Icon';
 import { useInstanceActions } from '../home/InstanceMenu';
 import { pickId } from '../home/pick';
 import { statusWord } from '../servers/statusWord';
-import { RailPlaces } from './RailPlaces';
 import { dropIndex, moveItem, preview } from './reorder';
+
+/** From this many instances the rail offers its finder: about where the list starts to scroll at the smallest window. */
+const FINDER_FROM = 7;
+
+/** A name as the finder compares it: lower case, without accents. */
+const fold = (text: string) =>
+  text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 
 /** How far the pointer travels before a press becomes a drag; anything less is a click. */
 const DRAG_THRESHOLD = 4;
@@ -209,9 +218,10 @@ function RailItem({
   );
 }
 
-/** The launcher's places by name, then every instance as a cabinet icon; the selected one has the lit light. Arrow keys
- *  move along the cabinets, and Alt+arrows or a drag move one to a new place in the player's order.
- *  The key at the top widens the rail to show each name and status word, and the settings remember that. */
+/** Every instance as a cabinet icon; the selected one has the lit light. Arrow keys move along it,
+ *  and Alt+arrows or a drag move a cabinet to a new place in the player's order.
+ *  Its key at the top widens it to show each name and status word, and the settings remember that.
+ *  The rail is the instances' alone: the launcher's places (Skins, Servers, Browse, Achievements) are in the title bar. */
 export function Rail() {
   const { t } = useTranslation();
   const { data } = useInstances();
@@ -239,6 +249,59 @@ export function Rail() {
     [data],
   );
   const selected = route.name === 'home' || 'id' in route ? pickId(data, instanceOf(route)) : null;
+
+  // The finder: with many instances, a search box narrows the list to the names that match. Wide it is a field at the
+  // top of the list; narrow it is a key that opens the field beside the rail.
+  const [query, setQuery] = useState('');
+  const [finding, setFinding] = useState(false);
+  const findKey = useRef<HTMLButtonElement>(null);
+  const hasFinder = items.length >= FINDER_FROM;
+  const needle = hasFinder ? fold(query.trim()) : '';
+  const shown = useMemo(() => (needle ? items.filter((item) => fold(item.name).includes(needle)) : items), [items, needle]);
+  const closeFinder = (refocus: boolean) => {
+    setQuery('');
+    setFinding(false);
+    // The key comes back in the field's place; the keyboard goes back to it.
+    if (refocus && !wide) requestAnimationFrame(() => findKey.current?.focus());
+  };
+  const onFindKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Escape') {
+      // The finder's own Escape: it never also closes anything further up.
+      event.preventDefault();
+      event.stopPropagation();
+      closeFinder(true);
+    } else if (event.key === 'Enter') {
+      const first = shown[0];
+      if (!needle || !first) return;
+      event.preventDefault();
+      navigate({ name: 'home', id: first.id });
+      closeFinder(false);
+    } else if (event.key === 'ArrowDown') {
+      const first = shown[0];
+      if (!first) return;
+      event.preventDefault();
+      refs.current.get(first.id)?.focus();
+    }
+  };
+  const finder = (
+    <span className="rail-find-field">
+      <Search aria-hidden />
+      <input
+        type="search"
+        // Narrow, the field only exists once its key is pressed: the keyboard goes straight into it.
+        autoFocus={!wide}
+        value={query}
+        aria-label={t('rail.find')}
+        placeholder={t('rail.find')}
+        onChange={(event) => setQuery(event.target.value)}
+        onKeyDown={onFindKeyDown}
+        onBlur={() => {
+          // Left empty, the narrow rail's field gives its place back to the key.
+          if (!wide && query.trim() === '') setFinding(false);
+        }}
+      />
+    </span>
+  );
 
   // Only healthy instances have a place in the order; damaged ones always sit last and never move.
   const ids = useMemo(() => (data?.instances ?? []).map((i) => i.id), [data]);
@@ -352,13 +415,15 @@ export function Rail() {
       stopCarrying();
       return;
     }
-    const buttons = items.map((i) => refs.current.get(i.id)).filter((b): b is HTMLButtonElement => b !== undefined);
+    const buttons = shown.map((i) => refs.current.get(i.id)).filter((b): b is HTMLButtonElement => b !== undefined);
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
     if (event.altKey) {
       // Alt+arrows move the focused cabinet one place; they never also step focus along the rail.
       if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
       event.preventDefault();
-      const id = items[index]?.id;
+      // Narrowed to matches, the list is not the player's whole order: nothing moves.
+      if (needle) return;
+      const id = shown[index]?.id;
       const from = id === undefined ? -1 : ids.indexOf(id);
       if (from < 0) return;
       follow.current = id ?? null;
@@ -374,7 +439,7 @@ export function Rail() {
   };
 
   return (
-    <div className="rail" data-wide={wide ? '' : undefined} data-icon-shape={settings.data?.iconShape ?? 'square'}>
+    <nav aria-label={t('rail.label')} className="rail" data-wide={wide ? '' : undefined} data-icon-shape={settings.data?.iconShape ?? 'square'}>
       <Button
         variant="ghost"
         size={wide ? 'md' : 'icon'}
@@ -387,58 +452,66 @@ export function Rail() {
       >
         {wide && t('rail.collapse')}
       </Button>
-      <RailPlaces wide={wide} />
-      {/* Wide, a small heading says where the instances start; narrow, a seam does. */}
-      {wide ? (
-        <p className="rail-heading" aria-hidden>
-          {t('rail.label')}
+      {hasFinder &&
+        (wide ? (
+          <div className="rail-find">{finder}</div>
+        ) : (
+          <div className="rail-find">
+            {finding ? (
+              // Beside the rail, over the screen: the rail is too narrow for a field.
+              <div className="rail-find-pop">{finder}</div>
+            ) : (
+              <Button ref={findKey} variant="ghost" size="icon" className="rail-key" aria-label={t('rail.find')} aria-expanded={false} title={t('rail.find')} icon={<Search />} onClick={() => setFinding(true)} />
+            )}
+          </div>
+        ))}
+      {needle && shown.length === 0 && (
+        <p className="rail-none" role="status">
+          {t('rail.findNone')}
         </p>
-      ) : (
-        <span className="rail-seam" aria-hidden />
       )}
-      <nav aria-label={t('rail.label')} className="rail-instances">
-        <ul ref={listRef} className="rail-list" onKeyDown={onKeyDown}>
-          {items.map((item, index) => {
-            const order = ids.indexOf(item.id);
-            const held = carry?.id === item.id;
-            const place = carry && order >= 0 ? preview(carry, order) : null;
-            return (
-              <li
-                key={item.id}
-                data-carry={held ? '' : undefined}
-                data-drop={held && place?.moved ? '' : undefined}
-                data-shift={!held && place?.shift ? '' : undefined}
-                style={
-                  held
-                    ? ({ '--socket': `${place?.socket ?? 0}px` } as CSSProperties)
-                    : place?.shift
-                      ? ({ '--shift': `${place.shift}px` } as CSSProperties)
-                      : undefined
-                }
-              >
-                <RailItem
-                  item={item}
-                  selected={item.id === selected}
-                  entry={selected ? item.id === selected : index === 0}
-                  wide={wide}
-                  setRef={(el) => {
-                    if (el) refs.current.set(item.id, el);
-                    else refs.current.delete(item.id);
-                  }}
-                  grip={order >= 0 ? gripFor(item.id, order) : undefined}
-                  lift={carry?.id === item.id ? carry.lift : null}
-                  movable={order >= 0}
-                  endedDrag={() => {
-                    const ended = endedDrag.current;
-                    endedDrag.current = false;
-                    return ended;
-                  }}
-                />
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+      <ul ref={listRef} className="rail-list" onKeyDown={onKeyDown}>
+        {shown.map((item, index) => {
+          const order = ids.indexOf(item.id);
+          const held = carry?.id === item.id;
+          const place = carry && order >= 0 ? preview(carry, order) : null;
+          return (
+            <li
+              key={item.id}
+              data-carry={held ? '' : undefined}
+              data-drop={held && place?.moved ? '' : undefined}
+              data-shift={!held && place?.shift ? '' : undefined}
+              style={
+                held
+                  ? ({ '--socket': `${place?.socket ?? 0}px` } as CSSProperties)
+                  : place?.shift
+                    ? ({ '--shift': `${place.shift}px` } as CSSProperties)
+                    : undefined
+              }
+            >
+              <RailItem
+                item={item}
+                selected={item.id === selected}
+                // Tab enters at the selected cabinet, or the first when it isn't among those shown.
+                entry={selected && shown.some((i) => i.id === selected) ? item.id === selected : index === 0}
+                wide={wide}
+                setRef={(el) => {
+                  if (el) refs.current.set(item.id, el);
+                  else refs.current.delete(item.id);
+                }}
+                grip={order >= 0 && !needle ? gripFor(item.id, order) : undefined}
+                lift={carry?.id === item.id ? carry.lift : null}
+                movable={order >= 0 && !needle}
+                endedDrag={() => {
+                  const ended = endedDrag.current;
+                  endedDrag.current = false;
+                  return ended;
+                }}
+              />
+            </li>
+          );
+        })}
+      </ul>
       <p className="sr-only" aria-live="polite">
         {announcement}
       </p>
@@ -453,6 +526,6 @@ export function Rail() {
       >
         {wide && t('rail.newInstance')}
       </Button>
-    </div>
+    </nav>
   );
 }

@@ -9,7 +9,7 @@ import { navigate } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
-import { ChevronRight, Play, Plus, Search, Server, Shirt, Trophy } from '../../ui/Icon';
+import { ChevronRight, Package, Play, Plus, Server, Shirt, Trophy } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { pick } from '../home/pick';
 import { MedalBadge } from '../medals/MedalBadge';
@@ -145,7 +145,7 @@ function BrowsePanel() {
     <article className="panel lobby-browse" aria-labelledby="lobby-browse">
       <div className="grid gap-1">
         <h2 id="lobby-browse" className="lobby-title">
-          <Search aria-hidden />
+          <Package aria-hidden />
           {t('browse.open')}
         </h2>
         <p className="text-sm text-ink-dim">{t('lobby.browse.hint')}</p>
@@ -183,7 +183,7 @@ function MedalsPanel() {
   );
 }
 
-/** The Lobby ("Home" in the rail): everything the launcher offers on one screen, each as the real thing (the player's own
+/** The Lobby ("Home" in the title bar): everything the launcher offers on one screen, each as the real thing (the player's own
  *  figure, the busiest servers, the medals earned), never as an icon and a blurb. Its one lit key plays the last instance. */
 export function Lobby() {
   const { t } = useTranslation();

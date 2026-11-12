@@ -1421,6 +1421,76 @@
     color: var(--color-ground);
     background: var(--color-coral);
   }
+  /* The launcher's places, as tabs after the mark: flat title-bar text with a pixel glyph, never lit. The open one is
+     pressed into its slot with the lime lamp in the glyph's place, like a chosen segment. */
+  .tb-places {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+    margin-left: 1rem;
+  }
+  .tb-place {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 0.5rem;
+    height: 2rem;
+    padding: 0 0.75rem;
+    color: var(--color-ink-dim);
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    corner-shape: notch;
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 650;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .tb-place svg {
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+  .tb-place:hover {
+    color: var(--color-ink);
+    background: var(--color-raised);
+  }
+  .tb-place[aria-current='page'] {
+    color: var(--color-ink);
+    background: var(--color-panel);
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  .tb-place[aria-current='page']::before {
+    content: '';
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--color-lime);
+  }
+  .tb-place[aria-current='page'] svg {
+    display: none;
+  }
+  /* Under 68rem of window the launcher's name gives its room to the places (the mark stays); under 62rem, at the
+     960 px minimum, the tabs tighten so the account and the window controls keep theirs. */
+  @media (width < 68rem) {
+    .tb-name {
+      display: none;
+    }
+    .tb-places {
+      margin-left: 0.5rem;
+    }
+  }
+  @media (width < 62rem) {
+    .tb-place {
+      gap: 0.375rem;
+      padding: 0 0.5rem;
+    }
+  }
   /* The update-ready note: dim words and a flat Restart now, never lit. One line always; when the bar
      runs short the words truncate and Restart now keeps its room. */
   .tb-note {
@@ -1456,93 +1526,85 @@
     padding-block: 0.75rem 1rem;
     background: var(--color-ground);
   }
-  /* The launcher's places, at the top of the rail: flat rows (never cabinets, which are instances), an icon on the
-     cabinet icons' axis and, wide, the name over what the place holds. The open one stands on its step beside the
-     coin-slot light, like the selected cabinet; nothing here is ever lit. */
-  .rail-places {
+  /* The finder, shown from seven instances: a recessed search field at the top of the list while the rail is wide; narrow,
+     a ghost key that opens the same field beside the rail, over the screen. It narrows the list to the names that match. */
+  .rail-find {
+    position: relative;
     align-self: stretch;
-    padding-inline: 0.75rem;
-  }
-  .rail-places > ul {
     display: grid;
     justify-items: center;
-    gap: 0.25rem;
+    /* The key's height, kept while the narrow rail's field stands beside it, so the list below never jumps. */
+    min-height: 2.25rem;
+    padding-inline: 0.75rem;
   }
-  .rail[data-wide] .rail-places > ul {
+  .rail[data-wide] .rail-find {
     justify-items: stretch;
   }
-  .rail-place {
-    position: relative;
-    display: grid;
-    place-items: center;
-    width: 3.5rem;
-    height: 2.75rem;
+  .rail-find-field {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 2.5rem;
+    padding-inline: 0.75rem;
     color: var(--color-ink-dim);
+    background: var(--color-ground);
+    border-radius: 4px;
+    corner-shape: notch;
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+  .rail-find-field:focus-within {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+  }
+  .rail-find-field svg {
+    flex: none;
+    width: 1.125rem;
+    height: 1.125rem;
+  }
+  .rail-find-field input {
+    flex: 1;
+    min-width: 0;
+    color: var(--color-ink);
     background: transparent;
     border: 0;
+    outline: 0;
+    font: inherit;
+    font-size: 0.9375rem;
+  }
+  .rail-find-field input::placeholder {
+    color: var(--color-ink-dim);
+  }
+  .rail-find-field input::-webkit-search-cancel-button {
+    display: none;
+  }
+  /* Narrow: the field stands beside the rail on a deep-dirt step, like a menu, in the key's own row. */
+  .rail-find-pop {
+    position: absolute;
+    top: -0.5rem;
+    left: 0.5rem;
+    z-index: 30;
+    width: 15rem;
+    padding: 0.375rem;
+    background: var(--color-raised);
     border-radius: 6px;
     corner-shape: notch;
-    cursor: pointer;
+    box-shadow:
+      inset 0 0 0 1px var(--color-line),
+      0 6px 0 var(--color-dirt-deep);
   }
-  .rail[data-wide] .rail-place {
-    grid-template-columns: 3.5rem minmax(0, 1fr);
-    place-items: center start;
-    width: 100%;
-    height: 3rem;
-    padding-right: 0.75rem;
-    text-align: left;
-  }
-  .rail-place-icon {
-    display: grid;
-    place-items: center;
-    width: 3.5rem;
-  }
-  .rail-place-icon svg {
-    width: 1.375rem;
-    height: 1.375rem;
-  }
-  .rail-place .rail-name {
-    color: var(--color-ink);
-  }
-  .rail-place:hover,
-  .rail-place[data-selected] {
-    color: var(--color-ink);
-    background: var(--color-raised);
-  }
-  .rail-place[data-selected] {
-    box-shadow: 0 4px 0 var(--color-dirt-deep);
-  }
-  .rail-place[data-selected]::before {
-    content: '';
-    position: absolute;
-    left: -0.625rem;
-    top: 30%;
-    width: 4px;
-    height: 40%;
-    background: var(--color-amber);
-  }
-  /* Where the instances start: a small heading while the rail is wide, a seam while it is narrow. */
-  .rail-heading {
-    margin: 0.5rem 0 -0.25rem;
-    padding-inline: 1.5rem;
+  .rail-none {
+    align-self: stretch;
+    padding-inline: 0.75rem;
     color: var(--color-ink-dim);
     font-size: 0.8125rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    line-height: 1.375;
+    text-align: center;
   }
-  .rail-seam {
-    flex: none;
-    width: 2rem;
-    height: 2px;
-    background: var(--color-line);
-  }
-  /* The instances' own landmark: it takes the rail's spare height, and the list scrolls inside it. */
-  .rail-instances {
-    display: flex;
-    flex-direction: column;
-    align-self: stretch;
-    min-height: 0;
+  .rail[data-wide] .rail-none {
+    padding-inline: 1.5rem;
+    text-align: left;
   }
   .rail-list {
     display: flex;

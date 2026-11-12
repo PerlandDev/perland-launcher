@@ -26,8 +26,6 @@ it('moves focus with the arrow keys and enters at the selected item', async () =
   // The rail key comes first, at the top.
   await user.tab();
   expect(screen.getByRole('button', { name: 'Show names' })).toHaveFocus();
-  // The places are one stop, then the instances.
-  await user.tab();
   await user.tab();
   expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
   await user.keyboard('{ArrowDown}');
@@ -74,77 +72,10 @@ it("falls back to the generated icon when a pack's icon fails to decode", async 
   expect(sky.querySelector('svg')).not.toBeNull();
 });
 
-it("lists the launcher's places above the instances, each by name", async () => {
-  renderApp(<Rail />);
-  const first = await screen.findByRole('button', { name: 'Asalith Fields' });
-  const places = within(screen.getByRole('navigation', { name: 'Places' })).getAllByRole('button');
-  expect(places.map((p) => p.getAttribute('aria-label'))).toEqual(['Home', 'Skins', 'Servers', 'Browse', 'Achievements']);
-  for (const place of places) expect(place.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-});
-
-it('opens a place and marks it while open, with no cabinet selected', async () => {
-  const { user } = renderApp(<Rail />);
-  await screen.findByRole('button', { name: 'Asalith Fields' });
-  const servers = screen.getByRole('button', { name: 'Servers' });
-  expect(servers).not.toHaveAttribute('aria-current');
-  await user.click(servers);
-  expect(routeSnapshot()).toEqual({ name: 'servers' });
-  expect(servers).toHaveAttribute('aria-current', 'page');
-  // Servers isn't an instance's screen, so no cabinet is selected.
-  expect(screen.getByRole('button', { name: 'Asalith Fields' })).not.toHaveAttribute('aria-current');
-  await user.click(screen.getByRole('button', { name: 'Browse' }));
-  expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
-  await user.click(screen.getByRole('button', { name: 'Skins' }));
-  expect(routeSnapshot()).toEqual({ name: 'skins' });
-  await user.click(screen.getByRole('button', { name: 'Achievements' }));
-  expect(routeSnapshot()).toEqual({ name: 'achievements' });
-  await user.click(screen.getByRole('button', { name: 'Home' }));
-  expect(routeSnapshot()).toEqual({ name: 'lobby' });
-  expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
-});
-
-it('says what each place holds while the rail shows names', async () => {
-  renderApp(<Rail />, { railExpanded: true });
-  await screen.findByRole('button', { name: 'Asalith Fields' });
-  const places = screen.getByRole('navigation', { name: 'Places' });
-  // Steve's mock wardrobe holds two skins; with Perland's stats off only the time medal counts.
-  expect(await within(places).findByText('2 in your wardrobe')).toBeInTheDocument();
-  expect(within(places).getByText('Find one to play on')).toBeInTheDocument();
-  expect(within(places).getByText('Modpacks, mods, shaders')).toBeInTheDocument();
-  expect(within(places).getByText('1 of 1 medals')).toBeInTheDocument();
-  expect(screen.getByText('Instances')).toBeInTheDocument();
-});
-
-it('keeps the places to icons, named by their tooltip, while the rail is narrow', async () => {
+it("is the instances' alone: the launcher's places live in the title bar, and only New instance is at its foot", async () => {
   renderApp(<Rail />);
   await screen.findByRole('button', { name: 'Asalith Fields' });
-  const places = screen.getByRole('navigation', { name: 'Places' });
-  expect(within(places).queryByText('Find one to play on')).toBeNull();
-  expect(screen.getByRole('button', { name: 'Skins' })).toHaveAttribute('title', 'Skins');
-  expect(screen.queryByText('Instances')).toBeNull();
-});
-
-it('walks the places with the arrow keys from one tab stop', async () => {
-  const { user } = renderApp(<Rail />);
-  await screen.findByRole('button', { name: 'Asalith Fields' });
-  await user.tab();
-  expect(screen.getByRole('button', { name: 'Show names' })).toHaveFocus();
-  await user.tab();
-  expect(screen.getByRole('button', { name: 'Home' })).toHaveFocus();
-  await user.keyboard('{ArrowDown}{ArrowDown}');
-  expect(screen.getByRole('button', { name: 'Servers' })).toHaveFocus();
-  await user.keyboard('{End}');
-  expect(screen.getByRole('button', { name: 'Achievements' })).toHaveFocus();
-  // One stop for the places: the next Tab is the instances.
-  await user.tab();
-  expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
-});
-
-it('keeps only New instance at the foot', async () => {
-  renderApp(<Rail />);
-  await screen.findByRole('button', { name: 'Asalith Fields' });
-  expect(screen.getAllByRole('button', { name: 'Servers' })).toHaveLength(1);
-  expect(screen.getAllByRole('button', { name: 'Browse' })).toHaveLength(1);
+  for (const name of ['Home', 'Skins', 'Servers', 'Mods & more', 'Achievements']) expect(screen.queryByRole('button', { name })).toBeNull();
   expect(screen.getByRole('button', { name: 'New instance' })).toBeInTheDocument();
 });
 
@@ -190,13 +121,13 @@ it('shows names when its key is pressed, and remembers it in the settings', asyn
 it('round icon shape marks the rail', async () => {
   const { container } = renderApp(<Rail />, { iconShape: 'round' });
   await screen.findByRole('button', { name: 'Asalith Fields' });
-  expect(container.querySelector('.rail')).toHaveAttribute('data-icon-shape', 'round');
+  expect(container.querySelector('nav.rail')).toHaveAttribute('data-icon-shape', 'round');
 });
 
 it('leaves the rail square by default', async () => {
   const { container } = renderApp(<Rail />);
   await screen.findByRole('button', { name: 'Asalith Fields' });
-  expect(container.querySelector('.rail')).toHaveAttribute('data-icon-shape', 'square');
+  expect(container.querySelector('nav.rail')).toHaveAttribute('data-icon-shape', 'square');
 });
 
 it('shows the full name on hover and the status word in a wide row', async () => {
@@ -210,8 +141,6 @@ it('shows the full name on hover and the status word in a wide row', async () =>
 it('moves focus with the arrow keys in the wide rail too', async () => {
   const { user } = renderApp(<Rail />, { railExpanded: true });
   await screen.findByText('Asalith Fields');
-  // The places are one stop between the rail key and the cabinets.
-  await user.tab();
   await user.tab();
   await user.tab();
   expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
@@ -224,8 +153,6 @@ it('moves focus with the arrow keys in the wide rail too', async () => {
 it('moves a cabinet down with Alt+ArrowDown, keeps focus on it and says where it went', async () => {
   const { user, calls } = renderApp(<Rail />);
   await screen.findByRole('button', { name: 'Asalith Fields' });
-  // The places are one stop between the rail key and the cabinets.
-  await user.tab();
   await user.tab();
   await user.tab();
   expect(screen.getByRole('button', { name: 'Asalith Fields' })).toHaveFocus();
@@ -252,8 +179,6 @@ it('moves a cabinet up with Alt+ArrowUp in the wide rail', async () => {
 it('does nothing on Alt+ArrowUp at the top, and never moves past the end or a damaged cabinet', async () => {
   const { user, calls } = renderApp(<Rail />);
   await screen.findByRole('button', { name: 'Asalith Fields' });
-  // The places are one stop between the rail key and the cabinets.
-  await user.tab();
   await user.tab();
   await user.tab();
   await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
@@ -284,7 +209,7 @@ it('puts the order back when the move is refused', async () => {
 
 /** Lay the cabinets out 56px tall with 12px gaps, the way the rail draws them (jsdom has no layout). */
 function layOut() {
-  within(screen.getByRole('navigation', { name: 'Instances' })).getAllByRole('listitem').forEach((li, index) => {
+  screen.getAllByRole('listitem').forEach((li, index) => {
     const button = li.querySelector('button')!;
     const top = index * 68;
     button.getBoundingClientRect = () => ({ top, bottom: top + 56, height: 56, left: 0, right: 56, width: 56, x: 0, y: top, toJSON: () => null });
@@ -350,9 +275,8 @@ it('still selects on a click that wobbles under 4px, and never drags a damaged c
 
 /** The cabinets' accessible names, top to bottom. */
 function cabinetNames() {
-  // The instances' own list: the places above it are not cabinets.
-  return within(screen.getByRole('navigation', { name: 'Instances' }))
-    .getAllByRole('listitem')
+  return screen
+    .queryAllByRole('listitem')
     .map((li) => li.querySelector('button')?.getAttribute('aria-label'))
     .filter(Boolean);
 }
@@ -519,4 +443,83 @@ it('puts a ⋯ key on each wide row that opens the same menu as a right-click', 
   expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(byClick);
   await user.keyboard('{Escape}');
   expect(more).toHaveFocus();
+});
+
+/** Six more instances, so the rail has enough of them to offer its finder. */
+function manyInstances(backend: ReturnType<typeof createMockBackend>) {
+  const base = backend.state.listing.instances[0]!;
+  const more = ['Árbol Mágico', 'Bedwars Practice', 'Hardcore World', 'Mining Trip', 'Redstone Lab', 'Skyblock Co-op'];
+  backend.state.listing.instances = [...backend.state.listing.instances, ...more.map((name, n) => ({ ...base, id: `extra-${n}`, name, artSeed: null }))];
+}
+
+it('offers no finder while the instances are few', async () => {
+  renderApp(<Rail />, { railExpanded: true });
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  expect(screen.queryByRole('searchbox', { name: 'Find an instance' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Find an instance' })).toBeNull();
+});
+
+it('finds an instance by name in the wide rail, whatever its case or accents', async () => {
+  const { user, backend } = renderApp(<Rail />, { railExpanded: true });
+  manyInstances(backend);
+  const box = await screen.findByRole('searchbox', { name: 'Find an instance' });
+  await user.type(box, 'ARBOL');
+  expect(cabinetNames()).toEqual(['Árbol Mágico']);
+  await user.clear(box);
+  await user.type(box, 'craft');
+  expect(cabinetNames()).toEqual([]);
+  expect(screen.getByText('No instance has that name.')).toBeInTheDocument();
+  await user.clear(box);
+  expect(cabinetNames()).toContain('Asalith Fields');
+  expect(cabinetNames()).toContain('Skyblock Co-op');
+});
+
+it('opens the first match on Enter and puts the whole list back; Escape just clears', async () => {
+  const { user, backend } = renderApp(<Rail />, { railExpanded: true });
+  manyInstances(backend);
+  const box = await screen.findByRole('searchbox', { name: 'Find an instance' });
+  await user.type(box, 'red{Enter}');
+  expect(routeSnapshot()).toEqual({ name: 'home', id: 'extra-4' });
+  expect(box).toHaveValue('');
+  expect(cabinetNames()).toContain('Asalith Fields');
+  await user.type(box, 'min');
+  expect(cabinetNames()).toEqual(['Mining Trip']);
+  await user.keyboard('{Escape}');
+  expect(box).toHaveValue('');
+  expect(cabinetNames()).toContain('Asalith Fields');
+});
+
+it('steps from the finder into the matches with the arrow key', async () => {
+  const { user, backend } = renderApp(<Rail />, { railExpanded: true });
+  manyInstances(backend);
+  const box = await screen.findByRole('searchbox', { name: 'Find an instance' });
+  await user.type(box, 'bed{ArrowDown}');
+  expect(screen.getByRole('button', { name: 'Bedwars Practice' })).toHaveFocus();
+});
+
+it('never moves a cabinet while the list is narrowed to matches', async () => {
+  const { user, backend, calls } = renderApp(<Rail />, { railExpanded: true });
+  manyInstances(backend);
+  const box = await screen.findByRole('searchbox', { name: 'Find an instance' });
+  await user.type(box, 'a');
+  act(() => screen.getByRole('button', { name: 'Hardcore World' }).focus());
+  await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+  expect(sent(calls, 'instance_reorder')).toEqual([]);
+});
+
+it('keeps the finder behind a key in the narrow rail, opening its field beside it', async () => {
+  const { user, backend } = renderApp(<Rail />);
+  manyInstances(backend);
+  const key = await screen.findByRole('button', { name: 'Find an instance' });
+  expect(screen.queryByRole('searchbox', { name: 'Find an instance' })).toBeNull();
+  expect(key).toHaveAttribute('aria-expanded', 'false');
+  await user.click(key);
+  const box = screen.getByRole('searchbox', { name: 'Find an instance' });
+  expect(box).toHaveFocus();
+  await user.type(box, 'sky');
+  expect(cabinetNames()).toEqual(['Sky Islands', 'Skyblock Co-op']);
+  await user.keyboard('{Escape}');
+  expect(screen.queryByRole('searchbox', { name: 'Find an instance' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Find an instance' })).toHaveFocus();
+  expect(cabinetNames()).toContain('Asalith Fields');
 });

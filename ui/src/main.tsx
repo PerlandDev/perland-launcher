@@ -58,8 +58,7 @@ async function bootstrap() {
       ),
       server: (params.get("server") as ServerScenario | null) ?? undefined,
       graphics: GRAPHICS_SCENARIOS.find((v) => v === params.get("graphics")),
-      // New players get the wide rail (the core's default); `?railCompact` shows the narrow one.
-      railExpanded: !params.has("railCompact"),
+      railExpanded: params.has("railExpanded"),
       iconShape: params.get("iconShape") === "round" ? "round" : undefined,
       theme: themeParam.success ? themeParam.data : undefined,
       font: fontParam.success ? fontParam.data : undefined,

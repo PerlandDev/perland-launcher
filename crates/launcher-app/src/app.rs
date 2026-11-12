@@ -1232,7 +1232,7 @@ pub(crate) mod tests {
             core.instance_create(vanilla("Quiet")).await.unwrap();
             // Settings saved for any other reason are not the notice.
             let settings = Settings {
-                rail_expanded: false,
+                rail_expanded: true,
                 ..core.settings_get().await
             };
             core.settings_set(settings).await.unwrap();

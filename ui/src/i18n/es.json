@@ -44,17 +44,13 @@
     "damaged": "Requiere atención",
     "expand": "Mostrar nombres",
     "collapse": "Ocultar nombres",
+    "find": "Buscar una instancia",
+    "findNone": "Ninguna instancia se llama así.",
     "moved": "{{name}} pasó al puesto {{position}} de {{count}}"
   },
   "places": {
     "label": "Lugares",
-    "home": "Inicio",
-    "skinsWord_one": "{{count}} en tu guardarropa",
-    "skinsWord_other": "{{count}} en tu guardarropa",
-    "skinsEmpty": "Crea tu propia skin",
-    "serversWord": "Encuentra dónde jugar",
-    "browseWord": "Modpacks, mods, shaders",
-    "medalsWord": "{{earned}} de {{total}} medallas"
+    "home": "Inicio"
   },
   "lobby": {
     "hello": "Hola, {{name}}",
@@ -1503,8 +1499,8 @@
     "link_refused": { "message": "No se puede abrir ese enlace." }
   },
   "browse": {
-    "title": "Explorar",
-    "open": "Explorar",
+    "title": "Mods y más",
+    "open": "Mods y más",
     "findMods": "Buscar mods",
     "browseModpacks": "Explorar modpacks",
     "kinds": { "modpack": "Modpacks", "mod": "Mods", "resource_pack": "Paquetes de recursos", "shader": "Shaders" },

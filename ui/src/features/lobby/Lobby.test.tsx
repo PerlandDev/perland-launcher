@@ -7,7 +7,7 @@ import { Lobby } from './Lobby';
 it('greets the player and shows every place the launcher has', async () => {
   renderApp(<Lobby />);
   expect(await screen.findByRole('heading', { name: 'Hi, Steve', level: 1 })).toBeInTheDocument();
-  for (const name of ['Skins', 'Servers', 'Browse', 'Achievements']) {
+  for (const name of ['Skins', 'Servers', 'Mods & more', 'Achievements']) {
     expect(screen.getByRole('heading', { name, level: 2 })).toBeInTheDocument();
   }
 });
@@ -62,9 +62,9 @@ it('stays calm while the server list is closed', async () => {
   expect(screen.queryByRole('alert')).toBeNull();
 });
 
-it('opens Browse on the kind picked', async () => {
+it('opens Mods & more on the kind picked', async () => {
   const { user } = renderApp(<Lobby />);
-  const browse = (await screen.findByRole('heading', { name: 'Browse' })).closest('article')!;
+  const browse = (await screen.findByRole('heading', { name: 'Mods & more' })).closest('article')!;
   await user.click(within(browse).getByRole('button', { name: 'Shaders' }));
   expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'shader' });
 });
