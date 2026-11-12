@@ -508,6 +508,8 @@ it('never moves a cabinet while the list is narrowed to matches', async () => {
 });
 
 it('keeps the finder behind a key in the narrow rail, opening its field beside it', async () => {
+  // The keyboard goes back to the key as the field closes, not a frame later: a frame that never comes changes nothing.
+  vi.stubGlobal('requestAnimationFrame', () => 0);
   const { user, backend } = renderApp(<Rail />);
   manyInstances(backend);
   const key = await screen.findByRole('button', { name: 'Find an instance' });
@@ -522,4 +524,5 @@ it('keeps the finder behind a key in the narrow rail, opening its field beside i
   expect(screen.queryByRole('searchbox', { name: 'Find an instance' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Find an instance' })).toHaveFocus();
   expect(cabinetNames()).toContain('Asalith Fields');
+  vi.unstubAllGlobals();
 });

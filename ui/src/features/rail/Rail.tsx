@@ -258,12 +258,19 @@ export function Rail() {
   const hasFinder = items.length >= FINDER_FROM;
   const needle = hasFinder ? fold(query.trim()) : '';
   const shown = useMemo(() => (needle ? items.filter((item) => fold(item.name).includes(needle)) : items), [items, needle]);
+  /** Set when the narrow rail's field closes from the keyboard: the key that comes back in its place takes the focus. */
+  const refocusKey = useRef(false);
   const closeFinder = (refocus: boolean) => {
+    refocusKey.current = refocus && !wide;
     setQuery('');
     setFinding(false);
-    // The key comes back in the field's place; the keyboard goes back to it.
-    if (refocus && !wide) requestAnimationFrame(() => findKey.current?.focus());
   };
+  // As the key is drawn again, in the same pass, so the keyboard is never left on nothing for a frame.
+  useLayoutEffect(() => {
+    if (finding || !refocusKey.current) return;
+    refocusKey.current = false;
+    findKey.current?.focus();
+  }, [finding]);
   const onFindKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') {
       // The finder's own Escape: it never also closes anything further up.
