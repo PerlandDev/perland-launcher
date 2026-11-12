@@ -382,6 +382,12 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .first()
             .map(|i| i.title.clone())
             .unwrap_or_default();
+        let mods = stored
+            .plan
+            .items
+            .iter()
+            .filter(|i| i.kind == launcher_core::browse::compat::ContentKind::Mod)
+            .count() as u64;
         let added = browser
             .install(
                 self.instances.game_dir(&instance.id),
@@ -391,6 +397,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 self.content_sink(&instance.id),
             )
             .await?;
+        if mods > 0 {
+            self.medals_note(crate::medals::MedalEvent::ModsInstalled(mods))
+                .await;
+        }
         Ok(InstallResult { instance, added })
     }
 }

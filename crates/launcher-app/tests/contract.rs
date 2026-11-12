@@ -17,13 +17,13 @@ use launcher_app::{
         AccountReady, AppInfo, ArtChoice, BannerView, Build, ContentFile, ContinueKind,
         ContinueTarget, EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice,
         ImportPreview, ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
-        LinkCodeView, ManualProgress, MicrosoftSignInPhase, ModSourceCounts, NameListView,
-        NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest,
-        PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase,
-        PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage,
-        RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers,
-        ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary, TrustPrompt,
-        UpdateFile, YourServerCard, YourServersPage,
+        LinkCodeView, ManualProgress, MedalView, MedalsView, MicrosoftSignInPhase, ModSourceCounts,
+        NameListView, NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice,
+        PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount,
+        PerlandSignInPhase, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard,
+        PublicServerPage, RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack,
+        ServerPlayers, ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary,
+        TrustPrompt, UpdateFile, YourServerCard, YourServersPage,
     },
     events::{AppEvent, CrashFix, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -996,6 +996,38 @@ fn contract_fixtures_are_current() {
             },
         ],
     );
+    check(
+        "medals",
+        MedalsView {
+            saved_to_account: true,
+            medals: vec![
+                MedalView {
+                    id: "time".into(),
+                    group: "local".into(),
+                    kind: "ladder".into(),
+                    unit: "time".into(),
+                    tier: 2,
+                    rim: 0,
+                    value: 43_200,
+                    goal: Some(360_000),
+                    steps: vec![3_600, 36_000, 360_000, 1_800_000],
+                    earned_at: Some("2026-11-07T21:05:00Z".into()),
+                },
+                MedalView {
+                    id: "diamonds".into(),
+                    group: "perland".into(),
+                    kind: "single".into(),
+                    unit: "count".into(),
+                    tier: 0,
+                    rim: 2,
+                    value: 0,
+                    goal: None,
+                    steps: vec![],
+                    earned_at: None,
+                },
+            ],
+        },
+    );
     let steve = offline_account("Steve").unwrap();
     let alex = offline_account("Alex_Builds").unwrap();
     check(
@@ -1311,6 +1343,7 @@ fn contract_fixtures_are_current() {
                 update: None,
             },
             AppEvent::DeepLink,
+            AppEvent::MedalsChanged,
             AppEvent::PerlandSignIn {
                 phase: PerlandSignInPhase::Waiting,
             },

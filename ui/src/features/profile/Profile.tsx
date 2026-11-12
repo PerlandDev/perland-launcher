@@ -8,9 +8,9 @@ import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { Shirt } from '../../ui/Icon';
 import { formatPlaytime } from '../../ui/playtime';
-import { Medals } from '../medals/Medals';
 import { PlayerFigure } from '../player/PlayerFigure';
 import { AccountsPanel } from './AccountsPanel';
+import { MedalsOverview } from './MedalsOverview';
 import { SetUp } from './SetUp';
 import { useFocusOn } from './useFocusOn';
 
@@ -49,10 +49,10 @@ function SkinCard() {
   );
 }
 
-/** The Profile: everything about the player on one page, opened from the account in the title bar. Who is playing heads
- *  it; then, while something is still to connect, Finish setting up; beside the player's skin and their accounts, what they
- *  have earned (the medals, and the achievements on Perland servers). It takes the place of the Accounts and Achievements
- *  screens. `add` opens Add an account on arrival. */
+/** The Profile: who is playing, on one page, opened from the account in the title bar. Their name heads it; then, while
+ *  something is still to connect, Finish setting up; their skin stands beside their accounts and a look at their medals
+ *  (the medals themselves are on Medals and achievements). It takes the place of the Accounts screen. `add` opens Add an
+ *  account on arrival. */
 export function Profile({ add = false }: { add?: boolean }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -79,26 +79,28 @@ export function Profile({ add = false }: { add?: boolean }) {
           {said}
         </p>
         <div className="profile-grid">
-          <div className="profile-setup">
-            <SetUp
-              onMicrosoft={() => {
-                const file = qc.getQueryData<AccountsFile>(qk.accounts);
-                const name = file?.accounts.find((a) => a.uuid === file.active)?.username;
-                if (name) say(t('accounts.microsoftSignedIn', { name }));
-                focusOn('.profile [data-in-use] [aria-haspopup="menu"]');
-              }}
-              onPerland={(name) => {
-                say(t('perland.signedIn', { name }));
-                focusOn('.profile [data-row="perland"] [aria-haspopup="menu"]');
-              }}
-            />
-          </div>
-          <div className="profile-me">
+          {/* The player: their skin, then their accounts. */}
+          <div className="profile-col">
             <SkinCard />
             <AccountsPanel say={say} add={add} />
           </div>
-          <div className="profile-earned">
-            <Medals />
+          {/* Beside them: what is still to connect, first, then a look at their medals. */}
+          <div className="profile-col">
+            <div className="profile-setup">
+              <SetUp
+                onMicrosoft={() => {
+                  const file = qc.getQueryData<AccountsFile>(qk.accounts);
+                  const name = file?.accounts.find((a) => a.uuid === file.active)?.username;
+                  if (name) say(t('accounts.microsoftSignedIn', { name }));
+                  focusOn('.profile [data-in-use] [aria-haspopup="menu"]');
+                }}
+                onPerland={(name) => {
+                  say(t('perland.signedIn', { name }));
+                  focusOn('.profile [data-row="perland"] [aria-haspopup="menu"]');
+                }}
+              />
+            </div>
+            <MedalsOverview />
           </div>
         </div>
       </div>

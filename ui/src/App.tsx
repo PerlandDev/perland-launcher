@@ -11,6 +11,7 @@ import { HeroPreview } from './features/home/heroPreview';
 import { InstanceSettings } from './features/instance-settings/InstanceSettings';
 import { JoinServer } from './features/join/JoinServer';
 import { ManageScreen } from './features/manage/ManageScreen';
+import { AchievementsScreen } from './features/medals/AchievementsScreen';
 import { Mods } from './features/mods/Mods';
 import { NewInstance } from './features/new-instance/NewInstance';
 import { Profile } from './features/profile/Profile';
@@ -68,6 +69,8 @@ function Screen({ route }: { route: Route }) {
           <SkinStudio skin={route.skin} account={route.account} />
         </Suspense>
       );
+    case 'achievements':
+      return <AchievementsScreen />;
     case 'settings':
       return <Settings />;
     case 'profile':

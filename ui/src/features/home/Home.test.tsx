@@ -99,7 +99,7 @@ describe('Home', () => {
     await vi.waitFor(() => expect(play).toHaveAccessibleDescription('Sign in to play'));
     await user.click(await screen.findByRole('button', { name: 'Sign in to play' }));
     expect(signInPromptSnapshot()).toBe(true);
-    expect(routeSnapshot()).not.toEqual({ name: 'accounts' });
+    expect(routeSnapshot()).not.toEqual({ name: 'profile', add: true });
     expect(screen.queryByRole('button', { name: 'Add an account to play' })).toBeNull();
     // The accounts file still holds offline accounts from an older beta: they are silently gone, nothing mentions them.
     expect(screen.queryByText(/offline/i)).toBeNull();

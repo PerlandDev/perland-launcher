@@ -24,6 +24,7 @@ use launcher_core::{
         UpdatePolicy, MAX_MEMORY_MB, MIN_MEMORY_MB,
     },
     java,
+    medals::{MedalsStore, MEDALS_FILE},
     meta::{
         catalog::{self, LoaderVersion, McVersion},
         loaders::LoaderKind,
@@ -34,7 +35,7 @@ use launcher_core::{
     msa::{minecraft::McToken, secrets::KeyedSecrets},
     news_seen::{NewsSeen, NEWS_SEEN_FILE},
     paths::LauncherDirs,
-    perland::{KeyringStore, SecretStore, SessionStore},
+    perland::{KeyringStore, PlayerStats, SecretStore, SessionStore},
     platform::Platform,
     playtime,
     restore::{self, Change, ChangeCtx},
@@ -126,6 +127,13 @@ pub struct AppCore<R: Runner, H: Host> {
     /// The newest news post seen per server (`<data root>/news-seen.json`).
     pub(crate) news_seen: NewsSeen,
     whats_new_seen: WhatsNewSeen,
+    /// Medals earned on this computer, their counters and the account's medals
+    /// (`<data root>/medals.json`).
+    pub(crate) medals: MedalsStore,
+    /// The Perland stats read last, for the Perland medals' progress.
+    pub(crate) medal_stats: Mutex<Option<PlayerStats>>,
+    /// One medal sync at a time.
+    pub(crate) medals_syncing: tokio::sync::Mutex<()>,
     pub(crate) runner: Arc<R>,
     pub(crate) host: Arc<H>,
     /// One install at a time, so two installs never write the same shared files at once.
@@ -252,6 +260,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             meta,
             news_seen: NewsSeen::new(root.join(NEWS_SEEN_FILE)),
             whats_new_seen: WhatsNewSeen::new(root.join(WHATS_NEW_SEEN_FILE)),
+            medals: MedalsStore::new(root.join(MEDALS_FILE)),
+            medal_stats: Mutex::new(None),
+            medals_syncing: tokio::sync::Mutex::new(()),
             runner,
             host,
             install_slot: Arc::new(Semaphore::new(1)),
@@ -432,6 +443,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let turned_on = settings.share_anonymous_data && !before.share_anonymous_data;
         if finished_first_run || turned_on {
             telemetry.notice_shown();
+        }
+        if settings.theme != before.theme {
+            self.medals_note(crate::medals::MedalEvent::ThemeSaved(settings.theme))
+                .await;
         }
         Ok(settings)
     }

@@ -10,6 +10,7 @@ import { Check, Plus, Shirt, Trash } from '../../ui/Icon';
 import { Menu } from '../../ui/Menu';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { AccountAvatar } from '../accounts/AccountAvatar';
+import { MinecraftLink } from '../accounts/MinecraftLink';
 import { AddAccount } from './AddAccount';
 import { PerlandRow } from './PerlandRow';
 import { useFocusOn } from './useFocusOn';
@@ -18,7 +19,8 @@ import { useFocusOn } from './useFocusOn';
 const menuKey = (row: string) => `.profile [data-row="${row}"] [aria-haspopup="menu"]`;
 const ADD_KEY = '.profile [data-add-account]';
 
-/** The Profile's Accounts panel: the Perland account first (once signed in), then every Minecraft account as a row (its
+/** The Profile's Accounts panel: the Perland account first (once signed in) with its link to a Minecraft
+ *  account under it, then every Minecraft account as a row (its
  *  face, its name over its kind in words, the lime In use or a raised Use, and a menu with Edit skin and Remove), then Add
  *  an account as the list's last row, which opens its dialog. `say` speaks a change to screen readers; `add` opens the dialog on arrival. */
 export function AccountsPanel({ say, add = false }: { say: (text: string) => void; add?: boolean }) {
@@ -114,6 +116,8 @@ export function AccountsPanel({ say, add = false }: { say: (text: string) => voi
             focusOn('.profile [data-step="perland"] button', ADD_KEY);
           }}
         />
+        {/* The Perland account's link to a Minecraft account: only signed in, with the Engine's stats on. */}
+        <MinecraftLink />
         {list.map((account) => {
           const inUse = account.uuid === accounts.data?.active;
           return (

@@ -154,3 +154,10 @@ it('keeps the latest launcher update state in the query cache', () => {
   handleEvent({ type: 'update', state: { state: 'ready', version: '0.2.0' } });
   expect(queryClient.getQueryData(qk.update)).toEqual({ state: 'ready', version: '0.2.0' });
 });
+
+it('reads the medals again when Rust says they changed', () => {
+  const spy = vi.spyOn(queryClient, 'invalidateQueries');
+  handleEvent({ type: 'medals_changed' });
+  expect(spy).toHaveBeenCalledWith({ queryKey: qk.medals });
+  spy.mockRestore();
+});

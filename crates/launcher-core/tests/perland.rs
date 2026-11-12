@@ -1473,3 +1473,59 @@ async fn account_disabled_is_signed_out() {
     let e = client(&server).servers(&token()).await.unwrap_err();
     assert_eq!(e.code, ErrorCode::PerlandSignedOut);
 }
+
+#[tokio::test]
+async fn medals_read_and_save() {
+    let server = MockServer::start().await;
+    let list =
+        json!({ "medals": [ { "id": "time", "tier": 1, "earnedAt": "2026-11-02T10:00:00Z" } ] });
+    answer(&server, "GET", "/medals", 200, envelope(list.clone())).await;
+    Mock::given(method("PUT"))
+        .and(path(route("/medals")))
+        .and(body_json(json!({ "medals": [ { "id": "tailor", "tier": 1, "earnedAt": "2026-11-03T10:00:00Z" } ] })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(envelope(list)))
+        .mount(&server)
+        .await;
+    let c = client(&server);
+    let got = c.medals(&token()).await.unwrap().unwrap();
+    assert_eq!(
+        (got[0].id.as_str(), got[0].tier, got[0].earned_at.as_str()),
+        ("time", 1, "2026-11-02T10:00:00Z")
+    );
+    let sent = [launcher_core::perland::MedalEntry {
+        id: "tailor".into(),
+        tier: 1,
+        earned_at: "2026-11-03T10:00:00Z".into(),
+    }];
+    assert_eq!(
+        c.save_medals(&token(), &sent).await.unwrap().unwrap().len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn medals_are_none_on_an_engine_without_them() {
+    let server = MockServer::start().await;
+    answer(&server, "GET", "/medals", 404, json!({})).await;
+    assert_eq!(client(&server).medals(&token()).await.unwrap(), None);
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "GET",
+        "/medals",
+        503,
+        failure("player_accounts_disabled", json!({})),
+    )
+    .await;
+    assert_eq!(client(&server).medals(&token()).await.unwrap(), None);
+    let server = MockServer::start().await;
+    answer(
+        &server,
+        "GET",
+        "/medals",
+        500,
+        failure("internal", json!({})),
+    )
+    .await;
+    assert!(client(&server).medals(&token()).await.is_err());
+}

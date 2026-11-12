@@ -1,5 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
+import type { MedalsView } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
 import { renderApp, sent } from '../../test/backend';
 import { Profile } from './Profile';
@@ -33,10 +34,63 @@ it('is Your profile while there is no account, and asks for one', async () => {
   expect(screen.queryByText(/Playing as/)).toBeNull();
 });
 
-it('holds the skin, the accounts and the medals on one page', async () => {
+it('holds the skin, the accounts and a look at the medals on one page', async () => {
   renderApp(<Profile />, { perland: 'linked', microsoft: 'signedIn' });
   for (const name of ['Your skin', 'Accounts', 'Medals']) expect(await screen.findByRole('heading', { name, level: 2 })).toBeInTheDocument();
-  expect(await screen.findByRole('heading', { name: 'Achievements on Perland servers', level: 2 })).toBeInTheDocument();
+  // The medals themselves are on their own screen: here there is only the look at them.
+  expect(screen.queryByRole('heading', { name: 'Medals earned' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: /Minecraft achievements/ })).toBeNull();
+});
+
+it('shows how many medals are earned, the latest ones and what is next, and opens Medals and achievements', async () => {
+  const { user } = renderApp(<Profile />, { playtime: { 'asalith-fields': 12 * 3600 } });
+  const medals = (await screen.findByRole('heading', { name: 'Medals', level: 2 })).closest('section')!;
+  expect(await within(medals).findByText(/^\d+ of 24 medals$/)).toBeInTheDocument();
+  // The latest: at most three, each with its state and the day it was earned.
+  const latest = within(await within(medals).findByRole('list', { name: 'Latest' })).getAllByRole('listitem');
+  expect(latest.length).toBeGreaterThan(0);
+  expect(latest.length).toBeLessThanOrEqual(3);
+  const time = latest.find((li) => li.textContent?.includes('Time played'))!;
+  expect(time).toHaveTextContent('Iron · 12 h');
+  expect(time).toHaveTextContent('Earned on Nov 7, 2026');
+  // What is next: at most two ladders already started, each with its next tier and how far along it is.
+  const next = within(within(medals).getByRole('list', { name: 'Next up' })).getAllByRole('listitem');
+  expect(next.length).toBeLessThanOrEqual(2);
+  for (const item of next) {
+    expect(item).toHaveTextContent(/Next: (Iron|Gold|Diamond) at /);
+    expect(within(item).getByRole('progressbar')).toBeInTheDocument();
+  }
+  // Signed out: nothing is said about Minecraft achievements.
+  expect(within(medals).queryByText(/Minecraft achievement/)).toBeNull();
+  const key = within(medals).getByRole('button', { name: 'Medals and achievements' });
+  expect(key).not.toHaveClass('btn-primary');
+  await user.click(key);
+  expect(routeSnapshot()).toEqual({ name: 'achievements' });
+});
+
+it('counts the Minecraft achievements on Perland servers once the accounts are linked', async () => {
+  renderApp(<Profile />, { perland: 'linked', microsoft: 'signedIn' });
+  expect(await screen.findByText('22 Minecraft achievements on 3 Perland servers')).toBeInTheDocument();
+});
+
+it('says so when no medal is earned yet, and still opens Medals and achievements', async () => {
+  const { backend, qc } = renderApp(<Profile />);
+  const handle = backend.handle;
+  vi.spyOn(backend, 'handle').mockImplementation(async (cmd, args) => {
+    const answer = await handle(cmd, args);
+    if (cmd !== 'medals_view') return answer;
+    const view = answer as MedalsView;
+    return { ...view, medals: view.medals.map((m) => ({ ...m, tier: 0, value: 0, earnedAt: null })) };
+  });
+  const medals = (await screen.findByRole('heading', { name: 'Medals', level: 2 })).closest('section')!;
+  // The first answer was already on its way when the stub went in. Once it has landed, ask again: an invalidation made
+  // while a first read is in flight is folded into it.
+  await within(medals).findByText(/of 24 medals$/);
+  await act(() => qc.invalidateQueries({ queryKey: ['medals'] }));
+  expect(await within(medals).findByText('No medals yet. Your first one comes with your first game.')).toBeInTheDocument();
+  expect(within(medals).getByText('0 of 24 medals')).toBeInTheDocument();
+  expect(within(medals).queryByRole('list')).toBeNull();
+  expect(within(medals).getByRole('button', { name: 'Medals and achievements' })).toBeInTheDocument();
 });
 
 it('says how full the wardrobe and the catalog are, and opens Skins', async () => {
@@ -68,11 +122,11 @@ it('asks an offline player to finish setting up: who is playing, then Microsoft 
   expect(document.querySelectorAll('.btn-primary')).toHaveLength(1);
 });
 
-it('heads the page: the checklist comes before the skin and the accounts', async () => {
+it('heads its column: the checklist comes before the look at the medals', async () => {
   renderApp(<Profile />);
   const title = await screen.findByRole('heading', { name: 'Finish setting up' });
-  const skin = screen.getByRole('heading', { name: 'Your skin' });
-  expect(title.compareDocumentPosition(skin) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const medals = screen.getByRole('heading', { name: 'Medals', level: 2 });
+  expect(title.compareDocumentPosition(medals) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 it('asks only for what is missing', async () => {

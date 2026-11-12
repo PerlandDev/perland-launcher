@@ -90,6 +90,10 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 pinging.telemetry_start().await;
             });
+            let medals = core.clone();
+            tauri::async_runtime::spawn(async move {
+                medals.medals_start().await;
+            });
             let build = BuildKind::current();
             // Not `settings_get`: its one-time damaged-settings warning would go to no listener.
             let channel = tauri::async_runtime::block_on(core.update_channel());
@@ -157,6 +161,7 @@ fn main() {
             commands::instances_list,
             commands::instance_reorder,
             commands::playtime_list,
+            commands::medals_view,
             commands::instance_create,
             commands::import_inspect,
             commands::import_instance,
