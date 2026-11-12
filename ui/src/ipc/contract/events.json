@@ -301,6 +301,9 @@
     "type": "deep_link"
   },
   {
+    "type": "medals_changed"
+  },
+  {
     "type": "perland_sign_in",
     "phase": "waiting"
   },

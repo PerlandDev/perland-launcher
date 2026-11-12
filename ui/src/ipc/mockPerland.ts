@@ -178,6 +178,9 @@ const MOCK_SERVER_IDS = [
 ].sort();
 
 /** The linked player's numbers: the owner's server, the shared followed one, and the mock server instance's. */
+/** The stats `perland_stats` answers now (null while Perland is off or signed out). */
+export const mockPerlandStats = (perland: MockPerland, listing: Listing): PerlandStats | null => (perland.scenario === 'off' ? null : stats(perland, listing));
+
 function stats(perland: MockPerland, listing: Listing): PerlandStats | null {
   if (!perland.account || perland.scenario === 'noAddon') return null;
   if (!perland.account.minecraft) return { servers: [] };

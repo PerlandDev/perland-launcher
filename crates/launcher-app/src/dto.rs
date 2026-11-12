@@ -1422,3 +1422,37 @@ mod tests {
         );
     }
 }
+
+/// One medal as the medals screen shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MedalView {
+    pub id: String,
+    /// `local` (anyone using the launcher) or `perland` (a Perland account and server).
+    pub group: String,
+    /// `ladder` or `single`.
+    pub kind: String,
+    /// What a ladder counts: `time` (seconds) or `count`.
+    pub unit: String,
+    /// 0 while not earned; 1 to 4 (copper to diamond). A single shows its rim once earned.
+    pub tier: u8,
+    /// The tier a single shows once earned; 0 for a ladder.
+    pub rim: u8,
+    /// A ladder's reading now, or a single's 0/1 (0 for a Perland medal while no stats are read).
+    pub value: u64,
+    /// A ladder's next threshold; none at diamond and for singles.
+    pub goal: Option<u64>,
+    /// A ladder's four thresholds.
+    pub steps: Vec<u64>,
+    /// When the shown tier was first reached (RFC 3339).
+    pub earned_at: Option<String>,
+}
+
+/// The medals screen: every medal in display order, and whether they are saved to a Perland
+/// account (signed in) or this computer only.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MedalsView {
+    pub medals: Vec<MedalView>,
+    pub saved_to_account: bool,
+}

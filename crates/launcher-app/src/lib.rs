@@ -18,6 +18,7 @@ pub mod logged;
 pub mod logs;
 pub mod manage;
 mod manage_console;
+pub mod medals;
 mod minecraft_link;
 pub mod msa;
 mod news;

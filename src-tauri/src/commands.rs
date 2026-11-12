@@ -8,9 +8,10 @@ use launcher_app::dto::{
     InstallPlanView, InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
     LinkCodeView, ManageChangeResult, ManageConsoleReply, ManageDetail, ManageDiagnosis,
     ManageListChange, ManagePlayers, ManageSaved, ManageSettings, ManageSettingsSave,
-    ManagedServer, ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents,
-    PackStatus, PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage,
-    RestorePointDto, RunSnapshot, SearchRequest, ServerNews, ServerStatusView, YourServersPage,
+    ManagedServer, ManualProgress, MedalsView, NewInstance, OpenTarget, PackAddRequest,
+    PackContents, PackStatus, PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry,
+    PublicServerPage, RestorePointDto, RunSnapshot, SearchRequest, ServerNews, ServerStatusView,
+    YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -131,6 +132,11 @@ pub async fn update_restart(core: CoreState<'_>, updates: UpdatesState<'_>) -> R
 #[tauri::command]
 pub async fn instances_list(core: CoreState<'_>) -> Res<InstanceListing> {
     logged("instances_list", core.instances_list().await)
+}
+
+#[tauri::command]
+pub async fn medals_view(core: CoreState<'_>) -> Res<MedalsView> {
+    logged("medals_view", core.medals_view().await)
 }
 
 #[tauri::command]

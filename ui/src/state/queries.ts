@@ -74,6 +74,7 @@ export const qk = {
   servers: (query: ListQuery) => ['servers', query] as const,
   perland: ['perland'] as const,
   perlandStats: ['perlandStats'] as const,
+  medals: ['medals'] as const,
   yourServers: ['yourServers'] as const,
   freeServer: ['freeServer'] as const,
   serverIcon: (token: string, iconVersion: string) => ['serverIcon', token, iconVersion] as const,
@@ -195,6 +196,8 @@ export function usePerlandStats() {
     staleTime: Infinity,
   });
 }
+/** Every medal with its tier and date; read again on `medals_changed`. */
+export const useMedals = () => useQuery({ queryKey: qk.medals, queryFn: commands.medalsView });
 /** The stats of the server with `token`, or undefined while there are none. */
 export const useServerStats = (token: string): ServerStats | undefined =>
   usePerlandStats().data?.servers.find((s) => s.token === token);

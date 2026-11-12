@@ -1,0 +1,34 @@
+{
+  "medals": [
+    {
+      "id": "time",
+      "group": "local",
+      "kind": "ladder",
+      "unit": "time",
+      "tier": 2,
+      "rim": 0,
+      "value": 43200,
+      "goal": 360000,
+      "steps": [
+        3600,
+        36000,
+        360000,
+        1800000
+      ],
+      "earnedAt": "2026-11-07T21:05:00Z"
+    },
+    {
+      "id": "diamonds",
+      "group": "perland",
+      "kind": "single",
+      "unit": "count",
+      "tier": 0,
+      "rim": 2,
+      "value": 0,
+      "goal": null,
+      "steps": [],
+      "earnedAt": null
+    }
+  ],
+  "savedToAccount": true
+}

@@ -21,8 +21,9 @@ use launcher_core::{
     perland::{
         oauth::{self, CLIENT_ID},
         oauth_authorize_url, Callback, CreateFreeServer, Discovery, EmailStarted, FreeServer,
-        FreeServerSettings, FreeServerState, Language, LinkCode, Loopback, OAuthClient, Page, Pkce,
-        Player, PlayerClient, PlayerConfig, PlayerStats, Profile, Session, TokenAnswer, YourServer,
+        FreeServerSettings, FreeServerState, Language, LinkCode, Loopback, MedalEntry, OAuthClient,
+        Page, Pkce, Player, PlayerClient, PlayerConfig, PlayerStats, Profile, Session, TokenAnswer,
+        YourServer,
     },
     ErrorCode, LauncherError, Result,
 };
@@ -96,6 +97,15 @@ pub trait PlayerApi: Send + Sync + 'static {
     fn link_code(&self, engine: Url, token: String) -> BoxFuture<Result<LinkCode>>;
     fn unlink(&self, engine: Url, token: String) -> BoxFuture<Result<()>>;
     fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>>;
+    /// `GET /medals`; `None` from an Engine without them.
+    fn medals(&self, engine: Url, token: String) -> BoxFuture<Result<Option<Vec<MedalEntry>>>>;
+    /// `PUT /medals`; answers what the account holds after the merge.
+    fn save_medals(
+        &self,
+        engine: Url,
+        token: String,
+        medals: Vec<MedalEntry>,
+    ) -> BoxFuture<Result<Option<Vec<MedalEntry>>>>;
     /// Email a one-time code that adds `email` to the signed-in account.
     fn account_email_start(
         &self,
@@ -275,6 +285,21 @@ impl PlayerApi for CorePlayer {
         Box::pin(async move { client?.stats(&token).await })
     }
 
+    fn medals(&self, engine: Url, token: String) -> BoxFuture<Result<Option<Vec<MedalEntry>>>> {
+        let client = self.client(engine);
+        Box::pin(async move { client?.medals(&token).await })
+    }
+
+    fn save_medals(
+        &self,
+        engine: Url,
+        token: String,
+        medals: Vec<MedalEntry>,
+    ) -> BoxFuture<Result<Option<Vec<MedalEntry>>>> {
+        let client = self.client(engine);
+        Box::pin(async move { client?.save_medals(&token, &medals).await })
+    }
+
     fn account_email_start(
         &self,
         engine: Url,
@@ -437,6 +462,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Forget the session, in memory and in the store. The caller holds the state.
     async fn forget_session(&self, state: &mut PerlandState) {
         state.session = None;
+        self.medals_forget_account().await;
         self.jwts.clear();
         // The console's stream follows a server of this session's player.
         self.stop_console();
@@ -560,6 +586,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         }
         let shown = account(&session.profile, answer.new_player);
         state.session = Some(session);
+        self.medals_forget_account().await;
         // JWTs minted from the session this one replaced are not this player's to use, nor
         // is a console stream it opened.
         self.jwts.clear();

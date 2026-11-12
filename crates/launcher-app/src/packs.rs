@@ -218,6 +218,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let added = self.runner.add_pack(input).await;
         if let Ok(instance) = &added {
             self.telemetry_learn(instance);
+            self.medals_note(crate::medals::MedalEvent::PackInstalled)
+                .await;
         }
         self.counted(Counter::PacksInstalled, added)
     }
@@ -535,6 +537,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         make_dir_in_instance(&self.instances.instance_dir(id), &custom, id).await?;
         write_custom(&custom, CUSTOM_STEM, &bytes, ext).await?;
         self.instances.save(&instance).await?;
+        self.medals_note(crate::medals::MedalEvent::OwnPicture)
+            .await;
         Ok(instance)
     }
 
