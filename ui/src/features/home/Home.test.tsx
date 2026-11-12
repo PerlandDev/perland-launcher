@@ -76,7 +76,7 @@ describe('Home', () => {
     expect(await screen.findByRole('heading', { name: 'No instances yet' })).toBeInTheDocument();
   });
 
-  it('disables Play without an account and, in a dev build, links to Accounts', async () => {
+  it('disables Play without an account and, in a dev build, opens Add an account on the Profile', async () => {
     const { backend, user } = renderApp(<Home id="creative-flat" />);
     backend.state.accounts.active = null;
     await screen.findByRole('heading', { name: 'Creative Flat' });
@@ -86,7 +86,7 @@ describe('Home', () => {
     // Read before Play, the way it sits on screen: above it (#116).
     expect(link.compareDocumentPosition(play) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(link);
-    expect(routeSnapshot()).toEqual({ name: 'accounts' });
+    expect(routeSnapshot()).toEqual({ name: 'profile', add: true });
     expect(signInPromptSnapshot()).toBe(false);
   });
 

@@ -28,7 +28,7 @@ pub struct CurrentSkin {
     pub model: SkinModel,
 }
 
-/// The skin the launcher draws as the player's own figure (Home, the Lobby), and how many skins
+/// The skin the launcher draws as the player's own figure (Home, the Profile), and how many skins
 /// the account's wardrobe holds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

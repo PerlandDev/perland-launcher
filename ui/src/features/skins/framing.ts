@@ -7,7 +7,7 @@ import type { Vec3 } from './layout';
 import { rigAt, type Pose } from './poses';
 
 /** What the camera can frame. `upper` is head to waist; `back` is the torso from behind; `stand` is the figure alone,
- *  tight, for the launcher's own player figure (Home, the Lobby). */
+ *  tight, for the launcher's own player figure (Home, the Profile). */
 export const FOCUSES = ['figure', 'stand', 'head', 'hair', 'hat', 'upper', 'torso', 'back', 'legs', 'feet'] as const;
 export type Focus = (typeof FOCUSES)[number];
 

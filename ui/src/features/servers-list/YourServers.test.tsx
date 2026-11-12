@@ -34,7 +34,8 @@ describe('YourServers', () => {
     // Signed out, the list is never asked for.
     expect(sent(calls, 'your_servers')).toEqual([]);
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(routeSnapshot()).toEqual({ name: 'accounts' });
+    // The Profile is where the Perland account signs in.
+    expect(routeSnapshot()).toEqual({ name: 'profile' });
   });
 
   it('nothing_when_signed_in_and_empty', async () => {

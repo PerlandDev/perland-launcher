@@ -5,7 +5,7 @@ import { qk } from '../../state/queries';
 import { renderApp, sent } from '../../test/backend';
 import { ServerStatsLine } from '../servers-list/ServerStatsLine';
 import { MinecraftLink } from './MinecraftLink';
-import { PerlandAccountCard } from './PerlandAccountCard';
+import { Medals } from '../medals/Medals';
 
 const COMMAND = `/perland link ${MOCK_LINK_CODE}`;
 const row = () => screen.getByRole('region', { name: 'Minecraft account' });
@@ -63,14 +63,14 @@ describe('MinecraftLink', () => {
     expect(screen.queryByText('Minecraft account')).not.toBeInTheDocument();
   });
 
-  it('sits in the signed-in Perland card, under the profile', async () => {
-    renderApp(<PerlandAccountCard />, { perland: 'signedIn' });
+  it('sits with the medals it counts for, between their heading and the case', async () => {
+    renderApp(<Medals />, { perland: 'signedIn' });
     const link = await screen.findByRole('button', { name: 'Link Minecraft account' });
-    const card = screen.getByRole('region', { name: 'Perland account' });
-    expect(within(card).getByRole('region', { name: 'Minecraft account' })).toContainElement(link);
-    expect(within(card).getByText('Link your Minecraft account to see your achievements on each server.')).toBeInTheDocument();
-    const signOut = within(card).getByRole('button', { name: 'Sign out' });
-    expect(signOut.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const medals = screen.getByRole('region', { name: 'Medals' });
+    expect(within(medals).getByRole('region', { name: 'Minecraft account' })).toContainElement(link);
+    expect(within(medals).getByText('Link your Minecraft account to see your achievements on each server.')).toBeInTheDocument();
+    const first = within(medals).getByText('Time played', { selector: '.medal p' });
+    expect(link.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('links with a code', async () => {

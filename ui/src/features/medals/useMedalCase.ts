@@ -2,7 +2,7 @@ import { usePerlandStats, usePlaytime } from '../../state/queries';
 import { medals, type Medal } from './rules';
 
 /** The player's medal case: every medal that can show (only the local time medal while Perland's stats are off), and how
- *  many are earned. The Achievements screen and the Lobby both count from here, so they never disagree. */
+ *  many are earned. The Profile's medals count from here. */
 export function useMedalCase(): { list: Medal[]; earned: number; statsOn: boolean } {
   const playtime = usePlaytime();
   const stats = usePerlandStats();

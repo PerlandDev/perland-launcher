@@ -15,17 +15,29 @@ it('drives the window and shows the active account', async () => {
   expect(sent(calls, 'plugin:window|toggle_maximize')).toHaveLength(1);
   await user.click(screen.getByRole('button', { name: 'Settings' }));
   expect(routeSnapshot()).toEqual({ name: 'settings' });
-  await user.click(screen.getByRole('button', { name: /Steve/ }));
-  expect(routeSnapshot()).toEqual({ name: 'accounts' });
+});
+
+it('opens the Profile from the account, which sits pressed while it is open', async () => {
+  const { user } = renderApp(<TitleBar />);
+  const account = await screen.findByRole('button', { name: 'Steve, your profile' });
+  expect(account).toHaveTextContent('Steve');
+  expect(account).not.toHaveAttribute('aria-current');
+  await user.click(account);
+  expect(routeSnapshot()).toEqual({ name: 'profile' });
+  expect(account).toHaveAttribute('aria-current', 'page');
+  // No place is open then: the Profile is the account's, not a tab.
+  for (const place of within(screen.getByRole('navigation', { name: 'Places' })).getAllByRole('button')) expect(place).not.toHaveAttribute('aria-current');
+  await user.click(screen.getByRole('button', { name: 'Servers' }));
+  expect(account).not.toHaveAttribute('aria-current');
 });
 
 it("names the launcher's places as tabs after the mark, before the account", async () => {
   renderApp(<TitleBar />);
   const account = await screen.findByRole('button', { name: /Steve/ });
   const places = within(screen.getByRole('navigation', { name: 'Places' })).getAllByRole('button');
-  expect(places.map((p) => p.textContent)).toEqual(['Home', 'Skins', 'Servers', 'Mods & more', 'Achievements']);
+  expect(places.map((p) => p.textContent)).toEqual(['Skins', 'Servers', 'Mods & more']);
   for (const place of places) expect(place.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  // The account is followed by Settings: Skins and Achievements are tabs now, not icons beside it.
+  // The account is followed by Settings: Skins is a tab now, not an icon beside it.
   const buttons = screen.getAllByRole('button');
   expect(buttons.indexOf(screen.getByRole('button', { name: 'Settings' }))).toBe(buttons.indexOf(account) + 1);
 });
@@ -34,7 +46,7 @@ it('opens each place and marks the one that is open', async () => {
   const { user } = renderApp(<TitleBar />);
   await screen.findByRole('button', { name: /Steve/ });
   // On an instance's Home (where the launcher starts) no place is open: the rail marks the instance.
-  for (const name of ['Home', 'Skins', 'Servers', 'Mods & more', 'Achievements']) expect(screen.getByRole('button', { name })).not.toHaveAttribute('aria-current');
+  for (const name of ['Skins', 'Servers', 'Mods & more']) expect(screen.getByRole('button', { name })).not.toHaveAttribute('aria-current');
   await user.click(screen.getByRole('button', { name: 'Servers' }));
   expect(routeSnapshot()).toEqual({ name: 'servers' });
   expect(screen.getByRole('button', { name: 'Servers' })).toHaveAttribute('aria-current', 'page');
@@ -42,25 +54,22 @@ it('opens each place and marks the one that is open', async () => {
   expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
   await user.click(screen.getByRole('button', { name: 'Skins' }));
   expect(routeSnapshot()).toEqual({ name: 'skins' });
-  await user.click(screen.getByRole('button', { name: 'Achievements' }));
-  expect(routeSnapshot()).toEqual({ name: 'achievements' });
-  await user.click(screen.getByRole('button', { name: 'Home' }));
-  expect(routeSnapshot()).toEqual({ name: 'lobby' });
-  expect(screen.getByRole('button', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
-  expect(screen.getByRole('button', { name: 'Achievements' })).not.toHaveAttribute('aria-current');
+  expect(screen.getByRole('button', { name: 'Skins' })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('button', { name: 'Servers' })).not.toHaveAttribute('aria-current');
 });
 
 it('walks the places with the arrow keys from one tab stop', async () => {
   const { user } = renderApp(<TitleBar />);
   await screen.findByRole('button', { name: /Steve/ });
   await user.tab();
-  expect(screen.getByRole('button', { name: 'Home' })).toHaveFocus();
-  await user.keyboard('{ArrowRight}{ArrowRight}');
+  expect(screen.getByRole('button', { name: 'Skins' })).toHaveFocus();
+  await user.keyboard('{ArrowRight}');
   expect(screen.getByRole('button', { name: 'Servers' })).toHaveFocus();
   await user.keyboard('{End}');
-  expect(screen.getByRole('button', { name: 'Achievements' })).toHaveFocus();
-  await user.keyboard('{ArrowLeft}');
   expect(screen.getByRole('button', { name: 'Mods & more' })).toHaveFocus();
+  await user.keyboard('{ArrowLeft}{ArrowLeft}');
+  expect(screen.getByRole('button', { name: 'Skins' })).toHaveFocus();
+  await user.keyboard('{End}');
   // One stop for the places: the next Tab is the account.
   await user.tab();
   expect(screen.getByRole('button', { name: /Steve/ })).toHaveFocus();

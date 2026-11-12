@@ -1,7 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AchievementsScreen } from './features/medals/AchievementsScreen';
-import { Accounts } from './features/accounts/Accounts';
 import { SignInPrompt } from './features/accounts/SignInPrompt';
 import { TrustDialog } from './features/trust/TrustDialog';
 import { ActivityDrawer } from './features/activity/ActivityDrawer';
@@ -12,10 +10,10 @@ import { HeroCopy, Home } from './features/home/Home';
 import { HeroPreview } from './features/home/heroPreview';
 import { InstanceSettings } from './features/instance-settings/InstanceSettings';
 import { JoinServer } from './features/join/JoinServer';
-import { Lobby } from './features/lobby/Lobby';
 import { ManageScreen } from './features/manage/ManageScreen';
 import { Mods } from './features/mods/Mods';
 import { NewInstance } from './features/new-instance/NewInstance';
+import { Profile } from './features/profile/Profile';
 import { Rail } from './features/rail/Rail';
 import { ServersScreen } from './features/servers-list/ServersScreen';
 import { Settings } from './features/settings/Settings';
@@ -64,20 +62,16 @@ function Screen({ route }: { route: Route }) {
       return <ServersScreen />;
     case 'manage':
       return <ManageScreen key={`${route.tenantId}/${route.stack}`} tenantId={route.tenantId} stack={route.stack} />;
-    case 'accounts':
-      return <Accounts />;
     case 'skins':
       return (
         <Suspense fallback={null}>
           <SkinStudio skin={route.skin} account={route.account} />
         </Suspense>
       );
-    case 'achievements':
-      return <AchievementsScreen />;
     case 'settings':
       return <Settings />;
-    case 'lobby':
-      return <Lobby />;
+    case 'profile':
+      return <Profile add={route.add} />;
   }
 }
 

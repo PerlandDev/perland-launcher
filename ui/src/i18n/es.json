@@ -27,8 +27,7 @@
     "maximize": "Maximizar",
     "restore": "Restaurar",
     "close": "Cerrar",
-    "accounts": "Cuentas",
-    "achievements": "Logros",
+    "profile": "{{name}}, tu perfil",
     "settings": "Configuración",
     "noAccount": "Agregar cuenta",
     "updateReady": "Actualización lista · se instala al cerrar",
@@ -49,38 +48,25 @@
     "moved": "{{name}} pasó al puesto {{position}} de {{count}}"
   },
   "places": {
-    "label": "Lugares",
-    "home": "Inicio"
+    "label": "Lugares"
   },
-  "lobby": {
-    "hello": "Hola, {{name}}",
-    "welcome": "Te damos la bienvenida",
-    "subtitle": "Todo lo de tu launcher, en un solo lugar.",
-    "last": "Tu última instancia",
-    "playLabel": "Jugar {{name}}",
-    "open": "Abrir",
-    "openLabel": "Abrir {{name}}",
-    "skins": {
-      "wardrobe_one": "{{count}} en tu guardarropa.",
-      "wardrobe_other": "{{count}} en tu guardarropa.",
-      "empty": "Tu guardarropa está vacío.",
-      "looks_one": "{{count}} estilo listo en el catálogo.",
-      "looks_other": "{{count}} estilos listos en el catálogo.",
-      "open": "Abrir guardarropa"
-    },
-    "servers": {
-      "busiest": "Los más activos ahora",
-      "all": "Todos los servidores",
-      "closed": "La lista de servidores aún no está abierta.",
-      "unavailable": "No se pudo cargar la lista de servidores ahora.",
-      "none": "Aún no hay servidores públicos.",
-      "row": "{{name}}, {{status}}"
-    },
-    "browse": {
-      "hint": "Agrega a cualquier instancia, o crea una nueva desde un modpack."
-    },
-    "medals": {
-      "open": "Ver todas las medallas"
+  "profile": {
+    "title": "Tu perfil",
+    "skin": "Tu skin",
+    "wardrobe_one": "{{count}} en tu guardarropa.",
+    "wardrobe_other": "{{count}} en tu guardarropa.",
+    "wardrobeEmpty": "Tu guardarropa está vacío.",
+    "looks_one": "{{count}} estilo listo en el catálogo.",
+    "looks_other": "{{count}} estilos listos en el catálogo.",
+    "more": "Más opciones para {{name}}",
+    "morePerland": "Más opciones para tu cuenta de Perland",
+    "setup": {
+      "title": "Termina de configurar",
+      "playingAs": "Juegas como {{name}}",
+      "done": "listo",
+      "todo": "pendiente",
+      "microsoftWhy": "Inicia sesión para ponerte tus skins en Minecraft. La cuenta debe tener Minecraft: Java Edition.",
+      "perlandWhy": "Inicia sesión para crear servidores y ganar medallas."
     }
   },
   "home": {
@@ -418,8 +404,6 @@
     "use": "Usar",
     "remove": "Quitar",
     "editSkin": "Editar skin",
-    "editSkinLabel": "Editar la skin de {{name}}",
-    "removeLabel": "Quitar {{name}}",
     "removeTitle": "¿Quitar {{name}}?",
     "removeBody": "Puedes volver a agregarla cuando quieras. Tus mundos se quedan donde están.",
     "removeBodyMicrosoft": "Puedes volver a iniciar sesión cuando quieras. Tus mundos se quedan donde están.",
@@ -457,7 +441,6 @@
   },
   "perland": {
     "title": "Cuenta de Perland",
-    "pitch": "Tus servidores, incluidos los gratis, van contigo.",
     "withPerland": "Continuar con Perland",
     "waiting": "Termina de iniciar sesión en tu navegador",
     "exchanging": "Iniciando tu sesión…",
@@ -1601,7 +1584,6 @@
   },
   "medals": {
     "title": "Medallas",
-    "screenTitle": "Logros",
     "steps": "Niveles",
     "hint": "Tiempo de juego cuenta todo lo que juegas en esta computadora. Las demás se ganan en servidores creados en Perland.",
     "tier1": "Cobre",
@@ -1613,7 +1595,6 @@
     "progress": "{{value}} de {{goal}}",
     "next": "Siguiente: {{tier}} al llegar a {{goal}}",
     "top": "Nivel máximo",
-    "linkToEarn": "Vincula tu cuenta de Minecraft para ganar las medallas de servidor.",
     "earnedCount": "{{earned}} de {{total}} conseguidas",
     "time": {
       "name": "Tiempo de juego",

@@ -27,8 +27,7 @@
     "maximize": "Maximize",
     "restore": "Restore down",
     "close": "Close",
-    "accounts": "Accounts",
-    "achievements": "Achievements",
+    "profile": "{{name}}, your profile",
     "settings": "Settings",
     "noAccount": "Add account",
     "updateReady": "Update ready · installs when you close",
@@ -49,38 +48,25 @@
     "moved": "{{name}} moved to position {{position}} of {{count}}"
   },
   "places": {
-    "label": "Places",
-    "home": "Home"
+    "label": "Places"
   },
-  "lobby": {
-    "hello": "Hi, {{name}}",
-    "welcome": "Welcome",
-    "subtitle": "Everything in your launcher, in one place.",
-    "last": "Your last instance",
-    "playLabel": "Play {{name}}",
-    "open": "Open",
-    "openLabel": "Open {{name}}",
-    "skins": {
-      "wardrobe_one": "{{count}} in your wardrobe.",
-      "wardrobe_other": "{{count}} in your wardrobe.",
-      "empty": "Your wardrobe is empty.",
-      "looks_one": "{{count}} ready-made look in the catalog.",
-      "looks_other": "{{count}} ready-made looks in the catalog.",
-      "open": "Open wardrobe"
-    },
-    "servers": {
-      "busiest": "Busiest right now",
-      "all": "All servers",
-      "closed": "The server list isn't open yet.",
-      "unavailable": "The server list can't be reached right now.",
-      "none": "No public servers yet.",
-      "row": "{{name}}, {{status}}"
-    },
-    "browse": {
-      "hint": "Add to any instance, or start a new one from a modpack."
-    },
-    "medals": {
-      "open": "See all medals"
+  "profile": {
+    "title": "Your profile",
+    "skin": "Your skin",
+    "wardrobe_one": "{{count}} in your wardrobe.",
+    "wardrobe_other": "{{count}} in your wardrobe.",
+    "wardrobeEmpty": "Your wardrobe is empty.",
+    "looks_one": "{{count}} ready-made look in the catalog.",
+    "looks_other": "{{count}} ready-made looks in the catalog.",
+    "more": "More for {{name}}",
+    "morePerland": "More for your Perland account",
+    "setup": {
+      "title": "Finish setting up",
+      "playingAs": "Playing as {{name}}",
+      "done": "done",
+      "todo": "to do",
+      "microsoftWhy": "Sign in to wear your skins in Minecraft. The account must own Minecraft: Java Edition.",
+      "perlandWhy": "Sign in to create servers and earn medals."
     }
   },
   "home": {
@@ -418,8 +404,6 @@
     "use": "Use",
     "remove": "Remove",
     "editSkin": "Edit skin",
-    "editSkinLabel": "Edit {{name}}'s skin",
-    "removeLabel": "Remove {{name}}",
     "removeTitle": "Remove {{name}}?",
     "removeBody": "You can add it again any time. Your worlds stay where they are.",
     "removeBodyMicrosoft": "You can sign in again any time. Your worlds stay where they are.",
@@ -457,7 +441,6 @@
   },
   "perland": {
     "title": "Perland account",
-    "pitch": "Your servers and free servers go with you.",
     "withPerland": "Continue with Perland",
     "waiting": "Finish signing in with your browser",
     "exchanging": "Signing you in…",
@@ -1601,7 +1584,6 @@
   },
   "medals": {
     "title": "Medals",
-    "screenTitle": "Achievements",
     "steps": "Tiers",
     "hint": "Time played counts everything you play on this computer. The others are earned on servers made on Perland.",
     "tier1": "Copper",
@@ -1613,7 +1595,6 @@
     "progress": "{{value}} of {{goal}}",
     "next": "Next: {{tier}} at {{goal}}",
     "top": "Top tier",
-    "linkToEarn": "Link your Minecraft account to earn the server medals.",
     "earnedCount": "{{earned}} of {{total}} earned",
     "time": {
       "name": "Time played",

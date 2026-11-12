@@ -19,10 +19,13 @@ describe('Medals', () => {
     expect(screen.getByText('1 of 1 earned')).toBeInTheDocument();
   });
 
-  it('shows the server medals locked, with a line on linking, while not linked', async () => {
+  it('shows the server medals locked, with the Minecraft link above them, while not linked', async () => {
     renderApp(<Medals />, { perland: 'signedIn' });
-    expect(await screen.findByText('Link your Minecraft account to earn the server medals.')).toBeInTheDocument();
+    const link = await screen.findByRole('button', { name: 'Link Minecraft account' });
+    expect(screen.getByText('Link your Minecraft account to see your achievements on each server.')).toBeInTheDocument();
     const dragon = medal('Dragon slayer');
+    // The link heads the case it unlocks.
+    expect(link.compareDocumentPosition(dragon) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(dragon).toHaveTextContent('Locked: Defeat the Ender Dragon');
     expect(screen.queryByText('Achievements on Perland servers')).toBeNull();
   });
@@ -31,6 +34,7 @@ describe('Medals', () => {
     renderApp(<Medals />, { perland: 'linked' });
     await screen.findByText('Achievements on Perland servers');
     expect(screen.queryByText(/Link your Minecraft account/)).toBeNull();
+    expect(screen.getByRole('region', { name: 'Minecraft account' })).toHaveTextContent('Linked to Steve');
     expect(medal('Dragon slayer')).toHaveTextContent('Diamond · Earned');
     expect(medal('Wither summoner')).toHaveTextContent('Locked: Summon the Wither');
     // 12 + 7 + 3 IDs; the four story starts repeat, and count once.

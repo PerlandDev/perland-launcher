@@ -14,9 +14,10 @@ import { SignInSteps } from './SignInSteps';
 export interface MicrosoftSignInProps {
   /** Called once the account is signed in and in use. */
   onSignedIn?: () => void;
-  /** `primary`: the lit large key of a step that is about signing in (First run, the sign-in prompt). `inline`: Accounts' add
-   *  key, reading "Add Microsoft account". */
-  variant: 'primary' | 'inline';
+  /** `primary`: the lit large key of a step that is about signing in (First run, the sign-in prompt). `inline`: Add an
+   *  account's key, reading "Add Microsoft account". `step`: the Profile's Finish setting up step, a standard lit key reading
+   *  "Sign in with Microsoft" that stands bare in its row. */
+  variant: 'primary' | 'inline' | 'step';
   /** Off where the place around it already says why (the sign-in prompt, the offline-accounts notice). A refusal is still said. */
   showWhy?: boolean;
 }
@@ -116,7 +117,7 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
   const awaiting = isLauncherError(error) && error.code === 'microsoft_awaiting_approval';
   const failure = error !== null && !awaiting ? describeError(i18n, error) : null;
   const primary = variant === 'primary';
-  const label = primary ? t('accounts.microsoft') : t('accounts.microsoftAdd');
+  const label = variant === 'inline' ? t('accounts.microsoftAdd') : t('accounts.microsoft');
 
   const live = (
     <p aria-live="polite" className="sr-only">
@@ -126,7 +127,8 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
 
   if (busy) {
     return (
-      <div className={primary ? 'grid gap-4' : 'panel grid gap-4 p-5'}>
+      // It stands bare wherever it is (a first-run card, a dialog, a step's own line): never a card in a card.
+      <div className="grid gap-4" data-state="busy">
         <p aria-live="polite" className="font-semibold">
           {phase === 'exchanging'
             ? t('accounts.microsoftExchanging')
@@ -144,7 +146,8 @@ export function MicrosoftSignIn({ onSignedIn, variant, showWhy = true }: Microso
   }
 
   return (
-    <div className="grid gap-4">
+    // `data-state` lets a row that holds the sign-in give it a line of its own once there is more than the key to show.
+    <div className="grid gap-4" data-state={error === null ? 'idle' : 'settled'}>
       {error !== null && reached && <SignInSteps reached={reached} end={awaiting ? 'waiting' : 'fault'} />}
       {awaiting ? (
         <p className="flex items-start gap-2 text-blue-ink">

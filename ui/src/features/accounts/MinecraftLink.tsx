@@ -47,7 +47,7 @@ function setLinkedName(qc: QueryClient, name: string | null) {
 /** Whether `failure` says the session is gone (signed out elsewhere, or a 401). */
 const isSignedOut = (failure: unknown) => isLauncherError(failure) && failure.code === 'perland_signed_out';
 
-/** The Minecraft account row inside the signed-in Perland card: link it with a code typed on a Perland server, or
+/** The Minecraft account row that heads the medals on the Profile: link it with a code typed on a Perland server, or
  *  who is linked and Unlink. It renders nothing unless signed in with the Engine's stats add-on on. */
 export function MinecraftLink() {
   const { t, i18n } = useTranslation();
@@ -142,7 +142,7 @@ export function MinecraftLink() {
   }, [view, code]);
 
   const shownView = useRef(view);
-  // Moving to another state puts the player on its first control; opening Accounts focuses nothing.
+  // Moving to another state puts the player on its first control; opening the Profile focuses nothing.
   useEffect(() => {
     const before = shownView.current;
     shownView.current = view;

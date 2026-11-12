@@ -692,7 +692,7 @@ it('unavailable without cache shows the message and Paint still works', async ()
   expect(undo).toBeEnabled();
 });
 
-it("asks for the player's figure again on the way out, so Home and the Lobby show what was changed here", async () => {
+it("asks for the player's figure again on the way out, so Home and the Profile show what was changed here", async () => {
   const { qc, unmount } = renderApp(<SkinStudio />);
   await screen.findByRole('heading', { name: 'Skins' });
   qc.setQueryData(qk.playerSkin('some-account'), { texture: null, model: 'classic', wardrobe: 0 });

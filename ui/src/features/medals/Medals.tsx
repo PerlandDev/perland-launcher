@@ -1,10 +1,11 @@
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import type { ServerStats } from '../../ipc/schema';
-import { usePerlandStats, usePerlandStatus } from '../../state/queries';
+import { usePerlandStats } from '../../state/queries';
 import { ChevronRight } from '../../ui/Icon';
 import { Meter } from '../../ui/Meter';
 import { formatPlaytime } from '../../ui/playtime';
+import { MinecraftLink } from '../accounts/MinecraftLink';
 import { useAchievementsDialog } from './useAchievementsDialog';
 import { MedalBadge } from './MedalBadge';
 import type { Medal } from './rules';
@@ -98,15 +99,14 @@ function ServerRow({ server }: { server: ServerStats }) {
   );
 }
 
-/** The Achievements screen's content: the medal case (the local time medal always, the server medals while Perland's stats are
- *  on, locked with a line on linking until a Minecraft account is linked), then the Perland servers whose achievements can be
- *  opened. */
+/** What the player has earned, on their Profile: the medal case (the local time medal always, the server medals while
+ *  Perland's stats are on, locked until a Minecraft account is linked), the Minecraft link that the server medals count
+ *  through (it shows itself only signed in to Perland with the stats on), then the Perland servers whose achievements can
+ *  be opened. */
 export function Medals() {
   const { t } = useTranslation();
-  const status = usePerlandStatus();
   const stats = usePerlandStats();
-  const linked = Boolean(status.data?.account?.minecraft);
-  const { list, earned, statsOn } = useMedalCase();
+  const { list, earned } = useMedalCase();
   const servers = (stats.data?.servers ?? []).filter((s) => s.advancementIds.length > 0);
   return (
     <div className="grid gap-10">
@@ -118,7 +118,7 @@ export function Medals() {
           <p className="tabular text-sm text-ink-dim">{t('medals.earnedCount', { earned, total: list.length })}</p>
         </div>
         <p className="text-sm text-ink-dim">{t('medals.hint')}</p>
-        {statsOn && !linked && <p className="text-sm text-ink-dim">{t('medals.linkToEarn')}</p>}
+        <MinecraftLink />
         <ul className="medal-case panel">
           {list.map((medal) => (
             <MedalItem key={medal.id} medal={medal} />

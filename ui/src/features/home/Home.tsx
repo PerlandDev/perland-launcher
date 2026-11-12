@@ -94,7 +94,7 @@ function InstanceView({ instance, preview = false }: { instance: Instance; previ
       {!hasAccount && accounts.isSuccess && (
         <Button
           icon={offlineAllowed ? <UserPlus aria-hidden /> : <Login aria-hidden />}
-          onClick={() => (offlineAllowed ? navigate({ name: 'accounts' }) : openSignInPrompt())}
+          onClick={() => (offlineAllowed ? navigate({ name: 'profile', add: true }) : openSignInPrompt())}
         >
           {noAccount}
         </Button>
