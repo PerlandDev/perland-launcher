@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { beginContentInstall } from '../../state/contentProgress';
 import { routeSnapshot } from '../../state/route';
@@ -15,31 +15,73 @@ it('drives the window and shows the active account', async () => {
   expect(sent(calls, 'plugin:window|toggle_maximize')).toHaveLength(1);
   await user.click(screen.getByRole('button', { name: 'Settings' }));
   expect(routeSnapshot()).toEqual({ name: 'settings' });
-  await user.click(screen.getByRole('button', { name: /Steve/ }));
-  expect(routeSnapshot()).toEqual({ name: 'accounts' });
 });
 
-it('opens Skins from the shirt after the account', async () => {
+it('opens the Profile from the account, which sits pressed while it is open', async () => {
   const { user } = renderApp(<TitleBar />);
-  const account = await screen.findByRole('button', { name: /Steve/ });
-  const skins = screen.getByRole('button', { name: 'Skins' });
-  const buttons = screen.getAllByRole('button');
-  expect(buttons.indexOf(skins)).toBe(buttons.indexOf(account) + 1);
-  await user.click(skins);
-  expect(routeSnapshot()).toEqual({ name: 'skins' });
+  const account = await screen.findByRole('button', { name: 'Steve, your profile' });
+  expect(account).toHaveTextContent('Steve');
+  expect(account).not.toHaveAttribute('aria-current');
+  await user.click(account);
+  expect(routeSnapshot()).toEqual({ name: 'profile' });
+  expect(account).toHaveAttribute('aria-current', 'page');
+  // No place is open then: the Profile is the account's, not a tab.
+  for (const place of within(screen.getByRole('navigation', { name: 'Places' })).getAllByRole('button')) expect(place).not.toHaveAttribute('aria-current');
+  await user.click(screen.getByRole('button', { name: 'Servers' }));
+  expect(account).not.toHaveAttribute('aria-current');
 });
 
-it('opens Medals and achievements from the trophy between Skins and Settings', async () => {
+it("names the launcher's places as tabs after the mark, before the account", async () => {
+  renderApp(<TitleBar />);
+  const account = await screen.findByRole('button', { name: /Steve/ });
+  const places = within(screen.getByRole('navigation', { name: 'Places' })).getAllByRole('button');
+  expect(places.map((p) => p.textContent)).toEqual(['Skins', 'Servers', 'Mods & more', 'Medals and achievements']);
+  for (const place of places) expect(place.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // The account is followed by Settings: Skins is a tab now, not an icon beside it.
+  const buttons = screen.getAllByRole('button');
+  expect(buttons.indexOf(screen.getByRole('button', { name: 'Settings' }))).toBe(buttons.indexOf(account) + 1);
+});
+
+it('opens each place and marks the one that is open', async () => {
   const { user } = renderApp(<TitleBar />);
   await screen.findByRole('button', { name: /Steve/ });
-  const skins = screen.getByRole('button', { name: 'Skins' });
-  const trophy = screen.getByRole('button', { name: 'Medals and achievements' });
-  const buttons = screen.getAllByRole('button');
-  const at = (b: HTMLElement) => buttons.indexOf(b);
-  expect(at(trophy)).toBe(at(skins) + 1);
-  expect(at(screen.getByRole('button', { name: 'Settings' }))).toBe(at(trophy) + 1);
-  await user.click(trophy);
+  // On an instance's Home (where the launcher starts) no place is open: the rail marks the instance.
+  for (const name of ['Skins', 'Servers', 'Mods & more', 'Medals and achievements']) expect(screen.getByRole('button', { name })).not.toHaveAttribute('aria-current');
+  await user.click(screen.getByRole('button', { name: 'Servers' }));
+  expect(routeSnapshot()).toEqual({ name: 'servers' });
+  expect(screen.getByRole('button', { name: 'Servers' })).toHaveAttribute('aria-current', 'page');
+  await user.click(screen.getByRole('button', { name: 'Mods & more' }));
+  expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
+  await user.click(screen.getByRole('button', { name: 'Skins' }));
+  expect(routeSnapshot()).toEqual({ name: 'skins' });
+  expect(screen.getByRole('button', { name: 'Skins' })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('button', { name: 'Servers' })).not.toHaveAttribute('aria-current');
+  await user.click(screen.getByRole('button', { name: 'Medals and achievements' }));
   expect(routeSnapshot()).toEqual({ name: 'achievements' });
+  expect(screen.getByRole('button', { name: 'Medals and achievements' })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('button', { name: 'Skins' })).not.toHaveAttribute('aria-current');
+});
+
+it('walks the places with the arrow keys from one tab stop', async () => {
+  const { user } = renderApp(<TitleBar />);
+  await screen.findByRole('button', { name: /Steve/ });
+  await user.tab();
+  expect(screen.getByRole('button', { name: 'Skins' })).toHaveFocus();
+  await user.keyboard('{ArrowRight}');
+  expect(screen.getByRole('button', { name: 'Servers' })).toHaveFocus();
+  await user.keyboard('{End}');
+  expect(screen.getByRole('button', { name: 'Medals and achievements' })).toHaveFocus();
+  await user.keyboard('{ArrowLeft}');
+  expect(screen.getByRole('button', { name: 'Mods & more' })).toHaveFocus();
+  await user.keyboard('{End}');
+  // One stop for the places: the next Tab is the account.
+  await user.tab();
+  expect(screen.getByRole('button', { name: /Steve/ })).toHaveFocus();
+});
+
+it('has no places while nothing can be reached (first run, settings failed)', () => {
+  renderApp(<TitleBar minimal />);
+  expect(screen.queryByRole('navigation', { name: 'Places' })).toBeNull();
 });
 
 it('draws the settings button as a cog', async () => {

@@ -311,6 +311,7 @@ fn main() {
             commands::skin_delete,
             commands::skin_export,
             commands::skin_current,
+            commands::player_skin,
             commands::skin_sync_current,
             commands::skin_wear,
             commands::skin_catalog,

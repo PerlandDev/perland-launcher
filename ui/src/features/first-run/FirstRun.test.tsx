@@ -308,7 +308,7 @@ it('opens Browse in the app shell once first run is done', async () => {
   const rendered = renderApp(<App />, { firstRun: true, release: true, offlineLocked: true });
   const browse = await toInstanceStep(rendered);
   await rendered.user.click(browse);
-  expect(await screen.findByRole('heading', { name: 'Explorar' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Mods y más' })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: 'Modpacks' })).toHaveAttribute('aria-selected', 'true');
   expect(screen.queryByRole('heading', { name: 'Tu primera instancia' })).not.toBeInTheDocument();
 });

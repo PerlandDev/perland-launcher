@@ -3,7 +3,8 @@ import { navigate } from '../../state/route';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Medals } from './Medals';
 
-/** The title bar's trophy: the medal case, then the achievements earned on servers made on Perland. */
+/** Medals and achievements, the title bar's trophy tab (the Profile's overview opens it too): the medals, then the
+ *  Minecraft achievements earned on servers made on Perland. */
 export function AchievementsScreen() {
   const { t } = useTranslation();
   return (

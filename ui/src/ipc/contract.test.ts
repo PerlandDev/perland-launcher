@@ -62,6 +62,7 @@ import trustPromptsFx from './contract/trust_prompts.json';
 import settingsFx from './contract/settings.json';
 import skinEntriesFx from './contract/skin_entries.json';
 import currentSkinFx from './contract/current_skin.json';
+import playerSkinFx from './contract/player_skin.json';
 import skinEntryLookFx from './contract/skin_entry_look.json';
 import skinCatalogFx from './contract/skin_catalog.json';
 import medalsFx from './contract/medals.json';
@@ -85,6 +86,7 @@ const cases: [string, ZodType, unknown][] = [
   ['accounts', s.accountsFile, accounts],
   ['skin_entries', s.skinEntry.array(), skinEntriesFx],
   ['current_skin', s.currentSkin.nullable().array(), currentSkinFx],
+  ['player_skin', s.playerSkin.array(), playerSkinFx],
   ['skin_entry_look', s.skinEntry.array(), skinEntryLookFx],
   ['skin_catalog', s.catalogAnswer.array(), skinCatalogFx],
   ['medals', s.medalsView, medalsFx],

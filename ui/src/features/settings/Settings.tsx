@@ -3,7 +3,10 @@ import { useTranslation } from 'react-i18next';
 import mark from '../../assets/mark.svg';
 import { applyLanguage } from '../../i18n';
 import { commands } from '../../ipc/commands';
-import type { GraphicsCard, Lang } from '../../ipc/schema';
+import { transitions as transitionsSchema, type GraphicsCard, type Lang } from '../../ipc/schema';
+
+/** How screens come in, in the order Settings offers them: the default first. */
+const TRANSITIONS = transitionsSchema.options;
 import { applyAppearance, FONTS, THEMES, type Appearance } from '../../state/appearance';
 import { useAppInfo, useSettings } from '../../state/queries';
 import { WHAT_IS_SENT } from '../../state/privacy';
@@ -182,6 +185,17 @@ export function Settings() {
                       onChange={() => edit({ iconShape: shape })}
                     />
                     {shape === 'square' ? t('settings.iconSquare') : t('settings.iconRound')}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="grid gap-2">
+              <legend className="text-sm font-semibold">{t('settings.transitions')}</legend>
+              <div className="flex flex-wrap gap-2">
+                {TRANSITIONS.map((style) => (
+                  <label key={style} className="seg" data-checked={data.transitions === style ? '' : undefined}>
+                    <input type="radio" name="transitions" className="sr-only" checked={data.transitions === style} onChange={() => edit({ transitions: style })} />
+                    {t(`settings.transitionsOptions.${style}`)}
                   </label>
                 ))}
               </div>

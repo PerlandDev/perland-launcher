@@ -27,7 +27,7 @@
     "maximize": "Maximizar",
     "restore": "Restaurar",
     "close": "Cerrar",
-    "accounts": "Cuentas",
+    "profile": "{{name}}, tu perfil",
     "achievements": "Medallas y logros",
     "settings": "Configuración",
     "noAccount": "Agregar cuenta",
@@ -44,9 +44,43 @@
     "damaged": "Requiere atención",
     "expand": "Mostrar nombres",
     "collapse": "Ocultar nombres",
+    "find": "Buscar una instancia",
+    "findNone": "Ninguna instancia se llama así.",
     "moved": "{{name}} pasó al puesto {{position}} de {{count}}"
   },
+  "places": {
+    "label": "Lugares"
+  },
+  "profile": {
+    "title": "Tu perfil",
+    "skin": "Tu skin",
+    "wardrobe_one": "{{count}} en tu guardarropa.",
+    "wardrobe_other": "{{count}} en tu guardarropa.",
+    "wardrobeEmpty": "Tu guardarropa está vacío.",
+    "looks_one": "{{count}} estilo listo en el catálogo.",
+    "looks_other": "{{count}} estilos listos en el catálogo.",
+    "more": "Más opciones para {{name}}",
+    "morePerland": "Más opciones para tu cuenta de Perland",
+    "medals": {
+      "latest": "Las más recientes",
+      "next": "Lo que sigue",
+      "none": "Aún no tienes medallas. La primera llega con tu primera partida.",
+      "achievements_one": "{{count}} logro de Minecraft",
+      "achievements_other": "{{count}} logros de Minecraft",
+      "onServers_one": "en {{count}} servidor de Perland",
+      "onServers_other": "en {{count}} servidores de Perland"
+    },
+    "setup": {
+      "title": "Termina de configurar",
+      "playingAs": "Juegas como {{name}}",
+      "done": "listo",
+      "todo": "pendiente",
+      "microsoftWhy": "Inicia sesión para ponerte tus skins en Minecraft. La cuenta debe tener Minecraft: Java Edition.",
+      "perlandWhy": "Inicia sesión para crear servidores y guardar tus medallas en tu cuenta."
+    }
+  },
   "home": {
+    "changeSkin": "Cambiar skin",
     "emptyTitle": "Todavía no tienes instancias",
     "emptyBody": "Una instancia es una configuración de Minecraft: una versión, un loader y sus propios mundos.",
     "emptyAction": "Crear una instancia",
@@ -380,8 +414,6 @@
     "use": "Usar",
     "remove": "Quitar",
     "editSkin": "Editar skin",
-    "editSkinLabel": "Editar la skin de {{name}}",
-    "removeLabel": "Quitar {{name}}",
     "removeTitle": "¿Quitar {{name}}?",
     "removeBody": "Puedes volver a agregarla cuando quieras. Tus mundos se quedan donde están.",
     "removeBodyMicrosoft": "Puedes volver a iniciar sesión cuando quieras. Tus mundos se quedan donde están.",
@@ -419,7 +451,6 @@
   },
   "perland": {
     "title": "Cuenta de Perland",
-    "pitch": "Tus servidores, incluidos los gratis, van contigo.",
     "withPerland": "Continuar con Perland",
     "waiting": "Termina de iniciar sesión en tu navegador",
     "exchanging": "Iniciando tu sesión…",
@@ -476,6 +507,8 @@
     "font": "Fuente del texto",
     "fontHyperlegible": "Fácil de leer",
     "fontSystem": "La de tu computadora",
+    "transitions": "Transiciones entre pantallas",
+    "transitionsOptions": {"stepped": "Arcade", "smooth": "Suaves", "off": "Desactivadas"},
     "iconShape": "Íconos de instancias",
     "iconSquare": "Cuadrados",
     "iconRound": "Redondos",
@@ -1457,8 +1490,8 @@
     "link_refused": { "message": "No se puede abrir ese enlace." }
   },
   "browse": {
-    "title": "Explorar",
-    "open": "Explorar",
+    "title": "Mods y más",
+    "open": "Mods y más",
     "findMods": "Buscar mods",
     "browseModpacks": "Explorar modpacks",
     "kinds": { "modpack": "Modpacks", "mod": "Mods", "resource_pack": "Paquetes de recursos", "shader": "Shaders" },
@@ -1674,7 +1707,7 @@
     },
     "earnedTitle": "Medallas conseguidas",
     "lockedTitle": "Medallas por conseguir",
-    "perlandHint": "Las que llevan la etiqueta «Cuenta y servidor de Perland» se ganan jugando en servidores creados en Perland, con tu cuenta de Perland y tu cuenta de Minecraft vinculada (en Cuentas pulsa «Vincular cuenta de Minecraft», copia el código que te da y escribe /perland link CÓDIGO en el chat de un servidor de Perland).",
+    "perlandHint": "Las que llevan la etiqueta «Cuenta y servidor de Perland» se ganan jugando en servidores creados en Perland, con tu cuenta de Perland y tu cuenta de Minecraft vinculada (en tu perfil, en Cuentas, pulsa «Vincular cuenta de Minecraft», copia el código que te da y escribe /perland link CÓDIGO en el chat de un servidor de Perland).",
     "perlandTag": "Cuenta y servidor de Perland",
     "signIn": "Iniciar sesión",
     "earnedOn": "Conseguida el {{date}}",
@@ -1682,7 +1715,7 @@
     "savedAccount": "Tus medallas se guardan en tu cuenta de Perland: no las pierdes aunque reinstales el launcher o cambies de computadora.",
     "savedLocal": "Tus medallas se guardan solo en esta computadora. Inicia sesión en Perland para guardarlas en tu cuenta y no perderlas si reinstalas el launcher.",
     "mcTitle": "Logros de Minecraft",
-    "mcHint": "Los logros del propio juego (menú Progresos) que tienes en cada servidor de Perland. Necesitas tu cuenta de Perland con tu cuenta de Minecraft vinculada (en Cuentas pulsa «Vincular cuenta de Minecraft», copia el código que te da y escribe /perland link CÓDIGO en el chat de un servidor de Perland).",
+    "mcHint": "Los logros del propio juego (menú Progresos) que tienes en cada servidor de Perland. Necesitas tu cuenta de Perland con tu cuenta de Minecraft vinculada (en tu perfil, en Cuentas, pulsa «Vincular cuenta de Minecraft», copia el código que te da y escribe /perland link CÓDIGO en el chat de un servidor de Perland).",
     "mcDialogHint": "Son los logros del menú Progresos del juego. Los que tienen candado aún no los tienes en este servidor.",
     "medalsTitle": "Medallas",
     "medalsHint": "Las da el Perland Launcher. Unas se ganan usando el launcher; las que llevan la etiqueta «Cuenta y servidor de Perland», jugando en servidores de Perland.",

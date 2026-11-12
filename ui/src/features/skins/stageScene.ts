@@ -319,7 +319,16 @@ export interface Stage {
   /** Back to the framing of the focus, at its own angle and distance, with no slide. */
   resetView(): void;
   resize(width: number, height: number): void;
+  /** False holds the figure where it stands and stops the redraws (a game is running, or the system asks for less
+   *  motion); true lets it move again. A change (a new texture, a resize) is still drawn while held. */
+  setRunning(running: boolean): void;
   dispose(): void;
+}
+
+export interface StageOptions {
+  /** Draw at most this many frames a second. The editor draws every frame; a small figure that only breathes
+   *  (Home's player) is as alive at 30 and costs half. */
+  maxFps?: number;
 }
 
 /** Where each joint turns, in model space. */
@@ -359,7 +368,13 @@ const PARENT: Record<Joint, Joint | null> = {
   leftLeg: null,
 };
 
-export function createStage(canvas: HTMLCanvasElement): Stage {
+export function createStage(canvas: HTMLCanvasElement, options: StageOptions = {}): Stage {
+  /** The least time between two drawn frames, in ms; a millisecond of slack keeps a 60 Hz screen at an even 30. */
+  const frameGap = options.maxFps ? 1000 / options.maxFps - 1 : 0;
+  let drawnAt = -Infinity;
+  let running = true;
+  /** Where the figure's clock stands while it is held. */
+  let heldAt: number | null = null;
   const renderer = new WebGLRenderer({ canvas, antialias: false, alpha: true, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setClearColor(0x000000, 0);
@@ -463,8 +478,14 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
   };
 
   const draw = (now: number) => {
+    // Not yet: this frame is skipped, the next one asked for.
+    if (now - drawnAt < frameGap) {
+      frame = requestAnimationFrame(draw);
+      return;
+    }
+    drawnAt = now;
     frame = 0;
-    place(now);
+    place(heldAt ?? now);
     const gliding = glide(now);
     aim();
     renderer.render(scene, camera);
@@ -472,7 +493,7 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
     // so the system's reduced-motion setting doesn't stop it. The celebration plays either way, and so does a camera
     // glide. A still stage redraws only when something changes.
     const celebrating = now - celebratedAt < CELEBRATE_S * 1000;
-    if (gliding || !straight || celebrating) frame = requestAnimationFrame(draw);
+    if (gliding || (!straight && running) || celebrating) frame = requestAnimationFrame(draw);
   };
   /** Stands the camera where the view puts it over the shot. */
   const aim = () => {
@@ -663,6 +684,13 @@ export function createStage(canvas: HTMLCanvasElement): Stage {
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       fit = { half: Math.tan((camera.fov * Math.PI) / 360), aspect: camera.aspect };
+      invalidate();
+    },
+    setRunning(next) {
+      if (next === running) return;
+      running = next;
+      // Held, the figure keeps the stance it had; let go, it carries on from there a moment later.
+      heldAt = next ? null : performance.now();
       invalidate();
     },
     dispose() {

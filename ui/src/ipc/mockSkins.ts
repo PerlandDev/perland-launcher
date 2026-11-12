@@ -377,6 +377,16 @@ export function handleSkins(state: SkinsState, accounts: AccountsFile, cmd: stri
       touch(entry);
       return { ...entry };
     }
+    case 'player_skin': {
+      const account = accounts.accounts.find((a) => a.uuid === args.uuid);
+      if (!account) fail('auth', 'no_account', "That account isn't in the launcher anymore.");
+      // Like the core, this only reads: no loose skin is adopted.
+      const wardrobe = state.entries.filter((e) => e.owner === account.uuid);
+      const worn = account.provider === 'microsoft' ? state.current : null;
+      const first = wardrobe[0];
+      const texture = worn?.texture ?? (first ? (state.textures.get(first.id) ?? null) : null);
+      return { texture, model: worn?.model ?? first?.model ?? 'classic', wardrobe: wardrobe.length };
+    }
     case 'skin_current': {
       const account = accounts.accounts.find((a) => a.uuid === args.uuid);
       if (!account) fail('auth', 'no_account', "That account isn't in the launcher anymore.");

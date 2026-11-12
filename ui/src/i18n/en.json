@@ -27,7 +27,7 @@
     "maximize": "Maximize",
     "restore": "Restore down",
     "close": "Close",
-    "accounts": "Accounts",
+    "profile": "{{name}}, your profile",
     "achievements": "Medals and achievements",
     "settings": "Settings",
     "noAccount": "Add account",
@@ -44,9 +44,43 @@
     "damaged": "Needs attention",
     "expand": "Show names",
     "collapse": "Hide names",
+    "find": "Find an instance",
+    "findNone": "No instance has that name.",
     "moved": "{{name}} moved to position {{position}} of {{count}}"
   },
+  "places": {
+    "label": "Places"
+  },
+  "profile": {
+    "title": "Your profile",
+    "skin": "Your skin",
+    "wardrobe_one": "{{count}} in your wardrobe.",
+    "wardrobe_other": "{{count}} in your wardrobe.",
+    "wardrobeEmpty": "Your wardrobe is empty.",
+    "looks_one": "{{count}} ready-made look in the catalog.",
+    "looks_other": "{{count}} ready-made looks in the catalog.",
+    "more": "More for {{name}}",
+    "morePerland": "More for your Perland account",
+    "medals": {
+      "latest": "Latest",
+      "next": "Next up",
+      "none": "No medals yet. Your first one comes with your first game.",
+      "achievements_one": "{{count}} Minecraft achievement",
+      "achievements_other": "{{count}} Minecraft achievements",
+      "onServers_one": "on {{count}} Perland server",
+      "onServers_other": "on {{count}} Perland servers"
+    },
+    "setup": {
+      "title": "Finish setting up",
+      "playingAs": "Playing as {{name}}",
+      "done": "done",
+      "todo": "to do",
+      "microsoftWhy": "Sign in to wear your skins in Minecraft. The account must own Minecraft: Java Edition.",
+      "perlandWhy": "Sign in to create servers and save your medals to your account."
+    }
+  },
   "home": {
+    "changeSkin": "Change skin",
     "emptyTitle": "No instances yet",
     "emptyBody": "An instance is one Minecraft setup: a version, a loader and its own worlds.",
     "emptyAction": "Create an instance",
@@ -380,8 +414,6 @@
     "use": "Use",
     "remove": "Remove",
     "editSkin": "Edit skin",
-    "editSkinLabel": "Edit {{name}}'s skin",
-    "removeLabel": "Remove {{name}}",
     "removeTitle": "Remove {{name}}?",
     "removeBody": "You can add it again any time. Your worlds stay where they are.",
     "removeBodyMicrosoft": "You can sign in again any time. Your worlds stay where they are.",
@@ -419,7 +451,6 @@
   },
   "perland": {
     "title": "Perland account",
-    "pitch": "Your servers and free servers go with you.",
     "withPerland": "Continue with Perland",
     "waiting": "Finish signing in with your browser",
     "exchanging": "Signing you in…",
@@ -476,6 +507,8 @@
     "font": "Text font",
     "fontHyperlegible": "Easy to read",
     "fontSystem": "This computer's",
+    "transitions": "Screen transitions",
+    "transitionsOptions": {"stepped": "Arcade", "smooth": "Smooth", "off": "Off"},
     "iconShape": "Instance icons",
     "iconSquare": "Square",
     "iconRound": "Round",
@@ -1457,8 +1490,8 @@
     "link_refused": { "message": "That link can't be opened." }
   },
   "browse": {
-    "title": "Browse",
-    "open": "Browse",
+    "title": "Mods & more",
+    "open": "Mods & more",
     "findMods": "Find mods",
     "browseModpacks": "Browse modpacks",
     "kinds": { "modpack": "Modpacks", "mod": "Mods", "resource_pack": "Resource packs", "shader": "Shaders" },
@@ -1674,7 +1707,7 @@
     },
     "earnedTitle": "Medals earned",
     "lockedTitle": "Medals to earn",
-    "perlandHint": "The ones tagged “Perland account and server” are earned on servers made on Perland, with your Perland account and your Minecraft account linked (in Accounts press “Link Minecraft account”, copy the code it gives you and type /perland link CODE in the chat of a Perland server).",
+    "perlandHint": "The ones tagged “Perland account and server” are earned on servers made on Perland, with your Perland account and your Minecraft account linked (in your profile, under Accounts, press “Link Minecraft account”, copy the code it gives you and type /perland link CODE in the chat of a Perland server).",
     "perlandTag": "Perland account and server",
     "signIn": "Sign in",
     "earnedOn": "Earned on {{date}}",
@@ -1682,7 +1715,7 @@
     "savedAccount": "Your medals are saved to your Perland account: you keep them even if you reinstall the launcher or change computers.",
     "savedLocal": "Your medals are saved on this computer only. Sign in to Perland to save them to your account and keep them if you reinstall the launcher.",
     "mcTitle": "Minecraft achievements",
-    "mcHint": "The game's own achievements (the Advancements menu) you have on each Perland server. You need your Perland account with your Minecraft account linked (in Accounts press “Link Minecraft account”, copy the code it gives you and type /perland link CODE in the chat of a Perland server).",
+    "mcHint": "The game's own achievements (the Advancements menu) you have on each Perland server. You need your Perland account with your Minecraft account linked (in your profile, under Accounts, press “Link Minecraft account”, copy the code it gives you and type /perland link CODE in the chat of a Perland server).",
     "mcDialogHint": "These are the achievements from the game's Advancements menu. The locked ones you don't have on this server yet.",
     "medalsTitle": "Medals",
     "medalsHint": "Perland Launcher gives these. Some are earned using the launcher; the ones tagged “Perland account and server”, by playing on Perland servers.",

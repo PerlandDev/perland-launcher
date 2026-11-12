@@ -5,17 +5,20 @@ import { AccountAvatar } from '../accounts/AccountAvatar';
 import mark from '../../assets/mark.svg';
 import { commands } from '../../ipc/commands';
 import { useAccounts, useUpdate } from '../../state/queries';
-import { navigate } from '../../state/route';
+import { navigate, useRoute } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { useUpdateBusy } from '../../state/updateBusy';
-import { Close, Minus, SettingsCog, Shirt, Square, Trophy, WindowFrame } from '../../ui/Icon';
+import { Close, Minus, SettingsCog, Square, WindowFrame } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
+import { Places } from './Places';
 
-/** The custom title bar: drag anywhere that isn't a button. `minimal` keeps only the window
- *  controls, for screens (first run, settings failed) where account and settings can't be reached. */
+/** The custom title bar: drag anywhere that isn't a button. After the mark come the launcher's places as tabs; the account
+ *  at the right opens the player's Profile, and sits pressed while it is open. `minimal` keeps only the window controls, for
+ *  screens (first run, settings failed) where nothing else can be reached. */
 export function TitleBar({ minimal = false }: { minimal?: boolean }) {
   const { t } = useTranslation();
   const accounts = useAccounts();
+  const onProfile = useRoute().name === 'profile';
   const update = useUpdate();
   const busy = useUpdateBusy();
   const active = accounts.data?.accounts.find((a) => a.uuid === accounts.data?.active) ?? null;
@@ -45,12 +48,15 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
 
   const win = getCurrentWindow();
   return (
-    <header className="flex h-9 min-w-0 items-center justify-between gap-3 bg-ground" data-tauri-drag-region>
-      <div className="flex shrink-0 items-center gap-2 pl-3" data-tauri-drag-region>
+    // With the places in it the bar is 2.75rem tall, so a tab is a comfortable target; minimal, it keeps its 2.25rem.
+    <header className={`flex min-w-0 items-center justify-between gap-3 bg-ground ${minimal ? 'h-9' : 'h-11'}`} data-tauri-drag-region>
+      <div className="flex min-w-0 shrink-0 items-center gap-2 pl-3" data-tauri-drag-region>
         <img src={mark} alt="" width={21} height={18} data-tauri-drag-region />
-        <span className="text-sm font-bold" data-tauri-drag-region>
+        {/* The name gives its room to the places when the window is narrow (app.css). */}
+        <span className={`text-sm font-bold ${minimal ? '' : 'tb-name'}`} data-tauri-drag-region>
           {t('app.name')}
         </span>
+        {!minimal && <Places />}
       </div>
       <div className="flex min-w-0 items-center">
         {!minimal && (
@@ -75,7 +81,13 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
                 </button>
               </span>
             )}
-            <button type="button" className="tb-btn flex shrink-0" onClick={() => navigate({ name: 'accounts' })}>
+            <button
+              type="button"
+              className="tb-btn tb-account flex shrink-0"
+              aria-label={active ? t('titlebar.profile', { name: active.username }) : undefined}
+              aria-current={onProfile ? 'page' : undefined}
+              onClick={() => navigate({ name: 'profile' })}
+            >
               {active ? (
                 <>
                   <AccountAvatar account={active} size={20} />
@@ -84,12 +96,6 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
               ) : (
                 t('titlebar.noAccount')
               )}
-            </button>
-            <button type="button" className="tb-btn" aria-label={t('titlebar.skins')} title={t('titlebar.skins')} onClick={() => navigate({ name: 'skins' })}>
-              <Shirt aria-hidden />
-            </button>
-            <button type="button" className="tb-btn" aria-label={t('titlebar.achievements')} onClick={() => navigate({ name: 'achievements' })}>
-              <Trophy aria-hidden />
             </button>
             <button type="button" className="tb-btn" aria-label={t('titlebar.settings')} onClick={() => navigate({ name: 'settings' })}>
               <SettingsCog data-icon="settings-cog" aria-hidden />

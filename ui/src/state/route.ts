@@ -16,11 +16,13 @@ export type Route =
   | { name: 'servers' }
   // A server the player runs, by its team and its name there.
   | { name: 'manage'; tenantId: string; stack: string }
-  | { name: 'accounts' }
   // The Skins screen: the wardrobe, opened on a skin and wearing it on an account (the active one by default).
   | { name: 'skins'; skin?: string; account?: string }
+  // Medals and achievements: the launcher's medals and the Minecraft achievements on Perland servers.
   | { name: 'achievements' }
-  | { name: 'settings' };
+  | { name: 'settings' }
+  // The Profile: who is playing, their skin, their accounts and what they have earned. `add` opens Add an account on arrival.
+  | { name: 'profile'; add?: boolean };
 
 const HOME: Route = { name: 'home', id: null };
 const LAST_KEY = 'perland.lastInstance';

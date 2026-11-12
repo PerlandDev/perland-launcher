@@ -5,10 +5,16 @@ import { qk } from '../../state/queries';
 import { renderApp, sent } from '../../test/backend';
 import { ServerStatsLine } from '../servers-list/ServerStatsLine';
 import { MinecraftLink } from './MinecraftLink';
-import { PerlandAccountCard } from './PerlandAccountCard';
+import { Profile } from '../profile/Profile';
 
 const COMMAND = `/perland link ${MOCK_LINK_CODE}`;
-const row = () => screen.getByRole('region', { name: 'Minecraft account' });
+const row = () => screen.getByRole('listitem', { name: 'Minecraft account' });
+/** The link as it stands on the Profile: a row of a list. */
+const Link = () => (
+  <ul>
+    <MinecraftLink />
+  </ul>
+);
 /** Let the poll's and the countdown's intervals run, and the answers they wait on settle. */
 const advance = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
 
@@ -39,7 +45,7 @@ describe('MinecraftLink', () => {
   });
 
   it('hidden when stats is null (the add-on is off)', async () => {
-    const { calls } = renderApp(<MinecraftLink />, { perland: 'noAddon' });
+    const { calls } = renderApp(<Link />, { perland: 'noAddon' });
     await vi.waitFor(() => expect(sent(calls, 'perland_stats')).toHaveLength(1));
     await act(async () => {});
     expect(screen.queryByText('Minecraft account')).not.toBeInTheDocument();
@@ -47,7 +53,7 @@ describe('MinecraftLink', () => {
   });
 
   it('hidden when stats fails', async () => {
-    const { calls, backend } = renderApp(<MinecraftLink />, { perland: 'signedIn' });
+    const { calls, backend } = renderApp(<Link />, { perland: 'signedIn' });
     stub(backend, 'perland_stats', () => Promise.reject(refusal('engine_unreachable')));
     await vi.waitFor(() => expect(sent(calls, 'perland_stats')).toHaveLength(1));
     await act(async () => {});
@@ -56,25 +62,26 @@ describe('MinecraftLink', () => {
   });
 
   it('hidden when signed out', async () => {
-    const { calls } = renderApp(<MinecraftLink />, { perland: 'signedOut' });
+    const { calls } = renderApp(<Link />, { perland: 'signedOut' });
     await vi.waitFor(() => expect(sent(calls, 'perland_status')).toHaveLength(1));
     await act(async () => {});
     expect(sent(calls, 'perland_stats')).toHaveLength(0);
     expect(screen.queryByText('Minecraft account')).not.toBeInTheDocument();
   });
 
-  it('sits in the signed-in Perland card, under the profile', async () => {
-    renderApp(<PerlandAccountCard />, { perland: 'signedIn' });
+  it('sits in Accounts on the Profile, right under the Perland account it belongs to', async () => {
+    renderApp(<Profile />, { perland: 'signedIn' });
     const link = await screen.findByRole('button', { name: 'Link Minecraft account' });
-    const card = screen.getByRole('region', { name: 'Perland account' });
-    expect(within(card).getByRole('region', { name: 'Minecraft account' })).toContainElement(link);
-    expect(within(card).getByText('Link your Minecraft account to see your achievements on each server.')).toBeInTheDocument();
-    const signOut = within(card).getByRole('button', { name: 'Sign out' });
-    expect(signOut.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const accounts = screen.getByRole('region', { name: 'Accounts' });
+    const rows = within(accounts).getAllByRole('listitem').filter((li) => li.classList.contains('profile-account'));
+    expect(rows[0]).toContainElement(screen.getByRole('button', { name: 'More for your Perland account' }));
+    expect(rows[1]).toBe(row());
+    expect(rows[1]).toContainElement(link);
+    expect(within(row()).getByText('Link your Minecraft account to see your achievements on each server.')).toBeInTheDocument();
   });
 
   it('links with a code', async () => {
-    const { user, calls, qc } = renderApp(<MinecraftLink />, { perland: 'signedIn' });
+    const { user, calls, qc } = renderApp(<Link />, { perland: 'signedIn' });
     const invalidate = vi.spyOn(qc, 'invalidateQueries');
     await showCode(user);
     expect(sent(calls, 'perland_link_code')).toHaveLength(1);
@@ -103,7 +110,7 @@ describe('MinecraftLink', () => {
   });
 
   it('counts down and expires', async () => {
-    const { user, calls, backend } = renderApp(<MinecraftLink />, { perland: 'signedIn' });
+    const { user, calls, backend } = renderApp(<Link />, { perland: 'signedIn' });
     // The add-on turned off mid-link: the poll keeps answering null and the code runs out normally.
     stub(backend, 'perland_link_poll', () => Promise.resolve(null));
     await showCode(user);
@@ -129,7 +136,7 @@ describe('MinecraftLink', () => {
   });
 
   it('cancel goes back and stops polling', async () => {
-    const { user, calls } = renderApp(<MinecraftLink />, { perland: 'signedIn' });
+    const { user, calls } = renderApp(<Link />, { perland: 'signedIn' });
     await showCode(user);
     await advance(3000);
     expect(sent(calls, 'perland_link_poll')).toHaveLength(1);
@@ -141,7 +148,7 @@ describe('MinecraftLink', () => {
   });
 
   it('ignores a poll answer that lands after Cancel', async () => {
-    const { user, backend } = renderApp(<MinecraftLink />, { perland: 'signedIn' });
+    const { user, backend } = renderApp(<Link />, { perland: 'signedIn' });
     let answer: (name: string | null) => void = () => {};
     stub(backend, 'perland_link_poll', () => new Promise((resolve) => (answer = resolve)));
     await showCode(user);
@@ -153,7 +160,7 @@ describe('MinecraftLink', () => {
   });
 
   it('a link the status reads first ends the code, and Unlink starts from the pitch', async () => {
-    const { user, qc, backend } = renderApp(<MinecraftLink />, { perland: 'signedIn' });
+    const { user, qc, backend } = renderApp(<Link />, { perland: 'signedIn' });
     stub(backend, 'perland_link_poll', () => Promise.resolve(null));
     await showCode(user);
     // Typed in game and picked up by the status before the next poll answers.
@@ -172,9 +179,9 @@ describe('MinecraftLink', () => {
   });
 
   it('unlink shows the link button again', async () => {
-    const { user, calls, qc } = renderApp(<MinecraftLink />, { perland: 'linked' });
+    const { user, calls, qc } = renderApp(<Link />, { perland: 'linked' });
     const invalidate = vi.spyOn(qc, 'invalidateQueries');
-    expect(await within(await screen.findByRole('region', { name: 'Minecraft account' })).findByText(/Linked to/)).toHaveTextContent(
+    expect(await within(await screen.findByRole('listitem', { name: 'Minecraft account' })).findByText(/Linked to/)).toHaveTextContent(
       'Linked to Steve',
     );
     await user.click(screen.getByRole('button', { name: 'Unlink' }));
@@ -188,7 +195,7 @@ describe('MinecraftLink', () => {
   it('a sign-out the status sees after a link leaves no stats on the card', async () => {
     const { user, qc, backend } = renderApp(
       <>
-        <MinecraftLink />
+        <Link />
         <ServerStatsLine token={OWNER_TOKEN} />
       </>,
       { perland: 'signedIn' },
@@ -201,13 +208,13 @@ describe('MinecraftLink', () => {
     await act(() => qc.invalidateQueries({ queryKey: qk.perland }));
     await settle();
     expect(screen.queryByText(/\d+ achievement/)).toBeNull();
-    expect(screen.queryByRole('region', { name: 'Minecraft account' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('listitem', { name: 'Minecraft account' })).not.toBeInTheDocument();
   });
 
   it('right after Unlink, the card shows no numbers from the linked stats', async () => {
     const { user, backend } = renderApp(
       <>
-        <MinecraftLink />
+        <Link />
         <ServerStatsLine token={OWNER_TOKEN} />
       </>,
       { perland: 'signedIn' },
@@ -225,7 +232,7 @@ describe('MinecraftLink', () => {
   });
 
   it.each(['Link Minecraft account', 'Unlink'])('a sign-out refusal from %s reads the status again', async (name) => {
-    const { user, qc, backend } = renderApp(<MinecraftLink />, { perland: name === 'Unlink' ? 'linked' : 'signedIn' });
+    const { user, qc, backend } = renderApp(<Link />, { perland: name === 'Unlink' ? 'linked' : 'signedIn' });
     const invalidate = vi.spyOn(qc, 'invalidateQueries');
     const refuse = () => {
       backend.state.perland.account = null;
@@ -235,11 +242,11 @@ describe('MinecraftLink', () => {
     await user.click(await screen.findByRole('button', { name }));
     await vi.waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.perland }));
     await settle();
-    expect(screen.queryByRole('region', { name: 'Minecraft account' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('listitem', { name: 'Minecraft account' })).not.toBeInTheDocument();
   });
 
   it('link code refusal shows inline', async () => {
-    const { user, backend } = renderApp(<MinecraftLink />, { perland: 'signedIn' });
+    const { user, backend } = renderApp(<Link />, { perland: 'signedIn' });
     stub(backend, 'perland_link_code', () => Promise.reject(refusal('minecraft_link_closed')));
     await user.click(await screen.findByRole('button', { name: 'Link Minecraft account' }));
     expect(await within(row()).findByRole('alert')).toHaveTextContent("Linking isn't available right now.");
@@ -247,7 +254,7 @@ describe('MinecraftLink', () => {
   });
 
   it('a sign-out during the code stops polling', async () => {
-    const { user, calls, qc, backend } = renderApp(<MinecraftLink />, { perland: 'signedIn' });
+    const { user, calls, qc, backend } = renderApp(<Link />, { perland: 'signedIn' });
     const invalidate = vi.spyOn(qc, 'invalidateQueries');
     await showCode(user);
     stub(backend, 'perland_link_poll', () => Promise.reject(refusal('perland_signed_out')));
@@ -260,7 +267,7 @@ describe('MinecraftLink', () => {
   });
 
   it('keeps polling through a failed poll', async () => {
-    const { user, calls, backend } = renderApp(<MinecraftLink />, { perland: 'signedIn' });
+    const { user, calls, backend } = renderApp(<Link />, { perland: 'signedIn' });
     await showCode(user);
     let polled = 0;
     stub(backend, 'perland_link_poll', () => (++polled === 1 ? Promise.reject(refusal('engine_unreachable')) : Promise.resolve(null)));

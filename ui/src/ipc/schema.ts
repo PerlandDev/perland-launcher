@@ -534,6 +534,9 @@ export const skinVersion = z.strictObject({
 });
 /** The skin a Microsoft account wears now: a PNG `data:` URL and its arm model. */
 export const currentSkin = z.strictObject({ texture: z.string(), model: skinModel });
+/** The skin drawn as the player's own figure (the Profile): a PNG `data:` URL, or null when the account has nothing of
+ *  its own to show and the launcher's starter stands in; its arm model; and how many skins the account's wardrobe holds. */
+export const playerSkin = z.strictObject({ texture: z.string().nullable(), model: skinModel, wardrobe: z.number().int() });
 /** The calls of the Microsoft sign-in chain, in order: Microsoft's code, Xbox Live, XSTS, Minecraft's login, the profile and
  *  ownership check. */
 export const MSA_STEPS = ['microsoft', 'xbox', 'xsts', 'minecraft', 'profile'] as const;
@@ -549,6 +552,9 @@ export const channel = z.enum(['stable', 'beta']);
 /** A theme swaps the neutrals only; the first key is the default. */
 export const theme = z.enum(['laminate', 'stone', 'night', 'forest']);
 export const uiFont = z.enum(['hyperlegible', 'system']);
+/** How a screen comes in when the player moves to it: eased fades and slides (the default), the arcade cabinet's own snapped
+ *  frames, or nothing. In the order Settings offers them. */
+export const transitions = z.enum(['smooth', 'stepped', 'off']);
 /** The graphics card games start on: the system's pick, the high-performance card or the power-saving one. */
 export const graphicsCard = z.enum(['automatic', 'dedicated', 'integrated']);
 export const settings = z.strictObject({
@@ -564,6 +570,7 @@ export const settings = z.strictObject({
   font: uiFont,
   shareAnonymousData: z.boolean(),
   graphicsCard,
+  transitions,
 });
 /** One release note (release-notes/<id>.json) with the version it first shipped in; null while unreleased. */
 export const releaseNote = z.strictObject({
@@ -1050,6 +1057,7 @@ export type AccountsFile = z.infer<typeof accountsFile>;
 export type SkinModel = z.infer<typeof skinModel>;
 export type SkinEntry = z.infer<typeof skinEntry>;
 export type CurrentSkin = z.infer<typeof currentSkin>;
+export type PlayerSkin = z.infer<typeof playerSkin>;
 export type WornPiece = z.infer<typeof wornPiece>;
 export type SkinLook = z.infer<typeof skinLook>;
 export type CatalogManifest = z.infer<typeof catalogManifest>;
@@ -1069,6 +1077,7 @@ export type Lang = z.infer<typeof lang>;
 export type Channel = z.infer<typeof channel>;
 export type Theme = z.infer<typeof theme>;
 export type UiFont = z.infer<typeof uiFont>;
+export type Transitions = z.infer<typeof transitions>;
 export type Settings = z.infer<typeof settings>;
 export type GraphicsCard = z.infer<typeof graphicsCard>;
 export type AppInfo = z.infer<typeof appInfo>;

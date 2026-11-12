@@ -56,6 +56,21 @@ pub enum UiFont {
     Hyperlegible,
 }
 
+/// How a screen comes in when the player moves to it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Transitions {
+    /// The arcade cabinet's own: a few snapped frames.
+    Stepped,
+    /// Nothing moves: the screen is simply there.
+    Off,
+    /// Eased fades and slides. Also what an unknown choice from a newer launcher loads as.
+    /// (`serde(other)` must be the last variant.)
+    #[default]
+    #[serde(other)]
+    Smooth,
+}
+
 /// Which graphics card the game is started on (see `graphics`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -113,6 +128,8 @@ pub struct Settings {
     pub share_anonymous_data: bool,
     /// The graphics card games start on.
     pub graphics_card: GraphicsCard,
+    /// How screens come in.
+    pub transitions: Transitions,
 }
 
 impl Default for Settings {
@@ -130,6 +147,7 @@ impl Default for Settings {
             font: UiFont::Hyperlegible,
             share_anonymous_data: crate::telemetry::SHARE_BY_DEFAULT,
             graphics_card: GraphicsCard::Automatic,
+            transitions: Transitions::Smooth,
         }
     }
 }
@@ -195,6 +213,38 @@ mod tests {
         assert!(settings.minimize_on_play);
         assert!(!settings.first_run_done);
         assert!(!settings.rail_expanded);
+    }
+
+    #[tokio::test]
+    async fn transitions_default_to_smooth_round_trip_and_fall_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        let store = SettingsStore::new(&path);
+        assert_eq!(store.load().await.0.transitions, Transitions::Smooth);
+
+        for (choice, word) in [
+            (Transitions::Stepped, "stepped"),
+            (Transitions::Off, "off"),
+            (Transitions::Smooth, "smooth"),
+        ] {
+            let chosen = Settings {
+                transitions: choice,
+                ..Settings::default()
+            };
+            store.save(&chosen).await.unwrap();
+            let raw = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                raw.contains(&format!("\"transitions\": \"{word}\"")),
+                "{raw}"
+            );
+            assert_eq!(store.load().await, (chosen, None));
+        }
+
+        // A choice from a newer launcher is the default here, not damaged settings.
+        std::fs::write(&path, r#"{"transitions": "warp"}"#).unwrap();
+        let (settings, warning) = store.load().await;
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(settings.transitions, Transitions::Smooth);
     }
 
     #[tokio::test]

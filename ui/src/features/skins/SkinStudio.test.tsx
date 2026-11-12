@@ -2,6 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { toastsSnapshot } from '../../state/toasts';
+import { qk } from '../../state/queries';
 import { renderApp, sent } from '../../test/backend';
 import { createMockBackend, MOCK_MICROSOFT_ACCOUNT } from '../../ipc/mock';
 import { renderWithProviders } from '../../test/render';
@@ -689,4 +690,13 @@ it('unavailable without cache shows the message and Paint still works', async ()
   const undo = screen.getByRole('button', { name: 'Undo' });
   await act(() => paintTexel(10, 10));
   expect(undo).toBeEnabled();
+});
+
+it("asks for the player's figure again on the way out, so the Profile shows what was changed here", async () => {
+  const { qc, unmount } = renderApp(<SkinStudio />);
+  await screen.findByRole('heading', { name: 'Skins' });
+  qc.setQueryData(qk.playerSkin('some-account'), { texture: null, model: 'classic', wardrobe: 0 });
+  expect(qc.getQueryState(qk.playerSkin('some-account'))?.isInvalidated).toBe(false);
+  unmount();
+  expect(qc.getQueryState(qk.playerSkin('some-account'))?.isInvalidated).toBe(true);
 });

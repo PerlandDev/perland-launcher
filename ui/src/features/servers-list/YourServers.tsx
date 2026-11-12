@@ -70,7 +70,7 @@ export function YourServers() {
     return (
       <p className="text-sm text-ink-dim">
         {t('servers.yours.nudge')}{' '}
-        <button type="button" className="text-blue-ink underline underline-offset-4" onClick={() => navigate({ name: 'accounts' })}>
+        <button type="button" className="text-blue-ink underline underline-offset-4" onClick={() => navigate({ name: 'profile' })}>
           {t('servers.yours.signIn')}
         </button>
       </p>

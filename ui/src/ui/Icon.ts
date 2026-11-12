@@ -26,6 +26,7 @@ export {
   Link,
   Lock,
   Login,
+  Logout,
   Mail,
   Map,
   Megaphone,

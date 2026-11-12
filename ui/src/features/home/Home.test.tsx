@@ -75,7 +75,7 @@ describe('Home', () => {
     expect(await screen.findByRole('heading', { name: 'No instances yet' })).toBeInTheDocument();
   });
 
-  it('disables Play without an account and, in a dev build, links to Accounts', async () => {
+  it('disables Play without an account and, in a dev build, opens Add an account on the Profile', async () => {
     const { backend, user } = renderApp(<Home id="creative-flat" />);
     backend.state.accounts.active = null;
     await screen.findByRole('heading', { name: 'Creative Flat' });
@@ -85,7 +85,7 @@ describe('Home', () => {
     // Read before Play, the way it sits on screen: above it (#116).
     expect(link.compareDocumentPosition(play) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(link);
-    expect(routeSnapshot()).toEqual({ name: 'accounts' });
+    expect(routeSnapshot()).toEqual({ name: 'profile', add: true });
     expect(signInPromptSnapshot()).toBe(false);
   });
 
@@ -98,7 +98,7 @@ describe('Home', () => {
     await vi.waitFor(() => expect(play).toHaveAccessibleDescription('Sign in to play'));
     await user.click(await screen.findByRole('button', { name: 'Sign in to play' }));
     expect(signInPromptSnapshot()).toBe(true);
-    expect(routeSnapshot()).not.toEqual({ name: 'accounts' });
+    expect(routeSnapshot()).not.toEqual({ name: 'profile', add: true });
     expect(screen.queryByRole('button', { name: 'Add an account to play' })).toBeNull();
     // The accounts file still holds offline accounts from an older beta: they are silently gone, nothing mentions them.
     expect(screen.queryByText(/offline/i)).toBeNull();

@@ -10,5 +10,6 @@
   "theme": "night",
   "font": "system",
   "shareAnonymousData": true,
-  "graphicsCard": "automatic"
+  "graphicsCard": "automatic",
+  "transitions": "stepped"
 }

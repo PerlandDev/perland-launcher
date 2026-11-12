@@ -1,7 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AchievementsScreen } from './features/medals/AchievementsScreen';
-import { Accounts } from './features/accounts/Accounts';
 import { SignInPrompt } from './features/accounts/SignInPrompt';
 import { TrustDialog } from './features/trust/TrustDialog';
 import { ActivityDrawer } from './features/activity/ActivityDrawer';
@@ -13,8 +11,10 @@ import { HeroPreview } from './features/home/heroPreview';
 import { InstanceSettings } from './features/instance-settings/InstanceSettings';
 import { JoinServer } from './features/join/JoinServer';
 import { ManageScreen } from './features/manage/ManageScreen';
+import { AchievementsScreen } from './features/medals/AchievementsScreen';
 import { Mods } from './features/mods/Mods';
 import { NewInstance } from './features/new-instance/NewInstance';
+import { Profile } from './features/profile/Profile';
 import { Rail } from './features/rail/Rail';
 import { ServersScreen } from './features/servers-list/ServersScreen';
 import { Settings } from './features/settings/Settings';
@@ -63,8 +63,6 @@ function Screen({ route }: { route: Route }) {
       return <ServersScreen />;
     case 'manage':
       return <ManageScreen key={`${route.tenantId}/${route.stack}`} tenantId={route.tenantId} stack={route.stack} />;
-    case 'accounts':
-      return <Accounts />;
     case 'skins':
       return (
         <Suspense fallback={null}>
@@ -75,20 +73,34 @@ function Screen({ route }: { route: Route }) {
       return <AchievementsScreen />;
     case 'settings':
       return <Settings />;
+    case 'profile':
+      return <Profile add={route.add} />;
   }
+}
+
+/** What makes a move: another screen, or another instance on the same one. */
+const placeKey = (route: Route) => `${route.name}:${'id' in route ? (route.id ?? '') : ''}`;
+
+/** 0 or 1, flipping each time `key` changes. */
+function useBeat(key: string): 0 | 1 {
+  const [seen, setSeen] = useState<{ key: string; beat: 0 | 1 }>({ key, beat: 0 });
+  if (seen.key !== key) setSeen({ key, beat: seen.beat === 0 ? 1 : 0 });
+  return seen.key === key ? seen.beat : seen.beat === 0 ? 1 : 0;
 }
 
 function Shell() {
   const route = useRoute();
   const activity = useActivity();
   // The rail is 4.5rem of icons, or 15rem with names when the player widens it; the switch snaps.
-  const wide = useSettings().data?.railExpanded ?? false;
+  const settings = useSettings().data;
+  const wide = settings?.railExpanded ?? false;
+  const beat = useBeat(placeKey(route));
   // Once the shell exists (after first run), pick up a link that started the app.
   useEffect(() => void takeDeepLink(), []);
   return (
     // The rail's menu opens Change image too, so its background preview can draw Home's header from anywhere.
     <HeroPreview.Provider value={heroCopy}>
-      <div className="grid h-full grid-rows-[2.25rem_1fr]">
+      <div className="grid h-full grid-rows-[2.75rem_1fr]">
         <TitleBar />
         <div className={`grid min-h-0 ${wide ? 'grid-cols-[15rem_1fr]' : 'grid-cols-[4.5rem_1fr]'}`}>
           <Rail />
@@ -96,7 +108,12 @@ function Shell() {
               `overflow-clip`, not `hidden`: a hidden box still scrolls to show a focused element, which would slide
               the screen and the drawer up and leave the window half empty (#121). Screens scroll inside themselves. */}
           <main className={`relative min-h-0 overflow-clip ${activity.open ? 'pb-[18rem]' : 'pb-9'}`}>
-            <Screen route={route} />
+            {/* Each place arrives (app.css, "Arrivals") in the style Settings give: eased (the default), the arcade
+                cabinet's own snapped frames, or not at all. The beat flips at every move, which replays the entrance without building the
+                screen again. */}
+            <div className="arrive" data-style={settings?.transitions ?? 'smooth'} data-arrive={route.name === 'home' ? 'home' : 'screen'} data-beat={beat}>
+              <Screen route={route} />
+            </div>
             <ActivityDrawer />
           </main>
         </div>

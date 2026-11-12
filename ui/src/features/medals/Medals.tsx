@@ -1,46 +1,12 @@
-import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import type { MedalView, ServerStats } from '../../ipc/schema';
 import { useAccounts, useMedals, usePerlandStats, usePerlandStatus } from '../../state/queries';
 import { ChevronRight } from '../../ui/Icon';
 import { Meter } from '../../ui/Meter';
-import { formatPlaytime } from '../../ui/playtime';
 import { useAchievementsDialog } from './useAchievementsDialog';
 import { MedalBadge } from './MedalBadge';
+import { amount, day, stateLine, stepLabel, tierName } from './words';
 import { navigate } from '../../state/route';
-
-const tierName = (tier: number, t: TFunction) => t(`medals.tier${tier}`);
-
-/** A ladder's reading in its unit: time in its two biggest units ("0 min" under a minute), a count as it is. */
-function amount(medal: MedalView, value: number, t: TFunction): string {
-  if (medal.unit === 'count') return String(value);
-  return formatPlaytime(value, t) || t('time.minutes', { count: 0 });
-}
-
-/** A step's threshold, short enough for its column: whole hours for time ("100 h"), as the ladder defines them. */
-function stepLabel(medal: MedalView, goal: number, t: TFunction): string {
-  return medal.unit === 'time' ? t('time.hours', { count: goal / 3600 }) : String(goal);
-}
-
-/** What earns the medal's next step, as a sentence: "Play 10 h on this computer", "Mine a diamond". */
-function goalLine(medal: MedalView, t: TFunction): string {
-  if (medal.kind === 'single') return t(`medals.${medal.id}.goal`);
-  const goal = medal.goal ?? 0;
-  return medal.unit === 'time' ? t(`medals.${medal.id}.goal`, { goal: amount(medal, goal, t) }) : t(`medals.${medal.id}.goal`, { count: goal });
-}
-
-/** The medal's state under its name: what earns it while locked, else its tier and reading. */
-function stateLine(medal: MedalView, t: TFunction): string {
-  if (medal.tier === 0) return goalLine(medal, t);
-  if (medal.kind === 'single') return `${tierName(medal.tier, t)} · ${t('medals.earned')}`;
-  return `${tierName(medal.tier, t)} · ${amount(medal, medal.value, t)}`;
-}
-
-/** The day a tier was reached, in the reader's language ("7 nov 2026"); empty for a date that doesn't read. */
-function day(at: string, lang: string): string {
-  const date = new Date(at);
-  return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(lang, { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
-}
 
 function MedalItem({ medal, tag = false }: { medal: MedalView; tag?: boolean }) {
   const { t, i18n } = useTranslation();
@@ -51,10 +17,13 @@ function MedalItem({ medal, tag = false }: { medal: MedalView; tag?: boolean }) 
     <li className="medal" data-locked={medal.tier === 0 ? '' : undefined}>
       <MedalBadge id={medal.id} tier={medal.tier} />
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-2 font-bold">
-          {t(`medals.${medal.id}.name`)}
-          {tag && <span className="medal-tag">{t('medals.perlandTag')}</span>}
-        </p>
+        <p className="font-bold">{t(`medals.${medal.id}.name`)}</p>
+        {/* The tag has its own line under the name, always: beside it, it fitted short names and wrapped long ones. */}
+        {tag && (
+          <p className="medal-tag-line">
+            <span className="medal-tag">{t('medals.perlandTag')}</span>
+          </p>
+        )}
         <p className="text-sm text-ink-dim">
           {medal.tier === 0 && <span className="sr-only">{t('medals.locked')}: </span>}
           {stateLine(medal, t)}
@@ -109,7 +78,8 @@ function ServerRow({ server }: { server: ServerStats }) {
 }
 
 /** What the reader still lacks for the Perland medals and the Minecraft achievements: signing in (to Perland or to a Microsoft
- *  account) or, with both, linking them. Both open Accounts, where the link is made; nothing once the accounts are linked. */
+ *  account) or, with both, linking them. Both open the Profile, where the sign-ins and the link are; nothing once the accounts
+ *  are linked. */
 function AccountsLink() {
   const { t } = useTranslation();
   const status = usePerlandStatus();
@@ -120,7 +90,7 @@ function AccountsLink() {
   return (
     <>
       {' '}
-      <button type="button" className="text-blue-ink underline underline-offset-4" onClick={() => navigate({ name: 'accounts' })}>
+      <button type="button" className="text-blue-ink underline underline-offset-4" onClick={() => navigate({ name: 'profile' })}>
         {label}
       </button>
     </>
