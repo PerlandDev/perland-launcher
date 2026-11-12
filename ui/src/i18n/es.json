@@ -499,8 +499,6 @@
     "fontSystem": "La de tu computadora",
     "transitions": "Transiciones entre pantallas",
     "transitionsOptions": {"stepped": "Arcade", "smooth": "Suaves", "off": "Desactivadas"},
-    "showPlayer": "Mostrar tu personaje junto a Jugar",
-    "showPlayerHint": "Tu skin se para sobre el botón Jugar de cada instancia.",
     "iconShape": "Íconos de instancias",
     "iconSquare": "Cuadrados",
     "iconRound": "Redondos",

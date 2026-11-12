@@ -11,6 +11,5 @@
   "font": "system",
   "shareAnonymousData": true,
   "graphicsCard": "automatic",
-  "showPlayer": true,
   "transitions": "stepped"
 }

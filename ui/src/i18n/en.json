@@ -499,8 +499,6 @@
     "fontSystem": "This computer's",
     "transitions": "Screen transitions",
     "transitionsOptions": {"stepped": "Arcade", "smooth": "Smooth", "off": "Off"},
-    "showPlayer": "Show your player beside Play",
-    "showPlayerHint": "Your skin stands on the Play button of each instance.",
     "iconShape": "Instance icons",
     "iconSquare": "Square",
     "iconRound": "Round",

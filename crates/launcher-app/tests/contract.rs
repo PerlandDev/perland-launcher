@@ -1018,7 +1018,6 @@ fn contract_fixtures_are_current() {
             icon_shape: IconShape::Round,
             theme: Theme::Night,
             font: UiFont::System,
-            show_player: true,
             transitions: Transitions::Stepped,
             ..Settings::default()
         },

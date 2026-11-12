@@ -111,7 +111,7 @@ export const useAccountFace = (account: Pick<Account, 'provider' | 'uuid'>) =>
     enabled: account.provider === 'microsoft',
     staleTime: THIRTY_MINUTES,
   });
-/** The skin drawn as the player's own figure (Home, the Profile) and how many skins the active account's wardrobe holds. It only
+/** The skin drawn as the player's own figure (the Profile) and how many skins the active account's wardrobe holds. It only
  *  reads, unlike the Skins screen's own listing, so it is safe to ask from anywhere. Disabled until an account is in use. */
 export function usePlayerSkin() {
   const uuid = useAccounts().data?.active ?? null;

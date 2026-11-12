@@ -3,8 +3,7 @@ import { Marquee } from '../../art/Marquee';
 import { describe, expect, it, vi } from 'vitest';
 import packStatusFx from '../../ipc/contract/pack_status.json';
 import { createMockBackend, exitOf } from '../../ipc/mock';
-import type { InstanceListing, PackStatus } from '../../ipc/schema';
-import { openActivity, resetActivity } from '../../state/activity';
+import type { PackStatus } from '../../ipc/schema';
 import { lastInstance, navigate, routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { signInPromptSnapshot } from '../../state/signInPrompt';
@@ -12,7 +11,7 @@ import { toastsSnapshot } from '../../state/toasts';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
 import App from '../../App';
-import { HeroCopy, Home } from './Home';
+import { Home } from './Home';
 
 describe('Home', () => {
   it('shows the selected instance with its versions and plays it', async () => {
@@ -884,64 +883,5 @@ describe('Continue', () => {
     expect(key).toHaveClass('btn');
     expect(key).not.toHaveClass('btn-primary');
     expect(key.querySelector('svg')).toHaveAttribute('aria-hidden');
-  });
-});
-
-describe('the player beside Play', () => {
-  it('stands the figure on Play with a Change skin key that opens Skins', async () => {
-    const { user } = renderApp(<Home id="asalith-fields" />);
-    await screen.findByRole('heading', { name: 'Asalith Fields' });
-    const key = await screen.findByRole('button', { name: 'Change skin' });
-    expect(screen.getByTestId('player-figure')).toBeInTheDocument();
-    // Read before Play, and never lit: Play keeps the only amber.
-    expect(key.compareDocumentPosition(screen.getByRole('button', { name: 'Play' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(key).not.toHaveClass('btn-primary');
-    await user.click(key);
-    expect(routeSnapshot()).toEqual({ name: 'skins' });
-  });
-
-  it('keeps Continue with it, beside the figure', async () => {
-    renderApp(<Home id="asalith-fields" />);
-    const key = await screen.findByRole('button', { name: 'Change skin' });
-    const keys = key.parentElement!;
-    expect(await within(keys).findByRole('button', { name: 'Continue: Asalith Fields' })).toBeInTheDocument();
-  });
-
-  it('is hidden when Settings say so', async () => {
-    const { backend } = renderApp(<Home id="asalith-fields" />);
-    backend.state.settings.showPlayer = false;
-    await screen.findByRole('heading', { name: 'Asalith Fields' });
-    await screen.findByRole('button', { name: 'Continue: Asalith Fields' });
-    expect(screen.queryByRole('button', { name: 'Change skin' })).toBeNull();
-    expect(screen.queryByTestId('player-figure')).toBeNull();
-  });
-
-  it('is absent without an account: there is no player to show', async () => {
-    const { backend } = renderApp(<Home id="creative-flat" />);
-    backend.state.accounts.active = null;
-    await screen.findByRole('button', { name: 'Add an account to play' });
-    expect(screen.queryByRole('button', { name: 'Change skin' })).toBeNull();
-    expect(screen.queryByTestId('player-figure')).toBeNull();
-  });
-
-  it('is not part of the background preview', async () => {
-    const listing = (await createMockBackend().handle('instances_list', {})) as InstanceListing;
-    renderApp(<HeroCopy instance={listing.instances[0]!} />);
-    await screen.findByRole('heading', { name: 'Asalith Fields' });
-    expect(screen.queryByTestId('player-figure')).toBeNull();
-  });
-});
-
-describe('the player and the activity drawer', () => {
-  it('steps aside while the drawer is open: Home is too short for a figure above Play then', async () => {
-    renderApp(<Home id="asalith-fields" />);
-    await screen.findByRole('button', { name: 'Change skin' });
-    act(() => openActivity());
-    expect(screen.queryByRole('button', { name: 'Change skin' })).toBeNull();
-    expect(screen.queryByTestId('player-figure')).toBeNull();
-    // The key that was beside it stays where it was.
-    expect(screen.getByRole('button', { name: 'Continue: Asalith Fields' })).toBeInTheDocument();
-    act(() => resetActivity());
-    expect(await screen.findByRole('button', { name: 'Change skin' })).toBeInTheDocument();
   });
 });
