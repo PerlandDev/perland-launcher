@@ -26,7 +26,7 @@ export function ContinueKey({
   const label = t('home.continueTo', { name: target.name });
   return (
     <Button
-      className="max-w-[17.5rem]"
+      className="max-w-full"
       icon={target.kind === 'world' ? <WorldIcon /> : <Server />}
       disabled={disabled}
       aria-label={label}
