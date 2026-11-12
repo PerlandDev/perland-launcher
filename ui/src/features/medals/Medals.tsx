@@ -17,10 +17,13 @@ function MedalItem({ medal, tag = false }: { medal: MedalView; tag?: boolean }) 
     <li className="medal" data-locked={medal.tier === 0 ? '' : undefined}>
       <MedalBadge id={medal.id} tier={medal.tier} />
       <div className="min-w-0 flex-1">
-        <p className="flex flex-wrap items-center gap-2 font-bold">
-          {t(`medals.${medal.id}.name`)}
-          {tag && <span className="medal-tag">{t('medals.perlandTag')}</span>}
-        </p>
+        <p className="font-bold">{t(`medals.${medal.id}.name`)}</p>
+        {/* The tag has its own line under the name, always: beside it, it fitted short names and wrapped long ones. */}
+        {tag && (
+          <p className="medal-tag-line">
+            <span className="medal-tag">{t('medals.perlandTag')}</span>
+          </p>
+        )}
         <p className="text-sm text-ink-dim">
           {medal.tier === 0 && <span className="sr-only">{t('medals.locked')}: </span>}
           {stateLine(medal, t)}

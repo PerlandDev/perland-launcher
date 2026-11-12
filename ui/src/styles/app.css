@@ -3300,11 +3300,10 @@
   .achievements-items li {
     align-items: flex-start;
   }
-  /* A tagged medal's tag sits under its name, always: beside it, it fitted for short names and wrapped for long ones. */
-  .medal p:has(> .medal-tag) {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.25rem;
+  /* A tagged medal's tag has its own line under the name. */
+  .medal-tag-line {
+    display: flex;
+    margin: 0.125rem 0 0.25rem;
   }
   .medal-tag {
     font-size: 0.6875rem;
