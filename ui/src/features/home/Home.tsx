@@ -179,9 +179,9 @@ function InstanceView({ instance, preview = false }: { instance: Instance; previ
           </Button>
           <Menu ref={menu} label={t('home.more')} items={actions.items} />
           <div className="grid justify-items-end gap-3">
-            {/* The player stands on Play, and the keys that head its column sit beside the figure. Hidden in Settings,
-                with no account, in the background preview and while the drawer leaves Home too short for it, the keys
-                head the column on their own. */}
+            {/* The player stands on Play once Settings turn it on (it starts off), and the keys that head its column sit
+                beside the figure. Off, with no account, in the background preview and while the drawer leaves Home too
+                short for it, the keys head the column on their own. */}
             <PlayerStand shown={showPlayer} still={run.state !== 'idle'}>
               {keys}
             </PlayerStand>

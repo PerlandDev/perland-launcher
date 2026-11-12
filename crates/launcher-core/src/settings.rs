@@ -128,7 +128,7 @@ pub struct Settings {
     pub share_anonymous_data: bool,
     /// The graphics card games start on.
     pub graphics_card: GraphicsCard,
-    /// The player's own figure stands beside Play on an instance's Home.
+    /// The player's own figure stands beside Play on an instance's Home. Off until the player turns it on.
     pub show_player: bool,
     /// How screens come in.
     pub transitions: Transitions,
@@ -149,7 +149,7 @@ impl Default for Settings {
             font: UiFont::Hyperlegible,
             share_anonymous_data: crate::telemetry::SHARE_BY_DEFAULT,
             graphics_card: GraphicsCard::Automatic,
-            show_player: true,
+            show_player: false,
             transitions: Transitions::Smooth,
         }
     }
@@ -216,27 +216,28 @@ mod tests {
         assert!(settings.minimize_on_play);
         assert!(!settings.first_run_done);
         assert!(!settings.rail_expanded);
-        assert!(settings.show_player);
+        // Off until the player turns it on in Settings.
+        assert!(!settings.show_player);
     }
 
     #[tokio::test]
-    async fn show_player_is_on_for_older_files_and_round_trips() {
+    async fn show_player_is_off_for_older_files_and_round_trips() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("settings.json");
         std::fs::write(&path, r#"{"version": 1, "firstRunDone": true}"#).unwrap();
         let store = SettingsStore::new(&path);
         let (settings, warning) = store.load().await;
         assert!(warning.is_none());
-        assert!(settings.show_player);
+        assert!(!settings.show_player);
 
-        let hidden = Settings {
-            show_player: false,
+        let shown = Settings {
+            show_player: true,
             ..settings
         };
-        store.save(&hidden).await.unwrap();
+        store.save(&shown).await.unwrap();
         let raw = std::fs::read_to_string(&path).unwrap();
-        assert!(raw.contains("\"showPlayer\": false"), "{raw}");
-        assert_eq!(store.load().await, (hidden, None));
+        assert!(raw.contains("\"showPlayer\": true"), "{raw}");
+        assert_eq!(store.load().await, (shown, None));
     }
 
     #[tokio::test]

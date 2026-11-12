@@ -52,7 +52,7 @@ Packs stay in sync automatically, so a Perland player never manages mod versions
   - pack links, `.mrpack` files and pack sync, with pack art (icon and banner) when a pack ships it
   - Forge and NeoForge install and launch
   - the launcher's own updater and installers (the manual Release workflow)
-  - the Profile (opened from the account in the title bar): the player's own figure and skin, their accounts, a checklist of what is still to connect (a Microsoft account, the Perland account) and the medals on one page; the launcher's places (Skins, Servers, Mods & more) as named tabs in the title bar; a search by name in the rail once there are many instances; the player's 3D figure beside Play, which Settings can hide
+  - the Profile (opened from the account in the title bar): the player's own figure and skin, their accounts, a checklist of what is still to connect (a Microsoft account, the Perland account) and the medals on one page; the launcher's places (Skins, Servers, Mods & more) as named tabs in the title bar; a search by name in the rail once there are many instances; the player's 3D figure beside Play, which Settings turns on (off by default)
   - import a whole instance from another launcher's folder (mods, worlds, settings and map data are copied; the original folder is only read)
 - **Accounts:** players sign in with a Microsoft account that owns Minecraft: Java Edition, or add an offline account with a player name. Every build offers both (offline accounts were dev-only until 2026-11-07).
 - **Not built (never fake it):** anything not listed above is absent, not shown as a disabled control.
