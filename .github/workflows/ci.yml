@@ -7,6 +7,13 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request cancels the run it replaces (the repository
+# is public, so this frees queue slots rather than minutes). A push to main gets
+# its own group, its commit, so every merge is checked.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     strategy:
