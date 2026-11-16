@@ -172,6 +172,8 @@ async fn check_offers_only_as_stable_updates_on_the_same_minecraft() {
     Mock::given(method("GET"))
         .and(path("/v2/project/P1/version"))
         .and(query_param("game_versions", "[\"1.20.1\"]"))
+        // The changelogs are most of a long version list and pass the size limit; none is read.
+        .and(query_param("include_changelog", "false"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!([newer])))
         .with_priority(1)
         .mount(&server)

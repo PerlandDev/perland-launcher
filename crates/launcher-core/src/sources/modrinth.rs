@@ -100,6 +100,10 @@ pub async fn versions(
         &format!("project/{}/version", checked_id(project_id)?),
     ))
     .map_err(|e| invalid("Modrinth address", e))?;
+    // The changelogs are most of the answer, and a pack with many versions passes
+    // `MAX_API_BYTES` with them. Nothing here reads them.
+    url.query_pairs_mut()
+        .append_pair("include_changelog", "false");
     if let Some(mc) = minecraft {
         url.query_pairs_mut()
             .append_pair("game_versions", &format!("[\"{mc}\"]"));
