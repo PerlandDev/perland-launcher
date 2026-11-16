@@ -213,6 +213,37 @@ async fn versions_send_loader_and_game_filters_as_json_arrays() {
     assert!(list[0].dependencies.is_empty());
 }
 
+/// The changelogs are most of a version list (Biomes O' Plenty's is over 12 MB with them and
+/// under 2 MB without), and the launcher never reads them: a list with them can pass the size
+/// limit and leave the project page unable to install anything.
+#[tokio::test]
+async fn versions_leave_out_changelogs_with_or_without_filters() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/v2/project/biomes/version"))
+        .and(query_param("include_changelog", "false"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!([version_json(
+                &server,
+                "v1",
+                "biomes",
+                &["1.20.1"],
+                &["forge"],
+                "biomes.jar",
+                b"jar"
+            )])),
+        )
+        .mount(&server)
+        .await;
+    let all = api(&server).versions("biomes", &[], None).await.unwrap();
+    assert_eq!(all.len(), 1);
+    let filtered = api(&server)
+        .versions("biomes", &["forge"], Some("1.20.1"))
+        .await
+        .unwrap();
+    assert_eq!(filtered.len(), 1);
+}
+
 #[tokio::test]
 async fn version_files_posts_sha1_hashes() {
     let server = MockServer::start().await;

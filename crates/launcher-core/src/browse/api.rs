@@ -346,13 +346,15 @@ impl Api {
     }
 
     /// A project's versions, filtered by Modrinth loader tags and one Minecraft version.
+    /// Without their changelogs: those are most of the answer (a project with thousands of
+    /// versions passes `MAX_JSON_BYTES` with them) and nothing here reads them.
     pub async fn versions(
         &self,
         id: &str,
         loaders: &[&str],
         game_version: Option<&str>,
     ) -> Result<Vec<ApiVersion>> {
-        let mut query = Vec::new();
+        let mut query = vec![("include_changelog", "false".to_string())];
         if !loaders.is_empty() {
             query.push(("loaders", serde_json::to_string(loaders).expect("strings")));
         }
