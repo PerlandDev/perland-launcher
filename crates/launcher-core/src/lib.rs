@@ -37,6 +37,7 @@ pub mod restore;
 pub mod server_list;
 pub mod server_wake;
 pub mod settings;
+pub mod shader_mods;
 pub mod share;
 pub mod skin_catalog;
 pub mod skins;

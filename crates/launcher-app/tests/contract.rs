@@ -58,6 +58,7 @@ use launcher_core::{
     public_list::{Facets, ListQuery, ListSort},
     restore::{Change, PointKind},
     settings::{Accent, CustomRoom, IconShape, Lang, Settings, Theme, Transitions, UiFont},
+    shader_mods::{ShaderMod, ShaderSupport},
     share::{Category, CategoryCount, ShareChoice},
     sync::{origin::FileOrigin, plan::FileChange, ManualFile},
     ErrorCode, LauncherError,
@@ -1170,6 +1171,23 @@ fn contract_fixtures_are_current() {
                 size: 0,
                 folder: true,
                 managed: false,
+            },
+        ],
+    );
+    check(
+        "shader_support",
+        vec![
+            ShaderSupport {
+                wanted: Some(ShaderMod::Iris),
+                installed: false,
+            },
+            ShaderSupport {
+                wanted: Some(ShaderMod::Oculus),
+                installed: true,
+            },
+            ShaderSupport {
+                wanted: None,
+                installed: false,
             },
         ],
     );

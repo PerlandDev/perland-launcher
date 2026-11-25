@@ -70,6 +70,7 @@ import type {
   ServerNews,
   ServerStatusView,
   Settings,
+  ShaderSupport,
   ShareChoice,
   SharePreview,
   FriendsCheck,
@@ -211,6 +212,8 @@ export const commands = {
   modsAdd: (id: string, paths: string[]) => invoke<LocalMod[]>('mods_add', { id, paths }),
   modRemove: (id: string, file: string) => invoke<LocalMod[]>('mod_remove', { id, file }),
   contentList: (id: string, kind: ContentKind) => invoke<ContentFile[]>('content_list', { id, kind }),
+  /** Which mod runs shader packs on the instance, and whether it is there. */
+  shaderSupport: (id: string) => invoke<ShaderSupport>('shader_support', { id }),
   contentRemove: (id: string, kind: ContentKind, file: string) =>
     invoke<ContentFile[]>('content_remove', { id, kind, file }),
   openFolder: (target: OpenTarget) => invoke<null>('open_folder', { target }),

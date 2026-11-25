@@ -58,6 +58,7 @@ import searchRequests from './contract/search_requests.json';
 import serverInstanceFx from './contract/server_instance.json';
 import serverNews from './contract/server_news.json';
 import serverStatusFx from './contract/server_status.json';
+import shaderSupportFx from './contract/shader_support.json';
 import trustPromptsFx from './contract/trust_prompts.json';
 import settingsFx from './contract/settings.json';
 import skinEntriesFx from './contract/skin_entries.json';
@@ -94,6 +95,7 @@ const cases: [string, ZodType, unknown][] = [
   ['account_ready', s.accountReady.array(), accountReadyFx],
   ['app_info', s.appInfo, appInfo],
   ['content_files', s.contentFile.array(), contentFiles],
+  ['shader_support', s.shaderSupport.array(), shaderSupportFx],
   ['error', s.launcherError, errorFx],
   ['instance', s.instance, instanceFx],
   ['instance_listing', s.instanceListing, instanceListing],

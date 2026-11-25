@@ -61,7 +61,8 @@ it('finds resource packs for this instance and opens the folder', async () => {
 it('lists shaders and opens the shader folder', async () => {
   const { user, calls } = renderApp(<Mods id="asalith-fields" tab="shader" />);
   expect(await screen.findByText('ComplementaryReimagined')).toBeInTheDocument();
-  expect(screen.getByText('Turn it on in Options › Video Settings › Shader Packs.')).toBeInTheDocument();
+  // Asalith Fields has no Iris yet, so the shader-mod note stands where the Shader Packs hint would.
+  expect(await screen.findByText("Shaders run through Iris, and this instance doesn't have it yet.")).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Open folder' }));
   expect(sent(calls, 'open_folder')).toEqual([{ target: { kind: 'shader_packs', id: 'asalith-fields' } }]);
   await user.click(screen.getByRole('button', { name: 'Find shaders' }));

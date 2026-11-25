@@ -30,6 +30,7 @@ use launcher_core::{
     mods::LocalMod,
     perland::FreeServerSettings,
     settings::{Channel, Settings},
+    shader_mods::ShaderSupport,
     ErrorCode, LauncherError,
 };
 use tauri::{AppHandle, State};
@@ -325,6 +326,11 @@ pub async fn content_list(
     kind: ContentKind,
 ) -> Res<Vec<ContentFile>> {
     logged("content_list", core.content_list(&id, kind).await)
+}
+
+#[tauri::command]
+pub async fn shader_support(core: CoreState<'_>, id: String) -> Res<ShaderSupport> {
+    logged("shader_support", core.shader_support(&id).await)
 }
 
 #[tauri::command]

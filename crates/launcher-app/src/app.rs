@@ -40,6 +40,7 @@ use launcher_core::{
     playtime,
     restore::{self, Change, ChangeCtx},
     settings::{Channel, Settings, SettingsStore},
+    shader_mods::{self, ShaderSupport},
     skins,
     sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
     whats_new_seen::{WhatsNewSeen, WHATS_NEW_SEEN_FILE},
@@ -924,6 +925,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                 folder: p.folder,
             })
             .collect())
+    }
+
+    /// Which mod runs shader packs on the instance's loader, and whether an enabled jar in
+    /// `mods/` (the player's or the pack's) already is one.
+    pub async fn shader_support(&self, id: &str) -> Result<ShaderSupport> {
+        let instance = self.instances.load(id).await?;
+        shader_mods::support(&instance.game, &self.instances.game_dir(id)).await
     }
 
     pub async fn content_remove(
@@ -1817,6 +1825,42 @@ pub(crate) mod tests {
                 .await
                 .unwrap_err()
                 .code,
+            ErrorCode::InstanceNotFound
+        );
+    }
+
+    #[tokio::test]
+    async fn shader_support_names_the_loaders_mod_and_finds_it_in_mods() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let mut forge = vanilla("Forge");
+        forge.loader = Some(LoaderSpec {
+            kind: LoaderKind::Forge,
+            version: "47.4.22".into(),
+        });
+        let forge = core.instance_create(forge).await.unwrap();
+        let support = core.shader_support(&forge.id).await.unwrap();
+        assert_eq!(
+            support.wanted,
+            Some(launcher_core::shader_mods::ShaderMod::Oculus)
+        );
+        assert!(!support.installed);
+
+        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        w.start_file(
+            "META-INF/mods.toml",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        std::io::Write::write_all(&mut w, b"[[mods]]\nmodId = \"oculus\"\n").unwrap();
+        let mods = core.instances.game_dir(&forge.id).join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join("shaders.jar"), w.finish().unwrap().into_inner()).unwrap();
+        assert!(core.shader_support(&forge.id).await.unwrap().installed);
+
+        let plain = core.instance_create(vanilla("Plain")).await.unwrap();
+        assert_eq!(core.shader_support(&plain.id).await.unwrap().wanted, None);
+        assert_eq!(
+            core.shader_support("ghost").await.unwrap_err().code,
             ErrorCode::InstanceNotFound
         );
     }

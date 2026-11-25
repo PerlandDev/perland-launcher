@@ -13,6 +13,7 @@ import { Select } from '../../ui/Select';
 import { Sentinel } from '../../ui/Sentinel';
 import { useDebounced } from '../../ui/useDebounced';
 import { loaderName } from '../home/labels';
+import { ShaderModNote } from '../mods/ShaderModNote';
 import { categoryLabel, gameLabel } from './labels';
 import { ProjectPage } from './ProjectPage';
 import { ResultRow } from './ResultRow';
@@ -213,6 +214,8 @@ function BrowseList({ route }: { route: BrowseRoute }) {
             </Button>
           </div>
         )}
+        {/* A shader pack for this instance does nothing until its shader mod is there too. */}
+        {scope && route.kind === 'shader' && <ShaderModNote instance={scope} />}
         <div role="tablist" aria-label={t('browse.title')} className="flex flex-wrap gap-2">
           {kinds.map((kind) => (
             <button

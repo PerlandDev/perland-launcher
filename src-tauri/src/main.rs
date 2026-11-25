@@ -192,6 +192,7 @@ fn main() {
             commands::mods_add,
             commands::mod_remove,
             commands::content_list,
+            commands::shader_support,
             commands::content_remove,
             commands::open_folder,
             commands::java_test,

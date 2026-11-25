@@ -58,6 +58,7 @@ export const qk = {
   loaders: (kind: LoaderKind, mc: string) => ['catalog', 'loaders', kind, mc] as const,
   mods: (id: string) => ['mods', id] as const,
   contentFiles: (id: string, kind: ContentKind) => ['content', id, kind] as const,
+  shaderSupport: (id: string) => ['shaderSupport', id] as const,
   packStatus: (id: string) => ['pack', 'status', id] as const,
   packContents: (id: string) => ['pack', 'contents', id] as const,
   restorePoint: (id: string) => ['restore', id] as const,
@@ -150,6 +151,9 @@ export const useModIcon = (id: string, file: string | null, version: number | un
   });
 export const useContentFiles = (id: string, kind: ContentKind) =>
   useQuery({ queryKey: qk.contentFiles(id, kind), queryFn: () => commands.contentList(id, kind) });
+/** Which mod runs shader packs on the instance and whether it is there. Every change to the mods folder asks again. */
+export const useShaderSupport = (id: string, enabled = true) =>
+  useQuery({ queryKey: qk.shaderSupport(id), queryFn: () => commands.shaderSupport(id), enabled });
 export function usePackStatus(id: string, enabled: boolean) {
   const qc = useQueryClient();
   return useQuery({
@@ -582,6 +586,8 @@ export function usePackOptional(id: string, opts: Opts = {}) {
     mutationFn: ({ path, enabled }: { path: string; enabled: boolean }) => commands.packSetOptional(id, path, enabled),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.packContents(id) });
+      // An optional mod may be the shader mod.
+      void qc.invalidateQueries({ queryKey: qk.shaderSupport(id) });
       void qc.invalidateQueries({ queryKey: qk.instances });
     },
     onError: onError(opts),
@@ -816,8 +822,9 @@ export function useModMutations(id: string, opts: Opts = {}) {
   const qc = useQueryClient();
   const onSuccess = (list: Awaited<ReturnType<typeof commands.modsList>>) => {
     qc.setQueryData(qk.mods(id), list);
-    // A pack instance's additions list follows the mods folder.
+    // A pack instance's additions list follows the mods folder, and so does whether it runs shaders.
     void qc.invalidateQueries({ queryKey: qk.packContents(id) });
+    void qc.invalidateQueries({ queryKey: qk.shaderSupport(id) });
   };
   // A removal takes or joins the restore point, so the menu's Go back changes.
   const onRemoved = (list: Awaited<ReturnType<typeof commands.modsList>>) => {
