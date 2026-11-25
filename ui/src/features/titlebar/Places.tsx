@@ -3,12 +3,15 @@ import { useTranslation } from 'react-i18next';
 import { navigate, useRoute, type Route } from '../../state/route';
 import { Package, Server, Shirt, Trophy } from '../../ui/Icon';
 import { sessionKind } from '../browse/session';
+import { prefetchSkinStudio } from '../skins/loadSkinStudio';
 
 interface Place {
   id: string;
   label: string;
   icon: ReactNode;
   go: () => void;
+  /** Starts what the place needs downloading before the click (Skins: the studio's chunk). */
+  warm?: () => void;
 }
 
 /** Which place a route belongs to, so its tab stays marked on the screens it leads to. An instance's own screens (its
@@ -38,7 +41,7 @@ export function Places() {
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
   const open = placeOf(route);
   const places: Place[] = [
-    { id: 'skins', label: t('titlebar.skins'), icon: <Shirt aria-hidden />, go: () => navigate({ name: 'skins' }) },
+    { id: 'skins', label: t('titlebar.skins'), icon: <Shirt aria-hidden />, go: () => navigate({ name: 'skins' }), warm: prefetchSkinStudio },
     { id: 'servers', label: t('servers.open'), icon: <Server aria-hidden />, go: () => navigate({ name: 'servers' }) },
     { id: 'browse', label: t('browse.open'), icon: <Package aria-hidden />, go: () => navigate({ name: 'browse', kind: sessionKind() }) },
     { id: 'achievements', label: t('titlebar.achievements'), icon: <Trophy aria-hidden />, go: () => navigate({ name: 'achievements' }) },
@@ -71,6 +74,8 @@ export function Places() {
           aria-current={place.id === open ? 'page' : undefined}
           tabIndex={index === entry ? 0 : -1}
           onClick={place.go}
+          onPointerEnter={place.warm}
+          onFocus={place.warm}
         >
           {place.icon}
           {place.label}

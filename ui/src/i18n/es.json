@@ -1106,6 +1106,14 @@
       "updatedList": "Actualizados"
     }
   },
+  "loading": {
+    "skins": "Preparando el estudio de skins…",
+    "instances": "Cargando tus instancias…",
+    "settings": "Cargando tu configuración…",
+    "instance": "Cargando la configuración de esta instancia…",
+    "slow": "Esto está tardando más de lo normal.",
+    "goHome": "Ir al inicio"
+  },
   "skins": {
     "tab": { "create": "Crear", "paint": "Pintar", "catalog": "Catálogo" },
     "create": {
@@ -1541,6 +1549,8 @@
     "launcher_update_invalid": { "message": "La actualización del launcher no pasó la verificación de seguridad, así que no se instaló.", "fix": "Vuelve a intentarlo más tarde. Si sigue pasando, avísanos." },
     "launcher_update_busy": { "message": "Espera a que terminen los juegos y las instalaciones antes de reiniciar para actualizar.", "fix": "La actualización también se instala cuando cierras el launcher." },
     "internal": { "message": "Ocurrió algo inesperado.", "fix": "Reinicia el launcher. Si sigue pasando, copia los detalles para soporte." },
+    "skins_open_failed": { "message": "El estudio de skins no se abrió.", "fix": "Vuelve a intentarlo. Si sigue pasando, reinicia el launcher." },
+    "screen_failed": { "message": "Esta pantalla tuvo un problema.", "fix": "Vuelve al inicio e inténtalo de nuevo. Si sigue pasando, reinicia el launcher." },
     "browse_rate_limited": { "message": "Demasiadas búsquedas. Intenta de nuevo en {{seconds}} s." },
     "content_not_found": { "message": "No encontramos ese proyecto.", "fix": "Puede que lo hayan borrado." },
     "content_incompatible": { "message": "{{name}} no tiene una versión para esta instancia.", "fix": "Prueba con otra instancia o con una nueva." },

@@ -1106,6 +1106,14 @@
       "updatedList": "Updated"
     }
   },
+  "loading": {
+    "skins": "Setting up the skin studio…",
+    "instances": "Getting your instances…",
+    "settings": "Getting your settings…",
+    "instance": "Getting this instance's settings…",
+    "slow": "This is taking longer than usual.",
+    "goHome": "Go home"
+  },
   "skins": {
     "tab": { "create": "Create", "paint": "Paint", "catalog": "Catalog" },
     "create": {
@@ -1541,6 +1549,8 @@
     "launcher_update_invalid": { "message": "The launcher update didn't pass its safety check, so it wasn't installed.", "fix": "Try again later. If it keeps happening, let us know." },
     "launcher_update_busy": { "message": "Wait for games and installs to finish before restarting to update.", "fix": "The update also installs when you close the launcher." },
     "internal": { "message": "Something unexpected went wrong.", "fix": "Restart the launcher. If it keeps happening, copy the details for support." },
+    "skins_open_failed": { "message": "The skin studio didn't open.", "fix": "Try again. If it keeps happening, restart the launcher." },
+    "screen_failed": { "message": "This screen ran into a problem.", "fix": "Go home and try again. If it keeps happening, restart the launcher." },
     "browse_rate_limited": { "message": "Too many searches. Try again in {{seconds}} s." },
     "content_not_found": { "message": "That project wasn't found.", "fix": "It may have been removed." },
     "content_incompatible": { "message": "{{name}} doesn't have a version for this instance.", "fix": "Try another instance, or a new one." },
