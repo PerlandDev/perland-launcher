@@ -1,8 +1,8 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { transitions as transitionsSchema, type Accent, type CustomRoom, type Theme } from '../../ipc/schema';
 import { ACCENTS, FONTS, MADE_THEMES } from '../../state/appearance';
-import { deriveRoom, isHex, roomChecks } from '../../state/customRoom';
+import { BACKGROUNDS, buttonsFor, deriveRoom, fitButtons, isHex, roomOk, type Swatch } from '../../state/customRoom';
 import { useSettings } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
@@ -16,13 +16,6 @@ import { useSettingsDraft } from '../settings/useSettingsDraft';
 
 /** The rooms added in this version, which carry a New tag. */
 const NEW_ROOMS: readonly Theme[] = ['nether', 'end', 'cherry'];
-/** Two colours to start an own room from, for a player who doesn't know where to begin. */
-const IDEAS: readonly { key: string; room: CustomRoom }[] = [
-  { key: 'ideaOcean', room: { background: '#0f1c26', buttons: '#5ad1e6' } },
-  { key: 'ideaLava', room: { background: '#1c0f0c', buttons: '#ff7a2f' } },
-  { key: 'ideaMint', room: { background: '#0f1a16', buttons: '#7ee0b0' } },
-  { key: 'ideaGrape', room: { background: '#170f1f', buttons: '#c58cff' } },
-];
 const TRANSITIONS = transitionsSchema.options;
 
 /** One titled block of the screen. `radios` makes it a radio group, which names its options for assistive tech. */
@@ -62,41 +55,13 @@ export function Personalize() {
   const settings = useSettings();
   const { draft, edit } = useSettingsDraft();
   const data = draft ?? settings.data;
-  // What the hex fields hold while they are being typed in; `null` is "show what is saved".
-  const [typed, setTyped] = useState<Partial<Record<keyof CustomRoom, string>>>({});
-
   if (!data) return null;
   const room = data.customRoom;
   const own = data.theme === 'custom';
-  const checks = roomChecks(room);
-
-  const setRoom = (patch: Partial<CustomRoom>) => edit({ customRoom: { ...room, ...patch } });
-  const colourField = (which: keyof CustomRoom) => {
-    const what = t(`personalize.${which === 'background' ? 'background' : 'buttons'}`);
-    const shown = typed[which] ?? room[which];
-    const take = (value: string) => {
-      setTyped((state) => ({ ...state, [which]: value }));
-      if (isHex(value)) setRoom({ [which]: value.toLowerCase() });
-    };
-    return (
-      <div key={which} className="grid gap-1.5">
-        <span className="text-sm font-semibold">{what}</span>
-        <div className="flex items-center gap-3">
-          <input type="color" className="colour-well" value={isHex(shown) ? shown : room[which]} aria-label={t('personalize.pick', { what })} onChange={(e) => take(e.target.value)} />
-          <input
-            className="field-input w-32 font-mono text-ink"
-            value={shown}
-            maxLength={7}
-            spellCheck={false}
-            autoComplete="off"
-            aria-label={t('personalize.code', { what })}
-            onChange={(e) => take(e.target.value)}
-            onBlur={() => setTyped((state) => ({ ...state, [which]: undefined }))}
-          />
-        </div>
-      </div>
-    );
-  };
+  const name = (swatch: Swatch) => `${t(`personalize.hues.${swatch.hue}`)}, ${t(`personalize.tones.${swatch.tone}`)}`;
+  // A new background keeps the buttons when they still read on it, else takes the nearest that do.
+  const pickBackground = (background: string) => edit({ customRoom: { background, buttons: fitButtons(background, room.buttons) } });
+  const pickButtons = (buttons: string) => edit({ customRoom: { ...room, buttons } });
 
   return (
     <ScreenFrame title={t('personalize.title')} subtitle={t('personalize.subtitle')} onBack={() => navigate({ name: 'home', id: null })}>
@@ -150,31 +115,14 @@ export function Personalize() {
 
         {own && (
           <Section title={t('personalize.yourColours')} hint={t('personalize.yourColoursHint')}>
-            <div className="grid gap-4 sm:grid-cols-2">{(['background', 'buttons'] as const).map(colourField)}</div>
-            <ul className="grid gap-1.5">
-              {checks.map((check) => (
-                <li key={check.id} className={`flex items-start gap-2 text-sm ${check.ok ? 'text-ink-dim' : 'font-semibold text-ink'}`}>
-                  {check.ok ? <span className="mt-1.5 h-2 w-2 flex-none bg-lime" aria-hidden /> : <WarningDiamond className="mt-0.5 h-4 w-4 flex-none text-coral" aria-hidden />}
-                  {t(`personalize.checks.${check.id}.${check.ok ? 'ok' : 'bad'}`)}
-                </li>
-              ))}
-            </ul>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-ink-dim">{t('personalize.ideas')}</span>
-              {IDEAS.map((idea) => (
-                <button
-                  key={idea.key}
-                  type="button"
-                  className="seg text-sm"
-                  onClick={() => {
-                    setTyped({});
-                    edit({ customRoom: idea.room });
-                  }}
-                >
-                  {t(`personalize.${idea.key}`)}
-                </button>
-              ))}
-            </div>
+            {!roomOk(room) && (
+              <p className="flex items-start gap-2 text-sm font-semibold text-ink">
+                <WarningDiamond className="mt-0.5 h-4 w-4 flex-none text-coral" aria-hidden />
+                {t('personalize.oldColours')}
+              </p>
+            )}
+            <Palette label={t('personalize.background')} name="room-background" swatches={BACKGROUNDS} value={room.background} onPick={pickBackground} nameOf={name} />
+            <Palette label={t('personalize.buttons')} name="room-buttons" swatches={buttonsFor(room.background)} value={room.buttons} onPick={pickButtons} nameOf={name} />
           </Section>
         )}
 
@@ -218,6 +166,27 @@ export function Personalize() {
         </Section>
       </div>
     </ScreenFrame>
+  );
+}
+
+/** One palette of the own theme: a radio group of colour chips, the chosen one pressed with the lime lamp. Each chip is
+ *  named by its hue and tone, so a screen reader says more than a colour code. */
+function Palette({ label, name, swatches, value, onPick, nameOf }: { label: string; name: string; swatches: readonly Swatch[]; value: string; onPick: (value: string) => void; nameOf: (swatch: Swatch) => string }) {
+  const id = useId();
+  return (
+    <div role="radiogroup" aria-labelledby={id} className="grid gap-2">
+      <span id={id} className="text-sm font-semibold">
+        {label}
+      </span>
+      <div className="flex flex-wrap gap-2">
+        {swatches.map((swatch) => (
+          <label key={swatch.value} className="colour-chip" title={nameOf(swatch)} data-checked={value === swatch.value ? '' : undefined}>
+            <input type="radio" name={name} className="sr-only" aria-label={nameOf(swatch)} checked={value === swatch.value} onChange={() => onPick(swatch.value)} />
+            <span className="colour-chip-face" style={{ background: swatch.value }} aria-hidden />
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }
 

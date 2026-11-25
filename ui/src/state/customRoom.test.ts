@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrast, deriveRoom, isHex, mix, roomChecks, roomOk } from './customRoom';
+import { BACKGROUNDS, BUTTONS, DEFAULT_ROOM, buttonsFor, type Swatch, contrast, deriveRoom, fitButtons, isHex, mix, roomChecks, roomOk } from './customRoom';
 
 describe('mix', () => {
   it('moves one colour toward another', () => {
@@ -53,5 +53,51 @@ describe('roomChecks', () => {
 
   it('fails a malformed colour', () => {
     expect(roomOk({ background: 'red', buttons: '#ff6ad5' })).toBe(false);
+  });
+});
+
+describe('the palettes', () => {
+  const values = (list: readonly Swatch[]) => list.map((swatch) => swatch.value);
+
+  it('offers only backgrounds that pass every check that depends on the background', () => {
+    expect(BACKGROUNDS.length).toBeGreaterThanOrEqual(24);
+    expect(new Set(values(BACKGROUNDS)).size).toBe(BACKGROUNDS.length);
+    for (const { value } of BACKGROUNDS) {
+      expect(roomChecks({ background: value, buttons: '#ffffff' }).filter((c) => !c.ok), value).toEqual([]);
+    }
+  });
+
+  it('offers, for every background, only buttons that pass every check, and plenty of them', () => {
+    for (const { value: background } of BACKGROUNDS) {
+      const buttons = buttonsFor(background);
+      expect(buttons.length, background).toBeGreaterThanOrEqual(20);
+      for (const { value } of buttons) expect(roomOk({ background, buttons: value }), `${background} ${value}`).toBe(true);
+    }
+  });
+
+  it('keeps the buttons in one order whatever the background, so they do not jump around', () => {
+    for (const { value: background } of BACKGROUNDS) {
+      const fit = buttonsFor(background);
+      expect(fit).toEqual(BUTTONS.filter((swatch) => fit.includes(swatch)));
+    }
+  });
+
+  it('names every colour by a hue and a tone, and no two alike', () => {
+    for (const list of [BACKGROUNDS, BUTTONS]) {
+      const names = list.map((swatch) => `${swatch.hue} ${swatch.tone}`);
+      expect(new Set(names).size).toBe(names.length);
+    }
+  });
+
+  it('starts from a room the palettes hold', () => {
+    expect(values(BACKGROUNDS)).toContain(DEFAULT_ROOM.background);
+    expect(values(buttonsFor(DEFAULT_ROOM.background))).toContain(DEFAULT_ROOM.buttons);
+  });
+
+  it('keeps the chosen buttons on a new background when they still fit, else picks the closest that does', () => {
+    const background = BACKGROUNDS[1]!.value;
+    const fits = buttonsFor(background)[0]!.value;
+    expect(fitButtons(background, fits)).toBe(fits);
+    expect(values(buttonsFor(background))).toContain(fitButtons(background, '#202020'));
   });
 });
