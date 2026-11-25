@@ -67,34 +67,35 @@
       "bone": "Hueso"
     },
     "yourColours": "Tus colores",
-    "yourColoursHint": "Elige dos colores y el launcher arma el resto: paneles, bordes, texto y escalones. Si algo no se leyera, te avisa y no lo aplica.",
+    "yourColoursHint": "Elige un fondo y después los botones. Solo salen los colores que se leen bien juntos.",
     "background": "Fondo",
     "buttons": "Botones",
-    "pick": "Elegir color: {{what}}",
-    "code": "Código del color: {{what}}",
-    "checks": {
-      "dark": {
-        "ok": "El fondo es oscuro, como el launcher necesita.",
-        "bad": "El fondo es muy claro. Elige uno más oscuro."
-      },
-      "text": {
-        "ok": "Los textos se leen bien.",
-        "bad": "Los textos pequeños no se leerían."
-      },
-      "play": {
-        "ok": "El texto de Jugar se lee bien.",
-        "bad": "El texto de Jugar no se leería: prueba unos botones más claros."
-      },
-      "status": {
-        "ok": "Verde, rojo y azul se siguen viendo.",
-        "bad": "Con este fondo no se verían los avisos en verde, rojo o azul."
-      }
+    "hues": {
+      "slate": "Pizarra",
+      "red": "Rojo",
+      "orange": "Naranja",
+      "amber": "Ámbar",
+      "yellow": "Amarillo",
+      "lime": "Lima",
+      "green": "Verde",
+      "teal": "Verde azulado",
+      "cyan": "Cian",
+      "sky": "Celeste",
+      "blue": "Azul",
+      "violet": "Violeta",
+      "pink": "Rosa",
+      "magenta": "Magenta",
+      "grey": "Gris",
+      "bone": "Hueso"
     },
-    "ideas": "Ideas:",
-    "ideaOcean": "Océano",
-    "ideaLava": "Lava",
-    "ideaMint": "Menta",
-    "ideaGrape": "Uva",
+    "tones": {
+      "veryDark": "muy oscuro",
+      "dark": "oscuro",
+      "light": "claro",
+      "mid": "medio",
+      "bold": "intenso"
+    },
+    "oldColours": "Tus colores de antes no se leían bien juntos, así que el launcher no los usa. Elige otros aquí.",
     "languageHint": "¿Buscas el idioma?",
     "languageLink": "Cámbialo en Configuración"
   },

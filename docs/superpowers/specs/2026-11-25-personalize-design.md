@@ -26,8 +26,12 @@ Engine to keep them on the account).
 2. **Themes** (the UI's word for a room; "Sala" until 2026-11-25): the swatch keys of every made room: Laminate,
    Stone, Night, Forest, then the new Nether, End and Cherry, tagged New. Below them one wide key, **Customize theme**,
    puts on the player's own room (`aria-pressed`, the lime lamp while it is on).
-3. **Your colours** (only while Your room is chosen): two colour pickers, Background and Buttons, each with its hex
-   field, the live checks and four starting ideas (Ocean, Lava, Mint, Grape).
+3. **Your colours** (only while Your room is chosen): two palettes of colour chips, Background and Buttons
+   (`BACKGROUNDS`, `BUTTONS` in `state/customRoom.ts`; since 2026-11-25 in place of two free colour pickers, whose
+   choices often failed the checks). Every background passes the checks that depend on the background alone; the
+   Buttons palette shows only the buttons that read on the chosen background (`buttonsFor`), and a new background keeps
+   the buttons when they still read, else takes the nearest that do (`fitButtons`). Each chip is named by a hue and a
+   tone ("Orange, very dark"). A saved room that fails a check (from the pickers) is kept off and says so.
 4. **Button colour** (hidden while Your room is chosen, which has its own): "The room's", Amber, Orange, Pink, Violet,
    Cyan and Bone. Its hint says why green, red and blue are not offered: they mean running, failing and in progress.
 5. **Text font**, **Instance icons** and **Screen transitions**, as they were in Settings.

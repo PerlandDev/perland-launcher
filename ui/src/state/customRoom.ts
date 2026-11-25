@@ -76,3 +76,81 @@ export function roomChecks(room: CustomRoom): { id: RoomCheckId; ok: boolean }[]
 
 /** Whether the room may be put on: a room that fails a check is kept but not shown. */
 export const roomOk = (room: CustomRoom): boolean => roomChecks(room).every((c) => c.ok);
+
+/** A colour from hue (degrees), saturation and lightness (0 to 1). */
+function hsl(h: number, sat: number, light: number): string {
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = sat * Math.min(light, 1 - light);
+  const f = (n: number) => light - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return toHex([f(0), f(8), f(4)].map((v) => v * 255));
+}
+
+/** The hues the palettes walk, a colour wheel from red, by the name the screen gives each. */
+const HUES = [
+  ['red', 0],
+  ['orange', 20],
+  ['amber', 40],
+  ['yellow', 60],
+  ['lime', 90],
+  ['green', 130],
+  ['teal', 165],
+  ['cyan', 190],
+  ['sky', 210],
+  ['blue', 240],
+  ['violet', 270],
+  ['pink', 310],
+] as const;
+
+/** One colour of a palette: its value and the hue and tone the screen names it by (`personalize.hues`, `.tones`). */
+export interface Swatch {
+  value: string;
+  hue: string;
+  tone: 'veryDark' | 'dark' | 'light' | 'mid' | 'bold';
+}
+
+/** The player's own room starts here (the default Rust saves, `settings::CustomRoom`). */
+export const DEFAULT_ROOM: CustomRoom = { background: '#101820', buttons: '#ff6ad5' };
+
+const passes = (background: string) => roomChecks({ background, buttons: WHITE }).every((c) => c.ok);
+
+/** The lighter background of a hue: as light as the checks allow, up to 10 %. Greens and yellows stop sooner, since
+ *  the lime lamp must still stand out on them. */
+const lighter = (h: number): string => [0.1, 0.09, 0.085].map((l) => hsl(h, 0.3, l)).find(passes) ?? hsl(h, 0.3, 0.08);
+
+const once = (list: Swatch[]) => list.filter((swatch, i) => list.findIndex((other) => other.value === swatch.value) === i);
+
+/** Backgrounds a player can pick: two depths of every hue and of grey, each dark enough that text, Play and the role
+ *  colours read on it, whatever the buttons (`roomChecks`). The default's own background leads. */
+export const BACKGROUNDS: readonly Swatch[] = once([
+  { value: DEFAULT_ROOM.background, hue: 'slate', tone: 'dark' },
+  ...HUES.flatMap(([hue, h]): Swatch[] => [
+    { value: hsl(h, 0.4, 0.07), hue, tone: 'veryDark' },
+    { value: lighter(h), hue, tone: 'dark' },
+  ]),
+  { value: hsl(0, 0, 0.07), hue: 'grey', tone: 'veryDark' },
+  { value: hsl(0, 0, 0.1), hue: 'grey', tone: 'dark' },
+]).filter((swatch) => passes(swatch.value));
+
+/** Buttons a player can pick: three tones of every hue, light to bold, the default's own and bone; `buttonsFor` keeps
+ *  those Play's words read on. */
+export const BUTTONS: readonly Swatch[] = once([
+  ...HUES.flatMap(([hue, h]): Swatch[] => [
+    { value: hsl(h, 0.9, 0.82), hue, tone: 'light' },
+    { value: hsl(h, 0.85, 0.7), hue, tone: 'mid' },
+    { value: hsl(h, 0.8, 0.6), hue, tone: 'bold' },
+  ]),
+  { value: DEFAULT_ROOM.buttons, hue: 'magenta', tone: 'bold' },
+  { value: '#e8e0cc', hue: 'bone', tone: 'light' },
+]);
+
+/** The buttons that read on a background, in the palette's order. */
+export const buttonsFor = (background: string): Swatch[] => BUTTONS.filter((swatch) => roomOk({ background, buttons: swatch.value }));
+
+/** The buttons to keep on a new background: the same ones when they still read, else the nearest that do. */
+export function fitButtons(background: string, buttons: string): string {
+  const fit = buttonsFor(background).map((swatch) => swatch.value);
+  if (fit.includes(buttons)) return buttons;
+  const from = channels(isHex(buttons) ? buttons : DEFAULT_ROOM.buttons);
+  const far = (b: string) => channels(b).reduce((sum, v, i) => sum + (v - from[i]!) ** 2, 0);
+  return [...fit].sort((a, b) => far(a) - far(b))[0] ?? DEFAULT_ROOM.buttons;
+}
