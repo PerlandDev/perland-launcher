@@ -1,5 +1,7 @@
 {
-  "app": { "name": "Perland Launcher" },
+  "app": {
+    "name": "Perland Launcher"
+  },
   "common": {
     "cancel": "Cancelar",
     "close": "Cerrar",
@@ -33,7 +35,70 @@
     "noAccount": "Agregar cuenta",
     "updateReady": "Actualización lista · se instala al cerrar",
     "updateReadyBusy": "Actualización lista · espera a que terminen los juegos y las instalaciones",
-    "restart": "Reiniciar ahora"
+    "restart": "Reiniciar ahora",
+    "personalize": "Personalización"
+  },
+  "personalize": {
+    "title": "Personalización",
+    "subtitle": "Elige cómo se ve tu launcher. Todo cambia al momento.",
+    "previewHint": "Así se ve tu launcher ahora.",
+    "previewButton": "Botón normal",
+    "previewRunning": "En marcha",
+    "room": "Sala",
+    "roomHint": "El material de todo el launcher: fondo, paneles, botones y los paisajes de tus instancias.",
+    "rooms": {
+      "laminate": "Laminado",
+      "stone": "Piedra",
+      "night": "Noche",
+      "forest": "Bosque",
+      "nether": "Nether",
+      "end": "End",
+      "cherry": "Cerezo",
+      "custom": "Tu sala"
+    },
+    "new": "Nueva",
+    "accent": "Color de los botones",
+    "accentHint": "El color de Jugar y de los botones que actúan. Verde, rojo y azul no están: el launcher los usa para decirte si algo funciona, falla o va en camino.",
+    "accents": {
+      "room": "El de la sala",
+      "amber": "Ámbar",
+      "orange": "Naranja",
+      "pink": "Rosa",
+      "violet": "Violeta",
+      "cyan": "Cian",
+      "bone": "Hueso"
+    },
+    "yourColours": "Tus colores",
+    "yourColoursHint": "Elige dos colores y el launcher arma el resto: paneles, bordes, texto y escalones. Si algo no se leyera, te avisa y no lo aplica.",
+    "background": "Fondo",
+    "buttons": "Botones",
+    "pick": "Elegir color: {{what}}",
+    "code": "Código del color: {{what}}",
+    "checks": {
+      "dark": {
+        "ok": "El fondo es oscuro, como el launcher necesita.",
+        "bad": "El fondo es muy claro. Elige uno más oscuro."
+      },
+      "text": {
+        "ok": "Los textos se leen bien.",
+        "bad": "Los textos pequeños no se leerían."
+      },
+      "play": {
+        "ok": "El texto de Jugar se lee bien.",
+        "bad": "El texto de Jugar no se leería: prueba unos botones más claros."
+      },
+      "status": {
+        "ok": "Verde, rojo y azul se siguen viendo.",
+        "bad": "Con este fondo no se verían los avisos en verde, rojo o azul."
+      }
+    },
+    "ideas": "Ideas:",
+    "ideaOcean": "Océano",
+    "ideaLava": "Lava",
+    "ideaMint": "Menta",
+    "ideaGrape": "Uva",
+    "openFromSettings": "Abrir Personalización",
+    "movedHint": "La sala, los colores, el texto y los íconos ahora están en Personalización, el pincel de arriba."
   },
   "rail": {
     "more": "Más opciones para {{name}}",
@@ -121,8 +186,8 @@
     "packIconNone": "Este modpack no trae ícono.",
     "upload": "Sube la tuya…",
     "uploadIcon": "Sube el tuyo…",
-    "uploadHintBackground": "PNG,\u00a0JPEG\u00a0o\u00a0WebP. Ideal:\u00a01920\u00a0×\u00a01080 o\u00a0más.",
-    "uploadHintIcon": "PNG,\u00a0JPEG\u00a0o\u00a0WebP. Ideal:\u00a0cuadrada.",
+    "uploadHintBackground": "PNG, JPEG o WebP. Ideal: 1920 × 1080 o más.",
+    "uploadHintIcon": "PNG, JPEG o WebP. Ideal: cuadrada.",
     "screenshot": "Captura {{name}}",
     "noScreenshots": "Las capturas que tomes en el juego (F2) aparecen aquí.",
     "moreScreenshots": "Ver las {{count}}",
@@ -369,7 +434,11 @@
   },
   "mods": {
     "screenTitle": "Mods y packs",
-    "tabs": { "mod": "Mods", "resource_pack": "Paquetes de recursos", "shader": "Shaders" },
+    "tabs": {
+      "mod": "Mods",
+      "resource_pack": "Paquetes de recursos",
+      "shader": "Shaders"
+    },
     "count_one": "{{count}} mod",
     "count_other": "{{count}} mods",
     "add": "Agregar mods",
@@ -439,7 +508,13 @@
       "xsts": "Acceso de Xbox para Minecraft",
       "minecraft": "Inicio de sesión en Minecraft",
       "profile": "Compra del juego y perfil",
-      "state": { "done": "listo", "running": "en curso", "pending": "sin llegar", "fault": "se detuvo aquí", "waiting": "esperando aprobación" }
+      "state": {
+        "done": "listo",
+        "running": "en curso",
+        "pending": "sin llegar",
+        "fault": "se detuvo aquí",
+        "waiting": "esperando aprobación"
+      }
     },
     "promptTitle": "Inicia sesión para jugar",
     "promptBody": "Perland Launcher necesita una cuenta de Microsoft que tenga Minecraft: Java Edition.",
@@ -503,12 +578,21 @@
     },
     "appearance": "Apariencia",
     "theme": "Tema",
-    "themes": { "laminate": "Laminado", "stone": "Piedra", "night": "Noche", "forest": "Bosque" },
+    "themes": {
+      "laminate": "Laminado",
+      "stone": "Piedra",
+      "night": "Noche",
+      "forest": "Bosque"
+    },
     "font": "Fuente del texto",
     "fontHyperlegible": "Fácil de leer",
     "fontSystem": "La de tu computadora",
     "transitions": "Transiciones entre pantallas",
-    "transitionsOptions": {"stepped": "Arcade", "smooth": "Suaves", "off": "Desactivadas"},
+    "transitionsOptions": {
+      "stepped": "Arcade",
+      "smooth": "Suaves",
+      "off": "Desactivadas"
+    },
     "iconShape": "Íconos de instancias",
     "iconSquare": "Cuadrados",
     "iconRound": "Redondos",
@@ -783,7 +867,11 @@
     "vanilla": "Vanilla",
     "latestVersion": "(última versión)",
     "sort": "Ordenar por",
-    "sorts": { "players": "Más jugadores", "newest": "Más nuevos", "name": "Nombre A–Z" },
+    "sorts": {
+      "players": "Más jugadores",
+      "newest": "Más nuevos",
+      "name": "Nombre A–Z"
+    },
     "any": "Cualquiera",
     "modded": "Mods",
     "withMods": "Con mods",
@@ -805,7 +893,10 @@
       "pvp": "PvP",
       "roleplay": "Rol"
     },
-    "language": { "en": "English", "es": "Español" }
+    "language": {
+      "en": "English",
+      "es": "Español"
+    }
   },
   "freeServer": {
     "email": {
@@ -1045,7 +1136,11 @@
     }
   },
   "skins": {
-    "tab": { "create": "Crear", "paint": "Pintar", "catalog": "Catálogo" },
+    "tab": {
+      "create": "Crear",
+      "paint": "Pintar",
+      "catalog": "Catálogo"
+    },
     "create": {
       "categories": "Categorías",
       "category": {
@@ -1148,7 +1243,24 @@
       "wears": "Lo que lleva",
       "base": "Cuerpo y cara",
       "colours": "Colores: {{names}}",
-      "slot": { "body": "Cuerpo", "eyes": "Ojos", "brows": "Cejas", "mouth": "Boca", "face_detail": "Detalle", "beard": "Barba", "bottom": "Piernas", "shoes": "Calzado", "top": "Torso", "belt": "Cinturón", "hands": "Manos", "neck": "Cuello", "back": "Espalda", "hair": "Pelo", "glasses": "Lentes", "hat": "Gorro" },
+      "slot": {
+        "body": "Cuerpo",
+        "eyes": "Ojos",
+        "brows": "Cejas",
+        "mouth": "Boca",
+        "face_detail": "Detalle",
+        "beard": "Barba",
+        "bottom": "Piernas",
+        "shoes": "Calzado",
+        "top": "Torso",
+        "belt": "Cinturón",
+        "hands": "Manos",
+        "neck": "Cuello",
+        "back": "Espalda",
+        "hair": "Pelo",
+        "glasses": "Lentes",
+        "hat": "Gorro"
+      },
       "customize": "Personalizar",
       "have": "En tu guardarropa"
     },
@@ -1225,7 +1337,16 @@
     "toClassic": "Cambiar a brazos clásicos",
     "animation": "Animación",
     "animationHint": "Apágala para dejar la figura recta y quieta, sin nada que se solape, lista para pintar.",
-    "pose": {"still": "De pie", "walk": "Caminando", "run": "Corriendo", "crouch": "Agachado", "sit": "Sentado", "wave": "Saludando", "boat": "En un bote", "horse": "A caballo"},
+    "pose": {
+      "still": "De pie",
+      "walk": "Caminando",
+      "run": "Corriendo",
+      "crouch": "Agachado",
+      "sit": "Sentado",
+      "wave": "Saludando",
+      "boat": "En un bote",
+      "horse": "A caballo"
+    },
     "paintOn": "Pintar en",
     "zoomIn": "Acercar",
     "zoomOut": "Alejar",
@@ -1290,218 +1411,744 @@
     }
   },
   "errors": {
-    "team_server_too_big": { "message": "El plan de tu equipo no tiene espacio para un servidor de este tamaño." },
-    "server_name_taken": { "message": "Tu equipo ya tiene un servidor con ese nombre." },
-    "invalid_team_server": { "message": "No se pudo crear el servidor con estas opciones." },
-    "offline_name_invalid": { "message": "Los nombres deben tener de 3 a 16 letras, números o guiones bajos." },
-    "accounts_damaged": { "message": "Tu archivo de cuentas está dañado.", "fix": "Borra accounts.json de la carpeta de datos y vuelve a agregar tus cuentas." },
-    "offline_locked": { "message": "Las cuentas sin conexión solo están disponibles en las versiones de desarrollo.", "fix": "Inicia sesión con Microsoft para jugar." },
-    "microsoft_awaiting_approval": { "message": "Minecraft todavía no aprobó Perland Launcher, así que rechazó el inicio de sesión. Tu cuenta de Microsoft está bien: podrás jugar en cuanto lo aprueben." },
-    "microsoft_not_configured": { "message": "El inicio de sesión con Microsoft no está configurado en esta versión." },
-    "microsoft_sign_in_again": { "message": "Inicia sesión con Microsoft otra vez para seguir jugando.", "fix": "Iniciar sesión" },
-    "minecraft_not_owned": { "message": "Esta cuenta de Microsoft no tiene Minecraft: Java Edition.", "fix": "Inicia sesión con la cuenta que lo compró, o consíguelo en minecraft.net." },
-    "minecraft_no_profile": { "message": "Esta cuenta tiene Minecraft, pero todavía no eligió un nombre de jugador.", "fix": "Elige uno en minecraft.net y luego vuelve a iniciar sesión." },
-    "xbox_no_profile": { "message": "Esta cuenta de Microsoft todavía no tiene un perfil de Xbox.", "fix": "Inicia sesión una vez en xbox.com para crearlo y vuelve a intentarlo." },
-    "xbox_region_blocked": { "message": "Xbox Live no está disponible en tu país, así que esta cuenta no puede iniciar sesión." },
-    "xbox_age_verification": { "message": "Esta cuenta necesita la verificación de adulto en xbox.com antes de poder iniciar sesión." },
-    "xbox_child_account": { "message": "Esta es una cuenta infantil. Un adulto debe agregarla primero a una familia de Microsoft." },
-    "microsoft_rate_limited": { "message": "Microsoft está recibiendo demasiados inicios de sesión en este momento. Inténtalo de nuevo en un minuto." },
-    "no_account": { "message": "Agrega una cuenta antes de jugar.", "fix": "Abre Cuentas y agrega una." },
-    "disk_io": { "message": "No se pudo leer o escribir un archivo del launcher.", "fix": "Revisa que haya espacio libre y que la carpeta del launcher no sea de solo lectura." },
-    "disk_write_failed": { "message": "No se pudo guardar un archivo del launcher.", "fix": "Revisa que haya espacio libre y que la carpeta del launcher no sea de solo lectura." },
-    "download_no_url": { "message": "Este archivo no tiene dirección de descarga.", "fix": "Inténtalo más tarde." },
-    "download_corrupt": { "message": "{{file}} se dañó durante la descarga.", "fix": "Inténtalo de nuevo. Si sigue pasando, puede que el archivo del servidor esté roto." },
-    "host_unreachable": { "message": "No se pudo conectar con {{host}}.", "fix": "Revisa tu conexión a internet." },
-    "download_restarted": { "message": "La descarga tuvo que empezar de nuevo.", "fix": "Inténtalo de nuevo." },
-    "host_trouble": { "message": "{{host}} tiene problemas en este momento.", "fix": "Inténtalo en unos minutos." },
-    "download_rejected": { "message": "{{host}} rechazó la descarga.", "fix": "Inténtalo más tarde." },
-    "connection_dropped": { "message": "La conexión se cortó durante una descarga.", "fix": "Revisa tu conexión a internet y vuelve a intentarlo." },
-    "http_client_failed": { "message": "El launcher no pudo iniciar su conexión de red.", "fix": "Reinicia el launcher." },
-    "offline": { "message": "Parece que no tienes conexión, y esto no se ha descargado antes.", "fix": "Conéctate a internet y vuelve a intentarlo." },
-    "unsafe_game_data": { "message": "La lista de archivos de Minecraft tiene algo inseguro, así que se omitió.", "fix": "Inténtalo más tarde." },
-    "library_unverifiable": { "message": "No se pudo comprobar que un archivo descargado sea auténtico.", "fix": "Inténtalo más tarde." },
-    "no_client_download": { "message": "Minecraft {{version}} no tiene descarga del juego.", "fix": "Elige otra versión." },
-    "minecraft_version_not_found": { "message": "Minecraft {{version}} no existe.", "fix": "Elige una versión de la lista." },
-    "mojang_mismatch": { "message": "Mojang envió una versión distinta a la que se pidió.", "fix": "Inténtalo más tarde." },
-    "no_asset_index": { "message": "A {{version}} le falta su lista de recursos del juego.", "fix": "Elige otra versión." },
-    "natives_extract_failed": { "message": "No se pudieron descomprimir las bibliotecas nativas de Minecraft.", "fix": "Cierra cualquier Minecraft abierto y vuelve a intentarlo." },
-    "version_in_use": { "message": "Hay otra copia de esta versión de Minecraft abierta.", "fix": "Ciérrala y vuelve a intentarlo." },
-    "archive_invalid": { "message": "{{file}} no es un archivo comprimido válido.", "fix": "Presiona Jugar otra vez para descargarlo de nuevo." },
-    "instance_not_found": { "message": "Esta instancia ya no existe." },
-    "instance_damaged": { "message": "El archivo de configuración de “{{id}}” está dañado.", "fix": "Borra la instancia y créala de nuevo." },
-    "instance_id_invalid": { "message": "No se encuentra esa instancia." },
-    "instance_busy": { "message": "Detén el juego antes de cambiar esta instancia." },
-    "already_running": { "message": "Esta instancia ya está abierta." },
-    "name_invalid": { "message": "Los nombres deben tener de 1 a 64 caracteres." },
-    "memory_out_of_range": { "message": "La memoria debe estar entre {{min}} y {{max}} MB." },
-    "java_unavailable": { "message": "No hay Java oficial ({{component}}) para esta computadora.", "fix": "Elige una instalación de Java en la configuración de la instancia." },
-    "java_start_failed": { "message": "No se pudo iniciar Java.", "fix": "Vuelve a poner Java en automático en la configuración de la instancia." },
-    "java_path_missing": { "message": "No se encontró el Java elegido.", "fix": "Elige Java otra vez en la configuración de la instancia, o vuelve a ponerlo en automático." },
-    "java_test_failed": { "message": "Eso no parece un Java que funcione.", "fix": "Elige el programa java dentro de la carpeta bin de una instalación de Java." },
-    "jvm_args_unclosed_quote": { "message": "Una comilla de los argumentos de Java no está cerrada.", "fix": "Agrega la comilla que cierra, o quita la que abre." },
-    "jvm_arg_not_option": { "message": "“{{arg}}” no es una opción de Java. Cada argumento empieza con un guion.", "fix": "Quítalo, o agrégale el guion que le falta." },
-    "jvm_arg_not_allowed": { "message": "“{{arg}}” no se puede usar aquí. El launcher define el class path, la clase principal y cómo arranca Java.", "fix": "Quítalo de los argumentos de Java." },
-    "jvm_args_memory": { "message": "La memoria se elige con el control deslizante, no en los argumentos de Java.", "fix": "Quítalo y mueve el control de memoria." },
-    "jvm_args_too_long": { "message": "Los argumentos de Java son demasiado largos (más de {{max}} caracteres).", "fix": "Quita los argumentos que no necesitas." },
-    "no_game_arguments": { "message": "{{version}} no indica cómo iniciar el juego.", "fix": "Elige otra versión." },
-    "game_files_missing": { "message": "Faltan {{count}} archivos del juego.", "fix": "Presiona Jugar otra vez para reparar la instancia." },
-    "crash_out_of_memory": { "message": "Minecraft se quedó sin memoria.", "fix": "Dale más memoria y presiona Jugar otra vez." },
-    "crash_graphics_driver": { "message": "El driver de tu tarjeta gráfica cerró el juego.", "fix": "Actualiza el driver de tu tarjeta gráfica, reinicia la computadora y presiona Jugar otra vez." },
-    "crash_java_too_old": { "message": "Este juego necesita Java {{required}} o más nuevo.", "fix": "Cambia a un Java más nuevo y presiona Jugar otra vez." },
-    "crash_java_too_new": { "message": "Esta versión de Minecraft necesita un Java más viejo.", "fix": "Usa el Java recomendado y presiona Jugar otra vez." },
-    "crash_mod_missing_dependency": { "message": "{{mod}} necesita {{missing}}, que no está instalado.", "fix": "Agrégalo y presiona Jugar otra vez." },
-    "crash_mods_clash": { "message": "{{mod}} y {{other}} no funcionan juntos.", "fix": "Desactiva uno de los dos y presiona Jugar otra vez." },
-    "crash_mod_wrong_version": { "message": "{{mod}} es para otra versión de Minecraft.", "fix": "Desactívalo, o consigue la versión para este juego." },
-    "crash_mod_failed": { "message": "{{mod}} falló mientras cargaba el juego.", "fix": "Desactívalo y presiona Jugar otra vez." },
-    "crash_mod_file_damaged": { "message": "El archivo de {{mod}} está dañado.", "fix": "Desactívalo y descárgalo otra vez." },
-    "crash_game_files_damaged": { "message": "Algunos archivos del juego están dañados.", "fix": "Repáralos y vuelve a jugar." },
-    "version_invalid": { "message": "“{{value}}” no es una versión válida.", "fix": "Elige una versión de la lista." },
-    "loader_unsupported": { "message": "{{loader}} no es compatible.", "fix": "Elige otro loader." },
-    "loader_version_not_found": { "message": "{{loader}} {{loader_version}} no está disponible para Minecraft {{version}}.", "fix": "Elige una versión del loader de la lista." },
-    "loader_installer_invalid": { "message": "No se pudo leer el instalador del loader.", "fix": "Inténtalo de nuevo. Si sigue pasando, elige otra versión del loader." },
-    "loader_too_old": { "message": "Esta versión del loader es demasiado antigua para el launcher.", "fix": "Elige una versión más nueva de Minecraft u otro loader." },
-    "loader_processor_failed": { "message": "No se pudo preparar el loader.", "fix": "Inténtalo de nuevo. Si sigue pasando, copia los detalles y pide ayuda." },
-    "loader_output_corrupt": { "message": "Un archivo que generó el loader salió dañado.", "fix": "Inténtalo de nuevo." },
-    "meta_cache_missing": { "message": "Falta una lista de descargas guardada.", "fix": "Conéctate a internet y vuelve a intentarlo." },
-    "meta_not_found": { "message": "No se encontró una lista de versiones en el servidor.", "fix": "Revisa que esta versión exista." },
-    "meta_checksum": { "message": "Una lista de versiones descargada estaba dañada.", "fix": "Inténtalo en un minuto." },
-    "meta_unexpected": { "message": "Un servidor envió datos que el launcher no entiende.", "fix": "Inténtalo más tarde." },
-    "settings_damaged": { "message": "No se pudo leer tu configuración del launcher, así que se usan los valores predeterminados.", "fix": "Vuelve a ajustar tus preferencias en Configuración." },
-    "log_write_stopped": { "message": "El registro del juego dejó de guardarse en el disco.", "fix": "Revisa el espacio libre. El juego sigue abierto." },
-    "diagnostics_path_invalid": { "message": "El diagnóstico se guarda como archivo .zip.", "fix": "Elige un nombre que termine en .zip." },
-    "share_path_invalid": { "message": "Las instancias compartidas se guardan como archivo .mrpack.", "fix": "Elige un nombre que termine en .mrpack." },
-    "free_server_mods_not_on_modrinth": { "message": "Los servidores gratis solo usan mods de Modrinth." },
-    "share_too_large": { "message": "Esto es demasiado grande para compartirlo en un solo archivo.", "fix": "Deja fuera los mundos o los archivos grandes." },
-    "skin_invalid": { "message": "Ese archivo no es una skin de Minecraft.", "fix": "Elige un PNG de skin de 64 × 64 o 64 × 32 píxeles." },
-    "skin_not_found": { "message": "Esa skin ya no está en tu guardarropa." },
-    "skin_rejected": { "message": "Minecraft no aceptó esta skin.", "fix": "Vuelve a intentarlo en un minuto. Si sigue pasando, exporta el PNG y revisa que sea de 64 × 64." },
-    "skin_offline_account": { "message": "Las cuentas sin conexión no pueden cambiar su skin en Minecraft.", "fix": "Exporta el PNG, o cambia a una cuenta de Microsoft para usarlo." },
-    "skin_version_not_found": { "message": "Esa versión de la skin ya no está guardada." },
-    "skin_catalog_unavailable": { "message": "No pudimos conectar con el catálogo de skins de Perland. Revisa tu conexión e inténtalo de nuevo." },
-    "mod_not_jar": { "message": "Solo se pueden agregar archivos .jar como mods." },
-    "mod_exists": { "message": "{{file}} ya está en esta instancia." },
-    "mod_not_found": { "message": "{{file}} ya no está en esta instancia." },
-    "mod_name_invalid": { "message": "Ese no es un nombre de archivo de mod." },
-    "mod_managed": { "message": "{{file}} viene con el pack, así que el pack decide si está activado.", "fix": "Lo que agregas tú se puede desactivar o quitar." },
-    "pack_invalid": { "message": "El archivo {{file}} del pack está dañado o no es un pack.", "fix": "Revisa el enlace o pregúntale al autor del pack." },
-    "mrpack_corrupt": { "message": "Este archivo .mrpack está dañado ({{file}}).", "message_archive": "Este archivo .mrpack está dañado.", "fix": "Vuelve a descargar el pack." },
-    "pack_unsupported": { "message": "Este pack usa algo que el launcher todavía no puede manejar: {{what}}.", "fix": "Pregúntale al autor del pack o prueba otro pack." },
-    "pack_unsafe_path": { "message": "El pack intentó escribir fuera de su carpeta ({{path}}).", "fix": "No uses este pack y avísale a su autor." },
-    "pack_not_found": { "message": "No se encontró ese pack.", "fix": "Revisa el enlace e inténtalo de nuevo." },
-    "pack_link_invalid": { "message": "Eso no parece un enlace de pack.", "fix": "Los enlaces de pack empiezan con https:// y suelen terminar en pack.toml." },
-    "no_pack": { "message": "Esta instancia no viene de un pack." },
-    "not_enough_space": { "message": "No hay suficiente espacio libre: se necesitan {{needed_mb}} MB y hay {{free_mb}} MB.", "fix": "Libera espacio e inténtalo de nuevo." },
-    "instance_locked": { "message": "Otra ventana de Perland Launcher está usando esta instancia.", "fix": "Cierra la otra ventana o espera a que termine." },
-    "instance_folder_in_use": { "message": "Otro programa está usando la carpeta de esta instancia.", "fix": "Cierra cualquier ventana o programa que use la carpeta y vuelve a intentarlo." },
-    "restore_point_gone": { "message": "No hay nada a lo que volver." },
-    "restore_failed": { "message": "No se pudo volver a como estaba.", "fix": "Cierra cualquier ventana que muestre la carpeta de la instancia y vuelve a intentarlo." },
-    "art_file_invalid": { "message": "Ese archivo no se puede usar como imagen de la instancia.", "fix": "Elige una imagen PNG, JPEG o WebP." },
-    "banner_focus_invalid": { "message": "Esa posición está fuera de la imagen." },
-    "banner_zoom_invalid": { "message": "Ese zoom está fuera de rango." },
-    "banner_aspect_invalid": { "message": "La forma de ese fondo está fuera de rango." },
-    "window_size_invalid": { "message": "La ventana debe medir al menos {{minWidth}} × {{minHeight}} y como mucho {{max}} por lado." },
-    "import_not_instance": { "message": "Esta carpeta no parece una instancia de Minecraft.", "fix": "Elige la carpeta de la instancia: la que tiene mods, saves o config adentro." },
-    "import_inside_launcher": { "message": "Esa carpeta es del propio Perland Launcher.", "fix": "Elige una carpeta de tu otro launcher." },
-    "import_busy": { "message": "Otra importación sigue en curso.", "fix": "Espera a que termine o cancélala." },
-    "import_cancelled": { "message": "Se canceló la importación." },
-    "manual_downloads_needed": { "message": "Hay {{count}} archivos que tienes que descargar a mano.", "fix": "Descárgalos de CurseForge e inténtalo de nuevo." },
-    "update_check_failed": { "message": "No se pudieron buscar actualizaciones.", "fix": "Igual puedes jugar la versión que tienes." },
-    "pack_path_is_folder": { "message": "El pack quiere poner un archivo donde tienes una carpeta ({{path}}).", "fix": "Mueve esa carpeta o cámbiale el nombre, y vuelve a intentarlo." },
-    "sync_cancelled": { "message": "Se canceló la actualización." },
-    "update_download_failed": { "message": "No se pudo descargar la actualización. Sigues teniendo la {{version}}.", "fix": "Intenta actualizar más tarde." },
-    "invite_link_invalid": { "message": "Eso no es un enlace de invitación de Perland.", "fix": "Los enlaces de invitación se ven como https://play.example.com/ seguido de un código largo." },
-    "invite_pack_link": { "message": "Ese es el enlace del modpack de un servidor, no su enlace de invitación.", "fix": "En la página de invitación del servidor, elige Abrir en Perland Launcher o copia la dirección de la página." },
-    "invite_gone": { "message": "Este enlace de invitación ya no funciona. Pídele uno nuevo al dueño.", "fix": "Usa un nuevo enlace de invitación." },
-    "invite_unsupported": { "message": "Todavía no puedes unirte a este servidor desde el launcher. Únete con la dirección {{address}}." },
-    "invite_site_unreachable": { "message": "No se pudo conectar con el sitio de Perland del servidor en {{host}}.", "fix": "Revisa el enlace o inténtalo más tarde." },
-    "invite_rate_limited": { "message": "Demasiadas solicitudes. Inténtalo de nuevo en un minuto." },
-    "link_has_pack": { "message": "Esta instancia ya recibe sus mods de un modpack.", "fix": "Vincula una instancia vanilla o importada, o únete al servidor como una instancia nueva." },
-    "server_trust_needed": { "message": "Confirma que confías en este servidor antes de que se instale su modpack." },
-    "server_pack_unavailable": { "message": "El modpack del servidor no está disponible ahora.", "fix": "Inténtalo más tarde o avísale al dueño del servidor." },
-    "server_pack_pending": { "message": "El servidor todavía está preparando el modpack. Inténtalo de nuevo en un minuto." },
-    "server_address_unknown": { "message": "No se pudo obtener la dirección del servidor, así que no está en la lista de servidores del juego." },
-    "server_list_failed": { "message": "No se pudo agregar el servidor a la lista de servidores del juego.", "fix": "Agrega {{address}} a mano en Multijugador." },
-    "server_list_closed": { "message": "La lista de servidores aún no está abierta. Vuelve pronto." },
-    "server_wake_failed": { "message": "No se pudo despertar el servidor. El juego intentará entrar igual." },
-    "world_continue_unsupported": { "message": "Esta versión de Minecraft no puede abrir un mundo directamente.", "fix": "Presiona Jugar y elige el mundo en Un jugador." },
-    "player_accounts_closed": { "message": "Las cuentas de Perland aún no están abiertas." },
-    "sign_in_unavailable": { "message": "Esa forma de iniciar sesión no está disponible." },
-    "sign_in_failed": { "message": "No pudimos iniciar tu sesión. Inténtalo de nuevo." },
-    "sign_in_timed_out": { "message": "El inicio de sesión tardó demasiado. Inténtalo de nuevo." },
-    "sign_in_expired": { "message": "Ese inicio de sesión venció antes de terminar. Inténtalo de nuevo." },
-    "sign_in_client_refused": { "message": "Este Perland no acepta inicios de sesión desde este launcher." },
-    "sign_in_incompatible": { "message": "Este Perland inicia sesión de una forma que este launcher todavía no admite.", "fix": "Actualiza el launcher" },
-    "sign_in_canceled": { "message": "Cancelaste el inicio de sesión." },
-    "launcher_update_required": { "message": "Actualiza Perland Launcher para registrarte.", "fix": "Actualiza Perland Launcher desde Configuración." },
-    "email_in_use": { "message": "Ese correo ya está en otra cuenta de Perland.", "fix": "Usa otro correo o inicia sesión con esa cuenta." },
-    "invalid_email": { "message": "Revisa el correo electrónico." },
-    "invalid_code": { "message": "Ese código no es correcto." },
-    "too_many_codes": { "message": "Espera {{retryAfter}} segundos antes de pedir otro código." },
-    "email_unavailable": { "message": "No se pudo enviar el correo. Inténtalo de nuevo en un momento." },
-    "perland_signed_out": { "message": "Se cerró tu sesión de Perland." },
-    "account_disabled": { "message": "Esta cuenta de Perland está desactivada.", "fix": "Contacta al soporte de Perland." },
-    "player_servers_closed": { "message": "Tus servidores no están disponibles en este momento." },
-    "too_many_player_servers": { "message": "Tienes demasiados servidores guardados. Deja de seguir algunos primero." },
-    "forget_unsupported": { "message": "Este Perland todavía no puede quitar servidores de tu lista. Vuelve a intentarlo cuando se actualice." },
-    "email_required": { "message": "Los servidores gratis necesitan un correo verificado en tu cuenta." },
-    "free_server_exists": { "message": "Ya tienes un servidor gratis." },
-    "too_many_free_servers": { "message": "Todavía no puedes crear otro servidor." },
-    "free_servers_full": { "message": "Los servidores gratis están llenos por ahora. Inténtalo más tarde." },
-    "invalid_free_server": { "message": "Revisa el nombre del servidor: solo letras, números, - y _, hasta 32." },
-    "modpack_unsupported": { "message": "Este modpack no puede funcionar en un servidor gratis." },
-    "modpack_too_heavy": { "message": "Este modpack necesita {{required}} GB; los servidores gratis tienen {{limit}} GB." },
-    "free_server_over_disk": { "message": "Tu servidor se quedó sin espacio, así que sigue apagado." },
-    "host_full": { "message": "Perland está lleno por ahora. Inténtalo de nuevo en unos minutos." },
-    "free_servers_paused": { "message": "Los servidores gratis nuevos están en pausa. Inténtalo más tarde." },
-    "free_server_blocked": { "message": "No puedes crear un servidor gratis." },
-    "versions_unavailable": { "message": "Perland no pudo revisar las versiones de Minecraft en este momento. Inténtalo de nuevo en un rato." },
-    "server_not_running": { "message": "El servidor no está encendido. Enciéndelo primero." },
-    "server_console_unavailable": { "message": "El servidor no puede recibir comandos por ahora. Inténtalo de nuevo en un minuto." },
-    "too_many_commands": { "message": "Demasiados comandos a la vez. Espera unos segundos e inténtalo de nuevo." },
-    "server_console_timeout": { "message": "El servidor tardó demasiado en responder. Inténtalo de nuevo." },
-    "command_needs_confirmation": { "message": "Este comando apaga el servidor." },
-    "team_quota_full": { "message": "Tu plan no tiene espacio para encender otro servidor ahora." },
-    "plan_feature_locked": { "message": "Tu plan no incluye esto." },
-    "settings_changed": { "message": "Alguien más cambió los ajustes. Vuelve a cargarlos e inténtalo de nuevo." },
-    "version_change_needs_confirmation": { "message": "Cambiar la versión o el software necesita tu confirmación." },
-    "data_loss_needs_confirmation": { "message": "Este cambio puede borrar partes de tu mundo. Confirma que quieres continuar." },
-    "mojang_unavailable": { "message": "El servicio de cuentas de Minecraft no responde. Inténtalo de nuevo en un minuto." },
-    "too_many_streams": { "message": "Hay demasiadas vistas del registro abiertas. Cierra una e inténtalo de nuevo." },
-    "too_many_diagnoses": { "message": "Ya hay dos revisiones en curso. Espera a que termine una." },
-    "managed_by_source": { "message": "El modpack define esto, así que no se puede cambiar aquí." },
-    "server_not_found": { "message": "No se encontró ese servidor." },
-    "manage_forbidden": { "message": "Tu rol o tu plan no permite esto." },
-    "safety_backup_failed": { "message": "Perland no pudo guardar una copia de seguridad antes de este cambio, así que no se cambió nada. Inténtalo de nuevo o cámbialo en Perland." },
-    "apply_failed": { "message": "El cambio se guardó, pero el servidor no arrancó con él. Intenta encenderlo de nuevo." },
-    "compose_not_editable": { "message": "La configuración de este servidor solo se puede cambiar en Perland." },
-    "minecraft_link_closed": { "message": "La vinculación no está disponible en este momento." },
-    "launcher_update_failed": { "message": "No se pudo buscar actualizaciones del launcher.", "fix": "Puedes seguir jugando. Lo intenta de nuevo la próxima vez que abras el launcher." },
-    "launcher_update_invalid": { "message": "La actualización del launcher no pasó la verificación de seguridad, así que no se instaló.", "fix": "Vuelve a intentarlo más tarde. Si sigue pasando, avísanos." },
-    "launcher_update_busy": { "message": "Espera a que terminen los juegos y las instalaciones antes de reiniciar para actualizar.", "fix": "La actualización también se instala cuando cierras el launcher." },
-    "internal": { "message": "Ocurrió algo inesperado.", "fix": "Reinicia el launcher. Si sigue pasando, copia los detalles para soporte." },
-    "browse_rate_limited": { "message": "Demasiadas búsquedas. Intenta de nuevo en {{seconds}} s." },
-    "content_not_found": { "message": "No encontramos ese proyecto.", "fix": "Puede que lo hayan borrado." },
-    "content_incompatible": { "message": "{{name}} no tiene una versión para esta instancia.", "fix": "Prueba con otra instancia o con una nueva." },
-    "content_dependency_missing": { "message": "Necesita {{name}}, que no tiene versión para esta instancia." },
-    "content_conflict": { "message": "No funciona junto con {{name}}.", "fix": "Si quieres este, quita {{name}} primero." },
-    "content_needs_loader": { "message": "Esto necesita un loader de mods.", "fix": "Elige una instancia con Fabric, Quilt, Forge o NeoForge." },
-    "content_already_installed": { "message": "{{name}} ya está en esta instancia." },
-    "content_busy": { "message": "Espera a que {{name}} termine de actualizarse." },
-    "content_installing": { "message": "Espera a que termine la descarga." },
-    "content_plan_expired": { "message": "Pasó demasiado tiempo. Intenta instalarlo de nuevo." },
-    "image_refused": { "message": "No se puede mostrar esa imagen." },
-    "link_refused": { "message": "No se puede abrir ese enlace." }
+    "team_server_too_big": {
+      "message": "El plan de tu equipo no tiene espacio para un servidor de este tamaño."
+    },
+    "server_name_taken": {
+      "message": "Tu equipo ya tiene un servidor con ese nombre."
+    },
+    "invalid_team_server": {
+      "message": "No se pudo crear el servidor con estas opciones."
+    },
+    "offline_name_invalid": {
+      "message": "Los nombres deben tener de 3 a 16 letras, números o guiones bajos."
+    },
+    "accounts_damaged": {
+      "message": "Tu archivo de cuentas está dañado.",
+      "fix": "Borra accounts.json de la carpeta de datos y vuelve a agregar tus cuentas."
+    },
+    "offline_locked": {
+      "message": "Las cuentas sin conexión solo están disponibles en las versiones de desarrollo.",
+      "fix": "Inicia sesión con Microsoft para jugar."
+    },
+    "microsoft_awaiting_approval": {
+      "message": "Minecraft todavía no aprobó Perland Launcher, así que rechazó el inicio de sesión. Tu cuenta de Microsoft está bien: podrás jugar en cuanto lo aprueben."
+    },
+    "microsoft_not_configured": {
+      "message": "El inicio de sesión con Microsoft no está configurado en esta versión."
+    },
+    "microsoft_sign_in_again": {
+      "message": "Inicia sesión con Microsoft otra vez para seguir jugando.",
+      "fix": "Iniciar sesión"
+    },
+    "minecraft_not_owned": {
+      "message": "Esta cuenta de Microsoft no tiene Minecraft: Java Edition.",
+      "fix": "Inicia sesión con la cuenta que lo compró, o consíguelo en minecraft.net."
+    },
+    "minecraft_no_profile": {
+      "message": "Esta cuenta tiene Minecraft, pero todavía no eligió un nombre de jugador.",
+      "fix": "Elige uno en minecraft.net y luego vuelve a iniciar sesión."
+    },
+    "xbox_no_profile": {
+      "message": "Esta cuenta de Microsoft todavía no tiene un perfil de Xbox.",
+      "fix": "Inicia sesión una vez en xbox.com para crearlo y vuelve a intentarlo."
+    },
+    "xbox_region_blocked": {
+      "message": "Xbox Live no está disponible en tu país, así que esta cuenta no puede iniciar sesión."
+    },
+    "xbox_age_verification": {
+      "message": "Esta cuenta necesita la verificación de adulto en xbox.com antes de poder iniciar sesión."
+    },
+    "xbox_child_account": {
+      "message": "Esta es una cuenta infantil. Un adulto debe agregarla primero a una familia de Microsoft."
+    },
+    "microsoft_rate_limited": {
+      "message": "Microsoft está recibiendo demasiados inicios de sesión en este momento. Inténtalo de nuevo en un minuto."
+    },
+    "no_account": {
+      "message": "Agrega una cuenta antes de jugar.",
+      "fix": "Abre Cuentas y agrega una."
+    },
+    "disk_io": {
+      "message": "No se pudo leer o escribir un archivo del launcher.",
+      "fix": "Revisa que haya espacio libre y que la carpeta del launcher no sea de solo lectura."
+    },
+    "disk_write_failed": {
+      "message": "No se pudo guardar un archivo del launcher.",
+      "fix": "Revisa que haya espacio libre y que la carpeta del launcher no sea de solo lectura."
+    },
+    "download_no_url": {
+      "message": "Este archivo no tiene dirección de descarga.",
+      "fix": "Inténtalo más tarde."
+    },
+    "download_corrupt": {
+      "message": "{{file}} se dañó durante la descarga.",
+      "fix": "Inténtalo de nuevo. Si sigue pasando, puede que el archivo del servidor esté roto."
+    },
+    "host_unreachable": {
+      "message": "No se pudo conectar con {{host}}.",
+      "fix": "Revisa tu conexión a internet."
+    },
+    "download_restarted": {
+      "message": "La descarga tuvo que empezar de nuevo.",
+      "fix": "Inténtalo de nuevo."
+    },
+    "host_trouble": {
+      "message": "{{host}} tiene problemas en este momento.",
+      "fix": "Inténtalo en unos minutos."
+    },
+    "download_rejected": {
+      "message": "{{host}} rechazó la descarga.",
+      "fix": "Inténtalo más tarde."
+    },
+    "connection_dropped": {
+      "message": "La conexión se cortó durante una descarga.",
+      "fix": "Revisa tu conexión a internet y vuelve a intentarlo."
+    },
+    "http_client_failed": {
+      "message": "El launcher no pudo iniciar su conexión de red.",
+      "fix": "Reinicia el launcher."
+    },
+    "offline": {
+      "message": "Parece que no tienes conexión, y esto no se ha descargado antes.",
+      "fix": "Conéctate a internet y vuelve a intentarlo."
+    },
+    "unsafe_game_data": {
+      "message": "La lista de archivos de Minecraft tiene algo inseguro, así que se omitió.",
+      "fix": "Inténtalo más tarde."
+    },
+    "library_unverifiable": {
+      "message": "No se pudo comprobar que un archivo descargado sea auténtico.",
+      "fix": "Inténtalo más tarde."
+    },
+    "no_client_download": {
+      "message": "Minecraft {{version}} no tiene descarga del juego.",
+      "fix": "Elige otra versión."
+    },
+    "minecraft_version_not_found": {
+      "message": "Minecraft {{version}} no existe.",
+      "fix": "Elige una versión de la lista."
+    },
+    "mojang_mismatch": {
+      "message": "Mojang envió una versión distinta a la que se pidió.",
+      "fix": "Inténtalo más tarde."
+    },
+    "no_asset_index": {
+      "message": "A {{version}} le falta su lista de recursos del juego.",
+      "fix": "Elige otra versión."
+    },
+    "natives_extract_failed": {
+      "message": "No se pudieron descomprimir las bibliotecas nativas de Minecraft.",
+      "fix": "Cierra cualquier Minecraft abierto y vuelve a intentarlo."
+    },
+    "version_in_use": {
+      "message": "Hay otra copia de esta versión de Minecraft abierta.",
+      "fix": "Ciérrala y vuelve a intentarlo."
+    },
+    "archive_invalid": {
+      "message": "{{file}} no es un archivo comprimido válido.",
+      "fix": "Presiona Jugar otra vez para descargarlo de nuevo."
+    },
+    "instance_not_found": {
+      "message": "Esta instancia ya no existe."
+    },
+    "instance_damaged": {
+      "message": "El archivo de configuración de “{{id}}” está dañado.",
+      "fix": "Borra la instancia y créala de nuevo."
+    },
+    "instance_id_invalid": {
+      "message": "No se encuentra esa instancia."
+    },
+    "instance_busy": {
+      "message": "Detén el juego antes de cambiar esta instancia."
+    },
+    "already_running": {
+      "message": "Esta instancia ya está abierta."
+    },
+    "name_invalid": {
+      "message": "Los nombres deben tener de 1 a 64 caracteres."
+    },
+    "memory_out_of_range": {
+      "message": "La memoria debe estar entre {{min}} y {{max}} MB."
+    },
+    "java_unavailable": {
+      "message": "No hay Java oficial ({{component}}) para esta computadora.",
+      "fix": "Elige una instalación de Java en la configuración de la instancia."
+    },
+    "java_start_failed": {
+      "message": "No se pudo iniciar Java.",
+      "fix": "Vuelve a poner Java en automático en la configuración de la instancia."
+    },
+    "java_path_missing": {
+      "message": "No se encontró el Java elegido.",
+      "fix": "Elige Java otra vez en la configuración de la instancia, o vuelve a ponerlo en automático."
+    },
+    "java_test_failed": {
+      "message": "Eso no parece un Java que funcione.",
+      "fix": "Elige el programa java dentro de la carpeta bin de una instalación de Java."
+    },
+    "jvm_args_unclosed_quote": {
+      "message": "Una comilla de los argumentos de Java no está cerrada.",
+      "fix": "Agrega la comilla que cierra, o quita la que abre."
+    },
+    "jvm_arg_not_option": {
+      "message": "“{{arg}}” no es una opción de Java. Cada argumento empieza con un guion.",
+      "fix": "Quítalo, o agrégale el guion que le falta."
+    },
+    "jvm_arg_not_allowed": {
+      "message": "“{{arg}}” no se puede usar aquí. El launcher define el class path, la clase principal y cómo arranca Java.",
+      "fix": "Quítalo de los argumentos de Java."
+    },
+    "jvm_args_memory": {
+      "message": "La memoria se elige con el control deslizante, no en los argumentos de Java.",
+      "fix": "Quítalo y mueve el control de memoria."
+    },
+    "jvm_args_too_long": {
+      "message": "Los argumentos de Java son demasiado largos (más de {{max}} caracteres).",
+      "fix": "Quita los argumentos que no necesitas."
+    },
+    "no_game_arguments": {
+      "message": "{{version}} no indica cómo iniciar el juego.",
+      "fix": "Elige otra versión."
+    },
+    "game_files_missing": {
+      "message": "Faltan {{count}} archivos del juego.",
+      "fix": "Presiona Jugar otra vez para reparar la instancia."
+    },
+    "crash_out_of_memory": {
+      "message": "Minecraft se quedó sin memoria.",
+      "fix": "Dale más memoria y presiona Jugar otra vez."
+    },
+    "crash_graphics_driver": {
+      "message": "El driver de tu tarjeta gráfica cerró el juego.",
+      "fix": "Actualiza el driver de tu tarjeta gráfica, reinicia la computadora y presiona Jugar otra vez."
+    },
+    "crash_java_too_old": {
+      "message": "Este juego necesita Java {{required}} o más nuevo.",
+      "fix": "Cambia a un Java más nuevo y presiona Jugar otra vez."
+    },
+    "crash_java_too_new": {
+      "message": "Esta versión de Minecraft necesita un Java más viejo.",
+      "fix": "Usa el Java recomendado y presiona Jugar otra vez."
+    },
+    "crash_mod_missing_dependency": {
+      "message": "{{mod}} necesita {{missing}}, que no está instalado.",
+      "fix": "Agrégalo y presiona Jugar otra vez."
+    },
+    "crash_mods_clash": {
+      "message": "{{mod}} y {{other}} no funcionan juntos.",
+      "fix": "Desactiva uno de los dos y presiona Jugar otra vez."
+    },
+    "crash_mod_wrong_version": {
+      "message": "{{mod}} es para otra versión de Minecraft.",
+      "fix": "Desactívalo, o consigue la versión para este juego."
+    },
+    "crash_mod_failed": {
+      "message": "{{mod}} falló mientras cargaba el juego.",
+      "fix": "Desactívalo y presiona Jugar otra vez."
+    },
+    "crash_mod_file_damaged": {
+      "message": "El archivo de {{mod}} está dañado.",
+      "fix": "Desactívalo y descárgalo otra vez."
+    },
+    "crash_game_files_damaged": {
+      "message": "Algunos archivos del juego están dañados.",
+      "fix": "Repáralos y vuelve a jugar."
+    },
+    "version_invalid": {
+      "message": "“{{value}}” no es una versión válida.",
+      "fix": "Elige una versión de la lista."
+    },
+    "loader_unsupported": {
+      "message": "{{loader}} no es compatible.",
+      "fix": "Elige otro loader."
+    },
+    "loader_version_not_found": {
+      "message": "{{loader}} {{loader_version}} no está disponible para Minecraft {{version}}.",
+      "fix": "Elige una versión del loader de la lista."
+    },
+    "loader_installer_invalid": {
+      "message": "No se pudo leer el instalador del loader.",
+      "fix": "Inténtalo de nuevo. Si sigue pasando, elige otra versión del loader."
+    },
+    "loader_too_old": {
+      "message": "Esta versión del loader es demasiado antigua para el launcher.",
+      "fix": "Elige una versión más nueva de Minecraft u otro loader."
+    },
+    "loader_processor_failed": {
+      "message": "No se pudo preparar el loader.",
+      "fix": "Inténtalo de nuevo. Si sigue pasando, copia los detalles y pide ayuda."
+    },
+    "loader_output_corrupt": {
+      "message": "Un archivo que generó el loader salió dañado.",
+      "fix": "Inténtalo de nuevo."
+    },
+    "meta_cache_missing": {
+      "message": "Falta una lista de descargas guardada.",
+      "fix": "Conéctate a internet y vuelve a intentarlo."
+    },
+    "meta_not_found": {
+      "message": "No se encontró una lista de versiones en el servidor.",
+      "fix": "Revisa que esta versión exista."
+    },
+    "meta_checksum": {
+      "message": "Una lista de versiones descargada estaba dañada.",
+      "fix": "Inténtalo en un minuto."
+    },
+    "meta_unexpected": {
+      "message": "Un servidor envió datos que el launcher no entiende.",
+      "fix": "Inténtalo más tarde."
+    },
+    "settings_damaged": {
+      "message": "No se pudo leer tu configuración del launcher, así que se usan los valores predeterminados.",
+      "fix": "Vuelve a ajustar tus preferencias en Configuración."
+    },
+    "log_write_stopped": {
+      "message": "El registro del juego dejó de guardarse en el disco.",
+      "fix": "Revisa el espacio libre. El juego sigue abierto."
+    },
+    "diagnostics_path_invalid": {
+      "message": "El diagnóstico se guarda como archivo .zip.",
+      "fix": "Elige un nombre que termine en .zip."
+    },
+    "share_path_invalid": {
+      "message": "Las instancias compartidas se guardan como archivo .mrpack.",
+      "fix": "Elige un nombre que termine en .mrpack."
+    },
+    "free_server_mods_not_on_modrinth": {
+      "message": "Los servidores gratis solo usan mods de Modrinth."
+    },
+    "share_too_large": {
+      "message": "Esto es demasiado grande para compartirlo en un solo archivo.",
+      "fix": "Deja fuera los mundos o los archivos grandes."
+    },
+    "skin_invalid": {
+      "message": "Ese archivo no es una skin de Minecraft.",
+      "fix": "Elige un PNG de skin de 64 × 64 o 64 × 32 píxeles."
+    },
+    "skin_not_found": {
+      "message": "Esa skin ya no está en tu guardarropa."
+    },
+    "skin_rejected": {
+      "message": "Minecraft no aceptó esta skin.",
+      "fix": "Vuelve a intentarlo en un minuto. Si sigue pasando, exporta el PNG y revisa que sea de 64 × 64."
+    },
+    "skin_offline_account": {
+      "message": "Las cuentas sin conexión no pueden cambiar su skin en Minecraft.",
+      "fix": "Exporta el PNG, o cambia a una cuenta de Microsoft para usarlo."
+    },
+    "skin_version_not_found": {
+      "message": "Esa versión de la skin ya no está guardada."
+    },
+    "skin_catalog_unavailable": {
+      "message": "No pudimos conectar con el catálogo de skins de Perland. Revisa tu conexión e inténtalo de nuevo."
+    },
+    "mod_not_jar": {
+      "message": "Solo se pueden agregar archivos .jar como mods."
+    },
+    "mod_exists": {
+      "message": "{{file}} ya está en esta instancia."
+    },
+    "mod_not_found": {
+      "message": "{{file}} ya no está en esta instancia."
+    },
+    "mod_name_invalid": {
+      "message": "Ese no es un nombre de archivo de mod."
+    },
+    "mod_managed": {
+      "message": "{{file}} viene con el pack, así que el pack decide si está activado.",
+      "fix": "Lo que agregas tú se puede desactivar o quitar."
+    },
+    "pack_invalid": {
+      "message": "El archivo {{file}} del pack está dañado o no es un pack.",
+      "fix": "Revisa el enlace o pregúntale al autor del pack."
+    },
+    "mrpack_corrupt": {
+      "message": "Este archivo .mrpack está dañado ({{file}}).",
+      "message_archive": "Este archivo .mrpack está dañado.",
+      "fix": "Vuelve a descargar el pack."
+    },
+    "pack_unsupported": {
+      "message": "Este pack usa algo que el launcher todavía no puede manejar: {{what}}.",
+      "fix": "Pregúntale al autor del pack o prueba otro pack."
+    },
+    "pack_unsafe_path": {
+      "message": "El pack intentó escribir fuera de su carpeta ({{path}}).",
+      "fix": "No uses este pack y avísale a su autor."
+    },
+    "pack_not_found": {
+      "message": "No se encontró ese pack.",
+      "fix": "Revisa el enlace e inténtalo de nuevo."
+    },
+    "pack_link_invalid": {
+      "message": "Eso no parece un enlace de pack.",
+      "fix": "Los enlaces de pack empiezan con https:// y suelen terminar en pack.toml."
+    },
+    "no_pack": {
+      "message": "Esta instancia no viene de un pack."
+    },
+    "not_enough_space": {
+      "message": "No hay suficiente espacio libre: se necesitan {{needed_mb}} MB y hay {{free_mb}} MB.",
+      "fix": "Libera espacio e inténtalo de nuevo."
+    },
+    "instance_locked": {
+      "message": "Otra ventana de Perland Launcher está usando esta instancia.",
+      "fix": "Cierra la otra ventana o espera a que termine."
+    },
+    "instance_folder_in_use": {
+      "message": "Otro programa está usando la carpeta de esta instancia.",
+      "fix": "Cierra cualquier ventana o programa que use la carpeta y vuelve a intentarlo."
+    },
+    "restore_point_gone": {
+      "message": "No hay nada a lo que volver."
+    },
+    "restore_failed": {
+      "message": "No se pudo volver a como estaba.",
+      "fix": "Cierra cualquier ventana que muestre la carpeta de la instancia y vuelve a intentarlo."
+    },
+    "art_file_invalid": {
+      "message": "Ese archivo no se puede usar como imagen de la instancia.",
+      "fix": "Elige una imagen PNG, JPEG o WebP."
+    },
+    "banner_focus_invalid": {
+      "message": "Esa posición está fuera de la imagen."
+    },
+    "banner_zoom_invalid": {
+      "message": "Ese zoom está fuera de rango."
+    },
+    "banner_aspect_invalid": {
+      "message": "La forma de ese fondo está fuera de rango."
+    },
+    "window_size_invalid": {
+      "message": "La ventana debe medir al menos {{minWidth}} × {{minHeight}} y como mucho {{max}} por lado."
+    },
+    "import_not_instance": {
+      "message": "Esta carpeta no parece una instancia de Minecraft.",
+      "fix": "Elige la carpeta de la instancia: la que tiene mods, saves o config adentro."
+    },
+    "import_inside_launcher": {
+      "message": "Esa carpeta es del propio Perland Launcher.",
+      "fix": "Elige una carpeta de tu otro launcher."
+    },
+    "import_busy": {
+      "message": "Otra importación sigue en curso.",
+      "fix": "Espera a que termine o cancélala."
+    },
+    "import_cancelled": {
+      "message": "Se canceló la importación."
+    },
+    "manual_downloads_needed": {
+      "message": "Hay {{count}} archivos que tienes que descargar a mano.",
+      "fix": "Descárgalos de CurseForge e inténtalo de nuevo."
+    },
+    "update_check_failed": {
+      "message": "No se pudieron buscar actualizaciones.",
+      "fix": "Igual puedes jugar la versión que tienes."
+    },
+    "pack_path_is_folder": {
+      "message": "El pack quiere poner un archivo donde tienes una carpeta ({{path}}).",
+      "fix": "Mueve esa carpeta o cámbiale el nombre, y vuelve a intentarlo."
+    },
+    "sync_cancelled": {
+      "message": "Se canceló la actualización."
+    },
+    "update_download_failed": {
+      "message": "No se pudo descargar la actualización. Sigues teniendo la {{version}}.",
+      "fix": "Intenta actualizar más tarde."
+    },
+    "invite_link_invalid": {
+      "message": "Eso no es un enlace de invitación de Perland.",
+      "fix": "Los enlaces de invitación se ven como https://play.example.com/ seguido de un código largo."
+    },
+    "invite_pack_link": {
+      "message": "Ese es el enlace del modpack de un servidor, no su enlace de invitación.",
+      "fix": "En la página de invitación del servidor, elige Abrir en Perland Launcher o copia la dirección de la página."
+    },
+    "invite_gone": {
+      "message": "Este enlace de invitación ya no funciona. Pídele uno nuevo al dueño.",
+      "fix": "Usa un nuevo enlace de invitación."
+    },
+    "invite_unsupported": {
+      "message": "Todavía no puedes unirte a este servidor desde el launcher. Únete con la dirección {{address}}."
+    },
+    "invite_site_unreachable": {
+      "message": "No se pudo conectar con el sitio de Perland del servidor en {{host}}.",
+      "fix": "Revisa el enlace o inténtalo más tarde."
+    },
+    "invite_rate_limited": {
+      "message": "Demasiadas solicitudes. Inténtalo de nuevo en un minuto."
+    },
+    "link_has_pack": {
+      "message": "Esta instancia ya recibe sus mods de un modpack.",
+      "fix": "Vincula una instancia vanilla o importada, o únete al servidor como una instancia nueva."
+    },
+    "server_trust_needed": {
+      "message": "Confirma que confías en este servidor antes de que se instale su modpack."
+    },
+    "server_pack_unavailable": {
+      "message": "El modpack del servidor no está disponible ahora.",
+      "fix": "Inténtalo más tarde o avísale al dueño del servidor."
+    },
+    "server_pack_pending": {
+      "message": "El servidor todavía está preparando el modpack. Inténtalo de nuevo en un minuto."
+    },
+    "server_address_unknown": {
+      "message": "No se pudo obtener la dirección del servidor, así que no está en la lista de servidores del juego."
+    },
+    "server_list_failed": {
+      "message": "No se pudo agregar el servidor a la lista de servidores del juego.",
+      "fix": "Agrega {{address}} a mano en Multijugador."
+    },
+    "server_list_closed": {
+      "message": "La lista de servidores aún no está abierta. Vuelve pronto."
+    },
+    "server_wake_failed": {
+      "message": "No se pudo despertar el servidor. El juego intentará entrar igual."
+    },
+    "world_continue_unsupported": {
+      "message": "Esta versión de Minecraft no puede abrir un mundo directamente.",
+      "fix": "Presiona Jugar y elige el mundo en Un jugador."
+    },
+    "player_accounts_closed": {
+      "message": "Las cuentas de Perland aún no están abiertas."
+    },
+    "sign_in_unavailable": {
+      "message": "Esa forma de iniciar sesión no está disponible."
+    },
+    "sign_in_failed": {
+      "message": "No pudimos iniciar tu sesión. Inténtalo de nuevo."
+    },
+    "sign_in_timed_out": {
+      "message": "El inicio de sesión tardó demasiado. Inténtalo de nuevo."
+    },
+    "sign_in_expired": {
+      "message": "Ese inicio de sesión venció antes de terminar. Inténtalo de nuevo."
+    },
+    "sign_in_client_refused": {
+      "message": "Este Perland no acepta inicios de sesión desde este launcher."
+    },
+    "sign_in_incompatible": {
+      "message": "Este Perland inicia sesión de una forma que este launcher todavía no admite.",
+      "fix": "Actualiza el launcher"
+    },
+    "sign_in_canceled": {
+      "message": "Cancelaste el inicio de sesión."
+    },
+    "launcher_update_required": {
+      "message": "Actualiza Perland Launcher para registrarte.",
+      "fix": "Actualiza Perland Launcher desde Configuración."
+    },
+    "email_in_use": {
+      "message": "Ese correo ya está en otra cuenta de Perland.",
+      "fix": "Usa otro correo o inicia sesión con esa cuenta."
+    },
+    "invalid_email": {
+      "message": "Revisa el correo electrónico."
+    },
+    "invalid_code": {
+      "message": "Ese código no es correcto."
+    },
+    "too_many_codes": {
+      "message": "Espera {{retryAfter}} segundos antes de pedir otro código."
+    },
+    "email_unavailable": {
+      "message": "No se pudo enviar el correo. Inténtalo de nuevo en un momento."
+    },
+    "perland_signed_out": {
+      "message": "Se cerró tu sesión de Perland."
+    },
+    "account_disabled": {
+      "message": "Esta cuenta de Perland está desactivada.",
+      "fix": "Contacta al soporte de Perland."
+    },
+    "player_servers_closed": {
+      "message": "Tus servidores no están disponibles en este momento."
+    },
+    "too_many_player_servers": {
+      "message": "Tienes demasiados servidores guardados. Deja de seguir algunos primero."
+    },
+    "forget_unsupported": {
+      "message": "Este Perland todavía no puede quitar servidores de tu lista. Vuelve a intentarlo cuando se actualice."
+    },
+    "email_required": {
+      "message": "Los servidores gratis necesitan un correo verificado en tu cuenta."
+    },
+    "free_server_exists": {
+      "message": "Ya tienes un servidor gratis."
+    },
+    "too_many_free_servers": {
+      "message": "Todavía no puedes crear otro servidor."
+    },
+    "free_servers_full": {
+      "message": "Los servidores gratis están llenos por ahora. Inténtalo más tarde."
+    },
+    "invalid_free_server": {
+      "message": "Revisa el nombre del servidor: solo letras, números, - y _, hasta 32."
+    },
+    "modpack_unsupported": {
+      "message": "Este modpack no puede funcionar en un servidor gratis."
+    },
+    "modpack_too_heavy": {
+      "message": "Este modpack necesita {{required}} GB; los servidores gratis tienen {{limit}} GB."
+    },
+    "free_server_over_disk": {
+      "message": "Tu servidor se quedó sin espacio, así que sigue apagado."
+    },
+    "host_full": {
+      "message": "Perland está lleno por ahora. Inténtalo de nuevo en unos minutos."
+    },
+    "free_servers_paused": {
+      "message": "Los servidores gratis nuevos están en pausa. Inténtalo más tarde."
+    },
+    "free_server_blocked": {
+      "message": "No puedes crear un servidor gratis."
+    },
+    "versions_unavailable": {
+      "message": "Perland no pudo revisar las versiones de Minecraft en este momento. Inténtalo de nuevo en un rato."
+    },
+    "server_not_running": {
+      "message": "El servidor no está encendido. Enciéndelo primero."
+    },
+    "server_console_unavailable": {
+      "message": "El servidor no puede recibir comandos por ahora. Inténtalo de nuevo en un minuto."
+    },
+    "too_many_commands": {
+      "message": "Demasiados comandos a la vez. Espera unos segundos e inténtalo de nuevo."
+    },
+    "server_console_timeout": {
+      "message": "El servidor tardó demasiado en responder. Inténtalo de nuevo."
+    },
+    "command_needs_confirmation": {
+      "message": "Este comando apaga el servidor."
+    },
+    "team_quota_full": {
+      "message": "Tu plan no tiene espacio para encender otro servidor ahora."
+    },
+    "plan_feature_locked": {
+      "message": "Tu plan no incluye esto."
+    },
+    "settings_changed": {
+      "message": "Alguien más cambió los ajustes. Vuelve a cargarlos e inténtalo de nuevo."
+    },
+    "version_change_needs_confirmation": {
+      "message": "Cambiar la versión o el software necesita tu confirmación."
+    },
+    "data_loss_needs_confirmation": {
+      "message": "Este cambio puede borrar partes de tu mundo. Confirma que quieres continuar."
+    },
+    "mojang_unavailable": {
+      "message": "El servicio de cuentas de Minecraft no responde. Inténtalo de nuevo en un minuto."
+    },
+    "too_many_streams": {
+      "message": "Hay demasiadas vistas del registro abiertas. Cierra una e inténtalo de nuevo."
+    },
+    "too_many_diagnoses": {
+      "message": "Ya hay dos revisiones en curso. Espera a que termine una."
+    },
+    "managed_by_source": {
+      "message": "El modpack define esto, así que no se puede cambiar aquí."
+    },
+    "server_not_found": {
+      "message": "No se encontró ese servidor."
+    },
+    "manage_forbidden": {
+      "message": "Tu rol o tu plan no permite esto."
+    },
+    "safety_backup_failed": {
+      "message": "Perland no pudo guardar una copia de seguridad antes de este cambio, así que no se cambió nada. Inténtalo de nuevo o cámbialo en Perland."
+    },
+    "apply_failed": {
+      "message": "El cambio se guardó, pero el servidor no arrancó con él. Intenta encenderlo de nuevo."
+    },
+    "compose_not_editable": {
+      "message": "La configuración de este servidor solo se puede cambiar en Perland."
+    },
+    "minecraft_link_closed": {
+      "message": "La vinculación no está disponible en este momento."
+    },
+    "launcher_update_failed": {
+      "message": "No se pudo buscar actualizaciones del launcher.",
+      "fix": "Puedes seguir jugando. Lo intenta de nuevo la próxima vez que abras el launcher."
+    },
+    "launcher_update_invalid": {
+      "message": "La actualización del launcher no pasó la verificación de seguridad, así que no se instaló.",
+      "fix": "Vuelve a intentarlo más tarde. Si sigue pasando, avísanos."
+    },
+    "launcher_update_busy": {
+      "message": "Espera a que terminen los juegos y las instalaciones antes de reiniciar para actualizar.",
+      "fix": "La actualización también se instala cuando cierras el launcher."
+    },
+    "internal": {
+      "message": "Ocurrió algo inesperado.",
+      "fix": "Reinicia el launcher. Si sigue pasando, copia los detalles para soporte."
+    },
+    "browse_rate_limited": {
+      "message": "Demasiadas búsquedas. Intenta de nuevo en {{seconds}} s."
+    },
+    "content_not_found": {
+      "message": "No encontramos ese proyecto.",
+      "fix": "Puede que lo hayan borrado."
+    },
+    "content_incompatible": {
+      "message": "{{name}} no tiene una versión para esta instancia.",
+      "fix": "Prueba con otra instancia o con una nueva."
+    },
+    "content_dependency_missing": {
+      "message": "Necesita {{name}}, que no tiene versión para esta instancia."
+    },
+    "content_conflict": {
+      "message": "No funciona junto con {{name}}.",
+      "fix": "Si quieres este, quita {{name}} primero."
+    },
+    "content_needs_loader": {
+      "message": "Esto necesita un loader de mods.",
+      "fix": "Elige una instancia con Fabric, Quilt, Forge o NeoForge."
+    },
+    "content_already_installed": {
+      "message": "{{name}} ya está en esta instancia."
+    },
+    "content_busy": {
+      "message": "Espera a que {{name}} termine de actualizarse."
+    },
+    "content_installing": {
+      "message": "Espera a que termine la descarga."
+    },
+    "content_plan_expired": {
+      "message": "Pasó demasiado tiempo. Intenta instalarlo de nuevo."
+    },
+    "image_refused": {
+      "message": "No se puede mostrar esa imagen."
+    },
+    "link_refused": {
+      "message": "No se puede abrir ese enlace."
+    }
   },
   "browse": {
     "title": "Mods y más",
     "open": "Mods y más",
     "findMods": "Buscar mods",
     "browseModpacks": "Explorar modpacks",
-    "kinds": { "modpack": "Modpacks", "mod": "Mods", "resource_pack": "Paquetes de recursos", "shader": "Shaders" },
-    "placeholders": { "modpack": "Buscar modpacks", "mod": "Buscar mods", "resource_pack": "Buscar paquetes de recursos", "shader": "Buscar shaders" },
+    "kinds": {
+      "modpack": "Modpacks",
+      "mod": "Mods",
+      "resource_pack": "Paquetes de recursos",
+      "shader": "Shaders"
+    },
+    "placeholders": {
+      "modpack": "Buscar modpacks",
+      "mod": "Buscar mods",
+      "resource_pack": "Buscar paquetes de recursos",
+      "shader": "Buscar shaders"
+    },
     "search": "Buscar",
     "sort": "Ordenar por",
-    "sorts": { "relevance": "Más relevantes", "downloads": "Descargas", "follows": "Seguidores", "newest": "Más nuevos", "updated": "Actualizados hace poco" },
+    "sorts": {
+      "relevance": "Más relevantes",
+      "downloads": "Descargas",
+      "follows": "Seguidores",
+      "newest": "Más nuevos",
+      "updated": "Actualizados hace poco"
+    },
     "minecraft": "Minecraft",
     "anyVersion": "Cualquier versión",
     "loader": "Loader",
@@ -1572,18 +2219,52 @@
     "open": "Abrir"
   },
   "categories": {
-    "adventure": "Aventura", "cursed": "Raros", "decoration": "Decoración", "economy": "Economía",
-    "equipment": "Equipo", "food": "Comida", "game-mechanics": "Mecánicas", "library": "Bibliotecas",
-    "magic": "Magia", "management": "Gestión", "minigame": "Minijuegos", "mobs": "Criaturas",
-    "optimization": "Optimización", "social": "Social", "storage": "Almacenamiento", "technology": "Tecnología",
-    "transportation": "Transporte", "utility": "Utilidades", "worldgen": "Generación de mundos",
-    "audio": "Audio", "blocks": "Bloques", "combat": "Combate", "entities": "Entidades", "environment": "Entorno",
-    "fonts": "Fuentes", "gui": "Menús", "items": "Objetos", "realistic": "Realista", "simplistic": "Simple",
-    "themed": "Temáticos", "tweaks": "Ajustes", "vanilla-like": "Estilo vanilla", "atmosphere": "Atmósfera",
-    "bloom": "Bloom", "cartoon": "Caricatura", "colored-lighting": "Luces de colores", "fantasy": "Fantasía",
-    "foliage": "Vegetación", "path-tracing": "Path tracing", "reflections": "Reflejos", "shadows": "Sombras",
-    "challenging": "Desafiantes", "kitchen-sink": "De todo", "lightweight": "Ligeros",
-    "multiplayer": "Multijugador", "quests": "Misiones"
+    "adventure": "Aventura",
+    "cursed": "Raros",
+    "decoration": "Decoración",
+    "economy": "Economía",
+    "equipment": "Equipo",
+    "food": "Comida",
+    "game-mechanics": "Mecánicas",
+    "library": "Bibliotecas",
+    "magic": "Magia",
+    "management": "Gestión",
+    "minigame": "Minijuegos",
+    "mobs": "Criaturas",
+    "optimization": "Optimización",
+    "social": "Social",
+    "storage": "Almacenamiento",
+    "technology": "Tecnología",
+    "transportation": "Transporte",
+    "utility": "Utilidades",
+    "worldgen": "Generación de mundos",
+    "audio": "Audio",
+    "blocks": "Bloques",
+    "combat": "Combate",
+    "entities": "Entidades",
+    "environment": "Entorno",
+    "fonts": "Fuentes",
+    "gui": "Menús",
+    "items": "Objetos",
+    "realistic": "Realista",
+    "simplistic": "Simple",
+    "themed": "Temáticos",
+    "tweaks": "Ajustes",
+    "vanilla-like": "Estilo vanilla",
+    "atmosphere": "Atmósfera",
+    "bloom": "Bloom",
+    "cartoon": "Caricatura",
+    "colored-lighting": "Luces de colores",
+    "fantasy": "Fantasía",
+    "foliage": "Vegetación",
+    "path-tracing": "Path tracing",
+    "reflections": "Reflejos",
+    "shadows": "Sombras",
+    "challenging": "Desafiantes",
+    "kitchen-sink": "De todo",
+    "lightweight": "Ligeros",
+    "multiplayer": "Multijugador",
+    "quests": "Misiones"
   },
   "time": {
     "minutes": "{{count}} min",

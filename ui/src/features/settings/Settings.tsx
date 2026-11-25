@@ -3,18 +3,15 @@ import { useTranslation } from 'react-i18next';
 import mark from '../../assets/mark.svg';
 import { applyLanguage } from '../../i18n';
 import { commands } from '../../ipc/commands';
-import { transitions as transitionsSchema, type GraphicsCard, type Lang } from '../../ipc/schema';
+import { type GraphicsCard, type Lang } from '../../ipc/schema';
 
-/** How screens come in, in the order Settings offers them: the default first. */
-const TRANSITIONS = transitionsSchema.options;
-import { applyAppearance, FONTS, THEMES, type Appearance } from '../../state/appearance';
 import { useAppInfo, useSettings } from '../../state/queries';
 import { WHAT_IS_SENT } from '../../state/privacy';
 import { navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
-import { ExternalLink, Folder } from '../../ui/Icon';
+import { Brush, ExternalLink, Folder } from '../../ui/Icon';
 import { MemorySlider } from '../../ui/MemorySlider';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Select } from '../../ui/Select';
@@ -36,13 +33,6 @@ export function Settings() {
   const retryOnce = useSingleFlight();
   const data = draft ?? settings.data;
   const home = () => navigate({ name: 'home', id: null });
-
-  /** A look applies to the whole app at once, before the save comes back. */
-  const look = (patch: Partial<Appearance>) => {
-    if (!data) return;
-    applyAppearance({ theme: data.theme, font: data.font, ...patch });
-    edit(patch);
-  };
 
   const open = (action: () => Promise<unknown>) => openOnce((done) => void action().catch(pushError).finally(done));
 
@@ -124,82 +114,16 @@ export function Settings() {
           </div>
           <Toggle checked={data.minimizeOnPlay} label={t('settings.minimize')} onChange={(minimizeOnPlay) => edit({ minimizeOnPlay })} />
         </div>
-        <section className="grid gap-4" aria-labelledby="appearance-heading">
+        {/* Everything about the look lives in Personalize now; this keeps a player who looks here on their way. */}
+        <section className="grid gap-3" aria-labelledby="appearance-heading">
           <h2 id="appearance-heading" className="text-lg font-bold">
             {t('settings.appearance')}
           </h2>
-          <div className="grid gap-6">
-            <fieldset role="radiogroup" className="grid gap-2">
-              <legend className="text-sm font-semibold">{t('settings.theme')}</legend>
-              <div className="swatch-keys">
-                {THEMES.map((theme) => (
-                  <label key={theme} className="swatch-key" data-checked={data.theme === theme ? '' : undefined}>
-                    <input
-                      type="radio"
-                      name="theme"
-                      className="sr-only"
-                      checked={data.theme === theme}
-                      onChange={() => look({ theme })}
-                    />
-                    <span className="swatch" data-swatch={theme} aria-hidden>
-                      <span className="swatch-face" />
-                      <span className="swatch-lamp" />
-                    </span>
-                    <span className="swatch-name">{t(`settings.themes.${theme}`)}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset className="grid gap-2">
-              <legend className="text-sm font-semibold">{t('settings.font')}</legend>
-              <div className="flex flex-wrap gap-2">
-                {FONTS.map((font) => (
-                  // Each option is set in the face it picks, so the choice shows itself.
-                  <label
-                    key={font}
-                    className={`seg ${font === 'system' ? 'font-system' : 'font-hyperlegible'}`}
-                    data-checked={data.font === font ? '' : undefined}
-                  >
-                    <input
-                      type="radio"
-                      name="font"
-                      className="sr-only"
-                      checked={data.font === font}
-                      onChange={() => look({ font })}
-                    />
-                    {font === 'system' ? t('settings.fontSystem') : t('settings.fontHyperlegible')}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset className="grid gap-2">
-              <legend className="text-sm font-semibold">{t('settings.iconShape')}</legend>
-              <div className="flex flex-wrap gap-2">
-                {(['square', 'round'] as const).map((shape) => (
-                  <label key={shape} className="seg" data-checked={data.iconShape === shape ? '' : undefined}>
-                    <input
-                      type="radio"
-                      name="icon-shape"
-                      className="sr-only"
-                      checked={data.iconShape === shape}
-                      onChange={() => edit({ iconShape: shape })}
-                    />
-                    {shape === 'square' ? t('settings.iconSquare') : t('settings.iconRound')}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset className="grid gap-2">
-              <legend className="text-sm font-semibold">{t('settings.transitions')}</legend>
-              <div className="flex flex-wrap gap-2">
-                {TRANSITIONS.map((style) => (
-                  <label key={style} className="seg" data-checked={data.transitions === style ? '' : undefined}>
-                    <input type="radio" name="transitions" className="sr-only" checked={data.transitions === style} onChange={() => edit({ transitions: style })} />
-                    {t(`settings.transitionsOptions.${style}`)}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <p className="max-w-[55ch] text-sm text-ink-dim">{t('personalize.movedHint')}</p>
+            <Button icon={<Brush />} onClick={() => navigate({ name: 'personalize' })}>
+              {t('personalize.openFromSettings')}
+            </Button>
           </div>
         </section>
         <div className="grid gap-2">

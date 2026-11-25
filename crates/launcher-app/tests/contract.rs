@@ -57,7 +57,7 @@ use launcher_core::{
     },
     public_list::{Facets, ListQuery, ListSort},
     restore::{Change, PointKind},
-    settings::{IconShape, Lang, Settings, Theme, Transitions, UiFont},
+    settings::{Accent, CustomRoom, IconShape, Lang, Settings, Theme, Transitions, UiFont},
     share::{Category, CategoryCount, ShareChoice},
     sync::{origin::FileOrigin, plan::FileChange, ManualFile},
     ErrorCode, LauncherError,
@@ -1048,7 +1048,12 @@ fn contract_fixtures_are_current() {
             language: Some(Lang::Es),
             rail_expanded: true,
             icon_shape: IconShape::Round,
-            theme: Theme::Night,
+            theme: Theme::Custom,
+            accent: Accent::Pink,
+            custom_room: CustomRoom {
+                background: "#170f1f".into(),
+                buttons: "#c58cff".into(),
+            },
             font: UiFont::System,
             transitions: Transitions::Stepped,
             ..Settings::default()

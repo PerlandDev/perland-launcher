@@ -365,7 +365,7 @@ const contentKey = (id: string, kind: ContentKind) => `${id}:${kind}`;
 function seed(options: MockOptions) {
   const listing = clone(listingFx) as InstanceListing;
   const accounts = clone(accountsFx) as AccountsFile;
-  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, iconShape: options.iconShape ?? 'square', theme: options.theme ?? 'laminate', font: options.font ?? 'hyperlegible', transitions: options.transitions ?? 'smooth', language: null };
+  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, iconShape: options.iconShape ?? 'square', theme: options.theme ?? 'laminate', accent: 'room', customRoom: { background: '#101820', buttons: '#ff6ad5' }, font: options.font ?? 'hyperlegible', transitions: options.transitions ?? 'smooth', language: null };
   if (options.firstRun) {
     listing.instances = [];
     listing.damaged = [];

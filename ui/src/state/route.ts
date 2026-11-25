@@ -21,6 +21,8 @@ export type Route =
   // Medals and achievements: the launcher's medals and the Minecraft achievements on Perland servers.
   | { name: 'achievements' }
   | { name: 'settings' }
+  // Everything about the look: the room, the button colour and the player's own room.
+  | { name: 'personalize' }
   // The Profile: who is playing, their skin, their accounts and what they have earned. `add` opens Add an account on arrival.
   | { name: 'profile'; add?: boolean };
 

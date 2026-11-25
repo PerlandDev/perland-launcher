@@ -37,9 +37,10 @@ it("names the launcher's places as tabs after the mark, before the account", asy
   const places = within(screen.getByRole('navigation', { name: 'Places' })).getAllByRole('button');
   expect(places.map((p) => p.textContent)).toEqual(['Skins', 'Servers', 'Mods & more', 'Medals and achievements']);
   for (const place of places) expect(place.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  // The account is followed by Settings: Skins is a tab now, not an icon beside it.
+  // The account is followed by Personalize and then Settings: Skins is a tab now, not an icon beside it.
   const buttons = screen.getAllByRole('button');
-  expect(buttons.indexOf(screen.getByRole('button', { name: 'Settings' }))).toBe(buttons.indexOf(account) + 1);
+  expect(buttons.indexOf(screen.getByRole('button', { name: 'Personalize' }))).toBe(buttons.indexOf(account) + 1);
+  expect(buttons.indexOf(screen.getByRole('button', { name: 'Settings' }))).toBe(buttons.indexOf(account) + 2);
 });
 
 it('opens each place and marks the one that is open', async () => {

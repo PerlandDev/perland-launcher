@@ -552,7 +552,11 @@ export const accountReady = z.strictObject({
 export const lang = z.enum(['en', 'es']);
 export const channel = z.enum(['stable', 'beta']);
 /** A theme swaps the neutrals only; the first key is the default. */
-export const theme = z.enum(['laminate', 'stone', 'night', 'forest']);
+export const theme = z.enum(['laminate', 'stone', 'night', 'forest', 'nether', 'end', 'cherry', 'custom']);
+/** The colour of Play and the keys that act: the room's own, or one that replaces it in every room. */
+export const accent = z.enum(['room', 'amber', 'orange', 'pink', 'violet', 'cyan', 'bone']);
+/** The two `#rrggbb` colours the player's own room (`theme: custom`) is mixed from. */
+export const customRoom = z.strictObject({ background: z.string(), buttons: z.string() });
 export const uiFont = z.enum(['hyperlegible', 'system']);
 /** How a screen comes in when the player moves to it: eased fades and slides (the default), the arcade cabinet's own snapped
  *  frames, or nothing. In the order Settings offers them. */
@@ -569,6 +573,8 @@ export const settings = z.strictObject({
   railExpanded: z.boolean(),
   iconShape: z.enum(['square', 'round']),
   theme,
+  accent,
+  customRoom,
   font: uiFont,
   shareAnonymousData: z.boolean(),
   graphicsCard,
@@ -1078,6 +1084,8 @@ export type AccountReady = z.infer<typeof accountReady>;
 export type Lang = z.infer<typeof lang>;
 export type Channel = z.infer<typeof channel>;
 export type Theme = z.infer<typeof theme>;
+export type Accent = z.infer<typeof accent>;
+export type CustomRoom = z.infer<typeof customRoom>;
 export type UiFont = z.infer<typeof uiFont>;
 export type Transitions = z.infer<typeof transitions>;
 export type Settings = z.infer<typeof settings>;
