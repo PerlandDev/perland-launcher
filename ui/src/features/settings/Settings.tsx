@@ -5,15 +5,16 @@ import { applyLanguage } from '../../i18n';
 import { commands } from '../../ipc/commands';
 import { type GraphicsCard, type Lang } from '../../ipc/schema';
 
-import { useAppInfo, useSettings } from '../../state/queries';
+import { useAppInfo, useInstances, useSettings } from '../../state/queries';
 import { WHAT_IS_SENT } from '../../state/privacy';
-import { navigate } from '../../state/route';
+import { lastInstance, navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
-import { ExternalLink, Folder } from '../../ui/Icon';
+import { Brush, ExternalLink, Folder } from '../../ui/Icon';
 import { MemorySlider } from '../../ui/MemorySlider';
 import { ScreenFrame } from '../../ui/ScreenFrame';
+import { ScreenLoading } from '../../ui/ScreenLoading';
 import { Select } from '../../ui/Select';
 import { Toggle } from '../../ui/Toggle';
 import { useSingleFlight } from '../../ui/useSingleFlight';
@@ -28,6 +29,7 @@ export function Settings() {
   const { t } = useTranslation();
   const settings = useSettings();
   const appInfo = useAppInfo();
+  const instances = useInstances();
   const { draft, saved, edit } = useSettingsDraft();
   const openOnce = useSingleFlight();
   const retryOnce = useSingleFlight();
@@ -50,8 +52,16 @@ export function Settings() {
       </ScreenFrame>
     );
   }
-  if (!data || !appInfo.data) return <ScreenFrame title={t('settings.title')} onBack={home}>{null}</ScreenFrame>;
+  if (!data || !appInfo.data)
+    return (
+      <ScreenFrame title={t('settings.title')} onBack={home}>
+        <ScreenLoading label={t('loading.settings')} onRetry={() => void Promise.all([settings.refetch(), appInfo.refetch()])} />
+      </ScreenFrame>
+    );
 
+  // The memory line names the instance the player last opened, while it is still there and healthy.
+  const lastId = lastInstance();
+  const last = instances.data?.instances.find((instance) => instance.id === lastId) ?? null;
   const { graphics } = appInfo.data;
   const graphicsHint = [
     t(graphics.status === 'choose' ? 'settings.graphics.hint' : graphics.status === 'singleCard' ? 'settings.graphics.single' : 'settings.graphics.unsupported'),
@@ -72,6 +82,13 @@ export function Settings() {
       }
     >
       <div className="grid max-w-2xl gap-10">
+        {/* The look is Personalize's alone (the brush); one quiet line keeps a player who looks here on their way. */}
+        <div className="note-plate items-center justify-between gap-4" data-lamp="none">
+          <p className="text-sm">{t('settings.personalizeHint')}</p>
+          <Button variant="ghost" icon={<Brush />} className="flex-none" onClick={() => navigate({ name: 'personalize' })}>
+            {t('settings.personalizeLink')}
+          </Button>
+        </div>
         <Select
           label={t('settings.language')}
           value={data.language ?? 'system'}
@@ -86,12 +103,29 @@ export function Settings() {
             edit({ language });
           }}
         />
-        <MemorySlider
-          label={t('settings.memory')}
-          valueMb={data.defaultMemoryMb}
-          systemMb={appInfo.data.systemMemoryMb}
-          onChange={(defaultMemoryMb) => edit({ defaultMemoryMb }, true)}
-        />
+        <div className="grid gap-2">
+          <MemorySlider
+            label={t('settings.memory')}
+            valueMb={data.defaultMemoryMb}
+            systemMb={appInfo.data.systemMemoryMb}
+            onChange={(defaultMemoryMb) => edit({ defaultMemoryMb }, true)}
+          />
+          <p className="text-sm text-ink-dim">
+            {t('settings.memoryEach')}
+            {last && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  className="break-words text-blue-ink underline underline-offset-4"
+                  onClick={() => navigate({ name: 'instanceSettings', id: last.id, focus: 'memory' })}
+                >
+                  {t('settings.memoryFor', { name: last.name })}
+                </button>
+              </>
+            )}
+          </p>
+        </div>
         <Select
           label={t('settings.graphics.label')}
           value={data.graphicsCard}

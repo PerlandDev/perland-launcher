@@ -15,15 +15,16 @@ use launcher_app::{
     deep_link::DeepLink,
     dto::{
         AccountReady, AppInfo, ArtChoice, BannerView, Build, ContentFile, ContinueKind,
-        ContinueTarget, EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice,
-        ImportPreview, ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
-        LinkCodeView, ManualProgress, MedalView, MedalsView, MicrosoftSignInPhase, ModSourceCounts,
-        NameListView, NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice,
-        PackAddRequest, PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount,
-        PerlandSignInPhase, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard,
-        PublicServerPage, RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack,
-        ServerPlayers, ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary,
-        TrustPrompt, UpdateFile, YourServerCard, YourServersPage,
+        ContinueTarget, DropAdded, DropResult, DropSkipReason, DropSkipped, DroppedFile,
+        EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice, ImportPreview,
+        ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
+        ManualProgress, MedalView, MedalsView, MicrosoftSignInPhase, ModSourceCounts, NameListView,
+        NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest,
+        PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase,
+        PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage,
+        RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers,
+        ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary, TrustPrompt,
+        UpdateFile, YourServerCard, YourServersPage,
     },
     events::{AppEvent, CrashFix, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -34,6 +35,7 @@ use launcher_core::browse::{
     project::{GalleryImage, ProjectDetail, SideSupport, VersionInfo},
     search::{SearchHit, SearchPage, SortIndex},
 };
+use launcher_core::dropped::DroppedKind;
 use launcher_core::{
     accounts::{offline_account, AccountsFile},
     download::Hashes,
@@ -58,6 +60,7 @@ use launcher_core::{
     public_list::{Facets, ListQuery, ListSort},
     restore::{Change, PointKind},
     settings::{Accent, CustomRoom, IconShape, Lang, Settings, Theme, Transitions, UiFont},
+    shader_mods::{ShaderMod, ShaderSupport},
     share::{Category, CategoryCount, ShareChoice},
     sync::{origin::FileOrigin, plan::FileChange, ManualFile},
     ErrorCode, LauncherError,
@@ -1151,6 +1154,83 @@ fn contract_fixtures_are_current() {
         ],
     );
     check(
+        "dropped_files",
+        vec![
+            DroppedFile {
+                path: "C:/Users/player/Downloads/sodium-fabric-0.5.8+mc1.20.1.jar".into(),
+                name: "sodium-fabric-0.5.8+mc1.20.1.jar".into(),
+                kind: DroppedKind::Mod,
+            },
+            DroppedFile {
+                path: "C:/Users/player/Downloads/Faithful 32x.zip".into(),
+                name: "Faithful 32x.zip".into(),
+                kind: DroppedKind::ResourcePack,
+            },
+            DroppedFile {
+                path: "C:/Users/player/Downloads/BSL v8.zip".into(),
+                name: "BSL v8.zip".into(),
+                kind: DroppedKind::ShaderPack,
+            },
+            DroppedFile {
+                path: "C:/Users/player/Downloads/Sky Islands 1.0.4.mrpack".into(),
+                name: "Sky Islands 1.0.4.mrpack".into(),
+                kind: DroppedKind::Modpack,
+            },
+            DroppedFile {
+                path: "C:/Users/player/Downloads/photos.zip".into(),
+                name: "photos.zip".into(),
+                kind: DroppedKind::UnknownZip,
+            },
+            DroppedFile {
+                path: "C:/Users/player/Downloads/notes.txt".into(),
+                name: "notes.txt".into(),
+                kind: DroppedKind::Other,
+            },
+        ],
+    );
+    check(
+        "drop_result",
+        DropResult {
+            added: vec![
+                DropAdded {
+                    name: "sodium-fabric-0.5.8+mc1.20.1.jar".into(),
+                    kind: DroppedKind::Mod,
+                },
+                DropAdded {
+                    name: "Faithful 32x.zip".into(),
+                    kind: DroppedKind::ResourcePack,
+                },
+            ],
+            skipped: [
+                (
+                    "BSL v8.zip",
+                    DroppedKind::ShaderPack,
+                    DropSkipReason::NeedsLoader,
+                ),
+                ("iris.jar", DroppedKind::Mod, DropSkipReason::Exists),
+                ("create.jar", DroppedKind::Mod, DropSkipReason::Managed),
+                (
+                    "Sky Islands 1.0.4.mrpack",
+                    DroppedKind::Modpack,
+                    DropSkipReason::Modpack,
+                ),
+                (
+                    "photos.zip",
+                    DroppedKind::UnknownZip,
+                    DropSkipReason::NotAPack,
+                ),
+                ("notes.txt", DroppedKind::Other, DropSkipReason::NotContent),
+            ]
+            .into_iter()
+            .map(|(name, kind, reason)| DropSkipped {
+                name: name.into(),
+                kind,
+                reason,
+            })
+            .collect(),
+        },
+    );
+    check(
         "content_files",
         vec![
             ContentFile {
@@ -1170,6 +1250,23 @@ fn contract_fixtures_are_current() {
                 size: 0,
                 folder: true,
                 managed: false,
+            },
+        ],
+    );
+    check(
+        "shader_support",
+        vec![
+            ShaderSupport {
+                wanted: Some(ShaderMod::Iris),
+                installed: false,
+            },
+            ShaderSupport {
+                wanted: Some(ShaderMod::Oculus),
+                installed: true,
+            },
+            ShaderSupport {
+                wanted: None,
+                installed: false,
             },
         ],
     );

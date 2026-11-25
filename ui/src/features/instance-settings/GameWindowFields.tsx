@@ -36,7 +36,10 @@ export function GameWindowFields({ draft, onChange }: { draft: WindowDraft; onCh
   );
   return (
     <fieldset className="grid gap-3">
-      <legend className="mb-1.5 text-lg font-bold">{t('instanceSettings.window')}</legend>
+      {/* The settings' jump links land here. */}
+      <legend id="window-heading" tabIndex={-1} className="mb-1.5 scroll-mt-6 text-lg font-bold">
+        {t('instanceSettings.window')}
+      </legend>
       <div className="flex flex-wrap gap-2">
         {modes.map(([mode, label]) => (
           <label key={mode} className="seg" data-checked={draft.mode === mode ? '' : undefined}>

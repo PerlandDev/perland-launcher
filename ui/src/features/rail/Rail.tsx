@@ -161,6 +161,8 @@ function RailItem({
         ref={setRef}
         type="button"
         className="rail-item"
+        // Files held over a cabinet during a drag go to its instance (DropZone).
+        data-instance={item.id}
         data-selected={selected ? '' : undefined}
         aria-current={selected ? 'page' : undefined}
         aria-label={label}

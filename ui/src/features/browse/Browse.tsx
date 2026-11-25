@@ -7,11 +7,13 @@ import { navigate, type Route } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { formatCount } from '../../ui/format';
+import { Gear } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Select } from '../../ui/Select';
 import { Sentinel } from '../../ui/Sentinel';
 import { useDebounced } from '../../ui/useDebounced';
 import { loaderName } from '../home/labels';
+import { ShaderModNote } from '../mods/ShaderModNote';
 import { categoryLabel, gameLabel } from './labels';
 import { ProjectPage } from './ProjectPage';
 import { ResultRow } from './ResultRow';
@@ -203,6 +205,17 @@ function BrowseList({ route }: { route: BrowseRoute }) {
             </Button>
           </div>
         )}
+        {/* Mods and shaders run through a loader: on an instance without one, say so and offer the way to add it. */}
+        {scope && !scope.game.loader && (route.kind === 'mod' || route.kind === 'shader') && (
+          <div className="browse-scope">
+            <p>{t(`browse.needsLoader.${route.kind}`, { name: scope.name })}</p>
+            <Button variant="ghost" icon={<Gear />} onClick={() => navigate({ name: 'instanceSettings', id: scope.id, focus: 'loader' })}>
+              {t('mods.chooseLoader')}
+            </Button>
+          </div>
+        )}
+        {/* A shader pack for this instance does nothing until its shader mod is there too. */}
+        {scope && route.kind === 'shader' && <ShaderModNote instance={scope} />}
         <div role="tablist" aria-label={t('browse.title')} className="flex flex-wrap gap-2">
           {kinds.map((kind) => (
             <button

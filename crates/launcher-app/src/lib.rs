@@ -6,6 +6,7 @@ pub mod browser;
 mod continue_play;
 mod crash_fixes;
 pub mod deep_link;
+mod dropped;
 pub mod dto;
 pub mod events;
 pub mod folders;

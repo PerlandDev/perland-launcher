@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Instance } from '../../ipc/schema';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
@@ -354,4 +354,112 @@ it('holds Save while the size is out of range, and says the limits', async () =>
   await user.type(width, '800');
   expect(width).not.toHaveAttribute('aria-invalid');
   expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+});
+
+describe('arriving with a focus', () => {
+  it('lands on the chosen loader', async () => {
+    renderApp(<InstanceSettings id="creative-flat" focus="loader" />);
+    const none = await screen.findByRole('radio', { name: 'None' });
+    await waitFor(() => expect(none).toHaveFocus());
+  });
+
+  it('lands on the memory slider', async () => {
+    renderApp(<InstanceSettings id="asalith-fields" focus="memory" />);
+    const slider = await screen.findByRole('slider', { name: 'Memory' });
+    await waitFor(() => expect(slider).toHaveFocus());
+  });
+
+  it('lands on Mods & packs', async () => {
+    renderApp(<InstanceSettings id="asalith-fields" focus="content" />);
+    const heading = await screen.findByRole('heading', { name: 'Mods & packs' });
+    await waitFor(() => expect(heading).toHaveFocus());
+  });
+
+  it('lands on the Game heading for a pack, which picks its own loader', async () => {
+    renderApp(<InstanceSettings id="sky-islands" focus="loader" />);
+    const heading = await screen.findByRole('heading', { name: 'Game' });
+    await waitFor(() => expect(heading).toHaveFocus());
+  });
+});
+
+describe('Mods & packs section', () => {
+  it('counts what the instance has and opens each tab', async () => {
+    const { user } = renderApp(<InstanceSettings id="asalith-fields" />);
+    const section = (await screen.findByRole('heading', { name: 'Mods & packs' })).closest('section')!;
+    expect(await within(section).findByRole('button', { name: 'Mods 3' })).toBeInTheDocument();
+    expect(await within(section).findByRole('button', { name: 'Resource packs 2' })).toBeInTheDocument();
+    expect(await within(section).findByRole('button', { name: 'Shaders 1' })).toBeInTheDocument();
+    expect(within(section).getByText('Open a tab to find more, or look around in Mods & more.')).toBeInTheDocument();
+    await user.click(within(section).getByRole('button', { name: 'Mods 3' }));
+    // No tab means Mods, as the tabs themselves route.
+    expect(routeSnapshot()).toEqual({ name: 'mods', id: 'asalith-fields' });
+  });
+
+  it('opens the Shaders tab', async () => {
+    const { user } = renderApp(<InstanceSettings id="asalith-fields" />);
+    await user.click(await screen.findByRole('button', { name: 'Shaders 1' }));
+    expect(routeSnapshot()).toEqual({ name: 'mods', id: 'asalith-fields', tab: 'shader' });
+  });
+
+  it("counts a pack's own mods with the player's", async () => {
+    renderApp(<InstanceSettings id="sky-islands" />);
+    expect(await screen.findByRole('button', { name: 'Mods 4' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Resource packs 1' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Shaders 0' })).toBeInTheDocument();
+  });
+
+  it('shows no count until it is known', async () => {
+    const { backend } = renderApp(<InstanceSettings id="asalith-fields" />);
+    const handle = backend.handle;
+    vi.spyOn(backend, 'handle').mockImplementation((cmd, args) => (cmd === 'mods_list' ? new Promise(() => {}) : handle(cmd, args)));
+    expect(await screen.findByRole('button', { name: 'Resource packs 2' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mods' })).toBeInTheDocument();
+  });
+
+  it('says on vanilla what works without a loader', async () => {
+    renderApp(<InstanceSettings id="creative-flat" />);
+    expect(await screen.findByText('Resource packs work on any instance. Mods and shaders need a loader.')).toBeInTheDocument();
+  });
+});
+
+describe('loader hint', () => {
+  const hint = 'Mods and shaders need a loader. Fabric works with most of them.';
+
+  it('shows under the loader choice while None is chosen', async () => {
+    const { user } = renderApp(<InstanceSettings id="creative-flat" />);
+    expect(await screen.findByText(hint)).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: 'Fabric' }));
+    expect(screen.queryByText(hint)).not.toBeInTheDocument();
+  });
+
+  it('stays off a modded instance', async () => {
+    renderApp(<InstanceSettings id="asalith-fields" />);
+    await screen.findByRole('radio', { name: 'Fabric' });
+    expect(screen.queryByText(hint)).not.toBeInTheDocument();
+  });
+});
+
+describe('jump links', () => {
+  const jumps = () => within(screen.getByRole('navigation', { name: 'On this page' }));
+
+  it('lists the sections this instance has and moves to each', async () => {
+    const { user } = renderApp(<InstanceSettings id="asalith-fields" />);
+    await screen.findByRole('slider', { name: 'Memory' });
+    expect(jumps().getAllByRole('button').map((b) => b.textContent)).toEqual(['Game', 'Mods & packs', 'Server', 'Game window', 'Memory', 'Java']);
+    await user.click(jumps().getByRole('button', { name: 'Java' }));
+    expect(screen.getByRole('group', { name: 'Java' }).querySelector('legend')).toHaveFocus();
+    await user.click(jumps().getByRole('button', { name: 'Memory' }));
+    expect(screen.getByRole('slider', { name: 'Memory' })).toHaveFocus();
+    await user.click(jumps().getByRole('button', { name: 'Game window' }));
+    expect(screen.getByRole('group', { name: 'Game window' }).querySelector('legend')).toHaveFocus();
+    await user.click(jumps().getByRole('button', { name: 'Server' }));
+    expect(screen.getByRole('heading', { name: 'Server' })).toHaveFocus();
+  });
+
+  it('leaves out Server on a pack that is not a server', async () => {
+    renderApp(<InstanceSettings id="sky-islands" />);
+    await screen.findByRole('slider', { name: 'Memory' });
+    expect(jumps().queryByRole('button', { name: 'Server' })).not.toBeInTheDocument();
+    expect(jumps().getByRole('button', { name: 'Game' })).toBeInTheDocument();
+  });
 });

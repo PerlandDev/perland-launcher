@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { toastsSnapshot } from '../../state/toasts';
 import { resetAppearance } from '../../state/appearance';
+import { resetPersonalizeSeen } from '../../state/personalizeSeen';
 import { navigate, routeSnapshot } from '../../state/route';
 import { renderApp, sent } from '../../test/backend';
 import { Personalize } from './Personalize';
@@ -10,7 +11,10 @@ import { Settings } from '../settings/Settings';
 import { BACKGROUNDS, BUTTONS, buttonsFor } from '../../state/customRoom';
 import { afterEach } from 'vitest';
 
-afterEach(resetAppearance);
+afterEach(() => {
+  resetAppearance();
+  resetPersonalizeSeen();
+});
 
 const open = () => renderApp(<Personalize />);
 
@@ -129,10 +133,34 @@ it('is opened by the brush in the title bar', async () => {
   expect(await screen.findByRole('button', { name: 'Personalize' })).toHaveAttribute('aria-current', 'page');
 });
 
-it('is not in Settings: the brush is the only way in', async () => {
+it('is pointed to from Settings by one quiet line, not a section', async () => {
   navigate({ name: 'settings' });
-  renderApp(<Settings />);
+  const { user } = renderApp(<Settings />);
   await screen.findByRole('heading', { name: 'Launcher updates' });
   expect(screen.queryByRole('region', { name: 'Appearance' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Open Personalize' })).toBeNull();
+  await user.click(screen.getByRole('button', { name: 'Personalize' }));
+  expect(routeSnapshot()).toEqual({ name: 'personalize' });
+});
+
+it('sends a player looking for the language to Settings', async () => {
+  const { user } = open();
+  expect(await screen.findByText('Looking for the language?')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Change it in Settings' }));
+  expect(routeSnapshot()).toEqual({ name: 'settings' });
+});
+
+it('takes the new mark off the brush once it is open', async () => {
+  renderApp(<TitleBar />);
+  const brush = await screen.findByRole('button', { name: 'Personalize' });
+  await waitFor(() => expect(brush).toHaveAccessibleDescription('New'));
+  cleanup();
+  renderApp(
+    <>
+      <TitleBar />
+      <Personalize />
+    </>,
+  );
+  await screen.findByRole('radiogroup', { name: 'Themes' });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Personalize' })).not.toHaveAccessibleDescription());
+  expect(screen.getByRole('button', { name: 'Personalize' }).querySelector('.tb-new')).toBeNull();
 });

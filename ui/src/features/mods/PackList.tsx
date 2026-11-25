@@ -3,17 +3,18 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { commands } from '../../ipc/commands';
 import type { ContentFile, OpenTarget } from '../../ipc/schema';
-import { useContentFiles, useContentRemove, useInstances } from '../../state/queries';
+import { qk, useContentFiles, useContentRemove, useInstances, useShaderSupport } from '../../state/queries';
 import { navigate, type ModsTab } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { formatBytes } from '../../ui/format';
-import { Folder, Package, Search, Trash } from '../../ui/Icon';
+import { Folder, Gear, Package, Search, Trash } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { ContentTabs } from './ContentTabs';
+import { ShaderModNote } from './ShaderModNote';
 
 export type PackKind = Exclude<ModsTab, 'mod'>;
 
@@ -40,11 +41,14 @@ export function PackList({ id, kind }: { id: string; kind: PackKind }) {
   // Players add files through Open folder and come back: show what is there now.
   useEffect(() => {
     const onFocus = () => {
-      if (queryClient.isMutating() === 0) void refetch();
+      if (queryClient.isMutating() > 0) return;
+      void refetch();
+      // A shader mod dropped into mods/ by hand counts too.
+      if (kind === 'shader') void queryClient.invalidateQueries({ queryKey: qk.shaderSupport(id) });
     };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-  }, [queryClient, refetch]);
+  }, [queryClient, refetch, kind, id]);
 
   const openFolder = () => {
     setOpening(true);
@@ -70,6 +74,9 @@ export function PackList({ id, kind }: { id: string; kind: PackKind }) {
   // Find button there (the list still shows what is in the folder).
   const needsLoader = kind === 'shader' && instance !== undefined && !instance.game.loader;
   const canFind = instance !== undefined && !needsLoader;
+  const shaders = useShaderSupport(id, kind === 'shader' && Boolean(instance?.game.loader));
+  // Without its shader mod the game has no Shader Packs menu either, so the note takes the hint's place.
+  const noShaderMod = kind === 'shader' && shaders.data?.installed === false && shaders.data.wanted !== null;
   const list = files.data ?? [];
   const managed = list.filter((f) => f.managed);
   const yours = list.filter((f) => !f.managed);
@@ -120,10 +127,19 @@ export function PackList({ id, kind }: { id: string; kind: PackKind }) {
     >
       <div className="grid max-w-3xl gap-4">
         <ContentTabs id={id} active={kind} />
-        {needsLoader && <p className="note-plate">{t('packs.shadersNeedLoader')}</p>}
+        {needsLoader && (
+          <div className="note-plate">
+            <p className="min-w-0 flex-1">{t('packs.shadersNeedLoader')}</p>
+            {/* Centred on the note's first line, like its lamp; a ghost has no face at rest to crowd the plate's edge. */}
+            <Button variant="ghost" icon={<Gear />} className="-my-2 shrink-0 self-start" onClick={() => navigate({ name: 'instanceSettings', id, focus: 'loader' })}>
+              {t('mods.chooseLoader')}
+            </Button>
+          </div>
+        )}
         {running && <p className="note-plate">{t('packs.running')}</p>}
-        {/* Vanilla has no Shader Packs menu, so the turn-it-on hint would point nowhere. */}
-        {!needsLoader && (
+        {kind === 'shader' && instance?.game.loader && <ShaderModNote instance={instance} />}
+        {/* Vanilla, or a modded instance without its shader mod, has no Shader Packs menu: the hint would point nowhere. */}
+        {!needsLoader && !noShaderMod && (
           <p className="info-line">{kind === 'resource_pack' ? t('install.turnOnResourcePack') : t('install.turnOnShader')}</p>
         )}
         {failure && <ErrorCard error={failure.error} />}

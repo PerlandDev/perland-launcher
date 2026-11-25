@@ -25,8 +25,14 @@ const scene = vi.hoisted(() => ({
   resize: vi.fn(),
   dispose: vi.fn(),
   textures: [] as Uint8ClampedArray[],
+  options: undefined as { onFirstFrame?: () => void } | undefined,
 }));
-vi.mock('./stageScene', () => ({ createStage: () => scene }));
+vi.mock('./stageScene', () => ({
+  createStage: (_canvas: HTMLCanvasElement, options?: { onFirstFrame?: () => void }) => {
+    scene.options = options;
+    return scene;
+  },
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -193,4 +199,16 @@ it('turning Animation off mid-blink opens the eyes at once', () => {
   expect(worn()).toBe(90);
   rerender(<Stage {...base} pixels={OPEN} blink={SHUT} blinkSeed={SKIN} straight />);
   expect(worn()).toBe(200);
+});
+
+it('shows the skin flat from the front until the 3D figure draws its first frame', () => {
+  renderStage();
+  // Making the 3D scene takes a moment after the studio arrives; meanwhile the stage is not an empty well.
+  const flat = document.querySelector('canvas.stage-flat');
+  expect(flat).toBeInTheDocument();
+  expect(flat).toHaveAttribute('aria-hidden', 'true');
+  expect(flat).toHaveAttribute('width', '16');
+  expect(flat).toHaveAttribute('height', '32');
+  act(() => scene.options?.onFirstFrame?.());
+  expect(document.querySelector('canvas.stage-flat')).not.toBeInTheDocument();
 });

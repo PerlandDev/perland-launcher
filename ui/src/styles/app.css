@@ -230,7 +230,7 @@
       transition-duration: 0.01ms !important;
     }
     /* A lamp parked in the meter would read as progress that isn't happening: show the honest empty channel. */
-    .play .meter[data-scan]::after {
+    .meter[data-scan]::after {
       display: none;
     }
   }
@@ -661,11 +661,12 @@
     background: var(--color-ground);
     border-radius: 2px;
   }
-  /* Checking has no count to show yet: one blue block sweeps the channel, a block at a time. */
-  .play .meter[data-scan] {
+  /* No count to show yet (Play checking, a screen on its way): one blue block sweeps the channel, a block at a
+     time. The lamp's geometry assumes the 3px channel, which Play's meter and `data-channel` both give. */
+  .meter[data-scan] {
     position: relative;
   }
-  .play .meter[data-scan]::after {
+  .meter[data-scan]::after {
     content: '';
     position: absolute;
     top: 3px;
@@ -698,6 +699,36 @@
   }
   .meter > span[data-on] {
     background: var(--color-blue);
+  }
+  /* The meter in its own recessed channel outside Play: the same 3px ground channel, with the recess inset so it
+     reads on the ground too. */
+  .meter[data-channel] {
+    padding: 3px;
+    background: var(--color-ground);
+    border-radius: 2px;
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+
+  /* A screen on its way (ScreenLoading): the meter over the words, at the top of the screen's column or, for a
+     screen with no column, in the middle of its area. */
+  .screen-loading {
+    display: grid;
+    justify-items: start;
+    align-content: start;
+    gap: 0.75rem;
+  }
+  .screen-loading .meter {
+    width: 15rem;
+    max-width: 100%;
+  }
+  .screen-loading[data-place='center'] {
+    justify-items: center;
+    align-content: center;
+    height: 100%;
+    padding: 2rem;
+    text-align: center;
   }
 
   .field-input {
@@ -1632,6 +1663,24 @@
       inset 0 2px 0 rgb(0 0 0 / 0.45),
       inset 0 0 0 1px var(--color-line);
   }
+  /* A place the player hasn't opened yet (Personalize, behind the brush): the 8px blue lamp unseen server news ends with,
+     on the glyph's top-right corner in a 2px collar of the key's own face, so it reads apart from the strokes. Never lime
+     (chosen, running) and never amber (acts). It goes out for good once the place is opened. */
+  .tb-btn:has(> .tb-new) {
+    position: relative;
+  }
+  .tb-new {
+    position: absolute;
+    top: calc(50% - 0.8125rem);
+    left: calc(50% + 0.3125rem);
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--color-blue);
+    box-shadow: 0 0 0 2px var(--color-ground);
+  }
+  .tb-btn:hover > .tb-new {
+    box-shadow: 0 0 0 2px var(--color-raised);
+  }
   /* The launcher's places, as tabs after the mark: flat title-bar text with a pixel glyph, never lit. The open one is
      pressed into its slot with the lime lamp in the glyph's place, like a chosen segment. */
   .tb-places {
@@ -1920,6 +1969,11 @@
     border-radius: 6px;
     corner-shape: notch;
     cursor: pointer;
+  }
+  /* Files held over this cabinet during a drag go to its instance (DropZone): the drop frame's dashed amber. */
+  .rail-item[data-drop-target] {
+    outline: 2px dashed var(--color-amber);
+    outline-offset: 3px;
   }
   .rail[data-wide] .rail-item {
     grid-template-columns: 3.5rem minmax(0, 1fr);
@@ -2971,6 +3025,91 @@
     corner-shape: notch;
     box-shadow: inset 0 0 0 1px var(--color-line);
   }
+
+  /* Files dragged over the window (DropZone): the dialog's flat scrim over `main` (never blurred, never a
+     gradient), a dashed amber frame (dropping is acting, so the act hue), and one panel on its card step that
+     says what the drop will do. Nothing under it takes the pointer: the OS drag owns it. It snaps in. */
+  .drop-veil {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: grid;
+    padding: 1.25rem;
+    background: color-mix(in srgb, color-mix(in srgb, var(--color-ground, #181410), black 50%) 78%, transparent);
+    pointer-events: none;
+  }
+  .drop-frame {
+    display: grid;
+    place-items: center;
+    min-height: 0;
+    padding: 1.5rem;
+    border: 2px dashed var(--color-amber);
+    border-radius: 6px;
+    corner-shape: notch;
+  }
+  .drop-panel {
+    display: grid;
+    justify-items: start;
+    gap: 0.5rem;
+    width: min(30rem, 100%);
+    min-width: 0;
+    padding: 1.5rem;
+    background: var(--color-panel);
+    border-radius: 6px;
+    corner-shape: notch;
+    box-shadow: 0 8px 0 var(--color-dirt-deep);
+  }
+  .drop-glyph {
+    width: 2rem;
+    height: 2rem;
+    margin-bottom: 0.25rem;
+    color: var(--color-amber);
+  }
+  /* A sentence, so the body face at 700, never Bungee. */
+  .drop-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.3;
+    text-wrap: balance;
+  }
+  .drop-file {
+    max-width: 100%;
+    font-family: var(--font-mono);
+    font-size: 0.875rem;
+    color: var(--color-ink-dim);
+    overflow-wrap: anywhere;
+  }
+  .drop-target {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+  .drop-target-name {
+    font-weight: 600;
+  }
+  /* Advice (what will be skipped and why): led by the note plate's square blue lamp, never amber. */
+  .drop-note {
+    display: flex;
+    gap: 0.625rem;
+    font-size: 0.875rem;
+    color: var(--color-ink-dim);
+  }
+  .drop-note::before {
+    content: '';
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    /* Centred on the first line of 14px / 1.5 text. */
+    margin-top: 0.3125rem;
+    background: var(--color-blue);
+  }
+  .drop-hint {
+    justify-self: stretch;
+    margin-top: 0.5rem;
+    padding-top: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--color-ink-dim);
+    box-shadow: 0 -1px 0 var(--color-line);
+  }
 }
 
 /* The Servers screen: Perland's public servers as cards in a grid. */
@@ -3843,6 +3982,20 @@
     color: var(--color-ink);
     text-decoration-thickness: 2px;
   }
+  /* In-page jump links (Instance settings): flat dim text on a seam-coloured underline, ink under the pointer. Quieter
+     than a link to elsewhere, since nothing leaves the page. */
+  .jump-link {
+    font-weight: 600;
+    color: var(--color-ink-dim);
+    text-decoration: underline;
+    text-decoration-color: var(--color-line);
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .jump-link:hover {
+    color: var(--color-ink);
+    text-decoration-color: currentColor;
+  }
   /* The live log: mono on a ground well, like the game log in the activity drawer. */
   .manage-log {
     height: 20rem;
@@ -4465,6 +4618,51 @@
     .arrive .marquee-plate,
     .arrive .play {
       animation: none !important;
+    }
+  }
+}
+
+/* Skins header. The Skins screen's frame and header, here rather than in features/skins/skins.css (which arrives with
+   the studio's chunk), so the screen shows its real header the moment it opens and the studio drops in under it
+   without a jump. */
+@layer components {
+  .skins-screen {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    height: 100%;
+    padding: 0 1.5rem;
+  }
+  .skins-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-width: 0;
+    padding: 1.25rem 0 1rem;
+  }
+  /* Studio tabs: Create, Paint, Catalog as the standard segments, the open one pressed with the lime lamp. */
+  .skins-tabs {
+    display: flex;
+    flex: none;
+    gap: 0.5rem;
+    padding-bottom: 4px;
+  }
+  /* Before the studio arrives its tabs show where it opens and wait: no press, no hand. */
+  .skins-tabs .seg[aria-disabled='true'] {
+    cursor: default;
+  }
+  /* The body while the studio is on its way, or failed to open: the loading line or the error card, centred. */
+  .skins-waiting {
+    display: grid;
+    place-items: center;
+    min-height: 0;
+    padding-bottom: 2rem;
+  }
+  @media (width < 1200px) {
+    .skins-screen {
+      padding: 0 1rem;
+    }
+    .skins-head {
+      padding: 0.875rem 0 0.75rem;
     }
   }
 }

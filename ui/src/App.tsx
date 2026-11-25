@@ -1,10 +1,11 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SignInPrompt } from './features/accounts/SignInPrompt';
 import { TrustDialog } from './features/trust/TrustDialog';
 import { ActivityDrawer } from './features/activity/ActivityDrawer';
 import { Browse } from './features/browse/Browse';
 import { CloseGuard } from './features/close-guard/CloseGuard';
+import { DropZone } from './features/drop/DropZone';
 import { FirstRun } from './features/first-run/FirstRun';
 import { HeroCopy, Home } from './features/home/Home';
 import { HeroPreview } from './features/home/heroPreview';
@@ -15,10 +16,13 @@ import { AchievementsScreen } from './features/medals/AchievementsScreen';
 import { Mods } from './features/mods/Mods';
 import { NewInstance } from './features/new-instance/NewInstance';
 import { Profile } from './features/profile/Profile';
+import { QuickJump } from './features/quick-jump/QuickJump';
 import { Rail } from './features/rail/Rail';
 import { ServersScreen } from './features/servers-list/ServersScreen';
 import { Personalize } from './features/personalize/Personalize';
 import { Settings } from './features/settings/Settings';
+import { prefetchSkinStudio } from './features/skins/loadSkinStudio';
+import { SkinsScreen } from './features/skins/SkinsScreen';
 import { TitleBar } from './features/titlebar/TitleBar';
 import { WhatsNewOnLaunch } from './features/whats-new/WhatsNewOnLaunch';
 import { applyLanguage } from './i18n';
@@ -27,14 +31,14 @@ import { applyAppearance, lookOf, type Appearance } from './state/appearance';
 import { takeDeepLink } from './state/deepLink';
 import { useSettings } from './state/queries';
 import type { Instance } from './ipc/schema';
-import { useRoute, type Route } from './state/route';
+import { navigate, useRoute, type Route } from './state/route';
 import { Button } from './ui/Button';
 import { ErrorCard } from './ui/ErrorCard';
+import { ScreenBoundary } from './ui/ScreenBoundary';
+import { screenError } from './ui/screenError';
 import { Toasts } from './ui/Toasts';
 import { useSingleFlight } from './ui/useSingleFlight';
-
-// three.js stays out of the start bundle: the Skins screen loads on first visit.
-const SkinStudio = lazy(() => import('./features/skins/SkinStudio'));
+import { whenIdle } from './ui/whenIdle';
 
 /** Home's header as a still copy, for the background preview opened from anywhere (the rail's menu too). */
 const heroCopy = (instance: Instance) => <HeroCopy instance={instance} />;
@@ -46,9 +50,9 @@ function Screen({ route }: { route: Route }) {
     case 'mods':
       return <Mods id={route.id} tab={route.tab} />;
     case 'instanceSettings':
-      return <InstanceSettings id={route.id} />;
+      return <InstanceSettings id={route.id} focus={route.focus} />;
     case 'newInstance':
-      return <NewInstance key={route.link ?? 'new'} link={route.link} />;
+      return <NewInstance key={route.link ?? route.file ?? 'new'} link={route.link} file={route.file} />;
     case 'browse':
       return <Browse route={route} />;
     case 'joinServer':
@@ -65,11 +69,8 @@ function Screen({ route }: { route: Route }) {
     case 'manage':
       return <ManageScreen key={`${route.tenantId}/${route.stack}`} tenantId={route.tenantId} stack={route.stack} />;
     case 'skins':
-      return (
-        <Suspense fallback={null}>
-          <SkinStudio skin={route.skin} account={route.account} />
-        </Suspense>
-      );
+      // three.js stays out of the start bundle: the studio loads on first visit, or in the shell's first idle moment.
+      return <SkinsScreen skin={route.skin} account={route.account} />;
     case 'achievements':
       return <AchievementsScreen />;
     case 'settings':
@@ -80,6 +81,26 @@ function Screen({ route }: { route: Route }) {
       return <Profile add={route.add} />;
   }
 }
+
+/** A screen that broke while drawing: the error card in its place, with the way home. The title bar and the rail stay. */
+function ScreenFailed({ error, reset }: { error: unknown; reset: () => void }) {
+  const { t } = useTranslation();
+  const goHome = () => {
+    navigate({ name: 'home', id: null });
+    // Home itself may be what broke: draw it again either way.
+    reset();
+  };
+  return (
+    <div className="grid h-full place-items-center p-10">
+      <div className="w-full max-w-xl">
+        <ErrorCard error={screenError('screen_failed', error)} actions={<Button onClick={goHome}>{t('loading.goHome')}</Button>} />
+      </div>
+    </div>
+  );
+}
+
+/** The skin studio downloads ahead in the first quiet moment after the shell opens, so Skins opens at once. */
+const PREFETCH_AFTER_MS = 4000;
 
 /** What makes a move: another screen, or another instance on the same one. */
 const placeKey = (route: Route) => `${route.name}:${'id' in route ? (route.id ?? '') : ''}`;
@@ -100,6 +121,7 @@ function Shell() {
   const beat = useBeat(placeKey(route));
   // Once the shell exists (after first run), pick up a link that started the app.
   useEffect(() => void takeDeepLink(), []);
+  useEffect(() => whenIdle(prefetchSkinStudio, PREFETCH_AFTER_MS), []);
   return (
     // The rail's menu opens Change image too, so its background preview can draw Home's header from anywhere.
     <HeroPreview.Provider value={heroCopy}>
@@ -115,12 +137,18 @@ function Shell() {
                 cabinet's own snapped frames, or not at all. The beat flips at every move, which replays the entrance without building the
                 screen again. */}
             <div className="arrive" data-style={settings?.transitions ?? 'smooth'} data-arrive={route.name === 'home' ? 'home' : 'screen'} data-beat={beat}>
-              <Screen route={route} />
+              {/* A screen that breaks shows an error card in its place, never a blank window; moving on lets it go. */}
+              <ScreenBoundary resetKey={placeKey(route)} fallback={(error, reset) => <ScreenFailed error={error} reset={reset} />}>
+                <Screen route={route} />
+              </ScreenBoundary>
             </div>
             <ActivityDrawer />
+            {/* The whole window takes dropped mods, packs and modpacks; its overlay covers `main`, not the title bar. */}
+            <DropZone />
           </main>
         </div>
       </div>
+      <QuickJump />
     </HeroPreview.Provider>
   );
 }

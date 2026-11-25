@@ -1,6 +1,6 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
-import { routeSnapshot } from '../../state/route';
+import { navigate, rememberInstance, routeSnapshot } from '../../state/route';
 import { toastsSnapshot } from '../../state/toasts';
 import { createMockBackend } from '../../ipc/mock';
 import { renderApp, sent } from '../../test/backend';
@@ -304,3 +304,49 @@ it('offers the graphics card in Spanish', async () => {
   }
 });
 
+
+it('points to Personalize in one line above Language', async () => {
+  const { user } = renderApp(<Settings />);
+  const language = await screen.findByRole('combobox', { name: 'Language' });
+  expect(screen.getByText('Themes, colours, the font, icons and transitions are in Personalize.')).toBeInTheDocument();
+  const personalize = screen.getByRole('button', { name: 'Personalize' });
+  expect(personalize.compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await user.click(personalize);
+  expect(routeSnapshot()).toEqual({ name: 'personalize' });
+});
+
+it("points from the memory for new instances to the last instance's own", async () => {
+  navigate({ name: 'home', id: 'creative-flat' });
+  const { user } = renderApp(<Settings />);
+  await screen.findByRole('slider', { name: 'Memory for new instances' });
+  expect(screen.getByText(/Each instance can have its own amount\./)).toBeInTheDocument();
+  await user.click(await screen.findByRole('button', { name: 'Change it for Creative Flat' }));
+  expect(routeSnapshot()).toEqual({ name: 'instanceSettings', id: 'creative-flat', focus: 'memory' });
+});
+
+it('leaves the instance link out when no instance was opened, or the last one is gone', async () => {
+  renderApp(<Settings />);
+  await screen.findByRole('slider', { name: 'Memory for new instances' });
+  expect(screen.getByText(/Each instance can have its own amount\./)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Change it for/ })).toBeNull();
+  cleanup();
+  // A damaged instance has no settings to open, and a deleted one is not listed at all.
+  for (const id of ['old-pack', 'deleted-one']) {
+    rememberInstance(id);
+    renderApp(<Settings />);
+    await screen.findByRole('slider', { name: 'Memory for new instances' });
+    await screen.findByRole('button', { name: 'Personalize' });
+    await pause(20);
+    expect(screen.queryByRole('button', { name: /Change it for/ })).toBeNull();
+    cleanup();
+  }
+});
+
+it('offers the pointers in Spanish', async () => {
+  navigate({ name: 'home', id: 'asalith-fields' });
+  const { user } = renderApp(<Settings />);
+  await user.selectOptions(await screen.findByRole('combobox', { name: 'Language' }), 'es');
+  expect(await screen.findByRole('button', { name: 'Personalizar' })).toBeInTheDocument();
+  expect(screen.getByText(/Cada instancia puede tener su propia cantidad\./)).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Cámbiala para Asalith Fields' })).toBeInTheDocument();
+});

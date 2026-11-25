@@ -36,6 +36,9 @@ import type {
   BrowsePlanRequest,
   ContentFile,
   ContentKind,
+  DroppedKind,
+  DropResult,
+  DropSkipReason,
   DeepLink,
   ExitInfo,
   BannerView,
@@ -68,6 +71,8 @@ import type {
   SearchPage,
   SearchRequest,
   Settings,
+  ShaderMod,
+  ShaderSupport,
   Theme,
   Transitions,
   UiFont,
@@ -358,9 +363,86 @@ const CATALOG: MockProject[] = [
 // Sodium's fixture versions only list 1.20.1; keep its id matching the catalog's.
 CATALOG[0]!.versions = (clone(versionsFx) as VersionInfo[]).map((v) => ({ ...v, id: 'AANobbMI-v1' }));
 
+/** Sky Islands' pack brings its shader mod, so the Shaders tab shows both states: Asalith Fields (Fabric) lacks Iris. */
+const withOculus = (contents: PackContents): PackContents => ({
+  ...contents,
+  managed: [...contents.managed, { path: 'mods/oculus.jar', name: 'Oculus', optional: null }],
+});
+
+/** The core's `shader_mods::wanted`: Iris on Fabric, Quilt and NeoForge, Oculus on Forge and on NeoForge 1.20.1. */
+function wantedShaderMod(instance: Instance): ShaderMod | null {
+  const loader = instance.game.loader?.kind;
+  if (!loader) return null;
+  if (loader === 'forge' || (loader === 'neoforge' && instance.game.minecraft === '1.20.1')) return 'oculus';
+  return 'iris';
+}
+
+/** Iris and Oculus by Modrinth id, as Browse installs them. */
+const SHADER_MOD_PROJECTS = ['YL57xq9U', 'GchcoXML'];
+/** The mock has no jars to read, so a shader mod is known by its name, the way the core falls back for a jar without metadata. */
+const namedShaderMod = (name: string) => name.toLowerCase().split(/[^a-z0-9]+/).some((w) => w === 'iris' || w === 'oculus' || w === 'optifine');
+
+function shaderSupportOf(state: MockState, instance: Instance): ShaderSupport {
+  const wanted = wantedShaderMod(instance);
+  if (!wanted) return { wanted: null, installed: false };
+  const pack = state.packs.get(instance.id);
+  const jars = [...(state.mods.get(instance.id) ?? []), ...(pack?.contents.additions ?? [])].filter((m) => m.enabled).map((m) => m.fileName);
+  const packMods = (pack?.contents.managed ?? []).filter((m) => m.optional === null || m.optional.enabled).map((m) => m.path);
+  const fromBrowse = [...(state.browse.installed.get(instance.id) ?? [])].some((p) => SHADER_MOD_PROJECTS.includes(p));
+  return { wanted, installed: fromBrowse || [...jars, ...packMods].some(namedShaderMod) };
+}
+
 const findProject = (ref: string) => CATALOG.find((p) => p.detail.projectId === ref || p.detail.slug === ref);
 
 const contentKey = (id: string, kind: ContentKind) => `${id}:${kind}`;
+
+const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
+
+/** The core reads inside a zip; the mock goes by its name: "shader" in it is a shader pack, "photos" no pack at all. */
+function mockDropKind(path: string): DroppedKind {
+  const name = baseName(path).toLowerCase();
+  if (name.endsWith('.jar')) return 'mod';
+  if (name.endsWith('.mrpack')) return 'modpack';
+  if (!name.endsWith('.zip')) return 'other';
+  if (/shader|bsl|complementary|sildur/.test(name)) return 'shader_pack';
+  return /photos/.test(name) ? 'unknown_zip' : 'resource_pack';
+}
+
+/** `drop_add`, as the core does it: mods to `mods/`, packs to their folders, the rest skipped with why. */
+function mockDropAdd(state: MockState, instance: Instance, paths: string[]): DropResult {
+  const result: DropResult = { added: [], skipped: [] };
+  const modded = instance.game.loader !== null;
+  const reasons: Partial<Record<DroppedKind, DropSkipReason>> = { modpack: 'modpack', unknown_zip: 'not_a_pack', other: 'not_content' };
+  for (const path of paths) {
+    const name = baseName(path);
+    const kind = mockDropKind(path);
+    const skip = (reason: DropSkipReason) => result.skipped.push({ name, kind, reason });
+    const reason = reasons[kind];
+    if (reason) skip(reason);
+    else if (!modded && kind !== 'resource_pack') skip('needs_loader');
+    else if (kind === 'mod') {
+      const mods = state.mods.get(instance.id) ?? [];
+      const pack = state.packs.get(instance.id);
+      const taken = (f: string) => f.replace(/\.disabled$/, '').toLowerCase() === name.toLowerCase();
+      if (pack?.contents.managed.some((m) => taken(baseName(m.path)))) skip('managed');
+      else if (mods.some((m) => taken(m.fileName))) skip('exists');
+      else {
+        editMods(state, instance.id, (list) => [...list, { fileName: name, enabled: true, size: 1_200_000 }].sort((a, b) => a.fileName.localeCompare(b.fileName)));
+        result.added.push({ name, kind });
+      }
+    } else {
+      const key = contentKey(instance.id, kind === 'shader_pack' ? 'shader' : 'resource_pack');
+      const files = state.content.get(key) ?? [];
+      const there = files.find((f) => f.fileName.toLowerCase() === name.toLowerCase());
+      if (there) skip(there.managed ? 'managed' : 'exists');
+      else {
+        state.content.set(key, [...files, { fileName: name, size: 2_400_000, folder: false, managed: false }].sort((a, b) => a.fileName.localeCompare(b.fileName)));
+        result.added.push({ name, kind });
+      }
+    }
+  }
+  return result;
+}
 
 function seed(options: MockOptions) {
   const listing = clone(listingFx) as InstanceListing;
@@ -433,7 +515,7 @@ function seed(options: MockOptions) {
     packs.set(sky.id, {
       installed: '1.0.3',
       update: options.noUpdate ? null : offer,
-      contents: clone(packContentsFx) as PackContents,
+      contents: withOculus(clone(packContentsFx) as PackContents),
       art: SKY_ART,
       manual: options.manual
         ? [
@@ -1518,8 +1600,14 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     }
     case 'mod_remove':
       return editMods(state, String(args.id), (list) => list.filter((m) => m.fileName !== args.file));
+    case 'drop_inspect':
+      return (args.paths as string[]).map((path) => ({ path, name: baseName(path), kind: mockDropKind(path) }));
+    case 'drop_add':
+      return mockDropAdd(state, find(args.id) ?? fail('disk', 'instance_not_found', 'gone', { id: String(args.id) }), args.paths as string[]);
     case 'content_list':
       return clone(state.content.get(contentKey(String(args.id), args.kind as ContentKind)) ?? []);
+    case 'shader_support':
+      return shaderSupportOf(state, find(args.id) ?? fail('disk', 'instance_not_found', 'No such instance'));
     case 'content_remove': {
       const key = contentKey(String(args.id), args.kind as ContentKind);
       const files = state.content.get(key) ?? [];
@@ -1711,8 +1799,16 @@ export function installMock(options: MockOptions = {}) {
   const backend = createMockBackend(options);
   mockWindows('main');
   mockIPC((cmd, args) => backend.handle(cmd, args), { shouldMockEvents: true });
+  // A browser never hands files to Tauri's drag-and-drop, so dev:mock drives the window's drop target from the
+  // console (or a screenshot script) with the events Tauri sends: `__mockDrag('enter', ['C:/d/sodium.jar'])`, then
+  // 'over' (with a point, in physical pixels), 'drop' or 'leave'. Only installMock sets it: never a real build.
+  (window as unknown as { __mockDrag: MockDrag }).__mockDrag = mockDrag;
   return backend;
 }
+
+type MockDrag = (type: 'enter' | 'over' | 'drop' | 'leave', paths?: string[], position?: { x: number; y: number }) => Promise<void>;
+const mockDrag: MockDrag = (type, paths = [], position = { x: 0, y: 0 }) =>
+  emit(`tauri://drag-${type}`, type === 'leave' ? null : { paths, position });
 
 /** The `?update=` preview param: a launcher update state by name (dev:mock only). */
 export function mockUpdateState(name: string | null): UpdateState | undefined {

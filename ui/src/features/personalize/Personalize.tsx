@@ -1,14 +1,16 @@
-import { useId, type ReactNode } from 'react';
+import { useEffect, useId, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { transitions as transitionsSchema, type Accent, type CustomRoom, type Theme } from '../../ipc/schema';
 import { ACCENTS, FONTS, MADE_THEMES } from '../../state/appearance';
 import { BACKGROUNDS, buttonsFor, deriveRoom, fitButtons, isHex, roomOk, type Swatch } from '../../state/customRoom';
 import { useSettings } from '../../state/queries';
+import { markPersonalizeSeen } from '../../state/personalizeSeen';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { Brush, WarningDiamond } from '../../ui/Icon';
 import { PlayButton } from '../../ui/PlayButton';
 import { ScreenFrame } from '../../ui/ScreenFrame';
+import { ScreenLoading } from '../../ui/ScreenLoading';
 import { useSettingsDraft } from '../settings/useSettingsDraft';
 
 // Personalize (spec 2026-11-25): everything about the look, behind the brush in the title bar. The room, the button
@@ -55,7 +57,15 @@ export function Personalize() {
   const settings = useSettings();
   const { draft, edit } = useSettingsDraft();
   const data = draft ?? settings.data;
-  if (!data) return null;
+  // However the player got here, the brush in the title bar is no longer new to them.
+  useEffect(markPersonalizeSeen, []);
+
+  if (!data)
+    return (
+      <ScreenFrame title={t('personalize.title')} subtitle={t('personalize.subtitle')} onBack={() => navigate({ name: 'home', id: null })}>
+        <ScreenLoading label={t('loading.settings')} onRetry={() => void settings.refetch()} />
+      </ScreenFrame>
+    );
   const room = data.customRoom;
   const own = data.theme === 'custom';
   const name = (swatch: Swatch) => `${t(`personalize.hues.${swatch.hue}`)}, ${t(`personalize.tones.${swatch.tone}`)}`;
@@ -164,6 +174,14 @@ export function Personalize() {
         <Section title={t('settings.transitions')} radios="group">
           <Segments name="transitions" options={TRANSITIONS} value={data.transitions} onChange={(transitions) => edit({ transitions })} label={(style) => t(`settings.transitionsOptions.${style}`)} />
         </Section>
+
+        {/* Many players count the language as part of the look; it lives in Settings, so say where and go there. */}
+        <p className="text-sm text-ink-dim">
+          {t('personalize.languageHint')}{' '}
+          <button type="button" className="text-blue-ink underline underline-offset-4" onClick={() => navigate({ name: 'settings' })}>
+            {t('personalize.languageLink')}
+          </button>
+        </p>
       </div>
     </ScreenFrame>
   );
