@@ -345,6 +345,10 @@ pub struct FreeServerSettings {
     pub seed: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub motd: Option<String>,
+    /// `false` lets players without a Minecraft account join. Team servers only: a free
+    /// server stays in online mode, and the Engine refuses it there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub online_mode: Option<bool>,
 }
 
 /// What a pack upload may be.

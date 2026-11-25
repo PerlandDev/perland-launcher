@@ -731,6 +731,7 @@ async fn create_sends_version_and_settings() {
             whitelist: Some(true),
             seed: Some("perla".into()),
             motd: Some("Hola".into()),
+            online_mode: None,
         }),
         language: "en".into(),
     };

@@ -1873,9 +1873,15 @@ fn contract_fixtures_are_current() {
                 whitelist: Some(true),
                 seed: Some("perla".into()),
                 motd: Some("Hola amigos".into()),
+                online_mode: None,
             },
             FreeServerSettings {
                 pvp: Some(false),
+                ..FreeServerSettings::default()
+            },
+            // A team server's: free servers stay in online mode.
+            FreeServerSettings {
+                online_mode: Some(false),
                 ..FreeServerSettings::default()
             },
             FreeServerSettings::default(),
