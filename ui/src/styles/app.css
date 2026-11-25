@@ -1590,6 +1590,24 @@
       inset 0 2px 0 rgb(0 0 0 / 0.45),
       inset 0 0 0 1px var(--color-line);
   }
+  /* A place the player hasn't opened yet (Personalize, behind the brush): the 8px blue lamp unseen server news ends with,
+     on the glyph's top-right corner in a 2px collar of the key's own face, so it reads apart from the strokes. Never lime
+     (chosen, running) and never amber (acts). It goes out for good once the place is opened. */
+  .tb-btn:has(> .tb-new) {
+    position: relative;
+  }
+  .tb-new {
+    position: absolute;
+    top: calc(50% - 0.8125rem);
+    left: calc(50% + 0.3125rem);
+    width: 0.5rem;
+    height: 0.5rem;
+    background: var(--color-blue);
+    box-shadow: 0 0 0 2px var(--color-ground);
+  }
+  .tb-btn:hover > .tb-new {
+    box-shadow: 0 0 0 2px var(--color-raised);
+  }
   /* The launcher's places, as tabs after the mark: flat title-bar text with a pixel glyph, never lit. The open one is
      pressed into its slot with the lime lamp in the glyph's place, like a chosen segment. */
   .tb-places {

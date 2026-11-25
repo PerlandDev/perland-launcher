@@ -1,8 +1,18 @@
-import { screen, within } from '@testing-library/react';
-import { expect, it } from 'vitest';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { markPersonalizeSeen, resetPersonalizeSeen } from '../../state/personalizeSeen';
 import { routeSnapshot } from '../../state/route';
 import { renderApp, sent } from '../../test/backend';
 import { TitleBar } from './TitleBar';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  resetPersonalizeSeen();
+});
+
+const brush = () => screen.findByRole('button', { name: 'Personalize' });
+/** Long enough for the settings to arrive from the mock, so "no mark" is not just "not loaded yet". */
+const settled = () => new Promise((resolve) => setTimeout(resolve, 50));
 
 it('drives the window and shows the active account', async () => {
   const { user, calls } = renderApp(<TitleBar />);
@@ -107,4 +117,46 @@ it('keeps the title bar clear when an update is ready: it is told in the Activit
   await screen.findByRole('button', { name: 'Close' });
   expect(screen.queryByRole('button', { name: 'Update ready' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Restart now' })).toBeNull();
+});
+
+it('marks the brush as new until Personalize has been opened, and remembers that', async () => {
+  renderApp(<TitleBar />);
+  const key = await brush();
+  // The name stays "Personalize"; the mark is described, so a screen reader hears it after the name.
+  await waitFor(() => expect(key).toHaveAccessibleDescription('New'));
+  expect(key.querySelector('.tb-new')).not.toBeNull();
+  act(() => markPersonalizeSeen());
+  expect(key).not.toHaveAccessibleDescription();
+  expect(key.querySelector('.tb-new')).toBeNull();
+  // Next launch: still gone.
+  cleanup();
+  resetPersonalizeSeen({ keepStored: true });
+  renderApp(<TitleBar />);
+  await settled();
+  expect(await brush()).not.toHaveAccessibleDescription();
+});
+
+it('does not mark the brush for a player who has already changed the theme', async () => {
+  renderApp(<TitleBar />, { theme: 'night' });
+  await screen.findByRole('button', { name: /Steve/ });
+  await settled();
+  expect(await brush()).not.toHaveAccessibleDescription();
+  expect((await brush()).querySelector('.tb-new')).toBeNull();
+});
+
+it('does not mark the brush before first run is done', async () => {
+  renderApp(<TitleBar />, { firstRun: true });
+  await screen.findByRole('button', { name: 'Add account' });
+  await settled();
+  expect(await brush()).not.toHaveAccessibleDescription();
+});
+
+it('leaves the brush plain when the launcher cannot remember', async () => {
+  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    throw new Error('blocked');
+  });
+  renderApp(<TitleBar />);
+  await screen.findByRole('button', { name: /Steve/ });
+  await settled();
+  expect(await brush()).not.toHaveAccessibleDescription();
 });
