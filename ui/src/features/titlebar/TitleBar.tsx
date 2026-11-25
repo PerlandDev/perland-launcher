@@ -1,15 +1,11 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AccountAvatar } from '../accounts/AccountAvatar';
 import mark from '../../assets/mark.svg';
-import { commands } from '../../ipc/commands';
-import { useAccounts, useUpdate } from '../../state/queries';
+import { useAccounts } from '../../state/queries';
 import { navigate, useRoute } from '../../state/route';
-import { pushError } from '../../state/toasts';
-import { useUpdateBusy } from '../../state/updateBusy';
 import { Brush, Close, Minus, SettingsCog, Square, WindowFrame } from '../../ui/Icon';
-import { useSingleFlight } from '../../ui/useSingleFlight';
 import { Places } from './Places';
 
 /** The custom title bar: drag anywhere that isn't a button. After the mark come the launcher's places as tabs; the account
@@ -21,13 +17,8 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
   const route = useRoute().name;
   const onProfile = route === 'profile';
   const onPersonalize = route === 'personalize';
-  const update = useUpdate();
-  const busy = useUpdateBusy();
   const active = accounts.data?.accounts.find((a) => a.uuid === accounts.data?.active) ?? null;
   const [maximized, setMaximized] = useState(false);
-  const restartOnce = useSingleFlight();
-  const noteId = useId();
-  const note = t(busy ? 'titlebar.updateReadyBusy' : 'titlebar.updateReady');
 
   useEffect(() => {
     const win = getCurrentWindow();
@@ -63,26 +54,6 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
       <div className="flex min-w-0 items-center">
         {!minimal && (
           <>
-            {update.data?.state === 'ready' && (
-              // Quiet by design: dim text and a flat title-bar button, never lit, on one line. When the
-              // bar runs short the sentence truncates and Restart now and the account keep their room.
-              <span className="tb-note" data-tauri-drag-region>
-                {/* While a game or an install runs the note itself says why Restart now is off, in visible text:
-                    a disabled button can't take focus, so a hover title would reach no one. */}
-                <span id={noteId} className="truncate" title={note} data-tauri-drag-region>
-                  {note}
-                </span>
-                <button
-                  type="button"
-                  className="tb-btn tb-restart"
-                  disabled={busy}
-                  aria-describedby={busy ? noteId : undefined}
-                  onClick={() => restartOnce((done) => void commands.updateRestart().catch(pushError).finally(done))}
-                >
-                  {t('titlebar.restart')}
-                </button>
-              </span>
-            )}
             <button
               type="button"
               className="tb-btn tb-account flex shrink-0"
@@ -132,3 +103,4 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
     </header>
   );
 }
+

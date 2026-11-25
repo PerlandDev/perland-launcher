@@ -185,7 +185,7 @@ export function TeamServerForm({
   const optionLocked = [...locked].some(isOptionField);
 
   return (
-    <form id={formId} className="grid gap-5" onSubmit={submit} noValidate hidden={hidden}>
+    <form id={formId} className="server-form grid gap-5" onSubmit={submit} noValidate hidden={hidden}>
       {lead}
       {room.isError && <ErrorCard error={room.error} actions={<Button onClick={() => void room.refetch()}>{t('common.retry')}</Button>} />}
       {instance && path === 'vanilla' &&

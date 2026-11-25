@@ -31,10 +31,7 @@
     "achievements": "Medals and achievements",
     "settings": "Settings",
     "personalize": "Personalize",
-    "noAccount": "Add account",
-    "updateReady": "Update ready · installs when you close",
-    "updateReadyBusy": "Update ready · wait for games and installs to finish",
-    "restart": "Restart now"
+    "noAccount": "Add account"
   },
   "personalize": {
     "title": "Personalize",
@@ -42,7 +39,7 @@
     "previewHint": "This is how your launcher looks now.",
     "previewButton": "Ordinary button",
     "previewRunning": "Running",
-    "room": "Room",
+    "room": "Themes",
     "roomHint": "The material of the whole launcher: background, panels, buttons and your instances' landscapes.",
     "rooms": {
       "laminate": "Laminate",
@@ -51,14 +48,16 @@
       "forest": "Forest",
       "nether": "Nether",
       "end": "End",
-      "cherry": "Cherry",
-      "custom": "Your room"
+      "cherry": "Cherry"
     },
+    "customize": "Customize theme",
+    "customizeHint": "Pick your own colours for the background and the buttons.",
+    "customizeOn": "Using your colours",
     "new": "New",
     "accent": "Button colour",
     "accentHint": "The colour of Play and the buttons that act. Green, red and blue aren't here: the launcher uses them to tell you whether something is running, failing or on its way.",
     "accents": {
-      "room": "The room's",
+      "room": "The theme's",
       "amber": "Amber",
       "orange": "Orange",
       "pink": "Pink",
@@ -94,9 +93,7 @@
     "ideaOcean": "Ocean",
     "ideaLava": "Lava",
     "ideaMint": "Mint",
-    "ideaGrape": "Grape",
-    "openFromSettings": "Open Personalize",
-    "movedHint": "The room, the colours, the text and the icons are in Personalize now, the brush at the top."
+    "ideaGrape": "Grape"
   },
   "rail": {
     "more": "More for {{name}}",
@@ -306,6 +303,9 @@
   },
   "activity": {
     "title": "Activity",
+    "updateReady": "Update ready · installs when you close",
+    "updateReadyBusy": "Update ready · wait for games and installs to finish",
+    "restart": "Restart now",
     "open": "Show activity",
     "close": "Hide activity",
     "empty": "Nothing is happening right now. Press Play and the game's output shows up here.",
@@ -564,7 +564,6 @@
       "single": "This computer has only one graphics card.",
       "unsupported": "On this computer, the system chooses the graphics card."
     },
-    "appearance": "Appearance",
     "theme": "Theme",
     "themes": { "laminate": "Laminate", "stone": "Stone", "night": "Night", "forest": "Forest" },
     "font": "Text font",

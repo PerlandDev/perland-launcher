@@ -31,10 +31,7 @@
     "achievements": "Medallas y logros",
     "settings": "Configuración",
     "personalize": "Personalización",
-    "noAccount": "Agregar cuenta",
-    "updateReady": "Actualización lista · se instala al cerrar",
-    "updateReadyBusy": "Actualización lista · espera a que terminen los juegos y las instalaciones",
-    "restart": "Reiniciar ahora"
+    "noAccount": "Agregar cuenta"
   },
   "personalize": {
     "title": "Personalización",
@@ -42,7 +39,7 @@
     "previewHint": "Así se ve tu launcher ahora.",
     "previewButton": "Botón normal",
     "previewRunning": "En marcha",
-    "room": "Sala",
+    "room": "Temas",
     "roomHint": "El material de todo el launcher: fondo, paneles, botones y los paisajes de tus instancias.",
     "rooms": {
       "laminate": "Laminado",
@@ -51,14 +48,16 @@
       "forest": "Bosque",
       "nether": "Nether",
       "end": "End",
-      "cherry": "Cerezo",
-      "custom": "Tu sala"
+      "cherry": "Cerezo"
     },
-    "new": "Nueva",
+    "customize": "Personalizar tema",
+    "customizeHint": "Elige tus propios colores para el fondo y los botones.",
+    "customizeOn": "Usando tus colores",
+    "new": "Nuevo",
     "accent": "Color de los botones",
     "accentHint": "El color de Jugar y de los botones que actúan. Verde, rojo y azul no están: el launcher los usa para decirte si algo funciona, falla o va en camino.",
     "accents": {
-      "room": "El de la sala",
+      "room": "El del tema",
       "amber": "Ámbar",
       "orange": "Naranja",
       "pink": "Rosa",
@@ -94,9 +93,7 @@
     "ideaOcean": "Océano",
     "ideaLava": "Lava",
     "ideaMint": "Menta",
-    "ideaGrape": "Uva",
-    "openFromSettings": "Abrir Personalización",
-    "movedHint": "La sala, los colores, el texto y los íconos ahora están en Personalización, el pincel de arriba."
+    "ideaGrape": "Uva"
   },
   "rail": {
     "more": "Más opciones para {{name}}",
@@ -306,6 +303,9 @@
   },
   "activity": {
     "title": "Actividad",
+    "updateReady": "Actualización lista · se instala al cerrar",
+    "updateReadyBusy": "Actualización lista · espera a que terminen los juegos y las instalaciones",
+    "restart": "Reiniciar ahora",
     "open": "Mostrar actividad",
     "close": "Ocultar actividad",
     "empty": "No pasa nada por ahora. Presiona Jugar y lo que muestre el juego aparece aquí.",
@@ -564,7 +564,6 @@
       "single": "Este equipo solo tiene una tarjeta gráfica.",
       "unsupported": "En este equipo, el sistema elige la tarjeta gráfica."
     },
-    "appearance": "Apariencia",
     "theme": "Tema",
     "themes": { "laminate": "Laminado", "stone": "Piedra", "night": "Noche", "forest": "Bosque" },
     "font": "Fuente del texto",

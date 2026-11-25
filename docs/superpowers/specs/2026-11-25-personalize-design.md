@@ -23,8 +23,9 @@ Engine to keep them on the account).
 ## The screen, top to bottom
 
 1. **Preview:** Play, an ordinary button and a running lamp, on a panel, so a choice shows at once.
-2. **Room:** the swatch keys of every room: Laminate, Stone, Night, Forest, then the new Nether, End and Cherry, then
-   **Your room**. New rooms carry a "New" tag in this version.
+2. **Themes** (the UI's word for a room; "Sala" until 2026-11-25): the swatch keys of every made room: Laminate,
+   Stone, Night, Forest, then the new Nether, End and Cherry, tagged New. Below them one wide key, **Customize theme**,
+   puts on the player's own room (`aria-pressed`, the lime lamp while it is on).
 3. **Your colours** (only while Your room is chosen): two colour pickers, Background and Buttons, each with its hex
    field, the live checks and four starting ideas (Ocean, Lava, Mint, Grape).
 4. **Button colour** (hidden while Your room is chosen, which has its own): "The room's", Amber, Orange, Pink, Violet,
