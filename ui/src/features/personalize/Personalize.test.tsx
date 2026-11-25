@@ -15,7 +15,7 @@ const open = () => renderApp(<Personalize />);
 
 it('offers every theme, the new ones tagged, and puts one on at once', async () => {
   const { user, calls } = open();
-  const rooms = await screen.findByRole('radiogroup', { name: 'Theme' });
+  const rooms = await screen.findByRole('radiogroup', { name: 'Themes' });
   for (const name of ['Laminate', 'Stone', 'Night', 'Forest']) expect(within(rooms).getByRole('radio', { name })).toBeInTheDocument();
   for (const name of ['Nether', 'End', 'Cherry']) expect(within(rooms).getByRole('radio', { name: `${name} New` })).toBeInTheDocument();
   expect(within(rooms).getByRole('radio', { name: 'Laminate' })).toBeChecked();
@@ -36,7 +36,7 @@ it('picks a button colour and saves it', async () => {
 
 it('offers your colours only on your own room, and the button colour only off it', async () => {
   const { user } = open();
-  const rooms = await screen.findByRole('radiogroup', { name: 'Theme' });
+  const rooms = await screen.findByRole('radiogroup', { name: 'Themes' });
   expect(screen.queryByRole('region', { name: 'Your colours' })).toBeNull();
 
   // Your own theme is not one of the made ones: a button below them makes it.
@@ -121,7 +121,7 @@ it('puts the stored room back when saving it fails', async () => {
   const handle = backend.handle;
   const failure = { category: 'game', code: 'internal', message: 'nope', fix: null, detail: null, params: {} };
   vi.spyOn(backend, 'handle').mockImplementation((cmd, args) => (cmd === 'settings_set' ? Promise.reject(failure) : handle(cmd, args)));
-  await user.click(within(await screen.findByRole('radiogroup', { name: 'Theme' })).getByRole('radio', { name: 'Nether New' }));
+  await user.click(within(await screen.findByRole('radiogroup', { name: 'Themes' })).getByRole('radio', { name: 'Nether New' }));
   await waitFor(() => expect(toastsSnapshot()).toHaveLength(1));
   await waitFor(() => expect(document.documentElement).toHaveAttribute('data-theme', 'laminate'));
   expect(screen.getByRole('radio', { name: 'Laminate' })).toBeChecked();
