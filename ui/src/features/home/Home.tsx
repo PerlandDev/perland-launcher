@@ -22,6 +22,7 @@ import { DamagedView } from './DamagedView';
 import { EmptyState } from './EmptyState';
 import { useNameFit } from './fitName';
 import { useInstanceActions } from './InstanceMenu';
+import { useModCount } from '../mods/counts';
 import { ServerPanel } from '../servers/ServerPanel';
 import { isPack, isServer, versionLine } from './labels';
 import { ManualDownloads } from './ManualDownloads';
@@ -81,6 +82,7 @@ function InstanceView({ instance, preview = false }: { instance: Instance; previ
   const playOnce = useSingleFlight();
   const nameRef = useNameFit<HTMLHeadingElement>(instance.name);
   const actions = useInstanceActions(instance);
+  const modCount = useModCount(instance.id, instance);
   const menu = useRef<MenuHandle>(null);
   return (
     // Home measures its own width (`@container`), not the window's, so the wide rail narrows it honestly.
@@ -152,8 +154,18 @@ function InstanceView({ instance, preview = false }: { instance: Instance; previ
           {/* "Mods & packs" is long. Its 1rem pad, the 1rem column gap and the name's 5.2cqi size keep
               an 8-letter name (CREATIVE, SURVIVAL, MODPACKS) at full size down to the side-by-side floor (55rem,
               or 64rem when the icon plate shows); a longer word shrinks the type to fit. */}
+          {/* The mod count rides the key as a flat tag once known; nothing for none or while it loads. Just above the
+              side-by-side floor its 2rem would shrink an 8-letter name, so there the count gives way to the name. */}
           <Button size="lg" className="px-4" icon={<Package />} onClick={() => navigate({ name: 'mods', id: instance.id })}>
             {t('home.mods')}
+            {modCount ? (
+              <>
+                {' '}
+                <span className={`tag tabular ${icon ? '@min-[64rem]:@max-[66rem]:hidden' : '@min-[55rem]:@max-[57rem]:hidden'}`}>
+                  {modCount}
+                </span>
+              </>
+            ) : null}
           </Button>
           <Menu ref={menu} label={t('home.more')} items={actions.items} />
           <div className="grid justify-items-end gap-3">

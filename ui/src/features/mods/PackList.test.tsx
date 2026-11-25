@@ -11,7 +11,8 @@ import { Mods } from './Mods';
 
 it('Home opens "Mods & packs" on the Mods tab', async () => {
   const { user } = renderApp(<Home id="asalith-fields" />);
-  await user.click(await screen.findByRole('button', { name: 'Mods & packs' }));
+  // The key carries the mod count once it is known.
+  await user.click(await screen.findByRole('button', { name: /^Mods & packs/ }));
   expect(routeSnapshot()).toEqual({ name: 'mods', id: 'asalith-fields' });
 });
 
@@ -91,6 +92,17 @@ it('tells vanilla players shaders need a loader, with no Find shaders button', a
   // The note already explains the empty folder; "Find some" would point at a button that isn't there.
   await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
   expect(screen.queryByText(/No shaders yet/)).not.toBeInTheDocument();
+});
+
+it("opens the instance's loader choice from the vanilla shaders note", async () => {
+  const { user, unmount } = renderApp(<Mods id="creative-flat" tab="shader" />);
+  await user.click(await screen.findByRole('button', { name: 'Choose a loader' }));
+  expect(routeSnapshot()).toEqual({ name: 'instanceSettings', id: 'creative-flat', focus: 'loader' });
+  unmount();
+  // Resource packs work on vanilla: nothing to choose there.
+  renderApp(<Mods id="creative-flat" tab="resource_pack" />);
+  await screen.findByText(/No resource packs yet/);
+  expect(screen.queryByRole('button', { name: 'Choose a loader' })).not.toBeInTheDocument();
 });
 
 it('keeps Remove off while the game is running', async () => {

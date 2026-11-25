@@ -118,7 +118,7 @@ export function Settings() {
                 <button
                   type="button"
                   className="break-words text-blue-ink underline underline-offset-4"
-                  onClick={() => navigate({ name: 'instanceSettings', id: last.id })}
+                  onClick={() => navigate({ name: 'instanceSettings', id: last.id, focus: 'memory' })}
                 >
                   {t('settings.memoryFor', { name: last.name })}
                 </button>

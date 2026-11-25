@@ -321,7 +321,7 @@ it("points from the memory for new instances to the last instance's own", async 
   await screen.findByRole('slider', { name: 'Memory for new instances' });
   expect(screen.getByText(/Each instance can have its own amount\./)).toBeInTheDocument();
   await user.click(await screen.findByRole('button', { name: 'Change it for Creative Flat' }));
-  expect(routeSnapshot()).toEqual({ name: 'instanceSettings', id: 'creative-flat' });
+  expect(routeSnapshot()).toEqual({ name: 'instanceSettings', id: 'creative-flat', focus: 'memory' });
 });
 
 it('leaves the instance link out when no instance was opened, or the last one is gone', async () => {

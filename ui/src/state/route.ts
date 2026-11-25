@@ -4,10 +4,13 @@ import type { ContentKind } from '../ipc/schema';
 /** The content tabs of the Mods & packs screen; no tab means Mods. */
 export type ModsTab = Exclude<ContentKind, 'modpack'>;
 
+/** The part of Instance settings to open on: it scrolls into view and takes the keyboard focus. */
+export type InstanceSettingsFocus = 'loader' | 'memory' | 'content';
+
 export type Route =
   | { name: 'home'; id: string | null }
   | { name: 'mods'; id: string; tab?: ModsTab }
-  | { name: 'instanceSettings'; id: string }
+  | { name: 'instanceSettings'; id: string; focus?: InstanceSettingsFocus }
   | { name: 'newInstance'; link?: string }
   | { name: 'browse'; kind: ContentKind; instance?: string; project?: string }
   // An empty `invite` means "ask for a link". `relinkFor` is the server instance being re-linked;

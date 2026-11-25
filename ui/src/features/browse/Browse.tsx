@@ -7,6 +7,7 @@ import { navigate, type Route } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { formatCount } from '../../ui/format';
+import { Gear } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Select } from '../../ui/Select';
 import { Sentinel } from '../../ui/Sentinel';
@@ -200,6 +201,15 @@ function BrowseList({ route }: { route: BrowseRoute }) {
             <p>{t('browse.scope', { name: scope.name, game: gameLabel(scope.game.minecraft, scope.game.loader?.kind ?? null) })}</p>
             <Button variant="ghost" onClick={() => navigate({ name: 'browse', kind: route.kind })}>
               {t('browse.dropScope')}
+            </Button>
+          </div>
+        )}
+        {/* Mods and shaders run through a loader: on an instance without one, say so and offer the way to add it. */}
+        {scope && !scope.game.loader && (route.kind === 'mod' || route.kind === 'shader') && (
+          <div className="browse-scope">
+            <p>{t(`browse.needsLoader.${route.kind}`, { name: scope.name })}</p>
+            <Button variant="ghost" icon={<Gear />} onClick={() => navigate({ name: 'instanceSettings', id: scope.id, focus: 'loader' })}>
+              {t('mods.chooseLoader')}
             </Button>
           </div>
         )}

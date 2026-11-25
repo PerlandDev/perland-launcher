@@ -13,7 +13,7 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { formatBytes } from '../../ui/format';
-import { Folder, Plus, Search, Trash } from '../../ui/Icon';
+import { Folder, Gear, Plus, Search, Trash } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Toggle } from '../../ui/Toggle';
 import { useSingleFlight } from '../../ui/useSingleFlight';
@@ -187,10 +187,15 @@ function ModList({ id }: { id: string }) {
         {instance && !pack && !instance.game.loader && (
           <div className="note-plate">
             <p className="min-w-0 flex-1">{t('mods.vanillaNote')}</p>
-            {/* Modpacks bring their own loader, so this is the way forward for a vanilla instance. */}
-            <Button variant="ghost" icon={<Search />} className="shrink-0 self-center" onClick={() => navigate({ name: 'browse', kind: 'modpack' })}>
-              {t('browse.browseModpacks')}
-            </Button>
+            {/* Two ways forward for a vanilla instance: give it a loader, or start from a modpack, which brings its own. */}
+            <div className="flex shrink-0 flex-wrap gap-2 self-center">
+              <Button variant="ghost" icon={<Gear />} onClick={() => navigate({ name: 'instanceSettings', id, focus: 'loader' })}>
+                {t('mods.chooseLoader')}
+              </Button>
+              <Button variant="ghost" icon={<Search />} onClick={() => navigate({ name: 'browse', kind: 'modpack' })}>
+                {t('browse.browseModpacks')}
+              </Button>
+            </div>
           </div>
         )}
         {running && <p className="note-plate">{t('mods.running')}</p>}
