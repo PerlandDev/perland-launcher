@@ -1,10 +1,11 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AccountAvatar } from '../accounts/AccountAvatar';
 import { QuickJumpKey } from '../quick-jump/QuickJumpKey';
 import mark from '../../assets/mark.svg';
-import { useAccounts } from '../../state/queries';
+import { usePersonalizeSeen } from '../../state/personalizeSeen';
+import { useAccounts, useSettings } from '../../state/queries';
 import { navigate, useRoute } from '../../state/route';
 import { Brush, Close, Minus, SettingsCog, Square, WindowFrame } from '../../ui/Icon';
 import { Places } from './Places';
@@ -72,15 +73,7 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
                 t('titlebar.noAccount')
               )}
             </button>
-            <button
-              type="button"
-              className="tb-btn"
-              aria-label={t('titlebar.personalize')}
-              aria-current={onPersonalize ? 'page' : undefined}
-              onClick={() => navigate({ name: 'personalize' })}
-            >
-              <Brush aria-hidden />
-            </button>
+            <BrushKey current={onPersonalize} />
             <button type="button" className="tb-btn" aria-label={t('titlebar.settings')} onClick={() => navigate({ name: 'settings' })}>
               <SettingsCog data-icon="settings-cog" aria-hidden />
             </button>
@@ -106,3 +99,33 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
   );
 }
 
+
+/** The brush, which opens Personalize. Until the player has opened it once it carries the blue "new" lamp; not during first
+ *  run, and not for a player who has already changed the look from the default (they found it, perhaps when it was still
+ *  in Settings). Its own component, so the minimal bar (shown while the settings fail) doesn't ask for the settings. */
+function BrushKey({ current }: { current: boolean }) {
+  const { t } = useTranslation();
+  const settings = useSettings().data;
+  const seen = usePersonalizeSeen();
+  const newId = useId();
+  const fresh = !seen && settings !== undefined && settings.firstRunDone && settings.theme === 'laminate' && settings.accent === 'room';
+  return (
+    <button
+      type="button"
+      className="tb-btn"
+      aria-label={t('titlebar.personalize')}
+      aria-current={current ? 'page' : undefined}
+      aria-describedby={fresh ? newId : undefined}
+      onClick={() => navigate({ name: 'personalize' })}
+    >
+      <Brush aria-hidden />
+      {fresh && (
+        <span className="tb-new" aria-hidden>
+          <span id={newId} className="sr-only">
+            {t('titlebar.personalizeNew')}
+          </span>
+        </span>
+      )}
+    </button>
+  );
+}

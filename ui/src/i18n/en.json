@@ -31,6 +31,7 @@
     "achievements": "Medals and achievements",
     "settings": "Settings",
     "personalize": "Personalize",
+    "personalizeNew": "New",
     "noAccount": "Add account"
   },
   "personalize": {
@@ -93,7 +94,9 @@
     "ideaOcean": "Ocean",
     "ideaLava": "Lava",
     "ideaMint": "Mint",
-    "ideaGrape": "Grape"
+    "ideaGrape": "Grape",
+    "languageHint": "Looking for the language?",
+    "languageLink": "Change it in Settings"
   },
   "rail": {
     "more": "More for {{name}}",
@@ -568,6 +571,10 @@
     "english": "English",
     "spanish": "Español",
     "memory": "Memory for new instances",
+    "memoryEach": "Each instance can have its own amount.",
+    "memoryFor": "Change it for {{name}}",
+    "personalizeHint": "Themes, colours, the font, icons and transitions are in Personalize.",
+    "personalizeLink": "Personalize",
     "minimize": "Minimize while playing",
     "minimizeHint": "The launcher comes back when the game closes.",
     "graphics": {

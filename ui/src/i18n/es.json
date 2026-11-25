@@ -31,6 +31,7 @@
     "achievements": "Medallas y logros",
     "settings": "Configuración",
     "personalize": "Personalización",
+    "personalizeNew": "Nuevo",
     "noAccount": "Agregar cuenta"
   },
   "personalize": {
@@ -93,7 +94,9 @@
     "ideaOcean": "Océano",
     "ideaLava": "Lava",
     "ideaMint": "Menta",
-    "ideaGrape": "Uva"
+    "ideaGrape": "Uva",
+    "languageHint": "¿Buscas el idioma?",
+    "languageLink": "Cámbialo en Configuración"
   },
   "rail": {
     "more": "Más opciones para {{name}}",
@@ -568,6 +571,10 @@
     "english": "English",
     "spanish": "Español",
     "memory": "Memoria para instancias nuevas",
+    "memoryEach": "Cada instancia puede tener su propia cantidad.",
+    "memoryFor": "Cámbiala para {{name}}",
+    "personalizeHint": "Los temas, los colores, la fuente, los íconos y las transiciones están en Personalización.",
+    "personalizeLink": "Personalizar",
     "minimize": "Minimizar mientras juegas",
     "minimizeHint": "El launcher vuelve cuando se cierra el juego.",
     "graphics": {

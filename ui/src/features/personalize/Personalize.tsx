@@ -1,9 +1,10 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { transitions as transitionsSchema, type Accent, type CustomRoom, type Theme } from '../../ipc/schema';
 import { ACCENTS, FONTS, MADE_THEMES } from '../../state/appearance';
 import { deriveRoom, isHex, roomChecks } from '../../state/customRoom';
 import { useSettings } from '../../state/queries';
+import { markPersonalizeSeen } from '../../state/personalizeSeen';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { Brush, WarningDiamond } from '../../ui/Icon';
@@ -64,6 +65,8 @@ export function Personalize() {
   const data = draft ?? settings.data;
   // What the hex fields hold while they are being typed in; `null` is "show what is saved".
   const [typed, setTyped] = useState<Partial<Record<keyof CustomRoom, string>>>({});
+  // However the player got here, the brush in the title bar is no longer new to them.
+  useEffect(markPersonalizeSeen, []);
 
   if (!data) return null;
   const room = data.customRoom;
@@ -216,6 +219,14 @@ export function Personalize() {
         <Section title={t('settings.transitions')} radios="group">
           <Segments name="transitions" options={TRANSITIONS} value={data.transitions} onChange={(transitions) => edit({ transitions })} label={(style) => t(`settings.transitionsOptions.${style}`)} />
         </Section>
+
+        {/* Many players count the language as part of the look; it lives in Settings, so say where and go there. */}
+        <p className="text-sm text-ink-dim">
+          {t('personalize.languageHint')}{' '}
+          <button type="button" className="text-blue-ink underline underline-offset-4" onClick={() => navigate({ name: 'settings' })}>
+            {t('personalize.languageLink')}
+          </button>
+        </p>
       </div>
     </ScreenFrame>
   );
