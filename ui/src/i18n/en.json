@@ -96,9 +96,7 @@
     "ideaOcean": "Ocean",
     "ideaLava": "Lava",
     "ideaMint": "Mint",
-    "ideaGrape": "Grape",
-    "openFromSettings": "Open Personalize",
-    "movedHint": "The theme, the colours, the text and the icons are in Personalize now, the brush at the top."
+    "ideaGrape": "Grape"
   },
   "rail": {
     "more": "More for {{name}}",
@@ -566,7 +564,6 @@
       "single": "This computer has only one graphics card.",
       "unsupported": "On this computer, the system chooses the graphics card."
     },
-    "appearance": "Appearance",
     "theme": "Theme",
     "themes": { "laminate": "Laminate", "stone": "Stone", "night": "Night", "forest": "Forest" },
     "font": "Text font",

@@ -3256,6 +3256,12 @@
     padding: 4px;
   }
 
+  /* Creating a server: the form has many fields and options, so the dialog takes more of the window, never more
+     than it has; at 960 wide it keeps a 2rem margin on each side. */
+  .dialog[open]:has(.server-form:not([hidden])) {
+    width: min(46rem, calc(100vw - 4rem));
+  }
+
   /* Share: only the body scrolls, so Save file stays in view at 960 × 600; the choices sit a little tighter than file rows. */
   .dialog[open]:has(.share-sheet) {
     display: flex;

@@ -11,7 +11,7 @@ import { navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
-import { Brush, ExternalLink, Folder } from '../../ui/Icon';
+import { ExternalLink, Folder } from '../../ui/Icon';
 import { MemorySlider } from '../../ui/MemorySlider';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Select } from '../../ui/Select';
@@ -114,18 +114,6 @@ export function Settings() {
           </div>
           <Toggle checked={data.minimizeOnPlay} label={t('settings.minimize')} onChange={(minimizeOnPlay) => edit({ minimizeOnPlay })} />
         </div>
-        {/* Everything about the look lives in Personalize now; this keeps a player who looks here on their way. */}
-        <section className="grid gap-3" aria-labelledby="appearance-heading">
-          <h2 id="appearance-heading" className="text-lg font-bold">
-            {t('settings.appearance')}
-          </h2>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <p className="max-w-[55ch] text-sm text-ink-dim">{t('personalize.movedHint')}</p>
-            <Button icon={<Brush />} onClick={() => navigate({ name: 'personalize' })}>
-              {t('personalize.openFromSettings')}
-            </Button>
-          </div>
-        </section>
         <div className="grid gap-2">
           <p className="text-sm font-semibold">{t('settings.dataFolder')}</p>
           <div className="flex items-center gap-3">

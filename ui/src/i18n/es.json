@@ -96,9 +96,7 @@
     "ideaOcean": "Océano",
     "ideaLava": "Lava",
     "ideaMint": "Menta",
-    "ideaGrape": "Uva",
-    "openFromSettings": "Abrir Personalización",
-    "movedHint": "El tema, los colores, el texto y los íconos ahora están en Personalización, el pincel de arriba."
+    "ideaGrape": "Uva"
   },
   "rail": {
     "more": "Más opciones para {{name}}",
@@ -566,7 +564,6 @@
       "single": "Este equipo solo tiene una tarjeta gráfica.",
       "unsupported": "En este equipo, el sistema elige la tarjeta gráfica."
     },
-    "appearance": "Apariencia",
     "theme": "Tema",
     "themes": { "laminate": "Laminado", "stone": "Piedra", "night": "Noche", "forest": "Bosque" },
     "font": "Fuente del texto",

@@ -136,11 +136,10 @@ it('is opened by the brush in the title bar', async () => {
   expect(await screen.findByRole('button', { name: 'Personalize' })).toHaveAttribute('aria-current', 'page');
 });
 
-it('is where Settings now sends a player looking for the look', async () => {
+it('is not in Settings: the brush is the only way in', async () => {
   navigate({ name: 'settings' });
-  const { user } = renderApp(<Settings />);
-  const appearance = await screen.findByRole('region', { name: 'Appearance' });
-  expect(within(appearance).queryByRole('radiogroup', { name: 'Theme' })).toBeNull();
-  await user.click(within(appearance).getByRole('button', { name: 'Open Personalize' }));
-  expect(routeSnapshot()).toEqual({ name: 'personalize' });
+  renderApp(<Settings />);
+  await screen.findByRole('heading', { name: 'Launcher updates' });
+  expect(screen.queryByRole('region', { name: 'Appearance' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Open Personalize' })).toBeNull();
 });
