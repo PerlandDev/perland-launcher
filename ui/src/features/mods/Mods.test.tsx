@@ -1,14 +1,12 @@
 import { Webview } from '@tauri-apps/api/webview';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createMockBackend } from '../../ipc/mock';
 import { routeSnapshot } from '../../state/route';
 import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { renderWithProviders } from '../../test/render';
 import { Mods } from './Mods';
-
-type DragHandler = Parameters<Webview['onDragDropEvent']>[0];
 
 const failure = { category: 'game', code: 'mod_not_jar', message: 'nope', fix: null, detail: null, params: {} };
 const sodium = 'sodium-fabric-0.5.8+mc1.20.1';
@@ -25,17 +23,6 @@ function intercept(backend: ReturnType<typeof renderApp>['backend'], command: st
   return control;
 }
 
-// Capture the drag-drop handler the screen registers, and hand back a spy for unlisten.
-let drag: DragHandler;
-let unlisten: ReturnType<typeof vi.fn>;
-beforeEach(() => {
-  unlisten = vi.fn();
-  vi.spyOn(Webview.prototype, 'onDragDropEvent').mockImplementation((handler) => {
-    drag = handler;
-    return Promise.resolve(unlisten as unknown as () => void);
-  });
-});
-const dropEvent = (payload: object) => act(() => drag({ payload } as never));
 
 it('lists, toggles, adds and removes mods', async () => {
   const { user, calls } = renderApp(<Mods id="asalith-fields" />);
@@ -129,58 +116,11 @@ it('shows a failed add in the screen', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Only .jar files can be added as mods.');
 });
 
-it('adds dropped files and shows the drop target while dragging', async () => {
-  const { calls } = renderApp(<Mods id="asalith-fields" />);
-  await screen.findByText(sodium);
-  await dropEvent({ type: 'enter', paths: ['C:/a.jar'], position: { x: 1, y: 1 } });
-  expect(screen.getByText('Drop .jar files to add them')).toBeInTheDocument();
-  await dropEvent({ type: 'leave' });
-  expect(screen.queryByText('Drop .jar files to add them')).not.toBeInTheDocument();
-  await dropEvent({ type: 'over', position: { x: 1, y: 1 } });
-  await dropEvent({ type: 'drop', paths: ['C:/Users/player/Downloads/a.jar'], position: { x: 1, y: 1 } });
-  expect(screen.queryByText('Drop .jar files to add them')).not.toBeInTheDocument();
-  await waitFor(() => expect(sent(calls, 'mods_add')).toEqual([{ id: 'asalith-fields', paths: ['C:/Users/player/Downloads/a.jar'] }]));
-  expect(await screen.findByText('a')).toBeInTheDocument();
-});
-
-it('ignores a drop with no files, and tells the player when a drop arrives while an add is running', async () => {
-  const { calls, backend } = renderApp(<Mods id="asalith-fields" />);
-  const add = intercept(backend, 'mods_add');
-  add.mode = 'hold';
-  await screen.findByText(sodium);
-  await dropEvent({ type: 'drop', paths: [], position: { x: 1, y: 1 } });
-  expect(sent(calls, 'mods_add')).toEqual([]);
-  await dropEvent({ type: 'drop', paths: ['C:/a.jar'], position: { x: 1, y: 1 } });
-  await dropEvent({ type: 'drop', paths: ['C:/b.jar'], position: { x: 1, y: 1 } });
-  expect(sent(calls, 'mods_add')).toEqual([{ id: 'asalith-fields', paths: ['C:/a.jar'] }]);
-  expect(screen.getByRole('status')).toHaveTextContent('Still adding the last files. Drop these again in a moment.');
-  await act(async () => add.release());
-});
-
-it('stops listening for drops when the screen goes away', async () => {
-  const { unmount } = renderApp(<Mods id="asalith-fields" />);
-  await screen.findByText(sodium);
-  await waitFor(() => expect(Webview.prototype.onDragDropEvent).toHaveBeenCalled());
-  await act(async () => {});
-  unmount();
-  expect(unlisten).toHaveBeenCalledTimes(1);
-});
-
-it('stops listening even if the screen goes away before the listener is ready', async () => {
-  let ready: (stop: () => void) => void = () => {};
-  vi.spyOn(Webview.prototype, 'onDragDropEvent').mockImplementation(() => new Promise((resolve) => (ready = resolve)));
-  const { unmount } = renderApp(<Mods id="asalith-fields" />);
-  unmount();
-  await act(async () => ready(unlisten as unknown as () => void));
-  expect(unlisten).toHaveBeenCalledTimes(1);
-});
-
-it('shows a failure to set up drag and drop instead of leaving it unhandled', async () => {
-  vi.spyOn(Webview.prototype, 'onDragDropEvent').mockRejectedValue(new Error('no webview'));
+it('leaves drops to the window: the screen listens for none itself', async () => {
+  const listen = vi.spyOn(Webview.prototype, 'onDragDropEvent');
   renderApp(<Mods id="asalith-fields" />);
-  expect(await screen.findByRole('alert')).toBeInTheDocument();
-  // The rest of the screen still works.
-  expect(await screen.findByText(sodium)).toBeInTheDocument();
+  await screen.findByText(sodium);
+  expect(listen).not.toHaveBeenCalled();
 });
 
 it('opens the mods folder, one call at a time, and shows a failure', async () => {
@@ -261,26 +201,6 @@ it('keeps a toggled switch focused while it is busy', async () => {
   await user.keyboard('{Enter}');
   expect(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' })).toHaveFocus();
   expect(screen.getByRole('switch', { name: 'Use zoomify-2.11.2' })).toHaveAttribute('aria-disabled', 'true');
-});
-
-it('sends only the .jar files of a mixed drop and names the skipped ones', async () => {
-  const { calls } = renderApp(<Mods id="asalith-fields" />);
-  await screen.findByText(sodium);
-  await dropEvent({ type: 'drop', paths: ['C:/mods/a.jar', 'C:/mods/notes.txt', 'D:\\mods\\B.JAR', 'C:/mods/readme'], position: { x: 1, y: 1 } });
-  await waitFor(() => expect(sent(calls, 'mods_add')).toEqual([{ id: 'asalith-fields', paths: ['C:/mods/a.jar', 'D:\\mods\\B.JAR'] }]));
-  expect(screen.getByRole('status')).toHaveTextContent('Skipped (not a .jar): notes.txt, readme');
-});
-
-it('does not call the backend when nothing dropped is a .jar', async () => {
-  const { calls } = renderApp(<Mods id="asalith-fields" />);
-  await screen.findByText(sodium);
-  await dropEvent({ type: 'drop', paths: ['C:/mods/notes.txt'], position: { x: 1, y: 1 } });
-  expect(screen.getByRole('status')).toHaveTextContent('Skipped (not a .jar): notes.txt');
-  expect(sent(calls, 'mods_add')).toEqual([]);
-  // The next real add clears the note.
-  await dropEvent({ type: 'drop', paths: ['C:/mods/a.jar'], position: { x: 1, y: 1 } });
-  await waitFor(() => expect(sent(calls, 'mods_add')).toHaveLength(1));
-  expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });
 
 it.each(['toggle', 'add', 'remove'] as const)('asks for the list again after a failed %s so it never goes stale', async (action) => {

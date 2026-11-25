@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { describeError } from '../ipc/errors';
 import { dismissToast, useToasts, type Toast } from '../state/toasts';
 import { Button } from './Button';
-import { Check, Close, WarningDiamond } from './Icon';
+import { Check, Close, InfoBox, WarningDiamond } from './Icon';
 
 function ToastItem({ toast }: { toast: Toast }) {
   const { t, i18n } = useTranslation();
@@ -15,7 +15,9 @@ function ToastItem({ toast }: { toast: Toast }) {
   const text = notice ? { message: notice.title, fix: notice.body ?? null } : describeError(i18n, toast.error);
   return (
     <li className="panel flex items-start gap-3 p-4 shadow-[0_6px_0_var(--color-dirt-deep)]">
-      {notice ? (
+      {notice?.tone === 'info' ? (
+        <InfoBox className="mt-0.5 h-5 w-5 flex-none text-blue-ink" aria-hidden />
+      ) : notice ? (
         <Check className="mt-0.5 h-5 w-5 flex-none text-lime" aria-hidden />
       ) : (
         <WarningDiamond className="mt-0.5 h-5 w-5 flex-none text-coral" aria-hidden />

@@ -21,10 +21,11 @@ const MODE_LABEL = {
   import: 'newInstance.modeImport',
 } as const;
 
-export function NewInstance({ link }: { link?: string }) {
+/** `link` arrives from a perland:// link; `file` is a .mrpack dropped on the window. */
+export function NewInstance({ link, file }: { link?: string; file?: string }) {
   const { t } = useTranslation();
   const choice = useVersionChoice();
-  const [mode, setMode] = useState<Mode>(link ? 'link' : 'version');
+  const [mode, setMode] = useState<Mode>(link ? 'link' : file ? 'file' : 'version');
   const [name, setName] = useState('');
   const create = useCreateInstance({ inline: true });
   const { minecraft: resolvedVersion } = choice.resolved;
@@ -77,7 +78,7 @@ export function NewInstance({ link }: { link?: string }) {
         </form>
       )}
       {mode === 'link' && <PackLinkForm initial={link} />}
-      {mode === 'file' && <PackFileForm />}
+      {mode === 'file' && <PackFileForm initial={file} />}
       {mode === 'import' && <ImportForm />}
     </ScreenFrame>
   );
