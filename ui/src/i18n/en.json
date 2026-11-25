@@ -32,8 +32,8 @@
     "settings": "Settings",
     "personalize": "Personalize",
     "noAccount": "Add account",
-    "updateReady": "Update ready · installs when you close",
-    "updateReadyBusy": "Update ready · wait for games and installs to finish",
+    "update": "Update ready",
+    "updateWhen": "It installs when you close the launcher.",
     "restart": "Restart now"
   },
   "personalize": {

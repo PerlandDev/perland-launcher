@@ -32,8 +32,8 @@
     "settings": "Configuración",
     "personalize": "Personalización",
     "noAccount": "Agregar cuenta",
-    "updateReady": "Actualización lista · se instala al cerrar",
-    "updateReadyBusy": "Actualización lista · espera a que terminen los juegos y las instalaciones",
+    "update": "Actualización lista",
+    "updateWhen": "Se instala cuando cierras el launcher.",
     "restart": "Reiniciar ahora"
   },
   "personalize": {
