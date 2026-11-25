@@ -17,7 +17,7 @@ use crate::{
     dto::{FreeServerCard, FriendsCheck},
     events::Host,
     free_servers::{
-        checked_settings, checked_version, invalid, invalid_name, valid_name, valid_version_id,
+        checked_free_settings, checked_version, invalid, invalid_name, valid_name, valid_version_id,
     },
     perland::{host_of, language_tag},
     runner::Runner,
@@ -151,7 +151,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if !valid_name(name) {
             return Err(invalid_name());
         }
-        let settings = checked_settings(settings)?;
+        let settings = checked_free_settings(settings)?;
         let instance = self.friends_instance(id).await?;
         let request = |kind: &str, version, modrinth_version_id| CreateFreeServer {
             name: name.to_string(),
@@ -594,6 +594,23 @@ mod tests {
         assert_eq!(
             error.params.get("field").map(String::as_str),
             Some("settings.maxPlayers")
+        );
+        // A free server stays in online mode.
+        let error = core
+            .friends_create(
+                &vanilla,
+                "Amigos",
+                Some(FreeServerSettings {
+                    online_mode: Some(false),
+                    ..Default::default()
+                }),
+                "en",
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.params.get("field").map(String::as_str),
+            Some("settings.onlineMode")
         );
         assert!(runner.player.calls.lock().unwrap().is_empty());
 

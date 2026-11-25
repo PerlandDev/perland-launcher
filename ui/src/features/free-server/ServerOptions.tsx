@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Field } from '../../ui/Field';
-import { ChevronDown } from '../../ui/Icon';
+import { ChevronDown, WarningDiamond } from '../../ui/Icon';
 import { SwitchRow } from '../../ui/SwitchRow';
 import { DIFFICULTIES, GAME_MODES, modeLabel, oneLine, type Difficulty, type ServerOptionsModel } from './optionRules';
 
@@ -110,6 +110,25 @@ export function ServerOptions({ options }: { options: ServerOptionsModel }) {
             onChange={(whitelist) => set({ whitelist })}
             after={line('settings.whitelist')}
           />
+          {limits.onlineMode && (
+            <SwitchRow
+              label={t('freeServer.options.onlineMode')}
+              hint={t('freeServer.options.onlineModeHint')}
+              checked={state.onlineMode}
+              onChange={(onlineMode) => set({ onlineMode })}
+              after={
+                <>
+                  {!state.onlineMode && (
+                    <p className="flex max-w-[60ch] items-start gap-2 text-sm font-semibold text-ink">
+                      <WarningDiamond className="mt-0.5 h-4 w-4 flex-none text-coral" aria-hidden />
+                      <span>{t('freeServer.options.onlineModeOff')}</span>
+                    </p>
+                  )}
+                  {line('settings.onlineMode')}
+                </>
+              }
+            />
+          )}
           <Field label={t('freeServer.options.seed')} hint={t('freeServer.options.seedHint')} error={errors['settings.seed']} alert>
             <input
               className="field-input text-ink"

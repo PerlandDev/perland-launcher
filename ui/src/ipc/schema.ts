@@ -187,6 +187,8 @@ export const freeServerSettings = z.strictObject({
   seed: z.string().optional(),
   /** The server list message: at most `motdMaxBytes` UTF-8 bytes, no control characters, no `§`. */
   motd: z.string().optional(),
+  /** Off: players without a Minecraft account can join. Team servers only; a free server stays in online mode. */
+  onlineMode: z.boolean().optional(),
 });
 /** The settings a free server takes at create (`limits.settings`). */
 export const freeSettingsLimits = z.strictObject({

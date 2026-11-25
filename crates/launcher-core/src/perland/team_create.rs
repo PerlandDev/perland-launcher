@@ -70,6 +70,8 @@ pub struct ServerCustomization {
     pub seed: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub motd: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub online_mode: Option<bool>,
 }
 
 impl ServerCustomization {
@@ -86,6 +88,7 @@ impl ServerCustomization {
             enforce_whitelist: settings.whitelist,
             seed: settings.seed.clone(),
             motd: settings.motd.clone(),
+            online_mode: settings.online_mode,
             ..Self::default()
         };
         if c.mode.as_deref() == Some("hardcore") {
@@ -400,6 +403,19 @@ mod tests {
         assert_eq!(
             serde_json::to_value(c).unwrap(),
             json!({ "mode": "creative", "enableWhitelist": false, "enforceWhitelist": false })
+        );
+    }
+
+    #[test]
+    fn online_mode_off_is_sent_as_the_stacks_online_mode() {
+        let c = ServerCustomization::from_settings(&FreeServerSettings {
+            online_mode: Some(false),
+            ..FreeServerSettings::default()
+        })
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(c).unwrap(),
+            json!({ "onlineMode": false })
         );
     }
 

@@ -144,7 +144,7 @@ async fn the_options_go_as_the_stacks_customization() {
             "customization": {
                 "mode": "survival", "hardcore": true, "difficulty": "hard", "maxPlayers": 8,
                 "pvp": false, "enableWhitelist": true, "enforceWhitelist": true,
-                "seed": "abc", "motd": "Hi"
+                "seed": "abc", "motd": "Hi", "onlineMode": false
             }
         }),
     )
@@ -157,6 +157,7 @@ async fn the_options_go_as_the_stacks_customization() {
         whitelist: Some(true),
         seed: Some("abc".into()),
         motd: Some("Hi".into()),
+        online_mode: Some(false),
     };
     client(&server)
         .create_server(
