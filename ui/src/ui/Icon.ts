@@ -49,6 +49,7 @@ export {
   Shirt,
   Skull,
   Square,
+  Sun,
   Terminal,
   Trash,
   Trophy,

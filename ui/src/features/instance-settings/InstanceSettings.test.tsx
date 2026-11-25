@@ -395,6 +395,20 @@ describe('Mods & packs section', () => {
     expect(routeSnapshot()).toEqual({ name: 'mods', id: 'asalith-fields' });
   });
 
+  it("leads each key with its tab's own glyph", async () => {
+    renderApp(<InstanceSettings id="asalith-fields" />);
+    const section = (await screen.findByRole('heading', { name: 'Mods & packs' })).closest('section')!;
+    for (const name of ['Mods 3', 'Resource packs 2', 'Shaders 1']) {
+      const key = await within(section).findByRole('button', { name });
+      expect(key.querySelector('svg')).not.toBeNull();
+    }
+    // Three different glyphs: the box, the picture and the sun.
+    const glyphs = within(section)
+      .getAllByRole('button')
+      .map((key) => key.querySelector('svg')?.innerHTML);
+    expect(new Set(glyphs).size).toBe(3);
+  });
+
   it('opens the Shaders tab', async () => {
     const { user } = renderApp(<InstanceSettings id="asalith-fields" />);
     await user.click(await screen.findByRole('button', { name: 'Shaders 1' }));

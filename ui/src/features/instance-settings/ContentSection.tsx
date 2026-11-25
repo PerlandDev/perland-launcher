@@ -3,6 +3,7 @@ import type { Instance } from '../../ipc/schema';
 import { navigate, type ModsTab } from '../../state/route';
 import { Button } from '../../ui/Button';
 import { useContentCounts } from '../mods/counts';
+import { TAB_GLYPHS } from '../mods/tabGlyphs';
 
 const TABS: ModsTab[] = ['mod', 'resource_pack', 'shader'];
 
@@ -18,8 +19,9 @@ export function ContentSection({ instance }: { instance: Instance }) {
       <div className="flex flex-wrap gap-3">
         {TABS.map((tab) => {
           const count = counts[tab];
+          const Glyph = TAB_GLYPHS[tab];
           return (
-            <Button key={tab} onClick={() => navigate({ name: 'mods', id: instance.id, tab: tab === 'mod' ? undefined : tab })}>
+            <Button key={tab} icon={<Glyph aria-hidden />} onClick={() => navigate({ name: 'mods', id: instance.id, tab: tab === 'mod' ? undefined : tab })}>
               {t(`mods.tabs.${tab}`)}
               {/* Only once known: a 0 while it loads would say the folder is empty. */}
               {count !== undefined && (
