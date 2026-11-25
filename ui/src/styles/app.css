@@ -3801,6 +3801,20 @@
     color: var(--color-ink);
     text-decoration-thickness: 2px;
   }
+  /* In-page jump links (Instance settings): flat dim text on a seam-coloured underline, ink under the pointer. Quieter
+     than a link to elsewhere, since nothing leaves the page. */
+  .jump-link {
+    font-weight: 600;
+    color: var(--color-ink-dim);
+    text-decoration: underline;
+    text-decoration-color: var(--color-line);
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+  .jump-link:hover {
+    color: var(--color-ink);
+    text-decoration-color: currentColor;
+  }
   /* The live log: mono on a ground well, like the game log in the activity drawer. */
   .manage-log {
     height: 20rem;

@@ -60,6 +60,13 @@ it('tells vanilla players they need a loader', async () => {
   expect(await screen.findByText(/Mods need a mod loader/)).toBeInTheDocument();
 });
 
+it("opens the instance's loader choice from the vanilla note", async () => {
+  const { user } = renderApp(<Mods id="creative-flat" />);
+  expect(await screen.findByText(/Pick one for this instance, or start from a modpack\./)).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Choose a loader' }));
+  expect(routeSnapshot()).toEqual({ name: 'instanceSettings', id: 'creative-flat', focus: 'loader' });
+});
+
 it('says so when there are no mods yet', async () => {
   renderApp(<Mods id="creative-flat" />);
   expect(await screen.findByText(/No mods yet/)).toBeInTheDocument();
@@ -426,6 +433,7 @@ it('points vanilla players to modpacks from the loader note, and not on a modded
   renderApp(<Mods id="asalith-fields" />);
   await screen.findByText('sodium-fabric-0.5.8+mc1.20.1');
   expect(screen.queryByRole('button', { name: 'Browse modpacks' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Choose a loader' })).not.toBeInTheDocument();
 });
 
 describe('mod icons', () => {

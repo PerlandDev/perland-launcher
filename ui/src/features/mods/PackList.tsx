@@ -10,7 +10,7 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { formatBytes } from '../../ui/format';
-import { Folder, Package, Search, Trash } from '../../ui/Icon';
+import { Folder, Gear, Package, Search, Trash } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { ContentTabs } from './ContentTabs';
@@ -120,7 +120,15 @@ export function PackList({ id, kind }: { id: string; kind: PackKind }) {
     >
       <div className="grid max-w-3xl gap-4">
         <ContentTabs id={id} active={kind} />
-        {needsLoader && <p className="note-plate">{t('packs.shadersNeedLoader')}</p>}
+        {needsLoader && (
+          <div className="note-plate">
+            <p className="min-w-0 flex-1">{t('packs.shadersNeedLoader')}</p>
+            {/* Centred on the note's first line, like its lamp; a ghost has no face at rest to crowd the plate's edge. */}
+            <Button variant="ghost" icon={<Gear />} className="-my-2 shrink-0 self-start" onClick={() => navigate({ name: 'instanceSettings', id, focus: 'loader' })}>
+              {t('mods.chooseLoader')}
+            </Button>
+          </div>
+        )}
         {running && <p className="note-plate">{t('packs.running')}</p>}
         {/* Vanilla has no Shader Packs menu, so the turn-it-on hint would point nowhere. */}
         {!needsLoader && (

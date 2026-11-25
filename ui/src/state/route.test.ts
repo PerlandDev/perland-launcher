@@ -11,6 +11,12 @@ it('navigates and reports the instance a route is about', () => {
   expect(instanceOf(routeSnapshot())).toBeNull();
 });
 
+it('carries where Instance settings should open, and still remembers the instance', () => {
+  navigate({ name: 'instanceSettings', id: 'pack', focus: 'memory' });
+  expect(routeSnapshot()).toEqual({ name: 'instanceSettings', id: 'pack', focus: 'memory' });
+  expect(lastInstance()).toBe('pack');
+});
+
 it('remembers the last instance when storage works', () => {
   rememberInstance('pack');
   expect(lastInstance()).toBe('pack');

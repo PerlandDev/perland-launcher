@@ -423,7 +423,11 @@
     "updatesAuto": "Automáticas",
     "updatesAsk": "Preguntarme",
     "updatesPinned": "No actualizar",
-    "gameFromPack": "El pack elige la versión de Minecraft y el loader."
+    "gameFromPack": "El pack elige la versión de Minecraft y el loader.",
+    "jumpLabel": "En esta página",
+    "contentMoreModded": "Abre una pestaña para buscar más o explora Mods y más.",
+    "contentVanilla": "Los paquetes de recursos funcionan en cualquier instancia. Los mods y shaders necesitan un loader.",
+    "loaderHint": "Los mods y shaders necesitan un loader. Fabric funciona con la mayoría."
   },
   "damaged": {
     "title": "No se puede abrir “{{id}}”",
@@ -438,7 +442,8 @@
     "add": "Agregar mods",
     "dropHere": "Suelta archivos .jar para agregarlos",
     "empty": "Todavía no hay mods. Agrega archivos .jar o suéltalos en cualquier parte de esta pantalla.",
-    "vanillaNote": "Los mods necesitan un loader: Fabric, Quilt, Forge o NeoForge. Puedes cambiar el loader de esta instancia en su configuración.",
+    "vanillaNote": "Los mods necesitan un loader: Fabric, Quilt, Forge o NeoForge. Elige uno para esta instancia o empieza con un modpack.",
+    "chooseLoader": "Elige un loader",
     "running": "Detén el juego para activar, desactivar o quitar mods. Los mods nuevos que agregues se aplican la próxima vez que presiones Jugar.",
     "toggle": "Usar {{name}}",
     "remove": "Quitar {{name}}",
@@ -1573,6 +1578,10 @@
     "fewerCategories": "Menos",
     "scope": "Agregando a {{name}} · {{game}}",
     "dropScope": "Explorar todo",
+    "needsLoader": {
+      "mod": "{{name}} todavía no puede usar mods. Necesita un loader.",
+      "shader": "{{name}} todavía no puede usar shaders. Necesita un loader."
+    },
     "by": "de {{author}}",
     "downloads_one": "{{shown}} descarga",
     "downloads_other": "{{shown}} descargas",

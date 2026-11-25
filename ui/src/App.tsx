@@ -46,7 +46,7 @@ function Screen({ route }: { route: Route }) {
     case 'mods':
       return <Mods id={route.id} tab={route.tab} />;
     case 'instanceSettings':
-      return <InstanceSettings id={route.id} />;
+      return <InstanceSettings id={route.id} focus={route.focus} />;
     case 'newInstance':
       return <NewInstance key={route.link ?? 'new'} link={route.link} />;
     case 'browse':

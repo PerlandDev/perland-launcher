@@ -158,6 +158,48 @@ describe('Home', () => {
     expect(screen.getByRole('dialog', { name: 'Rename instance' })).toBeInTheDocument();
   });
 
+  it('opens Mods & packs from the menu, right after Instance settings', async () => {
+    const { user } = renderApp(<Home id="asalith-fields" />);
+    await screen.findByRole('heading', { name: 'Asalith Fields' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    const items = within(screen.getByRole('menu')).getAllByRole('menuitem').map((i) => i.textContent);
+    expect(items[items.indexOf('Instance settings') + 1]).toBe('Mods & packs');
+    await user.click(screen.getByRole('menuitem', { name: 'Mods & packs' }));
+    expect(routeSnapshot()).toEqual({ name: 'mods', id: 'asalith-fields' });
+  });
+
+  it('finds shaders from the menu on a modded instance only', async () => {
+    const { user, unmount } = renderApp(<Home id="asalith-fields" />);
+    await screen.findByRole('heading', { name: 'Asalith Fields' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Find shaders' }));
+    expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'shader', instance: 'asalith-fields' });
+    unmount();
+    const again = renderApp(<Home id="creative-flat" />);
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    await again.user.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.getByRole('menuitem', { name: 'Mods & packs' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Find shaders' })).not.toBeInTheDocument();
+  });
+
+  it("shows the instance's mod count on the Mods & packs key once known", async () => {
+    renderApp(<Home id="asalith-fields" />);
+    expect(await screen.findByRole('button', { name: 'Mods & packs 3' })).toBeInTheDocument();
+  });
+
+  it('counts a pack its own mods on the Mods & packs key', async () => {
+    renderApp(<Home id="sky-islands" />);
+    expect(await screen.findByRole('button', { name: 'Mods & packs 3' })).toBeInTheDocument();
+  });
+
+  it('shows no count on the Mods & packs key without mods', async () => {
+    const { calls } = renderApp(<Home id="creative-flat" />);
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    await waitFor(() => expect(sent(calls, 'mods_list')).toHaveLength(1));
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: 'Mods & packs' })).toBeInTheDocument();
+  });
+
   it('renames from the menu', async () => {
     const { user, calls } = renderApp(<Home id="creative-flat" />);
     await screen.findByRole('heading', { name: 'Creative Flat' });
