@@ -19,6 +19,7 @@ export {
   Feather,
   Fire,
   Folder,
+  Brush,
   Gear,
   Image,
   InfoBox,

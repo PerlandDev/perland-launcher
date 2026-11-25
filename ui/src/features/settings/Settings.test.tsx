@@ -34,52 +34,6 @@ function renderFailing(command: string) {
 const slider = () => screen.getByRole('slider', { name: 'Memory for new instances' });
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-it('picks the round icon shape', async () => {
-  const { user, calls } = renderApp(<Settings />);
-  const group = await screen.findByRole('group', { name: 'Instance icons' });
-  expect(within(group).getByRole('radio', { name: 'Square' })).toBeChecked();
-  await user.click(within(group).getByRole('radio', { name: 'Round' }));
-  expect(within(group).getByRole('radio', { name: 'Round' })).toBeChecked();
-  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { iconShape: 'round' } }));
-});
-
-it('gathers theme, text font and instance icons under Appearance', async () => {
-  renderApp(<Settings />);
-  const appearance = await screen.findByRole('region', { name: 'Appearance' });
-  expect(within(appearance).getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
-  expect(within(appearance).getByRole('group', { name: 'Text font' })).toBeInTheDocument();
-  expect(within(appearance).getByRole('group', { name: 'Instance icons' })).toBeInTheDocument();
-});
-
-it('switches the theme at once and saves it', async () => {
-  const { user, calls } = renderApp(<Settings />);
-  const themes = await screen.findByRole('radiogroup', { name: 'Theme' });
-  for (const name of ['Laminate', 'Stone', 'Night', 'Forest']) expect(within(themes).getByRole('radio', { name })).toBeInTheDocument();
-  expect(within(themes).getByRole('radio', { name: 'Laminate' })).toBeChecked();
-  await user.click(within(themes).getByRole('radio', { name: 'Night' }));
-  expect(within(themes).getByRole('radio', { name: 'Night' })).toBeChecked();
-  expect(document.documentElement).toHaveAttribute('data-theme', 'night');
-  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { theme: 'night' } }));
-});
-
-it('switches the text font to the computer\'s own and saves it', async () => {
-  const { user, calls } = renderApp(<Settings />);
-  const font = await screen.findByRole('group', { name: 'Text font' });
-  expect(within(font).getByRole('radio', { name: 'Easy to read' })).toBeChecked();
-  await user.click(within(font).getByRole('radio', { name: "This computer's" }));
-  expect(document.documentElement).toHaveAttribute('data-font', 'system');
-  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { font: 'system' } }));
-});
-
-it('puts the stored theme back when saving it fails', async () => {
-  const { user, backend } = renderApp(<Settings />);
-  intercept(backend, 'settings_set').mode = 'fail';
-  await user.click(await screen.findByRole('radio', { name: 'Forest' }));
-  await waitFor(() => expect(toastsSnapshot()).toHaveLength(1));
-  await waitFor(() => expect(document.documentElement).toHaveAttribute('data-theme', 'laminate'));
-  expect(screen.getByRole('radio', { name: 'Laminate' })).toBeChecked();
-});
-
 it('switches language, saves preferences and opens the data folder', async () => {
   const { user, calls } = renderApp(<Settings />);
   const language = await screen.findByRole('combobox', { name: 'Language' });
@@ -350,15 +304,3 @@ it('offers the graphics card in Spanish', async () => {
   }
 });
 
-it('lets the player pick how screens come in, or turn that off', async () => {
-  const { user, calls } = renderApp(<Settings />);
-  const group = await screen.findByRole('group', { name: 'Screen transitions' });
-  // Smooth is what a new player gets, and it is offered first.
-  expect(within(group).getAllByRole('radio').map((r) => r.parentElement?.textContent)).toEqual(['Smooth', 'Arcade', 'Off']);
-  expect(within(group).getByRole('radio', { name: 'Smooth' })).toBeChecked();
-  await user.click(within(group).getByRole('radio', { name: 'Arcade' }));
-  expect(within(group).getByRole('radio', { name: 'Arcade' })).toBeChecked();
-  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { transitions: 'stepped' } }));
-  await user.click(within(group).getByRole('radio', { name: 'Off' }));
-  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { transitions: 'off' } }));
-});

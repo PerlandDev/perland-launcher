@@ -2,8 +2,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { applyLanguage } from '../../i18n';
 import type { Settings } from '../../ipc/schema';
-import { applyAppearance } from '../../state/appearance';
+import { applyAppearance, lookOf } from '../../state/appearance';
 import { qk, useSaveSettings } from '../../state/queries';
+
+/** The settings Personalize changes, which apply to the page as they are edited. */
+const LOOK_FIELDS = ['theme', 'accent', 'customRoom', 'font'] as const satisfies readonly (keyof Settings)[];
 
 /** How long a slider has to sit still before its value is saved. */
 const SETTLE_MS = 400;
@@ -50,7 +53,7 @@ export function useSettingsDraft() {
       setDraft(null);
       const stored = qc.getQueryData<Settings>(qk.settings);
       applyLanguage(stored?.language ?? null);
-      if (stored) applyAppearance({ theme: stored.theme, font: stored.font });
+      if (stored) applyAppearance(lookOf(stored));
     } finally {
       running.current = false;
     }
@@ -61,6 +64,8 @@ export function useSettingsDraft() {
       const base = desired.current ?? qc.getQueryData<Settings>(qk.settings);
       if (!base) return;
       const next = { ...base, ...patch };
+      // The look applies to the whole app at once, before the save comes back; a failed save puts it back below.
+      if (LOOK_FIELDS.some((field) => field in patch)) applyAppearance(lookOf(next));
       desired.current = next;
       dirty.current = true;
       setDraft(next);

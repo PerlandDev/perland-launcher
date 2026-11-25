@@ -448,6 +448,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             self.medals_note(crate::medals::MedalEvent::ThemeSaved(settings.theme))
                 .await;
         }
+        if settings.accent != before.accent {
+            self.medals_note(crate::medals::MedalEvent::AccentSaved(settings.accent))
+                .await;
+        }
         Ok(settings)
     }
 

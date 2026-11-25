@@ -30,10 +30,73 @@
     "profile": "{{name}}, tu perfil",
     "achievements": "Medallas y logros",
     "settings": "Configuración",
+    "personalize": "Personalización",
     "noAccount": "Agregar cuenta",
     "updateReady": "Actualización lista · se instala al cerrar",
     "updateReadyBusy": "Actualización lista · espera a que terminen los juegos y las instalaciones",
     "restart": "Reiniciar ahora"
+  },
+  "personalize": {
+    "title": "Personalización",
+    "subtitle": "Elige cómo se ve tu launcher. Todo cambia al momento.",
+    "previewHint": "Así se ve tu launcher ahora.",
+    "previewButton": "Botón normal",
+    "previewRunning": "En marcha",
+    "room": "Sala",
+    "roomHint": "El material de todo el launcher: fondo, paneles, botones y los paisajes de tus instancias.",
+    "rooms": {
+      "laminate": "Laminado",
+      "stone": "Piedra",
+      "night": "Noche",
+      "forest": "Bosque",
+      "nether": "Nether",
+      "end": "End",
+      "cherry": "Cerezo",
+      "custom": "Tu sala"
+    },
+    "new": "Nueva",
+    "accent": "Color de los botones",
+    "accentHint": "El color de Jugar y de los botones que actúan. Verde, rojo y azul no están: el launcher los usa para decirte si algo funciona, falla o va en camino.",
+    "accents": {
+      "room": "El de la sala",
+      "amber": "Ámbar",
+      "orange": "Naranja",
+      "pink": "Rosa",
+      "violet": "Violeta",
+      "cyan": "Cian",
+      "bone": "Hueso"
+    },
+    "yourColours": "Tus colores",
+    "yourColoursHint": "Elige dos colores y el launcher arma el resto: paneles, bordes, texto y escalones. Si algo no se leyera, te avisa y no lo aplica.",
+    "background": "Fondo",
+    "buttons": "Botones",
+    "pick": "Elegir color: {{what}}",
+    "code": "Código del color: {{what}}",
+    "checks": {
+      "dark": {
+        "ok": "El fondo es oscuro, como el launcher necesita.",
+        "bad": "El fondo es muy claro. Elige uno más oscuro."
+      },
+      "text": {
+        "ok": "Los textos se leen bien.",
+        "bad": "Los textos pequeños no se leerían."
+      },
+      "play": {
+        "ok": "El texto de Jugar se lee bien.",
+        "bad": "El texto de Jugar no se leería: prueba unos botones más claros."
+      },
+      "status": {
+        "ok": "Verde, rojo y azul se siguen viendo.",
+        "bad": "Con este fondo no se verían los avisos en verde, rojo o azul."
+      }
+    },
+    "ideas": "Ideas:",
+    "ideaOcean": "Océano",
+    "ideaLava": "Lava",
+    "ideaMint": "Menta",
+    "ideaGrape": "Uva",
+    "openFromSettings": "Abrir Personalización",
+    "movedHint": "La sala, los colores, el texto y los íconos ahora están en Personalización, el pincel de arriba."
   },
   "rail": {
     "more": "Más opciones para {{name}}",

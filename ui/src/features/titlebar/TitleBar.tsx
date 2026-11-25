@@ -8,7 +8,7 @@ import { useAccounts, useUpdate } from '../../state/queries';
 import { navigate, useRoute } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { useUpdateBusy } from '../../state/updateBusy';
-import { Close, Minus, SettingsCog, Square, WindowFrame } from '../../ui/Icon';
+import { Brush, Close, Minus, SettingsCog, Square, WindowFrame } from '../../ui/Icon';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { Places } from './Places';
 
@@ -18,7 +18,9 @@ import { Places } from './Places';
 export function TitleBar({ minimal = false }: { minimal?: boolean }) {
   const { t } = useTranslation();
   const accounts = useAccounts();
-  const onProfile = useRoute().name === 'profile';
+  const route = useRoute().name;
+  const onProfile = route === 'profile';
+  const onPersonalize = route === 'personalize';
   const update = useUpdate();
   const busy = useUpdateBusy();
   const active = accounts.data?.accounts.find((a) => a.uuid === accounts.data?.active) ?? null;
@@ -96,6 +98,15 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
               ) : (
                 t('titlebar.noAccount')
               )}
+            </button>
+            <button
+              type="button"
+              className="tb-btn"
+              aria-label={t('titlebar.personalize')}
+              aria-current={onPersonalize ? 'page' : undefined}
+              onClick={() => navigate({ name: 'personalize' })}
+            >
+              <Brush aria-hidden />
             </button>
             <button type="button" className="tb-btn" aria-label={t('titlebar.settings')} onClick={() => navigate({ name: 'settings' })}>
               <SettingsCog data-icon="settings-cog" aria-hidden />

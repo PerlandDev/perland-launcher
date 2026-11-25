@@ -94,6 +94,82 @@
     --color-amber: #22a35a;
     --color-amber-hi: #2fc46e;
   }
+  /* Netherrack and its fires. */
+  :root[data-theme='nether'],
+  [data-swatch='nether'] {
+    --color-ground: #1a0f0e;
+    --color-panel: #241514;
+    --color-raised: #301c1a;
+    --color-line: #4d2c27;
+    --color-ink: #f8ece8;
+    --color-ink-dim: #cfb0a8;
+    --color-dirt: #6e2b22;
+    --color-dirt-deep: #431a15;
+    --color-amber: #ff8c2e;
+    --color-amber-hi: #ffa95e;
+  }
+  /* End stone under a violet void. */
+  :root[data-theme='end'],
+  [data-swatch='end'] {
+    --color-ground: #121019;
+    --color-panel: #1a1725;
+    --color-raised: #242033;
+    --color-line: #3b3552;
+    --color-ink: #f3f0e6;
+    --color-ink-dim: #bdb6cf;
+    --color-dirt: #4f416d;
+    --color-dirt-deep: #2d2543;
+    --color-amber: #e6dfa2;
+    --color-amber-hi: #f3eec6;
+  }
+  /* Cherry grove at dusk. */
+  :root[data-theme='cherry'],
+  [data-swatch='cherry'] {
+    --color-ground: #1b1216;
+    --color-panel: #251920;
+    --color-raised: #31212a;
+    --color-line: #4d3341;
+    --color-ink: #f8eef2;
+    --color-ink-dim: #d0b4c1;
+    --color-dirt: #6f3a53;
+    --color-dirt-deep: #432330;
+    --color-amber: #ff8fc0;
+    --color-amber-hi: #ffb1d4;
+  }
+  /* The button colour (Personalize → Button colour): it replaces the room's act hue and nothing else, in every
+     room, so Play belongs to the player rather than to the room. `room` is the absence of a block. Lime, coral and
+     blue are never offered: they mean running, failing and in progress. `[data-chip]` paints a colour's sample on
+     its Personalize key whatever room is in use. */
+  :root[data-accent='amber'],
+  [data-chip='amber'] {
+    --color-amber: #ffc233;
+    --color-amber-hi: #ffd76e;
+  }
+  :root[data-accent='orange'],
+  [data-chip='orange'] {
+    --color-amber: #ff9640;
+    --color-amber-hi: #ffb373;
+  }
+  :root[data-accent='pink'],
+  [data-chip='pink'] {
+    --color-amber: #ff8fc0;
+    --color-amber-hi: #ffb1d4;
+  }
+  :root[data-accent='violet'],
+  [data-chip='violet'] {
+    --color-amber: #b994f2;
+    --color-amber-hi: #cfb4f7;
+  }
+  :root[data-accent='cyan'],
+  [data-chip='cyan'] {
+    --color-amber: #4fd1c5;
+    --color-amber-hi: #82e0d8;
+  }
+  :root[data-accent='bone'],
+  [data-chip='bone'] {
+    --color-amber: #e8e0cc;
+    --color-amber-hi: #f6f1e4;
+  }
   :root[data-font='system'] {
     --font-sans: var(--font-system);
   }
@@ -841,6 +917,77 @@
     height: 2px;
     background: var(--color-ink);
   }
+  /* Personalize's keys hold a name and a tag, so they sit in a wider, filling grid. */
+  .swatch-keys-wide {
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  }
+  /* A button colour's sample: its face on the room's floor, the shape a key's face has. */
+  .chip-face {
+    position: relative;
+    display: block;
+    height: 3rem;
+    background: var(--color-ground);
+    border-radius: 3px;
+    corner-shape: notch;
+    box-shadow: inset 0 0 0 1px var(--color-line);
+  }
+  .chip-face::after {
+    content: '';
+    position: absolute;
+    inset: 0.875rem 0.75rem 1.125rem;
+    background: var(--color-amber);
+    border-radius: 2px;
+    corner-shape: notch;
+    box-shadow: 0 4px 0 var(--color-dirt);
+  }
+  .new-tag {
+    flex: none;
+    padding-inline: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--color-ground);
+    background: var(--color-lime);
+    border-radius: 2px;
+    corner-shape: notch;
+  }
+  /* Personalize's preview: the room's own panel, holding the controls a choice changes. */
+  .preview-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.25rem;
+    background: var(--color-panel);
+    border-radius: var(--radius-panel);
+    corner-shape: notch;
+    box-shadow: inset 0 0 0 1px var(--color-line);
+  }
+  /* The native colour picker, sunk into the room like every other field. */
+  .colour-well {
+    width: 4rem;
+    height: 2.75rem;
+    padding: 0.25rem;
+    background: var(--color-ground);
+    border-radius: var(--radius-step);
+    corner-shape: notch;
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+    cursor: pointer;
+  }
+  .colour-well::-webkit-color-swatch-wrapper {
+    padding: 0;
+  }
+  .colour-well::-webkit-color-swatch {
+    border: 0;
+    border-radius: 2px;
+    corner-shape: notch;
+  }
+  .colour-well:focus-visible {
+    outline: 2px solid var(--color-amber);
+    outline-offset: 3px;
+  }
+
   .swatch-lamp {
     flex: none;
     width: 0.625rem;

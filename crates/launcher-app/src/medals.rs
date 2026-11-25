@@ -10,7 +10,7 @@ use launcher_core::{
     },
     news_seen::rfc3339_millis,
     perland::{MedalEntry, PlayerStats},
-    settings::Theme,
+    settings::{Accent, Theme},
     telemetry::date::Day,
     Result,
 };
@@ -38,6 +38,8 @@ pub enum MedalEvent {
         diagnosed: bool,
     },
     ThemeSaved(Theme),
+    /// A button colour saved in Personalize.
+    AccentSaved(Accent),
     OwnPicture,
     SkinSaved,
     PackInstalled,
@@ -81,6 +83,7 @@ fn apply(file: &mut MedalsFile, event: &MedalEvent) {
             }
         }
         MedalEvent::ThemeSaved(theme) => c.theme |= *theme != Theme::default(),
+        MedalEvent::AccentSaved(accent) => c.theme |= *accent != Accent::default(),
         MedalEvent::OwnPicture => c.decorator = true,
         MedalEvent::SkinSaved => c.tailor = true,
         MedalEvent::PackInstalled => c.modpacks = c.modpacks.saturating_add(1),
@@ -426,5 +429,14 @@ mod tests {
         assert!(f.counters.theme);
         apply(&mut f, &MedalEvent::ThemeSaved(Theme::default()));
         assert!(f.counters.theme, "earned stays earned");
+    }
+
+    #[test]
+    fn a_button_colour_other_than_the_rooms_counts_too() {
+        let mut f = MedalsFile::default();
+        apply(&mut f, &MedalEvent::AccentSaved(Accent::Room));
+        assert!(!f.counters.theme);
+        apply(&mut f, &MedalEvent::AccentSaved(Accent::Pink));
+        assert!(f.counters.theme);
     }
 }

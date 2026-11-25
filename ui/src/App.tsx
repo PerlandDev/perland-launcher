@@ -17,12 +17,13 @@ import { NewInstance } from './features/new-instance/NewInstance';
 import { Profile } from './features/profile/Profile';
 import { Rail } from './features/rail/Rail';
 import { ServersScreen } from './features/servers-list/ServersScreen';
+import { Personalize } from './features/personalize/Personalize';
 import { Settings } from './features/settings/Settings';
 import { TitleBar } from './features/titlebar/TitleBar';
 import { WhatsNewOnLaunch } from './features/whats-new/WhatsNewOnLaunch';
 import { applyLanguage } from './i18n';
 import { useActivity } from './state/activity';
-import { applyAppearance } from './state/appearance';
+import { applyAppearance, lookOf, type Appearance } from './state/appearance';
 import { takeDeepLink } from './state/deepLink';
 import { useSettings } from './state/queries';
 import type { Instance } from './ipc/schema';
@@ -73,6 +74,8 @@ function Screen({ route }: { route: Route }) {
       return <AchievementsScreen />;
     case 'settings':
       return <Settings />;
+    case 'personalize':
+      return <Personalize />;
     case 'profile':
       return <Profile add={route.add} />;
   }
@@ -150,11 +153,11 @@ export default function App() {
   const language = settings.data?.language ?? null;
   useEffect(() => applyLanguage(language), [language]);
   // Until the settings arrive, the look main.tsx applied from the mirror stays.
-  const theme = settings.data?.theme;
-  const font = settings.data?.font;
+  const look = settings.data && lookOf(settings.data);
+  const lookKey = look && JSON.stringify(look);
   useEffect(() => {
-    if (theme && font) applyAppearance({ theme, font });
-  }, [theme, font]);
+    if (lookKey) applyAppearance(JSON.parse(lookKey) as Appearance);
+  }, [lookKey]);
 
   // A retry puts the query back to pending, so remember a failure to load (never one with data cached) to keep the error screen up meanwhile.
   const [failure, setFailure] = useState<unknown>(null);
