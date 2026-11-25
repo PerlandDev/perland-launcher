@@ -190,6 +190,8 @@ fn main() {
             commands::mod_icon,
             commands::mod_set_enabled,
             commands::mods_add,
+            commands::drop_inspect,
+            commands::drop_add,
             commands::mod_remove,
             commands::content_list,
             commands::content_remove,

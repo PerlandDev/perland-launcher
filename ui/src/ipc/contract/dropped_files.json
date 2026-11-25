@@ -1,0 +1,32 @@
+[
+  {
+    "path": "C:/Users/player/Downloads/sodium-fabric-0.5.8+mc1.20.1.jar",
+    "name": "sodium-fabric-0.5.8+mc1.20.1.jar",
+    "kind": "mod"
+  },
+  {
+    "path": "C:/Users/player/Downloads/Faithful 32x.zip",
+    "name": "Faithful 32x.zip",
+    "kind": "resource_pack"
+  },
+  {
+    "path": "C:/Users/player/Downloads/BSL v8.zip",
+    "name": "BSL v8.zip",
+    "kind": "shader_pack"
+  },
+  {
+    "path": "C:/Users/player/Downloads/Sky Islands 1.0.4.mrpack",
+    "name": "Sky Islands 1.0.4.mrpack",
+    "kind": "modpack"
+  },
+  {
+    "path": "C:/Users/player/Downloads/photos.zip",
+    "name": "photos.zip",
+    "kind": "unknown_zip"
+  },
+  {
+    "path": "C:/Users/player/Downloads/notes.txt",
+    "name": "notes.txt",
+    "kind": "other"
+  }
+]

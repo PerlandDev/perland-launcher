@@ -4,6 +4,7 @@ pub mod browse;
 pub mod content;
 pub mod diagnostics;
 pub mod download;
+pub mod dropped;
 pub mod error;
 pub mod events;
 pub mod fsutil;
