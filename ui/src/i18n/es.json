@@ -42,7 +42,7 @@
     "previewHint": "Así se ve tu launcher ahora.",
     "previewButton": "Botón normal",
     "previewRunning": "En marcha",
-    "room": "Sala",
+    "room": "Tema",
     "roomHint": "El material de todo el launcher: fondo, paneles, botones y los paisajes de tus instancias.",
     "rooms": {
       "laminate": "Laminado",
@@ -51,14 +51,16 @@
       "forest": "Bosque",
       "nether": "Nether",
       "end": "End",
-      "cherry": "Cerezo",
-      "custom": "Tu sala"
+      "cherry": "Cerezo"
     },
-    "new": "Nueva",
+    "customize": "Personalizar tema",
+    "customizeHint": "Elige tus propios colores para el fondo y los botones.",
+    "customizeOn": "Usando tus colores",
+    "new": "Nuevo",
     "accent": "Color de los botones",
     "accentHint": "El color de Jugar y de los botones que actúan. Verde, rojo y azul no están: el launcher los usa para decirte si algo funciona, falla o va en camino.",
     "accents": {
-      "room": "El de la sala",
+      "room": "El del tema",
       "amber": "Ámbar",
       "orange": "Naranja",
       "pink": "Rosa",
@@ -96,7 +98,7 @@
     "ideaMint": "Menta",
     "ideaGrape": "Uva",
     "openFromSettings": "Abrir Personalización",
-    "movedHint": "La sala, los colores, el texto y los íconos ahora están en Personalización, el pincel de arriba."
+    "movedHint": "El tema, los colores, el texto y los íconos ahora están en Personalización, el pincel de arriba."
   },
   "rail": {
     "more": "Más opciones para {{name}}",

@@ -1,12 +1,12 @@
 import { useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { transitions as transitionsSchema, type Accent, type CustomRoom, type Theme } from '../../ipc/schema';
-import { ACCENTS, FONTS, THEMES } from '../../state/appearance';
+import { ACCENTS, FONTS, MADE_THEMES } from '../../state/appearance';
 import { deriveRoom, isHex, roomChecks } from '../../state/customRoom';
 import { useSettings } from '../../state/queries';
 import { navigate } from '../../state/route';
 import { Button } from '../../ui/Button';
-import { WarningDiamond } from '../../ui/Icon';
+import { Brush, WarningDiamond } from '../../ui/Icon';
 import { PlayButton } from '../../ui/PlayButton';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { useSettingsDraft } from '../settings/useSettingsDraft';
@@ -116,11 +116,10 @@ export function Personalize() {
 
         <Section title={t('personalize.room')} hint={t('personalize.roomHint')} radios="radiogroup">
           <div className="swatch-keys swatch-keys-wide">
-            {THEMES.map((theme) => (
+            {MADE_THEMES.map((theme) => (
               <label key={theme} className="swatch-key" data-checked={data.theme === theme ? '' : undefined}>
                 <input type="radio" name="room" className="sr-only" checked={data.theme === theme} onChange={() => edit({ theme })} />
-                {/* The player's own room has no stylesheet block: its sample is painted from the colours they picked. */}
-                <span className="swatch" data-swatch={theme === 'custom' ? undefined : theme} style={theme === 'custom' ? ownSwatch(room) : undefined} aria-hidden>
+                <span className="swatch" data-swatch={theme} aria-hidden>
                   <span className="swatch-face" />
                   <span className="swatch-lamp" />
                 </span>
@@ -133,6 +132,21 @@ export function Personalize() {
             ))}
           </div>
         </Section>
+
+        {/* The player's own theme is not one of the made ones: one wide key below them makes it. It presses into its slot
+            with the lime lamp while it is on, as a chosen theme does, and shows a sample of the colours it is mixed from,
+            painted inline since it has no stylesheet block. */}
+        <button type="button" className="swatch-key customize-key" aria-pressed={own} data-checked={own ? '' : undefined} onClick={() => edit({ theme: 'custom' })}>
+          <Brush className="h-6 w-6 flex-none" aria-hidden />
+          <span className="grid min-w-0 flex-1 gap-0.5 text-left">
+            <span className="swatch-name">{t('personalize.customize')}</span>
+            <span className="px-1 text-sm font-normal text-ink-dim">{t(own ? 'personalize.customizeOn' : 'personalize.customizeHint')}</span>
+          </span>
+          <span className="swatch customize-sample" style={ownSwatch(room)} aria-hidden>
+            <span className="swatch-face" />
+            <span className="swatch-lamp" />
+          </span>
+        </button>
 
         {own && (
           <Section title={t('personalize.yourColours')} hint={t('personalize.yourColoursHint')}>
