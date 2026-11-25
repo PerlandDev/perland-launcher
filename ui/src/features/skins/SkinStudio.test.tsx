@@ -700,3 +700,21 @@ it("asks for the player's figure again on the way out, so the Profile shows what
   unmount();
   expect(qc.getQueryState(qk.playerSkin('some-account'))?.isInvalidated).toBe(true);
 });
+
+const EMPTY_NOTE = "Your wardrobe is empty. Start a new skin or import a PNG.";
+
+it('says the skin is on its way while the stage has nothing to draw yet, then shows it', async () => {
+  const { backend } = renderApp(<SkinStudio />, { microsoft: 'signedIn' });
+  // Hold the account's own skin, as a slow connection to Microsoft would.
+  const handle = backend.handle;
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  backend.handle = (cmd, args) => (cmd === 'skin_sync_current' ? held.then(() => handle(cmd, args)) : handle(cmd, args));
+  const status = await screen.findByText('Getting your skin…');
+  expect(status.closest('.stage-well')).not.toBeNull();
+  // Not known yet is not empty: the wardrobe doesn't say it is.
+  expect(screen.queryByText(EMPTY_NOTE)).not.toBeInTheDocument();
+  release();
+  await screen.findByRole('button', { name: /Alex's skin/, current: true });
+  await waitFor(() => expect(screen.queryByText('Getting your skin…')).not.toBeInTheDocument());
+});

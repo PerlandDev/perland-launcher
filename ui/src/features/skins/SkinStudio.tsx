@@ -44,6 +44,7 @@ import { HistoryPanel } from './HistoryPanel';
 import { useSkinDoc } from './useSkinDoc';
 import { whenLabel } from './when';
 import { Wardrobe } from './Wardrobe';
+import { ScreenLoading } from '../../ui/ScreenLoading';
 import { SkinsHead } from './SkinsHead';
 import { FIRST_TAB, type Tab } from './tabs';
 import './skins.css';
@@ -161,6 +162,10 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   // Trying a piece on (Create): the figure shows it, the skin doesn't have it. A version preview comes first.
   const { shown: tryShown, tryOn } = useTryOn(editor, selected?.id ?? null, tab === 'create' && !historyOpen);
   const trying = previewing ? null : tryShown;
+  // Nothing to draw yet: the account's own skin is still being asked for, the wardrobe read, or the open skin's pixels
+  // loaded. The stage says so instead of standing empty (a wardrobe with nothing in it says so on its own).
+  const stageLoading =
+    !previewing && !trying && doc.pixels === null && (waiting || !accounts.isSuccess || entries.isPending || selected !== null);
   // The figure blinks when the skin wears eyes that show: never over a preview, and never while a stroke is painted.
   const [stroking, setStroking] = useState(false);
   const beginStroke = () => {
@@ -526,6 +531,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
           wearer={wearer?.uuid ?? null}
           onSelect={(id) => void flush().then(() => setPicked(id))}
           emptyNote={defaultSkin ? t('skins.emptyDefault') : t('skins.empty')}
+          loading={entries.isPending}
           newItems={newItems}
           onImport={importSkin}
           importing={importing}
@@ -578,6 +584,11 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
               </div>
 
               <div className="stage-well">
+                {stageLoading && (
+                  <div className="stage-loading">
+                    <ScreenLoading label={t('loading.skin')} place="center" />
+                  </div>
+                )}
                 <Stage
                   pixels={previewing ? previewShown.pixels : trying ? trying.pixels : doc.pixels}
                   // A preview gets its own (negative) revisions, so the figure redraws on every switch.

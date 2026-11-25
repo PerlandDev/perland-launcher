@@ -96,6 +96,7 @@ export function Wardrobe({
   wearer,
   onSelect,
   emptyNote,
+  loading = false,
   newItems,
   onImport,
   importing,
@@ -114,6 +115,8 @@ export function Wardrobe({
   onSelect: (id: string) => void;
   /** What an empty wardrobe says. */
   emptyNote: string;
+  /** The list isn't read yet: it isn't empty, it's unknown, so neither the note nor a count of 0 shows. */
+  loading?: boolean;
   newItems: MenuItem[];
   onImport: () => void;
   /** An import is on its way: Import waits, pressed, with a progress cursor. */
@@ -241,7 +244,7 @@ export function Wardrobe({
         <h2 id="wardrobe-title" className="font-bold">
           {t('skins.wardrobe')}
         </h2>
-        <span className="text-sm text-ink-dim tabular">{entries.length}</span>
+        {!loading && <span className="text-sm text-ink-dim tabular">{entries.length}</span>}
       </div>
       <div className="wardrobe-actions">
         <Button icon={<Plus />} aria-haspopup="menu" onClick={(e) => newMenu.current?.openAt(e.currentTarget)}>
@@ -253,7 +256,7 @@ export function Wardrobe({
       </div>
       <Menu ref={newMenu} label={t('skins.new')} items={newItems} trigger={false} className="contents" />
       {entries.length === 0 ? (
-        <p className="text-sm text-ink-dim">{emptyNote}</p>
+        !loading && <p className="text-sm text-ink-dim">{emptyNote}</p>
       ) : (
         <ul ref={listRef} className="wardrobe-list" aria-label={t('skins.wardrobe')} aria-describedby="wardrobe-reorder-hint" onKeyDown={onKeyDown}>
           {entries.map((entry, order) => {

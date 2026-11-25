@@ -1,6 +1,7 @@
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useTranslation } from 'react-i18next';
 import mark from '../../assets/mark.svg';
+import { InstanceThumb } from '../../art/InstanceThumb';
 import { applyLanguage } from '../../i18n';
 import { commands } from '../../ipc/commands';
 import { type GraphicsCard, type Lang } from '../../ipc/schema';
@@ -110,21 +111,17 @@ export function Settings() {
             systemMb={appInfo.data.systemMemoryMb}
             onChange={(defaultMemoryMb) => edit({ defaultMemoryMb }, true)}
           />
-          <p className="text-sm text-ink-dim">
-            {t('settings.memoryEach')}
-            {last && (
-              <>
-                {' '}
-                <button
-                  type="button"
-                  className="break-words text-blue-ink underline underline-offset-4"
-                  onClick={() => navigate({ name: 'instanceSettings', id: last.id, focus: 'memory' })}
-                >
-                  {t('settings.memoryFor', { name: last.name })}
-                </button>
-              </>
-            )}
-          </p>
+          <p className="text-sm text-ink-dim">{t('settings.memoryEach')}</p>
+          {/* A key, not a bare link: it wears the instance's own icon, as the rail does, so the player sees which one. */}
+          {last && (
+            <Button
+              className="justify-self-start"
+              icon={<InstanceThumb instance={last} />}
+              onClick={() => navigate({ name: 'instanceSettings', id: last.id, focus: 'memory' })}
+            >
+              {t('settings.memoryFor', { name: last.name })}
+            </Button>
+          )}
         </div>
         <Select
           label={t('settings.graphics.label')}

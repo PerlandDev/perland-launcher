@@ -1188,6 +1188,7 @@
     }
   },
   "loading": {
+    "skin": "Getting your skin…",
     "skins": "Setting up the skin studio…",
     "instances": "Getting your instances…",
     "settings": "Getting your settings…",
