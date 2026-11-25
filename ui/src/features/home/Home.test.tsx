@@ -189,7 +189,7 @@ describe('Home', () => {
 
   it('counts a pack its own mods on the Mods & packs key', async () => {
     renderApp(<Home id="sky-islands" />);
-    expect(await screen.findByRole('button', { name: 'Mods & packs 3' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Mods & packs 4' })).toBeInTheDocument();
   });
 
   it('shows no count on the Mods & packs key without mods', async () => {

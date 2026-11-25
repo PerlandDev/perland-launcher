@@ -403,7 +403,7 @@ describe('Mods & packs section', () => {
 
   it("counts a pack's own mods with the player's", async () => {
     renderApp(<InstanceSettings id="sky-islands" />);
-    expect(await screen.findByRole('button', { name: 'Mods 3' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Mods 4' })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Resource packs 1' })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Shaders 0' })).toBeInTheDocument();
   });
