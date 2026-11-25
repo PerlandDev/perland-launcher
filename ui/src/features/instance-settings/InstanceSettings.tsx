@@ -13,6 +13,7 @@ import { Copy } from '../../ui/Icon';
 import { copyText } from '../../ui/copyText';
 import { MemorySlider } from '../../ui/MemorySlider';
 import { ScreenFrame } from '../../ui/ScreenFrame';
+import { ScreenLoading } from '../../ui/ScreenLoading';
 import { inviteOf, isPack, isServer, versionLine } from '../home/labels';
 import { useVersionChoice } from '../new-instance/useVersionChoice';
 import { VersionFields } from '../new-instance/VersionFields';
@@ -212,7 +213,11 @@ export function InstanceSettings({ id }: { id: string }) {
   const instance = listing.data?.instances.find((i) => i.id === id);
   return (
     <ScreenFrame title={t('instanceSettings.title')} subtitle={instance?.name} onBack={() => navigate({ name: 'home', id })}>
-      {instance && appInfo.data ? <Form key={instance.id} instance={instance} systemMb={appInfo.data.systemMemoryMb} /> : null}
+      {instance && appInfo.data ? (
+        <Form key={instance.id} instance={instance} systemMb={appInfo.data.systemMemoryMb} />
+      ) : listing.isPending || appInfo.isPending ? (
+        <ScreenLoading label={t('loading.instance')} onRetry={() => void Promise.all([listing.refetch(), appInfo.refetch()])} />
+      ) : null}
     </ScreenFrame>
   );
 }
