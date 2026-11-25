@@ -66,34 +66,35 @@
       "bone": "Bone"
     },
     "yourColours": "Your colours",
-    "yourColoursHint": "Pick two colours and the launcher builds the rest: panels, borders, text and steps. If something wouldn't read, it tells you and leaves it off.",
+    "yourColoursHint": "Pick a background, then buttons. Only colours that read well together are offered.",
     "background": "Background",
     "buttons": "Buttons",
-    "pick": "Pick a colour: {{what}}",
-    "code": "Colour code: {{what}}",
-    "checks": {
-      "dark": {
-        "ok": "The background is dark, as the launcher needs.",
-        "bad": "The background is too light. Pick a darker one."
-      },
-      "text": {
-        "ok": "Text reads well.",
-        "bad": "Small text wouldn't read."
-      },
-      "play": {
-        "ok": "Play's words read well.",
-        "bad": "Play's words wouldn't read: try lighter buttons."
-      },
-      "status": {
-        "ok": "Green, red and blue still show.",
-        "bad": "With this background, notices in green, red or blue wouldn't show."
-      }
+    "hues": {
+      "slate": "Slate",
+      "red": "Red",
+      "orange": "Orange",
+      "amber": "Amber",
+      "yellow": "Yellow",
+      "lime": "Lime",
+      "green": "Green",
+      "teal": "Teal",
+      "cyan": "Cyan",
+      "sky": "Sky",
+      "blue": "Blue",
+      "violet": "Violet",
+      "pink": "Pink",
+      "magenta": "Magenta",
+      "grey": "Grey",
+      "bone": "Bone"
     },
-    "ideas": "Ideas:",
-    "ideaOcean": "Ocean",
-    "ideaLava": "Lava",
-    "ideaMint": "Mint",
-    "ideaGrape": "Grape"
+    "tones": {
+      "veryDark": "very dark",
+      "dark": "dark",
+      "light": "light",
+      "mid": "mid",
+      "bold": "bold"
+    },
+    "oldColours": "Your earlier colours didn't read well together, so the launcher isn't using them. Pick new ones here."
   },
   "rail": {
     "more": "More for {{name}}",

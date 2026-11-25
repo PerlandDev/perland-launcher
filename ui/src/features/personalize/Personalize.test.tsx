@@ -7,6 +7,7 @@ import { renderApp, sent } from '../../test/backend';
 import { Personalize } from './Personalize';
 import { TitleBar } from '../titlebar/TitleBar';
 import { Settings } from '../settings/Settings';
+import { BACKGROUNDS, BUTTONS, buttonsFor } from '../../state/customRoom';
 import { afterEach } from 'vitest';
 
 afterEach(resetAppearance);
@@ -55,46 +56,38 @@ it('offers your colours only on your own room, and the button colour only off it
   expect(screen.queryByRole('region', { name: 'Your colours' })).toBeNull();
 });
 
-it('mixes your room from two colours and saves them', async () => {
+it('makes your theme from a background and buttons picked from palettes, and saves them', async () => {
   const { user, calls } = open();
   await user.click(await screen.findByRole('button', { name: /^Customize theme/ }));
   const own = await screen.findByRole('region', { name: 'Your colours' });
+  const backgrounds = within(own).getByRole('radiogroup', { name: 'Background' });
+  const buttons = within(own).getByRole('radiogroup', { name: 'Buttons' });
+  // The room starts from the default, which both palettes hold.
+  expect(within(backgrounds).getByRole('radio', { name: 'Slate, dark' })).toBeChecked();
+  expect(within(buttons).getByRole('radio', { name: 'Magenta, bold' })).toBeChecked();
+  // No free colour field: only colours that read are offered.
+  expect(within(own).queryByRole('textbox')).toBeNull();
 
-  const code = within(own).getByRole('textbox', { name: 'Colour code: Background' });
-  await user.clear(code);
-  await user.type(code, '#1c0f0c');
-  await user.tab();
-
-  await waitFor(() => expect(document.documentElement.style.getPropertyValue('--color-ground')).toBe('#1c0f0c'));
+  const lava = BACKGROUNDS.find((s) => s.hue === 'orange' && s.tone === 'veryDark')!;
+  await user.click(within(backgrounds).getByRole('radio', { name: 'Orange, very dark' }));
+  await waitFor(() => expect(document.documentElement.style.getPropertyValue('--color-ground')).toBe(lava.value));
+  const sky = BUTTONS.find((s) => s.hue === 'sky' && s.tone === 'light')!;
+  await user.click(within(buttons).getByRole('radio', { name: 'Sky, light' }));
   expect(document.documentElement).toHaveAttribute('data-theme', 'custom');
-  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { theme: 'custom', customRoom: { background: '#1c0f0c' } } }));
+  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { theme: 'custom', customRoom: { background: lava.value, buttons: sky.value } } }));
 });
 
-it('says what a room would break and leaves it off the page', async () => {
+it('offers only the buttons that read on the chosen background', async () => {
   const { user } = open();
   await user.click(await screen.findByRole('button', { name: /^Customize theme/ }));
   const own = await screen.findByRole('region', { name: 'Your colours' });
-  expect(within(own).getByText('The background is dark, as the launcher needs.')).toBeInTheDocument();
-
-  const code = within(own).getByRole('textbox', { name: 'Colour code: Background' });
-  await user.clear(code);
-  await user.type(code, '#d8d0c0');
-  await user.tab();
-
-  expect(await within(own).findByText('The background is too light. Pick a darker one.')).toBeInTheDocument();
-  expect(within(own).getByText("Play's words wouldn't read: try lighter buttons.")).toBeInTheDocument();
-  // Kept, but never put on: the launcher shows the default room meanwhile.
-  await waitFor(() => expect(document.documentElement).toHaveAttribute('data-theme', 'laminate'));
-  expect(document.documentElement.style.getPropertyValue('--color-ground')).toBe('');
-});
-
-it('starts your room from an idea', async () => {
-  const { user } = open();
-  await user.click(await screen.findByRole('button', { name: /^Customize theme/ }));
-  const own = await screen.findByRole('region', { name: 'Your colours' });
-  await user.click(within(own).getByRole('button', { name: 'Lava' }));
-  await waitFor(() => expect(document.documentElement.style.getPropertyValue('--color-ground')).toBe('#1c0f0c'));
-  expect(within(own).getByRole('textbox', { name: 'Colour code: Buttons' })).toHaveValue('#ff7a2f');
+  for (const background of [BACKGROUNDS[0]!, BACKGROUNDS.at(-1)!]) {
+    await user.click(within(within(own).getByRole('radiogroup', { name: 'Background' })).getAllByRole('radio')[BACKGROUNDS.indexOf(background)]!);
+    const offered = within(within(own).getByRole('radiogroup', { name: 'Buttons' })).getAllByRole('radio');
+    expect(offered).toHaveLength(buttonsFor(background.value).length);
+    // One of them is always chosen: picking a background never leaves buttons that would not read.
+    expect(offered.filter((radio) => (radio as HTMLInputElement).checked)).toHaveLength(1);
+  }
 });
 
 it('keeps the text font, instance icons and transitions', async () => {
