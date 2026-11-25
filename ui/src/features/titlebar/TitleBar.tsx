@@ -2,6 +2,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AccountAvatar } from '../accounts/AccountAvatar';
+import { QuickJumpKey } from '../quick-jump/QuickJumpKey';
 import mark from '../../assets/mark.svg';
 import { useAccounts } from '../../state/queries';
 import { navigate, useRoute } from '../../state/route';
@@ -54,6 +55,7 @@ export function TitleBar({ minimal = false }: { minimal?: boolean }) {
       <div className="flex min-w-0 items-center">
         {!minimal && (
           <>
+            <QuickJumpKey />
             <button
               type="button"
               className="tb-btn tb-account flex shrink-0"

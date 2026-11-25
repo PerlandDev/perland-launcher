@@ -15,6 +15,7 @@ import { AchievementsScreen } from './features/medals/AchievementsScreen';
 import { Mods } from './features/mods/Mods';
 import { NewInstance } from './features/new-instance/NewInstance';
 import { Profile } from './features/profile/Profile';
+import { QuickJump } from './features/quick-jump/QuickJump';
 import { Rail } from './features/rail/Rail';
 import { ServersScreen } from './features/servers-list/ServersScreen';
 import { Personalize } from './features/personalize/Personalize';
@@ -121,6 +122,7 @@ function Shell() {
           </main>
         </div>
       </div>
+      <QuickJump />
     </HeroPreview.Provider>
   );
 }
