@@ -230,7 +230,7 @@
       transition-duration: 0.01ms !important;
     }
     /* A lamp parked in the meter would read as progress that isn't happening: show the honest empty channel. */
-    .play .meter[data-scan]::after {
+    .meter[data-scan]::after {
       display: none;
     }
   }
@@ -661,11 +661,12 @@
     background: var(--color-ground);
     border-radius: 2px;
   }
-  /* Checking has no count to show yet: one blue block sweeps the channel, a block at a time. */
-  .play .meter[data-scan] {
+  /* No count to show yet (Play checking, a screen on its way): one blue block sweeps the channel, a block at a
+     time. The lamp's geometry assumes the 3px channel, which Play's meter and `data-channel` both give. */
+  .meter[data-scan] {
     position: relative;
   }
-  .play .meter[data-scan]::after {
+  .meter[data-scan]::after {
     content: '';
     position: absolute;
     top: 3px;
@@ -698,6 +699,36 @@
   }
   .meter > span[data-on] {
     background: var(--color-blue);
+  }
+  /* The meter in its own recessed channel outside Play: the same 3px ground channel, with the recess inset so it
+     reads on the ground too. */
+  .meter[data-channel] {
+    padding: 3px;
+    background: var(--color-ground);
+    border-radius: 2px;
+    box-shadow:
+      inset 0 2px 0 rgb(0 0 0 / 0.45),
+      inset 0 0 0 1px var(--color-line);
+  }
+
+  /* A screen on its way (ScreenLoading): the meter over the words, at the top of the screen's column or, for a
+     screen with no column, in the middle of its area. */
+  .screen-loading {
+    display: grid;
+    justify-items: start;
+    align-content: start;
+    gap: 0.75rem;
+  }
+  .screen-loading .meter {
+    width: 15rem;
+    max-width: 100%;
+  }
+  .screen-loading[data-place='center'] {
+    justify-items: center;
+    align-content: center;
+    height: 100%;
+    padding: 2rem;
+    text-align: center;
   }
 
   .field-input {
@@ -4441,6 +4472,51 @@
     .arrive .marquee-plate,
     .arrive .play {
       animation: none !important;
+    }
+  }
+}
+
+/* Skins header. The Skins screen's frame and header, here rather than in features/skins/skins.css (which arrives with
+   the studio's chunk), so the screen shows its real header the moment it opens and the studio drops in under it
+   without a jump. */
+@layer components {
+  .skins-screen {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    height: 100%;
+    padding: 0 1.5rem;
+  }
+  .skins-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-width: 0;
+    padding: 1.25rem 0 1rem;
+  }
+  /* Studio tabs: Create, Paint, Catalog as the standard segments, the open one pressed with the lime lamp. */
+  .skins-tabs {
+    display: flex;
+    flex: none;
+    gap: 0.5rem;
+    padding-bottom: 4px;
+  }
+  /* Before the studio arrives its tabs show where it opens and wait: no press, no hand. */
+  .skins-tabs .seg[aria-disabled='true'] {
+    cursor: default;
+  }
+  /* The body while the studio is on its way, or failed to open: the loading line or the error card, centred. */
+  .skins-waiting {
+    display: grid;
+    place-items: center;
+    min-height: 0;
+    padding-bottom: 2rem;
+  }
+  @media (width < 1200px) {
+    .skins-screen {
+      padding: 0 1rem;
+    }
+    .skins-head {
+      padding: 0.875rem 0 0.75rem;
     }
   }
 }

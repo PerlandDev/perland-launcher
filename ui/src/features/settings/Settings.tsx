@@ -14,6 +14,7 @@ import { ErrorCard } from '../../ui/ErrorCard';
 import { Brush, ExternalLink, Folder } from '../../ui/Icon';
 import { MemorySlider } from '../../ui/MemorySlider';
 import { ScreenFrame } from '../../ui/ScreenFrame';
+import { ScreenLoading } from '../../ui/ScreenLoading';
 import { Select } from '../../ui/Select';
 import { Toggle } from '../../ui/Toggle';
 import { useSingleFlight } from '../../ui/useSingleFlight';
@@ -51,7 +52,12 @@ export function Settings() {
       </ScreenFrame>
     );
   }
-  if (!data || !appInfo.data) return <ScreenFrame title={t('settings.title')} onBack={home}>{null}</ScreenFrame>;
+  if (!data || !appInfo.data)
+    return (
+      <ScreenFrame title={t('settings.title')} onBack={home}>
+        <ScreenLoading label={t('loading.settings')} onRetry={() => void Promise.all([settings.refetch(), appInfo.refetch()])} />
+      </ScreenFrame>
+    );
 
   // The memory line names the instance the player last opened, while it is still there and healthy.
   const lastId = lastInstance();

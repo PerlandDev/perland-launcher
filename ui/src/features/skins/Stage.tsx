@@ -2,6 +2,7 @@ import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent, ty
 import { useTranslation } from 'react-i18next';
 import type { SkinModel } from '../../ipc/schema';
 import type { Focus } from './framing';
+import { FRONT_H, FRONT_W, frontView } from './frontView';
 import { SKIN_SIZE, type Layer, type Part } from './layout';
 import type { Pixels } from './paint';
 import type { Pose } from './poses';
@@ -19,9 +20,9 @@ function withHover(pixels: Pixels, hover: [number, number] | null): Uint8Clamped
   return data;
 }
 
-function tryStage(canvas: HTMLCanvasElement): Scene | null {
+function tryStage(canvas: HTMLCanvasElement, onFirstFrame: () => void): Scene | null {
   try {
-    return createStage(canvas);
+    return createStage(canvas, { onFirstFrame });
   } catch {
     return null;
   }
@@ -86,13 +87,16 @@ export function Stage({
   const { t } = useTranslation();
   const canvas = useRef<HTMLCanvasElement>(null);
   const [scene, setScene] = useState<Scene | null>(null);
+  // Until the figure's first 3D frame, the skin stands flat from the front, so the stage is never an empty well.
+  const [drawn3d, setDrawn3d] = useState(false);
+  const flat = useRef<HTMLCanvasElement>(null);
   const drag = useRef<{ mode: 'paint' | 'orbit' | 'pan'; x: number; y: number } | null>(null);
 
   useEffect(() => {
     const el = canvas.current;
     if (!el) return;
-    const made = tryStage(el);
-    if (!made) return; // No WebGL: the flat view still edits everything.
+    const made = tryStage(el, () => setDrawn3d(true));
+    if (!made) return; // No WebGL: the flat texture still edits everything, and the front view stays on the stage.
     setScene(made);
     const fit = () => made.resize(el.clientWidth, el.clientHeight);
     fit();
@@ -102,6 +106,7 @@ export function Stage({
       observer?.disconnect();
       made.dispose();
       setScene(null);
+      setDrawn3d(false);
     };
   }, []);
   useImperativeHandle(ref, () => ({ resetView: () => scene?.resetView(), zoom: (f) => scene?.zoom(f), celebrate: () => scene?.celebrate() }), [scene]);
@@ -125,6 +130,13 @@ export function Stage({
   useEffect(() => {
     if (drawn) scene?.setTexture(withHover(drawn, hover));
   }, [scene, drawn, rev, hover, model]);
+
+  const showFlat = !drawn3d && pixels !== null;
+  useEffect(() => {
+    const ctx = showFlat ? flat.current?.getContext('2d') : null;
+    if (!ctx || !pixels) return;
+    ctx.putImageData(new ImageData(frontView(pixels, model), FRONT_W, FRONT_H), 0, 0);
+  }, [showFlat, pixels, rev, model]);
 
   const down = (event: PointerEvent<HTMLCanvasElement>) => {
     const panning = event.button === 1 || (event.button === 0 && event.shiftKey);
@@ -169,20 +181,23 @@ export function Stage({
   };
 
   return (
-    <canvas
-      ref={canvas}
-      className="stage-canvas"
-      data-testid="stage"
-      role="img"
-      aria-label={label ?? t('skins.stageLabel')}
-      onPointerDown={down}
-      onMouseDown={(e) => e.button === 1 && e.preventDefault()}
-      onPointerMove={move}
-      onPointerUp={up}
-      onPointerCancel={up}
-      onPointerLeave={() => !drag.current && onHover(null)}
-      onWheel={wheel}
-      onContextMenu={(e) => e.preventDefault()}
-    />
+    <>
+      {showFlat && <canvas ref={flat} className="stage-flat" width={FRONT_W} height={FRONT_H} aria-hidden />}
+      <canvas
+        ref={canvas}
+        className="stage-canvas"
+        data-testid="stage"
+        role="img"
+        aria-label={label ?? t('skins.stageLabel')}
+        onPointerDown={down}
+        onMouseDown={(e) => e.button === 1 && e.preventDefault()}
+        onPointerMove={move}
+        onPointerUp={up}
+        onPointerCancel={up}
+        onPointerLeave={() => !drag.current && onHover(null)}
+        onWheel={wheel}
+        onContextMenu={(e) => e.preventDefault()}
+      />
+    </>
   );
 }

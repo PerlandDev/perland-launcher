@@ -2,20 +2,8 @@
    the lime lamp for a chosen tool, amber only on Wear this skin. */
 @reference '../../styles/app.css';
 
-.skins-screen {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  height: 100%;
-  padding: 0 1.5rem;
-}
-
-.skins-head {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  min-width: 0;
-  padding: 1.25rem 0 1rem;
-}
+/* The frame and its header (.skins-screen, .skins-head, .skins-tabs) live in app.css, "Skins header": the screen shows
+   them before this file arrives with the studio. */
 
 .skins-body {
   display: grid;
@@ -140,6 +128,19 @@
   box-shadow:
     inset 0 3px 0 rgb(0 0 0 / 0.4),
     inset 0 0 0 1px var(--color-line);
+}
+/* Until the 3D figure's first frame: the skin flat from the front, crisp, standing where the figure will. It goes
+   the moment the figure draws, never eased. */
+.stage-flat {
+  position: absolute;
+  /* Lifted a little off centre, like the 3D framing, which keeps the feet clear of the hint. */
+  inset: 0 0 12%;
+  margin: auto;
+  height: 66%;
+  max-width: 100%;
+  aspect-ratio: 1 / 2;
+  image-rendering: pixelated;
+  pointer-events: none;
 }
 .stage-canvas {
   position: absolute;
@@ -463,14 +464,6 @@
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* Studio tabs: Create, Paint, Catalog as the standard segments, the open one pressed with the lime lamp. */
-.skins-tabs {
-  display: flex;
-  flex: none;
-  gap: 0.5rem;
-  padding-bottom: 4px;
 }
 
 /* Create: the third column widens into a panel of categories, pieces and colours; the Wearing row takes the
@@ -1020,12 +1013,6 @@
   }
 }
 @media (width < 1200px) {
-  .skins-screen {
-    padding: 0 1rem;
-  }
-  .skins-head {
-    padding: 0.875rem 0 0.75rem;
-  }
   .skins-body {
     grid-template-columns: 11rem minmax(0, 1fr) 15rem;
     gap: 0.75rem;

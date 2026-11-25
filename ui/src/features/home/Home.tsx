@@ -14,6 +14,7 @@ import { Button } from '../../ui/Button';
 import { Login, Package, UserPlus } from '../../ui/Icon';
 import { Menu, type MenuHandle } from '../../ui/Menu';
 import { PlayButton } from '../../ui/PlayButton';
+import { ScreenLoading } from '../../ui/ScreenLoading';
 import { formatPlaytime } from '../../ui/playtime';
 import { useSingleFlight } from '../../ui/useSingleFlight';
 import { ContinueKey } from './ContinueKey';
@@ -197,8 +198,14 @@ export function HeroCopy({ instance }: { instance: Instance }) {
 const heroCopy = (instance: Instance) => <HeroCopy instance={instance} />;
 
 export function Home({ id }: { id: string | null }) {
+  const { t } = useTranslation();
   const listing = useInstances();
-  if (listing.isPending) return <div className="h-full bg-panel" aria-busy="true" />;
+  if (listing.isPending)
+    return (
+      <div className="h-full bg-panel">
+        <ScreenLoading label={t('loading.instances')} place="center" onRetry={() => void listing.refetch()} />
+      </div>
+    );
   const picked = pick(listing.data, id);
   switch (picked.kind) {
     case 'instance':

@@ -8,12 +8,11 @@ import { HumanArmsUp, Redo, Undo, ZoomIn, ZoomOut } from 'pixelarticons/react';
 import { commands } from '../../ipc/commands';
 import type { SkinEntry, SkinLook, SkinModel, SkinVersion } from '../../ipc/schema';
 import { PLAYER_SKIN_KEY, useAccounts } from '../../state/queries';
-import { navigate } from '../../state/route';
 import { pushError, pushNotice } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { Field } from '../../ui/Field';
-import { ArrowDown, ArrowUp, ChevronDown, Clock, Close, Copy, Download, Pencil, Reload, Shirt, Trash } from '../../ui/Icon';
+import { ArrowDown, ArrowUp, Clock, Close, Copy, Download, Pencil, Reload, Shirt, Trash } from '../../ui/Icon';
 import { moveItem } from '../rail/reorder';
 import { Menu, type MenuHandle, type MenuItem } from '../../ui/Menu';
 import { useSingleFlight } from '../../ui/useSingleFlight';
@@ -45,14 +44,13 @@ import { HistoryPanel } from './HistoryPanel';
 import { useSkinDoc } from './useSkinDoc';
 import { whenLabel } from './when';
 import { Wardrobe } from './Wardrobe';
+import { SkinsHead } from './SkinsHead';
+import { FIRST_TAB, type Tab } from './tabs';
 import './skins.css';
 
 /** One wardrobe per account; `null` is the skins made with no account signed in. */
 const skinsKey = (owner: string | null) => ['skins', owner] as const;
 const RECENT_MAX = 9;
-/** The studio's tabs: build from pieces, paint by hand, or pick a look from Perland's catalog. */
-const TABS = ['create', 'paint', 'catalog'] as const;
-type Tab = (typeof TABS)[number];
 
 function typing(target: EventTarget | null) {
   return (
@@ -125,7 +123,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
   const armsLocked = doc.look !== null && !catalog.manifest;
   const catalogManifest = catalog.manifest;
 
-  const [tab, setTab] = useState<Tab>('paint');
+  const [tab, setTab] = useState<Tab>(FIRST_TAB);
   const [tool, setTool] = useState<Tool>('pencil');
   const [color, setColorState] = useState<Rgba>([108, 171, 60, 255]);
   const [opacity, setOpacity] = useState(100);
@@ -502,18 +500,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
 
   return (
     <section className="skins-screen" aria-labelledby="skins-title">
-      <header className="skins-head">
-        <Button variant="ghost" size="icon" aria-label={t('common.back')} title={t('common.back')} icon={<ChevronDown className="rotate-90" />} onClick={() => navigate({ name: 'home', id: null })} />
-        <h1 id="skins-title" className="font-display text-[2rem] leading-none">
-          {t('skins.title')}
-        </h1>
-        <div role="tablist" aria-labelledby="skins-title" className="skins-tabs">
-          {TABS.map((id) => (
-            <button key={id} type="button" role="tab" id={`skins-tab-${id}`} aria-selected={tab === id} aria-controls="skins-tabpanel" className="seg" data-checked={tab === id || undefined} onClick={() => setTab(id)}>
-              {t(`skins.tab.${id}`)}
-            </button>
-          ))}
-        </div>
+      <SkinsHead tab={tab} onTab={setTab}>
         {selected && tab !== 'catalog' && (
           <p className="min-w-0 truncate text-lg font-bold" title={selected.name}>
             {selected.name}
@@ -527,7 +514,7 @@ export default function SkinStudio({ skin, account }: { skin?: string; account?:
             {t('skins.history.title')}
           </Button>
         )}
-      </header>
+      </SkinsHead>
 
       <div className="skins-body" data-tab={tab} role="tabpanel" id="skins-tabpanel" aria-labelledby={`skins-tab-${tab}`}>
         <Wardrobe

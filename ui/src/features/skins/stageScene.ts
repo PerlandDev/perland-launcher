@@ -329,6 +329,8 @@ export interface StageOptions {
   /** Draw at most this many frames a second. The editor draws every frame; a small figure that only breathes
    *  (Home's player) is as alive at 30 and costs half. */
   maxFps?: number;
+  /** Called once, when the figure's first frame is drawn (until then the editor shows the flat front view). */
+  onFirstFrame?: () => void;
 }
 
 /** Where each joint turns, in model space. */
@@ -372,6 +374,7 @@ export function createStage(canvas: HTMLCanvasElement, options: StageOptions = {
   /** The least time between two drawn frames, in ms; a millisecond of slack keeps a 60 Hz screen at an even 30. */
   const frameGap = options.maxFps ? 1000 / options.maxFps - 1 : 0;
   let drawnAt = -Infinity;
+  let firstDrawn = false;
   let running = true;
   /** Where the figure's clock stands while it is held. */
   let heldAt: number | null = null;
@@ -489,6 +492,10 @@ export function createStage(canvas: HTMLCanvasElement, options: StageOptions = {
     const gliding = glide(now);
     aim();
     renderer.render(scene, camera);
+    if (!firstDrawn) {
+      firstDrawn = true;
+      options.onFirstFrame?.();
+    }
     // The figure is a little alive (breathing, looking around) while Animation is on; that switch is the player's,
     // so the system's reduced-motion setting doesn't stop it. The celebration plays either way, and so does a camera
     // glide. A still stage redraws only when something changes.

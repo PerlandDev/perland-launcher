@@ -10,6 +10,7 @@ import { Button } from '../../ui/Button';
 import { Brush, WarningDiamond } from '../../ui/Icon';
 import { PlayButton } from '../../ui/PlayButton';
 import { ScreenFrame } from '../../ui/ScreenFrame';
+import { ScreenLoading } from '../../ui/ScreenLoading';
 import { useSettingsDraft } from '../settings/useSettingsDraft';
 
 // Personalize (spec 2026-11-25): everything about the look, behind the brush in the title bar. The room, the button
@@ -68,7 +69,12 @@ export function Personalize() {
   // However the player got here, the brush in the title bar is no longer new to them.
   useEffect(markPersonalizeSeen, []);
 
-  if (!data) return null;
+  if (!data)
+    return (
+      <ScreenFrame title={t('personalize.title')} subtitle={t('personalize.subtitle')} onBack={() => navigate({ name: 'home', id: null })}>
+        <ScreenLoading label={t('loading.settings')} onRetry={() => void settings.refetch()} />
+      </ScreenFrame>
+    );
   const room = data.customRoom;
   const own = data.theme === 'custom';
   const checks = roomChecks(room);
