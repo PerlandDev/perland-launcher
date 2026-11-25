@@ -31,10 +31,7 @@
     "achievements": "Medals and achievements",
     "settings": "Settings",
     "personalize": "Personalize",
-    "noAccount": "Add account",
-    "update": "Update ready",
-    "updateWhen": "It installs when you close the launcher.",
-    "restart": "Restart now"
+    "noAccount": "Add account"
   },
   "personalize": {
     "title": "Personalize",
@@ -306,6 +303,9 @@
   },
   "activity": {
     "title": "Activity",
+    "updateReady": "Update ready · installs when you close",
+    "updateReadyBusy": "Update ready · wait for games and installs to finish",
+    "restart": "Restart now",
     "open": "Show activity",
     "close": "Hide activity",
     "empty": "Nothing is happening right now. Press Play and the game's output shows up here.",

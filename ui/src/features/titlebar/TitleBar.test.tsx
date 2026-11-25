@@ -1,8 +1,6 @@
-import { act, screen, within } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
-import { beginContentInstall } from '../../state/contentProgress';
+import { screen, within } from '@testing-library/react';
+import { expect, it } from 'vitest';
 import { routeSnapshot } from '../../state/route';
-import { runStore } from '../../state/runStore';
 import { renderApp, sent } from '../../test/backend';
 import { TitleBar } from './TitleBar';
 
@@ -104,82 +102,9 @@ it('asks for an account when there is none', async () => {
   expect(await screen.findByRole('button', { name: 'Add account' })).toBeInTheDocument();
 });
 
-/** The update key: a small glyph with a lime lamp, which opens a card with Restart now. */
-const openUpdate = async (user: ReturnType<typeof renderApp>['user']) => {
-  const key = await screen.findByRole('button', { name: 'Update ready' });
-  await user.click(key);
-  return key;
-};
-
-it('keeps the update to one small key that opens a card with Restart now', async () => {
-  const { user, calls } = renderApp(<TitleBar />, { beta: true, offlineLocked: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
-  const key = await screen.findByRole('button', { name: 'Update ready' });
-  // Only the key sits in the bar: no sentence, no Restart now, until it is opened.
-  expect(key).toHaveAttribute('aria-expanded', 'false');
+it('keeps the title bar clear when an update is ready: it is told in the Activity bar', async () => {
+  renderApp(<TitleBar />, { beta: true, offlineLocked: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
+  await screen.findByRole('button', { name: 'Close' });
+  expect(screen.queryByRole('button', { name: 'Update ready' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Restart now' })).toBeNull();
-  expect(screen.queryByText('It installs when you close the launcher.')).toBeNull();
-
-  await user.click(key);
-  expect(key).toHaveAttribute('aria-expanded', 'true');
-  const card = screen.getByRole('region', { name: 'Update ready' });
-  expect(within(card).getByText('It installs when you close the launcher.')).toBeVisible();
-  await user.click(within(card).getByRole('button', { name: 'Restart now' }));
-  expect(sent(calls, 'update_restart')).toHaveLength(1);
-});
-
-it('closes the card with Escape, giving focus back to the key, and with a click outside', async () => {
-  const { user } = renderApp(<TitleBar />, { beta: true, offlineLocked: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
-  const key = await openUpdate(user);
-  await user.keyboard('{Escape}');
-  expect(screen.queryByRole('region', { name: 'Update ready' })).toBeNull();
-  expect(key).toHaveFocus();
-  await user.click(key);
-  await user.click(screen.getByRole('button', { name: 'Personalize' }));
-  expect(screen.queryByRole('region', { name: 'Update ready' })).toBeNull();
-});
-
-it('sends one restart for a double click', async () => {
-  const { user, backend, calls } = renderApp(<TitleBar />, { beta: true, offlineLocked: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
-  // A real restart never answers: the launcher closes. Park it, so the second click lands while it's in flight.
-  const handle = backend.handle;
-  vi.spyOn(backend, 'handle').mockImplementation((cmd, args) => (cmd === 'update_restart' ? new Promise(() => {}) : handle(cmd, args)));
-  await openUpdate(user);
-  await user.dblClick(screen.getByRole('button', { name: 'Restart now' }));
-  expect(sent(calls, 'update_restart')).toHaveLength(1);
-});
-
-it('disables Restart now while a game runs and says why in the card', async () => {
-  const { user } = renderApp(<TitleBar />, { beta: true, offlineLocked: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
-  await openUpdate(user);
-  const restart = screen.getByRole('button', { name: 'Restart now' });
-  expect(restart).toBeEnabled();
-  expect(restart).not.toHaveAccessibleDescription();
-  act(() => runStore.apply({ type: 'run_state', instance: 'asalith-fields', state: 'running', exit: null, update: null }));
-  expect(screen.getByRole('button', { name: 'Restart now' })).toBeDisabled();
-  // Visible text, not a hover title: a disabled button can't be focused to show one.
-  expect(screen.getByText('Wait for games and installs to finish first.')).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Restart now' })).toHaveAccessibleDescription('Wait for games and installs to finish first.');
-});
-
-it('disables Restart now while a Browse install runs', async () => {
-  const { user } = renderApp(<TitleBar />, { beta: true, offlineLocked: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
-  await openUpdate(user);
-  expect(screen.getByRole('button', { name: 'Restart now' })).toBeEnabled();
-  let end = () => {};
-  act(() => {
-    end = beginContentInstall();
-  });
-  expect(screen.getByRole('button', { name: 'Restart now' })).toBeDisabled();
-  act(() => end());
-  expect(screen.getByRole('button', { name: 'Restart now' })).toBeEnabled();
-});
-
-it('shows no update key when nothing is ready, and none in the minimal bar', async () => {
-  const { unmount } = renderApp(<TitleBar />, { beta: true, offlineLocked: true, update: { state: 'up_to_date' } });
-  await screen.findByRole('button', { name: 'Close' });
-  expect(screen.queryByRole('button', { name: 'Update ready' })).toBeNull();
-  unmount();
-  renderApp(<TitleBar minimal />, { beta: true, offlineLocked: true, update: { state: 'ready', version: '0.2.0-beta.2' } });
-  await screen.findByRole('button', { name: 'Close' });
-  expect(screen.queryByRole('button', { name: 'Update ready' })).toBeNull();
 });

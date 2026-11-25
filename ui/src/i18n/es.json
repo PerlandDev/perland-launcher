@@ -31,10 +31,7 @@
     "achievements": "Medallas y logros",
     "settings": "Configuración",
     "personalize": "Personalización",
-    "noAccount": "Agregar cuenta",
-    "update": "Actualización lista",
-    "updateWhen": "Se instala cuando cierras el launcher.",
-    "restart": "Reiniciar ahora"
+    "noAccount": "Agregar cuenta"
   },
   "personalize": {
     "title": "Personalización",
@@ -306,6 +303,9 @@
   },
   "activity": {
     "title": "Actividad",
+    "updateReady": "Actualización lista · se instala al cerrar",
+    "updateReadyBusy": "Actualización lista · espera a que terminen los juegos y las instalaciones",
+    "restart": "Reiniciar ahora",
     "open": "Mostrar actividad",
     "close": "Ocultar actividad",
     "empty": "No pasa nada por ahora. Presiona Jugar y lo que muestre el juego aparece aquí.",
