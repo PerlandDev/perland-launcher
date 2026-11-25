@@ -4,14 +4,14 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
     AccountReady, AppInfo, ArtChoice, BannerView, BrowsePlanRequest, ContentFile, ContinueTarget,
-    EmailCodeSent, FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest,
-    InstallPlanView, InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
-    LinkCodeView, ManageChangeResult, ManageConsoleReply, ManageDetail, ManageDiagnosis,
-    ManageListChange, ManagePlayers, ManageSaved, ManageSettings, ManageSettingsSave,
-    ManagedServer, ManualProgress, MedalsView, NewInstance, OpenTarget, PackAddRequest,
-    PackContents, PackStatus, PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry,
-    PublicServerPage, RestorePointDto, RunSnapshot, SearchRequest, ServerNews, ServerStatusView,
-    TrustPrompt, YourServersPage,
+    DropResult, DroppedFile, EmailCodeSent, FreeServerCard, FreeServerPage, IconChoice,
+    ImportPreview, ImportRequest, InstallPlanView, InstallResult, InstanceArtData, JavaFound,
+    JavaOverview, JoinPreview, LinkCodeView, ManageChangeResult, ManageConsoleReply, ManageDetail,
+    ManageDiagnosis, ManageListChange, ManagePlayers, ManageSaved, ManageSettings,
+    ManageSettingsSave, ManagedServer, ManualProgress, MedalsView, NewInstance, OpenTarget,
+    PackAddRequest, PackContents, PackStatus, PerlandAccount, PerlandStats, PerlandStatus,
+    PlaytimeEntry, PublicServerPage, RestorePointDto, RunSnapshot, SearchRequest, ServerNews,
+    ServerStatusView, TrustPrompt, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -312,6 +312,18 @@ pub async fn mod_set_enabled(
 #[tauri::command]
 pub async fn mods_add(core: CoreState<'_>, id: String, paths: Vec<PathBuf>) -> Res<Vec<LocalMod>> {
     logged("mods_add", core.mods_add(&id, paths).await)
+}
+
+/// What each file dragged over the window is, for the drop overlay's count.
+#[tauri::command]
+pub async fn drop_inspect(core: CoreState<'_>, paths: Vec<PathBuf>) -> Res<Vec<DroppedFile>> {
+    logged("drop_inspect", core.drop_inspect(paths).await)
+}
+
+/// Files dropped on the window: mods and packs into the instance, the rest skipped.
+#[tauri::command]
+pub async fn drop_add(core: CoreState<'_>, id: String, paths: Vec<PathBuf>) -> Res<DropResult> {
+    logged("drop_add", core.drop_add(&id, paths).await)
 }
 
 #[tauri::command]

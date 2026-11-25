@@ -1,0 +1,44 @@
+{
+  "added": [
+    {
+      "name": "sodium-fabric-0.5.8+mc1.20.1.jar",
+      "kind": "mod"
+    },
+    {
+      "name": "Faithful 32x.zip",
+      "kind": "resource_pack"
+    }
+  ],
+  "skipped": [
+    {
+      "name": "BSL v8.zip",
+      "kind": "shader_pack",
+      "reason": "needs_loader"
+    },
+    {
+      "name": "iris.jar",
+      "kind": "mod",
+      "reason": "exists"
+    },
+    {
+      "name": "create.jar",
+      "kind": "mod",
+      "reason": "managed"
+    },
+    {
+      "name": "Sky Islands 1.0.4.mrpack",
+      "kind": "modpack",
+      "reason": "modpack"
+    },
+    {
+      "name": "photos.zip",
+      "kind": "unknown_zip",
+      "reason": "not_a_pack"
+    },
+    {
+      "name": "notes.txt",
+      "kind": "other",
+      "reason": "not_content"
+    }
+  ]
+}

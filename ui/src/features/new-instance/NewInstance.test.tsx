@@ -96,6 +96,15 @@ it('imports a .mrpack file', async () => {
   ]);
 });
 
+it('opens on the .mrpack choice with a file dropped on the window, ready to add', async () => {
+  const dropped = 'D:\\Downloads\\Sky Islands 1.0.4.mrpack';
+  const { user, calls } = renderApp(<NewInstance file={dropped} />);
+  expect(await screen.findByRole('radio', { name: 'Import a .mrpack file' })).toBeChecked();
+  expect(screen.getByText('Sky Islands 1.0.4.mrpack')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Add pack' }));
+  expect(sent(calls, 'pack_add')).toEqual([{ request: { kind: 'file', path: dropped } }]);
+});
+
 it('says why a link was refused', async () => {
   const { user } = renderApp(<NewInstance />);
   await user.click(await screen.findByRole('radio', { name: 'Paste a pack link' }));

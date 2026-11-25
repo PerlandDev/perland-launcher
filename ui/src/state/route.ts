@@ -11,7 +11,8 @@ export type Route =
   | { name: 'home'; id: string | null }
   | { name: 'mods'; id: string; tab?: ModsTab }
   | { name: 'instanceSettings'; id: string; focus?: InstanceSettingsFocus }
-  | { name: 'newInstance'; link?: string }
+  // `file`: a .mrpack dropped on the window, ready to add.
+  | { name: 'newInstance'; link?: string; file?: string }
   | { name: 'browse'; kind: ContentKind; instance?: string; project?: string }
   // An empty `invite` means "ask for a link". `relinkFor` is the server instance being re-linked;
   // `linkFor` is a vanilla or imported instance becoming a server instance.

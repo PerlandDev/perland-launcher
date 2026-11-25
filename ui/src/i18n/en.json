@@ -461,8 +461,7 @@
     "count_one": "{{count}} mod",
     "count_other": "{{count}} mods",
     "add": "Add mods",
-    "dropHere": "Drop .jar files to add them",
-    "empty": "No mods yet. Add .jar files, or drop them anywhere on this screen.",
+    "empty": "No mods yet. Add .jar files, or drop them anywhere on the launcher.",
     "vanillaNote": "Mods need a mod loader: Fabric, Quilt, Forge or NeoForge. Pick one for this instance, or start from a modpack.",
     "chooseLoader": "Choose a loader",
     "running": "Stop the game to turn mods on or off or remove them. New mods you add apply the next time you press Play.",
@@ -482,6 +481,50 @@
     "noAdditions": "Mods you add show up here. Updates never touch them.",
     "packEmpty": "This pack's mods show up after its first Play."
   },
+  "drop": {
+    "toAdd": "Drop to add {{what}}",
+    "toImport": "Drop to import a modpack",
+    "importNote": "New instance opens with it, ready to add.",
+    "reading": "Drop to add these files",
+    "nothing": "Nothing here can be added",
+    "nothingNote": "The launcher takes mods (.jar), resource and shader packs (.zip) and modpacks (.mrpack).",
+    "addsTo": "Adds to",
+    "chooseAfter": "You'll choose the instance after you drop.",
+    "retarget": "To add somewhere else, hold the files over an instance in the rail.",
+    "noInstance": "Create an instance first",
+    "noInstanceNote": "Mods and packs go into an instance. Drop a modpack (.mrpack) to make one from it.",
+    "needsLoader": "{{name}} is vanilla, so mods and shader packs are skipped: they need a mod loader.",
+    "other_one": "{{count}} file isn't a mod or pack and will be skipped.",
+    "other_other": "{{count}} files aren't mods or packs and will be skipped.",
+    "kinds": {
+      "mod_one": "{{count}} mod",
+      "mod_other": "{{count}} mods",
+      "resource_pack_one": "{{count}} resource pack",
+      "resource_pack_other": "{{count}} resource packs",
+      "shader_pack_one": "{{count}} shader pack",
+      "shader_pack_other": "{{count}} shader packs"
+    },
+    "added_one": "Added {{what}} to {{name}}",
+    "added_other": "Added {{what}} to {{name}}",
+    "addedNothing": "Nothing was added to {{name}}",
+    "nothingAdded": "Nothing was added",
+    "skipped": "Skipped: {{list}}",
+    "skipItem": "{{name}} ({{reason}})",
+    "reasons": {
+      "not_content": "not a mod or pack",
+      "not_a_pack": "not a resource or shader pack",
+      "needs_loader_mod": "mods need a mod loader",
+      "needs_loader_shader": "shaders need a mod loader",
+      "exists": "already there",
+      "managed": "comes with the pack",
+      "modpack": "drop a modpack on its own to import it"
+    },
+    "show": "Show",
+    "chooseTitle": "Add to which instance?",
+    "chooseBody": "You dropped {{what}}.",
+    "instance": "Instance",
+    "add": "Add"
+  },
   "packs": {
     "findResourcePacks": "Find resource packs",
     "findShaders": "Find shaders",
@@ -492,8 +535,8 @@
     "removeBody": "The file is deleted from this instance.",
     "running": "Stop the game to remove packs.",
     "empty": {
-      "resource_pack": "No resource packs yet. Find some, or put .zip files in the folder.",
-      "shader": "No shaders yet. Find some, or put .zip files in the folder."
+      "resource_pack": "No resource packs yet. Find some, or drop .zip files anywhere on the launcher.",
+      "shader": "No shaders yet. Find some, or drop .zip files anywhere on the launcher."
     },
     "shadersNeedLoader": "Shaders need a mod loader: Fabric, Quilt, Forge or NeoForge."
   },

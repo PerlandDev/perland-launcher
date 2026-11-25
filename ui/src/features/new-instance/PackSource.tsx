@@ -80,10 +80,10 @@ export function PackLinkForm({ initial }: { initial?: string }) {
   );
 }
 
-/** Pick a .mrpack file from disk. */
-export function PackFileForm() {
+/** Pick a .mrpack file from disk, or start with one dropped on the window. Nothing is added before Add pack. */
+export function PackFileForm({ initial }: { initial?: string }) {
   const { t } = useTranslation();
-  const [path, setPath] = useState<string | null>(null);
+  const [path, setPath] = useState<string | null>(initial ?? null);
   const [pickError, setPickError] = useState<unknown>(null);
   const add = useAddPack({ inline: true });
   const pick = async () => {

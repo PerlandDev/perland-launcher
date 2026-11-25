@@ -8,6 +8,7 @@ use launcher_core::{
         plan::{ItemReason, PlanItem, PlanSkip},
         search::SortIndex,
     },
+    dropped::DroppedKind,
     instances::{accent_of, BannerEdges, Focus, Instance, LoaderSpec, ServerAddress, ServerStatus},
     invite::{non_empty, shown_invite, EngineView, InviteLink, InvitePlayers},
     java::{JavaFit, JavaInstall, TEMURIN},
@@ -179,6 +180,58 @@ pub struct ContentFile {
     pub folder: bool,
     /// Came with the pack: the player can't remove it (sync would put it back).
     pub managed: bool,
+}
+
+/// A file being dragged over the window, as the drop overlay counts it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DroppedFile {
+    pub path: String,
+    /// The file's name, for the result notice.
+    pub name: String,
+    pub kind: DroppedKind,
+}
+
+/// Why a dropped file wasn't added.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DropSkipReason {
+    /// Not a mod, a pack or a modpack.
+    NotContent,
+    /// A zip that is neither a resource pack nor a shader pack.
+    NotAPack,
+    /// A mod or a shader pack on a vanilla instance.
+    NeedsLoader,
+    /// A file of that name is already in the instance.
+    Exists,
+    /// A file of that name comes with the instance's pack.
+    Managed,
+    /// A modpack among other files: it imports only when dropped on its own.
+    Modpack,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DropAdded {
+    pub name: String,
+    /// `mod`, `resource_pack` or `shader_pack`.
+    pub kind: DroppedKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DropSkipped {
+    pub name: String,
+    pub kind: DroppedKind,
+    pub reason: DropSkipReason,
+}
+
+/// What a drop on the window did, in the order the files came.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DropResult {
+    pub added: Vec<DropAdded>,
+    pub skipped: Vec<DropSkipped>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

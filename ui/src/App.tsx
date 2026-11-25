@@ -5,6 +5,7 @@ import { TrustDialog } from './features/trust/TrustDialog';
 import { ActivityDrawer } from './features/activity/ActivityDrawer';
 import { Browse } from './features/browse/Browse';
 import { CloseGuard } from './features/close-guard/CloseGuard';
+import { DropZone } from './features/drop/DropZone';
 import { FirstRun } from './features/first-run/FirstRun';
 import { HeroCopy, Home } from './features/home/Home';
 import { HeroPreview } from './features/home/heroPreview';
@@ -51,7 +52,7 @@ function Screen({ route }: { route: Route }) {
     case 'instanceSettings':
       return <InstanceSettings id={route.id} focus={route.focus} />;
     case 'newInstance':
-      return <NewInstance key={route.link ?? 'new'} link={route.link} />;
+      return <NewInstance key={route.link ?? route.file ?? 'new'} link={route.link} file={route.file} />;
     case 'browse':
       return <Browse route={route} />;
     case 'joinServer':
@@ -142,6 +143,8 @@ function Shell() {
               </ScreenBoundary>
             </div>
             <ActivityDrawer />
+            {/* The whole window takes dropped mods, packs and modpacks; its overlay covers `main`, not the title bar. */}
+            <DropZone />
           </main>
         </div>
       </div>

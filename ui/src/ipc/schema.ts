@@ -628,6 +628,15 @@ export const contentFile = z.strictObject({
 /** The mod that runs shader packs on an instance's loader (`null` on vanilla), and whether an enabled jar is one. */
 export const shaderMod = z.enum(['iris', 'oculus']);
 export const shaderSupport = z.strictObject({ wanted: shaderMod.nullable(), installed: z.boolean() });
+/** What a file dropped on the window is: a zip by what is inside it, the rest by its name. */
+export const droppedKind = z.enum(['mod', 'resource_pack', 'shader_pack', 'modpack', 'unknown_zip', 'other']);
+export const droppedFile = z.strictObject({ path: z.string(), name: z.string(), kind: droppedKind });
+export const dropSkipReason = z.enum(['not_content', 'not_a_pack', 'needs_loader', 'exists', 'managed', 'modpack']);
+/** What a drop did, in the order the files came. */
+export const dropResult = z.strictObject({
+  added: z.array(z.strictObject({ name: z.string(), kind: droppedKind })),
+  skipped: z.array(z.strictObject({ name: z.string(), kind: droppedKind, reason: dropSkipReason })),
+});
 export const newInstance = z.strictObject({ name: z.string(), minecraft: z.string(), loader: loaderSpec.nullable() });
 export const shareCategory = z.enum(['mods', 'settings', 'resourcePacks', 'shaderPacks', 'worlds']);
 
@@ -1100,6 +1109,10 @@ export type LocalMod = z.infer<typeof localMod>;
 export type ContentFile = z.infer<typeof contentFile>;
 export type ShaderMod = z.infer<typeof shaderMod>;
 export type ShaderSupport = z.infer<typeof shaderSupport>;
+export type DroppedKind = z.infer<typeof droppedKind>;
+export type DroppedFile = z.infer<typeof droppedFile>;
+export type DropSkipReason = z.infer<typeof dropSkipReason>;
+export type DropResult = z.infer<typeof dropResult>;
 export type NewInstance = z.infer<typeof newInstance>;
 export type ImportPreview = z.infer<typeof importPreview>;
 export type ShareCategory = z.infer<typeof shareCategory>;

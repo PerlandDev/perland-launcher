@@ -461,8 +461,7 @@
     "count_one": "{{count}} mod",
     "count_other": "{{count}} mods",
     "add": "Agregar mods",
-    "dropHere": "Suelta archivos .jar para agregarlos",
-    "empty": "Todavía no hay mods. Agrega archivos .jar o suéltalos en cualquier parte de esta pantalla.",
+    "empty": "Todavía no hay mods. Agrega archivos .jar o suéltalos en cualquier parte del launcher.",
     "vanillaNote": "Los mods necesitan un loader: Fabric, Quilt, Forge o NeoForge. Elige uno para esta instancia o empieza con un modpack.",
     "chooseLoader": "Elige un loader",
     "running": "Detén el juego para activar, desactivar o quitar mods. Los mods nuevos que agregues se aplican la próxima vez que presiones Jugar.",
@@ -482,6 +481,50 @@
     "noAdditions": "Los mods que agregues aparecen aquí. Las actualizaciones nunca los tocan.",
     "packEmpty": "Los mods de este pack aparecen después de jugarlo por primera vez."
   },
+  "drop": {
+    "toAdd": "Suelta para agregar {{what}}",
+    "toImport": "Suelta para importar un modpack",
+    "importNote": "Se abre Nueva instancia con él, listo para agregar.",
+    "reading": "Suelta para agregar estos archivos",
+    "nothing": "Aquí no hay nada que se pueda agregar",
+    "nothingNote": "El launcher acepta mods (.jar), paquetes de recursos y de shaders (.zip) y modpacks (.mrpack).",
+    "addsTo": "Se agrega a",
+    "chooseAfter": "Al soltar, eliges la instancia.",
+    "retarget": "Para agregarlos en otra, mantén los archivos sobre una instancia de la barra.",
+    "noInstance": "Primero crea una instancia",
+    "noInstanceNote": "Los mods y packs van dentro de una instancia. Suelta un modpack (.mrpack) para crear una con él.",
+    "needsLoader": "{{name}} es vanilla, así que se omiten los mods y los paquetes de shaders: necesitan un loader.",
+    "other_one": "{{count}} archivo no es un mod ni un pack y se omitirá.",
+    "other_other": "{{count}} archivos no son mods ni packs y se omitirán.",
+    "kinds": {
+      "mod_one": "{{count}} mod",
+      "mod_other": "{{count}} mods",
+      "resource_pack_one": "{{count}} paquete de recursos",
+      "resource_pack_other": "{{count}} paquetes de recursos",
+      "shader_pack_one": "{{count}} paquete de shaders",
+      "shader_pack_other": "{{count}} paquetes de shaders"
+    },
+    "added_one": "Se agregó {{what}} a {{name}}",
+    "added_other": "Se agregaron {{what}} a {{name}}",
+    "addedNothing": "No se agregó nada a {{name}}",
+    "nothingAdded": "No se agregó nada",
+    "skipped": "Omitidos: {{list}}",
+    "skipItem": "{{name}} ({{reason}})",
+    "reasons": {
+      "not_content": "no es un mod ni un pack",
+      "not_a_pack": "no es un paquete de recursos ni de shaders",
+      "needs_loader_mod": "los mods necesitan un loader",
+      "needs_loader_shader": "los shaders necesitan un loader",
+      "exists": "ya está",
+      "managed": "viene con el pack",
+      "modpack": "suelta el modpack solo para importarlo"
+    },
+    "show": "Ver",
+    "chooseTitle": "¿A qué instancia lo agregas?",
+    "chooseBody": "Soltaste {{what}}.",
+    "instance": "Instancia",
+    "add": "Agregar"
+  },
   "packs": {
     "findResourcePacks": "Buscar paquetes de recursos",
     "findShaders": "Buscar shaders",
@@ -492,8 +535,8 @@
     "removeBody": "El archivo se borra de esta instancia.",
     "running": "Cierra el juego para quitar packs.",
     "empty": {
-      "resource_pack": "Todavía no hay paquetes de recursos. Busca algunos o pon archivos .zip en la carpeta.",
-      "shader": "Todavía no hay shaders. Busca algunos o pon archivos .zip en la carpeta."
+      "resource_pack": "Todavía no hay paquetes de recursos. Busca algunos o suelta archivos .zip en cualquier parte del launcher.",
+      "shader": "Todavía no hay shaders. Busca algunos o suelta archivos .zip en cualquier parte del launcher."
     },
     "shadersNeedLoader": "Los shaders necesitan un loader de mods: Fabric, Quilt, Forge o NeoForge."
   },

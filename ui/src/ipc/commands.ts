@@ -14,6 +14,8 @@ import type {
   BrowsePlanRequest,
   ContentFile,
   ContentKind,
+  DropResult,
+  DroppedFile,
   DeepLink,
   EmailCodeSent,
   BannerView,
@@ -211,6 +213,10 @@ export const commands = {
     invoke<LocalMod[]>('mod_set_enabled', { id, file, enabled }),
   modsAdd: (id: string, paths: string[]) => invoke<LocalMod[]>('mods_add', { id, paths }),
   modRemove: (id: string, file: string) => invoke<LocalMod[]>('mod_remove', { id, file }),
+  /** What each file dragged over the window is (a zip by what is inside), for the drop overlay. */
+  dropInspect: (paths: string[]) => invoke<DroppedFile[]>('drop_inspect', { paths }),
+  /** Mods and packs dropped on the window go into the instance; the rest come back skipped, with why. */
+  dropAdd: (id: string, paths: string[]) => invoke<DropResult>('drop_add', { id, paths }),
   contentList: (id: string, kind: ContentKind) => invoke<ContentFile[]>('content_list', { id, kind }),
   /** Which mod runs shader packs on the instance, and whether it is there. */
   shaderSupport: (id: string) => invoke<ShaderSupport>('shader_support', { id }),

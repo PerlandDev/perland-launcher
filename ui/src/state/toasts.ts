@@ -7,6 +7,8 @@ export interface Notice {
   title: string;
   body?: string;
   action?: { label: string; run: () => void };
+  /** `info` for a notice where nothing was done (nothing added, try again soon): the blue info glyph, not the check. */
+  tone?: 'info';
 }
 
 export interface Toast {

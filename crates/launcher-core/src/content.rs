@@ -1,5 +1,5 @@
 //! The resource packs and shaders in an instance's `resourcepacks/` and `shaderpacks/` folders:
-//! list them and remove the zips. (Adding goes through Browse, which writes the same folders.)
+//! list them, add a zip the player dropped, and remove the zips. (Browse writes the same folders.)
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -96,6 +96,51 @@ pub async fn remove(game_dir: &Path, kind: ContentKind, file_name: &str) -> Resu
     }
     tokio::fs::remove_file(&path).await?;
     Ok(())
+}
+
+/// Copy a pack zip into the kind's folder (via a `.part` file, so the game never sees half a
+/// pack). A name already there is refused: the player's own file, or one the pack owns, is
+/// never overwritten.
+pub async fn add(game_dir: &Path, kind: ContentKind, src: &Path) -> Result<LocalPack> {
+    let file_name = src
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let dir = pack_dir(game_dir, kind)?;
+    if !safe_component(&file_name) || !is_zip(&file_name) {
+        return Err(invalid(&file_name));
+    }
+    let meta = tokio::fs::metadata(src)
+        .await
+        .map_err(|_| not_found(&file_name))?;
+    if !meta.is_file() {
+        return Err(invalid(&file_name));
+    }
+    tokio::fs::create_dir_all(&dir).await?;
+    // Case-blind, as Windows is: `faithful.zip` and `Faithful.zip` are one file there.
+    let wanted = file_name.to_lowercase();
+    let mut entries = tokio::fs::read_dir(&dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        if entry.file_name().to_string_lossy().to_lowercase() == wanted {
+            return Err(LauncherError::disk(
+                ErrorCode::ModExists,
+                format!("{file_name} is already in this instance"),
+            )
+            .with_param("file", &file_name));
+        }
+    }
+    let dest = dir.join(&file_name);
+    let part = dir.join(format!("{file_name}.part"));
+    if let Err(e) = tokio::fs::copy(src, &part).await {
+        let _ = tokio::fs::remove_file(&part).await;
+        return Err(e.into());
+    }
+    tokio::fs::rename(&part, &dest).await?;
+    Ok(LocalPack {
+        file_name,
+        size: meta.len(),
+        folder: false,
+    })
 }
 
 #[cfg(test)]
@@ -211,5 +256,69 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.code, ErrorCode::ModNotFound);
         assert_eq!(err.params["file"], "gone.zip");
+    }
+
+    #[tokio::test]
+    async fn add_copies_a_zip_into_the_kinds_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let src = tmp.path().join("Downloads/Complementary.zip");
+        std::fs::create_dir_all(src.parent().unwrap()).unwrap();
+        std::fs::write(&src, b"zip!").unwrap();
+        let game = tmp.path().join("game");
+        let added = add(&game, ContentKind::Shader, &src).await.unwrap();
+        assert_eq!(added, pack("Complementary.zip", 4, false));
+        assert_eq!(
+            list(&game, ContentKind::Shader).await.unwrap(),
+            vec![pack("Complementary.zip", 4, false)]
+        );
+        assert!(list(&game, ContentKind::ResourcePack)
+            .await
+            .unwrap()
+            .is_empty());
+        // The source stays where it was.
+        assert!(src.is_file());
+    }
+
+    #[tokio::test]
+    async fn add_refuses_a_name_already_there_whatever_its_case() {
+        let tmp = tempfile::tempdir().unwrap();
+        let g = tmp.path();
+        put(g, "resourcepacks", "faithful.zip", b"theirs");
+        let src = g.join("Faithful.zip");
+        std::fs::write(&src, b"mine").unwrap();
+        let err = add(g, ContentKind::ResourcePack, &src).await.unwrap_err();
+        assert_eq!(err.code, ErrorCode::ModExists);
+        assert_eq!(err.params["file"], "Faithful.zip");
+        assert_eq!(
+            std::fs::read(g.join("resourcepacks/faithful.zip")).unwrap(),
+            b"theirs"
+        );
+    }
+
+    #[tokio::test]
+    async fn add_refuses_what_isnt_a_zip_file_and_other_kinds() {
+        let tmp = tempfile::tempdir().unwrap();
+        let g = tmp.path();
+        let txt = g.join("notes.txt");
+        std::fs::write(&txt, b"x").unwrap();
+        std::fs::create_dir_all(g.join("Folder.zip")).unwrap();
+        let zip = g.join("a.zip");
+        std::fs::write(&zip, b"x").unwrap();
+        for (kind, src) in [
+            (ContentKind::ResourcePack, txt),
+            (ContentKind::ResourcePack, g.join("Folder.zip")),
+            (ContentKind::Mod, zip.clone()),
+            (ContentKind::Modpack, zip),
+        ] {
+            let err = add(g, kind, &src).await.unwrap_err();
+            assert_eq!(err.code, ErrorCode::ModNameInvalid, "{kind:?} {src:?}");
+        }
+        assert_eq!(
+            add(g, ContentKind::Shader, &g.join("gone.zip"))
+                .await
+                .unwrap_err()
+                .code,
+            ErrorCode::ModNotFound
+        );
     }
 }

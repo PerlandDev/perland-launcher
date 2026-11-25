@@ -5,6 +5,8 @@ import accounts from './contract/accounts.json';
 import artChoices from './contract/art_choices.json';
 import appInfo from './contract/app_info.json';
 import contentFiles from './contract/content_files.json';
+import dropResultFx from './contract/drop_result.json';
+import droppedFilesFx from './contract/dropped_files.json';
 import deepLinksFx from './contract/deep_links.json';
 import emailCodeSent from './contract/email_code_sent.json';
 import errorFx from './contract/error.json';
@@ -96,6 +98,8 @@ const cases: [string, ZodType, unknown][] = [
   ['app_info', s.appInfo, appInfo],
   ['content_files', s.contentFile.array(), contentFiles],
   ['shader_support', s.shaderSupport.array(), shaderSupportFx],
+  ['dropped_files', s.droppedFile.array(), droppedFilesFx],
+  ['drop_result', s.dropResult, dropResultFx],
   ['error', s.launcherError, errorFx],
   ['instance', s.instance, instanceFx],
   ['instance_listing', s.instanceListing, instanceListing],
