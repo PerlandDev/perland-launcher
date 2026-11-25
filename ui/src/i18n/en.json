@@ -111,6 +111,24 @@
   "places": {
     "label": "Places"
   },
+  "quickJump": {
+    "open": "Search",
+    "openTitle": "{{label}} ({{keys}})",
+    "title": "Go to",
+    "placeholder": "Go to a place, an instance or a setting",
+    "results": "Results",
+    "home": "Home",
+    "none": "Nothing called “{{query}}”.",
+    "count_one": "{{count}} result",
+    "count_other": "{{count}} results",
+    "keyUp": "Up arrow",
+    "keyDown": "Down arrow",
+    "keyEnter": "Enter",
+    "keyEsc": "Esc",
+    "hintMove": "to move",
+    "hintOpen": "to open",
+    "hintClose": "to close"
+  },
   "profile": {
     "title": "Your profile",
     "skin": "Your skin",

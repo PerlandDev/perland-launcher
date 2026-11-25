@@ -73,7 +73,9 @@ it('walks the places with the arrow keys from one tab stop', async () => {
   await user.keyboard('{ArrowLeft}');
   expect(screen.getByRole('button', { name: 'Mods & more' })).toHaveFocus();
   await user.keyboard('{End}');
-  // One stop for the places: the next Tab is the account.
+  // One stop for the places: the next Tab is the search key (Go to), then the account.
+  await user.tab();
+  expect(screen.getByRole('button', { name: 'Search' })).toHaveFocus();
   await user.tab();
   expect(screen.getByRole('button', { name: /Steve/ })).toHaveFocus();
 });

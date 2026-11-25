@@ -111,6 +111,24 @@
   "places": {
     "label": "Lugares"
   },
+  "quickJump": {
+    "open": "Buscar",
+    "openTitle": "{{label}} ({{keys}})",
+    "title": "Ir a",
+    "placeholder": "Ve a un lugar, una instancia o un ajuste",
+    "results": "Resultados",
+    "home": "Inicio",
+    "none": "No hay nada llamado “{{query}}”.",
+    "count_one": "{{count}} resultado",
+    "count_other": "{{count}} resultados",
+    "keyUp": "Flecha arriba",
+    "keyDown": "Flecha abajo",
+    "keyEnter": "Enter",
+    "keyEsc": "Esc",
+    "hintMove": "para moverte",
+    "hintOpen": "para abrir",
+    "hintClose": "para cerrar"
+  },
   "profile": {
     "title": "Tu perfil",
     "skin": "Tu skin",
