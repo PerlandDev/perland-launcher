@@ -625,6 +625,9 @@ export const contentFile = z.strictObject({
   folder: z.boolean(),
   managed: z.boolean(),
 });
+/** The mod that runs shader packs on an instance's loader (`null` on vanilla), and whether an enabled jar is one. */
+export const shaderMod = z.enum(['iris', 'oculus']);
+export const shaderSupport = z.strictObject({ wanted: shaderMod.nullable(), installed: z.boolean() });
 export const newInstance = z.strictObject({ name: z.string(), minecraft: z.string(), loader: loaderSpec.nullable() });
 export const shareCategory = z.enum(['mods', 'settings', 'resourcePacks', 'shaderPacks', 'worlds']);
 
@@ -1095,6 +1098,8 @@ export type McVersion = z.infer<typeof mcVersion>;
 export type LoaderVersion = z.infer<typeof loaderVersion>;
 export type LocalMod = z.infer<typeof localMod>;
 export type ContentFile = z.infer<typeof contentFile>;
+export type ShaderMod = z.infer<typeof shaderMod>;
+export type ShaderSupport = z.infer<typeof shaderSupport>;
 export type NewInstance = z.infer<typeof newInstance>;
 export type ImportPreview = z.infer<typeof importPreview>;
 export type ShareCategory = z.infer<typeof shareCategory>;

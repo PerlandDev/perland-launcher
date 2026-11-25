@@ -1,0 +1,14 @@
+[
+  {
+    "wanted": "iris",
+    "installed": false
+  },
+  {
+    "wanted": "oculus",
+    "installed": true
+  },
+  {
+    "wanted": null,
+    "installed": false
+  }
+]

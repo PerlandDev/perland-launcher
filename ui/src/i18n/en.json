@@ -1063,6 +1063,14 @@
       "manage": "Manage"
     }
   },
+  "shaderMod": {
+    "missing": "Shaders run through {{mod}}, and this instance doesn't have it yet.",
+    "noVersion": "Shaders run through {{mod}}, but {{mod}} doesn't have a version for this instance yet.",
+    "add": "Add {{mod}}",
+    "adding": "Adding {{mod}}…",
+    "open": "Open {{mod}}'s page",
+    "running": "Stop the game to add it."
+  },
   "whatsNew": {
     "title": "What's new",
     "version": "{{version}} · {{date}}",

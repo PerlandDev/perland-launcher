@@ -3,7 +3,7 @@
 pub(crate) mod apply;
 pub mod lockfile;
 pub mod manual;
-mod mod_ids;
+pub(crate) mod mod_ids;
 pub mod origin;
 pub mod plan;
 

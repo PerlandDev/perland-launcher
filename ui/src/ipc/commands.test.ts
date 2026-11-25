@@ -85,6 +85,16 @@ it('sends the argument names Rust expects', async () => {
   ]);
 });
 
+it('asks for an instance\'s shader support by id', async () => {
+  const calls: [string, unknown][] = [];
+  mockIPC((cmd, args) => {
+    calls.push([cmd, args]);
+    return { wanted: 'iris', installed: false };
+  });
+  await expect(commands.shaderSupport('pack')).resolves.toEqual({ wanted: 'iris', installed: false });
+  expect(calls).toEqual([['shader_support', { id: 'pack' }]]);
+});
+
 it('sends Manage arguments as Rust names them', async () => {
   const calls: [string, unknown][] = [];
   mockIPC((cmd, args) => {

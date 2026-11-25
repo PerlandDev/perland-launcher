@@ -68,6 +68,8 @@ import type {
   SearchPage,
   SearchRequest,
   Settings,
+  ShaderMod,
+  ShaderSupport,
   Theme,
   Transitions,
   UiFont,
@@ -358,6 +360,35 @@ const CATALOG: MockProject[] = [
 // Sodium's fixture versions only list 1.20.1; keep its id matching the catalog's.
 CATALOG[0]!.versions = (clone(versionsFx) as VersionInfo[]).map((v) => ({ ...v, id: 'AANobbMI-v1' }));
 
+/** Sky Islands' pack brings its shader mod, so the Shaders tab shows both states: Asalith Fields (Fabric) lacks Iris. */
+const withOculus = (contents: PackContents): PackContents => ({
+  ...contents,
+  managed: [...contents.managed, { path: 'mods/oculus.jar', name: 'Oculus', optional: null }],
+});
+
+/** The core's `shader_mods::wanted`: Iris on Fabric, Quilt and NeoForge, Oculus on Forge and on NeoForge 1.20.1. */
+function wantedShaderMod(instance: Instance): ShaderMod | null {
+  const loader = instance.game.loader?.kind;
+  if (!loader) return null;
+  if (loader === 'forge' || (loader === 'neoforge' && instance.game.minecraft === '1.20.1')) return 'oculus';
+  return 'iris';
+}
+
+/** Iris and Oculus by Modrinth id, as Browse installs them. */
+const SHADER_MOD_PROJECTS = ['YL57xq9U', 'GchcoXML'];
+/** The mock has no jars to read, so a shader mod is known by its name, the way the core falls back for a jar without metadata. */
+const namedShaderMod = (name: string) => name.toLowerCase().split(/[^a-z0-9]+/).some((w) => w === 'iris' || w === 'oculus' || w === 'optifine');
+
+function shaderSupportOf(state: MockState, instance: Instance): ShaderSupport {
+  const wanted = wantedShaderMod(instance);
+  if (!wanted) return { wanted: null, installed: false };
+  const pack = state.packs.get(instance.id);
+  const jars = [...(state.mods.get(instance.id) ?? []), ...(pack?.contents.additions ?? [])].filter((m) => m.enabled).map((m) => m.fileName);
+  const packMods = (pack?.contents.managed ?? []).filter((m) => m.optional === null || m.optional.enabled).map((m) => m.path);
+  const fromBrowse = [...(state.browse.installed.get(instance.id) ?? [])].some((p) => SHADER_MOD_PROJECTS.includes(p));
+  return { wanted, installed: fromBrowse || [...jars, ...packMods].some(namedShaderMod) };
+}
+
 const findProject = (ref: string) => CATALOG.find((p) => p.detail.projectId === ref || p.detail.slug === ref);
 
 const contentKey = (id: string, kind: ContentKind) => `${id}:${kind}`;
@@ -433,7 +464,7 @@ function seed(options: MockOptions) {
     packs.set(sky.id, {
       installed: '1.0.3',
       update: options.noUpdate ? null : offer,
-      contents: clone(packContentsFx) as PackContents,
+      contents: withOculus(clone(packContentsFx) as PackContents),
       art: SKY_ART,
       manual: options.manual
         ? [
@@ -1520,6 +1551,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       return editMods(state, String(args.id), (list) => list.filter((m) => m.fileName !== args.file));
     case 'content_list':
       return clone(state.content.get(contentKey(String(args.id), args.kind as ContentKind)) ?? []);
+    case 'shader_support':
+      return shaderSupportOf(state, find(args.id) ?? fail('disk', 'instance_not_found', 'No such instance'));
     case 'content_remove': {
       const key = contentKey(String(args.id), args.kind as ContentKind);
       const files = state.content.get(key) ?? [];

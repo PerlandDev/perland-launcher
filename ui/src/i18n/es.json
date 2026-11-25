@@ -1063,6 +1063,14 @@
       "manage": "Administrar"
     }
   },
+  "shaderMod": {
+    "missing": "Los shaders funcionan con {{mod}}, y esta instancia todavía no lo tiene.",
+    "noVersion": "Los shaders funcionan con {{mod}}, pero {{mod}} todavía no tiene una versión para esta instancia.",
+    "add": "Agregar {{mod}}",
+    "adding": "Agregando {{mod}}…",
+    "open": "Abrir la página de {{mod}}",
+    "running": "Cierra el juego para agregarlo."
+  },
   "whatsNew": {
     "title": "Novedades del launcher",
     "version": "{{version}} · {{date}}",
