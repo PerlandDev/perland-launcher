@@ -41,7 +41,7 @@ Most launchers hand you a pile of settings. Perland Launcher hands you a **Play*
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/installing.webp" alt="Play turns into a progress bar while the launcher installs Minecraft 1.20.1: 37 of 40 files, 289 MB"></td>
+    <td width="50%"><img src="docs/screenshots/installing.webp" alt="Play turns into a progress bar while the launcher installs Minecraft 1.20.1: 12 of 40 files, 94 MB"></td>
     <td width="50%"><img src="docs/screenshots/skins.webp" alt="The Skins screen: a 3D figure to paint on, the skin's texture map, a colour palette, painting tools and a wardrobe of saved skins"></td>
   </tr>
   <tr>
