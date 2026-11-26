@@ -324,6 +324,20 @@ it("points from the memory for new instances to the last instance's own", async 
   expect(routeSnapshot()).toEqual({ name: 'instanceSettings', id: 'creative-flat', focus: 'memory' });
 });
 
+it("shows the instance's own icon on the key: its picture, else the plate the rail draws", async () => {
+  // Sky Islands' pack brings a picture.
+  navigate({ name: 'home', id: 'sky-islands' });
+  renderApp(<Settings />);
+  const sky = await screen.findByRole('button', { name: 'Change it for Sky Islands' });
+  await waitFor(() => expect(sky.querySelector('img')).not.toBeNull());
+  cleanup();
+  // Creative Flat has none, so it wears its generated plate.
+  navigate({ name: 'home', id: 'creative-flat' });
+  renderApp(<Settings />);
+  const flat = await screen.findByRole('button', { name: 'Change it for Creative Flat' });
+  expect(flat.querySelector('svg[viewBox="0 0 40 40"]')).not.toBeNull();
+});
+
 it('leaves the instance link out when no instance was opened, or the last one is gone', async () => {
   renderApp(<Settings />);
   await screen.findByRole('slider', { name: 'Memory for new instances' });

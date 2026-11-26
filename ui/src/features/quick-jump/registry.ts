@@ -32,6 +32,7 @@ import {
 } from '../../ui/Icon';
 import { sessionKind } from '../browse/session';
 import { isServer } from '../home/labels';
+import { TAB_GLYPHS } from '../mods/tabGlyphs';
 
 export type IconType = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -110,9 +111,9 @@ function instanceEntries(t: TFunction, instance: Instance, current: boolean, run
   const act = (action: InstanceAction, label: string, icon: IconType) => make(action, label, icon, { kind: 'action', instance: id, action });
   return [
     go('home', t('quickJump.home'), Play, { name: 'home', id }),
-    go('mods', t('home.mods'), Package, { name: 'mods', id }),
-    go('resourcePacks', t('mods.tabs.resource_pack'), Package, { name: 'mods', id, tab: 'resource_pack' }),
-    go('shaders', t('mods.tabs.shader'), Package, { name: 'mods', id, tab: 'shader' }),
+    go('mods', t('home.mods'), TAB_GLYPHS.mod, { name: 'mods', id }),
+    go('resourcePacks', t('mods.tabs.resource_pack'), TAB_GLYPHS.resource_pack, { name: 'mods', id, tab: 'resource_pack' }),
+    go('shaders', t('mods.tabs.shader'), TAB_GLYPHS.shader, { name: 'mods', id, tab: 'shader' }),
     go('settings', t('home.instanceSettings'), Gear, { name: 'instanceSettings', id }),
     // Mods and shaders run through a loader, so a vanilla instance has nothing to find them for (as Mods & packs says).
     ...(loader ? [go('findMods', t('browse.findMods'), Search, { name: 'browse', kind: 'mod', instance: id })] : []),

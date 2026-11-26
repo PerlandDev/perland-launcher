@@ -129,6 +129,13 @@
     inset 0 3px 0 rgb(0 0 0 / 0.4),
     inset 0 0 0 1px var(--color-line);
 }
+/* While there is no skin to draw yet, the stage's own loading line stands in the middle of the well. */
+.stage-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
 /* Until the 3D figure's first frame: the skin flat from the front, crisp, standing where the figure will. It goes
    the moment the figure draws, never eased. */
 .stage-flat {

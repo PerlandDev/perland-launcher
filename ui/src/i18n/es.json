@@ -1188,6 +1188,7 @@
     }
   },
   "loading": {
+    "skin": "Trayendo tu skin…",
     "skins": "Preparando el estudio de skins…",
     "instances": "Cargando tus instancias…",
     "settings": "Cargando tu configuración…",
