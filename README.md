@@ -1,8 +1,104 @@
-# Perland Launcher
+<p align="center">
+  <img src="ui/src/assets/mark.svg" alt="Perland" width="112">
+</p>
 
-A free, open-source Minecraft launcher for Perland players, and anyone else. Packs stay in sync on their own: press Play and you're on the right version.
+<h1 align="center">Perland Launcher</h1>
 
-> Status: early development. See `docs/superpowers/specs/` for the design and `docs/superpowers/plans/` for the build plans.
+<p align="center">
+  <strong>Press Play. You're in.</strong><br>
+  A free, open-source Minecraft: Java Edition launcher that installs the game, your mods and your modpacks for you, and keeps them in sync on its own.
+</p>
+
+<p align="center">
+  <a href="https://perland.online/launcher"><strong>Download</strong></a> ·
+  <a href="https://github.com/PerlandDev/perland-launcher/releases">All releases</a> ·
+  Windows and Linux · English and Español · GPL-3.0
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/home.webp" alt="The Perland Launcher home screen: an instance's pixel-art landscape fills the window, with its name, Minecraft version and loader, time played, and a big yellow Play button" width="900">
+</p>
+
+## Why Perland Launcher
+
+Most launchers hand you a pile of settings. Perland Launcher hands you a **Play** button. Pick an instance, press Play, and the launcher does the rest: it downloads the right Minecraft version, the right Java, the right loader and every mod, then gets out of your way while you play.
+
+- **One big button.** Every instance is a full-screen card with its own pixel-art landscape. The path from opening the launcher to being in the game is always one obvious click.
+- **Modpacks that keep themselves up to date.** Packs sync on their own: when a server updates its mods, you update with it, and you can go back to the earlier version if you need to.
+- **Every loader, no fuss.** Vanilla, Fabric, Quilt, Forge and NeoForge. Mojang's official Java runtimes are fetched for you, so there's nothing to install first.
+- **Mods & more, built in.** Search and install modpacks, mods, resource packs and shaders. Drop a mod, a pack or a `.mrpack` anywhere on the window to add it. Missing Iris or Oculus for a shader? One click adds it.
+- **Bring your instances with you.** Import whole instances from Prism Launcher, MultiMC, CurseForge, the Modrinth App or ATLauncher, with their mods, worlds, settings and maps. The original folder is only read, never changed.
+- **A skin studio.** Paint on a 3D figure, build a skin from hundreds of pieces in your own colours, or pick from 500+ ready-made looks, then keep them all in your wardrobe.
+- **Servers in a few clicks.** Browse Perland's public servers and press Play to join with the right modpack already installed. With a Perland account, create a free server from any instance and send friends an invite link: they get the same mods automatically.
+- **Help that speaks your language.** When the game crashes, the launcher tells you why in plain words and offers the fix, such as giving Minecraft more memory, with the technical detail one click away.
+- **Make it yours.** Seven themes (or mix your own), the colour of your buttons, the font, the instance icons and the screen transitions.
+- **Medals and achievements.** Earn medals as you play and keep them on your Perland account.
+- **Bilingual from day one.** Every screen and every error exists in English and neutral Latin American Spanish.
+- **Always current.** The launcher updates itself in the background and tells you what's new after each update.
+- **Free and open.** GPL-3.0, no ads, no marketplace. Sign in with a Microsoft account that owns Minecraft: Java Edition, or play with an offline account.
+
+## A look inside
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/installing.webp" alt="Play turns into a progress bar while the launcher installs Minecraft 1.20.1: 37 of 40 files, 289 MB"></td>
+    <td width="50%"><img src="docs/screenshots/skins.webp" alt="The Skins screen: a 3D figure to paint on, the skin's texture map, a colour palette, painting tools and a wardrobe of saved skins"></td>
+  </tr>
+  <tr>
+    <td><b>Press Play and watch it go.</b> The first launch downloads Minecraft, Java, the loader and every mod; after that, it's straight into the game.</td>
+    <td><b>Skins.</b> Paint right on the 3D figure, build one from parts, or pick a look from the catalog, and keep them all in your wardrobe.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/servers.webp" alt="The Servers screen: public Perland servers as cards with their modpack, version, players and a Play button, with filters for mods, version, category, language and region"></td>
+    <td><img src="docs/screenshots/profile.webp" alt="The Profile: the player's skin on a figure, a checklist to connect a Microsoft and a Perland account, the accounts list and the latest medals"></td>
+  </tr>
+  <tr>
+    <td><b>Servers.</b> Find a Perland server, press Play, and the launcher sets up its modpack for you.</td>
+    <td><b>Your profile.</b> Your skin, your accounts and your latest medals in one place.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/crash-help.webp" alt="After a crash, the Activity panel says Minecraft ran out of memory, with buttons to raise its memory to 6 GB, copy a report for support, or see details"></td>
+    <td><img src="docs/screenshots/medals.webp" alt="Medals and achievements: earned medals in copper and iron, each with its next tier and progress"></td>
+  </tr>
+  <tr>
+    <td><b>Crash help.</b> Plain words about what went wrong, and a button that fixes it.</td>
+    <td><b>Medals and achievements.</b> Earn them by playing, then climb from copper to gold.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/personalize.webp" alt="Personalize: a preview of Play, and the themes Laminate, Stone, Night, Forest, Nether, End and Cherry, plus Customize theme"></td>
+    <td><img src="docs/screenshots/home-night.webp" alt="The home screen in the Night theme: blue-grey landscape and a periwinkle Play button"></td>
+  </tr>
+  <tr>
+    <td><b>Personalize.</b> Seven themes, or mix your own from two colours.</td>
+    <td><b>The Night theme.</b> Every theme recolours the whole launcher, landscapes included.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/home-es.webp" alt="The home screen in Spanish: Jugar, Servidores, Mods y más, Medallas y logros"></td>
+    <td><img src="docs/screenshots/welcome.webp" alt="The first-run welcome: Welcome to Perland, a free launcher for Minecraft, ready in a few clicks, with a Let's go button"></td>
+  </tr>
+  <tr>
+    <td><b>En español.</b> Every screen, message and error, in neutral Latin American Spanish.</td>
+    <td><b>Ready in a few clicks.</b> Pick a language, add an account, create an instance, play.</td>
+  </tr>
+</table>
+
+<sub>Screenshots are from the launcher's demo mode, with sample instances, servers and medals.</sub>
+
+## Download
+
+Get the latest version from **[perland.online/launcher](https://perland.online/launcher)**, or straight from GitHub:
+
+| System | Download |
+|---|---|
+| Windows (64-bit) | [PerlandLauncher-installer.exe](https://github.com/PerlandDev/perland-launcher/releases/download/channel-stable/PerlandLauncher-installer.exe) |
+| Linux (64-bit), any distribution | [PerlandLauncher.AppImage](https://github.com/PerlandDev/perland-launcher/releases/download/channel-stable/PerlandLauncher.AppImage) |
+| Debian, Ubuntu and derivatives | [PerlandLauncher.deb](https://github.com/PerlandDev/perland-launcher/releases/download/channel-stable/PerlandLauncher.deb) |
+
+Once installed, the launcher keeps itself up to date. macOS is planned. Want new features first? Switch the update channel to Beta in Settings → Launcher updates, or grab a pre-release from [Releases](https://github.com/PerlandDev/perland-launcher/releases).
+
+Signing in with Microsoft needs an account that owns Minecraft: Java Edition. The launcher is built from scratch on Rust and Tauri: it is not a fork of another launcher.
+
+Perland Launcher is not an official Minecraft product. It is not approved by or associated with Mojang or Microsoft.
 
 ## Develop
 
