@@ -137,6 +137,19 @@ describe('JoinServer', () => {
     expect(sent(calls, 'join_preview')).toEqual([]);
   });
 
+  it("says a pasted join address is the server's address, not its invite", async () => {
+    const { user, calls } = renderApp(<JoinServer invite="" />, { server: 'online' });
+    for (const address of ['qa-mcp-git.perland.world', 'play.example.com:25566']) {
+      await user.clear(screen.getByRole('textbox', { name: 'Invite link' }));
+      await user.type(screen.getByRole('textbox', { name: 'Invite link' }), address);
+      await user.click(screen.getByRole('button', { name: 'Check link' }));
+      expect(await screen.findByText("That's the server's address, not its invite link.")).toBeInTheDocument();
+      expect(screen.getByText('Paste the invite link instead: the address of the page you got it from.')).toBeInTheDocument();
+      expect(screen.queryByText("That isn't a Perland invite link.")).toBeNull();
+    }
+    expect(sent(calls, 'join_preview')).toEqual([]);
+  });
+
   it('relinks, warning when the link is for another server', async () => {
     const { user, calls } = renderApp(<JoinServer invite="" relinkFor="survival" />, { server: 'vanilla' });
     expect(await screen.findByRole('heading', { name: 'Use a new invite link' })).toBeInTheDocument();

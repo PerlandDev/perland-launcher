@@ -564,6 +564,9 @@ export function handleServer(
       const link = String(args.link ?? '').trim();
       const canonical = inviteCanonical(link);
       if (canonical) return canonical;
+      // A bare join address (`host` or `host:port`), roughly as the core's `is_server_address` reads it.
+      if (/^(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*\.?(?::\d{1,5})?$/i.test(link) && !/\.(?:mrpack|toml)$/i.test(link))
+        fail('pack', 'invite_server_address', "That's the server's address, not its invite link");
       const route = /^https:\/\/([^/?#@]+)\/api\/v1\/invites\/([A-Za-z0-9_-]{43})(?:\/|\/pack\/?|\/pack\/zip)?$/.exec(link);
       const [, host, token] = route ?? [];
       if (!host || !token) return null;

@@ -5,7 +5,7 @@ use base64::{engine::general_purpose::STANDARD, Engine};
 use launcher_core::telemetry::Counter;
 use launcher_core::{
     instances::{unix_now, Instance, ServerLink, SourceRef, UpdatePolicy},
-    invite::{EngineView, InviteLink},
+    invite::{is_server_address, server_address_pasted, EngineView, InviteLink},
     sources::{perland, PackInput},
     ErrorCode, LauncherError, Result,
 };
@@ -73,11 +73,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// The canonical invite `link` stands for: itself when it is an invite, the Perland site's
-    /// invite when it is the invite page's Copy modpack link, `None` for anything else (a pack
-    /// link). New instance and Join server ask this before treating a link as a pack.
+    /// invite when it is the invite page's Copy modpack link, `invite_server_address` for a bare
+    /// join address (`host[:port]`), `None` for anything else (a pack link). New instance and
+    /// Join server ask this before treating a link as a pack.
     pub async fn invite_from_link(&self, link: &str) -> Result<Option<String>> {
         if let Ok(invite) = InviteLink::parse(link) {
             return Ok(Some(invite.canonical()));
+        }
+        if is_server_address(link) {
+            return Err(server_address_pasted());
         }
         let invite = self.runner.engine_invite(link.trim().to_string()).await?;
         Ok(invite.map(|l| l.canonical()))
@@ -425,6 +429,14 @@ mod tests {
                 .unwrap(),
             None
         );
+        // A server's join address isn't its invite: the player is told what to paste instead.
+        for address in ["qa-mcp-git.perland.world", "play.example.com:25566"] {
+            assert_eq!(
+                core.invite_from_link(address).await.unwrap_err().code,
+                ErrorCode::InviteServerAddress,
+                "{address}"
+            );
+        }
         // A modpack link on an Engine that isn't the site's can't be joined.
         *runner.public_invites.lock().unwrap() = false;
         assert_eq!(

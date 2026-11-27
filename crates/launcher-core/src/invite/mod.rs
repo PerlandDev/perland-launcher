@@ -11,7 +11,10 @@ pub use client::{
     InviteTiming,
 };
 pub use engine_link::{pack_link_refused, EngineInviteLink};
-pub use link::{invite_link_cases, shown_invite, InviteLink, InviteLinkCase, TOKEN_LEN};
+pub use link::{
+    invite_link_cases, is_server_address, server_address_pasted, shown_invite, InviteLink,
+    InviteLinkCase, TOKEN_LEN,
+};
 pub use mods::{InviteMod, InviteMods, ModCounts, ModSource};
 pub use view::{
     non_empty, shown_name, InviteAddress, InviteGame, InviteLauncher, InviteModrinth, InvitePack,
