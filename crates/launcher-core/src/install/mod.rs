@@ -115,8 +115,8 @@ pub fn library_artifact(lib: &Library, dirs: &LauncherDirs) -> Result<Option<Dow
             Some(path) => path.clone(),
             None => maven_path(&lib.name)?,
         };
-        return Ok(Some(DownloadRequest::new(
-            art.url.clone(),
+        return Ok(Some(library_request(
+            &art.url,
             join_remote(&libraries, &rel)?,
             Hashes::sha1(&art.sha1),
             Some(art.size),
@@ -131,12 +131,45 @@ pub fn library_artifact(lib: &Library, dirs: &LauncherDirs) -> Result<Option<Dow
         md5: None,
         murmur2: None,
     };
-    Ok(Some(DownloadRequest::new(
-        format!("{}/{}", base.trim_end_matches('/'), rel),
+    Ok(Some(library_request(
+        &format!("{}/{}", base.trim_end_matches('/'), rel),
         join_remote(&libraries, &rel)?,
         hashes,
         lib.size,
     )))
+}
+
+/// A library download, with its URL passed through [`library_urls`].
+fn library_request(url: &str, dest: PathBuf, hashes: Hashes, size: Option<u64>) -> DownloadRequest {
+    let urls = library_urls(url, hashes.cache_key().is_some());
+    DownloadRequest {
+        urls,
+        dest,
+        hashes,
+        size,
+    }
+}
+
+/// The URLs to try for a library that loader metadata lists at `url`. Plain `http://` is
+/// fetched as `https://`; the original stays as a fallback only when the file has a hash that
+/// is verified after download (`hashed`). Addresses on this computer (tests, local pack
+/// development) are kept as they are, and so is anything that doesn't parse.
+pub fn library_urls(url: &str, hashed: bool) -> Vec<String> {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return vec![url.to_string()];
+    };
+    if parsed.scheme() != "http" || crate::http::is_loopback(&parsed) {
+        return vec![url.to_string()];
+    }
+    let mut secure = parsed.clone();
+    if secure.set_scheme("https").is_err() {
+        return vec![url.to_string()];
+    }
+    let mut urls = vec![secure.to_string()];
+    if hashed {
+        urls.push(parsed.to_string());
+    }
+    urls
 }
 
 /// Some loader profiles (Quilt v3, older Fabric) publish libraries without hashes. Give each such
@@ -238,8 +271,8 @@ pub fn plan_libraries(
         };
         if let Some(rel) = rel {
             let jar = join_remote(&dirs.libraries(), &rel)?;
-            plan.downloads.push(DownloadRequest::new(
-                art.url.clone(),
+            plan.downloads.push(library_request(
+                &art.url,
                 jar.clone(),
                 Hashes::sha1(&art.sha1),
                 Some(art.size),
@@ -571,6 +604,71 @@ mod tests {
         );
         assert!(d.hashes.is_empty());
         assert_eq!(d.size, None);
+    }
+
+    fn lib(json: &str) -> Library {
+        serde_json::from_str(json).unwrap()
+    }
+
+    /// Old Forge profiles name `http://files.minecraftforge.net/maven/`; the https form of
+    /// that host serves the same files.
+    #[test]
+    fn plain_http_library_urls_are_fetched_over_https() {
+        let old_forge = lib(
+            r#"{"name":"net.minecraftforge:forge:1.7.10-10.13.4.1614-1.7.10","url":"http://files.minecraftforge.net/maven/"}"#,
+        );
+        let d = library_artifact(&old_forge, &dirs()).unwrap().unwrap();
+        assert_eq!(
+            d.urls,
+            ["https://files.minecraftforge.net/maven/net/minecraftforge/forge/1.7.10-10.13.4.1614-1.7.10/forge-1.7.10-10.13.4.1614-1.7.10.jar"],
+            "no hash, so no plain-http fallback"
+        );
+
+        let hashed = lib(
+            r#"{"name":"a:b:1","downloads":{"artifact":{"url":"http://maven.example/a/b/1/b-1.jar","sha1":"aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d","size":5}}}"#,
+        );
+        let d = library_artifact(&hashed, &dirs()).unwrap().unwrap();
+        assert_eq!(
+            d.urls,
+            [
+                "https://maven.example/a/b/1/b-1.jar",
+                "http://maven.example/a/b/1/b-1.jar"
+            ],
+            "a verified hash allows the original as a fallback"
+        );
+
+        let local = lib(r#"{"name":"a:b:1","url":"http://127.0.0.1:8080/maven/"}"#);
+        let d = library_artifact(&local, &dirs()).unwrap().unwrap();
+        assert_eq!(d.urls, ["http://127.0.0.1:8080/maven/a/b/1/b-1.jar"]);
+    }
+
+    #[test]
+    fn library_url_scheme_rules() {
+        assert_eq!(
+            library_urls("https://a.example/x.jar", false),
+            ["https://a.example/x.jar"]
+        );
+        assert_eq!(
+            library_urls("http://localhost:9/x.jar", false),
+            ["http://localhost:9/x.jar"]
+        );
+        assert_eq!(
+            library_urls("http://[::1]:9/x.jar", true),
+            ["http://[::1]:9/x.jar"]
+        );
+        assert_eq!(
+            library_urls("http://a.example:8080/x.jar", false),
+            ["https://a.example:8080/x.jar"]
+        );
+        assert_eq!(
+            library_urls("HTTP://a.example/x.jar", true),
+            ["https://a.example/x.jar", "http://a.example/x.jar"]
+        );
+        assert_eq!(
+            library_urls("not a url", false),
+            ["not a url"],
+            "left for the downloader to reject"
+        );
     }
 
     #[test]

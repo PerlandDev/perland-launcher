@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { MOCK_FREE_LIMITS } from '../../ipc/mockFree';
 import { renderWithProviders } from '../../test/render';
 import { ServerOptions } from './ServerOptions';
-import { initialOptions, isOptionField, settingsOf, useServerOptions } from './optionRules';
+import { initialOptions, isOptionField, settingsOf, TEAM_OPTION_LIMITS, useServerOptions } from './optionRules';
 
 const base = initialOptions(MOCK_FREE_LIMITS);
 
@@ -22,6 +22,13 @@ describe('settingsOf', () => {
     expect(settingsOf({ ...base, difficulty: 'hard', seed: ' 12345 ', motd: 'Hola' })).toEqual({ difficulty: 'hard', seed: '12345', motd: 'Hola' });
     // Back to the default is no change.
     expect(settingsOf({ ...base, maxPlayers: '10', seed: '   ' })).toBeNull();
+  });
+
+  it('sends online mode only when a team server turns it off', () => {
+    const team = initialOptions(TEAM_OPTION_LIMITS);
+    expect(team.onlineMode).toBe(true);
+    expect(settingsOf(team)).toBeNull();
+    expect(settingsOf({ ...team, onlineMode: false })).toEqual({ onlineMode: false });
   });
 
   it('sends hardcore without a difficulty, whatever was picked before', () => {
@@ -64,7 +71,7 @@ describe('ServerOptions', () => {
   });
 
   it('places only the options it has a field for', () => {
-    for (const field of ['settings.gameMode', 'settings.difficulty', 'settings.maxPlayers', 'settings.pvp', 'settings.whitelist', 'settings.seed', 'settings.motd']) {
+    for (const field of ['settings.gameMode', 'settings.difficulty', 'settings.maxPlayers', 'settings.pvp', 'settings.whitelist', 'settings.seed', 'settings.motd', 'settings.onlineMode']) {
       expect(isOptionField(field)).toBe(true);
     }
     for (const field of ['settings.hardcore', 'settings.', 'version', 'name']) expect(isOptionField(field)).toBe(false);
@@ -83,6 +90,12 @@ describe('ServerOptions', () => {
     expect(screen.getByRole('textbox', { name: 'World seed' })).toHaveValue('');
     expect(screen.getByRole('textbox', { name: 'Server list message' })).toHaveValue('');
     expect(sentSettings()).toBeNull();
+  });
+
+  it('has no online mode on a free server, which always checks Minecraft accounts', async () => {
+    const { user } = renderWithProviders(<Harness />);
+    await user.click(screen.getByRole('button', { name: /^Options/ }));
+    expect(screen.queryByRole('switch', { name: 'Online mode' })).toBeNull();
   });
 
   it('locks the difficulty to Hard with Hardcore, and gives back the earlier pick after', async () => {

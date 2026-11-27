@@ -11,5 +11,8 @@
   {
     "pvp": false
   },
+  {
+    "onlineMode": false
+  },
   {}
 ]

@@ -46,5 +46,9 @@
   "updateHold": {
     "since": 1791720000,
     "version": "1.0.3"
+  },
+  "serverTrust": {
+    "server": "address:play.example.com:25566",
+    "at": 1791720000
   }
 }

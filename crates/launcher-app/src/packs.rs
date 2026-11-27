@@ -193,7 +193,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             PackAddRequest::Link { url } => match PackInput::parse(&url)? {
                 PackInput::MrpackFile { .. } => return Err(link_invalid()),
                 // The UI routes invite links to Join server first; this is the same thing.
-                PackInput::Perland { .. } => return self.join_add(&url).await,
+                PackInput::Perland { .. } => return self.join_add(&url, None).await,
                 input => input,
             },
             PackAddRequest::File { path } => {
@@ -218,6 +218,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let added = self.runner.add_pack(input).await;
         if let Ok(instance) = &added {
             self.telemetry_learn(instance);
+            self.medals_note(crate::medals::MedalEvent::PackInstalled)
+                .await;
         }
         self.counted(Counter::PacksInstalled, added)
     }
@@ -234,7 +236,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// The banner's Update: take the pack's update without playing.
     pub async fn pack_update(self: &Arc<Self>, id: &str) -> Result<()> {
         let instance = self.pack_instance(id).await?;
-        let checks = self.checks_for_updates(&instance).await;
+        let gate = self.trust_gate(&instance).await?;
+        let checks = gate == crate::trust::Gate::Open && self.checks_for_updates(&instance).await;
         self.start_run(id, instance, None, checks)
     }
 
@@ -258,6 +261,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
                             updated: vec![],
                             removed: vec![],
                             kept: vec![],
+                            files: vec![],
+                            held: false,
                         }),
                         None,
                     ),
@@ -424,7 +429,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         if let Some(dir) = &self.config.downloads_dir {
             let found = state.scanner.scan(dir, &state.remaining).await?;
             if !found.is_empty() {
-                self.runner.import_manual(found.clone()).await?;
+                self.runner
+                    .import_manual(id.to_string(), found.clone())
+                    .await?;
                 state
                     .remaining
                     .retain(|f| !found.iter().any(|(got, _)| got.path == f.path));
@@ -533,6 +540,8 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         make_dir_in_instance(&self.instances.instance_dir(id), &custom, id).await?;
         write_custom(&custom, CUSTOM_STEM, &bytes, ext).await?;
         self.instances.save(&instance).await?;
+        self.medals_note(crate::medals::MedalEvent::OwnPicture)
+            .await;
         Ok(instance)
     }
 
@@ -758,7 +767,7 @@ mod tests {
     async fn a_servers_pack_status_comes_from_its_view() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         lockfile::save_pack(&core.instances.perland_dir(&id), &desired("1.0.4", vec![]))
             .await
             .unwrap();

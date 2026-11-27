@@ -90,6 +90,10 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 pinging.telemetry_start().await;
             });
+            let medals = core.clone();
+            tauri::async_runtime::spawn(async move {
+                medals.medals_start().await;
+            });
             let build = BuildKind::current();
             // Not `settings_get`: its one-time damaged-settings warning would go to no listener.
             let channel = tauri::async_runtime::block_on(core.update_channel());
@@ -157,6 +161,7 @@ fn main() {
             commands::instances_list,
             commands::instance_reorder,
             commands::playtime_list,
+            commands::medals_view,
             commands::instance_create,
             commands::import_inspect,
             commands::import_instance,
@@ -185,8 +190,11 @@ fn main() {
             commands::mod_icon,
             commands::mod_set_enabled,
             commands::mods_add,
+            commands::drop_inspect,
+            commands::drop_add,
             commands::mod_remove,
             commands::content_list,
+            commands::shader_support,
             commands::content_remove,
             commands::open_folder,
             commands::java_test,
@@ -225,6 +233,10 @@ fn main() {
             commands::server_news_opened,
             commands::news_image,
             commands::join_add,
+            commands::join_trust,
+            commands::instance_trust,
+            commands::instance_trust_set,
+            commands::instance_trust_forget,
             commands::server_status,
             commands::server_relink,
             commands::server_link,
@@ -302,8 +314,14 @@ fn main() {
             commands::skin_delete,
             commands::skin_export,
             commands::skin_current,
+            commands::player_skin,
             commands::skin_sync_current,
             commands::skin_wear,
+            commands::skin_catalog,
+            commands::skin_catalog_file,
+            commands::skin_painting,
+            commands::skin_look_save,
+            commands::skin_look_clear,
             commands::quit,
         ])
         .build(tauri::generate_context!())
@@ -432,6 +450,7 @@ fn build_core(
         build: BuildKind::current(),
         launcher_version: version,
         system_memory_mb: host::system_memory_mb(),
+        graphics: launcher_core::graphics::detect(),
         downloads_dir: launcher_core::sync::manual::downloads_dir(),
         panel: panel_url(
             std::env::var("PERLAND_PANEL_URL").ok().as_deref(),

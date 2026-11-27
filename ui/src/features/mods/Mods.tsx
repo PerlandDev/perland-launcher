@@ -1,5 +1,4 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -13,7 +12,7 @@ import { Button } from '../../ui/Button';
 import { Dialog } from '../../ui/Dialog';
 import { ErrorCard } from '../../ui/ErrorCard';
 import { formatBytes } from '../../ui/format';
-import { Folder, Plus, Search, Trash } from '../../ui/Icon';
+import { Folder, Gear, Plus, Search, Trash } from '../../ui/Icon';
 import { ScreenFrame } from '../../ui/ScreenFrame';
 import { Toggle } from '../../ui/Toggle';
 import { useSingleFlight } from '../../ui/useSingleFlight';
@@ -52,10 +51,10 @@ function ModList({ id }: { id: string }) {
   const refetchMods = source.refetch;
   const { toggle, add, remove } = useModMutations(id, { inline: true });
   const [removing, setRemoving] = useState<LocalMod | null>(null);
-  const [dragging, setDragging] = useState(false);
   const [picking, setPicking] = useState(false);
   const [opening, setOpening] = useState(false);
-  // Failures from the file dialog, drag and drop, opening the folder, toggling and adding.
+  // Failures from the file dialog, opening the folder, toggling and adding. (Drops on the window go through
+  // DropZone, which reports in a toast.)
   const [failure, setFailure] = useState<{ error: unknown } | null>(null);
   const fail = useCallback((error: unknown) => setFailure({ error }), []);
   // What happened to the files the player just gave us, when it is not an error.
@@ -89,33 +88,6 @@ function ModList({ id }: { id: string }) {
     },
     [addOnce, addMods, fail],
   );
-
-  useEffect(() => {
-    let alive = true;
-    let unlisten: (() => void) | undefined;
-    const listen = async () => {
-      try {
-        const stop = await getCurrentWebview().onDragDropEvent((event) => {
-          const { type } = event.payload;
-          if (type === 'enter' || type === 'over') setDragging(true);
-          else if (type === 'leave') setDragging(false);
-          else if (type === 'drop') {
-            setDragging(false);
-            submit(event.payload.paths);
-          }
-        });
-        if (alive) unlisten = stop;
-        else stop();
-      } catch (error: unknown) {
-        if (alive) fail(error);
-      }
-    };
-    void listen();
-    return () => {
-      alive = false;
-      unlisten?.();
-    };
-  }, [submit, fail]);
 
   // Players add files through Open folder and come back: show what is there now.
   useEffect(() => {
@@ -182,19 +154,23 @@ function ModList({ id }: { id: string }) {
         </>
       }
     >
-      <div className={`grid max-w-3xl gap-4 ${dragging ? 'outline-2 outline-offset-8 outline-amber outline-dashed' : ''}`}>
+      <div className="grid max-w-3xl gap-4">
         <ContentTabs id={id} active="mod" />
         {instance && !pack && !instance.game.loader && (
           <div className="note-plate">
             <p className="min-w-0 flex-1">{t('mods.vanillaNote')}</p>
-            {/* Modpacks bring their own loader, so this is the way forward for a vanilla instance. */}
-            <Button variant="ghost" icon={<Search />} className="shrink-0 self-center" onClick={() => navigate({ name: 'browse', kind: 'modpack' })}>
-              {t('browse.browseModpacks')}
-            </Button>
+            {/* Two ways forward for a vanilla instance: give it a loader, or start from a modpack, which brings its own. */}
+            <div className="flex shrink-0 flex-wrap gap-2 self-center">
+              <Button variant="ghost" icon={<Gear />} onClick={() => navigate({ name: 'instanceSettings', id, focus: 'loader' })}>
+                {t('mods.chooseLoader')}
+              </Button>
+              <Button variant="ghost" icon={<Search />} onClick={() => navigate({ name: 'browse', kind: 'modpack' })}>
+                {t('browse.browseModpacks')}
+              </Button>
+            </div>
           </div>
         )}
         {running && <p className="note-plate">{t('mods.running')}</p>}
-        {dragging && <p className="font-semibold text-amber">{t('mods.dropHere')}</p>}
         {failure && <ErrorCard error={failure.error} />}
         {notice && (
           <p role="status" className="note-plate">

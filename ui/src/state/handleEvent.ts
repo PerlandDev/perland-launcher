@@ -35,6 +35,10 @@ export function handleEvent(event: AppEvent) {
     manageLog.end(event.tenantId, event.stack);
     return;
   }
+  if (event.type === 'medals_changed') {
+    void queryClient.invalidateQueries({ queryKey: qk.medals });
+    return;
+  }
   runStore.apply(event);
   if (event.type === 'warning') pushError(event.error);
   // During first-run setup the link waits in Rust; the shell takes it once setup is done.

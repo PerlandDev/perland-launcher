@@ -83,6 +83,13 @@ export function advancementName(id: string, t: TFunction): string {
   return parts ? humanize(parts.path) : id;
 }
 
+/** How to get a vanilla advancement, in our own words; null for a mod's or a newer version's. */
+export function advancementHow(id: string, t: TFunction): string | null {
+  if (!isKnown(id)) return null;
+  const [tab, name] = id.slice('minecraft:'.length).split('/');
+  return t(`achievements.how.${tab}.${name}`);
+}
+
 /** A group's heading: a vanilla tab's name, or a mod's namespace as it is ("create"). */
 export function groupName(group: string, t: TFunction): string {
   if (group.startsWith(MOD)) return group.slice(MOD.length);

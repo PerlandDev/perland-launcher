@@ -11,7 +11,8 @@ import { Mods } from './Mods';
 
 it('Home opens "Mods & packs" on the Mods tab', async () => {
   const { user } = renderApp(<Home id="asalith-fields" />);
-  await user.click(await screen.findByRole('button', { name: 'Mods & packs' }));
+  // The key carries the mod count once it is known.
+  await user.click(await screen.findByRole('button', { name: /^Mods & packs/ }));
   expect(routeSnapshot()).toEqual({ name: 'mods', id: 'asalith-fields' });
 });
 
@@ -60,7 +61,8 @@ it('finds resource packs for this instance and opens the folder', async () => {
 it('lists shaders and opens the shader folder', async () => {
   const { user, calls } = renderApp(<Mods id="asalith-fields" tab="shader" />);
   expect(await screen.findByText('ComplementaryReimagined')).toBeInTheDocument();
-  expect(screen.getByText('Turn it on in Options › Video Settings › Shader Packs.')).toBeInTheDocument();
+  // Asalith Fields has no Iris yet, so the shader-mod note stands where the Shader Packs hint would.
+  expect(await screen.findByText("Shaders run through Iris, and this instance doesn't have it yet.")).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Open folder' }));
   expect(sent(calls, 'open_folder')).toEqual([{ target: { kind: 'shader_packs', id: 'asalith-fields' } }]);
   await user.click(screen.getByRole('button', { name: 'Find shaders' }));
@@ -91,6 +93,17 @@ it('tells vanilla players shaders need a loader, with no Find shaders button', a
   // The note already explains the empty folder; "Find some" would point at a button that isn't there.
   await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
   expect(screen.queryByText(/No shaders yet/)).not.toBeInTheDocument();
+});
+
+it("opens the instance's loader choice from the vanilla shaders note", async () => {
+  const { user, unmount } = renderApp(<Mods id="creative-flat" tab="shader" />);
+  await user.click(await screen.findByRole('button', { name: 'Choose a loader' }));
+  expect(routeSnapshot()).toEqual({ name: 'instanceSettings', id: 'creative-flat', focus: 'loader' });
+  unmount();
+  // Resource packs work on vanilla: nothing to choose there.
+  renderApp(<Mods id="creative-flat" tab="resource_pack" />);
+  await screen.findByText(/No resource packs yet/);
+  expect(screen.queryByRole('button', { name: 'Choose a loader' })).not.toBeInTheDocument();
 });
 
 it('keeps Remove off while the game is running', async () => {

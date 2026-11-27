@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { installErrorReporting, REPORT_CAP } from './reportErrors';
+import { installErrorReporting, reportCaught, REPORT_CAP } from './reportErrors';
 
 // A target of its own: an error event on the real window would count as the test's own uncaught error.
 let target = new EventTarget() as unknown as Window;
@@ -71,4 +71,17 @@ it('stops listening when asked', () => {
   stop();
   throwError(new Error('after'));
   expect(send).not.toHaveBeenCalled();
+});
+
+it('reports a screen a boundary caught as an exception too, since it never reaches the window', () => {
+  const send = setup();
+  const boom = new Error('Failed to fetch dynamically imported module');
+  reportCaught(boom);
+  reportCaught(boom);
+  expect(send).toHaveBeenCalledTimes(1);
+  expect(send).toHaveBeenCalledWith('exception', 'Error: Failed to fetch dynamically imported module', boom.stack);
+  // Once reporting stops, a caught error goes nowhere.
+  stop();
+  reportCaught(new Error('after'));
+  expect(send).toHaveBeenCalledTimes(1);
 });

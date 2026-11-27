@@ -5,7 +5,7 @@ import App from "./App";
 import "./i18n";
 import { onAppEvent } from "./ipc/events";
 import type { ServerScenario } from "./ipc/mockServers";
-import { theme, uiFont } from "./ipc/schema";
+import { theme, transitions, uiFont } from "./ipc/schema";
 import { applyAppearance, readMirror } from "./state/appearance";
 import { handleEvent } from "./state/handleEvent";
 import { hydrateRuns } from "./state/hydrateRuns";
@@ -23,7 +23,7 @@ async function bootstrap() {
   // The Vite dev server (tauri dev, dev:mock) keeps the browser's menu and Inspect for developers.
   if (!import.meta.env.DEV) installBrowserGuard(document);
   if (import.meta.env.MODE === "mock") {
-    const { installMock, mockUpdateState } = await import("./ipc/mock");
+    const { installMock, mockUpdateState, GRAPHICS_SCENARIOS } = await import("./ipc/mock");
     const { perlandScenario, perlandSignInOutcome } = await import(
       "./ipc/mockPerland"
     );
@@ -34,6 +34,7 @@ async function bootstrap() {
     const params = new URLSearchParams(window.location.search);
     const themeParam = theme.safeParse(params.get("theme"));
     const fontParam = uiFont.safeParse(params.get("font"));
+    const transitionsParam = transitions.safeParse(params.get("transitions"));
     installMock({
       firstRun: params.has("firstRun"),
       crash: crashScenario(params.get("crash")),
@@ -52,14 +53,16 @@ async function bootstrap() {
       free: freeScenario(params.get("free")),
       manage: manageScenario(params.get("manage")),
       teams: teamsScenario(params.get("teams")) ?? "some",
-      skins: (["seeded", "empty", "rejected", "loose", "default"] as const).find(
+      skins: (["seeded", "empty", "rejected", "loose", "default", "nocatalog"] as const).find(
         (v) => v === params.get("skins"),
       ),
       server: (params.get("server") as ServerScenario | null) ?? undefined,
+      graphics: GRAPHICS_SCENARIOS.find((v) => v === params.get("graphics")),
       railExpanded: params.has("railExpanded"),
       iconShape: params.get("iconShape") === "round" ? "round" : undefined,
       theme: themeParam.success ? themeParam.data : undefined,
       font: fontParam.success ? fontParam.data : undefined,
+      transitions: transitionsParam.success ? transitionsParam.data : undefined,
       pictureBackground: !params.has("noPicture"),
       held: params.has("held"),
       share: (["some", "all", "error"] as const).find(

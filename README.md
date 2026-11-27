@@ -1,8 +1,104 @@
-# Perland Launcher
+<p align="center">
+  <img src="ui/src/assets/mark.svg" alt="Perland" width="112">
+</p>
 
-A free, open-source Minecraft launcher for Perland players, and anyone else. Packs stay in sync on their own: press Play and you're on the right version.
+<h1 align="center">Perland Launcher</h1>
 
-> Status: early development. See `docs/superpowers/specs/` for the design and `docs/superpowers/plans/` for the build plans.
+<p align="center">
+  <strong>Press Play. You're in.</strong><br>
+  A free, open-source Minecraft: Java Edition launcher that installs the game, your mods and your modpacks for you, and keeps them in sync on its own.
+</p>
+
+<p align="center">
+  <a href="https://perland.online/launcher"><strong>Download</strong></a> ·
+  <a href="https://github.com/PerlandDev/perland-launcher/releases">All releases</a> ·
+  Windows and Linux · English and Español · GPL-3.0
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/home.webp" alt="The Perland Launcher home screen: an instance's pixel-art landscape fills the window, with its name, Minecraft version and loader, time played, and a big yellow Play button" width="900">
+</p>
+
+## Why Perland Launcher
+
+Most launchers hand you a pile of settings. Perland Launcher hands you a **Play** button. Pick an instance, press Play, and the launcher does the rest: it downloads the right Minecraft version, the right Java, the right loader and every mod, then gets out of your way while you play.
+
+- **One big button.** Every instance is a full-screen card with its own pixel-art landscape. The path from opening the launcher to being in the game is always one obvious click.
+- **Modpacks that keep themselves up to date.** Packs sync on their own: when a server updates its mods, you update with it, and you can go back to the earlier version if you need to.
+- **Every loader, no fuss.** Vanilla, Fabric, Quilt, Forge and NeoForge. Mojang's official Java runtimes are fetched for you, so there's nothing to install first.
+- **Mods & more, built in.** Search and install modpacks, mods, resource packs and shaders. Drop a mod, a pack or a `.mrpack` anywhere on the window to add it. Missing Iris or Oculus for a shader? One click adds it.
+- **Bring your instances with you.** Import whole instances from Prism Launcher, MultiMC, CurseForge, the Modrinth App or ATLauncher, with their mods, worlds, settings and maps. The original folder is only read, never changed.
+- **A skin studio.** Paint on a 3D figure, build a skin from hundreds of pieces in your own colours, or pick from 500+ ready-made looks, then keep them all in your wardrobe.
+- **Servers in a few clicks.** Browse Perland's public servers and press Play to join with the right modpack already installed. With a Perland account, create a free server from any instance and send friends an invite link: they get the same mods automatically.
+- **Help that speaks your language.** When the game crashes, the launcher tells you why in plain words and offers the fix, such as giving Minecraft more memory, with the technical detail one click away.
+- **Make it yours.** Seven themes (or mix your own), the colour of your buttons, the font, the instance icons and the screen transitions.
+- **Medals and achievements.** Earn medals as you play and keep them on your Perland account.
+- **Bilingual from day one.** Every screen and every error exists in English and neutral Latin American Spanish.
+- **Always current.** The launcher updates itself in the background and tells you what's new after each update.
+- **Free and open.** GPL-3.0, no ads, no marketplace. Sign in with a Microsoft account that owns Minecraft: Java Edition, or play with an offline account.
+
+## A look inside
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/installing.webp" alt="Play turns into a progress bar while the launcher installs Minecraft 1.20.1: 12 of 40 files, 94 MB"></td>
+    <td width="50%"><img src="docs/screenshots/skins.webp" alt="The Skins screen: a 3D figure to paint on, the skin's texture map, a colour palette, painting tools and a wardrobe of saved skins"></td>
+  </tr>
+  <tr>
+    <td><b>Press Play and watch it go.</b> The first launch downloads Minecraft, Java, the loader and every mod; after that, it's straight into the game.</td>
+    <td><b>Skins.</b> Paint right on the 3D figure, build one from parts, or pick a look from the catalog, and keep them all in your wardrobe.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/servers.webp" alt="The Servers screen: public Perland servers as cards with their modpack, version, players and a Play button, with filters for mods, version, category, language and region"></td>
+    <td><img src="docs/screenshots/profile.webp" alt="The Profile: the player's skin on a figure, a checklist to connect a Microsoft and a Perland account, the accounts list and the latest medals"></td>
+  </tr>
+  <tr>
+    <td><b>Servers.</b> Find a Perland server, press Play, and the launcher sets up its modpack for you.</td>
+    <td><b>Your profile.</b> Your skin, your accounts and your latest medals in one place.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/crash-help.webp" alt="After a crash, the Activity panel says Minecraft ran out of memory, with buttons to raise its memory to 6 GB, copy a report for support, or see details"></td>
+    <td><img src="docs/screenshots/medals.webp" alt="Medals and achievements: earned medals in copper and iron, each with its next tier and progress"></td>
+  </tr>
+  <tr>
+    <td><b>Crash help.</b> Plain words about what went wrong, and a button that fixes it.</td>
+    <td><b>Medals and achievements.</b> Earn them by playing, then climb from copper to gold.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/personalize.webp" alt="Personalize: a preview of Play, and the themes Laminate, Stone, Night, Forest, Nether, End and Cherry, plus Customize theme"></td>
+    <td><img src="docs/screenshots/home-night.webp" alt="The home screen in the Night theme: blue-grey landscape and a periwinkle Play button"></td>
+  </tr>
+  <tr>
+    <td><b>Personalize.</b> Seven themes, or mix your own from two colours.</td>
+    <td><b>The Night theme.</b> Every theme recolours the whole launcher, landscapes included.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/home-es.webp" alt="The home screen in Spanish: Jugar, Servidores, Mods y más, Medallas y logros"></td>
+    <td><img src="docs/screenshots/welcome.webp" alt="The first-run welcome: Welcome to Perland, a free launcher for Minecraft, ready in a few clicks, with a Let's go button"></td>
+  </tr>
+  <tr>
+    <td><b>En español.</b> Every screen, message and error, in neutral Latin American Spanish.</td>
+    <td><b>Ready in a few clicks.</b> Pick a language, add an account, create an instance, play.</td>
+  </tr>
+</table>
+
+<sub>Screenshots are from the launcher's demo mode, with sample instances, servers and medals.</sub>
+
+## Download
+
+Get the latest version from **[perland.online/launcher](https://perland.online/launcher)**, or straight from GitHub:
+
+| System | Download |
+|---|---|
+| Windows (64-bit) | [PerlandLauncher-installer.exe](https://github.com/PerlandDev/perland-launcher/releases/download/channel-stable/PerlandLauncher-installer.exe) |
+| Linux (64-bit), any distribution | [PerlandLauncher.AppImage](https://github.com/PerlandDev/perland-launcher/releases/download/channel-stable/PerlandLauncher.AppImage) |
+| Debian, Ubuntu and derivatives | [PerlandLauncher.deb](https://github.com/PerlandDev/perland-launcher/releases/download/channel-stable/PerlandLauncher.deb) |
+
+Once installed, the launcher keeps itself up to date. macOS is planned. Want new features first? Switch the update channel to Beta in Settings → Launcher updates, or grab a pre-release from [Releases](https://github.com/PerlandDev/perland-launcher/releases).
+
+Signing in with Microsoft needs an account that owns Minecraft: Java Edition. The launcher is built from scratch on Rust and Tauri: it is not a fork of another launcher.
+
+Perland Launcher is not an official Minecraft product. It is not approved by or associated with Mojang or Microsoft.
 
 ## Develop
 
@@ -23,7 +119,7 @@ Set `PERLAND_SITE_URL` (an https origin, or http on this computer) to read the p
 
 Set `PERLAND_PANEL_URL` (https, or http on this computer) to the Perland panel, and the servers the player owns get **Manage in Perland**, which opens `<panel>/stacks/<name>` in the browser. The app reads it when it starts, else uses the value it was built with; without one there is no button.
 
-Microsoft sign-in uses the official Minecraft Launcher's public client (`00000000402b5328`) by default: Microsoft's page opens in a window of the launcher, which reads the code off `https://login.live.com/oauth20_desktop.srf` (the only redirect that client takes) and closes. That window keeps no cookies, so every sign-in can pick an account. To sign in with Perland's own Azure app instead (the browser and a loopback redirect), build with the repository variable `PERLAND_MS_CLIENT_ID` (a GUID); a dev run (`tauri dev`) can set it in the environment, and shipped builds ignore the runtime value. Refresh tokens belong to the app that issued them, so switching apps signs everyone out once.
+Microsoft sign-in uses the official Minecraft Launcher's public client: Microsoft's page opens in a window of the launcher, which keeps no cookies, so every sign-in can pick an account.
 
 ### Cloud (Linux)
 
@@ -31,40 +127,7 @@ Microsoft sign-in uses the official Minecraft Launcher's public client (`0000000
 
 ## Releasing
 
-Releases come from the manual **Release** workflow: Actions → **Release** → Run workflow. Pick `beta` or `stable`, and untick **Dry run** to publish. Beta may run from any branch; stable only from `main`. Every publish is public, so ask the owner first.
-
-- The version is computed from the date and the tags (`scripts/release/lib.mjs`, `nextVersion`): CalVer `YYYY.M.MICRO`, with the month in UTC and without a leading zero, so it stays valid SemVer for Cargo, the updater and the setup app (`2026.11.0`, `2027.1.2`). `MICRO` counts the month's releases from 0. Beta is `<base>-beta.N`, stable is `<base>`. While a base has betas and no stable, the next beta and the stable keep that base, even in a later month; after its stable, the next release starts a new base. Nothing is bumped by hand: `[workspace.package] version` in `Cargo.toml` is only what dev builds report, and the workflow sets the release version at build time.
-- The required secrets are `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The public key in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`) must match that signing key, or installed launchers will reject every update. The workflow enforces this: its manifest step (`cli.mjs manifest`) reads the 8-byte minisign key id of every `.sig` and of the committed public key, and stops before anything is published if any differ. After a key rotation, commit the new public key before releasing. The repository variable `PERLAND_PANEL_URL` is built into released launchers (see Develop); unset, they offer no Manage in Perland. `PERLAND_MS_CLIENT_ID` is built in the same way; unset, the build signs in with the Minecraft Launcher's client. Set, it signs in with that Azure app, which Minecraft turns down until Mojang approves it, so the workflow warns. See Azure app registration below. Windows code signing is described under Windows code signing below.
-- Release notes for players live in `release-notes/`, one small file per note (`kind`, `en`, `es`), added by the pull request that makes the change; the `release-notes` skill (`.claude/skills/release-notes/SKILL.md`) says how to write one. Nothing is stamped by hand: the workflow's `plan` job (`cli.mjs notes`) gives each note the first release since which every release has had its file, working from the release tags, and commits nothing. The launcher bundles the result and shows it in **What's new** after an update and from Settings → Launcher updates; the same notes become the GitHub Release's description (`cli.mjs notes-body`) and `latest.json`'s `notes`. A dry run prints the description in its run summary. Design: `docs/superpowers/specs/2026-11-10-whats-new-design.md`.
-- Each release is a public, versioned GitHub Release. `channel-beta` and `channel-stable` hold `latest.json` and fixed-name installers; perland.online/launcher links those.
-- On Windows each release also carries the one-click setup app (`crates/perland-setup`, design in `docs/superpowers/specs/2026-11-04-branded-setup-design.md`): `PerlandLauncher_<version>_x64-installer.exe`, with fixed-name copies `PerlandLauncher-installer.exe` (stable) and `PerlandLauncher-beta-installer.exe` (beta). It wraps that release's NSIS installer and runs it silently; updates keep using the NSIS installer, and `latest.json` never names the setup app. `cargo run -p perland-setup --example render` draws every screen to `target/setup-renders/`.
-- The Windows build of a release also bundles the branded uninstaller (`perland-uninstall.exe`, the same crate's second binary) next to the launcher. The Release workflow adds it with a release-only `--config` (the resource and `src-tauri/windows/hooks.nsh`), whose post-install hook points `UninstallString` at it and keeps NSIS's own `uninstall.exe` as `QuietUninstallString`. `pnpm tauri build` without that config still makes the plain NSIS installer and uninstaller.
-- A dry run's installers are downloadable from the run's artifacts. That replaces the old tester build.
-- A publish needs CI green on the exact commit being released: push it to `main` or to a branch with a pull request and wait for CI first. A dry run only warns.
-- The versioned release stays a draft until every installer is uploaded. If a publish fails partway, re-run the failed jobs: the publish job picks up the draft it left, or skips a release that is already out.
-
-### Windows code signing
-
-The Windows build is signed with the owner's Certum Open Source Code Signing in the Cloud certificate, through [ssign](https://github.com/Le-Syl21/ssign). Design: `docs/superpowers/specs/2026-11-07-windows-code-signing-design.md`.
-
-- **On or off:** the repository variable `CERTUM_SIGNING=true`. Off, releases build unsigned and their notes say so.
-- **When it signs:** every publish, and a dry run with **Sign this dry run's Windows installer too** ticked. Either waits for the owner to approve the `signing` environment.
-- **Secrets:** `CERTUM_EMAIL` and `CERTUM_OTP` are environment secrets of `signing` (Settings → Environments → `signing`, with the owner as required reviewer), never repository secrets. `CERTUM_OTP` is the TOTP seed behind the SimplySign QR code: base32, or the whole `otpauth://` URI. It signs as the owner, so treat it like a private key. If it leaks, re-issue the QR code from Certum.
-- **What gets signed:** the launcher, both uninstallers (NSIS's and `perland-uninstall.exe`), the NSIS plugin DLLs, the NSIS installer and the setup app (`perland-setup.exe`).
-- **What the build checks:** `cli.mjs sign-check` fails if any signing call failed, including the NSIS uninstaller's, whose failures makensis ignores, or if any of those files went unsigned. `verify-authenticode.ps1` checks the setup app and installs the NSIS installer on the runner to check every signature.
-- **Upgrading ssign:** change `SSIGN_VERSION` and `SSIGN_SHA256` in `release.yml` together. The SHA-256 is the release asset's digest: `gh api repos/Le-Syl21/ssign/releases/tags/v<version> --jq '.assets[] | select(.name=="ssign-windows-x86_64.zip") | .digest'`.
-- **If ssign breaks:** run a dry run unsigned, sign its installer by hand with SimplySign Desktop, and publish that file.
-
-### Azure app registration
-
-Only for signing in with Perland's own app instead of the Minecraft Launcher's client. The Azure app (Microsoft Entra ID → App registrations) is set up once by the owner. Its Application (client) ID is `PERLAND_MS_CLIENT_ID`; leave the variable empty until Mojang has approved it.
-
-- **Supported account types:** personal Microsoft accounts only (the launcher signs in through the `consumers` endpoint).
-- **Name:** must not contain Mojang, Minecraft, Microsoft, Live, Xbox, Discord or Hypixel (Mojang's app review refuses it).
-- **Redirect URI:** `http://127.0.0.1/callback`, as a public-client ("Mobile and desktop applications") redirect. The launcher listens on a random loopback port and sends `http://127.0.0.1:<port>/callback`; Microsoft ignores the port when it matches a loopback redirect, so the one entry covers every port. The portal's Redirect URIs box refuses an `http` loopback address, so add it in the app's **Manifest**: in the Azure AD Graph format (what apps registered with a personal Microsoft account show) as `{ "url": "http://127.0.0.1/callback", "type": "InstalledClient" }` in `replyUrlsWithType`; in the Microsoft Graph format under `publicClient.redirectUris`. It then shows under **Authentication → Mobile and desktop applications**. Don't add the same address again with another port, or as a Web redirect.
-- **Allow public client flows:** Yes (Authentication → Advanced settings). There is no client secret.
-- **API permissions:** none to add; the launcher asks for `XboxLive.signin offline_access` when the player signs in.
-- Then Mojang must approve the client ID for the Minecraft services (their AppID review). Until it does, every sign-in still runs the whole chain (browser, Microsoft, Xbox Live, XSTS, Minecraft) and Minecraft turns it down at its login; the launcher shows each step that passed and says Minecraft hasn't approved it yet.
+Releases come from the manual **Release** workflow (Actions → **Release** → Run workflow), as a `beta` or `stable` publish. Every publish is public, so ask the owner first. Version numbers, secrets, release notes and what each release contains are in [`docs/releasing.md`](docs/releasing.md).
 
 ## What the launcher sends
 

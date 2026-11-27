@@ -75,7 +75,7 @@ describe('Home', () => {
     expect(await screen.findByRole('heading', { name: 'No instances yet' })).toBeInTheDocument();
   });
 
-  it('disables Play without an account and, in a dev build, links to Accounts', async () => {
+  it('disables Play without an account and, in a dev build, opens Add an account on the Profile', async () => {
     const { backend, user } = renderApp(<Home id="creative-flat" />);
     backend.state.accounts.active = null;
     await screen.findByRole('heading', { name: 'Creative Flat' });
@@ -85,7 +85,7 @@ describe('Home', () => {
     // Read before Play, the way it sits on screen: above it (#116).
     expect(link.compareDocumentPosition(play) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await user.click(link);
-    expect(routeSnapshot()).toEqual({ name: 'accounts' });
+    expect(routeSnapshot()).toEqual({ name: 'profile', add: true });
     expect(signInPromptSnapshot()).toBe(false);
   });
 
@@ -98,7 +98,7 @@ describe('Home', () => {
     await vi.waitFor(() => expect(play).toHaveAccessibleDescription('Sign in to play'));
     await user.click(await screen.findByRole('button', { name: 'Sign in to play' }));
     expect(signInPromptSnapshot()).toBe(true);
-    expect(routeSnapshot()).not.toEqual({ name: 'accounts' });
+    expect(routeSnapshot()).not.toEqual({ name: 'profile', add: true });
     expect(screen.queryByRole('button', { name: 'Add an account to play' })).toBeNull();
     // The accounts file still holds offline accounts from an older beta: they are silently gone, nothing mentions them.
     expect(screen.queryByText(/offline/i)).toBeNull();
@@ -156,6 +156,48 @@ describe('Home', () => {
     expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(byKey);
     await user.click(within(menu).getByRole('menuitem', { name: 'Rename' }));
     expect(screen.getByRole('dialog', { name: 'Rename instance' })).toBeInTheDocument();
+  });
+
+  it('opens Mods & packs from the menu, right after Instance settings', async () => {
+    const { user } = renderApp(<Home id="asalith-fields" />);
+    await screen.findByRole('heading', { name: 'Asalith Fields' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    const items = within(screen.getByRole('menu')).getAllByRole('menuitem').map((i) => i.textContent);
+    expect(items[items.indexOf('Instance settings') + 1]).toBe('Mods & packs');
+    await user.click(screen.getByRole('menuitem', { name: 'Mods & packs' }));
+    expect(routeSnapshot()).toEqual({ name: 'mods', id: 'asalith-fields' });
+  });
+
+  it('finds shaders from the menu on a modded instance only', async () => {
+    const { user, unmount } = renderApp(<Home id="asalith-fields" />);
+    await screen.findByRole('heading', { name: 'Asalith Fields' });
+    await user.click(screen.getByRole('button', { name: 'More options' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Find shaders' }));
+    expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'shader', instance: 'asalith-fields' });
+    unmount();
+    const again = renderApp(<Home id="creative-flat" />);
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    await again.user.click(screen.getByRole('button', { name: 'More options' }));
+    expect(screen.getByRole('menuitem', { name: 'Mods & packs' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Find shaders' })).not.toBeInTheDocument();
+  });
+
+  it("shows the instance's mod count on the Mods & packs key once known", async () => {
+    renderApp(<Home id="asalith-fields" />);
+    expect(await screen.findByRole('button', { name: 'Mods & packs 3' })).toBeInTheDocument();
+  });
+
+  it('counts a pack its own mods on the Mods & packs key', async () => {
+    renderApp(<Home id="sky-islands" />);
+    expect(await screen.findByRole('button', { name: 'Mods & packs 4' })).toBeInTheDocument();
+  });
+
+  it('shows no count on the Mods & packs key without mods', async () => {
+    const { calls } = renderApp(<Home id="creative-flat" />);
+    await screen.findByRole('heading', { name: 'Creative Flat' });
+    await waitFor(() => expect(sent(calls, 'mods_list')).toHaveLength(1));
+    await act(async () => {});
+    expect(screen.getByRole('button', { name: 'Mods & packs' })).toBeInTheDocument();
   });
 
   it('renames from the menu', async () => {

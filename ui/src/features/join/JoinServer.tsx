@@ -11,6 +11,7 @@ import {
   useInviteFromLink,
   useJoinAdd,
   useJoinPreview,
+  useJoinTrust,
   useServerLink,
   useServerRelink,
 } from '../../state/queries';
@@ -26,6 +27,7 @@ import { ScreenFrame } from '../../ui/ScreenFrame';
 import { loaderName } from '../home/labels';
 import { InviteOnly } from '../servers/InviteOnly';
 import { savedServerName } from '../servers/serverName';
+import { AutoUpdateSwitch, TrustFacts } from '../trust/TrustFacts';
 import { ServerCard } from './ServerCard';
 
 const notAnInvite: LauncherError = {
@@ -68,7 +70,13 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
   const [link, setLink] = useState(invite.trim());
   const valid = isInviteLink(link);
   // The canonical spelling keys the cache, so every spelling of one link shares an entry.
-  const preview = useJoinPreview(valid ? (inviteCanonical(link) ?? link) : '');
+  const canonical = valid ? (inviteCanonical(link) ?? link) : '';
+  const preview = useJoinPreview(canonical);
+  // Once the server is on screen: the trust step, when its modpack would install on this computer.
+  const trust = useJoinTrust(canonical, preview.data !== undefined, relinkFor ?? linkFor);
+  const prompt = trust.data ?? null;
+  const [autoChoice, setAutoChoice] = useState<boolean | null>(null);
+  const autoUpdate = autoChoice ?? prompt?.autoUpdate ?? true;
   const resolve = useInviteFromLink();
   const add = useJoinAdd({ inline: true });
   const relink = useServerRelink(relinkFor ?? '', { inline: true });
@@ -84,10 +92,13 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
   const mismatch = data && target && savedServerName(data.name).trim().toLowerCase() !== oldName.trim().toLowerCase();
   const address = isLauncherError(preview.error) && preview.error.code === 'invite_unsupported' ? preview.error.params.address : undefined;
   const busy = add.isPending || relink.isPending || linkTo.isPending;
+  // Nothing is added until the launcher knows whether the step applies.
+  const trustReady = trust.isSuccess;
   const gameMove =
     data && linking && data.game.version && changesGame(linking, data) ? { version: versionWord(t, data.game.version), loader: serverLoader(data) } : null;
 
   const checkLink = (next: string) => {
+    setAutoChoice(null);
     add.reset();
     relink.reset();
     linkTo.reset();
@@ -126,23 +137,33 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
     navigate({ name: 'home', id });
   };
   const go = () => {
-    if (!data || busy) return;
-    if (relinkFor) relink.mutate(link, { onSuccess: () => open(relinkFor) });
-    else if (linkFor) linkTo.mutate(link, { onSuccess: () => open(linkFor) });
-    else if (data.existing) open(data.existing);
-    else add.mutate(link, { onSuccess: (instance) => instance && open(instance.id) });
+    if (!data || busy || !trustReady) return;
+    // The step's answer goes with the add or link: trusting is pressing this button.
+    const answer = prompt ? autoUpdate : undefined;
+    if (relinkFor) relink.mutate({ link, autoUpdate: answer }, { onSuccess: () => open(relinkFor) });
+    else if (linkFor) linkTo.mutate({ link, autoUpdate: answer }, { onSuccess: () => open(linkFor) });
+    else if (data.existing && !prompt) open(data.existing);
+    else add.mutate({ link, autoUpdate: answer }, { onSuccess: (instance) => instance && open(instance.id) });
   };
   const label = relinkFor
-    ? t('join.useLink')
+    ? prompt
+      ? t('trust.trustAndUse')
+      : t('join.useLink')
     : linkFor
       ? busy
         ? t('join.linking')
-        : t('join.link')
+        : prompt
+          ? t('trust.trustAndLink')
+          : t('join.link')
       : data?.existing
-        ? t('join.open')
+        ? prompt
+          ? t('trust.trustAndOpen')
+          : t('join.open')
         : busy
           ? t('join.adding')
-          : t('join.add');
+          : prompt
+            ? t('trust.trustAndAdd')
+            : t('join.add');
   // Back and Cancel both return to where the link was going: the instance being linked, or Home.
   const leave = () => navigate({ name: 'home', id: relinkFor ?? linkFor ?? null });
   const title = relinkFor ? t('join.relinkTitle') : linkFor ? t('join.linkTitle') : t('join.title');
@@ -222,6 +243,16 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
           </p>
         )}
         {data && linkFor && <p>{t('join.linkNote')}</p>}
+        {data && prompt && (
+          <section className="panel grid gap-5 p-5" aria-labelledby="trust-heading">
+            <h2 id="trust-heading" className="text-lg font-bold">
+              {t('trust.title', { name: prompt.name })}
+            </h2>
+            <TrustFacts prompt={prompt} />
+            <AutoUpdateSwitch checked={autoUpdate} onChange={setAutoChoice} />
+          </section>
+        )}
+        {data && trust.isError && <ErrorCard error={trust.error} />}
         {add.isError && <ErrorCard error={add.error} />}
         {relink.isError && <ErrorCard error={relink.error} />}
         {linkTo.isError && <ErrorCard error={linkTo.error} />}
@@ -230,7 +261,7 @@ export function JoinServer({ invite, relinkFor, linkFor }: { invite: string; rel
           {data && !relinkFor && !linkFor && !data.existing && <p className="text-sm text-ink-dim">{t('join.note')}</p>}
           <Button onClick={leave}>{t('common.cancel')}</Button>
           {data && (
-            <Button variant="primary" size="lg" disabled={busy} onClick={go}>
+            <Button variant="primary" size="lg" disabled={busy || !trustReady} onClick={go}>
               {label}
             </Button>
           )}

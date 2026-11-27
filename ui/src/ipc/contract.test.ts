@@ -5,6 +5,8 @@ import accounts from './contract/accounts.json';
 import artChoices from './contract/art_choices.json';
 import appInfo from './contract/app_info.json';
 import contentFiles from './contract/content_files.json';
+import dropResultFx from './contract/drop_result.json';
+import droppedFilesFx from './contract/dropped_files.json';
 import deepLinksFx from './contract/deep_links.json';
 import emailCodeSent from './contract/email_code_sent.json';
 import errorFx from './contract/error.json';
@@ -58,9 +60,15 @@ import searchRequests from './contract/search_requests.json';
 import serverInstanceFx from './contract/server_instance.json';
 import serverNews from './contract/server_news.json';
 import serverStatusFx from './contract/server_status.json';
+import shaderSupportFx from './contract/shader_support.json';
+import trustPromptsFx from './contract/trust_prompts.json';
 import settingsFx from './contract/settings.json';
 import skinEntriesFx from './contract/skin_entries.json';
 import currentSkinFx from './contract/current_skin.json';
+import playerSkinFx from './contract/player_skin.json';
+import skinEntryLookFx from './contract/skin_entry_look.json';
+import skinCatalogFx from './contract/skin_catalog.json';
+import medalsFx from './contract/medals.json';
 import skinVersionsFx from './contract/skin_versions.json';
 import shareChoiceFx from './contract/share_choice.json';
 import sharePreviewFx from './contract/share_preview.json';
@@ -81,10 +89,17 @@ const cases: [string, ZodType, unknown][] = [
   ['accounts', s.accountsFile, accounts],
   ['skin_entries', s.skinEntry.array(), skinEntriesFx],
   ['current_skin', s.currentSkin.nullable().array(), currentSkinFx],
+  ['player_skin', s.playerSkin.array(), playerSkinFx],
+  ['skin_entry_look', s.skinEntry.array(), skinEntryLookFx],
+  ['skin_catalog', s.catalogAnswer.array(), skinCatalogFx],
+  ['medals', s.medalsView, medalsFx],
   ['skin_versions', s.skinVersion.array(), skinVersionsFx],
   ['account_ready', s.accountReady.array(), accountReadyFx],
   ['app_info', s.appInfo, appInfo],
   ['content_files', s.contentFile.array(), contentFiles],
+  ['shader_support', s.shaderSupport.array(), shaderSupportFx],
+  ['dropped_files', s.droppedFile.array(), droppedFilesFx],
+  ['drop_result', s.dropResult, dropResultFx],
   ['error', s.launcherError, errorFx],
   ['instance', s.instance, instanceFx],
   ['instance_listing', s.instanceListing, instanceListing],
@@ -121,6 +136,7 @@ const cases: [string, ZodType, unknown][] = [
   ['server_instance', s.instance, serverInstanceFx],
   ['restore_points', s.restorePoint.nullable().array(), restorePoints],
   ['join_preview', s.joinPreview.array(), joinPreviewFx],
+  ['trust_prompts', s.trustPrompt.nullable().array(), trustPromptsFx],
   ['server_status', s.serverStatusView.array(), serverStatusFx],
   ['public_server_page', s.publicServerPage, publicServerPage],
   ['server_news', s.serverNews, serverNews],

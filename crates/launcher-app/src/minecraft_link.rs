@@ -107,6 +107,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             Err(e) if e.code == ErrorCode::PerlandSignedOut => return Ok(None),
             Err(e) => return Err(e),
         };
+        self.medals_stats(&stats).await;
         let instances = self.instances_by_invite_token(&session.engine).await;
         let servers = stats
             .servers
@@ -235,7 +236,7 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         sign_in(&core, ENGINE, Some("Moi"));
         serve(&runner, &invite('A'), Ok(server_view("s")));
-        let joined = core.join_add(&invite('A')).await.unwrap();
+        let joined = core.join_add(&invite('A'), Some(true)).await.unwrap();
         serve_stats(
             &runner,
             Ok(Some(PlayerStats {
@@ -270,7 +271,7 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         sign_in(&core, ENGINE, Some("Moi"));
         serve(&runner, &invite('A'), Ok(server_view("s")));
-        core.join_add(&invite('A')).await.unwrap();
+        core.join_add(&invite('A'), Some(true)).await.unwrap();
         serve_stats(
             &runner,
             Ok(Some(PlayerStats {
@@ -290,7 +291,7 @@ mod tests {
         // The instance's invite was found through api.example.com; the session lives elsewhere.
         sign_in(&core, "https://other.example.org", Some("Moi"));
         serve(&runner, &invite('A'), Ok(server_view("s")));
-        core.join_add(&invite('A')).await.unwrap();
+        core.join_add(&invite('A'), Some(true)).await.unwrap();
         serve_stats(
             &runner,
             Ok(Some(PlayerStats {

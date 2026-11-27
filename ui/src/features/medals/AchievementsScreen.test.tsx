@@ -6,9 +6,9 @@ import { AchievementsScreen } from './AchievementsScreen';
 
 it('shows the medals and the Perland servers, and goes back to Home', async () => {
   const { user } = renderApp(<AchievementsScreen />, { perland: 'linked' });
-  expect(await screen.findByRole('heading', { name: 'Achievements', level: 1 })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Medals and achievements', level: 1 })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Medals' })).toBeInTheDocument();
-  expect(await screen.findByRole('heading', { name: 'Achievements on Perland servers' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Minecraft achievements' })).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Back' }));
   expect(routeSnapshot()).toEqual({ name: 'home', id: null });
 });

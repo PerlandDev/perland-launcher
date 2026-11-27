@@ -21,6 +21,26 @@ it('shows the most downloaded content first and pages on', async () => {
   expect(searches(calls).at(-1)?.offset).toBe(20);
 });
 
+it("says a vanilla instance can't run mods yet, and opens its loader choice", async () => {
+  const { user } = renderApp(<Browse route={{ name: 'browse', kind: 'mod', instance: 'creative-flat' }} />);
+  expect(await screen.findByText("Creative Flat can't run mods yet. It needs a mod loader.")).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Choose a loader' }));
+  expect(routeSnapshot()).toEqual({ name: 'instanceSettings', id: 'creative-flat', focus: 'loader' });
+});
+
+it("says the same for shaders, and nothing for resource packs or a modded instance", async () => {
+  const { unmount } = renderApp(<Browse route={{ name: 'browse', kind: 'shader', instance: 'creative-flat' }} />);
+  expect(await screen.findByText("Creative Flat can't run shaders yet. It needs a mod loader.")).toBeInTheDocument();
+  unmount();
+  const packs = renderApp(<Browse route={{ name: 'browse', kind: 'resource_pack', instance: 'creative-flat' }} />);
+  await screen.findByText(/Adding to Creative Flat/);
+  expect(screen.queryByRole('button', { name: 'Choose a loader' })).not.toBeInTheDocument();
+  packs.unmount();
+  renderApp(<Browse route={{ name: 'browse', kind: 'shader', instance: 'asalith-fields' }} />);
+  await screen.findByText(/Adding to Asalith Fields/);
+  expect(screen.queryByRole('button', { name: 'Choose a loader' })).not.toBeInTheDocument();
+});
+
 it('waits for typing to settle before searching', async () => {
   const { user, calls } = renderApp(<Browse route={{ name: 'browse', kind: 'mod' }} />);
   await screen.findByRole('button', { name: /Sodium/ });

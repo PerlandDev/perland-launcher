@@ -11,6 +11,7 @@ export function Select({
   onChange,
   options,
   disabled,
+  hint,
   error,
 }: {
   label: string;
@@ -18,11 +19,15 @@ export function Select({
   onChange: (value: string) => void;
   options: Option[];
   disabled?: boolean;
+  /** What the choice does, or why it can't be made, under it. */
+  hint?: string;
   /** A refusal of this choice, under it (announced as it appears: it comes back from a request). */
   error?: string | null;
 }) {
   const id = useId();
   const errorId = `${id}-error`;
+  const hintId = `${id}-hint`;
+  const describedBy = [hint && hintId, error && errorId].filter(Boolean).join(' ') || undefined;
   return (
     <div className="grid gap-1.5">
       <label htmlFor={id} className="text-sm font-semibold">
@@ -34,7 +39,7 @@ export function Select({
         value={value}
         disabled={disabled}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
+        aria-describedby={describedBy}
         onChange={(e) => onChange(e.target.value)}
       >
         {options.map((option) => (
@@ -43,6 +48,11 @@ export function Select({
           </option>
         ))}
       </select>
+      {hint && (
+        <p id={hintId} className="text-sm text-ink-dim">
+          {hint}
+        </p>
+      )}
       {error && (
         <p id={errorId} role="alert" className="text-sm text-coral">
           {error}

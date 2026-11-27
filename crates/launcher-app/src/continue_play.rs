@@ -339,7 +339,7 @@ mod tests {
     /// A server instance from invite A ("survival" at play.example.com:25566) that synced before.
     async fn server_instance(core: &TestCore, runner: &FakeRunner) -> String {
         serve(runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         lockfile::save_pack(&core.instances.perland_dir(&id), &desired("1.0.4", vec![]))
             .await
             .unwrap();

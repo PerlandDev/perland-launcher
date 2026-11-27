@@ -1,6 +1,6 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
-import { routeSnapshot } from '../../state/route';
+import { navigate, rememberInstance, routeSnapshot } from '../../state/route';
 import { toastsSnapshot } from '../../state/toasts';
 import { createMockBackend } from '../../ipc/mock';
 import { renderApp, sent } from '../../test/backend';
@@ -33,52 +33,6 @@ function renderFailing(command: string) {
 
 const slider = () => screen.getByRole('slider', { name: 'Memory for new instances' });
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-it('picks the round icon shape', async () => {
-  const { user, calls } = renderApp(<Settings />);
-  const group = await screen.findByRole('group', { name: 'Instance icons' });
-  expect(within(group).getByRole('radio', { name: 'Square' })).toBeChecked();
-  await user.click(within(group).getByRole('radio', { name: 'Round' }));
-  expect(within(group).getByRole('radio', { name: 'Round' })).toBeChecked();
-  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { iconShape: 'round' } }));
-});
-
-it('gathers theme, text font and instance icons under Appearance', async () => {
-  renderApp(<Settings />);
-  const appearance = await screen.findByRole('region', { name: 'Appearance' });
-  expect(within(appearance).getByRole('radiogroup', { name: 'Theme' })).toBeInTheDocument();
-  expect(within(appearance).getByRole('group', { name: 'Text font' })).toBeInTheDocument();
-  expect(within(appearance).getByRole('group', { name: 'Instance icons' })).toBeInTheDocument();
-});
-
-it('switches the theme at once and saves it', async () => {
-  const { user, calls } = renderApp(<Settings />);
-  const themes = await screen.findByRole('radiogroup', { name: 'Theme' });
-  for (const name of ['Laminate', 'Stone', 'Night', 'Forest']) expect(within(themes).getByRole('radio', { name })).toBeInTheDocument();
-  expect(within(themes).getByRole('radio', { name: 'Laminate' })).toBeChecked();
-  await user.click(within(themes).getByRole('radio', { name: 'Night' }));
-  expect(within(themes).getByRole('radio', { name: 'Night' })).toBeChecked();
-  expect(document.documentElement).toHaveAttribute('data-theme', 'night');
-  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { theme: 'night' } }));
-});
-
-it('switches the text font to the computer\'s own and saves it', async () => {
-  const { user, calls } = renderApp(<Settings />);
-  const font = await screen.findByRole('group', { name: 'Text font' });
-  expect(within(font).getByRole('radio', { name: 'Easy to read' })).toBeChecked();
-  await user.click(within(font).getByRole('radio', { name: "This computer's" }));
-  expect(document.documentElement).toHaveAttribute('data-font', 'system');
-  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { font: 'system' } }));
-});
-
-it('puts the stored theme back when saving it fails', async () => {
-  const { user, backend } = renderApp(<Settings />);
-  intercept(backend, 'settings_set').mode = 'fail';
-  await user.click(await screen.findByRole('radio', { name: 'Forest' }));
-  await waitFor(() => expect(toastsSnapshot()).toHaveLength(1));
-  await waitFor(() => expect(document.documentElement).toHaveAttribute('data-theme', 'laminate'));
-  expect(screen.getByRole('radio', { name: 'Laminate' })).toBeChecked();
-});
 
 it('switches language, saves preferences and opens the data folder', async () => {
   const { user, calls } = renderApp(<Settings />);
@@ -279,4 +233,134 @@ it('links to the list of what is sent', async () => {
       expect.objectContaining({ url: 'https://github.com/PerlandDev/perland-launcher#what-the-launcher-sends' }),
     ]),
   );
+});
+
+const graphics = () => screen.findByRole('combobox', { name: 'Graphics card' });
+
+it('chooses the graphics card and saves it', async () => {
+  const { user, calls } = renderApp(<Settings />);
+  const select = await graphics();
+  expect(select).toBeEnabled();
+  expect(select).toHaveValue('automatic');
+  expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
+    'Automatic',
+    'Dedicated (more performance)',
+    'Integrated (saves battery)',
+  ]);
+  expect(select).toHaveAccessibleDescription(
+    'The graphics card Minecraft runs on. It applies the next time you start a game. Found: Intel(R) UHD Graphics 770, NVIDIA GeForce RTX 4060.',
+  );
+  await user.selectOptions(select, 'Dedicated (more performance)');
+  expect(select).toHaveValue('dedicated');
+  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { graphicsCard: 'dedicated' } }));
+  await user.selectOptions(select, 'Integrated (saves battery)');
+  await waitFor(() => expect(sent(calls, 'settings_set').at(-1)).toMatchObject({ settings: { graphicsCard: 'integrated' } }));
+});
+
+it('locks the graphics card choice on a computer with one card', async () => {
+  renderApp(<Settings />, { graphics: 'one' });
+  const select = await graphics();
+  expect(select).toBeDisabled();
+  expect(select).toHaveAccessibleDescription('This computer has only one graphics card. Found: NVIDIA GeForce RTX 4060.');
+});
+
+it('locks the graphics card choice where the system decides', async () => {
+  renderApp(<Settings />, { graphics: 'unsupported' });
+  const select = await graphics();
+  expect(select).toBeDisabled();
+  expect(select).toHaveAccessibleDescription('On this computer, the system chooses the graphics card.');
+});
+
+it('names the graphics card choices by what they do when no card is integrated', async () => {
+  renderApp(<Settings />, { graphics: 'dedicated' });
+  const select = await graphics();
+  expect(select).toBeEnabled();
+  expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['Automatic', 'More performance', 'Less power']);
+});
+
+it('keeps the graphics card choice open when the cards could not be read', async () => {
+  renderApp(<Settings />, { graphics: 'unknown' });
+  const select = await graphics();
+  expect(select).toBeEnabled();
+  expect(select).toHaveAccessibleDescription('The graphics card Minecraft runs on. It applies the next time you start a game.');
+});
+
+it('offers the graphics card in Spanish', async () => {
+  const { default: i18n } = await import('../../i18n');
+  await i18n.changeLanguage('es');
+  try {
+    renderApp(<Settings />);
+    const select = await screen.findByRole('combobox', { name: 'Tarjeta gráfica' });
+    expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual([
+      'Automática',
+      'Dedicada (más rendimiento)',
+      'Integrada (ahorra batería)',
+    ]);
+    expect(select).toHaveAccessibleDescription(
+      'La tarjeta gráfica con la que corre Minecraft. Se aplica la próxima vez que inicies un juego. Detectadas: Intel(R) UHD Graphics 770, NVIDIA GeForce RTX 4060.',
+    );
+  } finally {
+    await i18n.changeLanguage('en');
+  }
+});
+
+
+it('points to Personalize in one line above Language', async () => {
+  const { user } = renderApp(<Settings />);
+  const language = await screen.findByRole('combobox', { name: 'Language' });
+  expect(screen.getByText('Themes, colours, the font, icons and transitions are in Personalize.')).toBeInTheDocument();
+  const personalize = screen.getByRole('button', { name: 'Personalize' });
+  expect(personalize.compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await user.click(personalize);
+  expect(routeSnapshot()).toEqual({ name: 'personalize' });
+});
+
+it("points from the memory for new instances to the last instance's own", async () => {
+  navigate({ name: 'home', id: 'creative-flat' });
+  const { user } = renderApp(<Settings />);
+  await screen.findByRole('slider', { name: 'Memory for new instances' });
+  expect(screen.getByText(/Each instance can have its own amount\./)).toBeInTheDocument();
+  await user.click(await screen.findByRole('button', { name: 'Change it for Creative Flat' }));
+  expect(routeSnapshot()).toEqual({ name: 'instanceSettings', id: 'creative-flat', focus: 'memory' });
+});
+
+it("shows the instance's own icon on the key: its picture, else the plate the rail draws", async () => {
+  // Sky Islands' pack brings a picture.
+  navigate({ name: 'home', id: 'sky-islands' });
+  renderApp(<Settings />);
+  const sky = await screen.findByRole('button', { name: 'Change it for Sky Islands' });
+  await waitFor(() => expect(sky.querySelector('img')).not.toBeNull());
+  cleanup();
+  // Creative Flat has none, so it wears its generated plate.
+  navigate({ name: 'home', id: 'creative-flat' });
+  renderApp(<Settings />);
+  const flat = await screen.findByRole('button', { name: 'Change it for Creative Flat' });
+  expect(flat.querySelector('svg[viewBox="0 0 40 40"]')).not.toBeNull();
+});
+
+it('leaves the instance link out when no instance was opened, or the last one is gone', async () => {
+  renderApp(<Settings />);
+  await screen.findByRole('slider', { name: 'Memory for new instances' });
+  expect(screen.getByText(/Each instance can have its own amount\./)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Change it for/ })).toBeNull();
+  cleanup();
+  // A damaged instance has no settings to open, and a deleted one is not listed at all.
+  for (const id of ['old-pack', 'deleted-one']) {
+    rememberInstance(id);
+    renderApp(<Settings />);
+    await screen.findByRole('slider', { name: 'Memory for new instances' });
+    await screen.findByRole('button', { name: 'Personalize' });
+    await pause(20);
+    expect(screen.queryByRole('button', { name: /Change it for/ })).toBeNull();
+    cleanup();
+  }
+});
+
+it('offers the pointers in Spanish', async () => {
+  navigate({ name: 'home', id: 'asalith-fields' });
+  const { user } = renderApp(<Settings />);
+  await user.selectOptions(await screen.findByRole('combobox', { name: 'Language' }), 'es');
+  expect(await screen.findByRole('button', { name: 'Personalizar' })).toBeInTheDocument();
+  expect(screen.getByText(/Cada instancia puede tener su propia cantidad\./)).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Cámbiala para Asalith Fields' })).toBeInTheDocument();
 });

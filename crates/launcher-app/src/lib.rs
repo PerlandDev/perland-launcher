@@ -6,6 +6,7 @@ pub mod browser;
 mod continue_play;
 mod crash_fixes;
 pub mod deep_link;
+mod dropped;
 pub mod dto;
 pub mod events;
 pub mod folders;
@@ -18,6 +19,7 @@ pub mod logged;
 pub mod logs;
 pub mod manage;
 mod manage_console;
+pub mod medals;
 mod minecraft_link;
 pub mod msa;
 mod news;
@@ -34,6 +36,7 @@ mod team_create;
 pub mod telemetry;
 #[cfg(test)]
 pub(crate) mod testing;
+mod trust;
 pub mod updates;
 mod your_servers;
 

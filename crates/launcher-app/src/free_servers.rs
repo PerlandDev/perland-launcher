@@ -111,6 +111,21 @@ pub(crate) fn checked_settings(
     Ok(Some(settings))
 }
 
+/// The settings of a free server: [`checked_settings`], and no online mode, since a free
+/// server always checks Minecraft accounts (the Engine refuses it).
+pub(crate) fn checked_free_settings(
+    settings: Option<FreeServerSettings>,
+) -> Result<Option<FreeServerSettings>> {
+    let settings = checked_settings(settings)?;
+    if settings.as_ref().is_some_and(|s| s.online_mode.is_some()) {
+        return Err(invalid_field(
+            "settings.onlineMode",
+            "Free servers always check Minecraft accounts.",
+        ));
+    }
+    Ok(settings)
+}
+
 pub(crate) fn invalid() -> LauncherError {
     LauncherError::network(
         ErrorCode::InvalidFreeServer,
@@ -384,7 +399,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             kind: kind.to_string(),
             modrinth_version_id,
             version,
-            settings: checked_settings(settings)?,
+            settings: checked_free_settings(settings)?,
             language: language_tag(language).to_string(),
         };
         self.free_server_create_checked(request).await
@@ -448,7 +463,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             started = true;
         }
         let invite = server.invite_url.clone().unwrap_or_default();
-        let instance = self.join_add(&invite).await?;
+        let instance = self.join_add(&invite, Some(true)).await?;
         if started || server.status == "starting" {
             self.update_server(&instance.id, false, |link| {
                 if let Some(link) = link {
@@ -776,6 +791,13 @@ mod tests {
                 },
                 "settings.motd",
             ),
+            (
+                FreeServerSettings {
+                    online_mode: Some(false),
+                    ..Default::default()
+                },
+                "settings.onlineMode",
+            ),
         ];
         for (settings, want) in cases {
             let error = core
@@ -800,6 +822,7 @@ mod tests {
             whitelist: Some(true),
             seed: Some("s".repeat(64)),
             motd: Some("Hola amigos ñ".into()),
+            online_mode: None,
         };
         core.free_server_create(
             "Survival",
@@ -950,7 +973,7 @@ mod tests {
         offline.address = Some("play.example.com".into());
         serve_free(&runner, Some(offline));
         serve(&runner, &invite('F'), Ok(server_view("Survival")));
-        let joined = core.join_add(&invite('F')).await.unwrap();
+        let joined = core.join_add(&invite('F'), Some(true)).await.unwrap();
         let card = core
             .free_server()
             .await

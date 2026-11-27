@@ -18,9 +18,11 @@ import {
   Gear,
   Image,
   Link,
+  Package,
   Pencil,
   Play,
   Reload,
+  Search,
   Share,
   Trash,
   Undo,
@@ -220,6 +222,24 @@ export function useInstanceActions(instance: Instance): InstanceActions {
         : []),
       ...restoreItems,
       settings,
+      {
+        id: "mods",
+        label: t("home.mods"),
+        icon: <Package />,
+        onSelect: () => navigate({ name: "mods", id: instance.id }),
+      },
+      // Shaders run through a loader's shader mod, so a vanilla instance has nothing to find them for.
+      ...(instance.game.loader
+        ? [
+            {
+              id: "findShaders",
+              label: t("packs.findShaders"),
+              icon: <Search />,
+              onSelect: () =>
+                navigate({ name: "browse", kind: "shader", instance: instance.id }),
+            },
+          ]
+        : []),
       {
         id: "rename",
         label: t("common.rename"),

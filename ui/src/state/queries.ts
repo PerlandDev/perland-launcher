@@ -39,6 +39,9 @@ function forgetConsolesOnAccountChange(client: QueryClient) {
 
 export const queryClient = createQueryClient();
 
+/** Every account's player figure (`qk.playerSkin`), for asking for them all again. */
+export const PLAYER_SKIN_KEY = ['playerSkin'] as const;
+
 export const qk = {
   appInfo: ['appInfo'] as const,
   settings: ['settings'] as const,
@@ -48,12 +51,14 @@ export const qk = {
   accounts: ['accounts'] as const,
   accountReady: ['accountReady'] as const,
   accountFace: (uuid: string) => ['accountFace', uuid] as const,
+  playerSkin: (uuid: string | null) => [...PLAYER_SKIN_KEY, uuid] as const,
   playtime: ['playtime'] as const,
   continueTarget: (id: string) => ['continue', id] as const,
   mcVersions: ['catalog', 'minecraft'] as const,
   loaders: (kind: LoaderKind, mc: string) => ['catalog', 'loaders', kind, mc] as const,
   mods: (id: string) => ['mods', id] as const,
   contentFiles: (id: string, kind: ContentKind) => ['content', id, kind] as const,
+  shaderSupport: (id: string) => ['shaderSupport', id] as const,
   packStatus: (id: string) => ['pack', 'status', id] as const,
   packContents: (id: string) => ['pack', 'contents', id] as const,
   restorePoint: (id: string) => ['restore', id] as const,
@@ -74,6 +79,7 @@ export const qk = {
   servers: (query: ListQuery) => ['servers', query] as const,
   perland: ['perland'] as const,
   perlandStats: ['perlandStats'] as const,
+  medals: ['medals'] as const,
   yourServers: ['yourServers'] as const,
   freeServer: ['freeServer'] as const,
   serverIcon: (token: string, iconVersion: string) => ['serverIcon', token, iconVersion] as const,
@@ -107,6 +113,12 @@ export const useAccountFace = (account: Pick<Account, 'provider' | 'uuid'>) =>
     enabled: account.provider === 'microsoft',
     staleTime: THIRTY_MINUTES,
   });
+/** The skin drawn as the player's own figure (the Profile) and how many skins the active account's wardrobe holds. It only
+ *  reads, unlike the Skins screen's own listing, so it is safe to ask from anywhere. Disabled until an account is in use. */
+export function usePlayerSkin() {
+  const uuid = useAccounts().data?.active ?? null;
+  return useQuery({ queryKey: qk.playerSkin(uuid), queryFn: () => commands.playerSkin(uuid ?? ''), enabled: uuid !== null });
+}
 /** Whether Play can start (a Microsoft account in use, signed in), whether Microsoft is still approving this build, and whether
  *  the "offline accounts are gone" notice is due. Every sign-in, remove and dismiss asks for it again. */
 export const useAccountReady = () => useQuery({ queryKey: qk.accountReady, queryFn: commands.accountReady });
@@ -139,6 +151,9 @@ export const useModIcon = (id: string, file: string | null, version: number | un
   });
 export const useContentFiles = (id: string, kind: ContentKind) =>
   useQuery({ queryKey: qk.contentFiles(id, kind), queryFn: () => commands.contentList(id, kind) });
+/** Which mod runs shader packs on the instance and whether it is there. Every change to the mods folder asks again. */
+export const useShaderSupport = (id: string, enabled = true) =>
+  useQuery({ queryKey: qk.shaderSupport(id), queryFn: () => commands.shaderSupport(id), enabled });
 export function usePackStatus(id: string, enabled: boolean) {
   const qc = useQueryClient();
   return useQuery({
@@ -195,6 +210,8 @@ export function usePerlandStats() {
     staleTime: Infinity,
   });
 }
+/** Every medal with its tier and date; read again on `medals_changed`. */
+export const useMedals = () => useQuery({ queryKey: qk.medals, queryFn: commands.medalsView });
 /** The stats of the server with `token`, or undefined while there are none. */
 export const useServerStats = (token: string): ServerStats | undefined =>
   usePerlandStats().data?.servers.find((s) => s.token === token);
@@ -325,6 +342,40 @@ export const useJoinPreview = (invite: string) =>
     enabled: isInviteLink(invite),
     staleTime: 15_000,
   });
+
+/** The trust step for joining `invite` (for instance `forId` when relinking or linking), or null when none is needed. Asked
+ *  once the server is on screen. */
+export const useJoinTrust = (invite: string, enabled: boolean, forId?: string) =>
+  useQuery({
+    queryKey: ['joinTrust', invite, forId ?? null] as const,
+    queryFn: () => commands.joinTrust(invite, forId),
+    enabled: enabled && isInviteLink(invite),
+    staleTime: 15_000,
+  });
+
+/** The trust step instance `id`'s server still needs, or null. */
+export const useInstanceTrust = (id: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['instanceTrust', id] as const,
+    queryFn: () => commands.instanceTrust(id),
+    enabled,
+    staleTime: 15_000,
+  });
+
+/** Take back the trust in instance `id`'s server: the next Play asks again. */
+export function useInstanceTrustForget(id: string, opts: Opts = {}) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => commands.instanceTrustForget(id),
+    onSuccess: (instance) => {
+      qc.setQueryData<InstanceListing>(qk.instances, (old) =>
+        old ? { ...old, instances: old.instances.map((i) => (i.id === instance.id ? instance : i)) } : old,
+      );
+      void qc.invalidateQueries({ queryKey: ['instanceTrust', id] });
+    },
+    onError: onError(opts),
+  });
+}
 
 /** Live status, polled every `base` ms (backing off after rate limits) while the window is in front. */
 export const useServerStatus = (id: string, enabled: boolean, base: number) =>
@@ -482,7 +533,8 @@ export function useImportInstance() {
 export function useJoinAdd(opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (link: string) => ((await requireAccount()) ? commands.joinAdd(link) : null),
+    mutationFn: async ({ link, autoUpdate }: { link: string; autoUpdate?: boolean }) =>
+      (await requireAccount()) ? commands.joinAdd(link, autoUpdate) : null,
     onSuccess: (instance) => {
       if (instance) return qc.invalidateQueries({ queryKey: qk.instances });
     },
@@ -493,7 +545,7 @@ export function useJoinAdd(opts: Opts = {}) {
 export function useServerRelink(id: string, opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (link: string) => commands.serverRelink(id, link),
+    mutationFn: ({ link, autoUpdate }: { link: string; autoUpdate?: boolean }) => commands.serverRelink(id, link, autoUpdate),
     onSuccess: () => {
       for (const queryKey of [qk.instances, qk.serverStatus(id), qk.packStatus(id)]) void qc.invalidateQueries({ queryKey });
     },
@@ -520,7 +572,7 @@ export function useServerUnlink(id: string, opts: Opts = {}) {
 export function useServerLink(id: string, opts: Opts = {}) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (link: string) => commands.serverLink(id, link),
+    mutationFn: ({ link, autoUpdate }: { link: string; autoUpdate?: boolean }) => commands.serverLink(id, link, autoUpdate),
     onSuccess: () => {
       for (const queryKey of [qk.instances, qk.serverStatus(id), qk.packStatus(id)]) void qc.invalidateQueries({ queryKey });
     },
@@ -534,6 +586,8 @@ export function usePackOptional(id: string, opts: Opts = {}) {
     mutationFn: ({ path, enabled }: { path: string; enabled: boolean }) => commands.packSetOptional(id, path, enabled),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.packContents(id) });
+      // An optional mod may be the shader mod.
+      void qc.invalidateQueries({ queryKey: qk.shaderSupport(id) });
       void qc.invalidateQueries({ queryKey: qk.instances });
     },
     onError: onError(opts),
@@ -768,8 +822,9 @@ export function useModMutations(id: string, opts: Opts = {}) {
   const qc = useQueryClient();
   const onSuccess = (list: Awaited<ReturnType<typeof commands.modsList>>) => {
     qc.setQueryData(qk.mods(id), list);
-    // A pack instance's additions list follows the mods folder.
+    // A pack instance's additions list follows the mods folder, and so does whether it runs shaders.
     void qc.invalidateQueries({ queryKey: qk.packContents(id) });
+    void qc.invalidateQueries({ queryKey: qk.shaderSupport(id) });
   };
   // A removal takes or joins the restore point, so the menu's Go back changes.
   const onRemoved = (list: Awaited<ReturnType<typeof commands.modsList>>) => {

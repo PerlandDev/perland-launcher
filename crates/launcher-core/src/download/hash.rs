@@ -133,19 +133,27 @@ impl Hashes {
         Some(h)
     }
 
-    /// The object-cache key: the first well-formed hash among sha1, sha256, sha512 and md5
-    /// (their lengths never collide), else `m2-<murmur2>`. Values that aren't hex of the right
-    /// length are skipped, so a pack can never steer the key out of the cache folder.
+    /// The shared object-cache key: the first well-formed strong hash among sha1, sha256 and
+    /// sha512 (their lengths never collide). md5 and murmur2 never make a shared key: a file
+    /// known only by those is kept in its owner's private store (see [`Hashes::weak_key`]).
+    /// Values that aren't hex of the right length are skipped, so a pack can never steer the
+    /// key out of the cache folder.
     pub fn cache_key(&self) -> Option<String> {
-        [
-            (&self.sha1, 40),
-            (&self.sha256, 64),
-            (&self.sha512, 128),
-            (&self.md5, 32),
-        ]
-        .into_iter()
-        .find_map(|(value, len)| value.as_deref().and_then(|v| well_formed_hex(v, len)))
-        .or_else(|| self.murmur2.map(|m| format!("m2-{m}")))
+        [(&self.sha1, 40), (&self.sha256, 64), (&self.sha512, 128)]
+            .into_iter()
+            .find_map(|(value, len)| value.as_deref().and_then(|v| well_formed_hex(v, len)))
+    }
+
+    /// The key for a file with no strong hash, used only inside one owner's private store:
+    /// a well-formed md5, else `m2-<murmur2>`. `None` when a strong key exists or nothing is usable.
+    pub fn weak_key(&self) -> Option<String> {
+        if self.cache_key().is_some() {
+            return None;
+        }
+        self.md5
+            .as_deref()
+            .and_then(|v| well_formed_hex(v, 32))
+            .or_else(|| self.murmur2.map(|m| format!("m2-{m}")))
     }
 }
 
@@ -402,12 +410,35 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(sha512.cache_key(), Some(sha512_hex(b"x")));
+        assert_eq!(Hashes::default().cache_key(), None);
+    }
+
+    #[test]
+    fn only_strong_hashes_make_a_shared_cache_key() {
         let m2 = Hashes {
             murmur2: Some(7),
             ..Default::default()
         };
-        assert_eq!(m2.cache_key().as_deref(), Some("m2-7"));
-        assert_eq!(Hashes::default().cache_key(), None);
+        assert_eq!(m2.cache_key(), None);
+        assert_eq!(m2.weak_key().as_deref(), Some("m2-7"));
+        let md5 = Hashes::from_format("md5", &md5_hex(b"x")).unwrap();
+        assert_eq!(md5.cache_key(), None);
+        assert_eq!(md5.weak_key(), Some(md5_hex(b"x")));
+        let both = Hashes {
+            md5: Some(md5_hex(b"x")),
+            ..Hashes::sha1(sha1_hex(b"x"))
+        };
+        assert_eq!(both.cache_key(), Some(sha1_hex(b"x")));
+        assert_eq!(
+            Hashes::sha1("../../x").weak_key(),
+            None,
+            "a malformed strong hash is no weak key either"
+        );
+        let bad_md5 = Hashes {
+            md5: Some("../../x".into()),
+            ..Default::default()
+        };
+        assert_eq!(bad_md5.weak_key(), None);
     }
 
     #[test]

@@ -20,12 +20,13 @@ import { APP_EVENT } from './events';
 import { inviteCanonical } from './inviteLink';
 import { handleFree, modrinthInstances, NOT_FREE, repeatsFreeServer, seedFree, type FreeScenario } from './mockFree';
 import { closeConsole, freeManageRef, handleManage, managedForYourServers, NOT_MANAGE, seedManage, type ManageScenario } from './mockManage';
-import { handlePerland, NOT_PERLAND, seedPerland, type PerlandScenario, type PerlandSignInOutcome } from './mockPerland';
+import { handlePerland, mockPerlandStats, NOT_PERLAND, seedPerland, type PerlandScenario, type PerlandSignInOutcome } from './mockPerland';
 import { mockCrash, type CrashScenario } from './mockCrash';
 import { handleTeams, NOT_TEAMS, type TeamsScenario } from './mockTeams';
 import { handleSkins, NOT_SKINS, seedSkins, type SkinsScenario } from './mockSkins';
-import { handleServer, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
+import { handleServer, instanceTrustPrompt, MOCK_SERVER_ID, NOT_MINE, seedServers, wakesOnPlay, type ServerScenario } from './mockServers';
 import { MSA_STEPS, type MsaStep } from './schema';
+import { mockMedalsView } from './mockMedals';
 import type {
   FriendsCheck,
   AccountsFile,
@@ -35,6 +36,9 @@ import type {
   BrowsePlanRequest,
   ContentFile,
   ContentKind,
+  DroppedKind,
+  DropResult,
+  DropSkipReason,
   DeepLink,
   ExitInfo,
   BannerView,
@@ -67,15 +71,32 @@ import type {
   SearchPage,
   SearchRequest,
   Settings,
+  ShaderMod,
+  ShaderSupport,
   Theme,
+  Transitions,
   UiFont,
   SyncSummary,
   UpdateState,
   VersionInfo,
 } from './schema';
 
+/** The computer's graphics cards: `two` (default, an integrated and a dedicated one), `one`, `dedicated` (two, neither integrated),
+ *  `unsupported` (a system where the launcher can't choose) or `unknown` (they couldn't be read). */
+export type GraphicsScenario = 'two' | 'one' | 'dedicated' | 'unsupported' | 'unknown';
+export const GRAPHICS_SCENARIOS: GraphicsScenario[] = ['two', 'one', 'dedicated', 'unsupported', 'unknown'];
+
+const MOCK_GRAPHICS: Record<Exclude<GraphicsScenario, 'two'>, AppInfo['graphics']> = {
+  one: { status: 'singleCard', cards: ['NVIDIA GeForce RTX 4060'], integrated: false },
+  dedicated: { status: 'choose', cards: ['NVIDIA GeForce RTX 4090', 'AMD Radeon RX 580'], integrated: false },
+  unsupported: { status: 'unsupported', cards: [], integrated: false },
+  unknown: { status: 'choose', cards: [], integrated: false },
+};
+
 export interface MockOptions {
   firstRun?: boolean;
+  /** The computer's graphics cards (`?graphics=`). */
+  graphics?: GraphicsScenario;
   /** The game crashes a few seconds into its first run, with this cause. */
   crash?: CrashScenario;
   release?: boolean;
@@ -140,6 +161,8 @@ export interface MockOptions {
   theme?: Theme;
   /** The text font the settings start with. */
   font?: UiFont;
+  /** How screens come in: `smooth` (default), `stepped` or `off`. */
+  transitions?: Transitions;
   /** Seconds played per instance id. Defaults to 12 h in Asalith Fields (none on first run). */
   playtime?: Record<string, number>;
   /** Where Continue takes the player, per instance id. Defaults to the Asalith Fields server and a Creative Flat world. */
@@ -340,14 +363,91 @@ const CATALOG: MockProject[] = [
 // Sodium's fixture versions only list 1.20.1; keep its id matching the catalog's.
 CATALOG[0]!.versions = (clone(versionsFx) as VersionInfo[]).map((v) => ({ ...v, id: 'AANobbMI-v1' }));
 
+/** Sky Islands' pack brings its shader mod, so the Shaders tab shows both states: Asalith Fields (Fabric) lacks Iris. */
+const withOculus = (contents: PackContents): PackContents => ({
+  ...contents,
+  managed: [...contents.managed, { path: 'mods/oculus.jar', name: 'Oculus', optional: null }],
+});
+
+/** The core's `shader_mods::wanted`: Iris on Fabric, Quilt and NeoForge, Oculus on Forge and on NeoForge 1.20.1. */
+function wantedShaderMod(instance: Instance): ShaderMod | null {
+  const loader = instance.game.loader?.kind;
+  if (!loader) return null;
+  if (loader === 'forge' || (loader === 'neoforge' && instance.game.minecraft === '1.20.1')) return 'oculus';
+  return 'iris';
+}
+
+/** Iris and Oculus by Modrinth id, as Browse installs them. */
+const SHADER_MOD_PROJECTS = ['YL57xq9U', 'GchcoXML'];
+/** The mock has no jars to read, so a shader mod is known by its name, the way the core falls back for a jar without metadata. */
+const namedShaderMod = (name: string) => name.toLowerCase().split(/[^a-z0-9]+/).some((w) => w === 'iris' || w === 'oculus' || w === 'optifine');
+
+function shaderSupportOf(state: MockState, instance: Instance): ShaderSupport {
+  const wanted = wantedShaderMod(instance);
+  if (!wanted) return { wanted: null, installed: false };
+  const pack = state.packs.get(instance.id);
+  const jars = [...(state.mods.get(instance.id) ?? []), ...(pack?.contents.additions ?? [])].filter((m) => m.enabled).map((m) => m.fileName);
+  const packMods = (pack?.contents.managed ?? []).filter((m) => m.optional === null || m.optional.enabled).map((m) => m.path);
+  const fromBrowse = [...(state.browse.installed.get(instance.id) ?? [])].some((p) => SHADER_MOD_PROJECTS.includes(p));
+  return { wanted, installed: fromBrowse || [...jars, ...packMods].some(namedShaderMod) };
+}
+
 const findProject = (ref: string) => CATALOG.find((p) => p.detail.projectId === ref || p.detail.slug === ref);
 
 const contentKey = (id: string, kind: ContentKind) => `${id}:${kind}`;
 
+const baseName = (path: string) => path.split(/[\\/]/).pop() ?? path;
+
+/** The core reads inside a zip; the mock goes by its name: "shader" in it is a shader pack, "photos" no pack at all. */
+function mockDropKind(path: string): DroppedKind {
+  const name = baseName(path).toLowerCase();
+  if (name.endsWith('.jar')) return 'mod';
+  if (name.endsWith('.mrpack')) return 'modpack';
+  if (!name.endsWith('.zip')) return 'other';
+  if (/shader|bsl|complementary|sildur/.test(name)) return 'shader_pack';
+  return /photos/.test(name) ? 'unknown_zip' : 'resource_pack';
+}
+
+/** `drop_add`, as the core does it: mods to `mods/`, packs to their folders, the rest skipped with why. */
+function mockDropAdd(state: MockState, instance: Instance, paths: string[]): DropResult {
+  const result: DropResult = { added: [], skipped: [] };
+  const modded = instance.game.loader !== null;
+  const reasons: Partial<Record<DroppedKind, DropSkipReason>> = { modpack: 'modpack', unknown_zip: 'not_a_pack', other: 'not_content' };
+  for (const path of paths) {
+    const name = baseName(path);
+    const kind = mockDropKind(path);
+    const skip = (reason: DropSkipReason) => result.skipped.push({ name, kind, reason });
+    const reason = reasons[kind];
+    if (reason) skip(reason);
+    else if (!modded && kind !== 'resource_pack') skip('needs_loader');
+    else if (kind === 'mod') {
+      const mods = state.mods.get(instance.id) ?? [];
+      const pack = state.packs.get(instance.id);
+      const taken = (f: string) => f.replace(/\.disabled$/, '').toLowerCase() === name.toLowerCase();
+      if (pack?.contents.managed.some((m) => taken(baseName(m.path)))) skip('managed');
+      else if (mods.some((m) => taken(m.fileName))) skip('exists');
+      else {
+        editMods(state, instance.id, (list) => [...list, { fileName: name, enabled: true, size: 1_200_000 }].sort((a, b) => a.fileName.localeCompare(b.fileName)));
+        result.added.push({ name, kind });
+      }
+    } else {
+      const key = contentKey(instance.id, kind === 'shader_pack' ? 'shader' : 'resource_pack');
+      const files = state.content.get(key) ?? [];
+      const there = files.find((f) => f.fileName.toLowerCase() === name.toLowerCase());
+      if (there) skip(there.managed ? 'managed' : 'exists');
+      else {
+        state.content.set(key, [...files, { fileName: name, size: 2_400_000, folder: false, managed: false }].sort((a, b) => a.fileName.localeCompare(b.fileName)));
+        result.added.push({ name, kind });
+      }
+    }
+  }
+  return result;
+}
+
 function seed(options: MockOptions) {
   const listing = clone(listingFx) as InstanceListing;
   const accounts = clone(accountsFx) as AccountsFile;
-  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, iconShape: options.iconShape ?? 'square', theme: options.theme ?? 'laminate', font: options.font ?? 'hyperlegible', language: null };
+  const settings: Settings = { ...(clone(settingsFx) as Settings), firstRunDone: true, railExpanded: options.railExpanded ?? false, iconShape: options.iconShape ?? 'square', theme: options.theme ?? 'laminate', accent: 'room', customRoom: { background: '#101820', buttons: '#ff6ad5' }, font: options.font ?? 'hyperlegible', transitions: options.transitions ?? 'smooth', language: null };
   if (options.firstRun) {
     listing.instances = [];
     listing.damaged = [];
@@ -366,6 +466,7 @@ function seed(options: MockOptions) {
     offlineAllowed: !options.offlineLocked,
     panel: options.panel ?? true,
   };
+  if (options.graphics && options.graphics !== 'two') appInfo.graphics = clone(MOCK_GRAPHICS[options.graphics]);
   // Like the core's `visible`: a build with offline accounts locked never lists one, and one in use reads as none. The real file
   // keeps them for a dev build on the same computer; the mock has no dev build to keep them for.
   if (!appInfo.offlineAllowed) {
@@ -406,13 +507,15 @@ function seed(options: MockOptions) {
       bannerAspect: null,
     };
     listing.instances = [...listing.instances, sky];
-    const offer = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
+    const fixture = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
+    // Not a server's pack: nothing is "uploaded by the server's owner", and nothing waits on its own.
+    const offer = fixture && { ...fixture, held: false, files: fixture.files.filter((f) => f.origin !== 'uploaded') };
     const blocked = (clone(manualProgressFx) as ManualProgress).remaining;
     content.set(contentKey(sky.id, 'resource_pack'), [{ fileName: 'Pack Textures.zip', size: 2_000_000, folder: false, managed: true }]);
     packs.set(sky.id, {
       installed: '1.0.3',
       update: options.noUpdate ? null : offer,
-      contents: clone(packContentsFx) as PackContents,
+      contents: withOculus(clone(packContentsFx) as PackContents),
       art: SKY_ART,
       manual: options.manual
         ? [
@@ -459,6 +562,11 @@ function seed(options: MockOptions) {
     listing.instances = [...listing.instances, ...modrinthInstances()];
   }
   const servers = seedServers(options.server, listing);
+  if (options.server === 'update-held') {
+    // The server's pack changed, with a file its owner uploaded: the run waits on "Update ready" although it updates on its own.
+    const update = (clone(packStatusFx) as PackStatus[])[0]?.update ?? null;
+    packs.set(MOCK_SERVER_ID, { installed: '1.0.3', update, contents: clone(packContentsFx) as PackContents, art: { icon: null, banner: null }, manual: [], found: 0 });
+  }
   // Each instance's one restore point (the real one is .perland/restore/point/point.json).
   const restorePoints = new Map<string, RestorePoint>();
   if (!options.firstRun) {
@@ -640,7 +748,8 @@ async function packPrelude(
     await wait(400);
     if (run.cancelled) return null;
     if (pack.update) {
-      if (updateOnly || instance.updatePolicy === 'auto') take = true;
+      // As the core: code from outside Modrinth and CurseForge waits for the player even when updates are automatic.
+      if ((updateOnly || instance.updatePolicy === 'auto') && !pack.update.held) take = true;
       else {
         run.state = 'asking';
         event({ type: 'run_state', instance: id, state: 'asking', exit: null, update: pack.update });
@@ -1060,6 +1169,13 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     case 'import_cancel':
       if (state.importRun) state.importRun.cancelled = true;
       return null;
+    case 'medals_view':
+      return mockMedalsView({
+        playtime: state.listing.instances.map((i) => state.playtime.get(i.id) ?? 0),
+        instances: state.listing.instances.length,
+        stats: mockPerlandStats(state.perland, state.listing),
+        signedIn: Boolean(state.perland.account) && state.perland.scenario !== 'off',
+      });
     case 'playtime_list':
       return state.listing.instances.map(
         (i): PlaytimeEntry => ({
@@ -1121,6 +1237,10 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const target = find(args.id) ?? fail('disk', 'instance_not_found', 'gone');
       if (!state.accounts.active) fail('auth', 'no_account', 'Add an account before playing');
       if (state.runs.has(target.id)) fail('game', 'already_running', 'already running');
+      // As the core: nothing from a server the player hasn't trusted installs.
+      if (instanceTrustPrompt(target)) {
+        fail('pack', 'server_trust_needed', 'Confirm you trust this server before its modpack installs', args.join ? { id: target.id, join: 'true' } : { id: target.id });
+      }
       if (state.servers?.scenario === 'pending' && target.id === MOCK_SERVER_ID) {
         void scriptServerWait(state, target);
         return null;
@@ -1167,7 +1287,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const version = update?.from ?? pack?.installed ?? target.updateHold?.version ?? null;
       if (pack && update) {
         pack.installed = update.from;
-        pack.update = { fromVersion: update.from, toVersion: update.to, added: [], updated: [], removed: [], kept: [] };
+        pack.update = { fromVersion: update.from, toVersion: update.to, added: [], updated: [], removed: [], kept: [], files: [], held: false };
       }
       const updated: Instance = { ...target };
       if (target.updateHold) updated.updateHold = target.updateHold;
@@ -1480,8 +1600,14 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
     }
     case 'mod_remove':
       return editMods(state, String(args.id), (list) => list.filter((m) => m.fileName !== args.file));
+    case 'drop_inspect':
+      return (args.paths as string[]).map((path) => ({ path, name: baseName(path), kind: mockDropKind(path) }));
+    case 'drop_add':
+      return mockDropAdd(state, find(args.id) ?? fail('disk', 'instance_not_found', 'gone', { id: String(args.id) }), args.paths as string[]);
     case 'content_list':
       return clone(state.content.get(contentKey(String(args.id), args.kind as ContentKind)) ?? []);
+    case 'shader_support':
+      return shaderSupportOf(state, find(args.id) ?? fail('disk', 'instance_not_found', 'No such instance'));
     case 'content_remove': {
       const key = contentKey(String(args.id), args.kind as ContentKind);
       const files = state.content.get(key) ?? [];
@@ -1520,7 +1646,8 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       if (!vanilla && modrinth === null && state.options.friends === 'missing') {
         fail('pack', 'free_server_mods_not_on_modrinth', 'Free servers only run mods from Modrinth');
       }
-      const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite }, []) as Instance;
+      // The player's own server: trusted, as the core joins it.
+      const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite, autoUpdate: true }, []) as Instance;
       return handleFree(
         state.free,
         state.perland.account,
@@ -1610,7 +1737,7 @@ async function handle(state: MockState, cmd: string, args: Record<string, unknow
       const skinsServed = handleSkins(state.skins, state.accounts, cmd, args);
       if (skinsServed !== NOT_SKINS) return skinsServed;
       const extra = [...state.perland.servers, ...(state.free.server ? [state.free.server] : [])];
-      const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite }, extra) as Instance;
+      const join = (invite: string) => handleServer(state.servers, state.listing, 'join_add', { link: invite, autoUpdate: true }, extra) as Instance;
       const freeServed = await handleFree(state.free, state.perland.account, state.listing, cmd, args, join, (card) =>
         freeManageRef(state.manage, card),
       );
@@ -1672,8 +1799,16 @@ export function installMock(options: MockOptions = {}) {
   const backend = createMockBackend(options);
   mockWindows('main');
   mockIPC((cmd, args) => backend.handle(cmd, args), { shouldMockEvents: true });
+  // A browser never hands files to Tauri's drag-and-drop, so dev:mock drives the window's drop target from the
+  // console (or a screenshot script) with the events Tauri sends: `__mockDrag('enter', ['C:/d/sodium.jar'])`, then
+  // 'over' (with a point, in physical pixels), 'drop' or 'leave'. Only installMock sets it: never a real build.
+  (window as unknown as { __mockDrag: MockDrag }).__mockDrag = mockDrag;
   return backend;
 }
+
+type MockDrag = (type: 'enter' | 'over' | 'drop' | 'leave', paths?: string[], position?: { x: number; y: number }) => Promise<void>;
+const mockDrag: MockDrag = (type, paths = [], position = { x: 0, y: 0 }) =>
+  emit(`tauri://drag-${type}`, type === 'leave' ? null : { paths, position });
 
 /** The `?update=` preview param: a launcher update state by name (dev:mock only). */
 export function mockUpdateState(name: string | null): UpdateState | undefined {

@@ -52,6 +52,7 @@ Packs stay in sync automatically, so a Perland player never manages mod versions
   - pack links, `.mrpack` files and pack sync, with pack art (icon and banner) when a pack ships it
   - Forge and NeoForge install and launch
   - the launcher's own updater and installers (the manual Release workflow)
+  - the Profile (opened from the account in the title bar): the player's own figure and skin, their accounts, a checklist of what is still to connect (a Microsoft account, the Perland account) and a look at their latest medals on one page; the launcher's places (Skins, Servers, Mods & more, Medals and achievements) as named tabs in the title bar; a search by name in the rail once there are many instances
   - import a whole instance from another launcher's folder (mods, worlds, settings and map data are copied; the original folder is only read)
 - **Accounts:** players sign in with a Microsoft account that owns Minecraft: Java Edition, or add an offline account with a player name. Every build offers both (offline accounts were dev-only until 2026-11-07).
 - **Not built (never fake it):** anything not listed above is absent, not shown as a disabled control.
@@ -64,7 +65,7 @@ Packs stay in sync automatically, so a Perland player never manages mod versions
 - **Mark:** the legacy PerlandDev **pixel land plots**: four stepped, terraced plots in lime, amber, coral-red and blue, with brown "dirt" steps beneath. The only source today is a compressed raster, `E:\PerlandDev-site\public\logo.png` (1000 × 1000, visible artifacts), so it must be redrawn as a clean vector on its pixel grid before use.
 - **Not the Panel's look:** the launcher's look is its own player-facing system. It does not reuse the Panel's cyan chamfered mark or "Director HUD" language.
 - **Owner-chosen direction (binding):** "game-forward". Full-bleed instance/pack hero art, a big friendly Play button, an instance icon rail on the left, a game-client feel (like Battle.net or Lunar), and a custom title bar. Dark only for v1.
-- **Preset themes swap neutrals only:** a player may pick one of four dark rooms (Laminate, the default, Stone, Night, Forest) and the body text font. A theme changes only the neutrals (ground, panels, ink, seam line and the dirt steps); amber, lime, coral and blue keep their one job in every theme, and every theme meets the same tested contrast floor. There are no custom colours and no light theme.
+- **The look is the player's, within the floor:** Personalize (the brush in the title bar) holds the room (seven made ones, Laminate the default, plus a room the player mixes from two colours), the colour of Play and the keys that act, the body text font, the instance icons and the screen transitions. A room changes only the neutrals and that act hue; lime, coral and blue keep their one job everywhere, and every room and button colour meets the same tested contrast floor, a room the player mixed included, which is kept but not shown while it fails. Every room is dark: there is no light theme.
 - **Licensing and trademarks:**
   - GPL-3.0-only.
   - No Modrinth branding.

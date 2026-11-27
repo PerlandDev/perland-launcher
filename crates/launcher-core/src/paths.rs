@@ -30,6 +30,14 @@ impl LauncherDirs {
     pub fn root(&self) -> &Path {
         &self.root
     }
+    /// The player's preferences (`settings::SettingsStore`).
+    pub fn settings(&self) -> PathBuf {
+        self.root.join("settings.json")
+    }
+    /// The Java executables whose Windows graphics preference the launcher wrote (`graphics`).
+    pub fn graphics_owned(&self) -> PathBuf {
+        self.root.join("graphics-preferences.json")
+    }
     pub fn libraries(&self) -> PathBuf {
         self.root.join("libraries")
     }
@@ -74,6 +82,10 @@ impl LauncherDirs {
     /// Microsoft accounts' skin textures, by profile id (see `skins`).
     pub fn skins(&self) -> PathBuf {
         self.root.join("cache").join("skins")
+    }
+    /// The skin catalog's manifest and PNGs, by hash (see `skin_catalog`).
+    pub fn skin_catalog(&self) -> PathBuf {
+        self.root.join("cache").join("skin-catalog")
     }
     /// Locked while shared game files are installed, across every launcher process.
     pub fn install_lock(&self) -> PathBuf {

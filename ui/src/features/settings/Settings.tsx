@@ -1,19 +1,21 @@
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { useTranslation } from 'react-i18next';
 import mark from '../../assets/mark.svg';
+import { InstanceThumb } from '../../art/InstanceThumb';
 import { applyLanguage } from '../../i18n';
 import { commands } from '../../ipc/commands';
-import type { Lang } from '../../ipc/schema';
-import { applyAppearance, FONTS, THEMES, type Appearance } from '../../state/appearance';
-import { useAppInfo, useSettings } from '../../state/queries';
+import { type GraphicsCard, type Lang } from '../../ipc/schema';
+
+import { useAppInfo, useInstances, useSettings } from '../../state/queries';
 import { WHAT_IS_SENT } from '../../state/privacy';
-import { navigate } from '../../state/route';
+import { lastInstance, navigate } from '../../state/route';
 import { pushError } from '../../state/toasts';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
-import { ExternalLink, Folder } from '../../ui/Icon';
+import { Brush, ExternalLink, Folder } from '../../ui/Icon';
 import { MemorySlider } from '../../ui/MemorySlider';
 import { ScreenFrame } from '../../ui/ScreenFrame';
+import { ScreenLoading } from '../../ui/ScreenLoading';
 import { Select } from '../../ui/Select';
 import { Toggle } from '../../ui/Toggle';
 import { useSingleFlight } from '../../ui/useSingleFlight';
@@ -28,18 +30,12 @@ export function Settings() {
   const { t } = useTranslation();
   const settings = useSettings();
   const appInfo = useAppInfo();
+  const instances = useInstances();
   const { draft, saved, edit } = useSettingsDraft();
   const openOnce = useSingleFlight();
   const retryOnce = useSingleFlight();
   const data = draft ?? settings.data;
   const home = () => navigate({ name: 'home', id: null });
-
-  /** A look applies to the whole app at once, before the save comes back. */
-  const look = (patch: Partial<Appearance>) => {
-    if (!data) return;
-    applyAppearance({ theme: data.theme, font: data.font, ...patch });
-    edit(patch);
-  };
 
   const open = (action: () => Promise<unknown>) => openOnce((done) => void action().catch(pushError).finally(done));
 
@@ -57,7 +53,23 @@ export function Settings() {
       </ScreenFrame>
     );
   }
-  if (!data || !appInfo.data) return <ScreenFrame title={t('settings.title')} onBack={home}>{null}</ScreenFrame>;
+  if (!data || !appInfo.data)
+    return (
+      <ScreenFrame title={t('settings.title')} onBack={home}>
+        <ScreenLoading label={t('loading.settings')} onRetry={() => void Promise.all([settings.refetch(), appInfo.refetch()])} />
+      </ScreenFrame>
+    );
+
+  // The memory line names the instance the player last opened, while it is still there and healthy.
+  const lastId = lastInstance();
+  const last = instances.data?.instances.find((instance) => instance.id === lastId) ?? null;
+  const { graphics } = appInfo.data;
+  const graphicsHint = [
+    t(graphics.status === 'choose' ? 'settings.graphics.hint' : graphics.status === 'singleCard' ? 'settings.graphics.single' : 'settings.graphics.unsupported'),
+    graphics.cards.length > 0 && t('settings.graphics.found', { cards: graphics.cards.join(', ') }),
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <ScreenFrame
@@ -71,6 +83,13 @@ export function Settings() {
       }
     >
       <div className="grid max-w-2xl gap-10">
+        {/* The look is Personalize's alone (the brush); one quiet line keeps a player who looks here on their way. */}
+        <div className="note-plate items-center justify-between gap-4" data-lamp="none">
+          <p className="text-sm">{t('settings.personalizeHint')}</p>
+          <Button variant="ghost" icon={<Brush />} className="flex-none" onClick={() => navigate({ name: 'personalize' })}>
+            {t('settings.personalizeLink')}
+          </Button>
+        </div>
         <Select
           label={t('settings.language')}
           value={data.language ?? 'system'}
@@ -85,11 +104,37 @@ export function Settings() {
             edit({ language });
           }}
         />
-        <MemorySlider
-          label={t('settings.memory')}
-          valueMb={data.defaultMemoryMb}
-          systemMb={appInfo.data.systemMemoryMb}
-          onChange={(defaultMemoryMb) => edit({ defaultMemoryMb }, true)}
+        <div className="grid gap-2">
+          <MemorySlider
+            label={t('settings.memory')}
+            valueMb={data.defaultMemoryMb}
+            systemMb={appInfo.data.systemMemoryMb}
+            onChange={(defaultMemoryMb) => edit({ defaultMemoryMb }, true)}
+          />
+          <p className="text-sm text-ink-dim">{t('settings.memoryEach')}</p>
+          {/* A key, not a bare link: it wears the instance's own icon, as the rail does, so the player sees which one. */}
+          {last && (
+            <Button
+              className="justify-self-start"
+              icon={<InstanceThumb instance={last} />}
+              onClick={() => navigate({ name: 'instanceSettings', id: last.id, focus: 'memory' })}
+            >
+              {t('settings.memoryFor', { name: last.name })}
+            </Button>
+          )}
+        </div>
+        <Select
+          label={t('settings.graphics.label')}
+          value={data.graphicsCard}
+          disabled={graphics.status !== 'choose'}
+          hint={graphicsHint}
+          options={[
+            { value: 'automatic', label: t('settings.graphics.automatic') },
+            // Without a card built into the processor, the two are named by what they do.
+            { value: 'dedicated', label: t(graphics.integrated ? 'settings.graphics.dedicated' : 'settings.graphics.performance') },
+            { value: 'integrated', label: t(graphics.integrated ? 'settings.graphics.integrated' : 'settings.graphics.saving') },
+          ]}
+          onChange={(value) => edit({ graphicsCard: value as GraphicsCard })}
         />
         <div className="flex items-start justify-between gap-6">
           <div>
@@ -100,73 +145,6 @@ export function Settings() {
           </div>
           <Toggle checked={data.minimizeOnPlay} label={t('settings.minimize')} onChange={(minimizeOnPlay) => edit({ minimizeOnPlay })} />
         </div>
-        <section className="grid gap-4" aria-labelledby="appearance-heading">
-          <h2 id="appearance-heading" className="text-lg font-bold">
-            {t('settings.appearance')}
-          </h2>
-          <div className="grid gap-6">
-            <fieldset role="radiogroup" className="grid gap-2">
-              <legend className="text-sm font-semibold">{t('settings.theme')}</legend>
-              <div className="swatch-keys">
-                {THEMES.map((theme) => (
-                  <label key={theme} className="swatch-key" data-checked={data.theme === theme ? '' : undefined}>
-                    <input
-                      type="radio"
-                      name="theme"
-                      className="sr-only"
-                      checked={data.theme === theme}
-                      onChange={() => look({ theme })}
-                    />
-                    <span className="swatch" data-swatch={theme} aria-hidden>
-                      <span className="swatch-face" />
-                      <span className="swatch-lamp" />
-                    </span>
-                    <span className="swatch-name">{t(`settings.themes.${theme}`)}</span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset className="grid gap-2">
-              <legend className="text-sm font-semibold">{t('settings.font')}</legend>
-              <div className="flex flex-wrap gap-2">
-                {FONTS.map((font) => (
-                  // Each option is set in the face it picks, so the choice shows itself.
-                  <label
-                    key={font}
-                    className={`seg ${font === 'system' ? 'font-system' : 'font-hyperlegible'}`}
-                    data-checked={data.font === font ? '' : undefined}
-                  >
-                    <input
-                      type="radio"
-                      name="font"
-                      className="sr-only"
-                      checked={data.font === font}
-                      onChange={() => look({ font })}
-                    />
-                    {font === 'system' ? t('settings.fontSystem') : t('settings.fontHyperlegible')}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <fieldset className="grid gap-2">
-              <legend className="text-sm font-semibold">{t('settings.iconShape')}</legend>
-              <div className="flex flex-wrap gap-2">
-                {(['square', 'round'] as const).map((shape) => (
-                  <label key={shape} className="seg" data-checked={data.iconShape === shape ? '' : undefined}>
-                    <input
-                      type="radio"
-                      name="icon-shape"
-                      className="sr-only"
-                      checked={data.iconShape === shape}
-                      onChange={() => edit({ iconShape: shape })}
-                    />
-                    {shape === 'square' ? t('settings.iconSquare') : t('settings.iconRound')}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          </div>
-        </section>
         <div className="grid gap-2">
           <p className="text-sm font-semibold">{t('settings.dataFolder')}</p>
           <div className="flex items-center gap-3">

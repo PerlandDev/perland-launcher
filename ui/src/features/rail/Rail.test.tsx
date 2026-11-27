@@ -72,23 +72,11 @@ it("falls back to the generated icon when a pack's icon fails to decode", async 
   expect(sky.querySelector('svg')).not.toBeNull();
 });
 
-it('opens Servers from the rail, above Browse, and marks it while open', async () => {
-  const { user } = renderApp(<Rail />);
-  const servers = await screen.findByRole('button', { name: 'Servers' });
-  const browse = screen.getByRole('button', { name: 'Browse' });
-  expect(servers.compareDocumentPosition(browse) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(servers).not.toHaveAttribute('aria-current');
-  await user.click(servers);
-  expect(routeSnapshot()).toEqual({ name: 'servers' });
-  expect(servers).toHaveAttribute('aria-current', 'page');
-  // Servers isn't an instance's screen, so no cabinet is selected.
-  expect(screen.getByRole('button', { name: 'Asalith Fields' })).not.toHaveAttribute('aria-current');
-});
-
-it('opens Browse from the rail', async () => {
-  const { user } = renderApp(<Rail />);
-  await user.click(await screen.findByRole('button', { name: 'Browse' }));
-  expect(routeSnapshot()).toEqual({ name: 'browse', kind: 'modpack' });
+it("is the instances' alone: the launcher's places live in the title bar, and only New instance is at its foot", async () => {
+  renderApp(<Rail />);
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  for (const name of ['Home', 'Skins', 'Servers', 'Mods & more', 'Achievements']) expect(screen.queryByRole('button', { name })).toBeNull();
+  expect(screen.getByRole('button', { name: 'New instance' })).toBeInTheDocument();
 });
 
 it('marks a server with its last status, in words too', async () => {
@@ -288,7 +276,7 @@ it('still selects on a click that wobbles under 4px, and never drags a damaged c
 /** The cabinets' accessible names, top to bottom. */
 function cabinetNames() {
   return screen
-    .getAllByRole('listitem')
+    .queryAllByRole('listitem')
     .map((li) => li.querySelector('button')?.getAttribute('aria-label'))
     .filter(Boolean);
 }
@@ -455,4 +443,86 @@ it('puts a ⋯ key on each wide row that opens the same menu as a right-click', 
   expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent)).toEqual(byClick);
   await user.keyboard('{Escape}');
   expect(more).toHaveFocus();
+});
+
+/** Six more instances, so the rail has enough of them to offer its finder. */
+function manyInstances(backend: ReturnType<typeof createMockBackend>) {
+  const base = backend.state.listing.instances[0]!;
+  const more = ['Árbol Mágico', 'Bedwars Practice', 'Hardcore World', 'Mining Trip', 'Redstone Lab', 'Skyblock Co-op'];
+  backend.state.listing.instances = [...backend.state.listing.instances, ...more.map((name, n) => ({ ...base, id: `extra-${n}`, name, artSeed: null }))];
+}
+
+it('offers no finder while the instances are few', async () => {
+  renderApp(<Rail />, { railExpanded: true });
+  await screen.findByRole('button', { name: 'Asalith Fields' });
+  expect(screen.queryByRole('searchbox', { name: 'Find an instance' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Find an instance' })).toBeNull();
+});
+
+it('finds an instance by name in the wide rail, whatever its case or accents', async () => {
+  const { user, backend } = renderApp(<Rail />, { railExpanded: true });
+  manyInstances(backend);
+  const box = await screen.findByRole('searchbox', { name: 'Find an instance' });
+  await user.type(box, 'ARBOL');
+  expect(cabinetNames()).toEqual(['Árbol Mágico']);
+  await user.clear(box);
+  await user.type(box, 'craft');
+  expect(cabinetNames()).toEqual([]);
+  expect(screen.getByText('No instance has that name.')).toBeInTheDocument();
+  await user.clear(box);
+  expect(cabinetNames()).toContain('Asalith Fields');
+  expect(cabinetNames()).toContain('Skyblock Co-op');
+});
+
+it('opens the first match on Enter and puts the whole list back; Escape just clears', async () => {
+  const { user, backend } = renderApp(<Rail />, { railExpanded: true });
+  manyInstances(backend);
+  const box = await screen.findByRole('searchbox', { name: 'Find an instance' });
+  await user.type(box, 'red{Enter}');
+  expect(routeSnapshot()).toEqual({ name: 'home', id: 'extra-4' });
+  expect(box).toHaveValue('');
+  expect(cabinetNames()).toContain('Asalith Fields');
+  await user.type(box, 'min');
+  expect(cabinetNames()).toEqual(['Mining Trip']);
+  await user.keyboard('{Escape}');
+  expect(box).toHaveValue('');
+  expect(cabinetNames()).toContain('Asalith Fields');
+});
+
+it('steps from the finder into the matches with the arrow key', async () => {
+  const { user, backend } = renderApp(<Rail />, { railExpanded: true });
+  manyInstances(backend);
+  const box = await screen.findByRole('searchbox', { name: 'Find an instance' });
+  await user.type(box, 'bed{ArrowDown}');
+  expect(screen.getByRole('button', { name: 'Bedwars Practice' })).toHaveFocus();
+});
+
+it('never moves a cabinet while the list is narrowed to matches', async () => {
+  const { user, backend, calls } = renderApp(<Rail />, { railExpanded: true });
+  manyInstances(backend);
+  const box = await screen.findByRole('searchbox', { name: 'Find an instance' });
+  await user.type(box, 'a');
+  act(() => screen.getByRole('button', { name: 'Hardcore World' }).focus());
+  await user.keyboard('{Alt>}{ArrowUp}{/Alt}');
+  expect(sent(calls, 'instance_reorder')).toEqual([]);
+});
+
+it('keeps the finder behind a key in the narrow rail, opening its field beside it', async () => {
+  // The keyboard goes back to the key as the field closes, not a frame later: a frame that never comes changes nothing.
+  vi.stubGlobal('requestAnimationFrame', () => 0);
+  const { user, backend } = renderApp(<Rail />);
+  manyInstances(backend);
+  const key = await screen.findByRole('button', { name: 'Find an instance' });
+  expect(screen.queryByRole('searchbox', { name: 'Find an instance' })).toBeNull();
+  expect(key).toHaveAttribute('aria-expanded', 'false');
+  await user.click(key);
+  const box = screen.getByRole('searchbox', { name: 'Find an instance' });
+  expect(box).toHaveFocus();
+  await user.type(box, 'sky');
+  expect(cabinetNames()).toEqual(['Sky Islands', 'Skyblock Co-op']);
+  await user.keyboard('{Escape}');
+  expect(screen.queryByRole('searchbox', { name: 'Find an instance' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Find an instance' })).toHaveFocus();
+  expect(cabinetNames()).toContain('Asalith Fields');
+  vi.unstubAllGlobals();
 });

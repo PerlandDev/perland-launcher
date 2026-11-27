@@ -1,10 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { describeError, isLauncherError } from '../../ipc/errors';
 import { inviteHost } from '../../ipc/inviteLink';
 import type { Instance } from '../../ipc/schema';
 import { useAppInfo, useInstances, useUpdateInstance } from '../../state/queries';
-import { navigate } from '../../state/route';
+import { navigate, type InstanceSettingsFocus } from '../../state/route';
 import { useRun } from '../../state/runStore';
 import { Button } from '../../ui/Button';
 import { ErrorCard } from '../../ui/ErrorCard';
@@ -13,12 +13,17 @@ import { Copy } from '../../ui/Icon';
 import { copyText } from '../../ui/copyText';
 import { MemorySlider } from '../../ui/MemorySlider';
 import { ScreenFrame } from '../../ui/ScreenFrame';
+import { ScreenLoading } from '../../ui/ScreenLoading';
 import { inviteOf, isPack, isServer, versionLine } from '../home/labels';
 import { useVersionChoice } from '../new-instance/useVersionChoice';
 import { VersionFields } from '../new-instance/VersionFields';
+import { ContentSection } from './ContentSection';
 import { GameWindowFields } from './GameWindowFields';
 import { windowDraft, windowOf } from './gameWindow';
 import { JavaPicker } from './JavaPicker';
+import { JumpLinks, type Jump } from './JumpLinks';
+import { reveal } from './reveal';
+import { ServerTrustFields } from './ServerTrustFields';
 import { useJavaChoice } from './useJavaChoice';
 
 /** The fields this screen saves, written the same way whatever order their keys came in, to tell an edit from what is
@@ -36,7 +41,7 @@ function settingsKey(instance: Instance): string {
   return JSON.stringify(sorted({ name, game, updatePolicy, java, window }));
 }
 
-function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) {
+function Form({ instance, systemMb, focus }: { instance: Instance; systemMb: number; focus?: InstanceSettingsFocus }) {
   const { t, i18n } = useTranslation();
   const choice = useVersionChoice(instance.game);
   const pack = isPack(instance);
@@ -93,22 +98,51 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
       },
     });
 
+  // Where each part of this long page starts; the jump links and an arrival with a focus land there.
+  const root = useRef<HTMLDivElement>(null);
+  const hasServer = server || !pack;
+  const jumps: Jump[] = [
+    { key: 'game', label: t('instanceSettings.game'), target: '#game-heading' },
+    { key: 'content', label: t('mods.screenTitle'), target: '#content-heading' },
+    ...(hasServer ? [{ key: 'server', label: t('server.settingsTitle'), target: '#server-settings' }] : []),
+    { key: 'window', label: t('instanceSettings.window'), target: '#window-heading' },
+    { key: 'memory', label: t('instanceSettings.memory'), target: '#memory-section input[type="range"]', block: 'center' as const },
+    { key: 'java', label: t('instanceSettings.java'), target: '#java-heading' },
+  ];
+  // Arriving with a focus (a "Choose a loader" elsewhere, say) opens on that part. A pack picks its own loader, so the
+  // Game heading stands in for the choice it doesn't have.
+  useEffect(() => {
+    if (!focus) return;
+    const at = (selector: string) => root.current?.querySelector(selector) ?? null;
+    if (focus === 'loader') reveal(at('input[name="loader"]:checked') ?? at('#game-heading'), 'center');
+    else if (focus === 'memory') reveal(at('#memory-section input[type="range"]'), 'center');
+    else reveal(at('#content-heading'));
+  }, [focus]);
+
   return (
-    <div className="grid max-w-2xl gap-10">
+    <div ref={root} className="grid max-w-2xl gap-10">
+      <JumpLinks jumps={jumps} />
       <Field label={t('home.nameLabel')}>
         <input className="field-input" value={name} maxLength={64} onChange={(e) => edit(setName)(e.target.value)} />
       </Field>
       <section className="grid gap-4" aria-labelledby="game-heading">
-        <h2 id="game-heading" className="text-lg font-bold">{t('instanceSettings.game')}</h2>
+        <h2 id="game-heading" tabIndex={-1} className="scroll-mt-6 justify-self-start text-lg font-bold">
+          {t('instanceSettings.game')}
+        </h2>
         {pack ? (
           <div className="grid gap-1">
             <p>{versionLine(t, instance)}</p>
             <p className="text-sm text-ink-dim">{t('instanceSettings.gameFromPack')}</p>
           </div>
         ) : (
-          <VersionFields choice={versions} />
+          <>
+            <VersionFields choice={versions} />
+            {/* Without a loader the Mods and Shaders tabs stay empty; say what one is for, and which to pick. */}
+            {choice.loader === 'none' && <p className="info-line">{t('instanceSettings.loaderHint')}</p>}
+          </>
         )}
       </section>
+      <ContentSection instance={instance} />
       {pack && !server && (
         <fieldset className="grid gap-3">
           <legend className="mb-1.5 text-lg font-bold">{t('instanceSettings.updates')}</legend>
@@ -124,7 +158,7 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
       )}
       {server && (
         <section className="grid gap-3" aria-labelledby="server-settings">
-          <h2 id="server-settings" className="text-lg font-bold">
+          <h2 id="server-settings" tabIndex={-1} className="scroll-mt-6 justify-self-start text-lg font-bold">
             {t('server.settingsTitle')}
           </h2>
           <p>{t('server.settingsHost', { host: inviteHost(inviteOf(instance) ?? '') ?? '' })}</p>
@@ -145,11 +179,17 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
               {t('server.relinkRunning')}
             </p>
           )}
+          <ServerTrustFields
+            instance={instance}
+            running={running}
+            autoUpdate={policy !== 'ask'}
+            onAutoUpdate={(next) => edit(setPolicy)(next ? 'auto' : 'ask')}
+          />
         </section>
       )}
       {!pack && (
         <section className="grid gap-3" aria-labelledby="server-settings">
-          <h2 id="server-settings" className="text-lg font-bold">
+          <h2 id="server-settings" tabIndex={-1} className="scroll-mt-6 justify-self-start text-lg font-bold">
             {t('server.settingsTitle')}
           </h2>
           <p>{t('server.linkSettingsBody')}</p>
@@ -170,7 +210,9 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
         </section>
       )}
       <GameWindowFields draft={windowEdit} onChange={edit(setWindowEdit)} />
-      <MemorySlider label={t('instanceSettings.memory')} valueMb={memoryMb} onChange={edit(setMemoryMb)} systemMb={systemMb} />
+      <div id="memory-section">
+        <MemorySlider label={t('instanceSettings.memory')} valueMb={memoryMb} onChange={edit(setMemoryMb)} systemMb={systemMb} />
+      </div>
       <JavaPicker choice={java} />
       <Field
         label={t('instanceSettings.javaArgs')}
@@ -198,14 +240,18 @@ function Form({ instance, systemMb }: { instance: Instance; systemMb: number }) 
   );
 }
 
-export function InstanceSettings({ id }: { id: string }) {
+export function InstanceSettings({ id, focus }: { id: string; focus?: InstanceSettingsFocus }) {
   const { t } = useTranslation();
   const listing = useInstances();
   const appInfo = useAppInfo();
   const instance = listing.data?.instances.find((i) => i.id === id);
   return (
     <ScreenFrame title={t('instanceSettings.title')} subtitle={instance?.name} onBack={() => navigate({ name: 'home', id })}>
-      {instance && appInfo.data ? <Form key={instance.id} instance={instance} systemMb={appInfo.data.systemMemoryMb} /> : null}
+      {instance && appInfo.data ? (
+        <Form key={instance.id} instance={instance} systemMb={appInfo.data.systemMemoryMb} focus={focus} />
+      ) : listing.isPending || appInfo.isPending ? (
+        <ScreenLoading label={t('loading.instance')} onRetry={() => void Promise.all([listing.refetch(), appInfo.refetch()])} />
+      ) : null}
     </ScreenFrame>
   );
 }

@@ -2,7 +2,10 @@ import { invoke } from '@tauri-apps/api/core';
 import type {
   AccountReady,
   AccountsFile,
+  CatalogAnswer,
   CurrentSkin,
+  PlayerSkin,
+  SkinLook,
   SkinEntry,
   SkinVersion,
   SkinModel,
@@ -11,6 +14,8 @@ import type {
   BrowsePlanRequest,
   ContentFile,
   ContentKind,
+  DropResult,
+  DroppedFile,
   DeepLink,
   EmailCodeSent,
   BannerView,
@@ -54,6 +59,7 @@ import type {
   FreeServerPage,
   PerlandAccount,
   PerlandStats,
+  MedalsView,
   PerlandStatus,
   PlaytimeEntry,
   ContinueTarget,
@@ -66,6 +72,7 @@ import type {
   ServerNews,
   ServerStatusView,
   Settings,
+  ShaderSupport,
   ShareChoice,
   SharePreview,
   FriendsCheck,
@@ -79,6 +86,7 @@ import type {
   UpdateState,
   VersionInfo,
   YourServersPage,
+  TrustPrompt,
 } from './schema';
 
 /** The only place the UI calls into Rust. A failed call rejects with a `LauncherError` object. */
@@ -165,10 +173,24 @@ export const commands = {
   skinVersionsClear: (id: string) => invoke<null>('skin_versions_clear', { id }),
   /** The skin a Microsoft account wears now; null for an offline account or no skin. */
   skinCurrent: (uuid: string) => invoke<CurrentSkin | null>('skin_current', { uuid }),
+  /** The skin to draw as the account's figure. It only reads: nothing is adopted, synced or fetched for it. */
+  playerSkin: (uuid: string) => invoke<PlayerSkin>('player_skin', { uuid }),
   /** Puts the skin a Microsoft account wears in its wardrobe (reusing a matching entry, else a new one named `name`) and
    *  marks it worn; null for an offline account or one wearing Minecraft's default. */
   skinSyncCurrent: (uuid: string, name: string) => invoke<SkinEntry | null>('skin_sync_current', { uuid, name }),
   skinWear: (id: string, uuid: string) => invoke<SkinEntry[]>('skin_wear', { id, uuid }),
+  /** Perland's skin catalog: the Engine's manifest, else the cached one (see `status`). */
+  skinCatalog: () => invoke<CatalogAnswer>('skin_catalog'),
+  /** A catalog PNG (thumbnail, art, mask, or a thumbnail sheet: `manifest.sheets.pieces.file` / `.looks.file`) by its
+   *  SHA-256, as a `data:` URL. */
+  skinCatalogFile: (sha256: string) => invoke<string>('skin_catalog_file', { sha256 }),
+  /** The player's own painting on a skin as a `data:` URL; null without one. */
+  skinPainting: (id: string) => invoke<string | null>('skin_painting', { id }),
+  /** Saves a skin's look: its pieces, the player's painting (null for none) and the finished texture, all PNG `data:` URLs. */
+  skinLookSave: (id: string, look: SkinLook, painting: string | null, texture: string) =>
+    invoke<SkinEntry>('skin_look_save', { id, look, painting, texture }),
+  /** Drops a skin's look and painting; its texture stays as a plain skin. */
+  skinLookClear: (id: string) => invoke<SkinEntry>('skin_look_clear', { id }),
   /** Sign in with Microsoft in the browser. Null when it was canceled (here or in the browser). */
   accountSignInMicrosoft: (language: string) => invoke<AccountsFile | null>('account_sign_in_microsoft', { language }),
   accountSignInCancel: () => invoke<null>('account_sign_in_cancel'),
@@ -191,7 +213,13 @@ export const commands = {
     invoke<LocalMod[]>('mod_set_enabled', { id, file, enabled }),
   modsAdd: (id: string, paths: string[]) => invoke<LocalMod[]>('mods_add', { id, paths }),
   modRemove: (id: string, file: string) => invoke<LocalMod[]>('mod_remove', { id, file }),
+  /** What each file dragged over the window is (a zip by what is inside), for the drop overlay. */
+  dropInspect: (paths: string[]) => invoke<DroppedFile[]>('drop_inspect', { paths }),
+  /** Mods and packs dropped on the window go into the instance; the rest come back skipped, with why. */
+  dropAdd: (id: string, paths: string[]) => invoke<DropResult>('drop_add', { id, paths }),
   contentList: (id: string, kind: ContentKind) => invoke<ContentFile[]>('content_list', { id, kind }),
+  /** Which mod runs shader packs on the instance, and whether it is there. */
+  shaderSupport: (id: string) => invoke<ShaderSupport>('shader_support', { id }),
   contentRemove: (id: string, kind: ContentKind, file: string) =>
     invoke<ContentFile[]>('content_remove', { id, kind, file }),
   openFolder: (target: OpenTarget) => invoke<null>('open_folder', { target }),
@@ -221,7 +249,15 @@ export const commands = {
   /** The canonical invite a pasted link stands for (an invite, or a server's copied modpack link), or null for a pack link. */
   inviteFromLink: (link: string) => invoke<string | null>('invite_from_link', { link }),
   joinPreview: (link: string) => invoke<JoinPreview>('join_preview', { link }),
-  joinAdd: (link: string) => invoke<Instance>('join_add', { link }),
+  /** `autoUpdate` is the trust step's answer; leave it out when no step was shown. */
+  joinAdd: (link: string, autoUpdate?: boolean) => invoke<Instance>('join_add', { link, autoUpdate: autoUpdate ?? null }),
+  /** The trust step before joining `link`, or null when none is needed. `instance` is the instance the link is for (a
+   *  relink or a link), whose trust counts when the link reaches the same server. */
+  joinTrust: (link: string, instance?: string) => invoke<TrustPrompt | null>('join_trust', { link, instance: instance ?? null }),
+  /** The trust step for instance `id`'s server, or null when none is needed. */
+  instanceTrust: (id: string) => invoke<TrustPrompt | null>('instance_trust', { id }),
+  instanceTrustSet: (id: string, autoUpdate: boolean) => invoke<Instance>('instance_trust_set', { id, autoUpdate }),
+  instanceTrustForget: (id: string) => invoke<Instance>('instance_trust_forget', { id }),
   serverStatus: (id: string) => invoke<ServerStatusView>('server_status', { id }),
   serversList: (query: ListQuery) => invoke<PublicServerPage>('servers_list', { query }),
   serversIcon: (token: string, iconVersion: string) => invoke<string | null>('servers_icon', { token, iconVersion }),
@@ -230,8 +266,9 @@ export const commands = {
   serverNewsOpened: (invite: string, newest: string) => invoke<null>('server_news_opened', { invite, newest }),
   newsImage: (invite: string, postId: string, imageVersion: string) =>
     invoke<string | null>('news_image', { invite, postId, imageVersion }),
-  serverRelink: (id: string, link: string) => invoke<Instance>('server_relink', { id, link }),
-  serverLink: (id: string, link: string) => invoke<Instance>('server_link', { id, link }),
+  serverRelink: (id: string, link: string, autoUpdate?: boolean) =>
+    invoke<Instance>('server_relink', { id, link, autoUpdate: autoUpdate ?? null }),
+  serverLink: (id: string, link: string, autoUpdate?: boolean) => invoke<Instance>('server_link', { id, link, autoUpdate: autoUpdate ?? null }),
   serverUnlink: (id: string) => invoke<Instance>('server_unlink', { id }),
   perlandStatus: () => invoke<PerlandStatus>('perland_status'),
   /** Signs in on the Perland page in the browser (OAuth), where the player picks GitHub, Discord or an email code. Null when canceled here. */
@@ -253,6 +290,7 @@ export const commands = {
   perlandUnlink: () => invoke<null>('perland_unlink'),
   /** The linked player's numbers per server, or null while the Engine's add-on is off. */
   perlandStats: () => invoke<PerlandStats | null>('perland_stats'),
+  medalsView: () => invoke<MedalsView>('medals_view'),
   /** The player's servers, or null while signed out or when accounts are off. */
   yourServers: () => invoke<YourServersPage | null>('your_servers'),
   /** `invite` is the canonical invite URL of the card or Join screen. Follow and joined never fail. */

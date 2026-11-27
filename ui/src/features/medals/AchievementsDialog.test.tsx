@@ -2,7 +2,10 @@ import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { ServerStats } from '../../ipc/schema';
 import { renderWithProviders } from '../../test/render';
+import en from '../../i18n/en.json';
+import es from '../../i18n/es.json';
 import { AchievementsDialog } from './AchievementsDialog';
+import { TABS, VANILLA } from './advancements';
 
 const server = (advancementIds: string[]): ServerStats => ({
   token: 'T'.repeat(43),
@@ -34,5 +37,22 @@ describe('AchievementsDialog', () => {
   it('leaves the mod note out for vanilla only', () => {
     renderWithProviders(<AchievementsDialog server={server(['minecraft:story/root'])} open onClose={() => {}} />);
     expect(screen.getByRole('dialog')).not.toHaveTextContent(/from mods/);
+  });
+
+  it('says how to get each vanilla achievement, in both languages', () => {
+    for (const tab of TABS) {
+      for (const name of VANILLA[tab]) {
+        for (const lang of [en, es]) {
+          const how = (lang.achievements.how as Record<string, Record<string, string>>)[tab]?.[name];
+          expect(how, `${tab}/${name}`).toMatch(/\S/);
+        }
+      }
+    }
+  });
+
+  it('shows how to get an achievement under its name', () => {
+    renderWithProviders(<AchievementsDialog server={server(['minecraft:story/root'])} open onClose={() => {}} />);
+    const story = screen.getByRole('region', { name: 'Minecraft' });
+    expect(within(story).getByText('Get a diamond.')).toBeInTheDocument();
   });
 });

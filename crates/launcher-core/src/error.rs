@@ -79,7 +79,7 @@ error_codes! {
     InviteLinkInvalid, InvitePackLink, InviteGone, InviteUnsupported, InviteSiteUnreachable, InviteRateLimited,
     LinkHasPack,
     ServerPackUnavailable, ServerPackPending, ServerAddressUnknown, ServerListFailed, ServerListClosed,
-    ServerWakeFailed,
+    ServerWakeFailed, ServerTrustNeeded,
     // restore points
     RestorePointGone, RestoreFailed,
     // continue where you left off
@@ -110,6 +110,7 @@ error_codes! {
     SharePathInvalid, ShareTooLarge,
     // skins
     SkinInvalid, SkinNotFound, SkinRejected, SkinOfflineAccount, SkinVersionNotFound,
+    SkinCatalogUnavailable,
     // anything unexpected
     Internal,
 }
@@ -334,6 +335,7 @@ mod tests {
             (ErrorCode::ServerListClosed, "server_list_closed"),
             (ErrorCode::ServerWakeFailed, "server_wake_failed"),
             (ErrorCode::LinkHasPack, "link_has_pack"),
+            (ErrorCode::ServerTrustNeeded, "server_trust_needed"),
         ] {
             assert_eq!(serde_json::to_value(code).unwrap(), wire);
             assert!(ErrorCode::ALL.contains(&code));

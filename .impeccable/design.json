@@ -199,7 +199,7 @@
       "**Do** pad `main` by the drawer's open height so Play is never covered, and keep primary form actions in a sticky row.",
       "**Do** let attract-mode parallax stop under reduced motion. State changes snap.",
       "**Do** list Browse results as rows on the ground split by inset seam hairlines, and make filters small 3px-step keys that sink into a slot with the lime lamp.",
-      "**Do** keep the project page's one lit button in its sticky action plate. Row Install and the rail Browse key stay raised, never lit.",
+      "**Do** keep the project page's one lit button in its sticky action plate. Row Install stays raised and the title bar's places stay flat, never lit.",
       "**Do** list an instance's files as rows on the ground split by full-width seams, with the glyph in a notched `panel` slot. Don't box them in panel cards, and don't lift a row that isn't a link."
     ],
     "donts": [
@@ -207,7 +207,7 @@
       "**Don't** fill a selection, a heading or decoration with amber. A lit amber selection makes two lit buttons.",
       "**Don't** use a navy gradient, rounded cards or a glowing blue button, which are the launcher category default this system replaces.",
       "**Don't** blur or smooth-gradient a scrim over art. Use stepped, cell-aligned bands.",
-      "**Don't** ease state changes or animate progress smoothly. Use `steps()` or snap.",
+      "**Don't** ease state changes or animate progress smoothly. Use `steps()` or snap. The one eased chrome is the arrivals, Smooth by default (Settings offers Arcade and Off).",
       "**Don't** set sentences, labels or errors in Bungee. Don't set the log or paths in anything but Atkinson Hyperlegible Mono.",
       "**Don't** use any hue as the only carrier of status. Pair it with a label, an icon or a shape.",
       "**Don't** use amber for a status or a notice (sleeping, invite only). Amber only ever means act.",

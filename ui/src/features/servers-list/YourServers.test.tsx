@@ -9,7 +9,7 @@ import { renderWithProviders } from '../../test/render';
 import { createMockBackend } from '../../ipc/mock';
 import { ServersScreen } from './ServersScreen';
 
-const NUDGE = 'Sign in with Perland to keep your servers here.';
+const NUDGE = 'Sign in with Perland to create and keep your servers.';
 
 /** The Your servers section, once it shows. */
 const yours = () => screen.findByRole('region', { name: 'Your servers' });
@@ -34,7 +34,8 @@ describe('YourServers', () => {
     // Signed out, the list is never asked for.
     expect(sent(calls, 'your_servers')).toEqual([]);
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(routeSnapshot()).toEqual({ name: 'accounts' });
+    // The Profile is where the Perland account signs in.
+    expect(routeSnapshot()).toEqual({ name: 'profile' });
   });
 
   it('nothing_when_signed_in_and_empty', async () => {
@@ -323,7 +324,7 @@ describe('YourServers', () => {
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'my-world' }));
     await user.click(within(await cardIn(section, 'Friends')).getByRole('button', { name: 'Play' }));
     await vi.waitFor(() => expect(routeSnapshot()).toEqual({ name: 'home', id: 'friends' }));
-    expect(sent(calls, 'join_add')).toEqual([{ link: inviteOf('O') }, { link: inviteOf('I') }]);
+    expect(sent(calls, 'join_add')).toEqual([{ link: inviteOf('O'), autoUpdate: null }, { link: inviteOf('I'), autoUpdate: null }]);
     expect(sent(calls, 'your_servers_follow')).toEqual([]);
   });
 
@@ -396,6 +397,6 @@ describe('YourServers', () => {
     const { default: i18n } = await import('../../i18n');
     await i18n.changeLanguage('es');
     renderApp(<ServersScreen />, { perland: 'signedOut' });
-    expect(await screen.findByText('Inicia sesión con Perland para guardar tus servidores aquí.')).toBeInTheDocument();
+    expect(await screen.findByText('Inicia sesión con Perland para crear y guardar tus servidores.')).toBeInTheDocument();
   });
 });

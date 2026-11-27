@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { THEMES } from '../state/appearance';
+import { ACCENTS, MADE_THEMES } from '../state/appearance';
 import css from './app.css?raw';
 
 /** What a theme swaps: the room and its steps, and its act hue (Play and the other lit keys, the focus ring). Lime,
@@ -15,6 +15,9 @@ const ACT_HUES: Record<string, [string, string]> = {
   stone: ['#1fa396', '#2ec4b6'],
   night: ['#6a76ff', '#8b95ff'],
   forest: ['#22a35a', '#2fc46e'],
+  nether: ['#ff8c2e', '#ffa95e'],
+  end: ['#e6dfa2', '#f3eec6'],
+  cherry: ['#ff8fc0', '#ffb1d4'],
 };
 
 type Tokens = Record<string, string>;
@@ -33,6 +36,13 @@ function baseTokens(source: string): Tokens {
   const block = /@theme\s*\{([^}]*)\}/.exec(source);
   if (!block) throw new Error('no @theme block in app.css');
   return tokens(block[1]!);
+}
+
+/** Every `:root[data-accent='x']` block, by accent key: each swaps only the act hue. */
+function accentBlocks(source: string): Record<string, Tokens> {
+  const blocks: Record<string, Tokens> = {};
+  for (const m of source.matchAll(/:root\[data-accent='([a-z]+)'\][^{]*\{([^}]*)\}/g)) blocks[m[1]!] = tokens(m[2]!);
+  return blocks;
 }
 
 /** Every `:root[data-theme='x']` block, by theme key. */
@@ -74,15 +84,34 @@ function contrastFailures(theme: Tokens): string[] {
 const base = baseTokens(css);
 const blocks = themeBlocks(css);
 
-it('has one block for every theme and none for anything else', () => {
-  expect(Object.keys(blocks).sort()).toEqual([...THEMES].sort());
+const accents = accentBlocks(css);
+/** The accents that replace the room's act hue; `room` is the absence of a block. */
+const PICKED_ACCENTS = ACCENTS.filter((a) => a !== 'room');
+
+it('has one block for every made theme and none for anything else', () => {
+  expect(Object.keys(blocks).sort()).toEqual([...MADE_THEMES].sort());
+});
+
+it("has one block for every button colour but the room's own", () => {
+  expect(Object.keys(accents).sort()).toEqual([...PICKED_ACCENTS].sort());
+});
+
+describe.each(PICKED_ACCENTS.map((accent) => [accent]))('button colour %s', (accent) => {
+  it('swaps the act hue and nothing else', () => {
+    expect(Object.keys(accents[accent]!).sort()).toEqual([...ACT].sort());
+  });
+
+  it("keeps Play's words readable in every room", () => {
+    const failures = MADE_THEMES.flatMap((theme) => contrastFailures({ ...base, ...blocks[theme], ...accents[accent] }).map((f) => `${theme}: ${f}`));
+    expect(failures).toEqual([]);
+  });
 });
 
 it('makes Laminate, the default, exactly the @theme room', () => {
   for (const key of SWAPPED) expect(blocks.laminate?.[key], key).toBe(base[key]);
 });
 
-describe.each(THEMES.map((theme) => [theme]))('%s', (theme) => {
+describe.each(MADE_THEMES.map((theme) => [theme]))('%s', (theme) => {
   it('overrides exactly the eight neutrals and its act hue, never lime, coral or blue', () => {
     expect(Object.keys(blocks[theme]!).sort()).toEqual([...SWAPPED].sort());
   });

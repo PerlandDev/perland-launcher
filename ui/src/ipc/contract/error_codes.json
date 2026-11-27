@@ -125,6 +125,7 @@
   "server_list_failed",
   "server_list_closed",
   "server_wake_failed",
+  "server_trust_needed",
   "restore_point_gone",
   "restore_failed",
   "world_continue_unsupported",
@@ -197,5 +198,6 @@
   "skin_rejected",
   "skin_offline_account",
   "skin_version_not_found",
+  "skin_catalog_unavailable",
   "internal"
 ]

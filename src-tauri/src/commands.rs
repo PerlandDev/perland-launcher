@@ -4,13 +4,14 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use launcher_app::deep_link::DeepLink;
 use launcher_app::dto::{
     AccountReady, AppInfo, ArtChoice, BannerView, BrowsePlanRequest, ContentFile, ContinueTarget,
-    EmailCodeSent, FreeServerCard, FreeServerPage, IconChoice, ImportPreview, ImportRequest,
-    InstallPlanView, InstallResult, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
-    LinkCodeView, ManageChangeResult, ManageConsoleReply, ManageDetail, ManageDiagnosis,
-    ManageListChange, ManagePlayers, ManageSaved, ManageSettings, ManageSettingsSave,
-    ManagedServer, ManualProgress, NewInstance, OpenTarget, PackAddRequest, PackContents,
-    PackStatus, PerlandAccount, PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerPage,
-    RestorePointDto, RunSnapshot, SearchRequest, ServerNews, ServerStatusView, YourServersPage,
+    DropResult, DroppedFile, EmailCodeSent, FreeServerCard, FreeServerPage, IconChoice,
+    ImportPreview, ImportRequest, InstallPlanView, InstallResult, InstanceArtData, JavaFound,
+    JavaOverview, JoinPreview, LinkCodeView, ManageChangeResult, ManageConsoleReply, ManageDetail,
+    ManageDiagnosis, ManageListChange, ManagePlayers, ManageSaved, ManageSettings,
+    ManageSettingsSave, ManagedServer, ManualProgress, MedalsView, NewInstance, OpenTarget,
+    PackAddRequest, PackContents, PackStatus, PerlandAccount, PerlandStats, PerlandStatus,
+    PlaytimeEntry, PublicServerPage, RestorePointDto, RunSnapshot, SearchRequest, ServerNews,
+    ServerStatusView, TrustPrompt, YourServersPage,
 };
 use launcher_app::updates::UpdateState;
 use launcher_core::{
@@ -29,6 +30,7 @@ use launcher_core::{
     mods::LocalMod,
     perland::FreeServerSettings,
     settings::{Channel, Settings},
+    shader_mods::ShaderSupport,
     ErrorCode, LauncherError,
 };
 use tauri::{AppHandle, State};
@@ -131,6 +133,11 @@ pub async fn update_restart(core: CoreState<'_>, updates: UpdatesState<'_>) -> R
 #[tauri::command]
 pub async fn instances_list(core: CoreState<'_>) -> Res<InstanceListing> {
     logged("instances_list", core.instances_list().await)
+}
+
+#[tauri::command]
+pub async fn medals_view(core: CoreState<'_>) -> Res<MedalsView> {
+    logged("medals_view", core.medals_view().await)
 }
 
 #[tauri::command]
@@ -307,6 +314,18 @@ pub async fn mods_add(core: CoreState<'_>, id: String, paths: Vec<PathBuf>) -> R
     logged("mods_add", core.mods_add(&id, paths).await)
 }
 
+/// What each file dragged over the window is, for the drop overlay's count.
+#[tauri::command]
+pub async fn drop_inspect(core: CoreState<'_>, paths: Vec<PathBuf>) -> Res<Vec<DroppedFile>> {
+    logged("drop_inspect", core.drop_inspect(paths).await)
+}
+
+/// Files dropped on the window: mods and packs into the instance, the rest skipped.
+#[tauri::command]
+pub async fn drop_add(core: CoreState<'_>, id: String, paths: Vec<PathBuf>) -> Res<DropResult> {
+    logged("drop_add", core.drop_add(&id, paths).await)
+}
+
 #[tauri::command]
 pub async fn mod_remove(core: CoreState<'_>, id: String, file: String) -> Res<Vec<LocalMod>> {
     logged("mod_remove", core.mod_remove(&id, &file).await)
@@ -319,6 +338,11 @@ pub async fn content_list(
     kind: ContentKind,
 ) -> Res<Vec<ContentFile>> {
     logged("content_list", core.content_list(&id, kind).await)
+}
+
+#[tauri::command]
+pub async fn shader_support(core: CoreState<'_>, id: String) -> Res<ShaderSupport> {
+    logged("shader_support", core.shader_support(&id).await)
 }
 
 #[tauri::command]
@@ -618,8 +642,49 @@ pub async fn news_image(
 }
 
 #[tauri::command]
-pub async fn join_add(core: CoreState<'_>, link: String) -> Res<Instance> {
-    logged("join_add", core.join_add(&link).await)
+pub async fn join_add(
+    core: CoreState<'_>,
+    link: String,
+    auto_update: Option<bool>,
+) -> Res<Instance> {
+    logged("join_add", core.join_add(&link, auto_update).await)
+}
+
+#[tauri::command]
+pub async fn join_trust(
+    core: CoreState<'_>,
+    link: String,
+    instance: Option<String>,
+) -> Res<Option<TrustPrompt>> {
+    logged(
+        "join_trust",
+        core.join_trust(&link, instance.as_deref()).await,
+    )
+}
+
+#[tauri::command]
+pub async fn instance_trust(core: CoreState<'_>, id: String) -> Res<Option<TrustPrompt>> {
+    logged("instance_trust", core.instance_trust(&id).await)
+}
+
+#[tauri::command]
+pub async fn instance_trust_set(
+    core: CoreState<'_>,
+    id: String,
+    auto_update: bool,
+) -> Res<Instance> {
+    logged(
+        "instance_trust_set",
+        core.instance_trust_set(&id, auto_update).await,
+    )
+}
+
+#[tauri::command]
+pub async fn instance_trust_forget(core: CoreState<'_>, id: String) -> Res<Instance> {
+    logged(
+        "instance_trust_forget",
+        core.instance_trust_forget(&id).await,
+    )
 }
 
 #[tauri::command]
@@ -628,13 +693,29 @@ pub async fn server_status(core: CoreState<'_>, id: String) -> Res<ServerStatusV
 }
 
 #[tauri::command]
-pub async fn server_relink(core: CoreState<'_>, id: String, link: String) -> Res<Instance> {
-    logged("server_relink", core.server_relink(&id, &link).await)
+pub async fn server_relink(
+    core: CoreState<'_>,
+    id: String,
+    link: String,
+    auto_update: Option<bool>,
+) -> Res<Instance> {
+    logged(
+        "server_relink",
+        core.server_relink(&id, &link, auto_update).await,
+    )
 }
 
 #[tauri::command]
-pub async fn server_link(core: CoreState<'_>, id: String, link: String) -> Res<Instance> {
-    logged("server_link", core.server_link(&id, &link).await)
+pub async fn server_link(
+    core: CoreState<'_>,
+    id: String,
+    link: String,
+    auto_update: Option<bool>,
+) -> Res<Instance> {
+    logged(
+        "server_link",
+        core.server_link(&id, &link, auto_update).await,
+    )
 }
 
 #[tauri::command]
@@ -1228,6 +1309,14 @@ pub async fn skin_checkpoint(core: CoreState<'_>, id: String) -> Res<()> {
 }
 
 #[tauri::command]
+pub async fn player_skin(
+    core: CoreState<'_>,
+    uuid: String,
+) -> Res<launcher_app::skins::PlayerSkin> {
+    logged("player_skin", core.player_skin(&uuid).await)
+}
+
+#[tauri::command]
 pub async fn skin_current(
     core: CoreState<'_>,
     uuid: String,
@@ -1245,6 +1334,44 @@ pub async fn skin_sync_current(
         "skin_sync_current",
         core.skin_sync_current(&uuid, &name).await,
     )
+}
+
+#[tauri::command]
+pub async fn skin_catalog(core: CoreState<'_>) -> Res<launcher_app::skins::CatalogAnswer> {
+    Ok(core.skin_catalog().await)
+}
+
+#[tauri::command]
+pub async fn skin_catalog_file(core: CoreState<'_>, sha256: String) -> Res<String> {
+    logged("skin_catalog_file", core.skin_catalog_file(&sha256).await)
+}
+
+#[tauri::command]
+pub async fn skin_painting(core: CoreState<'_>, id: String) -> Res<Option<String>> {
+    logged("skin_painting", core.skin_painting(&id).await)
+}
+
+#[tauri::command]
+pub async fn skin_look_save(
+    core: CoreState<'_>,
+    id: String,
+    look: launcher_core::skins_library::SkinLook,
+    painting: Option<String>,
+    texture: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged(
+        "skin_look_save",
+        core.skin_look_save(&id, look, painting.as_deref(), &texture)
+            .await,
+    )
+}
+
+#[tauri::command]
+pub async fn skin_look_clear(
+    core: CoreState<'_>,
+    id: String,
+) -> Res<launcher_core::skins_library::SkinEntry> {
+    logged("skin_look_clear", core.skin_look_clear(&id).await)
 }
 
 #[tauri::command]

@@ -1,7 +1,11 @@
 //! The content-addressed store for pack files: `cache/objects/<2-char prefix>/<key>`, keyed by
-//! [`Hashes::cache_key`]. A file is downloaded once for every instance that uses it, and a sync
-//! interrupted halfway resumes from here. Objects are copied out, never linked, so a player's
-//! edit in one instance can't reach the cache or another instance.
+//! [`Hashes::cache_key`] (strong hashes only). A file is downloaded once for every instance that
+//! uses it, and a sync interrupted halfway resumes from here. Objects are copied out, never
+//! linked, so a player's edit in one instance can't reach the cache or another instance.
+//!
+//! A file known only by a weak hash (md5, murmur2) is never shared: it lives in the private
+//! store of the instance that asked for it ([`ObjectCache::with_private`]), keyed by
+//! [`Hashes::weak_key`], and is still verified against that hash.
 use std::{
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -16,6 +20,8 @@ static TMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 #[derive(Debug, Clone)]
 pub struct ObjectCache {
     dir: PathBuf,
+    /// Where files without a strong hash go; `None` means they have no place.
+    private: Option<PathBuf>,
 }
 
 fn no_usable_hash() -> LauncherError {
@@ -33,17 +39,33 @@ async fn verify(hashes: &Hashes, path: &Path) -> Result<bool> {
 
 impl ObjectCache {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+        Self {
+            dir: dir.into(),
+            private: None,
+        }
+    }
+
+    /// The same shared cache, plus a private store at `dir` for files known only by a weak
+    /// hash. Give each instance its own.
+    pub fn with_private(&self, dir: impl Into<PathBuf>) -> Self {
+        Self {
+            dir: self.dir.clone(),
+            private: Some(dir.into()),
+        }
     }
 
     pub fn dir(&self) -> &Path {
         &self.dir
     }
 
-    /// Where the object for `hashes` lives, or `None` when they hold no usable hash.
+    /// Where the object for `hashes` lives, or `None` when they hold no usable hash (or only a
+    /// weak one and this cache has no private store).
     pub fn path_for(&self, hashes: &Hashes) -> Option<PathBuf> {
-        let key = hashes.cache_key()?;
-        Some(self.dir.join(&key[..2]).join(&key))
+        if let Some(key) = hashes.cache_key() {
+            return Some(self.dir.join(&key[..2]).join(&key));
+        }
+        let key = hashes.weak_key()?;
+        Some(self.private.as_ref()?.join(&key[..2]).join(&key))
     }
 
     /// The object, only if it is present and matches every hash. Never touches the network.

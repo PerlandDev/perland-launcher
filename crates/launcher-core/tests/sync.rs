@@ -333,6 +333,84 @@ async fn a_rename_during_a_loader_change_survives() {
     assert_eq!(saved.game.loader.unwrap().version, "47.4.30");
 }
 
+/// Every file under `dir`, recursively.
+fn files_under(dir: &std::path::Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .flat_map(|e| {
+            let p = e.path();
+            if p.is_dir() {
+                files_under(&p)
+            } else {
+                vec![p]
+            }
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn files_with_only_a_weak_hash_stay_out_of_the_shared_cache() {
+    let env = Env::new().await;
+    let md5 = launcher_core::download::hash::md5_hex(b"cozy");
+    let m2 = launcher_core::download::hash::curseforge_murmur2(b"warm").to_string();
+    let url = PackBuilder::new(&env.server, "Tiny", "1.0.0")
+        .cf_mod_hashed(
+            "cozy",
+            "cozy.jar",
+            1234567,
+            42,
+            b"cozy",
+            true,
+            ("md5", &md5),
+        )
+        .cf_mod_hashed(
+            "warm",
+            "warm.jar",
+            1234568,
+            43,
+            b"warm",
+            false,
+            ("murmur2", &m2),
+        )
+        .mount(&env.server)
+        .await;
+    let (instance, desired) = env.instance(&url).await;
+    let files = match env.sync(&instance.id, &desired).await.unwrap() {
+        SyncOutcome::NeedsManual(files) => files,
+        other => panic!("{other:?}"),
+    };
+    let downloads = env._tmp.path().join("Downloads");
+    std::fs::create_dir_all(&downloads).unwrap();
+    std::fs::write(downloads.join("cozy.jar"), b"cozy").unwrap();
+    assert_eq!(
+        env.syncer
+            .import_manual(&env.store, &instance.id, &downloads, &files)
+            .await
+            .unwrap(),
+        1
+    );
+    done(env.sync(&instance.id, &desired).await.unwrap());
+    assert_eq!(
+        std::fs::read(env.game_file(&instance.id, "mods/cozy.jar")).unwrap(),
+        b"cozy"
+    );
+    assert_eq!(
+        std::fs::read(env.game_file(&instance.id, "mods/warm.jar")).unwrap(),
+        b"warm"
+    );
+    let shared = files_under(&env._tmp.path().join("cache/objects"));
+    assert!(
+        !shared.iter().any(|p| {
+            let bytes = std::fs::read(p).unwrap_or_default();
+            bytes == b"cozy" || bytes == b"warm"
+        }),
+        "weakly hashed files are not shared: {shared:?}"
+    );
+}
+
 #[tokio::test]
 async fn blocked_curseforge_files_wait_for_a_manual_download() {
     let env = Env::new().await;
@@ -364,7 +442,10 @@ async fn blocked_curseforge_files_wait_for_a_manual_download() {
     std::fs::create_dir_all(&downloads).unwrap();
     std::fs::write(downloads.join("cozy (1).jar"), b"cozy").unwrap();
     assert_eq!(
-        env.syncer.import_manual(&downloads, &files).await.unwrap(),
+        env.syncer
+            .import_manual(&env.store, &instance.id, &downloads, &files)
+            .await
+            .unwrap(),
         1
     );
     done(env.sync(&instance.id, &desired).await.unwrap());
@@ -1104,6 +1185,12 @@ async fn find_update_previews_without_downloading() {
     assert_eq!(update.changes.to_version, "1.1.0");
     assert_eq!(update.changes.added, vec!["jei".to_string()]);
     assert_eq!(update.changes.removed, vec!["zoom".to_string()]);
+    let names: Vec<&str> = update.files.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(names, vec!["jei"], "the files behind the change line");
+    assert!(matches!(
+        update.files[0].from,
+        launcher_core::sync::plan::FileFrom::Host(_)
+    ));
     assert!(update.kept.is_empty());
     assert_eq!(update.desired.pack_version, "1.1.0");
     assert_eq!(

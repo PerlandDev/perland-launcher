@@ -25,6 +25,14 @@ function isLauncherError(thrown: unknown): boolean {
   return typeof thrown === 'object' && thrown !== null && 'code' in thrown && 'category' in thrown;
 }
 
+/** The running reporter, for errors a screen boundary caught: React keeps those from the window's error event. */
+let reportCaughtError: ((thrown: unknown) => void) | null = null;
+
+/** Reports an error a boundary caught (a screen that broke while drawing), as an exception. Nothing while reporting is off. */
+export function reportCaught(thrown: unknown): void {
+  reportCaughtError?.(thrown);
+}
+
 /**
  * Hands the window's own uncaught errors to Rust for the anonymous error reports. Rust decides whether anything is
  * kept (the Settings switch) and scrubs it; here they are only deduplicated and capped. Reporting never throws and
@@ -50,7 +58,10 @@ export function installErrorReporting(target: Window = window, send: Send = comm
   const onRejection = (event: PromiseRejectionEvent) => report('unhandled_rejection', event.reason);
   target.addEventListener('error', onError);
   target.addEventListener('unhandledrejection', onRejection);
+  const caught = (thrown: unknown) => report('exception', thrown);
+  reportCaughtError = caught;
   return () => {
+    if (reportCaughtError === caught) reportCaughtError = null;
     target.removeEventListener('error', onError);
     target.removeEventListener('unhandledrejection', onRejection);
   };

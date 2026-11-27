@@ -457,7 +457,7 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         sign_in(&core, "https://api.example.com");
         serve(&runner, &invite('A'), Ok(server_view("s")));
-        let joined = core.join_add(&invite('A')).await.unwrap();
+        let joined = core.join_add(&invite('A'), Some(true)).await.unwrap();
         serve_servers(
             &runner,
             vec![
@@ -741,7 +741,7 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         sign_in(&core, "https://api.example.com");
         serve(&runner, &invite('A'), Ok(server_view("s")));
-        let joined = core.join_add(&invite('A')).await.unwrap();
+        let joined = core.join_add(&invite('A'), Some(true)).await.unwrap();
         // The list doesn't say which modpack a modded server runs.
         let bare = |c: char| {
             let mut e = entry(c, "online", Relation::Followed, true);

@@ -187,6 +187,8 @@ export const freeServerSettings = z.strictObject({
   seed: z.string().optional(),
   /** The server list message: at most `motdMaxBytes` UTF-8 bytes, no control characters, no `§`. */
   motd: z.string().optional(),
+  /** Off: players without a Minecraft account can join. Team servers only; a free server stays in online mode. */
+  onlineMode: z.boolean().optional(),
 });
 /** The settings a free server takes at create (`limits.settings`). */
 export const freeSettingsLimits = z.strictObject({
@@ -416,6 +418,8 @@ export const instance = z.strictObject({
   bannerAspect: z.number().int().nullable(),
   /** Set after going back on an instance that checks for updates: Play skips the check until "Update again". Absent when not held. */
   updateHold: z.strictObject({ since: z.number().int(), version: z.string() }).optional(),
+  /** The trust step's answer for this server instance's server; absent until then. */
+  serverTrust: z.strictObject({ server: z.string(), at: z.number().int() }).optional(),
 });
 export const restoreChange = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('packUpdate'), from: z.string(), to: z.string() }),
@@ -439,6 +443,10 @@ export const accountsFile = z.strictObject({
   licensedSigninSeen: z.boolean(),
 });
 export const skinModel = z.enum(['classic', 'slim']);
+/** A catalog piece a skin wears, with the colour picked for each of its areas (`#rrggbb`). */
+export const wornPiece = z.strictObject({ id: z.string(), colours: z.record(z.string(), z.string()) });
+/** How a skin was put together from the catalog; `painting` says the player's own painting is kept beside it. */
+export const skinLook = z.strictObject({ pieces: z.array(wornPiece), painting: z.boolean() });
 /** One skin in the player's wardrobe. `wornBy` is the account that last wore it from the launcher. */
 export const skinEntry = z.strictObject({
   id: z.string(),
@@ -450,7 +458,70 @@ export const skinEntry = z.strictObject({
   owner: z.string().optional(),
   /** Put in an empty wardrobe by the launcher and never changed: an account adopting loose skins drops it. */
   seeded: z.boolean().optional(),
+  /** The catalog pieces it was built from, when it was. */
+  look: skinLook.optional(),
 });
+/** Text in both languages, as the Engine's catalog names things. */
+export const catalogText = z.strictObject({ en: z.string(), es: z.string() });
+export const catalogTag = z.strictObject({ id: z.string(), name: catalogText });
+/** A colour area of a piece; `default` is `#rrggbb`. */
+export const catalogArea = z.strictObject({ id: z.string(), name: catalogText, default: z.string() });
+/** SHA-256 hex of a piece's art and colour mask for one arm model. */
+export const catalogFiles = z.strictObject({ art: z.string(), mask: z.string() });
+export const catalogPiece = z.strictObject({
+  id: z.string(),
+  slot: z.string(),
+  name: catalogText,
+  tags: z.array(z.string()),
+  areas: z.array(catalogArea),
+  /** By arm model: `classic`, `slim`. */
+  files: z.record(z.string(), catalogFiles),
+  thumb: z.string(),
+  retired: z.boolean(),
+});
+export const catalogLookPiece = z.strictObject({ id: z.string(), colours: z.record(z.string(), z.string()) });
+export const catalogLook = z.strictObject({
+  id: z.string(),
+  name: catalogText,
+  tags: z.array(z.string()),
+  model: skinModel,
+  pieces: z.array(catalogLookPiece),
+  /** Hash of the look's painting layer, when it has one. */
+  painting: z.string().optional(),
+  thumb: z.string(),
+  retired: z.boolean(),
+});
+/** A ready-made face: the id of one piece for each of the slots `eyes`, `brows` and `mouth`. */
+export const catalogExpression = z.strictObject({
+  id: z.string(),
+  name: catalogText,
+  eyes: z.string(),
+  brows: z.string(),
+  mouth: z.string(),
+});
+/** One PNG holding the thumbnails of a whole list: cell `i` (from 0, left to right, then down, `columns` cells per row,
+ *  each 48x96 px) is the thumbnail of the list's entry `i` in the manifest's order. `file` is the sheet's SHA-256 hex,
+ *  fetched like every other catalog file, or `''` for a list with no entries (its `columns` then say nothing). */
+export const catalogSheet = z.strictObject({ file: z.string(), columns: z.number().int() });
+/** The thumbnail sheets of the manifest's `pieces` and `looks`. */
+export const catalogSheets = z.strictObject({ pieces: catalogSheet, looks: catalogSheet });
+export const catalogManifest = z.strictObject({
+  formatVersion: z.number().int(),
+  version: z.string(),
+  license: z.string(),
+  slots: z.array(z.string()),
+  tags: z.array(catalogTag),
+  pieces: z.array(catalogPiece),
+  looks: z.array(catalogLook),
+  /** Ready-made faces, in display order; empty for a catalog from before they existed. */
+  expressions: z.array(catalogExpression),
+  /** Absent for a catalog from before sheets existed. */
+  sheets: catalogSheets.optional(),
+});
+/** How the catalog was reached: the Engine (`fresh`), the cache (`cached`), neither (`unavailable`), or an Engine newer than
+ *  this launcher reads (`too_new`). */
+export const catalogStatus = z.enum(['fresh', 'refreshing', 'cached', 'unavailable', 'too_new']);
+export const catalogAnswer = z.strictObject({ manifest: catalogManifest.nullable(), status: catalogStatus });
 /** Why a skin version was kept. */
 export const skinVersionReason = z.enum(['edited', 'worn', 'exported', 'restored']);
 /** One kept version of a wardrobe skin. `taken` is Unix seconds; `current` marks the version the skin is now. */
@@ -465,6 +536,9 @@ export const skinVersion = z.strictObject({
 });
 /** The skin a Microsoft account wears now: a PNG `data:` URL and its arm model. */
 export const currentSkin = z.strictObject({ texture: z.string(), model: skinModel });
+/** The skin drawn as the player's own figure (the Profile): a PNG `data:` URL, or null when the account has nothing of
+ *  its own to show and the launcher's starter stands in; its arm model; and how many skins the account's wardrobe holds. */
+export const playerSkin = z.strictObject({ texture: z.string().nullable(), model: skinModel, wardrobe: z.number().int() });
 /** The calls of the Microsoft sign-in chain, in order: Microsoft's code, Xbox Live, XSTS, Minecraft's login, the profile and
  *  ownership check. */
 export const MSA_STEPS = ['microsoft', 'xbox', 'xsts', 'minecraft', 'profile'] as const;
@@ -478,8 +552,17 @@ export const accountReady = z.strictObject({
 export const lang = z.enum(['en', 'es']);
 export const channel = z.enum(['stable', 'beta']);
 /** A theme swaps the neutrals only; the first key is the default. */
-export const theme = z.enum(['laminate', 'stone', 'night', 'forest']);
+export const theme = z.enum(['laminate', 'stone', 'night', 'forest', 'nether', 'end', 'cherry', 'custom']);
+/** The colour of Play and the keys that act: the room's own, or one that replaces it in every room. */
+export const accent = z.enum(['room', 'amber', 'orange', 'pink', 'violet', 'cyan', 'bone']);
+/** The two `#rrggbb` colours the player's own room (`theme: custom`) is mixed from. */
+export const customRoom = z.strictObject({ background: z.string(), buttons: z.string() });
 export const uiFont = z.enum(['hyperlegible', 'system']);
+/** How a screen comes in when the player moves to it: eased fades and slides (the default), the arcade cabinet's own snapped
+ *  frames, or nothing. In the order Settings offers them. */
+export const transitions = z.enum(['smooth', 'stepped', 'off']);
+/** The graphics card games start on: the system's pick, the high-performance card or the power-saving one. */
+export const graphicsCard = z.enum(['automatic', 'dedicated', 'integrated']);
 export const settings = z.strictObject({
   version: z.number().int(),
   language: lang.nullable(),
@@ -490,8 +573,12 @@ export const settings = z.strictObject({
   railExpanded: z.boolean(),
   iconShape: z.enum(['square', 'round']),
   theme,
+  accent,
+  customRoom,
   font: uiFont,
   shareAnonymousData: z.boolean(),
+  graphicsCard,
+  transitions,
 });
 /** One release note (release-notes/<id>.json) with the version it first shipped in; null while unreleased. */
 export const releaseNote = z.strictObject({
@@ -514,6 +601,12 @@ export const appInfo = z.strictObject({
   build: z.enum(['dev', 'beta', 'release']),
   offlineAllowed: z.boolean(),
   systemMemoryMb: z.number().int(),
+  /** The graphics cards found, and whether the player can choose between them. `integrated`: one is built into the processor. */
+  graphics: z.strictObject({
+    status: z.enum(['choose', 'singleCard', 'unsupported']),
+    cards: z.array(z.string()),
+    integrated: z.boolean(),
+  }),
   dataDir: z.string(),
   /** A Perland panel is configured: the servers the player owns offer Manage in Perland. */
   panel: z.boolean(),
@@ -531,6 +624,18 @@ export const contentFile = z.strictObject({
   size: z.number().int(),
   folder: z.boolean(),
   managed: z.boolean(),
+});
+/** The mod that runs shader packs on an instance's loader (`null` on vanilla), and whether an enabled jar is one. */
+export const shaderMod = z.enum(['iris', 'oculus']);
+export const shaderSupport = z.strictObject({ wanted: shaderMod.nullable(), installed: z.boolean() });
+/** What a file dropped on the window is: a zip by what is inside it, the rest by its name. */
+export const droppedKind = z.enum(['mod', 'resource_pack', 'shader_pack', 'modpack', 'unknown_zip', 'other']);
+export const droppedFile = z.strictObject({ path: z.string(), name: z.string(), kind: droppedKind });
+export const dropSkipReason = z.enum(['not_content', 'not_a_pack', 'needs_loader', 'exists', 'managed', 'modpack']);
+/** What a drop did, in the order the files came. */
+export const dropResult = z.strictObject({
+  added: z.array(z.strictObject({ name: z.string(), kind: droppedKind })),
+  skipped: z.array(z.strictObject({ name: z.string(), kind: droppedKind, reason: dropSkipReason })),
 });
 export const newInstance = z.strictObject({ name: z.string(), minecraft: z.string(), loader: loaderSpec.nullable() });
 export const shareCategory = z.enum(['mods', 'settings', 'resourcePacks', 'shaderPacks', 'worlds']);
@@ -656,6 +761,15 @@ export const manualFile = z.strictObject({
   pageUrl: z.string(),
   hashes,
 });
+/** Where a file an update writes comes from: `pack` is inside the pack file, source unknown. */
+export const fileOrigin = z.enum(['modrinth', 'curseForge', 'web', 'uploaded', 'pack']);
+export const updateFile = z.strictObject({
+  name: z.string(),
+  change: z.enum(['added', 'updated']),
+  origin: fileOrigin,
+  host: z.string().nullable(),
+  needsLook: z.boolean(),
+});
 export const packUpdate = z.strictObject({
   fromVersion: z.string().nullable(),
   toVersion: z.string(),
@@ -663,6 +777,25 @@ export const packUpdate = z.strictObject({
   updated: z.array(z.string()),
   removed: z.array(z.string()),
   kept: z.array(z.string()),
+  files: z.array(updateFile),
+  held: z.boolean(),
+});
+export const modSourceCounts = z.strictObject({
+  modrinth: z.number().int(),
+  curseforge: z.number().int(),
+  web: z.number().int(),
+  uploaded: z.number().int(),
+  other: z.number().int(),
+});
+/** The trust step before a server's modpack installs. */
+export const trustPrompt = z.strictObject({
+  name: z.string(),
+  team: z.string().nullable(),
+  pack: z.string().nullable(),
+  modCount: z.number().int(),
+  sources: modSourceCounts.nullable(),
+  modrinthPack: z.boolean(),
+  autoUpdate: z.boolean(),
 });
 export const syncSummary = z.strictObject({
   fromVersion: z.string().nullable(),
@@ -686,6 +819,20 @@ export const exitInfo = z.strictObject({
   /** A crash right after an update that hasn't run cleanly since: the crash card offers "Go back". */
   restore: z.boolean(),
 });
+/** One medal as Rust shows it (`MedalView`): its tier now, its reading and when the tier was reached. */
+export const medalView = z.strictObject({
+  id: z.string(),
+  group: z.enum(['local', 'perland']),
+  kind: z.enum(['ladder', 'single']),
+  unit: z.enum(['time', 'count']),
+  tier: z.number().int().min(0).max(4),
+  rim: z.number().int().min(0).max(4),
+  value: z.number().nonnegative(),
+  goal: z.number().nullable(),
+  steps: z.number().array(),
+  earnedAt: z.string().nullable(),
+});
+export const medalsView = z.strictObject({ medals: medalView.array(), savedToAccount: z.boolean() });
 export const taskId = z.strictObject({ key: z.string(), params: z.record(z.string(), z.string()) });
 export const appEvent = z.discriminatedUnion('type', [
   z.strictObject({
@@ -706,6 +853,8 @@ export const appEvent = z.discriminatedUnion('type', [
   }),
   z.strictObject({ type: z.literal('warning'), instance: z.string().nullable(), error: launcherError }),
   z.strictObject({ type: z.literal('deep_link') }),
+  /** A medal was earned, the account's medals arrived or the Perland readings changed: read `medals_view` again. */
+  z.strictObject({ type: z.literal('medals_changed') }),
   z.strictObject({ type: z.literal('update'), state: updateState }),
   z.strictObject({ type: z.literal('perland_sign_in'), phase: z.enum(['waiting', 'exchanging']) }),
   /** A Microsoft sign-in moved on: the browser is open, or its code is being redeemed. */
@@ -928,19 +1077,42 @@ export type AccountsFile = z.infer<typeof accountsFile>;
 export type SkinModel = z.infer<typeof skinModel>;
 export type SkinEntry = z.infer<typeof skinEntry>;
 export type CurrentSkin = z.infer<typeof currentSkin>;
+export type PlayerSkin = z.infer<typeof playerSkin>;
+export type WornPiece = z.infer<typeof wornPiece>;
+export type SkinLook = z.infer<typeof skinLook>;
+export type CatalogManifest = z.infer<typeof catalogManifest>;
+export type CatalogPiece = z.infer<typeof catalogPiece>;
+export type CatalogLook = z.infer<typeof catalogLook>;
+export type CatalogExpression = z.infer<typeof catalogExpression>;
+export type CatalogSheet = z.infer<typeof catalogSheet>;
+export type CatalogSheets = z.infer<typeof catalogSheets>;
+export type CatalogStatus = z.infer<typeof catalogStatus>;
+export type CatalogAnswer = z.infer<typeof catalogAnswer>;
+export type MedalView = z.infer<typeof medalView>;
+export type MedalsView = z.infer<typeof medalsView>;
 export type SkinVersion = z.infer<typeof skinVersion>;
 export type SkinVersionReason = z.infer<typeof skinVersionReason>;
 export type AccountReady = z.infer<typeof accountReady>;
 export type Lang = z.infer<typeof lang>;
 export type Channel = z.infer<typeof channel>;
 export type Theme = z.infer<typeof theme>;
+export type Accent = z.infer<typeof accent>;
+export type CustomRoom = z.infer<typeof customRoom>;
 export type UiFont = z.infer<typeof uiFont>;
+export type Transitions = z.infer<typeof transitions>;
 export type Settings = z.infer<typeof settings>;
+export type GraphicsCard = z.infer<typeof graphicsCard>;
 export type AppInfo = z.infer<typeof appInfo>;
 export type McVersion = z.infer<typeof mcVersion>;
 export type LoaderVersion = z.infer<typeof loaderVersion>;
 export type LocalMod = z.infer<typeof localMod>;
 export type ContentFile = z.infer<typeof contentFile>;
+export type ShaderMod = z.infer<typeof shaderMod>;
+export type ShaderSupport = z.infer<typeof shaderSupport>;
+export type DroppedKind = z.infer<typeof droppedKind>;
+export type DroppedFile = z.infer<typeof droppedFile>;
+export type DropSkipReason = z.infer<typeof dropSkipReason>;
+export type DropResult = z.infer<typeof dropResult>;
 export type NewInstance = z.infer<typeof newInstance>;
 export type ImportPreview = z.infer<typeof importPreview>;
 export type ShareCategory = z.infer<typeof shareCategory>;
@@ -962,6 +1134,10 @@ export type CrashFix = z.infer<typeof crashFix>;
 export type Hashes = z.infer<typeof hashes>;
 export type ManualFile = z.infer<typeof manualFile>;
 export type PackUpdate = z.infer<typeof packUpdate>;
+export type UpdateFile = z.infer<typeof updateFile>;
+export type FileOrigin = z.infer<typeof fileOrigin>;
+export type TrustPrompt = z.infer<typeof trustPrompt>;
+export type ModSourceCounts = z.infer<typeof modSourceCounts>;
 export type SyncSummary = z.infer<typeof syncSummary>;
 export type ExitInfo = z.infer<typeof exitInfo>;
 export type RestoreChange = z.infer<typeof restoreChange>;

@@ -47,8 +47,8 @@ function setLinkedName(qc: QueryClient, name: string | null) {
 /** Whether `failure` says the session is gone (signed out elsewhere, or a 401). */
 const isSignedOut = (failure: unknown) => isLauncherError(failure) && failure.code === 'perland_signed_out';
 
-/** The Minecraft account row inside the signed-in Perland card: link it with a code typed on a Perland server, or
- *  who is linked and Unlink. It renders nothing unless signed in with the Engine's stats add-on on. */
+/** The Minecraft account row of the Profile's Accounts, under the Perland account: link it with a code typed on a Perland
+ *  server, or who is linked and Unlink. It renders nothing unless signed in with the Engine's stats add-on on. */
 export function MinecraftLink() {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
@@ -142,7 +142,7 @@ export function MinecraftLink() {
   }, [view, code]);
 
   const shownView = useRef(view);
-  // Moving to another state puts the player on its first control; opening Accounts focuses nothing.
+  // Moving to another state puts the player on its first control; opening the Profile focuses nothing.
   useEffect(() => {
     const before = shownView.current;
     shownView.current = view;
@@ -236,23 +236,23 @@ export function MinecraftLink() {
   const left = code ? Math.max(0, Math.ceil((code.arrivedAt + code.expiresIn * 1000 - now) / 1000)) : 0;
 
   return (
-    <section aria-labelledby={headingId} className="panel grid gap-3 px-4 py-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <span aria-hidden className="stepped flex h-10 w-10 flex-none items-center justify-center bg-raised text-ink-dim">
-          <Link className="h-5 w-5" />
-        </span>
-        <div className="min-w-0 flex-1 basis-56">
-          <h3 id={headingId} className="font-bold">
-            {t('perland.minecraft.title')}
-          </h3>
-          <p className="text-sm text-ink-dim">{line}</p>
-        </div>
-        {action}
+    // A row of the Profile's Accounts, right under the Perland account it belongs to. Its key sits under the words (a
+    // sentence and a wide key don't share a narrow row); linked, the quiet Unlink sits beside them.
+    <li className="profile-account profile-link" data-row="minecraft" data-view={view} aria-labelledby={headingId}>
+      <span aria-hidden className="profile-link-glyph">
+        <Link />
+      </span>
+      <div className="profile-who">
+        <h3 id={headingId} className="font-bold">
+          {t('perland.minecraft.title')}
+        </h3>
+        <p className="text-sm text-ink-dim">{line}</p>
       </div>
+      {action && <div className="profile-state">{action}</div>}
       {view === 'code' && code && (
-        <div className="grid justify-items-start gap-4 pb-1 pl-14">
+        <div className="profile-link-more grid justify-items-start gap-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-            <p className="well selectable px-4 py-2 font-display text-2xl tracking-[0.12em] tabular">{code.code}</p>
+            <p className="well selectable px-3 py-1.5 font-display text-xl tracking-[0.12em] tabular">{code.code}</p>
             <p className="text-sm text-ink-dim tabular">{t('perland.minecraft.expiresIn', { time: formatCountdown(left) })}</p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -266,7 +266,7 @@ export function MinecraftLink() {
         </div>
       )}
       {errorMessage && (
-        <p role="alert" className="flex items-start gap-2 pl-14 text-sm text-coral">
+        <p role="alert" className="profile-link-more flex items-start gap-2 text-sm text-coral">
           <WarningDiamond className="mt-0.5 h-4 w-4 flex-none" aria-hidden />
           {errorMessage}
         </p>
@@ -274,6 +274,6 @@ export function MinecraftLink() {
       <p aria-live="polite" className="sr-only">
         {announce}
       </p>
-    </section>
+    </li>
   );
 }

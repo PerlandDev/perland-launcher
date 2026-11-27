@@ -5,6 +5,7 @@ use crate::{
     accounts::Session,
     error::{ErrorCode, LauncherError, Result},
     events::EventSink,
+    graphics,
     install::{Installer, ResolvedVersion},
     instances::{Instance, InstanceStore, ServerAddress, SourceRef},
     invite::InviteLink,
@@ -12,6 +13,7 @@ use crate::{
     launch::{self, GameProcess, LaunchCommand, LaunchSpec, Redactor},
     paths::LauncherDirs,
     platform::Platform,
+    settings::GraphicsCard,
 };
 
 /// Everything a launch needs that `prepare` downloaded or found.
@@ -87,12 +89,14 @@ pub struct StartSpec<'a> {
     pub join: Option<&'a ServerAddress>,
     /// The world to open, if any (Continue on a world).
     pub world: Option<&'a str>,
+    /// The graphics card the player chose in Settings.
+    pub graphics: GraphicsCard,
 }
 
 pub fn command(spec: &StartSpec) -> Result<LaunchCommand> {
     // Parsed again here: a hand-edited instance.json never went through the settings check.
     let jvm_args = launch::jvm_args::parse(&spec.instance.java.args)?;
-    launch::build_command(&LaunchSpec {
+    let mut cmd = launch::build_command(&LaunchSpec {
         dirs: spec.dirs,
         resolved: &spec.prepared.resolved,
         game_dir: spec.game_dir,
@@ -105,7 +109,9 @@ pub fn command(spec: &StartSpec) -> Result<LaunchCommand> {
         join: spec.join,
         world: spec.world,
         window: spec.instance.window,
-    })
+    })?;
+    cmd.env = graphics::launch_env(spec.platform.os, spec.graphics);
+    Ok(cmd)
 }
 
 /// Scrubs the game's output and log: the access token, the home folder, and a server
@@ -163,6 +169,12 @@ pub async fn start(spec: &StartSpec<'_>, sink: EventSink) -> Result<GameProcess>
             &spec.session.access_token,
         )
         .await?;
+    }
+    // Windows keeps the choice for the Java executable. The game starts either way.
+    if let Err(error) =
+        graphics::apply_at_launch(&spec.dirs.graphics_owned(), &cmd.program, spec.graphics).await
+    {
+        tracing::warn!(%error, "the graphics card choice couldn't be applied");
     }
     let redactor = redactor_for(spec);
     let log = spec
@@ -241,6 +253,7 @@ mod tests {
             launcher_version: "0.1.0",
             join: None,
             world: None,
+            graphics: GraphicsCard::Automatic,
         };
         let err = start(&spec, crate::events::noop_sink())
             .await
@@ -249,6 +262,62 @@ mod tests {
         assert_eq!(err.code, ErrorCode::GameFilesMissing);
         let count: usize = err.params["count"].parse().unwrap();
         assert!(count > 10, "{count}");
+    }
+
+    #[tokio::test]
+    async fn the_command_carries_the_graphics_card_choice() {
+        use crate::platform::{Arch, Os};
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = LauncherDirs::new(tmp.path());
+        let store = InstanceStore::new(dirs.instances());
+        let instance = store
+            .create(
+                "Smoke",
+                GameSpec {
+                    minecraft: "1.20.1".into(),
+                    loader: None,
+                },
+            )
+            .await
+            .unwrap();
+        let prepared = Prepared {
+            resolved: ResolvedVersion {
+                vanilla_id: "1.20.1".into(),
+                json: version("1.20.1.json"),
+                forge: None,
+            },
+            java: tmp.path().join("java"),
+        };
+        let session = offline_account("Steve").unwrap().offline_session();
+        let game_dir = store.game_dir(&instance.id);
+        let linux = Platform {
+            os: Os::Linux,
+            arch: Arch::X64,
+        };
+        let spec = |graphics| StartSpec {
+            dirs: &dirs,
+            game_dir: &game_dir,
+            instance: &instance,
+            prepared: &prepared,
+            session: &session,
+            platform: linux,
+            launcher_version: "0.1.0",
+            join: None,
+            world: None,
+            graphics,
+        };
+        assert!(command(&spec(GraphicsCard::Automatic))
+            .unwrap()
+            .env
+            .is_empty());
+        let dedicated = command(&spec(GraphicsCard::Dedicated)).unwrap();
+        assert!(dedicated
+            .env
+            .contains(&("DRI_PRIME".to_string(), "1".to_string())));
+        assert_eq!(
+            command(&spec(GraphicsCard::Integrated)).unwrap().env,
+            [("DRI_PRIME".to_string(), "0".to_string())]
+        );
     }
 
     #[tokio::test]
@@ -288,6 +357,7 @@ mod tests {
             launcher_version: "0.1.0",
             join: None,
             world: None,
+            graphics: GraphicsCard::Automatic,
         };
         let err = command(&spec).expect_err("the quote is never closed");
         assert_eq!(err.code, ErrorCode::JvmArgsUnclosedQuote);
@@ -328,6 +398,7 @@ mod tests {
             launcher_version: "0.1.0",
             join: None,
             world: None,
+            graphics: GraphicsCard::Automatic,
         };
         assert_eq!(java_major(&spec).await, Some(17));
     }
@@ -373,6 +444,7 @@ mod tests {
             launcher_version: "0.1.0",
             join: None,
             world: None,
+            graphics: GraphicsCard::Automatic,
         };
         let line = redactor_for(&spec).redact(&format!("[Server] joined via {invite}"));
         assert!(!line.contains(&token), "{line}");

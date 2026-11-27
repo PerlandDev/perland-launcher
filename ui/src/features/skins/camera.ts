@@ -62,10 +62,11 @@ export function orbit(view: View, dx: number, dy: number): View {
 
 /**
  * Zooms by `factor` (below 1 is closer). With `point`, the model point under the pointer, the camera moves along the
- * line through it, so that point stays under the pointer; without one it closes in on the target.
+ * line through it, so that point stays under the pointer; without one it closes in on the target. `limits` are the
+ * zoom's own when the view is of the whole pose; a close-up (see framing.ts) gives its own.
  */
-export function zoomAt(view: View, factor: number, centre: Vec3, point: Vec3 | null): View {
-  const zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, view.zoom * factor));
+export function zoomAt(view: View, factor: number, centre: Vec3, point: Vec3 | null, limits: { min: number; max: number } = { min: ZOOM_MIN, max: ZOOM_MAX }): View {
+  const zoom = Math.max(limits.min, Math.min(limits.max, view.zoom * factor));
   if (!point) return { ...view, zoom };
   const f = zoom / view.zoom;
   const target = add(point, scale(sub(targetOf(view, centre), point), f));

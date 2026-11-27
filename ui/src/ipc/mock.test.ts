@@ -328,6 +328,68 @@ describe('mock backend', () => {
   });
 });
 
+describe('mock drops', () => {
+  it("drives the window's drop events in a preview with the shape Tauri sends", async () => {
+    installMock();
+    const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+    const seen: unknown[] = [];
+    const stop = await getCurrentWebview().onDragDropEvent((event) => seen.push(event.payload));
+    const drag = (window as unknown as { __mockDrag: (type: string, paths?: string[], at?: { x: number; y: number }) => Promise<void> }).__mockDrag;
+    await drag('enter', ['C:/d/a.jar'], { x: 10, y: 20 });
+    await drag('drop', ['C:/d/a.jar']);
+    await drag('leave');
+    expect(seen).toEqual([
+      { type: 'enter', paths: ['C:/d/a.jar'], position: expect.objectContaining({ x: 10, y: 20 }) },
+      { type: 'drop', paths: ['C:/d/a.jar'], position: expect.objectContaining({ x: 0, y: 0 }) },
+      { type: 'leave' },
+    ]);
+    stop();
+  });
+
+  it('tells what each dragged file is, a zip by its name', async () => {
+    const { handle } = createMockBackend();
+    const paths = ['C:/d/sodium.jar', 'C:/d/BSL Shaders.zip', 'C:/d/Faithful.zip', 'C:/d/Sky.mrpack', 'C:/d/photos.zip', 'C:/d/notes.txt'];
+    expect(await handle('drop_inspect', { paths })).toEqual([
+      { path: 'C:/d/sodium.jar', name: 'sodium.jar', kind: 'mod' },
+      { path: 'C:/d/BSL Shaders.zip', name: 'BSL Shaders.zip', kind: 'shader_pack' },
+      { path: 'C:/d/Faithful.zip', name: 'Faithful.zip', kind: 'resource_pack' },
+      { path: 'C:/d/Sky.mrpack', name: 'Sky.mrpack', kind: 'modpack' },
+      { path: 'C:/d/photos.zip', name: 'photos.zip', kind: 'unknown_zip' },
+      { path: 'C:/d/notes.txt', name: 'notes.txt', kind: 'other' },
+    ]);
+  });
+
+  it('adds mods and packs to their lists and skips like the core', async () => {
+    const { handle } = createMockBackend();
+    const paths = ['C:/d/iris.jar', 'C:/d/BSL Shaders.zip', 'C:/d/Fresh.zip', 'C:/d/Faithful 32x.zip', 'C:/d/Sky.mrpack', 'C:/d/notes.txt'];
+    expect(await handle('drop_add', { id: 'asalith-fields', paths })).toEqual({
+      added: [
+        { name: 'iris.jar', kind: 'mod' },
+        { name: 'BSL Shaders.zip', kind: 'shader_pack' },
+        { name: 'Fresh.zip', kind: 'resource_pack' },
+      ],
+      skipped: [
+        { name: 'Faithful 32x.zip', kind: 'resource_pack', reason: 'exists' },
+        { name: 'Sky.mrpack', kind: 'modpack', reason: 'modpack' },
+        { name: 'notes.txt', kind: 'other', reason: 'not_content' },
+      ],
+    });
+    const mods = (await handle('mods_list', { id: 'asalith-fields' })) as { fileName: string }[];
+    expect(mods.map((m) => m.fileName)).toContain('iris.jar');
+    const shaders = (await handle('content_list', { id: 'asalith-fields', kind: 'shader' })) as { fileName: string }[];
+    expect(shaders.map((f) => f.fileName)).toContain('BSL Shaders.zip');
+    // Vanilla takes the resource pack only.
+    expect(await handle('drop_add', { id: 'creative-flat', paths: ['C:/d/iris.jar', 'C:/d/BSL Shaders.zip', 'C:/d/Fresh.zip'] })).toEqual({
+      added: [{ name: 'Fresh.zip', kind: 'resource_pack' }],
+      skipped: [
+        { name: 'iris.jar', kind: 'mod', reason: 'needs_loader' },
+        { name: 'BSL Shaders.zip', kind: 'shader_pack', reason: 'needs_loader' },
+      ],
+    });
+    await expect(handle('drop_add', { id: 'ghost', paths: ['C:/d/a.jar'] })).rejects.toMatchObject({ code: 'instance_not_found' });
+  });
+});
+
 describe('scripted runs', () => {
   it('stop for good when a test tears the backend down', async () => {
     vi.useFakeTimers();
@@ -585,7 +647,8 @@ describe('mock public server list', () => {
     vi.useFakeTimers();
     try {
       const backend = installMock();
-      const added = (await backend.handle('join_add', { link: card.invite })) as Instance;
+      // Joined through the trust step, as the list's Play does for a server with a modpack.
+      const added = (await backend.handle('join_add', { link: card.invite, autoUpdate: true })) as Instance;
       expect(added.source).toMatchObject({ kind: 'perland' });
       expect(added.name).toBe(card.name);
       await backend.handle('play', { id: added.id, join: true });

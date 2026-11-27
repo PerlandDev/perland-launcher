@@ -1,0 +1,5 @@
+{
+  "kind": "new",
+  "en": "Before a server's modpack installs, the launcher now shows who runs it and where its mods come from, and asks if you trust it.",
+  "es": "Antes de instalar el modpack de un servidor, el launcher te dice quién lo administra y de dónde vienen sus mods, y espera tu respuesta."
+}

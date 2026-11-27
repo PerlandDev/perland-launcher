@@ -53,7 +53,10 @@ export function JavaPicker({ choice }: { choice: JavaChoice }) {
 
   return (
     <fieldset className="grid gap-3">
-      <legend className="mb-1.5 text-lg font-bold">{t('instanceSettings.java')}</legend>
+      {/* The settings' jump links land here. */}
+      <legend id="java-heading" tabIndex={-1} className="mb-1.5 scroll-mt-6 text-lg font-bold">
+        {t('instanceSettings.java')}
+      </legend>
       <div className="flex flex-wrap gap-2">
         {(['auto', 'custom'] as const).map((mode) => (
           <label key={mode} className="seg" data-checked={choice.mode === mode ? '' : undefined}>

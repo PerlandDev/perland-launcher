@@ -302,6 +302,7 @@ async fn launch_instance(
         launcher_version: env!("CARGO_PKG_VERSION"),
         join: None,
         world: None,
+        graphics: launcher_core::settings::GraphicsCard::Automatic,
     };
 
     if dry_run {
@@ -420,7 +421,7 @@ async fn sync_instance(
         return Ok(());
     };
     if let Some(dir) = manual_dir.or_else(launcher_core::sync::manual::downloads_dir) {
-        if syncer.import_manual(&dir, &files).await? > 0 {
+        if syncer.import_manual(store, id, &dir, &files).await? > 0 {
             let again = syncer.ensure(store, id, &sink).await?;
             match report(&again.outcome, false) {
                 None => return Ok(()),

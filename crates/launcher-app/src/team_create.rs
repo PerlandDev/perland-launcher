@@ -653,6 +653,7 @@ mod tests {
                 settings: Some(FreeServerSettings {
                     game_mode: Some("hardcore".into()),
                     max_players: Some(40),
+                    online_mode: Some(false),
                     ..FreeServerSettings::default()
                 }),
                 ..request(" Amigos ", "fabric", "1.20.1")
@@ -684,6 +685,7 @@ mod tests {
                     hardcore: Some(true),
                     difficulty: Some("hard".into()),
                     max_players: Some(40),
+                    online_mode: Some(false),
                     ..ServerCustomization::default()
                 }),
                 modrinth_version_id: None,

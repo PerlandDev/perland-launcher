@@ -7,7 +7,14 @@
   "updateChannel": null,
   "railExpanded": true,
   "iconShape": "round",
-  "theme": "night",
+  "theme": "custom",
+  "accent": "pink",
+  "customRoom": {
+    "background": "#170f1f",
+    "buttons": "#c58cff"
+  },
   "font": "system",
-  "shareAnonymousData": true
+  "shareAnonymousData": true,
+  "graphicsCard": "automatic",
+  "transitions": "stepped"
 }

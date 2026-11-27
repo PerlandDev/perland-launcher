@@ -12,7 +12,7 @@ use std::{
 
 use serde::Deserialize;
 
-use super::{InviteLink, InviteView, Url};
+use super::{InviteLink, InviteMods, InviteView, Url};
 use crate::{
     error::{ErrorCode, LauncherError, Result},
     http::read_capped,
@@ -47,6 +47,8 @@ pub struct InviteLimits {
     pub config: usize,
     pub view: usize,
     pub icon: usize,
+    /// The mod list (`/mods`): a few hundred entries of short text.
+    pub mods: usize,
     pub error_body: usize,
 }
 
@@ -56,6 +58,7 @@ impl Default for InviteLimits {
             config: 4 << 10,
             view: 64 << 10,
             icon: 1 << 20,
+            mods: 512 << 10,
             error_body: 4 << 10,
         }
     }
@@ -487,6 +490,33 @@ impl InviteClient {
         }
         let body = read_capped(response, self.limits.icon).await.ok()??;
         body.starts_with(b"\x89PNG\r\n\x1a\n").then_some(body)
+    }
+
+    /// `<engine>/api/v1/invites/<token>/mods`: the mods of the commit the server runs, each with
+    /// where it comes from. Read for the trust step and the update summary, never cached here
+    /// (the Engine sends `Cache-Control` and lists change only with the commit).
+    pub async fn mods(&self, link: &InviteLink) -> Result<InviteMods> {
+        let engine = self.engine_for(link).await?;
+        let host = host_of(&engine);
+        let response = self
+            .http
+            .get(invite_route(&engine, link, "/mods"))
+            .timeout(self.timing.request_timeout)
+            .send()
+            .await
+            .map_err(|e| request_failed(&host, e))?;
+        if let Some(e) = status_error(response.status(), &host) {
+            return Err(e);
+        }
+        let body = read_capped(response, self.limits.mods)
+            .await
+            .map_err(|e| request_failed(&host, e))?
+            .ok_or_else(|| unexpected(&host, "the mod list is too large"))?;
+        let envelope: Envelope<InviteMods> = serde_json::from_slice(&body)
+            .map_err(|_| unexpected(&host, "the mod list isn't valid"))?;
+        envelope
+            .data
+            .ok_or_else(|| unexpected(&host, "the mod list is empty"))
     }
 
     /// `<engine>/api/v1/invites/<token>/pack`: the `.mrpack` of the commit the server runs.

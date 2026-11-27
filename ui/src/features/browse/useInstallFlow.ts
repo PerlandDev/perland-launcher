@@ -13,7 +13,8 @@ import { pushError, pushNotice } from '../../state/toasts';
 export const needsConfirm = (view: InstallPlanView) =>
   view.items.length > 1 || view.skipped.length > 0 || view.target.kind === 'new';
 
-export function useInstallFlow() {
+/** `onError` takes a failure instead of the error toast, for a caller that shows it in place. */
+export function useInstallFlow({ onError = pushError }: { onError?: (error: unknown) => void } = {}) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [confirming, setConfirming] = useState<InstallPlanView | null>(null);
@@ -29,6 +30,7 @@ export function useInstallFlow() {
       qk.packContents(id),
       qk.contentFiles(id, 'resource_pack'),
       qk.contentFiles(id, 'shader'),
+      qk.shaderSupport(id),
       // An install takes or joins the restore point.
       qk.restorePoint(id),
     ];
@@ -66,7 +68,7 @@ export function useInstallFlow() {
       if (view.target.kind === 'instance') clearContentProgress(view.target.id);
       // A New install makes its instance first and keeps it when the install fails, so the list has changed.
       else void qc.invalidateQueries({ queryKey: qk.instances });
-      pushError(error);
+      onError(error);
       return;
     } finally {
       ended();
@@ -87,7 +89,7 @@ export function useInstallFlow() {
     try {
       view = await commands.browsePlan(request);
     } catch (error) {
-      pushError(error);
+      onError(error);
       setBusy(false);
       return;
     }

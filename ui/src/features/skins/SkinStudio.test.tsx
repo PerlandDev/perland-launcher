@@ -2,6 +2,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { toastsSnapshot } from '../../state/toasts';
+import { qk } from '../../state/queries';
 import { renderApp, sent } from '../../test/backend';
 import { createMockBackend, MOCK_MICROSOFT_ACCOUNT } from '../../ipc/mock';
 import { renderWithProviders } from '../../test/render';
@@ -627,4 +628,93 @@ it('leaving a skin that was changed keeps a version of it', async () => {
   await user.click(within(screen.getByRole('list', { name: 'Wardrobe' })).getByRole('button', { name: /^Beach day/ }));
   await waitFor(() => expect(sent(calls, 'skin_texture').length).toBeGreaterThan(2));
   expect(sent(calls, 'skin_checkpoint')).toHaveLength(1);
+});
+
+it('tabs switch between Create, Paint and Catalog', async () => {
+  const { user, calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  const tabs = screen.getByRole('tablist', { name: 'Skins' });
+  expect(within(tabs).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Create', 'Paint', 'Catalog']);
+  // Paint is today's editor.
+  expect(screen.getByRole('tab', { name: 'Paint' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByTestId('texture-panel')).toBeInTheDocument();
+  expect(screen.getByRole('toolbar', { name: 'Tools' })).toBeInTheDocument();
+
+  await user.click(screen.getByRole('tab', { name: 'Catalog' }));
+  expect(await screen.findByRole('list', { name: 'Looks' })).toBeInTheDocument();
+  expect(screen.queryByTestId('texture-panel')).not.toBeInTheDocument();
+  expect(screen.queryByRole('toolbar', { name: 'Tools' })).not.toBeInTheDocument();
+  // The wardrobe stays.
+  expect(screen.getByRole('list', { name: 'Wardrobe' })).toBeInTheDocument();
+
+  await user.click(screen.getByRole('tab', { name: 'Create' }));
+  expect(screen.getByRole('tab', { name: 'Create' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.queryByRole('list', { name: 'Looks' })).not.toBeInTheDocument();
+
+  // Adding a catalog look puts it in the shown account's wardrobe and opens it there; the player stays in the catalog.
+  await user.click(screen.getByRole('tab', { name: 'Catalog' }));
+  await user.click(within(await screen.findByRole('list', { name: 'Looks' })).getByRole('button', { name: 'Astronaut' }));
+  await user.click(screen.getByRole('button', { name: 'Add to my wardrobe' }));
+  const wardrobe = screen.getByRole('list', { name: 'Wardrobe' });
+  expect(await within(wardrobe).findByRole('button', { name: /^Astronaut/, current: true })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Catalog' })).toHaveAttribute('aria-selected', 'true');
+  expect(await screen.findByText('In your wardrobe')).toBeInTheDocument();
+  expect(sent(calls, 'skin_create').at(-1)).toMatchObject({ name: 'Astronaut', owner: STEVE });
+  expect(sent(calls, 'skin_look_save')).toHaveLength(1);
+  // Customize takes that same skin to Create.
+  await user.click(screen.getByRole('button', { name: 'Customize' }));
+  await waitFor(() => expect(screen.getByRole('tab', { name: 'Create' })).toHaveAttribute('aria-selected', 'true'));
+  expect(within(screen.getByRole('list', { name: 'Wardrobe' })).getByRole('button', { name: /^Astronaut/, current: true })).toBeInTheDocument();
+  expect(sent(calls, 'skin_create').filter((c) => (c as { name: string }).name === 'Astronaut')).toHaveLength(1);
+});
+
+it('Customize on a catalog look adds it and opens it in Create in one go', async () => {
+  const { user, calls } = renderApp(<SkinStudio />);
+  await screen.findByText('Saved');
+  await user.click(screen.getByRole('tab', { name: 'Catalog' }));
+  await user.click(within(await screen.findByRole('list', { name: 'Looks' })).getByRole('button', { name: 'Knight' }));
+  await user.click(screen.getByRole('button', { name: 'Customize' }));
+  await waitFor(() => expect(screen.getByRole('tab', { name: 'Create' })).toHaveAttribute('aria-selected', 'true'));
+  expect(within(screen.getByRole('list', { name: 'Wardrobe' })).getByRole('button', { name: /^Knight/, current: true })).toBeInTheDocument();
+  expect(sent(calls, 'skin_create').at(-1)).toMatchObject({ name: 'Knight', owner: STEVE });
+  expect(sent(calls, 'skin_look_save')).toHaveLength(1);
+});
+
+it('unavailable without cache shows the message and Paint still works', async () => {
+  const { user } = renderApp(<SkinStudio />, { skins: 'nocatalog' });
+  await screen.findByText('Saved');
+  await user.click(screen.getByRole('tab', { name: 'Catalog' }));
+  expect(await screen.findByText("Perland's skin catalog can't be reached right now. Try again when you're online.")).toBeInTheDocument();
+  await user.click(screen.getByRole('tab', { name: 'Paint' }));
+  await waitFor(() => expect(screen.getByTestId('texture-panel')).toBeInTheDocument());
+  const undo = screen.getByRole('button', { name: 'Undo' });
+  await act(() => paintTexel(10, 10));
+  expect(undo).toBeEnabled();
+});
+
+it("asks for the player's figure again on the way out, so the Profile shows what was changed here", async () => {
+  const { qc, unmount } = renderApp(<SkinStudio />);
+  await screen.findByRole('heading', { name: 'Skins' });
+  qc.setQueryData(qk.playerSkin('some-account'), { texture: null, model: 'classic', wardrobe: 0 });
+  expect(qc.getQueryState(qk.playerSkin('some-account'))?.isInvalidated).toBe(false);
+  unmount();
+  expect(qc.getQueryState(qk.playerSkin('some-account'))?.isInvalidated).toBe(true);
+});
+
+const EMPTY_NOTE = "Your wardrobe is empty. Start a new skin or import a PNG.";
+
+it('says the skin is on its way while the stage has nothing to draw yet, then shows it', async () => {
+  const { backend } = renderApp(<SkinStudio />, { microsoft: 'signedIn' });
+  // Hold the account's own skin, as a slow connection to Microsoft would.
+  const handle = backend.handle;
+  let release: () => void = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  backend.handle = (cmd, args) => (cmd === 'skin_sync_current' ? held.then(() => handle(cmd, args)) : handle(cmd, args));
+  const status = await screen.findByText('Getting your skin…');
+  expect(status.closest('.stage-well')).not.toBeNull();
+  // Not known yet is not empty: the wardrobe doesn't say it is.
+  expect(screen.queryByText(EMPTY_NOTE)).not.toBeInTheDocument();
+  release();
+  await screen.findByRole('button', { name: /Alex's skin/, current: true });
+  await waitFor(() => expect(screen.queryByText('Getting your skin…')).not.toBeInTheDocument());
 });

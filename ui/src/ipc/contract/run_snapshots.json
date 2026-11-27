@@ -24,7 +24,45 @@
       ],
       "kept": [
         "config/sodium-options.json"
-      ]
+      ],
+      "files": [
+        {
+          "name": "Just Enough Items",
+          "change": "added",
+          "origin": "curseForge",
+          "host": null,
+          "needsLook": false
+        },
+        {
+          "name": "Create",
+          "change": "added",
+          "origin": "modrinth",
+          "host": null,
+          "needsLook": false
+        },
+        {
+          "name": "Farmer's Delight",
+          "change": "added",
+          "origin": "web",
+          "host": "github.com",
+          "needsLook": true
+        },
+        {
+          "name": "survival-extras.jar",
+          "change": "updated",
+          "origin": "uploaded",
+          "host": null,
+          "needsLook": true
+        },
+        {
+          "name": "Iris",
+          "change": "updated",
+          "origin": "pack",
+          "host": null,
+          "needsLook": true
+        }
+      ],
+      "held": true
     }
   }
 ]

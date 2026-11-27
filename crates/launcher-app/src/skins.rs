@@ -7,8 +7,9 @@ use std::path::PathBuf;
 use launcher_core::{
     accounts::{Account, Provider},
     msa::minecraft::McToken,
+    skin_catalog::{CatalogStatus, Manifest},
     skins,
-    skins_library::{SkinEntry, SkinModel, SkinVersion, VersionReason},
+    skins_library::{SkinEntry, SkinLook, SkinModel, SkinVersion, VersionReason},
     skins_png, ErrorCategory, ErrorCode, LauncherError, Result,
 };
 use serde::Serialize;
@@ -25,6 +26,26 @@ use crate::{
 pub struct CurrentSkin {
     pub texture: String,
     pub model: SkinModel,
+}
+
+/// The skin the launcher draws as the player's own figure (the Profile), and how many skins
+/// the account's wardrobe holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerSkin {
+    /// A PNG data URL; `None` when the account has nothing of its own to show, and the UI draws
+    /// the launcher's starter.
+    pub texture: Option<String>,
+    pub model: SkinModel,
+    pub wardrobe: usize,
+}
+
+/// The skin catalog and how it was reached: `manifest` is `None` when there is nothing to show.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogAnswer {
+    pub manifest: Option<Manifest>,
+    pub status: CatalogStatus,
 }
 
 fn offline_account() -> LauncherError {
@@ -120,7 +141,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
 
     pub async fn skin_save(&self, id: &str, texture: &str) -> Result<SkinEntry> {
         let png = skins_png::from_data_url(texture)?;
-        self.skins.save_texture(id, &png).await
+        let saved = self.skins.save_texture(id, &png).await?;
+        self.medals_note(crate::medals::MedalEvent::SkinSaved).await;
+        Ok(saved)
     }
 
     pub async fn skin_update(
@@ -196,6 +219,80 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         self.skins.checkpoint(id, VersionReason::Edited).await
     }
 
+    /// The skin catalog: the cached one at once (`Refreshing`) while the Engine is asked in the
+    /// background, and the Engine's answer at the next call; with nothing cached, the Engine's
+    /// answer. After a manifest new to this run,
+    /// catalog files nothing wears or lists anymore are pruned in the background.
+    pub async fn skin_catalog(&self) -> CatalogAnswer {
+        let catalog = self.runner.catalog();
+        let (manifest, status) = catalog.load().await;
+        if let (Some(m), CatalogStatus::Fresh) = (&manifest, status) {
+            let is_new = {
+                let mut seen = self.catalog_seen.lock().unwrap_or_else(|e| e.into_inner());
+                if seen.as_deref() == Some(m.version.as_str()) {
+                    false
+                } else {
+                    *seen = Some(m.version.clone());
+                    true
+                }
+            };
+            if is_new {
+                match self.skins.look_hashes(m).await {
+                    Ok(keep) => {
+                        tokio::spawn(async move {
+                            if let Err(e) = catalog.prune(keep).await {
+                                tracing::debug!(code = ?e.code, "couldn't prune the skin catalog");
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        // Nobody prunes what a look may still need; try again next time.
+                        *self.catalog_seen.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                        tracing::warn!(code = ?e.code, "skipped pruning the skin catalog");
+                    }
+                }
+            }
+        }
+        CatalogAnswer { manifest, status }
+    }
+
+    /// A catalog PNG (a thumbnail, art, a mask, or a thumbnail sheet the manifest names) as a
+    /// data URL.
+    pub async fn skin_catalog_file(&self, sha256: &str) -> Result<String> {
+        let bytes = self.runner.catalog().file(sha256.to_string()).await?;
+        Ok(skins_png::data_url(&bytes))
+    }
+
+    /// The player's own painting on `id`, as a data URL; `None` without one.
+    pub async fn skin_painting(&self, id: &str) -> Result<Option<String>> {
+        Ok(self
+            .skins
+            .painting(id)
+            .await?
+            .map(|png| skins_png::data_url(&png)))
+    }
+
+    /// Saves the look of `id`: its pieces, the player's `painting` (a PNG data URL, if any) and
+    /// the finished `texture`.
+    pub async fn skin_look_save(
+        &self,
+        id: &str,
+        look: SkinLook,
+        painting: Option<&str>,
+        texture: &str,
+    ) -> Result<SkinEntry> {
+        let texture = skins_png::from_data_url(texture)?;
+        let painting = painting.map(skins_png::from_data_url).transpose()?;
+        self.skins
+            .save_look(id, look, painting.as_deref(), &texture)
+            .await
+    }
+
+    /// Drops the look of `id`; the finished texture stays as a plain skin.
+    pub async fn skin_look_clear(&self, id: &str) -> Result<SkinEntry> {
+        self.skins.clear_look(id).await
+    }
+
     async fn account(&self, uuid: &str) -> Result<Account> {
         self.accounts
             .lock()
@@ -229,6 +326,51 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             }))
     }
 
+    /// The skin to draw as `uuid`'s figure: what a Microsoft account wears (the texture its face
+    /// is cut from, so nothing new is fetched, with the arm model read off the texture), else the
+    /// first skin in its wardrobe. It only reads: listing here never adopts loose skins the way
+    /// opening the Skins screen does, and the Minecraft profile is never asked.
+    pub async fn player_skin(&self, uuid: &str) -> Result<PlayerSkin> {
+        let account = self.account(uuid).await?;
+        let wardrobe = self.skins.list(Some(uuid)).await?;
+        let worn = match self.worn_texture(&account).await {
+            Some(texture) => skins_png::normalise(&texture).ok(),
+            None => None,
+        };
+        let (texture, model) = match (worn, wardrobe.first()) {
+            (Some(png), _) => {
+                let model = skins_png::guess_model(&skins_png::decode(&png)?);
+                (Some(skins_png::data_url(&png)), model)
+            }
+            (None, Some(first)) => {
+                let png = self.skins.texture(&first.id).await?;
+                (Some(skins_png::data_url(&png)), first.model)
+            }
+            (None, None) => (None, SkinModel::Classic),
+        };
+        Ok(PlayerSkin {
+            texture,
+            model,
+            wardrobe: wardrobe.len(),
+        })
+    }
+
+    /// The texture a Microsoft account wears, from the same cache as its face (no token needed);
+    /// `None` for an offline account or one without a skin of its own.
+    async fn worn_texture(&self, account: &Account) -> Option<Vec<u8>> {
+        if account.provider != Provider::Microsoft {
+            return None;
+        }
+        let runner = self.runner.clone();
+        skins::cached_texture(
+            &self.config.dirs.skins(),
+            &account.uuid,
+            SKIN_MAX_AGE,
+            |id| runner.skin_texture(id),
+        )
+        .await
+    }
+
     /// Puts the skin the Microsoft account `uuid` wears in its wardrobe, named `name` when it's
     /// new (an entry with the same texture and arm model is reused), and marks it worn. `None`
     /// for an offline account or one wearing Minecraft's default skin.
@@ -246,18 +388,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// token needed), the arm model from the Minecraft profile, or read off the texture when the
     /// profile can't be asked.
     async fn current_skin(&self, account: Account) -> Result<Option<(Vec<u8>, SkinModel)>> {
-        if account.provider != Provider::Microsoft {
-            return Ok(None);
-        }
-        let runner = self.runner.clone();
-        let Some(texture) = skins::cached_texture(
-            &self.config.dirs.skins(),
-            &account.uuid,
-            SKIN_MAX_AGE,
-            |id| runner.skin_texture(id),
-        )
-        .await
-        else {
+        let Some(texture) = self.worn_texture(&account).await else {
             return Ok(None);
         };
         let png = skins_png::normalise(&texture)?;
@@ -468,6 +599,87 @@ mod tests {
         let e = core.skin_wear(&entry.id, &steve.uuid).await.unwrap_err();
         assert_eq!(e.code, ErrorCode::SkinOfflineAccount);
         assert!(runner.msa.calls_to("upload_skin").is_empty());
+    }
+
+    #[tokio::test]
+    async fn player_skin_of_an_empty_offline_wardrobe_is_nothing_to_show() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let steve = steve(&core).await;
+        let shown = core.player_skin(&steve.uuid).await.unwrap();
+        assert_eq!(shown.texture, None);
+        assert_eq!(shown.wardrobe, 0);
+        assert!(runner.msa.calls.lock().unwrap().is_empty());
+        assert!(runner.skin_asks.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn player_skin_offline_is_the_first_in_the_wardrobe() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let steve = steve(&core).await;
+        core.skin_create(
+            "Old",
+            SkinModel::Classic,
+            &texture(),
+            Some(&steve.uuid),
+            false,
+        )
+        .await
+        .unwrap();
+        // A new skin goes on top of the player's order.
+        let mut image = RgbaImage::new(64, 64);
+        image.put_pixel(9, 9, Rgba([7, 7, 7, 255]));
+        let top = skins_png::data_url(&skins_png::encode(&image).unwrap());
+        core.skin_create("New", SkinModel::Slim, &top, Some(&steve.uuid), false)
+            .await
+            .unwrap();
+        let shown = core.player_skin(&steve.uuid).await.unwrap();
+        assert_eq!(shown.texture.as_deref(), Some(top.as_str()));
+        assert_eq!(shown.model, SkinModel::Slim);
+        assert_eq!(shown.wardrobe, 2);
+    }
+
+    #[tokio::test]
+    async fn player_skin_only_reads_so_loose_skins_stay_loose() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let steve = steve(&core).await;
+        core.skin_create("Loose", SkinModel::Classic, &texture(), None, false)
+            .await
+            .unwrap();
+        let shown = core.player_skin(&steve.uuid).await.unwrap();
+        assert_eq!(shown.wardrobe, 0);
+        assert_eq!(core.skins.list(None).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn player_skin_microsoft_is_the_skin_it_wears_without_asking_the_profile() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = alex(&core).await;
+        let png = skins_png::from_data_url(&texture()).unwrap();
+        *runner.skin.lock().unwrap() = Some(Ok(Some(png)));
+        let shown = core.player_skin(&alex.uuid).await.unwrap();
+        assert_eq!(shown.texture.as_deref(), Some(texture().as_str()));
+        assert!(runner.msa.calls_to("skin_model").is_empty());
+    }
+
+    #[tokio::test]
+    async fn player_skin_microsoft_without_a_skin_falls_back_to_the_wardrobe() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let alex = alex(&core).await;
+        *runner.skin.lock().unwrap() = Some(Ok(None));
+        core.skin_create("Mine", SkinModel::Slim, &texture(), Some(&alex.uuid), false)
+            .await
+            .unwrap();
+        let shown = core.player_skin(&alex.uuid).await.unwrap();
+        assert_eq!(shown.texture.as_deref(), Some(texture().as_str()));
+        assert_eq!(shown.model, SkinModel::Slim);
+        assert_eq!(shown.wardrobe, 1);
+    }
+
+    #[tokio::test]
+    async fn player_skin_of_an_unknown_account_is_no_account() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let e = core.player_skin("not-an-account").await.unwrap_err();
+        assert_eq!(e.code, ErrorCode::NoAccount);
     }
 
     #[tokio::test]
@@ -760,6 +972,123 @@ mod tests {
             core.skin_restore(&entry.id, "1").await.unwrap_err().code,
             ErrorCode::SkinVersionNotFound
         );
+    }
+
+    fn manifest(version: &str) -> launcher_core::skin_catalog::Manifest {
+        let mut m: launcher_core::skin_catalog::Manifest = serde_json::from_str(include_str!(
+            "../../launcher-core/tests/fixtures/skin-catalog-manifest.json"
+        ))
+        .unwrap();
+        m.version = version.into();
+        m
+    }
+
+    async fn pruned(runner: &crate::testing::FakeRunner, n: usize) {
+        for _ in 0..200 {
+            if runner.catalog.prunes.lock().unwrap().len() >= n {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn skin_catalog_reports_status() {
+        use launcher_core::skin_catalog::CatalogStatus;
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let none = core.skin_catalog().await;
+        assert_eq!(none.status, CatalogStatus::Unavailable);
+        assert!(none.manifest.is_none());
+        *runner.catalog.load.lock().unwrap() = (Some(manifest("v1")), CatalogStatus::Cached);
+        let cached = core.skin_catalog().await;
+        assert_eq!(cached.status, CatalogStatus::Cached);
+        assert_eq!(cached.manifest.unwrap().version, "v1");
+        // Only a fresh manifest prunes.
+        tokio::task::yield_now().await;
+        assert!(runner.catalog.prunes.lock().unwrap().is_empty());
+        *runner.catalog.load.lock().unwrap() = (Some(manifest("v1")), CatalogStatus::Fresh);
+        assert_eq!(core.skin_catalog().await.status, CatalogStatus::Fresh);
+        pruned(&runner, 1).await;
+        assert_eq!(runner.catalog.prunes.lock().unwrap().len(), 1);
+        // The same version again doesn't prune again; a new one does.
+        core.skin_catalog().await;
+        *runner.catalog.load.lock().unwrap() = (Some(manifest("v2")), CatalogStatus::Fresh);
+        core.skin_catalog().await;
+        pruned(&runner, 2).await;
+        assert_eq!(runner.catalog.prunes.lock().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn skin_catalog_file_is_a_data_url_or_an_error() {
+        let (core, runner, _host, _t) = core(BuildKind::Release);
+        let png = skins_png::from_data_url(&texture()).unwrap();
+        runner
+            .catalog
+            .files
+            .lock()
+            .unwrap()
+            .insert("abc".into(), png);
+        assert_eq!(core.skin_catalog_file("abc").await.unwrap(), texture());
+        assert_eq!(
+            core.skin_catalog_file("nope").await.unwrap_err().code,
+            ErrorCode::SkinCatalogUnavailable
+        );
+    }
+
+    fn look(ids: &[&str]) -> launcher_core::skins_library::SkinLook {
+        launcher_core::skins_library::SkinLook {
+            pieces: ids
+                .iter()
+                .map(|id| launcher_core::skins_library::WornPiece {
+                    id: (*id).into(),
+                    colours: Default::default(),
+                })
+                .collect(),
+            painting: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn skin_look_save_round_trips() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let entry = core
+            .skin_create("Mine", SkinModel::Classic, &texture(), None, false)
+            .await
+            .unwrap();
+        let mut image = RgbaImage::new(64, 64);
+        image.put_pixel(1, 1, Rgba([9, 9, 9, 255]));
+        let painting = skins_png::data_url(&skins_png::encode(&image).unwrap());
+        let saved = core
+            .skin_look_save(&entry.id, look(&["hat-cap"]), Some(&painting), &texture())
+            .await
+            .unwrap();
+        let l = saved.look.unwrap();
+        assert_eq!(l.pieces[0].id, "hat-cap");
+        assert!(l.painting);
+        assert_eq!(
+            core.skin_painting(&entry.id).await.unwrap().as_deref(),
+            Some(painting.as_str())
+        );
+        let cleared = core.skin_look_clear(&entry.id).await.unwrap();
+        assert!(cleared.look.is_none());
+        assert_eq!(core.skin_painting(&entry.id).await.unwrap(), None);
+        assert_eq!(core.skin_texture(&entry.id).await.unwrap(), texture());
+    }
+
+    #[tokio::test]
+    async fn skin_painting_none_without_look() {
+        let (core, _runner, _host, _t) = core(BuildKind::Release);
+        let entry = core
+            .skin_create("Mine", SkinModel::Classic, &texture(), None, false)
+            .await
+            .unwrap();
+        assert_eq!(core.skin_painting(&entry.id).await.unwrap(), None);
+        let saved = core
+            .skin_look_save(&entry.id, look(&[]), None, &texture())
+            .await
+            .unwrap();
+        assert!(!saved.look.unwrap().painting);
+        assert_eq!(core.skin_painting(&entry.id).await.unwrap(), None);
     }
 
     #[tokio::test]

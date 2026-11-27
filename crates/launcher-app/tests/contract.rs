@@ -15,14 +15,16 @@ use launcher_app::{
     deep_link::DeepLink,
     dto::{
         AccountReady, AppInfo, ArtChoice, BannerView, Build, ContentFile, ContinueKind,
-        ContinueTarget, EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice,
-        ImportPreview, ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview,
-        LinkCodeView, ManualProgress, MicrosoftSignInPhase, NameListView, NewInstance,
-        NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest, PackContents,
-        PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase, PerlandStats,
-        PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage, RestorePointDto,
-        RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers, ServerStatsView,
-        ServerStatusView, ServerTeam, SharePreview, SyncSummary, YourServerCard, YourServersPage,
+        ContinueTarget, DropAdded, DropResult, DropSkipReason, DropSkipped, DroppedFile,
+        EmailCodeSent, FreeServerCard, FreeServerPage, FriendsCheck, IconChoice, ImportPreview,
+        ImportRequest, InstanceArtData, JavaFound, JavaOverview, JoinPreview, LinkCodeView,
+        ManualProgress, MedalView, MedalsView, MicrosoftSignInPhase, ModSourceCounts, NameListView,
+        NewInstance, NewsChangesView, NewsPostView, OpenTarget, OptionalChoice, PackAddRequest,
+        PackContents, PackMod, PackStatus, PackUpdate, PerlandAccount, PerlandSignInPhase,
+        PerlandStats, PerlandStatus, PlaytimeEntry, PublicServerCard, PublicServerPage,
+        RestorePointDto, RunSnapshot, ServerGame, ServerNews, ServerPack, ServerPlayers,
+        ServerStatsView, ServerStatusView, ServerTeam, SharePreview, SyncSummary, TrustPrompt,
+        UpdateFile, YourServerCard, YourServersPage,
     },
     events::{AppEvent, CrashFix, ExitInfo, RunStateKind},
     updates::UpdateState,
@@ -33,6 +35,7 @@ use launcher_core::browse::{
     project::{GalleryImage, ProjectDetail, SideSupport, VersionInfo},
     search::{SearchHit, SearchPage, SortIndex},
 };
+use launcher_core::dropped::DroppedKind;
 use launcher_core::{
     accounts::{offline_account, AccountsFile},
     download::Hashes,
@@ -40,7 +43,7 @@ use launcher_core::{
     instances::{
         ArtMode, BannerEdges, DamagedInstance, Focus, GameSpec, GameWindow, IconMode, Instance,
         InstanceListing, JavaSettings, LoaderSpec, ServerAddress, ServerLink, ServerStatus,
-        SourceRef, UpdateHold, UpdatePolicy,
+        ServerTrust, SourceRef, UpdateHold, UpdatePolicy,
     },
     invite::invite_link_cases,
     java::JavaFit,
@@ -56,9 +59,10 @@ use launcher_core::{
     },
     public_list::{Facets, ListQuery, ListSort},
     restore::{Change, PointKind},
-    settings::{IconShape, Lang, Settings, Theme, UiFont},
+    settings::{Accent, CustomRoom, IconShape, Lang, Settings, Theme, Transitions, UiFont},
+    shader_mods::{ShaderMod, ShaderSupport},
     share::{Category, CategoryCount, ShareChoice},
-    sync::ManualFile,
+    sync::{origin::FileOrigin, plan::FileChange, ManualFile},
     ErrorCode, LauncherError,
 };
 use serde::Serialize;
@@ -75,6 +79,44 @@ fn sample_update() -> PackUpdate {
         updated: vec!["Sodium".into(), "Iris".into()],
         removed: vec!["Zoomify".into()],
         kept: vec!["config/sodium-options.json".into()],
+        files: vec![
+            UpdateFile {
+                name: "Just Enough Items".into(),
+                change: FileChange::Added,
+                origin: FileOrigin::CurseForge,
+                host: None,
+                needs_look: false,
+            },
+            UpdateFile {
+                name: "Create".into(),
+                change: FileChange::Added,
+                origin: FileOrigin::Modrinth,
+                host: None,
+                needs_look: false,
+            },
+            UpdateFile {
+                name: "Farmer's Delight".into(),
+                change: FileChange::Added,
+                origin: FileOrigin::Web,
+                host: Some("github.com".into()),
+                needs_look: true,
+            },
+            UpdateFile {
+                name: "survival-extras.jar".into(),
+                change: FileChange::Updated,
+                origin: FileOrigin::Uploaded,
+                host: None,
+                needs_look: true,
+            },
+            UpdateFile {
+                name: "Iris".into(),
+                change: FileChange::Updated,
+                origin: FileOrigin::Pack,
+                host: None,
+                needs_look: true,
+            },
+        ],
+        held: true,
     }
 }
 
@@ -86,6 +128,84 @@ fn sample_manual() -> ManualFile {
         page_url: "https://www.curseforge.com/projects/235216".into(),
         hashes: Hashes::sha1("3f786850e387550fdab836ed7e6dc881de23001b"),
     }
+}
+
+/// A fresh answer with a small catalog, a cached one from before expressions and sheets existed,
+/// and the answers when it can't be had.
+fn skin_catalog_answers() -> Vec<launcher_app::skins::CatalogAnswer> {
+    use launcher_core::skin_catalog::CatalogStatus;
+    let mut manifest: launcher_core::skin_catalog::Manifest = serde_json::from_value(serde_json::json!({
+        "formatVersion": 1,
+        "version": "60f573c45b9fc8115fa680f5516ce12c6c307ed7f1a848b5210dd477ef1a40ed",
+        "license": "CC0-1.0",
+        "slots": ["body", "mouth", "hat"],
+        "tags": [{ "id": "casual", "name": { "en": "Casual", "es": "Casual" } }],
+        "pieces": [{
+            "id": "hat-cap",
+            "slot": "hat",
+            "name": { "en": "Cap", "es": "Gorra" },
+            "tags": ["casual"],
+            "areas": [
+                { "id": "main", "name": { "en": "Main", "es": "Principal" }, "default": "#2f5aa8" }
+            ],
+            "files": {
+                "classic": { "art": "a".repeat(64), "mask": "b".repeat(64) },
+                "slim": { "art": "c".repeat(64), "mask": "d".repeat(64) }
+            },
+            "thumb": "e".repeat(64),
+            "retired": false
+        }],
+        "looks": [{
+            "id": "look-street",
+            "name": { "en": "Street", "es": "Calle" },
+            "tags": ["casual"],
+            "model": "classic",
+            "pieces": [
+                { "id": "hat-cap", "colours": { "main": "#2f5aa8" } }
+            ],
+            "painting": "f".repeat(64),
+            "thumb": "0".repeat(64),
+            "retired": false
+        }],
+        "expressions": [{
+            "id": "expr-happy",
+            "name": { "en": "Happy", "es": "Feliz" },
+            "eyes": "eyes-round",
+            "brows": "brows-straight",
+            "mouth": "mouth-smile"
+        }],
+        "sheets": {
+            "pieces": { "file": "1".repeat(64), "columns": 24 },
+            "looks": { "file": "", "columns": 0 }
+        }
+    }))
+    .unwrap();
+    assert_eq!(manifest.check(), Ok(()));
+    let current = manifest.clone();
+    manifest.expressions.clear();
+    manifest.sheets = None;
+    vec![
+        launcher_app::skins::CatalogAnswer {
+            manifest: Some(current.clone()),
+            status: CatalogStatus::Fresh,
+        },
+        launcher_app::skins::CatalogAnswer {
+            manifest: Some(current),
+            status: CatalogStatus::Refreshing,
+        },
+        launcher_app::skins::CatalogAnswer {
+            manifest: Some(manifest),
+            status: CatalogStatus::Cached,
+        },
+        launcher_app::skins::CatalogAnswer {
+            manifest: None,
+            status: CatalogStatus::Unavailable,
+        },
+        launcher_app::skins::CatalogAnswer {
+            manifest: None,
+            status: CatalogStatus::TooNew,
+        },
+    ]
 }
 
 fn dir() -> PathBuf {
@@ -138,6 +258,7 @@ fn fabric_instance() -> Instance {
         banner_edges: Some(BannerEdges::Pixel),
         banner_aspect: Some(1833),
         update_hold: None,
+        server_trust: None,
     }
 }
 
@@ -170,6 +291,7 @@ fn vanilla_instance() -> Instance {
         banner_edges: None,
         banner_aspect: None,
         update_hold: None,
+        server_trust: None,
     }
 }
 
@@ -548,6 +670,10 @@ fn server_instance() -> Instance {
             since: 1_791_720_000,
             version: "1.0.3".into(),
         }),
+        server_trust: Some(ServerTrust {
+            server: "address:play.example.com:25566".into(),
+            at: 1_791_720_000,
+        }),
     }
 }
 
@@ -725,6 +851,7 @@ fn contract_fixtures_are_current() {
                 worn_by: None,
                 owner: Some("5627dd98-e6be-3c21-b8a8-e92344183641".into()),
                 seeded: false,
+                look: None,
             },
             launcher_core::skins_library::SkinEntry {
                 id: "skin-ffeeddccbbaa".into(),
@@ -734,9 +861,36 @@ fn contract_fixtures_are_current() {
                 worn_by: None,
                 owner: Some("5627dd98-e6be-3c21-b8a8-e92344183641".into()),
                 seeded: false,
+                look: None,
             },
         ],
     );
+    check(
+        "skin_entry_look",
+        vec![launcher_core::skins_library::SkinEntry {
+            id: "skin-123456abcdef".into(),
+            name: "Street look".into(),
+            model: launcher_core::skins_library::SkinModel::Classic,
+            updated: 1_762_450_000,
+            worn_by: None,
+            owner: Some("5627dd98-e6be-3c21-b8a8-e92344183641".into()),
+            seeded: false,
+            look: Some(launcher_core::skins_library::SkinLook {
+                pieces: vec![
+                    launcher_core::skins_library::WornPiece {
+                        id: "body-plain".into(),
+                        colours: [("skin".to_string(), "#8d5b3e".to_string())].into(),
+                    },
+                    launcher_core::skins_library::WornPiece {
+                        id: "mouth-smile".into(),
+                        colours: Default::default(),
+                    },
+                ],
+                painting: true,
+            }),
+        }],
+    );
+    check("skin_catalog", skin_catalog_answers());
     check(
         "skin_versions",
         vec![
@@ -782,6 +936,21 @@ fn contract_fixtures_are_current() {
                 model: launcher_core::skins_library::SkinModel::Classic,
             }),
             None,
+        ],
+    );
+    check(
+        "player_skin",
+        vec![
+            launcher_app::skins::PlayerSkin {
+                texture: Some("data:image/png;base64,iVBORw0KGgo=".into()),
+                model: launcher_core::skins_library::SkinModel::Slim,
+                wardrobe: 3,
+            },
+            launcher_app::skins::PlayerSkin {
+                texture: None,
+                model: launcher_core::skins_library::SkinModel::Classic,
+                wardrobe: 0,
+            },
         ],
     );
     check("instance", fabric_instance());
@@ -830,6 +999,38 @@ fn contract_fixtures_are_current() {
             },
         ],
     );
+    check(
+        "medals",
+        MedalsView {
+            saved_to_account: true,
+            medals: vec![
+                MedalView {
+                    id: "time".into(),
+                    group: "local".into(),
+                    kind: "ladder".into(),
+                    unit: "time".into(),
+                    tier: 2,
+                    rim: 0,
+                    value: 43_200,
+                    goal: Some(360_000),
+                    steps: vec![3_600, 36_000, 360_000, 1_800_000],
+                    earned_at: Some("2026-11-07T21:05:00Z".into()),
+                },
+                MedalView {
+                    id: "diamonds".into(),
+                    group: "perland".into(),
+                    kind: "single".into(),
+                    unit: "count".into(),
+                    tier: 0,
+                    rim: 2,
+                    value: 0,
+                    goal: None,
+                    steps: vec![],
+                    earned_at: None,
+                },
+            ],
+        },
+    );
     let steve = offline_account("Steve").unwrap();
     let alex = offline_account("Alex_Builds").unwrap();
     check(
@@ -850,8 +1051,14 @@ fn contract_fixtures_are_current() {
             language: Some(Lang::Es),
             rail_expanded: true,
             icon_shape: IconShape::Round,
-            theme: Theme::Night,
+            theme: Theme::Custom,
+            accent: Accent::Pink,
+            custom_room: CustomRoom {
+                background: "#170f1f".into(),
+                buttons: "#c58cff".into(),
+            },
             font: UiFont::System,
+            transitions: Transitions::Stepped,
             ..Settings::default()
         },
     );
@@ -862,6 +1069,19 @@ fn contract_fixtures_are_current() {
             build: Build::Dev,
             offline_allowed: true,
             system_memory_mb: 16384,
+            graphics: launcher_core::graphics::support(
+                launcher_core::platform::Os::Windows,
+                Some(vec![
+                    launcher_core::graphics::Card {
+                        name: "Intel(R) UHD Graphics 770".into(),
+                        integrated: true,
+                    },
+                    launcher_core::graphics::Card {
+                        name: "NVIDIA GeForce RTX 4060".into(),
+                        integrated: false,
+                    },
+                ]),
+            ),
             data_dir: "C:/Users/player/AppData/Roaming/PerlandLauncher".into(),
             panel: true,
         },
@@ -934,6 +1154,83 @@ fn contract_fixtures_are_current() {
         ],
     );
     check(
+        "dropped_files",
+        vec![
+            DroppedFile {
+                path: "C:/Users/player/Downloads/sodium-fabric-0.5.8+mc1.20.1.jar".into(),
+                name: "sodium-fabric-0.5.8+mc1.20.1.jar".into(),
+                kind: DroppedKind::Mod,
+            },
+            DroppedFile {
+                path: "C:/Users/player/Downloads/Faithful 32x.zip".into(),
+                name: "Faithful 32x.zip".into(),
+                kind: DroppedKind::ResourcePack,
+            },
+            DroppedFile {
+                path: "C:/Users/player/Downloads/BSL v8.zip".into(),
+                name: "BSL v8.zip".into(),
+                kind: DroppedKind::ShaderPack,
+            },
+            DroppedFile {
+                path: "C:/Users/player/Downloads/Sky Islands 1.0.4.mrpack".into(),
+                name: "Sky Islands 1.0.4.mrpack".into(),
+                kind: DroppedKind::Modpack,
+            },
+            DroppedFile {
+                path: "C:/Users/player/Downloads/photos.zip".into(),
+                name: "photos.zip".into(),
+                kind: DroppedKind::UnknownZip,
+            },
+            DroppedFile {
+                path: "C:/Users/player/Downloads/notes.txt".into(),
+                name: "notes.txt".into(),
+                kind: DroppedKind::Other,
+            },
+        ],
+    );
+    check(
+        "drop_result",
+        DropResult {
+            added: vec![
+                DropAdded {
+                    name: "sodium-fabric-0.5.8+mc1.20.1.jar".into(),
+                    kind: DroppedKind::Mod,
+                },
+                DropAdded {
+                    name: "Faithful 32x.zip".into(),
+                    kind: DroppedKind::ResourcePack,
+                },
+            ],
+            skipped: [
+                (
+                    "BSL v8.zip",
+                    DroppedKind::ShaderPack,
+                    DropSkipReason::NeedsLoader,
+                ),
+                ("iris.jar", DroppedKind::Mod, DropSkipReason::Exists),
+                ("create.jar", DroppedKind::Mod, DropSkipReason::Managed),
+                (
+                    "Sky Islands 1.0.4.mrpack",
+                    DroppedKind::Modpack,
+                    DropSkipReason::Modpack,
+                ),
+                (
+                    "photos.zip",
+                    DroppedKind::UnknownZip,
+                    DropSkipReason::NotAPack,
+                ),
+                ("notes.txt", DroppedKind::Other, DropSkipReason::NotContent),
+            ]
+            .into_iter()
+            .map(|(name, kind, reason)| DropSkipped {
+                name: name.into(),
+                kind,
+                reason,
+            })
+            .collect(),
+        },
+    );
+    check(
         "content_files",
         vec![
             ContentFile {
@@ -953,6 +1250,23 @@ fn contract_fixtures_are_current() {
                 size: 0,
                 folder: true,
                 managed: false,
+            },
+        ],
+    );
+    check(
+        "shader_support",
+        vec![
+            ShaderSupport {
+                wanted: Some(ShaderMod::Iris),
+                installed: false,
+            },
+            ShaderSupport {
+                wanted: Some(ShaderMod::Oculus),
+                installed: true,
+            },
+            ShaderSupport {
+                wanted: None,
+                installed: false,
             },
         ],
     );
@@ -1130,6 +1444,7 @@ fn contract_fixtures_are_current() {
                 update: None,
             },
             AppEvent::DeepLink,
+            AppEvent::MedalsChanged,
             AppEvent::PerlandSignIn {
                 phase: PerlandSignInPhase::Waiting,
             },
@@ -1660,15 +1975,51 @@ fn contract_fixtures_are_current() {
                 whitelist: Some(true),
                 seed: Some("perla".into()),
                 motd: Some("Hola amigos".into()),
+                online_mode: None,
             },
             FreeServerSettings {
                 pvp: Some(false),
+                ..FreeServerSettings::default()
+            },
+            // A team server's: free servers stay in online mode.
+            FreeServerSettings {
+                online_mode: Some(false),
                 ..FreeServerSettings::default()
             },
             FreeServerSettings::default(),
         ],
     );
     check("server_news", server_news());
+    check(
+        "trust_prompts",
+        vec![
+            Some(TrustPrompt {
+                name: "Survival con los panas".into(),
+                team: Some("Acme".into()),
+                pack: Some("Survival Pack".into()),
+                mod_count: 42,
+                sources: Some(ModSourceCounts {
+                    modrinth: 30,
+                    curseforge: 8,
+                    web: 1,
+                    uploaded: 3,
+                    other: 0,
+                }),
+                modrinth_pack: false,
+                auto_update: true,
+            }),
+            Some(TrustPrompt {
+                name: "Cobblemon".into(),
+                team: None,
+                pack: None,
+                mod_count: 0,
+                sources: None,
+                modrinth_pack: true,
+                auto_update: false,
+            }),
+            None,
+        ],
+    );
     check(
         "join_preview",
         vec![

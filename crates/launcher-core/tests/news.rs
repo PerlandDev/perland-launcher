@@ -79,6 +79,15 @@ fn minimal_page() -> Value {
     }] })
 }
 
+/// A loopback port that refuses connections for as long as the socket is held. It is bound, so
+/// no other test's server can be handed the same port meanwhile, and it never listens.
+fn closed_port() -> (tokio::net::TcpSocket, u16) {
+    let socket = tokio::net::TcpSocket::new_v4().unwrap();
+    socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+    let port = socket.local_addr().unwrap().port();
+    (socket, port)
+}
+
 #[tokio::test]
 async fn parses_a_full_and_a_minimal_page() {
     let server = MockServer::start().await;
@@ -265,11 +274,7 @@ async fn troubles_map_to_codes() {
     assert_eq!(err.code, ErrorCode::MetaUnexpected);
 
     // An Engine nobody answers for.
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
+    let (_held, port) = closed_port();
     let nowhere = InviteLink::parse(&format!("http://127.0.0.1:{port}/{TOKEN}")).unwrap();
     let err = client().page(&nowhere, 20, None).await.unwrap_err();
     assert_eq!(err.code, ErrorCode::Offline);
@@ -386,11 +391,7 @@ async fn no_error_names_the_token() {
         mount_status(&server, 200, &body).await;
         errors.push(client().page(&link(&server), 20, None).await.unwrap_err());
     }
-    let port = std::net::TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
+    let (_held, port) = closed_port();
     let nowhere = InviteLink::parse(&format!("http://127.0.0.1:{port}/{TOKEN}")).unwrap();
     errors.push(client().page(&nowhere, 20, None).await.unwrap_err());
     assert_eq!(errors.len(), 6);

@@ -28,7 +28,8 @@ use launcher_core::{
     instances::{GameSpec, Instance, InstanceStore, ServerAddress, SourceRef, UpdatePolicy},
     invite::{
         pack_link_refused, EngineInviteLink, EngineView, InviteAddress, InviteGame, InviteLink,
-        InviteModrinth, InvitePack, InvitePlayers, InviteTeam, InviteView, Url,
+        InviteMod, InviteModrinth, InviteMods, InvitePack, InvitePlayers, InviteTeam, InviteView,
+        ModSource, Url,
     },
     launch::GameExit,
     locks::InstanceLock,
@@ -42,12 +43,13 @@ use launcher_core::{
         Apply, BanList, ConsoleReply, CreateAllowance, CreateFreeServer, CreateServer,
         CreatedServer, Diagnosis, DiscordAccount, Discovery, Disk, EmailStarted, EngineVersion,
         FreeLimits, FreeServer, FreeServerSettings, FreeServerState, Handoff, Lifecycle, LinkCode,
-        ListKind, Membership, MemoryLimits, NameList, NameResult, Online, Pkce, Player,
+        ListKind, MedalEntry, Membership, MemoryLimits, NameList, NameResult, Online, Pkce, Player,
         PlayerConfig, PlayerStats, SessionJwt, SettingsDoc, SettingsSaved, SignInMethod,
         StackDetail, StackItem, TeamUsage, TokenAnswer, YourServer,
     },
     public_list::{FetchedPage, ListQuery, PublicServer},
     server_wake::{Knock, Ping, WaitEnd},
+    skin_catalog::{CatalogStatus, Manifest},
     skins_library::SkinModel,
     sources::{
         DesiredState, FileMode, FileSource, OptionalFile, PackAbout, PackFile, PackInput, Side,
@@ -55,7 +57,7 @@ use launcher_core::{
     },
     sync::{
         lockfile::{self, Managed, ManagedFile},
-        plan::Changes,
+        plan::{ChangedFile, Changes, FileChange, FileFrom},
         Cancel, Ensured, ManualFile, PendingUpdate, SyncOutcome, SyncReport,
     },
     ErrorCode, LauncherError, Result,
@@ -70,7 +72,7 @@ use crate::{
     manage::StackApi,
     msa::MsaApi,
     perland::PlayerApi,
-    runner::{BoxFuture, Kill, Runner, RunningGame},
+    runner::{BoxFuture, CatalogApi, Kill, Runner, RunningGame},
 };
 
 pub(crate) fn exit(code: Option<i32>) -> GameExit {
@@ -136,6 +138,12 @@ pub(crate) fn pending(from: &str, to: &str) -> PendingUpdate {
             removed: vec!["Zoomify".into()],
         },
         kept: vec![],
+        files: vec![ChangedFile {
+            name: "JEI".into(),
+            path: "mods/jei.jar".into(),
+            change: FileChange::Added,
+            from: FileFrom::Host("cdn.modrinth.com".into()),
+        }],
     }
 }
 
@@ -252,6 +260,24 @@ pub(crate) fn server_view(name: &str) -> EngineView {
 }
 
 /// What `invite_view` answers for `invite` from now on.
+/// The mods `invite`'s server lists: `(name, source)`, all on both sides.
+pub(crate) fn serve_mods(runner: &FakeRunner, invite: &str, list: &[(&str, ModSource)]) {
+    let key = InviteLink::parse(invite).unwrap().canonical();
+    let mods = InviteMods {
+        commit: "c".into(),
+        mods: list
+            .iter()
+            .map(|(name, source)| InviteMod {
+                name: (*name).into(),
+                side: "both".into(),
+                folder: "mods".into(),
+                source: *source,
+            })
+            .collect(),
+    };
+    runner.mods.lock().unwrap().insert(key, Ok(mods));
+}
+
 pub(crate) fn serve(runner: &FakeRunner, invite: &str, view: Result<EngineView>) {
     let key = InviteLink::parse(invite).unwrap().canonical();
     runner.views.lock().unwrap().insert(key, view);
@@ -556,10 +582,15 @@ pub(crate) struct FakeRunner {
     pub repairs: Mutex<Vec<bool>>,
     /// What `invite_icon` answers.
     pub icon: Mutex<Option<Vec<u8>>>,
+    /// What `invite_mods` answers, by canonical invite (none: the Engine has no list, 404).
+    pub mods: Mutex<HashMap<String, Result<launcher_core::invite::InviteMods>>>,
+    pub mods_reads: AtomicUsize,
     /// What `skin_texture` answers (none: no skin of its own).
     pub skin: Mutex<Option<Result<Option<Vec<u8>>>>>,
     /// The profiles `skin_texture` was asked for.
     pub skin_asks: Mutex<Vec<String>>,
+    /// The skin catalog.
+    pub catalog: Arc<FakeCatalog>,
     /// What `public_page` answers (none: `server_list_closed`).
     pub public_page: Mutex<Option<Result<FetchedPage>>>,
     /// The queries `public_page` was asked.
@@ -630,8 +661,11 @@ impl FakeRunner {
             engine_hints: Mutex::new(Vec::new()),
             repairs: Mutex::new(Vec::new()),
             icon: Mutex::new(None),
+            mods: Mutex::new(HashMap::new()),
+            mods_reads: AtomicUsize::new(0),
             skin: Mutex::new(None),
             skin_asks: Mutex::new(Vec::new()),
+            catalog: Arc::new(FakeCatalog::default()),
             public_page: Mutex::new(None),
             public_queries: Mutex::new(Vec::new()),
             public_invites: Mutex::new(true),
@@ -888,7 +922,11 @@ impl Runner for FakeRunner {
         })
     }
 
-    fn import_manual(&self, found: Vec<(ManualFile, PathBuf)>) -> BoxFuture<Result<()>> {
+    fn import_manual(
+        &self,
+        _id: String,
+        found: Vec<(ManualFile, PathBuf)>,
+    ) -> BoxFuture<Result<()>> {
         self.imported
             .lock()
             .unwrap()
@@ -916,6 +954,27 @@ impl Runner for FakeRunner {
     fn invite_icon(&self, _link: InviteLink) -> BoxFuture<Option<Vec<u8>>> {
         let icon = self.icon.lock().unwrap().clone();
         Box::pin(async move { icon })
+    }
+
+    fn invite_mods(
+        &self,
+        link: InviteLink,
+        _engine: Option<String>,
+    ) -> BoxFuture<Result<launcher_core::invite::InviteMods>> {
+        self.mods_reads.fetch_add(1, Ordering::SeqCst);
+        let answer = self
+            .mods
+            .lock()
+            .unwrap()
+            .get(&link.canonical())
+            .cloned()
+            .unwrap_or_else(|| {
+                Err(LauncherError::pack(
+                    ErrorCode::InviteGone,
+                    "This invite link doesn't work anymore",
+                ))
+            });
+        Box::pin(async move { answer })
     }
 
     fn public_page(&self, query: ListQuery) -> BoxFuture<Result<FetchedPage>> {
@@ -1036,6 +1095,49 @@ impl Runner for FakeRunner {
         self.skin_asks.lock().unwrap().push(uuid);
         let answer = self.skin.lock().unwrap().clone().unwrap_or(Ok(None));
         Box::pin(async move { answer })
+    }
+
+    fn catalog(&self) -> Arc<dyn CatalogApi> {
+        Arc::new(self.catalog.clone())
+    }
+}
+
+/// A skin catalog the test controls: what `load` answers, the files it has, and the prunes asked.
+pub(crate) struct FakeCatalog {
+    pub load: Mutex<(Option<Manifest>, CatalogStatus)>,
+    pub files: Mutex<HashMap<String, Vec<u8>>>,
+    pub loads: AtomicUsize,
+    pub prunes: Mutex<Vec<std::collections::BTreeSet<String>>>,
+}
+
+impl Default for FakeCatalog {
+    fn default() -> Self {
+        Self {
+            load: Mutex::new((None, CatalogStatus::Unavailable)),
+            files: Mutex::new(HashMap::new()),
+            loads: AtomicUsize::new(0),
+            prunes: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl CatalogApi for Arc<FakeCatalog> {
+    fn load(&self) -> BoxFuture<(Option<Manifest>, CatalogStatus)> {
+        self.loads.fetch_add(1, Ordering::SeqCst);
+        let answer = self.load.lock().unwrap().clone();
+        Box::pin(async move { answer })
+    }
+    fn file(&self, sha256: String) -> BoxFuture<Result<Vec<u8>>> {
+        let found = self.files.lock().unwrap().get(&sha256).cloned();
+        Box::pin(async move {
+            found.ok_or_else(|| {
+                LauncherError::network(ErrorCode::SkinCatalogUnavailable, "catalog unavailable")
+            })
+        })
+    }
+    fn prune(&self, keep: std::collections::BTreeSet<String>) -> BoxFuture<Result<usize>> {
+        self.prunes.lock().unwrap().push(keep);
+        Box::pin(async { Ok(0) })
     }
 }
 
@@ -1346,6 +1448,10 @@ pub(crate) struct FakePlayer {
     pub unlink: Mutex<Result<()>>,
     /// Default: no Minecraft account linked, no servers.
     pub stats: Mutex<Result<Option<PlayerStats>>>,
+    /// Default: an Engine without medals (`None`). `save_medals` answers this too, after
+    /// recording what was sent in `saved_medals`.
+    pub medals: Mutex<Result<Option<Vec<MedalEntry>>>>,
+    pub saved_medals: Mutex<Vec<Vec<MedalEntry>>>,
     /// Default: a code that may be asked for again in 60 s.
     pub email_started: Mutex<Result<EmailStarted>>,
     /// Default: `new@example.com`.
@@ -1390,6 +1496,8 @@ impl FakePlayer {
             })),
             unlink: Mutex::new(Ok(())),
             stats: Mutex::new(Ok(Some(PlayerStats::default()))),
+            medals: Mutex::new(Ok(None)),
+            saved_medals: Mutex::new(Vec::new()),
             email_started: Mutex::new(Ok(EmailStarted {
                 expires_in: 600,
                 resend_in: 60,
@@ -1514,6 +1622,18 @@ impl PlayerApi for FakePlayer {
     }
     fn stats(&self, engine: Url, token: String) -> BoxFuture<Result<Option<PlayerStats>>> {
         self.record("stats", engine, &[&token], &self.stats)
+    }
+    fn medals(&self, engine: Url, token: String) -> BoxFuture<Result<Option<Vec<MedalEntry>>>> {
+        self.record("medals", engine, &[&token], &self.medals)
+    }
+    fn save_medals(
+        &self,
+        engine: Url,
+        token: String,
+        medals: Vec<MedalEntry>,
+    ) -> BoxFuture<Result<Option<Vec<MedalEntry>>>> {
+        self.saved_medals.lock().unwrap().push(medals);
+        self.record("save_medals", engine, &[&token], &self.medals)
     }
     fn account_email_start(
         &self,

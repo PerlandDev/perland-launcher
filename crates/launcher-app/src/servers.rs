@@ -99,11 +99,15 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     }
 
     /// Add the server as an instance, or return the one that already joins it. Nothing
-    /// installs: the first Play does that.
-    pub async fn join_add(&self, link: &str) -> Result<Instance> {
+    /// installs: the first Play does that. `trust` is the trust step's answer (whether the pack
+    /// updates on its own), recorded for this server; without one the first Play asks.
+    pub async fn join_add(&self, link: &str, trust: Option<bool>) -> Result<Instance> {
         let link = InviteLink::parse(link)?;
         if let Some(existing) = self.instance_for_invite(&link).await? {
-            return Ok(existing);
+            return match trust {
+                Some(auto) => self.instance_trust_set(&existing.id, auto).await,
+                None => Ok(existing),
+            };
         }
         let created = self
             .runner
@@ -114,6 +118,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         // The view was just read by `add_pack`, so this is the shared copy.
         if let Ok(ev) = self.runner.invite_view(link, None).await {
             instance.server = Some(ServerLink::from_view(&ev.view, &ev.engine, unix_now()));
+            if let Some(auto) = trust {
+                crate::trust::trust(&mut instance, &ev, auto);
+            }
         }
         self.instances.save(&instance).await?;
         self.config.telemetry.count(Counter::JoinsByLink);
@@ -195,7 +202,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// "Link to a server": make a vanilla or imported instance a server instance. Its files
     /// stay; the next Play syncs to the server's pack, which keeps the player's own mods
     /// (link-instance spec §3, amended for #64). Refused while the instance has a run.
-    pub async fn server_link(&self, id: &str, link: &str) -> Result<Instance> {
+    pub async fn server_link(&self, id: &str, link: &str, trust: Option<bool>) -> Result<Instance> {
         if self.is_busy(id) {
             return Err(busy(id));
         }
@@ -219,6 +226,10 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         };
         instance.server = Some(ServerLink::from_view(&ev.view, &ev.engine, unix_now()));
         instance.update_policy = UpdatePolicy::Auto;
+        instance.server_trust = None;
+        if let Some(auto) = trust {
+            crate::trust::trust(&mut instance, &ev, auto);
+        }
         // A point of before this would put back files of another source.
         launcher_core::restore::discard(&self.instances, id).await;
         self.instances.save(&instance).await?;
@@ -228,7 +239,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// "Use a new link": point the instance at another invite. The files stay; the next Play
     /// checks the new link and syncs.
     /// Refused while the instance has a run: its sync saves the whole instance.
-    pub async fn server_relink(&self, id: &str, link: &str) -> Result<Instance> {
+    /// The trust stays when the new link reaches the same server, and goes when it doesn't;
+    /// `trust` is the trust step's answer when one was shown.
+    pub async fn server_relink(
+        &self,
+        id: &str,
+        link: &str,
+        trust: Option<bool>,
+    ) -> Result<Instance> {
         if self.is_busy(id) {
             return Err(busy(id));
         }
@@ -247,7 +265,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             engine: ev.engine.to_string(),
         };
         instance.server = Some(ServerLink::from_view(&ev.view, &ev.engine, unix_now()));
-        instance.update_policy = UpdatePolicy::Auto;
+        // A server instance updates on its own or asks, as its player chose; pinned isn't one.
+        if instance.update_policy == UpdatePolicy::Pinned {
+            instance.update_policy = UpdatePolicy::Auto;
+        }
+        if !instance.trusts(&launcher_core::instances::server_key(&ev.view, &ev.engine)) {
+            instance.server_trust = None;
+        }
+        if let Some(auto) = trust {
+            crate::trust::trust(&mut instance, &ev, auto);
+        }
         // A point of before this would put back files of another source.
         launcher_core::restore::discard(&self.instances, id).await;
         self.instances.save(&instance).await?;
@@ -270,6 +297,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         launcher_core::restore::discard(&self.instances, id).await;
         instance.source = SourceRef::None;
         instance.server = None;
+        instance.server_trust = None;
         self.instances.save(&instance).await?;
         Ok(instance)
     }
@@ -354,7 +382,7 @@ mod tests {
     async fn a_refusal_never_quotes_the_invite_token() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         let mut echo = server_view("hub");
         echo.view.kind = "network".into();
         echo.view.address.port = 0;
@@ -363,7 +391,9 @@ mod tests {
         let token = "B".repeat(43);
         for err in [
             core.join_preview(&invite('B')).await.unwrap_err(),
-            core.server_relink(&id, &invite('B')).await.unwrap_err(),
+            core.server_relink(&id, &invite('B'), None)
+                .await
+                .unwrap_err(),
         ] {
             assert_eq!(err.code, ErrorCode::InviteUnsupported);
             let text = format!("{err:?} {}", serde_json::to_string(&err).unwrap());
@@ -413,7 +443,7 @@ mod tests {
                 "{bad}"
             );
             assert_eq!(
-                core.join_add(bad).await.unwrap_err().code,
+                core.join_add(bad, Some(true)).await.unwrap_err().code,
                 ErrorCode::InviteLinkInvalid,
                 "{bad}"
             );
@@ -424,7 +454,7 @@ mod tests {
     async fn join_add_creates_an_automatic_server_instance() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let instance = core.join_add(&invite('A')).await.unwrap();
+        let instance = core.join_add(&invite('A'), Some(true)).await.unwrap();
         assert_eq!(instance.update_policy, UpdatePolicy::Auto);
         assert!(
             matches!(&instance.source, SourceRef::Perland { invite: i, .. } if *i == invite('A'))
@@ -444,12 +474,12 @@ mod tests {
     async fn join_add_dedupes_case_and_slash_variants() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let first = core.join_add(&invite('A')).await.unwrap();
+        let first = core.join_add(&invite('A'), Some(true)).await.unwrap();
         let shouted = format!(
             "  {}/  ",
             invite('A').replace("play.example.com", "PLAY.Example.com:443")
         );
-        let second = core.join_add(&shouted).await.unwrap();
+        let second = core.join_add(&shouted, Some(true)).await.unwrap();
         assert_eq!(first.id, second.id);
         assert_eq!(runner.added.lock().unwrap().len(), 1);
     }
@@ -459,10 +489,10 @@ mod tests {
         let (core, runner, _host, tmp) = core(BuildKind::Dev);
         core.telemetry().force_on();
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let instance = core.join_add(&invite('A')).await.unwrap();
+        let instance = core.join_add(&invite('A'), Some(true)).await.unwrap();
         // The same server again is the same instance, not another join.
-        core.join_add(&invite('A')).await.unwrap();
-        assert!(core.join_add("not a link").await.is_err());
+        core.join_add(&invite('A'), Some(true)).await.unwrap();
+        assert!(core.join_add("not a link", Some(true)).await.is_err());
         let telemetry = core.telemetry();
         assert_eq!(telemetry.snapshot().counters()["joins_by_link"], 1);
 
@@ -490,7 +520,7 @@ mod tests {
     async fn server_status_refreshes_the_saved_link() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         let mut asleep = server_view("survival");
         asleep.view.status = "sleeping".into();
         asleep.view.players = None;
@@ -527,7 +557,7 @@ mod tests {
     async fn a_dead_link_is_marked_and_keeps_its_address() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         serve(
             &runner,
             &invite('A'),
@@ -546,7 +576,7 @@ mod tests {
     async fn a_rate_limit_is_passed_on_and_changes_nothing() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         let before = core.instances.load(&id).await.unwrap();
         serve(
             &runner,
@@ -567,7 +597,7 @@ mod tests {
     async fn relinking_moves_the_instance_and_keeps_its_files() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         let world = core.instances.game_dir(&id).join("saves/home/level.dat");
         std::fs::create_dir_all(world.parent().unwrap()).unwrap();
         std::fs::write(&world, b"blocks").unwrap();
@@ -575,7 +605,7 @@ mod tests {
             .await
             .unwrap();
         serve(&runner, &invite('B'), Ok(server_view("survival")));
-        let moved = core.server_relink(&id, &invite('B')).await.unwrap();
+        let moved = core.server_relink(&id, &invite('B'), None).await.unwrap();
         assert!(matches!(&moved.source, SourceRef::Perland { invite: i, .. } if *i == invite('B')));
         assert!(!moved.server.as_ref().unwrap().gone);
         assert_eq!(moved.update_policy, UpdatePolicy::Auto);
@@ -587,7 +617,7 @@ mod tests {
     async fn unlinking_makes_an_ordinary_instance_and_keeps_every_file() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let linked = core.join_add(&invite('A')).await.unwrap();
+        let linked = core.join_add(&invite('A'), Some(true)).await.unwrap();
         let id = linked.id.clone();
         let game = core.instances.game_dir(&id);
         for file in [
@@ -650,7 +680,7 @@ mod tests {
             SourceRef::None
         );
         // And it can be linked again, as any ordinary instance.
-        let again = core.server_link(&id, &invite('A')).await.unwrap();
+        let again = core.server_link(&id, &invite('A'), None).await.unwrap();
         assert!(matches!(again.source, SourceRef::Perland { .. }));
     }
 
@@ -663,7 +693,7 @@ mod tests {
             core.server_unlink(&ordinary.id).await.unwrap_err().code,
             ErrorCode::NoPack
         );
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         hold(&core, &id);
         let before = instance_json(&core, &id);
         assert_eq!(
@@ -712,11 +742,11 @@ mod tests {
         let id = plain(&core).await.id;
 
         take_point(&core, &id).await;
-        core.server_link(&id, &invite('A')).await.unwrap();
+        core.server_link(&id, &invite('A'), None).await.unwrap();
         assert!(!has_point(&core, &id).await, "link");
 
         take_point(&core, &id).await;
-        core.server_relink(&id, &invite('B')).await.unwrap();
+        core.server_relink(&id, &invite('B'), None).await.unwrap();
         assert!(!has_point(&core, &id).await, "relink");
 
         take_point(&core, &id).await;
@@ -746,7 +776,10 @@ mod tests {
         std::fs::create_dir_all(world.parent().unwrap()).unwrap();
         std::fs::write(&world, b"blocks").unwrap();
 
-        let linked = core.server_link(&before.id, &invite('A')).await.unwrap();
+        let linked = core
+            .server_link(&before.id, &invite('A'), None)
+            .await
+            .unwrap();
 
         assert!(
             matches!(&linked.source, SourceRef::Perland { invite: i, .. } if *i == invite('A'))
@@ -774,7 +807,7 @@ mod tests {
     async fn only_plain_instances_can_be_linked() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let server = core.join_add(&invite('A')).await.unwrap();
+        let server = core.join_add(&invite('A'), Some(true)).await.unwrap();
         let mut pack = plain(&core).await;
         pack.source = SourceRef::Mrpack {
             name: "Pack.mrpack".into(),
@@ -784,7 +817,10 @@ mod tests {
         for id in [&server.id, &pack.id] {
             let before = instance_json(&core, id);
             assert_eq!(
-                core.server_link(id, &invite('A')).await.unwrap_err().code,
+                core.server_link(id, &invite('A'), None)
+                    .await
+                    .unwrap_err()
+                    .code,
                 ErrorCode::LinkHasPack
             );
             assert_eq!(instance_json(&core, id), before);
@@ -802,14 +838,14 @@ mod tests {
         let target = plain(&core).await;
         let before = instance_json(&core, &target.id);
         assert_eq!(
-            core.server_link(&target.id, &invite('A'))
+            core.server_link(&target.id, &invite('A'), None)
                 .await
                 .unwrap_err()
                 .code,
             ErrorCode::InviteUnsupported
         );
         assert_eq!(
-            core.server_link(&target.id, "https://play.example.com/short")
+            core.server_link(&target.id, "https://play.example.com/short", None)
                 .await
                 .unwrap_err()
                 .code,
@@ -817,7 +853,7 @@ mod tests {
         );
         hold(&core, &target.id);
         assert_eq!(
-            core.server_link(&target.id, &invite('B'))
+            core.server_link(&target.id, &invite('B'), None)
                 .await
                 .unwrap_err()
                 .code,
@@ -843,7 +879,7 @@ mod tests {
             ErrorCode::NoPack
         );
         assert_eq!(
-            core.server_relink(&plain.id, &invite('B'))
+            core.server_relink(&plain.id, &invite('B'), None)
                 .await
                 .unwrap_err()
                 .code,
@@ -859,8 +895,10 @@ mod tests {
         let mut creative = server_view("creative");
         creative.view.address.port = 25570;
         serve(&runner, &invite('B'), Ok(creative));
-        let stale = core.join_add(&invite('A')).await.unwrap();
-        core.server_relink(&stale.id, &invite('B')).await.unwrap();
+        let stale = core.join_add(&invite('A'), Some(true)).await.unwrap();
+        core.server_relink(&stale.id, &invite('B'), None)
+            .await
+            .unwrap();
         // Instance settings was opened before the relink and saves now, with a new name.
         let mut edited = stale.clone();
         edited.name = "Our server".into();
@@ -887,7 +925,7 @@ mod tests {
     async fn instance_update_keeps_servers_automatic() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let mut instance = core.join_add(&invite('A')).await.unwrap();
+        let mut instance = core.join_add(&invite('A'), Some(true)).await.unwrap();
         instance.update_policy = UpdatePolicy::Pinned;
         let saved = core.instance_update(instance).await.unwrap();
         assert_eq!(saved.update_policy, UpdatePolicy::Auto);
@@ -918,7 +956,7 @@ mod tests {
     async fn a_busy_instance_answers_but_is_not_written() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         hold(&core, &id);
         let before = instance_json(&core, &id);
         let mut asleep = server_view("survival");
@@ -945,11 +983,11 @@ mod tests {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
         serve(&runner, &invite('B'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         hold(&core, &id);
         let before = instance_json(&core, &id);
         assert_eq!(
-            core.server_relink(&id, &invite('B'))
+            core.server_relink(&id, &invite('B'), None)
                 .await
                 .unwrap_err()
                 .code,
@@ -957,14 +995,14 @@ mod tests {
         );
         assert_eq!(instance_json(&core, &id), before);
         core.runs.lock().unwrap().clear();
-        core.server_relink(&id, &invite('B')).await.unwrap();
+        core.server_relink(&id, &invite('B'), None).await.unwrap();
     }
 
     #[tokio::test]
     async fn an_unchanged_poll_does_not_rewrite_the_instance() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         // An old read time, so a poll that rewrote `last_seen` would show.
         core.update_server(&id, false, |s| s.as_mut().unwrap().last_seen = Some(1))
             .await
@@ -979,7 +1017,7 @@ mod tests {
     async fn a_real_change_is_saved_with_a_fresh_read_time() {
         let (core, runner, _host, _t) = core(BuildKind::Dev);
         serve(&runner, &invite('A'), Ok(server_view("survival")));
-        let id = core.join_add(&invite('A')).await.unwrap().id;
+        let id = core.join_add(&invite('A'), Some(true)).await.unwrap().id;
         core.update_server(&id, false, |s| s.as_mut().unwrap().last_seen = Some(1))
             .await
             .unwrap();

@@ -21,6 +21,8 @@ export interface OptionsState {
   whitelist: boolean;
   seed: string;
   motd: string;
+  /** Off: players without a Minecraft account can join. Only a team server shows it. */
+  onlineMode: boolean;
   /** The most the field takes. */
   limit: number;
   /** What the server gets left alone: a free server's limit, a team server's 20. */
@@ -33,18 +35,21 @@ export interface OptionLimits {
   maxPlayers: number;
   defaultPlayers?: number;
   settings: FreeSettingsLimits | null;
+  /** Whether the server may turn online mode off: a team server's may, a free server always checks Minecraft accounts. */
+  onlineMode?: boolean;
 }
 
 /** A team server's Options (spec 2026-10-21 §6.3): every mode and difficulty, 20 players by default, up to the Engine's 1000,
- *  and the same seed and message rules as a free server. */
+ *  the same seed and message rules as a free server, and online mode, which the team may turn off. */
 export const TEAM_OPTION_LIMITS: OptionLimits = {
   maxPlayers: 1000,
   defaultPlayers: 20,
   settings: { gameModes: ['survival', 'creative', 'adventure', 'hardcore'], difficulties: ['peaceful', 'easy', 'normal', 'hard'], seedMaxBytes: 64, motdMaxBytes: 64 },
+  onlineMode: true,
 };
 
-/** What a server left alone gets (the Engine's defaults): survival, easy, the default players, PvP on, whitelist off. */
-const DEFAULTS = { gameMode: 'survival', difficulty: 'easy', pvp: true, whitelist: false } as const;
+/** What a server left alone gets (the Engine's defaults): survival, easy, the default players, PvP on, whitelist off, online mode on. */
+const DEFAULTS = { gameMode: 'survival', difficulty: 'easy', pvp: true, whitelist: false, onlineMode: true } as const;
 
 export const initialOptions = (limits: OptionLimits): OptionsState => {
   const defaultPlayers = limits.defaultPlayers ?? limits.maxPlayers;
@@ -63,11 +68,12 @@ export function settingsOf(state: OptionsState): FreeServerSettings | null {
   if (state.whitelist !== DEFAULTS.whitelist) settings.whitelist = state.whitelist;
   if (state.seed.trim() !== '') settings.seed = state.seed.trim();
   if (state.motd.trim() !== '') settings.motd = state.motd.trim();
+  if (state.onlineMode !== DEFAULTS.onlineMode) settings.onlineMode = state.onlineMode;
   return Object.keys(settings).length > 0 ? settings : null;
 }
 
 /** The Engine fields (`settings.<name>`) the Options have a place for; a refusal of any other is a line under the form. */
-const OPTION_FIELDS = new Set(['gameMode', 'difficulty', 'maxPlayers', 'pvp', 'whitelist', 'seed', 'motd'].map((k) => `settings.${k}`));
+const OPTION_FIELDS = new Set(['gameMode', 'difficulty', 'maxPlayers', 'pvp', 'whitelist', 'seed', 'motd', 'onlineMode'].map((k) => `settings.${k}`));
 export const isOptionField = (field: string): boolean => OPTION_FIELDS.has(field);
 
 const bytes = (text: string) => new TextEncoder().encode(text).length;

@@ -121,6 +121,22 @@ describe('Create a server with teams', () => {
     expect(sent(calls, 'team_create')).toMatchObject([{ request: { tenantId: MOCK_TEAM_TENANT, type: 'vanilla', settings: null, loaderVersion: null } }]);
   });
 
+  it('turns online mode off, saying what it lets in', async () => {
+    const { box, user, calls } = await onTeam(await open(), 'Builders');
+    await user.click(within(box).getByRole('button', { name: /^Options/ }));
+    const online = within(box).getByRole('switch', { name: 'Online mode' });
+    expect(online).toHaveAttribute('aria-checked', 'true');
+    expect(within(box).getByText('Only players with a Microsoft account can join.')).toBeInTheDocument();
+    const warning = /Anyone can join under any name, even yours/;
+    expect(within(box).queryByText(warning)).toBeNull();
+    await user.click(online);
+    expect(online).toHaveAttribute('aria-checked', 'false');
+    expect(within(box).getByText(warning)).toBeInTheDocument();
+    await user.click(within(box).getByRole('button', { name: 'Create' }));
+    await screen.findByRole('heading', { name: 'Your server is ready' }, { timeout: 4000 });
+    expect(sent(calls, 'team_create')).toMatchObject([{ request: { tenantId: MOCK_TEAM_TENANT, settings: { onlineMode: false } } }]);
+  });
+
   it('says plainly when the team has no room to run the new server', async () => {
     const { box, user } = await onTeam(await open(), 'Night Shift');
     await user.click(within(box).getByRole('button', { name: 'Create' }));

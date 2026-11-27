@@ -24,6 +24,7 @@ use launcher_core::{
         UpdatePolicy, MAX_MEMORY_MB, MIN_MEMORY_MB,
     },
     java,
+    medals::{MedalsStore, MEDALS_FILE},
     meta::{
         catalog::{self, LoaderVersion, McVersion},
         loaders::LoaderKind,
@@ -34,11 +35,12 @@ use launcher_core::{
     msa::{minecraft::McToken, secrets::KeyedSecrets},
     news_seen::{NewsSeen, NEWS_SEEN_FILE},
     paths::LauncherDirs,
-    perland::{KeyringStore, SecretStore, SessionStore},
+    perland::{KeyringStore, PlayerStats, SecretStore, SessionStore},
     platform::Platform,
     playtime,
     restore::{self, Change, ChangeCtx},
     settings::{Channel, Settings, SettingsStore},
+    shader_mods::{self, ShaderSupport},
     skins,
     sync::{lockfile::Managed, manual::Scanner, Cancel, ManualFile},
     whats_new_seen::{WhatsNewSeen, WHATS_NEW_SEEN_FILE},
@@ -67,6 +69,8 @@ pub struct AppConfig {
     pub build: BuildKind,
     pub launcher_version: String,
     pub system_memory_mb: u64,
+    /// This computer's graphics cards (`launcher_core::graphics::detect`).
+    pub graphics: launcher_core::graphics::GraphicsSupport,
     /// Where the player's browser saves files (manual CurseForge downloads).
     pub downloads_dir: Option<PathBuf>,
     /// The Perland panel (`launcher_core::perland::panel_url`), where the player manages the
@@ -124,6 +128,13 @@ pub struct AppCore<R: Runner, H: Host> {
     /// The newest news post seen per server (`<data root>/news-seen.json`).
     pub(crate) news_seen: NewsSeen,
     whats_new_seen: WhatsNewSeen,
+    /// Medals earned on this computer, their counters and the account's medals
+    /// (`<data root>/medals.json`).
+    pub(crate) medals: MedalsStore,
+    /// The Perland stats read last, for the Perland medals' progress.
+    pub(crate) medal_stats: Mutex<Option<PlayerStats>>,
+    /// One medal sync at a time.
+    pub(crate) medals_syncing: tokio::sync::Mutex<()>,
     pub(crate) runner: Arc<R>,
     pub(crate) host: Arc<H>,
     /// One install at a time, so two installs never write the same shared files at once.
@@ -174,6 +185,8 @@ pub struct AppCore<R: Runner, H: Host> {
     pub(crate) console_closes: Mutex<crate::manage_console::CloseCounts>,
     /// The player's skin wardrobe (see `skins.rs`).
     pub(crate) skins: launcher_core::skins_library::SkinLibrary,
+    /// The skin catalog version last pruned for (see `skins.rs`).
+    pub(crate) catalog_seen: Mutex<Option<String>>,
     /// Makes the next import fail while it moves the copied files into the new instance.
     #[cfg(test)]
     pub(crate) import_fail_move: AtomicBool,
@@ -241,13 +254,16 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         Arc::new(Self {
             instances: InstanceStore::new(config.dirs.instances()),
             accounts: tokio::sync::Mutex::new(AccountStore::new(root.join("accounts.json"))),
-            settings: tokio::sync::Mutex::new(SettingsStore::new(root.join("settings.json"))),
+            settings: tokio::sync::Mutex::new(SettingsStore::new(config.dirs.settings())),
             order: tokio::sync::Mutex::new(OrderStore::new(config.dirs.instance_order())),
             settings_warned: AtomicBool::new(false),
             accounts_warned: AtomicBool::new(false),
             meta,
             news_seen: NewsSeen::new(root.join(NEWS_SEEN_FILE)),
             whats_new_seen: WhatsNewSeen::new(root.join(WHATS_NEW_SEEN_FILE)),
+            medals: MedalsStore::new(root.join(MEDALS_FILE)),
+            medal_stats: Mutex::new(None),
+            medals_syncing: tokio::sync::Mutex::new(()),
             runner,
             host,
             install_slot: Arc::new(Semaphore::new(1)),
@@ -274,6 +290,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             console_stream: Mutex::new(None),
             console_closes: Mutex::new(Default::default()),
             skins: launcher_core::skins_library::SkinLibrary::new(config.dirs.skin_library()),
+            catalog_seen: Mutex::new(None),
             #[cfg(test)]
             import_fail_move: AtomicBool::new(false),
             #[cfg(test)]
@@ -333,6 +350,7 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             build: self.config.build.into(),
             offline_allowed: launcher_core::accounts::offline_allowed(self.config.build),
             system_memory_mb: self.config.system_memory_mb,
+            graphics: self.config.graphics.clone(),
             data_dir: self.config.dirs.root().display().to_string(),
             panel: self.config.panel.is_some(),
         })
@@ -426,6 +444,14 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         let turned_on = settings.share_anonymous_data && !before.share_anonymous_data;
         if finished_first_run || turned_on {
             telemetry.notice_shown();
+        }
+        if settings.theme != before.theme {
+            self.medals_note(crate::medals::MedalEvent::ThemeSaved(settings.theme))
+                .await;
+        }
+        if settings.accent != before.accent {
+            self.medals_note(crate::medals::MedalEvent::AccentSaved(settings.accent))
+                .await;
         }
         Ok(settings)
     }
@@ -598,8 +624,9 @@ impl<R: Runner, H: Host> AppCore<R, H> {
     /// Version and Java changes wait until the game stops; other edits are fine while it runs.
     /// Where an instance comes from (`source`), its server link (`server`) and its pictures
     /// (`art`, `art_seed`, `icon` and the background's view) change only through their own commands, so a stale copy from
-    /// the UI can't undo a relink or a picture. Server instances
-    /// always follow their server (`Auto`).
+    /// the UI can't undo a relink or a picture. Trust in a server
+    /// (`server_trust`) changes only through the trust step's commands. Server instances update
+    /// on their own or ask, never stay pinned.
     pub async fn instance_update(&self, instance: Instance) -> Result<Instance> {
         let current = self.instances.load(&instance.id).await?;
         if self.is_busy(&instance.id)
@@ -625,7 +652,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
         instance.banner_aspect = current.banner_aspect;
         // Only going back and "Update again" set or lift the hold.
         instance.update_hold = current.update_hold.clone();
-        if matches!(current.source, SourceRef::Perland { .. }) {
+        // Only the trust step and its settings row trust a server, or take it back.
+        instance.server_trust = current.server_trust.clone();
+        // A server instance updates on its own or asks first, as its player chose; it can't stay
+        // on one version, since it must match the server to join it.
+        if matches!(current.source, SourceRef::Perland { .. })
+            && instance.update_policy == UpdatePolicy::Pinned
+        {
             instance.update_policy = UpdatePolicy::Auto;
         }
         self.instances.update(&instance).await
@@ -894,6 +927,13 @@ impl<R: Runner, H: Host> AppCore<R, H> {
             .collect())
     }
 
+    /// Which mod runs shader packs on the instance's loader, and whether an enabled jar in
+    /// `mods/` (the player's or the pack's) already is one.
+    pub async fn shader_support(&self, id: &str) -> Result<ShaderSupport> {
+        let instance = self.instances.load(id).await?;
+        shader_mods::support(&instance.game, &self.instances.game_dir(id)).await
+    }
+
     pub async fn content_remove(
         &self,
         id: &str,
@@ -1114,6 +1154,7 @@ pub(crate) mod tests {
                 build,
                 launcher_version: "0.1.0".into(),
                 system_memory_mb: 16384,
+                graphics: launcher_core::graphics::GraphicsSupport::unknown(),
                 downloads_dir: Some(tmp.path().join("Downloads")),
                 panel,
                 // On only once a test turns sharing on; then it records, and sends nowhere.
@@ -1784,6 +1825,42 @@ pub(crate) mod tests {
                 .await
                 .unwrap_err()
                 .code,
+            ErrorCode::InstanceNotFound
+        );
+    }
+
+    #[tokio::test]
+    async fn shader_support_names_the_loaders_mod_and_finds_it_in_mods() {
+        let (core, _, _, _t) = core(BuildKind::Dev);
+        let mut forge = vanilla("Forge");
+        forge.loader = Some(LoaderSpec {
+            kind: LoaderKind::Forge,
+            version: "47.4.22".into(),
+        });
+        let forge = core.instance_create(forge).await.unwrap();
+        let support = core.shader_support(&forge.id).await.unwrap();
+        assert_eq!(
+            support.wanted,
+            Some(launcher_core::shader_mods::ShaderMod::Oculus)
+        );
+        assert!(!support.installed);
+
+        let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        w.start_file(
+            "META-INF/mods.toml",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        std::io::Write::write_all(&mut w, b"[[mods]]\nmodId = \"oculus\"\n").unwrap();
+        let mods = core.instances.game_dir(&forge.id).join("mods");
+        std::fs::create_dir_all(&mods).unwrap();
+        std::fs::write(mods.join("shaders.jar"), w.finish().unwrap().into_inner()).unwrap();
+        assert!(core.shader_support(&forge.id).await.unwrap().installed);
+
+        let plain = core.instance_create(vanilla("Plain")).await.unwrap();
+        assert_eq!(core.shader_support(&plain.id).await.unwrap().wanted, None);
+        assert_eq!(
+            core.shader_support("ghost").await.unwrap_err().code,
             ErrorCode::InstanceNotFound
         );
     }

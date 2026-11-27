@@ -37,11 +37,74 @@ pub enum Theme {
     Stone,
     Night,
     Forest,
+    Nether,
+    End,
+    Cherry,
+    /// The player's own room, mixed from `Settings::custom_room`.
+    Custom,
     /// Warm laminate black, the original room. Also what an unknown theme from a newer launcher
     /// loads as. (`serde(other)` must be the last variant.)
     #[default]
     #[serde(other)]
     Laminate,
+}
+
+/// The colour of Play and the other keys that act. `Room` keeps the room's own act hue; the
+/// others replace it in every room. Lime, coral and blue are never offered: they mean running,
+/// failing and in progress.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Accent {
+    Amber,
+    Orange,
+    Pink,
+    Violet,
+    Cyan,
+    Bone,
+    /// The room's own. Also what an unknown accent from a newer launcher loads as.
+    /// (`serde(other)` must be the last variant.)
+    #[default]
+    #[serde(other)]
+    Room,
+}
+
+/// The two colours the player's own room is mixed from, each `#rrggbb` in lower case. Anything
+/// else loads and saves as the default colour, so a hand-edited file never breaks the look.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CustomRoom {
+    pub background: String,
+    pub buttons: String,
+}
+
+impl Default for CustomRoom {
+    fn default() -> Self {
+        Self {
+            background: "#101820".into(),
+            buttons: "#ff6ad5".into(),
+        }
+    }
+}
+
+impl CustomRoom {
+    /// Each colour well-formed and lower case, or the default's.
+    fn sanitized(self) -> Self {
+        let default = Self::default();
+        let keep = |value: String, fallback: String| {
+            let ok = value.len() == 7
+                && value.starts_with('#')
+                && value[1..].chars().all(|c| c.is_ascii_hexdigit());
+            if ok {
+                value.to_ascii_lowercase()
+            } else {
+                fallback
+            }
+        };
+        Self {
+            background: keep(self.background, default.background),
+            buttons: keep(self.buttons, default.buttons),
+        }
+    }
 }
 
 /// The face for body text. Signage (Bungee) never changes.
@@ -54,6 +117,36 @@ pub enum UiFont {
     #[default]
     #[serde(other)]
     Hyperlegible,
+}
+
+/// How a screen comes in when the player moves to it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Transitions {
+    /// The arcade cabinet's own: a few snapped frames.
+    Stepped,
+    /// Nothing moves: the screen is simply there.
+    Off,
+    /// Eased fades and slides. Also what an unknown choice from a newer launcher loads as.
+    /// (`serde(other)` must be the last variant.)
+    #[default]
+    #[serde(other)]
+    Smooth,
+}
+
+/// Which graphics card the game is started on (see `graphics`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GraphicsCard {
+    /// The high-performance card.
+    Dedicated,
+    /// The power-saving card.
+    Integrated,
+    /// The system decides, as if the launcher had no say. Also what an unknown choice from a
+    /// newer launcher loads as. (`serde(other)` must be the last variant.)
+    #[default]
+    #[serde(other)]
+    Automatic,
 }
 
 /// Which launcher releases this install follows (spec §4.4).
@@ -92,10 +185,18 @@ pub struct Settings {
     pub icon_shape: IconShape,
     /// The colour theme.
     pub theme: Theme,
+    /// The colour of Play and the keys that act.
+    pub accent: Accent,
+    /// The colours of the player's own room (`Theme::Custom`).
+    pub custom_room: CustomRoom,
     /// The body text font.
     pub font: UiFont,
     /// Send anonymous error reports and usage counts (see `telemetry`).
     pub share_anonymous_data: bool,
+    /// The graphics card games start on.
+    pub graphics_card: GraphicsCard,
+    /// How screens come in.
+    pub transitions: Transitions,
 }
 
 impl Default for Settings {
@@ -110,8 +211,21 @@ impl Default for Settings {
             rail_expanded: false,
             icon_shape: IconShape::Square,
             theme: Theme::Laminate,
+            accent: Accent::Room,
+            custom_room: CustomRoom::default(),
             font: UiFont::Hyperlegible,
             share_anonymous_data: crate::telemetry::SHARE_BY_DEFAULT,
+            graphics_card: GraphicsCard::Automatic,
+            transitions: Transitions::Smooth,
+        }
+    }
+}
+
+impl Settings {
+    fn sanitized(self) -> Self {
+        Self {
+            custom_room: self.custom_room.sanitized(),
+            ..self
         }
     }
 }
@@ -134,15 +248,16 @@ impl SettingsStore {
             }
             Err(e) => return (Settings::default(), Some(damaged(e))),
         };
-        match serde_json::from_slice(&bytes) {
-            Ok(settings) => (settings, None),
+        match serde_json::from_slice::<Settings>(&bytes) {
+            Ok(settings) => (settings.sanitized(), None),
             Err(e) => (Settings::default(), Some(damaged(e))),
         }
     }
 
     pub async fn save(&self, settings: &Settings) -> Result<()> {
         validate_memory(settings.default_memory_mb)?;
-        let bytes = serde_json::to_vec_pretty(settings).map_err(|e| {
+        let settings = settings.clone().sanitized();
+        let bytes = serde_json::to_vec_pretty(&settings).map_err(|e| {
             LauncherError::disk(ErrorCode::DiskWriteFailed, "Couldn't save settings")
                 .with_param("item", "settings")
                 .with_detail(e)
@@ -177,6 +292,38 @@ mod tests {
         assert!(settings.minimize_on_play);
         assert!(!settings.first_run_done);
         assert!(!settings.rail_expanded);
+    }
+
+    #[tokio::test]
+    async fn transitions_default_to_smooth_round_trip_and_fall_back() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        let store = SettingsStore::new(&path);
+        assert_eq!(store.load().await.0.transitions, Transitions::Smooth);
+
+        for (choice, word) in [
+            (Transitions::Stepped, "stepped"),
+            (Transitions::Off, "off"),
+            (Transitions::Smooth, "smooth"),
+        ] {
+            let chosen = Settings {
+                transitions: choice,
+                ..Settings::default()
+            };
+            store.save(&chosen).await.unwrap();
+            let raw = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                raw.contains(&format!("\"transitions\": \"{word}\"")),
+                "{raw}"
+            );
+            assert_eq!(store.load().await, (chosen, None));
+        }
+
+        // A choice from a newer launcher is the default here, not damaged settings.
+        std::fs::write(&path, r#"{"transitions": "warp"}"#).unwrap();
+        let (settings, warning) = store.load().await;
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(settings.transitions, Transitions::Smooth);
     }
 
     #[tokio::test]
@@ -285,6 +432,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn new_rooms_accent_and_custom_room_round_trip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        let store = SettingsStore::new(&path);
+        let (defaults, _) = store.load().await;
+        assert_eq!(defaults.accent, Accent::Room);
+        assert_eq!(defaults.custom_room, CustomRoom::default());
+        for (theme, word) in [
+            (Theme::Nether, "nether"),
+            (Theme::End, "end"),
+            (Theme::Cherry, "cherry"),
+            (Theme::Custom, "custom"),
+        ] {
+            let chosen = Settings {
+                theme,
+                accent: Accent::Violet,
+                custom_room: CustomRoom {
+                    background: "#170f1f".into(),
+                    buttons: "#c58cff".into(),
+                },
+                ..Settings::default()
+            };
+            store.save(&chosen).await.unwrap();
+            let raw = std::fs::read_to_string(&path).unwrap();
+            assert!(raw.contains(&format!("\"theme\": \"{word}\"")), "{raw}");
+            assert!(raw.contains("\"accent\": \"violet\""), "{raw}");
+            assert!(raw.contains("\"background\": \"#170f1f\""), "{raw}");
+            assert_eq!(store.load().await, (chosen, None));
+        }
+    }
+
+    #[tokio::test]
+    async fn unknown_accent_loads_as_the_rooms_own() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(&path, r#"{"accent":"neon"}"#).unwrap();
+        let (settings, warning) = SettingsStore::new(&path).load().await;
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(settings.accent, Accent::Room);
+    }
+
+    #[tokio::test]
+    async fn a_malformed_room_colour_loads_and_saves_as_the_default() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r##"{"customRoom":{"background":"red","buttons":"#C58CFF"}}"##,
+        )
+        .unwrap();
+        let store = SettingsStore::new(&path);
+        let (settings, warning) = store.load().await;
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(
+            settings.custom_room.background,
+            CustomRoom::default().background
+        );
+        assert_eq!(settings.custom_room.buttons, "#c58cff");
+
+        let bad = Settings {
+            custom_room: CustomRoom {
+                background: "#12345".into(),
+                buttons: "javascript:".into(),
+            },
+            ..Settings::default()
+        };
+        store.save(&bad).await.unwrap();
+        assert_eq!(store.load().await.0.custom_room, CustomRoom::default());
+    }
+
+    #[tokio::test]
     async fn unknown_fields_alone_are_fine() {
         let tmp = tempfile::tempdir().unwrap();
         let path = tmp.path().join("settings.json");
@@ -333,6 +551,47 @@ mod tests {
         let raw = std::fs::read_to_string(&path).unwrap();
         assert!(raw.contains("\"shareAnonymousData\": false"), "{raw}");
         assert_eq!(store.load().await, (off, None));
+    }
+
+    #[tokio::test]
+    async fn graphics_card_defaults_to_automatic_and_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        // A file from before the choice existed.
+        std::fs::write(&path, r#"{"firstRunDone": true}"#).unwrap();
+        let store = SettingsStore::new(&path);
+        let (settings, warning) = store.load().await;
+        assert!(warning.is_none());
+        assert_eq!(settings.graphics_card, GraphicsCard::Automatic);
+
+        for (card, word) in [
+            (GraphicsCard::Dedicated, "dedicated"),
+            (GraphicsCard::Integrated, "integrated"),
+            (GraphicsCard::Automatic, "automatic"),
+        ] {
+            let chosen = Settings {
+                graphics_card: card,
+                ..settings.clone()
+            };
+            store.save(&chosen).await.unwrap();
+            let raw = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                raw.contains(&format!("\"graphicsCard\": \"{word}\"")),
+                "{raw}"
+            );
+            assert_eq!(store.load().await, (chosen, None));
+        }
+    }
+
+    #[tokio::test]
+    async fn unknown_graphics_card_loads_as_automatic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(&path, r#"{"language":"es","graphicsCard":"external"}"#).unwrap();
+        let (settings, warning) = SettingsStore::new(&path).load().await;
+        assert!(warning.is_none(), "{warning:?}");
+        assert_eq!(settings.graphics_card, GraphicsCard::Automatic);
+        assert_eq!(settings.language, Some(Lang::Es));
     }
 
     #[test]

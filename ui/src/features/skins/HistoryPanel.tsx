@@ -6,26 +6,8 @@ import { commands } from '../../ipc/commands';
 import type { SkinModel, SkinVersion } from '../../ipc/schema';
 import { Button } from '../../ui/Button';
 import { Close, Trash } from '../../ui/Icon';
+import { frontParts } from './frontView';
 import { whenLabel } from './when';
-
-/** Where each part's front face sits in the texture ([x, y, w, h]) and on the 16 × 32 figure ([x, y]), base then outer. */
-function frontParts(model: SkinModel): [number, number, number, number, number, number][] {
-  const arm = model === 'slim' ? 3 : 4;
-  return [
-    [8, 8, 8, 8, 4, 0],
-    [20, 20, 8, 12, 4, 8],
-    [44, 20, arm, 12, 4 - arm, 8],
-    [36, 52, arm, 12, 12, 8],
-    [4, 20, 4, 12, 4, 20],
-    [20, 52, 4, 12, 8, 20],
-    [40, 8, 8, 8, 4, 0],
-    [20, 36, 8, 12, 4, 8],
-    [44, 36, arm, 12, 4 - arm, 8],
-    [52, 52, arm, 12, 12, 8],
-    [4, 36, 4, 12, 4, 20],
-    [4, 52, 4, 12, 8, 20],
-  ];
-}
 
 /** A version as a tiny front view of the whole figure, so a changed shirt shows as well as a changed face. */
 function VersionFigure({ skin, version, model }: { skin: string; version: string; model: SkinModel }) {
@@ -48,6 +30,7 @@ function VersionFigure({ skin, version, model }: { skin: string; version: string
 export function HistoryPanel({
   skin,
   model,
+  hasLook = false,
   versions,
   picked,
   onPick,
@@ -56,6 +39,8 @@ export function HistoryPanel({
 }: {
   skin: string;
   model: SkinModel;
+  /** The open skin wears catalog pieces, which a restored version leaves behind. */
+  hasLook?: boolean;
   versions: SkinVersion[] | undefined;
   picked: string | null;
   onPick: (version: SkinVersion) => void;
@@ -74,6 +59,7 @@ export function HistoryPanel({
         <Button variant="ghost" size="icon" aria-label={t('skins.history.close')} title={t('skins.history.close')} icon={<Close />} onClick={onClose} />
       </div>
       <p className="text-sm text-ink-dim text-pretty">{t('skins.history.about')}</p>
+      {hasLook && <p className="history-plain text-sm text-pretty">{t('skins.history.plainNote')}</p>}
       {versions && versions.length === 0 ? (
         <p className="history-empty text-sm text-ink-dim">{t('skins.history.empty')}</p>
       ) : (
