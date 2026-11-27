@@ -47,7 +47,8 @@ describe('translations', () => {
 
   it('never leave a Spanish string identical to a long English one by accident', () => {
     const same = Object.keys(flatEn).filter(
-      (k) => flatEn[k] === flatEs[k] && (flatEn[k]?.length ?? 0) > 24 && !k.startsWith('app.'),
+      // A bare web address (a placeholder naming a real site) reads the same in every language.
+      (k) => flatEn[k] === flatEs[k] && (flatEn[k]?.length ?? 0) > 24 && !k.startsWith('app.') && !/^https:\/\/\S+$/.test(flatEn[k] ?? ''),
     );
     expect(same).toEqual([]);
   });

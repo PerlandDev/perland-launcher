@@ -114,6 +114,7 @@
   "link_refused",
   "invite_link_invalid",
   "invite_pack_link",
+  "invite_server_address",
   "invite_gone",
   "invite_unsupported",
   "invite_site_unreachable",

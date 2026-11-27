@@ -33,7 +33,66 @@ pub(crate) fn link_invalid() -> LauncherError {
         ErrorCode::InviteLinkInvalid,
         "That isn't a Perland invite link",
     )
-    .with_fix("Invite links look like https://play.example.com/ followed by a long code")
+    .with_fix("Invite links look like https://play.perland.online/ followed by a long code")
+}
+
+/// A server's join address pasted where its invite link belongs: the invite page shows the
+/// address in large type with a Copy button, so players copy that.
+pub fn server_address_pasted() -> LauncherError {
+    LauncherError::pack(
+        ErrorCode::InviteServerAddress,
+        "That's the server's address, not its invite link",
+    )
+    .with_fix("Paste the invite link instead: the address of the page you got it from")
+}
+
+/// Whether `input` is a bare join address: a host with a dot (or an IP address), optionally
+/// `:port`, with no scheme or path. Pack file names (`.mrpack`, `.toml`) aren't addresses.
+pub fn is_server_address(input: &str) -> bool {
+    use std::net::{IpAddr, Ipv6Addr};
+    let raw = input.trim();
+    if raw.is_empty()
+        || raw.len() > MAX_INPUT
+        || raw.chars().any(|c| {
+            c.is_whitespace() || c.is_control() || matches!(c, '/' | '\\' | '@' | '?' | '#')
+        })
+    {
+        return false;
+    }
+    if raw.parse::<Ipv6Addr>().is_ok() {
+        return true;
+    }
+    let (host, port) = match raw.strip_prefix('[') {
+        Some(rest) => match rest.split_once(']') {
+            Some((ip, "")) => (ip, None),
+            Some((ip, port)) => match port.strip_prefix(':') {
+                Some(port) => (ip, Some(port)),
+                None => return false,
+            },
+            None => return false,
+        },
+        None => match raw.split_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (raw, None),
+        },
+    };
+    let port_ok = port.is_none_or(|p| {
+        p.bytes().all(|b| b.is_ascii_digit()) && p.parse::<u16>().is_ok_and(|p| p != 0)
+    });
+    if !port_ok {
+        return false;
+    }
+    if raw.starts_with('[') {
+        return host.parse::<Ipv6Addr>().is_ok();
+    }
+    if host.parse::<IpAddr>().is_ok() {
+        return true;
+    }
+    let name = host.strip_suffix('.').unwrap_or(host).to_ascii_lowercase();
+    crate::instances::valid_host(host)
+        && name.rsplit_once('.').is_some_and(|(_, last)| {
+            !matches!(last, "mrpack" | "toml") && !last.bytes().all(|b| b.is_ascii_digit())
+        })
 }
 
 fn valid_token(s: &str) -> bool {
@@ -247,6 +306,52 @@ mod tests {
             .filter(|c| c.input.encode_utf16().count() < MAX_INPUT && c.input.len() > MAX_INPUT)
             .count();
         assert_eq!(pinned, 1);
+    }
+
+    #[test]
+    fn a_join_address_is_a_server_address() {
+        for input in [
+            "qa-mcp-git.perland.world",
+            " survival.perland.world ",
+            "play-mc.perland.online:25570",
+            "Play.Example.COM.",
+            "203.0.113.7",
+            "203.0.113.7:25565",
+            "[2001:db8::1]:25565",
+            "2001:db8::1",
+        ] {
+            assert!(is_server_address(input), "{input:?}");
+        }
+        let token = "A".repeat(TOKEN_LEN);
+        for input in [
+            "",
+            "survival",
+            "localhost",
+            "modrinth:sky",
+            "survival.perland.world:0",
+            "survival.perland.world:65536",
+            "survival.perland.world:port",
+            "survival.perland.world/",
+            "https://survival.perland.world",
+            "player@survival.perland.world",
+            "asalith.mrpack",
+            "pack.toml",
+            &format!("https://play.perland.online/{token}"),
+            &format!("play.perland.online/{token}"),
+            "https://perlanddev.github.io/asalith-modpack/pack.toml",
+        ] {
+            assert!(!is_server_address(input), "{input:?}");
+        }
+        let err = server_address_pasted();
+        assert_eq!(err.code, ErrorCode::InviteServerAddress);
+        assert!(err.fix.is_some());
+    }
+
+    #[test]
+    fn the_hint_names_the_perland_play_site() {
+        let fix = link_invalid().fix.unwrap();
+        assert!(fix.contains("https://play.perland.online/"), "{fix}");
+        assert!(!fix.contains("example"), "{fix}");
     }
 
     #[test]
