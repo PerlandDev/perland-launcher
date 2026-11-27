@@ -13,7 +13,7 @@ The code settles how this repository works; it does not settle what production i
 - `ui/src/ipc/contract/*.json` is generated: `UPDATE_CONTRACT=1 cargo test -p launcher-app --test contract`. Never hand-edit it.
 - UI styling and design-system work goes through the `/impeccable` skill. The visual direction is `.impeccable/surfaces/ui-src-app-tsx.md`, and the design system is `DESIGN.md`.
 - Run the app: `pnpm install`, then `pnpm --filter ui dev:mock` (browser, mocked backend) or `pnpm tauri dev` (real app; set `PERLAND_LAUNCHER_ROOT` to a scratch folder).
-- Releases: the manual **Release** workflow (README → Releasing). Every publish is public, so ask the owner first.
+- Releases: the manual **Release** workflow (`docs/releasing.md`). Every publish is public, so ask the owner first.
 - License GPL-3.0-only. Never copy Modrinth branding or Mojang assets. Ported code keeps an attribution header and gets a `NOTICE` entry.
 - Release notes: every pull request settles them before it is ready. A change players would see or feel adds a note in `release-notes/<slug>.json` (`kind`, `en`, `es`); any other says `Release notes: none (reason)` in its description. Write them with the `release-notes` skill (`.claude/skills/release-notes/SKILL.md`). The launcher shows them in What's new after each update (design: `docs/superpowers/specs/2026-11-10-whats-new-design.md`).
 - Before committing: `pnpm --filter ui build` (Tauri embeds `ui/dist`), `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `pnpm -r lint`, `pnpm -r typecheck`, `pnpm -r test`.
