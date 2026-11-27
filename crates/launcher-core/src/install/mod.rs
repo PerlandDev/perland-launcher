@@ -1,4 +1,5 @@
 pub mod forge;
+pub mod freetype;
 pub mod natives;
 
 use std::{
@@ -404,7 +405,19 @@ impl Installer {
         mc: &str,
         loader: Option<(LoaderKind, &str)>,
     ) -> Result<ResolvedVersion> {
-        let manifest: VersionManifest = self.meta.get_json(VERSION_MANIFEST_URL).await?;
+        self.resolve_at(VERSION_MANIFEST_URL, &freetype::MOJANG, mc, loader)
+            .await
+    }
+
+    /// [`Self::resolve`] against a given Mojang manifest and set of patched FreeType natives.
+    pub async fn resolve_at(
+        &self,
+        manifest_url: &str,
+        patched_freetype: &freetype::PatchedNatives<'_>,
+        mc: &str,
+        loader: Option<(LoaderKind, &str)>,
+    ) -> Result<ResolvedVersion> {
+        let manifest: VersionManifest = self.meta.get_json(manifest_url).await?;
         let entry = manifest.find(mc).ok_or_else(|| {
             LauncherError::loader(
                 ErrorCode::MinecraftVersionNotFound,
@@ -449,6 +462,15 @@ impl Installer {
             None => (vanilla.clone(), None),
         };
         check_version_id(&json.id)?;
+        // After the merge, so a library list from a loader profile is covered too.
+        let json = freetype::secure(
+            json,
+            patched_freetype,
+            &self.downloader,
+            &self.dirs,
+            self.platform,
+        )
+        .await;
         Ok(ResolvedVersion {
             vanilla_id: vanilla.id,
             json,

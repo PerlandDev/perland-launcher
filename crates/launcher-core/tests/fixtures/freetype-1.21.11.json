@@ -1,0 +1,132 @@
+{
+  "id": "1.21.11",
+  "type": "release",
+  "mainClass": "net.minecraft.client.main.Main",
+  "libraries": [
+    {
+      "downloads": {
+        "artifact": {
+          "path": "org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3.jar",
+          "sha1": "a0db6c84a8becc8ca05f9dbfa985edc348a824c7",
+          "size": 450896,
+          "url": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3.jar"
+        }
+      },
+      "name": "org.lwjgl:lwjgl-freetype:3.3.3"
+    },
+    {
+      "downloads": {
+        "artifact": {
+          "path": "org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-linux.jar",
+          "sha1": "149070a5480900347071b7074779531f25a6e3dc",
+          "size": 1245129,
+          "url": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-linux.jar"
+        }
+      },
+      "name": "org.lwjgl:lwjgl-freetype:3.3.3:natives-linux",
+      "rules": [
+        {
+          "action": "allow",
+          "os": {
+            "name": "linux"
+          }
+        }
+      ]
+    },
+    {
+      "downloads": {
+        "artifact": {
+          "path": "org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-macos-arm64.jar",
+          "sha1": "b0a8c9baa9d1f54ac61e1ab9640c7659e7fa700c",
+          "size": 1040981,
+          "url": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-macos-arm64.jar"
+        }
+      },
+      "name": "org.lwjgl:lwjgl-freetype:3.3.3:natives-macos-arm64",
+      "rules": [
+        {
+          "action": "allow",
+          "os": {
+            "name": "osx"
+          }
+        }
+      ]
+    },
+    {
+      "downloads": {
+        "artifact": {
+          "path": "org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-macos-patch.jar",
+          "sha1": "806d869f37ce0df388a24e17aaaf5ca0894d851b",
+          "size": 1071983,
+          "url": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-macos-patch.jar"
+        }
+      },
+      "name": "org.lwjgl:lwjgl-freetype:3.3.3:natives-macos-patch",
+      "rules": [
+        {
+          "action": "allow",
+          "os": {
+            "name": "osx"
+          }
+        }
+      ]
+    },
+    {
+      "downloads": {
+        "artifact": {
+          "path": "org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-windows.jar",
+          "sha1": "81091b006dbb43fab04c8c638e9ac87c51b4096d",
+          "size": 1035586,
+          "url": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-windows.jar"
+        }
+      },
+      "name": "org.lwjgl:lwjgl-freetype:3.3.3:natives-windows",
+      "rules": [
+        {
+          "action": "allow",
+          "os": {
+            "name": "windows"
+          }
+        }
+      ]
+    },
+    {
+      "downloads": {
+        "artifact": {
+          "path": "org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-windows-arm64.jar",
+          "sha1": "82028265a0a2ff33523ca75137ada7dc176e5210",
+          "size": 886068,
+          "url": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-windows-arm64.jar"
+        }
+      },
+      "name": "org.lwjgl:lwjgl-freetype:3.3.3:natives-windows-arm64",
+      "rules": [
+        {
+          "action": "allow",
+          "os": {
+            "name": "windows"
+          }
+        }
+      ]
+    },
+    {
+      "downloads": {
+        "artifact": {
+          "path": "org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-windows-x86.jar",
+          "sha1": "15a8c1de7f51d07a92eae7ce1222557073a0c0c3",
+          "size": 877480,
+          "url": "https://libraries.minecraft.net/org/lwjgl/lwjgl-freetype/3.3.3/lwjgl-freetype-3.3.3-natives-windows-x86.jar"
+        }
+      },
+      "name": "org.lwjgl:lwjgl-freetype:3.3.3:natives-windows-x86",
+      "rules": [
+        {
+          "action": "allow",
+          "os": {
+            "name": "windows"
+          }
+        }
+      ]
+    }
+  ]
+}

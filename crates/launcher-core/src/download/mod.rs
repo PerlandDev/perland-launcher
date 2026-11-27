@@ -79,6 +79,12 @@ impl Downloader {
         }
     }
 
+    /// How many times a failed attempt is tried again (default 3).
+    pub fn with_retries(mut self, retries: u32) -> Self {
+        self.retries = retries;
+        self
+    }
+
     pub fn with_backoff(mut self, backoff: Duration) -> Self {
         self.backoff = backoff;
         self
