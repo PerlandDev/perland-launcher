@@ -332,13 +332,15 @@ mod tests {
                 .unwrap()
                 .downloads
                 .iter()
-                .map(|d| d.dest.to_string_lossy().replace('\\', "/"))
+                // Under the libraries folder, wherever that is on this computer (a drive on Windows).
+                .map(|d| d.dest.strip_prefix(dirs.libraries()).unwrap().to_path_buf())
+                .map(|d| d.to_string_lossy().replace('\\', "/"))
                 .filter(|d| d.contains("natives"))
                 .collect();
             assert_eq!(
                 natives,
                 vec![format!(
-                    "/pl/libraries/org/lwjgl/lwjgl-freetype/3.4.1-mojang-2.15.0.3/lwjgl-freetype-3.4.1-mojang-2.15.0.3-{jar}"
+                    "org/lwjgl/lwjgl-freetype/3.4.1-mojang-2.15.0.3/lwjgl-freetype-3.4.1-mojang-2.15.0.3-{jar}"
                 )],
                 "{os:?} {arch:?}"
             );
