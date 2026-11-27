@@ -7,7 +7,7 @@ Releases come from the manual **Release** workflow (`.github/workflows/release.y
 ## Before you publish
 
 - A publish needs CI green on the exact commit being released: push it to `main` or to a branch with a pull request and wait for CI first. A dry run only warns.
-- Do a dry run first. A dry run's installers are downloadable from the run's artifacts. That replaces the old tester build.
+- A dry run is optional, and never a step before publishing. Its installers are downloadable from the run's artifacts, for when you want to try a build without releasing it. That replaces the old tester build.
 
 ## Version numbers
 
